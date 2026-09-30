@@ -112,8 +112,7 @@ function translatePencil(p: Pencil, shift: ShiftFn, dPrice: number): Partial<Pen
 }
 
 /** Every price-bearing vertex of a Drawing (in pane Y-domain units). A vline
- *  has none, so it returns [] — clampDPriceForDrawing then leaves Δprice
- *  unclamped, which is correct (vline never moves vertically). */
+ *  has none, so it returns [] and group translation skips its vertical component. */
 export function pricesOf(drawing: Drawing): number[] {
   switch (drawing.kind) {
     case 'hline':
@@ -157,8 +156,7 @@ export function timesOf(drawing: Drawing): number[] {
 
 /**
  * Cap a requested body-drag Δbar (leftward) so that EVERY vertex of `drawing`
- * stays at or right of the axis origin — the time-axis sibling of
- * `clampDPriceForDrawing`. Without it a leftward drag past the first session
+ * stays at or right of the axis origin. Without it a leftward drag past the first session
  * would clamp vertices one by one against the origin (the domain's toReal
  * floors there), permanently compressing the shape. Rightward needs no cap:
  * the future band is open-ended.
@@ -180,43 +178,6 @@ export function clampDBarForDrawing(
     minBar = Math.min(rectCornerBar(rectCorner(drawing, 'a'), { toBar }), rectCornerBar(rectCorner(drawing, 'b'), { toBar }));
   } else for (const t of times) minBar = Math.min(minBar, toBar(t));
   return Math.max(dBar, originBar - minBar);
-}
-
-/**
- * Cap a requested body-drag Δprice so that EVERY vertex of `drawing`
- * stays within the pane's price bounds after translation. The cap is
- * shape-preserving: the same dPrice is applied to all vertices, so the
- * trendline's spread / pencil's curvature survive a boundary hit. A
- * post-translate per-vertex clamp would have collapsed the shape at
- * the edge — see the v1 grill pass and the body-drag-shear note.
- *
- * Bounds may be in either order (top > bottom for KRW, bottom > top
- * on inverted scales); we sort internally.
- */
-export function clampDPriceForDrawing(
-  drawing: Drawing,
-  dPrice: number,
-  bounds: { top: number; bottom: number },
-): number {
-  // Rectangles may extend beyond their owning pane's visible price range.
-  if (drawing.kind === 'rect') return dPrice;
-  const lo = Math.min(bounds.top, bounds.bottom);
-  const hi = Math.max(bounds.top, bounds.bottom);
-  const prices = pricesOf(drawing);
-  // Freeze the drag if any vertex is already outside the bounds (e.g. an
-  // autoscale shift while a drag is in flight). The alternative — letting
-  // the clamp snap the drawing back to the edge — would surprise-yank it
-  // out from under the cursor.
-  for (const p of prices) {
-    if (p < lo || p > hi) return 0;
-  }
-  let maxUp = Infinity;     // largest positive dPrice keeping every vertex ≤ hi
-  let maxDown = -Infinity;  // most negative dPrice keeping every vertex ≥ lo
-  for (const p of prices) {
-    maxUp = Math.min(maxUp, hi - p);
-    maxDown = Math.max(maxDown, lo - p);
-  }
-  return Math.max(maxDown, Math.min(maxUp, dPrice));
 }
 
 // ─── group translation (다중 선택 이동) ─────────────────────────────────────
@@ -250,16 +211,9 @@ function signedMin(a: number, b: number): number {
  * price back) is what makes cross-pane group drag land where the cursor went.
  * This is the same trick `duplicateSelectedRef` uses for its 14px offset.
  *
- * **2. The clamps are computed for the SET, then applied to everyone.** Capping
- * each member against its own pane bounds independently would stop the topmost
- * shape while the others kept going — the formation the user selected would
- * deform mid-drag. So each member reports the largest delta IT can take, and
- * the whole group moves by the smallest of those. That is the same
- * shape-preserving argument `clampDPriceForDrawing` makes for the vertices of
- * one drawing, one level up.
- *
- * Every member's allowance is computed against the RAW request (never against a
- * running minimum), so the result does not depend on the order of `members`.
+ * **2. Horizontal movement is capped for the SET.** Every member shares the
+ * same bar delta so the group preserves its spacing at the time-axis origin.
+ * Vertical movement is unrestricted and uses each member's own price scale.
  */
 export function planGroupTranslate(
   members: readonly Drawing[],
@@ -273,25 +227,8 @@ export function planGroupTranslate(
     dBar = signedMin(dBar, clampDBarForDrawing(m, dBarRaw, coords.originBar, coords.toBar));
   }
 
-  // ── vertical: cap in PIXELS so panes with different scales agree ────────
-  let dyPx = dyPxRaw;
-  for (const m of members) {
-    const prices = pricesOf(m);
-    if (prices.length === 0) continue; // vline: no vertical component at all
-    const bounds = coords.priceBoundsForPane(m.paneId);
-    const ref = prices[0];
-    const y0 = coords.priceToCanvasY(ref, m.paneId);
-    if (bounds == null || y0 == null) continue;
-    const want = coords.canvasYToPrice(y0 + dyPxRaw, m.paneId);
-    if (want == null) continue;
-    const rawDPrice = want - ref;
-    const capped = clampDPriceForDrawing(m, rawDPrice, bounds);
-    if (capped === rawDPrice) continue;
-    // Re-express this member's price cap as a pixel cap so it is comparable
-    // with the other panes'.
-    const yCap = coords.priceToCanvasY(ref + capped, m.paneId);
-    if (yCap != null) dyPx = signedMin(dyPx, yCap - y0);
-  }
+  // Preserve the requested pixel delta across panes, including off-pane coordinates.
+  const dyPx = dyPxRaw;
 
   const shift = (ms: number) => coords.toReal(coords.toBar(ms) + dBar);
   const out: { id: string; patch: Partial<Drawing> }[] = [];
@@ -436,11 +373,7 @@ function patchFromPixelDelta(
   if (y == null) return null;
   const moved = coords.canvasYToPrice(y + deltaPx, m.paneId);
   if (moved == null) return null;
-  const bounds = coords.priceBoundsForPane(m.paneId);
-  const rawDPrice = moved - ref;
-  // 멤버별 클램프 — 집합 최소가 아니다. 정렬은 대형을 바꾸는 연산이라, 한 멤버가
-  // 팬 경계에 걸린다고 나머지까지 붙잡아 둘 이유가 없다.
-  const dPrice = bounds ? clampDPriceForDrawing(m, rawDPrice, bounds) : rawDPrice;
+  const dPrice = moved - ref;
   if (dPrice === 0) return null;
   return translateDrawing(m, 0, dPrice);
 }

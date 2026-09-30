@@ -1181,20 +1181,16 @@ describe('pane stamping', () => {
   });
 });
 
-describe('cross-pane drag clamp', () => {
-  it('trendline drag clamps Y to the start pane before resolving b.price', () => {
+describe('cross-pane drawing coordinates', () => {
+  it('keeps the start pane price scale when the pointer crosses into another pane', () => {
     const ctx = makeCtx({
-      paneIdAtY: vi.fn(() => 'volume' as const),
-      clampYToPane: vi.fn((_id, _py) => 470),
-      pixelToData: vi.fn((_px, py, paneId) => ({
-        realMs: 1_700_000_000_000,
-        price: paneId === 'volume' && py === 470 ? 100 : -999,
-      })),
+      paneIdAtY: () => 'volume',
+      pixelToData: (_px, py, paneId) => ({ realMs: 1_700_000_000_000 + py, price: paneId === 'volume' ? py : -999 }),
     });
     trendlineTool.onPointerDown!(ctx);
     ctx.py = 9999;
     trendlineTool.onPointerUp!(ctx);
-    expect(ctx.clampYToPane).toHaveBeenCalledWith('volume', 9999);
+    expect(vi.mocked(ctx.add).mock.calls[0][0]).toMatchObject({ paneId: 'volume', b: { price: 9999 } });
   });
 });
 
@@ -1645,4 +1641,63 @@ describe('rectangle vertical pane overshoot', () => {
     ctx.py = y; selectTool.onPointerMove!(ctx);
     expect(vi.mocked(ctx.update).mock.calls[0][1]).toMatchObject({ a: { price: y } });
   });
+});
+
+
+describe('all drawings can extend beyond their owning pane', () => {
+  const style = { color: '#fff', width: 2, lineStyle: 'solid' as const, paneId: 'volume' as const };
+  const a = { realMs: 100, price: 20 }, b = { realMs: 200, price: 80 };
+  const drawings: Drawing[] = [
+    { id: 'h', kind: 'hline', price: 50, ...style },
+    { id: 't', kind: 'trendline', a, b, ...style },
+    { id: 'm', kind: 'measure', a, b, ...style },
+    { id: 'p', kind: 'pencil', points: [a, b], ...style },
+    { id: 'text', kind: 'text', at: a, text: 'note', fontSize: 13, ...style },
+  ];
+  function context(drawing?: Drawing) {
+    return makeCtx({ px: 150, py: 50, drawings: drawing ? [drawing] : [], hitTestAt: () => drawing ?? null,
+      paneIdAtY: () => 'volume', clampYToPane: (_id, y) => Math.max(0, Math.min(100, y)),
+      pixelToData: (x, y) => ({ realMs: x, price: y }), canvasYToPrice: y => y,
+      priceToCanvasY: y => y, realMsToCanvasX: x => x,
+      priceBoundsForPane: () => ({ top: 0, bottom: 100 }),
+    });
+  }
+  for (const drawing of drawings) {
+    it.each([-150, 150])(`moves ${drawing.kind} beyond the pane by %s`, dy => {
+      const ctx = context(drawing); selectTool.onPointerDown!(ctx); ctx.py += dy;
+      selectTool.onPointerMove!(ctx);
+      const patch = vi.mocked(ctx.update).mock.calls[0][1];
+      if (drawing.kind === 'hline') expect(patch).toMatchObject({ price: drawing.price + dy });
+      else if (drawing.kind === 'text') expect(patch).toMatchObject({ at: { price: a.price + dy } });
+      else if (drawing.kind === 'pencil') expect(patch).toMatchObject({ points: [ { ...a, price: a.price + dy }, { ...b, price: b.price + dy } ] });
+      else expect(patch).toMatchObject({ a: { price: a.price + dy }, b: { price: b.price + dy } });
+    });
+  }
+  for (const tool of [trendlineTool, measureTool, pencilTool]) {
+    it.each([-50, 150])(`creates ${tool.kind} past the pane edge at %s`, y => {
+      const ctx = context(); tool.onPointerDown!(ctx); ctx.px = 250; ctx.py = y;
+      tool.onPointerMove!(ctx); tool.onPointerUp!(ctx);
+      const added = vi.mocked(ctx.add).mock.calls[0][0];
+      expect(added.paneId).toBe('volume');
+      if (added.kind === 'pencil') expect(added.points.at(-1)?.price).toBe(y);
+      else if (added.kind === 'trendline' || added.kind === 'measure') expect(added.b.price).toBe(y);
+    });
+  }
+  for (const kind of ['trendline', 'measure'] as const) {
+    it.each([-50, 150])(`resizes ${kind} beyond the pane edge at %s`, y => {
+      const drawing = { id: kind, kind, a, b, ...style };
+      const ctx = context(drawing);
+      ctx.dragRef.current = { kind: 'handle', id: drawing.id, endpoint: 'b', pointerId: 1, paneId: 'volume' };
+      ctx.py = y; selectTool.onPointerMove!(ctx);
+      expect(vi.mocked(ctx.update).mock.calls[0][1]).toMatchObject({ b: { price: y } });
+    });
+  }
+});
+
+
+it.each([undefined, true, false])('creates trendlines with the label preference %s', labelHidden => {
+  const ctx = makeCtx({ pixelToData: (_x, y) => ({ realMs: 100, price: y }) });
+  ctx.defaults.labelHidden = labelHidden;
+  trendlineTool.onPointerDown!(ctx); ctx.py += 20; trendlineTool.onPointerUp!(ctx);
+  expect(vi.mocked(ctx.add).mock.calls[0][0]).toMatchObject({ kind: 'trendline', labelHidden: labelHidden !== false });
 });

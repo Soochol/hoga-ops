@@ -603,7 +603,7 @@ function renderTrendline(
     if (xa != null) drawHandle(c, t.color, xa, ya);
     if (xb != null) drawHandle(c, t.color, xb, yb);
   }
-  renderTrendlineDeltaGuide(c, ctx, t, x1, xa, x2, ya);
+  if (t.labelHidden === false) renderTrendlineDeltaGuide(c, ctx, t, x1, xa, x2, ya);
 }
 
 function renderTrendlineDeltaGuide(
@@ -639,6 +639,7 @@ function trendlineFromDraft(draft: TrendlineDraft, style: DrawingStyle): Trendli
   if (!draft.b) return null;
   return {
     id: '__trendline_draft__',
+    labelHidden: style.labelHidden !== false,
     kind: 'trendline',
     a: draft.a,
     b: draft.b,

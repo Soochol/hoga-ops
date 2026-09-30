@@ -106,3 +106,14 @@ encoding (real Unix-ms, not virtual-ms). This ADR fixes the *pane*
 binding (stable string, not array index). Together they define the
 range-independent, ordering-independent coordinate system that
 Drawings persist in.
+
+
+## 2026-09-30: Vertical editing beyond pane bounds
+
+All price-bearing drawings may extend beyond their owning pane's visible range.
+Creation, endpoint editing, body drag, group drag, and alignment interpret the
+pointer using the original pane's price scale without capping Y or price deltas
+to its visible boundaries. Group movement preserves the requested pixel delta
+across different pane scales; drawings already outside the range can be moved
+back in. Rendering remains clipped to the owning pane, and horizontal origin
+limits and drawing locks remain in effect.

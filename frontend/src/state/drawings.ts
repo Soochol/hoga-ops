@@ -519,7 +519,7 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
         if ('fillOpacity' in patch && typeof (patch as { fillOpacity?: unknown }).fillOpacity === 'number') {
           stylePatch.fillOpacity = (patch as { fillOpacity: number }).fillOpacity;
         }
-        if (edited.kind === 'hline' && 'labelHidden' in patch && typeof patch.labelHidden === 'boolean') {
+        if ((edited.kind === 'hline' || edited.kind === 'trendline') && 'labelHidden' in patch && typeof patch.labelHidden === 'boolean') {
           stylePatch.labelHidden = patch.labelHidden;
         }
         if (Object.keys(stylePatch).length > 0) get().setKindStyle(edited.kind, stylePatch);

@@ -42,7 +42,7 @@ import {
   isExtendedRight,
 } from './types';
 import {
-  translateDrawing, clampDPriceForDrawing, clampDBarForDrawing, planGroupTranslate,
+  translateDrawing, clampDBarForDrawing, planGroupTranslate,
   type GroupTranslateCoords,
 } from './translate';
 import { marqueeRect, type MarqueeRect } from './hitTest';
@@ -719,7 +719,7 @@ export const selectTool: DrawingToolSpec = {
     }
     const target = ctx.drawings.find((d) => d.id === drag.id);
     if (!target) return;
-    const pointerY = target.kind === 'rect' ? ctx.py : ctx.clampYToPane(drag.paneId, ctx.py);
+    const pointerY = ctx.py;
     // Price resolves off the Y axis everywhere the pane is mounted; realMs is
     // null in the empty right band (coordinateToTime can't resolve a coordinate
     // past the last candle). Decoupling them is what lets an hline keep
@@ -761,8 +761,8 @@ export const selectTool: DrawingToolSpec = {
       // where the time axis can't resolve, while vertical drag keeps working.
       const rawDBar =
         drag.lastBar != null && drag.startBar != null ? drag.lastBar - drag.startBar : 0;
-      // Shape-preserving cap against the axis origin — the time-axis sibling
-      // of the price cap below. Without it a leftward overshoot would floor
+      // Cap at the time-axis origin to preserve the shape. A leftward overshoot
+      // without this cap would floor
       // vertices one by one at the first session's open, compressing the shape.
       const dBar = clampDBarForDrawing(
         origin,
@@ -770,14 +770,8 @@ export const selectTool: DrawingToolSpec = {
         ctx.dragBars.originBar,
         ctx.dragBars.toBar,
       );
-      // Shape-preserving cap: compute the largest |dPrice| that keeps every
-      // vertex inside the pane, then translate once. Post-translate per-vertex
-      // clamping would have collapsed a trendline/pencil that touched the
-      // boundary asymmetrically.
-      const paneBounds = ctx.priceBoundsForPane(drag.paneId);
-      const dPrice = paneBounds
-        ? clampDPriceForDrawing(origin, price - drag.startPrice, paneBounds)
-        : price - drag.startPrice;
+      // Apply one price delta to every vertex, even beyond the visible pane.
+      const dPrice = price - drag.startPrice;
 
       // The round-trip runs even when dBar is 0: for a healthy vertex it is the
       // identity, and for one stranded in a gap by the old real-ms drags it
@@ -930,10 +924,10 @@ export const trendlineTool: DrawingToolSpec = {
   onPointerMove(ctx) {
     const draft = ctx.trendlineDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const pointerY = ctx.py;
     const data = ctx.shiftKey
-      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
-      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, pointerY, draft.paneId)
+      : ctx.pixelToData(ctx.px, pointerY, draft.paneId);
     if (!data) return;
     draft.b = data;
     ctx.requestRedraw();
@@ -941,10 +935,10 @@ export const trendlineTool: DrawingToolSpec = {
   onPointerUp(ctx) {
     const draft = ctx.trendlineDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const pointerY = ctx.py;
     const data = ctx.shiftKey
-      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
-      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, pointerY, draft.paneId)
+      : ctx.pixelToData(ctx.px, pointerY, draft.paneId);
     ctx.trendlineDraft.current = null;
     ctx.releasePointer();
     if (!data) return;
@@ -954,6 +948,7 @@ export const trendlineTool: DrawingToolSpec = {
     ctx.add({
       id,
       kind: 'trendline',
+      labelHidden: ctx.defaults.labelHidden !== false,
       a: draft.a,
       b: data,
       color: ctx.defaults.color,
@@ -1043,10 +1038,10 @@ export const measureTool: DrawingToolSpec = {
   onPointerMove(ctx) {
     const draft = ctx.measureDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const pointerY = ctx.py;
     const data = ctx.shiftKey
-      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
-      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, pointerY, draft.paneId)
+      : ctx.pixelToData(ctx.px, pointerY, draft.paneId);
     if (!data) return;
     draft.b = data;
     ctx.requestRedraw();
@@ -1054,10 +1049,10 @@ export const measureTool: DrawingToolSpec = {
   onPointerUp(ctx) {
     const draft = ctx.measureDraft.current;
     if (!draft || draft.pointerId !== ctx.pointerId) return;
-    const clampedY = ctx.clampYToPane(draft.paneId, ctx.py);
+    const pointerY = ctx.py;
     const data = ctx.shiftKey
-      ? angleConstrainedPoint(ctx, draft.a, ctx.px, clampedY, draft.paneId)
-      : ctx.pixelToData(ctx.px, clampedY, draft.paneId);
+      ? angleConstrainedPoint(ctx, draft.a, ctx.px, pointerY, draft.paneId)
+      : ctx.pixelToData(ctx.px, pointerY, draft.paneId);
     ctx.measureDraft.current = null;
     ctx.releasePointer();
     if (!data) return;
@@ -1140,8 +1135,8 @@ export const pencilTool: DrawingToolSpec = {
     for (const s of samples) {
       if (draft.points.length >= PENCIL_MAX_POINTS) break;
       if (Math.hypot(s.px - draft.lastPx, s.py - draft.lastPy) < PENCIL_MIN_SAMPLE_PX) continue;
-      const clampedY = ctx.clampYToPane(draft.paneId, s.py);
-      const data = ctx.pixelToData(s.px, clampedY, draft.paneId);
+      const pointerY = s.py;
+      const data = ctx.pixelToData(s.px, pointerY, draft.paneId);
       if (!data) continue;
       draft.points.push(data);
       draft.subX.push(subBarFraction(ctx, data, s.px));

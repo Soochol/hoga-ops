@@ -3,7 +3,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Drawing, Hline, Measure, Pencil, Rect, Text, Trendline, Vline } from './types';
 import {
-  clampDPriceForDrawing,
   clampDBarForDrawing,
   eligibleFor,
   hasAxis,
@@ -31,10 +30,9 @@ describe('translateDrawing — vline', () => {
     expect(translateDrawing(v, 500, 9999)).toEqual({ realMs: 1_500 });
   });
 
-  it('pricesOf(vline) is empty so its Δprice clamp is a pass-through', () => {
+  it('pricesOf(vline) is empty because it has no vertical component', () => {
     const v: Vline = { id: 'v1', kind: 'vline', realMs: 1_000, ...baseStyle, paneId: 'candle' };
     expect(pricesOf(v)).toEqual([]);
-    expect(clampDPriceForDrawing(v, 42, { top: 100, bottom: 0 })).toBe(42);
   });
 });
 
@@ -176,68 +174,6 @@ describe('pricesOf', () => {
       ...baseStyle, paneId: 'candle',
     };
     expect(pricesOf(p)).toEqual([5, 50, 7]);
-  });
-});
-
-describe('clampDPriceForDrawing', () => {
-  const bounds = { top: 100, bottom: 0 }; // pane spans price ∈ [0, 100]
-
-  it('passes a dPrice through unchanged when every vertex stays inside the pane', () => {
-    const h: Hline = { id: 'h', kind: 'hline', price: 50, ...baseStyle, paneId: 'candle' };
-    expect(clampDPriceForDrawing(h, 10, bounds)).toBe(10);
-    expect(clampDPriceForDrawing(h, -10, bounds)).toBe(-10);
-  });
-
-  it('caps positive dPrice so no vertex exceeds pane top', () => {
-    const t: Trendline = {
-      id: 't', kind: 'trendline',
-      a: { realMs: 0, price: 90 }, b: { realMs: 0, price: 50 },
-      ...baseStyle, paneId: 'candle',
-    };
-    // a is 10 below top; b is 50 below top. cap = min(10, 50) = 10.
-    expect(clampDPriceForDrawing(t, 50, bounds)).toBe(10);
-  });
-
-  it('caps negative dPrice so no vertex falls below pane bottom', () => {
-    const t: Trendline = {
-      id: 't', kind: 'trendline',
-      a: { realMs: 0, price: 5 }, b: { realMs: 0, price: 90 },
-      ...baseStyle, paneId: 'candle',
-    };
-    // Lowest vertex (a=5) can drop by 5 before hitting 0. cap = -5.
-    expect(clampDPriceForDrawing(t, -50, bounds)).toBe(-5);
-  });
-
-  it('preserves trendline spread at the boundary (the shape-preservation invariant)', () => {
-    // The whole point of this helper: a trendline whose lower endpoint
-    // touches the floor still moves both endpoints together when the user
-    // tries to drag down further (clamped to 0 dPrice), so the 80-unit
-    // spread between the endpoints survives.
-    const t: Trendline = {
-      id: 't', kind: 'trendline',
-      a: { realMs: 0, price: 10 }, b: { realMs: 0, price: 90 },
-      ...baseStyle, paneId: 'candle',
-    };
-    const cappedDown = clampDPriceForDrawing(t, -100, bounds);
-    const translated = translateDrawing(t, 0, cappedDown) as Partial<Trendline>;
-    const newA = translated.a!.price;
-    const newB = translated.b!.price;
-    // Both endpoints shift by the same capped amount; spread of 80 preserved.
-    expect(newB - newA).toBe(80);
-    // Lower endpoint pinned to the floor.
-    expect(newA).toBe(0);
-  });
-
-  it('tolerates inverted bounds', () => {
-    const h: Hline = { id: 'h', kind: 'hline', price: 50, ...baseStyle, paneId: 'candle' };
-    expect(clampDPriceForDrawing(h, 60, { top: 0, bottom: 100 })).toBe(50);
-  });
-
-  it('freezes the drag (returns 0) when a vertex is already outside the bounds', () => {
-    // Autoscale shift moved the bounds while the user is mid-drag and a
-    // vertex now sits above the new top. We don't yank the drawing.
-    const h: Hline = { id: 'h', kind: 'hline', price: 200, ...baseStyle, paneId: 'candle' };
-    expect(clampDPriceForDrawing(h, 5, bounds)).toBe(0);
   });
 });
 
@@ -384,21 +320,18 @@ describe('planGroupTranslate', () => {
     ]);
   });
 
-  // ⚠ 이것이 그룹 클램프의 존재 이유다. 도형마다 따로 캡을 걸면 천장에 닿은
-  // 하나만 멈추고 나머지는 계속 올라가, 사용자가 골라 둔 배치가 드래그 도중
-  // 뭉개진다. 집합의 최소 허용치를 전원에게 적용하면 간격이 보존된다.
-  it('한 도형이 팬 경계에 닿으면 집합 전체가 거기서 멈춘다 — 간격 보존', () => {
-    // 캔들 팬 상단(y=0)은 가격 400. 990 은 이미 위쪽에 붙어 있어 +10 까지만 갈 수 있다.
+  it('팬 경계를 넘어도 집합 전체가 포인터를 따라가며 간격을 보존한다', () => {
+    // 가시 범위 밖으로 이동해도 두 도형에 같은 픽셀 이동량을 적용한다.
     const bounded = {
       ...coords,
       priceBoundsForPane: () => ({ top: 1_000, bottom: 0 }),
     };
     const members = [hline('top', 990), hline('bottom', 100)];
     const plan = planGroupTranslate(members, 0, -50, bounded);
-    // 위로 50px = +50원을 요청했지만 'top' 이 +10 밖에 못 간다 → 둘 다 +10.
+    // 위로 50px = +50원, 두 도형 모두 요청한 만큼 이동한다.
     expect(plan).toEqual([
-      { id: 'top', patch: { price: 1_000 } },
-      { id: 'bottom', patch: { price: 110 } },
+      { id: 'top', patch: { price: 1_040 } },
+      { id: 'bottom', patch: { price: 150 } },
     ]);
     // 간격이 그대로다.
     const prices = plan.map((p) => (p.patch as { price: number }).price);
@@ -410,8 +343,7 @@ describe('planGroupTranslate', () => {
     expect(planGroupTranslate([v], 0, -80, coords)).toEqual([{ id: 'v', patch: { realMs: 1_000 } }]);
   });
 
-  // 순서 무관성: 각 멤버의 허용치를 **원래 요청**에 대해 재기 때문이다. 진행
-  // 중인 최소값에 대해 재면 목록 순서가 결과를 바꾼다.
+  // 각 멤버에 같은 픽셀 이동량을 적용하므로 선택 순서에 무관하다.
   it('멤버 순서가 결과를 바꾸지 않는다', () => {
     const a = hline('top', 990);
     const b = hline('bottom', 100);
@@ -703,4 +635,26 @@ it.each([-200, 200])('moves rectangle groups beyond pane bounds by %s pixels', d
     priceBoundsForPane: () => ({ top: 0, bottom: 100 }) };
   const plan = planGroupTranslate([rect, { ...rect, id: 'two' }], 0, dy, coords);
   for (const { patch } of plan) expect(patch).toMatchObject({ a: { price: 20 + dy }, b: { price: 80 + dy } });
+});
+
+
+it.each([-200, 200])('moves mixed drawings beyond pane bounds by %s pixels and back', dy => {
+  const a = { realMs: 100, price: 20 }, b = { realMs: 200, price: 80 };
+  const style = { ...baseStyle, paneId: 'candle' as const };
+  const members: Drawing[] = [
+    { id: 'r', kind: 'rect', a, b, fillOpacity: 0.1, ...style },
+    { id: 'h', kind: 'hline', price: 50, ...style },
+    { id: 't', kind: 'trendline', a, b, ...style },
+    { id: 'm', kind: 'measure', a, b, ...style },
+    { id: 'p', kind: 'pencil', points: [a, b], ...style },
+    { id: 'text', kind: 'text', at: a, text: 'note', fontSize: 13, ...style },
+  ];
+  const coords = { toBar: (ms: number) => ms, toReal: (bar: number) => bar, originBar: 0,
+    priceToCanvasY: (price: number) => price, canvasYToPrice: (y: number) => y,
+    priceBoundsForPane: () => ({ top: 0, bottom: 100 }) };
+  const plan = planGroupTranslate(members, 0, dy, coords);
+  const moved = members.map((m, i) => ({ ...m, ...plan[i].patch }) as Drawing);
+  for (let i = 0; i < members.length; i++) expect(pricesOf(moved[i])).toEqual(pricesOf(members[i]).map(price => price + dy));
+  const restored = planGroupTranslate(moved, 0, -dy, coords);
+  for (let i = 0; i < members.length; i++) expect(pricesOf({ ...moved[i], ...restored[i].patch } as Drawing)).toEqual(pricesOf(members[i]));
 });

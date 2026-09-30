@@ -1005,3 +1005,34 @@ describe('horizontal line label visibility', () => {
     expect(screen.getByRole('button', { name: '라벨 표시' })).toBeDisabled();
   });
 });
+
+
+describe('trendline label visibility', () => {
+  const scope = '005930|minute';
+  const trendline = { ...HLINE, id: 'trend-label', kind: 'trendline' as const,
+    a: { realMs: 100, price: 100 }, b: { realMs: 200, price: 125 } };
+  it('shows labels on button click, remembers the preference, and supports undo/redo', () => {
+    useDrawingsStore.getState().add(scope, trendline);
+    useDrawingsStore.getState().setSelected(scope, trendline.id);
+    render(<DrawingPropertyPanel scope={scope} />);
+    const button = screen.getByRole('button', { name: '라벨 표시' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(useDrawingsStore.getState().drawingsFor(scope)[0]).toMatchObject({ labelHidden: false });
+    expect(useDrawingsStore.getState().defaults.styleByKind.trendline.labelHidden).toBe(false);
+    act(() => useDrawingsStore.getState().undo(scope));
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    act(() => useDrawingsStore.getState().redo(scope));
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(useDrawingsStore.getState().defaults.styleByKind.trendline.labelHidden).toBe(true);
+  });
+  it('disables label changes on locked trendlines', () => {
+    useDrawingsStore.getState().add(scope, { ...trendline, locked: true });
+    useDrawingsStore.getState().setSelected(scope, trendline.id);
+    render(<DrawingPropertyPanel scope={scope} />);
+    expect(screen.getByRole('button', { name: '라벨 표시' })).toBeDisabled();
+  });
+});
