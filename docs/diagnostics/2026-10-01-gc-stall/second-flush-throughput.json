@@ -1,0 +1,410 @@
+{
+  "base_commit": "137d12cadae4985aaec0d6ef3b7b3b34825c04ac",
+  "baseline_source_sha256": "d8d5b7e37ade6505813e58781828e37ff585ea6356d093df050839a122deab84",
+  "method": "Three independent sequential processes per variant, Python 3.14.7, nice 19. Actual append/checkpoint serialization and temporary-file writes; fsync disabled only inside the isolated probe process. 319 codes x 3 venues x 60 seconds, three price cells per second (172260 cells). Cold flush, unchanged flush, and 10 seconds of new trades. 5ms heartbeat records excess scheduling delay. No vendor connections or production data. Journal bytes and parsed checkpoint hashes match per pair.",
+  "limits": [
+    "Does not simulate the whole production process, frontend compression or vendor bursts.",
+    "Does not measure fsync cost or market-hour packet loss; actual durable behavior covered by tests.",
+    "Cold preparation fills an encoded string cache bounded by bars/max_cells; added retained memory is included in RSS.",
+    "Preparation wall time includes cooperative yields; it is not a continuous event-loop stall.",
+    "No forced or naturally triggered upper-generation GC measured during the flush phases; does not establish production gen2 latency."
+  ],
+  "medians": {
+    "cold": {
+      "baseline": {
+        "wall_ms": 1072.0,
+        "cpu_ms": 1076.5,
+        "loop_lag_max_ms": 180.4,
+        "record_calls": 57420,
+        "rss_mib": 136.0,
+        "automatic_gc_max_ms": 3.3,
+        "automatic_gc_count": 11
+      },
+      "improved": {
+        "wall_ms": 407.9,
+        "cpu_ms": 411.7,
+        "loop_lag_max_ms": 4.4,
+        "record_calls": 57420,
+        "rss_mib": 155.6,
+        "automatic_gc_max_ms": 3.9,
+        "automatic_gc_count": 2
+      }
+    },
+    "unchanged": {
+      "baseline": {
+        "wall_ms": 187.7,
+        "cpu_ms": 187.7,
+        "loop_lag_max_ms": 182.8,
+        "record_calls": 53592,
+        "rss_mib": 143.0,
+        "automatic_gc_max_ms": 3.4,
+        "automatic_gc_count": 7
+      },
+      "improved": {
+        "wall_ms": 30.9,
+        "cpu_ms": 30.9,
+        "loop_lag_max_ms": 0.6,
+        "record_calls": 0,
+        "rss_mib": 155.6,
+        "automatic_gc_max_ms": 0,
+        "automatic_gc_count": 0
+      }
+    },
+    "active": {
+      "baseline": {
+        "wall_ms": 961.5,
+        "cpu_ms": 962.6,
+        "loop_lag_max_ms": 174.8,
+        "record_calls": 54549,
+        "rss_mib": 158.5,
+        "automatic_gc_max_ms": 2.4,
+        "automatic_gc_count": 8
+      },
+      "improved": {
+        "wall_ms": 217.6,
+        "cpu_ms": 219.8,
+        "loop_lag_max_ms": 2.1,
+        "record_calls": 9570,
+        "rss_mib": 155.7,
+        "automatic_gc_max_ms": 0,
+        "automatic_gc_count": 0
+      }
+    }
+  },
+  "samples": {
+    "baseline": [
+      {
+        "mode": "baseline",
+        "python": "3.14.7",
+        "codes": 319,
+        "venues": 3,
+        "initial_bars": 57420,
+        "initial_cells": 172260,
+        "fsync_disabled": true,
+        "journal_sha256": "f9bb283d99f2954e1228b9e90758d5024c6cb8afec482a8a68fd6e566eff7197",
+        "checkpoint_semantic_sha256": "b20011c8026940e091f08373e91060ff5cfdb2043c5faf7eed803497f3d36367",
+        "phases": [
+          {
+            "phase": "cold",
+            "wall_ms": 1071.1,
+            "cpu_ms": 1068.6,
+            "loop_lag_max_ms": 180.4,
+            "record_calls": 57420,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 137.0,
+            "automatic_gc_max_ms": 3.7,
+            "automatic_gc_count": 11
+          },
+          {
+            "phase": "unchanged",
+            "wall_ms": 187.7,
+            "cpu_ms": 187.7,
+            "loop_lag_max_ms": 182.8,
+            "record_calls": 53592,
+            "appends": 0,
+            "checkpoints": 0,
+            "retained_bars": 53592,
+            "cells": 160776,
+            "rss_mib": 143.5,
+            "automatic_gc_max_ms": 4.0,
+            "automatic_gc_count": 7
+          },
+          {
+            "phase": "active",
+            "wall_ms": 961.5,
+            "cpu_ms": 962.6,
+            "loop_lag_max_ms": 174.8,
+            "record_calls": 54549,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 158.5,
+            "automatic_gc_max_ms": 2.5,
+            "automatic_gc_count": 8
+          }
+        ]
+      },
+      {
+        "mode": "baseline",
+        "python": "3.14.7",
+        "codes": 319,
+        "venues": 3,
+        "initial_bars": 57420,
+        "initial_cells": 172260,
+        "fsync_disabled": true,
+        "journal_sha256": "f9bb283d99f2954e1228b9e90758d5024c6cb8afec482a8a68fd6e566eff7197",
+        "checkpoint_semantic_sha256": "b20011c8026940e091f08373e91060ff5cfdb2043c5faf7eed803497f3d36367",
+        "phases": [
+          {
+            "phase": "cold",
+            "wall_ms": 1072.0,
+            "cpu_ms": 1076.5,
+            "loop_lag_max_ms": 182.3,
+            "record_calls": 57420,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 136.0,
+            "automatic_gc_max_ms": 3.2,
+            "automatic_gc_count": 11
+          },
+          {
+            "phase": "unchanged",
+            "wall_ms": 188.4,
+            "cpu_ms": 188.4,
+            "loop_lag_max_ms": 183.6,
+            "record_calls": 53592,
+            "appends": 0,
+            "checkpoints": 0,
+            "retained_bars": 53592,
+            "cells": 160776,
+            "rss_mib": 143.0,
+            "automatic_gc_max_ms": 3.4,
+            "automatic_gc_count": 7
+          },
+          {
+            "phase": "active",
+            "wall_ms": 951.0,
+            "cpu_ms": 955.3,
+            "loop_lag_max_ms": 179.4,
+            "record_calls": 54549,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 161.9,
+            "automatic_gc_max_ms": 2.4,
+            "automatic_gc_count": 8
+          }
+        ]
+      },
+      {
+        "mode": "baseline",
+        "python": "3.14.7",
+        "codes": 319,
+        "venues": 3,
+        "initial_bars": 57420,
+        "initial_cells": 172260,
+        "fsync_disabled": true,
+        "journal_sha256": "f9bb283d99f2954e1228b9e90758d5024c6cb8afec482a8a68fd6e566eff7197",
+        "checkpoint_semantic_sha256": "b20011c8026940e091f08373e91060ff5cfdb2043c5faf7eed803497f3d36367",
+        "phases": [
+          {
+            "phase": "cold",
+            "wall_ms": 1077.0,
+            "cpu_ms": 1078.9,
+            "loop_lag_max_ms": 175.4,
+            "record_calls": 57420,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 132.8,
+            "automatic_gc_max_ms": 3.3,
+            "automatic_gc_count": 11
+          },
+          {
+            "phase": "unchanged",
+            "wall_ms": 186.7,
+            "cpu_ms": 186.7,
+            "loop_lag_max_ms": 181.8,
+            "record_calls": 53592,
+            "appends": 0,
+            "checkpoints": 0,
+            "retained_bars": 53592,
+            "cells": 160776,
+            "rss_mib": 137.4,
+            "automatic_gc_max_ms": 3.4,
+            "automatic_gc_count": 7
+          },
+          {
+            "phase": "active",
+            "wall_ms": 992.6,
+            "cpu_ms": 995.7,
+            "loop_lag_max_ms": 171.7,
+            "record_calls": 54549,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 151.4,
+            "automatic_gc_max_ms": 2.3,
+            "automatic_gc_count": 8
+          }
+        ]
+      }
+    ],
+    "improved": [
+      {
+        "mode": "improved",
+        "python": "3.14.7",
+        "codes": 319,
+        "venues": 3,
+        "initial_bars": 57420,
+        "initial_cells": 172260,
+        "fsync_disabled": true,
+        "journal_sha256": "f9bb283d99f2954e1228b9e90758d5024c6cb8afec482a8a68fd6e566eff7197",
+        "checkpoint_semantic_sha256": "b20011c8026940e091f08373e91060ff5cfdb2043c5faf7eed803497f3d36367",
+        "phases": [
+          {
+            "phase": "cold",
+            "wall_ms": 560.1,
+            "cpu_ms": 563.9,
+            "loop_lag_max_ms": 5.9,
+            "record_calls": 57420,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 155.7,
+            "automatic_gc_max_ms": 4.8,
+            "automatic_gc_count": 2
+          },
+          {
+            "phase": "unchanged",
+            "wall_ms": 30.9,
+            "cpu_ms": 30.9,
+            "loop_lag_max_ms": 0.6,
+            "record_calls": 0,
+            "appends": 0,
+            "checkpoints": 0,
+            "retained_bars": 53592,
+            "cells": 160776,
+            "rss_mib": 155.7,
+            "automatic_gc_max_ms": 0,
+            "automatic_gc_count": 0
+          },
+          {
+            "phase": "active",
+            "wall_ms": 217.9,
+            "cpu_ms": 221.0,
+            "loop_lag_max_ms": 2.1,
+            "record_calls": 9570,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 155.8,
+            "automatic_gc_max_ms": 0,
+            "automatic_gc_count": 0
+          }
+        ]
+      },
+      {
+        "mode": "improved",
+        "python": "3.14.7",
+        "codes": 319,
+        "venues": 3,
+        "initial_bars": 57420,
+        "initial_cells": 172260,
+        "fsync_disabled": true,
+        "journal_sha256": "f9bb283d99f2954e1228b9e90758d5024c6cb8afec482a8a68fd6e566eff7197",
+        "checkpoint_semantic_sha256": "b20011c8026940e091f08373e91060ff5cfdb2043c5faf7eed803497f3d36367",
+        "phases": [
+          {
+            "phase": "cold",
+            "wall_ms": 407.9,
+            "cpu_ms": 411.7,
+            "loop_lag_max_ms": 4.4,
+            "record_calls": 57420,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 155.6,
+            "automatic_gc_max_ms": 3.7,
+            "automatic_gc_count": 2
+          },
+          {
+            "phase": "unchanged",
+            "wall_ms": 33.4,
+            "cpu_ms": 33.4,
+            "loop_lag_max_ms": 0.2,
+            "record_calls": 0,
+            "appends": 0,
+            "checkpoints": 0,
+            "retained_bars": 53592,
+            "cells": 160776,
+            "rss_mib": 155.6,
+            "automatic_gc_max_ms": 0,
+            "automatic_gc_count": 0
+          },
+          {
+            "phase": "active",
+            "wall_ms": 217.6,
+            "cpu_ms": 219.8,
+            "loop_lag_max_ms": 3.1,
+            "record_calls": 9570,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 155.7,
+            "automatic_gc_max_ms": 0,
+            "automatic_gc_count": 0
+          }
+        ]
+      },
+      {
+        "mode": "improved",
+        "python": "3.14.7",
+        "codes": 319,
+        "venues": 3,
+        "initial_bars": 57420,
+        "initial_cells": 172260,
+        "fsync_disabled": true,
+        "journal_sha256": "f9bb283d99f2954e1228b9e90758d5024c6cb8afec482a8a68fd6e566eff7197",
+        "checkpoint_semantic_sha256": "b20011c8026940e091f08373e91060ff5cfdb2043c5faf7eed803497f3d36367",
+        "phases": [
+          {
+            "phase": "cold",
+            "wall_ms": 372.9,
+            "cpu_ms": 375.9,
+            "loop_lag_max_ms": 2.5,
+            "record_calls": 57420,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 155.5,
+            "automatic_gc_max_ms": 3.9,
+            "automatic_gc_count": 2
+          },
+          {
+            "phase": "unchanged",
+            "wall_ms": 30.9,
+            "cpu_ms": 30.9,
+            "loop_lag_max_ms": 0.6,
+            "record_calls": 0,
+            "appends": 0,
+            "checkpoints": 0,
+            "retained_bars": 53592,
+            "cells": 160776,
+            "rss_mib": 155.5,
+            "automatic_gc_max_ms": 0,
+            "automatic_gc_count": 0
+          },
+          {
+            "phase": "active",
+            "wall_ms": 202.3,
+            "cpu_ms": 202.8,
+            "loop_lag_max_ms": 2.0,
+            "record_calls": 9570,
+            "appends": 957,
+            "checkpoints": 957,
+            "retained_bars": 54549,
+            "cells": 163647,
+            "rss_mib": 155.6,
+            "automatic_gc_max_ms": 0,
+            "automatic_gc_count": 0
+          }
+        ]
+      }
+    ]
+  }
+}
