@@ -1,0 +1,4 @@
+import config from './playwright.config';
+const servers = config.webServer as Array<{ command: string; [key: string]: unknown }>;
+export default { ...config, webServer: servers.map((server, index) => index === 1
+  ? { ...server, command: `${server.command} --config live-interaction.vite.config.ts` } : server) };

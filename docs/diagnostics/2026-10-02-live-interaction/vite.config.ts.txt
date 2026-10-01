@@ -1,0 +1,2 @@
+import config from './vite.config';
+export default { ...config, cacheDir: '/tmp/hoga-live-interaction-vite-cache-20261002' };

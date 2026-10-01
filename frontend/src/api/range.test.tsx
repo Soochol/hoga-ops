@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import {
   buildRangeBundleRequest,
   mergedLiveRangeKey,
+  publishRangeSnapshot,
   trimRangeBundleBefore,
   evictExcessMergedLiveRanges,
   MERGED_LIVE_RANGE_MAX_ENTRIES,
@@ -93,6 +94,43 @@ const fakeBundle: RangeBundle = {
   ask_peaks: [],
   broker_late_entries: [],
 };
+
+describe('immutable range snapshot publication', () => {
+  it('preserves the supplied snapshot and restores network structural sharing and cache lifetime', () => {
+    const qc = new QueryClient();
+    const key = ['range', '005930', 'snapshot-test'];
+    qc.setQueryDefaults(['range'], { gcTime: 123_000 });
+    const previous = { ...fakeBundle, depth_heatmap: [{ t_ms: 1, asks: [[100, 1]], bids: [] }] } as RangeBundle;
+    qc.setQueryData(key, previous);
+    const next = structuredClone(previous);
+    const query = qc.getQueryCache().find({ queryKey: key, exact: true })!;
+    const compare = vi.fn((old: unknown) => old);
+    query.setOptions({ ...query.options, structuralSharing: compare });
+    publishRangeSnapshot(qc, key, next, 500);
+    expect(qc.getQueryData(key)).toBe(next);
+    expect(qc.getQueryData<RangeBundle>(key)?.depth_heatmap).toBe(next.depth_heatmap);
+    expect(compare).not.toHaveBeenCalled();
+    expect(query.options.structuralSharing).toBe(compare);
+    expect(query.options.gcTime).toBe(123_000);
+    expect(query.state.dataUpdatedAt).toBe(500);
+    qc.setQueryData(key, structuredClone(next));
+    expect(compare).toHaveBeenCalledTimes(1);
+    expect(qc.getQueryDefaults(['range']).structuralSharing).toBeUndefined();
+    qc.clear();
+  });
+
+  it('uses existing defaults for new canonical keys without retaining a new defaults entry', () => {
+    const qc = new QueryClient();
+    qc.setQueryDefaults(['live', 'range-merged'], { gcTime: 7_200_000 });
+    const key = mergedLiveRangeKey('publication-test');
+    publishRangeSnapshot(qc, key, fakeBundle, 42);
+    const query = qc.getQueryCache().find({ queryKey: key, exact: true })!;
+    expect(query.state.data).toBe(fakeBundle);
+    expect(query.options.gcTime).toBe(7_200_000);
+    expect(query.options.structuralSharing).toBeUndefined();
+    qc.clear();
+  });
+});
 
 describe('buildRangeBundleRequest', () => {
   it('projects one request shape into enabled, URL params, and query key', () => {

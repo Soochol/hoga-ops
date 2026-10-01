@@ -1,0 +1,65 @@
+{
+  "original_trace": {
+    "path": "/home/dev/Downloads/Trace-20261002T002813.json.gz",
+    "sha256": "3f0be3138daca3ddeaec3fec336beacb1582cac2306e4485e216f2869b01f1a6",
+    "recorded_start_kst": "2026-10-02 00:28:13.458+09:00",
+    "gc": {
+      "start_seconds": 6.99,
+      "duration_ms": 1148.541,
+      "heap_before_bytes": 1589615292,
+      "heap_after_bytes": 1548065708,
+      "max_mouse_original_to_renderer_main_ms": 1173.177
+    },
+    "later_main_thread_tasks_ms": [
+      139.34,
+      218.72,
+      151.05
+    ],
+    "later_max_mouse_original_to_renderer_main_ms": 211.566
+  },
+  "changes": [
+    "Clip schema timestamp series and peak candidates; do not traverse price ladders or volume bins; cache immutable arrays instead of every point and tuple.",
+    "Reuse hoga-filter cache within a chart window.",
+    "Publish merged snapshots without another recursive structural-sharing pass; restore the original per-query options immediately.",
+    "Preserve omitted series in mode-specific or older bundles."
+  ],
+  "limits": [
+    "Fixtures measure isolated Node operations, not the user trace or rendered frames.",
+    "High memory ownership and the 1.15-second browser GC pause are not fully resolved or validated by these measurements.",
+    "React DevTools overhead in the original development trace has not been removed or A/B tested."
+  ],
+  "validation": {
+    "typecheck": "passed",
+    "targeted_tests": 248,
+    "first_full_e2e": {
+      "passed": 147,
+      "failed": 1,
+      "failure": "mode-specific hoga bundle omitted ask_peaks; fixed and covered by a new test"
+    },
+    "final_full_tests": {
+      "unit_files": 600,
+      "unit_tests": 7703,
+      "unit_duration_seconds": 237.42,
+      "browser_tests": 148,
+      "browser_duration": "4.5m",
+      "production_build": "passed (Vite build run by Playwright setup)",
+      "build_warning": "existing chunk-size warning above 700 kB"
+    },
+    "browser_isolation": {
+      "api_port": 20377,
+      "frontend_port": 21377,
+      "vite_cache_dir": "/tmp/hoga-live-interaction-vite-cache-20261002",
+      "data_dir": "/tmp/hoga-live-interaction-data-20261002-final",
+      "credentials": "empty vendor credentials from the repository Playwright configuration"
+    }
+  },
+  "source_sha256": {
+    "frontend/src/api/range.ts": "53d9547dc4bcaba4d3542b491e12a922ea52d294ccf924b399016cac8027d271",
+    "frontend/src/api/range.test.tsx": "a9e96d1ee81224c2c897d477542f3cd8c1a7376f1cfe38941b15e7e468d28d2f",
+    "frontend/src/live/regularSessionView.ts": "afce0bba7fa8b615dffa45c5d6d97c195187485cfdc3f1dcde6664013fb35308",
+    "frontend/src/live/regularSessionView.test.ts": "cab4ea7d71a5ba7b81a089f57f5bb2f567af35b32a356e079121642306de287d",
+    "frontend/src/live/useLiveBundle.ts": "844da27c92cd676820f0095a9190e66bfd73363501fc79661a7115a4d4643fb8"
+  },
+  "git_base": "cb2c7099fd70d213ec89e78c8f8a105ec4672249",
+  "benchmark_command": "Copy benchmark.test.ts.txt to frontend/src/live/trace-path-benchmark.test.ts; from frontend run: node node_modules/vitest/vitest.mjs run src/live/trace-path-benchmark.test.ts --pool=forks --maxWorkers=1 --execArgv=--expose-gc; remove the copied test afterwards."
+}

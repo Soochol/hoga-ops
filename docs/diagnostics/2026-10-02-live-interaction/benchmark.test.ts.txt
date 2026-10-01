@@ -1,0 +1,98 @@
+// @vitest-environment node
+// Copy to frontend/src/live/trace-path-benchmark.test.ts, then run Vitest with
+// --pool=forks --maxWorkers=1 --execArgv=--expose-gc. Remove that temporary test after.
+import { test, expect } from 'vitest';
+import { QueryClient } from '@tanstack/react-query';
+import { writeFileSync } from 'node:fs';
+import { createRegularSessionFilter, createRegularSessionBundleFilter } from './regularSessionView';
+import { publishRangeSnapshot } from '../api/range';
+import type { RangeBundle } from '../api/types';
+
+function fixture(count: number): RangeBundle {
+  const open = Date.parse('2026-06-01T09:00:00+09:00');
+  const ladder = () => Array.from({ length: 10 }, (_, i) => [1000 + i, 100 + i] as [number, number]);
+  return {
+    code: '005930', from_date: '20260601',
+    to_date: new Date(open + Math.floor((count - 1) / 390) * 86400000).toISOString().slice(0, 10).replaceAll('-', ''),
+    bucket_ms: 60_000,
+    segments: [], candles: [], quote_ratio: { bucket_ms: 60_000, points: [] },
+    fill_strength: { bucket_ms: 60_000, points: [] }, investorPoints: [],
+    ask_peaks: [], broker_late_entries: [], volume_distributions: [], volume_profile_by_day: [],
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    depth_heatmap: Array.from({ length: count }, (_, i) => ({
+      t_ms: open + Math.floor(i / 390) * 86400000 + (i % 390) * 60000,
+      asks: ladder(), bids: ladder(), asks_max: ladder(), bids_max: ladder(),
+      asks_price_max: ladder(), bids_price_max: ladder(),
+    })),
+  };
+}
+
+const collect = () => (globalThis as typeof globalThis & { gc?: () => void }).gc?.();
+const median = (values: number[]) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+
+function measureFilter(source: RangeBundle, optimized: boolean) {
+  collect(); collect();
+  const before = process.memoryUsage().heapUsed;
+  const filter = optimized ? createRegularSessionBundleFilter() : createRegularSessionFilter();
+  let t = performance.now();
+  const result = filter(source);
+  const cold = performance.now() - t;
+  expect(result).toBe(source);
+  collect(); collect();
+  const retained = process.memoryUsage().heapUsed - before;
+  t = performance.now();
+  const warmResult = filter({ ...source });
+  const warm = performance.now() - t;
+  expect(warmResult.depth_heatmap).toBe(source.depth_heatmap);
+  // Keep the filter live across the memory sample; let the whole function
+  // return before the next run collects the previous filter's caches.
+  expect(filter(source)).toBe(source);
+  return { cold, warm, retained };
+}
+
+test('compare recorded hot paths on identical immutable payloads', () => {
+  expect(typeof (globalThis as typeof globalThis & { gc?: unknown }).gc).toBe('function');
+  const output: Record<string, unknown>[] = [];
+  for (const count of [10_000, 30_000]) {
+    const source = fixture(count);
+    // Both implementations preserve this all-regular payload exactly. Six
+    // independent ladders exercise actual schema fields, not invented payload.
+    for (const optimized of [false, true]) {
+      const cold: number[] = [], warm: number[] = [], retained: number[] = [];
+      for (let run = 0; run < 3; run++) {
+        const measured = measureFilter(source, optimized);
+        cold.push(measured.cold);
+        warm.push(measured.warm);
+        retained.push(measured.retained);
+      }
+      output.push({ path: 'regular-session-filter', count, optimized,
+        cold_ms: cold, cold_median_ms: median(cold), warm_ms: warm,
+        heap_delta_bytes: retained, heap_delta_median_bytes: median(retained) });
+    }
+    for (const optimized of [false, true]) {
+      const times: number[] = [];
+      for (let run = 0; run < 3; run++) {
+        const qc = new QueryClient({ defaultOptions: { queries: { gcTime: Infinity } } });
+        const key = ['live', 'range-merged', 'benchmark'];
+        qc.setQueryData(key, source);
+        const next = structuredClone(source);
+        next.depth_heatmap!.at(-1)!.asks[0][1] += 1;
+        collect();
+        const t = performance.now();
+        if (optimized) publishRangeSnapshot(qc, key, next);
+        else qc.setQueryData(key, next);
+        times.push(performance.now() - t);
+        const stored = qc.getQueryData<RangeBundle>(key)!;
+        expect(stored.depth_heatmap!.at(-1)!.asks[0][1]).toBe(next.depth_heatmap!.at(-1)!.asks[0][1]);
+        if (optimized) expect(stored).toBe(next);
+        qc.clear();
+      }
+      output.push({ path: 'snapshot-publication', count, optimized, ms: times, median_ms: median(times) });
+    }
+  }
+  const data = { engine: process.version, environment: 'Node/Vitest, isolated synthetic RangeBundle; no UI or vendor traffic',
+    warning: 'Operation times and forced-GC heap deltas with fixture/filter alive. Heap deltas include runtime noise. Not browser frame times, INP, or an A/B of the user trace.', output };
+  writeFileSync('../docs/diagnostics/2026-10-02-live-interaction/benchmark.json', JSON.stringify(data, null, 2));
+  console.log(JSON.stringify(output.map(row => ({ path: row.path, count: row.count, optimized: row.optimized,
+    ms: row.cold_median_ms ?? row.median_ms, cacheMiB: Number(row.heap_delta_median_bytes ?? 0) / 1048576 }))));
+}, 120_000);
