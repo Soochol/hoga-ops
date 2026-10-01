@@ -7,6 +7,7 @@ import {
   formatUpdateLoopReport,
   isReactDrivenStack,
   noteStoreWrite,
+  readCurrentFrameUpdateLoopReports,
   readUpdateLoopReport,
   readUpdateLoopReports,
 } from './updateLoopSignal';
@@ -121,6 +122,31 @@ describe('updateLoopSignal', () => {
     // 헤드라인은 첫 신고 그대로, 붙여넣기용 목록에는 둘 다.
     expect(readUpdateLoopReport()?.store).toBe('chartPrefs');
     expect(readUpdateLoopReports().map((r) => r.store)).toEqual(['chartPrefs', 'themePrefs']);
+  });
+
+  it('다음 프레임에는 과거 경고를 오류에 붙이지 않고 세션 기록만 보존한다', async () => {
+    armUpdateLoopSignal();
+    writeFromReactCommit('workspace', 20);
+    const snapshot = readCurrentFrameUpdateLoopReports();
+    expect(snapshot.map((r) => r.store)).toEqual(['workspace']);
+    await nextFrame();
+    expect(readCurrentFrameUpdateLoopReports()).toEqual([]);
+    expect(readUpdateLoopReport()?.store).toBe('workspace');
+    expect(snapshot.map((r) => r.store)).toEqual(['workspace']);
+  });
+
+  it('같은 스토어가 다시 폭주하면 최신 프레임을 캡처하고 콘솔 중복은 억제한다', async () => {
+    armUpdateLoopSignal();
+    writeFromReactCommit('workspace', 40);
+    const first = readCurrentFrameUpdateLoopReports()[0];
+    await nextFrame();
+    noteStoreWrite('livePromotion');
+    writeFromReactCommit('workspace', 40);
+    const next = readCurrentFrameUpdateLoopReports();
+    expect(next).toHaveLength(1);
+    expect(next[0]).not.toBe(first);
+    expect(next[0].frameHistogram).toEqual([['workspace', 20], ['livePromotion', 1]]);
+    expect(loopConsoleCalls()).toHaveLength(1);
   });
 
   it('한 스토어의 위양성이 다른 스토어의 관측을 막지 않는다 — 래치는 스토어별', () => {

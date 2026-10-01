@@ -76,6 +76,9 @@
  *   두 번째부터는 새 사실 없이 콘솔만 덮는다 — 그 근거는 **같은 스토어**에만 성립한다.
  *   다른 스토어의 다른 스택은 새 사실이므로 막지 않는다. 래치를 전역으로 두면 위양성
  *   하나가 그 세션 내내 **덫 전체의 눈을 감기고**, 정작 잡으려던 폭주가 안 보인다.
+ * - **오류 화면은 현재 프레임의 신고를 따로 캡처한다.** 세션 기록은 보존하되,
+ *   이전 경고가 새 예외의 원인처럼 표시되지 않게 한다. 같은 스토어의 재발도
+ *   현재 프레임에는 잡으며, 콘솔 중복 억제와는 독립이다.
  */
 
 /** 한 프레임에서 이 횟수를 넘긴 스토어는 폭주로 본다. 정상 최대치(프레임당 1~2회)와
@@ -126,6 +129,7 @@ let armed = false;
 let reports: UpdateLoopReport[] = [];
 let reported = new Set<string>();
 let counts = new Map<string, number>();
+let frameReports = new Map<string, UpdateLoopReport>();
 let frameScheduled = false;
 
 /** 프레임 경계에서 계수를 0 으로. rAF 가 없는 환경(SSR·일부 테스트)에서는 세지 않는다
@@ -137,6 +141,7 @@ function scheduleFrameReset(): void {
   requestAnimationFrame(() => {
     frameScheduled = false;
     counts = new Map();
+    frameReports = new Map();
   });
 }
 
@@ -176,10 +181,9 @@ export function noteStoreWrite(store: string): void {
   const writes = (counts.get(store) ?? 0) + 1;
   counts.set(store, writes);
   if (writes < WRITES_PER_FRAME_LIMIT) return;
-  if (reported.has(store)) return;
+  if (frameReports.has(store)) return;
   const stack = captureStack();
   if (!isReactDrivenStack(stack)) return;
-  reported.add(store);
   const next: UpdateLoopReport = {
     store,
     writes,
@@ -187,6 +191,10 @@ export function noteStoreWrite(store: string): void {
     frameHistogram: [...counts.entries()].sort((a, b) => b[1] - a[1]),
     at: new Date().toISOString(),
   };
+  frameReports.set(store, next);
+  // 세션의 콘솔 중복 억제가 이후 프레임의 진단까지 막지 않게 한다.
+  if (reported.has(store)) return;
+  reported.add(store);
   reports.push(next);
   // DevTools 를 연 사람은 폴백 상자를 기다릴 필요가 없다.
   console.error(
@@ -200,15 +208,19 @@ export function armUpdateLoopSignal(): void {
   armed = true;
 }
 
-/** 가장 먼저 잡힌 신고. 없으면 `null`. 폴백 상자의 헤드라인이 읽는다. */
+/** 세션에서 가장 먼저 잡힌 신고. 없으면 `null`. */
 export function readUpdateLoopReport(): UpdateLoopReport | null {
   return reports[0] ?? null;
 }
 
-/** 잡힌 신고 **전부**(스토어마다 하나). `ChartErrorBoundary` 의 「오류 복사」가 읽는다 —
- *  루프에 두 스토어가 실렸으면 둘 다 한 번의 붙여넣기로 와야 한다. */
+/** 세션 기록(스토어마다 최초 신고 하나). */
 export function readUpdateLoopReports(): readonly UpdateLoopReport[] {
   return reports;
+}
+
+/** 오류를 잡은 순간 호출한다. 다음 프레임이나 다른 창의 오류가 이 스냅샷을 바꾸지 않는다. */
+export function readCurrentFrameUpdateLoopReports(): readonly UpdateLoopReport[] {
+  return [...frameReports.values()];
 }
 
 /** 신고를 사람이 읽을 한 덩어리로 — 폴백 상자가 클립보드에 덧붙인다. */
@@ -226,6 +238,7 @@ export function resetUpdateLoopReport(): void {
   reports = [];
   reported = new Set();
   counts = new Map();
+  frameReports = new Map();
 }
 
 /** 테스트 전용 — 무장을 되돌린다(모듈 상태가 파일 간에 새지 않게). */

@@ -1,8 +1,8 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import {
   formatUpdateLoopReport,
-  readUpdateLoopReport,
-  readUpdateLoopReports,
+  readCurrentFrameUpdateLoopReports,
+  type UpdateLoopReport,
 } from '../state/updateLoopSignal';
 
 type Props = {
@@ -10,7 +10,12 @@ type Props = {
   /** 폴백 제목. 기본은 차트 문구 — 데이터 창(10호가·거래원 등)을 감쌀 때 창 문구로 교체. */
   title?: string;
 };
-type State = { error: Error | null; componentStack: string | null; copied: boolean };
+type State = {
+  error: Error | null;
+  componentStack: string | null;
+  copied: boolean;
+  loopReports: readonly UpdateLoopReport[];
+};
 
 /** 상자에 보여 줄 컴포넌트 스택 줄 수. 전문은 「복사」가 실어 준다. */
 const VISIBLE_STACK_LINES = 12;
@@ -42,7 +47,7 @@ const VISIBLE_STACK_LINES = 12;
  * 메시지 + 전문을 클립보드에 넣는다. 콘솔 로그는 그대로 둔다(엔지니어용).
  */
 export default class ChartErrorBoundary extends Component<Props, State> {
-  state: State = { error: null, componentStack: null, copied: false };
+  state: State = { error: null, componentStack: null, copied: false, loopReports: [] };
 
   static getDerivedStateFromError(error: Error): Pick<State, 'error'> {
     return { error };
@@ -50,7 +55,10 @@ export default class ChartErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // 스택은 여기서만 온다 — `getDerivedStateFromError` 는 error 만 받는다.
-    this.setState({ componentStack: info.componentStack ?? null });
+    this.setState({
+      componentStack: info.componentStack ?? null,
+      loopReports: readCurrentFrameUpdateLoopReports(),
+    });
     // Keep the original error visible in dev tools for stack-trace inspection.
     // The boundary fallback shows the message; this preserves the noise for
     // engineers who have the console open.
@@ -58,26 +66,25 @@ export default class ChartErrorBoundary extends Component<Props, State> {
   }
 
   reset = (): void => {
-    this.setState({ error: null, componentStack: null, copied: false });
+    this.setState({ error: null, componentStack: null, copied: false, loopReports: [] });
   };
 
   /** 원본 예외 + 컴포넌트 스택 **전문**. 상자에 보이는 것은 앞 몇 줄뿐이라, 붙여넣기용
    *  값은 따로 만든다. */
   private report(): string {
-    const { error, componentStack } = this.state;
+    const { error, componentStack, loopReports } = this.state;
     // 갱신 루프 덫의 신고를 **함께** 싣는다. 컴포넌트 스택은 루프의 «던진 쪽» 만
     // 알려 주는데(실측: `LiveChartRoot`), 매 커밋 스토어를 쓰는 «쓴 쪽» 은 다른
     // 컴포넌트일 수 있다 — 스토어 알림은 트리 경계를 넘기 때문이다. 두 조각이
     // 한 번의 붙여넣기로 같이 와야 조사가 한 왕복에 끝난다.
-    // 신고는 **전부** 싣는다 — 래치가 스토어별이라 루프에 두 스토어가 실렸으면 둘 다
-    // 잡힌다. 상자의 헤드라인은 첫 신고만 보여 주지만, 붙여넣기는 조사에 쓰이므로
-    // 나머지를 버리면 조사가 다시 한 왕복 늘어난다.
+    // 오류 발생 프레임의 신고만 보존한다. 세션 전체나 복사 시점의 전역 기록을
+    // 읽으면 오래된 경고·다른 창의 새 경고가 원본 예외에 섞인다.
     return [
       // React's component stack identifies the owner, but only error.stack
       // identifies the failing library call (e.g. addSeries vs setData).
       error?.stack || error?.message || '',
       componentStack ?? '',
-      ...readUpdateLoopReports().map(formatUpdateLoopReport),
+      ...loopReports.map(formatUpdateLoopReport),
     ].join('\n').trim();
   }
 
@@ -95,7 +102,7 @@ export default class ChartErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.error) {
-      const loop = readUpdateLoopReport();
+      const loop = this.state.loopReports[0];
       const stack = this.state.componentStack;
       const head = stack === null
         ? null
@@ -107,11 +114,11 @@ export default class ChartErrorBoundary extends Component<Props, State> {
             <div className="text-xs font-data break-all bg-bg-subtle border rounded p-2">
               {this.state.error.message}
             </div>
-            {loop !== null && (
+            {loop !== undefined && (
               /* 덫이 뭔가 잡았으면 상자에서 바로 보인다 — 「오류 복사」에는 스택까지
                  실린다. 없으면 이 줄도 없다(빈 자리를 만들지 않는다). */
               <div data-testid="chart-error-update-loop" className="text-xs text-fg-dim">
-                갱신 루프 후보: <span className="font-data">{loop.store}</span> — 한 프레임에{' '}
+                오류 직전 갱신 경고: <span className="font-data">{loop.store}</span> — 한 프레임에{' '}
                 {loop.writes}회 쓰기
               </div>
             )}
