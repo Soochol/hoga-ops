@@ -1244,6 +1244,7 @@ export function LiveChartRoot({
   useEffect(() => {
     if (!chart || !isMinuteTimeframe(timeframe) || !onViewedDateChange) return;
     let raf: number | null = null;
+    let lastPublishedDate: string | null | undefined;
     const publish = () => {
       raf = null;
       let vr: { to: unknown } | null = null;
@@ -1253,7 +1254,13 @@ export function LiveChartRoot({
         vr = null;
       }
       const toMs = vr === null ? null : axisRef.current.toReal(Number(vr.to) * 1000);
-      onViewedDateChange({ date: viewedDateOf(candlesRef.current, toMs), returnToLive });
+      const date = viewedDateOf(candlesRef.current, toMs);
+      // Same-day pan/zoom changes no header state. Avoid waking the parent data
+      // pipeline on every animation frame; still publish initial null and dates.
+      if (date !== lastPublishedDate) {
+        lastPublishedDate = date;
+        onViewedDateChange({ date, returnToLive });
+      }
     };
     const schedule = () => {
       if (raf === null) raf = requestAnimationFrame(publish);

@@ -2,6 +2,49 @@ import { isRegularSessionMs } from './aggregateCandles';
 import type { FillStrengthPoint, QuoteRatioPoint, RangeBundle } from '../api/types';
 import { indicatorBucketStartMs } from '../util/stockSessions';
 import { quoteImbalance } from '../util/imbalance';
+import type { TradeSnapshot } from './bucketHogaSeries';
+
+/** Allocate only after the first excluded item; unchanged input stays identical. */
+function filterUnchanged<T>(items: readonly T[], keep: (item: T) => boolean): readonly T[] {
+  let result: T[] | undefined;
+  for (let i = 0; i < items.length; i++) {
+    if (keep(items[i])) result?.push(items[i]);
+    else result ??= items.slice(0, i);
+  }
+  return result ?? items;
+}
+
+/** Live book/program snapshots need only their own timestamp checked.
+ * Never traverse the price ladders or unrelated payload fields. */
+export function filterRegularSessionSnapshots<T extends object>(items: readonly T[]): readonly T[] {
+  return filterUnchanged(items, item => {
+    const point = item as Record<string, unknown>;
+    const time = point.t_ms ?? point.ts_ms ?? point.t;
+    return typeof time !== 'number' || isRegularSessionMs(time);
+  });
+}
+
+/** Shared live buffers publish immutable snapshots. Preserve their identity for
+ * incremental hoga/wall builders, including mixed snapshots across append and
+ * eviction. A window-owned WeakMap releases entries when raw snapshots expire. */
+export function createRegularSessionTradeFilter() {
+  const snapshots = new WeakMap<TradeSnapshot, TradeSnapshot | null>();
+  return (items: readonly TradeSnapshot[]): readonly TradeSnapshot[] => {
+    const result: TradeSnapshot[] = [];
+    let changed = false;
+    for (const snapshot of items) {
+      let filtered = snapshots.get(snapshot);
+      if (filtered === undefined) {
+        const trades = filterUnchanged(snapshot.trades, ev => isRegularSessionMs(ev.t_ms ?? snapshot.t_ms));
+        filtered = trades.length === 0 ? null : trades === snapshot.trades ? snapshot : { ...snapshot, trades: [...trades] };
+        snapshots.set(snapshot, filtered);
+      }
+      if (filtered) result.push(filtered);
+      changed ||= filtered !== snapshot;
+    }
+    return changed ? result : items;
+  };
+}
 
 /** Restrict timestamped series while preserving identities of unchanged slices.
  * RangeBundle point times (t, t_ms, ts_ms) all use Unix milliseconds. */
