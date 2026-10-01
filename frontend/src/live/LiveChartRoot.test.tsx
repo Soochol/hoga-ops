@@ -26,7 +26,7 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
 import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRoot';
 import { useLivePageStore } from '../state/livePage';
 import { retainRightPriceScaleWidth } from '../chart/util/retainRightPriceScaleWidth';
-import { CandlestickSeries, createChartEx, LineSeries, TickMarkType } from 'lightweight-charts';
+import { CandlestickSeries, createChartEx, LineSeries, TickMarkType, type IChartApi } from 'lightweight-charts';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { INTER_SEGMENT_GAP_MS } from '../util/time';
 import { realMsToVirtualSeconds } from './viewportAnchor';
@@ -130,6 +130,49 @@ describe('LiveChartRoot', () => {
       lastMinuteHistoricalFromDate: null,
       lastMinuteHistoricalTimeframe: null,
     });
+  });
+
+  it('publishes viewed-date changes without waking the parent for same-day pan/zoom', async () => {
+    const factory = vi.mocked(createChartEx).getMockImplementation()!;
+    const chart = (factory as unknown as () => IChartApi)();
+    const scale = chart.timeScale();
+    chart.timeScale = () => scale;
+    vi.mocked(createChartEx).mockReturnValueOnce(chart as never);
+    const starts = ['2026-09-30', '2026-10-01'].map(date => Date.parse(`${date}T09:00:00+09:00`));
+    const segments = starts.map((open, i) => ({
+      date: i === 0 ? '20260930' : '20261001', session_open_ms: open,
+      session_close_ms: open + 23_400_000, source: 'kiwoom_live' as const,
+    }));
+    const bundle = { ...DEFAULT_BUNDLE, from_date: '20260930', to_date: '20261001', segments,
+      candles: starts.flatMap(open => [0, 60_000].map(offset => ({
+        ts_ms: open + offset, open: 100, high: 100, low: 100, close: 100, vol_a: 1, vol_b: 0,
+      }))),
+    };
+    const publish = vi.fn();
+    const { unmount } = render(<LiveChartRoot code="005930" timeframe="3m" bundle={bundle}
+      clampEngaged={false} captureFloorEngaged={false} isPastCandlesLoading={false}
+      onViewedDateChange={publish} />, { wrapper });
+    expect(publish).toHaveBeenCalledWith({ date: null, returnToLive: expect.any(Function) });
+    const axis = createVirtualAxis(segments.map(s => ({
+      date: s.date, sessionOpenMs: s.session_open_ms, sessionCloseMs: s.session_close_ms,
+    })), starts[0]);
+    const move = async (to: number) => {
+      vi.mocked(scale.getVisibleRange).mockReturnValue({ from: to as never, to: to as never });
+      act(() => {
+        for (const [handler] of vi.mocked(scale.subscribeVisibleLogicalRangeChange).mock.calls) handler(null);
+      });
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+    };
+    await move(realMsToVirtualSeconds(axis, starts[0]));
+    expect(publish.mock.calls.at(-1)?.[0].date).toBe('20260930');
+    const count = publish.mock.calls.length;
+    await move(realMsToVirtualSeconds(axis, starts[0] + 60_000));
+    expect(publish).toHaveBeenCalledTimes(count);
+    await move(realMsToVirtualSeconds(axis, starts[1]));
+    expect(publish.mock.calls.at(-1)?.[0].date).toBeNull();
+    expect(publish).toHaveBeenCalledTimes(count + 1);
+    unmount();
+    expect(publish.mock.calls.at(-1)?.[0].date).toBeNull();
   });
 
   it('크로스헤어 구독 해제가 throw 해도 teardown 꼬리가 끝까지 돈다', () => {
