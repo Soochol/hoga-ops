@@ -258,6 +258,14 @@ class KiwoomWsClient:
     def registration_ready(self) -> bool:
         return self.connected and self._registration_finished and self._acked.issuperset(self._codes)
 
+    def _confirm_registration_recovery(self) -> None:
+        if not self.registration_ready:
+            return
+        from . import provider_errors  # noqa: PLC0415
+        provider_errors.finish(self, "session", getattr(self, "_error_generation", 0), "ws")
+        self.last_error_type = None
+        self.last_close_code = None
+
     def _reset_after_stable_session(self) -> None:
         if not self._attempt and not self._consecutive_kicks:
             return
@@ -351,11 +359,8 @@ class KiwoomWsClient:
                 await self._register_sectors(ws)
                 await self._register_all(ws, list(self._codes))
                 await self._register_vi(ws)
-                from . import provider_errors  # noqa: PLC0415
-                provider_errors.finish(self, "session", getattr(self, "_error_generation", 0), "ws")
-                self.last_error_type = None
-                self.last_close_code = None
                 self._registration_finished = True
+                self._confirm_registration_recovery()
                 self._ready_since = self._monotonic() if self.registration_ready else None
                 self._reset_after_stable_session()
             _log.info("live.kiwoom.connected codes=%d acked=%d",
@@ -639,6 +644,7 @@ class KiwoomWsClient:
                 self._acked -= set(removed)
             if added:
                 await self._register_all(ws, added)
+            self._confirm_registration_recovery()
 
     async def resubscribe_missing(self) -> int:
         """미확인(sub_missing) 종목만 골라 재 REG 송신 — 재송신 건수 반환.
@@ -657,6 +663,7 @@ class KiwoomWsClient:
             if not missing:
                 return 0
             await self._register_all(ws, missing)
+            self._confirm_registration_recovery()
             _log.warning("live.kiwoom.resubscribe_missing count=%d", len(missing))
             return len(missing)
 

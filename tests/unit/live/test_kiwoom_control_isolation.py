@@ -248,6 +248,40 @@ async def test_next_connection_cannot_consume_retired_connections_pending_data(p
         await asyncio.gather(receiver, return_exceptions=True)
 
 
+@pytest.mark.parametrize("fully_registered", [False, True])
+async def test_recovery_observation_waits_for_subscription_readiness(monkeypatch, fully_registered):
+    ws = QueueSocket()
+    instance = client(ws, account_id=2)
+    instance._codes = ["005930", "000660"]
+    previous = provider_errors.begin(instance, "session")
+    provider_errors.finish(instance, "session", previous, "ws", TimeoutError())
+    instance.last_error_type = "TimeoutError"
+    instance._error_generation = provider_errors.begin(instance, "session")
+    rounds = []
+
+    async def register(ws, codes):
+        instance._acked.update(codes if fully_registered or rounds else codes[:1])
+        rounds.append(codes)
+
+    monkeypatch.setattr(instance, "_register_all", register)
+    ws.push(trnm="LOGIN", return_code=0)
+    session = asyncio.create_task(instance._session_once())
+    try:
+        await until(lambda: instance.connected and instance._registration_finished)
+        assert instance.registration_ready is fully_registered
+        assert bool([f for f in provider_errors.failures() if f.account_id == 2]) is not fully_registered
+        if not fully_registered:
+            assert instance.last_error_type == "TimeoutError"
+            assert await instance.resubscribe_missing() == 1
+            assert instance.registration_ready
+            assert not [f for f in provider_errors.failures() if f.account_id == 2]
+        assert instance.last_error_type is None
+    finally:
+        session.cancel()
+        await asyncio.gather(session, return_exceptions=True)
+        provider_errors.clear(instance)
+
+
 async def test_data_worker_failure_wakes_receiver_and_ack_waiter(parse):
     async def consume(tick):
         raise ValueError("bad tick")
