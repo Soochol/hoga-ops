@@ -17,7 +17,7 @@ import {
   needsRegularSessionClip,
   fetchBucketMsFor,
 } from '../state/livePage';
-import { filterRegularSession } from './regularSessionView';
+import { filterRegularSession, regularSessionHogaForDisplay } from './regularSessionView';
 import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
 import { peakWallBarFamilyActive } from '../state/indicatorOps';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -1143,8 +1143,11 @@ export function useLiveBundle(
   // 남는다) `enabled` 에 기대면 안 되고 여기서 명시적으로 끊어야 한다.
   const adjustFactors = restBypassEnabled ? undefined : pastCandlesQuery.data?.adjust_factors;
   const scaledHogaData = useMemo(
-    () => (pastHoga.data ? scaleRangeBundlePrices(pastHoga.data, adjustFactors) : null),
-    [pastHoga.data, adjustFactors],
+    () => {
+      const scaled = pastHoga.data ? scaleRangeBundlePrices(pastHoga.data, adjustFactors) : null;
+      return regularSessionOnly ? regularSessionHogaForDisplay(scaled, bucketMs, venue) : scaled;
+    },
+    [pastHoga.data, adjustFactors, regularSessionOnly, bucketMs, venue],
   );
   // 요청은 병렬로 시작하지만 차트에는 캔들 축이 먼저 앉아야 한다.
   // 오늘 seed 이후의 과거 지표는 해당 날짜의 캔들·세션 축이 추가될 때 표시된다.
@@ -1345,7 +1348,7 @@ export function useLiveBundle(
         // 이미 삼켰으므로, 여기서 갈라지면 축과 지표가 다시 어긋난다.
         todaySession: todayChartSession,
         venue,
-        pastBundle: regularSessionOnly ? filterRegularSession(scaledHogaData) : scaledHogaData,
+        pastBundle: scaledHogaData,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
@@ -1356,7 +1359,7 @@ export function useLiveBundle(
         depthHeatmapEnabled,
       }),
     [
-      regularSessionOnly, todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs, venue,
+      todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs, venue,
       depthHeatmapEnabled,
     ],
   );
