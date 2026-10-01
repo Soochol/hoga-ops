@@ -6,7 +6,7 @@
 // 때문이다 — 사용자에겐 토글이 죽은 것과 구별되지 않는다.
 
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { render, cleanup, fireEvent, screen } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen, act } from '@testing-library/react';
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import HighLowLabelsHost from './HighLowLabelsHost';
 import type { HighLowLabelsPrimitive } from '../chart/HighLowLabelsPrimitive';
@@ -59,6 +59,48 @@ function onFlags(prim: HighLowLabelsPrimitive | undefined) {
 
 describe('HighLowLabelsHost — 수평선 배선', () => {
   afterEach(cleanup);
+  it('measures only changed row geometry and observes newly added legend rows', async () => {
+    useChartPrefsStore.setState({ highLowLabelsEnabled: true });
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = '<div class="chart"></div><div data-testid="pane-legend-overlay"><div><div><span>100</span></div></div></div>';
+    document.body.append(wrapper);
+    const chartEl = wrapper.children[0] as HTMLElement;
+    const stack = wrapper.children[1].children[0];
+    const row = stack.children[0];
+    const measure = vi.spyOn(row, 'getBoundingClientRect').mockReturnValue({ left: 0, right: 100, top: 0, bottom: 20, width: 100, height: 20 } as DOMRect);
+    const rafs: FrameRequestCallback[] = [];
+    const observe = vi.fn(), unobserve = vi.fn();
+    let resized: ResizeObserverCallback | undefined;
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback: ResizeObserverCallback) { resized = callback; }
+      observe = observe;
+      unobserve = unobserve;
+      disconnect() {}
+    });
+    const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(cb => { rafs.push(cb); return rafs.length; });
+    const flush = () => act(() => { while (rafs.length) rafs.shift()!(0); });
+    try {
+      renderHost(chartEl);
+      flush();
+      expect(observe).toHaveBeenCalledWith(row);
+      measure.mockClear();
+      await act(async () => { row.children[0].firstChild!.textContent = '101'; });
+      flush();
+      expect(measure).not.toHaveBeenCalled();
+      act(() => { resized?.([], {} as ResizeObserver); });
+      flush();
+      expect(measure).toHaveBeenCalledTimes(1);
+      const added = document.createElement('div');
+      await act(async () => { stack.append(added); });
+      flush();
+      expect(observe).toHaveBeenCalledWith(added);
+      await act(async () => { added.remove(); });
+      flush();
+      expect(unobserve).toHaveBeenCalledWith(added);
+    } finally {
+      cleanup(); wrapper.remove(); raf.mockRestore(); vi.unstubAllGlobals();
+    }
+  });
   it('shows marker details in pane coordinates and clears them when panning', () => {
     useChartPrefsStore.setState({ highLowLabelsEnabled: true });
     const element = document.createElement('div');

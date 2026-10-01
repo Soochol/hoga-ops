@@ -18,7 +18,7 @@ import { useServiceStatusPanel } from '../serviceStatus/controls';
 // See docs/superpowers/specs/2026-05-31-chart-indicator-legend-design.md.
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
-import type { IChartApi, MouseEventParams } from 'lightweight-charts';
+import type { IChartApi, MouseEventParams, Time } from 'lightweight-charts';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import { useScopedChartPrefs } from '../state/chartPrefs';
 import type { Candle } from '../api/types';
@@ -27,6 +27,7 @@ import EyeGlyph from './EyeGlyph';
 import { useCursorSyncResolution } from './useCursorSyncResolution';
 import { priceDirClass } from '../ui/priceDir';
 import { buildCandleTooltip } from './candleTooltipModel';
+import { legendCrosshairSnapshot, sameLegendCrosshair } from './legendCrosshairSnapshot';
 import {
   useIndicatorActions,
   useWindowIndicator,
@@ -36,7 +37,6 @@ import {
   type IndicatorActions,
 } from './workspace/windowView';
 import { useMaSeriesRegistry } from './indicators/maSeriesRegistry';
-import { useDailyMaSeriesRegistry } from './indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { scopeEntries } from './indicators/windowScopedRegistry';
 import type { PaneToggles } from './paneSpecsForTimeframe';
@@ -904,7 +904,6 @@ function PaneLegendOverlay({
   const brokerLateEntries = useWindowIndicator((s) => s.brokerLateEntries);
   // 자기 창의 등록만 고른다 — 남의 창 등록에는 같은 참조가 돌아와 재렌더가 안 난다.
   const maSeries = useMaSeriesRegistry((s) => scopeEntries(s.byScope, windowId));
-  const dailyMaSeries = useDailyMaSeriesRegistry((s) => scopeEntries(s.byScope, windowId));
   // Registry subscription: re-renders on pane (un)mount so a toggled-on pane's
   // legend appears without waiting for a crosshair move.
   const legendPanes = usePaneLegendRegistry((s) => scopeEntries(s.byScope, windowId));
@@ -944,6 +943,7 @@ function PaneLegendOverlay({
   useEffect(() => {
     const ts = chart.timeScale();
     let raf = 0;
+    let previous: ReturnType<typeof legendCrosshairSnapshot> = null;
     const schedule = () => {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
@@ -952,7 +952,10 @@ function PaneLegendOverlay({
       });
     };
     const onCrosshair = (param: MouseEventParams) => {
+      const next = legendCrosshairSnapshot(param);
       paramRef.current = param.point == null ? null : param;
+      if (sameLegendCrosshair(previous, next)) return;
+      previous = next;
       schedule();
     };
     chart.subscribeCrosshairMove(onCrosshair);
@@ -994,6 +997,8 @@ function PaneLegendOverlay({
   // `crosshairMove` 를 다시 쏜다 — `syntheticCrosshair.ts`)처럼 둘이 한 프레임에
   // 겹쳐 보일 수 있는 엣지에서 **내 마우스가 이긴다**는 순서를 코드로 못박기 위해서다.
   const syncValueTimeSec = seriesData === null ? syncTimeSec : null;
+  const syncLogicalIndex = syncValueTimeSec === null ? null
+    : chart.timeScale().timeToIndex?.(syncValueTimeSec as Time) ?? null;
 
   // OHLC(항상 표시) — 우선순위 셋. 직전종가 대비 %는 buildCandleTooltip(순수, 툴팁과
   // 동일 규칙)에서.
@@ -1031,17 +1036,11 @@ function PaneLegendOverlay({
   }
   const maValues = new Map<string, number>();
   for (const [id, series] of maSeries) {
-    const v = readSeriesValue(series, seriesData, syncValueTimeSec);
+    const v = readSeriesValue(series, seriesData, syncValueTimeSec, syncLogicalIndex);
     if (v !== null) maValues.set(id, v);
   }
-  // 일봉 MA 행은 표시 필터가 **항상** 걸러낸다(아래 `buildLegendRows` 주석: 선은
-  // 그리고 값 행만 뺀다). 그래도 같은 인자를 태우는 것은 화면 효과가 아니라 대칭
-  // 때문이다 — 행을 되살리는 날 여기만 옛 규칙으로 남아 있으면 그 사실이 조용하다.
+  // Daily MA lines are drawn, but their legend row is always filtered out.
   const dailyMaValues = new Map<string, number>();
-  for (const [id, series] of dailyMaSeries) {
-    const v = readSeriesValue(series, seriesData, syncValueTimeSec);
-    if (v !== null) dailyMaValues.set(id, v);
-  }
   const paneCells: PaneCellInput[] = [];
   for (const [paneId, entries] of legendPanes) {
     const spec = specByPaneId.get(paneId);
@@ -1053,7 +1052,7 @@ function PaneLegendOverlay({
         key: `${paneId}:${i}`,
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
         color: entry.meta.color?.(),
-        value: readSeriesValue(entry.series, seriesData, syncValueTimeSec),
+        value: readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
         format: entry.meta.format,
       })),
     });

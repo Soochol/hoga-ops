@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -18,6 +18,7 @@ import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
 import type { RangeBundle } from '../../api/types';
+import * as cutoffProfile from '../useVolumeDistributionCutoffProfile';
 
 /** 훅 반환은 값이 아니라 **값 + 신선도**다(`LiveOrderbookSpotResult`). 이 파일의
  *  단언은 값에만 관심이 있으므로 감싸는 일을 한 곳에 모은다 — stale/error 를
@@ -278,6 +279,44 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
     // 이 블록은 훅에 **넘어가는 인자**만 검사하지만 반환값은 여전히 소비된다 —
     // 구조분해 대상이라 undefined 면 렌더가 통째로 터진다.
     vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
+  });
+
+  it('retains regular-session cutoff inputs across cursor moves and refreshes them for new trades', () => {
+    const hook = vi.spyOn(cutoffProfile, 'useVolumeDistributionCutoffProfile').mockReturnValue(null);
+    const open = Date.parse('2026-07-20T09:00:00+09:00');
+    const close = Date.parse('2026-07-20T15:30:00+09:00');
+    const trade = { t_ms: open + 1000, trades: [{ t_ms: open + 1000, price: 110, qty: 5, side: 1 }] };
+    liveSeriesBuffers.trade = [
+      { t_ms: open - 1000, trades: [{ price: 100, qty: 5, side: 1 }] }, trade,
+      { t_ms: close + 1000, trades: [{ price: 120, qty: 5, side: 1 }] },
+    ];
+    publishGroupChartLink(chartLink({ bundle: {
+      code: '005930', segments: [{ date: '20260720', session_open_ms: open - 3600_000, session_close_ms: close + 3600_000 }],
+      candles: [{ ts_ms: open, open: 100, high: 120, low: 90, close: 110, vol_a: 5, vol_b: 0 }],
+      volume_distributions: [],
+    } as unknown as RangeBundle,
+    vdist: { ...chartLink().vdist, regularSessionOnly: true } }));
+    const view = renderWithQuery(<DataWindow win={dataWin('vdist')} symbol={symbol} />);
+    try {
+      const initial = hook.mock.calls.at(-1)![0];
+      expect(initial.liveTrades).toEqual([{ t_ms: open + 1000, price: 110, qty: 5, side: 1 }]);
+      for (let i = 1; i <= 10; i++) act(() => {
+        useLiveCursorStore.getState().setSidebarCursor(open + i * 60_000, {
+          windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
+        });
+      });
+      const next = hook.mock.calls.at(-1)![0];
+      expect(next.liveTrades).toBe(initial.liveTrades);
+      expect(next.segment).toBe(initial.segment);
+      liveSeriesBuffers.trade = [...liveSeriesBuffers.trade, { t_ms: open + 2000, trades: [{ price: 115, qty: 3, side: 1 }] }];
+      act(() => { useLiveCursorStore.getState().setSidebarCursor(open + 11 * 60_000, {
+        windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
+      }); });
+      const updated = hook.mock.calls.at(-1)![0];
+      expect(updated.liveTrades).not.toBe(initial.liveTrades);
+      expect(updated.liveTrades).toHaveLength(2);
+      expect(updated.segment).toBe(initial.segment);
+    } finally { view.unmount(); hook.mockRestore(); liveSeriesBuffers.trade = []; }
   });
 
   it('링크 없음 → 연동 대기 카드 (매물대·프로그램)', () => {

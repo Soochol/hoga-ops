@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { DayVolumeDistribution } from '../api/types';
 import { classifyWithinSegment } from '../util/sessionTime';
 import { unixMsToKSTClock } from '../util/time';
@@ -26,6 +27,7 @@ type ClosePoint = {
   close: number;
 };
 
+const EMPTY_CLOSE_POINTS: readonly ClosePoint[] = [];
 const PRICE_AXIS_WIDTH_PX = 48;
 // 가격 눈금이 POC 라벨과 이 거리(%) 안으로 붙으면 눈금을 양보한다(POC가 우선).
 const PRICE_TICK_POC_CLEARANCE_PCT = 9;
@@ -38,11 +40,21 @@ const ROW_GAP_RATIO = 1 / 3;
 export function VolumeDistributionCard({
   profile,
   cursorMs,
-  closePoints = [],
+  closePoints = EMPTY_CLOSE_POINTS,
   color,
   maxColor,
   axisStartMs,
 }: Props) {
+  const priceMin = profile?.price_min, priceMax = profile?.price_max;
+  const open = profile?.session_open_ms, close = profile?.session_close_ms, last = profile?.last_trade_ms;
+  const geometryFrom = open == null ? null : Math.min(axisStartMs ?? open, open);
+  const geometryEnd = geometryFrom == null ? null : Math.max(geometryFrom, closePoints.at(-1)?.t_ms ?? last ?? close ?? geometryFrom);
+  const closeGeometry = useMemo(() => {
+    if (priceMin == null || priceMax == null || geometryFrom == null || geometryEnd == null) return { coords: null, path: null };
+    const coords = buildCloseCoords({ points: closePoints, priceMin, priceMax, sessionOpenMs: geometryFrom, axisEndMs: geometryEnd });
+    const path = coords ? coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`).join(' ') : null;
+    return { coords, path };
+  }, [closePoints, priceMin, priceMax, geometryFrom, geometryEnd]);
   if (profile === undefined) {
     return <SidebarState>—</SidebarState>;
   }
@@ -84,16 +96,8 @@ export function VolumeDistributionCard({
     ...(binWindow.startPct > 0 ? [binWindow.startPct] : []),
     ...(binWindow.endPct < 100 ? [binWindow.endPct] : []),
   ];
-  const closeCoords = buildCloseCoords({
-    points: closePoints,
-    priceMin: profile.price_min,
-    priceMax: profile.price_max,
-    sessionOpenMs: axisFromMs,
-    axisEndMs,
-  });
-  const closePath = closeCoords
-    ? closeCoords.map(([x, y], index) => `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`).join(' ')
-    : null;
+  const closeCoords = closeGeometry.coords;
+  const closePath = closeGeometry.path;
   const closeEnd = closeCoords ? closeCoords[closeCoords.length - 1] : null;
   const maxBinIndex = maxQty > 0 ? rows.findIndex((bin) => bin.qty === maxQty) : -1;
   const pocBin = maxBinIndex >= 0 ? rows[maxBinIndex] : null;

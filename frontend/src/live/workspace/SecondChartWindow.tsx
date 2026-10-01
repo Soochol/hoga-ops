@@ -3,7 +3,7 @@
  * interpolation from silently pretending to be second-resolution data.
  */
 import { useEffect, useMemo, useRef } from 'react';
-import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
+import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
 import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
 import { useLiveVenueStore } from '../../state/liveVenue';
@@ -16,7 +16,8 @@ import { useWindowIndicators } from './windowView';
 import { publishGroupChartLink, clearGroupChartLink } from './groupChartLinkSource';
 import { groupTargetChartWindow } from '../../state/workspace';
 import { useLiveCursorStore } from '../useLiveCursorStore';
-import { movingAverageSeconds } from './secondAggregateProjectors';
+import { createSidebarCursorThrottle } from '../sidebarCursorRateLimit';
+import { createSecondChartSeriesWriter } from './secondChartSeriesWriter';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { useMinuteClock } from '../useMinuteClock';
 import { realMsToYyyymmdd } from '../liveDateTime';
@@ -26,9 +27,9 @@ import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
 import { captureSecondViewport, restoreSecondViewport, type SecondChartViewport } from './secondChartViewport';
 
-const kstTime = (value: number) => new Date(value * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false });
+const kstTimeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const kstTime = (value: number) => kstTimeFormatter.format(value * 1000);
 const isoDate = (date: string) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
-const time = (ms: number) => ms / 1000 as UTCTimestamp;
 
 type Props = { win: WorkspaceWindow; symbol: GroupSymbol | null; timeframe: SecondTimeframe };
 export function SecondChartWindow({ win, symbol, timeframe }: Props) {
@@ -54,14 +55,22 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const bars = query.bars;
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
   const axis = useMemo(() => {
-    const days = new Map<string, { date: string; sessionOpenMs: number; sessionCloseMs: number }>();
-    for (const bar of bars) {
-      const key = realMsToYyyymmdd(bar.t_ms);
-      const day = days.get(key);
-      if (day) day.sessionCloseMs = bar.t_ms;
-      else days.set(key, { date: key, sessionOpenMs: bar.t_ms, sessionCloseMs: bar.t_ms });
+    const days: { date: string; sessionOpenMs: number; sessionCloseMs: number }[] = [];
+    // Sorted bars let us jump to the next day without formatting every timestamp.
+    let first = 0;
+    while (first < bars.length) {
+      const open = bars[first].t_ms;
+      const nextDay = (Math.floor((open + 9 * 3_600_000) / 86_400_000) + 1) * 86_400_000 - 9 * 3_600_000;
+      let lo = first + 1, hi = bars.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (bars[mid].t_ms < nextDay) lo = mid + 1;
+        else hi = mid;
+      }
+      days.push({ date: realMsToYyyymmdd(open), sessionOpenMs: open, sessionCloseMs: bars[lo - 1].t_ms });
+      first = lo;
     }
-    return createVirtualAxis([...days.values()], bars[0]?.t_ms ?? midnight);
+    return createVirtualAxis(days, bars[0]?.t_ms ?? midnight);
   }, [bars, midnight]);
   const axisRef = useRef<VirtualAxis>(axis);
   const loadMore = useRef(() => {});
@@ -73,10 +82,21 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const seriesRef = useRef<{ candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'>; ma: ISeriesApi<'Line'> } | null>(null);
   const initial = useRef(true);
   const userGesture = useRef(false);
+  const wheelGestureUntil = useRef(0);
+  const writeSeries = useRef<ReturnType<typeof createSecondChartSeriesWriter> | null>(null);
   const previousBars = useRef(bars);
   const pendingViewport = useRef<SecondChartViewport | null>(null);
   const previousSession = useRef(regularSessionOnly);
   const setTimeframe = useWorkspaceStore(s => s.setChartTimeframe);
+  const hoverLinked = win.chart?.hoverLinked ?? true;
+  const hoverLinkedRef = useRef(hoverLinked);
+  hoverLinkedRef.current = hoverLinked;
+  const cursorThrottle = useRef<ReturnType<typeof createSidebarCursorThrottle> | null>(null);
+  useEffect(() => {
+    if (hoverLinked) return;
+    cursorThrottle.current?.cancel();
+    useLiveCursorStore.getState().clearSidebarCursorFrom(win.id);
+  }, [hoverLinked, win.id]);
 
   useEffect(() => {
     if (!target) return;
@@ -106,10 +126,11 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     chart.panes()[0].setStretchFactor(4);
     chart.panes()[1].setStretchFactor(1);
     const onRange = (range: { from: number; to: number } | null) => {
-      if (userGesture.current && !initial.current && range && range.from < 10) {
+      if ((userGesture.current || performance.now() < wheelGestureUntil.current) && !initial.current && range && range.from < 10) {
         // setData/resize also emits range changes. Consume this gesture so a
         // single wheel movement cannot cascade into loading the entire day.
         userGesture.current = false;
+        wheelGestureUntil.current = 0;
         loadMore.current();
       }
     };
@@ -119,15 +140,28 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       if (alive && entries[0]) chart.resize(Math.floor(entries[0].contentRect.width), Math.floor(entries[0].contentRect.height));
     });
     resize.observe(container.current);
-    const onCursor = (event: { time?: Time }) => {
+    const throttle = createSidebarCursorThrottle(next => {
+      if (!hoverLinkedRef.current) return false;
       const store = useLiveCursorStore.getState();
-      if (typeof event.time === 'number') store.setSidebarCursor(axisRef.current.toReal(event.time * 1000),
-        { windowId: win.id, group: win.group, code, timeframe });
-      else store.clearSidebarCursorFrom(win.id);
+      if (store.sidebarCursorMs === next && store.sidebarCursorOrigin?.windowId === win.id) return false;
+      store.setSidebarCursor(next, { windowId: win.id, group: win.group, code, timeframe });
+      return true;
+    });
+    cursorThrottle.current = throttle;
+    const onCursor = (event: { time?: Time }) => {
+      if (hoverLinkedRef.current && typeof event.time === 'number') {
+        throttle.schedule(axisRef.current.toReal(event.time * 1000));
+      } else {
+        throttle.cancel();
+        useLiveCursorStore.getState().clearSidebarCursorFrom(win.id);
+      }
     };
     chart.subscribeCrosshairMove(onCursor);
     chartRef.current = chart;
     seriesRef.current = { candles, ma, volume };
+    writeSeries.current = createSecondChartSeriesWriter({ candles, ma, volume });
+    userGesture.current = false;
+    wheelGestureUntil.current = 0;
     initial.current = true;
     previousBars.current = [];
     pendingViewport.current = null;
@@ -136,10 +170,13 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       resize.disconnect();
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
       chart.unsubscribeCrosshairMove(onCursor);
+      throttle.cancel();
+      cursorThrottle.current = null;
       useLiveCursorStore.getState().resetCursorFrom(win.id);
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      writeSeries.current = null;
     };
   }, [code, venue, midnight, win.id, win.group, timeframe]);
 
@@ -157,18 +194,12 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     previousSession.current = regularSessionOnly;
     if (!bars.length) {
       if (pendingViewport.current && (query.isPending || query.catalogPending || query.hasNextPage)) return;
-      series.candles.setData([]);
-      series.volume.setData([]);
-      series.ma.setData([]);
+      writeSeries.current?.(bars, axis);
+      previousBars.current = bars;
       return;
     }
     axisRef.current = axis;
-    const projectedTime = (ms: number) => time(axis.toVirtual(ms));
-    series.candles.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
-    const { upColor, downColor } = series.candles.options();
-    series.volume.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), value: bar.volume,
-      color: bar.close >= bar.open ? upColor : downColor })));
-    series.ma.setData(movingAverageSeconds(bars, 20).map(point => ({ ...point, time: projectedTime(Number(point.time) * 1000) })));
+    writeSeries.current?.(bars, axis);
     if (pendingViewport.current && scale) {
       scale.setVisibleLogicalRange(restoreSecondViewport(bars, pendingViewport.current));
       scale.applyOptions({ barSpacing: pendingViewport.current.barSpacing });
@@ -196,7 +227,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
         onPointerDown={() => { userGesture.current = true; }}
         onPointerUp={() => { userGesture.current = false; }}
         onPointerCancel={() => { userGesture.current = false; }}
-        onWheel={() => { userGesture.current = true; }} />
+        onWheel={() => { wheelGestureUntil.current = performance.now() + 200; }} />
       <div className="absolute top-2 left-2 text-fg-dim pointer-events-none text-xs">MA 20 · 거래량</div>
       {(!bars.length || !code) && <div className="absolute inset-0 flex items-center justify-center text-fg-dim bg-bg-card/80">
         {!code ? '주식 종목을 선택해주세요' : query.isError ? '초봉을 불러오지 못했습니다' : query.isPending ? '초봉 불러오는 중' : '선택한 날짜에 저장된 초봉이 없습니다'}

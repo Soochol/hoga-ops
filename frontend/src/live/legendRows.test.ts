@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildLegendRows,
   readSeriesValue,
@@ -299,6 +299,15 @@ describe('buildLegendRows — generic pane cell rows', () => {
 });
 
 describe('readSeriesValue', () => {
+  it('uses one native point for synchronized and latest values, with no full copy', () => {
+    const data = vi.fn(() => { throw new Error('must not copy all points'); });
+    const dataByIndex = vi.fn((index: number) => index === 5 ? { time: 50, value: 12 } : { time: 100, value: 20 });
+    const series = { data, dataByIndex } as never;
+    expect(readSeriesValue(series, null, 50, 5)).toBe(12);
+    expect(readSeriesValue(series, null, 60, 5)).toBe(20);
+    expect(readSeriesValue(series, null)).toBe(20);
+    expect(data).not.toHaveBeenCalled();
+  });
   const makeSeries = (data: unknown[]) => ({ data: () => data }) as never;
 
   it('reads the value at the cursor from seriesData when present', () => {

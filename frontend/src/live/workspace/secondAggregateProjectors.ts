@@ -17,7 +17,7 @@ export function movingAverageSeconds(bars: readonly SecondBar[], period: number)
 export function secondPriceDistribution(prices: readonly SecondPrice[], date: string, rangeCount: number): DayVolumeDistribution | null {
   // Preserve unknown side in storage, exclude it from continuous-trade profile.
   const midnight = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00+09:00`).getTime();
-  const trades = prices.filter(p => p.side !== 0 && (p.t_ms >= midnight + 9 * 3_600_000 && p.t_ms < midnight + 15.5 * 3_600_000 || isKrxAftermarketWindow(p.t_ms)));
+  const trades = prices.filter(p => p.side !== 0 && (p.t_ms >= midnight + 9 * 3_600_000 && p.t_ms <= midnight + 15.5 * 3_600_000 || isKrxAftermarketWindow(p.t_ms)));
   if (!trades.length) return null;
   let min = Infinity, max = -Infinity, lastTrade = 0;
   for (const t of trades) { min = Math.min(min, t.price); max = Math.max(max, t.price); lastTrade = Math.max(lastTrade, t.t_ms); }

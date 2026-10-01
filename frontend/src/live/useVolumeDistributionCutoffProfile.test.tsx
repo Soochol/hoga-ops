@@ -85,6 +85,18 @@ describe('useVolumeDistributionCutoffProfile', () => {
     mockedUseRange.mockReset();
   });
 
+  it('does not build an unused live index while cutoff viewing is disabled', () => {
+    mockedUseRange.mockReturnValue({ data: undefined, isLoading: false } as ReturnType<typeof useRange>);
+    mockedBuildIndex.mockClear();
+    const { rerender } = renderHook(() => useVolumeDistributionCutoffProfile({
+      enabled: false, code: '005930', timeframe: '1m', date: '20260625', cursorMs: 90_001_000,
+      todayKst: '20260625', rangeCount: 2, finalProfile: profile(), priceRange: null,
+      candles, segment: { ...segment }, liveTrades: [{ t_ms: 90_001_000, price: 115, qty: 10, side: 1 }],
+    }));
+    for (let i = 0; i < 10; i++) rerender();
+    expect(mockedBuildIndex).not.toHaveBeenCalled();
+  });
+
   it('returns final profile when hover cutoff is disabled', () => {
     mockedUseRange.mockReturnValue({ data: undefined, isLoading: false } as ReturnType<typeof useRange>);
     const finalProfile = profile();

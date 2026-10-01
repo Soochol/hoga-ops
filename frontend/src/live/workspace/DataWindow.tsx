@@ -926,6 +926,20 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
     regularSessionCloseMs(activeDate),
     vdistSettings.hoverCutoffEnabled && spotCursorMs !== null ? spotCursorMs : Infinity,
   ) : undefined;
+  // Keep these inputs stable while the cursor moves within a date. Recreating
+  // either reference discards the cutoff hook's trade prefix index.
+  const cutoffTrades = useMemo(() => {
+    if (!regularOnly) return liveDistribution.trades;
+    const date = activeDate ?? todayKst;
+    const open = regularSessionOpenMs(date), close = regularSessionCloseMs(date);
+    return liveDistribution.trades.filter(trade => trade.t_ms >= open && trade.t_ms <= close);
+  }, [regularOnly, activeDate, todayKst, liveDistribution.trades]);
+  const cutoffSegment = useMemo(() => {
+    if (!activeSegment) return null;
+    return regularOnly
+      ? { ...activeSegment, session_open_ms: regularSessionOpenMs(activeSegment.date), session_close_ms: regularSessionCloseMs(activeSegment.date) }
+      : regularSessionBinningSegment(activeSegment, effectiveVenue);
+  }, [activeSegment, regularOnly, effectiveVenue]);
   const cutoffProfile = useVolumeDistributionCutoffProfile({
     enabled: linked && ((vdistSettings.hoverCutoffEnabled && isSpot) || regularOnly),
     exactCutoffMs: regularCutoffMs,
@@ -941,9 +955,9 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
     // 계수를 넘겨야 요청 밴드를 원주가로 되돌리고 응답을 다시 환산한다 — 안 넘기면
     // 호버 컷오프 프로파일만 옛 척도로 남는다(`scaleRangeBundlePrices` 참조).
     adjustFactors: linked ? link.adjustFactors : undefined,
-    liveTrades: regularOnly ? liveDistribution.trades.filter(trade => trade.t_ms >= regularSessionOpenMs(activeDate ?? todayKst) && trade.t_ms <= regularSessionCloseMs(activeDate ?? todayKst)) : liveDistribution.trades,
+    liveTrades: cutoffTrades,
     candles: activeCandles,
-    segment: activeSegment ? (regularOnly ? { ...activeSegment, session_open_ms: regularSessionOpenMs(activeSegment.date), session_close_ms: regularSessionCloseMs(activeSegment.date) } : regularSessionBinningSegment(activeSegment, effectiveVenue)) : null,
+    segment: cutoffSegment,
   });
   const closePoints = useMemo(
     () => (activeDate ? volumeDistributionClosePointsFromCandles(activeCandles) : []),
