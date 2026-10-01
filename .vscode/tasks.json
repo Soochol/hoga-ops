@@ -4,7 +4,7 @@
     {
       "label": "Backend: dev (hot reload)",
       "type": "shell",
-      "command": "uv run uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga",
+      "command": "uv run --frozen uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga",
       "options": {
         "cwd": "${workspaceFolder}"
       },

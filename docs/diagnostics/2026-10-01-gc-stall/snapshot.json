@@ -1,0 +1,201 @@
+{
+  "gc": {
+    "enabled": true,
+    "warn_ms": 250.0,
+    "over_threshold": 9,
+    "thresholds": [
+      50000,
+      50,
+      0
+    ],
+    "current_counts": [
+      1818,
+      0,
+      0
+    ],
+    "by_generation": {
+      "1": {
+        "collections": 394,
+        "total_ms": 33187.4,
+        "max_ms": 7569.8,
+        "last_ms": 0.0,
+        "last_at_ms": 1790828040052
+      }
+    },
+    "interpreter_stats": [
+      {
+        "collections": 0,
+        "collected": 0,
+        "uncollectable": 0
+      },
+      {
+        "collections": 37,
+        "collected": 5382715,
+        "uncollectable": 0
+      },
+      {
+        "collections": 0,
+        "collected": 0,
+        "uncollectable": 0
+      }
+    ]
+  },
+  "buffer": {
+    "total_entries": 251724,
+    "published_total": 2502106,
+    "subscriber_drops": 0,
+    "ws_delivery": [
+      {
+        "queued_codes": 0,
+        "queued_controls": 0,
+        "history_drops": 0,
+        "queue": {
+          "count": 2337554,
+          "sample_size": 256,
+          "p95_ms": 1.9016179721802473,
+          "max_ms": 2.1236359898466617
+        },
+        "send": {
+          "count": 2343356,
+          "sample_size": 256,
+          "p95_ms": 0.132198998471722,
+          "max_ms": 0.6416070100385696
+        }
+      },
+      {
+        "queued_codes": 0,
+        "queued_controls": 0,
+        "history_drops": 0,
+        "queue": {
+          "count": 0,
+          "sample_size": 0,
+          "p95_ms": 0,
+          "max_ms": 0
+        },
+        "send": {
+          "count": 5491,
+          "sample_size": 256,
+          "p95_ms": 0.3522729966789484,
+          "max_ms": 0.6891470111440867
+        }
+      },
+      {
+        "queued_codes": 0,
+        "queued_controls": 0,
+        "history_drops": 0,
+        "queue": {
+          "count": 1072379,
+          "sample_size": 256,
+          "p95_ms": 2.078971010632813,
+          "max_ms": 2.4010979977902025
+        },
+        "send": {
+          "count": 1077906,
+          "sample_size": 256,
+          "p95_ms": 0.14076399384066463,
+          "max_ms": 0.4157530202064663
+        }
+      },
+      {
+        "queued_codes": 0,
+        "queued_controls": 0,
+        "history_drops": 0,
+        "queue": {
+          "count": 48935,
+          "sample_size": 256,
+          "p95_ms": 2.0040499803144485,
+          "max_ms": 2.232690982054919
+        },
+        "send": {
+          "count": 49234,
+          "sample_size": 256,
+          "p95_ms": 0.13584500993601978,
+          "max_ms": 0.4060140054207295
+        }
+      },
+      {
+        "queued_codes": 0,
+        "queued_controls": 0,
+        "history_drops": 0,
+        "queue": {
+          "count": 1214,
+          "sample_size": 256,
+          "p95_ms": 3.2627790060359985,
+          "max_ms": 10.484896978596225
+        },
+        "send": {
+          "count": 2225,
+          "sample_size": 256,
+          "p95_ms": 0.2838440123014152,
+          "max_ms": 2.0220240112394094
+        }
+      },
+      {
+        "queued_codes": 0,
+        "queued_controls": 0,
+        "history_drops": 0,
+        "queue": {
+          "count": 209,
+          "sample_size": 209,
+          "p95_ms": 3.0278369958978146,
+          "max_ms": 10.411449009552598
+        },
+        "send": {
+          "count": 353,
+          "sample_size": 256,
+          "p95_ms": 0.3938100126106292,
+          "max_ms": 3.442948014708236
+        }
+      },
+      {
+        "queued_codes": 0,
+        "queued_controls": 0,
+        "history_drops": 0,
+        "queue": {
+          "count": 387593,
+          "sample_size": 256,
+          "p95_ms": 1.791480026440695,
+          "max_ms": 2.274779981235042
+        },
+        "send": {
+          "count": 393163,
+          "sample_size": 256,
+          "p95_ms": 0.13974198373034596,
+          "max_ms": 0.49961000331677496
+        }
+      }
+    ],
+    "high_water_entries": 255338,
+    "per_kind": {
+      "ob": 98727,
+      "program": 59678,
+      "broker": 15265,
+      "trade": 77920,
+      "expected": 134
+    },
+    "codes": 319,
+    "subscribers": 550,
+    "retention_ms": 900000,
+    "max_entries_per_deque": 360
+  },
+  "rest": {
+    "queued": 0,
+    "inflight": 0,
+    "workers": 4,
+    "tr_buckets": 54,
+    "accounts": 6,
+    "calls_by_account": {
+      "0": 1135,
+      "1": 488,
+      "2": 42,
+      "3": 25,
+      "4": 21,
+      "5": 7
+    },
+    "auth_failures_by_account": {},
+    "auth_blocked_accounts": [],
+    "auth_failing_accounts": [],
+    "auth_failing_env_keys": [],
+    "background_deferred_due_to_user_visible": 29
+  }
+}

@@ -1,0 +1,23 @@
+import collections
+import gc
+import json
+import sys
+import time
+import httpx
+
+gc.collect()
+gc.disable()
+gc.set_debug(gc.DEBUG_SAVEALL)
+def response(request):
+    return httpx.Response(200, json={'output': [{'code':'005930', 'price':'10000'}] * 100})
+with httpx.Client(transport=httpx.MockTransport(response)) as client:
+    for _ in range(5000):
+        client.get('https://example.invalid/fixture').json()
+start = time.perf_counter()
+collected = gc.collect()
+elapsed = (time.perf_counter()-start)*1000
+types = collections.Counter(type(obj).__module__ + '.' + type(obj).__qualname__ for obj in gc.garbage)
+print(json.dumps({'python':sys.version.split()[0], 'responses':5000, 'collected':collected, 'pause_ms':round(elapsed,1), 'types':types.most_common(18)}),flush=True)
+gc.set_debug(0)
+gc.garbage.clear()
+gc.enable()
