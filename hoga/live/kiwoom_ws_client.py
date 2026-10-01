@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import random
 import time
 from collections import deque
@@ -26,8 +27,10 @@ from typing import Protocol
 import websockets
 
 from . import kiwoom_fields as K
+from .kiwoom_diagnostics import QueueFlowEvidence, failure_context
 from .kiwoom_frames import parse_real_message
 from .latency import LatencySamples
+from .loop_budget import LoopWorkBudget
 from .sector_registry import SECTOR_CODES
 from .ticks import WsTick  # 포트 계약 타입(공유)
 
@@ -98,7 +101,9 @@ class KiwoomDataBacklogError(ConnectionError):
 # **왜 시간 기반인가 — 틱마다 `sleep(0)` 이 아니라.** 실측(2026-08-21):
 # `await asyncio.sleep(0)` 은 회전당 **3.0µs**(초당 5,000틱이면 14.8ms/s 를 순수
 # 오버헤드로 태운다). 시간 기반은 회전당 `perf_counter()` 한 번, **0.14µs**
-# (같은 조건 0.58ms/s) — **25배 싸면서** 무양보 구간을 이 값으로 **직접 상한**한다.
+# (같은 조건 0.58ms/s). 현재 구현은 루프 회전 표식도 사용한다(ADR-0116 개정).
+# 이 예산은 체크포인트 사이의 협력적 양보 기준이다. 한 파싱/콜백의 CPU 작업은
+# 선점할 수 없으므로 무양보 구간의 엄격한 상한을 보장하지 않는다.
 # 개수 기반(N틱마다)은 틱 하나의 비용이 종목·프레임 종류마다 달라 상한이 안 된다.
 #
 # 1ms 인 이유: 정지 감지 임계(`loop_lag` 250ms)보다 두 자릿수 작아 이 경로가
@@ -175,11 +180,14 @@ class KiwoomWsClient:
         self._data_messages_discarded = 0
         self._retiring_failure: Exception | None = None
         self.tick_received_ms: dict[tuple[str, str, str], int] = {}
-        # 양보 임계와 마지막 양보 시각. 상태가 **인스턴스에 있어야** 한다 —
-        # 지역 변수면 메시지 경계에서 리셋돼, 틱 1개짜리 메시지가 수천 개
-        # 연달아 오는 경우(바깥 루프)를 못 막는다.
+        # Each owned reader/consumer keeps a work budget across message boundaries.
+        # They cannot reset each other's clock. Direct dispatch keeps its own budget.
         self._tick_yield_interval_s = tick_yield_interval_s
-        self._last_yield_at = 0.0
+        self._direct_budget: LoopWorkBudget | None = None
+        self._reader_budget: LoopWorkBudget | None = None
+        self._consumer_budget: LoopWorkBudget | None = None
+        self._flow: QueueFlowEvidence | None = None
+        self._session_started_at_ms: int | None = None
         self._connect = _connect or self._default_connect
         self._codes: list[str] = []
         self._ws: _WsLike | None = None
@@ -390,6 +398,10 @@ class KiwoomWsClient:
         """One socket reader routes controls; one bounded consumer preserves REAL order."""
         queue: asyncio.Queue[_DataMessage] = asyncio.Queue(maxsize=_DATA_QUEUE_MAX_MESSAGES)
         self._data_queue = queue
+        self._reader_budget = None
+        self._consumer_budget = None
+        self._flow = QueueFlowEvidence(self._monotonic())
+        self._session_started_at_ms = int(time.time() * 1000)
         reader = asyncio.create_task(self._read_frames(ws, queue), name="kiwoom-control-reader")
         consumer = asyncio.create_task(self._consume_frames(queue), name="kiwoom-data-consumer")
         try:
@@ -414,97 +426,118 @@ class KiwoomWsClient:
             self._data_queue_bytes = 0
 
     async def _read_frames(self, ws: _WsLike, queue: asyncio.Queue[_DataMessage]) -> None:
-        while True:
-            started = self._monotonic()
-            try:
-                # Keep the receive deadline in the reader's own cancellation scope.
-                async with asyncio.timeout(_RECV_IDLE_TIMEOUT_S):
-                    raw = await ws.recv()
-            except Exception as exc:
-                self._annotate_failure(exc, "receive", (self._monotonic() - started) * 1000)
-                if isinstance(exc, TimeoutError):
-                    _log.warning("live.kiwoom.recv_idle_timeout idle=%.0fs last_recv=%s",
-                                 _RECV_IDLE_TIMEOUT_S, self.last_recv_ms)
-                raise
-            now_ms = int(time.time() * 1000)
-            self.last_recv_ms = now_ms
-            self._reset_after_stable_session()
-            try:
-                msg = json.loads(raw)
-            except (TypeError, ValueError):
-                continue
-            if not isinstance(msg, dict):
-                continue
-            if msg.get("trnm") == "REAL":
-                # Four bytes per character is a conservative UTF-8 bound without an encode allocation.
-                size = len(raw) if isinstance(raw, bytes) else len(raw) * 4
-                if queue.full() or self._data_queue_bytes + size > _DATA_QUEUE_MAX_BYTES:
-                    self._data_queue_overflows += 1
-                    self._data_messages_discarded += 1
-                    exc = KiwoomDataBacklogError("kiwoom data queue capacity exceeded")
-                    self._annotate_failure(exc, "dispatch", 0.0)
-                    oldest_ms = ((self._monotonic() - self._data_queued_at[0]) * 1000
-                                 if self._data_queued_at else 0.0)
-                    _log.warning(
-                        "live.kiwoom.data_backlog account=%s depth=%d bytes=%d "
-                        "oldest_age_ms=%.1f dispatch_count=%d max_messages=%d max_bytes=%d",
-                        self.account_id, queue.qsize(), self._data_queue_bytes,
-                        oldest_ms, self.dispatch_latency.count,
-                        _DATA_QUEUE_MAX_MESSAGES, _DATA_QUEUE_MAX_BYTES,
-                    )
-                    raise exc
-                queued_at = self._monotonic()
-                queue.put_nowait(_DataMessage(msg, now_ms, queued_at, size))
-                self._data_queued_at.append(queued_at)
-                self._data_queue_bytes += size
-                # Buffered recv() calls may not suspend. Give a healthy consumer
-                # a turn before a short burst exhausts capacity. This never waits
-                # for it to finish, so blocked data work still cannot block ACKs.
-                if (queue.qsize() * 2 >= queue.maxsize
-                        or self._data_queue_bytes * 2 >= _DATA_QUEUE_MAX_BYTES):
-                    await asyncio.sleep(0)
-            else:
-                await self._dispatch_control(msg, raw)
-            await self._maybe_yield()
+        with LoopWorkBudget(self._tick_yield_interval_s, self._monotonic) as budget:
+            self._reader_budget = budget
+            while True:
+                started = self._monotonic()
+                try:
+                    # Keep the receive deadline in the reader's own cancellation scope.
+                    async with asyncio.timeout(_RECV_IDLE_TIMEOUT_S):
+                        raw = await ws.recv()
+                except Exception as exc:
+                    self._annotate_failure(exc, "receive", (self._monotonic() - started) * 1000)
+                    if isinstance(exc, TimeoutError):
+                        _log.warning("live.kiwoom.recv_idle_timeout idle=%.0fs last_recv=%s",
+                                     _RECV_IDLE_TIMEOUT_S, self.last_recv_ms)
+                    raise
+                now_ms = int(time.time() * 1000)
+                self.last_recv_ms = now_ms
+                self._reset_after_stable_session()
+                try:
+                    msg = json.loads(raw)
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get("trnm") == "REAL":
+                    if self._flow is not None:
+                        data = msg.get("data")
+                        self._flow.receive(len(data) if isinstance(data, list) else 0, self._monotonic())
+                    # Four bytes per character is a conservative UTF-8 bound without an encode allocation.
+                    size = len(raw) if isinstance(raw, bytes) else len(raw) * 4
+                    if queue.full() or self._data_queue_bytes + size > _DATA_QUEUE_MAX_BYTES:
+                        self._data_queue_overflows += 1
+                        self._data_messages_discarded += 1
+                        exc = KiwoomDataBacklogError("kiwoom data queue capacity exceeded")
+                        self._annotate_failure(exc, "dispatch", 0.0)
+                        evidence = self._backlog_evidence(queue, size)
+                        exc._kiwoom_backlog_evidence = evidence
+                        oldest_ms = ((self._monotonic() - self._data_queued_at[0]) * 1000
+                                     if self._data_queued_at else 0.0)
+                        _log.warning(
+                            "live.kiwoom.data_backlog account=%s depth=%d bytes=%d "
+                            "oldest_age_ms=%.1f dispatch_count=%d max_messages=%d max_bytes=%d "
+                            "evidence=%s",
+                            self.account_id, queue.qsize(), self._data_queue_bytes,
+                            oldest_ms, self.dispatch_latency.count,
+                            _DATA_QUEUE_MAX_MESSAGES, _DATA_QUEUE_MAX_BYTES,
+                            json.dumps(evidence, separators=(",", ":")),
+                        )
+                        raise exc
+                    queued_at = self._monotonic()
+                    queue.put_nowait(_DataMessage(msg, now_ms, queued_at, size))
+                    self._data_queued_at.append(queued_at)
+                    self._data_queue_bytes += size
+                    # Buffered recv() calls may not suspend. Give a healthy consumer
+                    # a turn before a short burst exhausts capacity. This never waits
+                    # for it to finish, so blocked data work still cannot block ACKs.
+                    if (queue.qsize() * 2 >= queue.maxsize
+                            or self._data_queue_bytes * 2 >= _DATA_QUEUE_MAX_BYTES):
+                        await asyncio.sleep(0)
+                else:
+                    await self._dispatch_control(msg, raw)
+                await self._maybe_yield(budget)
 
     async def _consume_frames(self, queue: asyncio.Queue[_DataMessage]) -> None:
-        while True:
-            item = await queue.get()
-            self._data_queued_at.popleft()
-            self._data_queue_bytes -= item.size
-            started = self._monotonic()
-            self.data_queue_wait.observe((started - item.queued_at) * 1000)
-            try:
-                await self._dispatch_real(item.message, item.received_ms)
-            except asyncio.CancelledError:
-                self._data_messages_discarded += 1
-                raise
-            except Exception as exc:
-                self._data_messages_discarded += 1
-                self._annotate_failure(exc, "dispatch", (self._monotonic() - started) * 1000)
-                raise
-            finally:
-                self.dispatch_latency.observe((self._monotonic() - started) * 1000)
-            await self._maybe_yield()
+        with LoopWorkBudget(self._tick_yield_interval_s, self._monotonic) as budget:
+            self._consumer_budget = budget
+            while True:
+                item = await queue.get()
+                self._data_queued_at.popleft()
+                self._data_queue_bytes -= item.size
+                started = self._monotonic()
+                if self._flow is not None:
+                    data = item.message.get("data")
+                    self._flow.start_frame(len(data) if isinstance(data, list) else 0, started)
+                self.data_queue_wait.observe((started - item.queued_at) * 1000)
+                try:
+                    await self._dispatch_real(item.message, item.received_ms, budget=budget)
+                    if self._flow is not None:
+                        self._flow.complete_frame(self._monotonic())
+                except asyncio.CancelledError:
+                    self._data_messages_discarded += 1
+                    raise
+                except Exception as exc:
+                    self._data_messages_discarded += 1
+                    self._annotate_failure(exc, "dispatch", (self._monotonic() - started) * 1000)
+                    raise
+                finally:
+                    self.dispatch_latency.observe((self._monotonic() - started) * 1000)
+                await self._maybe_yield(budget)
 
-    async def _maybe_yield(self) -> None:
-        """마지막 양보 이후 `_tick_yield_interval_s` 가 지났으면 루프에 한 번 양보한다.
+    def _backlog_evidence(self, queue: asyncio.Queue[_DataMessage], rejected_bytes: int) -> dict:
+        """Capture the failure before reconnect overwrites rolling timing samples."""
+        return {
+            "pid": os.getpid(), "observed_at_ms": int(time.time() * 1000),
+            "session_started_at_ms": self._session_started_at_ms,
+            "account_id": self.account_id, "connection_generation": self.connection_generation,
+            "queue_depth": queue.qsize(), "queued_bytes_bound": self._data_queue_bytes,
+            "rejected_bytes_bound": rejected_bytes,
+            "flow": self._flow.snapshot(self._monotonic()) if self._flow is not None else None,
+            "queue_wait": self.data_queue_wait.snapshot(),
+            "dispatch_wall": self.dispatch_latency.snapshot(),
+            "reader_budget": self._reader_budget.snapshot() if self._reader_budget is not None else None,
+            "consumer_budget": self._consumer_budget.snapshot() if self._consumer_budget is not None else None,
+            "runtime": failure_context(),
+        }
 
-        `last_recv_ms` 는 `_dispatch` **진입 즉시** 찍히므로 이 양보가 좀비 판정
-        (`_RECV_IDLE_TIMEOUT_S`, 무수신 5분)을 흔들지 않는다 — 재는 것은 벤더 침묵이고,
-        프레임은 그동안 websockets 버퍼에 계속 쌓인다. `last_tick_ms` 도 틱마다 찍혀
-        의미가 그대로다.
-
-        **새로 생기는 것은 「한 REAL 메시지의 행들 사이」 interleaving 이다.** 키움
-        REAL 은 서로 다른 등록(종목)의 행을 한 프레임에 묶는 것이지 한 종목의 원자적
-        다중 갱신이 아니므로, 종목별 상태는 어느 쪽이든 틱 하나씩 적용된다 — 그 행들이
-        별개 메시지로 왔을 때와 구별되지 않는다.
-        """
-        now = time.monotonic()
-        if now - self._last_yield_at < self._tick_yield_interval_s:
-            return
-        self._last_yield_at = now
-        await asyncio.sleep(0)
+    async def _maybe_yield(self, budget: LoopWorkBudget | None = None) -> None:
+        """Yield after work, without charging an already observed loop suspension."""
+        if budget is None:
+            if self._direct_budget is None:
+                self._direct_budget = LoopWorkBudget(self._tick_yield_interval_s, self._monotonic)
+            budget = self._direct_budget
+        await budget.checkpoint()
 
     async def _login(self, ws: _WsLike, token: str) -> None:
         started = self._monotonic()
@@ -740,7 +773,13 @@ class KiwoomWsClient:
         if waiter is not None and not waiter.done():
             waiter.set_result(msg)
 
-    async def _dispatch_real(self, msg: dict, now_ms: int) -> None:
+    async def _dispatch_real(
+        self, msg: dict, now_ms: int, *, budget: LoopWorkBudget | None = None,
+    ) -> None:
+        if budget is None:
+            if self._direct_budget is None:
+                self._direct_budget = LoopWorkBudget(self._tick_yield_interval_s, self._monotonic)
+            budget = self._direct_budget
         self._capture_vi_rows(msg, now_ms)
         self._capture_sector_rows(msg, now_ms)
         date = self._date_fn()
@@ -749,7 +788,9 @@ class KiwoomWsClient:
             self.tick_received_ms[(tick.code, tick.venue, tick.kind.value)] = now_ms
             if self._on_tick is not None:
                 await self._on_tick(tick)
-            await self._maybe_yield()
+            if self._flow is not None:
+                self._flow.tick()
+            await self._maybe_yield(budget)
 
     def _capture_vi_rows(self, msg: dict, now_ms: int) -> None:
         """REAL 안의 1h row 를 관측 훅에 raw 로 전달. 파서(parse_real_message)는 1h 를

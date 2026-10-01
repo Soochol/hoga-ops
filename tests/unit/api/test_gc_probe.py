@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import gc
 import logging
+import os
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from hoga.api import gc_probe
 from hoga.api.app import create_app
+from hoga.live.kiwoom_diagnostics import failure_context
 
 
 @pytest.fixture(autouse=True)
@@ -86,6 +88,7 @@ def test_recorder_warns_only_over_threshold(caplog) -> None:
         rec2("stop", {"generation": 2, "collected": 3, "uncollectable": 0})
     assert rec2.over_threshold == 1
     assert "hoga_perf gc_pause gen=2" in caplog.text
+    assert f"pid={os.getpid()}" in caplog.text
 
 
 def test_install_is_idempotent_and_uninstall_removes_the_callback() -> None:
@@ -125,6 +128,19 @@ def test_introspect_counts_types_it_can_see() -> None:
 
 
 # ── /health 배선 ────────────────────────────────────────────────────────────────
+
+def test_backlog_context_uses_lifespan_counters_without_heap_scan(tmp_path, monkeypatch):
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("failure logging must not scan the heap")
+
+    monkeypatch.setattr(gc_probe, "introspect_objects", forbidden)
+    with TestClient(create_app(tmp_path)) as client:
+        context = failure_context()
+        assert context["commit"] == client.get("/health").json()["commit"]
+        assert "live_started_at_ms" in context
+        assert context["gc"]["enabled"] is True
+        assert "objects" not in context["gc"]
+    assert failure_context() == {"runtime_context": "not_wired"}
 
 def test_deep_health_carries_gc_counters(tmp_path: Path) -> None:
     with TestClient(create_app(tmp_path)) as client:

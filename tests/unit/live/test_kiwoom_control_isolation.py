@@ -1,10 +1,12 @@
 """Control reception must progress while the ordered data consumer is blocked."""
 import asyncio
 import json
+import os
 
 import pytest
 
 from hoga.live import kiwoom_ws_client as M, provider_errors
+from hoga.live.kiwoom_diagnostics import configure_failure_context
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.ticks import WsTick
 
@@ -88,6 +90,75 @@ async def test_reg_and_ping_are_handled_while_tick_callback_waits(parse):
         await asyncio.gather(receiver, *([sender] if sender else []), return_exceptions=True)
 
 
+async def test_callback_suspensions_do_not_add_an_extra_consumer_yield(parse):
+    clock = [0.0]
+    received = []
+
+    async def consume(tick):
+        await asyncio.sleep(0)
+        clock[0] += 0.010  # queue/scheduler wait exceeds the 1ms work budget
+        received.append(tick.payload['sequence'])
+
+    ws = QueueSocket()
+    instance = client(ws, consume, monotonic_fn=lambda: clock[0])
+    receiver = asyncio.create_task(instance._recv_loop(ws))
+    try:
+        ws.push(trnm='REAL', data=list(range(16)))
+        ws.push(trnm='PING')
+        await until(lambda: len(received) == 16 and {'trnm': 'PING'} in ws.sent)
+        assert received == list(range(16))
+        assert instance._consumer_budget.yields == 0
+        assert instance._consumer_budget.observed_resumes >= 16
+        assert instance.data_queue_snapshot()['overflows'] == 0
+    finally:
+        receiver.cancel()
+        await asyncio.gather(receiver, return_exceptions=True)
+
+
+async def test_backlog_evidence_survives_queue_cleanup_and_contains_no_payload(parse, monkeypatch, caplog):
+    monkeypatch.setattr(M, '_DATA_QUEUE_MAX_MESSAGES', 2)
+    clock = [0.0]
+    ws = QueueSocket()
+    entered = asyncio.Event()
+
+    async def consume(_tick):
+        entered.set()
+        await asyncio.Event().wait()
+
+    instance = client(ws, consume, account_id=3, monotonic_fn=lambda: clock[0])
+    instance.connection_generation = 7
+    configure_failure_context(lambda: {'commit': 'abc123', 'live_started_at_ms': 123,
+                                      'gc': {'by_generation': {'1': {'max_ms': 456}}}})
+    receiver = asyncio.create_task(instance._recv_loop(ws))
+    try:
+        ws.push(trnm='REAL', data=[0], unused_secret='DO_NOT_LOG_THIS')
+        await until(entered.is_set)
+        clock[0] = 2.0
+        for sequence in (1, 2, 3):
+            ws.push(trnm='REAL', data=[sequence], unused_secret='DO_NOT_LOG_THIS')
+        await until(receiver.done)
+        with pytest.raises(M.KiwoomDataBacklogError) as caught:
+            await receiver
+        evidence = caught.value._kiwoom_backlog_evidence
+        assert evidence['pid'] == os.getpid()
+        assert evidence['connection_generation'] == 7
+        assert evidence['account_id'] == 3
+        assert evidence['runtime']['live_started_at_ms'] == 123
+        assert evidence['runtime']['gc']['by_generation']['1']['max_ms'] == 456
+        assert evidence['queue_depth'] == 2  # failure point, before drain
+        assert evidence['flow']['received_frames'] == 4
+        assert evidence['flow']['completed_frames'] == 0
+        assert evidence['flow']['inflight_age_ms'] == 2000
+        assert instance.data_queue_snapshot()['depth'] == 0
+        assert 'DO_NOT_LOG_THIS' not in caplog.text
+        assert 'DO_NOT_LOG_THIS' not in json.dumps(evidence)
+        assert '"commit":"abc123"' in caplog.text
+    finally:
+        configure_failure_context(None)
+        receiver.cancel()
+        await asyncio.gather(receiver, return_exceptions=True)
+
+
 async def test_receive_task_creation_is_bounded_by_session_not_frames():
     ws = QueueSocket()
     instance = client(ws)
@@ -112,6 +183,21 @@ async def test_receive_task_creation_is_bounded_by_session_not_frames():
         await asyncio.gather(receiver, return_exceptions=True)
         loop.set_task_factory(previous)
     assert all(task.done() for task in created)
+
+
+async def test_immediate_overflow_does_not_reuse_previous_session_budgets(monkeypatch):
+    monkeypatch.setattr(M, '_DATA_QUEUE_MAX_BYTES', 1)
+    ws = QueueSocket()
+    instance = client(ws)
+    with M.LoopWorkBudget(1) as old_budget:
+        instance._reader_budget = instance._consumer_budget = old_budget
+        ws.push(trnm='REAL', data=[])
+        with pytest.raises(M.KiwoomDataBacklogError) as caught:
+            await instance._recv_loop(ws)
+    evidence = caught.value._kiwoom_backlog_evidence
+    assert evidence['consumer_budget'] is None  # It had not started at the failure point.
+    assert evidence['flow']['received_frames'] == 1
+    assert instance._reader_budget is not old_budget
 
 
 async def test_fast_burst_gives_consumer_a_turn_before_declaring_overload(parse):

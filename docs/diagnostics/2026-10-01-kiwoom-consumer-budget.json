@@ -1,0 +1,749 @@
+{
+  "note": "240 already buffered frames, synthetic loop competition; offline",
+  "samples": [
+    {
+      "version": "baseline",
+      "repeat": 0,
+      "outcome": "overflow",
+      "rows_per_frame": 4,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 148,
+      "dispatch_count": 19,
+      "completed_frames": null,
+      "processed_ticks": 76,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 129,
+        "wait": {
+          "count": 19,
+          "sample_size": 19,
+          "p95_ms": 1294.2172700131778,
+          "max_ms": 1294.2172700131778
+        }
+      },
+      "elapsed_ms": 1506.3,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 0,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 135,
+      "dispatch_count": 6,
+      "completed_frames": null,
+      "processed_ticks": 88,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 6,
+          "sample_size": 6,
+          "p95_ms": 1107.1196240081917,
+          "max_ms": 1107.1196240081917
+        }
+      },
+      "elapsed_ms": 1368.8,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 0,
+      "outcome": "incomplete",
+      "rows_per_frame": 4,
+      "callback_suspends": true,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 135,
+      "dispatch_count": 33,
+      "completed_frames": null,
+      "processed_ticks": 134,
+      "overflow": false,
+      "queue": {
+        "depth": 101,
+        "bytes": 996264,
+        "oldest_age_ms": 2420.3933929966297,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 34,
+          "sample_size": 34,
+          "p95_ms": 2275.04408598179,
+          "max_ms": 2387.8866280138027
+        }
+      },
+      "elapsed_ms": 3002.3,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 0,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": true,
+      "competing_tasks": 0,
+      "cpu_ms_per_competing_turn": 0,
+      "received_frames": 134,
+      "dispatch_count": 5,
+      "completed_frames": null,
+      "processed_ticks": 72,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 5,
+          "sample_size": 5,
+          "p95_ms": 12.82611399074085,
+          "max_ms": 12.82611399074085
+        }
+      },
+      "elapsed_ms": 16.5,
+      "consumer_budget": null
+    },
+    {
+      "version": "candidate",
+      "repeat": 0,
+      "outcome": "complete",
+      "rows_per_frame": 4,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 240,
+      "dispatch_count": 240,
+      "completed_frames": 240,
+      "processed_ticks": 960,
+      "overflow": false,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 240,
+          "sample_size": 240,
+          "p95_ms": 87.87238897639327,
+          "max_ms": 88.26064999448135
+        }
+      },
+      "elapsed_ms": 413.8,
+      "consumer_budget": {
+        "yields": 20,
+        "observed_resumes": 0,
+        "yield_wait_ms": 327.2
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 0,
+      "outcome": "complete",
+      "rows_per_frame": 16,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 240,
+      "dispatch_count": 240,
+      "completed_frames": 240,
+      "processed_ticks": 3840,
+      "overflow": false,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 240,
+          "sample_size": 240,
+          "p95_ms": 419.2232509958558,
+          "max_ms": 436.5433010098059
+        }
+      },
+      "elapsed_ms": 1569.2,
+      "consumer_budget": {
+        "yields": 88,
+        "observed_resumes": 0,
+        "yield_wait_ms": 1442.0
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 0,
+      "outcome": "overflow",
+      "rows_per_frame": 4,
+      "callback_suspends": true,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 151,
+      "dispatch_count": 23,
+      "completed_frames": 22,
+      "processed_ticks": 89,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 129,
+        "wait": {
+          "count": 23,
+          "sample_size": 23,
+          "p95_ms": 1355.4762059939094,
+          "max_ms": 1420.0117049913388
+        }
+      },
+      "elapsed_ms": 1502.1,
+      "consumer_budget": {
+        "yields": 0,
+        "observed_resumes": 88,
+        "yield_wait_ms": 0.0
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 0,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": true,
+      "competing_tasks": 0,
+      "cpu_ms_per_competing_turn": 0,
+      "received_frames": 134,
+      "dispatch_count": 5,
+      "completed_frames": 4,
+      "processed_ticks": 75,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 5,
+          "sample_size": 5,
+          "p95_ms": 10.353571007726714,
+          "max_ms": 10.353571007726714
+        }
+      },
+      "elapsed_ms": 13.3,
+      "consumer_budget": {
+        "yields": 0,
+        "observed_resumes": 74,
+        "yield_wait_ms": 0.0
+      }
+    },
+    {
+      "version": "baseline",
+      "repeat": 1,
+      "outcome": "overflow",
+      "rows_per_frame": 4,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 147,
+      "dispatch_count": 18,
+      "completed_frames": null,
+      "processed_ticks": 72,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 129,
+        "wait": {
+          "count": 18,
+          "sample_size": 18,
+          "p95_ms": 1287.3036339879036,
+          "max_ms": 1287.3036339879036
+        }
+      },
+      "elapsed_ms": 1497.9,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 1,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 135,
+      "dispatch_count": 6,
+      "completed_frames": null,
+      "processed_ticks": 88,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 6,
+          "sample_size": 6,
+          "p95_ms": 1101.6364159877412,
+          "max_ms": 1101.6364159877412
+        }
+      },
+      "elapsed_ms": 1363.4,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 1,
+      "outcome": "incomplete",
+      "rows_per_frame": 4,
+      "callback_suspends": true,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 136,
+      "dispatch_count": 33,
+      "completed_frames": null,
+      "processed_ticks": 136,
+      "overflow": false,
+      "queue": {
+        "depth": 102,
+        "bytes": 1006128,
+        "oldest_age_ms": 2459.300599002745,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 34,
+          "sample_size": 34,
+          "p95_ms": 2266.42667100532,
+          "max_ms": 2378.7113139987923
+        }
+      },
+      "elapsed_ms": 3038.6,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 1,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": true,
+      "competing_tasks": 0,
+      "cpu_ms_per_competing_turn": 0,
+      "received_frames": 134,
+      "dispatch_count": 5,
+      "completed_frames": null,
+      "processed_ticks": 75,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 5,
+          "sample_size": 5,
+          "p95_ms": 8.94411900662817,
+          "max_ms": 8.94411900662817
+        }
+      },
+      "elapsed_ms": 11.3,
+      "consumer_budget": null
+    },
+    {
+      "version": "candidate",
+      "repeat": 1,
+      "outcome": "complete",
+      "rows_per_frame": 4,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 240,
+      "dispatch_count": 240,
+      "completed_frames": 240,
+      "processed_ticks": 960,
+      "overflow": false,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 240,
+          "sample_size": 240,
+          "p95_ms": 70.44454698916525,
+          "max_ms": 70.62139001209289
+        }
+      },
+      "elapsed_ms": 360.8,
+      "consumer_budget": {
+        "yields": 17,
+        "observed_resumes": 0,
+        "yield_wait_ms": 277.8
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 1,
+      "outcome": "complete",
+      "rows_per_frame": 16,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 240,
+      "dispatch_count": 240,
+      "completed_frames": 240,
+      "processed_ticks": 3840,
+      "overflow": false,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 240,
+          "sample_size": 240,
+          "p95_ms": 327.8127060038969,
+          "max_ms": 344.1645230050199
+        }
+      },
+      "elapsed_ms": 1255.0,
+      "consumer_budget": {
+        "yields": 68,
+        "observed_resumes": 0,
+        "yield_wait_ms": 1117.8
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 1,
+      "outcome": "overflow",
+      "rows_per_frame": 4,
+      "callback_suspends": true,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 151,
+      "dispatch_count": 23,
+      "completed_frames": 22,
+      "processed_ticks": 89,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 129,
+        "wait": {
+          "count": 23,
+          "sample_size": 23,
+          "p95_ms": 1358.1863250001334,
+          "max_ms": 1422.5213970057666
+        }
+      },
+      "elapsed_ms": 1504.4,
+      "consumer_budget": {
+        "yields": 0,
+        "observed_resumes": 88,
+        "yield_wait_ms": 0.0
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 1,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": true,
+      "competing_tasks": 0,
+      "cpu_ms_per_competing_turn": 0,
+      "received_frames": 134,
+      "dispatch_count": 5,
+      "completed_frames": 4,
+      "processed_ticks": 75,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 5,
+          "sample_size": 5,
+          "p95_ms": 9.657711983891204,
+          "max_ms": 9.657711983891204
+        }
+      },
+      "elapsed_ms": 11.6,
+      "consumer_budget": {
+        "yields": 0,
+        "observed_resumes": 74,
+        "yield_wait_ms": 0.0
+      }
+    },
+    {
+      "version": "baseline",
+      "repeat": 2,
+      "outcome": "overflow",
+      "rows_per_frame": 4,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 147,
+      "dispatch_count": 18,
+      "completed_frames": null,
+      "processed_ticks": 72,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 129,
+        "wait": {
+          "count": 18,
+          "sample_size": 18,
+          "p95_ms": 1294.2912419966888,
+          "max_ms": 1294.2912419966888
+        }
+      },
+      "elapsed_ms": 1506.0,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 2,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 135,
+      "dispatch_count": 6,
+      "completed_frames": null,
+      "processed_ticks": 89,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 6,
+          "sample_size": 6,
+          "p95_ms": 1105.2852620196063,
+          "max_ms": 1105.2852620196063
+        }
+      },
+      "elapsed_ms": 1368.4,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 2,
+      "outcome": "incomplete",
+      "rows_per_frame": 4,
+      "callback_suspends": true,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 136,
+      "dispatch_count": 33,
+      "completed_frames": null,
+      "processed_ticks": 136,
+      "overflow": false,
+      "queue": {
+        "depth": 102,
+        "bytes": 1006128,
+        "oldest_age_ms": 2465.217732999008,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 34,
+          "sample_size": 34,
+          "p95_ms": 2271.9009119900875,
+          "max_ms": 2384.256859018933
+        }
+      },
+      "elapsed_ms": 3046.6,
+      "consumer_budget": null
+    },
+    {
+      "version": "baseline",
+      "repeat": 2,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": true,
+      "competing_tasks": 0,
+      "cpu_ms_per_competing_turn": 0,
+      "received_frames": 134,
+      "dispatch_count": 5,
+      "completed_frames": null,
+      "processed_ticks": 73,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 5,
+          "sample_size": 5,
+          "p95_ms": 11.675527988700196,
+          "max_ms": 11.675527988700196
+        }
+      },
+      "elapsed_ms": 15.0,
+      "consumer_budget": null
+    },
+    {
+      "version": "candidate",
+      "repeat": 2,
+      "outcome": "complete",
+      "rows_per_frame": 4,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 240,
+      "dispatch_count": 240,
+      "completed_frames": 240,
+      "processed_ticks": 960,
+      "overflow": false,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 240,
+          "sample_size": 240,
+          "p95_ms": 86.32947597652674,
+          "max_ms": 87.47964998474345
+        }
+      },
+      "elapsed_ms": 363.9,
+      "consumer_budget": {
+        "yields": 18,
+        "observed_resumes": 0,
+        "yield_wait_ms": 295.5
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 2,
+      "outcome": "complete",
+      "rows_per_frame": 16,
+      "callback_suspends": false,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 240,
+      "dispatch_count": 240,
+      "completed_frames": 240,
+      "processed_ticks": 3840,
+      "overflow": false,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 0,
+        "discarded_messages": 0,
+        "wait": {
+          "count": 240,
+          "sample_size": 240,
+          "p95_ms": 331.3740669982508,
+          "max_ms": 348.14540299703367
+        }
+      },
+      "elapsed_ms": 1251.8,
+      "consumer_budget": {
+        "yields": 69,
+        "observed_resumes": 0,
+        "yield_wait_ms": 1129.0
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 2,
+      "outcome": "overflow",
+      "rows_per_frame": 4,
+      "callback_suspends": true,
+      "competing_tasks": 8,
+      "cpu_ms_per_competing_turn": 2,
+      "received_frames": 151,
+      "dispatch_count": 23,
+      "completed_frames": 22,
+      "processed_ticks": 90,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 129,
+        "wait": {
+          "count": 23,
+          "sample_size": 23,
+          "p95_ms": 1346.982935006963,
+          "max_ms": 1412.1970810228959
+        }
+      },
+      "elapsed_ms": 1559.7,
+      "consumer_budget": {
+        "yields": 0,
+        "observed_resumes": 89,
+        "yield_wait_ms": 0.0
+      }
+    },
+    {
+      "version": "candidate",
+      "repeat": 2,
+      "outcome": "overflow",
+      "rows_per_frame": 16,
+      "callback_suspends": true,
+      "competing_tasks": 0,
+      "cpu_ms_per_competing_turn": 0,
+      "received_frames": 134,
+      "dispatch_count": 5,
+      "completed_frames": 4,
+      "processed_ticks": 76,
+      "overflow": true,
+      "queue": {
+        "depth": 0,
+        "bytes": 0,
+        "oldest_age_ms": 0.0,
+        "overflows": 1,
+        "discarded_messages": 130,
+        "wait": {
+          "count": 5,
+          "sample_size": 5,
+          "p95_ms": 12.795354996342212,
+          "max_ms": 12.795354996342212
+        }
+      },
+      "elapsed_ms": 17.8,
+      "consumer_budget": {
+        "yields": 0,
+        "observed_resumes": 75,
+        "yield_wait_ms": 0.0
+      }
+    }
+  ]
+}
