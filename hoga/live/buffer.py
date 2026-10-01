@@ -22,6 +22,12 @@ Concurrency: a single asyncio.Lock guards all mutations and reads.
 Readers grab a frozen tuple snapshot of the deque under the lock, then
 release before processing — keeps the critical section short.
 
+2026-10-01: retained OB payloads now use immutable scalar tuples. Historical
+dict-based memory figures above are not the new representation's footprint.
+The same 319-code / 114,840-book replay measured retained RSS 620→239MiB;
+subscribers still receive the original dict, and reads materialize it on demand.
+Evidence: docs/diagnostics/2026-10-01-gc-stall/buffer-compaction.json.
+
 Scaling ceiling (ADR-0116 리뷰 Major, 유예/검토 — 실측 후 후속 PR):
   이 버퍼는 **표시 전용**(/api/live/snapshot·/series). 저장 경로는 LiveStream의
   writer(JSONL→promote→parquet)라 버퍼와 무관하다. 그런데 on_tick은 자기 구독 집합
@@ -51,6 +57,7 @@ from collections import deque
 from collections.abc import Iterable
 
 from .delivery import LiveDelivery, LiveOutbox
+from .packed_orderbook import StoredBook, book_time, pack_book, unpack_book
 from .snapshot import LiveSnapshot, SnapshotKind
 
 DEFAULT_RETENTION_MS = 900_000  # 15분
@@ -99,8 +106,7 @@ MAX_BUFFER_ENTRIES = cap_for_retention(DEFAULT_RETENTION_MS)
 class LiveBuffer:
     """Per-code, per-kind ring buffer.
 
-    Stores LiveSnapshot.payload dicts (not the dataclass itself) so the
-    API layer can serialize directly without an extra conversion step.
+    Retains compact orderbooks; subscribers and reads receive ordinary dicts.
     """
 
     def __init__(self, *, retention_ms: int = DEFAULT_RETENTION_MS) -> None:
@@ -108,9 +114,9 @@ class LiveBuffer:
         # 보존창에서 파생한 하드캡 — 근거는 cap_for_retention docstring.
         self._max_entries = cap_for_retention(retention_ms)
         self._lock = asyncio.Lock()
-        # Keyed by (code, kind.value) → deque[dict]. deque(maxlen=...) handles
+        # Keyed by (code, kind.value). deque(maxlen=...) handles
         # FIFO drop automatically when the cap is exceeded.
-        self._buf: dict[tuple[str, str], deque[dict]] = {}
+        self._buf: dict[tuple[str, str], deque[StoredBook]] = {}
         # ── venue 별 마지막 호가 사이드카 (키: (code, venue)) ──────────────────
         #
         # **보존 축이 소비 축과 어긋나 있어서** 필요하다. deque 는 `(code, kind)` 로
@@ -137,7 +143,7 @@ class LiveBuffer:
         #
         # 그래서 사이드카다. venue 당 1건이라 축출 대상이 아니고(전체 상한 =
         # 종목수 × venue수 × 1), 소비도 "필터 결과가 비었을 때의 폴백" 한 곳뿐이다.
-        self._last_ob: dict[tuple[str, str], dict] = {}
+        self._last_ob: dict[tuple[str, str], StoredBook] = {}
         #: `_last_ob` 가 바뀔 때마다 오르는 버전. 디스크 flush 가 **바뀐 것만 쓰도록**
         #: 하는 근거다(`last_ob_snapshot`).
         #:
@@ -196,16 +202,17 @@ class LiveBuffer:
                 # helpers strip the `kind` field when building their responses.
                 entry = {"t_ms": s.t_ms, "kind": s.kind.value, **s.payload}
                 before = len(d)
-                d.append(entry)
+                retained = pack_book(entry) if s.kind is SnapshotKind.OB else entry
+                d.append(retained)
                 if s.kind is SnapshotKind.OB:
                     # 태그 부재는 **KRX 승격** — 프론트 판정(`liveVenueAcceptsFrame`)
                     # 과 같은 규율이어야 폴백이 필터와 같은 프레임을 가리킨다.
-                    self._last_ob[(code, entry.get("venue") or "KRX")] = entry
+                    self._last_ob[(code, entry.get("venue") or "KRX")] = retained
                     self._last_ob_version += 1
                 self._total_entries += len(d) - before
                 self._published_total += 1
                 entries.append(entry)
-                while d and d[0]["t_ms"] < cutoff:  # 시간 기반 eviction
+                while d and book_time(d[0]) < cutoff:  # 시간 기반 eviction
                     d.popleft()
                     self._total_entries -= 1
                 self._high_water_entries = max(
@@ -276,6 +283,7 @@ class LiveBuffer:
             latest_tr = tr_buf[-1] if tr_buf else None
             latest_br = br_buf[-1] if br_buf else None
 
+        latest_ob = unpack_book(latest_ob) if latest_ob is not None else None
         # Choose the most recent t_ms across kinds for the response anchor.
         candidates = [e for e in (latest_ob, latest_tr, latest_br) if e is not None]
         if not candidates:
@@ -317,7 +325,8 @@ class LiveBuffer:
         `get_last_ob`(단건)와 달리 계열이 아니라 **전 종목·venue 한 장씩**이다.
         """
         async with self._lock:
-            return {k: dict(v) for k, v in self._last_ob.items()}, self._last_ob_version
+            entries, version = tuple(self._last_ob.items()), self._last_ob_version
+        return {k: unpack_book(v) for k, v in entries}, version
 
     async def restore_last_ob(self, entries: dict[tuple[str, str], dict]) -> int:
         """디스크에서 읽은 마지막 호가를 주입한다 — 기동·refresh 직후 1회.
@@ -335,7 +344,7 @@ class LiveBuffer:
             for key, entry in entries.items():
                 if key in self._last_ob:
                     continue
-                self._last_ob[key] = dict(entry)
+                self._last_ob[key] = pack_book(dict(entry))
                 restored += 1
         return restored
 
@@ -351,7 +360,7 @@ class LiveBuffer:
         """
         async with self._lock:
             entry = self._last_ob.get((code, venue))
-            return dict(entry) if entry is not None else None
+        return unpack_book(entry) if entry is not None else None
 
     async def get_series(self, code: str) -> dict:
         """All buffered snapshots for `code` as parallel arrays."""
@@ -371,7 +380,7 @@ class LiveBuffer:
 
         return {
             "code": code,
-            "snapshots": [_strip_t_only(e) for e in snapshots],
+            "snapshots": [unpack_book(e) for e in snapshots],
             "trades": [_strip_t_only(e) for e in trades],
             "brokers": [_strip_t_only(e) for e in brokers],
             "programs": [_strip_t_only(e) for e in programs],

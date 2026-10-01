@@ -27,6 +27,7 @@ def test_display_reassignment_builds_master_once_and_refreshes_next_pass(monkeyp
 
     manager = object.__new__(KiwoomSessionManager)
     manager._storage_members = {f"{i:06}" for i in range(315)}
+    manager._storage_registration_keys = set()
     manager._display = {
         (code, venue): session._DisplayEntry(refs={"view"}, owner=1)
         for code in manager._storage_members for venue in ("KRX", "NXT", "UN")
@@ -36,12 +37,14 @@ def test_display_reassignment_builds_master_once_and_refreshes_next_pass(monkeyp
     monkeypatch.setattr(session, "_nxt_map", master)
     manager._reassign_display()
     assert master.call_count == 1
+    assert ("000000", "NXT") in manager._storage_registration_keys
     assert all(entry.owner is None for entry in manager._display.values())
     # A new master must affect the very next pass; no permanent stale cache.
     master.return_value = dict.fromkeys(manager._storage_members, False)
     monkeypatch.setattr(manager, "_pick_account", lambda: 1)
     manager._reassign_display()
     assert master.call_count == 2
+    assert ("000000", "NXT") not in manager._storage_registration_keys
     assert manager._display[("000000", "KRX")].owner is None
     assert manager._display[("000000", "NXT")].owner == 1
 
@@ -129,14 +132,12 @@ def _fake_manager(now_fn=None, *, persist_missing=False):
 
 async def test_sync_partitions_across_accounts():
     mgr, built = _fake_manager()
-    codes = tuple(f"{i:06d}" for i in range(250))  # 200 + 50 → 2계정
+    codes = tuple(f"{i:06d}" for i in range(250))
     await mgr.sync(codes, n_accounts=4)
-    # 계정 0=200, 1=50, 2=빈파티션(미생성). **계정 3 은 파티션이 비어도 생성된다** —
-    # 업종(0J/0U) 구독을 태우는 연결이라, 저장셋이 적은 날 그 conn 이 없으면 업종
-    # 스트림이 통째로 사라진다(2026-08-07 회귀).
-    assert sorted(a for a, _ in built) == [0, 1, 3]
+    assert sorted(a for a, _ in built) == [0, 1, 2, 3]
+    assert max(len(c.codes) for c in mgr._conns.values()) < 100
     assert set(mgr.active_codes()) == set(codes)
-    assert mgr.connected_accounts == 3  # +1 = 업종 구독 캐리어(마지막 계정)
+    assert mgr.connected_accounts == 4
     await mgr.stop()
 
 
@@ -270,9 +271,12 @@ async def test_sync_empty_targets_tears_down():
 async def test_sync_shrinking_accounts_tears_down_extra():
     mgr, _ = _fake_manager()
     await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
-    assert set(mgr._conns) == {0, 1, 3}  # 3 = 업종 캐리어(빈 파티션이어도 생성)
-    await mgr.sync(tuple(f"{i:06d}" for i in range(100)), n_accounts=4)  # 계정 0만
-    assert set(mgr._conns) == {0, 3}  # 3 은 업종 캐리어라 계속 산다
+    assert set(mgr._conns) == {0, 1, 2, 3}
+    # Leave only account 0's codes; the empty sector carrier stays alive.
+    kept = mgr._conns[0].codes
+    await mgr.sync(kept, n_accounts=4)
+    assert set(mgr._conns) == {0, 3}
+    assert set(mgr.active_codes()) == set(kept)
 
 
 async def test_status_snapshot_shape():
@@ -280,14 +284,13 @@ async def test_status_snapshot_shape():
     await mgr.sync(tuple(f"{i:06d}" for i in range(250)), n_accounts=4)  # 계정 0,1
     st = mgr.status()
     assert st["enabled"] is True
-    # 업종 캐리어(계정 3)가 빈 파티션으로 살아 있어 계정이 하나 더 잡힌다.
-    assert st["accounts_configured"] == 3
-    assert st["connected_accounts"] == 3  # FakeClient.connected=True
+    assert st["accounts_configured"] == 4
+    assert st["connected_accounts"] == 4  # FakeClient.connected=True
     assert st["subscribed_count"] == 250
     assert set(st["subscribed_codes"]) == set(f"{i:06d}" for i in range(250))
-    assert [a["account_id"] for a in st["accounts"]] == [0, 1, 3]
-    assert st["accounts"][0]["sub_expected"] == 200
-    assert st["accounts"][2]["sub_expected"] == 0  # 캐리어는 저장셋이 없어도 된다
+    assert [a["account_id"] for a in st["accounts"]] == [0, 1, 2, 3]
+    assert sum(a["sub_expected"] for a in st["accounts"]) == 250
+    assert st["accounts"][-1]["sub_expected"] <= 200 - KIWOOM_SECTOR_RESERVE
     await mgr.stop()
 
 
@@ -360,9 +363,9 @@ async def test_active_codes_excludes_kicked_account():
     # 계정 1을 킥 정지 상태로.
     mgr._conns[1].client.kicked_by_peer = True
     codes = mgr.active_codes()
-    # 계정 0(200종목)만, 계정 1(50종목)은 제외.
-    assert len(codes) == 200
-    assert mgr.status()["subscribed_count"] == 200
+    expected = set().union(*(set(c.codes) for i, c in mgr._conns.items() if i != 1))
+    assert set(codes) == expected
+    assert mgr.status()["subscribed_count"] == len(expected)
     await mgr.stop()
 
 

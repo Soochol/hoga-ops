@@ -1,0 +1,73 @@
+import asyncio,gc,hashlib,importlib.util,json,os,pathlib,sys,tempfile,time
+sys.path.insert(0,str(pathlib.Path.cwd()))
+from hoga.live.second_trade_agg import SecondTradeBar
+from hoga.live.second_trade_store import SecondTradeStore
+from hoga.live.ticks import WsTick
+from hoga.live.snapshot import SnapshotKind
+BASE=1790812800000
+if len(sys.argv)>1:
+ spec=importlib.util.spec_from_file_location('hoga.live.second_trade_store_baseline',sys.argv[1])
+ module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+ Store=module.SecondTradeStore;mode='baseline'
+else:Store=SecondTradeStore;mode='improved'
+os.fsync=lambda descriptor:None  # Temporary files only, in this isolated process.
+def rss():
+ return int(next(s for s in pathlib.Path('/proc/self/status').read_text().splitlines() if s.startswith('VmRSS:')).split()[1])/1024
+async def main():
+ with tempfile.TemporaryDirectory() as directory:
+  root=pathlib.Path(directory);store=Store(root);store._seq=0;store._sealed_before=BASE-60000
+  calls=0;original=SecondTradeBar.record;pauses=[];gc_start=[0]
+  def observe(phase,info):
+   if phase=='start':gc_start[0]=time.perf_counter()
+   else:pauses.append({'gen':info['generation'],'ms':(time.perf_counter()-gc_start[0])*1000})
+  def record(bar):
+   nonlocal calls
+   calls+=1;return original(bar)
+  SecondTradeBar.record=record
+  for code in range(319):
+   for venue in ('KRX','NXT','UN'):
+    path=store.path(f'{code:06}',venue,'20261001');path.parent.mkdir(parents=True,exist_ok=True);path.touch()
+    for offset in range(-60,0):
+     bar=SecondTradeBar(BASE+offset*1000)
+     for cell in range(3):
+      store._seq+=1;bar.ingest(t_ms=bar.t_ms,seq=store._seq,price=10000+cell,qty=2,side=cell-1)
+     store._bars[(f'{code:06}',venue,bar.t_ms)]=bar;store._cells+=3
+  checkpoints=appends=0;append_original=store._append;checkpoint_original=store._checkpoint
+  def append(path,records):
+   nonlocal appends
+   appends+=1;append_original(path,records)
+  def checkpoint(path,rows,offset,seq):
+   nonlocal checkpoints
+   checkpoints+=1;checkpoint_original(path,rows,offset,seq)
+  store._append=append;store._checkpoint=checkpoint
+  gc.collect();gc.set_threshold(50000,50,50);gc.callbacks.append(observe)
+  result=[]
+  async def measure(label,now):
+   nonlocal calls
+   calls=0;gaps=[];running=True;ready=asyncio.Event();before_pauses=len(pauses)
+   async def heartbeat():
+    last=time.perf_counter();ready.set()
+    while running:
+     await asyncio.sleep(.005);current=time.perf_counter();gaps.append(max(0,(current-last)*1000-5));last=current
+   task=asyncio.create_task(heartbeat());await ready.wait()
+   before_appends=appends;before_checkpoints=checkpoints;before_cpu=time.process_time();started=time.perf_counter()
+   await store.flush(now_ms=now)
+   wall=(time.perf_counter()-started)*1000;cpu=(time.process_time()-before_cpu)*1000
+   await asyncio.sleep(.01);running=False;await task
+   result.append({'phase':label,'wall_ms':round(wall,1),'cpu_ms':round(cpu,1),'loop_lag_max_ms':round(max(gaps,default=0),1),'record_calls':calls,'appends':appends-before_appends,'checkpoints':checkpoints-before_checkpoints,'retained_bars':len(store._bars),'cells':store._cells,'rss_mib':round(rss(),1),'automatic_gc_max_ms':round(max((p['ms'] for p in pauses[before_pauses:]),default=0),1),'automatic_gc_count':len(pauses)-before_pauses})
+  await measure('cold',BASE+3000)
+  await measure('unchanged',BASE+4000)
+  for code in range(319):
+   for venue in ('KRX','NXT','UN'):
+    for offset in range(10):
+     t=BASE+offset*1000
+     store.ingest(WsTick(f'{code:06}',t,SnapshotKind.TRADE,{'trades':[{'t_ms':t,'price':10000+cell,'qty':2,'side':cell-1} for cell in range(3)]},venue))
+  await measure('active',BASE+13000)
+  gc.callbacks.remove(observe)
+  journal=hashlib.sha256();checkpoints_hash=hashlib.sha256()
+  for path in sorted(root.rglob('*.jsonl')):
+   journal.update(str(path.relative_to(root)).encode());journal.update(path.read_bytes())
+  for path in sorted(root.rglob('*.recent.json')):
+   checkpoints_hash.update(str(path.relative_to(root)).encode());checkpoints_hash.update(json.dumps(json.loads(path.read_text()),sort_keys=True,separators=(',',':')).encode())
+  print(json.dumps({'mode':mode,'python':sys.version.split()[0],'codes':319,'venues':3,'initial_bars':319*3*60,'initial_cells':319*3*60*3,'fsync_disabled':True,'journal_sha256':journal.hexdigest(),'checkpoint_semantic_sha256':checkpoints_hash.hexdigest(),'phases':result}))
+asyncio.run(main())

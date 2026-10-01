@@ -134,6 +134,86 @@ async def test_fast_burst_gives_consumer_a_turn_before_declaring_overload(parse)
         await asyncio.gather(receiver, return_exceptions=True)
 
 
+async def test_multi_tick_catchup_preserves_order_and_following_controls(parse):
+    ws = QueueSocket()
+    received = []
+
+    async def consume(tick):
+        received.append(tick.payload["sequence"])
+        await asyncio.sleep(0)  # model the yielding work inside a multi-tick frame
+
+    instance = client(ws, consume, tick_yield_interval_s=1000)
+    receiver = asyncio.create_task(instance._recv_loop(ws))
+    waiter = asyncio.get_running_loop().create_future()
+    instance._ack_waiters["REG"] = waiter
+    try:
+        for start in range(0, 1024, 8):
+            ws.push(trnm="REAL", data=list(range(start, start + 8)))
+        ws.push(trnm="REG", return_code=0)
+        ws.push(trnm="PING")
+        # Scheduler turns, rather than wall-clock performance assertions.
+        for _ in range(1100):
+            if len(received) == 1024 or receiver.done():
+                break
+            await asyncio.sleep(0)
+        assert received == list(range(1024))
+        assert waiter.done() and (await waiter)["return_code"] == 0
+        assert {"trnm": "PING"} in ws.sent
+        assert instance.data_queue_snapshot()["overflows"] == 0
+    finally:
+        receiver.cancel()
+        await asyncio.gather(receiver, return_exceptions=True)
+
+
+async def test_seconds_preparation_allows_real_and_control_progress(tmp_path, monkeypatch, parse):
+    from hoga.live.second_trade_agg import SecondTradeBar
+    from hoga.live.second_trade_store import SecondTradeStore
+
+    store = SecondTradeStore(tmp_path)
+    t_ms = 1790812800000
+    store._sealed_before = t_ms - 1000
+    for i in range(512):
+        store.ingest(WsTick(f"{i:06}", t_ms, SnapshotKind.TRADE,
+                            {"trades": [{"t_ms": t_ms, "price": 100, "qty": 2, "side": 1}]}))
+    preparing = asyncio.Event()
+    calls = 0
+    original = SecondTradeBar.record
+
+    def record(bar):
+        nonlocal calls
+        calls += 1
+        preparing.set()
+        return original(bar)
+
+    monkeypatch.setattr(SecondTradeBar, "record", record)
+    received, progress = [], []
+
+    async def consume(tick):
+        received.append(tick.payload["sequence"])
+        progress.append(calls)
+
+    ws = QueueSocket()
+    instance = client(ws, consume, tick_yield_interval_s=1000)
+    waiter = asyncio.get_running_loop().create_future()
+    instance._ack_waiters["REG"] = waiter
+    receiver = asyncio.create_task(instance._recv_loop(ws))
+    flush = asyncio.create_task(store.flush(now_ms=t_ms + 5000))
+    try:
+        await preparing.wait()
+        ws.push(trnm="REAL", data=[1, 2])
+        ws.push(trnm="REG", return_code=0)
+        ws.push(trnm="PING")
+        await flush
+        await until(lambda: received == [1, 2] and {"trnm": "PING"} in ws.sent)
+        assert all(0 < value < calls for value in progress)
+        assert waiter.done() and (await waiter)["return_code"] == 0
+        assert instance.data_queue_snapshot()["overflows"] == 0
+    finally:
+        receiver.cancel()
+        flush.cancel()
+        await asyncio.gather(receiver, flush, return_exceptions=True)
+
+
 async def test_ack_timing_excludes_socket_close_and_failure_is_scoped(monkeypatch):
     ws = QueueSocket()
     clock = [0.0]

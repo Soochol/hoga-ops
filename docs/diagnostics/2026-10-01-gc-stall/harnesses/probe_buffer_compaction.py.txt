@@ -1,0 +1,32 @@
+import asyncio,gc,json,pathlib,resource,sys,time
+sys.path.insert(0,str(pathlib.Path.cwd()))
+from hoga.live import buffer as module
+from hoga.live.buffer import LiveBuffer
+from hoga.live.kiwoom_frames import parse_real_row
+from hoga.live.snapshot import LiveSnapshot,SnapshotKind
+mode=sys.argv[1]
+if mode=='baseline':module.pack_book=lambda entry:entry
+v={'21':'120000','121':'1000','125':'1000'}
+for f in range(41,81):v[str(f)]=str(10000+f) if f<61 else '100'
+row={'type':'0D','item':'005930','values':v};pauses=[];start=[0.0]
+def observe(phase,info):
+ if phase=='start':start[0]=time.perf_counter()
+ else:pauses.append({'gen':info['generation'],'ms':(time.perf_counter()-start[0])*1000,'collected':info['collected']})
+def rss():
+ return int(next(x for x in pathlib.Path('/proc/self/status').read_text().splitlines() if x.startswith('VmRSS:')).split()[1])/1024
+async def main():
+ b=LiveBuffer();gc.collect();gc.set_threshold(50000,50,50);gc.callbacks.append(observe);t=time.perf_counter()
+ for i in range(319*360):
+  code=f'{i%319:06}';row['item']=code
+  tick=parse_real_row(row,date='20261001',now_ms=1790823600000)
+  await b.publish(code,[LiveSnapshot(tick.t_ms,SnapshotKind.OB,tick.payload)],now_ms=tick.t_ms)
+  if i%1000==0:await asyncio.sleep(0)
+ build_ms=(time.perf_counter()-t)*1000
+ gc.callbacks.remove(observe);automatic=list(pauses);rss_before=rss();forced=[]
+ for _ in range(3):
+  t=time.perf_counter();gc.collect();forced.append((time.perf_counter()-t)*1000)
+ retained_rss=rss();t=time.perf_counter();series=await b.get_series('000000');json.dumps(series);read_ms=(time.perf_counter()-t)*1000
+ assert len(series['snapshots'])==360
+ assert series['snapshots'][0]['asks']==[{'price':10000+f,'qty':100} for f in range(41,51)]
+ print(json.dumps({'mode':mode,'python':sys.version.split()[0],'entries':b._total_entries,'codes':319,'build_ms':round(build_ms,1),'automatic_gc_max_ms':round(max((p['ms'] for p in automatic),default=0),1),'automatic_gc_total_ms':round(sum(p['ms'] for p in automatic),1),'automatic_gc_count':len(automatic),'automatic_gc_by_generation':{str(g):{'count':sum(p['gen']==g for p in automatic),'max_ms':round(max((p['ms'] for p in automatic if p['gen']==g),default=0),1)} for g in range(3)},'full_gc_ms':[round(v,1) for v in forced],'rss_before_full_gc_mib':round(rss_before,1),'retained_rss_mib':round(retained_rss,1),'peak_rss_mib':round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,1),'one_code_json_read_ms':round(read_ms,2),'wire_parity':True}))
+asyncio.run(main())

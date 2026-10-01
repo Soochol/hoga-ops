@@ -1,0 +1,239 @@
+{
+  "experiment": "Three sequential independent Python 3.14.7 processes per variant, actual LiveBuffer.publish, 319 codes x 360 OB entries. Baseline disables packing only. Identical thresholds, fixed input and retention. Explicit full GC is measured separately from automatic GC. No vendor connections, dotenv loading or disk capture.",
+  "limitations": [
+    "Packed variant has fewer automatic collections and no gen1 collection during construction; its automatic maximum does not establish gen1 or gen2 operating latency.",
+    "Only orderbook retention is replayed, not full API/TLS/flush/peak/delivery workload.",
+    "Full GC is explicitly invoked only in isolated benchmark processes.",
+    "Read cost includes get_series and json.dumps for one code with 360 retained snapshots."
+  ],
+  "runs": {
+    "baseline": [
+      {
+        "mode": "baseline",
+        "python": "3.14.7",
+        "entries": 114840,
+        "codes": 319,
+        "build_ms": 1906.0,
+        "automatic_gc_max_ms": 566.1,
+        "automatic_gc_total_ms": 744.3,
+        "automatic_gc_count": 52,
+        "automatic_gc_by_generation": {
+          "0": {
+            "count": 51,
+            "max_ms": 5.1
+          },
+          "1": {
+            "count": 1,
+            "max_ms": 566.1
+          },
+          "2": {
+            "count": 0,
+            "max_ms": 0
+          }
+        },
+        "full_gc_ms": [
+          585.9,
+          607.6,
+          607.8
+        ],
+        "rss_before_full_gc_mib": 620.4,
+        "retained_rss_mib": 620.4,
+        "peak_rss_mib": 618.6,
+        "one_code_json_read_ms": 2.38,
+        "wire_parity": true
+      },
+      {
+        "mode": "baseline",
+        "python": "3.14.7",
+        "entries": 114840,
+        "codes": 319,
+        "build_ms": 2344.4,
+        "automatic_gc_max_ms": 748.7,
+        "automatic_gc_total_ms": 961.9,
+        "automatic_gc_count": 52,
+        "automatic_gc_by_generation": {
+          "0": {
+            "count": 51,
+            "max_ms": 6.2
+          },
+          "1": {
+            "count": 1,
+            "max_ms": 748.7
+          },
+          "2": {
+            "count": 0,
+            "max_ms": 0
+          }
+        },
+        "full_gc_ms": [
+          707.1,
+          797.0,
+          737.2
+        ],
+        "rss_before_full_gc_mib": 620.2,
+        "retained_rss_mib": 620.2,
+        "peak_rss_mib": 617.2,
+        "one_code_json_read_ms": 2.53,
+        "wire_parity": true
+      },
+      {
+        "mode": "baseline",
+        "python": "3.14.7",
+        "entries": 114840,
+        "codes": 319,
+        "build_ms": 2097.4,
+        "automatic_gc_max_ms": 641.7,
+        "automatic_gc_total_ms": 836.2,
+        "automatic_gc_count": 52,
+        "automatic_gc_by_generation": {
+          "0": {
+            "count": 51,
+            "max_ms": 6.9
+          },
+          "1": {
+            "count": 1,
+            "max_ms": 641.7
+          },
+          "2": {
+            "count": 0,
+            "max_ms": 0
+          }
+        },
+        "full_gc_ms": [
+          700.0,
+          671.9,
+          613.6
+        ],
+        "rss_before_full_gc_mib": 620.1,
+        "retained_rss_mib": 620.2,
+        "peak_rss_mib": 618.2,
+        "one_code_json_read_ms": 2.95,
+        "wire_parity": true
+      }
+    ],
+    "packed": [
+      {
+        "mode": "packed",
+        "python": "3.14.7",
+        "entries": 114840,
+        "codes": 319,
+        "build_ms": 1427.8,
+        "automatic_gc_max_ms": 2.2,
+        "automatic_gc_total_ms": 46.8,
+        "automatic_gc_count": 25,
+        "automatic_gc_by_generation": {
+          "0": {
+            "count": 25,
+            "max_ms": 2.2
+          },
+          "1": {
+            "count": 0,
+            "max_ms": 0
+          },
+          "2": {
+            "count": 0,
+            "max_ms": 0
+          }
+        },
+        "full_gc_ms": [
+          89.1,
+          34.3,
+          14.6
+        ],
+        "rss_before_full_gc_mib": 239.3,
+        "retained_rss_mib": 239.3,
+        "peak_rss_mib": 241.0,
+        "one_code_json_read_ms": 3.36,
+        "wire_parity": true
+      },
+      {
+        "mode": "packed",
+        "python": "3.14.7",
+        "entries": 114840,
+        "codes": 319,
+        "build_ms": 1495.7,
+        "automatic_gc_max_ms": 2.1,
+        "automatic_gc_total_ms": 46.6,
+        "automatic_gc_count": 25,
+        "automatic_gc_by_generation": {
+          "0": {
+            "count": 25,
+            "max_ms": 2.1
+          },
+          "1": {
+            "count": 0,
+            "max_ms": 0
+          },
+          "2": {
+            "count": 0,
+            "max_ms": 0
+          }
+        },
+        "full_gc_ms": [
+          87.7,
+          35.3,
+          11.6
+        ],
+        "rss_before_full_gc_mib": 239.2,
+        "retained_rss_mib": 239.2,
+        "peak_rss_mib": 239.6,
+        "one_code_json_read_ms": 3.01,
+        "wire_parity": true
+      },
+      {
+        "mode": "packed",
+        "python": "3.14.7",
+        "entries": 114840,
+        "codes": 319,
+        "build_ms": 1598.4,
+        "automatic_gc_max_ms": 3.7,
+        "automatic_gc_total_ms": 53.8,
+        "automatic_gc_count": 25,
+        "automatic_gc_by_generation": {
+          "0": {
+            "count": 25,
+            "max_ms": 3.7
+          },
+          "1": {
+            "count": 0,
+            "max_ms": 0
+          },
+          "2": {
+            "count": 0,
+            "max_ms": 0
+          }
+        },
+        "full_gc_ms": [
+          80.1,
+          27.4,
+          9.6
+        ],
+        "rss_before_full_gc_mib": 239.1,
+        "retained_rss_mib": 239.1,
+        "peak_rss_mib": 239.3,
+        "one_code_json_read_ms": 3.09,
+        "wire_parity": true
+      }
+    ]
+  },
+  "medians": {
+    "baseline": {
+      "build_ms": 2097.4,
+      "automatic_gc_max_ms": 641.7,
+      "automatic_gc_total_ms": 836.2,
+      "rss_before_full_gc_mib": 620.2,
+      "retained_rss_mib": 620.2,
+      "one_code_json_read_ms": 2.53,
+      "first_full_gc_ms": 700.0
+    },
+    "packed": {
+      "build_ms": 1495.7,
+      "automatic_gc_max_ms": 2.2,
+      "automatic_gc_total_ms": 46.8,
+      "rss_before_full_gc_mib": 239.2,
+      "retained_rss_mib": 239.2,
+      "one_code_json_read_ms": 3.09,
+      "first_full_gc_ms": 87.7
+    }
+  }
+}
