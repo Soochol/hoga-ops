@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import { FACTORY_INDICATOR_SETTINGS } from '../state/indicatorSettingsV2';
@@ -95,6 +95,54 @@ function resetStore() {
   useDailyMaSeriesRegistry.setState({ byScope: new Map() });
   usePaneLegendRegistry.setState({ byScope: new Map() });
 }
+
+describe('PaneLegendOverlay — skip values outside the displayed legend', () => {
+  beforeEach(resetStore);
+  afterEach(() => { cleanup(); resetStore(); });
+
+  it('never reads or formats hidden pane values during repeated candle updates', () => {
+    const data = vi.fn(() => [{ time: 2, value: 777 }]);
+    const format = vi.fn(() => 'unused-777');
+    usePaneLegendRegistry.getState().register(null, 'fill-strength', [{
+      series: { data } as never, meta: { label: '매수', format },
+    }]);
+    const props = { chart: makeChart([200, 100, 100, 100, 100]), timeframe: '1m' as const,
+      paneToggles: { foreignNet: false, institutionNet: false, volumeEnabled: false, fillStrengthEnabled: true } as PaneToggles };
+    const view = render(<PaneLegendOverlay {...props} dataEpoch={0} />);
+    for (let i = 1; i <= 20; i++) view.rerender(<PaneLegendOverlay {...props} dataEpoch={i} />);
+    expect(screen.getByTestId('pane-legend-rows-fill-strength')).toHaveTextContent('체결강도');
+    expect(screen.queryByText('unused-777')).toBeNull();
+    expect(data).not.toHaveBeenCalled();
+    expect(format).not.toHaveBeenCalled();
+  });
+
+  it('resumes MA, pane and flag values when indicator legends are shown again', () => {
+    useLivePageStore.setState({ tradeVolumePocEnabled: true });
+    const maData = vi.fn(() => [{ time: 2, value: 123 }]);
+    useMaSeriesRegistry.getState().register(null, 'ma-1', { data: maData } as never);
+    const format = vi.fn(() => 'visible-volume');
+    registerLegend('volume', [{ label: '거래량', value: 987, format }]);
+    const provider = vi.fn<FlagLegendValueProvider>(() => [{ key: 'poc', value: 'visible-poc' }]);
+    registerFlagLegendValues(null, 'trade-volume-poc', 'main', provider);
+    try {
+      const props = { chart: makeChart([200, 100]), timeframe: '1m' as const,
+        paneToggles: { foreignNet: false, institutionNet: false, volumeEnabled: true } as PaneToggles };
+      const view = render(<PaneLegendOverlay {...props} indicatorLegendsVisible={false} />);
+      expect(maData).not.toHaveBeenCalled();
+      expect(format).not.toHaveBeenCalled();
+      expect(provider).not.toHaveBeenCalled();
+      view.rerender(<PaneLegendOverlay {...props} indicatorLegendsVisible />);
+      expect(maData).toHaveBeenCalled();
+      expect(screen.getByText('visible-volume')).toBeInTheDocument();
+      expect(screen.getByText('visible-poc')).toBeInTheDocument();
+      provider.mockClear();
+      view.rerender(<PaneLegendOverlay {...props} timeframe="D" indicatorLegendsVisible />);
+      expect(provider).not.toHaveBeenCalled();
+    } finally {
+      unregisterFlagLegendValues(null, 'trade-volume-poc', 'main', provider);
+    }
+  });
+});
 
 /**
  * **동기화로 그려진 크로스헤어를 레전드가 따라간다**(2026-08-21).

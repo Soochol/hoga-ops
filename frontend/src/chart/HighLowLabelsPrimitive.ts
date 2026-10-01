@@ -94,15 +94,16 @@ const extremeTimeFormat = new Intl.DateTimeFormat('ko-KR', {
 
 /** Only project visible bars plus their boundary neighbours. Half a bar slot
  * conservatively includes body, wick and partially clipped edge candles. */
-function visibleCandleRects(snap: HighLowLabelsSnapshot, ts: ITimeScaleApi<Time>, series: ISeriesApi<SeriesType>, range: { from: number; to: number }, width: number): AvoidRect[] {
+function visibleCandleRects(snap: HighLowLabelsSnapshot, ts: ITimeScaleApi<Time>, series: ISeriesApi<SeriesType>, range: { from: number; to: number }, width: number, projectTime: (candle: Candle) => number | null): AvoidRect[] {
   const first = Math.max(0, lowerBoundCandle(snap.candles, snap.axis.toReal(range.from * 1000)) - 1);
   const end = Math.min(snap.candles.length, lowerBoundCandle(snap.candles, snap.axis.toReal(range.to * 1000)) + 2);
   const half = Math.max(1, (ts.options?.().barSpacing ?? 6) / 2);
   const rects: AvoidRect[] = [];
   for (let i = first; i < end; i++) {
     const c = snap.candles[i];
-    if (!snap.axis.contains(c.ts_ms)) continue;
-    const x = ts.timeToCoordinate(snap.axis.toVirtual(c.ts_ms) / 1000 as Time);
+    const time = projectTime(c);
+    if (time === null) continue;
+    const x = ts.timeToCoordinate(time as Time);
     if (x === null || x + half < 0 || x - half > width) continue;
     const high = series.priceToCoordinate(c.high);
     const low = series.priceToCoordinate(c.low);
@@ -261,6 +262,21 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
   private readonly _source: HighLowLabelsPrimitive;
   private readonly readExtremes = createVisibleExtremesReader();
   private previous = new Map<ExtremeLabelPlace, { time: number; anchorX: number; label: ClearExtremeLabel }>();
+  private timeAxis: VirtualAxis | null = null;
+  private candleTimes = new WeakMap<Candle, number | null>();
+  private textByPlace = new Map<ExtremeLabelPlace, {
+    price: number; pct: number; time: number; axis: VirtualAxis;
+    full: string; short: string; detail: string;
+  }>();
+
+  private projectTime = (candle: Candle): number | null => {
+    const cached = this.candleTimes.get(candle);
+    if (cached !== undefined) return cached;
+    const axis = this.timeAxis!;
+    const value = axis.contains(candle.ts_ms) ? axis.toVirtual(candle.ts_ms) / 1000 : null;
+    this.candleTimes.set(candle, value);
+    return value;
+  };
 
   constructor(source: HighLowLabelsPrimitive) {
     this._source = source;
@@ -272,6 +288,11 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
     const series = this._source.seriesApi();
     const snap = this._source.snapshot();
     if (!chart || !series || snap === null) return;
+
+    if (this.timeAxis !== snap.axis) {
+      this.timeAxis = snap.axis;
+      this.candleTimes = new WeakMap();
+    }
 
     const ts = chart.timeScale();
     const visibleRange = readVisibleRange(ts);
@@ -290,7 +311,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
       const tokens = resolveTokensThemed(TOKEN_SPEC);
       let candleRects: AvoidRect[];
       try {
-        candleRects = visibleCandleRects(snap, ts, series, visibleRange, paneWidth);
+        candleRects = visibleCandleRects(snap, ts, series, visibleRange, paneWidth, this.projectTime);
       } catch {
         return; // disposed chart: no reliable geometry, so don't place a chip
       }
@@ -357,8 +378,19 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
 
         if (xc === null) continue;
 
-        const fullText = formatExtremeLabel(item.e.price, item.e.pct);
-        const shortText = formatKoreanInt(item.e.price);
+        let textInfo = this.textByPlace.get(item.place);
+        if (!textInfo || textInfo.price !== item.e.price || textInfo.pct !== item.e.pct
+          || textInfo.time !== item.e.virtualSec || textInfo.axis !== snap.axis) {
+          const full = formatExtremeLabel(item.e.price, item.e.pct);
+          textInfo = {
+            price: item.e.price, pct: item.e.pct, time: item.e.virtualSec, axis: snap.axis,
+            full, short: formatKoreanInt(item.e.price),
+            detail: `${item.place === 'above' ? '최고가' : '최저가'} ${full} · ${extremeTimeFormat.format(snap.axis.toReal(item.e.virtualSec * 1000))}`,
+          };
+          this.textByPlace.set(item.place, textInfo);
+        }
+        const fullText = textInfo.full;
+        const shortText = textInfo.short;
         const prev = this.previous.get(item.place);
         const label = chooseClearExtremeLabel({
           place: item.place, x: xc, y: yc, paneWidth, paneHeight,
@@ -369,7 +401,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
             ? { ...prev.label, x: prev.label.x + xc - prev.anchorX } : undefined,
         });
         const detail = {
-          text: `${item.place === 'above' ? '최고가' : '최저가'} ${fullText} · ${extremeTimeFormat.format(snap.axis.toReal(item.e.virtualSec * 1000))}`,
+          text: textInfo.detail,
           color: item.color,
         };
         if (label === null) {

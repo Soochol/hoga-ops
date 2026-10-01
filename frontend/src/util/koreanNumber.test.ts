@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { formatKoreanInt, formatKoreanK, formatKoreanWonEok } from './koreanNumber';
+import { formatKoreanInt, formatKoreanK, formatKoreanWonEok, formatKoreanNumber } from './koreanNumber';
 
 describe('formatKoreanInt', () => {
   it('rounds and thousands-separates with ko-KR', () => {
@@ -31,6 +31,7 @@ describe('formatKoreanWonEok', () => {
 
 it.each([0, -0, 0.49, -0.49, 0.5, -0.5, 1234.567, -1234.567, 999999999999, NaN, Infinity, -Infinity])(
   'preserves legacy rounding and locale output for %s', (value) => {
+    expect(formatKoreanNumber(value)).toBe(value.toLocaleString('ko-KR'));
     expect(formatKoreanInt(value)).toBe(Math.round(value).toLocaleString('ko-KR'));
     expect(formatKoreanK(value)).toBe(`${Math.round(value / 1000).toLocaleString('ko-KR')}K`);
   },
