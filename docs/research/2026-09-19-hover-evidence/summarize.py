@@ -4,6 +4,8 @@ import statistics
 import sys
 from pathlib import Path
 
+LONG_FRAME_MS = 25
+
 source = Path(sys.argv[1])
 data = json.loads(source.read_text())
 rows = []
@@ -19,7 +21,7 @@ for tf, scenario in dict.fromkeys((r['tf'], r['scenario']) for r in data['result
     for key in ['dataCalls', 'dataRows', 'dataMs', 'rectReads', 'LayoutCount', 'crosshairEvents', 'cursorUpdates']:
         row[key] = round(statistics.median(r[key] for r in runs), 2)
     row.update(frameP95Ms=round(frames[int(len(frames) * .95)], 2), frameMaxMs=round(max(frames), 2),
-               framesOver25Ms=sum(v > 25 for v in frames), frameSamples=len(frames),
+               framesOver25Ms=sum(v > LONG_FRAME_MS for v in frames), frameSamples=len(frames),
                longTasks=sum(len(r['longTasks']) for r in runs), tooltips=[r['tooltips'] for r in runs])
     if 'formatCalls' in runs[0]:
         for key in ['formatCalls', 'sidebarUpdates', 'investorRows', 'programRows']:
@@ -27,4 +29,5 @@ for tf, scenario in dict.fromkeys((r['tf'], r['scenario']) for r in data['result
         row['scrollWrites'] = [len(r['scrollWrites']) for r in runs]
         row['requests'] = [len(r['requests']) for r in runs]
     rows.append(row)
-print(json.dumps({'source': source.name, 'browser': data['browser'], 'cpuThrottle': data.get('cpuThrottle', 1), 'rows': rows}, indent=2))
+print(json.dumps({'source': source.name, 'browser': data['browser'],
+                  'cpuThrottle': data.get('cpuThrottle', 1), 'rows': rows}, indent=2))

@@ -8,6 +8,7 @@ export function applySecondDelta(previous: SecondAggregates | undefined, next: S
   const bars = replaceBuckets(previous.bars, next.bars, changed);
   const prices = replaceBuckets(previous.prices, next.prices, changed);
   sourceChanges.set(bars, { base: projections.get(previous.bars), times: [...changed] });
+  priceChanges.set(prices, { previous: new WeakRef(previous.prices), times: [...changed] });
   return { ...next, bars, prices };
 }
 
@@ -36,6 +37,14 @@ function selectPrices(source: SecondPrice[], fromMs: number | null, enabled: boo
 }
 const EMPTY_PRICES: SecondPrice[] = [];
 const sourceChanges = new WeakMap<SecondBar[], { base: Map<string, SecondBar[]> | undefined; times: number[] }>();
+const priceChanges = new WeakMap<SecondPrice[], { previous: WeakRef<SecondPrice[]>; times: number[] }>();
+
+/** Weak lineage allows window-owned indexes to apply a delta without retaining
+ * a chain of previous day-sized source arrays. Reset/filtered sources rebuild.
+ */
+export function secondPriceChanges(prices: readonly SecondPrice[]) {
+  return priceChanges.get(prices as SecondPrice[]);
+}
 
 function lowerBound(bars: readonly { t_ms: number }[], time: number): number {
   let lo = 0, hi = bars.length;

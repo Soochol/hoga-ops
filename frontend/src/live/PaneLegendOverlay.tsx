@@ -1,3 +1,4 @@
+import { drawnCandleIndex, EMPTY_DRAWN_CANDLE_INDEX } from '../chart/drawnCandleIndex';
 import { useServiceStatusPanel } from '../serviceStatus/controls';
 // Pane Legend — a TradingView-style legend pinned to each chart pane's
 // top-left: indicator label + color swatch + the value under the cursor
@@ -922,21 +923,13 @@ function PaneLegendOverlay({
   // (`prefsForScope` 의 WeakMap 캐시) 렌더마다 새로 구독되지도 않는다.
   void useScopedChartPrefs();
 
-  // OHLC 레전드용 인덱싱 — 그려진(보이는) 봉 배열 + 가상초→index 맵(CandleTooltip 선례).
-  // candles/axis 는 캔들 경로/segments 참조라 SSE 틱엔 재계산 안 됨. 팬/줌(axis 리베이스)·
-  // 캔들 갱신 때만 새로.
-  const drawnCandles = useMemo(
-    () => (candles && axis ? candles.filter((c) => axis.contains(c.ts_ms)) : []),
+  // Share the time grid with the tooltip; OHLC updates keep both maps stable.
+  const { drawn: drawnCandles, vsecToIndex } = useMemo(
+    () => candles && axis ? drawnCandleIndex(candles, axis) : EMPTY_DRAWN_CANDLE_INDEX,
     [candles, axis],
   );
-  // 동기화 판정은 `CursorSyncCrosshair` 와 **같은 훅**을 쓴다 — 각자 하면 게이트가
-  // 갈려 "선은 여기 있는데 숫자는 다른 봉" 이 된다.
+  // Same resolution as CursorSyncCrosshair, so the cursor and OHLC use one candle.
   const syncResolution = useCursorSyncResolution({ candles: drawnCandles, timeframe, code });
-  const vsecToIndex = useMemo(() => {
-    const m = new Map<number, number>();
-    if (axis) drawnCandles.forEach((c, i) => m.set(axis.toVirtual(c.ts_ms) / 1000, i));
-    return m;
-  }, [drawnCandles, axis]);
 
   // Crosshair → values; ResizeObserver + range change → pane geometry. All
   // coalesced through one rAF tick (DrawingOverlay's redraw-loop pattern).

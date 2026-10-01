@@ -1,3 +1,4 @@
+import { drawnCandleIndex, EMPTY_DRAWN_CANDLE_INDEX } from '../chart/drawnCandleIndex';
 import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { useCursorSyncResolution } from './useCursorSyncResolution';
 import { isSyncConsumerTimeframe } from '../chart/cursorSync';
@@ -119,16 +120,10 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   //  - vsecToIndex: 가상시각(초)→index. 핸들러가 param.time(=projectCandle 의 candle.time,
   //    axis.toVirtual(ts_ms)/1000, 반올림 X)을 봉으로 변환할 때.
   //  - tsMsToIndex: ts_ms→index. 렌더가 저장된 hover.tsMs 를 현재 봉으로 변환(리베이스 안전).
-  const { drawn, vsecToIndex, tsMsToIndex } = useMemo(() => {
-    const drawnArr = bundle.candles.filter((c) => axis.contains(c.ts_ms));
-    const vmap = new Map<number, number>();
-    const tmap = new Map<number, number>();
-    drawnArr.forEach((c, i) => {
-      vmap.set(axis.toVirtual(c.ts_ms) / 1000, i);
-      tmap.set(c.ts_ms, i);
-    });
-    return { drawn: drawnArr, vsecToIndex: vmap, tsMsToIndex: tmap };
-  }, [bundle.candles, axis]);
+  const { drawn, vsecToIndex, tsMsToIndex } = useMemo(
+    () => enabled ? drawnCandleIndex(bundle.candles, axis) : EMPTY_DRAWN_CANDLE_INDEX,
+    [bundle.candles, axis, enabled],
+  );
 
   // 호버 봉의 quote_ratio 점을 **이진 탐색 한 번**으로 찾는다.
   //

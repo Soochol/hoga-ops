@@ -9,38 +9,15 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from hoga.api.models import SecondAggregatesResponse, SecondBarModel, SecondPriceModel, SecondTradeDatesResponse
+from hoga.api.models import SecondAggregatesResponse, SecondTradeDatesResponse
 from hoga.api.params import CODE_PATTERN
 from hoga.util.timeenc import KST
 
-from .second_trade_agg import SecondTradeBar, aggregate_bars
+from .second_trade_agg import SecondTradeBar
 from .second_trade_delta import SecondResponseRevisions
 from .second_trade_history import historical_second_rows
+from .second_trade_projection import _project_response
 from .second_trade_store import second_trade_store
-
-
-def _project_response(
-    merged: dict, scope: tuple, source: str | None, storage_error: str | None,
-) -> SecondAggregatesResponse:
-    code, venue, date, seconds, start, end, include_prices, regular_session_only, day_start = scope
-    selected = merged
-    if regular_session_only:
-        # Storage resolution is one second. Keep the closing execution bucket.
-        selected = {t: row for t, row in selected.items()
-                  if day_start + 9 * 3_600_000 <= t <= day_start + (15 * 60 + 30) * 60_000}
-    rows = sorted((row for t, row in selected.items() if start <= t < end), key=lambda r: r["t_ms"])
-    bars = aggregate_bars(rows, seconds * 1000)
-    result = SecondAggregatesResponse(
-        code=code, venue=venue, date=date, seconds=seconds,
-        status="observed" if rows else "unavailable",
-        coverage="unverified", storage_error=storage_error, source=source,
-        first_observed_ms=min(row["first"][0] for row in selected.values()) if selected else None,
-        last_observed_ms=max(row["last"][0] for row in selected.values()) if selected else None,
-        bars=[SecondBarModel(**{k: row[k] for k in SecondBarModel.model_fields}) for row in bars],
-        prices=[SecondPriceModel(t_ms=row["t_ms"], price=p, side=side, qty=qty, count=count)
-                for row in rows for p, side, qty, count in row["prices"]] if include_prices else [],
-    )
-    return result
 
 
 def build_router(*, data_dir: Path) -> APIRouter:
@@ -123,9 +100,9 @@ def build_router(*, data_dir: Path) -> APIRouter:
                 merged = {row["t_ms"]: row for row in history}
                 source = "hogaplay"
         scope = (code, venue, date, seconds, start, end, include_prices, regular_session_only, day_start)
-        result = await asyncio.to_thread(_project_response, merged, scope, source, store.storage_error)
-        if not incremental:
-            return result
-        return await asyncio.to_thread(revisions.project, scope, result, since_revision)
+        if incremental:
+            return await asyncio.to_thread(revisions.project_rows, scope, merged, source,
+                                           store.storage_error, since_revision)
+        return await asyncio.to_thread(_project_response, merged, scope, source, store.storage_error)
 
     return router

@@ -751,7 +751,8 @@ export function useViewportBackfill({
     let newEarliest: number | null = null;
     for (const c of bundle.candles) {
       if (!axis.contains(c.ts_ms)) continue;
-      if (newEarliest === null || c.ts_ms < newEarliest) newEarliest = c.ts_ms;
+      newEarliest = c.ts_ms;
+      break; // Candles are ordered; later rows cannot change the earliest point.
     }
     const prevEarliest = prevEarliestTsMsRef.current;
     prevEarliestTsMsRef.current = newEarliest;
