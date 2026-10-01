@@ -29,7 +29,8 @@ describe('incremental MA projection',()=>{
   expect(classifyAndProject).toHaveBeenCalledTimes(candles.length);
   classifyAndProject.mockClear();
   const next=project([...candles.slice(0,-1),{...candles.at(-1)!,close:99}],measured,configs);
-  expect(classifyAndProject).toHaveBeenCalledTimes(1);
+  // Price corrections keep the timestamp grid, shared with cursor lookup.
+  expect(classifyAndProject).not.toHaveBeenCalled();
   expect(next.get('1')![10]).toBe(first.get('1')![10]);
   expect(next.get('1')).toEqual(expected([...candles.slice(0,-1),{...candles.at(-1)!,close:99}],'close',5));
   const remapped=createVirtualAxis([{date:'20260601',sessionOpenMs:OPEN,sessionCloseMs:OPEN+390*60000}],OPEN+10000);

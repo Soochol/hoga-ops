@@ -1,0 +1,22 @@
+{
+  "testedCodeCommit": "278d97c89ed2ed7b0d6bc06cfa4c74fb4181cdc6",
+  "baseCommit": "7677dcb9d54ecdf8302eab18dad3c80135e039d3",
+  "typecheck": "passed",
+  "vitest": {
+    "files": 600,
+    "tests": 7698,
+    "result": "passed"
+  },
+  "build": "passed",
+  "playwright": {
+    "tests": 148,
+    "result": "passed",
+    "minutes": 4.1
+  },
+  "frontendFileSha256": {
+    "frontend/src/chart/drawnCandleIndex.test.ts": "5c4e4af2a23eb959d351397bf456ac65dbc4bedc0cf2456942aff4074746ee34",
+    "frontend/src/chart/drawnCandleIndex.ts": "67d4466a03a189ffa0a24e312bac02a49563484c00dcbdd233335c49a46e5deb",
+    "frontend/src/chart/projectors/maProjection.test.ts": "c793030fcc68bfbe499c148819ff007f8598c4be042fb71a3181ffde8b1e1ee2",
+    "frontend/src/chart/projectors/maProjection.ts": "ab7f39da6f651c4a02408d2745026618fdb5ce9a281851c33a3f8045ab4eccc4"
+  }
+}

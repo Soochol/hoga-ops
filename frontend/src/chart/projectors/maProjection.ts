@@ -5,6 +5,7 @@ import type { LivePastDailyCandle } from '../../api/livePastDailyCandles';
 import { selectSource, type MASource } from './movingAverage';
 import { computeDailyMaByDate } from './dailyMovingAverage';
 import { candlePosition } from '../candlePosition';
+import { drawnCandleIndex } from '../drawnCandleIndex';
 
 export type MaData = (LineData<Time> | WhitespaceData<Time>)[];
 type Config = { id: string; enabled: boolean; period: number; source: MASource };
@@ -43,7 +44,6 @@ function geometry(withDates: boolean) {
 
 /** 원본 SMA와 같은 덧셈/뺄셈 순서를 유지하도록 각 prefix의 이동합을 보존한다. */
 export function createMovingAverageProjection() {
-  const prepare = geometry(false);
   type Entry = { axis: VirtualAxis; period: number; source: MASource; candles: readonly Candle[]; values: number[]; sums: number[]; data: MaData };
   const entries = new Map<string, Entry>();
   return (candles: readonly Candle[], axis: VirtualAxis, configs: readonly Config[]): Map<string, MaData> => {
@@ -52,15 +52,15 @@ export function createMovingAverageProjection() {
     for (const id of entries.keys()) if (!ids.has(id)) entries.delete(id);
     const out = new Map<string, MaData>();
     if (enabled.length === 0) return out;
-    const projected = prepare(candles, axis);
+    const projected = drawnCandleIndex(candles, axis);
     for (const cfg of enabled) {
       const previous = entries.get(cfg.id);
       const reusable = previous?.axis === axis && previous.period === cfg.period && previous.source === cfg.source;
       let start = 0;
       if (reusable) {
-        while (start < previous.candles.length && start < projected.candles.length
-          && previous.candles[start] === projected.candles[start]) start += 1;
-        if (start === previous.candles.length && start === projected.candles.length) {
+        while (start < previous.candles.length && start < projected.drawn.length
+          && previous.candles[start] === projected.drawn[start]) start += 1;
+        if (start === previous.candles.length && start === projected.drawn.length) {
           out.set(cfg.id, previous.data);
           continue;
         }
@@ -69,18 +69,18 @@ export function createMovingAverageProjection() {
       const sums = reusable ? previous.sums : [];
       const data: MaData = reusable ? previous.data.slice(0, start) : [];
       let sum = start > 0 ? sums[start - 1] : 0;
-      for (let i = start; i < projected.candles.length; i += 1) {
-        const value = selectSource(projected.candles[i], cfg.source);
+      for (let i = start; i < projected.drawn.length; i += 1) {
+        const value = selectSource(projected.drawn[i], cfg.source);
         values[i] = value;
         sum += value;
         if (cfg.period > 0 && i >= cfg.period) sum -= values[i - cfg.period];
         sums[i] = sum;
         const sma = cfg.period <= 0 || i < cfg.period - 1 ? null : cfg.period === 1 ? value : sum / cfg.period;
-        const time = projected.positions[i].time;
+        const time = projected.virtualSeconds[i] as Time;
         data.push(sma === null ? { time } : { time, value: sma });
       }
-      values.length = sums.length = projected.candles.length;
-      entries.set(cfg.id, { axis, period: cfg.period, source: cfg.source, candles: projected.candles, values, sums, data });
+      values.length = sums.length = projected.drawn.length;
+      entries.set(cfg.id, { axis, period: cfg.period, source: cfg.source, candles: projected.drawn, values, sums, data });
       out.set(cfg.id, data);
     }
     return out;
