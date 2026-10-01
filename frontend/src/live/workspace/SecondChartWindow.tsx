@@ -24,6 +24,7 @@ import { useThemeChangeRerender } from '../../state/themePrefs';
 import { currentThemeKey } from '../../util/tokens';
 import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
+import { captureSecondViewport, restoreSecondViewport, type SecondChartViewport } from './secondChartViewport';
 
 const kstTime = (value: number) => new Date(value * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false });
 const isoDate = (date: string) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
@@ -72,7 +73,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const seriesRef = useRef<{ candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'>; ma: ISeriesApi<'Line'> } | null>(null);
   const initial = useRef(true);
   const userGesture = useRef(false);
-  const previousFirst = useRef<number | null>(null);
+  const previousBars = useRef(bars);
+  const pendingViewport = useRef<SecondChartViewport | null>(null);
   const previousSession = useRef(regularSessionOnly);
   const setTimeframe = useWorkspaceStore(s => s.setChartTimeframe);
 
@@ -127,7 +129,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     chartRef.current = chart;
     seriesRef.current = { candles, ma, volume };
     initial.current = true;
-    previousFirst.current = null;
+    previousBars.current = [];
+    pendingViewport.current = null;
     return () => {
       alive = false;
       resize.disconnect();
@@ -143,17 +146,22 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
-    // A session query first resolves today's empty page before walking older dates.
-    // Preserve the existing axis/range until there are time points to restore onto.
+    const scale = chartRef.current?.timeScale();
+    const sessionChanged = previousSession.current !== regularSessionOnly;
+    const prefixChanged = bars.length > 0 && previousBars.current.length > 0 && bars[0].t_ms !== previousBars.current[0].t_ms;
+    // Capture before an empty query page can erase the visible range. Preserve
+    // candle spacing rather than fitting fewer filtered bars into the same time span.
+    if ((sessionChanged || (!initial.current && prefixChanged)) && !pendingViewport.current && scale) {
+      pendingViewport.current = captureSecondViewport(previousBars.current, scale.getVisibleLogicalRange(), scale.options().barSpacing);
+    }
+    previousSession.current = regularSessionOnly;
     if (!bars.length) {
+      if (pendingViewport.current && (query.isPending || query.catalogPending || query.hasNextPage)) return;
       series.candles.setData([]);
       series.volume.setData([]);
       series.ma.setData([]);
       return;
     }
-    const priorRange = previousFirst.current !== null && (bars[0]?.t_ms !== previousFirst.current || previousSession.current !== regularSessionOnly)
-      ? chartRef.current?.timeScale().getVisibleRange() : null;
-    const oldAxis = axisRef.current;
     axisRef.current = axis;
     const projectedTime = (ms: number) => time(axis.toVirtual(ms));
     series.candles.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
@@ -161,23 +169,18 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     series.volume.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), value: bar.volume,
       color: bar.close >= bar.open ? upColor : downColor })));
     series.ma.setData(movingAverageSeconds(bars, 20).map(point => ({ ...point, time: projectedTime(Number(point.time) * 1000) })));
-    if (priorRange && !initial.current) {
-      const from = oldAxis.toReal(Number(priorRange.from) * 1000);
-      const to = oldAxis.toReal(Number(priorRange.to) * 1000);
-      const first = bars[0].t_ms, last = bars[bars.length - 1].t_ms;
-      if (from >= last || to <= first) {
-        chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - SECOND_INITIAL_BARS), to: bars.length - 1 });
-      } else {
-        chartRef.current?.timeScale().setVisibleRange({ from: projectedTime(Math.max(first, from)), to: projectedTime(Math.min(last, to)) });
-      }
+    if (pendingViewport.current && scale) {
+      scale.setVisibleLogicalRange(restoreSecondViewport(bars, pendingViewport.current));
+      scale.applyOptions({ barSpacing: pendingViewport.current.barSpacing });
+      pendingViewport.current = null;
+      initial.current = false;
     }
-    previousFirst.current = bars[0]?.t_ms ?? null;
-    previousSession.current = regularSessionOnly;
+    previousBars.current = bars;
     if (initial.current && bars.length) {
       chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - SECOND_INITIAL_BARS), to: bars.length - 1 });
       if (bars.length >= SECOND_INITIAL_BARS || (!query.hasNextPage && !query.catalogPending)) initial.current = false;
     }
-  }, [bars, axis, query.hasNextPage, query.catalogPending, regularSessionOnly]);
+  }, [bars, axis, query.hasNextPage, query.catalogPending, query.isPending, regularSessionOnly]);
 
   useEffect(() => {
     if (bars.length < SECOND_INITIAL_BARS && hasNextPage && !isFetchingNextPage) void fetchNextPage();
