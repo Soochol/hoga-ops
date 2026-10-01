@@ -1,0 +1,78 @@
+2026-10-01 12:00:56,265 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=6213.6 collected=868426 uncollectable=0 threshold_ms=250
+2026-10-01 12:00:56,270 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=4980 threshold_ms=250 stack=weakref.py:105:remove <- second_trade_agg.py:60:record <- second_trade_store.py:157:flush <- stream.py:357:flush_once <- stream.py:461:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 12:00:56,275 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=5888.6 interval_ms=500 threshold_ms=250
+2026-10-01 12:02:04,196 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=313 threshold_ms=250 stack=second_trade_store.py:38:trade_date <- second_trade_store.py:154:flush <- stream.py:357:flush_once <- stream.py:461:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main <- spawn.py:122:spawn_main
+2026-10-01 12:02:04,330 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=418.2 interval_ms=500 threshold_ms=250
+2026-10-01 12:09:16,268 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=6240.2 collected=1005438 uncollectable=0 threshold_ms=250
+2026-10-01 12:09:16,279 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=4993 threshold_ms=250 stack=weakref.py:105:remove <- second_trade_store.py:38:trade_date <- second_trade_store.py:154:flush <- stream.py:357:flush_once <- stream.py:461:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 12:09:16,293 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=6017.4 interval_ms=500 threshold_ms=250
+2026-10-01 12:14:51,686 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=258 threshold_ms=250 stack=permessage_deflate.py:187:encode <- frames.py:297:serialize <- framing.py:146:write <- protocol.py:1158:write_frame_sync <- protocol.py:1183:write_frame <- protocol.py:630:send <- websockets_impl.py:317:asgi_send <- _exception_handler.py:39:sender <- websockets.py:86:send <- websockets.py:176:send_json <- ws.py:101:sender <- runners.py:127:run
+2026-10-01 12:19:48,000 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=7649.4 collected=1264870 uncollectable=0 threshold_ms=250
+2026-10-01 12:19:48,001 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=5839 threshold_ms=250 stack=weakref.py:105:remove <- locks.py:191:set <- delivery.py:35:put_nowait <- buffer.py:225:publish <- stream.py:277:on_tick <- kiwoom_session.py:540:on_tick <- kiwoom_ws_client.py:596:_dispatch <- kiwoom_ws_client.py:345:_recv_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started
+2026-10-01 12:19:48,010 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=7376.4 interval_ms=500 threshold_ms=250
+2026-10-01 12:26:15,789 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=283 threshold_ms=250 stack=permessage_deflate.py:187:encode <- frames.py:297:serialize <- framing.py:146:write <- protocol.py:1158:write_frame_sync <- protocol.py:1183:write_frame <- protocol.py:630:send <- websockets_impl.py:317:asgi_send <- _exception_handler.py:39:sender <- websockets.py:86:send <- websockets.py:176:send_json <- ws.py:101:sender <- runners.py:127:run
+2026-10-01 12:26:40,324 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=296.1 collected=36597 uncollectable=0 threshold_ms=250
+2026-10-01 12:26:40,339 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=353 threshold_ms=250 stack=gc_probe.py:94:__call__ <- second_trade_agg.py:59:record <- second_trade_store.py:157:flush <- stream.py:365:flush_once <- stream.py:469:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 12:26:40,342 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=275.2 interval_ms=500 threshold_ms=250
+2026-10-01 12:27:19,679 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=529.7 collected=79372 uncollectable=0 threshold_ms=250
+2026-10-01 12:27:19,680 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=564 threshold_ms=250 stack=gc_probe.py:94:__call__ <- kiwoom_frames.py:224:_parse_orderbook <- kiwoom_frames.py:150:parse_real_row <- kiwoom_frames.py:206:parse_real_message <- kiwoom_ws_client.py:737:_dispatch_real <- kiwoom_ws_client.py:468:_consume_frames <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap
+2026-10-01 12:27:19,685 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=271.7 interval_ms=500 threshold_ms=250
+2026-10-01 12:28:11,897 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=805.0 collected=124208 uncollectable=0 threshold_ms=250
+2026-10-01 12:28:11,897 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=810 threshold_ms=250 stack=runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main <- spawn.py:122:spawn_main <- <string>:1:<module>
+2026-10-01 12:28:11,898 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=512.2 interval_ms=500 threshold_ms=250
+2026-10-01 12:30:11,909 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=1898.0 collected=238974 uncollectable=0 threshold_ms=250
+2026-10-01 12:30:11,924 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=1917 threshold_ms=250 stack=gc_probe.py:94:__call__ <- second_trade_agg.py:60:record <- second_trade_store.py:157:flush <- stream.py:365:flush_once <- stream.py:469:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 12:30:11,950 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=1862.2 interval_ms=500 threshold_ms=250
+2026-10-01 12:34:13,605 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=3563.5 collected=502081 uncollectable=0 threshold_ms=250
+2026-10-01 12:34:13,614 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=3634 threshold_ms=250 stack=gc_probe.py:94:__call__ <- second_trade_store.py:38:trade_date <- second_trade_store.py:154:flush <- stream.py:365:flush_once <- stream.py:469:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 12:34:13,618 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=3197.3 interval_ms=500 threshold_ms=250
+2026-10-01 12:34:13,724 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=4191292
+2026-10-01 12:34:13,725 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2656852
+2026-10-01 12:34:13,725 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=1699448
+2026-10-01 12:41:35,510 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=5459.6 collected=905240 uncollectable=0 threshold_ms=250
+2026-10-01 12:41:35,512 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=5399 threshold_ms=250 stack=weakref.py:105:remove <- kiwoom_frames.py:224:_parse_orderbook <- kiwoom_frames.py:150:parse_real_row <- kiwoom_frames.py:206:parse_real_message <- kiwoom_ws_client.py:737:_dispatch_real <- kiwoom_ws_client.py:468:_consume_frames <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap
+2026-10-01 12:41:35,521 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=5304.8 interval_ms=500 threshold_ms=250
+2026-10-01 12:41:35,624 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=1752488
+2026-10-01 12:41:35,624 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=3 depth=64 bytes=1431308
+2026-10-01 12:41:35,654 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=4005636
+2026-10-01 12:41:35,662 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2447444
+2026-10-01 12:50:26,391 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=6338.5 collected=1107156 uncollectable=0 threshold_ms=250
+2026-10-01 12:50:26,393 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=6415 threshold_ms=250 stack=gc_probe.py:94:__call__ <- second_trade_store.py:38:trade_date <- second_trade_store.py:154:flush <- stream.py:365:flush_once <- stream.py:469:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 12:50:26,403 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=6127.5 interval_ms=500 threshold_ms=250
+2026-10-01 12:50:26,529 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=4379888
+2026-10-01 12:50:26,536 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=2393768
+2026-10-01 12:50:26,583 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=3 depth=64 bytes=1174800
+2026-10-01 12:50:26,609 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2833716
+2026-10-01 12:59:50,500 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=4035532
+2026-10-01 12:59:50,936 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2400212
+2026-10-01 12:59:52,997 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=1794680
+2026-10-01 12:59:54,948 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=3577708
+2026-10-01 12:59:56,007 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2193836
+2026-10-01 12:59:57,707 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=3 depth=64 bytes=1165280
+2026-10-01 12:59:59,196 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=2116980
+2026-10-01 13:00:00,249 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=3537104
+2026-10-01 13:00:02,313 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=3276456
+2026-10-01 13:00:04,547 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=3 depth=64 bytes=1311332
+2026-10-01 13:00:07,039 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=2896576
+2026-10-01 13:00:07,146 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=3711412
+2026-10-01 13:00:17,135 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=2393680
+2026-10-01 13:00:17,161 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2970632
+2026-10-01 13:00:18,320 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=4293892
+2026-10-01 13:01:37,611 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=7569.8 collected=1343003 uncollectable=0 threshold_ms=250
+2026-10-01 13:01:37,626 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=5931 threshold_ms=250 stack=weakref.py:105:remove <- second_trade_agg.py:59:record <- second_trade_store.py:157:flush <- stream.py:365:flush_once <- stream.py:469:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 13:01:37,630 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=7257.2 interval_ms=500 threshold_ms=250
+2026-10-01 13:01:37,706 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=4157180
+2026-10-01 13:01:37,794 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=2086952
+2026-10-01 13:01:37,827 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=3 depth=64 bytes=1290444
+2026-10-01 13:01:37,863 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2620944
+2026-10-01 13:02:29,331 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=379 threshold_ms=250 stack=permessage_deflate.py:187:encode <- frames.py:297:serialize <- framing.py:146:write <- protocol.py:1158:write_frame_sync <- protocol.py:1183:write_frame <- protocol.py:630:send <- websockets_impl.py:317:asgi_send <- _exception_handler.py:39:sender <- websockets.py:86:send <- websockets.py:176:send_json <- ws.py:101:sender <- runners.py:127:run
+2026-10-01 13:02:39,857 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=352 threshold_ms=250 stack=ssl.py:868:read <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main <- spawn.py:122:spawn_main <- <string>:1:<module>
+2026-10-01 13:02:50,234 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=308 threshold_ms=250 stack=permessage_deflate.py:187:encode <- frames.py:297:serialize <- framing.py:146:write <- protocol.py:1158:write_frame_sync <- protocol.py:1183:write_frame <- protocol.py:630:send <- websockets_impl.py:317:asgi_send <- _exception_handler.py:39:sender <- websockets.py:86:send <- websockets.py:176:send_json <- ws.py:101:sender <- runners.py:127:run
+2026-10-01 13:03:51,723 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=280 threshold_ms=250 stack=ssl.py:868:read <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main <- spawn.py:122:spawn_main <- <string>:1:<module>
+2026-10-01 13:08:24,522 WARNING hoga.api.loop_lag hoga_perf loop_stall stale_ms=4533 threshold_ms=250 stack=weakref.py:105:remove <- second_trade_agg.py:60:record <- second_trade_store.py:157:flush <- stream.py:365:flush_once <- stream.py:469:run_flush_loop <- runners.py:127:run <- runners.py:204:run <- server.py:75:run <- _subprocess.py:80:subprocess_started <- process.py:108:run <- process.py:320:_bootstrap <- spawn.py:135:_main
+2026-10-01 13:08:25,624 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=5579.4 collected=860404 uncollectable=0 threshold_ms=250
+2026-10-01 13:08:25,633 WARNING hoga.api.loop_lag hoga_perf loop_lag lag_ms=5448.0 interval_ms=500 threshold_ms=250
+2026-10-01 13:08:25,771 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=2 depth=64 bytes=1885868
+2026-10-01 13:08:25,774 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=1 depth=64 bytes=2760964
+2026-10-01 13:08:25,776 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=3 depth=64 bytes=1468400
+2026-10-01 13:08:25,777 WARNING hoga.live.kiwoom_ws_client live.kiwoom.data_backlog account=0 depth=64 bytes=4163108
