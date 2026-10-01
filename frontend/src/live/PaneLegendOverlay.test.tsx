@@ -168,6 +168,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
   /** 항등 축 — 가상초 = ms/1000. */
   const axis = {
     contains: () => true,
+    classifyAndProject: (ms: number) => ({ contained: true, virtual: ms }),
     toVirtual: (ms: number) => ms,
   } as never;
 
@@ -299,6 +300,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어의 값 행 연동', ()
   /** 항등 축 — 가상초 = ms/1000. */
   const axis = {
     contains: () => true,
+    classifyAndProject: (ms: number) => ({ contained: true, virtual: ms }),
     toVirtual: (ms: number) => ms,
   } as never;
 

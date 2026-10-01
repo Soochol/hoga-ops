@@ -53,13 +53,28 @@ export function buildTradeVolumePocSegments(
 ): TradeVolumePocSegment[] {
   if (pocs.length === 0 || candles.length === 0) return [];
   const byDate = new Map(segments.map((s) => [s.date, s]));
+  const sorted = candles.every((c, i) => i === 0 || candles[i - 1].ts_ms <= c.ts_ms);
+  const bound = (ms: number, inclusive: boolean) => {
+    let lo = 0;
+    let hi = candles.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (candles[mid].ts_ms < ms || (inclusive && candles[mid].ts_ms === ms)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
   const lastCandle = candles[candles.length - 1];
   const out: TradeVolumePocSegment[] = [];
   for (const poc of pocs) {
     const segment = byDate.get(poc.date);
     if (!segment) continue;
     const rawEndMs = poc.date === todayKst ? lastCandle.ts_ms : segment.session_close_ms;
-    const segmentCandles = candles.filter(
+    // Only endpoints are used; avoid scanning/allocating all history for every
+    // daily POC. Retain the old ordering semantics for defensive unsorted input.
+    const first = sorted ? bound(segment.session_open_ms, false) : 0;
+    const end = sorted ? bound(Math.min(segment.session_close_ms, rawEndMs), true) : 0;
+    const segmentCandles = sorted ? candles.slice(first, end) : candles.filter(
       (candle) =>
         candle.ts_ms >= segment.session_open_ms
         && candle.ts_ms <= segment.session_close_ms

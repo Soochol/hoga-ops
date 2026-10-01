@@ -137,12 +137,22 @@ export function unixMsToKSTHhmm(ms: number): number {
  * cursor so spot-data queries (/api/orderbook) pass the API
  * contract's `unix_ms_to_hhmmssms(date, t)` precheck.
  */
+let lastKstDay: number | undefined;
+let lastKstDate = '';
 export function unixMsToKSTDate(ms: number): string {
+  const shifted = Math.trunc(ms + 9 * 60 * 60 * 1000);
+  const day = Math.floor(shifted / 86_400_000);
+  // A one-entry cache covers sorted minute streams without retaining an
+  // unbounded calendar. Keep Date's TimeClip semantics for invalid/fractional
+  // timestamps as well as KST midnight, leap days and year transitions.
+  if (day === lastKstDay && Math.abs(shifted) <= 8.64e15) return lastKstDate;
   const d = new Date(ms + 9 * 60 * 60 * 1000); // shift to KST
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(d.getUTCDate()).padStart(2, '0');
-  return `${yyyy}${mm}${dd}`;
+  const value = `${yyyy}${mm}${dd}`;
+  if (Number.isFinite(d.getTime())) { lastKstDay = day; lastKstDate = value; }
+  return value;
 }
 
 /** Format milliseconds as M:SS or H:MM:SS. */

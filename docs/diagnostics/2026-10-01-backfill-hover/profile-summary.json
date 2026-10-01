@@ -1,0 +1,346 @@
+{
+  "sources": [
+    [
+      "",
+      3305.6650000000145
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      341.277
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.production.min.js",
+      62.19999999999998
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/TradeVolumePocOverlay.tsx",
+      33.677
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/util/virtualAxis.ts",
+      25.191999999999997
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/chart/projectors/maProjection.ts",
+      18.851
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/node_modules/@tanstack/query-core/build/modern/utils.js",
+      18.500999999999998
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/chart/seriesDataDiff.ts",
+      12.831000000000001
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/PaneLegendOverlay.tsx",
+      11.623
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/util/time.ts",
+      11.552999999999999
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/api/livePastCandles.ts",
+      8.443999999999999
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/util/sessionTime.ts",
+      7.441000000000001
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/liveDateTime.ts",
+      7.406
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/util/kstHorzScaleBehavior.ts",
+      7.303000000000001
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/indicators/MovingAverageOverlay.tsx",
+      6.337999999999999
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/chart/drawing/chartCoordinates.ts",
+      5.784
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/tradeVolumePoc.ts",
+      5.274000000000001
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/node_modules/react/cjs/react-jsx-runtime.production.min.js",
+      4.324
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/chart/projectors/volume.ts",
+      4.323
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/useLiveBundle.ts",
+      4.282
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/node_modules/use-sync-external-store/cjs/use-sync-external-store-shim/with-selector.production.js",
+      4.252
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/LiveChartRoot.tsx",
+      4.221
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/live/visibleExtremes.ts",
+      4.221
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/chart/projectors/candle.ts",
+      4.215
+    ],
+    [
+      "../../../home/dev/code/hoga-ops/frontend/src/chart/drawnCandleIndex.ts",
+      4.209
+    ]
+  ],
+  "functions": [
+    {
+      "name": "(idle)",
+      "file": "",
+      "line": 0,
+      "ms": 2691.2670000000157
+    },
+    {
+      "name": "(program)",
+      "file": "",
+      "line": 0,
+      "ms": 522.550999999999
+    },
+    {
+      "name": "(garbage collector)",
+      "file": "",
+      "line": 0,
+      "ms": 62.32599999999999
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 36.038
+    },
+    {
+      "name": "sg",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 34.251
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 15.120000000000003
+    },
+    {
+      "name": "Line",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 12.658000000000001
+    },
+    {
+      "name": "Line",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 11.609
+    },
+    {
+      "name": "sg",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 11.246000000000002
+    },
+    {
+      "name": "Sr",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 10.541999999999998
+    },
+    {
+      "name": "Line",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 10.535
+    },
+    {
+      "name": "key",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 10.531
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 9.525
+    },
+    {
+      "name": "Lk",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/live/TradeVolumePocOverlay.tsx",
+      "line": 2,
+      "ms": 9.451
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 8.468
+    },
+    {
+      "name": "Lk",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/live/TradeVolumePocOverlay.tsx",
+      "line": 2,
+      "ms": 8.44
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/live/TradeVolumePocOverlay.tsx",
+      "line": 2,
+      "ms": 8.407
+    },
+    {
+      "name": "eg",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 8.159
+    },
+    {
+      "name": "br",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 7.382
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/live/TradeVolumePocOverlay.tsx",
+      "line": 2,
+      "ms": 7.379
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 7.375
+    },
+    {
+      "name": "hc",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.production.min.js",
+      "line": 8,
+      "ms": 7.354
+    },
+    {
+      "name": "fillText",
+      "file": "",
+      "line": 0,
+      "ms": 6.355
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/chart/projectors/maProjection.ts",
+      "line": 2,
+      "ms": 6.285
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/chart/projectors/maProjection.ts",
+      "line": 2,
+      "ms": 6.233
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 5.3020000000000005
+    },
+    {
+      "name": "mS",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/chart/seriesDataDiff.ts",
+      "line": 2,
+      "ms": 5.2909999999999995
+    },
+    {
+      "name": "bP",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/live/PaneLegendOverlay.tsx",
+      "line": 2,
+      "ms": 5.286
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/live/indicators/MovingAverageOverlay.tsx",
+      "line": 2,
+      "ms": 5.278
+    },
+    {
+      "name": "xb",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 5.272
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 5.252999999999999
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 5.252
+    },
+    {
+      "name": "Vd",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/api/livePastCandles.ts",
+      "line": 1,
+      "ms": 4.233
+    },
+    {
+      "name": "Pu",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/util/time.ts",
+      "line": 1,
+      "ms": 4.225
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/live/visibleExtremes.ts",
+      "line": 2,
+      "ms": 4.221
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/chart/projectors/maProjection.ts",
+      "line": 2,
+      "ms": 4.218
+    },
+    {
+      "name": "l",
+      "file": "../../../home/dev/code/hoga-ops/frontend/src/util/virtualAxis.ts",
+      "line": 1,
+      "ms": 4.214
+    },
+    {
+      "name": "fillText",
+      "file": "",
+      "line": 0,
+      "ms": 4.18
+    },
+    {
+      "name": "",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 4.172
+    },
+    {
+      "name": "hg",
+      "file": "../../../home/dev/code/hoga-ops/frontend/node_modules/lightweight-charts/dist/lightweight-charts.production.mjs",
+      "line": 1,
+      "ms": 3.8499999999999996
+    }
+  ]
+}

@@ -1,0 +1,342 @@
+{
+  "method": "Production React + lightweight-charts, 1m, 4 enabled default SMA lines, tooltip OFF, 90 moves, two runs/condition, native CPU. Frame interval is not INP or direct input latency. Backfill uses real extendChartHistoricalRange action, rather than a drag gesture. Full seed response creates controlled accumulated history; measured delta honours API from/to. Only first chart requests an extension. Weekday fixtures approximate holidays. No live WS/backend load.",
+  "results": [
+    {
+      "charts": 1,
+      "calendarDays": 30,
+      "backfill": false,
+      "initialRows": [
+        8763
+      ],
+      "finalRows": [
+        [
+          8763
+        ],
+        [
+          8763
+        ]
+      ],
+      "maxFrameMs": [
+        16.8,
+        16.8
+      ],
+      "longTaskMs": [
+        [],
+        []
+      ],
+      "setDataTotalMs": [
+        0,
+        0
+      ],
+      "setDataCalls": [
+        0,
+        0
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    },
+    {
+      "charts": 1,
+      "calendarDays": 30,
+      "backfill": true,
+      "initialRows": [
+        8763
+      ],
+      "finalRows": [
+        [
+          11049
+        ],
+        [
+          11049
+        ]
+      ],
+      "maxFrameMs": [
+        116.6,
+        99.9
+      ],
+      "longTaskMs": [
+        [
+          100,
+          50
+        ],
+        [
+          80
+        ]
+      ],
+      "setDataTotalMs": [
+        60.6,
+        47.8
+      ],
+      "setDataCalls": [
+        6,
+        6
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    },
+    {
+      "charts": 1,
+      "calendarDays": 120,
+      "backfill": false,
+      "initialRows": [
+        33147
+      ],
+      "finalRows": [
+        [
+          33147
+        ],
+        [
+          33147
+        ]
+      ],
+      "maxFrameMs": [
+        16.8,
+        16.8
+      ],
+      "longTaskMs": [
+        [],
+        []
+      ],
+      "setDataTotalMs": [
+        0,
+        0
+      ],
+      "setDataCalls": [
+        0,
+        0
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    },
+    {
+      "charts": 1,
+      "calendarDays": 120,
+      "backfill": true,
+      "initialRows": [
+        33147
+      ],
+      "finalRows": [
+        [
+          35814
+        ],
+        [
+          35814
+        ]
+      ],
+      "maxFrameMs": [
+        433.4,
+        383.3
+      ],
+      "longTaskMs": [
+        [
+          364,
+          78,
+          138
+        ],
+        [
+          315,
+          80,
+          142
+        ]
+      ],
+      "setDataTotalMs": [
+        255.4,
+        215.8
+      ],
+      "setDataCalls": [
+        6,
+        6
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    },
+    {
+      "charts": 3,
+      "calendarDays": 30,
+      "backfill": false,
+      "initialRows": [
+        8763,
+        8763,
+        8763
+      ],
+      "finalRows": [
+        [
+          8763,
+          8763,
+          8763
+        ],
+        [
+          8763,
+          8763,
+          8763
+        ]
+      ],
+      "maxFrameMs": [
+        16.8,
+        16.8
+      ],
+      "longTaskMs": [
+        [],
+        []
+      ],
+      "setDataTotalMs": [
+        0,
+        0
+      ],
+      "setDataCalls": [
+        0,
+        0
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    },
+    {
+      "charts": 3,
+      "calendarDays": 30,
+      "backfill": true,
+      "initialRows": [
+        8763,
+        8763,
+        8763
+      ],
+      "finalRows": [
+        [
+          11049,
+          8763,
+          8763
+        ],
+        [
+          11049,
+          8763,
+          8763
+        ]
+      ],
+      "maxFrameMs": [
+        66.6,
+        66.6
+      ],
+      "longTaskMs": [
+        [
+          64
+        ],
+        [
+          61
+        ]
+      ],
+      "setDataTotalMs": [
+        37.2,
+        36.2
+      ],
+      "setDataCalls": [
+        6,
+        6
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    },
+    {
+      "charts": 3,
+      "calendarDays": 120,
+      "backfill": false,
+      "initialRows": [
+        33147,
+        33147,
+        33147
+      ],
+      "finalRows": [
+        [
+          33147,
+          33147,
+          33147
+        ],
+        [
+          33147,
+          33147,
+          33147
+        ]
+      ],
+      "maxFrameMs": [
+        16.8,
+        16.8
+      ],
+      "longTaskMs": [
+        [],
+        []
+      ],
+      "setDataTotalMs": [
+        0,
+        0
+      ],
+      "setDataCalls": [
+        0,
+        0
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    },
+    {
+      "charts": 3,
+      "calendarDays": 120,
+      "backfill": true,
+      "initialRows": [
+        33147,
+        33147,
+        33147
+      ],
+      "finalRows": [
+        [
+          35814,
+          33147,
+          33147
+        ],
+        [
+          35814,
+          33147,
+          33147
+        ]
+      ],
+      "maxFrameMs": [
+        316.6,
+        316.6
+      ],
+      "longTaskMs": [
+        [
+          255,
+          64,
+          106
+        ],
+        [
+          270,
+          65,
+          128
+        ]
+      ],
+      "setDataTotalMs": [
+        171.6,
+        186.4
+      ],
+      "setDataCalls": [
+        6,
+        6
+      ],
+      "longTasksBeforeResponse": [
+        0,
+        0
+      ]
+    }
+  ]
+}

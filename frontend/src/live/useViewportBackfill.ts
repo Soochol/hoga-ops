@@ -28,6 +28,7 @@ import {
 } from './liveDateTime';
 import { livePerfLog } from '../util/perfDebug';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+import { ownsWindowedChartViewport } from '../chart/windowedChart';
 
 /** 스왑 직전 뷰포트 스냅샷 — 캡처 규칙은 훅 안 layout effect(효과 1) 주석 참조. */
 interface PreSwapSnap {
@@ -879,6 +880,11 @@ export function useViewportBackfill({
       }
     }
 
+    // The bounded renderer applies real-time anchor preservation in the same
+    // batch as the new grid, including child-only indicator updates. Replaying
+    // this layout-phase snapshot would undo gestures made before its flush.
+    // Source-swap and deferred explicit restore above retain their own policy.
+    if (ownsWindowedChartViewport(chart)) return;
     if (prevEarliest === null || newEarliest === null) return;
 
     // 2b. **중간 삽입** — 디스크 구멍을 키움 보충이 메우면 캔들이 배열 *한가운데* 들어온다.

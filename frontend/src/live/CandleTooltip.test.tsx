@@ -37,6 +37,7 @@ const axis = {
   toVirtual: (ms: number) => ms,
   toReal: (ms: number) => ms,
   contains: () => true,
+  classifyAndProject: (ms: number) => ({ contained: true, virtual: ms }),
 } as never;
 
 const baseCandles = [C(1_000_000, 100, 105, 99, 102, 10), C(1_060_000, 102, 108, 101, 107, 20)];
@@ -221,6 +222,7 @@ describe('CandleTooltip', () => {
     const shifted = {
       segments: [{}],
       toVirtual: (ms: number) => ms + 999_000_000,
+      classifyAndProject: (ms: number) => ({ contained: true, virtual: ms + 999_000_000 }),
       toReal: (ms: number) => ms,
       contains: () => true,
     } as never;

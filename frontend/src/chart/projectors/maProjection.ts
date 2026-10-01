@@ -4,6 +4,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import type { LivePastDailyCandle } from '../../api/livePastDailyCandles';
 import { selectSource, type MASource } from './movingAverage';
 import { computeDailyMaByDate } from './dailyMovingAverage';
+import { candlePosition } from '../candlePosition';
 
 export type MaData = (LineData<Time> | WhitespaceData<Time>)[];
 type Config = { id: string; enabled: boolean; period: number; source: MASource };
@@ -24,8 +25,9 @@ function geometry(withDates: boolean) {
     for (const candle of candles) {
       let position = cache.get(candle);
       if (position === undefined) {
-        position = axis.contains(candle.ts_ms) ? {
-          time: (axis.toVirtual(candle.ts_ms) / 1000) as Time,
+        const projected = candlePosition(candle, axis);
+        position = projected.contained ? {
+          time: (projected.virtual / 1000) as Time,
           date: withDates ? axis.segments[axis.findByReal(candle.ts_ms)]?.date : undefined,
         } : null;
         cache.set(candle, position);

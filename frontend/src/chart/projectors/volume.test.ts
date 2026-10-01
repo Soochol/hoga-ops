@@ -42,7 +42,7 @@ describe('VOLUME_SPEC', () => {
     const bundle = {
       candles: [{ ts_ms: 0, open: 1, close: 2, high: 2, low: 1, vol_a: 5, vol_b: 5 }],
     } as never;
-    const ax = { contains: () => true, toVirtual: (t: number) => t } as never;
+    const ax = { classifyAndProject: (t: number) => ({ contained: true, virtual: t }) } as never;
     const dataFn = VOLUME_SPEC.series[0].data;
     expect(dataFn(bundle, ax, { cumulativeEnabled: false, auctionWindowMask: false }).length).toBe(1);
   });
@@ -82,11 +82,10 @@ describe('VOLUME_SPEC', () => {
     ];
     const calls: number[] = [];
     const countingAxis = {
-      contains: (t: number) => {
+      classifyAndProject: (t: number) => {
         calls.push(t);
-        return true;
+        return { contained: true, virtual: t - day0Open };
       },
-      toVirtual: (t: number) => t - day0Open,
     } as never;
     const dataFn = VOLUME_SPEC.series[0].data as (...args: any[]) => Array<{ value: number }>;
 

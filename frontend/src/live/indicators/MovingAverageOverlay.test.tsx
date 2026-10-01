@@ -43,7 +43,7 @@ const candles = [1, 2, 3, 4, 5].map((i) => ({
 }));
 const bundle = { candles } as never;
 // axis.contains true for all (in-session); toVirtual identity.
-const axis = { contains: () => true, toVirtual: (m: number) => m } as never;
+const axis = { classifyAndProject: (m: number) => ({ contained: true, virtual: m }) } as never;
 
 describe('MovingAverageOverlay', () => {
   beforeEach(() => {
@@ -186,8 +186,7 @@ describe('MovingAverageOverlay', () => {
     const m = makeChartMock();
     // Mark middle candle as out-of-session.
     const customAxis = {
-      contains: (ms: number) => ms !== 3000,
-      toVirtual: (ms: number) => ms,
+      classifyAndProject: (ms: number) => ({ contained: ms !== 3000, virtual: ms }),
     } as never;
     // Force a single slot with period=2 for an easy assertion.
     useLivePageStore.setState({

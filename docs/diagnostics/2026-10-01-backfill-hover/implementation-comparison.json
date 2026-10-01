@@ -1,0 +1,626 @@
+{
+  "results.json": [
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 116.60000000000014,
+      "nativeSetMs": 60.60000002384186,
+      "longTasksMs": [
+        100,
+        50
+      ],
+      "renderWindows": null
+    },
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 99.90000000000009,
+      "nativeSetMs": 47.79999998211861,
+      "longTasksMs": [
+        80
+      ],
+      "renderWindows": null
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 433.39999999999964,
+      "nativeSetMs": 255.4000000357628,
+      "longTasksMs": [
+        364,
+        78,
+        138
+      ],
+      "renderWindows": null
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 383.3000000000002,
+      "nativeSetMs": 215.7999999821186,
+      "longTasksMs": [
+        315,
+        80,
+        142
+      ],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 66.59999999999991,
+      "nativeSetMs": 37.20000001788139,
+      "longTasksMs": [
+        64
+      ],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 66.59999999999991,
+      "nativeSetMs": 36.19999995827675,
+      "longTasksMs": [
+        61
+      ],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 316.5999999999999,
+      "nativeSetMs": 171.60000002384186,
+      "longTasksMs": [
+        255,
+        64,
+        106
+      ],
+      "renderWindows": null
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 316.5999999999999,
+      "nativeSetMs": 186.4000000357628,
+      "longTasksMs": [
+        270,
+        65,
+        128
+      ],
+      "renderWindows": null
+    }
+  ],
+  "after.json": [
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50,
+      "nativeSetMs": 4.600000023841858,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 33.40000000000009,
+      "nativeSetMs": 5.0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 66.59999999999991,
+      "nativeSetMs": 3.4999999403953552,
+      "longTasksMs": [
+        69
+      ],
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 66.60000000000014,
+      "nativeSetMs": 4.800000011920929,
+      "longTasksMs": [
+        79
+      ],
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.29999999999973,
+      "nativeSetMs": 3.600000023841858,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 3.5,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.799999999999955,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "nativeSetMs": 0,
+      "longTasksMs": [],
+      "renderWindows": [
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 66.59999999999991,
+      "nativeSetMs": 3.399999976158142,
+      "longTasksMs": [
+        69
+      ],
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 66.59999999999991,
+      "nativeSetMs": 3.099999964237213,
+      "longTasksMs": [
+        60
+      ],
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    }
+  ],
+  "after-calendar.json": [
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50.09999999999991,
+      "nativeSetMs": 3.5999999940395355,
+      "longTasksMs": [
+        62
+      ],
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 66.70000000000005,
+      "nativeSetMs": 4.5999999940395355,
+      "longTasksMs": [
+        65
+      ],
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 2,
+      "maxFrameMs": 66.59999999999991,
+      "nativeSetMs": 4.699999988079071,
+      "longTasksMs": [
+        72
+      ],
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    }
+  ]
+}

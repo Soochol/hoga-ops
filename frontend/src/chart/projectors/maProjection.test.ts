@@ -23,13 +23,13 @@ describe('incremental MA projection',()=>{
   expect(project(candles,axis,[cfg(source)]).get('a')).toEqual(expected(candles,source,5));
  });
  it('reuses the past and shares coordinate work across six slots',()=>{
-  const project=createMovingAverageProjection(); const contains=vi.fn(axis.contains),toVirtual=vi.fn(axis.toVirtual);
-  const measured={...axis,contains,toVirtual}; const configs=[1,5,10,15,20,25].map((period,i)=>({...cfg('close',period),id:String(i)}));
+  const project=createMovingAverageProjection(); const classifyAndProject=vi.fn(axis.classifyAndProject);
+  const measured={...axis,classifyAndProject}; const configs=[1,5,10,15,20,25].map((period,i)=>({...cfg('close',period),id:String(i)}));
   const first=project(candles,measured,configs);
-  expect(contains).toHaveBeenCalledTimes(candles.length);expect(toVirtual).toHaveBeenCalledTimes(candles.length);
-  contains.mockClear();toVirtual.mockClear();
+  expect(classifyAndProject).toHaveBeenCalledTimes(candles.length);
+  classifyAndProject.mockClear();
   const next=project([...candles.slice(0,-1),{...candles.at(-1)!,close:99}],measured,configs);
-  expect(contains).toHaveBeenCalledTimes(1);expect(toVirtual).toHaveBeenCalledTimes(1);
+  expect(classifyAndProject).toHaveBeenCalledTimes(1);
   expect(next.get('1')![10]).toBe(first.get('1')![10]);
   expect(next.get('1')).toEqual(expected([...candles.slice(0,-1),{...candles.at(-1)!,close:99}],'close',5));
   const remapped=createVirtualAxis([{date:'20260601',sessionOpenMs:OPEN,sessionCloseMs:OPEN+390*60000}],OPEN+10000);
