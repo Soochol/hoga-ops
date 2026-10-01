@@ -44,3 +44,12 @@ The final date/session optimization probe still has 62–72ms long tasks;
 Renderer windowing keeps all original full-history data and full indicator
 calculations. Touch devices and unsupported series options retain full rendering;
 sparse line neighbours and large zoom spans can enlarge the native window.
+
+Merged #1917 and follow-up measurements:
+- merged-repeat.json / merged-profile.json / merged-profile-cpu-profile.json: #1917 product, 5 timing repeats and a separate CPU sampling run.
+- lookup-repeat.json: initial shared-grid implementation, 5 timing repeats.
+- lookup-matrix.json: 36 extended conditions (single repeat each), before final numeric-only closure retention.
+- final-default.json / final-tooltip.json / final-pan.json: final product file hashes, 5 OFF / 5 ON backfills and 3 cached mouse pans.
+- follow-up-summary.json / follow-up-validation.md: compact results, limits and validation.
+
+BF_MATRIX=1 BF_REPEATS=1 BF_OUTPUT=fresh-matrix enables 1/5/30m, 30/120/240-day seeds, 1/3 charts and normal/full-history zoom. API fixtures aggregate to the requested bucket. BF_INPUT=1 measures handler start to rAF callback with performance.now(), excluding pre-dispatch queue and paint; this is not INP. BF_TOOLTIP=1 enables candle tooltip. BF_FOCUS=1 BF_CACHED=1 measures actual mouse pan in a cached interior view and asserts zero requests and changed visible range.

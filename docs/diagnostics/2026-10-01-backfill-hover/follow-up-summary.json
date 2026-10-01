@@ -1,0 +1,1575 @@
+{
+  "merged-repeat": [
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 83.30000000000018,
+      "longTasksMs": [
+        70
+      ],
+      "nativeSetMs": 2.4000000059604645,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 100,
+      "longTasksMs": [
+        97
+      ],
+      "nativeSetMs": 3.2000000178813934,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 2,
+      "maxFrameMs": 66.70000000000027,
+      "longTasksMs": [
+        73
+      ],
+      "nativeSetMs": 2.0,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 3,
+      "maxFrameMs": 66.69999999999982,
+      "longTasksMs": [
+        67
+      ],
+      "nativeSetMs": 2.5,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 4,
+      "maxFrameMs": 66.70000000000005,
+      "longTasksMs": [
+        73
+      ],
+      "nativeSetMs": 2.5,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    }
+  ],
+  "lookup-repeat": [
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50,
+      "longTasksMs": [
+        54
+      ],
+      "nativeSetMs": 2.5,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 50,
+      "longTasksMs": [
+        53
+      ],
+      "nativeSetMs": 2.5,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 2,
+      "maxFrameMs": 50,
+      "longTasksMs": [
+        54
+      ],
+      "nativeSetMs": 2.199999988079071,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 3,
+      "maxFrameMs": 33.40000000000009,
+      "longTasksMs": [
+        50
+      ],
+      "nativeSetMs": 2.4000000059604645,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": null,
+      "wide": null,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 4,
+      "maxFrameMs": 50,
+      "longTasksMs": [],
+      "nativeSetMs": 2.699999988079071,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    }
+  ],
+  "final-default": [
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 49.99999999999977,
+      "longTasksMs": [],
+      "nativeSetMs": 2.4000000059604645,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 50,
+      "longTasksMs": [],
+      "nativeSetMs": 4.9000000059604645,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 2,
+      "maxFrameMs": 66.59999999999991,
+      "longTasksMs": [
+        55
+      ],
+      "nativeSetMs": 2.699999988079071,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 3,
+      "maxFrameMs": 50,
+      "longTasksMs": [
+        56
+      ],
+      "nativeSetMs": 2.5,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 4,
+      "maxFrameMs": 66.59999999999991,
+      "longTasksMs": [
+        59
+      ],
+      "nativeSetMs": 4.300000011920929,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    }
+  ],
+  "final-tooltip": [
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50,
+      "longTasksMs": [
+        55
+      ],
+      "nativeSetMs": 2.800000011920929,
+      "apiRequests": 1,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 2.800000011920929,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 1,
+      "maxFrameMs": 83.40000000000009,
+      "longTasksMs": [
+        88
+      ],
+      "nativeSetMs": 5.099999964237213,
+      "apiRequests": 1,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 18,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 2,
+      "maxFrameMs": 66.69999999999982,
+      "longTasksMs": [
+        60
+      ],
+      "nativeSetMs": 2.4000000059604645,
+      "apiRequests": 1,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 2.4000000059604645,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 3,
+      "maxFrameMs": 49.90000000000009,
+      "longTasksMs": [
+        55
+      ],
+      "nativeSetMs": 3.300000011920929,
+      "apiRequests": 1,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 2.9000000059604645,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 4,
+      "maxFrameMs": 50,
+      "longTasksMs": [],
+      "nativeSetMs": 2.0,
+      "apiRequests": 1,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 2.7000000178813934,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    }
+  ],
+  "final-pan": [
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": false,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 0,
+      "apiRequests": 0,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 5.4000000059604645,
+      "renderWindows": [
+        {
+          "full": 33147,
+          "rendered": 555,
+          "offset": 16371,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": false,
+      "repeat": 1,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 0,
+      "apiRequests": 0,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 4,
+      "renderWindows": [
+        {
+          "full": 33147,
+          "rendered": 555,
+          "offset": 16371,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": false,
+      "repeat": 2,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 0,
+      "apiRequests": 0,
+      "inputCallbacks": 90,
+      "maxHandlerToRafMs": 4.9000000059604645,
+      "renderWindows": [
+        {
+          "full": 33147,
+          "rendered": 555,
+          "offset": 16371,
+          "fallback": null
+        }
+      ]
+    }
+  ],
+  "lookup-matrix": [
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.299999999999955,
+      "longTasksMs": [],
+      "nativeSetMs": 5.200000017881393,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.399999999999864,
+      "longTasksMs": [],
+      "nativeSetMs": 2.5999999940395355,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 1,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 66.59999999999991,
+      "longTasksMs": [
+        67
+      ],
+      "nativeSetMs": 2.5999999940395355,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 68199,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 3.5999999940395355,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.30000000000018,
+      "longTasksMs": [],
+      "nativeSetMs": 1.5,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 555,
+          "offset": 2665,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": false,
+      "count": 3,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 66.69999999999982,
+      "longTasksMs": [
+        65
+      ],
+      "nativeSetMs": 1.5999999940395355,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 68199,
+          "rendered": 555,
+          "offset": 2284,
+          "fallback": null
+        },
+        {
+          "full": 65913,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 65913,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": true,
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 83.29999999999995,
+      "longTasksMs": [
+        56
+      ],
+      "nativeSetMs": 29.0,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 6641,
+          "offset": 4408,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": true,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 100,
+      "longTasksMs": [
+        71
+      ],
+      "nativeSetMs": 24.0,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 6641,
+          "offset": 29173,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": true,
+      "count": 1,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 116.59999999999991,
+      "longTasksMs": [
+        87,
+        54
+      ],
+      "nativeSetMs": 20.100000023841858,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 68199,
+          "rendered": 6641,
+          "offset": 61558,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": true,
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.29999999999973,
+      "longTasksMs": [],
+      "nativeSetMs": 5.699999988079071,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 11049,
+          "rendered": 2033,
+          "offset": 9016,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 2033,
+          "offset": 6730,
+          "fallback": null
+        },
+        {
+          "full": 8763,
+          "rendered": 2033,
+          "offset": 6730,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": true,
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50,
+      "longTasksMs": [],
+      "nativeSetMs": 5.0,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 35814,
+          "rendered": 2033,
+          "offset": 33781,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 2033,
+          "offset": 31114,
+          "fallback": null
+        },
+        {
+          "full": 33147,
+          "rendered": 2033,
+          "offset": 31114,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 1,
+      "wide": true,
+      "count": 3,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 83.30000000000018,
+      "longTasksMs": [
+        63
+      ],
+      "nativeSetMs": 4.700000017881393,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 68199,
+          "rendered": 2033,
+          "offset": 66166,
+          "fallback": null
+        },
+        {
+          "full": 65913,
+          "rendered": 2033,
+          "offset": 63880,
+          "fallback": null
+        },
+        {
+          "full": 65913,
+          "rendered": 2033,
+          "offset": 63880,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": false,
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 7.200000017881393,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2233,
+          "rendered": 2233,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 4.0,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 7238,
+          "rendered": 555,
+          "offset": 537,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": false,
+      "count": 1,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.30000000000018,
+      "longTasksMs": [],
+      "nativeSetMs": 2.0999999940395355,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 13783,
+          "rendered": 555,
+          "offset": 460,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": false,
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 8.900000005960464,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2233,
+          "rendered": 2233,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1771,
+          "rendered": 1771,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1771,
+          "rendered": 1771,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": false,
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 2.0999999940395355,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 7238,
+          "rendered": 555,
+          "offset": 537,
+          "fallback": null
+        },
+        {
+          "full": 6699,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 6699,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": false,
+      "count": 3,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 1.800000011920929,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 13783,
+          "rendered": 555,
+          "offset": 460,
+          "fallback": null
+        },
+        {
+          "full": 13321,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 13321,
+          "rendered": 553,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": true,
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.399999999999864,
+      "longTasksMs": [],
+      "nativeSetMs": 13.599999994039536,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2233,
+          "rendered": 2233,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": true,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50,
+      "longTasksMs": [],
+      "nativeSetMs": 26.299999982118607,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 7238,
+          "rendered": 6641,
+          "offset": 597,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": true,
+      "count": 1,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50,
+      "longTasksMs": [],
+      "nativeSetMs": 23.0,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 13783,
+          "rendered": 6641,
+          "offset": 7142,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": true,
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 50,
+      "longTasksMs": [],
+      "nativeSetMs": 20.599999994039536,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2233,
+          "rendered": 2233,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1771,
+          "rendered": 1771,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1771,
+          "rendered": 1771,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": true,
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.30000000000018,
+      "longTasksMs": [],
+      "nativeSetMs": 7.0,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 7238,
+          "rendered": 2033,
+          "offset": 5205,
+          "fallback": null
+        },
+        {
+          "full": 6699,
+          "rendered": 2033,
+          "offset": 4666,
+          "fallback": null
+        },
+        {
+          "full": 6699,
+          "rendered": 2033,
+          "offset": 4666,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 5,
+      "wide": true,
+      "count": 3,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 66.60000000000036,
+      "longTasksMs": [
+        52
+      ],
+      "nativeSetMs": 11.400000005960464,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 13783,
+          "rendered": 2033,
+          "offset": 11750,
+          "fallback": null
+        },
+        {
+          "full": 13321,
+          "rendered": 2033,
+          "offset": 11288,
+          "fallback": null
+        },
+        {
+          "full": 13321,
+          "rendered": 2033,
+          "offset": 11288,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": false,
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.29999999999973,
+      "longTasksMs": [],
+      "nativeSetMs": 2.300000011920929,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 377,
+          "rendered": 377,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": false,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 8.099999994039536,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 1222,
+          "rendered": 1222,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": false,
+      "count": 1,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.30000000000018,
+      "longTasksMs": [],
+      "nativeSetMs": 17.099999994039536,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2327,
+          "rendered": 2327,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": false,
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 1.800000011920929,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 377,
+          "rendered": 377,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 299,
+          "rendered": 299,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 299,
+          "rendered": 299,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": false,
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 6.200000017881393,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 1222,
+          "rendered": 1222,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1131,
+          "rendered": 1131,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1131,
+          "rendered": 1131,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": false,
+      "count": 3,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.40000000000009,
+      "longTasksMs": [],
+      "nativeSetMs": 12.599999994039536,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2327,
+          "rendered": 2327,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 2249,
+          "rendered": 2249,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 2249,
+          "rendered": 2249,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": true,
+      "count": 1,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 4.100000023841858,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 377,
+          "rendered": 377,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": true,
+      "count": 1,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 6.699999988079071,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 1222,
+          "rendered": 1222,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": true,
+      "count": 1,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.30000000000018,
+      "longTasksMs": [],
+      "nativeSetMs": 11.799999982118607,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2327,
+          "rendered": 2327,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": true,
+      "count": 3,
+      "depth": 30,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 2.0999999940395355,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 377,
+          "rendered": 377,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 299,
+          "rendered": 299,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 299,
+          "rendered": 299,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": true,
+      "count": 3,
+      "depth": 120,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 16.800000000000182,
+      "longTasksMs": [],
+      "nativeSetMs": 10.200000017881393,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 1222,
+          "rendered": 1222,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1131,
+          "rendered": 1131,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 1131,
+          "rendered": 1131,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    },
+    {
+      "minutes": 30,
+      "wide": true,
+      "count": 3,
+      "depth": 240,
+      "extend": true,
+      "repeat": 0,
+      "maxFrameMs": 33.30000000000018,
+      "longTasksMs": [],
+      "nativeSetMs": 15.200000017881393,
+      "apiRequests": 1,
+      "inputCallbacks": 0,
+      "maxHandlerToRafMs": 0,
+      "renderWindows": [
+        {
+          "full": 2327,
+          "rendered": 2327,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 2249,
+          "rendered": 2249,
+          "offset": 0,
+          "fallback": null
+        },
+        {
+          "full": 2249,
+          "rendered": 2249,
+          "offset": 0,
+          "fallback": null
+        }
+      ]
+    }
+  ]
+}
