@@ -139,6 +139,52 @@ def _account_cap(account: int, n: int, reserve: int = KIWOOM_SECTOR_RESERVE) -> 
     return max(1, KIWOOM_PER_ACCOUNT_MAX - reserve)
 
 
+def partition_balanced_kiwoom(
+    codes: list[str], n: int, *, weight: Callable[[str], int],
+    previous: Mapping[str, int], last_account_reserve: int = KIWOOM_SECTOR_RESERVE,
+) -> list[list[str]]:
+    """Spread new registrations while keeping live owners stable.
+
+    Admission retains the existing priority/capacity rule. Placement is separate:
+    capacity-normalized slot load, all venues together, sector room reserved.
+    Heavy new codes go first to avoid fragmenting capacity with one-slot codes.
+    A previously owned code whose enlarged venue set no longer fits is omitted
+    for this pass, rather than moved between two live connections without ACKs.
+    The caller reports omitted codes and retries on the next storage sync.
+    """
+    admitted = {
+        code for part in partition_kiwoom(
+            codes, n, weight=weight, last_account_reserve=last_account_reserve,
+        ) for code in part
+    }
+    caps = [_account_cap(i, n, last_account_reserve) for i in range(n)]
+    used = [0] * n
+    owners: dict[str, int] = {}
+    costs = {code: weight(code) for code in codes if code in admitted}
+    pending = []
+    for code in codes:
+        if code not in admitted:
+            continue
+        owner = previous.get(code)
+        if owner is not None and 0 <= owner < n:
+            if used[owner] + costs[code] <= caps[owner]:
+                owners[code] = owner
+                used[owner] += costs[code]
+        else:
+            pending.append(code)
+    for code in sorted(pending, key=lambda c: -costs[c]):
+        available = [i for i in range(n) if used[i] + costs[code] <= caps[i]]
+        if available:
+            owner = min(available, key=lambda i: (used[i] / caps[i], i))
+            owners[code] = owner
+            used[owner] += costs[code]
+    parts: list[list[str]] = [[] for _ in range(n)]
+    for code in codes:
+        if code in owners:
+            parts[owners[code]].append(code)
+    return parts
+
+
 def _fit_within_capacity(
     codes: tuple[str, ...], capacity: int, weight: Callable[[str], int],
 ) -> tuple[str, ...]:

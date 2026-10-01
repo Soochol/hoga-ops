@@ -68,7 +68,10 @@ _ACK_TIMEOUT_S = 10.0
 # 계속 오므로 5분 무수신은 사실상 사망 — 오탐해도 비용은 재연결+전량 재등록(~17s)뿐.
 _RECV_IDLE_TIMEOUT_S = 300.0
 _CLOSE_TIMEOUT_S = 2.0
-_DATA_QUEUE_MAX_MESSAGES = 64
+# Oct 1 bursts reached 64 with 3.7–4.3MiB of conservative wire size, below
+# the byte budget. Two such bursts fit by count; bytes remain the hard bound.
+# This absorbs finite catch-up, not sustained overload (which still retires).
+_DATA_QUEUE_MAX_MESSAGES = 128
 _DATA_QUEUE_MAX_BYTES = 8 * 1024 * 1024
 
 
@@ -440,8 +443,15 @@ class KiwoomWsClient:
                     self._data_messages_discarded += 1
                     exc = KiwoomDataBacklogError("kiwoom data queue capacity exceeded")
                     self._annotate_failure(exc, "dispatch", 0.0)
-                    _log.warning("live.kiwoom.data_backlog account=%s depth=%d bytes=%d",
-                                 self.account_id, queue.qsize(), self._data_queue_bytes)
+                    oldest_ms = ((self._monotonic() - self._data_queued_at[0]) * 1000
+                                 if self._data_queued_at else 0.0)
+                    _log.warning(
+                        "live.kiwoom.data_backlog account=%s depth=%d bytes=%d "
+                        "oldest_age_ms=%.1f dispatch_count=%d max_messages=%d max_bytes=%d",
+                        self.account_id, queue.qsize(), self._data_queue_bytes,
+                        oldest_ms, self.dispatch_latency.count,
+                        _DATA_QUEUE_MAX_MESSAGES, _DATA_QUEUE_MAX_BYTES,
+                    )
                     raise exc
                 queued_at = self._monotonic()
                 queue.put_nowait(_DataMessage(msg, now_ms, queued_at, size))

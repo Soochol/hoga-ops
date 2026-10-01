@@ -357,3 +357,17 @@ async def test_view_subscribe_no_connections_rejects():
     accepted = await mgr.on_view_subscribe("Z", {"KRX"}, ref="tab1")
     assert accepted is False
     await mgr.stop()
+
+
+async def test_late_tick_from_other_storage_owner_cannot_duplicate_delivery():
+    buf = _FakeBuffer()
+    mgr = _mgr(buffer=buf)
+    mgr._storage_registration_keys.add(("A", "KRX"))
+    on_tick = mgr._make_conn_on_tick(_FakeStream(), {"B"})
+    await on_tick(WsTick("A", 1, SnapshotKind.OB, {}, venue="KRX"))
+    assert buf.published == []
+    # This storage code's uncovered NXT view remains a valid display-only feed.
+    await on_tick(WsTick("A", 2, SnapshotKind.OB, {}, venue="NXT"))
+    assert len(buf.published) == 1
+    assert buf.published[0][1][0].payload["venue"] == "NXT"
+    await mgr.stop()
