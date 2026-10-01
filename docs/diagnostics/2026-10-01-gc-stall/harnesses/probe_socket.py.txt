@@ -1,0 +1,38 @@
+import asyncio
+import collections
+import gc
+import json
+import sys
+import time
+import uvloop
+from websockets.asyncio.client import connect
+from websockets.legacy.server import serve
+
+COUNT = 20000
+BODY = json.dumps({'t_ms':0, 'asks':[{'price':10000,'qty':100} for _ in range(10)], 'bids':[{'price':10000,'qty':100} for _ in range(10)]})
+async def handler(ws):
+    for i in range(COUNT):
+        await ws.send(BODY)
+        if i % 100 == 0:
+            await asyncio.sleep(0)
+async def run():
+    async with serve(handler, '127.0.0.1', 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        async with connect(f'ws://127.0.0.1:{port}') as ws:
+            for _ in range(COUNT):
+                json.loads(await ws.recv())
+
+gc.collect()
+gc.disable()
+gc.set_debug(gc.DEBUG_SAVEALL)
+start = time.perf_counter()
+uvloop.run(run())
+work_ms = (time.perf_counter()-start)*1000
+start = time.perf_counter()
+collected = gc.collect()
+pause_ms = (time.perf_counter()-start)*1000
+types = collections.Counter(type(obj).__module__ + '.' + type(obj).__qualname__ for obj in gc.garbage)
+print(json.dumps({'python':sys.version.split()[0], 'messages':COUNT, 'work_ms':round(work_ms,1), 'pause_ms':round(pause_ms,1), 'collected':collected,'types':types.most_common(20)}),flush=True)
+gc.set_debug(0)
+gc.garbage.clear()
+gc.enable()

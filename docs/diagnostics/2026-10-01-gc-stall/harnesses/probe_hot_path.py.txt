@@ -1,0 +1,87 @@
+import asyncio
+import collections
+import gc
+import json
+import pathlib
+import sys
+import time
+import weakref
+import os
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4]))
+from hoga.live.kiwoom_frames import parse_real_row
+from hoga.live.buffer import LiveBuffer
+from hoga.live.stream import LiveStream
+from hoga.live.second_trade_store import SecondTradeStore, trade_date
+from hoga.live.delivery import LiveOutbox
+import hoga.live.stream as stream_module
+stream_module._now_ms = lambda: 1790823600000
+
+mode = sys.argv[1]
+count = int(sys.argv[2])
+values = {'21': '120000', '121': '1000', '125': '1000'}
+for fid in range(41, 81):
+    values[str(fid)] = str(10000 + fid) if fid < 61 else '100'
+row = {'type': '0D', 'item': '005930', 'values': values}
+buffer = LiveBuffer()
+stream = LiveStream(buffer=buffer, writer=None, date_fn=lambda: '20261001', phase_fn=lambda: 'regular')
+seconds = SecondTradeStore(pathlib.Path('/tmp/hoga-gc-unused-no-write'))
+gc.collect()
+automatic = bool(os.environ.get('HOGA_PROBE_AUTO'))
+pauses = []
+gc_start = 0
+def observe(phase, info):
+    global gc_start
+    if phase == 'start':
+        gc_start = time.perf_counter()
+    else:
+        pauses.append({'generation':info['generation'], 'ms':round((time.perf_counter()-gc_start)*1000,2), 'collected':info['collected']})
+if automatic:
+    if os.environ.get('HOGA_PROBE_TUNED'):
+        gc.set_threshold(50000,50,50)
+    gc.callbacks.append(observe)
+else:
+    gc.set_debug(gc.DEBUG_SAVEALL)
+    gc.disable()
+start = time.perf_counter()
+
+async def run():
+    out = LiveOutbox()
+    subscriptions = [(f'{i:06}', buffer.subscribe(f'{i:06}', batch=True)) for i in range(100)]
+    async def pump(code, sub):
+        while True:
+            out.offer(code, await sub.get())
+    async def send():
+        while True:
+            frame = await asyncio.wait_for(out.get(), timeout=30)
+            json.dumps(frame)
+    tasks = [asyncio.create_task(pump(code, sub)) for code,sub in subscriptions] + [asyncio.create_task(send())] if mode == 'delivery' else []
+    for i in range(count):
+        row['item'] = f'{i % int(os.environ.get("HOGA_PROBE_CODES",100)):06}'
+        tick = parse_real_row(row, date='20261001', now_ms=1790823600000)
+        assert tick is not None
+        if mode in ('stream', 'delivery'):
+            await stream.on_tick(tick)
+        elif mode == 'date':
+            trade_date(tick.t_ms)
+        if i % (1 if mode == 'delivery' else 5000) == 0:
+            await asyncio.sleep(0)
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+if os.environ.get('HOGA_PROBE_UVLOOP'):
+    import uvloop
+    uvloop.run(run())
+else:
+    asyncio.run(run())
+work_ms = (time.perf_counter() - start) * 1000
+start = time.perf_counter()
+collected = gc.collect()
+pause_ms = (time.perf_counter() - start) * 1000
+types = collections.Counter(type(x).__module__ + '.' + type(x).__qualname__ for x in gc.garbage)
+weak_maps = [dict(x.data).keys().__repr__()[:200] for x in gc.garbage if isinstance(x, weakref.WeakValueDictionary)][:3]
+print(json.dumps({'python': sys.version.split()[0], 'mode':mode, 'count':count, 'work_ms':round(work_ms,1), 'collect_ms':round(pause_ms,1), 'collected':collected, 'garbage_types':types.most_common(14), 'weak_maps':weak_maps, 'buffer_entries':buffer._total_entries, 'thresholds':gc.get_threshold(), 'automatic':automatic, 'gc_count':len(pauses), 'gc_maxima':sorted(pauses[:-1], key=lambda row:row['ms'],reverse=True)[:5]}), flush=True)
+gc.set_debug(0)
+gc.garbage.clear()
+gc.enable()

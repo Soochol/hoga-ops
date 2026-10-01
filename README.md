@@ -73,19 +73,33 @@ Enter로 표시된 그룹에 적용하며, Esc로 검색창을 닫는다. 최근
 
 ## Quickstart
 
+실행 및 검증 Python은 [.python-version](./.python-version)의 **3.14.7**로 고정한다.
+Python 3.14.0–3.14.4의 incremental GC는 운영 메모리 문제로 3.14.5에서 교체됐다.
+이 앱의 세대별 GC 튜닝도 교체된 generational GC를 전제로 한다.
+변경 근거와 실측은 [GC 정지 조사](./docs/diagnostics/2026-10-01-gc-stall/README.md)에 있다.
+`uv`는 이 파일을 읽어 실행 버전을 선택한다. `pip`로 설치한다면 같은 Python 버전의
+가상환경을 먼저 만든다.
+
 ```sh
-pip install -e .[dev]
+uv sync --frozen --extra dev
 echo "k_=...; n_=..." > .cookie   # paste from your hogaplay session
 cp .env.example .env              # add 키움 keys for live market data
-hoga collect --code 003490 --date 20260519
-hoga parse   --code 003490 --date 20260519
-hoga serve
+uv run --frozen hoga collect --code 003490 --date 20260519
+uv run --frozen hoga parse   --code 003490 --date 20260519
+uv run --frozen hoga serve
+```
+
+설치된 `uv`의 Python 카탈로그에 이 버전이 없으면 공식 메타데이터로 먼저 설치한다.
+
+```sh
+uv python install "$(cat .python-version)" \
+  --python-downloads-json-url https://raw.githubusercontent.com/astral-sh/uv/main/crates/uv-python/download-metadata.json
 ```
 
 For frontend development:
 
 ```sh
-uv run uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga
+uv run --frozen uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga
 cd frontend
 npm install
 npm run dev
@@ -265,6 +279,7 @@ gh api -X POST repos/Soochol/hoga-ops/rulesets --input deploy/github-ruleset-mai
 git pull
 git rev-parse --short HEAD            # 방금 받은 커밋 — 아래 검증의 기대값
 uv sync --frozen                      # 네트워크가 필요한 단계를 재시작 전에 분리
+uv run --frozen python -c 'import sys, gc; print(sys.version); print(gc.get_threshold())'
 cd frontend && npm ci && npx vite build && cd ..   # 프론트 서빙 시
 systemctl --user restart hoga-ops
 curl -s http://<주소>:8000/health | python3 -m json.tool   # commit 이 위 값과 같은지
@@ -274,6 +289,12 @@ curl -s http://<주소>:8000/health | python3 -m json.tool   # commit 이 위 �
 값이라 갱신을 빠뜨리면 항상 같은 문자열이 되어, restart 실패·구프로세스 잔존·
 `git pull` 누락이 성공과 구분되지 않는다. `commit` 은 기동한 프로세스가 자기
 체크아웃에서 읽은 값이라 그 실패들이 전부 드러난다.
+
+Python 변경 시에는 앱 프로세스와 컴퓨트 워커도 새 인터프리터로 시작해야 한다.
+실행 중인 가상환경에 바로 `uv sync`를 걸지 않는다. 새 환경을 별도 경로에 준비하고
+검증한 뒤 프로세스를 갱신하며, 기존 환경은 롤백할 때까지 보관한다.
+GC 개선 여부는 재시작 직후의 짧은 정상 구간으로 판정하지 않는다. 같은 장중 부하에서
+최소 60분 동안 `gc_pause`, `loop_lag`, RSS와 `data_backlog`를 비교한다.
 
 롤백은 `git checkout <이전 커밋>` 후 같은 절차. 롤백으로 `.queue.json` 스키마가
 구버전과 어긋나면 큐가 `.corrupt-*` 로 격리(=대기 큐 초기화)될 수 있다 — 재시작
