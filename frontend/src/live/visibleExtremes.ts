@@ -22,6 +22,68 @@ function gap(basis: number, extreme: number): number {
   return ((basis - extreme) / extreme) * 100;
 }
 
+/** One reader per primitive. Project history only when its immutable inputs
+ * change; a viewport lookup then visits just its visible bars. Pixel geometry
+ * deliberately stays outside this cache so pan/zoom and price scaling remain live. */
+export function createVisibleExtremesReader() {
+  let candlesRef: readonly Candle[] | null = null;
+  let axisRef: VirtualAxis | null = null;
+  let points: { candle: Candle; virtualSec: number; order: number }[] = [];
+  let cached: { from: number; to: number; extremes: VisibleExtremes; prior: PriorDaysExtremes } | null = null;
+  const bound = (time: number, inclusive: boolean) => {
+    let lo = 0, hi = points.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (points[mid].virtualSec < time || (inclusive && points[mid].virtualSec === time)) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  return (candles: readonly Candle[], axis: VirtualAxis, range: { from: number; to: number } | null) => {
+    if (candles !== candlesRef || axis !== axisRef) {
+      candlesRef = candles;
+      axisRef = axis;
+      cached = null;
+      points = [];
+      let sorted = true;
+      candles.forEach((candle, order) => {
+        if (!axis.contains(candle.ts_ms)) return;
+        const virtualSec = axis.toVirtual(candle.ts_ms) / 1000;
+        if (points.length && points[points.length - 1].virtualSec > virtualSec) sorted = false;
+        points.push({ candle, virtualSec, order });
+      });
+      if (!sorted) points.sort((a, b) => a.virtualSec - b.virtualSec);
+    }
+    if (!range) return { extremes: null, prior: null };
+    if (cached?.from === range.from && cached.to === range.to) return cached;
+    const first = bound(range.from, false), end = bound(range.to, true);
+    let high: (typeof points)[number] | null = null;
+    let low: (typeof points)[number] | null = null;
+    let last: (typeof points)[number] | null = null;
+    for (let i = first; i < end; i++) {
+      const p = points[i];
+      if (!high || p.candle.high > high.candle.high || (p.candle.high === high.candle.high && p.order < high.order)) high = p;
+      if (!low || p.candle.low < low.candle.low || (p.candle.low === low.candle.low && p.order < low.order)) low = p;
+      if (!last || p.virtualSec > last.virtualSec || (p.virtualSec === last.virtualSec && p.order < last.order)) last = p;
+    }
+    const extremes: VisibleExtremes = high && low && last ? {
+      high: { price: high.candle.high, virtualSec: high.virtualSec, pct: gap(last.candle.close, high.candle.high) },
+      low: { price: low.candle.low, virtualSec: low.virtualSec, pct: gap(last.candle.close, low.candle.low) },
+    } : null;
+    const segment = last ? axis.segments[axis.findByReal(last.candle.ts_ms)] : undefined;
+    let prior: PriorDaysExtremes = null;
+    if (segment) {
+      for (let i = first; i < end; i++) {
+        const c = points[i].candle;
+        if (c.ts_ms >= segment.sessionOpenMs) continue;
+        prior = prior ? { high: Math.max(prior.high, c.high), low: Math.min(prior.low, c.low) } : { high: c.high, low: c.low };
+      }
+    }
+    cached = { from: range.from, to: range.to, extremes, prior };
+    return cached;
+  };
+}
+
 /**
  * 현재 보이는 뷰포트 범위 안에서 그려진 캔들의 최고가 봉/최저가 봉을 찾아 극값 대비율을 계산한다.
  * (CONTEXT.md: `극값 대비율` / `High/Low Extreme Labels`.) lightweight-charts 비의존 —

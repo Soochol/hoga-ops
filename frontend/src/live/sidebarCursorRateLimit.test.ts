@@ -1,8 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   alignSidebarCursorMs,
   shouldPublishSidebarCursor,
   sidebarCursorPublishDelayMs,
+  createSidebarCursorThrottle,
 } from './sidebarCursorRateLimit';
 
 describe('sidebar cursor rate-limit helpers', () => {
@@ -34,4 +35,24 @@ describe('sidebar cursor rate-limit helpers', () => {
     expect(sidebarCursorPublishDelayMs(1_000, 999, 120)).toBe(119);
     expect(sidebarCursorPublishDelayMs(1_000, 881, 120)).toBe(1);
   });
+});
+
+it('publishes leading and latest trailing positions during continuous movement and cancels pending work', () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+  try {
+    const publish = vi.fn((_cursorMs: number) => true);
+    const throttle = createSidebarCursorThrottle(publish);
+    throttle.schedule(1);
+    for (let i = 2; i <= 7; i++) { vi.advanceTimersByTime(20); throttle.schedule(i); }
+    expect(publish.mock.calls.map(c => c[0])).toEqual([1, 6]);
+    vi.advanceTimersByTime(120);
+    expect(publish.mock.calls.map(c => c[0])).toEqual([1, 6, 7]);
+    throttle.schedule(8);
+    throttle.cancel();
+    vi.advanceTimersByTime(120);
+    expect(publish).toHaveBeenCalledTimes(3);
+    throttle.schedule(9);
+    expect(publish).toHaveBeenLastCalledWith(9);
+    throttle.cancel();
+  } finally { vi.useRealTimers(); }
 });

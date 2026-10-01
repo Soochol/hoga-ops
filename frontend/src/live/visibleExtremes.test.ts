@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { computeVisibleExtremes, computePriorDaysExtremes } from './visibleExtremes';
+import { describe, it, expect, vi } from 'vitest';
+import { computeVisibleExtremes, computePriorDaysExtremes, createVisibleExtremesReader } from './visibleExtremes';
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import type { Candle } from '../api/types';
 
@@ -12,6 +12,46 @@ const axis: VirtualAxis = createVirtualAxis(
   OPEN,
 );
 const FULL_RANGE = { from: OPEN / 1000, to: CLOSE / 1000 };
+
+it('reuses projected history and cached extremes, but invalidates for viewport, candles and axis changes', () => {
+  const candles = Array.from({ length: 20_000 }, (_, i) => candle(OPEN + i * 1000, 100 + i % 20, 80, 95));
+  const contains = vi.fn(axis.contains), toVirtual = vi.fn(axis.toVirtual);
+  const countedAxis = { ...axis, contains, toVirtual };
+  const read = createVisibleExtremesReader();
+  const range = { from: (OPEN + 19_940_000) / 1000, to: (OPEN + 19_999_000) / 1000 };
+  const first = read(candles, countedAxis, range);
+  expect(first.extremes).toEqual(computeVisibleExtremes(candles, axis, range));
+  contains.mockClear(); toVirtual.mockClear();
+  for (let i = 0; i < 60; i++) expect(read(candles, countedAxis, { ...range })).toBe(first);
+  const panned = { from: range.from - 60, to: range.to - 60 };
+  expect(read(candles, countedAxis, panned).extremes).toEqual(computeVisibleExtremes(candles, axis, panned));
+  expect(contains).not.toHaveBeenCalled();
+  expect(toVirtual).not.toHaveBeenCalled();
+  const updated = [...candles.slice(0, -1), candle(candles.at(-1)!.ts_ms, 200, 70, 110)];
+  expect(read(updated, countedAxis, range).extremes).toEqual(computeVisibleExtremes(updated, axis, range));
+  expect(contains).toHaveBeenCalledTimes(updated.length);
+  const shortenedAxis = createVirtualAxis([{ date: '20260612', sessionOpenMs: OPEN, sessionCloseMs: OPEN + 19_970_000 }], OPEN);
+  expect(read(updated, shortenedAxis, range).extremes).toEqual(computeVisibleExtremes(updated, shortenedAxis, range));
+});
+
+it('indexed extremes preserve calendar/intraday boundaries, prior days and first-occurrence ties', () => {
+  const day2 = OPEN + 86400_000;
+  const candles = [candle(day2, 120, 80, 101), candle(OPEN, 120, 80, 99), candle(day2 + 1000, 115, 85, 105)];
+  for (const mode of ['intraday', 'calendar'] as const) {
+    const a = createVirtualAxis([
+      { date: '20260612', sessionOpenMs: OPEN, sessionCloseMs: CLOSE },
+      { date: '20260613', sessionOpenMs: day2, sessionCloseMs: day2 + 6.5 * 3600_000 },
+    ], OPEN, { mode });
+    const read = createVisibleExtremesReader();
+    for (const range of [null, { from: OPEN / 1000, to: a.toVirtual(day2 + 1000) / 1000 },
+      { from: a.toVirtual(day2) / 1000, to: a.toVirtual(day2 + 1000) / 1000 },
+      { from: a.toVirtual(CLOSE) / 1000 + .1, to: a.toVirtual(day2) / 1000 - .1 }]) {
+      const result = read(candles, a, range);
+      expect(result.extremes).toEqual(computeVisibleExtremes(candles, a, range));
+      expect(result.prior).toEqual(computePriorDaysExtremes(candles, a, range));
+    }
+  }
+});
 
 // 기준가 = "보이는 범위에서 가장 우측(최근) 캔들의 종가"라 close를 명시로 받는다.
 function candle(tsMs: number, high: number, low: number, close: number): Candle {

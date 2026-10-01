@@ -27,6 +27,7 @@ import EyeGlyph from './EyeGlyph';
 import { useCursorSyncResolution } from './useCursorSyncResolution';
 import { priceDirClass } from '../ui/priceDir';
 import { buildCandleTooltip } from './candleTooltipModel';
+import { legendCrosshairSnapshot, sameLegendCrosshair } from './legendCrosshairSnapshot';
 import {
   useIndicatorActions,
   useWindowIndicator,
@@ -944,6 +945,7 @@ function PaneLegendOverlay({
   useEffect(() => {
     const ts = chart.timeScale();
     let raf = 0;
+    let previous: ReturnType<typeof legendCrosshairSnapshot> = null;
     const schedule = () => {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
@@ -952,7 +954,10 @@ function PaneLegendOverlay({
       });
     };
     const onCrosshair = (param: MouseEventParams) => {
+      const next = legendCrosshairSnapshot(param);
       paramRef.current = param.point == null ? null : param;
+      if (sameLegendCrosshair(previous, next)) return;
+      previous = next;
       schedule();
     };
     chart.subscribeCrosshairMove(onCrosshair);

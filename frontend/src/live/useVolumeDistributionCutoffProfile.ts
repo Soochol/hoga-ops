@@ -106,7 +106,8 @@ export function useVolumeDistributionCutoffProfile(args: {
   );
   const liveFallbackIndex = useMemo(() => {
     if (
-      !args.date
+      !queryEnabled
+      || !args.date
       || args.date !== args.todayKst
       || !args.segment
       || !args.candles
@@ -122,6 +123,7 @@ export function useVolumeDistributionCutoffProfile(args: {
       segment: args.segment,
     });
   }, [
+    queryEnabled,
     args.candles,
     args.date,
     args.rangeCount,

@@ -16,6 +16,7 @@ import { useWindowIndicators } from './windowView';
 import { publishGroupChartLink, clearGroupChartLink } from './groupChartLinkSource';
 import { groupTargetChartWindow } from '../../state/workspace';
 import { useLiveCursorStore } from '../useLiveCursorStore';
+import { createSidebarCursorThrottle } from '../sidebarCursorRateLimit';
 import { movingAverageSeconds } from './secondAggregateProjectors';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { useMinuteClock } from '../useMinuteClock';
@@ -26,7 +27,8 @@ import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
 import { captureSecondViewport, restoreSecondViewport, type SecondChartViewport } from './secondChartViewport';
 
-const kstTime = (value: number) => new Date(value * 1000).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul', hour12: false });
+const kstTimeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const kstTime = (value: number) => kstTimeFormatter.format(value * 1000);
 const isoDate = (date: string) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
 const time = (ms: number) => ms / 1000 as UTCTimestamp;
 
@@ -77,6 +79,15 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const pendingViewport = useRef<SecondChartViewport | null>(null);
   const previousSession = useRef(regularSessionOnly);
   const setTimeframe = useWorkspaceStore(s => s.setChartTimeframe);
+  const hoverLinked = win.chart?.hoverLinked ?? true;
+  const hoverLinkedRef = useRef(hoverLinked);
+  hoverLinkedRef.current = hoverLinked;
+  const cursorThrottle = useRef<ReturnType<typeof createSidebarCursorThrottle> | null>(null);
+  useEffect(() => {
+    if (hoverLinked) return;
+    cursorThrottle.current?.cancel();
+    useLiveCursorStore.getState().clearSidebarCursorFrom(win.id);
+  }, [hoverLinked, win.id]);
 
   useEffect(() => {
     if (!target) return;
@@ -119,11 +130,21 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       if (alive && entries[0]) chart.resize(Math.floor(entries[0].contentRect.width), Math.floor(entries[0].contentRect.height));
     });
     resize.observe(container.current);
-    const onCursor = (event: { time?: Time }) => {
+    const throttle = createSidebarCursorThrottle(next => {
+      if (!hoverLinkedRef.current) return false;
       const store = useLiveCursorStore.getState();
-      if (typeof event.time === 'number') store.setSidebarCursor(axisRef.current.toReal(event.time * 1000),
-        { windowId: win.id, group: win.group, code, timeframe });
-      else store.clearSidebarCursorFrom(win.id);
+      if (store.sidebarCursorMs === next && store.sidebarCursorOrigin?.windowId === win.id) return false;
+      store.setSidebarCursor(next, { windowId: win.id, group: win.group, code, timeframe });
+      return true;
+    });
+    cursorThrottle.current = throttle;
+    const onCursor = (event: { time?: Time }) => {
+      if (hoverLinkedRef.current && typeof event.time === 'number') {
+        throttle.schedule(axisRef.current.toReal(event.time * 1000));
+      } else {
+        throttle.cancel();
+        useLiveCursorStore.getState().clearSidebarCursorFrom(win.id);
+      }
     };
     chart.subscribeCrosshairMove(onCursor);
     chartRef.current = chart;
@@ -136,6 +157,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       resize.disconnect();
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(onRange);
       chart.unsubscribeCrosshairMove(onCursor);
+      throttle.cancel();
+      cursorThrottle.current = null;
       useLiveCursorStore.getState().resetCursorFrom(win.id);
       chart.remove();
       chartRef.current = null;

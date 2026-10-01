@@ -18,7 +18,7 @@ import { rankArrowRect, type PeakWallRankArrow } from './PeakWallRankArrowsPrimi
 import type { VirtualAxis } from '../util/virtualAxis';
 import { resolveTokensThemed } from '../util/tokens';
 import { PRICE_DIRECTION_TOKEN_SPEC } from './priceDirectionTokens';
-import { computePriorDaysExtremes, computeVisibleExtremes } from '../live/visibleExtremes';
+import { createVisibleExtremesReader } from '../live/visibleExtremes';
 import { formatExtremeLabel } from '../live/formatExtremeLabel';
 import { peakXFromCoordinate, xCoordinateOrNearest } from './PeakWallSegmentsPrimitive';
 import { measureTextCached } from './util/textWidthCache';
@@ -259,6 +259,7 @@ function wallAvoidRects(
 
 class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
   private readonly _source: HighLowLabelsPrimitive;
+  private readonly readExtremes = createVisibleExtremesReader();
   private previous = new Map<ExtremeLabelPlace, { time: number; anchorX: number; label: ClearExtremeLabel }>();
 
   constructor(source: HighLowLabelsPrimitive) {
@@ -274,7 +275,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
 
     const ts = chart.timeScale();
     const visibleRange = readVisibleRange(ts);
-    const ex = computeVisibleExtremes(snap.candles, snap.axis, visibleRange);
+    const { extremes: ex, prior } = this.readExtremes(snap.candles, snap.axis, visibleRange);
     if (ex === null || visibleRange === null) { this.previous.clear(); return; }
 
     // Media(CSS 픽셀) space — priceToCoordinate/timeToCoordinate 와 같은 단위라
@@ -309,10 +310,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
       // 이전 고점을 넘지 않았으면 두 선이 같은 y 에 포개지는데, 그건 결함이 아니라
       // "아직 갱신되지 않았다" 는 정보다.
       const priorOn = snap.priorDayLines.high.on || snap.priorDayLines.low.on;
-      const prior = priorOn
-        ? computePriorDaysExtremes(snap.candles, snap.axis, visibleRange)
-        : null;
-      if (prior !== null) {
+      if (priorOn && prior !== null) {
         const priorRows: { style: LevelLineStyle; price: number; fallback: string }[] = [
           { style: snap.priorDayLines.high, price: prior.high, fallback: tokens.up },
           { style: snap.priorDayLines.low, price: prior.low, fallback: tokens.down },

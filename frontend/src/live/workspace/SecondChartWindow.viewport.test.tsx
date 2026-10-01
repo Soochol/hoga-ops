@@ -1,7 +1,8 @@
-import { render } from '@testing-library/react';
+import { render, act } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import type { WorkspaceWindow } from '../../state/workspace';
 import { SecondChartWindow } from './SecondChartWindow';
+import { useLiveCursorStore } from '../useLiveCursorStore';
 
 const fixture = vi.hoisted(() => {
   const bars = Array.from({ length: 300 }, (_, i) => ({ t_ms: 1_790_816_400_000 + i * 30_000,
@@ -9,7 +10,8 @@ const fixture = vi.hoisted(() => {
   return { bars, query: { bars, hasNextPage: false, isFetchingNextPage: false, catalogPending: false,
     isPending: false, isError: false, fetchNextPage: vi.fn() },
     range: { from: 0, to: 239 }, spacing: 6,
-    setRange: vi.fn(), setData: vi.fn(), applyOptions: vi.fn() };
+    setRange: vi.fn(), setData: vi.fn(), applyOptions: vi.fn(),
+    onCursor: null as ((event: { time?: number }) => void) | null };
 });
 
 vi.mock('../../api/secondHistory', () => ({ SECOND_INITIAL_BARS: 240, useSecondHistory: () => fixture.query }));
@@ -33,7 +35,8 @@ vi.mock('lightweight-charts', () => ({
       },
       subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
     }),
-    subscribeCrosshairMove: vi.fn(), unsubscribeCrosshairMove: vi.fn(), resize: vi.fn(), remove: vi.fn(),
+    subscribeCrosshairMove: (handler: (event: { time?: number }) => void) => { fixture.onCursor = handler; },
+    unsubscribeCrosshairMove: vi.fn(), resize: vi.fn(), remove: vi.fn(),
   }),
 }));
 
@@ -62,4 +65,36 @@ it('retains user zoom and time anchor across an empty loading page and a session
   expect(fixture.spacing).toBe(18);
   view.unmount();
   vi.unstubAllGlobals();
+});
+
+it('throttles linked seconds detail updates and cancels them on leave, unlink and unmount', () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  useLiveCursorStore.getState().resetCursor();
+  const win: WorkspaceWindow = { id: 'cursor-chart', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: .5, h: .5 } };
+  const symbol = { code: '005930', name: '삼성전자', kind: 'stock' as const };
+  const view = render(<SecondChartWindow win={win} symbol={symbol} timeframe="30s" />);
+  const first = fixture.bars[0].t_ms / 1000;
+  const move = (time?: number) => act(() => { fixture.onCursor?.({ time }); });
+  const current = () => useLiveCursorStore.getState().sidebarCursorMs;
+  try {
+    move(first); expect(current()).toBe(first * 1000);
+    move(first + 30); move(first + 60);
+    expect(current()).toBe(first * 1000);
+    act(() => { vi.advanceTimersByTime(120); });
+    expect(current()).toBe((first + 60) * 1000);
+    move(first + 90); move();
+    act(() => { vi.advanceTimersByTime(120); });
+    expect(current()).toBeNull();
+    move(first); move(first + 30);
+    view.rerender(<SecondChartWindow win={{ ...win, chart: { timeframe: '30s', hoverLinked: false } }} symbol={symbol} timeframe="30s" />);
+    act(() => { vi.advanceTimersByTime(120); });
+    expect(current()).toBeNull();
+    view.rerender(<SecondChartWindow win={win} symbol={symbol} timeframe="30s" />);
+    move(first); move(first + 30);
+    useLiveCursorStore.getState().setSidebarCursor(123, { windowId: 'other', group: 2, code: '000660', timeframe: '1m' });
+    view.unmount();
+    act(() => { vi.advanceTimersByTime(120); });
+    expect(current()).toBe(123);
+  } finally { view.unmount(); vi.useRealTimers(); vi.unstubAllGlobals(); useLiveCursorStore.getState().resetCursor(); }
 });

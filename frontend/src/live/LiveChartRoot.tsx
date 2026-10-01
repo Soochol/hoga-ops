@@ -94,6 +94,7 @@ import {
   alignSidebarCursorMs,
   shouldPublishSidebarCursor,
   sidebarCursorPublishDelayMs,
+  LIVE_SIDEBAR_CURSOR_THROTTLE_MS,
 } from './sidebarCursorRateLimit';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
@@ -232,12 +233,6 @@ const EMPTY_CANDLES: readonly Candle[] = [];
 // (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
 const EMPTY_RANGE_SEGMENTS: readonly RangeSegment[] = [];
 const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
-/** Leading+trailing throttle window for sidebarCursorMs publishes. The first
- * hover after a quiet window publishes immediately; while the pointer keeps
- * moving, the latest aligned cursor is published once per window — a trailing
- * debounce here starved the sidebar for the entire duration of a continuous
- * sweep (it only fired after the pointer stopped). */
-const LIVE_SIDEBAR_CURSOR_THROTTLE_MS = 120;
 /** 번들이 아직 없을 때 일봉 MA 필터에 넘기는 빈 캔들 — 매 렌더 새 배열을 만들면 훅의
  *  memo 가 매번 깨진다. */
 const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];

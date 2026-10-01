@@ -183,8 +183,8 @@ function HighLowLabelsHost({
     primRef.current?.requestUpdate();
   }, [chart, series]);
 
-  // 레전드 재측정 트리거: 차트 리사이즈(RO) + 레전드 DOM 변화(MO — 행 추가/삭제,
-  // 크로스헤어 호버로 값 텍스트가 바뀌며 행 폭이 변하는 경우). rAF 1틱 coalesce.
+  // Observe row sizes, rather than every OHLC text mutation. A cursor move
+  // that leaves geometry unchanged must not force a DOM measurement/repaint.
   useEffect(() => {
     if (!series || !enabled) return;
     let raf = 0;
@@ -202,11 +202,27 @@ function HighLowLabelsHost({
       : null;
     if (ro && chartEl instanceof Element) ro.observe(chartEl);
     const legendRoot = chartEl instanceof Element ? findLegendRoot(chartEl) : null;
+    let rows: Element[] = [];
+    const observeRows = () => {
+      for (const row of rows) ro?.unobserve(row);
+      rows = legendRoot ? Array.from(legendRoot.children).flatMap(stack => Array.from(stack.children)) : [];
+      for (const row of rows) ro?.observe(row);
+    };
+    observeRows();
     const mo = typeof MutationObserver !== 'undefined' && legendRoot
-      ? new MutationObserver(schedule)
+      ? new MutationObserver(records => {
+        const structureChanged = records.some(r => r.type === 'childList'
+          && [...r.addedNodes, ...r.removedNodes].some(n => n instanceof Element));
+        if (structureChanged) observeRows();
+        // Stack/row style changes can move a row without changing its size.
+        // Cell colour/value changes cannot; ResizeObserver covers text widths.
+        const moved = records.some(r => r.type === 'attributes'
+          && (r.target === legendRoot || r.target.parentNode === legendRoot || rows.includes(r.target as Element)));
+        if (!ro || structureChanged || moved) schedule();
+      })
       : null;
     if (mo && legendRoot) {
-      mo.observe(legendRoot, { subtree: true, childList: true, characterData: true, attributes: true });
+      mo.observe(legendRoot, { subtree: true, childList: true, characterData: !ro, attributes: true, attributeFilter: ['style', 'class'] });
     }
     return () => {
       if (raf) cancelAnimationFrame(raf);
