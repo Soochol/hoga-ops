@@ -38,8 +38,6 @@
 }
 .live-window .live-window-titlebar[data-focused] { background: var(--bg-subtle); }
 .live-window .live-window-titlebar > button { width: 1.5rem; height: 1.5rem; }
-.live-window .live-window-titlebar > [data-testid="window-header-spacer"] { display: none; }
-.live-window .live-window-titlebar > .flex-1 { flex-grow: 0; }
 .live-symbol-row { display: flex; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; align-items: center; gap: var(--space-sm); }
 .live-symbol-identity { display: flex; align-items: center; gap: var(--space-sm); min-width: 0; }
 .live-symbol-name { font-size: var(--live-text-data); font-weight: 600; }
