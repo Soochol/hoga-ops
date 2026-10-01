@@ -80,3 +80,50 @@ it('opens related API details from a panel request without inventing its data sc
   expect(panel).toHaveTextContent('아래는 공급사 전체 관측');
   expect(panel.querySelector('details')).toHaveAttribute('open');
 });
+
+it('distinguishes connection from subscription readiness and copies the failed account and phase', () => {
+  query.data = data({ ...provider, connection: 'partial', connected_accounts: 5, ready_accounts: 4,
+    failures: [{ channel: 'ws', kind: 'timeout', operation: 'session', code: null,
+      observed_at_ms: provider.observed_at_ms, account_id: 0, connection_generation: 7,
+      phase: 'REG', elapsed_ms: 10_000 }] });
+  render(<ServiceStatusButton />);
+  const panel = open();
+  expect(panel).toHaveTextContent('연결 5/5계정 · 구독 준비 4/5계정');
+  expect(panel).not.toHaveTextContent('실시간 연결 정상');
+  fireEvent.click(within(panel).getByText('상세 보기'));
+  expect(panel).toHaveTextContent('계정 · 1');
+  expect(panel).toHaveTextContent('실패 단계 · 구독 등록');
+  expect(panel).toHaveTextContent('단계 소요 · 10.00초');
+  expect(panel).toHaveTextContent('자동 재연결 후 로그인과 구독 준비가 확인되면 관측이 해제됩니다');
+  expect(panel).not.toHaveTextContent('재조회 전에는 현재 복구 여부를 알 수 없습니다');
+  fireEvent.click(within(panel).getByRole('button', { name: '진단 복사' }));
+  const report = screen.getByRole<HTMLTextAreaElement>('textbox', { name: '복사할 진단' }).value;
+  expect(report).toContain('계정: 1');
+  expect(report).toContain('실패 단계: 구독 등록');
+  expect(report).toContain('연결 세대: 7');
+});
+
+it('keeps another account failure visible when one account recovers', () => {
+  const first = { channel: 'ws', kind: 'timeout', operation: 'session', code: null,
+    observed_at_ms: provider.observed_at_ms, account_id: 0, phase: 'REG' } as const;
+  const second = { ...first, account_id: 2 };
+  query.data = data({ ...provider, failures: [first, second] });
+  const { rerender } = render(<ServiceStatusButton />);
+  open();
+  query.data = data({ ...provider, failures: [second] });
+  rerender(<ServiceStatusButton />);
+  expect(screen.getByRole('button', { name: '현재 문제 1' })).toBeVisible();
+  expect(screen.getByRole('button', { name: '최근 해제 1' })).toBeVisible();
+  fireEvent.click(screen.getByText('상세 보기'));
+  expect(screen.getByRole('dialog')).toHaveTextContent('계정 · 3');
+});
+
+it('identifies an internal data processing failure from its stage', () => {
+  query.data = data({ ...provider, failures: [{ channel: 'ws', kind: 'transport',
+    operation: 'session', code: null, observed_at_ms: provider.observed_at_ms,
+    account_id: 0, phase: 'dispatch' }] });
+  render(<ServiceStatusButton />);
+  const panel = open();
+  expect(panel).toHaveTextContent('서버 내부 실시간 데이터 처리 지연 또는 실패');
+  expect(panel).toHaveTextContent('서버의 처리 지연과 자동 재연결 상태를 확인하세요');
+});

@@ -79,3 +79,21 @@ def test_out_of_order_completion_does_not_clear_newer_failure():
     errors.finish(owner, 'ka10001', new, 'rest', TimeoutError())
     errors.finish(owner, 'ka10001', old, 'rest')
     assert errors.failures()[0].kind == 'timeout'
+
+
+def test_ws_failures_keep_account_scope_and_only_matching_owner_recovers():
+    first, second = Provider(), Provider()
+    first.account_id, second.account_id = 0, 2
+    first.connection_generation, second.connection_generation = 1, 7
+    for owner in (first, second):
+        generation = errors.begin(owner, 'session')
+        exc = TimeoutError('SECRET')
+        exc._kiwoom_phase = 'REG'
+        exc._kiwoom_elapsed_ms = 10_000
+        errors.finish(owner, 'session', generation, 'ws', exc)
+    assert {f.account_id for f in errors.failures()} == {0, 2}
+    generation = errors.begin(first, 'session')
+    errors.finish(first, 'session', generation, 'ws')
+    assert [f.account_id for f in errors.failures()] == [2]
+    assert errors.failures()[0].connection_generation == 7
+    assert 'SECRET' not in errors.failures()[0].model_dump_json()

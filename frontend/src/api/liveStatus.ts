@@ -23,11 +23,22 @@ export interface ProviderStatus {
   connection: "unconfigured" | "paused" | "connecting" | "unavailable" | "partial" | "connected";
   connected_accounts: number;
   configured_accounts: number;
+  ready_accounts?: number;
   last_received_at_ms: number | null;
   notice: { id: string; starts_at_ms: number; ends_at_ms: number; reason: string; source: string } | null;
   notice_phase: "scheduled" | "active" | "overdue" | null;
   notice_config_error: boolean;
-  failures?: { channel: "ws" | "rest"; kind: "auth" | "rate_limit" | "timeout" | "transport" | "server" | "request" | "unknown"; operation: string; observed_at_ms: number; code: string | null }[];
+  failures?: {
+    channel: "ws" | "rest";
+    kind: "auth" | "rate_limit" | "timeout" | "transport" | "server" | "request" | "unknown";
+    operation: string;
+    observed_at_ms: number;
+    code: string | null;
+    account_id?: number | null;
+    connection_generation?: number | null;
+    phase?: string | null;
+    elapsed_ms?: number | null;
+  }[];
 }
 
 export interface LiveStatus {
@@ -177,6 +188,16 @@ export interface KiwoomAccountStatus {
   last_close_code?: number | null;
   last_error_type?: string | null;
   last_recv_ms?: number | null;
+  data_queue?: {
+    depth: number;
+    /** Conservative UTF-8 input size bound; not Python heap usage. */
+    bytes: number;
+    oldest_age_ms: number;
+    overflows: number;
+    /** Includes queued messages and a partially processed frame when a session ends. */
+    discarded_messages: number;
+    wait: { count: number; sample_size: number; p95_ms: number; max_ms: number };
+  };
   latency?: {
     dispatch: { count: number; sample_size: number; p95_ms: number; max_ms: number };
     control: Record<string, { count: number; sample_size: number; p95_ms: number; max_ms: number }>;

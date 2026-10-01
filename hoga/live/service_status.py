@@ -42,6 +42,7 @@ class ProviderStatus(BaseModel):
     connection: Literal["unconfigured", "paused", "connecting", "unavailable", "partial", "connected"]
     connected_accounts: int
     configured_accounts: int
+    ready_accounts: int = 0
     last_received_at_ms: int | None = None
     notice: MaintenanceNotice | None = None
     notice_phase: Literal["scheduled", "active", "overdue"] | None = None
@@ -70,18 +71,20 @@ def provider_status(
     accounts = k.get("accounts", [])
     fresh = [a for a in accounts if a.get("connected") and
              a.get("last_recv_ms") is not None and 0 <= now_ms - a["last_recv_ms"] <= FRESH_MS]
+    ready = [a for a in fresh if a.get("registration_ready") is True]
     if not configured:
         connection = "unconfigured"
     elif connected == 0:
         failed = any(a.get("last_error_type") or a.get("last_close_code") for a in accounts)
         connection = "paused" if not ws_expected else ("unavailable" if failed else "connecting")
-    elif connected < configured or len(fresh) != configured:
+    elif connected < configured or len(ready) != configured:
         connection = "partial"
     else:
         connection = "connected"
     result = ProviderStatus(
         observed_at_ms=now_ms, connection=connection, connected_accounts=connected,
         configured_accounts=configured, last_received_at_ms=k.get("last_recv_ms"), failures=failures(),
+        ready_accounts=len(ready),
     )
     if not configured:
         return result

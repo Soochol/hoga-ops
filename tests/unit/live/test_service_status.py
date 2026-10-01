@@ -5,7 +5,28 @@ def session(now, connected=True):
     return {"enabled": True, "accounts_configured": 1, "connected_accounts": int(connected),
             "last_recv_ms": now if connected else None,
             "accounts": [{"connected": connected, "last_recv_ms": now if connected else None,
+                          "registration_ready": connected,
                           "last_error_type": None if connected else "ConnectionError"}]}
+
+
+def test_login_success_is_partial_until_registration_ready(tmp_path):
+    now = DEFAULT_NOTICE.ends_at_ms + 1
+    pending = session(now)
+    pending["accounts"][0]["registration_ready"] = False
+    result = provider_status(tmp_path, pending, now)
+    assert result.connection == "partial"
+    assert result.connected_accounts == 1
+    assert result.ready_accounts == 0
+    assert result.notice_phase == "overdue"
+
+
+def test_missing_readiness_is_unknown_not_recovered(tmp_path):
+    now = DEFAULT_NOTICE.ends_at_ms + 1
+    pending = session(now)
+    del pending["accounts"][0]["registration_ready"]
+    result = provider_status(tmp_path, pending, now)
+    assert result.connection == "partial"
+    assert result.ready_accounts == 0
 
 
 def test_weekend_outage_is_not_market_closed(tmp_path):

@@ -59,6 +59,44 @@ def test_get_live_status_returns_running_false_initially() -> None:
         assert body["watchlist_count"] == 0
 
 
+def test_live_status_wire_preserves_failure_context_and_prevents_false_readiness(tmp_path):
+    import time
+
+    from hoga.live import provider_errors
+    from hoga.live.kiwoom_ws_client import KiwoomWsClient
+    from hoga.live.lifecycle import LiveStatus
+
+    now = int(time.time() * 1000)
+    owner = KiwoomWsClient(token_fn=lambda: None, on_tick=None, date_fn=lambda: "20261001", account_id=2)
+    owner.connection_generation = 7
+    exc = TimeoutError("SECRET")
+    owner._annotate_failure(exc, "REG", 10_000)
+    generation = provider_errors.begin(owner, "session")
+    provider_errors.finish(owner, "session", generation, "ws", exc)
+    status = LiveStatus(
+        running=True, started_at_ms=now, last_tick_ms=now, cycle_lag_ms=0, watchlist_count=1,
+        kiwoom={"enabled": True, "accounts_configured": 1, "connected_accounts": 1,
+                "last_recv_ms": now, "accounts": [
+                    {"account_id": 2, "connected": True, "last_recv_ms": now, "registration_ready": False},
+                ]},
+    )
+    try:
+        with TestClient(_make_test_app(get_status_fn=lambda: status, data_dir=tmp_path)) as client:
+            response = client.get("/api/live/status")
+        assert response.status_code == 200
+        provider = response.json()["provider_status"]
+        assert provider["connection"] == "partial"
+        assert provider["connected_accounts"] == 1
+        assert provider["ready_accounts"] == 0
+        failure = next(f for f in provider["failures"] if f["account_id"] == 2)
+        assert failure["connection_generation"] == 7
+        assert failure["phase"] == "REG"
+        assert failure["elapsed_ms"] == 10_000
+        assert "SECRET" not in response.text
+    finally:
+        provider_errors.clear(owner)
+
+
 def test_get_live_status_includes_kis_capacity_scheduler_snapshot(tmp_path) -> None:
     from hoga.live import lifecycle
 

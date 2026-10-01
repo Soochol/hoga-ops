@@ -27,6 +27,10 @@ class ProviderFailure(BaseModel):
     operation: str
     observed_at_ms: int
     code: str | None = None
+    account_id: int | None = None
+    connection_generation: int | None = None
+    phase: str | None = None
+    elapsed_ms: float | None = None
 
 
 _observations: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
@@ -88,7 +92,13 @@ def finish(owner: object, operation: str, generation: int, channel: str, exc: Ex
     if exc is not None:
         kind, code = classify(exc)
         failure = ProviderFailure(channel=channel, kind=kind, operation=operation,
-                                  observed_at_ms=int(time.time() * 1000), code=code)
+                                  observed_at_ms=int(time.time() * 1000), code=code,
+                                  account_id=getattr(owner, 'account_id', None) if channel == 'ws' else None,
+                                  connection_generation=(
+                                      getattr(owner, 'connection_generation', None) if channel == 'ws' else None
+                                  ),
+                                  phase=getattr(exc, '_kiwoom_phase', None),
+                                  elapsed_ms=getattr(exc, '_kiwoom_elapsed_ms', None))
     entries[operation] = (generation, failure)
 
 
@@ -97,12 +107,12 @@ def clear(owner: object) -> None:
 
 
 def failures() -> list[ProviderFailure]:
-    # Latest observation per channel/operation/kind; one account success never clears another.
+    # Latest observation per channel/operation/kind/account/phase; success is owner-scoped.
     grouped = {}
     for entries in list(_observations.values()):
         for _, failure in entries.values():
             if failure is not None:
-                key = (failure.channel, failure.operation, failure.kind)
+                key = (failure.channel, failure.operation, failure.kind, failure.account_id, failure.phase)
                 if key not in grouped or grouped[key].observed_at_ms < failure.observed_at_ms:
                     grouped[key] = failure
     return sorted(grouped.values(), key=lambda item: item.observed_at_ms, reverse=True)

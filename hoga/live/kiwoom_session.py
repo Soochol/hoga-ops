@@ -684,6 +684,7 @@ class KiwoomSessionManager:
                     "dispatch": c.dispatch_latency.snapshot(),
                     "control": {k: v.snapshot() for k, v in c.control_latency.items()},
                 } if hasattr(c, "dispatch_latency") else {},
+                "data_queue": c.data_queue_snapshot() if hasattr(c, "data_queue_snapshot") else {},
             })
         codes = self.active_codes()
         nxt_map = _nxt_map()
@@ -802,6 +803,7 @@ class KiwoomSessionManager:
         # 항상 반영(전역 아님 — 리뷰: 타 계정 저장코드의 표시 틱 유실 방지).
         conn_members = self._conn_members.setdefault(account_id, set())
         client = KiwoomWsClient(
+            account_id=account_id,
             token_fn=token_fn,
             on_tick=self._make_conn_on_tick(stream, conn_members),
             date_fn=self._date_fn,
