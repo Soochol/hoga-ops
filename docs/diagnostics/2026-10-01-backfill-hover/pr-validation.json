@@ -1,0 +1,53 @@
+{
+  "testedCodeCommit": "9bab80d7a0b7961c528033a677c14399bd75b897",
+  "baseCommit": "e6f0703ba76c60a4d8817a5c1400567964cd68a8",
+  "typecheck": "passed",
+  "vitest": {
+    "files": 600,
+    "tests": 7696,
+    "result": "passed"
+  },
+  "viteBuild": "passed",
+  "playwright": {
+    "tests": 148,
+    "result": "passed",
+    "minutes": 4.1
+  },
+  "chartRepeated": {
+    "scenarios": 10,
+    "repeats": 3,
+    "result": "30 passed"
+  },
+  "frontendFileSha256": {
+    "frontend/src/api/livePastCandles.test.tsx": "a5bbebf64e5891e58e2773cec96a2a215103db5cdde0f8567474eeb51caf4843",
+    "frontend/src/api/livePastCandles.ts": "c9727ab0d4bbd8f2d5d9175b423c12e366f76b02ca12a661c83900cdf5306ade",
+    "frontend/src/chart/candlePosition.ts": "87ea371393c305a707d16809855a1cab962545d5223686a049eb1d395f3b70f4",
+    "frontend/src/chart/drawnCandleIndex.test.ts": "5eb86bdcb81177c0c729e1a1839f702319c2299c59c2368832458bc3bb1f5adf",
+    "frontend/src/chart/drawnCandleIndex.ts": "942baa247dbd61864dd99efe8896a07a68db483b49e855c8b37cbd4a1778b4e1",
+    "frontend/src/chart/projectors/candle.ts": "d41f9ee8c4500955140d3a870d3db4b839e8501cc61dcd0d407b0b4934d047c8",
+    "frontend/src/chart/projectors/maProjection.test.ts": "383fa0f573aa41d6e3716b3f9dc7b96f34735d997562fc05cd574aa57e4b9769",
+    "frontend/src/chart/projectors/maProjection.ts": "151545e608d0eeab516d5fba9a2a7df9eacaa3023bf3a592719e1b8b74178f73",
+    "frontend/src/chart/projectors/volume.test.ts": "ecd6dcadab836ffa3307d29a284eb56892c0429151b727ff4ef828930b878c05",
+    "frontend/src/chart/projectors/volume.ts": "2b406894dff6fe47ee9b55d319ba2131ca369e80e39c5b7d0554ba74a06315f6",
+    "frontend/src/chart/windowedChart.test.ts": "580816da131f0df79706166d41befbd6963a4b1320a0e75b3844821c980ef34d",
+    "frontend/src/chart/windowedChart.ts": "9ae8da934ac4892dc26b572fa85d2ef777d577d1fb20e75a0971f7906da2563b",
+    "frontend/src/live/CandleTooltip.test.tsx": "a7c5643eb5b99ea31ba0b534ba8d912e50467fc6fb4da3b06b706f7ff2a1c5df",
+    "frontend/src/live/LiveChartRoot.tsx": "9232f4bdae033dbabad6d4fb0bb26651062e3fcd3aa231ab4935186bf55c0301",
+    "frontend/src/live/PaneLegendOverlay.test.tsx": "bf7dc103df9a3d88b1faca05ad1bcda96cc191e2df422da07fc92705c3f911f4",
+    "frontend/src/live/TradeVolumePocOverlay.tsx": "303abc05c0727736f9a2d03561bc44d43a4e63657780b07490e08de2e36d9b78",
+    "frontend/src/live/collapseClosingAuction.ts": "e9fd25f302606cdfe8dba2cd84e6e41c8beedf434c4b9ff17d3dd267b47f94c9",
+    "frontend/src/live/indicators/DailyMovingAverageOverlay.test.tsx": "1e7023999ee94a71b2c3d6984cb1e762ea098c527e711831a81211eef01364b2",
+    "frontend/src/live/indicators/MovingAverageOverlay.test.tsx": "23339d63bef6c52ea65ea8758829a12f03c39f954977e5f80db30570186f1c54",
+    "frontend/src/live/useViewportBackfill.ts": "8da4a4b00c822dfb7a4094123cd9971d1f992cd240da4ace48d1ed0c5db82d91",
+    "frontend/src/util/time.test.ts": "872ddad54a8c9392c56bf0b2c969d2e2c6c44d1e51685f298ee8c92054739530",
+    "frontend/src/util/time.ts": "6cd85183e97bab9c5a37323584941c4cdbd85f2a3a46f457140db08b4e32c214",
+    "frontend/tests/e2e/live-backfill-window.spec.ts": "f03f0d9aa6c3882dc89422e2e4864b586dfbcfe09f250fb222adaf2d8edac34b",
+    "frontend/tests/e2e/live-viewport-preservation.spec.ts": "50b0431503c46cf2b56b6ee974c78df3a5562ad36a474971f727d3b7cfe7d6af",
+    "frontend/tests/e2e/saved-views-panel.spec.ts": "cbd5d1bdf319424bc5df07c93caaa7e8651fb1ed5437de1af740da6b8698f6e0",
+    "frontend/tests/e2e/screener-drawer-occurrence-layout.spec.ts": "493284f617721e66d69099313dc0f0d27574e5a95f5cb91913e6415fcd19d97e",
+    "frontend/tests/e2e/screener-history.spec.ts": "a8c784a99135cd24baf48367de182e32f3c8bb754110a743d77e07aeff9aa1da",
+    "frontend/tests/e2e/screener-occurrence-exclusions.spec.ts": "48dc2b4885d22e6525d6ce65a960c744735ae30ba2a7fc84b883d2a187e81cdb",
+    "frontend/tests/e2e/screener-trade-value-history.spec.ts": "0fa194a99e7b57653397c04e3d06e3c6a3c4fe094377015997bd33f61a1bf1ee",
+    "frontend/tests/e2e/watchlist-context-menu.spec.ts": "5e1bf2d32c1855ff5d3b1a39967c71d252d29072ae0fb3654d2e0bf69704868c"
+  }
+}
