@@ -8,6 +8,8 @@ import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
 import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useWorkspaceStore, type WorkspaceWindow, type GroupSymbol } from '../../state/workspace';
+import { ChartMoreActions } from './ChartMoreActions';
+import { RegularSessionAction } from './RegularSessionAction';
 import { TimeframeControl } from '../TimeframeControl';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useWindowIndicators } from './windowView';
@@ -46,7 +48,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const target = useWorkspaceStore(s => groupTargetChartWindow(s.windows, s.zOrder, win.group)?.id === win.id);
   const midnight = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00+09:00`).getTime();
   const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
-  const query = useSecondHistory(code, venue, date, seconds);
+  const regularSessionOnly = win.chart?.regularSessionOnly ?? false;
+  const query = useSecondHistory(code, venue, date, seconds, regularSessionOnly);
   const bars = query.bars;
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
   const axis = useMemo(() => {
@@ -70,16 +73,17 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const initial = useRef(true);
   const userGesture = useRef(false);
   const previousFirst = useRef<number | null>(null);
+  const previousSession = useRef(regularSessionOnly);
   const setTimeframe = useWorkspaceStore(s => s.setChartTimeframe);
 
   useEffect(() => {
     if (!target) return;
     publishGroupChartLink({ windowId: win.id, group: win.group, code, timeframe, bundle: null,
       adjustFactors: undefined, todayKst: today, secondDate: date,
-      vdist: { rangeCount: indicators.volumeDistributionRangeCount, color: indicators.volumeDistributionColor,
+      vdist: { rangeCount: indicators.volumeDistributionRangeCount, color: indicators.volumeDistributionColor, regularSessionOnly,
         maxColor: indicators.volumeDistributionMaxColor, hoverCutoffEnabled: indicators.volumeDistributionHoverCutoffEnabled } });
     return () => clearGroupChartLink(win.group, win.id);
-  }, [target, win.id, win.group, code, date, today, timeframe, indicators.volumeDistributionRangeCount, indicators.volumeDistributionColor,
+  }, [target, win.id, win.group, code, date, today, timeframe, regularSessionOnly, indicators.volumeDistributionRangeCount, indicators.volumeDistributionColor,
     indicators.volumeDistributionMaxColor, indicators.volumeDistributionHoverCutoffEnabled]);
 
   useEffect(() => {
@@ -139,7 +143,15 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
-    const priorRange = previousFirst.current !== null && bars[0]?.t_ms !== previousFirst.current
+    // A session query first resolves today's empty page before walking older dates.
+    // Preserve the existing axis/range until there are time points to restore onto.
+    if (!bars.length) {
+      series.candles.setData([]);
+      series.volume.setData([]);
+      series.ma.setData([]);
+      return;
+    }
+    const priorRange = previousFirst.current !== null && (bars[0]?.t_ms !== previousFirst.current || previousSession.current !== regularSessionOnly)
       ? chartRef.current?.timeScale().getVisibleRange() : null;
     const oldAxis = axisRef.current;
     axisRef.current = axis;
@@ -149,13 +161,23 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     series.volume.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), value: bar.volume,
       color: bar.close >= bar.open ? upColor : downColor })));
     series.ma.setData(movingAverageSeconds(bars, 20).map(point => ({ ...point, time: projectedTime(Number(point.time) * 1000) })));
-    if (priorRange && !initial.current) chartRef.current?.timeScale().setVisibleRange({ from: projectedTime(oldAxis.toReal(Number(priorRange.from) * 1000)), to: projectedTime(oldAxis.toReal(Number(priorRange.to) * 1000)) });
+    if (priorRange && !initial.current) {
+      const from = oldAxis.toReal(Number(priorRange.from) * 1000);
+      const to = oldAxis.toReal(Number(priorRange.to) * 1000);
+      const first = bars[0].t_ms, last = bars[bars.length - 1].t_ms;
+      if (from >= last || to <= first) {
+        chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - SECOND_INITIAL_BARS), to: bars.length - 1 });
+      } else {
+        chartRef.current?.timeScale().setVisibleRange({ from: projectedTime(Math.max(first, from)), to: projectedTime(Math.min(last, to)) });
+      }
+    }
     previousFirst.current = bars[0]?.t_ms ?? null;
+    previousSession.current = regularSessionOnly;
     if (initial.current && bars.length) {
       chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, bars.length - SECOND_INITIAL_BARS), to: bars.length - 1 });
       if (bars.length >= SECOND_INITIAL_BARS || (!query.hasNextPage && !query.catalogPending)) initial.current = false;
     }
-  }, [bars, axis, query.hasNextPage, query.catalogPending]);
+  }, [bars, axis, query.hasNextPage, query.catalogPending, regularSessionOnly]);
 
   useEffect(() => {
     if (bars.length < SECOND_INITIAL_BARS && hasNextPage && !isFetchingNextPage) void fetchNextPage();
@@ -164,6 +186,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart" data-day-count={axis.segments.length} data-bar-count={bars.length}>
     <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap overflow-x-auto">
       <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
+      <ChartMoreActions><RegularSessionAction win={win} /></ChartMoreActions>
     </div>
     <div className="relative min-h-0 flex-1">
       <div ref={container} className="absolute inset-0 font-data"

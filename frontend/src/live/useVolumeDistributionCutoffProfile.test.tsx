@@ -470,3 +470,13 @@ describe('useVolumeDistributionCutoffProfile', () => {
     expect(result.current).toBe(finalProfile);
   });
 });
+
+
+it('정규장 마감 cutoff는 60분봉에서도 15:00으로 내림하지 않는다', () => {
+  mockedUseRange.mockReturnValue({ data: emptyBundle, isFetching: false } as ReturnType<typeof useRange>);
+  const close = Date.parse('2026-06-25T15:30:00+09:00');
+  renderHook(() => useVolumeDistributionCutoffProfile({ enabled: true, code: '005930', timeframe: '60m',
+    date: '20260625', todayKst: '20260625', cursorMs: close, exactCutoffMs: close,
+    rangeCount: 10, finalProfile: null, priceRange: null }));
+  expect(mockedUseRange.mock.calls.at(-1)?.[6]?.volumeDistributionCutoffMs).toBe(close);
+});

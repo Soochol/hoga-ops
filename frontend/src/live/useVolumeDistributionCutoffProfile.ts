@@ -24,6 +24,8 @@ const EMPTY_TRADES: readonly ContinuousTradeLike[] = [];
 
 export function useVolumeDistributionCutoffProfile(args: {
   enabled: boolean;
+  /** Explicit session boundary must not be rounded to the display timeframe. */
+  exactCutoffMs?: number;
   code: string | null;
   timeframe: Timeframe | null;
   date: string | null;
@@ -52,10 +54,10 @@ export function useVolumeDistributionCutoffProfile(args: {
     && args.cursorMs != null
   );
   const bucketMs = args.timeframe ? TIMEFRAME_TO_MS[args.timeframe] : null;
-  const alignedCursorMs =
+  const alignedCursorMs = args.exactCutoffMs ?? (
     args.cursorMs != null && bucketMs != null
       ? Math.floor(args.cursorMs / bucketMs) * bucketMs
-      : null;
+      : null);
   const liveTrades = args.liveTrades ?? EMPTY_TRADES;
   const dateFactor = args.date ? args.adjustFactors?.[args.date] : undefined;
   const scope = [
@@ -63,6 +65,7 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.timeframe ?? '',
     args.date ?? '',
     args.rangeCount,
+    args.exactCutoffMs === undefined ? 'bar' : 'session',
     args.priceRange?.min ?? '',
     args.priceRange?.max ?? '',
     // 계수가 늦게 도착하면 같은 스코프로 **환산 전 프로파일이 재사용된다** — 척도를

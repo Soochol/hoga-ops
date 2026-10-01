@@ -165,7 +165,8 @@ export function needsRegularSessionClip(tf: LiveTimeframe): boolean {
  *
  * 대가는 콜당 커버리지다 — 30m 는 900행에 ~34 거래일이라 60m(~128)의 1/4 이다.
  * `STEP_TRADING_DAYS` 가 이를 흡수한다(아래 주석). */
-export function fetchBucketMsFor(tf: MinuteTimeframe): number {
+export function fetchBucketMsFor(tf: MinuteTimeframe, regularSessionOnly = false): number {
+  if (regularSessionOnly) return 60_000;
   return needsRegularSessionClip(tf) ? 1_800_000 : TIMEFRAME_TO_MS[tf];
 }
 

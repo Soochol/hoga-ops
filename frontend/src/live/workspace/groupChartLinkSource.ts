@@ -21,6 +21,7 @@ import { noteStoreWrite } from '../../state/updateLoopSignal';
 /** 매물대 카드가 소비하는 링크 차트 창의 지표 설정 조각(설정 소유권=차트 창, #712). */
 export type GroupChartLinkVdistSettings = {
   rangeCount: number;
+  regularSessionOnly?: boolean;
   color: string;
   maxColor: string;
   hoverCutoffEnabled: boolean;

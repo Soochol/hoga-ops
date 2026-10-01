@@ -23,6 +23,7 @@ export interface WindowView {
   code: string | null;
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
+  regularSessionOnly?: boolean;
 }
 
 /**
