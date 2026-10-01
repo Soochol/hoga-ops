@@ -6,7 +6,7 @@ import { useConnectionLiveness } from '../api/useConnectionLiveness';
 import { STATUS_STALE_MS } from '../api/liveness';
 import { useAnchoredPopover } from '../util/useAnchoredPopover';
 import { useServiceStatusPanel } from './controls';
-import { clearedIssues, CONNECTION_COPY, issueReport, serviceIssues, type ClearedIssue, type ServiceIssue } from './model';
+import { clearedIssues, CONNECTION_COPY, failurePhaseLabel, issueReport, serviceIssues, type ClearedIssue, type ServiceIssue } from './model';
 
 function stamp(ms: number) {
   return new Date(ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -35,9 +35,14 @@ function Issue({ issue, clearedAt, expanded }: { issue: ServiceIssue; clearedAt?
       <summary className="w-fit cursor-pointer text-fg-dim">상세 보기</summary>
       <div className="mt-2 rounded bg-bg-subtle p-md text-fg-dim">
         {issue.operation && <p>API · {issue.operation}</p>}
+        {issue.accountId != null && <p>계정 · {issue.accountId + 1}</p>}
+        {issue.phase && <p>실패 단계 · {failurePhaseLabel(issue.phase)}</p>}
+        {issue.elapsedMs != null && <p>단계 소요 · {(issue.elapsedMs / 1000).toFixed(2)}초</p>}
         {issue.code && <p>오류 코드 · {issue.code}</p>}
         <p className="mt-1 text-xs">{issue.source === 'provider'
-          ? '공급사의 최근 관측 기록입니다. 다른 계정·종목의 조회 상태와 다를 수 있습니다. 재조회 전에는 현재 복구 여부를 알 수 없습니다.'
+          ? issue.channel === 'ws'
+            ? '실시간 연결의 마지막 실패 기록입니다. 자동 재연결 후 로그인과 구독 준비가 확인되면 관측이 해제됩니다.'
+            : '공급사의 최근 관측 기록입니다. 다른 계정·종목의 조회 상태와 다를 수 있습니다. 재조회 전에는 현재 복구 여부를 알 수 없습니다.'
           : '상태 서버에서 확인한 운영 정보입니다.'}</p>
         <button type="button" onClick={() => { void copyReport(); }} className="mt-2 rounded border border-border-strong px-2 py-1 text-xs text-fg hover:bg-bg-input-hover">
           {copy === 'done' ? '복사됨' : '진단 복사'}
@@ -112,7 +117,9 @@ export function ServiceStatusButton() {
         <div className="flex justify-between gap-sm"><span>상태 서버</span><span className="text-fg-dim">{isError ? '확인 불가' : data ? '응답 확인' : '확인 중'}</span></div>
         <div className="mt-2 flex justify-between gap-sm"><span>앱 이벤트 연결</span><span className="text-fg-dim">{eventLive ? '수신 확인' : '재연결 중'}</span></div>
         <div className="mt-2 flex justify-between gap-sm"><span>키움 실시간</span><span className="text-fg-dim">{isError ? '확인 불가' : provider ? CONNECTION_COPY[provider.connection] : '정보 없음'}</span></div>
-        {provider && <p className="mt-1 text-right text-xs text-fg-dim">{isError ? '이전 정보 · ' : ''}연결 {provider.connected_accounts}/{provider.configured_accounts}계정</p>}
+        {provider && <p className="mt-1 text-right text-xs text-fg-dim">{isError ? '이전 정보 · ' : ''}연결 {provider.connected_accounts}/{provider.configured_accounts}계정
+          {' · '}{provider.ready_accounts != null ? `구독 준비 ${provider.ready_accounts}/${provider.configured_accounts}계정` : '구독 준비 정보 없음'}
+        </p>}
       </div>
       <footer className="bg-bg-subtle px-lg py-2 text-xs text-fg-dim">{dataUpdatedAt > 0 ? `마지막 상태 응답 ${stamp(dataUpdatedAt)}` : '상태 응답 대기 중'} · 휴장 대기는 오류에 포함되지 않습니다.</footer>
     </section>, document.body)}

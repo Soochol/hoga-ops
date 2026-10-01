@@ -168,11 +168,19 @@ class LiveStream:
 
     def _ask_peak_state(self, code: str, venue: str) -> TodayAskPeakState:
         self._reset_ask_peak_if_date_changed()
-        return self._ask_peak_by_code.setdefault((code, venue), TodayAskPeakState())
+        key = (code, venue)
+        state = self._ask_peak_by_code.get(key)
+        if state is None:
+            state = self._ask_peak_by_code[key] = TodayAskPeakState()
+        return state
 
     def _bid_peak_state(self, code: str, venue: str) -> TodayBidPeakState:
         self._reset_ask_peak_if_date_changed()
-        return self._bid_peak_by_code.setdefault((code, venue), TodayBidPeakState())
+        key = (code, venue)
+        state = self._bid_peak_by_code.get(key)
+        if state is None:
+            state = self._bid_peak_by_code[key] = TodayBidPeakState()
+        return state
 
     def ask_peak_snapshot(self, code: str, venue: str) -> dict | None:
         self._reset_ask_peak_if_date_changed()

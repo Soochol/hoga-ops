@@ -59,6 +59,8 @@ from hoga.live.error_policy import LiveErrorKind
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
 from hoga.live.krx_close import KrxCloseResponse
 from hoga.live.lifecycle import LiveStatus
+from hoga.live.provider_errors import ProviderFailure
+from hoga.live.service_status import ProviderStatus
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -307,6 +309,14 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    ProviderFailure: frozenset({
+        "channel", "kind", "operation", "observed_at_ms", "code", "account_id",
+        "connection_generation", "phase", "elapsed_ms",
+    }),
+    ProviderStatus: frozenset({
+        "observed_at_ms", "connection", "connected_accounts", "configured_accounts", "ready_accounts",
+        "last_received_at_ms", "notice", "notice_phase", "notice_config_error", "failures",
+    }),
     DailyProgramTradePoint: frozenset({"t_ms", "net_qty", "buy_qty", "sell_qty"}),
     LiveDailyProgramTradeResponse: frozenset({
         "code", "from_", "to", "points", "cached_batches", "fresh_batches", "data_warnings",

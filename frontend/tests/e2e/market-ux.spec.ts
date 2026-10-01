@@ -307,3 +307,41 @@ test('실시간 연결이 정상이어도 REST 서버 오류를 표시한다', a
   await expect(banner).not.toBeVisible();
   await expect(page.getByRole('button', { name: /서비스 상태 · 문제/ })).toBeFocused();
 });
+
+test('연결 5계정 중 구독 미완료 계정의 실패 단계와 자동 복구를 표시한다', async ({ page }) => {
+  await marketMocks(page);
+  let recovered = false;
+  let phase: 'REG' | 'dispatch' = 'REG';
+  await page.route(apiPrefix('live/status'), (route) => route.fulfill({ json: {
+    running: true, started_at_ms: null, last_tick_ms: null, cycle_lag_ms: 0,
+    watchlist_count: 0, live_set: [], capture_healthy: recovered,
+    capture_reason: recovered ? 'healthy' : 'registration_incomplete', rest_bypass_enabled: false,
+    provider_status: {
+      observed_at_ms: 1790821510000, connection: recovered ? 'connected' : 'partial',
+      connected_accounts: 5, configured_accounts: 5, ready_accounts: recovered ? 5 : 4,
+      last_received_at_ms: 1790821510000, notice_config_error: false, notice_phase: null, notice: null,
+      failures: recovered ? [] : [{ channel: 'ws', kind: phase === 'REG' ? 'timeout' : 'transport', operation: 'session',
+        observed_at_ms: 1790821510000, code: null, account_id: 0, connection_generation: 7,
+        phase, elapsed_ms: 10_000 }],
+    },
+  } }));
+  await page.goto('/market');
+  await page.getByRole('button', { name: /서비스 상태/ }).click();
+  const panel = page.getByRole('dialog', { name: '서비스 상태' });
+  await expect(panel).toContainText('연결 5/5계정 · 구독 준비 4/5계정');
+  await expect(panel).not.toContainText('실시간 연결 정상');
+  await panel.getByText('상세 보기').click();
+  await expect(panel.getByText('계정 · 1', { exact: true })).toBeVisible();
+  await expect(panel.getByText('실패 단계 · 구독 등록', { exact: true })).toBeVisible();
+  await expect(panel.getByText('단계 소요 · 10.00초', { exact: true })).toBeVisible();
+  await expect(panel).toContainText('자동 재연결 후 로그인과 구독 준비가 확인되면 관측이 해제됩니다');
+  phase = 'dispatch';
+  await expect(panel).toContainText('서버 내부 실시간 데이터 처리 지연 또는 실패', { timeout: 10_000 });
+  recovered = true;
+  await expect(panel).toContainText('구독 준비 5/5계정', { timeout: 10_000 });
+  await expect(panel).toContainText('실시간 연결 정상');
+  await expect(panel.getByRole('button', { name: '현재 문제 0' })).toBeVisible();
+  await panel.getByRole('button', { name: '최근 해제 2' }).click();
+  await expect(panel).toContainText('관측 해제');
+  await page.screenshot({ path: '/tmp/hoga-kiwoom-recovery-20261001.png' });
+});

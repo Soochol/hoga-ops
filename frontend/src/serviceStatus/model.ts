@@ -9,12 +9,17 @@ export type ServiceIssue = {
   at?: number;
   operation?: string;
   code?: string | null;
+  channel?: 'ws' | 'rest';
+  accountId?: number | null;
+  phase?: string | null;
+  connectionGeneration?: number | null;
+  elapsedMs?: number | null;
   tone: 'warn' | 'error';
 };
 export type ClearedIssue = ServiceIssue & { clearedAt: number };
 export const CONNECTION_COPY: Record<ProviderStatus['connection'], string> = {
   paused: '운영시간 외 대기', unconfigured: '미설정', connecting: '연결 확인 중',
-  unavailable: '연결 불가', partial: '일부 연결 또는 응답 지연', connected: '실시간 연결 정상',
+  unavailable: '연결 불가', partial: '일부 연결·구독 미완료 또는 수신 지연', connected: '실시간 연결 정상',
 };
 const FAILURE_COPY = {
   auth: ['인증 실패', '앱키·접근 권한을 확인하세요.'],
@@ -26,18 +31,34 @@ const FAILURE_COPY = {
   unknown: ['원인 미확인', '마지막 요청이 실패했습니다. 상세 코드를 확인하세요.'],
 } as const;
 const OPERATIONS: Record<string, string> = { ka90013: '프로그램매매', ka10001: '종목정보' };
+export function failurePhaseLabel(phase: string): string {
+  const labels: Record<string, string> = {
+    token: '토큰 발급', connect: '연결 시작', LOGIN: '로그인', REG: '구독 등록',
+    REMOVE: '구독 해제', receive: '프레임 수신', dispatch: '데이터 처리', close: '연결 종료',
+  };
+  return labels[phase] ?? phase;
+}
 
 export function serviceIssues(status: LiveStatus | undefined): ServiceIssue[] {
   const provider = status?.provider_status;
   const issues: ServiceIssue[] = (provider?.failures ?? []).map((failure) => {
     const [cause, action] = FAILURE_COPY[failure.kind];
+    const dataFailure = failure.channel === 'ws' && failure.phase === 'dispatch';
     return {
-      id: `provider:${failure.channel}:${failure.operation}:${failure.kind}`,
+      id: `provider:${failure.channel}:${failure.operation}:${failure.kind}` +
+        (failure.account_id != null ? `:account:${failure.account_id}` : '') +
+        (failure.phase ? `:phase:${failure.phase}` : ''),
       source: 'provider', title: failure.channel === 'ws' ? '키움 실시간 연결 실패'
         : `${OPERATIONS[failure.operation] ?? failure.operation} 조회 실패`,
-      cause: failure.code === '1504' ? 'API 요청 경로가 올바르지 않습니다.' : cause,
-      action: failure.code === '1504' ? '앱 수정이 필요합니다.' : action,
+      cause: failure.code === '1504' ? 'API 요청 경로가 올바르지 않습니다.'
+        : dataFailure ? '서버 내부 실시간 데이터 처리 지연 또는 실패' : cause,
+      action: failure.code === '1504' ? '앱 수정이 필요합니다.'
+        : dataFailure ? '서버의 처리 지연과 자동 재연결 상태를 확인하세요.'
+        : failure.channel === 'ws' && failure.kind === 'timeout'
+          ? '자동 재연결 상태와 구독 준비 상태를 확인하세요.' : action,
       at: failure.observed_at_ms, operation: failure.operation, code: failure.code,
+      channel: failure.channel, accountId: failure.account_id, phase: failure.phase,
+      connectionGeneration: failure.connection_generation, elapsedMs: failure.elapsed_ms,
       tone: failure.kind === 'auth' || failure.kind === 'request' ? 'error' : 'warn',
     };
   });
@@ -70,5 +91,9 @@ export function clearedIssues(previous: ServiceIssue[], next: ServiceIssue[], st
 
 export function issueReport(issue: ServiceIssue): string {
   return [issue.title, issue.cause, issue.action, issue.operation && `API: ${issue.operation}`,
+    issue.accountId != null && `계정: ${issue.accountId + 1}`,
+    issue.phase && `실패 단계: ${failurePhaseLabel(issue.phase)}`,
+    issue.connectionGeneration != null && `연결 세대: ${issue.connectionGeneration}`,
+    issue.elapsedMs != null && `단계 소요: ${issue.elapsedMs.toFixed(1)}ms`,
     issue.code && `오류 코드: ${issue.code}`, issue.at && `마지막 실패: ${new Date(issue.at).toISOString()}`].filter(Boolean).join('\n');
 }
