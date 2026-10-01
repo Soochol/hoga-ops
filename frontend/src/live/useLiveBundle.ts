@@ -18,6 +18,7 @@ import {
   fetchBucketMsFor,
 } from '../state/livePage';
 import { filterRegularSession, regularSessionHogaForDisplay } from './regularSessionView';
+import { useRegularSessionLiveSeries } from './useRegularSessionLiveSeries';
 import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
 import { peakWallBarFamilyActive } from '../state/indicatorOps';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -44,7 +45,6 @@ import {
   calendarBucketKey,
   keepMinuteSessionCandles,
   keepRegularSessionCandles,
-  isRegularSessionMs,
   isMinuteSessionMs,
   minuteBucketStartMs,
 } from './aggregateCandles';
@@ -639,14 +639,7 @@ export function useLiveBundle(
   // 창-스코프 뷰(ADR-0119 PR-B) — Provider 밖에서는 전역 스토어로 폴백(기능 무변경).
   const { historicalFromDate, regularSessionOnly: sessionPreference } = useWindowView();
   const regularSessionOnly = isMinuteTimeframe(timeframe) && sessionPreference === true;
-  const live = useMemo(() => regularSessionOnly ? {
-    ...rawLive,
-    ob: filterRegularSession(rawLive.ob),
-    trade: rawLive.trade.map(snapshot => ({ ...snapshot,
-      trades: snapshot.trades.filter(ev => isRegularSessionMs(ev.t_ms ?? snapshot.t_ms)),
-    })).filter(snapshot => snapshot.trades.length > 0),
-    program: filterRegularSession(rawLive.program),
-  } : rawLive, [rawLive, regularSessionOnly]);
+  const live = useRegularSessionLiveSeries(rawLive, regularSessionOnly);
   const {
     askPeakEnabled,
     bidPeakEnabled,
