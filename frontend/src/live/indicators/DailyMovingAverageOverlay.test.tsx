@@ -41,6 +41,7 @@ const bundle = { candles } as never;
 const axis = {
   contains: () => true,
   toVirtual: (m: number) => m,
+  classifyAndProject: (m: number) => ({ contained: true, virtual: m }),
   findByReal: () => 0,
   segments: [{ date: '20260612' }],
 } as never;

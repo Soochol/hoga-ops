@@ -7,6 +7,7 @@ import {
 } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
+import { candlePosition } from '../candlePosition';
 import { useActivePrefs } from '../../state/chartPrefs';
 import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import { useShallow } from 'zustand/react/shallow';
@@ -66,13 +67,17 @@ function lowerBoundCandle(candles: RangeBundle['candles'], t: number): number {
 
 function projectVolumeRows(candles: RangeBundle['candles'], axis: VirtualAxis): VolumeProjection[] {
   const { up, down } = resolveTokensThemed(TOKEN_SPEC);
-  return candles
-    .filter((c) => axis.contains(c.ts_ms))
-    .map((c): VolumeProjection => ({
-      time: (axis.toVirtual(c.ts_ms) / 1000) as UTCTimestamp,
+  const out: VolumeProjection[] = [];
+  for (const c of candles) {
+    const projected = candlePosition(c, axis);
+    if (!projected.contained) continue;
+    out.push({
+      time: (projected.virtual / 1000) as UTCTimestamp,
       value: c.vol_a + c.vol_b,
       color: c.close >= c.open ? up : down,
-    }));
+    });
+  }
+  return out;
 }
 
 export function projectVolume(bundle: RangeBundle, axis: VirtualAxis): HistogramData<Time>[] {

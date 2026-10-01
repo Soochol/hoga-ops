@@ -1,0 +1,33 @@
+import * as workspace from './src/state/workspace';
+import * as prefs from './src/state/chartPrefs';
+import * as ma from './src/live/indicators/maSeriesRegistry';
+import * as dailyMa from './src/live/indicators/dailyMaSeriesRegistry';
+import * as panes from './src/live/indicators/paneLegendRegistry';
+import {useLiveCursorStore} from './src/live/useLiveCursorStore';
+Object.assign(window,{__liveCursorStore:useLiveCursorStore,__hoverModules:{
+  '/src/state/workspace.ts':workspace,
+  '/src/state/chartPrefs.ts':prefs,
+  '/src/live/indicators/maSeriesRegistry.ts':ma,
+  '/src/live/indicators/dailyMaSeriesRegistry.ts':dailyMa,
+  '/src/live/indicators/paneLegendRegistry.ts':panes,
+}});
+
+import * as investorDisplay from './src/state/investorDailyDisplay';
+import * as programDisplay from './src/state/programTradeDisplay';
+Object.assign(window.__hoverModules,{
+ '/src/state/investorDailyDisplay.ts':investorDisplay,
+ '/src/state/programTradeDisplay.ts':programDisplay,
+});
+
+// Diagnostic-only timing of canonical query cache publication.
+import {QueryClient} from '@tanstack/react-query';
+const originalSet = QueryClient.prototype.setQueryData;
+QueryClient.prototype.setQueryData = function(key, updater, options) {
+ const p=window.__bf; const t=performance.now();
+ if(window.__bfNoSharing && key[0]==='live' && key[1]==='past-candles' && key[2]==='merged')this.setQueryDefaults(key,{structuralSharing:false});
+ try{return originalSet.call(this,key,updater,options);}
+ finally{if(p)p.cacheWrites.push({key,t,dt:performance.now()-t});}
+};
+
+import {windowedChartDiagnostics} from './src/chart/windowedChart';
+Object.assign(window,{__windowedChartDiagnostics:windowedChartDiagnostics});

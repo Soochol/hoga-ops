@@ -1,5 +1,6 @@
 import type { Candle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
+import { candlePosition } from './candlePosition';
 
 type DrawnCandleIndex = {
   drawn: Candle[];
@@ -37,10 +38,11 @@ export function drawnCandleIndex(candles: readonly Candle[], axis: VirtualAxis):
   }
   for (let i = from; i < candles.length; i++) {
     const t = candles[i].ts_ms;
-    if (!axis.contains(t)) continue;
+    const projected = candlePosition(candles[i], axis);
+    if (!projected.contained) continue;
     const index = positions.length;
     positions.push(i);
-    vsecToIndex.set(axis.toVirtual(t) / 1000, index);
+    vsecToIndex.set(projected.virtual / 1000, index);
     tsMsToIndex.set(t, index);
   }
   const index = { drawn: positions.map(i => candles[i]), vsecToIndex, tsMsToIndex };

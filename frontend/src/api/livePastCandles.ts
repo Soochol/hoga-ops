@@ -153,6 +153,36 @@ function sortUniqueCandles(candles: LivePastCandle[]): LivePastCandle[] {
   return Array.from(byT.values()).sort((a, b) => a.t_ms - b.t_ms);
 }
 
+/** Normal responses are sorted and unique. Merge them in one pass, keeping
+ * the new response's candle on overlap and the original objects elsewhere.
+ * Retain the defensive normalization for old/unsorted cache entries. */
+export function mergeSortedPastCandles(
+  previous: LivePastCandle[], next: LivePastCandle[],
+): LivePastCandle[] {
+  const sortedUnique = (rows: LivePastCandle[]) => rows.every(
+    (row, i) => i === 0 || rows[i - 1].t_ms < row.t_ms,
+  );
+  if (!sortedUnique(previous) || !sortedUnique(next)) {
+    return sortUniqueCandles([...previous, ...next]);
+  }
+  const result: LivePastCandle[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < previous.length && j < next.length) {
+    if (previous[i].t_ms < next[j].t_ms) result.push(previous[i++]);
+    else {
+      if (previous[i].t_ms === next[j].t_ms) i++;
+      result.push(next[j++]);
+    }
+  }
+  while (i < previous.length) result.push(previous[i++]);
+  while (j < next.length) result.push(next[j++]);
+  // Returning from a delta query to its cached head can reapply the same rows.
+  // Preserve the candle dependency so this does not rebuild every projector.
+  return result.length === previous.length && result.every((row, k) => row === previous[k])
+    ? previous : result;
+}
+
 function responseIdentity(
   code: string | null, to: string | null, venue: LiveVenueOption, bucketMs: number,
 ): string {
@@ -362,6 +392,17 @@ export function mergePastCandleResponses(
   previous: LivePastCandlesResponse,
   next: LivePastCandlesResponse,
 ): LivePastCandlesResponse {
+  const sessions = uniqueSessionsByDate([
+    ...(previous.effective_sessions ?? []), ...(next.effective_sessions ?? []),
+  ]);
+  const sameSessions = sessions.length === (previous.effective_sessions?.length ?? 0)
+    && sessions.every((s, i) => {
+      const old = previous.effective_sessions![i];
+      return s.date === old.date && s.venue === old.venue && s.open_ms === old.open_ms && s.close_ms === old.close_ms;
+    });
+  const factors = { ...previous.adjust_factors, ...next.adjust_factors };
+  const sameFactors = Object.keys(factors).length === Object.keys(previous.adjust_factors ?? {}).length
+    && Object.keys(factors).every((date) => factors[date] === previous.adjust_factors?.[date]);
   return {
     ...next,
     from: previous.from < next.from ? previous.from : next.from,
@@ -371,19 +412,16 @@ export function mergePastCandleResponses(
     // 리셋된다. 이 max가 워크백 자기재시작의 불변식이다 — 낮추지 말 것.
     to: previous.to > next.to ? previous.to : next.to,
     venue: next.venue ?? previous.venue,
-    candles: sortUniqueCandles([...previous.candles, ...next.candles]),
+    candles: mergeSortedPastCandles(previous.candles, next.candles),
     cached_dates: uniqueSorted([...previous.cached_dates, ...next.cached_dates]),
     fresh_dates: uniqueSorted([...previous.fresh_dates, ...next.fresh_dates]),
     data_warnings: uniqueWarnings([...previous.data_warnings, ...next.data_warnings]),
-    effective_sessions: uniqueSessionsByDate([
-      ...(previous.effective_sessions ?? []),
-      ...(next.effective_sessions ?? []),
-    ]),
+    effective_sessions: sameSessions ? previous.effective_sessions : sessions,
     // 계수는 봉과 **lockstep** 으로 병합된다 — 청크가 합쳐지는 자리에서 봉만 합치고
     // 계수를 떨어뜨리면, 병합본의 옛 청크 날짜들이 계수를 잃어 지표가 그 구간만
     // 환산 없이 그려진다(한 차트 두 척도의 재발). 겹치는 날짜는 `next` 가 이긴다:
     // 봉의 `sortUniqueCandles` 와 같은 방향이라 값과 척도가 같은 손을 든다.
-    adjust_factors: { ...previous.adjust_factors, ...next.adjust_factors },
+    adjust_factors: sameFactors ? previous.adjust_factors : factors,
   };
 }
 
@@ -511,7 +549,15 @@ export function useLivePastCandles(
     if (query.data && hasBlockingWarnings(query.data)) return;
     if (publishedRef.current === data) return;
     publishedRef.current = data;
-    queryClient.setQueryData(mergedPastCandlesKey(code, to, venue, bucketMs), data);
+    const key = mergedPastCandlesKey(code, to, venue, bucketMs);
+    // This is an immutable, already merged snapshot, not a wire query. A
+    // second recursive structural-sharing walk costs tens of ms at 120 days.
+    // Only canonical snapshots, with one defaults entry (not one per symbol);
+    // wire chunk queries keep their defaults and gcTime still inherits 2h.
+    queryClient.setQueryDefaults(['live', 'past-candles', 'merged'], { structuralSharing: false });
+    const cached = queryClient.getQueryCache().find({ queryKey: key, exact: true });
+    if (cached) cached.setOptions({ ...cached.options, structuralSharing: false });
+    queryClient.setQueryData(key, data);
   }, [data, query.data, query.isPlaceholderData, queryClient, code, to, venue, bucketMs]);
 
   // 오늘 seed를 보여주는 동안 원래 요청 창은 아직 로딩 중이다. 이 신호가 없으면

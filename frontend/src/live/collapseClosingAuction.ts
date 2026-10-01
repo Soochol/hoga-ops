@@ -58,6 +58,8 @@ export function collapseClosingAuction(
   // 평탄화가 실제로 새 객체를 만들었는가. 길이 변화(=여러 봉이 접힘)와 함께
   // "아무것도 안 바꿨으면 입력 배열 자체를 돌려준다"를 판정한다 — 아래 참조.
   let flattened = false;
+  let cachedDate = '';
+  let cachedCloseMs = 0;
 
   const flush = (): void => {
     if (pending === null) return;
@@ -69,7 +71,10 @@ export function collapseClosingAuction(
 
   for (const c of candles) {
     const date = realMsToYyyymmdd(c.ts_ms);
-    const closeMs = closeMsFor(date);
+    // Sorted candles share a session close for the whole day. Resolve the
+    // calendar/session bounds once per date, not once per minute of history.
+    if (date !== cachedDate) { cachedDate = date; cachedCloseMs = closeMsFor(date); }
+    const closeMs = cachedCloseMs;
     const inAuction = c.ts_ms >= closeMs - AUCTION_WINDOW_LENGTH_MS && c.ts_ms <= closeMs;
 
     if (!inAuction) {

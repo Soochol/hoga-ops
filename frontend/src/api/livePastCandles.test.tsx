@@ -5,6 +5,7 @@ import {
   hasBlockingWarnings,
   mergedPastCandlesKey,
   mergePastCandleResponses,
+  mergeSortedPastCandles,
   PAST_CANDLES_REFETCH_IN_BACKGROUND,
   pastCandlesRefetchInterval,
   pastCandlesRefetchOnFocus,
@@ -44,6 +45,24 @@ const BLOCKED: LivePastCandlesResponse = {
     date: '20260501', reason: 'capacity_overloaded', kind: 'deferred', msg: 'x', is_failure: true,
   }],
 };
+
+describe('sorted candle merge', () => {
+  const candle = (t_ms: number, close = t_ms) => ({ t_ms, open: close, high: close, low: close, close, volume: 1 });
+  it('keeps next-wins overlap, object references and sorted prepend/append', () => {
+    const previous = [candle(20), candle(30), candle(40)];
+    const next = [candle(10), candle(30, 99), candle(50)];
+    const merged = mergeSortedPastCandles(previous, next);
+    expect(merged).toEqual([next[0], previous[0], next[1], previous[2], next[2]]);
+    expect(merged[1]).toBe(previous[0]);
+    expect(merged[2]).toBe(next[1]);
+    expect(mergeSortedPastCandles(previous, previous.slice(1))).toBe(previous);
+  });
+  it('normalizes unsorted and duplicate cached rows with the last next row winning', () => {
+    const next = [candle(20, 2), candle(10), candle(20, 9)];
+    expect(mergeSortedPastCandles([candle(30), candle(10, 8)], next))
+      .toEqual([next[1], next[2], candle(30)]);
+  });
+});
 
 describe('today-first cold bootstrap', () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -838,6 +857,9 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     );
     expect(published?.from).toBe('20260601');
     expect(published?.to).toBe('20260707');
+    expect(published).toBe(result.current.data);
+    expect(qc.getQueryDefaults(mergedPastCandlesKey('005930', '20260707', 'KRX', 60_000)).structuralSharing).toBe(false);
+    expect(qc.getQueryDefaults(['live', 'past-candles', '005930', '20260701', '20260707']).structuralSharing).toBeUndefined();
   });
 
   it('재마운트 시 canonical 병합본만으로 복원한다(개별 청크 캐시 없이도 fetch 0)', async () => {

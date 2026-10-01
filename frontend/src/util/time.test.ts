@@ -17,6 +17,17 @@ describe('unixMsToKSTClock', () => {
 });
 
 describe('unixMsToKSTDate', () => {
+  it('keeps KST midnight, leap/year boundaries and earlier revisits correct after same-day reuse', () => {
+    const leapEnd = Date.UTC(2024, 1, 29, 14, 59, 59, 999);
+    expect(unixMsToKSTDate(leapEnd)).toBe('20240229');
+    expect(unixMsToKSTDate(leapEnd - 60_000)).toBe('20240229');
+    expect(unixMsToKSTDate(leapEnd + 1)).toBe('20240301');
+    expect(unixMsToKSTDate(Date.UTC(2024, 11, 31, 15))).toBe('20250101');
+    expect(unixMsToKSTDate(leapEnd)).toBe('20240229');
+    expect(unixMsToKSTDate(-9 * 3600000 - .5)).toBe('19700101');
+    expect(unixMsToKSTDate(Number.NaN)).toBe('NaNNaNNaN');
+    expect(unixMsToKSTDate(leapEnd)).toBe('20240229');
+  });
   it('returns the YYYYMMDD of the KST calendar day at 09:00 KST (session open)', () => {
     // 2026-05-20 09:00 KST = 2026-05-20 00:00 UTC
     const unixMs = Date.UTC(2026, 4, 20, 0, 0, 0);

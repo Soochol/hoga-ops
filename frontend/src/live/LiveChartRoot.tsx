@@ -1,5 +1,5 @@
 import { barPitchPx } from '../chart/drawing/chartCoordinates';
-import { useCallback, useContext, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import {
   createChartEx,
   TickMarkType,
@@ -82,6 +82,7 @@ import { initialVisibleMinuteBarsFor } from './liveVenuePolicy';
 import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPolicy';
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
+import { createWindowedChart, flushWindowedChart, setWindowedChartTimeMapping } from '../chart/windowedChart';
 import {
   viewportFromRanges,
   computeRestoreRange,
@@ -1271,6 +1272,18 @@ export function LiveChartRoot({
     };
   }, [chart, timeframe, onViewedDateChange, returnToLive]);
 
+  // Capture this axis generation; axisRef already points to the new axis while
+  // the controller still needs the old mapping to read the on-screen anchor.
+  useLayoutEffect(() => {
+    setWindowedChartTimeMapping(chart, {
+      toReal: time => axis.toReal(time * 1000),
+      fromReal: realMs => axis.toVirtual(realMs) / 1000,
+    });
+  }, [chart, axis]);
+  // Child series effects enqueue full-history projections. Commit their common
+  // render window before viewport repair reads/repositions the new time grid.
+  useEffect(() => { flushWindowedChart(chart); });
+
   const { sourceSwapClampNotice } = useViewportBackfill({
     chart,
     axis,
@@ -1737,7 +1750,7 @@ export function LiveChartRoot({
     // matches. The behavior's options() override (TimeChartOptions) is what
     // makes timeScale.tickMarkFormatter typecheck below.
     const gridPrefs = useChartPrefsStore.getState();
-    const c = createChartEx<Time, ReturnType<typeof createKstHorzScaleBehavior>>(
+    const nativeChart = createChartEx<Time, ReturnType<typeof createKstHorzScaleBehavior>>(
       el,
       createKstHorzScaleBehavior(axisRef),
       {
@@ -1838,6 +1851,9 @@ export function LiveChartRoot({
       rightPriceScale: { borderVisible: false },
       autoSize: true,
     });
+    const c = isMinuteTimeframe(timeframe) && code != null && /^\d{6}$/.test(code)
+      ? createWindowedChart(nativeChart as IChartApi)
+      : nativeChart;
     const releasePriceScaleWidth = retainRightPriceScaleWidth(c as IChartApi);
     setChartEntry({ chart: c as IChartApi, key: viewKey });
     // autoSize: true already attaches lightweight-charts' own ResizeObserver
@@ -2335,8 +2351,10 @@ export function LiveChartRoot({
   /** 가상초 → 봉 극값(순위 화살표 앵커). 매도·매수가 **같은 맵**을 쓴다 — 종전엔 두
    *  오버레이가 각자 수천 개 캔들을 훑어 같은 맵을 두 벌 만들었다. */
   const peakWallCandleExtremes = useMemo(
-    () => candleExtremesByVirtualSec(cb?.candles ?? EMPTY_CANDLES, axis),
-    [axis, cb?.candles],
+    () => askWall.arrowRankSegments.length || bidWall.arrowRankSegments.length
+      ? candleExtremesByVirtualSec(cb?.candles ?? EMPTY_CANDLES, axis)
+      : new Map<number, { high: number; low: number }>(),
+    [axis, cb?.candles, askWall.arrowRankSegments.length, bidWall.arrowRankSegments.length],
   );
 
   // 고저 극값 라벨이 피할 도킹 라벨 입력(가격·선 끝 시각·텍스트 — 픽셀 아님). 좌표 변환은

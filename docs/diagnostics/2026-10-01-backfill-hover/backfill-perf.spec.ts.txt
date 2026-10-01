@@ -1,0 +1,71 @@
+// Standalone diagnostic of genuine delta query/chart updates with accumulated history.
+import {test,expect} from '@playwright/test';
+import {installLiveMocks} from './helpers/liveMocks';
+import {writeFileSync} from 'node:fs';
+test('history arrival while hovering',async({browser})=>{
+ const results:any[]=[];
+ const DAY=86400000,end=Date.UTC(2026,9,1),ymd=(t:number)=>new Date(t).toISOString().slice(0,10).replaceAll('-','');
+ const dates:number[]=[];for(let t=end-260*DAY;t<=end;t+=DAY)if(![0,6].includes(new Date(t).getUTCDay()))dates.push(t);
+ const all=dates.flatMap((t,j)=>Array.from({length:390},(_,i)=>({t_ms:t+i*60000,open:35000+j%100*10,high:35200+j%100*10,low:34900+j%100*10,close:35100+j%100*10,volume:100+i%40})));
+ for(const count of (process.env.BF_FOCUS?[1]:[1,3]))for(const depth of (process.env.BF_FOCUS?[120]:[30,120]))for(const extend of (process.env.BF_FOCUS?[true]:[false,true]))for(let repeat=0;repeat<Number(process.env.BF_REPEATS??2);repeat++)for(const sharing of (process.env.BF_AB?[true,false]:[true])){
+  const context=await browser.newContext({viewport:{width:1800,height:1000}}),page=await context.newPage();
+  await page.addInitScript(sharing=>window.__bfNoSharing=!sharing,sharing);
+  const errors:string[]=[],requests:any[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.route(/^http:\/\/[^/]+\/api\//,r=>r.fulfill({status:503,json:{detail:'isolated diagnostic'}}));
+  await installLiveMocks(page);await page.routeWebSocket(/\/api\/ws/,()=>{});
+  await page.route('**/config.json',r=>r.fulfill({json:{api_url:'http://127.0.0.1:5198'}}));
+  const seed=ymd(end-depth*DAY);let armed=false;
+  await page.route(/^http:\/\/[^/]+\/api\/live\/past-candles(?:\?|$)/,async r=>{
+   const q=new URL(r.request().url()).searchParams;
+   const from=armed?(q.get('from')??seed):seed,to=armed?(q.get('to')??ymd(end)):ymd(end);
+   const candles=all.filter(c=>ymd(c.t_ms)>=from&&ymd(c.t_ms)<=to);
+   if(armed){requests.push({from,to,rows:candles.length});await page.evaluate(()=>window.__bf.requests.push({phase:'request',t:performance.now()}));await new Promise(resolve=>setTimeout(resolve,600));await page.evaluate(()=>window.__bf.requests.push({phase:'release',t:performance.now()}));}
+   await r.fulfill({json:{code:'098460',from,to,candles,bucket_ms:60000,cached_dates:[],fresh_dates:[],data_warnings:[]}});
+  });
+  await page.route(/^http:\/\/[^/]+\/api\/live\/past-daily-candles/,r=>r.fulfill({json:{code:'098460',from:'20260101',to:ymd(end),candles:dates.map((t,j)=>({...all[j*390],t_ms:t})),cached_dates:[],fresh_dates:[],data_warnings:[]}}));
+  await page.goto('http://127.0.0.1:5198/live?code=098460');
+  await expect(page.getByTestId('live-chart-root').first()).toBeVisible();
+  await page.evaluate(count=>{
+   const {useWorkspaceStore:s}=window.__hoverModules['/src/state/workspace.ts'];
+   while(s.getState().windows.filter(w=>w.kind==='chart').length<count)s.getState().addWindow('chart');
+   const wins=s.getState().windows.filter(w=>w.kind==='chart').slice(0,count);
+   s.setState({windows:wins.map((w,i)=>({...w,group:1,rect:{x:i/count,y:0,w:1/count,h:1},chart:{timeframe:'1m'}})),zOrder:wins.map(w=>w.id),maximizedId:null});
+   for(const w of wins)s.getState().setWindowSymbol(w.id,{code:'098460',name:'고영',kind:'stock'});
+   window.__hoverModules['/src/state/chartPrefs.ts'].useChartPrefsStore.getState().setToggle('candleTooltipEnabled',false);
+  },count);
+  await page.waitForFunction(count=>window.__liveCharts?.size===count,count);
+  await page.waitForFunction(()=>[...window.__liveCharts.values()].every(c=>c.panes()[0].getSeries().some(s=>s.seriesType()==='Candlestick'&&s.data().length>5000)));
+  await page.waitForTimeout(500);
+  const info=await page.evaluate(()=>{
+   const charts=[...window.__liveCharts.values()];
+   const rows=charts.map(c=>c.panes()[0].getSeries().find(s=>s.seriesType()==='Candlestick').data().length);
+   for(const c of charts)c.timeScale().setVisibleLogicalRange({from:200,to:350});
+   const c=charts[0],b=c.panes()[0].getHTMLElement().getBoundingClientRect();
+   return {rows,x:b.x,y:b.y,w:c.timeScale().width(),h:b.height};
+  });
+  await page.mouse.move(info.x+info.w*.5,info.y+info.h*.6);await page.waitForTimeout(200);
+  await page.evaluate(()=>{
+   const p=window.__bf={start:performance.now(),frames:[],longTasks:[],sets:[],cacheWrites:[],crosshairs:0,requests:[]};let last=performance.now();
+   const frame=t=>{if(window.__bf!==p)return;p.frames.push({t,dt:t-last});last=t;requestAnimationFrame(frame);};requestAnimationFrame(frame);
+   window.__bfObserver=new PerformanceObserver(l=>p.longTasks.push(...l.getEntries().map(e=>({t:e.startTime,dt:e.duration}))));window.__bfObserver.observe({entryTypes:['longtask']});
+   for(const [id,c] of window.__liveCharts){c.subscribeCrosshairMove(()=>p.crosshairs++);const native=window.__windowedChartDiagnostics?.(c)?.nativeChart??c;for(const pane of native.panes())for(const s of pane.getSeries()){
+    const original=s.setData.bind(s);s.setData=data=>{const t=performance.now();try{return original(data);}finally{p.sets.push({id,type:s.seriesType(),rows:data.length,t,dt:performance.now()-t});}};
+   }}
+  });
+  const cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');
+  const metrics=async()=>Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(x=>[x.name,x.value]));
+  if(process.env.BF_PROFILE){await cdp.send('Profiler.enable');await cdp.send('Profiler.start');}
+  const before=await metrics();armed=extend;
+  if(extend)await page.evaluate(from=>{const s=window.__hoverModules['/src/state/workspace.ts'].useWorkspaceStore;const w=s.getState().windows.find(w=>w.kind==='chart');s.getState().extendChartHistoricalRange(w.id,from);},ymd(end-(depth+10)*DAY));
+  for(let i=0;i<90;i++){await page.mouse.move(info.x+info.w*(.2+.6*(i%30)/29),info.y+info.h*(.55+.05*Math.sin(i)));await page.evaluate(()=>new Promise<void>(r=>requestAnimationFrame(()=>r())));}
+  await page.waitForTimeout(200);const after=await metrics();
+  const sample=await page.evaluate(()=>{window.__bfObserver.disconnect();const p=window.__bf;window.__bf=null;return {...p,renderWindows:[...window.__liveCharts.values()].map(c=>{const d=window.__windowedChartDiagnostics?.(c);return d?{full:d.fullPoints,rendered:d.renderedPoints,offset:d.offset,fallback:d.fallback}:null;}),finalRows:[...window.__liveCharts.values()].map(c=>c.panes()[0].getSeries().find(s=>s.seriesType()==='Candlestick').data().length)};});
+  expect(errors).toEqual([]);expect(sample.crosshairs).toBeGreaterThan(0);
+  if(extend){expect(requests.length).toBeGreaterThan(0);expect(sample.finalRows[0]).toBeGreaterThan(info.rows[0]);}
+  const record={count,depth,extend,repeat,sharing,info,apiRequests:requests,...sample,scriptMs:(after.ScriptDuration-before.ScriptDuration)*1000,taskMs:(after.TaskDuration-before.TaskDuration)*1000};results.push(record);
+  console.log(JSON.stringify({count,depth,extend,repeat,rows:info.rows[0],final:sample.finalRows[0],long:sample.longTasks.map(x=>x.dt),maxFrame:Math.max(...sample.frames.slice(1).map(x=>x.dt)),sets:sample.sets.length,setMs:sample.sets.reduce((a,x)=>a+x.dt,0),js:record.scriptMs}));
+  if(process.env.BF_PROFILE){const {profile}=await cdp.send('Profiler.stop');writeFileSync('../docs/diagnostics/2026-10-01-backfill-hover/'+(process.env.BF_OUTPUT??'profile-run')+'-cpu-profile.json',JSON.stringify(profile));}
+  await context.close();
+ }
+ writeFileSync('../docs/diagnostics/2026-10-01-backfill-hover/'+(process.env.BF_OUTPUT??'results')+'.json',JSON.stringify({baseCommit:'beef04d6e',measuredState:'current worktree',implementationStage:process.env.BF_LABEL??'rerun',cpuThrottle:1,tooltip:false,delayMs:600,results},null,2));
+});

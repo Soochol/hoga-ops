@@ -9,6 +9,7 @@ import type { Candle, RangeBundle } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
 import { resolveTokensThemed, currentThemeKey } from '../../util/tokens';
 import type { PaneSpec } from '../RangeSeriesPane';
+import { candlePosition } from '../candlePosition';
 
 const TOKEN_SPEC = {
   up: ['--price-up', '#F04452'],
@@ -62,7 +63,7 @@ function projectCandleRows(
   const { up, down, muted } = resolveTokensThemed(TOKEN_SPEC);
   const out: CandleProjection[] = [];
   for (const c of candles) {
-    const { contained, inAuction, virtual } = axis.classifyAndProject(c.ts_ms);
+    const { contained, inAuction, virtual } = candlePosition(c, axis);
     if (!contained) continue;
     const color = ctx.muteAuctionCandles && inAuction ? muted : c.close >= c.open ? up : down;
     out.push({
