@@ -36,9 +36,9 @@ function sortedLookup(length: number, keyAt: (index: number) => number): Readonl
       return lo < length && keyAt(lo) === key ? lo : undefined;
     },
     has(key) { return lookup.get(key) !== undefined; },
-    *entries() { for (let i = 0; i < length; i++) yield [keyAt(i), i] as [number, number]; },
-    *keys() { for (let i = 0; i < length; i++) yield keyAt(i); },
-    *values() { for (let i = 0; i < length; i++) yield i; },
+    *entries() { for (let i = 0; i < length; i++) yield [keyAt(i), i] as [number, number]; return undefined; },
+    *keys() { for (let i = 0; i < length; i++) yield keyAt(i); return undefined; },
+    *values() { for (let i = 0; i < length; i++) yield i; return undefined; },
     [Symbol.iterator]() { return lookup.entries(); },
     forEach(callback, thisArg) {
       for (let i = 0; i < length; i++) callback.call(thisArg, i, keyAt(i), lookup);
