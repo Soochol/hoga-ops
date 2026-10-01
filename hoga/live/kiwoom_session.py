@@ -25,7 +25,7 @@ from .buffer import LiveBuffer
 from .coverage import (
     KIWOOM_PER_ACCOUNT_MAX,
     KIWOOM_SECTOR_RESERVE,
-    partition_kiwoom,
+    partition_balanced_kiwoom,
     subscription_venues,
     venue_weight,
 )
@@ -136,8 +136,8 @@ class KiwoomSessionManager:
         self._sector_snapshots: dict[str, dict] = {}
         self._sector_tick_count = 0
         self._sector_last_ms: int | None = None
-        # 업종 구독을 태우는 계정. **마지막 계정**이다 — 파티셔너가 앞에서부터 채우므로
-        # 뒤쪽이 한가하고, `coverage._account_cap` 이 거기에만 예약을 건다. 계정 0 에
+        # 업종 구독을 태우는 계정. **마지막 계정**이다 —
+        # `coverage._account_cap` 이 거기에만 예약을 건다. 계정 0 에
         # 걸었다가 저장셋 199/200 에 부딪혀 `rc=105115` 로 조용히 죽었다(2026-08-07).
         self._sector_account: int = 0
         # 재시작(dev 핫리로드 포함) 시 인메모리 상태가 비면 /api/live/vi-status가 다음
@@ -157,9 +157,10 @@ class KiwoomSessionManager:
         self._display: dict[tuple[str, str], _DisplayEntry] = {}
         # 커버 판정용 전역 저장 멤버십(union) — _covered_by_storage가 쓴다. sync in-place 갱신.
         self._storage_members: set[str] = set()
+        self._storage_registration_keys: set[tuple[str, str]] = set()
         # on_tick 라우팅용 **연결별** 저장 파티션 — 래퍼가 이 연결의 파티션만 stream으로
-        # 보내야 한다(전역 아님: 다른 계정 소유 저장코드의 표시 틱은 이 연결 stream이
-        # 조용히 드롭하므로 buffer로 가야 함). 래퍼가 공유 참조, sync가 in-place 갱신.
+        # 보낸다. 타 계정의 저장 미커버 venue는 표시 경로로 전달한다.
+        # 래퍼가 공유 참조, sync가 in-place 갱신.
         self._conn_members: dict[int, set[str]] = {}
         # Latest desired state, not an unbounded queue of UI commands. Each account
         # owns one worker; network waits never hold the manager's admission lock.
@@ -185,9 +186,11 @@ class KiwoomSessionManager:
             return
         # 분할 단위는 종목이 아니라 **wire 등록 수**다(PR-F) — NXT 상장 종목은 3개를 쓴다.
         nxt_map = _nxt_map()
-        parts = partition_kiwoom(
+        parts = partition_balanced_kiwoom(
             codes, n_accounts,
             weight=lambda c: venue_weight(c, nxt_map),
+            previous={code: account for account, conn in self._conns.items()
+                      for code in conn.codes},
             last_account_reserve=self._sector_reserve,
         )
         dropped = len(codes) - sum(len(p) for p in parts)
@@ -502,6 +505,11 @@ class KiwoomSessionManager:
         패스 재시도). 참조 0(유예) 키는 sweep에 위임."""
         # One master snapshot per pass, not a full rebuild per display key.
         nxt_map = _nxt_map()
+        self._storage_registration_keys.clear()
+        self._storage_registration_keys.update(
+            (code, venue) for code in self._storage_members
+            for venue in subscription_venues(code, nxt_map)
+        )
         for (code, venue), entry in list(self._display.items()):
             if not entry.refs:
                 continue  # 참조 0(유예) — sweep 위임
@@ -539,6 +547,10 @@ class KiwoomSessionManager:
                 if on is not None:
                     await on(tick)
             else:
+                if (tick.code, tick.venue) in self._storage_registration_keys:
+                    # A different storage owner has this code. Ignore late
+                    # frames while the old connection's REMOVE is pending.
+                    return
                 await self._publish_display(tick)
 
         return on_tick
@@ -744,6 +756,7 @@ class KiwoomSessionManager:
             await self._teardown(account_id)
         # 전체 휴면 — 라우팅·표시 장부도 비운다(재활성 시 재파생).
         self._storage_members.clear()
+        self._storage_registration_keys.clear()
         self._conn_members.clear()
         self._display.clear()
 

@@ -134,6 +134,37 @@ async def test_fast_burst_gives_consumer_a_turn_before_declaring_overload(parse)
         await asyncio.gather(receiver, return_exceptions=True)
 
 
+async def test_multi_tick_catchup_preserves_order_and_following_controls(parse):
+    ws = QueueSocket()
+    received = []
+
+    async def consume(tick):
+        received.append(tick.payload["sequence"])
+        await asyncio.sleep(0)  # model the yielding work inside a multi-tick frame
+
+    instance = client(ws, consume, tick_yield_interval_s=1000)
+    receiver = asyncio.create_task(instance._recv_loop(ws))
+    waiter = asyncio.get_running_loop().create_future()
+    instance._ack_waiters["REG"] = waiter
+    try:
+        for start in range(0, 1024, 8):
+            ws.push(trnm="REAL", data=list(range(start, start + 8)))
+        ws.push(trnm="REG", return_code=0)
+        ws.push(trnm="PING")
+        # Scheduler turns, rather than wall-clock performance assertions.
+        for _ in range(1100):
+            if len(received) == 1024 or receiver.done():
+                break
+            await asyncio.sleep(0)
+        assert received == list(range(1024))
+        assert waiter.done() and (await waiter)["return_code"] == 0
+        assert {"trnm": "PING"} in ws.sent
+        assert instance.data_queue_snapshot()["overflows"] == 0
+    finally:
+        receiver.cancel()
+        await asyncio.gather(receiver, return_exceptions=True)
+
+
 async def test_ack_timing_excludes_socket_close_and_failure_is_scoped(monkeypatch):
     ws = QueueSocket()
     clock = [0.0]
