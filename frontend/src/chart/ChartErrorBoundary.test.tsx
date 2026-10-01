@@ -13,6 +13,17 @@ function Bomb({ shouldThrow }: { shouldThrow: boolean }) {
   return <div data-testid="chart-alive">chart</div>;
 }
 
+function Runaway({ store }: { store: string }) {
+  useLayoutEffect(() => {
+    for (let i = 0; i < 20; i += 1) noteStoreWrite(store);
+  }, [store]);
+  return null;
+}
+
+const nextFrame = () => new Promise<void>((resolve) => {
+  requestAnimationFrame(() => resolve());
+});
+
 describe('ChartErrorBoundary', () => {
   beforeEach(() => {
     cleanup();
@@ -20,8 +31,10 @@ describe('ChartErrorBoundary', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
   afterEach(() => {
+    cleanup();
     __disarmUpdateLoopSignalForTests();
     vi.restoreAllMocks();
+    Reflect.deleteProperty(navigator, 'clipboard');
   });
 
   it('자식 throw를 격리해 폴백을 보여준다 (앱 전체 언마운트 방지)', () => {
@@ -110,11 +123,7 @@ describe('ChartErrorBoundary', () => {
     armUpdateLoopSignal();
     // 덫은 스택이 React 의 렌더/커밋을 지나야 신고한다(`updateLoopSignal.ts` 의
     // react-dom 게이트) — 그래서 폭주를 «진짜 커밋 안» 에서 흉내 낸다.
-    function Runaway() {
-      useLayoutEffect(() => { for (let i = 0; i < 20; i += 1) noteStoreWrite('workspace'); }, []);
-      return null;
-    }
-    render(<Runaway />);
+    render(<Runaway store="workspace" />);
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(
@@ -128,6 +137,51 @@ describe('ChartErrorBoundary', () => {
     expect(payload).toContain('[update-loop] store=workspace');
     expect(payload).toContain('Bomb');           // 컴포넌트 스택도 그대로 남는다
     Reflect.deleteProperty(navigator, 'clipboard');
+  });
+
+  it('이전 프레임의 경고는 새 ReferenceError 화면과 복사본에 섞이지 않는다', async () => {
+    armUpdateLoopSignal();
+    render(<Runaway store="workspace" />);
+    await nextFrame();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    function UndefinedVariable(): never { throw new ReferenceError('indexCode is not defined'); }
+    render(<ChartErrorBoundary><UndefinedVariable /></ChartErrorBoundary>);
+    expect(screen.getByText('indexCode is not defined')).toBeTruthy();
+    expect(screen.queryByTestId('chart-error-update-loop')).toBeNull();
+    fireEvent.click(screen.getByTestId('chart-error-copy'));
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload).toContain('ReferenceError: indexCode is not defined');
+    expect(payload).not.toContain('[update-loop]');
+    await screen.findByText('복사됨');
+  });
+
+  it('오류 시점의 모든 경고를 고정해서 나중에 복사해도 다른 창의 경고가 섞이지 않는다', async () => {
+    armUpdateLoopSignal();
+    render(<><Runaway store="workspace" /><Runaway store="chartPrefs" /></>);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<ChartErrorBoundary><Bomb shouldThrow /></ChartErrorBoundary>);
+    await nextFrame();
+    render(<Runaway store="themePrefs" />);
+    fireEvent.click(screen.getByTestId('chart-error-copy'));
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload).toContain('[update-loop] store=workspace');
+    expect(payload).toContain('[update-loop] store=chartPrefs');
+    expect(payload).not.toContain('themePrefs');
+    expect(screen.getByTestId('chart-error-update-loop').textContent).toContain('workspace');
+    await screen.findByText('복사됨');
+  });
+
+  it('다시 시도해 새 오류가 나면 이전 오류의 경고를 버린다', async () => {
+    armUpdateLoopSignal();
+    render(<Runaway store="workspace" />);
+    render(<ChartErrorBoundary><Bomb shouldThrow /></ChartErrorBoundary>);
+    expect(screen.getByTestId('chart-error-update-loop').textContent).toContain('workspace');
+    await nextFrame();
+    fireEvent.click(screen.getByText('다시 시도'));
+    expect(screen.getByText('Value is null')).toBeTruthy();
+    expect(screen.queryByTestId('chart-error-update-loop')).toBeNull();
   });
 
   it('덫이 아무것도 안 잡았으면 그 줄은 아예 없다 — 빈 자리를 만들지 않는다', () => {
