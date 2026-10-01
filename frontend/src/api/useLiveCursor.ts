@@ -147,7 +147,7 @@ export interface LiveOrderbookSpotResult {
  * value was dropped rather than left to rot. See LiveOrderbookSpotResult.
  */
 export function useLiveOrderbookAtCursor(p: Omit<Params, 'timeframe'> & { timeframe: MinuteTimeframe | SecondTimeframe | null }): LiveOrderbookSpotResult {
-  const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
+  const cursorMs = useLiveCursorStore((s) => p.code && p.timeframe ? s.sidebarCursorMs : null);
   // 선택값이 아니라 이 종목의 **유효** venue 로 조회한다 — 근거는 VenueParam.
   // code=null 이면 해석이 항등이라 무조건 불러도 안전하다(훅 순서 고정).
   const venue = useEffectiveVenue(p.code, p.venue);
@@ -236,7 +236,7 @@ interface BrokersParams extends VenueParam {
 export function useLiveBrokersAtCursor(
   p: BrokersParams,
 ): BrokerSeriesEntry[] | undefined {
-  const cursorMs = useLiveCursorStore((s) => s.sidebarCursorMs);
+  const cursorMs = useLiveCursorStore((s) => p.code && p.timeframe ? s.sidebarCursorMs : null);
   const sourcePref = useOrderflowSourcePref();
   // 날짜가 곧 게이트다. 커서가 없으면(latest 모드) 잠들고, 달력 프레임(D·W·M)에서도
   // 잠든다 — LiveChartRoot 는 모든 프레임에서 sidebar 커서를 발행하지만 그쪽엔

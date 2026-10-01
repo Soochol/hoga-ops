@@ -1,5 +1,5 @@
-import { render, act } from '@testing-library/react';
-import { expect, it, vi } from 'vitest';
+import { render, act, fireEvent } from '@testing-library/react';
+import { expect, it, vi, beforeEach } from 'vitest';
 import type { WorkspaceWindow } from '../../state/workspace';
 import { SecondChartWindow } from './SecondChartWindow';
 import { useLiveCursorStore } from '../useLiveCursorStore';
@@ -10,7 +10,8 @@ const fixture = vi.hoisted(() => {
   return { bars, query: { bars, hasNextPage: false, isFetchingNextPage: false, catalogPending: false,
     isPending: false, isError: false, fetchNextPage: vi.fn() },
     range: { from: 0, to: 239 }, spacing: 6,
-    setRange: vi.fn(), setData: vi.fn(), applyOptions: vi.fn(),
+    setRange: vi.fn(), setData: vi.fn(), update: vi.fn(), applyOptions: vi.fn(),
+    onRange: null as ((range: { from: number; to: number }) => void) | null,
     onCursor: null as ((event: { time?: number }) => void) | null };
 });
 
@@ -19,7 +20,7 @@ vi.mock('../useEffectiveVenue', () => ({ useEffectiveVenue: () => 'KRX' }));
 vi.mock('lightweight-charts', () => ({
   CandlestickSeries: 'candles', HistogramSeries: 'volume', LineSeries: 'ma',
   createChart: () => ({
-    addSeries: () => ({ setData: fixture.setData, options: () => ({ upColor: 'red', downColor: 'blue' }) }),
+    addSeries: () => ({ setData: fixture.setData, update: fixture.update, options: () => ({ upColor: 'red', downColor: 'blue' }) }),
     panes: () => [{ setStretchFactor: vi.fn() }, { setStretchFactor: vi.fn() }],
     timeScale: () => ({
       options: () => ({ barSpacing: fixture.spacing }),
@@ -33,12 +34,17 @@ vi.mock('lightweight-charts', () => ({
         fixture.applyOptions(options);
         fixture.spacing = options.barSpacing;
       },
-      subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      subscribeVisibleLogicalRangeChange: (cb: typeof fixture.onRange) => { fixture.onRange = cb; }, unsubscribeVisibleLogicalRangeChange: (cb: typeof fixture.onRange) => { fixture.onRange = cb; },
     }),
     subscribeCrosshairMove: (handler: (event: { time?: number }) => void) => { fixture.onCursor = handler; },
     unsubscribeCrosshairMove: vi.fn(), resize: vi.fn(), remove: vi.fn(),
   }),
 }));
+
+beforeEach(() => {
+  fixture.query = { ...fixture.query, bars: fixture.bars, hasNextPage: false, isFetchingNextPage: false, catalogPending: false, isPending: false };
+  vi.clearAllMocks();
+});
 
 it('retains user zoom and time anchor across an empty loading page and a session-filter round trip', () => {
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
@@ -97,4 +103,52 @@ it('throttles linked seconds detail updates and cancels them on leave, unlink an
     act(() => { vi.advanceTimersByTime(120); });
     expect(current()).toBe(123);
   } finally { view.unmount(); vi.useRealTimers(); vi.unstubAllGlobals(); useLiveCursorStore.getState().resetCursor(); }
+});
+it('does not rewrite unchanged bars when pagination metadata changes', () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.query = { ...fixture.query, bars: fixture.bars, hasNextPage: false, isPending: false, catalogPending: false };
+  const win: WorkspaceWindow = { id: 'refresh-test', kind: 'chart', group: 1, rect: {x: 0,y: 0,w: .5,h: .5} };
+  const symbol = {code: '005930',name: '삼성전자',kind: 'stock' as const};
+  const view = render(<SecondChartWindow win={win} symbol={symbol} timeframe="30s" />);
+  fixture.setData.mockClear();
+  fixture.query = {...fixture.query, hasNextPage: true};
+  view.rerender(<SecondChartWindow win={win} symbol={symbol} timeframe="30s" />);
+  expect(fixture.setData).not.toHaveBeenCalled();
+  view.unmount(); vi.unstubAllGlobals();
+});
+it('expires wheel gestures before later programmatic range changes', () => {
+  vi.useFakeTimers({toFake: ['performance']});
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  fixture.query = { ...fixture.query, bars: fixture.bars, hasNextPage: true, isPending: false, catalogPending: false };
+  const win: WorkspaceWindow = {id: 'gesture-test',kind: 'chart',group: 1,rect: {x: 0,y: 0,w: .5,h: .5}};
+  const view = render(<SecondChartWindow win={win} symbol={{code: '005930',name: '삼성전자',kind: 'stock'}} timeframe="30s" />);
+  fixture.query.fetchNextPage.mockClear();
+  const chartContainer = view.container.querySelector('.absolute.inset-0.font-data')!;
+  fireEvent.wheel(chartContainer, {deltaY: -10});
+  act(() => fixture.onRange?.({from: 40,to: 200}));
+  expect(fixture.query.fetchNextPage).not.toHaveBeenCalled();
+  vi.advanceTimersByTime(201);
+  // No pointer/wheel event now: represent a later resize or programmatic range change.
+  act(() => fixture.onRange?.({from: 5,to: 200}));
+  expect(fixture.query.fetchNextPage).not.toHaveBeenCalled();
+  fireEvent.wheel(chartContainer, {deltaY: -10});
+  act(() => fixture.onRange?.({from: 5,to: 200}));
+  expect(fixture.query.fetchNextPage).toHaveBeenCalledTimes(1);
+  vi.useRealTimers();
+  view.unmount(); vi.unstubAllGlobals();
+});
+
+it('updates only changed second candle, volume and MA with 10000 loaded bars', () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  const bars = Array.from({length: 10000}, (_, i) => ({...fixture.bars[0],t_ms: fixture.bars[0].t_ms+i*1000}));
+  fixture.query = { ...fixture.query, bars, hasNextPage: false, isPending: false, catalogPending: false };
+  const win: WorkspaceWindow = {id: 'tick-test',kind: 'chart',group: 1,rect: {x: 0,y: 0,w: .5,h: .5}};
+  const symbol = {code: '005930',name: '삼성전자',kind: 'stock' as const};
+  const view = render(<SecondChartWindow win={win} symbol={symbol} timeframe="1s" />);
+  fixture.setData.mockClear();
+  fixture.query = {...fixture.query, bars: [...bars.slice(0,-1), {...bars.at(-1)!,close: 106}]};
+  view.rerender(<SecondChartWindow win={win} symbol={symbol} timeframe="1s" />);
+  expect(fixture.setData).not.toHaveBeenCalled();
+  expect(fixture.update).toHaveBeenCalledTimes(3);
+  view.unmount(); vi.unstubAllGlobals();
 });

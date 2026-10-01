@@ -24,3 +24,12 @@ describe('shared second data consumers', () => {
     expect(movingAverageSeconds(bars, 2)).toEqual([{ time: 11, value: 1.5 }, { time: 31, value: 2.5 }]);
   });
 });
+it('includes known-side closing execution with the regular candle boundary', async () => {
+  const {isRegularSessionMs} = await import('../aggregateCandles');
+  const close = Date.parse('2026-09-30T15:30:00+09:00');
+  expect(isRegularSessionMs(close)).toBe(true);
+  const prices: SecondPrice[] = [{t_ms: close-1000,price: 100,side: 1,qty: 1,count: 1},{t_ms: close,price: 110,side: 1,qty: 99,count: 1}];
+  const result = secondPriceDistribution(prices, '20260930',10)!;
+  expect(result.bins.reduce((total, bin) => total+bin.qty,0)).toBe(100);
+  expect(result.price_max).toBe(110);
+});

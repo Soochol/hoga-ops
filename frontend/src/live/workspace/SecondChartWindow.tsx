@@ -3,7 +3,7 @@
  * interpolation from silently pretending to be second-resolution data.
  */
 import { useEffect, useMemo, useRef } from 'react';
-import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
+import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
 import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
 import { useLiveVenueStore } from '../../state/liveVenue';
@@ -17,7 +17,7 @@ import { publishGroupChartLink, clearGroupChartLink } from './groupChartLinkSour
 import { groupTargetChartWindow } from '../../state/workspace';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { createSidebarCursorThrottle } from '../sidebarCursorRateLimit';
-import { movingAverageSeconds } from './secondAggregateProjectors';
+import { createSecondChartSeriesWriter } from './secondChartSeriesWriter';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { useMinuteClock } from '../useMinuteClock';
 import { realMsToYyyymmdd } from '../liveDateTime';
@@ -30,7 +30,6 @@ import { captureSecondViewport, restoreSecondViewport, type SecondChartViewport 
 const kstTimeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const kstTime = (value: number) => kstTimeFormatter.format(value * 1000);
 const isoDate = (date: string) => `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
-const time = (ms: number) => ms / 1000 as UTCTimestamp;
 
 type Props = { win: WorkspaceWindow; symbol: GroupSymbol | null; timeframe: SecondTimeframe };
 export function SecondChartWindow({ win, symbol, timeframe }: Props) {
@@ -75,6 +74,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const seriesRef = useRef<{ candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'>; ma: ISeriesApi<'Line'> } | null>(null);
   const initial = useRef(true);
   const userGesture = useRef(false);
+  const wheelGestureUntil = useRef(0);
+  const writeSeries = useRef<ReturnType<typeof createSecondChartSeriesWriter> | null>(null);
   const previousBars = useRef(bars);
   const pendingViewport = useRef<SecondChartViewport | null>(null);
   const previousSession = useRef(regularSessionOnly);
@@ -117,10 +118,11 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     chart.panes()[0].setStretchFactor(4);
     chart.panes()[1].setStretchFactor(1);
     const onRange = (range: { from: number; to: number } | null) => {
-      if (userGesture.current && !initial.current && range && range.from < 10) {
+      if ((userGesture.current || performance.now() < wheelGestureUntil.current) && !initial.current && range && range.from < 10) {
         // setData/resize also emits range changes. Consume this gesture so a
         // single wheel movement cannot cascade into loading the entire day.
         userGesture.current = false;
+        wheelGestureUntil.current = 0;
         loadMore.current();
       }
     };
@@ -149,6 +151,9 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     chart.subscribeCrosshairMove(onCursor);
     chartRef.current = chart;
     seriesRef.current = { candles, ma, volume };
+    writeSeries.current = createSecondChartSeriesWriter({ candles, ma, volume });
+    userGesture.current = false;
+    wheelGestureUntil.current = 0;
     initial.current = true;
     previousBars.current = [];
     pendingViewport.current = null;
@@ -163,6 +168,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       chart.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      writeSeries.current = null;
     };
   }, [code, venue, midnight, win.id, win.group, timeframe]);
 
@@ -180,18 +186,12 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     previousSession.current = regularSessionOnly;
     if (!bars.length) {
       if (pendingViewport.current && (query.isPending || query.catalogPending || query.hasNextPage)) return;
-      series.candles.setData([]);
-      series.volume.setData([]);
-      series.ma.setData([]);
+      writeSeries.current?.(bars, axis);
+      previousBars.current = bars;
       return;
     }
     axisRef.current = axis;
-    const projectedTime = (ms: number) => time(axis.toVirtual(ms));
-    series.candles.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), open: bar.open, high: bar.high, low: bar.low, close: bar.close })));
-    const { upColor, downColor } = series.candles.options();
-    series.volume.setData(bars.map(bar => ({ time: projectedTime(bar.t_ms), value: bar.volume,
-      color: bar.close >= bar.open ? upColor : downColor })));
-    series.ma.setData(movingAverageSeconds(bars, 20).map(point => ({ ...point, time: projectedTime(Number(point.time) * 1000) })));
+    writeSeries.current?.(bars, axis);
     if (pendingViewport.current && scale) {
       scale.setVisibleLogicalRange(restoreSecondViewport(bars, pendingViewport.current));
       scale.applyOptions({ barSpacing: pendingViewport.current.barSpacing });
@@ -219,7 +219,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
         onPointerDown={() => { userGesture.current = true; }}
         onPointerUp={() => { userGesture.current = false; }}
         onPointerCancel={() => { userGesture.current = false; }}
-        onWheel={() => { userGesture.current = true; }} />
+        onWheel={() => { wheelGestureUntil.current = performance.now() + 200; }} />
       <div className="absolute top-2 left-2 text-fg-dim pointer-events-none text-xs">MA 20 · 거래량</div>
       {(!bars.length || !code) && <div className="absolute inset-0 flex items-center justify-center text-fg-dim bg-bg-card/80">
         {!code ? '주식 종목을 선택해주세요' : query.isError ? '초봉을 불러오지 못했습니다' : query.isPending ? '초봉 불러오는 중' : '선택한 날짜에 저장된 초봉이 없습니다'}
