@@ -14,13 +14,39 @@ from hoga.api.params import CODE_PATTERN
 from hoga.util.timeenc import KST
 
 from .second_trade_agg import SecondTradeBar, aggregate_bars
+from .second_trade_delta import SecondResponseRevisions
 from .second_trade_history import historical_second_rows
 from .second_trade_store import second_trade_store
+
+
+def _project_response(
+    merged: dict, scope: tuple, source: str | None, storage_error: str | None,
+) -> SecondAggregatesResponse:
+    code, venue, date, seconds, start, end, include_prices, regular_session_only, day_start = scope
+    selected = merged
+    if regular_session_only:
+        # Storage resolution is one second. Keep the closing execution bucket.
+        selected = {t: row for t, row in selected.items()
+                  if day_start + 9 * 3_600_000 <= t <= day_start + (15 * 60 + 30) * 60_000}
+    rows = sorted((row for t, row in selected.items() if start <= t < end), key=lambda r: r["t_ms"])
+    bars = aggregate_bars(rows, seconds * 1000)
+    result = SecondAggregatesResponse(
+        code=code, venue=venue, date=date, seconds=seconds,
+        status="observed" if rows else "unavailable",
+        coverage="unverified", storage_error=storage_error, source=source,
+        first_observed_ms=min(row["first"][0] for row in selected.values()) if selected else None,
+        last_observed_ms=max(row["last"][0] for row in selected.values()) if selected else None,
+        bars=[SecondBarModel(**{k: row[k] for k in SecondBarModel.model_fields}) for row in bars],
+        prices=[SecondPriceModel(t_ms=row["t_ms"], price=p, side=side, qty=qty, count=count)
+                for row in rows for p, side, qty, count in row["prices"]] if include_prices else [],
+    )
+    return result
 
 
 def build_router(*, data_dir: Path) -> APIRouter:
     router = APIRouter(prefix="/api/live", tags=["live"])
     store = second_trade_store(data_dir)
+    revisions = SecondResponseRevisions()
 
     @router.get("/second-trade-dates", response_model=SecondTradeDatesResponse)
     async def get_dates(
@@ -57,6 +83,8 @@ def build_router(*, data_dir: Path) -> APIRouter:
         to_ms: int | None = Query(default=None, ge=0),
         include_prices: bool = False,
         regular_session_only: bool = False,
+        incremental: bool = False,
+        since_revision: str | None = Query(default=None, max_length=64),
     ) -> SecondAggregatesResponse:
         if seconds not in (1, 5, 10, 30):
             raise HTTPException(422, "Unsupported seconds timeframe")
@@ -94,21 +122,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
             if history:
                 merged = {row["t_ms"]: row for row in history}
                 source = "hogaplay"
-        if regular_session_only:
-            # Storage resolution is one second. Keep the closing execution bucket.
-            merged = {t: row for t, row in merged.items()
-                      if day_start + 9 * 3_600_000 <= t <= day_start + (15 * 60 + 30) * 60_000}
-        rows = sorted((row for t, row in merged.items() if start <= t < end), key=lambda r: r["t_ms"])
-        bars = aggregate_bars(rows, seconds * 1000)
-        return SecondAggregatesResponse(
-            code=code, venue=venue, date=date, seconds=seconds,
-            status="observed" if rows else "unavailable",
-            coverage="unverified", storage_error=store.storage_error, source=source,
-            first_observed_ms=min(row["first"][0] for row in merged.values()) if merged else None,
-            last_observed_ms=max(row["last"][0] for row in merged.values()) if merged else None,
-            bars=[SecondBarModel(**{k: row[k] for k in SecondBarModel.model_fields}) for row in bars],
-            prices=[SecondPriceModel(t_ms=row["t_ms"], price=p, side=side, qty=qty, count=count)
-                    for row in rows for p, side, qty, count in row["prices"]] if include_prices else [],
-        )
+        scope = (code, venue, date, seconds, start, end, include_prices, regular_session_only, day_start)
+        result = await asyncio.to_thread(_project_response, merged, scope, source, store.storage_error)
+        if not incremental:
+            return result
+        return await asyncio.to_thread(revisions.project, scope, result, since_revision)
 
     return router

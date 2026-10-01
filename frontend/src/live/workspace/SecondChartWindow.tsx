@@ -55,14 +55,22 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const bars = query.bars;
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
   const axis = useMemo(() => {
-    const days = new Map<string, { date: string; sessionOpenMs: number; sessionCloseMs: number }>();
-    for (const bar of bars) {
-      const key = realMsToYyyymmdd(bar.t_ms);
-      const day = days.get(key);
-      if (day) day.sessionCloseMs = bar.t_ms;
-      else days.set(key, { date: key, sessionOpenMs: bar.t_ms, sessionCloseMs: bar.t_ms });
+    const days: { date: string; sessionOpenMs: number; sessionCloseMs: number }[] = [];
+    // Sorted bars let us jump to the next day without formatting every timestamp.
+    let first = 0;
+    while (first < bars.length) {
+      const open = bars[first].t_ms;
+      const nextDay = (Math.floor((open + 9 * 3_600_000) / 86_400_000) + 1) * 86_400_000 - 9 * 3_600_000;
+      let lo = first + 1, hi = bars.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1;
+        if (bars[mid].t_ms < nextDay) lo = mid + 1;
+        else hi = mid;
+      }
+      days.push({ date: realMsToYyyymmdd(open), sessionOpenMs: open, sessionCloseMs: bars[lo - 1].t_ms });
+      first = lo;
     }
-    return createVirtualAxis([...days.values()], bars[0]?.t_ms ?? midnight);
+    return createVirtualAxis(days, bars[0]?.t_ms ?? midnight);
   }, [bars, midnight]);
   const axisRef = useRef<VirtualAxis>(axis);
   const loadMore = useRef(() => {});

@@ -28,6 +28,7 @@
 //    A cell whose value is null (series holds no data → toggle off / cold load)
 //    is dropped; a pane left with no cells emits no row.
 
+import { MismatchDirection } from 'lightweight-charts';
 import type { ISeriesApi, SeriesType } from 'lightweight-charts';
 import type { LiveMAConfig } from '../state/livePage';
 import type { FlagIndicatorType } from '../state/indicatorOps';
@@ -283,11 +284,21 @@ export function readSeriesValue(
   series: ISeriesApi<SeriesType> | undefined,
   seriesData: ReadonlyMap<ISeriesApi<SeriesType>, unknown> | null,
   atTimeSec: number | null = null,
+  logicalIndex: number | null = null,
 ): number | null {
   if (!series) return null;
   if (seriesData) {
     const atCursor = pointValue(seriesData.get(series));
     if (atCursor !== null) return atCursor;
+  }
+  // Native point readback avoids allocating every point for one legend cell.
+  if (typeof series.dataByIndex === 'function') {
+    if (atTimeSec !== null && logicalIndex !== null) {
+      const point = series.dataByIndex(logicalIndex);
+      const value = pointTime(point) === atTimeSec ? pointValue(point) : null;
+      if (value !== null) return value;
+    }
+    return pointValue(series.dataByIndex(Number.MAX_SAFE_INTEGER, MismatchDirection.NearestLeft));
   }
   // `data()` is absent on a torn-down or stubbed series — degrade to null
   // ("—") rather than throwing inside a render frame.

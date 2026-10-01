@@ -48,12 +48,33 @@ export function useSecondHistory(code: string | null, venue: LiveVenueOption, da
     getNextPageParam: (last, pages) => pages.length < SECOND_HISTORY_PAGE_LIMIT ? nextSecondPage(last, catalog.data?.dates ?? [], regularSessionOnly) : undefined,
     staleTime: Infinity });
   const first = history.data?.pages[0];
-  const live = useSecondAggregates(date === todayKstYyyymmdd() && first ? code : null, venue, date, first?.fromMs ?? null, false, seconds, regularSessionOnly);
-  const bars = useMemo(() => {
+  const liveFromMs = useMemo(() => {
+    const loaded = history.data?.pages.filter(page => page.result.date === date).map(page => page.fromMs) ?? [];
+    return loaded.length ? Math.min(...loaded) : first?.fromMs ?? null;
+  }, [history.data, date, first?.fromMs]);
+  const live = useSecondAggregates(date === todayKstYyyymmdd() && first ? code : null, venue, date, liveFromMs, false, seconds, regularSessionOnly);
+  const historicalBars = useMemo(() => {
     const merged = new Map(history.data?.pages.flatMap(page => page.result.bars.map(bar => [bar.t_ms, bar] as const)) ?? []);
-    for (const bar of live.data?.bars ?? []) merged.set(bar.t_ms, bar);
     return [...merged.values()].filter(bar => !regularSessionOnly || isRegularSessionMs(bar.t_ms)).sort((a, b) => a.t_ms - b.t_ms);
-  }, [history.data, live.data, regularSessionOnly]);
+  }, [history.data, regularSessionOnly]);
+  const bars = useMemo(() => mergeSecondBars(historicalBars, live.data?.bars ?? []), [historicalBars, live.data?.bars]);
   return { ...history, bars, catalogPending: catalog.isPending, catalogError: catalog.isError,
     source: first?.result.source, storageError: live.data?.storage_error ?? first?.result.storage_error };
+}
+
+/** Both inputs are ordered. Live revisions replace matching historical bars. */
+export function mergeSecondBars(history: readonly SecondAggregates['bars'][number][], live: readonly SecondAggregates['bars'][number][]): SecondAggregates['bars'] {
+  if (!live.length) return history as SecondAggregates['bars'];
+  const result: SecondAggregates['bars'] = [];
+  let h = 0, l = 0;
+  while (h < history.length && l < live.length) {
+    if (history[h].t_ms < live[l].t_ms) result.push(history[h++]);
+    else {
+      if (history[h].t_ms === live[l].t_ms) h++;
+      result.push(live[l++]);
+    }
+  }
+  while (h < history.length) result.push(history[h++]);
+  while (l < live.length) result.push(live[l++]);
+  return result;
 }

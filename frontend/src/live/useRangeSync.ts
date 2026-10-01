@@ -213,7 +213,12 @@ export function useRangeSyncFollow(params: {
     chart, axis, candleCount, enabled,
     myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
   } = params;
-  const syncRange = useLiveCursorStore((s) => s.syncRange);
+  const syncRange = useLiveCursorStore((s) => {
+    const publication = s.syncRange;
+    return enabled && publication && shouldFollowRange({
+      publication, myWindowId, myTimeframe, myGroup, myCode, allowCrossSymbol,
+    }) ? publication : null;
+  });
   const axisRef = useRef(axis);
   axisRef.current = axis;
   // 마운트(정확히는 이 창이 추종을 시작한) 시점의 발행 번호. 이보다 큰 것만 적용한다.
