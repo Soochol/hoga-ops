@@ -1,9 +1,8 @@
 // frontend/tests/e2e/watchlist-context-menu.spec.ts
 //
 // 실 dnd-kit 없는 우클릭 컨텍스트 메뉴 e2e: 행 우클릭 → 네이티브 메뉴 억제 →
-// WatchlistRowMenu 렌더 → '관심 해제' 클릭 → DELETE /api/watchlist/{code} →
-// 행 사라짐, 그리고 '그룹으로 이동' → POST /api/watchlist/move → 행이 대상
-// 그룹으로 이동. 백엔드 독립(page.route mock), GET 은 stateful(삭제/이동 반영).
+// WatchlistRowMenu의 관심 그룹 메뉴 → 전체 관심 해제 또는 그룹 소속 추가.
+// v3의 실제 folder_id를 사용하고 DELETE/POST 이후 GET에 멤버십을 반영한다.
 
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
@@ -19,10 +18,10 @@ interface Entry {
   code: string; name: string; registered_at_kst_date: string;
   last_success_date: string | null; folder_id: string | null; order: number;
 }
-const FOLDERS = [{ id: 'f_a', name: '스윙', order: 0 }];
+const FOLDERS = [{ id: 'f_a', name: '스윙', order: 0 }, { id: 'f_b', name: '장기', order: 1 }];
 const makeEntries = (): Entry[] => [
-  { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: null, order: 0 },
-  { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: null, order: 1 },
+  { code: '005930', name: '삼성전자', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_a', order: 0 },
+  { code: '000660', name: 'SK하이닉스', registered_at_kst_date: '20260527', last_success_date: null, folder_id: 'f_b', order: 1 },
 ];
 
 const json = (route: import('@playwright/test').Route, body: unknown) =>
@@ -63,14 +62,14 @@ test.describe('Watchlist Panel context menu', () => {
     await page.getByTestId('watchlist-row-005930').click({ button: 'right' });  // 우클릭
     const menu = page.getByTestId('watchlist-row-menu');
     await expect(menu).toBeVisible();
-    await page.getByTestId('watchlist-menu-remove').click();       // 관심 해제
+    await menu.getByRole('menuitem', { name: '관심 해제', exact: true }).click();       // 관심 해제
 
     await expect.poll(() => deleted).toBe('005930');               // DELETE 발사
     await expect(page.getByTestId('watchlist-row-005930')).toHaveCount(0); // refetch 후 행 사라짐
     await expect(menu).toHaveCount(0);                             // 메뉴 닫힘
   });
 
-  test('right-click → 그룹으로 이동 moves the row into the folder group', async ({ page }) => {
+  test('right-click → 관심 그룹 추가 preserves existing membership', async ({ page }) => {
     await installLiveMocks(page);
 
     let entries = makeEntries();
@@ -94,14 +93,14 @@ test.describe('Watchlist Panel context menu', () => {
     await openPanelIfClosed(page, 'watchlist-row-000660');
 
     await page.getByTestId('watchlist-row-000660').click({ button: 'right' });
-    await expect(page.getByTestId('watchlist-row-menu')).toBeVisible();
-    await page.getByTestId('watchlist-menu-edit-groups').click();
-    const picker = page.getByTestId('watchlist-group-picker');
-    await expect(picker).toBeVisible();
-    await picker.getByRole('menuitemcheckbox').first().click(); // 첫 번째 폴더(스윙) 체크
+    const menu = page.getByRole('menu', { name: 'SK하이닉스 관심 그룹' });
+    await expect(menu).toBeVisible();
+    await menu.getByRole('menuitemcheckbox', { name: '스윙', exact: true }).click(); // 첫 번째 폴더(스윙) 체크
 
     await expect.poll(() => movedTo).toBe('f_a');                  // POST /folders/{id}/members 발사
     await expect.poll(() => page.locator('[data-testid="watchlist-row-000660"]').count()).toEqual(2);
-    // 그룹 편집은 멤버십을 토글하므로, 스윙 그룹 추가 후에도 기존 미분류 행은 유지될 수 있다.
+    await expect(menu.getByRole('menuitemcheckbox', { name: '스윙', exact: true })).toBeChecked();
+    await expect(menu.getByRole('menuitemcheckbox', { name: '장기', exact: true })).toBeChecked();
+    // v3 supports multiple real folders; adding 스윙 retains the 장기 membership.
   });
 });
