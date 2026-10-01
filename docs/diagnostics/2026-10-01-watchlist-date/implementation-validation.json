@@ -1,0 +1,39 @@
+{
+  "date": "2026-10-01 KST",
+  "scope": "current uncommitted implementation; real chart browser tests with controlled API fixtures",
+  "files": {
+    "frontend/src/chart/windowedChart.ts": "c4ec74b6dcfff1d7f74d538d90f27e9208964df06c8fef64e2c9dcc12a1cb0a1",
+    "frontend/src/chart/windowedChart.test.ts": "8287759639df92212fd06e7b0751b29e9d1cd89875a35b1e18e3909b4c50711b",
+    "frontend/src/live/LiveChartRoot.tsx": "9232f4bdae033dbabad6d4fb0bb26651062e3fcd3aa231ab4935186bf55c0301",
+    "frontend/src/live/useViewportBackfill.ts": "8da4a4b00c822dfb7a4094123cd9971d1f992cd240da4ace48d1ed0c5db82d91",
+    "frontend/tests/e2e/live-backfill-window.spec.ts": "f03f0d9aa6c3882dc89422e2e4864b586dfbcfe09f250fb222adaf2d8edac34b",
+    "frontend/tests/e2e/live-viewport-preservation.spec.ts": "50b0431503c46cf2b56b6ee974c78df3a5562ad36a474971f727d3b7cfe7d6af"
+  },
+  "validation": {
+    "typecheck": "passed; application, unit and E2E projects",
+    "vitest": {
+      "files": 600,
+      "tests": 7695,
+      "result": "passed"
+    },
+    "browser": {
+      "watchlist_1m": 5,
+      "watchlist_15m": 5,
+      "refresh_reset_jump_held_drag_return": 5,
+      "deep_history": 5,
+      "result": "all final scenario repetitions passed; two separate runs of unchanged product code"
+    },
+    "full_e2e": "separate performance integration worktree is validating the whole suite",
+    "build": "npm run build passed; existing large-chunk warning"
+  },
+  "transient_checks": {
+    "first_repetition": "17/20 passed; two pixel snapshots were taken before native draw, and one assertion fixed a logical index across a union remap",
+    "after_frame_waits": "new scenarios 15/15 passed; deep-history retained its logical-index assertion and failed in four repetitions",
+    "final_deep_history": "5/5 passed with the same dated candle moving by the actual pointer delta and preserving position after response"
+  },
+  "limitations": [
+    "Controlled fixtures do not verify real vendor availability.",
+    "Dragging still pans the viewport; the minute jump date remains the data right bound.",
+    "No new performance benchmark was run for this anchor-only change."
+  ]
+}

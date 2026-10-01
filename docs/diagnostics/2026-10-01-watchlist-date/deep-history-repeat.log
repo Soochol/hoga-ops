@@ -1,0 +1,6 @@
+  ✓  1 [chromium] › tests/e2e/live-backfill-window.spec.ts:7:1 › deep history: cached drag, backfill anchor, native window and latest values (8.4s)
+  ✓  2 [chromium] › tests/e2e/live-backfill-window.spec.ts:7:1 › deep history: cached drag, backfill anchor, native window and latest values (6.5s)
+  ✓  3 [chromium] › tests/e2e/live-backfill-window.spec.ts:7:1 › deep history: cached drag, backfill anchor, native window and latest values (6.4s)
+  ✓  4 [chromium] › tests/e2e/live-backfill-window.spec.ts:7:1 › deep history: cached drag, backfill anchor, native window and latest values (6.5s)
+  ✓  5 [chromium] › tests/e2e/live-backfill-window.spec.ts:7:1 › deep history: cached drag, backfill anchor, native window and latest values (6.6s)
+  5 passed (42.8s)

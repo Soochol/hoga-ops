@@ -59,6 +59,25 @@ function fixture() {
 }
 
 describe('full-history chart / bounded native renderer', () => {
+  it('reports the drawn range while retaining pending pan intent across a prepend', () => {
+    const { chart, native, rows } = fixture();
+    const line = chart.addSeries(LineSeries);
+    line.setData(rows.slice(-100)); flushWindowedChart(chart);
+    const before = chart.timeScale().getVisibleLogicalRange();
+    const scale = native.timeScale();
+    const apply = scale.setVisibleLogicalRange;
+    let pending: { from: number; to: number } | null = null;
+    scale.setVisibleLogicalRange = r => { pending = r; };
+    chart.timeScale().setVisibleLogicalRange({ from: -10.5, to: 110.5 });
+    expect(chart.timeScale().getVisibleLogicalRange()).toEqual(before);
+    const older = Array.from({ length: 1000 }, (_, i) => ({ time: (40000 + i * 60) as Time, value: -i }));
+    line.setData([...older, ...rows.slice(-100)]); flushWindowedChart(chart);
+    expect(pending).not.toBeNull();
+    apply(pending!);
+    expect(chart.timeScale().getVisibleLogicalRange()).toEqual({ from: 989.5, to: 1110.5 });
+    chart.remove();
+  });
+
   it('batches a commit and keeps full data, latest lookup and union indices', () => {
     const { chart, native, rows } = fixture();
     const a = chart.addSeries(LineSeries);

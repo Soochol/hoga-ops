@@ -132,7 +132,7 @@ class WindowedChart {
     this.native = native;
     this.scale = native.timeScale();
     const timeScale = facade(this.scale, {
-      getVisibleLogicalRange: () => this.range(),
+      getVisibleLogicalRange: () => this.appliedRange(),
       getVisibleRange: () => this.visibleTimes(),
       setVisibleLogicalRange: (range: Range) => this.setRange(range),
       setVisibleRange: (range: { from: Time; to: Time }) => {
@@ -463,6 +463,14 @@ class WindowedChart {
 
   private range(): LogicalRange | null {
     if (this.requestedRange) return this.requestedRange as LogicalRange;
+    return this.appliedRange();
+  }
+
+  /** Match lwc's frame-delayed getter: callers that aim with coordinates must
+   * observe the range those coordinates currently use, not a pending request.
+   * Internal batching still retains that request so a prepend before the next
+   * frame preserves the user's intended position. */
+  private appliedRange(): LogicalRange | null {
     const local = this.scale.getVisibleLogicalRange();
     return local ? { from: (local.from + this.offset) as Logical, to: (local.to + this.offset) as Logical } : null;
   }
@@ -507,7 +515,7 @@ class WindowedChart {
   }
 
   private visibleTimes(): { from: Time; to: Time } | null {
-    const range = this.range();
+    const range = this.appliedRange();
     if (!range || !this.times.length) return null;
     const clamp = (i: number) => Math.max(0, Math.min(i, this.times.length - 1));
     return { from: this.times[clamp(Math.floor(range.from))] as Time, to: this.times[clamp(Math.ceil(range.to))] as Time };

@@ -4,7 +4,7 @@ import { installLiveMocks } from './helpers/liveMocks';
 
 type ChartWindow = Window & { __liveCharts: Map<string, IChartApi> };
 
-test('deep history: cached drag, backfill anchor, native window and latest values', async ({ page }) => {
+test('deep history: cached drag, backfill anchor, native window and latest values', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1800, height: 1000 });
   await page.clock.setFixedTime(new Date('2026-10-01T17:00:00+09:00'));
   await installLiveMocks(page);
@@ -59,17 +59,32 @@ test('deep history: cached drag, backfill anchor, native window and latest value
   await expect.poll(() => page.evaluate(() => [...(window as unknown as ChartWindow).__liveCharts.values()][0]
     .timeScale().getVisibleLogicalRange()!.to)).toBeCloseTo(1150.25, 5);
   armed = true;
+  const dragSamples: unknown[] = [];
   const drag = async () => {
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     const start = await page.evaluate(() => {
-      const ts = [...(window as unknown as ChartWindow).__liveCharts.values()][0].timeScale();
-      return { range: ts.getVisibleLogicalRange()!, spacing: ts.options().barSpacing };
+      const c = [...(window as unknown as ChartWindow).__liveCharts.values()][0];
+      const ts = c.timeScale();
+      const range = ts.getVisibleLogicalRange()!;
+      const s = c.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
+      const anchor = s.dataByIndex(Math.round((range.from + range.to) / 2), -1) as { time: import('lightweight-charts').Time; close: number };
+      return { range, close: anchor.close, x: ts.timeToCoordinate(anchor.time)!, index: ts.timeToIndex(anchor.time) };
     });
     await page.mouse.move(box.x + box.w * .45, box.y + box.h * .6);
     await page.mouse.down();
     await page.mouse.move(box.x + box.w * .7, box.y + box.h * .6, { steps: 10 });
-    const expected = start.range.to - box.w * .25 / start.spacing;
-    await expect.poll(() => page.evaluate(() => [...(window as unknown as ChartWindow).__liveCharts.values()][0]
-      .timeScale().getVisibleLogicalRange()!.to)).toBeCloseTo(expected, 2);
+    // Shared union slots may arrive during a gesture even with cached candles.
+    // Its global indices then change legitimately; the same dated candle must
+    // still move by exactly the pointer's pixel delta.
+    const readAnchor = () => page.evaluate(close => {
+      const c = [...(window as unknown as ChartWindow).__liveCharts.values()][0];
+      const ts = c.timeScale();
+      const s = c.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
+      const anchor = s.data().find(p => 'close' in p && p.close === close)!;
+      return { x: ts.timeToCoordinate(anchor.time)!, index: ts.timeToIndex(anchor.time), range: ts.getVisibleLogicalRange()! };
+    }, start.close);
+    await expect.poll(async () => Math.abs((await readAnchor()).x - (start.x + box.w * .25))).toBeLessThan(1);
+    dragSamples.push({ before: start, after: await readAnchor(), pointerDelta: box.w * .25 });
     await page.mouse.up();
     // Wait for the actual debounced viewport handler, including inertia.
     await page.waitForTimeout(300);
@@ -178,4 +193,5 @@ test('deep history: cached drag, backfill anchor, native window and latest value
   })).toBe(true);
   expect(requests).toBe(1);
   expect(errors).toEqual([]);
+  await testInfo.attach('drag-date-anchor-samples', { body: JSON.stringify(dragSamples, null, 2), contentType: 'application/json' });
 });
