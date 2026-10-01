@@ -69,12 +69,14 @@ from hoga.gc_tuning import (  # 값과 근거 표는 아래 주석, 정의는 �
 from hoga.live import kiwoom_rest_runtime
 from hoga.live.api import build_router as build_live_router
 from hoga.live.kis_runtime import aclose_kis_client
+from hoga.live.kiwoom_diagnostics import configure_failure_context
 from hoga.live.lifecycle import (
     configure_signal_alert_monitor,
     ensure_today_peaks_seeded as live_ensure_today_peaks_seeded,
     get_buffer as live_get_buffer,
     get_kiwoom_capture_codes,
     get_program_trade_task,
+    get_started_at_ms as live_get_started_at_ms,
     get_status as live_get_status,
     get_today_ask_peak as live_get_today_ask_peak,
     get_today_bid_peak as live_get_today_bid_peak,
@@ -419,6 +421,10 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         # 임계를 **거는 곳에서 재기도 한다**. 이 값이 정지 시간을 좌우하는데 지금까지
         # 그 결과를 보는 눈이 없었다 — 2026-09-04 에 GC 정지를 손으로 재야 했다.
         gc_probe.install(warn_ms=gc_probe.pause_warn_ms_from_env())
+        configure_failure_context(lambda: {
+            "commit": APP_COMMIT, "live_started_at_ms": live_get_started_at_ms(),
+            "gc": gc_probe.stats_snapshot(),
+        })
         try:
             yield
         finally:
@@ -430,6 +436,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # 콜백도 임계와 같은 이유로 뗀다 — TestClient 가 앱을 수백 번 만들면
             # 콜백이 그만큼 쌓여 수집마다 전부 불린다.
             gc_probe.uninstall()
+            configure_failure_context(None)
             await _cancel_tasks(*lifespan_tasks)
             # 컴퓨트 워커 프로세스(ADR-0169). **예열 태스크를 먼저 취소한다** — 아직 spawn
             # 을 기다리는 중에 풀을 내리면 그 future 가 BrokenProcessPool 로 끝나

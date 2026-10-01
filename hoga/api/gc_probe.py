@@ -116,9 +116,9 @@ class GcPauseRecorder:
             # "순회 대상이 크다"(=상주 객체가 많다)는 뜻이다.
             log.warning(
                 "hoga_perf gc_pause gen=%d pause_ms=%.1f collected=%s uncollectable=%s "
-                "threshold_ms=%.0f",
+                "threshold_ms=%.0f pid=%d",
                 gen, elapsed_ms, info.get("collected"), info.get("uncollectable"),
-                self.warn_ms,
+                self.warn_ms, os.getpid(),
             )
 
     def snapshot(self) -> dict[str, Any]:

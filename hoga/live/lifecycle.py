@@ -414,6 +414,11 @@ def get_status() -> LiveStatus:
     )
 
 
+def get_started_at_ms() -> int | None:
+    """Read-only identity for failure logs, without constructing account status."""
+    return _state.started_at_ms
+
+
 def reset_for_tests() -> None:
     """Test-only hook. Resets module state without raising."""
     global _state, _buffer  # noqa: PLW0603
