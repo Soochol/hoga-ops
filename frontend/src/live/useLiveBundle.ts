@@ -17,7 +17,7 @@ import {
   needsRegularSessionClip,
   fetchBucketMsFor,
 } from '../state/livePage';
-import { filterRegularSession, regularSessionHogaForDisplay } from './regularSessionView';
+import { createRegularSessionFilter, regularSessionHogaForDisplay } from './regularSessionView';
 import { useRegularSessionLiveSeries } from './useRegularSessionLiveSeries';
 import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
 import { peakWallBarFamilyActive } from '../state/indicatorOps';
@@ -1227,6 +1227,7 @@ export function useLiveBundle(
   const hasTodayObSignal = isMinute && live.ob.length > 0;
   // Last content-distinct segments array — see the stabilization block below.
   const prevSegmentsRef = useRef<RangeBundle['segments'] | null>(null);
+  const filterRegularSession = useMemo(createRegularSessionFilter, []);
   const computedChartBundle = useMemo<RangeBundle | null>(() => {
     if (!code) return null;
     const built = buildChartBundle({
@@ -1305,6 +1306,7 @@ export function useLiveBundle(
     return regularSessionOnly ? filterRegularSession(built) : built;
   }, [
     regularSessionOnly,
+    filterRegularSession,
     code,
     todayKstYyyymmdd,
     todayChartSession,

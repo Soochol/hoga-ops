@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { filterRegularSession, regularSessionHogaForDisplay } from './regularSessionView';
+import { describe, expect, it, vi } from 'vitest';
+import { createRegularSessionFilter, filterRegularSession, regularSessionHogaForDisplay } from './regularSessionView';
 import { aggregateCandles, keepRegularSessionCandles } from './aggregateCandles';
 import { fetchBucketMsFor } from '../state/livePage';
 import type { QuoteRatioPoint, RangeBundle } from '../api/types';
@@ -81,4 +81,27 @@ describe('regular-session hoga display grid', () => {
     expect(regularSessionHogaForDisplay(source, 60_000, 'KRX')).toBe(source);
     expect(regularSessionHogaForDisplay(null, 180_000, 'KRX')).toBeNull();
   });
+});
+
+
+it('filters retained history once and updates only replaced immutable points', () => {
+  const readLadder = vi.fn(() => [{price: 100, qty: 10}]);
+  const history = Array.from({length: 10_000}, (_, i) => ({
+    t_ms: at(i % 2 ? '09:00:00' : '16:00:00'), get levels() { return readLadder(); },
+  }));
+  const filter = createRegularSessionFilter();
+  const first = filter({depth: history});
+  expect(first.depth).toHaveLength(5_000);
+  expect(readLadder).toHaveBeenCalledTimes(5_000);
+  readLadder.mockClear();
+  expect(filter({depth: history}).depth).toBe(first.depth);
+  const next = {t_ms: at('15:30:00'), levels: [{price: 110, qty: 20}]};
+  const appended = filter({depth: [...history, next]});
+  expect(appended.depth).toHaveLength(5_001);
+  expect(appended.depth.at(-1)).toBe(next);
+  expect(readLadder).not.toHaveBeenCalled();
+  const replacement = {t_ms: at('15:30:00.001'), levels: []};
+  expect(filter({depth: [...history, replacement]}).depth).toHaveLength(5_000);
+  expect(history).toHaveLength(10_000);
+  expect(filter({depth: [null, 1, {value: 2}]}).depth).toEqual([null, 1, {value: 2}]);
 });

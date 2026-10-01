@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
+import { installLiveWs } from './helpers/liveWs';
 import { installLiveMocks } from './helpers/liveMocks';
 
 for (const minutes of [1, 3, 5, 10]) {
@@ -11,11 +12,13 @@ for (const minutes of [1, 3, 5, 10]) {
         byTimeframe: { minute: { ratioEnabled: true, programTradeEnabled: true, fillStrengthEnabled: true } },
       }));
     });
+    const ws = await installLiveWs(page);
     await installLiveMocks(page);
     const start = Date.parse('2026-05-27T08:00:00+09:00');
     const all = Array.from({ length: 721 }, (_, i) => ({
       t_ms: start + i * 60_000, open: 35000, high: 35200, low: 34900, close: 35100, volume: 100,
     }));
+    all.push({ ...all[0], t_ms: Date.parse('2026-05-28T10:00:00+09:00') });
     await page.route('**/api/live/past-candles?**', r => {
       const bucket = Number(new URL(r.request().url()).searchParams.get('bucket_ms') ?? 60_000);
       return r.fulfill({ json: {
@@ -62,7 +65,7 @@ for (const minutes of [1, 3, 5, 10]) {
       const spacing = ts.options().barSpacing;
       return {
         gapRatio: a == null || b == null ? null : (b - a) / spacing,
-        count: candles.length, spacing, range: ts.getVisibleLogicalRange(), paneCount: chart.panes().length,
+        lastClose: (candles.at(-1) as {close?: number})?.close, count: candles.length, spacing, range: ts.getVisibleLogicalRange(), paneCount: chart.panes().length,
       };
     });
     await expect(page.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
@@ -85,6 +88,38 @@ for (const minutes of [1, 3, 5, 10]) {
     // 3/5/10 axis slots apart. Measure the real coordinate gap as well.
     await expect.poll(async () => (await snapshot())?.gapRatio).toBeCloseTo(1, 3);
     await expect.poll(async () => (await snapshot())?.spacing).toBeCloseTo(before.spacing, 5);
+    // Exercise the actual native mouse pan while valid live trades arrive.
+    await page.getByRole('button', { name: '차트 더보기' }).click();
+    await ws.waitForSubscribe('098460');
+    await page.evaluate(() => {
+      const chart = [...(window as unknown as { __liveCharts: Map<string, IChartApi> }).__liveCharts.values()][0];
+      chart.timeScale().setVisibleLogicalRange({from: 5, to: 25});
+      const series = chart.panes().flatMap(p => p.getSeries()).find(s => s.seriesType() === 'Candlestick')!;
+      const state = { fullWrites: 0 };
+      (window as unknown as { panWrites: typeof state }).panWrites = state;
+      const setData = series.setData.bind(series);
+      series.setData = (...args: Parameters<typeof setData>) => { state.fullWrites++; return setData(...args); };
+    });
+    await expect.poll(async () => (await snapshot())?.range?.from).toBe(5);
+    const box = await page.locator('.tv-lightweight-charts').boundingBox();
+    if (!box) throw new Error('Missing chart pane');
+    const x = box.x + box.width * .5, y = box.y + 90;
+    const rangeBeforePan = (await snapshot())!.range!;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 40, y, {steps: 10});
+    expect(Math.abs((await snapshot())!.range!.from - rangeBeforePan.from)).toBeGreaterThan(.5);
+    ws.pushLive('098460', {kind: 'trade', venue: 'KRX', t_ms: Date.parse('2026-05-28T10:00:01+09:00'),
+      trades: [{side: 1, price: 35123, qty: 10}]});
+    await page.mouse.move(x + 80, y, {steps: 20});
+    await expect.poll(async () => (await snapshot())?.lastClose).toBe(35123);
+
+    await page.mouse.move(x, y, {steps: 20});
+    await page.mouse.up();
+    await expect.poll(async () => (await snapshot())?.gapRatio).toBeCloseTo(1, 3);
+    await expect.poll(async () => (await snapshot())?.spacing).toBeCloseTo(before.spacing, 5);
+    expect(await page.evaluate(() => (window as unknown as {panWrites: {fullWrites: number}}).panWrites.fullWrites)).toBe(0);
+    await page.getByRole('button', { name: '차트 더보기' }).click();
     await regularSession.uncheck();
     await expect.poll(async () => (await snapshot())?.count).toBe(before.count);
     await expect.poll(async () => (await snapshot())?.gapRatio).toBeCloseTo(1, 3);

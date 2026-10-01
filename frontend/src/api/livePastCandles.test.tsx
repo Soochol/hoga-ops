@@ -977,3 +977,31 @@ describe('useLivePastCandles canonical 재발행/복원', () => {
     expect(spy.mock.calls[0][0]).toContain('bucket_ms=600000');
   });
 });
+
+
+describe('minute history during interaction', () => {
+  beforeEach(() => vi.restoreAllMocks());
+  it('keeps merged history stable across parent renders and applies a fresh today response', async () => {
+    const today = '20260601';
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(mergedPastCandlesKey('005930', today, 'KRX', 60_000), {
+      ...RESPONSE, from: '20260525', to: today, adjust_factors: { '20260525': .5 },
+    });
+    const response = { ...RESPONSE, from: today, to: today,
+      candles: [{ ...RESPONSE.candles[0], t_ms: 2, close: 200 }], adjust_factors: { [today]: 1 } };
+    const calls = vi.spyOn(client, 'apiCall').mockResolvedValue(response);
+    const { result, rerender, unmount } = renderHook(
+      () => useLivePastCandles('005930', '20260525', today, 'KRX', today), { wrapper: wrap(qc) });
+    await waitFor(() => expect(result.current.data?.candles).toHaveLength(2));
+    const before = result.current.data;
+    for (let i = 0; i < 20; i++) rerender();
+    expect(result.current.data).toBe(before);
+    expect(result.current.data?.adjust_factors).toBe(before?.adjust_factors);
+    expect(calls).toHaveBeenCalledTimes(1);
+    calls.mockResolvedValue({ ...response, candles: [{ ...response.candles[0], close: 250 }] });
+    await act(async () => { await result.current.refetch(); });
+    await waitFor(() => expect(result.current.data?.candles.at(-1)?.close).toBe(250));
+    expect(result.current.data?.candles[0]).toEqual(RESPONSE.candles[0]);
+    unmount(); qc.clear();
+  });
+});

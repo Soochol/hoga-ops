@@ -294,3 +294,15 @@ describe("aggregateCalendar('D') with already-daily input", () => {
     expect(out[0].volume).toBe(850);   // sum of volumes
   });
 });
+
+
+it('checks millisecond session boundaries on consecutive and pre-epoch days without date construction', () => {
+  for (const open of [Date.UTC(1969, 11, 31), Date.UTC(2026, 8, 30), Date.UTC(2026, 9, 1)]) {
+    expect(isRegularSessionMs(open - 1)).toBe(false);
+    expect(isRegularSessionMs(open)).toBe(true);
+    expect(isRegularSessionMs(open + 23_400_000)).toBe(true);
+    expect(isRegularSessionMs(open + 23_400_001)).toBe(false);
+    expect(isRegularSessionMs(open + 86_400_000 - 1)).toBe(false);
+  }
+  for (const invalid of [NaN, Infinity, -Infinity]) expect(isRegularSessionMs(invalid)).toBe(false);
+});

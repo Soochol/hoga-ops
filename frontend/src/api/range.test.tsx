@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import type { ReactNode } from 'react';
@@ -2504,3 +2504,39 @@ describe('useRangeSidecarDelta — 창이 좁아지면 **어느 경로로 나오
   });
 });
 
+
+
+describe('range history during interaction', () => {
+  beforeEach(() => { vi.restoreAllMocks(); useLiveVenueStore.setState({ venue: 'KRX' }); });
+  it.each(['hoga', 'sidecar'] as const)('keeps %s history stable during parent renders after a today refresh', async (mode) => {
+    const today = '20260706';
+    const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 6, 6, 1));
+    const options = { mode };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);
+    const identity = planSidecarRangeDelta({ code: '005930', from: '20260629', to: today,
+      timeframe: '1m', todayKst: today, sourcePref: 'kiwoom_live', venue: 'KRX', options }).identity;
+    qc.setQueryData(mergedLiveRangeKey(identity), { ...fakeBundle, code: '005930',
+      from_date: '20260629', to_date: today }, { updatedAt: 1 });
+    const calls = vi.spyOn(client, 'apiCall').mockResolvedValue({ ...fakeBundle, code: '005930',
+      from_date: today, to_date: today });
+    const wrapper = ({children}: {children: ReactNode}) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { result, rerender, unmount } = renderHook(() => (mode === 'hoga' ? useRangeHogaDelta : useRangeSidecarDelta)(
+      '005930', '20260629', today, '1m', undefined, today, options, 'kiwoom_live'), { wrapper });
+    await waitFor(() => expect(calls).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    const before = result.current.data;
+    for (let i = 0; i < 20; i++) rerender();
+    expect(result.current.data).toBe(before);
+    expect(result.current.data?.from_date).toBe('20260629');
+    expect(calls).toHaveBeenCalledTimes(1);
+    const refreshAt = now() + 1000;
+    now.mockReturnValue(refreshAt);
+    await act(async () => { await result.current.refetch(); });
+    await waitFor(() => expect(qc.getQueryState(mergedLiveRangeKey(identity))?.dataUpdatedAt).toBe(refreshAt));
+    expect(result.current.data).toBe(before);
+    expect(calls).toHaveBeenCalledTimes(2);
+    unmount(); qc.clear();
+  });
+
+});
