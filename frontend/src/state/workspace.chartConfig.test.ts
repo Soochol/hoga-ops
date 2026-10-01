@@ -296,3 +296,16 @@ describe('창별 호버 연동 영속화', () => {
     expect(reloaded.getState().windows.map(w => w.chart?.hoverLinked)).toEqual([false, true]);
   });
 });
+
+
+it('정규장 필터는 창별로 봉 전환·새로고침 후 유지된다', async () => {
+  const rect = { x: 0, y: 0, w: 0.4, h: 0.5 };
+  seed([chartWindow('c1', { rect }), chartWindow('c2', { rect })]);
+  useWorkspaceStore.getState().setChartRegularSessionOnly('c1', true);
+  useWorkspaceStore.getState().setChartTimeframe('c1', 'D');
+  expect(chartOf('c1').regularSessionOnly).toBe(true);
+  expect(chartOf('c2').regularSessionOnly ?? false).toBe(false);
+  vi.resetModules();
+  const { useWorkspaceStore: reloaded } = await import('./workspace');
+  expect(reloaded.getState().windows.map(w => w.chart?.regularSessionOnly ?? false)).toEqual([true, false]);
+});

@@ -56,6 +56,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         from_ms: int | None = Query(default=None, ge=0),
         to_ms: int | None = Query(default=None, ge=0),
         include_prices: bool = False,
+        regular_session_only: bool = False,
     ) -> SecondAggregatesResponse:
         if seconds not in (1, 5, 10, 30):
             raise HTTPException(422, "Unsupported seconds timeframe")
@@ -93,6 +94,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
             if history:
                 merged = {row["t_ms"]: row for row in history}
                 source = "hogaplay"
+        if regular_session_only:
+            # Storage resolution is one second. Keep the closing execution bucket.
+            merged = {t: row for t, row in merged.items()
+                      if day_start + 9 * 3_600_000 <= t <= day_start + (15 * 60 + 30) * 60_000}
         rows = sorted((row for t, row in merged.items() if start <= t < end), key=lambda r: r["t_ms"])
         bars = aggregate_bars(rows, seconds * 1000)
         return SecondAggregatesResponse(

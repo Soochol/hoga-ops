@@ -98,3 +98,17 @@ def test_date_catalog_excludes_live_10s_and_other_venues(tmp_path):
     root.mkdir(parents=True)
     (root / f"{CODE}.jsonl").write_text('{"t_ms":1}\n')
     assert api.get(url + "&venue=NXT").json() == {"dates": ["20260930"]}
+
+
+def test_regular_session_filters_before_aggregation_and_limits_observed_metadata(tmp_path):
+    save(tmp_path, [trade(85959000, 1, 900), trade(90000000, 2, 100),
+                    trade(152959000, 3, 110), trade(153000000, 4, 105), trade(160000000, 5, 800)])
+    api = client(tmp_path)
+    url = f"/api/live/second-aggregates?code={CODE}&date={DATE}&seconds=30&include_prices=true"
+    regular = api.get(url + "&regular_session_only=true").json()
+    assert regular["first_observed_ms"] == hhmmssms_to_unix_ms(DATE, 90000000)
+    assert regular["last_observed_ms"] == hhmmssms_to_unix_ms(DATE, 153000000)
+    assert [bar["close"] for bar in regular["bars"]] == [100, 110, 105]
+    assert sum(bar["volume"] for bar in regular["bars"]) == 3
+    assert [price["price"] for price in regular["prices"]] == [100, 110, 105]
+    assert len(api.get(url).json()["bars"]) == 5

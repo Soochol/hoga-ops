@@ -18,7 +18,7 @@ export function SecondVolumeDistributionWindow({ win, code, settings, timeframe,
   const cursor = useLiveCursorStore(s => s.sidebarCursorOrigin?.group === win.group && s.sidebarCursorOrigin?.code === code
     && s.sidebarCursorOrigin?.timeframe === timeframe ? s.sidebarCursorMs : null);
   const effectiveDate = cursor !== null ? realMsToYyyymmdd(cursor) : date;
-  const query = useSecondAggregates(code, venue, effectiveDate, null, true, seconds);
+  const query = useSecondAggregates(code, venue, effectiveDate, null, true, seconds, settings.regularSessionOnly ?? false);
   const profile = useMemo(() => secondPriceDistribution((query.data?.prices ?? []).filter(p => !settings.hoverCutoffEnabled || cursor === null || p.t_ms < cursor + seconds * 1000), effectiveDate, settings.rangeCount), [query.data, effectiveDate, settings.rangeCount, settings.hoverCutoffEnabled, cursor, seconds]);
   return <div className="h-full flex flex-col bg-bg-card">
     <div className="min-h-0 flex-1 overflow-auto"><VolumeDistributionCard profile={profile} cursorMs={cursor} closePoints={query.data?.bars.map(bar => ({ t_ms: bar.t_ms, close: bar.close }))}

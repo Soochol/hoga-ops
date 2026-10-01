@@ -17,6 +17,7 @@ import {
   needsRegularSessionClip,
   fetchBucketMsFor,
 } from '../state/livePage';
+import { filterRegularSession } from './regularSessionView';
 import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
 import { peakWallBarFamilyActive } from '../state/indicatorOps';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -42,6 +43,8 @@ import {
   aggregateCalendar,
   calendarBucketKey,
   keepMinuteSessionCandles,
+  keepRegularSessionCandles,
+  isRegularSessionMs,
   isMinuteSessionMs,
   minuteBucketStartMs,
 } from './aggregateCandles';
@@ -630,11 +633,20 @@ export function useLiveBundle(
   code: string | null,
   timeframe: LiveTimeframe,
   todayKstYyyymmdd: string,
-  live: LiveSeriesData,
+  rawLive: LiveSeriesData,
   options: UseLiveBundleOptions = {},
 ): UseLiveBundleResult {
   // 창-스코프 뷰(ADR-0119 PR-B) — Provider 밖에서는 전역 스토어로 폴백(기능 무변경).
-  const { historicalFromDate } = useWindowView();
+  const { historicalFromDate, regularSessionOnly: sessionPreference } = useWindowView();
+  const regularSessionOnly = isMinuteTimeframe(timeframe) && sessionPreference === true;
+  const live = useMemo(() => regularSessionOnly ? {
+    ...rawLive,
+    ob: filterRegularSession(rawLive.ob),
+    trade: rawLive.trade.map(snapshot => ({ ...snapshot,
+      trades: snapshot.trades.filter(ev => isRegularSessionMs(ev.t_ms ?? snapshot.t_ms)),
+    })).filter(snapshot => snapshot.trades.length > 0),
+    program: filterRegularSession(rawLive.program),
+  } : rawLive, [rawLive, regularSessionOnly]);
   const {
     askPeakEnabled,
     bidPeakEnabled,
@@ -751,7 +763,7 @@ export function useLiveBundle(
     // `isMinute` 가 아니면 값이 쓰이지 않는다.
     // 120·240 만 예외로 30m 를 받는다 — 15:30 경계를 입력에 남겨야 클립이 성립한다
     // (`fetchBucketMsFor` 주석). 표시 버킷은 아래 `bucketMs` 가 따로 들고 있다.
-    isMinute ? fetchBucketMsFor(timeframe) : 60_000,
+    isMinute ? fetchBucketMsFor(timeframe, regularSessionOnly) : 60_000,
     minutePastTo === realTodayKstYyyymmdd() && !isKstWeekend(minutePastTo),
   );
 
@@ -892,7 +904,7 @@ export function useLiveBundle(
     minuteDiskNeeded ? code : null,
     minuteDiskNeeded ? minutePastFrom : null,
     minuteDiskNeeded ? minutePastTo : null,
-    minuteDiskNeeded ? (timeframe as Timeframe) : null,
+    minuteDiskNeeded ? (regularSessionOnly ? '1m' : timeframe as Timeframe) : null,
     undefined,
     minuteDiskNeeded ? todayKstYyyymmdd : null,
     minuteDiskOptions,
@@ -917,7 +929,7 @@ export function useLiveBundle(
     enabled: frozenRangeFrom !== null || hogaplaySourceEnabled,
     code,
     venue,
-    timeframe,
+    timeframe: regularSessionOnly ? '1m' : timeframe,
     todayKstYyyymmdd,
     missingDates: minuteDiskCandles.data?.missing_dates,
   });
@@ -939,27 +951,20 @@ export function useLiveBundle(
     // 못하는 tf 를 추가하려면 kiwoom_minute_candles.BUCKET_MS_TO_TIC_SCOPE 주석 참고.
     if (restBypassEnabled) {
       const disk = minuteDiskCandles.data?.candles ?? EMPTY_CANDLES;
-      if (minuteGapFill.candles.length === 0) return disk;
-      // **서로소 날짜 union 이지 우선순위 병합이 아니다.** `missing_dates` 의 날짜는
-      // 정의상 번들이 **캔들을 싣지 않는** 거래일이므로 두 집합은 겹치지 않는다
-      // (만료 스텁은 파일이 있어도 INVALID 라 세그먼트가 안 만들어진다) — 이 자리는 "모드당
-      // 소스 1개" 규율(위 주석)과 충돌하지 않는다. 같은 날짜를 두 소스가 다투기 시작하면
-      // 그때는 이 코드가 아니라 그 전제가 깨진 것이므로, 겹침을 **버려서** 디스크를
-      // 진실로 남긴다(캡처본이 호가 지표와 격자가 맞는 유일한 쪽이다).
-      const extra = diskCandleDates === null
-        ? minuteGapFill.candles
-        : minuteGapFill.candles.filter((c) => !diskCandleDates.has(realMsToYyyymmdd(c.ts_ms)));
-      if (extra.length === 0) return disk;
-      return [...disk, ...extra].sort((a, b) => a.ts_ms - b.ts_ms);
+      const extra = minuteGapFill.candles.filter(c => diskCandleDates === null || !diskCandleDates.has(realMsToYyyymmdd(c.ts_ms)));
+      const source = extra.length ? [...disk, ...extra].sort((a, b) => a.ts_ms - b.ts_ms) : disk;
+      return regularSessionOnly
+        ? aggregateCandles(keepRegularSessionCandles(source.map(c => ({ ...c, t_ms: c.ts_ms, volume: c.vol_a + c.vol_b }))), bucketMs / 1000, venue).map(kisBarToCandle)
+        : source;
     }
     const raw = pastCandlesQuery.data?.candles ?? [];
     if (raw.length === 0) return EMPTY_CANDLES;
     // 120·240 만 정규장으로 클립한 뒤 접는다. 입력은 30m 라 15:30 이 봉 경계로 남아
     // 있어 봉 단위 클립이 성립한다 — 표시 tf 로 받았다면 이미 혼합된 봉이라 불가능.
-    const src = needsRegularSessionClip(timeframe) ? keepMinuteSessionCandles(raw, venue) : raw;
+    const src = regularSessionOnly ? keepRegularSessionCandles(raw) : needsRegularSessionClip(timeframe) ? keepMinuteSessionCandles(raw, venue) : raw;
     if (src.length === 0) return EMPTY_CANDLES;
     return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000, venue).map(kisBarToCandle);
-  }, [isMinute, timeframe, venue, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
+  }, [isMinute, timeframe, venue, regularSessionOnly, bucketMs, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
     // 우회 ON: 스크리너 일봉. OFF: 벤더 일봉. D는 그대로, W/M은 aggregateCalendar.
@@ -1009,7 +1014,7 @@ export function useLiveBundle(
   );
   const rangePlan = planLiveRangeRequest({
     code,
-    timeframe,
+    timeframe: regularSessionOnly ? '1m' : timeframe,
     todayKstYyyymmdd,
     historicalFromDate,
     askPeakEnabled,
@@ -1194,6 +1199,7 @@ export function useLiveBundle(
   const useExtendedWindow = !restBypassEnabled;
   const todayChartSession = useMemo(
     () => {
+      if (regularSessionOnly) return { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) };
       if (!isMinute) return defaultKrxSession;
       const effective = effectiveSessionByDate.get(todayKstYyyymmdd);
       if (effective) return effective;
@@ -1201,13 +1207,13 @@ export function useLiveBundle(
         ? liveVenueSessionBoundsMs(todayKstYyyymmdd, venue)
         : defaultKrxSession;
     },
-    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, venue, useExtendedWindow],
+    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, venue, useExtendedWindow, regularSessionOnly],
   );
   const sessionBoundsForDate = useMemo(
     () =>
       isMinute
         ? (yyyymmdd: string) =>
-            effectiveSessionByDate.get(yyyymmdd) ??
+            (regularSessionOnly ? { open_ms: regularSessionOpenMs(yyyymmdd), close_ms: regularSessionCloseMs(yyyymmdd) } : effectiveSessionByDate.get(yyyymmdd)) ??
             (useExtendedWindow
               ? liveVenueSessionBoundsMs(yyyymmdd, venue)
               : {
@@ -1215,7 +1221,7 @@ export function useLiveBundle(
                   close_ms: regularSessionCloseMs(yyyymmdd),
                 })
         : undefined,
-    [effectiveSessionByDate, isMinute, venue, useExtendedWindow],
+    [effectiveSessionByDate, isMinute, venue, useExtendedWindow, regularSessionOnly],
   );
 
   // CHART side (candles + segments + investor). The ob path only contributes the
@@ -1300,8 +1306,9 @@ export function useLiveBundle(
       prevSegmentsRef.current = built.segments;
     }
 
-    return built;
+    return regularSessionOnly ? filterRegularSession(built) : built;
   }, [
+    regularSessionOnly,
     code,
     todayKstYyyymmdd,
     todayChartSession,
@@ -1338,7 +1345,7 @@ export function useLiveBundle(
         // 이미 삼켰으므로, 여기서 갈라지면 축과 지표가 다시 어긋난다.
         todaySession: todayChartSession,
         venue,
-        pastBundle: scaledHogaData,
+        pastBundle: regularSessionOnly ? filterRegularSession(scaledHogaData) : scaledHogaData,
         sseOb: isMinute ? live.ob : [],
         sseTrade: isMinute ? live.trade : [],
         bucketMs,
@@ -1349,7 +1356,7 @@ export function useLiveBundle(
         depthHeatmapEnabled,
       }),
     [
-      todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs, venue,
+      regularSessionOnly, todayChartSession, scaledHogaData, isMinute, live.ob, live.trade, bucketMs, venue,
       depthHeatmapEnabled,
     ],
   );

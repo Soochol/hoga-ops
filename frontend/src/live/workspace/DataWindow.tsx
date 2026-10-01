@@ -100,7 +100,7 @@ import {
   regularSessionBinningSegment,
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
-import { previousDayObExpired, realMsToYyyymmdd, subtractDaysKst } from '../liveDateTime';
+import { previousDayObExpired, realMsToYyyymmdd, subtractDaysKst, regularSessionOpenMs, regularSessionCloseMs } from '../liveDateTime';
 import { buildTradeTickView } from '../tradeTicks';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
@@ -813,7 +813,7 @@ function InvestorWindow({ code }: { code: string }) {
 
 /** 링크 부재 시 매물대 설정 폴백(공장 기본과 동일 값) — 연동 대기 카드가 뜨는
  *  동안 비활성 훅에만 공급되므로 표시에는 쓰이지 않는다. */
-const VDIST_FALLBACK = { rangeCount: 10, color: '#64748B', maxColor: '#EAB308', hoverCutoffEnabled: false };
+const VDIST_FALLBACK = { regularSessionOnly: false, rangeCount: 10, color: '#64748B', maxColor: '#EAB308', hoverCutoffEnabled: false };
 
 function VdistWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const link = useGroupChartLink(win.group);
@@ -836,6 +836,7 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
   const timeframe = linked ? link.timeframe : null;
   const todayKst = linked ? link.todayKst : '';
   const vdistSettings = linked ? link.vdist : VDIST_FALLBACK;
+  const regularOnly = linked && link.vdist.regularSessionOnly === true && timeframe !== null && isMinuteTimeframe(timeframe);
   const { cursorMs, timeframe: cursorTimeframe } = useGroupCursor(win.group);
   const scope = resolveCursorDetailScope({ cursorMs, timeframe: cursorTimeframe });
   const isSpot = scope.kind === 'minute-cursor';
@@ -912,7 +913,7 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
   }, [activeDate, todayKst, todayProfile, persistedDistributions]);
   const priceRange = useMemo(() => {
     if (
-      activeProfile
+      !regularOnly && activeProfile
       && Number.isFinite(activeProfile.price_min)
       && Number.isFinite(activeProfile.price_max)
       && activeProfile.price_min < activeProfile.price_max
@@ -920,24 +921,29 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
       return { min: activeProfile.price_min, max: activeProfile.price_max };
     }
     return candleRangeUnbounded(activeCandles);
-  }, [activeProfile, activeCandles]);
+  }, [activeProfile, activeCandles, regularOnly]);
+  const regularCutoffMs = regularOnly && activeDate ? Math.min(
+    regularSessionCloseMs(activeDate),
+    vdistSettings.hoverCutoffEnabled && spotCursorMs !== null ? spotCursorMs : Infinity,
+  ) : undefined;
   const cutoffProfile = useVolumeDistributionCutoffProfile({
-    enabled: linked && vdistSettings.hoverCutoffEnabled && isSpot,
+    enabled: linked && ((vdistSettings.hoverCutoffEnabled && isSpot) || regularOnly),
+    exactCutoffMs: regularCutoffMs,
     code,
-    timeframe: spotTimeframe,
+    timeframe: regularOnly && timeframe !== null && isMinuteTimeframe(timeframe) ? timeframe : spotTimeframe,
     date: activeDate,
-    cursorMs: spotCursorMs,
+    cursorMs: regularCutoffMs ?? spotCursorMs,
     todayKst: todayKst || null,
     rangeCount: vdistSettings.rangeCount,
-    finalProfile: activeProfile,
+    finalProfile: regularOnly ? null : activeProfile,
     priceRange,
     // 이 훅은 `/api/range` 를 **따로** 부르므로 차트 파이프라인의 환산을 안 지난다.
     // 계수를 넘겨야 요청 밴드를 원주가로 되돌리고 응답을 다시 환산한다 — 안 넘기면
     // 호버 컷오프 프로파일만 옛 척도로 남는다(`scaleRangeBundlePrices` 참조).
     adjustFactors: linked ? link.adjustFactors : undefined,
-    liveTrades: liveDistribution.trades,
+    liveTrades: regularOnly ? liveDistribution.trades.filter(trade => trade.t_ms >= regularSessionOpenMs(activeDate ?? todayKst) && trade.t_ms <= regularSessionCloseMs(activeDate ?? todayKst)) : liveDistribution.trades,
     candles: activeCandles,
-    segment: activeSegment ? regularSessionBinningSegment(activeSegment, effectiveVenue) : null,
+    segment: activeSegment ? (regularOnly ? { ...activeSegment, session_open_ms: regularSessionOpenMs(activeSegment.date), session_close_ms: regularSessionCloseMs(activeSegment.date) } : regularSessionBinningSegment(activeSegment, effectiveVenue)) : null,
   });
   const closePoints = useMemo(
     () => (activeDate ? volumeDistributionClosePointsFromCandles(activeCandles) : []),

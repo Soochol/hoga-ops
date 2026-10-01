@@ -83,6 +83,7 @@ import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { PatternAreaButton } from './PatternAreaButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
+import { RegularSessionAction } from './RegularSessionAction';
 import { ChartMoreActions } from './ChartMoreActions';
 import {
   HogaplaySourceButton,
@@ -136,8 +137,9 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
       code: isIndex ? null : symbol?.code ?? null,
       timeframe,
       historicalFromDate,
+      regularSessionOnly: win.chart?.regularSessionOnly ?? false,
     }),
-    [win.id, win.group, isIndex, symbol?.code, timeframe, historicalFromDate],
+    [win.id, win.group, isIndex, symbol?.code, timeframe, historicalFromDate, win.chart?.regularSessionOnly],
   );
 
   // 창 닫힘 시 이 창의 flag 레전드 provider 정리(비반응형 모듈 Map — 누수 방지).
@@ -685,6 +687,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       todayKst: d.today,
       vdist: {
         rangeCount: ind.volumeDistributionRangeCount,
+        regularSessionOnly: win.chart?.regularSessionOnly ?? false,
         color: ind.volumeDistributionColor,
         maxColor: ind.volumeDistributionMaxColor,
         hoverCutoffEnabled: ind.volumeDistributionHoverCutoffEnabled,
@@ -702,6 +705,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       // 데이터 창이 계수 없는 링크를 계속 본다.
       && prev.adjustFactors === next.adjustFactors
       && prev.todayKst === next.todayKst
+      && prev.vdist.regularSessionOnly === next.vdist.regularSessionOnly
       && prev.vdist.rangeCount === next.vdist.rangeCount
       && prev.vdist.color === next.vdist.color
       && prev.vdist.maxColor === next.vdist.maxColor
@@ -872,6 +876,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             showLabel={!headerFold.compactActions} />}
           <ChartMoreActions compact={headerFold.compactActions}>
             <span className="chart-more-actions-heading">표시 · 연동</span>
+            <RegularSessionAction win={win} disabled={!isMinuteTimeframe(view.timeframe)} />
             <IconToolbarButton
               aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
               title="시가·고가·저가·종가는 항상 표시"

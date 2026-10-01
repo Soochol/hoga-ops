@@ -1,3 +1,4 @@
+import { regularSessionOpenMs, regularSessionCloseMs } from '../live/liveDateTime';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import { apiCall } from './client';
 import { useQuery } from '@tanstack/react-query';
@@ -15,14 +16,15 @@ export type SecondAggregates = {
   first_observed_ms: number | null; last_observed_ms: number | null;
   bars: SecondBar[]; prices: SecondPrice[];
 };
-export function useSecondAggregates(code: string | null, venue: LiveVenueOption, date: string, fromMs: number | null, prices = false, seconds: SecondAggregates['seconds'] = 10) {
+export function useSecondAggregates(code: string | null, venue: LiveVenueOption, date: string, fromMs: number | null, prices = false, seconds: SecondAggregates['seconds'] = 10, regularSessionOnly = false) {
   return useQuery({
-    queryKey: ['second-aggregates', code, venue, date, fromMs, prices, seconds],
+    queryKey: ['second-aggregates', code, venue, date, fromMs, prices, seconds, regularSessionOnly],
     enabled: code !== null,
     queryFn: async ({ signal }) => {
       const params = new URLSearchParams({ code: code!, venue,
-        date, seconds: String(seconds), include_prices: String(prices) });
-      if (fromMs !== null) params.set('from_ms', String(fromMs));
+        date, seconds: String(seconds), regular_session_only: String(regularSessionOnly), include_prices: String(prices) });
+      if (fromMs !== null || regularSessionOnly) params.set('from_ms', String(Math.max(fromMs ?? 0, regularSessionOnly ? regularSessionOpenMs(date) : 0)));
+      if (regularSessionOnly) params.set('to_ms', String(regularSessionCloseMs(date) + 1000));
       return apiCall<SecondAggregates>(`/api/live/second-aggregates?${params}`, { signal });
     },
     refetchInterval: date === todayKstYyyymmdd() ? 1000 : false,
