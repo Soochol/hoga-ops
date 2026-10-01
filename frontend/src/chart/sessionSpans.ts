@@ -67,8 +67,8 @@ export const NO_DAY_BOUNDARY_TICKS: readonly DayBoundaryTick[] = Object.freeze([
  * 단계에서 낸다). 따라서 결과 길이 ≤ `axis.segments.length` 이고 **인덱스가 세그먼트
  * 인덱스와 일치한다고 가정하면 안 된다** — 날짜로 찾을 것.
  *
- * 비용은 세그먼트당 이분 탐색 한 번 + 그 세션 캔들 훑기 = 전체 O(N + M log N).
- * 실측 규모(캔들 8886 · 세그먼트 69)에서 무시할 수준이고, 캔들 배열이 바뀔 때만 돈다.
+ * 정렬된 캔들의 양 끝만 이분 탐색한다: O(M log N). 세션 내부의 점은 같은
+ * containment 규칙을 만족하므로 OHLC 갱신마다 모든 캔들을 재분류할 필요가 없다.
  */
 export function resolveSessionSpans(
   candles: readonly Candle[],
@@ -78,18 +78,15 @@ export function resolveSessionSpans(
 
   const out: SessionSpan[] = [];
   for (const seg of axis.segments) {
-    let first: number | null = null;
-    let last: number | null = null;
-    for (let j = lowerBoundCandle(candles, seg.sessionOpenMs); j < candles.length; j++) {
-      const ts = candles[j].ts_ms;
-      if (ts > seg.sessionCloseMs) break;
-      const { contained, virtual } = axis.classifyAndProject(ts);
-      if (!contained) continue;
-      if (first === null) first = virtual;
-      last = virtual;
-    }
-    if (first !== null && last !== null) {
-      out.push(Object.freeze({ date: seg.date, firstVirtualMs: first, lastVirtualMs: last }));
+    let first = lowerBoundCandle(candles, seg.sessionOpenMs);
+    let last = lowerBoundCandle(candles, seg.sessionCloseMs + 1) - 1;
+    // Retain the projector's containment contract, including sparse sessions.
+    while (first <= last && !axis.contains(candles[first].ts_ms)) first++;
+    while (last >= first && !axis.contains(candles[last].ts_ms)) last--;
+    if (first <= last) {
+      out.push(Object.freeze({ date: seg.date,
+        firstVirtualMs: axis.toVirtual(candles[first].ts_ms),
+        lastVirtualMs: axis.toVirtual(candles[last].ts_ms) }));
     }
   }
   return out.length === 0 ? NO_SESSION_SPANS : Object.freeze(out);

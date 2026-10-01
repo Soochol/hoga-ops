@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiCall } from './client';
+import { createDeltaResponseMerger } from './deltaResponseMerger';
 import { warningKind, type LiveWarningKind, type WireDataWarning } from './dataWarnings';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import type { LiveVenueOption } from '../state/liveVenue';
@@ -462,15 +463,16 @@ export function useLivePastCandles(
     bumpMergedVersion();
   }, [bootstrapFailed, identity]);
 
+  const mergeResponse = useMemo(() => createDeltaResponseMerger(mergePastCandleResponses), [identity]);
   const data = useMemo(() => {
     if (plan.servePrevious && previous && !query.data) return previous;
     if (!query.data) return undefined;
     if (query.isPlaceholderData) return previous;
     if (plan.canReusePrevious && previous) {
-      return mergePastCandleResponses(previous, query.data);
+      return mergeResponse(previous, query.data);
     }
     return query.data;
-  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData]);
+  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData, mergeResponse]);
 
   // 일시 장애(blocking 경고) 응답은 이번 렌더에만 서빙하고 델타 기준으론
   // 박제하지 않는다 — 다음 plan이 실패 창을 재요청해 자가 회복(staleTime

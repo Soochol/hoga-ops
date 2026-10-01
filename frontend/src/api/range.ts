@@ -2,6 +2,7 @@ import { useQuery, useQueryClient, type QueryClient, type QueryKey, type UseQuer
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { apiCall } from './client';
+import { createDeltaResponseMerger } from './deltaResponseMerger';
 import type { RangeBundle, Timeframe } from './types';
 import {
   buildRangeBundleRequest,
@@ -853,12 +854,13 @@ function useLiveRangeDelta(
     ...(initialData ? { initialData } : {}),
   });
 
+  const mergeResponse = useMemo(() => createDeltaResponseMerger(mergeRangeBundles), [identity]);
   const data = useMemo(() => {
     const served = ((): RangeBundle | undefined => {
       if (plan.servePrevious && previous && !query.data) return previous;
       if (!query.data) return undefined;
       if (query.isPlaceholderData) return previous ?? query.data;
-      if (plan.canReusePrevious && previous) return mergeRangeBundles(previous, query.data);
+      if (plan.canReusePrevious && previous) return mergeResponse(previous, query.data);
       return query.data;
     })();
     // **트림은 어느 경로로 나오든 건다 — 병합 경로에만 걸면 무동작이 된다.**
@@ -876,7 +878,7 @@ function useLiveRangeDelta(
     // 정상 경로에 비용이 없다.
     if (!served || !baseInput.from) return served;
     return trimRangeBundleBefore(served, baseInput.from);
-  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData, baseInput.from]);
+  }, [plan.canReusePrevious, plan.servePrevious, previous, query.data, query.isPlaceholderData, baseInput.from, mergeResponse]);
 
   useEffect(() => {
     if (plan.scheduleRefreshAtMs == null) return undefined;
@@ -888,7 +890,17 @@ function useLiveRangeDelta(
   useEffect(() => {
     if (!data || query.isPlaceholderData) return;
     const updatedAtMs = query.dataUpdatedAt || Date.now();
-    if (mergedRef.current?.identity === plan.identity && mergedRef.current.data === data) return;
+    const current = mergedRef.current;
+    if (current?.identity === plan.identity && current.data === data) {
+      // An unchanged refresh still advances freshness. Otherwise the stable
+      // response fast path leaves the previous fetch stamp behind forever.
+      if (updatedAtMs > current.updatedAtMs) {
+        mergedRef.current = { ...current, updatedAtMs };
+        queryClient.setQueryData(mergedLiveRangeKey(plan.identity), data, { updatedAt: updatedAtMs });
+        forceRerender();
+      }
+      return;
+    }
     mergedRef.current = { identity: plan.identity, data, updatedAtMs };
     queryClient.setQueryData(buildRangeBundleRequest(baseInput).queryKey, data);
     // canonical 병합본 재발행 → 다음 리마운트·탭 복귀의 복원 소스(gcTime 2h). 이

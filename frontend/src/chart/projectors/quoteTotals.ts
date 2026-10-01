@@ -16,6 +16,7 @@ import { isExcludedQuoteBucket, LINE_HIDDEN_COLOR, maskOutgoingConnector } from 
 import { makePastCachedProjector } from './pastCachedProjector';
 import { quoteRatioPointsForBundle, quoteRatioPointsForSlice } from './quoteRatioPoints';
 import { detectSurgeSide } from '../surge/detectSurges';
+import { formatKoreanInt } from '../../util/koreanNumber';
 
 const TOKEN_SPEC = {
   bid: ['--price-up', '#F04452'],   // 매수 호가 총합 (KRX 빨강)
@@ -24,7 +25,7 @@ const TOKEN_SPEC = {
 
 const priceFormat = {
   type: 'custom' as const,
-  formatter: (v: number) => Math.round(v).toLocaleString('ko-KR'),
+  formatter: formatKoreanInt,
   minMove: 1,
 };
 

@@ -29,11 +29,40 @@ describe('extreme label clearance', () => {
     const moved = chooseClearExtremeLabel({ ...base, previous })!;
     expect(moved.x).not.toBe(previous.x);
   });
+  it('rechecks changed text width, pane bounds and new annotations before reusing a chip', () => {
+    const previous = chooseClearExtremeLabel({ ...base, candles: [], x: 80 })!;
+    const wider = chooseClearExtremeLabel({ ...base, candles: [], previous,
+      full: { text: 'a wider price', width: 190 } })!;
+    expect(wider.x).toBeGreaterThanOrEqual(101);
+    const smaller = chooseClearExtremeLabel({ ...base, candles: [], previous, paneWidth: 120 });
+    if (smaller) expect(extremeLabelRect(smaller, smaller.width).right).toBeLessThanOrEqual(114);
+    const obstacle = extremeLabelRect(previous, previous.width);
+    const blocked = chooseClearExtremeLabel({ ...base, candles: [], previous, obstacles: [obstacle] });
+    if (blocked) expect(blocked.x === previous.x && blocked.y === previous.y).toBe(false);
+  });
   it('protects low candles symmetrically and avoids the other chip', () => {
     const p = chooseClearExtremeLabel({ ...base, place: 'below', y: 170 })!;
     expect(p).not.toBeNull();
     const next = chooseClearExtremeLabel({ ...base, place: 'below', y: 170, obstacles: [extremeLabelRect(p, p.width)] });
     if (next) expect(next.x === p.x && next.y === p.y).toBe(false);
+  });
+  it('produces the same placement for unordered rectangles, overlaps and invalid entries', () => {
+    const candles = [
+      { left: 0, right: 20, top: 20, bottom: 150 },
+      { left: 10, right: 60, top: 15, bottom: 160 },
+      { left: 220, right: 250, top: 10, bottom: 170 },
+    ];
+    const obstacles = [
+      { left: 0, right: 30, top: 0, bottom: 35 },
+      { left: 270, right: 300, top: 0, bottom: 180 },
+    ];
+    for (const place of ['above', 'below'] as const) {
+      const expected = chooseClearExtremeLabel({ ...base, place, candles, obstacles });
+      expect(chooseClearExtremeLabel({ ...base, place,
+        candles: [...candles].reverse(),
+        obstacles: [...obstacles].reverse().concat({ left: NaN, right: 300, top: 0, bottom: 180 }),
+      })).toEqual(expected);
+    }
   });
   it('never returns a chip intersecting candles or annotations across crowded layouts', () => {
     let seed = 47;

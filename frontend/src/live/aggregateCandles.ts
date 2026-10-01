@@ -1,5 +1,5 @@
 import type { LivePastCandle as LiveCandle } from '../api/livePastCandles';
-import { realMsToYyyymmdd, regularSessionOpenMs, regularSessionCloseMs } from './liveDateTime';
+import { realMsToYyyymmdd, regularSessionOpenMs } from './liveDateTime';
 import { isKrxAftermarketWindow } from '../util/stockSessions';
 import type { LiveVenueOption } from '../state/liveVenue';
 
@@ -16,8 +16,10 @@ import type { LiveVenueOption } from '../state/liveVenue';
  * 쓰면 아무것도 안 잘린다(2026-08-07 실측). 이 한계는 `keepRegularSessionCandles`
  * 가 D/W/M 에서 이미 갖고 있던 것과 같고, 새 술어를 만드는 대신 공유한다. */
 export function isRegularSessionMs(tMs: number): boolean {
-  const date = realMsToYyyymmdd(tMs);
-  return tMs >= regularSessionOpenMs(date) && tMs <= regularSessionCloseMs(date);
+  // 09:00–15:30 KST is 00:00–06:30 UTC on the same day. Avoid allocating
+  // and parsing a calendar date for every retained candle/indicator/tick.
+  const withinUtcDay = ((tMs % 86_400_000) + 86_400_000) % 86_400_000;
+  return withinUtcDay <= 23_400_000;
 }
 
 /** Drop bars outside the regular session [09:00, 15:30] KST for their own date.

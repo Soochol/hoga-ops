@@ -16,6 +16,7 @@ import type { PaneSpec } from '../RangeSeriesPane';
 import { addZeroBaselineGuide } from '../util/zeroBaseline';
 import { LINE_HIDDEN_COLOR } from '../util/auctionHide';
 import { makePastCachedProjector, lowerBoundT } from './pastCachedProjector';
+import { formatKoreanInt, formatKoreanNumber } from '../../util/koreanNumber';
 
 // buy/sell/cumulative are applied at series-options level (thunked below), not
 // embedded per data point — the histogram/line data carries no color, so the
@@ -34,7 +35,7 @@ const histOpts = {
   base: 0,
   priceFormat: {
     type: 'custom' as const,
-    formatter: (v: number) => Math.round(Math.abs(v)).toLocaleString('ko-KR'),
+    formatter: (v: number) => formatKoreanInt(Math.abs(v)),
     minMove: 1,
   },
   priceLineVisible: false,
@@ -43,7 +44,7 @@ const histOpts = {
 
 export const cumulativePriceFormat = {
   type: 'custom' as const,
-  formatter: (v: number) => v.toLocaleString('ko-KR'),  // sign preserved
+  formatter: formatKoreanNumber,  // sign and locale-default fractions preserved
   minMove: 1,
 };
 

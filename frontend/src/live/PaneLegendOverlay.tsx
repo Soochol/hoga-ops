@@ -1,3 +1,4 @@
+import { drawnCandleIndex, EMPTY_DRAWN_CANDLE_INDEX } from '../chart/drawnCandleIndex';
 import { useServiceStatusPanel } from '../serviceStatus/controls';
 // Pane Legend — a TradingView-style legend pinned to each chart pane's
 // top-left: indicator label + color swatch + the value under the cursor
@@ -922,21 +923,13 @@ function PaneLegendOverlay({
   // (`prefsForScope` 의 WeakMap 캐시) 렌더마다 새로 구독되지도 않는다.
   void useScopedChartPrefs();
 
-  // OHLC 레전드용 인덱싱 — 그려진(보이는) 봉 배열 + 가상초→index 맵(CandleTooltip 선례).
-  // candles/axis 는 캔들 경로/segments 참조라 SSE 틱엔 재계산 안 됨. 팬/줌(axis 리베이스)·
-  // 캔들 갱신 때만 새로.
-  const drawnCandles = useMemo(
-    () => (candles && axis ? candles.filter((c) => axis.contains(c.ts_ms)) : []),
+  // Share the time grid with the tooltip; OHLC updates keep both maps stable.
+  const { drawn: drawnCandles, vsecToIndex } = useMemo(
+    () => candles && axis ? drawnCandleIndex(candles, axis) : EMPTY_DRAWN_CANDLE_INDEX,
     [candles, axis],
   );
-  // 동기화 판정은 `CursorSyncCrosshair` 와 **같은 훅**을 쓴다 — 각자 하면 게이트가
-  // 갈려 "선은 여기 있는데 숫자는 다른 봉" 이 된다.
+  // Same resolution as CursorSyncCrosshair, so the cursor and OHLC use one candle.
   const syncResolution = useCursorSyncResolution({ candles: drawnCandles, timeframe, code });
-  const vsecToIndex = useMemo(() => {
-    const m = new Map<number, number>();
-    if (axis) drawnCandles.forEach((c, i) => m.set(axis.toVirtual(c.ts_ms) / 1000, i));
-    return m;
-  }, [drawnCandles, axis]);
 
   // Crosshair → values; ResizeObserver + range change → pane geometry. All
   // coalesced through one rAF tick (DrawingOverlay's redraw-loop pattern).
@@ -1035,7 +1028,7 @@ function PaneLegendOverlay({
     }
   }
   const maValues = new Map<string, number>();
-  for (const [id, series] of maSeries) {
+  for (const [id, series] of indicatorLegendsVisible ? maSeries : []) {
     const v = readSeriesValue(series, seriesData, syncValueTimeSec, syncLogicalIndex);
     if (v !== null) maValues.set(id, v);
   }
@@ -1043,6 +1036,7 @@ function PaneLegendOverlay({
   const dailyMaValues = new Map<string, number>();
   const paneCells: PaneCellInput[] = [];
   for (const [paneId, entries] of legendPanes) {
+    if (!indicatorLegendsVisible || !LEGEND_CELL_PANES.has(paneId)) continue;
     const spec = specByPaneId.get(paneId);
     paneCells.push({
       paneId,
@@ -1064,10 +1058,12 @@ function PaneLegendOverlay({
   // 값 셀은 각 오버레이가 등록한 provider에서 커서 시각(가상초, 없으면 latest)으로 읽는다.
   const isMinute = isMinuteTimeframe(timeframe);
   // 내 커서 시각이 없으면 **동기화 봉의 시각**으로 읽는다(값 series 와 같은 규칙).
-  // 실제로 보이는 곳은 분봉 소비 창의 최대벽 두 행뿐이다 — flag 는 전부
-  // `applicable: isMinute` 라 일봉 창에는 애초에 행이 없다.
+  // flag 는 전부 `applicable: isMinute` 라 일봉 창에는 행이 없다.
   const cursorTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
     ?? syncValueTimeSec;
+  const flagCells = (type: LegendFlagId, instanceId: string, enabled: boolean) =>
+    indicatorLegendsVisible && isMinute && enabled && LEGEND_FLAG_IDS.has(type)
+      ? readFlagLegendValues(windowId, type, instanceId, cursorTimeSec) : [];
   const indicatorFlags: LegendFlagInput[] = [
     {
       type: 'ask-peak',
@@ -1078,7 +1074,7 @@ function PaneLegendOverlay({
       applicable: isMinute,
       hidden: askPeakHidden,
       swatches: [askPeakColor],
-      cells: readFlagLegendValues(windowId, 'ask-peak', FLAG_MAIN_INSTANCE, cursorTimeSec),
+      cells: flagCells('ask-peak', FLAG_MAIN_INSTANCE, askPeakEnabled),
     },
     {
       type: 'bid-peak',
@@ -1089,7 +1085,7 @@ function PaneLegendOverlay({
       applicable: isMinute,
       hidden: bidPeakHidden,
       swatches: [bidPeakColor],
-      cells: readFlagLegendValues(windowId, 'bid-peak', FLAG_MAIN_INSTANCE, cursorTimeSec),
+      cells: flagCells('bid-peak', FLAG_MAIN_INSTANCE, bidPeakEnabled),
     },
     {
       type: 'trade-volume-poc',
@@ -1100,7 +1096,7 @@ function PaneLegendOverlay({
       applicable: isMinute,
       hidden: tradeVolumePocHidden,
       swatches: [tradeVolumePocColor],
-      cells: readFlagLegendValues(windowId, 'trade-volume-poc', FLAG_MAIN_INSTANCE, cursorTimeSec),
+      cells: flagCells('trade-volume-poc', FLAG_MAIN_INSTANCE, tradeVolumePocEnabled),
     },
     {
       type: 'depth-heatmap',
@@ -1111,7 +1107,7 @@ function PaneLegendOverlay({
       applicable: isMinute,
       hidden: depthHeatmapHidden,
       swatches: [depthHeatmapBidColor, depthHeatmapAskColor],
-      cells: readFlagLegendValues(windowId, 'depth-heatmap', FLAG_MAIN_INSTANCE, cursorTimeSec),
+      cells: flagCells('depth-heatmap', FLAG_MAIN_INSTANCE, depthHeatmapEnabled),
     },
     // 신규 거래원 등장은 **인스턴스마다 한 행**이다(Phase 3 의 첫 배열 승격).
     // 기준 시각이 다르면 세는 대상이 달라 값도 다르므로, 한 행에 몰면 어느 세트의
@@ -1134,28 +1130,21 @@ function PaneLegendOverlay({
           : instance.sideMode === 'sell'
             ? [instance.sellColor]
             : [instance.buyColor, instance.sellColor],
-      cells: readFlagLegendValues(windowId, 'broker-late-entry', instance.id, cursorTimeSec),
+      cells: flagCells('broker-late-entry', instance.id, instance.enabled),
     })),
   ];
 
   const rows = buildLegendRows({
     ohlc,
-    movingAverages,
+    movingAverages: indicatorLegendsVisible ? movingAverages : [],
     maValues,
     dailyMovingAverages,
     dailyMaValues,
-    dailyMaApplicable: isMinute,
+    dailyMaApplicable: false,
     indicatorFlags,
     paneCells,
-    // 표시 게이트 — 행 생성은 위에서 전부 하고, 무엇을 그릴지는 여기서만 정한다.
-    // 캔들 pane 의 OHLC·이동평균선(현재 타임프레임)에 더해, LEGEND_CELL_PANES 의
-    // cells 행을 표시한다(거래량·총잔량 2026-08-04 · 프로그램 순매수 2026-08-18,
-    // 둘 다 사용자 요청 — 이 pane 들은 다른 지표처럼 값 레전드를 갖는다).
-    // LEGEND_FLAG_IDS 의 flag 행(당일 매도·매수 최대벽, 2026-08-22 사용자 요청)도 표시.
-    // 계속 숨기는 것: 일봉 이동평균선(daily-ma) 행 — 차트의 일봉 MA 선 자체는
-    // dailyMaSeriesRegistry 가 계속 그리고 값 표시 행만 뺀다. 화이트리스트 밖의 flag 행
-    // (매물대·히트맵·단별잔량·신규거래원)과 나머지 cells pane(호가비·체결강도·투자자)도
-    // 숨긴다(2026-07-22, 차트 밀집도). 지표 on/off 는 보조지표 패널이 담당.
+    // Apply the same visibility gate before reading values and after building
+    // rows. Hidden value rows retain their independent pane name handles.
   }).filter(
     (r) =>
       r.kind === 'ohlc' ||

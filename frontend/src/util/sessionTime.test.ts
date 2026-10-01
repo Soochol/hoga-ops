@@ -276,3 +276,12 @@ describe('sessionPhaseAt — 선형 reference 동치 (스펙 2026-06-08)', () =>
     }
   });
 });
+
+it('invalidates cached auction boundaries when a segment is edited in place', () => {
+  const seg = { sessionOpenMs: DAY1_OPEN, sessionCloseMs: DAY1_CLOSE };
+  expect(classifyWithinSegment(seg, DAY1_OPEN + 3.5 * 3_600_000)).toBe('regular');
+  seg.sessionCloseMs = DAY1_OPEN + 3.5 * 3_600_000;
+  expect(classifyWithinSegment(seg, seg.sessionCloseMs)).toBe('auction');
+  seg.sessionOpenMs = DAY1_OPEN + 30 * 60_000;
+  expect(classifyWithinSegment(seg, seg.sessionOpenMs - 1)).toBe('pre-open');
+});

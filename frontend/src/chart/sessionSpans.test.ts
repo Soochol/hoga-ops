@@ -226,3 +226,15 @@ describe('sameDayBoundaryTicks', () => {
     ).toBe(true);
   });
 });
+
+it('finds sparse session endpoints without projecting every candle on a live update', () => {
+  const realAxis = createVirtualAxis([seg('20260529', 0), seg('20260602', 4)], D0_OPEN);
+  let reads = 0;
+  const axis = { ...realAxis, contains: (t: number) => { reads++; return realAxis.contains(t); } };
+  const candles = [...session(D0_OPEN, 0, 1000), ...session(D0_OPEN + 4 * DAY_MS, 0, 1000)]
+    .sort((a, b) => a.ts_ms - b.ts_ms);
+  const spans = resolveSessionSpans(candles, axis);
+  expect(spans).toHaveLength(2);
+  expect(reads).toBeLessThanOrEqual(4);
+  expect(spans[0].lastVirtualMs).toBe(axis.toVirtual(candles.filter(c => c.ts_ms <= D0_OPEN + SESSION_MS).at(-1)!.ts_ms));
+});

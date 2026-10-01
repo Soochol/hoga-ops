@@ -1,15 +1,14 @@
 import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { useLiveCursorStore } from '../useLiveCursorStore';
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useSecondAggregates } from '../../api/secondAggregates';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import type { WorkspaceWindow } from '../../state/workspace';
 import { VolumeDistributionCard } from '../../sidebar/VolumeDistributionCard';
-import { secondPriceDistribution } from './secondAggregateProjectors';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import type { GroupChartLinkVdistSettings } from './groupChartLinkSource';
-import { buildSecondPriceDistributionIndex } from './secondPriceDistributionIndex';
+import { createSecondPriceDistributionCache } from './secondPriceDistributionIndex';
 import type { SecondPrice } from '../../api/secondAggregates';
 
 const EMPTY_PRICES: readonly SecondPrice[] = [];
@@ -23,11 +22,11 @@ export function SecondVolumeDistributionWindow({ win, code, settings, timeframe,
   const effectiveDate = cursor !== null ? realMsToYyyymmdd(cursor) : date;
   const query = useSecondAggregates(code, venue, effectiveDate, null, true, seconds, settings.regularSessionOnly ?? false);
   const prices = query.data?.prices ?? EMPTY_PRICES;
-  const index = useMemo(() => settings.hoverCutoffEnabled
-    ? buildSecondPriceDistributionIndex(prices, effectiveDate, settings.rangeCount) : null,
-  [prices, effectiveDate, settings.rangeCount, settings.hoverCutoffEnabled]);
-  const finalProfile = useMemo(() => index ? index.profileAt() : secondPriceDistribution(prices, effectiveDate, settings.rangeCount),
-    [index, prices, effectiveDate, settings.rangeCount]);
+  const cache = useRef<ReturnType<typeof createSecondPriceDistributionCache> | null>(null);
+  if (!cache.current) cache.current = createSecondPriceDistributionCache();
+  const index = useMemo(() => cache.current!.update(prices, effectiveDate, settings.rangeCount),
+    [prices, effectiveDate, settings.rangeCount]);
+  const finalProfile = useMemo(() => index.profileAt(), [index, prices]);
   const cutoff = settings.hoverCutoffEnabled && cursor !== null ? cursor + seconds * 1000 : null;
   const profile = useMemo(() => cutoff !== null && index ? index.profileAt(cutoff) : finalProfile,
     [cutoff, index, finalProfile]);

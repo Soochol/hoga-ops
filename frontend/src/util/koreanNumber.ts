@@ -2,6 +2,10 @@ const koreanNumber = new Intl.NumberFormat('ko-KR');
 const koreanFractions = [0, 1, 2].map((maximumFractionDigits) =>
   new Intl.NumberFormat('ko-KR', { minimumFractionDigits: 0, maximumFractionDigits }));
 
+/** Preserve locale-default fractions and signs without constructing a formatter
+ * for every price-axis tick. Integer quantities use formatKoreanInt instead. */
+export const formatKoreanNumber = (v: number): string => koreanNumber.format(v);
+
 /** 차트 값 표시용 공유 정수 포맷터 — 거래량·순매수·Pane Legend 공통.
  *  반올림 후 ko-KR 천단위 구분(예: 311400 → "311,400", -1061741 → "-1,061,741"). */
 export const formatKoreanInt = (v: number): string =>

@@ -149,6 +149,38 @@ function texts(c: ReturnType<typeof makeCanvasSpy>): { text: string; x: number; 
 }
 
 describe('HighLowLabelsPrimitive', () => {
+  it('reuses immutable candle times while pan coordinates and a new tail stay live', () => {
+    const contains = vi.fn(axis.contains);
+    const toVirtual = vi.fn(axis.toVirtual);
+    let snap = snapshot({ axis: { ...axis, contains, toVirtual } });
+    const stubs = makeAxisStubs({
+      timeToCoordinate: t => 100 + (t - OPEN / 1000) / 10,
+      priceToCoordinate: p => (40000 - p) / 20,
+    });
+    const { prim } = attach(stubs, () => snap);
+    const c = makeCanvasSpy();
+    draw(prim, c);
+    const first = texts(c);
+    const calls = contains.mock.calls.length;
+    const projections = toVirtual.mock.calls.length;
+    stubs.state.timeToCoordinate = t => 150 + (t - OPEN / 1000) / 10;
+    c.fillText.mockClear();
+    for (let i = 0; i < 20; i++) draw(prim, c);
+    expect(contains).toHaveBeenCalledTimes(calls);
+    expect(toVirtual).toHaveBeenCalledTimes(projections);
+    expect(texts(c)[0].x).not.toBe(first[0].x);
+
+    snap = { ...snap, candles: [...CANDLES.slice(0, -1), candle(OPEN + 180_000, 39000, 36000, 38500)] };
+    c.fillText.mockClear();
+    draw(prim, c);
+    expect(texts(c).some(t => t.text.includes('39,000'))).toBe(true);
+    expect(contains).toHaveBeenCalledTimes(calls + CANDLES.length + 1);
+    const newCalls = contains.mock.calls.length;
+    snap = { ...snap, axis: { ...snap.axis } };
+    draw(prim, c);
+    expect(contains).toHaveBeenCalledTimes(newCalls + CANDLES.length * 2);
+    prim.detached();
+  });
   it('uses a small hoverable mark instead of an opaque chip in a narrow pane', () => {
     const stubs = makeAxisStubs({ timeToCoordinate: () => 20, priceToCoordinate: p => p === 38800 ? 15 : 85 });
     const { prim } = attach(stubs, () => snapshot());

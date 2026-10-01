@@ -55,6 +55,19 @@ export const AUCTION_WINDOW_LENGTH_MS = 10 * 60 * 1000;
  */
 export const PRE_OPEN_WINDOW_LENGTH_MS = 30 * 60 * 1000;
 
+const auctionWindows = new WeakMap<SessionSegment, { open: number; close: number; start: number; end: number }>();
+
+function auctionWindow(seg: SessionSegment) {
+  const cached = auctionWindows.get(seg);
+  if (cached?.open === seg.sessionOpenMs && cached.close === seg.sessionCloseMs) return cached;
+  const end = unixMsToKSTHhmm(seg.sessionOpenMs) === 900
+    ? krxRegularCloseFromWindow(unixMsToKSTDate(seg.sessionOpenMs), seg.sessionCloseMs)
+    : seg.sessionCloseMs;
+  const window = { open: seg.sessionOpenMs, close: seg.sessionCloseMs, start: end - AUCTION_WINDOW_LENGTH_MS, end };
+  auctionWindows.set(seg, window);
+  return window;
+}
+
 /**
  * Classify `realMs` relative to a single segment.
  *
@@ -67,11 +80,8 @@ export function classifyWithinSegment(seg: SessionSegment, realMs: number): Sess
   if (realMs < preOpenStart) return 'pre-axis';
   if (realMs < seg.sessionOpenMs) return 'pre-open';
   if (realMs > seg.sessionCloseMs) return 'post-axis';
-  const close = unixMsToKSTHhmm(seg.sessionOpenMs) === 900
-    ? krxRegularCloseFromWindow(unixMsToKSTDate(seg.sessionOpenMs), seg.sessionCloseMs)
-    : seg.sessionCloseMs;
-  const auctionStart = close - AUCTION_WINDOW_LENGTH_MS;
-  return realMs >= auctionStart && realMs <= close ? 'auction' : 'regular';
+  const window = auctionWindow(seg);
+  return realMs >= window.start && realMs <= window.end ? 'auction' : 'regular';
 }
 
 /** Last index whose pre-open band start (`sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS`)

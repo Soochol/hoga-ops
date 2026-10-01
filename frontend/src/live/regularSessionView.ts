@@ -49,22 +49,54 @@ export function createRegularSessionTradeFilter() {
 /** Restrict timestamped series while preserving identities of unchanged slices.
  * RangeBundle point times (t, t_ms, ts_ms) all use Unix milliseconds. */
 export function filterRegularSession<T>(value: T): T {
-  function visit(node: unknown): unknown {
-    if (Array.isArray(node)) {
-      const filtered = node.filter(item => {
-        if (!item || typeof item !== 'object') return true;
-        const point = item as Record<string, unknown>;
-        const time = point.t_ms ?? point.ts_ms ?? point.t;
-        return typeof time !== 'number' || isRegularSessionMs(time);
-      }).map(visit);
-      return filtered.length === node.length && filtered.every((item, i) => item === node[i]) ? node : filtered;
-    }
-    if (!node || typeof node !== 'object') return node;
-    const entries = Object.entries(node);
-    const mapped = entries.map(([key, item]) => [key, visit(item)] as const);
-    return mapped.every((entry, i) => entry[1] === entries[i][1]) ? node : Object.fromEntries(mapped);
+  return createRegularSessionFilter()(value);
+}
+
+/** Window-owned cache for immutable bundles. Live updates replace only the
+ * changed tail; do not traverse retained candles and price ladders again.
+ * Weak keys let evicted history disappear without a separate cache budget. */
+export function createRegularSessionFilter() {
+  const results = new WeakMap<object, object>();
+  const eligible = new WeakMap<object, boolean>();
+  function keep(node: unknown): boolean {
+    if (!node || typeof node !== 'object') return true;
+    const cached = eligible.get(node);
+    if (cached !== undefined) return cached;
+    const point = node as Record<string, unknown>;
+    const time = point.t_ms ?? point.ts_ms ?? point.t;
+    const result = typeof time !== 'number' || isRegularSessionMs(time);
+    eligible.set(node, result);
+    return result;
   }
-  return visit(value) as T;
+  function visit(node: unknown): unknown {
+    if (!node || typeof node !== 'object') return node;
+    const cached = results.get(node);
+    if (cached !== undefined) return cached;
+    if (Array.isArray(node)) {
+      let filtered: unknown[] | undefined;
+      for (let i = 0; i < node.length; i++) {
+        const item = node[i];
+        if (!keep(item)) { filtered ??= node.slice(0, i); continue; }
+        const value = visit(item);
+        if (value !== item) filtered ??= node.slice(0, i);
+        filtered?.push(value);
+      }
+      const result = filtered ?? node;
+      results.set(node, result);
+      return result;
+    }
+    const source = node as Record<string, unknown>;
+    let mapped: Record<string, unknown> | undefined;
+    for (const key of Object.keys(source)) {
+      const item = source[key];
+      const value = visit(item);
+      if (value !== item) { mapped ??= { ...source }; mapped[key] = value; }
+    }
+    const result = mapped ?? node;
+    results.set(node, result);
+    return result;
+  }
+  return <T>(value: T): T => visit(value) as T;
 }
 
 /** Regular-session requests use 1m source data to clip before aggregation.

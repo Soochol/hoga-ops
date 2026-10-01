@@ -93,9 +93,9 @@ function PriceLevelDotsOverlay({ chart, bundle, axis, paneSeries }: Props) {
   // 날짜 구분선에서 먼저 났다 — #1361).
   const spansByDate = useMemo(() => {
     const m = new Map<string, SessionSpan>();
-    for (const span of resolveSessionSpans(bundle.candles, axis)) m.set(span.date, span);
+    for (const span of enabled ? resolveSessionSpans(bundle.candles, axis) : []) m.set(span.date, span);
     return m;
-  }, [bundle.candles, axis]);
+  }, [bundle.candles, axis, enabled]);
 
   if (!enabled) return null;
 
