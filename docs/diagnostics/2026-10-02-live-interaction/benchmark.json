@@ -1,0 +1,139 @@
+{
+  "engine": "v24.13.1",
+  "environment": "Node/Vitest, isolated synthetic RangeBundle; no UI or vendor traffic",
+  "warning": "Operation times and forced-GC heap deltas with fixture/filter alive. Heap deltas include runtime noise. Not browser frame times, INP, or an A/B of the user trace.",
+  "output": [
+    {
+      "path": "regular-session-filter",
+      "count": 10000,
+      "optimized": false,
+      "cold_ms": [
+        188.86445300000003,
+        195.31778399999996,
+        199.59707600000002
+      ],
+      "cold_median_ms": 195.31778399999996,
+      "warm_ms": [
+        0.013886999999954242,
+        0.013494999999920765,
+        0.013405000000147993
+      ],
+      "heap_delta_bytes": [
+        33561472,
+        33566176,
+        33566200
+      ],
+      "heap_delta_median_bytes": 33566176
+    },
+    {
+      "path": "regular-session-filter",
+      "count": 10000,
+      "optimized": true,
+      "cold_ms": [
+        1.0865349999999125,
+        0.8068879999998444,
+        1.0755639999999858
+      ],
+      "cold_median_ms": 1.0755639999999858,
+      "warm_ms": [
+        0.05012499999997999,
+        0.025298000000020693,
+        0.036309000000073866
+      ],
+      "heap_delta_bytes": [
+        21304,
+        15744,
+        4448
+      ],
+      "heap_delta_median_bytes": 15744
+    },
+    {
+      "path": "snapshot-publication",
+      "count": 10000,
+      "optimized": false,
+      "ms": [
+        117.65267599999993,
+        95.14883400000008,
+        97.05400999999983
+      ],
+      "median_ms": 97.05400999999983
+    },
+    {
+      "path": "snapshot-publication",
+      "count": 10000,
+      "optimized": true,
+      "ms": [
+        0.31379999999990105,
+        0.1791270000003351,
+        0.1809809999999743
+      ],
+      "median_ms": 0.1809809999999743
+    },
+    {
+      "path": "regular-session-filter",
+      "count": 30000,
+      "optimized": false,
+      "cold_ms": [
+        940.3144519999996,
+        986.0166010000003,
+        914.9545359999993
+      ],
+      "cold_median_ms": 940.3144519999996,
+      "warm_ms": [
+        0.02505699999983335,
+        0.01650100000006205,
+        0.01643100000001141
+      ],
+      "heap_delta_bytes": [
+        134228080,
+        134228176,
+        134228248
+      ],
+      "heap_delta_median_bytes": 134228176
+    },
+    {
+      "path": "regular-session-filter",
+      "count": 30000,
+      "optimized": true,
+      "cold_ms": [
+        2.1633709999996427,
+        2.2678969999997207,
+        2.3489100000006147
+      ],
+      "cold_median_ms": 2.2678969999997207,
+      "warm_ms": [
+        0.02634900000066409,
+        0.027280999998765765,
+        0.025136999998721876
+      ],
+      "heap_delta_bytes": [
+        9512,
+        9344,
+        9344
+      ],
+      "heap_delta_median_bytes": 9344
+    },
+    {
+      "path": "snapshot-publication",
+      "count": 30000,
+      "optimized": false,
+      "ms": [
+        298.9817810000004,
+        293.8961220000001,
+        289.9036099999994
+      ],
+      "median_ms": 293.8961220000001
+    },
+    {
+      "path": "snapshot-publication",
+      "count": 30000,
+      "optimized": true,
+      "ms": [
+        0.17588100000102713,
+        0.15634399999908055,
+        0.1552719999999681
+      ],
+      "median_ms": 0.15634399999908055
+    }
+  ]
+}

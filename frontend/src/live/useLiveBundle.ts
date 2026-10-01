@@ -17,7 +17,7 @@ import {
   needsRegularSessionClip,
   fetchBucketMsFor,
 } from '../state/livePage';
-import { createRegularSessionFilter, regularSessionHogaForDisplay } from './regularSessionView';
+import { createRegularSessionBundleFilter, regularSessionHogaForDisplay } from './regularSessionView';
 import { useRegularSessionLiveSeries } from './useRegularSessionLiveSeries';
 import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
 import { peakWallBarFamilyActive } from '../state/indicatorOps';
@@ -1135,12 +1135,13 @@ export function useLiveBundle(
   // 비활성 쿼리의 **옛 데이터를 그대로 돌려주므로**(우회를 켜기 전에 받아 둔 응답이
   // 남는다) `enabled` 에 기대면 안 되고 여기서 명시적으로 끊어야 한다.
   const adjustFactors = restBypassEnabled ? undefined : pastCandlesQuery.data?.adjust_factors;
+  const filterHogaRegularSession = useMemo(createRegularSessionBundleFilter, []);
   const scaledHogaData = useMemo(
     () => {
       const scaled = pastHoga.data ? scaleRangeBundlePrices(pastHoga.data, adjustFactors) : null;
-      return regularSessionOnly ? regularSessionHogaForDisplay(scaled, bucketMs, venue) : scaled;
+      return regularSessionOnly ? regularSessionHogaForDisplay(scaled, bucketMs, venue, filterHogaRegularSession) : scaled;
     },
-    [pastHoga.data, adjustFactors, regularSessionOnly, bucketMs, venue],
+    [pastHoga.data, adjustFactors, regularSessionOnly, bucketMs, venue, filterHogaRegularSession],
   );
   // 요청은 병렬로 시작하지만 차트에는 캔들 축이 먼저 앉아야 한다.
   // 오늘 seed 이후의 과거 지표는 해당 날짜의 캔들·세션 축이 추가될 때 표시된다.
@@ -1227,7 +1228,7 @@ export function useLiveBundle(
   const hasTodayObSignal = isMinute && live.ob.length > 0;
   // Last content-distinct segments array — see the stabilization block below.
   const prevSegmentsRef = useRef<RangeBundle['segments'] | null>(null);
-  const filterRegularSession = useMemo(createRegularSessionFilter, []);
+  const filterRegularSession = useMemo(createRegularSessionBundleFilter, []);
   const computedChartBundle = useMemo<RangeBundle | null>(() => {
     if (!code) return null;
     const built = buildChartBundle({

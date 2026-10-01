@@ -235,6 +235,28 @@ export function mergedLiveRangeKey(
   return ['live', 'range-merged', identity] as const;
 }
 
+/** Publish an immutable client snapshot by reference. Its merge has already
+ * selected the retained history; another deep sharing walk visits every price
+ * ladder and breaks that identity. Disable sharing only for this synchronous
+ * write, then restore the query's options for subsequent network responses. */
+export function publishRangeSnapshot(
+  queryClient: QueryClient,
+  queryKey: QueryKey,
+  data: RangeBundle,
+  updatedAt?: number,
+): void {
+  const query = queryClient.getQueryCache().build(
+    queryClient, queryClient.defaultQueryOptions<RangeBundle>({ queryKey }),
+  );
+  const options = query.options;
+  query.setOptions({ ...options, structuralSharing: false });
+  try {
+    query.setData(data, { manual: true, updatedAt });
+  } finally {
+    query.setOptions(options);
+  }
+}
+
 /**
  * canonical 병합본 키에서 종목코드를 복원한다 — 축출(useLiveRangeCacheEviction)용.
  *
@@ -896,18 +918,18 @@ function useLiveRangeDelta(
       // response fast path leaves the previous fetch stamp behind forever.
       if (updatedAtMs > current.updatedAtMs) {
         mergedRef.current = { ...current, updatedAtMs };
-        queryClient.setQueryData(mergedLiveRangeKey(plan.identity), data, { updatedAt: updatedAtMs });
+        publishRangeSnapshot(queryClient, mergedLiveRangeKey(plan.identity), data, updatedAtMs);
         forceRerender();
       }
       return;
     }
     mergedRef.current = { identity: plan.identity, data, updatedAtMs };
-    queryClient.setQueryData(buildRangeBundleRequest(baseInput).queryKey, data);
+    publishRangeSnapshot(queryClient, buildRangeBundleRequest(baseInput).queryKey, data);
     // canonical 병합본 재발행 → 다음 리마운트·탭 복귀의 복원 소스(gcTime 2h). 이
     // 키엔 옵저버(useQuery)가 없어 setQueryData 가 재렌더를 유발하지 않는다. 위
     // 가드가 mergedRef 와 canonical 을 동기 유지하므로(둘 다 이 effect 에서만 쓰기)
     // 캔들의 별도 publishedRef 는 불필요 — range.ts 는 렌더 단계 pin 이 없다.
-    queryClient.setQueryData(mergedLiveRangeKey(plan.identity), data);
+    publishRangeSnapshot(queryClient, mergedLiveRangeKey(plan.identity), data);
     // 위 재발행이 남긴 이전 팬 스텝 사본들을 즉시 회수 — 근거는 함수 주석.
     removeDominatedLiveRangeCopies(queryClient, plan.identity, data);
     // identity 축 상한. 위 회수는 **같은 identity 안의** 중복만 걷으므로, 지표 토글·봉

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRegularSessionFilter, filterRegularSession, regularSessionHogaForDisplay } from './regularSessionView';
+import { createRegularSessionBundleFilter, createRegularSessionFilter, filterRegularSession, regularSessionHogaForDisplay } from './regularSessionView';
 import { aggregateCandles, keepRegularSessionCandles } from './aggregateCandles';
 import { fetchBucketMsFor } from '../state/livePage';
 import type { QuoteRatioPoint, RangeBundle } from '../api/types';
@@ -104,4 +104,63 @@ it('filters retained history once and updates only replaced immutable points', (
   expect(filter({depth: [...history, replacement]}).depth).toHaveLength(5_000);
   expect(history).toHaveLength(10_000);
   expect(filter({depth: [null, 1, {value: 2}]}).depth).toEqual([null, 1, {value: 2}]);
+});
+
+describe('schema-aware regular-session bundle filter', () => {
+  it('preserves omitted series in mode-specific and older responses', () => {
+    const sparse = { quote_ratio: { bucket_ms: 60_000, points: [quote('09:00:00', 30, 10), quote('16:00:00', 30, 10)] },
+      fill_strength: { bucket_ms: 60_000, points: [] } } as unknown as RangeBundle;
+    const clipped = createRegularSessionBundleFilter()(sparse);
+    expect(clipped).toEqual(filterRegularSession(sparse));
+    expect(clipped).not.toHaveProperty('ask_peaks');
+    expect(clipped).not.toHaveProperty('candles');
+    expect(createRegularSessionBundleFilter()({} as RangeBundle)).toEqual({});
+  });
+
+  it('matches recursive clipping including peak candidates, daily series and session boundaries', () => {
+    const times = ['08:59:59', '09:00:00', '15:30:00', '15:30:00.001'];
+    const source = hogaBundle(times.map(time => quote(time, 30, 10)));
+    const timed = times.map(time => ({ t_ms: at(time), value: 10 }));
+    Object.assign(source, {
+      candles: times.map(time => ({ ts_ms: at(time), open: 100, high: 100, low: 100, close: 100, vol_a: 1, vol_b: 0 })),
+      investorPoints: timed, institutionInvestorPoints: timed, dailyProgramPoints: timed,
+      broker_late_entries: timed, trade_volume_pocs: timed, depth_heatmap: timed, price_level_hits: timed,
+      program_trade: { points: times.map(time => ({ t: at(time), net_qty: 1 })) },
+      volume_distributions: [{ date: '20261001', bins: [{ price_low: 100, qty: 1 }] }],
+    });
+    const candidates = times.map(time => ({ t_ms: at(time), price: 100, qty: 10 }));
+    const peaks = [{ date: '20261001', t_ms: at('09:00:00'),
+      ...Object.fromEntries([
+        'traded_peaks', 'traded_max_peaks', 'traded_record_peaks', 'traded_record_max_peaks',
+        'all_record_peaks', 'all_record_max_peaks', 'traded_bar_peaks', 'traded_bar_max_peaks',
+        'all_bar_peaks', 'all_bar_max_peaks', 'unreached_bar_peaks', 'all_peaks',
+        'all_max_peaks', 'unreached_peaks',
+      ].map(key => [key, candidates])),
+    }, { date: '20261001', t_ms: at('16:00:00') }];
+    Object.assign(source, { ask_peaks: peaks, bid_peaks: peaks });
+    const filter = createRegularSessionBundleFilter();
+    const clipped = filter(source);
+    expect(clipped).toEqual(filterRegularSession(source));
+    expect(filter(source)).toBe(clipped);
+    expect(clipped.volume_distributions).toBe(source.volume_distributions);
+    expect(source.candles).toHaveLength(4);
+    expect(source.ask_peaks).toHaveLength(2);
+  });
+
+  it('does not visit price ladders and reuses retained slices when the tail changes', () => {
+    const ladders = vi.fn(() => [[100, 10]] as [number, number][]);
+    const firstPoint = { t_ms: at('09:00:00'), get asks() { return ladders(); }, bids: [] };
+    const source = { ...hogaBundle([]), depth_heatmap: [firstPoint] };
+    const filter = createRegularSessionBundleFilter();
+    expect(filter(source)).toBe(source);
+    const added = { t_ms: at('15:30:00'), asks: [[110, 20]] as [number, number][], bids: [] };
+    const next = { ...source, depth_heatmap: [...source.depth_heatmap, added] };
+    expect(filter(next)).toBe(next);
+    const corrected = { ...added, t_ms: at('15:30:00.001') };
+    const clipped = filter({ ...source, depth_heatmap: [firstPoint, corrected] });
+    expect(clipped.depth_heatmap).toEqual([firstPoint]);
+    expect(clipped.depth_heatmap?.[0]).toBe(firstPoint);
+    expect(clipped.candles).toBe(source.candles);
+    expect(ladders).not.toHaveBeenCalled();
+  });
 });
