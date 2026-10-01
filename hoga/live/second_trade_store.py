@@ -30,8 +30,20 @@ _log = logging.getLogger(__name__)
 RETAIN_MS = 60_000
 MAX_CELLS = 200_000
 CACHE_LIMIT = 4
+_FLUSH_SLICE = 128
+_FLUSH_WARN_MS = 250.0
+
+_BarKey = tuple[str, str, int]
+_FileKey = tuple[str, str, str]
+_Record = dict[str, Any] | str
 
 
+def _record_json(record: _Record) -> str:
+    """Private encoded bar snapshots and ordinary late/cold-path records."""
+    return record if isinstance(record, str) else json.dumps(record, separators=(",", ":"))
+
+
+@lru_cache(maxsize=512)
 def trade_date(t_ms: int) -> str:
     from datetime import datetime  # noqa: PLC0415
 
@@ -43,6 +55,11 @@ class SecondTradeStore:
         self.root = root
         self._bars: dict[tuple[str, str, int], SecondTradeBar] = {}
         self._saved: dict[tuple[str, str, int], int] = {}
+        # Only immutable JSON crosses awaits. A retained, unchanged second
+        # must not rebuild its sorted price cells at every 10-second checkpoint.
+        # Strings also avoid a second retained graph of price-cell containers.
+        # Entries are bounded by _bars/max_cells and removed with their bars.
+        self._flush_records: dict[_BarKey, tuple[int, str]] = {}
         self._late: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
         self._seq = time.time_ns()
         self._cells = 0
@@ -142,28 +159,72 @@ class SecondTradeStore:
                 self._cells += 1
             bar.ingest(seq=self._seq, **trade)
 
-    async def flush(self, *, now_ms: int, force: bool = False) -> None:
-        async with self._flush_lock:
-            batches: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
-            revision_batches: dict[tuple[str, str, str], list[tuple[tuple[str, str, int], int]]] = {}
-            recent_by_file: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
-            for key, bar in self._bars.items():
+    def _flush_record(self, key: _BarKey, bar: SecondTradeBar) -> str:
+        cached = self._flush_records.get(key)
+        if cached is not None and cached[0] == bar.revision:
+            return cached[1]
+        # Encode a changed revision once, in a cooperative preparation slice.
+        # Both journal and checkpoint reuse it. Never expose this private cache
+        # through live_rows/API responses or reference mutable price cells.
+        row = _record_json(bar.record())
+        self._flush_records[key] = (bar.revision, row)
+        return row
+
+    async def _prepare_flush(self, now_ms: int, force: bool) -> tuple[
+        dict[_FileKey, list[_Record]],
+        dict[_FileKey, list[tuple[_BarKey, int]]],
+        dict[_FileKey, list[_Record]],
+        dict[_FileKey, list[dict[str, Any]]],
+    ]:
+        batches: dict[_FileKey, list[_Record]] = {}
+        revisions: dict[_FileKey, list[tuple[_BarKey, int]]] = {}
+        recent: dict[_FileKey, list[_Record]] = {}
+        late = {key: list(rows) for key, rows in self._late.items() if rows}
+        dirty_files = set(late)
+        keys = tuple(self._bars)
+        # Ingest may add keys while we yield. New bars and late rows not in this
+        # pass's snapshots remain pending for the next flush; no dict iterator
+        # is held across an await. A changed revision is acknowledged only after
+        # its own immutable record has been appended and fsynced.
+        for start in range(0, len(keys), _FLUSH_SLICE):
+            await asyncio.sleep(0)
+            for key in keys[start:start + _FLUSH_SLICE]:
+                bar = self._bars[key]
+                if (force or bar.t_ms + 3000 <= now_ms) and self._saved.get(key, 0) < bar.revision:
+                    dirty_files.add((key[0], key[1], trade_date(key[2])))
+        for start in range(0, len(keys), _FLUSH_SLICE):
+            await asyncio.sleep(0)
+            for key in keys[start:start + _FLUSH_SLICE]:
+                bar = self._bars[key]
                 eligible = force or bar.t_ms + 3000 <= now_ms
                 saved = self._saved.get(key, 0)
                 code, venue, t = key
                 file_key = (code, venue, trade_date(t))
+                if file_key not in dirty_files:
+                    continue
                 row = None
                 if bar.t_ms >= now_ms - RETAIN_MS and (eligible or saved == bar.revision):
-                    row = bar.record()
-                    recent_by_file.setdefault(file_key, []).append(row)
+                    row = self._flush_record(key, bar)
+                    recent.setdefault(file_key, []).append(row)
                 if not eligible or saved >= bar.revision:
                     continue
-                record = {"kind": "bar", "schema_version": 1, "bar": row or bar.record()}
+                row = row or self._flush_record(key, bar)
+                record = '{"kind":"bar","schema_version":1,"bar":' + row + '}'
                 batches.setdefault(file_key, []).append(record)
-                revision_batches.setdefault(file_key, []).append((key, bar.revision))
-            late_snapshots = {key: list(rows) for key, rows in self._late.items() if rows}
-            for key, rows in late_snapshots.items():
-                batches.setdefault(key, []).extend(rows)
+                revisions.setdefault(file_key, []).append((key, bar.revision))
+        for key, rows in late.items():
+            batches.setdefault(key, []).extend(rows)
+        return batches, revisions, recent, late
+
+    async def flush(self, *, now_ms: int, force: bool = False) -> None:
+        async with self._flush_lock:
+            started = time.perf_counter()
+            batches, revision_batches, recent_by_file, late_snapshots = await self._prepare_flush(now_ms, force)
+            elapsed_ms = (time.perf_counter() - started) * 1000
+            if elapsed_ms >= _FLUSH_WARN_MS:
+                _log.warning("second_trade.flush_prepare elapsed_ms=%.1f bars=%d files=%d records=%d",
+                             elapsed_ms, len(self._bars), len(batches),
+                             sum(len(rows) for rows in batches.values()))
             for (code, venue, date), records in batches.items():
                 try:
                     await asyncio.to_thread(self._append, self.path(code, venue, date), records)
@@ -191,12 +252,16 @@ class SecondTradeStore:
                     if not pending:
                         self._late.pop((code, venue, date), None)
             self._sealed_before = now_ms - RETAIN_MS
-            for key in list(self._bars):
-                bar = self._bars[key]
-                if bar.t_ms < self._sealed_before and self._saved.get(key) == bar.revision:
-                    self._cells -= len(bar.prices)
-                    del self._bars[key]
-                    del self._saved[key]
+            keys = tuple(self._bars)
+            for start in range(0, len(keys), _FLUSH_SLICE):
+                await asyncio.sleep(0)
+                for key in keys[start:start + _FLUSH_SLICE]:
+                    bar = self._bars[key]
+                    if bar.t_ms < self._sealed_before and self._saved.get(key) == bar.revision:
+                        self._cells -= len(bar.prices)
+                        del self._bars[key]
+                        del self._saved[key]
+                        self._flush_records.pop(key, None)
 
     @staticmethod
     def _sync_directory(path: Path) -> None:
@@ -207,18 +272,21 @@ class SecondTradeStore:
             os.close(descriptor)
 
     @staticmethod
-    def _checkpoint(path: Path, rows: list[dict[str, Any]], offset: int, receive_seq: int) -> None:
+    def _checkpoint(path: Path, rows: list[_Record], offset: int, receive_seq: int) -> None:
         target = path.with_suffix(".recent.json")
         tmp = target.with_suffix(".tmp")
         with tmp.open("w", encoding="utf-8") as out:
-            json.dump({"journal_bytes": offset, "receive_seq": receive_seq, "bars": rows}, out)
+            # Reuse each frozen JSON body rather than serializing the same
+            # recent price ladder again in the I/O thread (ADR-0169: same GIL).
+            header = json.dumps({"journal_bytes": offset, "receive_seq": receive_seq})[:-1]
+            out.write(header + ',"bars":[' + ','.join(_record_json(row) for row in rows) + ']}')
             out.flush()
             os.fsync(out.fileno())
         os.replace(tmp, target)
         SecondTradeStore._sync_directory(target.parent)
 
     @staticmethod
-    def _append(path: Path, rows: list[dict[str, Any]]) -> None:
+    def _append(path: Path, rows: list[_Record]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         # A previous interrupted append can end mid-line. Terminate that line;
         # replay skips it and can still read every following complete record.
@@ -229,7 +297,7 @@ class SecondTradeStore:
                 if old.read(1) != b"\n":
                     prefix = "\n"
         with path.open("a", encoding="utf-8") as out:
-            out.write(prefix + "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows))
+            out.write(prefix + "".join(_record_json(row) + "\n" for row in rows))
             out.flush()
             os.fsync(out.fileno())
         SecondTradeStore._sync_directory(path.parent)
