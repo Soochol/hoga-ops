@@ -175,8 +175,10 @@ class _RecordingScheduler:
 async def test_today_bootstrap_skips_factors_but_history_still_rescales(tmp_path, kiwoom, venue, cached):
     fake = kiwoom(_FakeWalk(splits={"20260601": 2.0}))
     cache = PastCandlesCache(tmp_path)
+    # Match the minute backfill serializer: absent daily turnover isn't emitted.
+    expected_bar = _bar("20260601").model_dump(exclude_none=True)
     if cached:
-        cache.store_today(venue, "005930", [_bar("20260601").model_dump()])
+        cache.store_today(venue, "005930", [expected_bar])
     service = LiveMinuteCandleBackfill(
         data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
     )
@@ -187,7 +189,7 @@ async def test_today_bootstrap_skips_factors_but_history_still_rescales(tmp_path
     assert fake.factor_calls == [], "오늘 봉 앞에서 수정계수 2콜을 기다리면 안 된다"
     assert len(fake.day_calls) == (0 if cached else 1)
     assert first.adjust_factors == {"20260601": 1.0}
-    assert first.candles == [_bar("20260601").model_dump()]
+    assert first.candles == [expected_bar]
     past = await service.collect_minute(
         code="005930", frm=dt.date(2026, 5, 29), too=dt.date(2026, 5, 29),
         today_d=today, policy=venue,

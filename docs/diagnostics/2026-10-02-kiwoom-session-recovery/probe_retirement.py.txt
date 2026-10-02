@@ -1,0 +1,145 @@
+"""Offline probes: no credentials, vendor connections, app startup or production writes.
+
+Run from repo root with the production Python environment and PYTHONPATH=.
+The shortened deadlines apply only to this isolated process.
+"""
+import asyncio
+import json
+
+from websockets.asyncio.connection import Connection
+from websockets.protocol import OPEN, Protocol, Side
+
+from hoga.live import kiwoom_ws_client as M
+from hoga.live.snapshot import SnapshotKind
+from hoga.live.ticks import WsTick
+
+
+class Socket:
+    def __init__(self):
+        self.incoming = asyncio.Queue()
+        self.close_cancelled = False
+
+    async def recv(self):
+        return await self.incoming.get()
+
+    async def send(self, raw):
+        msg = json.loads(raw)
+        if msg.get("trnm") in ("LOGIN", "REG"):
+            self.incoming.put_nowait(json.dumps({
+                "trnm": msg["trnm"], "return_code": 0,
+            }))
+        # REMOVE ACK is deliberately withheld.
+
+    async def close(self):
+        try:
+            await asyncio.Event().wait()
+        finally:
+            self.close_cancelled = True
+
+
+async def spin_until(predicate):
+    async with asyncio.timeout(1):
+        while not predicate():
+            await asyncio.sleep(0)
+
+
+async def retirement():
+    ws = Socket()
+    calls = []
+    ticks = []
+
+    async def connect(_):
+        calls.append(1)
+        return ws
+
+    async def tick(value):
+        ticks.append(value.payload["sequence"])
+
+    M._ACK_TIMEOUT_S = 0.01
+    M._CLOSE_TIMEOUT_S = 0.01
+    M._REG_PACING_S = 0
+    M.parse_real_message = lambda msg, **kw: [
+        WsTick("000660", kw["now_ms"], SnapshotKind.TRADE, {"sequence": n})
+        for n in msg["data"]
+    ]
+    client = M.KiwoomWsClient(
+        token_fn=lambda: asyncio.sleep(0, result="OFFLINE"),
+        on_tick=tick, date_fn=lambda: "20261002", _connect=connect,
+    )
+    runner = asyncio.create_task(client.run(["005930", "000660"]))
+    try:
+        await spin_until(lambda: client.registration_ready)
+        try:
+            await client.update_codes(["000660"])
+        except TimeoutError:
+            pass
+        for n in range(3):
+            ws.incoming.put_nowait(json.dumps({"trnm": "REAL", "data": [n]}))
+        await spin_until(lambda: len(ticks) == 3)
+        await asyncio.sleep(0.03)
+        return {
+            "connected": client.connected,
+            "has_socket_reference": client._ws is not None,
+            "session_runner_done": runner.done(),
+            "connect_calls": len(calls),
+            "generation": client.connection_generation,
+            "ticks_after_retirement": ticks,
+            "socket_close_cancelled": ws.close_cancelled,
+            "ack_waiters": len(client._ack_waiters),
+            "queued_messages": client.data_queue_snapshot()["depth"],
+        }
+    finally:
+        runner.cancel()
+        await asyncio.gather(runner, return_exceptions=True)
+
+
+class Transport:
+    def __init__(self, conn):
+        self.conn = conn
+        self.abort_calls = 0
+
+    def write(self, data):
+        pass
+
+    def is_closing(self):
+        return False
+
+    def abort(self):
+        self.abort_calls += 1
+        self.conn.protocol.receive_eof()
+        if not self.conn.connection_lost_waiter.done():
+            self.conn.connection_lost_waiter.set_result(None)
+
+
+async def close_deadline(outer):
+    conn = Connection(Protocol(Side.CLIENT, state=OPEN), close_timeout=0.02)
+    conn.transport = Transport(conn)
+    if outer:
+        M._CLOSE_TIMEOUT_S = 0.02
+        client = M.KiwoomWsClient(
+            token_fn=lambda: asyncio.sleep(0, result="OFFLINE"),
+            on_tick=None, date_fn=lambda: "20261002",
+        )
+        await client._safe_close(conn)
+    else:
+        await conn.close()
+    result = {
+        "outer_deadline": outer,
+        "transport_abort_calls": conn.transport.abort_calls,
+        "transport_closed": conn.connection_lost_waiter.done(),
+        "protocol_state": conn.protocol.state.name,
+    }
+    if not conn.connection_lost_waiter.done():
+        conn.transport.abort()  # cleanup only, after measuring the result
+    return result
+
+
+async def main():
+    print(json.dumps({
+        "retirement": await retirement(),
+        "library_close_with_app_outer_deadline": await close_deadline(True),
+        "library_close_with_own_deadline": await close_deadline(False),
+    }, indent=2))
+
+
+asyncio.run(main())

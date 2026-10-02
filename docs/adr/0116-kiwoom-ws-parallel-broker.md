@@ -110,3 +110,20 @@ REAL 프레임이며 raw 행 수와 파싱 후 완료 틱 수를 혼동하지 �
 GC 경고에도 PID를 넣어 여러 프로세스가 공유한 로그를 구분한다.
 
 [재현 결과와 한계](../diagnostics/2026-10-01-kiwoom-consumer-budget.md)를 함께 본다.
+
+## 2026-10-02 개정: 제어 실패의 세션 종료 소유권
+
+외부 Live Set 변경의 제어 요청이 실패하면 연결 표시 변경만으로 종료하지 않는다.
+구독 태스크는 세션별 종료 신호를 보내고, `run()`의 세션 소유자가 reader/consumer
+취소·join, waiter·큐 정리, transport 종료를 완료한 뒤 재연결한다. 구독 lock 안에서
+소유자의 정리를 기다리지 않으며, retiring 세션은 제어 송신·후속 Live Tick 전달에
+재사용하지 않는다. 최신 desired 종목은 새 세션에서 다시 등록한다.
+
+close의 앱 제한은 라이브러리 자체 제한보다 길게 두고, 실패·취소 시 native adapter의
+abort와 `wait_closed()`로 종료를 확인한다. 종료를 증명할 수 없는 custom adapter는
+자동 대체하지 않는다. 시간 제한은 협력적이며 GC·동기 작업을 선점하지 않는다.
+제어 실패 시점의 안전한 관측을 즉시 기록하고 최근 최대 32개의 요청/ACK 사건을
+PID·연결 세대·세션 시작·runtime context와 함께 남긴다.
+
+[원인·재현](../diagnostics/2026-10-02-kiwoom-session-recovery/README.md)과
+[구현·검증](../diagnostics/2026-10-02-kiwoom-session-recovery/implementation.md)을 함께 본다.
