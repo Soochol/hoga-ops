@@ -2,6 +2,16 @@
 
 **Status:** accepted (2026-09-02)
 
+**2026-10-02 보완:** 실행 worker slot과 대기 중 요청 예산을 구분한다. wide/narrow 풀
+각각 기본 128개 outstanding 사용자 요청을 허용하며 `HOGA_COMPUTE_MAX_PENDING_REQUESTS`로
+조절한다. `/api/range`는 기존 모드 gate에 줄을 서기 전에 예산을 차지하므로 gate
+밖에 무제한 대기자가 생기지 않는다. 좁은 요청은 여전히 wide 작업 뒤에 서지 않지만
+자기 풀의 유한 입장 상한은 적용된다. 초과는 HTTP 503 `compute_capacity_exceeded`이며
+실행하지 않는다. deep health의 `compute.wide/narrow`가 상한·현재 요청·거부 횟수를
+노출한다. 유한 lifecycle worker에서 처리하는 캡처 저장 작업은 이 사용자 요청
+거부 정책을 적용하지 않는다. 요청 취소 시 입장 예산은 반환하되 이미 실행 중인
+프로세스 작업의 CPU slot은 실제 future 완료까지 유지한다.
+
 **Related:**
 - ADR-0168 — 규칙의 첫 적용(today-promoter, 워커 1개). 이 ADR 은 같은 풀을 요청 경로에 쓴다.
 - ADR-0085 — DuckDB 자원 상한. 워커마다 상한을 다시 건다.
@@ -203,3 +213,7 @@ GC·온루프 작업, 다른 스레드가 태우면 convoy 다.
   같은 172초의 스레드 CPU 가 초당 400프레임 × 탭 수의 루프 작업과 GIL 을 나눌 때
   나타난 것이 ADR-0168 의 5~6.5초 지연이다 — 여기서 증명하는 것은 **그 CPU 가 앱
   프로세스에서 사라졌다**는 사실(172,320 → 230 ms)이다.
+
+2026-10-03 P3 보완: [ADR-0174](0174-dedicated-python-live-capture-process.md)에 따라
+키움 WS와 필수 live 저장은 전용 수집 자식으로 이동한다. API 단일 worker 및 기존
+Today Promoter/compute pool의 역할은 유지하며, 별도 capture flock과 bounded IPC로 인계한다.

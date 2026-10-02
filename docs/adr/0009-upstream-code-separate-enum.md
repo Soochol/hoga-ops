@@ -1,5 +1,9 @@
 # 0009 — `UpstreamCode` is a separate enum from `CaptureErrorCode`
 
+**2026-10-02 보완:** 사용자 계산 요청 입장 예산 초과는 `ComputeErrorCode`로 구분한다.
+`compute_capacity_exceeded`(HTTP 503)는 공급사 실패나 Capture Queue 소유권 문제가
+아니며, FE union과 wire enum 검사가 같은 값을 보장한다.
+
 **Status:** proposed (2026-05-22) — pending implementation of `hoga/api/error_codes.py::UpstreamCode` per `docs/superpowers/specs/2026-05-22-krx-env-symbol-design.md`
 **Related:**
 - `hoga/api/error_codes.py` — host module

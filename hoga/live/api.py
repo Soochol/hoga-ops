@@ -1498,6 +1498,7 @@ class LiveSeriesResponse(BaseModel):
 
     code: str
     date: str
+    buffer_history_truncated: bool = False
     # 장 중이면 close 가 아직 없다 — 정당한 null 이라 지우지 않는다.
     session_open_ms: int | None = None
     session_close_ms: int | None = None
@@ -2451,7 +2452,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # 비고, 그러면 프론트가 오늘분을 통째로 잃는다(오늘 seed 를 버리고 이 값으로만
         # 대체하기 때문). 오늘이 아니거나 이미 시도했으면 즉시 반환한다.
         if ensure_today_peaks_seeded is not None:
-            await ensure_today_peaks_seeded(code, venue, date)
+            try:
+                await ensure_today_peaks_seeded(code, venue, date)
+            except (ConnectionError, TimeoutError) as exc:
+                raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED,
+                                          "message": "Live Capture process unavailable"}) from exc
         return {
             **series,
             "date": date,
@@ -3071,7 +3076,14 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if not _CODE_RE.match(code):
             raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
         state_key = code + {"KRX": "", "NXT": "_NX", "UN": "_AL"}[venue]
-        vi = get_vi_status(state_key) if get_vi_status is not None else None
+        from .lifecycle import get_capture_session  # noqa: PLC0415 — dedicated process query
+        remote = getattr(get_capture_session(), "refresh_vi", None)
+        try:
+            vi = await remote(state_key) if remote is not None else (
+                get_vi_status(state_key) if get_vi_status is not None else None)
+        except (ConnectionError, TimeoutError) as exc:
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED,
+                                      "message": "Live Capture process unavailable"}) from exc
         return {"code": code, "vi": vi}
 
     krx_close_store = KrxCloseStore(data_dir)

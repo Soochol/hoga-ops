@@ -283,6 +283,9 @@ export type LiveErrorCode =
   | 'kiwoom_api_error'
   | 'kiwoom_http_error';
 
+/** Mirrors compute admission errors independently of queue/vendor health. */
+export type ComputeErrorCode = 'compute_capacity_exceeded';
+
 /** Union used wherever an error code can be either domain — currently
  *  CaptureError.code on the per-item SSE capture_finished payload. */
 export type CaptureFinishedErrorCode = CaptureErrorCode | UpstreamCode;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from hoga.util.timeenc import KST
 
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
 _KST = KST
+_log = logging.getLogger(__name__)
 
 
 def _today() -> str:
@@ -38,11 +40,19 @@ def build_router(*, data_dir: Path) -> APIRouter:
     @router.patch("/settings", response_model=SignalAlertSettings)
     async def patch_settings(req: SignalAlertSettingsUpdate) -> SignalAlertSettings:
         settings = update_signal_alert_settings(data_dir, req)
-        from hoga.live.lifecycle import get_signal_alert_monitor  # noqa: PLC0415
+        from hoga.live.lifecycle import get_capture_session, get_signal_alert_monitor  # noqa: PLC0415
 
         monitor = get_signal_alert_monitor()
         if monitor is not None:
             monitor.refresh_settings()
+        refresh = getattr(get_capture_session(), "refresh_alert_settings", None)
+        if refresh is not None:
+            try:
+                await refresh()
+            except (ConnectionError, TimeoutError):
+                # Desired settings are already durable; the child periodically
+                # reloads them after IPC/recovery. Do not undo the user's save.
+                _log.warning("signal_alert.settings_saved_child_refresh_deferred")
         return settings
 
     @router.get("/recent", response_model=SignalAlertRecentResponse)

@@ -476,6 +476,7 @@ async def _run_range_bundle(
     *,
     from_date: str,
     to_date: str,
+    admitted: bool = False,
 ) -> tuple[RangeBundle | None, bytes | None, dict[str, int]]:
     """`/api/range` 의 계산 자리(ADR-0169). 반환은 (번들, 응답 바이트, perf 개수) —
     둘 중 하나만 채워진다.
@@ -497,6 +498,7 @@ async def _run_range_bundle(
     pool = pools.wide if _is_wide_range(from_date, to_date) else pools.narrow
     payload, stats = await compute_jobs.run_job(
         pool, compute_jobs.range_bundle_job, str(engine.data_dir), bundle_kwargs,
+        admitted=admitted,
     )
     return None, payload, stats
 
@@ -861,7 +863,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # 위에서 상한을 기다려, 대기자들이 40 토큰짜리 공용 풀을 채우고 **다른 동기
         # 라우트까지 굶긴다**(/api/live/status 폴링 등이 같은 풀을 쓴다). 이제 스레드를
         # 쥐는 것은 실제로 계산 중인 `RANGE_COMPUTE_CONCURRENCY` 개뿐이다.
-        async with gate:
+        pool = pools.wide if _is_wide_range(from_date, to_date) else pools.narrow
+        async with compute_jobs.admit_request(pool), gate:
             queue_wait_ms = perf_debug.elapsed_ms(t0)
             if queue_wait_ms >= RANGE_QUEUE_WAIT_LOG_MS:
                 # perf_debug 게이트를 걸지 않는다 — 이 줄이 없으면 slow-log 의
@@ -919,6 +922,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             try:
                 bundle, payload, stats = await _run_range_bundle(
                     pools, engine, bundle_kwargs, from_date=from_date, to_date=to_date,
+                    admitted=True,
                 )
             except Exception:
                 # NOT gated on perf_debug. The success log below is performance

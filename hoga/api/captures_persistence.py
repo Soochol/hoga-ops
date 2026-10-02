@@ -41,21 +41,27 @@ def save_manifest(data_dir: Path, manifest: QueueManifest) -> bool:
         return False
 
 
-def load_manifest(data_dir: Path) -> QueueManifest | None:
+def load_manifest(data_dir: Path, *, strict: bool = False) -> QueueManifest | None:
     """Return the manifest, or None if missing / corrupt / version-mismatched.
     Corrupt files are quarantined to ``.queue.json.corrupt-<ts>-<reason>``
-    for forensic inspection.
+    for forensic inspection in the legacy compatibility path. Production
+    ownership recovery uses strict=True: only a missing file is empty; other
+    failures raise and preserve the original file for repair.
     """
     target = manifest_path(data_dir)
-    if not target.exists():
-        return None
     try:
         raw = target.read_text(encoding="utf-8")
         manifest = QueueManifest.model_validate_json(raw)
+    except FileNotFoundError:
+        return None
     except (OSError, ValueError, ValidationError) as e:
+        if strict:
+            raise
         _quarantine(target, reason=f"parse_error_{type(e).__name__}")
         return None
     if manifest.schema_version != _SCHEMA_VERSION:
+        if strict:
+            raise ValueError(f"unsupported queue schema: {manifest.schema_version}")
         _quarantine(target, reason=f"version_mismatch_{manifest.schema_version}")
         return None
     return manifest

@@ -65,7 +65,7 @@ def test_registry_covers_every_guarded_writer():
     writer 를 추가하고 등록을 잊으면 **관측면에서만 조용히 사라진다** — 락은 걸리는데
     상태가 안 보이는 것이 이 프로젝트가 싫어하는 "무증상 강등" 이다.
     """
-    assert set(ownership.ownership_state()) == {"queue", "collectors", "ws", "daily"}
+    assert set(ownership.ownership_state()) == {"queue", "collectors", "ws", "daily", "capture"}
 
 
 def test_queue_and_collector_locks_are_independent(tmp_path: Path):

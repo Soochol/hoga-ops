@@ -20,6 +20,13 @@ test.use({ channel: 'chrome' });
  *         signal that the invariant-outcomes path is wired end-to-end.
  */
 test.describe('/live smoke', () => {
+  test('shows when server display history was shortened', async ({ page }) => {
+    await installLiveMocks(page, { bufferHistoryTruncated: true });
+    await page.goto('/live');
+    await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
+    await page.getByTestId('watchlist-row-098460').click();
+    await expect(page.getByText('실시간 표시 이력 일부 축소 · 저장 데이터 유지')).toBeVisible();
+  });
   test('S1: empty state → select symbol → chart root mounts with source header', async ({
     page,
   }) => {

@@ -136,6 +136,7 @@ const EMPTY_SERIES = {
 };
 
 export interface InstallLiveMocksOpts {
+  bufferHistoryTruncated?: boolean;
   /** Which `/api/range` fixture to serve. Defaults to "normal" (no defects). */
   range?: 'normal' | 'with-defects';
 }
@@ -179,7 +180,9 @@ export async function installLiveMocks(
   await page.route(api('watchlist'), (r) => json(r, WATCHLIST));
   await page.route(api('live/status'), (r) => json(r, LIVE_STATUS_OK));
   await page.route(api('live/past-candles'), (r) => json(r, PAST_CANDLES_NORMAL));
-  await page.route(api('live/series'), (r) => json(r, EMPTY_SERIES));
+  await page.route(api('live/series'), (r) => json(r, {
+    ...EMPTY_SERIES, buffer_history_truncated: opts.bufferHistoryTruncated ?? false,
+  }));
   await page.route(api('range'), (r) => json(r, rangeBody));
   await page.route(api('captures/queue'), (r) =>
     json(r, { active: [], queued: [], done: [] }),

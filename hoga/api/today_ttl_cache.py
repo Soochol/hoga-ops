@@ -16,10 +16,12 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Hashable
 from typing import Any
 
 from hoga.util.cache_stats import CacheStats
+from hoga.util.retained_size import retained_size
 
 DEFAULT_TTL_MS = 15_000
 
@@ -42,18 +44,27 @@ class TodayTtlCache:
         self,
         ttl_ms: int | None = None,
         clock: Callable[[], float] = time.monotonic,
+        *, max_entries: int = 512, max_bytes: int = 128 * 1024 * 1024,
     ) -> None:
         self._ttl_s = (ttl_ms if ttl_ms is not None else _resolve_ttl_ms()) / 1000.0
         self._clock = clock
         self._lock = threading.Lock()
-        self._entries: dict[Hashable, tuple[float, Any]] = {}
+        self._entries: OrderedDict[Hashable, tuple[float, Any]] = OrderedDict()
+        self._sizes: dict[Hashable, int] = {}
+        self._bytes = 0
+        self._max_entries = max(0, max_entries)
+        self._max_bytes = max(0, max_bytes)
         # This is the one cache genuinely hit from multiple threads — counters
         # live inside the existing lock, so no separate CacheStats locking.
         self._stats = CacheStats()
 
     def stats_snapshot(self) -> dict[str, int | float | None]:
         with self._lock:
-            return self._stats.snapshot(size=len(self._entries))
+            return {
+                **self._stats.snapshot(size=len(self._entries)),
+                "estimated_bytes": self._bytes, "max_entries": self._max_entries,
+                "max_estimated_bytes": self._max_bytes,
+            }
 
     def lookup(self, key: Hashable) -> tuple[bool, Any]:
         if self._ttl_s <= 0:
@@ -61,24 +72,42 @@ class TodayTtlCache:
         with self._lock:
             entry = self._entries.get(key)
             if entry is None or entry[0] < self._clock():
+                if entry is not None:
+                    self._remove(key)
                 self._stats.record_miss()
                 return (False, None)
             self._stats.record_hit()
+            self._entries.move_to_end(key)
             return (True, entry[1])
 
     def put(self, key: Hashable, value: Any) -> None:
         if self._ttl_s <= 0:
             return
         now = self._clock()
+        size = retained_size(value, limit=self._max_bytes)
         with self._lock:
             # 만료 정리 — 키는 (kind, code, 오늘) 스코프라 개수가 작고, put 빈도도
             # TTL당 1회 수준이라 선형 스캔으로 충분하다.
             expired = [k for k, (dl, _) in self._entries.items() if dl < now]
             for k in expired:
-                del self._entries[k]
+                self._remove(k)
             self._stats.record_eviction(len(expired))
             self._stats.record_store()
+            if key in self._entries:
+                self._remove(key)
+            if size > self._max_bytes or self._max_entries == 0:
+                self._stats.record_eviction()
+                return
             self._entries[key] = (now + self._ttl_s, value)
+            self._sizes[key] = size
+            self._bytes += size
+            while len(self._entries) > self._max_entries or self._bytes > self._max_bytes:
+                self._remove(next(iter(self._entries)))
+                self._stats.record_eviction()
+
+    def _remove(self, key: Hashable) -> None:
+        del self._entries[key]
+        self._bytes -= self._sizes.pop(key)
 
 
 # 프로세스 전역 인스턴스. 테스트 격리는 tests/conftest.py의 autouse 픽스처가

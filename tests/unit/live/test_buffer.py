@@ -12,6 +12,60 @@ def _snap(t_ms: int, kind: SnapshotKind, payload: dict | None = None) -> LiveSna
     return LiveSnapshot(t_ms=t_ms, kind=kind, payload=payload or {})
 
 
+async def test_global_budget_prefers_cold_stream_and_keeps_last_quote_and_delivery():
+    buf = LiveBuffer(max_total_entries=2)
+    q = buf.subscribe("005930")
+    for code, stamp in [("005930", 1), ("000660", 2), ("005930", 3)]:
+        await buf.publish(code, [_snap(stamp, SnapshotKind.OB, {"asks": [], "bids": []})], now_ms=stamp)
+    assert len((await buf.get_series("005930"))["snapshots"]) == 2
+    assert (await buf.get_series("000660"))["snapshots"] == []
+    assert (await buf.get_series("000660"))["buffer_history_truncated"]
+    assert (await buf.get_last_ob("000660", "KRX"))["t_ms"] == 2
+    assert q.qsize() == 2
+    stats = await buf.stats_snapshot()
+    assert stats["total_entries"] == 2 and stats["budget_evictions"] == 1
+
+
+async def test_byte_budget_evicts_oversized_display_frame_but_delivers_it():
+    buf = LiveBuffer(max_total_bytes=1000)
+    q = buf.subscribe("005930")
+    await buf.publish("005930", [_snap(1, SnapshotKind.TRADE, {"trades": ["x" * 2000]})], now_ms=1)
+    assert (await buf.get_series("005930"))["trades"] == []
+    assert q.qsize() == 1
+    stats = await buf.stats_snapshot()
+    assert stats["estimated_bytes"] == 0 and stats["total_entries"] == 0
+
+
+async def test_accounting_after_time_cap_and_code_removal():
+    buf = LiveBuffer(retention_ms=10, max_total_entries=100)
+    for stamp in range(20):
+        await buf.publish("005930", [_snap(stamp, SnapshotKind.TRADE)], now_ms=stamp)
+    assert (await buf.stats_snapshot())["estimated_bytes"] > 0
+    await buf.drop_codes_except(set())
+    stats = await buf.stats_snapshot()
+    assert stats["total_entries"] == stats["estimated_bytes"] == 0
+
+
+async def test_startup_refresh_applies_env_loaded_after_buffer_construction(monkeypatch):
+    monkeypatch.delenv("HOGA_LIVE_BUFFER_MAX_ENTRIES", raising=False)
+    monkeypatch.delenv("HOGA_LIVE_BUFFER_MAX_BYTES", raising=False)
+    buf = LiveBuffer(max_total_entries=10, max_total_bytes=100_000)
+    for stamp in range(3):
+        await buf.publish("005930", [_snap(stamp, SnapshotKind.OB, {"asks": [], "bids": []})], now_ms=stamp)
+    await buf.refresh_budget_from_env()
+    stats = await buf.stats_snapshot()
+    assert stats["max_total_entries"] == 10 and stats["max_estimated_bytes"] == 100_000
+
+    monkeypatch.setenv("HOGA_LIVE_BUFFER_MAX_ENTRIES", "1")
+    monkeypatch.setenv("HOGA_LIVE_BUFFER_MAX_BYTES", "20000")
+    await buf.refresh_budget_from_env()
+    stats = await buf.stats_snapshot()
+    assert stats["max_total_entries"] == stats["total_entries"] == 1
+    assert stats["max_estimated_bytes"] == 20_000
+    assert stats["budget_evictions"] == 2
+    assert (await buf.get_last_ob("005930", "KRX"))["t_ms"] == 2
+
+
 @pytest.mark.asyncio
 async def test_publish_and_read_latest() -> None:
     buf = LiveBuffer()

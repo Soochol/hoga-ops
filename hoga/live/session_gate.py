@@ -266,6 +266,24 @@ def venue_capture_windows(now_ms: int) -> frozenset[str]:
     return frozenset(open_venues)
 
 
+def venue_capture_windows_for_day(now_ms: int, allowed: bool) -> frozenset[str]:
+    """Same clock rules with a parent-resolved calendar verdict; no child REST.
+
+    The parent keeps calendar/auth/rate ownership. A verdict belongs to a KST
+    date, not an everlasting 'open' flag; the collector checks that date.
+    """
+    if not allowed:
+        return frozenset()
+    venues: set[str] = set()
+    if market_phase(now_ms) == "regular":
+        venues.add("KRX")
+    if _within_connection_clock(now_ms):
+        venues.update(("NXT", "UN"))
+        if krx_aftermarket_window(now_ms):
+            venues.add("KRX")
+    return frozenset(venues)
+
+
 async def venue_capture_windows_async(now_ms: int) -> frozenset[str]:
     """venue_capture_windows 의 non-blocking 진입점 — to_thread 봉인."""
     return await asyncio.to_thread(venue_capture_windows, now_ms)

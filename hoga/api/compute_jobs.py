@@ -29,9 +29,12 @@ import os
 import pickle
 import threading
 import traceback
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar
+
+from hoga.api.error_codes import ComputeErrorCode
 
 if TYPE_CHECKING:
     from hoga.api.heatmap_group_flow import HeatmapGroupFlowResponse
@@ -285,7 +288,10 @@ def group_flow_job(
 
 # ── 부모 쪽 진입점 ──────────────────────────────────────────────────────────────
 
-async def run_job(executor: ComputeExecutor, fn: Callable[..., T], /, *args: object) -> T:
+async def run_job(
+    executor: ComputeExecutor, fn: Callable[..., T], /, *args: object,
+    background: bool = False, admitted: bool = False,
+) -> T:
     """작업을 실행기에서 돌리고 껍데기 예외를 원래 의미로 되돌린다.
 
     `ComputeHTTPError` → `HTTPException`(같은 status·detail). `ComputeJobError` → 워커
@@ -294,14 +300,34 @@ async def run_job(executor: ComputeExecutor, fn: Callable[..., T], /, *args: obj
     """
     from fastapi import HTTPException  # noqa: PLC0415 — 순환 절단(지연)
 
+    from hoga.compute_executor import ComputeAdmissionRejected  # noqa: PLC0415
+
     try:
-        return await executor.run(fn, *args)
+        return await (
+            executor.run(fn, *args) if background or admitted else executor.run_admitted(fn, *args)
+        )
+    except ComputeAdmissionRejected as exc:
+        raise HTTPException(503, {"code": ComputeErrorCode.CAPACITY_EXCEEDED, "message": str(exc)}) from None
     except ComputeHTTPError as e:
         raise HTTPException(e.status_code, e.detail) from None
     except ComputeJobError as e:
         raise RuntimeError(
             f"compute worker failed: {e.exc_repr}\n--- worker traceback ---\n{e.tb_text}"
         ) from None
+
+
+@asynccontextmanager
+async def admit_request(executor: ComputeExecutor) -> AsyncIterator[None]:
+    """Admit before route-specific gates; overload is an explicit HTTP failure."""
+    from fastapi import HTTPException  # noqa: PLC0415
+
+    from hoga.compute_executor import ComputeAdmissionRejected  # noqa: PLC0415
+
+    try:
+        async with executor.admission():
+            yield
+    except ComputeAdmissionRejected as exc:
+        raise HTTPException(503, {"code": ComputeErrorCode.CAPACITY_EXCEEDED, "message": str(exc)}) from None
 
 
 async def run_default_wide_job(fn: Callable[..., T], /, *args: object) -> T:
@@ -318,4 +344,4 @@ async def run_default_wide_job(fn: Callable[..., T], /, *args: object) -> T:
     # (`ComputeJobError`)가 **되돌려지지 않은 채** 호출자에게 샌다. 실행 자리가 달라도
     # 예외의 모양은 같아야 한다.
     executor = pools.wide if pools is not None else ComputeExecutor("thread")
-    return await run_job(executor, fn, *args)
+    return await run_job(executor, fn, *args, background=True)

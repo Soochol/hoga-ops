@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import errno
 import json
 import os
@@ -16,6 +17,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -186,6 +188,60 @@ async def test_faithfully_crossing_exception_is_not_flattened() -> None:
 def test_wide_and_narrow_ranges_pick_different_pools() -> None:
     assert routes._is_wide_range("20260101", "20260301") is True
     assert routes._is_wide_range("20260601", "20260601") is False
+
+
+async def test_range_overload_is_rejected_before_waiting_on_route_gate(tmp_path, monkeypatch):
+    _seed_stock_date(tmp_path)
+    pools = compute_pools.ComputePools(
+        wide=ComputeExecutor("thread", max_pending_requests=2),
+        narrow=ComputeExecutor("thread", max_pending_requests=1),
+    )
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    calls = []
+    original = routes.build_range_bundle
+
+    def work(*args, **kwargs):
+        calls.append(1)
+        loop.call_soon_threadsafe(entered.set)
+        assert release.wait(5)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(routes, "build_range_bundle", work)
+    monkeypatch.setattr(routes, "RANGE_COMPUTE_CONCURRENCY", 1)
+    app = create_app(tmp_path, compute=pools)
+    url = (
+        f"/api/range?code={CODE}&from=20260501&to={DATE}&bucket_ms=60000"
+        "&source_pref=kiwoom_live&venue=KRX&mode=hoga"
+    )
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        first = asyncio.create_task(client.get(url))
+        second = None
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            second = asyncio.create_task(client.get(url))
+
+            async def waiting():
+                while pools.wide.pending_requests != 2:
+                    await asyncio.sleep(0)
+
+            await asyncio.wait_for(waiting(), 5)
+            rejected = await client.get(url)
+            assert rejected.status_code == 503
+            assert rejected.json()["detail"]["code"] == "compute_capacity_exceeded"
+            assert calls == [1] and pools.wide.pending_requests == 2
+            release.set()
+            assert (await first).status_code == 200
+            assert (await second).status_code == 200
+            assert pools.wide.pending_requests == 0
+            assert (await client.get(url)).status_code == 200
+        finally:
+            release.set()
+            await first
+            if second is not None:
+                await second
+            app.state.engine.close()
 
 
 def test_range_route_in_process_mode_serves_worker_bytes(tmp_path: Path) -> None:

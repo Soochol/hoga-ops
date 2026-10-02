@@ -141,7 +141,7 @@ async def _start_last_ob_persistence(data_dir: Path) -> asyncio.Task:
     """
     await restore_last_ob_from_disk(data_dir)
     # 그 뒤로는 이 태스크가 **바뀌었을 때만** 디스크에 내린다(벤더 호출 0).
-    return start_last_ob_flusher(data_dir)
+    return start_last_ob_flusher(data_dir, require_owner=True)
 
 
 # CORS 와 OriginGuard 가 **공유**하는 단일 출처의 정적 기본값. 두 곳에 리터럴을
@@ -231,6 +231,8 @@ class HealthResponse(BaseModel):
     checks: dict | None = None          # 부팅 중(lifespan 밖) — 판정 근거 없음
     dead_tasks: list[str] | None = None
     queue: dict | None = None
+    compute: dict[str, dict[str, int]] | None = None
+    collector: dict | None = None
     disk: dict | None = None
     supervised_tasks: list[dict] | None = None
     #: GC 정지 계측(ADR-0169 후속, `hoga.api.gc_probe`). `queue`·`disk` 와 같은 관측
@@ -296,7 +298,7 @@ def allowed_origins() -> tuple[str, ...]:
 
 
 def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
-    data_dir: Path, *, compute: ComputePools | None = None,
+    data_dir: Path, *, compute: ComputePools | None = None, collector: str = "inprocess",
 ) -> FastAPI:
     engine = QueryEngine(data_dir)
     # 요청 경로 CPU 작업(range 번들·거래원 시계열·패턴 검색·그룹 흐름)이 도는 자리
@@ -309,6 +311,8 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     install_default_compute_pools(pools)
     bus, observer, inv_handler = build_event_bus(data_dir / "parquet")
     configure_signal_alert_monitor(data_dir, bus.publish)
+    from hoga.live.collector_process import configure_collector  # noqa: PLC0415 — factory DI
+    configure_collector(collector, bus.publish)
 
     def _real_client_factory():
         cfg = Config.from_cwd()
@@ -354,9 +358,11 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         observer.start()
         # bus + loop for thread-safe publishes from the watchdog thread.
         set_captures_bus(bus, loop)
+        await live_get_buffer().refresh_budget_from_env()
         # Single entry point bundles restore-before-spawn invariant (ADR-0019).
-        _captures_module._workers = _captures_module.start_capture_pool(data_dir)
-        lifespan_tasks: list[asyncio.Task] = []
+        lifespan_tasks: list[asyncio.Task] = [
+            await _captures_module.start_capture_runtime(data_dir),
+        ]
         startup_runtime = await start_app_runtime(
             data_dir,
             deps=StartupRuntimeDeps(
@@ -428,6 +434,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         try:
             yield
         finally:
+            _captures_module.begin_capture_shutdown()
             # 복원은 **프로덕션이 아니라 테스트를 위한 것**이다. 프로세스가 오래 사는
             # 운영에서는 의미가 없지만, `TestClient` 는 한 pytest 프로세스 안에서
             # 앱을 수백 번 만든다 — 복원이 없으면 이 전역 설정이 그 프로세스 전체로
@@ -469,10 +476,11 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # restart) can acquire it. flock also auto-releases on process exit,
             # but explicit release makes handoff prompt.
             # 큐를 포함한 **모든** writer 락을 놓는다. --reload 재기동이 앞선
-            # 프로세스의 teardown 과 겹치는데, 후임이 재시도 창(4×0.5s) 안에
-            # 잡으려면 해제가 즉시여야 한다.
+            # 프로세스의 teardown 과 겹치므로 필요한 저장을 끝낸 뒤 해제한다.
+            # queue 후임은 lifespan supervisor의 비동기 backoff로 인계한다.
             from hoga.api.ownership import release_all  # noqa: PLC0415
             release_all()
+            _captures_module.clear_capture_runtime()
             observer.stop()
             observer.join()
             engine.close()
@@ -550,18 +558,24 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         # HOGA_CAPTURE_QUEUE_DISABLED=1 인스턴스가 무한 재시작된다(미기동을
         # 실패로 안 세는 위 원칙과 같은 이유).
         queue = _captures_module.queue_ownership_state()
-        queue_anomaly = not queue["owned"] and not queue["disabled_by_env"]
+        queue_anomaly = not queue.get("ready", queue["owned"]) and not queue["disabled_by_env"]
         # 디스크(#998): 관측 전용 — is_low 여도 503 을 내지 않는다. 503 은
         # 워치독의 재시작 신호인데 재시작은 디스크를 비우지 못한다(경고는
         # 스케줄러 일일 prune 로그가 담당).
         head = disk_headroom(data_dir)
-        degraded = bool(dead) or queue_anomaly
+        live_status = live_get_status()
+        collector_health = (live_status.kiwoom or {}).get("collector")
+        # A running supervisor is not proof that its capture child or storage
+        # works. Unconfigured/inprocess/explicitly stopped has no collector.
+        collector_anomaly = bool(collector_health and not collector_health["ready"])
+        degraded = bool(dead) or queue_anomaly or collector_anomaly
         body: dict[str, object] = {
             "status": "degraded" if degraded else "ok",
             "version": APP_VERSION,
             "commit": APP_COMMIT,
             "dead_tasks": dead,
             "queue": queue,
+            "collector": collector_health,
             "disk": None if head is None else {
                 "free_pct": round(head.free_pct, 1),
                 "free_gib": round(head.free_bytes / 1024**3, 1),
@@ -569,6 +583,10 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             },
             "supervised_tasks": tasks,
             "gc": _gc_health_section(gc_objects),
+            "compute": {
+                "wide": pools.wide.admission_snapshot(),
+                "narrow": pools.narrow.admission_snapshot(),
+            },
         }
         HealthResponse.model_validate(body)
         return JSONResponse(body, status_code=503 if degraded else 200)
@@ -696,4 +714,4 @@ def default_app() -> FastAPI:
     # 요청 경로 CPU 작업용 워커 프로세스 풀(ADR-0169). `create_app` 이 아니라 여기서
     # 만드는 이유는 promoter 와 같다 — TestClient 는 앱을 수백 번 만들고, 그쪽은 스레드다.
     compute = build_compute_pools(worker_log_path=resolve_log_dir() / "hoga.log")
-    return create_app(data_dir, compute=compute)
+    return create_app(data_dir, compute=compute, collector=os.environ.get("HOGA_LIVE_COLLECTOR", "process"))
