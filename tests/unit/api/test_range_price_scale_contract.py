@@ -157,6 +157,9 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     # 가격축을 공유하지 않으므로 척도와 무관하다.
     "ProgramTradePoint.t",
     "ProgramTradePoint.net_qty", "ProgramTradePoint.net_amount",
+    # 매수/매도 합계도 수량·거래금액이다. 주당 가격처럼 수정계수를 곱하지 않는다.
+    "ProgramTradePoint.buy_qty", "ProgramTradePoint.sell_qty",
+    "ProgramTradePoint.buy_amount", "ProgramTradePoint.sell_amount",
     "ProgramTradePoint.delta_qty", "ProgramTradePoint.delta_amount",
     "ProgramTradePoint.gap_risk",
     # 커서 스팟 호가창 — 총잔량은 **수량**이다.

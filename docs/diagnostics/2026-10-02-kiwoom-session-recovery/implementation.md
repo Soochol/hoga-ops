@@ -37,4 +37,6 @@
 - `uv run --extra dev pytest -q -m 'not wallclock'`: 5327 passed, 4 failed, 2 skipped, 13 deselected.
 - 수정하지 않은 main `ed2ce426b`를 임시 디렉터리로 추출해 실패 테스트를 재실행: 같은 4개 실패, 나머지 3개 통과. 소켓 수정의 회귀로 확인되지 않았다. 전체 검증을 통과했다고 표현하지 않는다.
 
-기존 실패는 `test_range_price_scale_contract::test_every_range_bundle_field_is_classified`의 ProgramTradePoint 4필드 분류 누락 1건과 `test_live_candle_backfill::test_today_bootstrap_skips_factors_but_history_still_rescales[False-KRX/NXT/UN]`의 `trade_value_won=None` 포함 여부 불일치 3건이다. 이번 세션 복구 PR에서 관련 없는 모델·과거봉 코드를 변경하지 않았다. 이 실패를 명시한 draft PR로 검토한다.
+기존 실패는 `test_range_price_scale_contract::test_every_range_bundle_field_is_classified`의 ProgramTradePoint 4필드 분류 누락 1건과 `test_live_candle_backfill::test_today_bootstrap_skips_factors_but_history_still_rescales[False-KRX/NXT/UN]`의 `trade_value_won=None` 포함 여부 불일치 3건이었다.
+
+머지 요청 이후 제품 모델·과거봉 코드를 바꾸지 않고 테스트를 보정했다. 매수/매도 수량·거래금액을 비가격 필드로 명시하고, 분봉 직렬화가 일봉용 거래금액을 생략하는 기존 계약에 맞춰 bootstrap 캐시 fixture와 기대값을 정리했다. 의도적으로 미분류 필드를 주입했을 때 분류 가드가 여전히 실패하는 것도 확인했다. 최종 head에서 전체 필수 검증을 다시 실행하며 결과는 PR 검증 기록에 남긴다.
