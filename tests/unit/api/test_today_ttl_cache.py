@@ -47,3 +47,25 @@ def test_put_prunes_expired():
 def test_env_default(monkeypatch):
     monkeypatch.setenv("HOGA_TODAY_INDICATOR_TTL_MS", "junk")
     assert TodayTtlCache()._ttl_s == 15.0  # 파싱 실패 → 기본 15,000ms
+
+
+def test_entry_and_byte_budget_with_lru_and_oversized_replacement():
+    c = TodayTtlCache(max_entries=2, max_bytes=1000)
+    c.put("a", "one")
+    c.put("b", "two")
+    assert c.lookup("a")[0]
+    c.put("c", "three")
+    assert not c.lookup("b")[0]
+    c.put("a", "x" * 2000)
+    assert not c.lookup("a")[0]  # oversized replacement must not serve the old value
+    assert c.lookup("c") == (True, "three")
+    assert c.stats_snapshot()["estimated_bytes"] <= 1000
+
+
+def test_expired_lookup_releases_value_and_byte_accounting():
+    clock = FakeClock()
+    c = TodayTtlCache(ttl_ms=1000, clock=clock)
+    c.put("a", [1, 2, 3])
+    clock.now += 2
+    assert not c.lookup("a")[0]
+    assert c.stats_snapshot()["size"] == c.stats_snapshot()["estimated_bytes"] == 0

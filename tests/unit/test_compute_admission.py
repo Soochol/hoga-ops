@@ -5,7 +5,33 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from hoga.compute_executor import ComputeExecutor
+from hoga.compute_executor import ComputeAdmissionRejected, ComputeExecutor
+
+
+async def test_finite_request_admission_rejects_then_recovers_without_running_rejected_job(monkeypatch):
+    executor = ComputeExecutor("thread", max_pending_requests=1)
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def work(fn, *args):
+        calls.append(args)
+        entered.set()
+        await release.wait()
+        return args[0]
+
+    monkeypatch.setattr(executor, "run", work)
+    running = asyncio.create_task(executor.run_admitted(str, "accepted"))
+    await entered.wait()
+    with pytest.raises(ComputeAdmissionRejected):
+        await executor.run_admitted(str, "rejected")
+    running.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await running
+    assert executor.pending_requests == 0
+    release.set()
+    assert await executor.run_admitted(str, "next") == "next"
+    assert calls == [("accepted",), ("next",)]
+    assert executor.admission_rejections == 1
 
 
 async def test_cancelled_call_keeps_running_worker_slot_and_drops_waiting_call(monkeypatch):

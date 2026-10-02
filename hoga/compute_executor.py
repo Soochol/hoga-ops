@@ -49,9 +49,10 @@ import multiprocessing
 import os
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
+from contextlib import asynccontextmanager
 from logging.handlers import WatchedFileHandler
 from pathlib import Path
 from typing import Literal, TypeVar
@@ -62,6 +63,10 @@ ExecutorKind = Literal["process", "thread"]
 DEFAULT_EXECUTOR_KIND: ExecutorKind = "process"
 
 T = TypeVar("T")
+
+
+class ComputeAdmissionRejected(RuntimeError):
+    """Finite user-request admission is full; caller should retry later."""
 
 
 def parse_executor_kind(raw: str | None, *, var_name: str) -> ExecutorKind:
@@ -175,6 +180,7 @@ class ComputeExecutor:
         worker_gc_thresholds: tuple[int, int, int] | None = None,
         worker_log_path: Path | None = None,
         worker_env: Mapping[str, str] | None = None,
+        max_pending_requests: int = 128,
     ) -> None:
         self.kind: ExecutorKind = kind
         self.max_workers = max(1, int(max_workers))
@@ -189,6 +195,35 @@ class ComputeExecutor:
         self._slots = asyncio.Semaphore(self.max_workers)
         #: 깨진 풀을 버리고 새로 만든 횟수 — 워커가 반복해서 죽으면 이 값이 자란다.
         self.respawns = 0
+        self.max_pending_requests = max(1, max_pending_requests)
+        self.pending_requests = 0
+        self.admission_rejections = 0
+
+    @asynccontextmanager
+    async def admission(self) -> AsyncIterator[None]:
+        """Bound outstanding callers, including waits before a route's CPU gate."""
+        if self.pending_requests >= self.max_pending_requests:
+            self.admission_rejections += 1
+            raise ComputeAdmissionRejected(f"{self.name} request capacity exceeded")
+        self.pending_requests += 1
+        try:
+            yield
+        finally:
+            self.pending_requests -= 1
+
+    async def run_admitted(self, fn: Callable[..., T], /, *args: object) -> T:
+        # Background lifecycle workers use run(); executing CPU slots survive
+        # caller cancellation until the actual submitted future finishes.
+        async with self.admission():
+            return await self.run(fn, *args)
+
+    def admission_snapshot(self) -> dict[str, int]:
+        return {
+            "pending_requests": self.pending_requests,
+            "max_pending_requests": self.max_pending_requests,
+            "admission_rejections": self.admission_rejections,
+            "max_workers": self.max_workers,
+        }
 
     def _ensure_pool(self) -> ProcessPoolExecutor:
         with self._lock:

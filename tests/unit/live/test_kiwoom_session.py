@@ -26,6 +26,7 @@ def test_display_reassignment_builds_master_once_and_refreshes_next_pass(monkeyp
     from hoga.live import kiwoom_session as session
 
     manager = object.__new__(KiwoomSessionManager)
+    manager._nxt_map_fn = lambda: session._nxt_map()
     manager._storage_members = {f"{i:06}" for i in range(315)}
     manager._storage_registration_keys = set()
     manager._display = {

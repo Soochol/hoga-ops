@@ -376,6 +376,7 @@ def _timing_enabled() -> bool:
     return raw not in ("0", "false", "no", "off")
 _wakeup: asyncio.Event | None = None                    # lazily constructed when the first worker starts
 _workers: list[asyncio.Task] = []                       # populated by app lifespan; stopped on shutdown
+_queue_runtime = None  # production lifespan; legacy test DI keeps its owned=None convention
 
 def queue_owned() -> bool:
     """이 인스턴스가 큐를 **변경해도 되는가** (ADR-0094).
@@ -392,6 +393,8 @@ def queue_owned() -> bool:
     허용받아 왔고, 그 기본값을 뒤집으면 `_finalize_item`·`_persist_queue_locked`
     가 **에러 없이 조용히 no-op** 이 된다. 미시도를 거절로 읽으면 안 된다.
     """
+    if _queue_runtime is not None:
+        return _queue_runtime.ready
     return ownership.ownership_state()["queue"]["owned"] is not False
 
 # Production dependencies — set by build_router() at startup.
@@ -409,13 +412,15 @@ def _env_queue_disabled() -> bool:
     )
 
 
-def queue_ownership_state() -> dict[str, bool]:
+def queue_ownership_state() -> dict[str, object]:
     """deep health 배선용 소유권 스냅샷 (#998).
 
     ``owned=False`` 는 두 부류로 갈리고 health 의 판정이 달라진다:
     ``disabled_by_env=True`` 면 의도된 옵트아웃(도그푸딩 read-only) — 정상.
     False 면 flock 경합·상실 — prod 단독 서버에서는 이상 신호라 degraded 다.
     """
+    if _queue_runtime is not None:
+        return _queue_runtime.snapshot()
     return {"owned": queue_owned(), "disabled_by_env": _env_queue_disabled()}
 
 
@@ -437,11 +442,11 @@ def _require_queue_ownership() -> None:
     (GET /queue, charts, inventory) never call this.
     """
     if not queue_owned():
+        state = _queue_runtime.state if _queue_runtime is not None else "contended"
         raise HTTPException(status_code=503, detail={
             "code": CaptureErrorCode.QUEUE_NOT_OWNED,
             "message": (
-                "capture queue is owned by another server instance sharing "
-                "this data dir — mutations are disabled on this instance"
+                f"capture queue is not ready ({state}) — mutations are disabled on this instance"
             ),
         })
 
@@ -470,6 +475,8 @@ def reset_state_for_tests() -> None:
     """For pytest fixtures only — clears all module singletons + the
     on-disk manifest (so per-test state never leaks)."""
     global _queue_paused, _wakeup  # noqa: PLW0603 — intentional test-only reset of module singletons
+    global _queue_runtime  # noqa: PLW0603 — test DI must not inherit production readiness
+    _queue_runtime = None
     global _persistence_degraded, _last_persisted_at_ms, _persistence_epoch, _persistence_revision  # noqa: PLW0603
     _persistence_degraded = False
     _last_persisted_at_ms = None
@@ -656,7 +663,11 @@ def _persist_queue_locked() -> None:
     global _persistence_degraded, _last_persisted_at_ms, _persistence_revision  # noqa: PLW0603
     if _data_dir is None:
         return  # test fixture without data_dir wired — no lock check needed
-    if not queue_owned():
+    shutdown_owner = (
+        _queue_runtime is not None and _queue_runtime.state == "stopping"
+        and ownership.is_owned("queue")
+    )
+    if not queue_owned() and not shutdown_owner:
         return  # ADR-0094: read-only instance never writes the manifest
     assert _lock.locked(), "must hold _lock — see ADR-0019"
     items = [
@@ -709,10 +720,14 @@ def _restore_queue_from_manifest(data_dir: Path) -> None:
     on the same Stock-Date — both crash points restore to the same recovered
     shape.
     """
-    global _queue_paused, _fail_streaks  # noqa: PLW0603 — startup-only module write
     manifest = load_manifest(data_dir)
     if manifest is None:
         return
+    _apply_restored_manifest(manifest)
+
+
+def _apply_restored_manifest(manifest: QueueManifest) -> None:
+    global _queue_paused, _fail_streaks  # noqa: PLW0603 — queue owner only, before workers
     _queue_paused = manifest.paused
     _fail_streaks = dict(manifest.fail_streaks)  # ADR-0042 — restore counter across restart
     for item in manifest.items:
@@ -1480,7 +1495,7 @@ async def _worker_loop() -> None:  # noqa: PLR0912 — ADR 이 지정한 단일 
 def start_workers(n: int | None = None) -> list[asyncio.Task]:
     """Spin up the worker pool WITHOUT restoring the manifest.
 
-    Production callers use :func:`start_capture_pool` instead, which
+    Production callers use :func:`start_capture_runtime` instead, which
     bundles the ADR-0019 ordering invariant (restore-before-spawn).
     Tests use this directly when they want bare worker control without
     touching the on-disk manifest.
@@ -1494,18 +1509,72 @@ def start_workers(n: int | None = None) -> list[asyncio.Task]:
     global _wakeup  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _wakeup = asyncio.Event()
     n = n if n is not None else _max_concurrent
-    return [asyncio.create_task(_worker_loop(), name=f"capture-worker-{i}") for i in range(n)]
+    tasks: list[asyncio.Task] = []
+    try:
+        for i in range(n):
+            coro = _worker_loop()
+            try:
+                tasks.append(asyncio.create_task(coro, name=f"capture-worker-{i}"))
+            except BaseException:
+                coro.close()
+                raise
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        raise
+    return tasks
+
+
+async def start_capture_runtime(data_dir: Path) -> asyncio.Task:
+    """Start a single owner-recovery supervisor; disabled instances never contend."""
+    from hoga.api.capture_queue_runtime import CaptureQueueRuntime  # noqa: PLC0415
+
+    global _queue_runtime  # noqa: PLW0603 — lifespan owns this singleton
+
+    def activate(manifest: QueueManifest) -> None:
+        global _workers, _persistence_epoch, _persistence_revision  # noqa: PLW0603
+        global _persistence_degraded, _last_persisted_at_ms  # noqa: PLW0603
+        if _workers or _active:
+            raise RuntimeError("cannot restore a queue with existing workers or active items")
+        # Replace the old read-only snapshot, not append a second restoration.
+        _queue.clear()
+        _done.clear()
+        _fail_streaks.clear()
+        _apply_restored_manifest(manifest)
+        _persistence_epoch = uuid.uuid4().hex
+        _persistence_revision = 0
+        _persistence_degraded = False
+        _last_persisted_at_ms = None
+        refresh_max_concurrent()
+        refresh_rate_limit_s()
+        _workers = start_workers()
+
+    _queue_runtime = CaptureQueueRuntime(
+        data_dir, disabled=_env_queue_disabled(), activate=activate,
+    )
+    await _queue_runtime.attempt()
+    return asyncio.create_task(_queue_runtime.run(), name="queue-ownership-retry")
+
+
+def clear_capture_runtime() -> None:
+    global _queue_runtime  # noqa: PLW0603 — lifespan teardown restores the test seam
+    _queue_runtime = None
+
+
+def begin_capture_shutdown() -> None:
+    if _queue_runtime is not None:
+        _queue_runtime.state = "stopping"
 
 
 def start_capture_pool(data_dir: Path) -> list[asyncio.Task]:
-    """Production boot entry: acquire queue ownership, restore the manifest
+    """Legacy synchronous boot seam: acquire queue ownership, restore the manifest
     (if owned), then spawn the worker pool.
 
     Bundles the ADR-0019 ordering invariant — restore-before-spawn — into a
     single call so future readers (and new callers like a test harness) can't
     accidentally start workers against an empty queue when the disk holds
-    items to recover. ``app.py`` lifespan uses this; tests that exercise the
-    full boot path should too.
+    items to recover. Production lifespan uses start_capture_runtime for
+    asynchronous late takeover; compatibility tests can still use this seam.
 
     ADR-0094: a second backend sharing this ``data_dir`` fails to acquire the
     flock and boots read-only — it does NOT restore the manifest (restoring

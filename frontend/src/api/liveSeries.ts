@@ -64,6 +64,8 @@ export type LiveTodayBidPeak = LiveTodayPeakBase & {
 export interface LiveSeriesResponse {
   code: string;
   date: string;
+  /** Display history was shortened by the server memory budget; disk capture is unaffected. */
+  buffer_history_truncated?: boolean;
   session_open_ms: number;
   session_close_ms: number | null;
   is_open: boolean;

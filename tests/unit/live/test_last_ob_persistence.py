@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from pathlib import Path
 
 import pytest
@@ -79,6 +80,33 @@ def test_store_malformed_row_drops_only_that_entry(tmp_path: Path) -> None:
 def test_store_write_is_atomic(tmp_path: Path) -> None:
     last_ob_store.save(tmp_path, {("005930", "KRX"): {"t_ms": 1}})
     assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_explicit_empty_save_clears_removed_last_quotes(tmp_path):
+    last_ob_store.save(tmp_path, {("005930", "KRX"): {"t_ms": 1}})
+    last_ob_store.save(tmp_path, {}, allow_empty=True)
+    assert last_ob_store.load(tmp_path) == {}
+
+
+async def test_changed_snapshot_skips_materialization_and_tracks_buffer_identity(monkeypatch):
+    from hoga.live import buffer as module
+
+    first, second = LiveBuffer(), LiveBuffer()
+    await first.publish("005930", [_ob(1)], now_ms=1)
+    await second.publish("000660", [_ob(2)], now_ms=2)
+    _, token = await first.changed_last_ob_snapshot(None)
+
+    def forbidden(entry):
+        raise AssertionError("unchanged snapshot unpacked a book")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(module, "unpack_book", forbidden)
+        assert await first.changed_last_ob_snapshot(token) is None
+    entries, other = await second.changed_last_ob_snapshot(token)
+    assert other != token and ("000660", "KRX") in entries
+    await first.drop_codes_except(set())
+    entries, removed = await first.changed_last_ob_snapshot(token)
+    assert entries == {} and removed != token
 
 
 # ── 버퍼 접근자 ──────────────────────────────────────────────────────────────
@@ -195,18 +223,19 @@ async def test_flusher_writes_again_after_a_new_frame(tmp_path, monkeypatch):
     await buf.publish("005930", [_ob(1)], now_ms=1)
     writes: list[int] = []
     real_save = last_ob_store.save
+    loop = asyncio.get_running_loop()
+    saved = asyncio.Queue()
 
     def counting_save(dd, entries):
         writes.append(len(entries))
         real_save(dd, entries)
+        loop.call_soon_threadsafe(saved.put_nowait, len(entries))
 
     monkeypatch.setattr(lifecycle.last_ob_store, "save", counting_save)
     task = lifecycle.start_last_ob_flusher(tmp_path, interval_s=0)
-    for _ in range(20):
-        await asyncio.sleep(0)
+    assert await asyncio.wait_for(saved.get(), 5) == 1
     await buf.publish("000660", [_ob(2)], now_ms=2)  # 새 프레임 → 버전 상승
-    for _ in range(20):
-        await asyncio.sleep(0)
+    assert await asyncio.wait_for(saved.get(), 5) == 2
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
@@ -234,3 +263,63 @@ async def test_restore_from_disk_repopulates_the_buffer(tmp_path):
 async def test_restore_from_disk_with_no_file_is_noop(tmp_path):
     lifecycle.reset_for_tests()
     assert await lifecycle.restore_last_ob_from_disk(tmp_path) == 0
+
+
+async def test_flusher_retries_failed_version_and_keeps_all_quotes(tmp_path, monkeypatch):
+    lifecycle.reset_for_tests()
+    buf = lifecycle.get_buffer()
+    await buf.publish("005930", [_ob(1)], now_ms=1)
+    saved = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    real_save = last_ob_store.save
+    calls = []
+
+    def flaky_save(dd, entries):
+        calls.append(entries)
+        if len(calls) == 1:
+            raise OSError("temporary write failure")
+        real_save(dd, entries)
+        loop.call_soon_threadsafe(saved.set)
+
+    monkeypatch.setattr(last_ob_store, "save", flaky_save)
+    task = lifecycle.start_last_ob_flusher(tmp_path, interval_s=0)
+    try:
+        await asyncio.wait_for(saved.wait(), 5)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert len(calls) == 2 and calls[0] == calls[1]
+    assert last_ob_store.load(tmp_path)[("005930", "KRX")]["t_ms"] == 1
+
+
+@pytest.mark.parametrize("fail", [False, True])
+async def test_flusher_shutdown_joins_save_and_preserves_cancellation(tmp_path, monkeypatch, fail):
+    lifecycle.reset_for_tests()
+    await lifecycle.get_buffer().publish("005930", [_ob(1)], now_ms=1)
+    entered = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    calls = []
+    real_save = last_ob_store.save
+
+    def slow_save(dd, entries):
+        calls.append(entries)
+        loop.call_soon_threadsafe(entered.set)
+        assert release.wait(5), "save was never released"
+        if fail:
+            raise OSError("shutdown save failure")
+        real_save(dd, entries)
+
+    monkeypatch.setattr(last_ob_store, "save", slow_save)
+    task = lifecycle.start_last_ob_flusher(tmp_path, interval_s=0)
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 5)
+    assert len(calls) == 1

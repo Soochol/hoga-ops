@@ -109,7 +109,15 @@ class ProgramTradeCollector:
     async def _loop(self) -> None:
         while True:
             try:
-                await self.run_once()
+                cycle = asyncio.create_task(self.run_once())
+                try:
+                    await asyncio.shield(cycle)
+                except asyncio.CancelledError:
+                    try:
+                        await cycle
+                    except Exception as exc:  # noqa: BLE001 — finish the drained batch before releasing ownership
+                        self._record_cycle_error(exc)
+                    raise
             except Exception as e:  # noqa: BLE001 — 수집 루프의 감독자. 한 사이클의 어떤
                 # 예외도 루프를 죽이면 안 된다(죽으면 수집이 조용히 멈춘다). 삼키는 게
                 # 아니라 _record_cycle_error 가 분류해 상태로 노출한다.

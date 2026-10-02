@@ -105,7 +105,6 @@ _HOT_PATH_MODULES = (
 #     index_sector_rankings.py:11 `import polars as pl` 가 남는다.
 _PARQUET_CLOSURE_BASELINE = frozenset({
     "hoga.api.watchlist_projection",
-    "hoga.live.stream",
     "hoga.live.coverage",
     "hoga.live.api",
     "hoga.live.lifecycle",

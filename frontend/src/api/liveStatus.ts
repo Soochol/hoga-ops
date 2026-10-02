@@ -175,6 +175,29 @@ export interface KiwoomStatus {
   // 이미 같은 사실을 말하므로 현재 소비처는 없다. optional 인 이유는 구 응답 호환.
   registration_incomplete?: boolean;
   accounts: KiwoomAccountStatus[];
+  /** Dedicated capture process health. API and collector GC are separate. */
+  collector?: CaptureProcessStatus;
+
+}
+
+export interface CaptureProcessStatus {
+  mode: 'process';
+  epoch: string;
+  pid: number | null;
+  started_at_ms: number | null;
+  alive: boolean;
+  ready: boolean;
+  state_age_ms: number | null;
+  desired_version: number;
+  acked_version: number;
+  restarts: number;
+  forced_terminations: number;
+  error: string | null;
+  storage_errors: string[];
+  display_gaps: number;
+  discarded_old_frames: number;
+  display: Record<string, number>;
+  gc: Record<string, unknown>;
 }
 
 export interface KiwoomAccountStatus {

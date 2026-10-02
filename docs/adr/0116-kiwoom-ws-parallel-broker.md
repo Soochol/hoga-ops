@@ -1,5 +1,25 @@
 # 0116 — 키움 WS 병행 도입: 고정 역할 공존으로 실시간 커버리지 76→876종목
 
+**2026-10-02 표시 보관량 보완:** `LiveBuffer`는 기존 시간·deque 상한에 더해 전체
+250,000개 항목과 추정 payload 512MiB 예산을 적용한다. 환경변수는
+`HOGA_LIVE_BUFFER_MAX_ENTRIES` / `HOGA_LIVE_BUFFER_MAX_BYTES`다. 조회 subscriber가
+없는 stream을 먼저, 그다음 마지막 publish가 오래된 stream부터 FIFO로 축출한다.
+예산 포화 시 최소 시간 보존 규칙의 **명시적 예외**로 화면 이력을 줄인다.
+`/api/live/series.buffer_history_truncated`와 창의 안내가 이를 드러낸다.
+해당 code가 Live Set에서 제거되기 전에는 축소 이력 표시를 유지한다.
+
+마지막 호가 sidecar(Code×venue 최신 1개), subscriber 전달, 원본 LiveWriter 입력과
+기존 JSONL→promote→parquet 저장 계약은 표시 축출에서 제외한다. 최신값은 Live Set
+제거 때만 함께 지운다. 추정 예산은 payload의 도달 가능한 알려진 container 크기이며
+allocator·sidecar·작업 임시값을 포함한 전체 RSS 상한이 아니다. 기존 초봉 cell 상한,
+조회 캐시 LRU·bar 상한과 subscriber/outbox 상한도 유지한다. 추가로 오늘 지표 TTL
+캐시에 전체 512개·추정 값 128MiB LRU 예산을 적용하며 큰 값은 캐시하지 않고 재계산한다.
+키·bookkeeping과 opaque 객체 내부는 byte 추정에서 제외되므로 호스트 RSS와 함께 본다.
+
+기본 예산은 기존 243/800종목 메모리 실측과 packed 호가 구조를 바탕으로 둔 안전핀이다.
+운영 크기별 유지 가능한 표시 창과 부모·compute/promote 자식의 합산 메모리는 별도
+검증하며, 작은 합성 재생의 안정화를 장중 최고부하 해결로 확대하지 않는다.
+
 **Status:** proposed (2026-07-16) — **"REST 분담" 절은 ADR-0120(2026-07-20)에 이어 ADR-0136(2026-08-04)으로 최종 폐기** — REST 도 키움이 됐다
 (과거 분봉 딥 백필의 키움 이관을 되돌리고 전량 KIS 날짜병렬로 복귀. 콜당 효율은
 참이었으나 `ka10080`의 랜덤 액세스 불가 + 1 req/s 직렬이 인터랙티브 팬에서 스텝당
@@ -127,3 +147,7 @@ PID·연결 세대·세션 시작·runtime context와 함께 남긴다.
 
 [원인·재현](../diagnostics/2026-10-02-kiwoom-session-recovery/README.md)과
 [구현·검증](../diagnostics/2026-10-02-kiwoom-session-recovery/implementation.md)을 함께 본다.
+
+2026-10-03 P3 보완: [ADR-0174](0174-dedicated-python-live-capture-process.md)에 따라
+키움 WS와 필수 live 저장은 전용 수집 자식으로 이동한다. API 단일 worker 및 기존
+Today Promoter/compute pool의 역할은 유지하며, 별도 capture flock과 bounded IPC로 인계한다.

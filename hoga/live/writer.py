@@ -22,7 +22,7 @@ from .snapshot import LiveSnapshot
 class LiveWriter:
     """Append-only JSONL writer keyed by (date, code).
 
-    Files land at `<live_root>/{date}/{code}.jsonl`. Lazily creates parent
+    Files land at `<live_root>/{date}/{venue}/{code}.jsonl`. Lazily creates parent
     dirs on first append. Holds no open file handles between calls; each
     append opens-writes-closes (fast on Linux, atomic at OS write
     boundary for small <= PIPE_BUF writes which JSONL lines almost
@@ -32,6 +32,7 @@ class LiveWriter:
     def __init__(self, live_root: Path):
         self._root = live_root
         self._code_locks: dict[str, asyncio.Lock] = {}
+        self._dirty: dict[Path, int] = {}
 
     def _lock_for(self, code: str) -> asyncio.Lock:
         return self._code_locks.setdefault(code, asyncio.Lock())
@@ -55,7 +56,14 @@ class LiveWriter:
         async with self._lock_for(f"{code}|{venue}"):
             target = self._root / date / venue / f"{code}.jsonl"
             target.parent.mkdir(parents=True, exist_ok=True)
-            await asyncio.to_thread(self._append_sync, target, lines)
+            task = asyncio.create_task(asyncio.to_thread(self._append_sync, target, lines))
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                await task
+                self._dirty[target] = self._dirty.get(target, 0) + 1
+                raise
+            self._dirty[target] = self._dirty.get(target, 0) + 1
 
     @staticmethod
     def _append_sync(path: Path, data: str) -> None:
@@ -69,17 +77,13 @@ class LiveWriter:
         between fsync_all calls loses at most the current cycle's data;
         partial lines from a torn write are tolerated by the promote reader.
         """
-        if not self._root.exists():
-            return
-        targets: list[Path] = []
-        for date_dir in self._root.iterdir():
-            if not date_dir.is_dir():
-                continue
-            for f in date_dir.iterdir():
-                if f.suffix == ".jsonl" and f.is_file():
-                    targets.append(f)
-        for path in targets:
+        # Track actual writes, including venue directories. Scanning the date
+        # root missed venue files; scanning all historical days every cycle also
+        # makes cost grow with retention. New writes during fsync remain dirty.
+        for path, version in list(self._dirty.items()):
             await asyncio.to_thread(self._fsync_one, path)
+            if self._dirty.get(path) == version:
+                del self._dirty[path]
 
     @staticmethod
     def _fsync_one(path: Path) -> None:

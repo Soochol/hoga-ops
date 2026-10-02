@@ -73,6 +73,11 @@ def _ensure_kiwoom_session(
     연결 시간대(08~20)를 쓴다 — 저장 게이트(정규장)는 LiveStream 내부 flush 루프가 유지."""
     if state.kiwoom_session is not None:
         return state.kiwoom_session
+    from .collector_process import CaptureProcessSession, collector_mode  # noqa: PLC0415 — process assembly
+
+    if collector_mode() == "process":
+        state.kiwoom_session = CaptureProcessSession(buffer=buffer, data_dir=data_dir)
+        return state.kiwoom_session
     from .kiwoom_session import (  # noqa: PLC0415 — 지연 import(순환/heavy)
         KiwoomSessionManager,
     )
@@ -166,7 +171,13 @@ async def sync_storage_runtime(
     # 것도 없는데, 락만 선점하면 나중에 뜬 자격 있는 인스턴스가 저장을 못 한다.
     from hoga.api import ownership  # noqa: PLC0415 — 지연 import(순환 절단: api ← live)
 
-    if ownership.acquire("ws", data_dir, available=n_kiwoom > 0):
+    from .collector_process import collector_mode  # noqa: PLC0415 — API factory config, not env in tests
+
+    ws_owned = ownership.acquire("ws", data_dir, available=n_kiwoom > 0)
+    capture_owned = (collector_mode() == "process" or ownership.acquire(
+        "capture", data_dir, available=n_kiwoom > 0 and ws_owned,
+    ))
+    if ws_owned and capture_owned and collector_mode() != "process":
         program_collector = _ensure_program_trade_collector(
             state,
             data_dir=data_dir,
@@ -179,7 +190,7 @@ async def sync_storage_runtime(
     # (ADR-0118) — 자격증명(앱키)만 있으면 항상 활성. 앱키0/타깃 비면 sync가 conn 0으로
     # 정합화(휴면). 예외 격리(리뷰 Major): 키움 sync 오류가 이 함수를 뚫고 나가 KIS
     # 경로(session.refresh 등 호출자 후속)를 죽이면 안 된다.
-    if n_kiwoom > 0:
+    if n_kiwoom > 0 and ws_owned and capture_owned:
         kiwoom_mgr = _ensure_kiwoom_session(
             state, data_dir=data_dir, buffer=buffer,
             date_fn=date_fn, now_ms_fn=now_ms_fn,

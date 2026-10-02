@@ -20,7 +20,6 @@ from . import program_trade_latch
 from .ask_peak_state import TodayAskPeakState, TodayBidPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
-from .lifecycle import get_signal_alert_monitor
 from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
 from .second_trade_store import SecondTradeStore
 from .session_gate import market_phase, venue_capture_windows_async
@@ -34,6 +33,11 @@ _log = logging.getLogger(__name__)
 FLUSH_INTERVAL_S = 10.0
 IDLE_INTERVAL_S = 1.0  # 게이트 밖 폴링 주기 — 테스트에서 monkeypatch(리뷰 R3)
 AUCTION_BOOK_DEPTH = 3
+
+
+def get_signal_alert_monitor():
+    from .lifecycle import get_signal_alert_monitor as get_monitor  # noqa: PLC0415 — legacy DI seam
+    return get_monitor()
 
 
 def _now_ms() -> int:
@@ -108,7 +112,12 @@ class LiveStream:
         date_fn: Callable[[], str],
         phase_fn: Callable[[], str] | None = None,
         seconds: SecondTradeStore | None = None,
+        signal_monitor_fn: Callable | None = None,
+        open_venues_fn: Callable | None = None,
     ) -> None:
+        self._signal_monitor_fn = signal_monitor_fn or (lambda: get_signal_alert_monitor())  # noqa: PLW0108 — late DI
+        self._open_venues_fn = open_venues_fn or venue_capture_windows_async
+        self.storage_error: str | None = None
         self._seconds = seconds
         self._buffer = buffer
         self._writer = writer
@@ -332,7 +341,7 @@ class LiveStream:
                 and _is_continuous_book(valid_asks, valid_bids)
                 and type(total_ask) is int
             ):
-                monitor = get_signal_alert_monitor()
+                monitor = self._signal_monitor_fn()
                 if monitor is not None:
                     monitor.ingest_orderbook(
                         code=tick.code,
@@ -361,6 +370,7 @@ class LiveStream:
         seal_candle_venues: frozenset[str] = frozenset(),
     ) -> None:
         now_ms = now_ms if now_ms is not None else _now_ms()
+        self.storage_error = None
         if self._seconds is not None:
             await self._seconds.flush(now_ms=now_ms, force=bool(seal_candle_venues))
         # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
@@ -393,6 +403,7 @@ class LiveStream:
             try:
                 await self._writer.append(date, code, venue, snaps)
             except OSError:
+                self.storage_error = "append_failed"
                 _log.exception("live.stream.append_failed code=%s", code)
                 continue  # commit 안 함 → 합 보존 → 다음 윈도 롤
             fill = next((s for s in snaps if s.kind is SnapshotKind.FILL), None)
@@ -415,6 +426,7 @@ class LiveStream:
             try:
                 await self._writer.append(date, code, venue, snaps)
             except OSError:
+                self.storage_error = "candle_append_failed"
                 _log.exception("live.stream.candle_append_failed code=%s", code)
                 continue  # commit 안 함 → 봉 보존 → 다음 flush 재시도
             self._candle_agg.commit(
@@ -422,6 +434,19 @@ class LiveStream:
             )
         await self._writer.fsync_all()
         self.last_flush_ms = now_ms
+
+    async def _finish_flush(self, **kwargs) -> None:
+        # Cancellation must not release writer ownership while native disk
+        # work is still running or abandon the rest of this flush cycle.
+        task = asyncio.create_task(self.flush_once(**kwargs))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            try:
+                await task
+            except Exception:  # noqa: BLE001 — preserve cancellation after observing disk failure
+                _log.exception("live.stream.shutdown_flush_failed")
+            raise
 
     async def run_flush_loop(self) -> None:
         """10초 flush 루프 — lifecycle이 task로 돌린다. 게이트 밖(장외·15:30 이후)엔
@@ -434,7 +459,7 @@ class LiveStream:
         while True:
             # 캘린더 게이트는 콜드/네거티브 캐시에서 동기 KIS HTTP(timeout 15s)를
             # 부른다 — async 진입점이 to_thread 격리를 봉인(blocking 계약이 시그니처에).
-            open_now = await venue_capture_windows_async(_now_ms())
+            open_now = await self._open_venues_fn(_now_ms())
             # ── venue 별 닫힘 전환 drain (ADR-0140 §3) ────────────────────────
             #
             # 저장 창이 갈리면서 닫힘이 **두 번** 일어난다: KRX 15:30, NXT·UN 20:00.
@@ -453,12 +478,14 @@ class LiveStream:
                     # 건다. 전 시장에 걸면 아직 열려 있는 NXT·UN 의 그 분이 여기서 잘려
                     # 나머지 체결이 새 봉을 만든다 — 같은 분이 두 행이 되는 것이고,
                     # 바로 아래 `reset(venue)` 이 venue 별인 것과 같은 이유로 틀렸다.
-                    await self.flush_once(seal_candle_venues=frozenset(closed))
+                    await self._finish_flush(seal_candle_venues=frozenset(closed))
                 except Exception:  # noqa: BLE001
+                    self.storage_error = "drain_flush_failed"
                     _log.exception("live.stream.drain_flush_failed venues=%s", sorted(closed))
-                for venue in closed:
-                    self._ds.reset(venue)
-                    self._candle_agg.reset(venue)
+                if self.storage_error is None:
+                    for venue in closed:
+                        self._ds.reset(venue)
+                        self._candle_agg.reset(venue)
                 _log.info("live.stream.gate_closed_drained venues=%s still_open=%s",
                           sorted(closed), sorted(open_now))
             # R2: on_tick의 ingest 게이트 갱신. **drain 뒤에** 갱신해야 그 flush 가
@@ -466,8 +493,9 @@ class LiveStream:
             self._open_venues = open_now
             if open_now:
                 try:
-                    await self.flush_once()
+                    await self._finish_flush()
                 except Exception:  # noqa: BLE001
+                    self.storage_error = "flush_failed"
                     _log.exception("live.stream.flush_failed")
                 # 벽시계 경계 정렬(리뷰 #5) — 고정 주기 드리프트 제거: 윈도
                 # [k·10s, (k+1)·10s)가 분봉 경계에 정확히 중첩되게 한다.
@@ -488,7 +516,7 @@ class LiveStream:
                     self._last_flush_date = None
                     self.last_flush_ms = None
                 await asyncio.sleep(IDLE_INTERVAL_S)
-            was_open = open_now
+            was_open = open_now | closed if self.storage_error else open_now
 
 
 @dataclass(frozen=True)

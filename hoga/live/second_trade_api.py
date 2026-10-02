@@ -9,6 +9,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
+from hoga.api.error_codes import LiveErrorCode
 from hoga.api.models import SecondAggregatesResponse, SecondTradeDatesResponse
 from hoga.api.params import CODE_PATTERN
 from hoga.util.timeenc import KST
@@ -20,10 +21,24 @@ from .second_trade_projection import _project_response
 from .second_trade_store import second_trade_store
 
 
-def build_router(*, data_dir: Path) -> APIRouter:
+def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — two projection routes
     router = APIRouter(prefix="/api/live", tags=["live"])
     store = second_trade_store(data_dir)
     revisions = SecondResponseRevisions()
+
+    async def collector_snapshot(code, venue, date=None):
+        from .lifecycle import get_capture_session  # noqa: PLC0415 — injected lifecycle owner
+        if date is not None and date != datetime.now(KST).strftime("%Y%m%d"):
+            return None  # Historical disk reads do not depend on a live child.
+        owner = get_capture_session()
+        remote = getattr(owner, "seconds_snapshot", None)
+        if remote is None:
+            return None
+        try:
+            return await remote(code, venue, date)
+        except (ConnectionError, TimeoutError) as exc:
+            raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED,
+                                      "message": "Live Capture process unavailable"}) from exc
 
     @router.get("/second-trade-dates", response_model=SecondTradeDatesResponse)
     async def get_dates(
@@ -46,7 +61,8 @@ def build_router(*, data_dir: Path) -> APIRouter:
                         found.add(path.name)
             return found
 
-        live_dates = store.live_dates(code, venue)
+        snapshot = await collector_snapshot(code, venue)
+        live_dates = set(snapshot["dates"]) if snapshot is not None else store.live_dates(code, venue)
         dates = await asyncio.to_thread(disk_dates)
         return SecondTradeDatesResponse(dates=sorted(dates | live_dates))
 
@@ -75,8 +91,10 @@ def build_router(*, data_dir: Path) -> APIRouter:
             raise HTTPException(422, "Range must be within the requested trading date")
         # Copy live state on the event loop before yielding to disk workers. A
         # disk revision newer than this snapshot wins, preventing volume rollback.
-        live = store.live_rows(code, venue, date)
-        pending = store.pending_corrections(code, venue, date)
+        snapshot = await collector_snapshot(code, venue, date)
+        live = snapshot["live"] if snapshot is not None else store.live_rows(code, venue, date)
+        pending = snapshot["pending"] if snapshot is not None else store.pending_corrections(code, venue, date)
+        storage_error = snapshot["error"] if snapshot is not None else store.storage_error
         disk = await asyncio.to_thread(store.disk_rows, code, venue, date)
         merged = {row["t_ms"]: row for row in disk}
         for row in live:
@@ -102,7 +120,7 @@ def build_router(*, data_dir: Path) -> APIRouter:
         scope = (code, venue, date, seconds, start, end, include_prices, regular_session_only, day_start)
         if incremental:
             return await asyncio.to_thread(revisions.project_rows, scope, merged, source,
-                                           store.storage_error, since_revision)
-        return await asyncio.to_thread(_project_response, merged, scope, source, store.storage_error)
+                                           storage_error, since_revision)
+        return await asyncio.to_thread(_project_response, merged, scope, source, storage_error)
 
     return router

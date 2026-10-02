@@ -5,7 +5,7 @@ Every `code` field that crosses the API surface — both REST responses
 ``CaptureError.code`` field carried on SSE ``capture_finished`` events —
 draws from one of these enums.
 
-There are three enums, split by category (see ADR-0009):
+The enums are split by category (see ADR-0009):
 
 * :class:`CaptureErrorCode` — captures-domain non-upstream codes
   (request gating, lifecycle states, internal-error fallback).
@@ -103,6 +103,12 @@ class UpstreamCode(StrEnum):
     # KIS .mst symbol-master download/unzip/parse failure (Phase 2). The .mst is
     # a static no-auth file, so there is no credentials failure mode here.
     MASTER_FETCH_FAILED = "master_fetch_failed"
+
+
+class ComputeErrorCode(StrEnum):
+    """Request compute admission failures, independent of vendor/queue health."""
+
+    CAPACITY_EXCEEDED = "compute_capacity_exceeded"
 
 
 class LiveErrorCode(StrEnum):

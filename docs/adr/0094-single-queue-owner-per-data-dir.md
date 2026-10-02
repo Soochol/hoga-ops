@@ -65,3 +65,32 @@
 - 테스트: 모듈 전역 `_queue_owned`/ownership fd는 `reset_state_for_tests()`가
   소유 기본값(True)으로 복원한다 — 비소유 테스트가 다음 테스트에 503을 누출하지
   않게. 기본값 True라 `_data_dir`을 직접 쓰는 기존 persistence 테스트는 무수정.
+
+## 2026-10-02 보완 — 재기동 없이 소유권 인계
+
+시작 시 4회 동기 재시도로 끝내던 큐 정책을 교체한다. 큐를 비활성화하지 않은
+인스턴스만 단일 lifespan supervisor에서 비차단 flock과 비동기 1→2→5→30초 backoff
+(0.9–1.0 jitter)를 사용한다. 읽기 전용 역할은 `HOGA_CAPTURE_QUEUE_DISABLED=1`을
+명시하며 계속 경합에서 제외된다. 다른 writer 잠금은 기존 정책을 유지한다.
+
+실제 잠금 획득 뒤 최신 manifest를 strict 모드로 읽고 기존 큐 스냅샷을 교체한다.
+손상·권한·스키마 오류는 원본 파일을 보존하고 소유권을 해제한다. 빈 새 data_dir만
+빈 큐로 시작한다. worker 생성이 끝난 뒤 `running`으로 전환하며 획득 세대당 한 번만
+복원한다. PID 힌트나 잠금 파일 삭제로 소유권을 판단·우회하지 않는다.
+
+deep health의 `queue`는 `owned`와 `ready`를 구분하고 `state`, `owner_epoch`,
+`attempts`, 마지막/다음 시도 시각, 오류를 추가한다. 상태는 `acquiring`, `contended`,
+`restoring`, `starting`, `running`, `failed`, `stopping`, `disabled`다. 필수 큐가
+`running`이 아니면 태스크 사망 여부와 별도로 503이다. shallow health는 liveness다.
+소유권 경합 때문에 deep 503이 나면 자동 인계 상태를 확인한다.
+
+종료 시 신규 변경·재획득을 닫되 실행 작업의 마지막 manifest 저장은 소유 잠금을
+유지한 상태에서 허용한다. worker와 저장 태스크를 정리한 다음 잠금을 해제한다.
+FD handle의 중복 release는 이미 재사용된 다른 FD를 닫지 않도록 멱등이다.
+
+검증: 별도 프로세스의 실제 flock 인계, 최신 manifest 1회 복원, 복원 중 HTTP 503→
+준비 후 200, 손상 파일 보존, 취소 시 FD 회수, worker 시작 실패, 종료 시 저장 보존.
+
+2026-10-03 P3 보완: [ADR-0174](0174-dedicated-python-live-capture-process.md)에 따라
+키움 WS와 필수 live 저장은 전용 수집 자식으로 이동한다. API 단일 worker 및 기존
+Today Promoter/compute pool의 역할은 유지하며, 별도 capture flock과 bounded IPC로 인계한다.

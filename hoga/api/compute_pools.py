@@ -35,6 +35,7 @@ log = logging.getLogger(__name__)
 ENV_KIND = "HOGA_COMPUTE_EXECUTOR"
 ENV_WIDE_WORKERS = "HOGA_COMPUTE_WIDE_WORKERS"
 ENV_NARROW_WORKERS = "HOGA_COMPUTE_NARROW_WORKERS"
+ENV_MAX_PENDING_REQUESTS = "HOGA_COMPUTE_MAX_PENDING_REQUESTS"
 ENV_WORKER_DUCKDB_MEMORY_LIMIT = "HOGA_COMPUTE_DUCKDB_MEMORY_LIMIT"
 ENV_WORKER_DUCKDB_THREADS = "HOGA_COMPUTE_DUCKDB_THREADS"
 
@@ -133,6 +134,7 @@ def build_compute_pools(
         ),
     }
     common = {
+        "max_pending_requests": _int_env(source, ENV_MAX_PENDING_REQUESTS, 128),
         "worker_gc_thresholds": gc_thresholds(source),
         "worker_log_path": worker_log_path,
         "worker_env": worker_env,

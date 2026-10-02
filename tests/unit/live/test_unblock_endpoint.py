@@ -4,12 +4,16 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from hoga.api import captures
-from hoga.api.captures_persistence import load_manifest
+from hoga.api.captures_persistence import load_manifest, save_manifest
+from hoga.api.models import QueueManifest
 
 
 def _build_test_app(monkeypatch, tmp_path):
     monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("HOGA_ENABLE_TEST_ENDPOINTS", "1")
+    save_manifest(tmp_path, QueueManifest(
+        paused=False, items=[], fail_streaks=dict(captures._fail_streaks),
+    ))
     from hoga.api.app import create_app
     return create_app(tmp_path)
 

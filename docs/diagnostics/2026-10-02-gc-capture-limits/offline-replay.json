@@ -1,0 +1,139 @@
+{
+  "workload": {
+    "codes": 328,
+    "ticks": 100,
+    "levels": 10,
+    "iterations": 100
+  },
+  "unchanged_flush": {
+    "read_before_version": {
+      "elapsed_ms": 547.8188980005143,
+      "traced_peak_bytes": 2855648
+    },
+    "compare_before_read": {
+      "elapsed_ms": 0.11703000018314924,
+      "traced_peak_bytes": 704
+    }
+  },
+  "bounded_display": {
+    "elapsed_ms": 3863.2823439993444,
+    "checkpoints": [
+      {
+        "tick": 0,
+        "total_entries": 328,
+        "published_total": 328,
+        "subscriber_drops": 0,
+        "ws_delivery": [],
+        "high_water_entries": 328,
+        "per_kind": {
+          "ob": 328
+        },
+        "codes": 328,
+        "subscribers": 0,
+        "retention_ms": 900000,
+        "max_entries_per_deque": 360,
+        "max_total_entries": 4096,
+        "max_estimated_bytes": 8388608,
+        "estimated_bytes": 977768,
+        "budget_evictions": 0,
+        "last_ob_entries": 328,
+        "traced_current_bytes": 1151240,
+        "traced_peak_bytes": 1192600,
+        "rss_bytes": 33501184
+      },
+      {
+        "tick": 25,
+        "total_entries": 2814,
+        "published_total": 8528,
+        "subscriber_drops": 0,
+        "ws_delivery": [],
+        "high_water_entries": 2814,
+        "per_kind": {
+          "ob": 2814
+        },
+        "codes": 328,
+        "subscribers": 0,
+        "retention_ms": 900000,
+        "max_entries_per_deque": 360,
+        "max_total_entries": 4096,
+        "max_estimated_bytes": 8388608,
+        "estimated_bytes": 8388534,
+        "budget_evictions": 5714,
+        "last_ob_entries": 328,
+        "traced_current_bytes": 7802911,
+        "traced_peak_bytes": 7844671,
+        "rss_bytes": 54104064
+      },
+      {
+        "tick": 50,
+        "total_entries": 2814,
+        "published_total": 16728,
+        "subscriber_drops": 0,
+        "ws_delivery": [],
+        "high_water_entries": 2814,
+        "per_kind": {
+          "ob": 2814
+        },
+        "codes": 328,
+        "subscribers": 0,
+        "retention_ms": 900000,
+        "max_entries_per_deque": 360,
+        "max_total_entries": 4096,
+        "max_estimated_bytes": 8388608,
+        "estimated_bytes": 8388534,
+        "budget_evictions": 13914,
+        "last_ob_entries": 328,
+        "traced_current_bytes": 8150112,
+        "traced_peak_bytes": 8191872,
+        "rss_bytes": 54513664
+      },
+      {
+        "tick": 75,
+        "total_entries": 2814,
+        "published_total": 24928,
+        "subscriber_drops": 0,
+        "ws_delivery": [],
+        "high_water_entries": 2814,
+        "per_kind": {
+          "ob": 2814
+        },
+        "codes": 328,
+        "subscribers": 0,
+        "retention_ms": 900000,
+        "max_entries_per_deque": 360,
+        "max_total_entries": 4096,
+        "max_estimated_bytes": 8388608,
+        "estimated_bytes": 8388534,
+        "budget_evictions": 22114,
+        "last_ob_entries": 328,
+        "traced_current_bytes": 8150945,
+        "traced_peak_bytes": 8291298,
+        "rss_bytes": 54525952
+      },
+      {
+        "tick": 99,
+        "total_entries": 2814,
+        "published_total": 32800,
+        "subscriber_drops": 0,
+        "ws_delivery": [],
+        "high_water_entries": 2814,
+        "per_kind": {
+          "ob": 2814
+        },
+        "codes": 328,
+        "subscribers": 0,
+        "retention_ms": 900000,
+        "max_entries_per_deque": 360,
+        "max_total_entries": 4096,
+        "max_estimated_bytes": 8388608,
+        "estimated_bytes": 8388534,
+        "budget_evictions": 29986,
+        "last_ob_entries": 328,
+        "traced_current_bytes": 8151778,
+        "traced_peak_bytes": 8292123,
+        "rss_bytes": 54591488
+      }
+    ]
+  },
+  "limits": "Synthetic OB-only replay; size estimates exclude sidecar/allocator overhead. No claim about market peak load, natural gen2 or process isolation."
+}

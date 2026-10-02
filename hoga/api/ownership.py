@@ -57,6 +57,7 @@ second process from *writing*, it does not stop it from holding a token.
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import logging
 import os
@@ -109,12 +110,15 @@ class DataDirLock:
     def release(self) -> None:
         """Release the lock and close the fd. Idempotent-safe: a second call
         after the fd is closed is swallowed."""
+        fd, self.fd = self.fd, -1
+        if fd < 0:
+            return
         try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
-            fcntl.flock(self.fd, fcntl.LOCK_UN)
+            fcntl.flock(fd, fcntl.LOCK_UN)
         except OSError:
             pass
         try:  # noqa: SIM105 — teardown/idempotent close — 예외 무시가 의도
-            os.close(self.fd)
+            os.close(fd)
         except OSError:
             pass
 
@@ -130,7 +134,9 @@ def _read_owner_hint(path: Path) -> str:
         return "unknown"
 
 
-def _try_acquire(path: Path, *, denied_message: str) -> DataDirLock | None:
+def _try_acquire(
+    path: Path, *, denied_message: str, retries: int = _ACQUIRE_RETRIES,
+) -> DataDirLock | None:
     """Acquire an exclusive advisory lock on ``path``, or return ``None``.
 
     ``denied_message`` is logged at WARNING with the current holder's
@@ -140,11 +146,14 @@ def _try_acquire(path: Path, *, denied_message: str) -> DataDirLock | None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # O_CREAT so a fresh data_dir works; we keep the fd open for the lifetime.
     fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
-    for attempt in range(_ACQUIRE_RETRIES):
+    for attempt in range(retries):
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            if attempt < _ACQUIRE_RETRIES - 1:
+        except OSError as exc:
+            if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                os.close(fd)
+                raise
+            if attempt < retries - 1:
                 time.sleep(_ACQUIRE_RETRY_DELAY_S)
                 continue
             logger.warning("%s (holder: %s)", denied_message, _read_owner_hint(path))
@@ -162,14 +171,15 @@ def try_acquire_queue_ownership(data_dir: Path) -> DataDirLock | None:
     """Attempt to become the sole capture-queue owner for ``data_dir``.
 
     Returns a :class:`DataDirLock` on success, or ``None`` if another live
-    process already holds the lock (after a short retry window to absorb
-    ``--reload`` handoffs). On success, writes a diagnostic ``pid=… port=…``
+    process already holds the lock. One nonblocking attempt; the Capture Queue
+    lifespan supervisor handles asynchronous retry. On success, writes a diagnostic ``pid=… port=…``
     line into the lock file — this is informational only and does not affect
     the lock.
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     return _try_acquire(
         lock_path(data_dir),
+        retries=1,
         denied_message=(
             "capture queue owned by another process; this instance "
             "runs read-only for the queue (no worker pool, no mutations)"
@@ -333,8 +343,8 @@ def release_all() -> None:
     """셧다운에서 전부 해제. 멱등이고 비소유자에게도 안전하다.
 
     flock 은 프로세스 종료 시 커널이 어차피 놓지만, `--reload` 재기동은 앞선
-    프로세스의 teardown 과 겹치므로 **명시적 해제가 즉시**여야 후임이 재시도
-    창(4×0.5s) 안에 잡는다.
+    프로세스의 teardown 과 겹치므로 필요한 저장 이후 명시적으로 해제한다.
+    queue 후임은 비동기 backoff로, 다른 writer는 기존 짧은 동기 재시도로 인계한다.
     """
     for lock in _held.values():
         lock.release()
@@ -361,4 +371,6 @@ _ACQUIRERS.update({
     "collectors": try_acquire_collector_ownership,
     "ws": try_acquire_ws_writer_ownership,
     "daily": try_acquire_daily_ownership,
+    "capture": lambda root: _try_acquire(root / ".live-capture.lock", retries=1,
+                                         denied_message="Live Capture writer owned by another process"),
 })

@@ -259,6 +259,14 @@ def _build_test_app(monkeypatch, tmp_path):
     """
     monkeypatch.setenv("HOGA_DATA_DIR", str(tmp_path))
     monkeypatch.setenv("HOGA_ENABLE_TEST_ENDPOINTS", "1")
+    # Recovery replaces the in-memory read-only view with the owner's disk
+    # manifest. Seed persisted failure streaks through that production boundary.
+    if captures._fail_streaks:
+        from hoga.api.captures_persistence import save_manifest
+        from hoga.api.models import QueueManifest
+        save_manifest(tmp_path, QueueManifest(
+            paused=False, items=[], fail_streaks=dict(captures._fail_streaks),
+        ))
     from hoga.api.app import create_app
     return create_app(tmp_path)
 
@@ -1055,11 +1063,11 @@ def test_dismiss_done_publishes_capture_dismissed_event(monkeypatch, tmp_path):
     a.phase = "done"
     b = _make_item("b", code="005930", date="20260521")
     b.phase = "failed"
-    captures._done.extend([a, b])
-
     app = _build_test_app(monkeypatch, tmp_path)
     _no_workers(monkeypatch)
     with TestClient(app) as c:
+        # Terminal rows are volatile, so they belong to the current lifespan.
+        captures._done.extend([a, b])
         r = c.delete("/api/captures/done")
         assert r.status_code == 204
 

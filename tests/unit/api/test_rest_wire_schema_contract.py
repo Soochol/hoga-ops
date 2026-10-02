@@ -45,6 +45,7 @@ from pathlib import Path
 from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
+from hoga.api.error_codes import ComputeErrorCode
 from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, ProgramResponse
 from hoga.live import flow_receipts, futures_runtime, market_overview
 from hoga.live.api import (
@@ -423,6 +424,9 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "ComputeErrorCode": (
+        frozenset(code.value for code in ComputeErrorCode), "frontend/src/api/types.ts",
+    ),
     "FlowStatus": (frozenset(get_args(flow_receipts.FlowStatus)), "frontend/src/api/market.ts"),
     "PatternSearchMode": (
         frozenset(get_args(m.PatternSearchMode)),

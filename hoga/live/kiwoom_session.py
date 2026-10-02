@@ -110,7 +110,15 @@ class KiwoomSessionManager:
         per_account_max: int | None = None,
         sector_reserve: int | None = None,
         _build_conn: Callable[[int, list[str]], _KiwoomConn] | None = None,
+        nxt_map_fn: Callable | None = None,
+        token_getter: Callable[[int], Awaitable[str]] | None = None,
+        token_invalidator: Callable[[int], None] | None = None,
+        stream_options: dict | None = None,
     ) -> None:
+        self._nxt_map_fn = nxt_map_fn or (lambda: _nxt_map())  # noqa: PLW0108 — late DI
+        self._token_getter = token_getter
+        self._token_invalidator = token_invalidator
+        self._stream_options = stream_options or {}
         self._buffer = buffer
         self._data_dir = data_dir
         self._date_fn = date_fn
@@ -185,7 +193,7 @@ class KiwoomSessionManager:
             await self._stop_locked()
             return
         # 분할 단위는 종목이 아니라 **wire 등록 수**다(PR-F) — NXT 상장 종목은 3개를 쓴다.
-        nxt_map = _nxt_map()
+        nxt_map = self._nxt_map_fn()
         parts = partition_balanced_kiwoom(
             codes, n_accounts,
             weight=lambda c: venue_weight(c, nxt_map),
@@ -308,7 +316,7 @@ class KiwoomSessionManager:
 
         클라이언트 현재 wire와 다를 때만 update_codes diff(remove-before-add: 키당 200
         상한). bare 저장 멤버십(conn.codes)은 불변 — 표시는 별도 장부(레이어드)."""
-        nxt_map = _nxt_map()
+        nxt_map = self._nxt_map_fn()
         desired = {
             apply_venue(c, v) for c in conn.codes for v in subscription_venues(c, nxt_map)
         }
@@ -403,7 +411,7 @@ class KiwoomSessionManager:
         async with self._lock:
             rejected = False
             touched: set[int] = set()
-            nxt_map = _nxt_map()
+            nxt_map = self._nxt_map_fn()
             for v in venues:
                 key = (code, v)
                 entry = self._display.setdefault(key, _DisplayEntry())
@@ -471,7 +479,7 @@ class KiwoomSessionManager:
 
         **등록 수 기준**이다(PR-F) — 저장셋 종목 1개가 NXT 상장이면 등록 3개를 쓴다.
         종목 수로 세면 계정당 최대 600 등록을 시도하고 키움이 200 에서 거부한다."""
-        nxt_map = _nxt_map()
+        nxt_map = self._nxt_map_fn()
         used = sum(venue_weight(c, nxt_map) for c in conn.codes)
         # 업종 구독분은 `conn.codes` 밖에 등록되므로 여기서 빼 주지 않으면 표시(온디맨드)
         # 배정이 그 자리를 먹는다 — 파티셔너 예약만으로는 반쪽이다(양쪽에 걸어야 한다).
@@ -482,7 +490,7 @@ class KiwoomSessionManager:
         conn = self._conns.get(account_id)
         if conn is None or _conn_dead(conn):
             return 0
-        nxt_map = _nxt_map()
+        nxt_map = self._nxt_map_fn()
         display_used = sum(
             1 for (c, v), e in self._display.items()
             if e.owner == account_id and not self._covered_by_storage(c, v, nxt_map=nxt_map)
@@ -504,7 +512,7 @@ class KiwoomSessionManager:
         커버되면 slot 반납, 미커버·미소유면 잔여 슬롯 최다 연결에 재배정(만석이면 다음
         패스 재시도). 참조 0(유예) 키는 sweep에 위임."""
         # One master snapshot per pass, not a full rebuild per display key.
-        nxt_map = _nxt_map()
+        nxt_map = self._nxt_map_fn()
         self._storage_registration_keys.clear()
         self._storage_registration_keys.update(
             (code, venue) for code in self._storage_members
@@ -699,7 +707,7 @@ class KiwoomSessionManager:
                 "data_queue": c.data_queue_snapshot() if hasattr(c, "data_queue_snapshot") else {},
             })
         codes = self.active_codes()
-        nxt_map = _nxt_map()
+        nxt_map = self._nxt_map_fn()
         ready_codes = []
         ready_registrations: set[str] = set()
         for conn in self._conns.values():
@@ -795,8 +803,9 @@ class KiwoomSessionManager:
         from .stream import LiveStream  # noqa: PLC0415 — 순환 import 회피
         from .writer import LiveWriter  # noqa: PLC0415
 
-        prov = kiwoom_runtime.ensure_token_provider_for_account(account_id, self._data_dir)
-        if prov is None:  # 키움 자격증명 부재 — 조용히 스킵(계좌는 설정됐으나 키 없음)
+        prov = (kiwoom_runtime.ensure_token_provider_for_account(account_id, self._data_dir)
+                if self._token_getter is None else None)
+        if prov is None and self._token_getter is None:  # 키움 자격증명 부재 — 조용히 스킵(계좌는 설정됐으나 키 없음)
             _log.warning("live.kiwoom.no_creds account=%d — skip", account_id)
             return None
         seconds = second_trade_store(self._data_dir)
@@ -805,10 +814,13 @@ class KiwoomSessionManager:
             writer=LiveWriter(self._data_dir / "live_kiwoom"),
             seconds=seconds,
             date_fn=self._date_fn,
+            **self._stream_options,
         )
         stream.set_active_codes(set(codes))  # stream 필터는 bare(WsTick.code=bare)
 
         async def token_fn() -> str:
+            if self._token_getter is not None:
+                return await self._token_getter(account_id)
             return await asyncio.to_thread(prov.get_token)
 
         # 연결별 라우팅 래퍼(PR-C): 이 연결 파티션 멤버→stream.on_tick, 그외(표시 전용·
@@ -821,7 +833,8 @@ class KiwoomSessionManager:
             on_tick=self._make_conn_on_tick(stream, conn_members),
             date_fn=self._date_fn,
             gate_fn=self._gate_fn,
-            invalidate_fn=prov.invalidate,  # LOGIN 거부 시 캐시 토큰 무효화(리뷰 Major)
+            invalidate_fn=(lambda: self._token_invalidator(account_id))
+            if self._token_invalidator is not None else prov.invalidate,  # one parent token owner
             # VI 는 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
             on_vi_row=self._on_vi_row if account_id == 0 else None,
             # 0J/0U 는 **마지막 계정** 하나만 태운다. 계정마다 걸면 같은 틱을 4번 받고,
@@ -833,7 +846,7 @@ class KiwoomSessionManager:
         # 초기 구독 wire = 저장셋 × 종목별 venue(ADR-0140 §2 파생 집합). 시각 무관 —
         # 예전엔 `target_ws_venue(now)` 로 현재 창 venue 하나를 골랐고 스왑을 watchdog
         # reconcile 이 따라갔다. 이제 갈아 끼울 것이 없어 초기 wire 가 곧 최종 wire 다.
-        nxt_map = _nxt_map()
+        nxt_map = self._nxt_map_fn()
         wire = [apply_venue(c, v) for c in codes for v in subscription_venues(c, nxt_map)]
         async def run_prepared() -> None:
             await seconds.prepare(codes)

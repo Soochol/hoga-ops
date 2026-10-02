@@ -94,3 +94,7 @@ GIL 을 가져가는 작업은 셋이다: ① today-promoter(`asyncio.to_thread`
 2. 운영 확인: 프로모터 사이클 중 `/proc/<앱 pid>/task/*/stat` 의 스레드별 CPU 에서
    `ThreadPoolExecu` 가 0 근처이고 자식 프로세스가 코어 하나를 쓴다. `today_promote_last_ms`
    는 계속 전진한다.
+
+2026-10-03: [ADR-0174](0174-dedicated-python-live-capture-process.md)의 전용 live 수집
+프로세스가 WS·필수 live 저장을 소유한다. 이 문서의 Today Promoter pool은 API가
+계속 감독하며 기존 `.ws_writers.lock` 자격을 유지한다. 수집 child pool로 합치지 않는다.

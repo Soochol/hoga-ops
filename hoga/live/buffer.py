@@ -6,6 +6,9 @@ no Parquet imports.
 
 Capacity: time-based eviction (DEFAULT_RETENTION_MS = 15 min) with a per-deque
 hard cap (:func:`cap_for_retention`) as a flood safety pin.
+Global display history also has entry/estimated-byte budgets. Prefer streams
+without subscribers, then the least recently published stream. Latest books
+and durable capture input are preserved independently.
 
 메모리 실측 (2026-07-30, `live_kiwoom/20260729` · 243종목 947MB 를 이 버퍼에 재생):
   - 엔트리당 tracemalloc 2,407B / VmRSS 2,576B
@@ -42,25 +45,37 @@ Scaling ceiling (ADR-0116 리뷰 Major, 유예/검토 — 실측 후 후속 PR):
   별도 설계(ADR)로 진행한다. 현재 안전핀: per-deque 하드캡 + 시간 eviction +
   drop_codes_except(Live Set 축출 즉시 회수).
 
-  **남은 갭**: per-deque 캡은 전역 예산이 아니다. deque 수가 종목 수에 비례하므로
+  **과거 갭(2026-10-02 전역 표시 예산으로 보완)**: per-deque 캡은 전역 예산이 아니다. deque 수가 종목 수에 비례하므로
   전체 상한 = 종목 × kind × 캡 이고, 기본값·800종목이면 최악 ~3.7GiB 다
   (60,000 캡 시절엔 538GiB 였다 — 즉 안전핀이 발화할 수 없는 위치에 있었다).
-  전역 예산은 "초과 시 어느 deque 를 줄일지" 라는 축출 정책이 필요해 별개 설계다.
+  전역 예산 초과는 평소 보존창의 예외이며 `/series.buffer_history_truncated` 로 드러낸다.
 """
 
 from __future__ import annotations
 
 import asyncio
 import math
+import os
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Iterable
+
+from hoga.util.retained_size import retained_size
 
 from .delivery import LiveDelivery, LiveOutbox
 from .packed_orderbook import StoredBook, book_time, pack_book, unpack_book
 from .snapshot import LiveSnapshot, SnapshotKind
 
 DEFAULT_RETENTION_MS = 900_000  # 15분
+DEFAULT_TOTAL_ENTRIES = 250_000
+DEFAULT_TOTAL_BYTES = 512 * 1024 * 1024
+
+
+def _budget_env(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(name, default)))
+    except ValueError:
+        return default
 
 # 한 flush 가 (code,kind) 당 엔트리 1개를 만든다 — `stream.py` 의 `FLUSH_INTERVAL_S`
 # 와 **같은 값이어야 한다**. stream 이 buffer 를 import 하므로 역방향 import 는
@@ -89,9 +104,9 @@ def cap_for_retention(retention_ms: int) -> int:
     박혀 있었다(있다는 사실이 대비돼 있다는 착각만 줬다).
 
     주의: **이건 전역 예산이 아니다.** deque 수가 종목 수에 비례하므로(종목 × kind)
-    전체 상한 = 종목수 × kind수 × 캡 이다. 기본 보존창·800종목 기준 최악
-    800 × 5 × 360 × 2.6KB ≈ 3.7GiB(이전 538GiB). 진짜 전역 예산은 축출 정책이
-    필요한 별개 설계이고 미결이다 — 실측 근거는 세션 기록 참고.
+    이 per-deque 캡만으로는 전체 상한 = 종목수 × kind수 × 캡 이다.
+    기본 보존창·800종목 기준 최악 800 × 5 × 360 × 2.6KB ≈ 3.7GiB.
+    LiveBuffer는 별도의 전역 entry·추정 byte 예산과 축출 정책을 함께 적용한다.
     """
     expected = max(1, math.ceil(retention_ms / BUFFER_FLUSH_INTERVAL_MS))
     return expected * BUFFER_CAP_SAFETY_FACTOR
@@ -109,14 +124,27 @@ class LiveBuffer:
     Retains compact orderbooks; subscribers and reads receive ordinary dicts.
     """
 
-    def __init__(self, *, retention_ms: int = DEFAULT_RETENTION_MS) -> None:
+    def __init__(
+        self, *, retention_ms: int = DEFAULT_RETENTION_MS,
+        max_total_entries: int | None = None, max_total_bytes: int | None = None,
+    ) -> None:
         self._retention_ms = retention_ms
         # 보존창에서 파생한 하드캡 — 근거는 cap_for_retention docstring.
         self._max_entries = cap_for_retention(retention_ms)
+        self._entry_budget = max(1, max_total_entries) if max_total_entries is not None else _budget_env(
+            "HOGA_LIVE_BUFFER_MAX_ENTRIES", DEFAULT_TOTAL_ENTRIES,
+        )
+        self._byte_budget = max(1, max_total_bytes) if max_total_bytes is not None else _budget_env(
+            "HOGA_LIVE_BUFFER_MAX_BYTES", DEFAULT_TOTAL_BYTES,
+        )
         self._lock = asyncio.Lock()
-        # Keyed by (code, kind.value). deque(maxlen=...) handles
-        # FIFO drop automatically when the cap is exceeded.
-        self._buf: dict[tuple[str, str], deque[StoredBook]] = {}
+        # Keyed by (code, kind.value). Explicit FIFO removal keeps entry/byte
+        # accounting in step with time, per-stream and global eviction.
+        self._buf: OrderedDict[tuple[str, str], deque[StoredBook]] = OrderedDict()
+        self._costs: dict[tuple[str, str], deque[int]] = {}
+        self._estimated_bytes = 0
+        self._budget_evictions = 0
+        self._budget_evictions_by_code: dict[str, int] = {}
         # ── venue 별 마지막 호가 사이드카 (키: (code, venue)) ──────────────────
         #
         # **보존 축이 소비 축과 어긋나 있어서** 필요하다. deque 는 `(code, kind)` 로
@@ -152,6 +180,7 @@ class LiveBuffer:
         #: 마감 직전 마지막 flush 가 실패하는 경우가 정확히 그 시나리오다. 버전이면
         #: 소비자가 "마지막으로 성공한 버전" 을 들고 비교하므로 실패가 자연히 재시도된다.
         self._last_ob_version = 0
+        self._last_ob_epoch = object()
         # SSE push: per-code set of subscriber queues.
         self._subscribers: dict[str, set[asyncio.Queue[dict] | LiveDelivery]] = {}
         self._total_entries = 0
@@ -195,26 +224,30 @@ class LiveBuffer:
                 key = (code, s.kind.value)
                 d = self._buf.get(key)
                 if d is None:
-                    d = deque(maxlen=self._max_entries)
+                    d = deque()
                     self._buf[key] = d
+                    self._costs[key] = deque()
                 # Store payload + t_ms + kind together so subscribers know
                 # which kind they received. Existing get_latest / get_series
                 # helpers strip the `kind` field when building their responses.
                 entry = {"t_ms": s.t_ms, "kind": s.kind.value, **s.payload}
-                before = len(d)
                 retained = pack_book(entry) if s.kind is SnapshotKind.OB else entry
                 d.append(retained)
+                cost = retained_size(retained, limit=self._byte_budget)
+                self._costs[key].append(cost)
+                self._estimated_bytes += cost
+                self._buf.move_to_end(key)
                 if s.kind is SnapshotKind.OB:
                     # 태그 부재는 **KRX 승격** — 프론트 판정(`liveVenueAcceptsFrame`)
                     # 과 같은 규율이어야 폴백이 필터와 같은 프레임을 가리킨다.
                     self._last_ob[(code, entry.get("venue") or "KRX")] = retained
                     self._last_ob_version += 1
-                self._total_entries += len(d) - before
+                self._total_entries += 1
                 self._published_total += 1
                 entries.append(entry)
-                while d and book_time(d[0]) < cutoff:  # 시간 기반 eviction
-                    d.popleft()
-                    self._total_entries -= 1
+                while d and (len(d) > self._max_entries or book_time(d[0]) < cutoff):
+                    self._remove_head(key)
+                self._enforce_budget()
                 self._high_water_entries = max(
                     self._high_water_entries,
                     self._total_entries,
@@ -240,8 +273,44 @@ class LiveBuffer:
                         # they need the missing data.
                         self._subscriber_drops += 1
 
+    def _remove_head(self, key: tuple[str, str]) -> None:
+        d = self._buf[key]
+        d.popleft()
+        self._estimated_bytes -= self._costs[key].popleft()
+        self._total_entries -= 1
+        if not d:
+            del self._buf[key]
+            del self._costs[key]
+
+    def _enforce_budget(self) -> None:
+        # Prefer cold display streams, then the least recently published stream.
+        # Subscriber notification and durable LiveWriter input remain independent.
+        while self._total_entries > self._entry_budget or self._estimated_bytes > self._byte_budget:
+            key = next((k for k in self._buf if k[0] not in self._subscribers), next(iter(self._buf)))
+            self._remove_head(key)
+            self._budget_evictions += 1
+            self._budget_evictions_by_code[key[0]] = self._budget_evictions_by_code.get(key[0], 0) + 1
+
     def observe_outbox(self, outbox: LiveOutbox) -> None:
         self._outboxes.add(outbox)
+
+    async def refresh_budget_from_env(self) -> None:
+        """Apply explicit env budgets after .env loading, before startup readers.
+
+        The lifecycle buffer is constructed at module import. A uvicorn factory
+        loads .env later; constructor-only configuration would miss those values.
+        Unset env leaves constructor overrides intact (test/injected buffers).
+        """
+        async with self._lock:
+            self._entry_budget = _budget_env("HOGA_LIVE_BUFFER_MAX_ENTRIES", self._entry_budget)
+            self._byte_budget = _budget_env("HOGA_LIVE_BUFFER_MAX_BYTES", self._byte_budget)
+            self._enforce_budget()
+
+    async def mark_delivery_gap(self, codes: set[str]) -> None:
+        """A bounded display IPC dropped history; never claim that history is complete."""
+        async with self._lock:
+            for code in codes:
+                self._budget_evictions_by_code[code] = self._budget_evictions_by_code.get(code, 0) + 1
 
     def forget_outbox(self, outbox: LiveOutbox) -> None:
         self._outboxes.discard(outbox)
@@ -266,6 +335,11 @@ class LiveBuffer:
             "subscribers": subscribers,
             "retention_ms": self._retention_ms,
             "max_entries_per_deque": self._max_entries,
+            "max_total_entries": self._entry_budget,
+            "max_estimated_bytes": self._byte_budget,
+            "estimated_bytes": self._estimated_bytes,
+            "budget_evictions": self._budget_evictions,
+            "last_ob_entries": len(self._last_ob),
         }
 
     async def get_latest(self, code: str) -> dict | None:
@@ -309,11 +383,33 @@ class LiveBuffer:
         async with self._lock:
             for key in [k for k in self._buf if k[0] not in keep]:
                 self._total_entries -= len(self._buf[key])
+                self._estimated_bytes -= sum(self._costs.pop(key))
                 del self._buf[key]
+            for code in list(self._budget_evictions_by_code):
+                if code not in keep:
+                    del self._budget_evictions_by_code[code]
             # 사이드카도 같이 놓는다 — deque 만 지우면 떠난 종목의 마지막 호가가
             # 프로세스 수명 내내 남는다(작지만 무한 증가하는 누수).
-            for key in [k for k in self._last_ob if k[0] not in keep]:
+            removed = [k for k in self._last_ob if k[0] not in keep]
+            for key in removed:
                 del self._last_ob[key]
+            if removed:
+                self._last_ob_version += 1
+
+    async def changed_last_ob_snapshot(
+        self, previous: tuple[object, int] | None,
+    ) -> tuple[dict[tuple[str, str], dict], tuple[object, int]] | None:
+        """Compare before materializing, atomically with snapshot acquisition.
+
+        Epoch belongs to this buffer, so equal version numbers after a buffer
+        replacement cannot hide a change. Caller advances only after save.
+        """
+        async with self._lock:
+            token = (self._last_ob_epoch, self._last_ob_version)
+            if token == previous:
+                return None
+            entries = tuple(self._last_ob.items())
+        return {k: unpack_book(v) for k, v in entries}, token
 
     async def last_ob_snapshot(self) -> tuple[dict[tuple[str, str], dict], int]:
         """전체 `_last_ob` 사본 + 현재 버전 — 디스크 flush 용.
@@ -380,6 +476,7 @@ class LiveBuffer:
 
         return {
             "code": code,
+            "buffer_history_truncated": self._budget_evictions_by_code.get(code, 0) > 0,
             "snapshots": [unpack_book(e) for e in snapshots],
             "trades": [_strip_t_only(e) for e in trades],
             "brokers": [_strip_t_only(e) for e in brokers],

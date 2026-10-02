@@ -820,6 +820,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           secondsEnabled={symbol?.kind !== 'index'}
           compact={headerFold.compactTimeframe}
         />
+        {d.live?.initial?.buffer_history_truncated && (
+          <span role="status" className="px-2 text-xs text-fg-dim">
+            실시간 표시 이력 일부 축소 · 저장 데이터 유지
+          </span>
+        )}
         {/* 저장뷰 기간 칩은 **헤더에 있다.** 차트 위 오버레이로 두면 `PaneLegendOverlay`
             와 겹치는데, legend 는 켜진 지표 수만큼 줄이 늘어나므로 좌표를 피해 가는
             방식으로는 구조적으로 못 막는다(2026-08-21 실측 — 좌상단·우상단 둘 다 겹쳤다).

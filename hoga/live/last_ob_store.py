@@ -62,16 +62,19 @@ def _path(data_dir: Path) -> Path:
     return data_dir / _FILENAME
 
 
-def save(data_dir: Path, entries: dict[tuple[str, str], dict]) -> None:
-    """`LiveBuffer.last_ob_snapshot()` 의 결과를 통째로 쓴다. 빈 입력은 no-op.
+def save(
+    data_dir: Path, entries: dict[tuple[str, str], dict], *, allow_empty: bool = False,
+) -> None:
+    """마지막 호가 전체 스냅샷을 쓴다. 빈 입력의 기본값은 no-op.
 
     빈 입력에 파일을 지우지 **않는다** — 기동 직후처럼 메모리가 아직 비어 있는 순간에
     호출되면 애써 남긴 어제 값을 날린다. "쓸 것이 없다" 와 "비우라" 는 다른 뜻이다.
+    모든 종목의 명시적 삭제는 `allow_empty=True` 로 빈 전체 파일을 저장한다.
 
     ⚠ **호출자가 버전으로 걸러야 한다.** 이 함수는 매번 쓴다 — 바뀐 게 없을 때
     건너뛰는 판정은 `last_ob_snapshot()` 이 함께 주는 버전으로 호출자가 한다.
     """
-    if not entries:
+    if not entries and not allow_empty:
         return
     codes: dict[str, dict[str, dict]] = {}
     for (code, venue), entry in entries.items():
