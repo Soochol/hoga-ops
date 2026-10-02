@@ -1,0 +1,13 @@
+2026-10-01 22:09:19,211 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=2 pause_ms=5515.6 collected=1625 uncollectable=0 threshold_ms=250 pid=1556062
+2026-10-01 22:16:36,230 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=2 pause_ms=6390.4 collected=912 uncollectable=0 threshold_ms=250 pid=1556062
+2026-10-01 22:25:56,943 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=2 pause_ms=7193.1 collected=2023 uncollectable=0 threshold_ms=250 pid=1556062
+2026-10-02 00:48:27,635 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=2 pause_ms=1686.0 collected=33709 uncollectable=0 threshold_ms=250 pid=1556062
+2026-10-02 09:11:52,655 WARNING hoga.api.gc_probe hoga_perf gc_pause gen=1 pause_ms=1029.9 collected=23560 uncollectable=0 threshold_ms=250 pid=1556062
+2026-10-02 09:28:35,297 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=0
+2026-10-02 09:28:35,300 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=1
+2026-10-02 09:28:35,300 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=3
+2026-10-02 09:28:35,301 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=4
+2026-10-02 09:29:05,310 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=2
+2026-10-02 09:33:35,397 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=3
+2026-10-02 09:33:35,399 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=4
+2026-10-02 09:39:37,312 ERROR hoga.live.kiwoom_session live.kiwoom.subscription_failed account=3

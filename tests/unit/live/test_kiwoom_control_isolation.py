@@ -305,32 +305,24 @@ async def test_ack_timing_excludes_socket_close_and_failure_is_scoped(monkeypatc
     clock = [0.0]
     instance = client(ws, account_id=2, monotonic_fn=lambda: clock[0])
     instance.connection_generation = 7
-    close_entered, release_close = asyncio.Event(), asyncio.Event()
-
-    async def close():
-        close_entered.set()
-        await release_close.wait()
-        clock[0] += 10
-
-    ws.close = close
+    generation = provider_errors.begin(instance, "session")
+    instance._error_generation = generation
+    instance._retired = asyncio.Event()
     monkeypatch.setattr(M, "_ACK_TIMEOUT_S", 0)
     task = asyncio.create_task(instance._send_and_wait(ws, "{}", "REG"))
     try:
-        await until(close_entered.is_set)
-        assert instance.control_latency["REG"].snapshot()["max_ms"] == 0
-        release_close.set()
-        with pytest.raises(TimeoutError) as caught:
+        with pytest.raises(TimeoutError):
             await task
-        generation = provider_errors.begin(instance, "session")
-        provider_errors.finish(instance, "session", generation, "ws", caught.value)
+        assert instance.control_latency["REG"].snapshot()["max_ms"] == 0
         failure = next(f for f in provider_errors.failures() if f.account_id == 2)
         assert failure.phase == "REG"
         assert failure.connection_generation == 7
         assert failure.elapsed_ms == 0
         assert "SECRET" not in failure.model_dump_json()
-        assert instance.control_latency["close"].snapshot()["max_ms"] == 10_000
+        assert instance._retired.is_set()
+        assert "close" not in instance.control_latency  # only the session owner closes
+        assert not ws.closed
     finally:
-        release_close.set()
         await asyncio.gather(task, return_exceptions=True)
         provider_errors.clear(instance)
 
@@ -491,6 +483,7 @@ async def test_receive_failure_preserves_stage_and_cancellation_does_not_record_
 
 async def test_socket_close_has_its_own_deadline(monkeypatch):
     monkeypatch.setattr(M, "_CLOSE_TIMEOUT_S", 0)
+    monkeypatch.setattr(M, "_CLOSE_GRACE_S", 0)
     ws = QueueSocket()
     cancelled = asyncio.Event()
 
@@ -501,7 +494,11 @@ async def test_socket_close_has_its_own_deadline(monkeypatch):
             cancelled.set()
 
     ws.close = never_close
+    async def abort():
+        ws.closed = True
+    ws.abort = abort
     instance = client(ws)
     await instance._safe_close(ws)
     assert cancelled.is_set()
+    assert ws.closed
     assert instance.control_latency["close"].count == 1

@@ -1,0 +1,2100 @@
+{
+  "api_port": 8000,
+  "api_pid": 1556062,
+  "reload_supervisor_pid": 3364457,
+  "expected_commit": "beef04d6e67f91f91120f0848be4b1aac76f2f88",
+  "expected_live_started_at_ms": 1790850474483,
+  "samples": [
+    {
+      "observed_at_utc": "2026-10-02T00:29:31.074106+00:00",
+      "commit": "beef04d6e",
+      "health_status": "ok",
+      "dead_tasks": [],
+      "gc": {
+        "enabled": true,
+        "warn_ms": 250.0,
+        "over_threshold": 239,
+        "thresholds": [
+          50000,
+          50,
+          50
+        ],
+        "current_counts": [
+          2199,
+          25,
+          6
+        ],
+        "by_generation": {
+          "0": {
+            "collections": 10577,
+            "total_ms": 310029.3,
+            "max_ms": 816.6,
+            "last_ms": 91.4,
+            "last_at_ms": 1790900872732
+          },
+          "1": {
+            "collections": 207,
+            "total_ms": 215273.6,
+            "max_ms": 2814.1,
+            "last_ms": 1029.9,
+            "last_at_ms": 1790899912655
+          },
+          "2": {
+            "collections": 4,
+            "total_ms": 20785.1,
+            "max_ms": 7193.1,
+            "last_ms": 1686.0,
+            "last_at_ms": 1790869707635
+          }
+        },
+        "interpreter_stats": [
+          {
+            "collections": 10736,
+            "collected": 29347655,
+            "uncollectable": 0
+          },
+          {
+            "collections": 221,
+            "collected": 686043,
+            "uncollectable": 0
+          },
+          {
+            "collections": 5,
+            "collected": 38280,
+            "uncollectable": 0
+          }
+        ]
+      },
+      "started_at_ms": 1790850474483,
+      "uptime_minutes": 841.61,
+      "provider_status": {
+        "observed_at_ms": 1790900971083,
+        "connection": "partial",
+        "connected_accounts": 1,
+        "configured_accounts": 6,
+        "ready_accounts": 1,
+        "last_received_at_ms": 1790900970947,
+        "notice": null,
+        "notice_phase": null,
+        "notice_config_error": false,
+        "failures": []
+      },
+      "watchlist_count": 320,
+      "ready_code_count": 38,
+      "capture_healthy": false,
+      "capture_reason": "registration_incomplete",
+      "last_tick_ms": 1790900970947,
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790900967300,
+          "last_recv_ms": 1790900967300,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 101179,
+              "sample_size": 256,
+              "p95_ms": 7.64429199625738,
+              "max_ms": 17.33870798489079
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2.358838013606146,
+                "max_ms": 2.358838013606146
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 53.996806003851816,
+                "max_ms": 53.996806003851816
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 35.90350298327394,
+                "max_ms": 35.90350298327394
+              },
+              "REG": {
+                "count": 9,
+                "sample_size": 9,
+                "p95_ms": 80.77136700740084,
+                "max_ms": 80.77136700740084
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1999.9825950071681,
+                "max_ms": 1999.9825950071681
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 9999.947128002532,
+                "max_ms": 9999.947128002532
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 101179,
+              "sample_size": 256,
+              "p95_ms": 7.439345994498581,
+              "max_ms": 32.48633601469919
+            }
+          }
+        },
+        {
+          "account_id": 1,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790900964720,
+          "last_recv_ms": 1790900964720,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 102562,
+              "sample_size": 256,
+              "p95_ms": 11.271770985331386,
+              "max_ms": 25.570144003722817
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.3195829815231264,
+                "max_ms": 1.3195829815231264
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 58.99701701127924,
+                "max_ms": 58.99701701127924
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 43.05989798740484,
+                "max_ms": 43.05989798740484
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 90.37610300583765,
+                "max_ms": 90.37610300583765
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2001.5768620069139,
+                "max_ms": 2001.5768620069139
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10000.545634014998,
+                "max_ms": 10000.545634014998
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 102562,
+              "sample_size": 256,
+              "p95_ms": 20.19681199453771,
+              "max_ms": 35.78799299430102
+            }
+          }
+        },
+        {
+          "account_id": 2,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790900937839,
+          "last_recv_ms": 1790900937839,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 91360,
+              "sample_size": 256,
+              "p95_ms": 8.557479013688862,
+              "max_ms": 44.12284999853
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2.1439340198412538,
+                "max_ms": 2.1439340198412538
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 85.83247399656102,
+                "max_ms": 85.83247399656102
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 36.088581022340804,
+                "max_ms": 36.088581022340804
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 313.4197689942084,
+                "max_ms": 313.4197689942084
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2000.1636350061744,
+                "max_ms": 2000.1636350061744
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10001.182270993013,
+                "max_ms": 10001.182270993013
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 91360,
+              "sample_size": 256,
+              "p95_ms": 37.8398559987545,
+              "max_ms": 92.80714098713361
+            }
+          }
+        },
+        {
+          "account_id": 3,
+          "connected": false,
+          "sub_expected": 127,
+          "sub_acked": 127,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790900966445,
+          "last_recv_ms": 1790900966445,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 96439,
+              "sample_size": 256,
+              "p95_ms": 6.287671014433727,
+              "max_ms": 10.846302000572905
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.934179017553106,
+                "max_ms": 1.934179017553106
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 55.68820799817331,
+                "max_ms": 55.68820799817331
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 34.916706004878506,
+                "max_ms": 34.916706004878506
+              },
+              "REG": {
+                "count": 8,
+                "sample_size": 8,
+                "p95_ms": 99.9173900054302,
+                "max_ms": 99.9173900054302
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2002.1212959836703,
+                "max_ms": 2002.1212959836703
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 9999.973717989633,
+                "max_ms": 9999.973717989633
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 96439,
+              "sample_size": 256,
+              "p95_ms": 8.159028977388516,
+              "max_ms": 18.010119994869456
+            }
+          }
+        },
+        {
+          "account_id": 4,
+          "connected": false,
+          "sub_expected": 127,
+          "sub_acked": 127,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790900963213,
+          "last_recv_ms": 1790900963213,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 100601,
+              "sample_size": 256,
+              "p95_ms": 7.760790991596878,
+              "max_ms": 23.241304996190593
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.7548119940329343,
+                "max_ms": 1.7548119940329343
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 54.967622010735795,
+                "max_ms": 54.967622010735795
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 36.79126300266944,
+                "max_ms": 36.79126300266944
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 482.1448480070103,
+                "max_ms": 482.1448480070103
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2001.5285609988496,
+                "max_ms": 2001.5285609988496
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10000.688341999194,
+                "max_ms": 10000.688341999194
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 100601,
+              "sample_size": 256,
+              "p95_ms": 10.490192013094202,
+              "max_ms": 32.240674016065896
+            }
+          }
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "sub_expected": 86,
+          "sub_acked": 86,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790900970947,
+          "last_recv_ms": 1790900970947,
+          "registration_ready": true,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 79001,
+              "sample_size": 256,
+              "p95_ms": 6.1607630050275475,
+              "max_ms": 13.165451993700117
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 0.9729299927130342,
+                "max_ms": 0.9729299927130342
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 49.02654400211759,
+                "max_ms": 49.02654400211759
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 40.428709995467216,
+                "max_ms": 40.428709995467216
+              },
+              "REG": {
+                "count": 8,
+                "sample_size": 8,
+                "p95_ms": 13.65858200006187,
+                "max_ms": 13.65858200006187
+              },
+              "close": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 0.10244298027828336,
+                "max_ms": 0.10244298027828336
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 79001,
+              "sample_size": 256,
+              "p95_ms": 10.83970899344422,
+              "max_ms": 24.134123988915235
+            }
+          }
+        }
+      ]
+    },
+    {
+      "observed_at_utc": "2026-10-02T00:30:58.687754+00:00",
+      "commit": "beef04d6e",
+      "health_status": "ok",
+      "dead_tasks": [],
+      "gc": {
+        "enabled": true,
+        "warn_ms": 250.0,
+        "over_threshold": 240,
+        "thresholds": [
+          50000,
+          50,
+          50
+        ],
+        "current_counts": [
+          1038,
+          26,
+          6
+        ],
+        "by_generation": {
+          "0": {
+            "collections": 10578,
+            "total_ms": 310386.6,
+            "max_ms": 816.6,
+            "last_ms": 357.3,
+            "last_at_ms": 1790901046175
+          },
+          "1": {
+            "collections": 207,
+            "total_ms": 215273.6,
+            "max_ms": 2814.1,
+            "last_ms": 1029.9,
+            "last_at_ms": 1790899912655
+          },
+          "2": {
+            "collections": 4,
+            "total_ms": 20785.1,
+            "max_ms": 7193.1,
+            "last_ms": 1686.0,
+            "last_at_ms": 1790869707635
+          }
+        },
+        "interpreter_stats": [
+          {
+            "collections": 10737,
+            "collected": 29433487,
+            "uncollectable": 0
+          },
+          {
+            "collections": 221,
+            "collected": 686043,
+            "uncollectable": 0
+          },
+          {
+            "collections": 5,
+            "collected": 38280,
+            "uncollectable": 0
+          }
+        ]
+      },
+      "started_at_ms": 1790850474483,
+      "uptime_minutes": 843.07,
+      "provider_status": {
+        "observed_at_ms": 1790901058696,
+        "connection": "partial",
+        "connected_accounts": 1,
+        "configured_accounts": 6,
+        "ready_accounts": 1,
+        "last_received_at_ms": 1790901056971,
+        "notice": null,
+        "notice_phase": null,
+        "notice_config_error": false,
+        "failures": []
+      },
+      "watchlist_count": 320,
+      "ready_code_count": 38,
+      "capture_healthy": false,
+      "capture_reason": "registration_incomplete",
+      "last_tick_ms": 1790901056971,
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901056232,
+          "last_recv_ms": 1790901056232,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 101513,
+              "sample_size": 256,
+              "p95_ms": 6.552088016178459,
+              "max_ms": 8.414139010710642
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2.358838013606146,
+                "max_ms": 2.358838013606146
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 53.996806003851816,
+                "max_ms": 53.996806003851816
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 35.90350298327394,
+                "max_ms": 35.90350298327394
+              },
+              "REG": {
+                "count": 9,
+                "sample_size": 9,
+                "p95_ms": 80.77136700740084,
+                "max_ms": 80.77136700740084
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1999.9825950071681,
+                "max_ms": 1999.9825950071681
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 9999.947128002532,
+                "max_ms": 9999.947128002532
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 101513,
+              "sample_size": 256,
+              "p95_ms": 6.800073984777555,
+              "max_ms": 9.73657498252578
+            }
+          }
+        },
+        {
+          "account_id": 1,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901056971,
+          "last_recv_ms": 1790901056971,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 102918,
+              "sample_size": 256,
+              "p95_ms": 7.346551981754601,
+              "max_ms": 9.796668018680066
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.3195829815231264,
+                "max_ms": 1.3195829815231264
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 58.99701701127924,
+                "max_ms": 58.99701701127924
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 43.05989798740484,
+                "max_ms": 43.05989798740484
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 90.37610300583765,
+                "max_ms": 90.37610300583765
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2001.5768620069139,
+                "max_ms": 2001.5768620069139
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10000.545634014998,
+                "max_ms": 10000.545634014998
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 102918,
+              "sample_size": 256,
+              "p95_ms": 5.505481007276103,
+              "max_ms": 10.370798001531512
+            }
+          }
+        },
+        {
+          "account_id": 2,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901048909,
+          "last_recv_ms": 1790901048909,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 91623,
+              "sample_size": 256,
+              "p95_ms": 6.007134012179449,
+              "max_ms": 10.438194003654644
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2.1439340198412538,
+                "max_ms": 2.1439340198412538
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 85.83247399656102,
+                "max_ms": 85.83247399656102
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 36.088581022340804,
+                "max_ms": 36.088581022340804
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 313.4197689942084,
+                "max_ms": 313.4197689942084
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2000.1636350061744,
+                "max_ms": 2000.1636350061744
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10001.182270993013,
+                "max_ms": 10001.182270993013
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 91623,
+              "sample_size": 256,
+              "p95_ms": 6.8817279825452715,
+              "max_ms": 8.62600700929761
+            }
+          }
+        },
+        {
+          "account_id": 3,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 127,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901048795,
+          "last_recv_ms": 1790901048795,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 96787,
+              "sample_size": 256,
+              "p95_ms": 4.677924996940419,
+              "max_ms": 6.990482012042776
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.934179017553106,
+                "max_ms": 1.934179017553106
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 55.68820799817331,
+                "max_ms": 55.68820799817331
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 34.916706004878506,
+                "max_ms": 34.916706004878506
+              },
+              "REG": {
+                "count": 8,
+                "sample_size": 8,
+                "p95_ms": 99.9173900054302,
+                "max_ms": 99.9173900054302
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2002.1212959836703,
+                "max_ms": 2002.1212959836703
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 9999.973717989633,
+                "max_ms": 9999.973717989633
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 96787,
+              "sample_size": 256,
+              "p95_ms": 6.669308990240097,
+              "max_ms": 13.53080800618045
+            }
+          }
+        },
+        {
+          "account_id": 4,
+          "connected": false,
+          "sub_expected": 127,
+          "sub_acked": 127,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901056742,
+          "last_recv_ms": 1790901056742,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 100935,
+              "sample_size": 256,
+              "p95_ms": 6.453431997215375,
+              "max_ms": 9.667003992944956
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.7548119940329343,
+                "max_ms": 1.7548119940329343
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 54.967622010735795,
+                "max_ms": 54.967622010735795
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 36.79126300266944,
+                "max_ms": 36.79126300266944
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 482.1448480070103,
+                "max_ms": 482.1448480070103
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2001.5285609988496,
+                "max_ms": 2001.5285609988496
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10000.688341999194,
+                "max_ms": 10000.688341999194
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 100935,
+              "sample_size": 256,
+              "p95_ms": 7.2055770142469555,
+              "max_ms": 11.412075982661918
+            }
+          }
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "sub_expected": 86,
+          "sub_acked": 86,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901051887,
+          "last_recv_ms": 1790901051887,
+          "registration_ready": true,
+          "cooldown_until_ms": null,
+          "connection_generation": 3,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 79805,
+              "sample_size": 256,
+              "p95_ms": 2.7318359934724867,
+              "max_ms": 4.591762000927702
+            },
+            "control": {
+              "token": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 0.9729299927130342,
+                "max_ms": 0.9729299927130342
+              },
+              "connect": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 208.86665102443658,
+                "max_ms": 208.86665102443658
+              },
+              "LOGIN": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 66.99716800358146,
+                "max_ms": 66.99716800358146
+              },
+              "REG": {
+                "count": 12,
+                "sample_size": 12,
+                "p95_ms": 2823.603730998002,
+                "max_ms": 2823.603730998002
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 0.10244298027828336,
+                "max_ms": 0.10244298027828336
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 79805,
+              "sample_size": 256,
+              "p95_ms": 5.217258003540337,
+              "max_ms": 9.398169000633061
+            }
+          }
+        }
+      ]
+    },
+    {
+      "observed_at_utc": "2026-10-02T00:31:59.010712+00:00",
+      "commit": "beef04d6e",
+      "health_status": "ok",
+      "dead_tasks": [],
+      "gc": {
+        "enabled": true,
+        "warn_ms": 250.0,
+        "over_threshold": 240,
+        "thresholds": [
+          50000,
+          50,
+          50
+        ],
+        "current_counts": [
+          4493,
+          26,
+          6
+        ],
+        "by_generation": {
+          "0": {
+            "collections": 10578,
+            "total_ms": 310386.6,
+            "max_ms": 816.6,
+            "last_ms": 357.3,
+            "last_at_ms": 1790901046175
+          },
+          "1": {
+            "collections": 207,
+            "total_ms": 215273.6,
+            "max_ms": 2814.1,
+            "last_ms": 1029.9,
+            "last_at_ms": 1790899912655
+          },
+          "2": {
+            "collections": 4,
+            "total_ms": 20785.1,
+            "max_ms": 7193.1,
+            "last_ms": 1686.0,
+            "last_at_ms": 1790869707635
+          }
+        },
+        "interpreter_stats": [
+          {
+            "collections": 10737,
+            "collected": 29433487,
+            "uncollectable": 0
+          },
+          {
+            "collections": 221,
+            "collected": 686043,
+            "uncollectable": 0
+          },
+          {
+            "collections": 5,
+            "collected": 38280,
+            "uncollectable": 0
+          }
+        ]
+      },
+      "started_at_ms": 1790850474483,
+      "uptime_minutes": 844.08,
+      "provider_status": {
+        "observed_at_ms": 1790901119019,
+        "connection": "partial",
+        "connected_accounts": 3,
+        "configured_accounts": 6,
+        "ready_accounts": 2,
+        "last_received_at_ms": 1790901118861,
+        "notice": null,
+        "notice_phase": null,
+        "notice_config_error": false,
+        "failures": [
+          {
+            "channel": "ws",
+            "kind": "timeout",
+            "operation": "session",
+            "observed_at_ms": 1790901114639,
+            "code": null,
+            "account_id": 3,
+            "connection_generation": 2,
+            "phase": "REMOVE",
+            "elapsed_ms": 9999.971182987792
+          }
+        ]
+      },
+      "watchlist_count": 320,
+      "ready_code_count": 137,
+      "capture_healthy": false,
+      "capture_reason": "registration_incomplete",
+      "last_tick_ms": 1790901118861,
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901117999,
+          "last_recv_ms": 1790901117999,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 101680,
+              "sample_size": 256,
+              "p95_ms": 7.663397002033889,
+              "max_ms": 14.465866988757625
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2.358838013606146,
+                "max_ms": 2.358838013606146
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 53.996806003851816,
+                "max_ms": 53.996806003851816
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 35.90350298327394,
+                "max_ms": 35.90350298327394
+              },
+              "REG": {
+                "count": 9,
+                "sample_size": 9,
+                "p95_ms": 80.77136700740084,
+                "max_ms": 80.77136700740084
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1999.9825950071681,
+                "max_ms": 1999.9825950071681
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 9999.947128002532,
+                "max_ms": 9999.947128002532
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 101680,
+              "sample_size": 256,
+              "p95_ms": 6.875657010823488,
+              "max_ms": 22.290588007308543
+            }
+          }
+        },
+        {
+          "account_id": 1,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901118861,
+          "last_recv_ms": 1790901118861,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 103133,
+              "sample_size": 256,
+              "p95_ms": 8.055264013819396,
+              "max_ms": 17.329850990790874
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.3195829815231264,
+                "max_ms": 1.3195829815231264
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 58.99701701127924,
+                "max_ms": 58.99701701127924
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 43.05989798740484,
+                "max_ms": 43.05989798740484
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 90.37610300583765,
+                "max_ms": 90.37610300583765
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2001.5768620069139,
+                "max_ms": 2001.5768620069139
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10000.545634014998,
+                "max_ms": 10000.545634014998
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 103133,
+              "sample_size": 256,
+              "p95_ms": 6.367051013512537,
+              "max_ms": 12.539143994217739
+            }
+          }
+        },
+        {
+          "account_id": 2,
+          "connected": true,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901115192,
+          "last_recv_ms": 1790901115192,
+          "registration_ready": true,
+          "cooldown_until_ms": null,
+          "connection_generation": 3,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 91948,
+              "sample_size": 256,
+              "p95_ms": 5.28702000156045,
+              "max_ms": 14.906055002938956
+            },
+            "control": {
+              "token": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 2.1439340198412538,
+                "max_ms": 2.1439340198412538
+              },
+              "connect": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 368.3107759861741,
+                "max_ms": 368.3107759861741
+              },
+              "LOGIN": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 36.088581022340804,
+                "max_ms": 36.088581022340804
+              },
+              "REG": {
+                "count": 10,
+                "sample_size": 10,
+                "p95_ms": 2798.3940950070973,
+                "max_ms": 2798.3940950070973
+              },
+              "close": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 2000.1636350061744,
+                "max_ms": 2000.1636350061744
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10001.182270993013,
+                "max_ms": 10001.182270993013
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 91948,
+              "sample_size": 256,
+              "p95_ms": 10.176402982324362,
+              "max_ms": 21.026329981395975
+            }
+          }
+        },
+        {
+          "account_id": 3,
+          "connected": true,
+          "sub_expected": 128,
+          "sub_acked": 100,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901118787,
+          "last_recv_ms": 1790901118787,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 3,
+          "last_close_code": null,
+          "last_error_type": "TimeoutError",
+          "latency": {
+            "dispatch": {
+              "count": 97046,
+              "sample_size": 256,
+              "p95_ms": 5.625977006275207,
+              "max_ms": 9.528645023237914
+            },
+            "control": {
+              "token": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 1.934179017553106,
+                "max_ms": 1.934179017553106
+              },
+              "connect": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 1104.7847299778368,
+                "max_ms": 1104.7847299778368
+              },
+              "LOGIN": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 57.992919988464564,
+                "max_ms": 57.992919988464564
+              },
+              "REG": {
+                "count": 10,
+                "sample_size": 10,
+                "p95_ms": 226.45520899095573,
+                "max_ms": 226.45520899095573
+              },
+              "close": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 2002.1212959836703,
+                "max_ms": 2002.1212959836703
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 9999.973717989633,
+                "max_ms": 9999.973717989633
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 97046,
+              "sample_size": 256,
+              "p95_ms": 5.055443994933739,
+              "max_ms": 11.340401018969715
+            }
+          }
+        },
+        {
+          "account_id": 4,
+          "connected": false,
+          "sub_expected": 127,
+          "sub_acked": 127,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901112721,
+          "last_recv_ms": 1790901112721,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 2,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 101119,
+              "sample_size": 256,
+              "p95_ms": 7.358113012742251,
+              "max_ms": 14.44078900385648
+            },
+            "control": {
+              "token": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 1.7548119940329343,
+                "max_ms": 1.7548119940329343
+              },
+              "connect": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 54.967622010735795,
+                "max_ms": 54.967622010735795
+              },
+              "LOGIN": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 36.79126300266944,
+                "max_ms": 36.79126300266944
+              },
+              "REG": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 482.1448480070103,
+                "max_ms": 482.1448480070103
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 2001.5285609988496,
+                "max_ms": 2001.5285609988496
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10000.688341999194,
+                "max_ms": 10000.688341999194
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 101119,
+              "sample_size": 256,
+              "p95_ms": 12.064602022292092,
+              "max_ms": 32.332106988178566
+            }
+          }
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "sub_expected": 86,
+          "sub_acked": 86,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901116805,
+          "last_recv_ms": 1790901116805,
+          "registration_ready": true,
+          "cooldown_until_ms": null,
+          "connection_generation": 3,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 80244,
+              "sample_size": 256,
+              "p95_ms": 3.263756021624431,
+              "max_ms": 8.85318499058485
+            },
+            "control": {
+              "token": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 0.9729299927130342,
+                "max_ms": 0.9729299927130342
+              },
+              "connect": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 208.86665102443658,
+                "max_ms": 208.86665102443658
+              },
+              "LOGIN": {
+                "count": 3,
+                "sample_size": 3,
+                "p95_ms": 66.99716800358146,
+                "max_ms": 66.99716800358146
+              },
+              "REG": {
+                "count": 12,
+                "sample_size": 12,
+                "p95_ms": 2823.603730998002,
+                "max_ms": 2823.603730998002
+              },
+              "close": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 0.10244298027828336,
+                "max_ms": 0.10244298027828336
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 80244,
+              "sample_size": 256,
+              "p95_ms": 6.60554799833335,
+              "max_ms": 14.317368011688814
+            }
+          }
+        }
+      ]
+    },
+    {
+      "observed_at_utc": "2026-10-02T00:39:41.957629+00:00",
+      "commit": "beef04d6e",
+      "health_status": "ok",
+      "dead_tasks": [],
+      "gc": {
+        "enabled": true,
+        "warn_ms": 250.0,
+        "over_threshold": 241,
+        "thresholds": [
+          50000,
+          50,
+          50
+        ],
+        "current_counts": [
+          9326,
+          28,
+          6
+        ],
+        "by_generation": {
+          "0": {
+            "collections": 10580,
+            "total_ms": 310922.8,
+            "max_ms": 816.6,
+            "last_ms": 208.9,
+            "last_at_ms": 1790901286503
+          },
+          "1": {
+            "collections": 207,
+            "total_ms": 215273.6,
+            "max_ms": 2814.1,
+            "last_ms": 1029.9,
+            "last_at_ms": 1790899912655
+          },
+          "2": {
+            "collections": 4,
+            "total_ms": 20785.1,
+            "max_ms": 7193.1,
+            "last_ms": 1686.0,
+            "last_at_ms": 1790869707635
+          }
+        },
+        "interpreter_stats": [
+          {
+            "collections": 10739,
+            "collected": 29531921,
+            "uncollectable": 0
+          },
+          {
+            "collections": 221,
+            "collected": 686043,
+            "uncollectable": 0
+          },
+          {
+            "collections": 5,
+            "collected": 38280,
+            "uncollectable": 0
+          }
+        ]
+      },
+      "started_at_ms": 1790850474483,
+      "uptime_minutes": 851.79,
+      "provider_status": {
+        "observed_at_ms": 1790901581967,
+        "connection": "partial",
+        "connected_accounts": 5,
+        "configured_accounts": 6,
+        "ready_accounts": 3,
+        "last_received_at_ms": 1790901581933,
+        "notice": null,
+        "notice_phase": null,
+        "notice_config_error": false,
+        "failures": [
+          {
+            "channel": "ws",
+            "kind": "timeout",
+            "operation": "session",
+            "observed_at_ms": 1790901571536,
+            "code": null,
+            "account_id": 4,
+            "connection_generation": 6,
+            "phase": "REG",
+            "elapsed_ms": 10001.215555996168
+          },
+          {
+            "channel": "ws",
+            "kind": "transport",
+            "operation": "session",
+            "observed_at_ms": 1790901564108,
+            "code": "1006",
+            "account_id": 0,
+            "connection_generation": 8,
+            "phase": "receive",
+            "elapsed_ms": 314.76182100595906
+          }
+        ]
+      },
+      "watchlist_count": 320,
+      "ready_code_count": 237,
+      "capture_healthy": false,
+      "capture_reason": "registration_incomplete",
+      "last_tick_ms": 1790901581933,
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": true,
+          "sub_expected": 128,
+          "sub_acked": 100,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901581933,
+          "last_recv_ms": 1790901581933,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 9,
+          "last_close_code": 1006,
+          "last_error_type": "ConnectionClosedError",
+          "latency": {
+            "dispatch": {
+              "count": 104153,
+              "sample_size": 256,
+              "p95_ms": 6.786565005313605,
+              "max_ms": 13.987068989081308
+            },
+            "control": {
+              "token": {
+                "count": 9,
+                "sample_size": 9,
+                "p95_ms": 2.4931469815783203,
+                "max_ms": 2.4931469815783203
+              },
+              "connect": {
+                "count": 9,
+                "sample_size": 9,
+                "p95_ms": 1341.2835390190594,
+                "max_ms": 1341.2835390190594
+              },
+              "LOGIN": {
+                "count": 9,
+                "sample_size": 9,
+                "p95_ms": 108.56452299049124,
+                "max_ms": 108.56452299049124
+              },
+              "REG": {
+                "count": 34,
+                "sample_size": 34,
+                "p95_ms": 10000.806847994681,
+                "max_ms": 10002.474029024597
+              },
+              "close": {
+                "count": 14,
+                "sample_size": 14,
+                "p95_ms": 2000.6067720241845,
+                "max_ms": 2000.6067720241845
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 9999.947128002532,
+                "max_ms": 9999.947128002532
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 104153,
+              "sample_size": 256,
+              "p95_ms": 7.172790996264666,
+              "max_ms": 14.0163830074016
+            }
+          }
+        },
+        {
+          "account_id": 1,
+          "connected": true,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901579857,
+          "last_recv_ms": 1790901579857,
+          "registration_ready": true,
+          "cooldown_until_ms": null,
+          "connection_generation": 8,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 105330,
+              "sample_size": 256,
+              "p95_ms": 9.59192801383324,
+              "max_ms": 14.439738995861262
+            },
+            "control": {
+              "token": {
+                "count": 8,
+                "sample_size": 8,
+                "p95_ms": 1.3195829815231264,
+                "max_ms": 1.3195829815231264
+              },
+              "connect": {
+                "count": 8,
+                "sample_size": 8,
+                "p95_ms": 9167.975404008757,
+                "max_ms": 9167.975404008757
+              },
+              "LOGIN": {
+                "count": 8,
+                "sample_size": 8,
+                "p95_ms": 251.00962098804303,
+                "max_ms": 251.00962098804303
+              },
+              "REG": {
+                "count": 25,
+                "sample_size": 25,
+                "p95_ms": 9999.908647005213,
+                "max_ms": 10000.231626996538
+              },
+              "close": {
+                "count": 10,
+                "sample_size": 10,
+                "p95_ms": 2001.5768620069139,
+                "max_ms": 2001.5768620069139
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10000.545634014998,
+                "max_ms": 10000.545634014998
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 105330,
+              "sample_size": 256,
+              "p95_ms": 15.790627978276461,
+              "max_ms": 23.877586994785815
+            }
+          }
+        },
+        {
+          "account_id": 2,
+          "connected": true,
+          "sub_expected": 128,
+          "sub_acked": 128,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901579870,
+          "last_recv_ms": 1790901579870,
+          "registration_ready": true,
+          "cooldown_until_ms": null,
+          "connection_generation": 7,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 94633,
+              "sample_size": 256,
+              "p95_ms": 7.529101014370099,
+              "max_ms": 44.121674000052735
+            },
+            "control": {
+              "token": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 2.1439340198412538,
+                "max_ms": 2.1439340198412538
+              },
+              "connect": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 976.9411689776462,
+                "max_ms": 976.9411689776462
+              },
+              "LOGIN": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 53.752064995933324,
+                "max_ms": 53.752064995933324
+              },
+              "REG": {
+                "count": 22,
+                "sample_size": 22,
+                "p95_ms": 9717.559204000281,
+                "max_ms": 9999.756481003715
+              },
+              "close": {
+                "count": 8,
+                "sample_size": 8,
+                "p95_ms": 2000.7194640056696,
+                "max_ms": 2000.7194640056696
+              },
+              "REMOVE": {
+                "count": 1,
+                "sample_size": 1,
+                "p95_ms": 10001.182270993013,
+                "max_ms": 10001.182270993013
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 94633,
+              "sample_size": 256,
+              "p95_ms": 16.822547011543065,
+              "max_ms": 61.22101200162433
+            }
+          }
+        },
+        {
+          "account_id": 3,
+          "connected": false,
+          "sub_expected": 128,
+          "sub_acked": 127,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901576670,
+          "last_recv_ms": 1790901576670,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 7,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 99891,
+              "sample_size": 256,
+              "p95_ms": 6.894417980220169,
+              "max_ms": 22.871847002534196
+            },
+            "control": {
+              "token": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 1.934179017553106,
+                "max_ms": 1.934179017553106
+              },
+              "connect": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 1104.7847299778368,
+                "max_ms": 1104.7847299778368
+              },
+              "LOGIN": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 466.9109389942605,
+                "max_ms": 466.9109389942605
+              },
+              "REG": {
+                "count": 24,
+                "sample_size": 24,
+                "p95_ms": 10000.679046992445,
+                "max_ms": 10001.012334018014
+              },
+              "close": {
+                "count": 10,
+                "sample_size": 10,
+                "p95_ms": 2002.1212959836703,
+                "max_ms": 2002.1212959836703
+              },
+              "REMOVE": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 10001.085508993128,
+                "max_ms": 10001.085508993128
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 99891,
+              "sample_size": 256,
+              "p95_ms": 9.700131020508707,
+              "max_ms": 38.400732999434695
+            }
+          }
+        },
+        {
+          "account_id": 4,
+          "connected": true,
+          "sub_expected": 127,
+          "sub_acked": 100,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901581556,
+          "last_recv_ms": 1790901581556,
+          "registration_ready": false,
+          "cooldown_until_ms": null,
+          "connection_generation": 7,
+          "last_close_code": null,
+          "last_error_type": "TimeoutError",
+          "latency": {
+            "dispatch": {
+              "count": 102785,
+              "sample_size": 256,
+              "p95_ms": 8.384537999518216,
+              "max_ms": 37.783864012453705
+            },
+            "control": {
+              "token": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 1.7548119940329343,
+                "max_ms": 1.7548119940329343
+              },
+              "connect": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 1376.1536719975993,
+                "max_ms": 1376.1536719975993
+              },
+              "LOGIN": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 269.4797409931198,
+                "max_ms": 269.4797409931198
+              },
+              "REG": {
+                "count": 21,
+                "sample_size": 21,
+                "p95_ms": 6353.047640994191,
+                "max_ms": 10001.236504991539
+              },
+              "close": {
+                "count": 9,
+                "sample_size": 9,
+                "p95_ms": 2002.3978390090633,
+                "max_ms": 2002.3978390090633
+              },
+              "REMOVE": {
+                "count": 2,
+                "sample_size": 2,
+                "p95_ms": 10000.984148005955,
+                "max_ms": 10000.984148005955
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 102785,
+              "sample_size": 256,
+              "p95_ms": 8.402662992011756,
+              "max_ms": 52.35785400145687
+            }
+          }
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "sub_expected": 86,
+          "sub_acked": 86,
+          "kicked_by_peer": false,
+          "last_tick_ms": 1790901581820,
+          "last_recv_ms": 1790901581820,
+          "registration_ready": true,
+          "cooldown_until_ms": null,
+          "connection_generation": 6,
+          "last_close_code": null,
+          "last_error_type": null,
+          "latency": {
+            "dispatch": {
+              "count": 84873,
+              "sample_size": 256,
+              "p95_ms": 4.914215998724103,
+              "max_ms": 37.795936019392684
+            },
+            "control": {
+              "token": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 0.9729299927130342,
+                "max_ms": 0.9729299927130342
+              },
+              "connect": {
+                "count": 7,
+                "sample_size": 7,
+                "p95_ms": 10008.376798999961,
+                "max_ms": 10008.376798999961
+              },
+              "LOGIN": {
+                "count": 6,
+                "sample_size": 6,
+                "p95_ms": 66.99716800358146,
+                "max_ms": 66.99716800358146
+              },
+              "REG": {
+                "count": 24,
+                "sample_size": 24,
+                "p95_ms": 361.5722769754939,
+                "max_ms": 2823.603730998002
+              },
+              "close": {
+                "count": 5,
+                "sample_size": 5,
+                "p95_ms": 0.10244298027828336,
+                "max_ms": 0.10244298027828336
+              }
+            }
+          },
+          "data_queue": {
+            "depth": 0,
+            "bytes": 0,
+            "oldest_age_ms": 0.0,
+            "overflows": 0,
+            "discarded_messages": 0,
+            "wait": {
+              "count": 84873,
+              "sample_size": 256,
+              "p95_ms": 9.771584998816252,
+              "max_ms": 63.310920988442376
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
