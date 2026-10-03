@@ -1,6 +1,9 @@
 """KiwoomSessionManager 단위 — partition/build/update/teardown + 워치독(venue 스왑·
 dead 재빌드·warmup 술어·재구독). fake conn 주입 + 시각 주입(결정성)."""
 import asyncio
+import logging
+import threading
+import time
 from datetime import datetime
 
 import pytest
@@ -103,7 +106,7 @@ class _FakeStream:
         self.active = set(codes)
 
 
-def _fake_manager(now_fn=None, *, persist_missing=False):
+def _fake_manager(now_fn=None, *, persist_missing=False, gate_fn=None, monotonic_fn=time.monotonic):
     built: list[tuple[int, tuple[str, ...]]] = []
 
     async def _idle():
@@ -126,6 +129,7 @@ def _fake_manager(now_fn=None, *, persist_missing=False):
     mgr = KiwoomSessionManager(
         buffer=object(), data_dir=object(), date_fn=lambda: "20260716",
         now_fn=now_fn or (lambda: _KRX_MS),
+        gate_fn=gate_fn, monotonic_fn=monotonic_fn,
         _build_conn=build,
     )
     return mgr, built
@@ -436,6 +440,276 @@ async def test_watchdog_registration_complete_clears_flag():
     await mgr.watchdog_pass(_NXT_MS)
     assert mgr.status()["registration_incomplete"] is False
     await mgr.stop()
+
+
+async def test_closed_gate_keeps_736_registrations_without_retry_or_warning(caplog):
+    mgr, _ = _fake_manager(gate_fn=lambda: False, persist_missing=True)
+    assert mgr.status()["connection_allowed"] is None
+    try:
+        await mgr.sync(tuple(f"{i:06d}" for i in range(736)), n_accounts=6)
+        for conn in mgr._conns.values():
+            conn.client.connected = False
+            conn.client._missing = conn.client.expected_codes
+        for _ in range(3):
+            await mgr.watchdog_pass(_KRX_MS)
+        status = mgr.status()
+        assert sum(a["sub_expected"] for a in status["accounts"]) == 736
+        assert sum(a["sub_acked"] for a in status["accounts"]) == 0
+        assert status["connected_accounts"] == 0
+        assert status["connection_allowed"] is False
+        assert status["connection_gate_observed_ms"] == _KRX_MS
+        assert not status["registration_incomplete"]
+        assert not status["ready_codes"]
+        assert not any(a["registration_ready"] for a in status["accounts"])
+        assert all(c.client.resubscribed == 0 for c in mgr._conns.values())
+        assert not mgr._subscription_tasks
+        assert not any("registration_incomplete" in r.message for r in caplog.records)
+    finally:
+        await mgr.stop()
+
+
+async def test_closed_gate_with_real_clients_never_connects_or_requests_tokens(caplog):
+    from unittest.mock import AsyncMock
+
+    from hoga.live.kiwoom_ws_client import KiwoomWsClient
+
+    mgr, _ = _fake_manager(gate_fn=lambda: False)
+    connect, token = AsyncMock(), AsyncMock()
+    try:
+        await mgr.sync(tuple(f"{i:06d}" for i in range(736)), n_accounts=6)
+        loop = asyncio.get_running_loop()
+        observed = [asyncio.Event() for _ in mgr._conns]
+        for account, conn in mgr._conns.items():
+            conn.ws_task.cancel()
+            await asyncio.gather(conn.ws_task, return_exceptions=True)
+
+            def gate(event=observed[account]):
+                loop.call_soon_threadsafe(event.set)
+                return False
+
+            conn.client = KiwoomWsClient(
+                token_fn=token, on_tick=AsyncMock(), date_fn=lambda: "20261003",
+                gate_fn=gate, _connect=connect,
+            )
+            conn.ws_task = asyncio.create_task(conn.client.run(list(conn.codes)))
+        async with asyncio.timeout(5):
+            await asyncio.gather(*(event.wait() for event in observed))
+        for _ in range(3):
+            await mgr.watchdog_pass(_KRX_MS)
+        connect.assert_not_awaited()
+        token.assert_not_awaited()
+        assert sum(len(c.client.sub_missing()) for c in mgr._conns.values()) == 736
+        assert all(c.client.connection_generation == 0 for c in mgr._conns.values())
+        assert not mgr.status()["registration_incomplete"]
+        assert not mgr._subscription_tasks
+        assert not any("registration_incomplete" in r.message for r in caplog.records)
+    finally:
+        await mgr.stop()
+
+
+async def test_gate_reopens_with_latest_membership_and_display_refs():
+    allowed, now = [False], [_KRX_MS]
+    mgr, _ = _fake_manager(gate_fn=lambda: allowed[0], now_fn=lambda: now[0])
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        await mgr.on_view_subscribe("Z", {"KRX"}, ref="kept")
+        await mgr.on_view_subscribe("Y", {"KRX"}, ref="released")
+        await mgr.on_view_unsubscribe("Y", {"KRX"}, ref="released")
+        now[0] += 60_001
+        await mgr.sync(("B",), n_accounts=1)
+        await mgr.watchdog_pass(now[0])
+        client = mgr._conns[0].client
+        client.connected = False
+        client._missing = client.expected_codes
+        assert ("Y", "KRX") not in mgr._display
+        assert mgr._display[("Z", "KRX")].refs == {"kept"}
+        allowed[0] = True
+        await mgr.watchdog_pass(now[0])
+        assert mgr.status()["registration_incomplete"]
+        assert client.resubscribed == 0  # the WS loop owns initial connection
+        client.connected = True
+        client._missing = client.expected_codes
+        await mgr.watchdog_pass(now[0])
+        assert client.expected_codes == {"B", "Z"}
+        assert not client.sub_missing()
+        assert mgr.status()["ready_codes"] == ["B"]
+    finally:
+        await mgr.stop()
+
+
+async def test_registration_warning_is_aggregated_and_uses_monotonic_time(caplog):
+    clock = [0.0]
+    mgr, _ = _fake_manager(persist_missing=True, monotonic_fn=lambda: clock[0])
+    try:
+        await mgr.sync(tuple(f"{i:06d}" for i in range(30)), n_accounts=6)
+        for conn in mgr._conns.values():
+            conn.client._missing = conn.client.expected_codes
+        with caplog.at_level(logging.INFO):
+            await mgr.watchdog_pass(_KRX_MS)
+            await asyncio.sleep(0)  # all account completion checks stay silent
+            assert len([r for r in caplog.records if "registration_incomplete" in r.message]) == 1
+            assert all(c.client.resubscribed == 1 for c in mgr._conns.values())
+            clock[0] = 59.0
+            mgr._conns[0].client._missing.clear()  # changed counts do not bypass the limit
+            await mgr.watchdog_pass(_KRX_MS + 900_000)  # wall clock is irrelevant
+            assert len([r for r in caplog.records if "registration_incomplete" in r.message]) == 1
+            clock[0] = 60.0
+            await mgr.watchdog_pass(_KRX_MS)
+            warnings = [r for r in caplog.records if "registration_incomplete" in r.message]
+            assert len(warnings) == 2
+            assert "accounts=[1, 2, 3, 4, 5]" in warnings[-1].message
+            for conn in mgr._conns.values():
+                conn.client._missing.clear()
+            await mgr.watchdog_pass(_KRX_MS)
+            await mgr.watchdog_pass(_KRX_MS)
+            assert len([r for r in caplog.records if "registration_recovered" in r.message]) == 1
+            mgr._conns[0].client._missing = mgr._conns[0].client.expected_codes
+            await mgr.watchdog_pass(_KRX_MS)
+            assert len([r for r in caplog.records if "registration_incomplete" in r.message]) == 3
+    finally:
+        await mgr.stop()
+
+
+async def test_closing_gate_resets_warning_episode_without_false_recovery(caplog):
+    allowed = [True]
+    mgr, _ = _fake_manager(gate_fn=lambda: allowed[0], persist_missing=True, monotonic_fn=lambda: 0.0)
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        client = mgr._conns[0].client
+        client._missing = {"A"}
+        with caplog.at_level(logging.INFO):
+            await mgr.watchdog_pass(_KRX_MS)
+            allowed[0] = False
+            await mgr.watchdog_pass(_KRX_MS)
+            assert not mgr.status()["registration_incomplete"]
+            assert client.resubscribed == 1
+            allowed[0] = True
+            await mgr.watchdog_pass(_KRX_MS)
+            assert len([r for r in caplog.records if "registration_incomplete" in r.message]) == 2
+            assert not any("registration_recovered" in r.message for r in caplog.records)
+    finally:
+        await mgr.stop()
+
+
+async def test_healthy_and_disconnected_accounts_do_not_schedule_retry(caplog):
+    mgr, _ = _fake_manager(persist_missing=True)
+    try:
+        await mgr.sync(("A", "B", "C"), n_accounts=3)
+        mgr._conns[1].client.connected = False
+        mgr._conns[1].client._missing = mgr._conns[1].client.expected_codes
+        mgr._conns[2].client._missing = mgr._conns[2].client.expected_codes
+        await mgr.watchdog_pass(_KRX_MS)
+        assert [mgr._conns[i].client.resubscribed for i in range(3)] == [0, 0, 1]
+        assert mgr.status()["registration_incomplete"]
+        assert "disconnected=[1]" in caplog.records[-1].message
+    finally:
+        await mgr.stop()
+
+
+async def test_queued_retry_checks_gate_again_after_update():
+    allowed = [True]
+    mgr, _ = _fake_manager(gate_fn=lambda: allowed[0], persist_missing=True)
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        conn = mgr._conns[0]
+        entered, release = asyncio.Event(), asyncio.Event()
+        original = conn.client.update_codes
+
+        async def update(codes):
+            entered.set()
+            await release.wait()
+            await original(codes)
+
+        conn.client.update_codes = update
+        mgr._schedule_subscription(conn, ["A", "Z"], retry=True)
+        await entered.wait()
+        allowed[0] = False
+        await mgr._refresh_connection_gate()
+        release.set()
+        await mgr._subscription_tasks[0]
+        assert conn.client.expected_codes == {"A", "Z"}
+        assert conn.client.resubscribed == 0
+    finally:
+        await mgr.stop()
+
+
+async def test_closed_gate_defers_dead_connection_rebuild_until_open():
+    allowed = [False]
+    mgr, built = _fake_manager(gate_fn=lambda: allowed[0])
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        mgr._conns[0].ws_task.cancel()
+        await asyncio.gather(mgr._conns[0].ws_task, return_exceptions=True)
+        await mgr.watchdog_pass(_KRX_MS)
+        assert len(built) == 1
+        allowed[0] = True
+        await mgr.watchdog_pass(_KRX_MS)
+        assert len(built) == 2
+        assert mgr._conns[0].client.expected_codes == {"A"}
+    finally:
+        await mgr.stop()
+
+
+async def test_blocking_gate_does_not_hold_admission_lock_or_block_status():
+    entered, release = threading.Event(), threading.Event()
+
+    def gate():
+        entered.set()
+        assert release.wait(5), "gate test did not release worker thread"
+        return False
+
+    mgr, _ = _fake_manager(gate_fn=gate)
+    task = asyncio.create_task(mgr.watchdog_pass(_KRX_MS))
+    try:
+        assert await asyncio.to_thread(entered.wait, 5)
+        assert not mgr._lock.locked()
+        async with mgr._lock:
+            assert mgr.status()["connection_allowed"] is None
+        assert await mgr.on_view_subscribe("A", {"KRX"}, ref="view") is False
+    finally:
+        release.set()
+        await task
+        await mgr.stop()
+
+
+async def test_gate_failure_invalidates_closed_verdict_and_empty_sync_still_stops():
+    failing = [False]
+
+    def gate():
+        if failing[0]:
+            raise RuntimeError("calendar unavailable")
+        return False
+
+    mgr, _ = _fake_manager(gate_fn=gate)
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        mgr._conns[0].client.connected = False
+        failing[0] = True
+        with pytest.raises(RuntimeError, match="calendar unavailable"):
+            await mgr.watchdog_pass(_KRX_MS)
+        status = mgr.status()
+        assert status["connection_allowed"] is None
+        assert status["connection_gate_observed_ms"] is None
+        assert status["registration_incomplete"]
+        await mgr.sync((), n_accounts=0)
+        assert not mgr._conns
+        assert not mgr._registration_incomplete
+        assert mgr._last_registration_warning is None
+    finally:
+        await mgr.stop()
+
+
+async def test_stop_and_restart_allow_new_warning_without_waiting(caplog):
+    mgr, _ = _fake_manager(persist_missing=True, monotonic_fn=lambda: 0.0)
+    try:
+        for _ in range(2):
+            await mgr.sync(("A",), n_accounts=1)
+            mgr._conns[0].client._missing = {"A"}
+            await mgr.watchdog_pass(_KRX_MS)
+            await mgr.stop()
+        assert len([r for r in caplog.records if "registration_incomplete" in r.message]) == 2
+    finally:
+        await mgr.stop()
 
 
 def test_sector_price_timestamp_ignores_breadth_and_older_price(monkeypatch):

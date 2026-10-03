@@ -395,6 +395,37 @@ def test_child_venue_clock_matches_existing_calendar_gate(hour, minute, monkeypa
     assert not session_gate.venue_capture_windows_for_day(stamp, False)
 
 
+@pytest.mark.parametrize(("day", "hour", "calendar_allowed", "expected"), [
+    (3, 18, True, False),   # Saturday, even with an optimistic calendar
+    (2, 10, False, False),  # weekday holiday
+    (2, 7, True, False),    # before the connection window
+    (2, 20, True, False),   # after the connection window
+    (2, 8, True, True),
+    (2, 18, True, True),    # NXT hours
+])
+async def test_collector_manager_reports_same_connection_gate_as_ws(
+    tmp_path, monkeypatch, day, hour, calendar_allowed, expected,
+):
+    from hoga.live import collector_worker
+    from hoga.live.kiwoom_session import KiwoomSessionManager
+
+    stamp = int(datetime(2026, 10, day, hour, tzinfo=KST).timestamp() * 1000)
+    monkeypatch.setattr(collector_worker, "now_ms", lambda: stamp)
+
+    def manager_factory(**kwargs):
+        # Exercise production wiring without building sockets or storage streams.
+        return KiwoomSessionManager(**kwargs, _build_conn=lambda *_: None)
+
+    worker = collector_worker.CollectorWorker(tmp_path, "epoch", None, manager_factory=manager_factory)
+    worker.config = {"calendar_date": f"202610{day:02}", "calendar_allowed": calendar_allowed, "nxt_map": {}}
+    try:
+        await worker.manager.sync(("005930",), n_accounts=1)
+        assert worker.manager.status()["connection_allowed"] is expected
+        assert worker.manager._gate_fn() is expected
+    finally:
+        await worker.manager.stop()
+
+
 async def test_cancelled_view_command_reconciles_full_desired_refs(tmp_path, monkeypatch):
     from hoga.live.collector_worker import CollectorWorker
     class Peer:

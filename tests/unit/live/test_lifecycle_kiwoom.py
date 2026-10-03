@@ -79,3 +79,31 @@ def test_get_status_registration_incomplete_reason():
     st = lifecycle.get_status()
     assert st.capture_healthy is False
     assert st.capture_reason == "registration_incomplete"
+
+
+def test_known_closed_gate_overrides_connected_accounts_and_clock(monkeypatch):
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture", lambda _: False)
+    lifecycle._state = _State(kiwoom_session=_FakeKiwoomSession(connection_allowed=False))
+    status = lifecycle.get_status()
+    assert status.ws_connected
+    assert not status.capture_healthy
+    assert status.capture_reason == "closed"
+
+
+def test_known_open_gate_does_not_hide_nxt_connection_failure(monkeypatch):
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture", lambda _: True)
+    lifecycle._state = _State(kiwoom_session=_FakeKiwoomSession(
+        connection_allowed=True, connected_accounts=0, registration_incomplete=True,
+    ))
+    status = lifecycle.get_status()
+    assert not status.capture_healthy
+    assert status.capture_reason == "offline"
+
+
+def test_unknown_gate_keeps_clock_fallback(monkeypatch):
+    lifecycle.reset_for_tests()
+    monkeypatch.setattr(lifecycle, "_market_clock_closed_for_capture", lambda _: True)
+    lifecycle._state = _State(kiwoom_session=_FakeKiwoomSession(connection_allowed=None, connected_accounts=0))
+    assert lifecycle.get_status().capture_reason == "closed"

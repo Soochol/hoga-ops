@@ -394,9 +394,14 @@ def get_status() -> LiveStatus:
         [a["account_id"] for a in k["accounts"] if a["kicked_by_peer"]] if k else []
     )
 
-    if k is None or k["connected_accounts"] == 0:
+    if k is not None and k.get("connection_allowed") is False:
         cap_healthy = False
-        cap_reason = "closed" if _market_clock_closed_for_capture(now_ms) else "offline"
+        cap_reason = "closed"
+    elif k is None or k["connected_accounts"] == 0:
+        cap_healthy = False
+        # A known open connection gate includes NXT hours beyond the KRX clock.
+        closed = (not k or k.get("connection_allowed") is None) and _market_clock_closed_for_capture(now_ms)
+        cap_reason = "closed" if closed else "offline"
     elif k.get("collector", {}).get("ready") is False:
         cap_healthy = False
         cap_reason = "offline"
