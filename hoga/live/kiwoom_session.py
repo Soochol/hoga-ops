@@ -62,6 +62,7 @@ _DISPLAY_GRACE_MS = 60_000
 # 만석 임계 근처(총 잔여 슬롯 이하)면 유예 0으로 즉시 회수(ADR-0118 §2).
 _NEAR_FULL_SLACK = 8
 _KICK_COOLDOWN_MS = 60_000
+_REGISTRATION_WARNING_INTERVAL_S = 60.0
 
 
 def _default_now_ms() -> int:
@@ -107,6 +108,7 @@ class KiwoomSessionManager:
         date_fn: Callable[[], str],
         gate_fn: Callable[[], bool] | None = None,
         now_fn: Callable[[], int] | None = None,
+        monotonic_fn: Callable[[], float] = time.monotonic,
         per_account_max: int | None = None,
         sector_reserve: int | None = None,
         _build_conn: Callable[[int, list[str]], _KiwoomConn] | None = None,
@@ -123,6 +125,11 @@ class KiwoomSessionManager:
         self._data_dir = data_dir
         self._date_fn = date_fn
         self._gate_fn = gate_fn
+        self._gate_lock = asyncio.Lock()
+        self._connection_allowed: bool | None = True if gate_fn is None else None
+        self._connection_gate_observed_ms: int | None = None
+        self._monotonic = monotonic_fn
+        self._last_registration_warning: float | None = None
         # 표시 장부 유예·재배정의 시각원(테스트 주입). 실경로는 벽시계.
         # venue 파생은 더는 시각을 안 본다(ADR-0140 §2 — 시분할 폐지).
         self._now_fn = now_fn or _default_now_ms
@@ -157,7 +164,7 @@ class KiwoomSessionManager:
         # sync(멤버십)·watchdog_pass(venue/재빌드)·stop의 _conns/구독 변이 직렬화 —
         # update_codes의 다중 await(배치 REG 페이싱)가 서로 인터리브하지 않게 한다.
         self._lock = asyncio.Lock()
-        # 저장셋 등록 미완이면 True(status 진단 표면화). 창 특례 없이 상시 감시(PR-F).
+        # Registration is required only while the connection gate is open.
         self._registration_incomplete = False
         # ── 표시(온디맨드) 참조 카운트 장부(ADR-0118 PR-C, #685) ──
         # (code,venue) → _DisplayEntry(refs·owner·released_at). 저장셋은 conn.codes로
@@ -183,9 +190,28 @@ class KiwoomSessionManager:
 
         운영 건강(죽은 conn 재빌드·시간대 venue 스왑·재구독)은 watchdog_pass(30s)로
         분리됐다(ADR-0118 §5) — sync는 저장셋 멤버십만 반영한다."""
+        if kiwoom_targets and n_accounts > 0:
+            await self._refresh_connection_gate()
         async with self._lock:
             await self._sync_locked(kiwoom_targets, n_accounts=n_accounts)
         await asyncio.sleep(0)  # dispatch workers; completion is reported by status
+
+    async def _refresh_connection_gate(self) -> None:
+        # Calendar-backed gates may block. Serialize observations without holding
+        # the admission lock, and never evaluate the gate in synchronous status().
+        async with self._gate_lock:
+            try:
+                allowed = (True if self._gate_fn is None
+                           else await asyncio.to_thread(self._gate_fn))
+            except Exception:
+                self._connection_allowed = None
+                self._connection_gate_observed_ms = None
+                raise
+            self._connection_allowed = bool(allowed)
+            self._connection_gate_observed_ms = self._now_fn()
+            if not allowed:
+                self._last_registration_warning = None
+            self._check_registration_locked()
 
     async def _sync_locked(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         codes = list(dict.fromkeys(kiwoom_targets))
@@ -248,27 +274,23 @@ class KiwoomSessionManager:
                 await self._reconcile(conn)
 
     async def watchdog_pass(self, now_ms: int) -> None:
-        """워치독 1패스(ADR-0118 §5, KIS live-stream-watchdog 후계). 실행 순서(괄호는
-        ADR 단계 번호 — 실행 순서와 다름):
-        1) 죽은 conn 재빌드(저장셋 멤버십 보존; ADR ①)
-        2) 시간대 venue 스왑 reconcile(ADR ②)
-        3) 미확인 구독 표적 재구독(ADR ④)
-        4) 저장셋 등록 완결 술어(ADR ③, 상시) — 재구독 뒤에 둬야 잔여 미확인 판정이
-           정확하다(방금 재송신한 건은 이미 반영).
-        표시(온디맨드) 장부도 여기 합류(PR-C): 유예 만료 sweep + 커버 전이 재배정을
-        reconcile 전에 수행해 킥 복구·venue 스왑이 표시 구독까지 재파생 재등록한다.
-        자가 감독(한 패스 실패는 로그 후 계속)은 호출 루프(start_kiwoom_session_watchdog)가
-        담당한다. sync와 _lock으로 직렬화."""
+        """Maintain display references even when closed; recover connections only
+        when allowed. Subscription workers run independently of the admission lock.
+        Registration logging observes one snapshot per pass, without waiting for ACKs.
+        """
+        await self._refresh_connection_gate()
         async with self._lock:
-            await self._rebuild_dead_locked()
+            if self._connection_allowed:
+                await self._rebuild_dead_locked()
             self._sweep_display(now_ms)     # 유예 만료 표시키 회수
             self._reassign_display()  # 커버 전이(저장셋 변화·연결 재빌드) 재배정
             for conn in list(self._conns.values()):
                 await self._reconcile(conn)
-            await self._resubscribe_missing_locked()
+            if self._connection_allowed:
+                await self._resubscribe_missing_locked()
             self._check_registration_locked()
         await asyncio.sleep(0)
-        self._check_registration_locked()
+        self._report_registration()
 
     async def _rebuild_dead_locked(self) -> None:
         """죽은 conn(킥 정지·ws/flush 태스크 사망) teardown 후 재빌드 — 저장셋 멤버십
@@ -350,7 +372,7 @@ class KiwoomSessionManager:
                 try:
                     if set(desired) != conn.client.expected_codes:
                         await conn.client.update_codes(desired)
-                    if retry:
+                    if retry and self._connection_allowed is True and conn.client.connected:
                         await conn.client.resubscribe_missing()
                 except Exception:  # noqa: BLE001 — watchdog retries this account only
                     _log.exception("live.kiwoom.subscription_failed account=%d", account)
@@ -363,38 +385,47 @@ class KiwoomSessionManager:
         """미확인(sub_missing) 구독을 conn별 표적 재구독(PR-B ④). conn별 예외 격리 —
         한 conn 실패가 다른 conn을 막지 않게. 30s 주기가 REG 유량을 자연 상한한다."""
         for conn in list(self._conns.values()):
-            if _conn_dead(conn):
+            if (self._connection_allowed is not True or _conn_dead(conn)
+                    or not conn.client.connected or not conn.client.sub_missing()):
                 continue
             pending = self._pending_subscriptions.get(conn.account_id)
             desired = pending[0] if pending else sorted(conn.client.expected_codes)
             self._schedule_subscription(conn, desired, retry=True)
 
-    def _check_registration_locked(self) -> None:
-        """저장셋 등록 완결을 매 패스 확인. 미완이면 플래그 + 경고(재시도는 ④가 이미 수행).
+    def _check_registration_locked(self) -> dict[int, list[str]]:
+        """Refresh readiness without logging or I/O. ACKs do not prove code validity.
 
-        **08:50–09:00 창 특례에서 연결 창 전체로 넓혔다**(ADR-0140 §2). 그 창은 KRX
-        venue 스왑이 개장 직전에 일어난다는 사실에서 나온 것이었다 — 스왑이 없어졌으니
-        "개장 전 10분"이 특별할 이유도 없다. 반대로 NXT·UN 은 08:00–20:00 내내 열려
-        있어 등록 미완의 대가를 아무 때나 치른다. 그래서 상시 감시로 바꾼다.
-
-        워치독은 연결이 살아 있을 때만 돌므로 창 판정을 따로 하지 않는다 — 연결이
-        없으면 `self._conns` 가 비어 pending 도 비고, 플래그는 자연히 내려간다.
-
-        ⚠ **ACK 는 유효성을 보증하지 못한다.** 키움은 미상장 코드에도 `rc=0` 을 준다
-        (#1127 실측) — 잘못 파생된 구독은 여기서 "완결"로 보이고 틱만 안 온다. 그래서
-        이 술어는 **전송 유실**만 잡는다. 파생 정확성은 `subscription_venues` 가 책임진다.
+        Closed clients retain their expected codes and connection objects. A closed
+        gate suppresses operational incompleteness, not the underlying ACK diagnostics.
         """
-        pending = {
-            conn.account_id: conn.client.sub_missing()
-            for conn in self._conns.values()
-            if conn.client.sub_missing()
-        }
+        pending = {}
+        if self._connection_allowed is not False:
+            for conn in self._conns.values():
+                missing = conn.client.sub_missing()
+                if (missing or not conn.client.connected
+                        or conn.account_id in self._subscription_tasks):
+                    pending[conn.account_id] = missing
         self._registration_incomplete = bool(pending)
-        if pending:
-            total = sum(len(m) for m in pending.values())
+        return pending
+
+    def _report_registration(self) -> None:
+        pending = self._check_registration_locked()
+        if self._connection_allowed is not True:
+            return
+        if not pending:
+            if self._last_registration_warning is not None:
+                _log.info("live.kiwoom.registration_recovered — 구독 등록 복구 완료")
+                self._last_registration_warning = None
+            return
+        now = self._monotonic()
+        if (self._last_registration_warning is None
+                or now - self._last_registration_warning >= _REGISTRATION_WARNING_INTERVAL_S):
+            self._last_registration_warning = now
             _log.warning(
-                "live.kiwoom.registration_incomplete accounts=%s missing=%d — 저장셋 "
-                "등록 미완, 재구독 재시도 중", sorted(pending), total,
+                "live.kiwoom.registration_incomplete accounts=%s missing=%d "
+                "disconnected=%s — 구독 등록 미완", sorted(pending),
+                sum(len(m) for m in pending.values()),
+                sorted(c.account_id for c in self._conns.values() if not c.client.connected),
             )
 
     # ── 표시(온디맨드) 참조 카운트 장부 API (ADR-0118 PR-C, #685) ──────────
@@ -739,12 +770,9 @@ class KiwoomSessionManager:
             },
             "last_tick_ms": last_tick,
             "last_recv_ms": last_recv,
-            # 08:50–09:00 워밍 창 저장셋 등록 미완 여부(ADR-0118 §5 진단 표면).
-            "registration_incomplete": any(
-                not c.client.connected or bool(c.client.sub_missing())
-                or c.account_id in self._subscription_tasks
-                for c in self._conns.values()
-            ),
+            "connection_allowed": self._connection_allowed,
+            "connection_gate_observed_ms": self._connection_gate_observed_ms,
+            "registration_incomplete": bool(self._check_registration_locked()),
             # 표시(온디맨드) 등록 수(PR-C 진단·프론트 배지). 저장 커버분 제외한 실등록.
             "on_demand_count": sum(1 for e in self._display.values() if e.owner is not None),
             # 표시 슬롯 총 용량(전 연결 잔여 = Σ(상한−저장)) — 프론트 만석 배지 "count/cap".
@@ -767,6 +795,10 @@ class KiwoomSessionManager:
         self._storage_registration_keys.clear()
         self._conn_members.clear()
         self._display.clear()
+        self._registration_incomplete = False
+        self._last_registration_warning = None
+        self._connection_allowed = True if self._gate_fn is None else None
+        self._connection_gate_observed_ms = None
 
     async def _teardown(self, account_id: int) -> None:
         self._conn_members.pop(account_id, None)  # 라우팅 파티션도 회수

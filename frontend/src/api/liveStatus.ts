@@ -170,10 +170,13 @@ export interface KiwoomStatus {
   /** Keys are code:venue:kind; arrival time, not exchange event time. */
   data_received_ms?: Record<string, number>;
   last_tick_ms: number | null;
-  // 저장셋 REG ACK 미확인 키가 남아 있는가(kiwoom_session.status() 미러). 이게 참이면
+  // 연결이 필요한 상태에서 REG ACK 미확인 키가 남아 있는가. 명시적 휴장에서는 false.
   // lifecycle 이 capture_reason='registration_incomplete' 로 승격한다 — 즉 pill 이
   // 이미 같은 사실을 말하므로 현재 소비처는 없다. optional 인 이유는 구 응답 호환.
   registration_incomplete?: boolean;
+  /** Cached calendar and connection clock verdict; null means not yet known. */
+  connection_allowed?: boolean | null;
+  connection_gate_observed_ms?: number | null;
   accounts: KiwoomAccountStatus[];
   /** Dedicated capture process health. API and collector GC are separate. */
   collector?: CaptureProcessStatus;
