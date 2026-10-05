@@ -2,12 +2,12 @@
 .book-panel-grid { min-width: var(--book-min-w); grid-template-columns: var(--book-cols); }
 .book-details-toggle { display: none; }
 .book-details-toggle.is-expanded { display: block; }
-@container (max-width: 454px) {
+@container (max-width: 478px) {
   /* Compact mode reserves the full 11-row space above bids. Prices and depth remain
      aligned; ancillary statistics and trades are available via the details button. */
   .book-panel[data-expanded-summary="false"] .book-panel-grid {
-    min-width: 280px;
-    grid-template-columns: minmax(76px, 1fr) 128px minmax(76px, 1fr);
+    min-width: calc(152px + var(--book-price-w));
+    grid-template-columns: minmax(76px, 1fr) var(--book-price-w) minmax(76px, 1fr);
   }
   .book-panel[data-expanded-summary="false"] .book-summary > * { display: none; }
   .book-panel[data-expanded-summary="false"] .book-compact-secondary { visibility: hidden; overflow: hidden; }

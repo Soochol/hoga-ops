@@ -26,7 +26,7 @@ import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
 import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
 import { otherBookSessionMode } from '../bookSessionMode';
-import { BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W } from './bookPanelMetrics';
+import { BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W, BOOK_PANEL_PRICE_COL_W } from './bookPanelMetrics';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
@@ -252,7 +252,7 @@ export default function BookPanel({
       <BookScrollArea>
         <div
           className="book-panel-grid grid"
-          style={{ '--book-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-cols': BOOK_PANEL_GRID_COLS } as React.CSSProperties}
+          style={{ '--book-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-cols': BOOK_PANEL_GRID_COLS, '--book-price-w': `${BOOK_PANEL_PRICE_COL_W}px` } as React.CSSProperties}
         >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
           <div className="flex flex-col">
@@ -493,14 +493,8 @@ const BADGE_CLS =
  * `DAY_MARKERS` 순서대로 **고 > 저 > 시** 중 하나만 남는다. 겹침은 드물지 않다 —
  * 시가=고가는 갭상승 후 하락, 시가=저가는 갭하락 후 상승이다.
  *
- * ⚠ 이유는 **가격 정렬이 아니다.** 뱃지 띠는 `absolute` 라 레이아웃 폭을 안 먹는다 —
- * 실측으로 칩 1개 행과 2개 행의 가격 좌변이 똑같이 217.8px 였다. 두 번째 칩이 하는
- * 일은 띠가 **왼쪽으로 16px 더 자라는** 것과 한 가격을 두 번 읽히는 것뿐이고,
- * 줄인 것은 그 읽는 비용이다.
- *
- * 부수 이득 하나(실측): 하루 마커가 최대 하나가 되면서 **모든 뱃지 띠의 좌변이
- * 199.8px 로 같아졌다.** 종전엔 겹친 행만 183.8px 로 홀로 튀어나와 칩 열이
- * 들쭉날쭉했다 — 가격 x 는 그때도 멀쩡했으므로 이건 칩 열 자체의 정렬 문제였다.
+ * 칩의 개수는 읽는 비용을 제한한다. 가격 정렬은 모든 행에 같은 칩 여백을
+ * 두고 absolute 칩을 그 안에 배치하는 PriceCell이 보장한다.
  *
  * 반환형이 **배열이 아니라 `| null`** 인 것이 이 규칙의 집행 지점이다 — 배열이면
  * "최대 하나" 가 관례로만 남아 조용히 둘로 돌아간다. 타입이 그걸 막는다.
@@ -553,23 +547,13 @@ function offLadderChip(
   return { label: m.label, bg: m.bg };
 }
 
-/**
- * 가격 숫자 왼쪽에 얹는 시/고/저 칩 띠.
- *
- * ⚠ 띠 전체가 `absolute` 라 **레이아웃 폭을 차지하지 않는다. 이것이 계약이다** —
- * flex 아이템이면 칩 유무에 따라 가격 숫자가 밀려 호가 행끼리 x 가 어긋난다
- * (실측 +10.5px). 기준 요소(가격 span)가 `relative` 여야 성립한다.
- *
- * 칩은 숫자에서 왼쪽으로 자란다(`right-full`). 종전엔 이 띠를 `중` 행의 뱃지와
- * 공유했고 — 각각 `absolute` 면 같은 자리에 겹치므로 한 flex 행으로 합친 것이
- * 이 컴포넌트의 유래다 — ADR-0170 이 그 행을 지우면서 소비처가 `PriceCell` 하나만
- * 남았다. **그래도 인라인으로 되돌리지 말 것**: 위 `absolute` 계약이 마크업에서
- * 사라지는 순간 다음 편집이 조용히 정렬을 깬다.
- */
+/** 가격 span의 상시 왼쪽 여백(24px) 안에 놓는다. ADR-0170의 absolute 배치를
+ * 유지하되 칩 폭도 가격 열 예산에 포함한다. 칩 없는 행에도 같은 여백이 있으므로
+ * 가격 x 정렬은 변하지 않고, 긴 가격에서도 잔량 열을 침범하지 않는다. */
 function PriceBadges({ marker }: { marker: PriceMarker | null }) {
   if (marker === null) return null;
   return (
-    <span data-price-badges="" className="absolute right-full top-1/2 mr-1 flex -translate-y-1/2 gap-0.5">
+    <span data-price-badges="" className="absolute left-0 top-1/2 flex w-5 -translate-y-1/2 justify-end">
       <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`}>{marker.label}</span>
     </span>
   );
@@ -585,9 +569,7 @@ function PriceCell({
   price: number;
   baselinePrice: number | null;
   boxed: boolean;
-  /** 당일 시/고/저 칩(`dayMarker`, 최대 하나) — 가격 숫자 왼쪽 바로 옆(가격 span
-   *  기준 right-full)에 absolute 로 얹는다. 셀 좌단 고정이던 것을 가격 옆으로 당겨
-   *  중앙에 가깝게 읽히되, 가격 x 정렬은 여전히 불변(칩 유무가 가격 위치를 안 바꾼다). */
+  /** 당일 시/고/저 칩(dayMarker, 최대 하나). 모든 가격 행의 고정 여백에 놓는다. */
   marker?: PriceMarker | null;
   /** 매수 1호가 행에만 true — 매도/매수 경계선(3열 공통 y). */
   topDivider?: boolean;
@@ -609,13 +591,13 @@ function PriceCell({
       }`}
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
-      <span className={`relative font-data text-base tabular-nums ${color}`}>
+      <span className={`relative shrink-0 whitespace-nowrap pl-6 font-data text-base tabular-nums ${color}`}>
         <PriceBadges marker={marker} />
         {price > 0 ? price.toLocaleString('ko-KR') : ''}
       </span>
       {pct !== null && price > 0 && (
         <span
-          className={`font-data text-badge tabular-nums text-left opacity-70 ${color}`}
+          className={`shrink-0 whitespace-nowrap font-data text-badge tabular-nums text-left opacity-70 ${color}`}
           // 7ch = "+30.00%"(최장). 좌측정렬 + 최장 기준 고정폭이라야 부호 없는
           // 보합행("0.00%")만 중앙정렬이 흔들려 오른쪽으로 밀리는 일이 없다.
           style={{ minWidth: '7ch' }}
