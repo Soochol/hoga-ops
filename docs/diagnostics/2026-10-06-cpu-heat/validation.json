@@ -1,0 +1,7 @@
+{
+  "full_backend": "5417 passed, 2 skipped, 13 deselected in 153.46s",
+  "final_affected_tests": "29 passed after dry-run safeguard edit",
+  "ruff": "passed",
+  "deployment": "worktree only; live server unchanged",
+  "environment": "sandbox TestClient portal stalled; same tests passed outside sandbox using isolated test fixtures"
+}
