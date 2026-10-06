@@ -1,0 +1,22 @@
+{
+  "scope": "successful warm builds with subsequent API bundle demand for any warmed kind",
+  "window_hours": 24,
+  "observed_until_ns": null,
+  "events": 0,
+  "totals": {
+    "warm_builds": 0,
+    "pending": 0,
+    "mature": 0,
+    "demanded": 0,
+    "unobserved": 0
+  },
+  "by_source": {},
+  "demand_rate": null,
+  "limitations": [
+    "Requires complete logs throughout each observation window; rotated-away events bias results.",
+    "Demand does not prove a cache hit or that the user viewed the response.",
+    "Unobserved means no matching demand in this window, not permanently unused.",
+    "A repeated warm build is a separate build; elapsed build time is not CPU or avoidable cost."
+  ],
+  "invalid_lines": 0
+}

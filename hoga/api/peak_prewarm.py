@@ -44,6 +44,7 @@ from pathlib import Path
 
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
+from hoga.api.prewarm_usage import record_usage
 from hoga.api.queries import QueryEngine, StockDateNotFound, resolve_source_dir
 from hoga.live.venue import Venue
 from hoga.tables.snapshots import ONE_MINUTE_MS
@@ -221,6 +222,7 @@ def prewarm(
             if bounds is None:
                 failed += 1
                 continue
+            build_started = time.monotonic()
             try:
                 build_ask_bid_peak_slices(
                     engine,
@@ -243,6 +245,11 @@ def prewarm(
                 failed += 1
                 continue
             warmed += 1
+            record_usage(
+                data_dir, event="warm", code=code, venue=venue,
+                dates=[{"date": date, "source": source, "kinds": ["peak", "depth"]}],
+                elapsed_ms=(time.monotonic() - build_started) * 1000,
+            )
     finally:
         if own_engine:
             engine.close()

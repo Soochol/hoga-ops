@@ -918,6 +918,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "all_bar_peaks_enabled": all_bar_peaks_enabled,
                 "unreached_bar_peaks_enabled": unreached_bar_peaks_enabled,
                 "mode": mode,
+                "record_prewarm_demand": True,
             }
             try:
                 bundle, payload, stats = await _run_range_bundle(
