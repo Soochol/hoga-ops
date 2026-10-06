@@ -845,6 +845,9 @@ ONE_MINUTE_MS = 60_000
 
 _PEAK_RANK_BY = ["qty", "intra_ms", "seq", "price"]
 _PEAK_RANK_DESC = [True, False, False, False]
+# On small frames the extra group aggregation costs more than the saved sort.
+# Measured cutoff, not a result cap: both paths retain the same ranked winners.
+_PEAK_PRUNE_MIN_ROWS = 4096
 
 
 def _peak_rank_sort(df: pl.DataFrame) -> pl.DataFrame:
@@ -2075,7 +2078,14 @@ def _peak_bar_max_sequence(
 
 def _peak_bucket_dedup(df: pl.DataFrame) -> pl.DataFrame:
     """Best per (price, bucket_id) — mirrors ``{side}_all_peak_candidates`` price_rn=1."""
-    return df.lazy().sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
+    # Lower quantities cannot win a group. Keep every maximum-quantity tie so
+    # the existing time/sequence/price ranking still chooses the same row.
+    candidates = df.lazy()
+    if df.height >= _PEAK_PRUNE_MIN_ROWS:
+        candidates = candidates.filter(pl.col("qty") == pl.col("qty").max().over(["price", "bucket_id"]))
+    return candidates.sort(
+        _PEAK_RANK_BY, descending=_PEAK_RANK_DESC,
+    ).unique(
         subset=["price", "bucket_id"], keep="first", maintain_order=True,
     ).collect()
 
@@ -2256,7 +2266,13 @@ def _unreached_bar_frame(
 
 def _peak_price_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     """가격당 rank-1 — `_peak_touched_distinct` 의 터치 필터 없는 판(미도달 top-3 용)."""
-    return classified.lazy().sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
+    # Prune before sorting, with the same tie policy as _peak_bucket_dedup.
+    candidates = classified.lazy()
+    if classified.height >= _PEAK_PRUNE_MIN_ROWS:
+        candidates = candidates.filter(pl.col("qty") == pl.col("qty").max().over("price"))
+    return candidates.sort(
+        _PEAK_RANK_BY, descending=_PEAK_RANK_DESC,
+    ).unique(
         subset=["price"], keep="first", maintain_order=True,
     ).collect()
 
@@ -2268,7 +2284,12 @@ def _peak_touched_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     ADR-0084 시절의 per-(price, lifecycle) 중간 dedup 은 대응물이 없다: lifecycle 은
     "지배 터치 사이의 구간" 이라는 전역 시간 관계였고, ADR-0156 의 판정은 분 안에서
     닫힌다. 가격당 rank-1 로 직접 붕괴한다."""
-    return classified.lazy().filter(pl.col("touched")).sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
+    # Maxima must be computed AFTER filtering touches; an untouched larger
+    # wall must not displace the best touched candidate at the same price.
+    candidates = classified.lazy().filter(pl.col("touched"))
+    if classified.height >= _PEAK_PRUNE_MIN_ROWS:
+        candidates = candidates.filter(pl.col("qty") == pl.col("qty").max().over("price"))
+    return candidates.sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
         subset=["price"], keep="first", maintain_order=True,
     ).collect()
 

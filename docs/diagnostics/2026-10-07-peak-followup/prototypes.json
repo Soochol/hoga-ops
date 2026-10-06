@@ -1,0 +1,773 @@
+{
+  "measurements": [
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "baseline",
+      "cpu_ms": 1330.7254239999997,
+      "wall_ms": 115.004100999613
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "bucket_only",
+      "cpu_ms": 1286.8435949999996,
+      "wall_ms": 109.2081490005512
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "shared_extrema",
+      "cpu_ms": 1214.8923270000003,
+      "wall_ms": 103.7766819999888
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "shared_records",
+      "cpu_ms": 1219.9450479999996,
+      "wall_ms": 104.55635899961635
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "shared_records",
+      "cpu_ms": 1190.5249,
+      "wall_ms": 100.02582600009191
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "shared_extrema",
+      "cpu_ms": 1202.7844299999995,
+      "wall_ms": 105.34406099941407
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "bucket_only",
+      "cpu_ms": 1265.354241999999,
+      "wall_ms": 108.18214900064049
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "baseline",
+      "cpu_ms": 1191.8948899999987,
+      "wall_ms": 102.2220879995075
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "baseline",
+      "cpu_ms": 1203.448717999999,
+      "wall_ms": 103.13849199974356
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "bucket_only",
+      "cpu_ms": 1230.3767760000017,
+      "wall_ms": 103.92541100009112
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "shared_extrema",
+      "cpu_ms": 1200.713836000002,
+      "wall_ms": 102.6679160004278
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "shared_records",
+      "cpu_ms": 1212.369013,
+      "wall_ms": 103.80449399963254
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "shared_records",
+      "cpu_ms": 1208.6525889999998,
+      "wall_ms": 102.51794400028302
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "shared_extrema",
+      "cpu_ms": 1194.6733440000016,
+      "wall_ms": 99.81412800061662
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "bucket_only",
+      "cpu_ms": 1234.5203470000001,
+      "wall_ms": 106.386331000067
+    },
+    {
+      "code": "373220",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "baseline",
+      "cpu_ms": 1211.8970149999982,
+      "wall_ms": 100.4310180005632
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "baseline",
+      "cpu_ms": 1019.697506,
+      "wall_ms": 81.83307399940531
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "bucket_only",
+      "cpu_ms": 1028.989483,
+      "wall_ms": 85.65625599931082
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "shared_extrema",
+      "cpu_ms": 1014.976438999998,
+      "wall_ms": 82.72655500059045
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 0,
+      "variant": "shared_records",
+      "cpu_ms": 1018.0312779999987,
+      "wall_ms": 84.67382800063206
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "shared_records",
+      "cpu_ms": 986.6356459999998,
+      "wall_ms": 82.53498500016576
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "shared_extrema",
+      "cpu_ms": 966.3444850000005,
+      "wall_ms": 82.81879799960734
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "bucket_only",
+      "cpu_ms": 980.3382310000011,
+      "wall_ms": 83.48935999947571
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 1,
+      "variant": "baseline",
+      "cpu_ms": 982.1883339999999,
+      "wall_ms": 81.81741499993223
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "baseline",
+      "cpu_ms": 992.9864459999962,
+      "wall_ms": 80.08948499991675
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "bucket_only",
+      "cpu_ms": 1014.2814239999964,
+      "wall_ms": 90.19829999942885
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "shared_extrema",
+      "cpu_ms": 1007.2806700000001,
+      "wall_ms": 87.46042000075249
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 2,
+      "variant": "shared_records",
+      "cpu_ms": 1021.9572009999993,
+      "wall_ms": 87.17057400008343
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "shared_records",
+      "cpu_ms": 1040.6237560000022,
+      "wall_ms": 84.82311900024797
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "shared_extrema",
+      "cpu_ms": 1027.1476440000029,
+      "wall_ms": 86.83016499981022
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "bucket_only",
+      "cpu_ms": 1047.4147460000013,
+      "wall_ms": 87.34517300035805
+    },
+    {
+      "code": "267260",
+      "date": "20260219",
+      "trial": 3,
+      "variant": "baseline",
+      "cpu_ms": 1032.751071,
+      "wall_ms": 88.80510900053196
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 0,
+      "variant": "baseline",
+      "cpu_ms": 1431.6457790000002,
+      "wall_ms": 131.4725100000942
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 0,
+      "variant": "bucket_only",
+      "cpu_ms": 1452.8298529999972,
+      "wall_ms": 129.1555009993317
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 0,
+      "variant": "shared_extrema",
+      "cpu_ms": 1503.0599010000003,
+      "wall_ms": 138.74169300015637
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 0,
+      "variant": "shared_records",
+      "cpu_ms": 1579.2347929999978,
+      "wall_ms": 145.52662600090116
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 1,
+      "variant": "shared_records",
+      "cpu_ms": 1595.1488979999979,
+      "wall_ms": 174.18536599961953
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 1,
+      "variant": "shared_extrema",
+      "cpu_ms": 1432.6332260000001,
+      "wall_ms": 130.13260899970192
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 1,
+      "variant": "bucket_only",
+      "cpu_ms": 1493.0546959999945,
+      "wall_ms": 134.12962799975503
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 1,
+      "variant": "baseline",
+      "cpu_ms": 1393.353271999999,
+      "wall_ms": 123.17982100012159
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 2,
+      "variant": "baseline",
+      "cpu_ms": 1332.1324180000006,
+      "wall_ms": 113.04023699995014
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 2,
+      "variant": "bucket_only",
+      "cpu_ms": 1356.1761950000032,
+      "wall_ms": 118.72851800035278
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 2,
+      "variant": "shared_extrema",
+      "cpu_ms": 1322.968602000003,
+      "wall_ms": 113.0737510002291
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 2,
+      "variant": "shared_records",
+      "cpu_ms": 1328.2641849999948,
+      "wall_ms": 114.54281399983302
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 3,
+      "variant": "shared_records",
+      "cpu_ms": 1321.6930829999997,
+      "wall_ms": 115.09547399964504
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 3,
+      "variant": "shared_extrema",
+      "cpu_ms": 1310.2177740000016,
+      "wall_ms": 110.5491409998649
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 3,
+      "variant": "bucket_only",
+      "cpu_ms": 1347.971987000001,
+      "wall_ms": 114.72950499955914
+    },
+    {
+      "code": "005490",
+      "date": "20260213",
+      "trial": 3,
+      "variant": "baseline",
+      "cpu_ms": 1316.395320000005,
+      "wall_ms": 113.07320000014442
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "baseline",
+      "cpu_ms": 1784.8837720000006,
+      "wall_ms": 155.62608399977762
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "bucket_only",
+      "cpu_ms": 1787.2227599999917,
+      "wall_ms": 154.0007579997109
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "shared_extrema",
+      "cpu_ms": 1729.3071569999938,
+      "wall_ms": 151.30843299994012
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "shared_records",
+      "cpu_ms": 1747.7952309999978,
+      "wall_ms": 152.98146899931453
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "shared_records",
+      "cpu_ms": 1723.439134000003,
+      "wall_ms": 149.76633199967182
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "shared_extrema",
+      "cpu_ms": 1706.0418319999967,
+      "wall_ms": 149.43761300037295
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "bucket_only",
+      "cpu_ms": 1827.316647999993,
+      "wall_ms": 158.43304400004854
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "baseline",
+      "cpu_ms": 1748.867704999995,
+      "wall_ms": 154.50273099941114
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "baseline",
+      "cpu_ms": 1731.3512319999945,
+      "wall_ms": 153.04629199999908
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "bucket_only",
+      "cpu_ms": 1839.49595,
+      "wall_ms": 160.7418580006197
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "shared_extrema",
+      "cpu_ms": 1712.2800129999973,
+      "wall_ms": 146.89505099977396
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "shared_records",
+      "cpu_ms": 1716.1484760000008,
+      "wall_ms": 150.16637499957142
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "shared_records",
+      "cpu_ms": 1737.5938730000087,
+      "wall_ms": 157.22502199969313
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "shared_extrema",
+      "cpu_ms": 1733.1120310000047,
+      "wall_ms": 157.14478100017004
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "bucket_only",
+      "cpu_ms": 1836.9814570000074,
+      "wall_ms": 160.29416600031254
+    },
+    {
+      "code": "005930",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "baseline",
+      "cpu_ms": 1757.3671520000005,
+      "wall_ms": 157.89014300025883
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "baseline",
+      "cpu_ms": 2461.6128400000007,
+      "wall_ms": 228.84070700001757
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "bucket_only",
+      "cpu_ms": 2478.2920279999985,
+      "wall_ms": 220.6933610004853
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "shared_extrema",
+      "cpu_ms": 2360.206462000008,
+      "wall_ms": 210.12872799929028
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 0,
+      "variant": "shared_records",
+      "cpu_ms": 2393.324547000006,
+      "wall_ms": 224.5426409999709
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "shared_records",
+      "cpu_ms": 2323.943424999996,
+      "wall_ms": 200.36875899950246
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "shared_extrema",
+      "cpu_ms": 2354.1401029999915,
+      "wall_ms": 213.1956169996556
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "bucket_only",
+      "cpu_ms": 2467.348599999994,
+      "wall_ms": 209.3546520000018
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 1,
+      "variant": "baseline",
+      "cpu_ms": 2373.0213170000097,
+      "wall_ms": 208.9218979999714
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "baseline",
+      "cpu_ms": 2375.4747199999997,
+      "wall_ms": 207.71784299995488
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "bucket_only",
+      "cpu_ms": 2440.70800099999,
+      "wall_ms": 224.21450500041828
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "shared_extrema",
+      "cpu_ms": 2357.7351379999955,
+      "wall_ms": 217.06520600037038
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 2,
+      "variant": "shared_records",
+      "cpu_ms": 2338.078549000002,
+      "wall_ms": 212.9397959997732
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "shared_records",
+      "cpu_ms": 2380.1830020000098,
+      "wall_ms": 202.63044400053332
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "shared_extrema",
+      "cpu_ms": 2332.7706390000176,
+      "wall_ms": 200.72253400030604
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "bucket_only",
+      "cpu_ms": 2471.9516090000016,
+      "wall_ms": 214.55011499983812
+    },
+    {
+      "code": "000660",
+      "date": "20260921",
+      "trial": 3,
+      "variant": "baseline",
+      "cpu_ms": 2396.441936000002,
+      "wall_ms": 210.43191800072236
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 0,
+      "variant": "baseline",
+      "cpu_ms": 1592.5946060000058,
+      "wall_ms": 139.3114560005415
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 0,
+      "variant": "bucket_only",
+      "cpu_ms": 1600.5967369999894,
+      "wall_ms": 139.43230299992138
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 0,
+      "variant": "shared_extrema",
+      "cpu_ms": 1529.1223560000162,
+      "wall_ms": 131.34818599974096
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 0,
+      "variant": "shared_records",
+      "cpu_ms": 1524.2438989999982,
+      "wall_ms": 133.57174800057692
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 1,
+      "variant": "shared_records",
+      "cpu_ms": 1532.9964389999873,
+      "wall_ms": 129.35395499971492
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 1,
+      "variant": "shared_extrema",
+      "cpu_ms": 1548.9804389999904,
+      "wall_ms": 135.07560700054455
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 1,
+      "variant": "bucket_only",
+      "cpu_ms": 1604.4960419999938,
+      "wall_ms": 142.3663920004401
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 1,
+      "variant": "baseline",
+      "cpu_ms": 1573.3497220000174,
+      "wall_ms": 133.9763199994195
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 2,
+      "variant": "baseline",
+      "cpu_ms": 1578.2801269999993,
+      "wall_ms": 135.0733940007558
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 2,
+      "variant": "bucket_only",
+      "cpu_ms": 1581.1869320000085,
+      "wall_ms": 137.25031800004217
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 2,
+      "variant": "shared_extrema",
+      "cpu_ms": 1570.287162999989,
+      "wall_ms": 133.83132699982525
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 2,
+      "variant": "shared_records",
+      "cpu_ms": 1568.464626000008,
+      "wall_ms": 133.3575059998111
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 3,
+      "variant": "shared_records",
+      "cpu_ms": 1541.7673169999944,
+      "wall_ms": 126.76904300042224
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 3,
+      "variant": "shared_extrema",
+      "cpu_ms": 1568.617479000011,
+      "wall_ms": 128.11352199969406
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 3,
+      "variant": "bucket_only",
+      "cpu_ms": 1588.5137070000042,
+      "wall_ms": 139.33837600052357
+    },
+    {
+      "code": "005490",
+      "date": "20260212",
+      "trial": 3,
+      "variant": "baseline",
+      "cpu_ms": 1583.1053839999925,
+      "wall_ms": 137.8427620002185
+    }
+  ],
+  "mismatches": []
+}

@@ -1,0 +1,15 @@
+{
+  "ruff": "passed",
+  "diff_check": "passed",
+  "pytest": {
+    "command": "uv run --offline --extra dev pytest -q -m 'not wallclock'",
+    "passed": 5565,
+    "skipped": 2,
+    "deselected": 13,
+    "warnings": 35,
+    "seconds": 145.47
+  },
+  "identical_frame_pairs": 40,
+  "output_mismatches": 0,
+  "scope": "worktree only; not merged or deployed"
+}
