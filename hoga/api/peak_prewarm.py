@@ -180,7 +180,6 @@ def prewarm(
     ``dry_run`` 은 원본 지표 계산 없이 기존 캐시를 검사해 대상만 센다.
     """
     from hoga.api.bundle import (  # noqa: PLC0415 — import cycle 회피
-        CACHE_MISS,
         _today_kst_yyyymmdd,
         build_ask_bid_peak_slices,
         build_depth_heatmap_slice,
@@ -207,10 +206,8 @@ def prewarm(
             scanned += 1
             # 두 kind 를 **함께** 본다 — 파생 경로가 `have_ask and have_bid` 를
             # 요구하므로 한쪽만 있으면 굵은 봉이 풀스캔으로 떨어진다.
-            if (
-                cache.has_ask_peak(code, date, source, ONE_MINUTE_MS, venue=venue)
-                and cache.has_bid_peak(code, date, source, ONE_MINUTE_MS, venue=venue)
-                and cache.get_depth(code, date, source, ONE_MINUTE_MS, venue=venue) is not CACHE_MISS
+            if cache.has_prewarm_bundle(
+                code, date, source, ONE_MINUTE_MS, venue=venue, write_receipt=not dry_run,
             ):
                 skipped += 1
                 continue

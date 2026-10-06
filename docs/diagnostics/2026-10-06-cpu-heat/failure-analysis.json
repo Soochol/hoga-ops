@@ -1,0 +1,43 @@
+{
+  "scope": "current first 15666 candidates; source may have changed since original run",
+  "counts": {
+    "meta.close_after_open,meta.close_in_kst_range": 412,
+    "series.cum_vol_monotonic": 8
+  },
+  "examples": {
+    "meta.close_after_open,meta.close_in_kst_range": [
+      [
+        "011500",
+        "20260914",
+        "hogaplay"
+      ],
+      [
+        "022100",
+        "20260914",
+        "hogaplay"
+      ],
+      [
+        "025980",
+        "20260914",
+        "hogaplay"
+      ]
+    ],
+    "series.cum_vol_monotonic": [
+      [
+        "066970",
+        "20260506",
+        "hogaplay"
+      ],
+      [
+        "329180",
+        "20260428",
+        "hogaplay"
+      ],
+      [
+        "066970",
+        "20260403",
+        "hogaplay"
+      ]
+    ]
+  }
+}

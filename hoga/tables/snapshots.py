@@ -1974,9 +1974,10 @@ def _read_peak_wall_frames(
 
 
 def _peak_candidates(df: pl.DataFrame, limit: int | None) -> tuple[AskPeakCandidateRow, ...]:
-    ranked = _peak_rank_sort(df)
+    ranked = df.lazy().sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC)
     if limit is not None:
         ranked = ranked.head(limit)
+    ranked = ranked.collect()
     return tuple(
         AskPeakCandidateRow(price=p, qty=q, intra_ms=i)
         for p, q, i in zip(ranked["price"], ranked["qty"], ranked["intra_ms"], strict=True)
@@ -2053,19 +2054,19 @@ def _peak_bar_max_sequence(
       관리한다(`bar_peaks_enabled`).
     - 반환은 **시간순**이다(랭킹순이 아니다). 소비처가 시간축에 그린다.
     """
-    rows = (
-        df.filter(pl.col("touched"))
-        if touched_only and "touched" in df.columns
-        else df
-    )
-    if rows.height == 0:
+    if df.height == 0:
         return ()
+    rows = (
+        df.lazy().filter(pl.col("touched"))
+        if touched_only and "touched" in df.columns
+        else df.lazy()
+    )
     # 봉별 최대 잔량만 선형 집계로 추린 뒤 동률 후보만 순위를 정한다.
     # 원본 전량을 정렬할 필요가 없다. 동률에서 시각·순번·가격 규칙은 그대로다.
     rows = rows.filter(pl.col("qty") == pl.col("qty").max().over("bucket_id"))
-    best = _peak_rank_sort(rows).unique(
+    best = rows.sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
         subset=["bucket_id"], keep="first", maintain_order=True,
-    ).sort("intra_ms")
+    ).sort("intra_ms").collect()
     return tuple(
         AskPeakCandidateRow(price=p_, qty=q, intra_ms=i)
         for p_, q, i in zip(best["price"], best["qty"], best["intra_ms"], strict=True)
@@ -2074,9 +2075,9 @@ def _peak_bar_max_sequence(
 
 def _peak_bucket_dedup(df: pl.DataFrame) -> pl.DataFrame:
     """Best per (price, bucket_id) — mirrors ``{side}_all_peak_candidates`` price_rn=1."""
-    return _peak_rank_sort(df).unique(
+    return df.lazy().sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
         subset=["price", "bucket_id"], keep="first", maintain_order=True,
-    )
+    ).collect()
 
 
 def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
@@ -2084,8 +2085,8 @@ def _peak_scalar(df: pl.DataFrame) -> tuple[int, int, int] | None:
     if df.height == 0:
         return None
     # rank-1 선택은 전량 정렬이 필요 없다. 동률은 기존 네 정렬키로 결정한다.
-    maxima = df.filter(pl.col("qty") == pl.col("qty").max())
-    row = _peak_rank_sort(maxima).row(0, named=True)
+    maxima = df.lazy().filter(pl.col("qty") == pl.col("qty").max())
+    row = maxima.sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).head(1).collect().row(0, named=True)
     return (row["price"], row["qty"], row["intra_ms"])
 
 
@@ -2236,7 +2237,7 @@ def _unreached_bar_frame(
         # 체결이 0건이면 그날 전부 미도달이다(하루 판과 같은 규약).
         return events
     per_min = (
-        touches.group_by("minute_id")
+        touches.lazy().group_by("minute_id")
         .agg((pl.col("price").max() if side == "ask" else pl.col("price").min()).alias("ext"))
         .sort("minute_id")
     )
@@ -2244,20 +2245,20 @@ def _unreached_bar_frame(
     per_min = per_min.with_columns(cum.alias("ext"))
     # backward asof — **체결이 없던 분**은 직전 분까지의 극값을 쓴다. left join 이면
     # 그런 분이 null 이 되어 "아직 체결 0건" 과 구별되지 않는다.
-    joined = events.sort("minute_id").join_asof(per_min, on="minute_id", strategy="backward")
+    joined = events.lazy().sort("minute_id").join_asof(per_min, on="minute_id", strategy="backward")
     dominated = (
         (pl.col("price") <= pl.col("ext")) if side == "ask"
         else (pl.col("price") >= pl.col("ext"))
     )
     # ext 가 null = 그 분 이전에 체결이 한 건도 없다 → 미도달.
-    return joined.filter(pl.col("ext").is_null() | ~dominated).drop("ext")
+    return joined.filter(pl.col("ext").is_null() | ~dominated).drop("ext").collect()
 
 
 def _peak_price_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     """가격당 rank-1 — `_peak_touched_distinct` 의 터치 필터 없는 판(미도달 top-3 용)."""
-    return _peak_rank_sort(classified).unique(
+    return classified.lazy().sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
         subset=["price"], keep="first", maintain_order=True,
-    )
+    ).collect()
 
 
 def _peak_touched_distinct(classified: pl.DataFrame) -> pl.DataFrame:
@@ -2267,9 +2268,9 @@ def _peak_touched_distinct(classified: pl.DataFrame) -> pl.DataFrame:
     ADR-0084 시절의 per-(price, lifecycle) 중간 dedup 은 대응물이 없다: lifecycle 은
     "지배 터치 사이의 구간" 이라는 전역 시간 관계였고, ADR-0156 의 판정은 분 안에서
     닫힌다. 가격당 rank-1 로 직접 붕괴한다."""
-    return _peak_rank_sort(classified.filter(pl.col("touched"))).unique(
+    return classified.lazy().filter(pl.col("touched")).sort(_PEAK_RANK_BY, descending=_PEAK_RANK_DESC).unique(
         subset=["price"], keep="first", maintain_order=True,
-    )
+    ).collect()
 
 
 def query_day_ask_bid_peak_dual_with_rep(

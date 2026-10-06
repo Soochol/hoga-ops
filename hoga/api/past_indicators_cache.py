@@ -570,7 +570,7 @@ class PastIndicatorsCache:
             return _CACHE_MISS
         # Version mismatch (semantics changed) OR source re-captured after this
         # slice was cached (07/22 stale-slice incident) → miss, next store heals.
-        if body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
+        if not isinstance(body, dict) or body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
             path, body.get("source_generation")
         ):
             return _CACHE_MISS
@@ -594,6 +594,67 @@ class PastIndicatorsCache:
             atomic_write_json(path, payload)
         except OSError:
             _log.warning("past_indicators_cache.write_failed path=%s", path, exc_info=True)
+
+    def _prewarm_signature(self, paths: dict[str, Path]) -> dict[str, object] | None:
+        """Bind validation to exact files, including same-mtime replacements."""
+        files = {}
+        try:
+            for kind, path in paths.items():
+                st = path.stat()
+                files[kind] = [st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns]
+        except OSError:
+            return None
+        return {
+            "format": 1,
+            "versions": {kind: KIND_VERSIONS[kind] for kind in paths},
+            "source_generation": self._generation_for_path(paths["ask_peak"]),
+            "files": files,
+        }
+
+    def has_prewarm_bundle(
+        self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX",
+        write_receipt: bool = True,
+    ) -> bool:
+        """Check persisted peak/depth completeness without loading warm models.
+
+        A small receipt certifies a previous full validation of these exact
+        bytes. Missing receipts migrate lazily; a changed source, version or
+        cache file requires full validation again. No in-memory hits are used:
+        a deleted/corrupt disk artifact still needs healing after a restart.
+        This is for past-only prewarming, not for serving indicator values.
+        """
+        paths = {
+            "ask_peak": self._peak_path(code, date, source, "ask_peak", bucket_ms, venue=venue),
+            "bid_peak": self._peak_path(code, date, source, "bid_peak", bucket_ms, venue=venue),
+            "depth": self._depth_path(code, date, source, bucket_ms, venue=venue),
+        }
+        before = self._prewarm_signature(paths)
+        if before is None:
+            return False
+        receipt = self._model_path(code, date, source, f"prewarm.{bucket_ms}", venue=venue)
+        try:
+            validated = json.loads(receipt.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            validated = None
+        if validated == before:
+            return True
+        for kind, model in (("ask_peak", AskPeak), ("bid_peak", BidPeak)):
+            if self._read_model_cache(paths[kind], model, kind=kind) is _CACHE_MISS:
+                return False
+        if self._read_model_list_cache(
+            paths["depth"], DepthHeatmapPoint, payload_key="points", kind="depth",
+        ) is _CACHE_MISS:
+            return False
+        # A concurrent capture/cache writer must never certify unvalidated bytes.
+        if before != self._prewarm_signature(paths):
+            return False
+        if not write_receipt:
+            return True
+        try:
+            atomic_write_json(receipt, before)
+        except OSError:
+            _log.warning("past_indicators_cache.receipt_write_failed path=%s", receipt, exc_info=True)
+        return True
 
     def has_ask_peak(self, code: str, date: str, source: str, bucket_ms: int, *, venue: Venue = "KRX") -> bool:
         self._sync_generation(code, date, source, venue=venue)
@@ -901,7 +962,7 @@ class PastIndicatorsCache:
         except (OSError, json.JSONDecodeError):
             _log.warning("past_indicators_cache.corrupt path=%s", path, exc_info=True)
             return _CACHE_MISS
-        if body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
+        if not isinstance(body, dict) or body.get("version") != KIND_VERSIONS[kind] or self._is_stale(
             path, body.get("source_generation")
         ):
             return _CACHE_MISS

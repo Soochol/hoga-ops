@@ -1,0 +1,106 @@
+{
+  "created_at_kst": "2026-10-06T23:20:44.626968+09:00",
+  "root_cause": "Daily historical peak/heatmap prewarm sustained CPU load in API process; Polars 32-thread execution used roughly four times the CPU time of 4-thread execution on sampled peak calculations, with no wall-time advantage.",
+  "live_process_pid": 15388,
+  "live_evidence": {
+    "prewarm_ended_at_kst": "2026-10-06 23:10:55.192",
+    "prewarm_elapsed_s": 2245.4,
+    "scanned": 15666,
+    "warmed": 2000,
+    "skipped": 13245,
+    "failed": 420,
+    "truncated": true,
+    "before_main_cpu_percent_10s": 545.1,
+    "before_polars_cpu_percent_10s": 375.9,
+    "before_tctl_celsius": 98.875,
+    "after_main_cpu_percent_15s": 20.09,
+    "after_polars_cpu_percent": 0.0,
+    "after_tctl_celsius_samples": [
+      64.75,
+      63.125,
+      61.625,
+      64.625,
+      68.125,
+      68.625,
+      69.125,
+      66.375,
+      65.375,
+      63.25,
+      61.625,
+      60.75,
+      61.125,
+      61.75,
+      60.625
+    ],
+    "capture_active_before": 10,
+    "capture_active_after": 10,
+    "capture_queued_after": 238,
+    "capture_max_concurrent_after": 10,
+    "backend_same_pid_and_no_restart": true
+  },
+  "isolated_comparison": {
+    "sample": "3 historical code/date pairs, two runs per thread setting; raw calculation cache=None; DuckDB=4 threads; cProfile enabled; filesystem caches not cleared",
+    "polars4": {
+      "cases": 6,
+      "wall_ms": 1582.512,
+      "cpu_ms": 3576.972
+    },
+    "polars32": {
+      "cases": 6,
+      "wall_ms": 1746.204,
+      "cpu_ms": 14109.593
+    },
+    "cpu_reduction_percent": 74.65,
+    "wall_reduction_percent": 9.37,
+    "output_equality": [
+      {
+        "label": "373220-20260219-cold-peak",
+        "identical": true
+      },
+      {
+        "label": "373220-20260219-cold-depth",
+        "identical": true
+      },
+      {
+        "label": "267260-20260219-cold-peak",
+        "identical": true
+      },
+      {
+        "label": "267260-20260219-cold-depth",
+        "identical": true
+      },
+      {
+        "label": "005490-20260213-cold-peak",
+        "identical": true
+      },
+      {
+        "label": "005490-20260213-cold-depth",
+        "identical": true
+      }
+    ]
+  },
+  "secondary_findings": [
+    "Peak computation executed 158 Polars collect calls per sample day.",
+    "Prewarm presence checks parse and validate full ask/bid/depth cache bodies; sampled checks read 1.65-1.71 MB and took about 10-12 ms.",
+    "Live GC warnings of 3-second pauses occurred during prewarm; last warning at 23:09:58 before prewarm completion. GC counts are global to the API process and do not establish per-task attribution."
+  ],
+  "sources": {
+    "scheduler": "/home/dev/code/hoga-ops/hoga/api/scheduler.py:436",
+    "prewarm": "/home/dev/code/hoga-ops/hoga/api/peak_prewarm.py:202",
+    "peak_calculation": "/home/dev/code/hoga-ops/hoga/tables/snapshots.py:2275",
+    "cache_presence_checks": "/home/dev/code/hoga-ops/hoga/api/peak_prewarm.py:210"
+  },
+  "limitations": [
+    "No live stack profiler was attached: ptrace requires unavailable sudo authentication.",
+    "Live before/after was a natural job completion, not a randomized experiment; other laptop activity was not controlled.",
+    "Isolated profiles establish sampled function cost and output equality, not exact CPU share for every historical date.",
+    "No fan RPM or thermal-throttling telemetry available; no hardware cooling fault conclusion.",
+    "CPU time across threads is not measured electrical energy."
+  ],
+  "recommended_priority": [
+    "Bound CPU parallelism for prewarm, preferably in a separate worker so foreground chart requests retain their current settings.",
+    "Add time/CPU budget and pacing to prewarm; current limit is only the number of newly warmed items.",
+    "Optimize cache presence checks without bypassing freshness/version validation.",
+    "Do not prioritize reducing capture concurrency based on this incident: 10 captures continued after heat and main CPU fell."
+  ]
+}
