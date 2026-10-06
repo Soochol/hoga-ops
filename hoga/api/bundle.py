@@ -57,6 +57,7 @@ from hoga.api.models import (
     validate_bucket_ms,
 )
 from hoga.api.past_indicators_cache import CACHE_MISS
+from hoga.api.prewarm_usage import record_usage
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.slice_coalescer import SLICE_COALESCER
 from hoga.api.sources import (
@@ -2185,6 +2186,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     bar_peaks_enabled: bool = False,
     all_bar_peaks_enabled: bool = False,
     unreached_bar_peaks_enabled: bool = False,
+    record_prewarm_demand: bool = False,
 ) -> RangeBundle:
     """Build the Wire Model for a Stock-Date Range (ADR-0013, ADR-0014).
 
@@ -2286,6 +2288,11 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     trade_volume_pocs: list[TradeVolumePoc] = []
     depth_heatmap: list[DepthHeatmapPoint] = []
     included_dates: list[str] = []
+    usage_dates: list[dict[str, object]] = []
+    usage_kinds = (
+        (["peak"] if include_ask_peaks or include_bid_peaks else [])
+        + (["depth"] if include_depth_heatmap else [])
+    )
 
     # Indicator cache (호가비·체결강도)의 과거/오늘 게이트(ADR-0043/0090)는 각
     # 슬라이스 빌더가 자가-해석한다(WS3) — 루프는 캐시 정책을 알 필요 없음.
@@ -2535,6 +2542,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             gap_ms=_segment_gap_ms(d, meta),
         ))
         included_dates.append(d)
+        if record_prewarm_demand and usage_kinds and d < now_dt.strftime("%Y%m%d"):
+            usage_dates.append({"date": d, "source": source, "kinds": usage_kinds})
         gil_breathe_at = _gil_breathe(gil_breathe_at)
         if (
             not hoga_only and not cutoff_sidecar and not candles_only
@@ -2632,7 +2641,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             ),
         )
 
-    return RangeBundle(
+    result = RangeBundle(
         code=code,
         from_date=from_date,
         to_date=to_date,
@@ -2673,3 +2682,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             else ProgramTradeSeries(points=[])
         ),
     )
+    record_usage(
+        engine.data_dir, event="demand", code=code, venue=venue, dates=usage_dates,
+    )
+    return result
