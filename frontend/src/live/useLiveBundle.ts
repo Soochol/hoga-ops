@@ -4,7 +4,7 @@ import { useLiveDailyProgramTrade } from '../api/liveDailyProgramTrade';
 import type { WireDataWarning } from '../api/dataWarnings';
 import type { LiveSeriesData } from '../api/liveSeries';
 import { useLiveSettings } from '../api/liveSettings';
-import { useLivePastCandles, type LivePastCandlesResponse } from '../api/livePastCandles';
+import { hasBlockingWarnings, useLivePastCandles, type LivePastCandlesResponse } from '../api/livePastCandles';
 import { useLivePastDailyCandles } from '../api/livePastDailyCandles';
 import { useLivePastInvestorNet } from '../api/livePastInvestorNet';
 import { useScreenerDailyCandles } from '../api/screenerDailyCandles';
@@ -374,7 +374,7 @@ export interface UseLiveBundleResult {
   /** 좌측 팬 하한(YYYYMMDD). `null` = 아직 막을 근거 없음. 도출은 아래 훅 본문 참조. */
   minuteScrollbackFloorDate: string | null;
   isPastCandlesLoading: boolean;
-  /** Keep normal minute zoom while the today-first seed gains its initial history. */
+  /** Keep normal minute zoom while the initial seed or a partial response gains its missing history. */
   isInitialMinuteHistoryPending: boolean;
   /** 호가 지표 경로(/api/range mode=hoga)의 CURRENT (code, timeframe) 뷰 초기 fetch가
    * 아직 pending인가. LiveChartRoot의 reveal 커버가 isPastCandlesLoading과 함께 써서
@@ -1791,7 +1791,9 @@ export function useLiveBundle(
     minuteScrollbackFloorDate,
     isPastCandlesLoading: pastCandlesQuery.isLoading || pastDailyCandlesQuery.isLoading || screenerDailyCandlesQuery.isLoading || (minuteDiskNeeded && minuteDiskCandles.isLoading) || (enableForeignInvestor && investorQuery.isLoading) || (enableInstitutionInvestor && institutionQuery.isLoading),
     isInitialMinuteHistoryPending: enableMinute && historicalFromDate === null
-      && pastCandlesQuery.isWalkingHistory === true,
+      && (pastCandlesQuery.isLoading
+        || pastCandlesQuery.isWalkingHistory === true
+        || (pastCandlesQuery.data != null && hasBlockingWarnings(pastCandlesQuery.data))),
     isHogaLoading: pastHoga.isLoading && pastHoga.data == null,
     isExtending: extending,
     isSidecarLoading: pastSidecars.isLoading,
