@@ -50,6 +50,7 @@ import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
 import { canPublishTimeframeJump } from '../chart/timeframeJump';
 import type { AskPeakCandidate, Candle, RangeSegment } from '../api/types';
+import { hasBlockingWarnings } from '../api/livePastCandles';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
 import { jumpPublicationRange, type JumpRange } from './minuteJumpDestination';
@@ -338,7 +339,7 @@ interface Props {
    *  판정은 모드를 아는 훅이 하고 여기서는 나르기만 한다(그 값의 도크스트링 참조). */
   minuteScrollbackFloorDate?: string | null;
   isPastCandlesLoading: boolean;
-  /** Today's seed is visible while the initial minute history is still arriving. */
+  /** A seed or partial response is visible while the initial minute history is incomplete. */
   isInitialMinuteHistoryPending?: boolean;
   /** useLiveBundle.isHogaLoading — 호가 지표 경로 초기 fetch pending. reveal 커버가
    *  isPastCandlesLoading과 함께 써서 캔들+호가 pane을 한 번의 reveal로 등장시킨다.
@@ -1074,15 +1075,29 @@ export function LiveChartRoot({
   // transition doesn't leave the chart zoomed on the early window with the
   // latest data off the right edge.
   const lastAppliedCountRef = useRef<number | null>(null);
+  // Initial history recovery belongs to this placement, including any user
+  // input since the partial response. A delayed date-source reseat must not
+  // compete with it when the missing candles arrive.
+  const initialMinuteHistoryRef = useRef<{
+    sourceKey: string | undefined;
+    needsRecovery: boolean;
+  } | null>(null);
   // 창-스코프 절단(ADR-0119 C2c-2a): historicalFromDate 의 imperative 읽기/확장은
   // 창 런타임(Provider 안) 또는 전역 스토어(밖) — getState 병행 경로의 대응물.
   const historicalRange = useHistoricalRangeActions();
   const viewGuard = useWindowViewGuard();
   const canTriggerBackfill = useCallback(
     // 얼린 창은 백필을 아예 돌리지 않는다 — 근거는 `savedRangeFrozen` prop 도크스트링.
-    () => !savedRangeFrozen
+    // 초기 부분 응답의 예약 공간은 사용자 팬이 아니다. 최초 조회의 재시도가
+    // 끝나기 전에 음수 좌단을 추가 조회 수요로 읽어 조회 구간을 바꾸지 않는다.
+    () => !savedRangeFrozen && !isInitialMinuteHistoryPending
       && (lastAppliedCountRef.current !== null || historicalRange.snapshot().historicalFromDate !== null),
-    [historicalRange, savedRangeFrozen],
+    [historicalRange, savedRangeFrozen, isInitialMinuteHistoryPending],
+  );
+  const canReseatAfterSourceSwap = useCallback(
+    () => initialMinuteHistoryRef.current === null
+      || initialMinuteHistoryRef.current.sourceKey !== candleSourceKey,
+    [candleSourceKey],
   );
   // Cold-load reveal gate. On a cold (code, timeframe) load the hoga panes
   // (/api/range) resolve up to ~2.5s before the candles (/api/live/past-candles
@@ -1116,6 +1131,7 @@ export function LiveChartRoot({
   const chartReady = revealedKey === viewKey;
   useEffect(() => {
     lastAppliedCountRef.current = null;
+    initialMinuteHistoryRef.current = null;
     lastStableCandleLogicalIndexRef.current = null;
     if (revealRafRef.current !== null) {
       cancelAnimationFrame(revealRafRef.current);
@@ -1294,6 +1310,7 @@ export function LiveChartRoot({
     code: code ?? '',
     candleSourceKey,
     canTriggerBackfill,
+    canReseatAfterSourceSwap,
     indicatorCoverageFromDate,
     rangeWindowFromDate,
     settledFromDate,
@@ -1495,6 +1512,16 @@ export function LiveChartRoot({
       if (!isPastCandlesLoading && !isHogaLoading) reveal();
       return;
     }
+    const initialHistory = initialMinuteHistoryRef.current;
+    if (initialHistory && initialHistory.sourceKey === candleSourceKey
+      && isInitialMinuteHistoryPending && hasBlockingWarnings({ data_warnings: pastDataWarnings ?? [] })) {
+      initialHistory.needsRecovery = true;
+    }
+    const initialHistorySettled = initialHistory !== null
+      && !isInitialMinuteHistoryPending && !isPastCandlesLoading;
+    const recoverInitialMinuteViewport = initialHistorySettled
+      && initialHistory.needsRecovery && initialHistory.sourceKey === candleSourceKey;
+    if (initialHistorySettled) initialMinuteHistoryRef.current = null;
     // A안 (ADR-0069): a tab carrying a saved viewport restores its exact view on
     // cold switch-back. Reproject the time anchor through the REBUILT axis →
     // logical index, re-apply the saved zoom (computeRestoreRange clamps the
@@ -1657,7 +1684,11 @@ export function LiveChartRoot({
         // Minute timeframes carry ~5000 1m bars and need 300-bar windowing
         // to stay legible. Apply once per (code, timeframe): SSE pushes
         // inside today's segment must not snap the user's scroll.
-        if (applied !== null) { revealWhenSettled(); return; }
+        if (applied !== null && (!recoverInitialMinuteViewport
+          || userAdjustedViewportRef.current || restoreViewport)) {
+          revealWhenSettled();
+          return;
+        }
         const lastMs = cb.candles[cb.candles.length - 1]?.ts_ms;
         let latestLogicalIndex: number | null = null;
         if (lastMs != null && typeof ts.timeToIndex === 'function') {
@@ -1667,9 +1698,11 @@ export function LiveChartRoot({
         rememberLatestCandleLogicalIndex(latestLogicalIndex);
         const latest = latestLogicalIndex ?? totalBars - 1;
         const target = initialVisibleMinuteBarsFor(timeframe, venue);
-        // A today-first seed is not the full history. Reserve the normal
-        // viewport to its left so the first few opening candles don't set a
-        // permanent zoom; the prepend path fills it without changing scale.
+        // A today-first seed or failed partial response is not the full
+        // history. Reserve the normal viewport to its left so a few candles
+        // don't set a permanent zoom. Repair a failed partial response at
+        // completion only if the user has not changed the viewport. Normal
+        // today-first prepends retain the adapter's exact pixel anchor.
         const visibleBars = isInitialMinuteHistoryPending ? target : Math.min(totalBars, target);
         const rightOffset = minuteRightOffsetBars(visibleBars, ts.width());
         const from = isInitialMinuteHistoryPending
@@ -1678,6 +1711,12 @@ export function LiveChartRoot({
         const to = latest + 1 + rightOffset;
         ts.setVisibleLogicalRange({ from, to });
         lastAppliedCountRef.current = totalBars;
+        initialMinuteHistoryRef.current = isInitialMinuteHistoryPending
+          ? {
+            sourceKey: candleSourceKey,
+            needsRecovery: hasBlockingWarnings({ data_warnings: pastDataWarnings ?? [] }),
+          }
+          : null;
         revealWhenSettled();
         // 분봉 복귀 커버리지 복원(1-샷): 직전 분봉 뷰에서 팬으로 넓힌 창
         // (lastMinuteHistoricalFromDate)을 초기 뷰 배치 "직후"에 일반 좌측-팬
@@ -1739,7 +1778,7 @@ export function LiveChartRoot({
     } catch {
       // chart torn down between effect runs
     }
-  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isInitialMinuteHistoryPending, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick]);
+  }, [chart, cb, timeframe, venue, isPastCandlesLoading, isInitialMinuteHistoryPending, isHogaLoading, isSidecarLoading, sidecarCapReached, viewKey, revealedKey, restoreViewport, viewportLayoutTick, candleSourceKey, pastDataWarnings]);
 
   useEffect(() => {
     const el = containerRef.current;

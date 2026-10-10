@@ -154,6 +154,9 @@ export interface ViewportBackfillArgs {
   candleSourceKey?: string;
   /** Backfill must not race the initial live-edge viewport placement. */
   canTriggerBackfill?: () => boolean;
+  /** The initial-view owner can consume a delayed date-source swap while
+   * recovering partial history, preserving any intervening user input. */
+  canReseatAfterSourceSwap?: () => boolean;
   /** Coverage-gap 백필(A안): 활성 range 지표(hoga/sidecar)가 도달한 가장 최근 from_date.
    * 캔들이 병합 캐시로 더 과거까지 복원돼도 지표가 이 날짜까지만 있으면, viewport 좌단이
    * 이보다 과거일 때 whitespace 없이도 range 창을 확장한다. 분봉 외/미로드면 null → 비활성. */
@@ -256,6 +259,7 @@ export function useViewportBackfill({
   settledFromDate = null,
   savedRangeFromDate = null,
   minuteScrollbackFloorDate = null,
+  canReseatAfterSourceSwap,
 }: ViewportBackfillArgs): {
   /** 강제 클램프 착지 안내 — 새 소스에 없는 구간에서 스왑해 가장 가까운 위치로
    *  옮겨졌을 때 한 번 선다. `seq` 는 같은 경계로 반복 착지해도 칩이 다시 뜨게 한다. */
@@ -765,6 +769,16 @@ export function useViewportBackfill({
     const isMinute = isMinuteTimeframe(timeframe);
     const snap = preSwapRef.current;
 
+    // A new chart can already own its initial partial-history placement while
+    // a date change from the previous chart is still latched. Consume that
+    // stale reseat; initial recovery or the current user view owns this data.
+    if (swapPendingRef.current && canReseatAfterSourceSwap?.() === false) {
+      swapPendingRef.current = false;
+      livePerfLog('viewport_reseat_skip', {
+        code, timeframe, kind: 'source_swap', reason: 'initial_history_owned',
+      });
+    }
+
     // 2a. 소스 스왑 재착석. 키가 갈렸고(1b 래치) **캔들도 실제로 갈린** 첫 커밋에서
     // 한 번. 분봉 전용이다 — 캘린더 봉의 재배치는 `LiveChartRoot` 의 초기 뷰 effect 가
     // 소유하므로(캔들 수가 바뀌면 스스로 다시 앉힌다) 여기서 겹치면 둘이 싸운다.
@@ -1128,7 +1142,7 @@ export function useViewportBackfill({
       // runs. Surface in dev so it isn't a silent no-op read as "still broken".
       if (import.meta.env.DEV) console.warn('[live] viewport reposition threw', e);
     }
-  }, [chart, bundle, axis, historicalRange, timeframe, venue, canTriggerBackfill]);
+  }, [chart, bundle, axis, historicalRange, timeframe, venue, canTriggerBackfill, canReseatAfterSourceSwap]);
 
   // 3a. 진행 루프(스텝 2..N): 한 스텝이 settle할 때마다 활성 fill의 예산을 소진하며
   // 다음 스텝을 자가 dispatch한다. 뷰포트는 읽지 않는다 — 예산과 목표는 트리거(3b)

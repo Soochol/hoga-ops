@@ -1,0 +1,7 @@
+import { defineConfig } from '@playwright/test';
+export default defineConfig({
+ testDir: './tests/e2e', testMatch: 'live-viewport-preservation.spec.ts', workers: 1,
+ timeout: 45000, reporter: 'list',
+ use: { baseURL: 'http://127.0.0.1:21988', channel: 'chrome', screenshot: 'only-on-failure' },
+ webServer: { command: 'npm run dev -- --host 127.0.0.1 --port 21988 --strictPort', url: 'http://127.0.0.1:21988', env: { E2E_API_URL: 'http://127.0.0.1:21988' }, reuseExistingServer: false }
+});

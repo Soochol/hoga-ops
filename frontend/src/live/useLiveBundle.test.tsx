@@ -2286,31 +2286,38 @@ describe('useLiveBundle', () => {
   });
 
   it('clamps pastFrom to 249 days before today when historicalFromDate is older', () => {
-    useLivePageStore.setState({ historicalFromDate: '20250101' });
-    renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
-    // 5th arg = todayKst (=== minutePastTo === today), gating chunk freshness:
-    // the today head chunk polls; past-only walk-back chunks freeze.
-    // 6th = bucketMs — 표시 tf('1m')를 벤더 주기로 그대로 요청한다(#1008).
-    expect(livePastCandlesSpy).toHaveBeenCalledWith(
-      '005930', '20250920', '20260527', 'KRX', '20260527', 60_000, false,
-    );
-    // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
-    // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today
-    // so todayKst === to === '20260527'.
-    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
-      '005930',
-      '20250920',
-      '20260527',
-      '1m',
-      undefined,
-      '20260527',
-      expect.objectContaining({
-        mode: 'sidecar',
-        volumeDistributionBins: 10,
-        tradeVolumePocBins: 10,
-        volumeDistributionPriceRange: { min: 69900, max: 70100 },
-      }),
-    );
+    // Keep the real-vendor retention wall earlier than this fixture's span
+    // cap. Otherwise the expected September 2025 floor changes every day.
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 1));
+    try {
+      useLivePageStore.setState({ historicalFromDate: '20250101' });
+      renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
+      // 5th arg = todayKst (=== minutePastTo === today), gating chunk freshness:
+      // the today head chunk polls; past-only walk-back chunks freeze.
+      // 6th = bucketMs — 표시 tf('1m')를 벤더 주기로 그대로 요청한다(#1008).
+      expect(livePastCandlesSpy).toHaveBeenCalledWith(
+        '005930', '20250920', '20260527', 'KRX', '20260527', 60_000, false,
+      );
+      // 5th arg = priceRange (undefined here); 6th = todayKst, which drives the
+      // 5-min refetch that advances pastMaxQrT (review C1). minutePastTo === today
+      // so todayKst === to === '20260527'.
+      expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith(
+        '005930',
+        '20250920',
+        '20260527',
+        '1m',
+        undefined,
+        '20260527',
+        expect.objectContaining({
+          mode: 'sidecar',
+          volumeDistributionBins: 10,
+          tradeVolumePocBins: 10,
+          volumeDistributionPriceRange: { min: 69900, max: 70100 },
+        }),
+      );
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('requests POC bins without volume distributions when only trade POC is enabled', () => {
@@ -3116,6 +3123,32 @@ describe('useLiveBundle isExtending', () => {
     }
   });
 
+  it.each(['rate_limit', 'deferred', 'transport'] as const)(
+    'marks initial historical 3m history pending while a %s response is incomplete',
+    (kind) => {
+      candlesMock.candles = [DEFAULT_CANDLE, { ...DEFAULT_CANDLE, t_ms: DEFAULT_CANDLE.t_ms + 180_000 }];
+      candlesMock.warnings = [{ date: '20260526', reason: kind, kind, msg: 'history incomplete' }];
+      const { result, rerender } = renderHook(
+        () => useLiveBundle('005930', '3m', '20260527', liveFixture),
+        { wrapper: createWrapper() },
+      );
+      // A response exists and no request is running, but a missing date is
+      // still awaiting retry. This is distinct from the today-first walk.
+      expect(result.current.isPastCandlesLoading).toBe(false);
+      expect(result.current.isInitialMinuteHistoryPending).toBe(true);
+      expect(result.current.chartBundle?.candles).toHaveLength(2);
+
+      candlesMock.warnings = [];
+      rerender();
+      // A complete response with genuinely only two candles may fit them.
+      expect(result.current.isInitialMinuteHistoryPending).toBe(false);
+
+      candlesMock.warnings = [{ date: '20260526', reason: kind, kind, msg: 'history incomplete' }];
+      act(() => useLivePageStore.setState({ historicalFromDate: '20260514' }));
+      expect(result.current.isInitialMinuteHistoryPending).toBe(false);
+    },
+  );
+
   it.each(['price', 'independent'] as const)('protects the initial pending %s sidecar without holding candles, and releases after settle', (pendingLane) => {
     useLivePageStore.setState({
       historicalFromDate: null, programTradeEnabled: true, volumeDistributionEnabled: true,
@@ -3398,11 +3431,18 @@ describe('minuteScrollbackFloorDate · clampEngaged', () => {
   }
 
   it('벤더 분봉은 250일 벽을 하한으로 준다', () => {
-    const { result } = renderHook(
-      () => useLiveBundle('005930', '1m', '20260527', liveFixture),
-      { wrapper: createWrapper() },
-    );
-    expect(result.current.minuteScrollbackFloorDate).toBe('20250920');
+    // Keep the real-vendor retention wall earlier than this fixture's span
+    // cap. Otherwise the expected September 2025 floor changes every day.
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 8, 1));
+    try {
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture),
+        { wrapper: createWrapper() },
+      );
+      expect(result.current.minuteScrollbackFloorDate).toBe('20250920');
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('디스크 모드는 응답이 하한을 말해 주기 전까진 null — 모르는 것을 바닥이라 하지 않는다', () => {

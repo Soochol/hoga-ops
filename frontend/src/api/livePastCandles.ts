@@ -130,7 +130,7 @@ const BLOCKING_WARNING_KINDS: ReadonlySet<LiveWarningKind> = new Set([
   'deferred',
 ]);
 
-export function hasBlockingWarnings(response: LivePastCandlesResponse): boolean {
+export function hasBlockingWarnings<T extends WireDataWarning>(response: { data_warnings: readonly T[] }): boolean {
   return response.data_warnings.some((w) => {
     const kind = warningKind(w);
     return kind !== undefined && BLOCKING_WARNING_KINDS.has(kind);
