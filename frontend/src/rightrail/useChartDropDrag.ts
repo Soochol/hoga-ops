@@ -13,6 +13,8 @@ import { useDragPointPublisher } from '../state/useDragPointPublisher';
 export type ChartDropGhost = {
   code: string; name: string; price: number | null; pct: number | null;
   rank?: number;
+  netBuyWon?: number | null;
+  netBuyLabel?: string;
 };
 
 /**

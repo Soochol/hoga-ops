@@ -1870,21 +1870,26 @@ class RankingRowModel(BaseModel):
     price: int | None
     change_pct: float | None
     trade_value_won: int | None = None
+    program_net_buy_won: int | None = None
+    investor_net_buy_won: int | None = None
 
 
 class RankingsResponse(BaseModel):
-    """GET /api/live/rankings — 키움 순위 TR 4종(kiwoom_rankings). market_open 이
-    False 면 프론트는 폴링을 멈추고 "장 외" 라벨을 단다(그릴링 결정 9)."""
+    """GET /api/live/rankings — 순위 4종 및 프로그램·기관·외국인 순매수 금액.
 
-    kind: Literal["change", "surge", "volume", "value"]
+    market_open=False면 프론트는 60초 하트비트로 낮추고 "장 외" 라벨을 단다.
+    """
+
+    kind: RankingKind
     market: Literal["all", "kospi", "kosdaq"]
     direction: Literal["up", "down"]
     rows: list[RankingRowModel]
     market_open: bool
     fetched_at_ms: int
-    #: 이 순위를 뽑은 거래소(KRX/NXT/UN). NXT 는 유동성이 얕아 상위 종목이 KRX 와
-    #: 크게 다르다 — 화면이 **무엇을 보고 있는지** 알 수 있어야 한다.
-    venue: str = "KRX"
+    #: 순위 거래소(KRX/NXT/UN). 거래소 지정이 없는 기관·외국인 순위는 null.
+    venue: str | None = "KRX"
+    #: 기관·외국인 순위에 보완한 현재가·등락률의 거래소.
+    quote_venue: str | None = None
     source: Literal["kiwoom"] = "kiwoom"
     # 비치명 경고(스크리너 ScreenerResponse.warnings 와 같은 관용구). 현재 유일한
     # 값은 "etf_filter_unavailable" — exclude_etf 를 요청했으나 심볼 마스터가
@@ -2793,7 +2798,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             # 16:00–18:00 에만 호출되므로 다른 표면과 유량이 겹치지 않는다.
             kiwoom_after_hours_fetcher_instance = KiwoomAfterHoursFetcher(_kiwoom_prov)
             # 순위 fetcher 는 같은 account-0 토큰 provider 를 재사용(스펙: rkinfo 4종).
-            kiwoom_rankings_fetcher_instance = KiwoomRankingsFetcher(_kiwoom_prov)
+            kiwoom_rankings_fetcher_instance = KiwoomRankingsFetcher(_kiwoom_prov, data_dir=data_dir)
             # 지수 분봉 fetcher (ADR-0129) — 같은 provider. 이 대입이 곧 소스 선택이다:
             # 자격증명이 없으면 None 으로 남아 지수 분봉이 KIS 로 간다(현행 동작 유지).
             _kiwoom_index_fetcher = KiwoomIndexCandlesFetcher(_kiwoom_prov)
@@ -3217,16 +3222,16 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         market: RankingMarket = Query("all"),
         direction: RankingDirection = Query("up"),
         exclude_etf: bool = Query(False),
-        # 순위 TR 은 `stex_tp`(거래소구분)로 시장을 가른다 — `mrkt_tp`(코스피/코스닥)와
-        # 직교하는 별개 축이다. 기본값을 두는 이유는 구 프론트가 이 값을 안 보내기
-        # 때문이고, 그 경우 예전과 같은 KRX 순위가 나온다.
+        # 기존 순위·프로그램은 stex_tp로 거래소를 선택한다. 기관·외국인은
+        # 거래소 입력이 없으므로 venue는 보완 시세에만 적용한다.
         venue: str = Query("KRX"),
     ) -> RankingsResponse:
-        """시장 전체 순위 (키움 rkinfo 4종, kind 별 api-id 분기, TTL ~8s 캐시).
+        """시장 전체 순위 및 프로그램·기관·외국인 순매수 금액 순위.
 
         우측 RightRail "순위" 드로어 소스. kind=change 만 direction(상승/하락)이
-        의미 있고 나머지는 무시된다. market_open=False 면 프론트가 폴링을 멈추고
-        "장 외" 라벨을 단다 — 비거래일엔 상류를 건너뛰고 빈(또는 웜) 목록을 준다.
+        의미 있고 나머지는 무시된다. 일반 순위는 10초, 순매수는 30초 폴링이다.
+        market_open=False면 60초로 낮추고 "장 외" 라벨을 단다.
+        비거래일엔 상류를 건너뛰며, 순매수는 전일 목록을 재사용하지 않는다.
 
         exclude_etf=True 면 심볼 마스터의 security_type(etf/etn) 종목을 응답에서
         제거한다. 필터는 라우트 후처리 — fetcher 캐시는 전체 리스트를 그대로 캐싱해
@@ -3261,6 +3266,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 RankingRowModel(
                     rank=i, code=r.code, name=r.name,
                     price=r.price, change_pct=r.change_pct, trade_value_won=r.trade_value_won,
+                    program_net_buy_won=r.program_net_buy_won,
+                    investor_net_buy_won=r.investor_net_buy_won,
                 )
                 for i, r in enumerate(rows, start=1)
             ],
@@ -3269,6 +3276,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             # 요청 venue 가 아니라 **스냅샷이 들고 있는 값**을 되싣는다 — 둘이 갈릴
             # 여지를 남기지 않는다(캐시 히트가 다른 venue 를 줬다면 여기서 드러난다).
             venue=snap.venue,
+            quote_venue=snap.quote_venue,
             warnings=warnings,
         )
 
