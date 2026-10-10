@@ -81,6 +81,97 @@ afterEach(() => {
 });
 
 describe('RankingDrawer', () => {
+  it.each([['institution', '기관'], ['foreign', '외국인']] as const)(
+    '%s shows provisional amounts, source scope, quotes and a matching drag ghost', async (kind, label) => {
+      const investor = {
+        ...OPEN_RESPONSE, kind, venue: null, quote_venue: 'UN',
+        rows: OPEN_RESPONSE.rows.map((row, i) => ({
+          ...row, investor_net_buy_won: i === 0 ? 64_260_000_000 : 21_572_000_000,
+        })),
+      };
+      const call = vi.spyOn(client, 'apiCall').mockImplementation(async (url) => (
+        String(url).includes(`kind=${kind}`) ? investor : OPEN_RESPONSE
+      ) as never);
+      renderDrawer();
+      await screen.findByText('삼성전자');
+      const sort = screen.getByRole('button', { name: '등락률 정렬' });
+      fireEvent.click(sort);
+      fireEvent.click(sort);
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      expect(await screen.findByText('+642.60억')).toBeInTheDocument();
+      expect(screen.getByText('장중 추정 · 순매수 금액 · 상위 100 · 30초 갱신')).toBeInTheDocument();
+      expect(screen.getByText('순위: 거래소 지정 미지원 · 시세: 통합')).toBeInTheDocument();
+      expect(screen.getAllByRole('button', { name: /차트 열기/ })[0]).toHaveTextContent('HDC현대산업개발');
+      expect(screen.getByText('71,200')).toBeInTheDocument();
+      expect(screen.getByText('+5.79%')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '↓하락' })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('ranking-row-005930'));
+      expect(liveNavigate.activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
+      act(() => { dnd.onDragStart!(DRAG_START); });
+      const ghost = within(screen.getByTestId('ranking-drag-ghost'));
+      expect(ghost.getByTitle(`${label} 순매수 +215.72억`)).toBeInTheDocument();
+      act(() => { dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } }); });
+      fireEvent.change(screen.getByRole('combobox', { name: '시장' }), { target: { value: 'kosdaq' } });
+      fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
+      await waitFor(() => expect(call.mock.calls.some(([url]) => (
+        String(url).includes(`kind=${kind}`) && String(url).includes('market=kosdaq') && String(url).includes('exclude_etf=true')
+      ))).toBe(true));
+      fireEvent.click(screen.getByRole('button', { name: '거래량' }));
+      await screen.findByText('삼성전자');
+      expect(screen.queryByText('+642.60억')).not.toBeInTheDocument();
+      expect(screen.queryByText(/장중 추정/)).not.toBeInTheDocument();
+    },
+  );
+
+  it('shows program net-buy amounts in 억 while preserving quotes, navigation and the drag ghost', async () => {
+    const program = {
+      ...OPEN_RESPONSE, kind: 'program',
+      rows: OPEN_RESPONSE.rows.map((row, i) => ({
+        ...row, program_net_buy_won: i === 0 ? 64_499_000_000 : 63_479_000_000,
+      })),
+    };
+    const apiCall = vi.spyOn(client, 'apiCall').mockImplementation(async (url) => (
+      String(url).includes('kind=program') ? program : OPEN_RESPONSE
+    ) as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+    fireEvent.click(screen.getByRole('button', { name: '프로그램' }));
+    expect(await screen.findByText('+644.99억')).toBeInTheDocument();
+    expect(screen.getByText('순매수 금액 · 상위 50 · 30초 갱신')).toBeInTheDocument();
+    expect(screen.getByText('71,200')).toBeInTheDocument();
+    expect(screen.getByText('+5.79%')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '↓하락' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('ranking-row-005930'));
+    expect(liveNavigate.activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
+    act(() => { dnd.onDragStart!(DRAG_START); });
+    expect(within(screen.getByTestId('ranking-drag-ghost')).getByText('+634.79억')).toBeInTheDocument();
+    act(() => { dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } }); });
+    fireEvent.change(screen.getByRole('combobox', { name: '시장' }), { target: { value: 'kosdaq' } });
+    await waitFor(() => expect(apiCall.mock.calls.some(([url]) => (
+      String(url).includes('kind=program') && String(url).includes('market=kosdaq')
+    ))).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: '대금' }));
+    await screen.findByText('삼성전자');
+    expect(screen.queryByText('+644.99억')).not.toBeInTheDocument();
+  });
+
+  it('resets percent sorting when entering program so net-buy leaders appear first', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+    const sort = screen.getByRole('button', { name: '등락률 정렬' });
+    fireEvent.click(sort);
+    fireEvent.click(sort);
+    expect(screen.getAllByRole('button', { name: /차트 열기/ })[0]).toHaveTextContent('삼성전자');
+    fireEvent.click(screen.getByRole('button', { name: '프로그램' }));
+    await screen.findByText('HDC현대산업개발');
+    expect(screen.getAllByRole('button', { name: /차트 열기/ })[0]).toHaveTextContent('HDC현대산업개발');
+    expect(screen.queryByText('등락률 ↑ 낮은 순')).not.toBeInTheDocument();
+    // 구버전/결측 금액이 실제 0억원처럼 보이지 않는다.
+    expect(screen.queryByText('+0.00억')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('프로그램 순매수 —')).toHaveLength(2);
+  });
+
   it('renders ranked rows and requests /api/live/rankings with default params', async () => {
     const apiCall = vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
     renderDrawer();

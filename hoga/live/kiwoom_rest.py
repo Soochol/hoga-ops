@@ -130,6 +130,11 @@ TR: dict[str, TrSpec] = {
     "ka10095": TrSpec("ka10095", PATH_STKINFO, "atn_stk_infr", required=("stk_cd",)),
     "ka10059": TrSpec("ka10059", PATH_STKINFO, "stk_invsr_orgn", cursor=True,
                       required=("stk_cd", "dt", "amt_qty_tp", "trde_tp", "unit_tp")),
+    "ka90003": TrSpec("ka90003", PATH_STKINFO, "prm_netprps_upper_50", cursor=True,
+                      required=("trde_upper_tp", "amt_qty_tp", "mrkt_tp", "stex_tp")),
+    # 공식 가이드의 stkinfo 표기는 오류. 공식 예제 및 실콜은 rkinfo.
+    "ka10065": TrSpec("ka10065", PATH_RKINFO, "opmr_invsr_trde_upper", cursor=True,
+                      required=("trde_tp", "mrkt_tp", "orgn_tp")),
     "ka10099": TrSpec("ka10099", PATH_STKINFO, "list", required=("mrkt_tp",)),
     # 업종·지수
     "ka20001": TrSpec("ka20001", PATH_SECT, "inds_cur_prc_tm", required=("inds_cd", "mrkt_tp")),

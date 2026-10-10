@@ -35,13 +35,13 @@ import { SortCycleButton } from '../ui/SortCycleButton';
 
 /**
  * 순위 패널 (특징주) — 앱 전역 RightRail 형제(스크리너/관심종목과 동일 계열).
- * 키움 rkinfo 4종을 SegmentedControl 로 전환하고, 행 클릭은 activeCode 로 차트
+ * 키움 rkinfo 4종과 프로그램·기관·외국인 순매수 금액을 전환하고, 행 클릭은 activeCode 로 차트
  * 종목을 바꾼다(useJumpToLive). 시안 A(세그먼트 리스트) 확정 — 기준값 열은 없다
  * (순서가 곧 기준값, 그릴링 결정 7). 드래그로 특정 차트 창에 드롭하면 그 창만
  * 종목 교체(resolveDropOnChart, 스크리너와 동일 seam).
  *
- * 데이터는 10s 폴링(useLiveRankings) — 장외엔 market_open=false 로 폴링이 멈추고
- * "장 외" 라벨을 단다. kind/market/direction 선택은 드로어 로컬 state(닫으면 초기화).
+ * 데이터는 10s 폴링(순매수 30s) — 장외엔 60s로 낮추고 "장 외" 라벨을 단다.
+ * kind/market/direction 선택은 드로어 로컬 state(닫으면 초기화).
  */
 
 const RANKING_ENTRY_TYPE = 'ranking-entry';
@@ -52,7 +52,23 @@ const KINDS: { key: RankingKind; label: string }[] = [
   { key: 'surge', label: '량급증' },
   { key: 'volume', label: '거래량' },
   { key: 'value', label: '대금' },
+  { key: 'program', label: '프로그램' },
+  { key: 'institution', label: '기관' },
+  { key: 'foreign', label: '외국인' },
 ];
+
+const NET_BUY_AMOUNT_FORMAT = new Intl.NumberFormat('ko-KR', {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+
+function NetBuyAmount({ won, label }: { won: number | null | undefined; label: string }) {
+  const amount = won == null ? '—' : `${won > 0 ? '+' : ''}${NET_BUY_AMOUNT_FORMAT.format(won / 100_000_000)}억`;
+  return <span className="font-data tabular-nums text-fg-dim" title={`${label} 순매수 ${amount}`}>{amount}</span>;
+}
+
+function netBuyAmount(row: RankingRow, kind: RankingKind): number | null | undefined {
+  return kind === 'program' ? row.program_net_buy_won : row.investor_net_buy_won;
+}
 
 const MARKETS: { key: RankingMarket; label: string }[] = [
   { key: 'all', label: '전체' },
@@ -104,11 +120,15 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
   active,
   onActivate,
   onOpenMenu,
+  kind,
+  netBuyLabel,
 }: {
   row: RankingRow;
   active: boolean;
   onActivate: (row: RankingRow, e?: JumpModifiers) => void;
   onOpenMenu: (row: RankingRow, e: React.MouseEvent<HTMLLIElement>) => void;
+  kind: RankingKind;
+  netBuyLabel: string | undefined;
 }) {
   const { setNodeRef, listeners, attributes, isDragging } = useDraggable({
     id: `${RANKING_ENTRY_TYPE}:${row.code}`,
@@ -129,6 +149,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
       onClick={handleActivate}
       onContextMenu={handleContextMenu}
       leading={<RankSlot rank={row.rank} />}
+      nameDetail={netBuyLabel ? <NetBuyAmount won={netBuyAmount(row, kind)} label={netBuyLabel} /> : undefined}
       sortableRef={setNodeRef}
       dragListeners={listeners}
       dragAttributes={attributes}
@@ -160,6 +181,7 @@ function RankingDragGhost({ ghost }: { ghost: ChartDropGhost }) {
       ariaLabel={ghost.name}
       testId="ranking-drag-ghost"
       leading={<RankSlot rank={ghost.rank} />}
+      nameDetail={ghost.netBuyLabel ? <NetBuyAmount won={ghost.netBuyWon} label={ghost.netBuyLabel} /> : undefined}
       onClick={() => {}}
     />
   );
@@ -170,6 +192,8 @@ export function RankingDrawer() {
   const openLive = useJumpToLive();
 
   const [kind, setKind] = useState<RankingKind>('change');
+  const investor = kind === 'institution' || kind === 'foreign';
+  const netBuyLabel = kind === 'program' ? '프로그램' : kind === 'institution' ? '기관' : kind === 'foreign' ? '외국인' : undefined;
   const [market, setMarket] = useState<RankingMarket>('all');
   const [direction, setDirection] = useState<RankingDirection>('up');
   const [excludeEtf, setExcludeEtf] = useState(false);
@@ -202,7 +226,11 @@ export function RankingDrawer() {
     const row = rows.find((r) => r.code === code);
     drag.onDragStart(
       ev,
-      row ? { code: row.code, name: row.name, price: row.price, pct: row.change_pct, rank: row.rank } : null,
+      row ? {
+        code: row.code, name: row.name, price: row.price, pct: row.change_pct, rank: row.rank,
+        netBuyWon: netBuyLabel ? netBuyAmount(row, kind) ?? null : undefined,
+        netBuyLabel,
+      } : null,
     );
   };
 
@@ -230,7 +258,7 @@ export function RankingDrawer() {
         }
       />
       <RailDrawerSection className="flex flex-col gap-sm">
-        <SegmentedControl aria-label="순위 종류" className="self-start">
+        <SegmentedControl aria-label="순위 종류" className="w-full !grid grid-cols-4">
           {KINDS.map((k) => {
             const on = kind === k.key;
             return (
@@ -238,8 +266,8 @@ export function RankingDrawer() {
                 key={k.key}
                 type="button"
                 aria-pressed={on}
-                onClick={() => setKind(k.key)}
-                className={`px-2 py-[3px] text-xs ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
+                onClick={() => { setKind(k.key); setSortMode('default'); }}
+                className={`shrink-0 px-2 py-[3px] text-xs ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
               >
                 {k.label}
               </button>
@@ -300,6 +328,12 @@ export function RankingDrawer() {
           />
         </div>
         {sortMode !== 'default' && <p className="mt-1 text-xs text-accent">등락률 {rankingSortDirection(sortMode) === 'asc' ? '↑ 낮은 순' : '↓ 높은 순'}</p>}
+        {netBuyLabel && <p className="text-xs text-fg-dim">{investor ? '장중 추정 · ' : ''}순매수 금액 · 상위 {investor ? 100 : 50} · 30초 갱신</p>}
+        {investor && (
+          <p className="text-xs text-fg-dim">
+            순위: 거래소 지정 미지원 · 시세: {data?.quoteVenue === 'UN' ? '통합' : data?.quoteVenue ?? '—'}
+          </p>
+        )}
       </RailDrawerSection>
 
       <RailDestination />
@@ -338,6 +372,8 @@ export function RankingDrawer() {
                   active={r.code === activeCode}
                   onActivate={onActivateRow}
                   onOpenMenu={onOpenRowMenu}
+                  kind={kind}
+                  netBuyLabel={netBuyLabel}
                 />
               ))}
             </ul>
