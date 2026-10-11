@@ -62,6 +62,7 @@ export function useChartWindowView(windowId: string | null): ChartWindowView | n
       windowId: target.id,
       group: target.group,
       code: isIndex ? null : symbol?.code ?? null,
+      instrumentKind: isIndex ? 'index' : 'stock',
       timeframe,
       historicalFromDate: null, // 드로어/설정은 페치를 돌리지 않는다 — 뷰 식별용 아님
     };

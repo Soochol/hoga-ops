@@ -128,6 +128,11 @@ describe('panesCanCoDisplay — ALL_ON 전수 가드', () => {
     expect(mergeDropHint('peak-wall', ['volume']).warning).toBe(false);
     expect(mergeDropHint('ratio', ['peak-wall']).warning).toBe(false);
   });
+
+  it('거래대금은 일봉 거래량과 병합 가능하고 분봉 전용 지표와는 게이트가 겹치지 않는다', () => {
+    expect(mergeDropHint('trade-value', ['volume']).warning).toBe(false);
+    expect(mergeDropHint('trade-value', ['ratio']).warning).toBe(true);
+  });
 });
 
 describe('boundaryDropLabel', () => {

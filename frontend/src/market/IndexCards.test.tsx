@@ -82,6 +82,7 @@ const VOLATILITY = { code: '603', name: '변동성지수', value: 75.97, change_
 
 /** 현물 분봉 — 선물 모드가 이걸 그리면 안 된다는 것을 보이려고 값을 확실히 구분한다. */
 const SPOT_CANDLES = {
+  data_warnings: [],
   candles: [
     { open: 900, high: 900, low: 900, close: 900 },
     { open: 900, high: 900, low: 900, close: 901 },

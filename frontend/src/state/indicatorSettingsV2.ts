@@ -168,6 +168,7 @@ export type PersistedIndicatorsV2 = {
  */
 export interface IndicatorScope {
   windowKey: string | null;
+  instrumentKind?: 'stock' | 'index';
 }
 
 /** 손상된 스토어의 무한 증식 방어 — 실사용 창 수보다 한참 크다. */

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import {
   WindowViewContext,
@@ -15,6 +15,7 @@ import {
   FACTORY_INDICATOR_SETTINGS,
   INDICATORS_V2_STORAGE_KEY,
   normalizeIndicatorsV2,
+  resolveIndicatorSettings,
 } from '../../state/indicatorSettingsV2';
 import { normalizePaneOrder } from '../../chart/paneOrder';
 import {
@@ -88,7 +89,7 @@ function provider(value: WindowViewValue) {
  *  돌린다 — 파일 상단 주석의 ⚠ 참조. */
 function renderWindow(value: WindowViewValue) {
   return renderHook(() => {
-    useSeedWindowIndicatorScope(value.windowId);
+    useSeedWindowIndicatorScope(value.windowId, value.instrumentKind);
     return {
       scope: useWindowIndicatorScope(),
       actions: useIndicatorActions(),
@@ -103,6 +104,33 @@ function renderWindow(value: WindowViewValue) {
 function storedV2() {
   return normalizeIndicatorsV2(JSON.parse(localStorage.getItem(INDICATORS_V2_STORAGE_KEY) ?? '{}'));
 }
+
+it('stock and index settings in the same window survive switching, hydration and independent resets', () => {
+  seedWorkspace([chartWindow('w1', 'D')]);
+  const stockView = windowValue('w1', 'D');
+  const stock = renderWindow(stockView);
+  act(() => stock.result.current.actions.setPanePrefForTimeframe('D', 'volumeEnabled', false));
+  const index = renderWindow({ ...stockView, code: null, instrumentKind: 'index' });
+  act(() => {
+    index.result.current.actions.setPanePrefForTimeframe('D', 'volumeEnabled', true);
+    index.result.current.prefActions.setToggle('surgeMarkerEnabled', false);
+  });
+  expect(stock.result.current.volumeEnabled).toBe(false);
+  expect(index.result.current.volumeEnabled).toBe(true);
+  expect(stock.result.current.surgeMarkerEnabled).toBe(true);
+  expect(index.result.current.surgeMarkerEnabled).toBe(false);
+  expect(storedV2().byWindow['live:w1']?.D?.volumeEnabled).toBe(false);
+  expect(resolveIndicatorSettings(storedV2().byWindow['live:w1:index'], 'D').volumeEnabled).toBe(true);
+  act(() => useLivePageStore.getState().hydrateIndicatorsFromStorage());
+  expect(stock.result.current.volumeEnabled).toBe(false);
+  expect(index.result.current.volumeEnabled).toBe(true);
+  act(() => index.result.current.actions.resetIndicators());
+  expect(stock.result.current.volumeEnabled).toBe(false);
+  stock.unmount();
+  index.unmount();
+  const revisited = renderWindow({ ...stockView, code: null, instrumentKind: 'index' });
+  expect(revisited.result.current.volumeEnabled).toBe(true);
+});
 
 beforeEach(() => {
   localStorage.clear();

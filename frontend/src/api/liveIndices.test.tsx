@@ -6,6 +6,7 @@ import {
   useLiveIndexCandles,
   useLiveIndexInvestorNet,
   useLiveIndices,
+  type LiveIndexCandlesResponse,
 } from './liveIndices';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import * as client from './client';
@@ -19,6 +20,80 @@ function wrap() {
 
 describe('useLiveIndices', () => {
   beforeEach(() => vi.restoreAllMocks());
+
+  it.each(['D', 'W', 'M', '3m'] as const)('%s keeps loaded candles when an earlier history request returns an empty failure response', async timeframe => {
+    const head: LiveIndexCandlesResponse = {
+      index_id: 'KOSPI', timeframe, from: '20260601', to: '20260619',
+      candles: [{ t_ms: Date.UTC(2026, 5, 19), open: 2800, high: 2810, low: 2790, close: 2805, volume: 100 }],
+      data_warnings: [],
+    };
+    vi.spyOn(client, 'apiCall').mockResolvedValueOnce(head).mockResolvedValueOnce({
+      ...head, from: '20260101', candles: [],
+      data_warnings: [{ reason: 'index_kis_capacity_overloaded', kind: 'deferred', is_failure: true, msg: 'busy' }],
+    });
+    const { result, rerender } = renderHook(
+      ({ from }) => useLiveIndexCandles('KOSPI', timeframe, from, '20260619'),
+      { wrapper: wrap(), initialProps: { from: '20260601' } },
+    );
+    await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
+    rerender({ from: '20260101' });
+    await waitFor(() => expect(result.current.data?.from).toBe('20260101'));
+    expect(result.current.data?.candles).toEqual(head.candles);
+    expect(result.current.data?.data_warnings[0].reason).toBe('index_kis_capacity_overloaded');
+  });
+
+  it('merges partial failure rows without replacing newer rows or retaining candles outside the requested window', async () => {
+    const bar = (day: number, close = 2805) => ({
+      t_ms: Date.UTC(2026, 5, day), open: 2800, high: 2810, low: 2790, close, volume: 100,
+    });
+    const head: LiveIndexCandlesResponse = {
+      index_id: 'KOSPI', timeframe: 'D', from: '20260601', to: '20260619',
+      candles: [bar(1), bar(19)], data_warnings: [],
+    };
+    const partial: LiveIndexCandlesResponse = {
+      ...head, from: '20260615', candles: [bar(15), bar(19, 2809)],
+      data_warnings: [{ batch: '20260615__20260619', reason: 'api_error', is_failure: true, kind: 'vendor_api', msg: 'partial' }],
+    };
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce(head).mockResolvedValueOnce(partial)
+      .mockResolvedValueOnce({ ...partial, candles: [bar(19, 2807)], data_warnings: [] });
+    const { result, rerender } = renderHook(
+      ({ from }) => useLiveIndexCandles('KOSPI', 'D', from, '20260619'),
+      { wrapper: wrap(), initialProps: { from: '20260601' } },
+    );
+    await waitFor(() => expect(result.current.data?.candles).toHaveLength(2));
+    rerender({ from: '20260615' });
+    await waitFor(() => expect(result.current.data?.from).toBe('20260615'));
+    expect(result.current.data?.candles).toEqual([bar(15), bar(19, 2809)]);
+    await result.current.refetch();
+    await waitFor(() => expect(result.current.data?.candles).toEqual([bar(19, 2807)]));
+    expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not reuse candles from another index or timeframe on failure', async () => {
+    const head: LiveIndexCandlesResponse = {
+      index_id: 'KOSPI', timeframe: 'D', from: '20260601', to: '20260619',
+      candles: [{ t_ms: Date.UTC(2026, 5, 19), open: 1, high: 1, low: 1, close: 1, volume: 1 }],
+      data_warnings: [],
+    };
+    vi.spyOn(client, 'apiCall').mockResolvedValueOnce(head).mockResolvedValueOnce({
+      ...head, index_id: 'KOSDAQ', candles: [],
+      data_warnings: [{ reason: 'api_error', is_failure: true, kind: 'vendor_api', msg: 'busy' }],
+    }).mockResolvedValueOnce({
+      ...head, timeframe: 'W', candles: [],
+      data_warnings: [{ reason: 'api_error', is_failure: true, kind: 'vendor_api', msg: 'busy' }],
+    });
+    const { result, rerender } = renderHook(
+      ({ id, tf }: { id: 'KOSPI' | 'KOSDAQ'; tf: 'D' | 'W' }) => useLiveIndexCandles(id, tf, '20260601', '20260619'),
+      { wrapper: wrap(), initialProps: { id: 'KOSPI', tf: 'D' } as { id: 'KOSPI' | 'KOSDAQ'; tf: 'D' | 'W' } },
+    );
+    await waitFor(() => expect(result.current.data?.candles).toHaveLength(1));
+    rerender({ id: 'KOSDAQ', tf: 'D' });
+    await waitFor(() => expect(result.current.data?.index_id).toBe('KOSDAQ'));
+    expect(result.current.data?.candles).toEqual([]);
+    rerender({ id: 'KOSPI', tf: 'W' });
+    await waitFor(() => expect(result.current.data?.timeframe).toBe('W'));
+    expect(result.current.data?.candles).toEqual([]);
+  });
 
   it('maps representative index rows from the backend', async () => {
     const spy = vi.spyOn(client, 'apiCall').mockResolvedValue({

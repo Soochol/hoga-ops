@@ -1040,7 +1040,11 @@ function useWindowPrefsTimeframe(): LiveTimeframe | null {
  *  매 렌더 새 객체를 만들지만 소비자가 전부 이 값을 **스토어 selector 안에서만**
  *  쓰므로(구독 identity 에 실리지 않음) 재렌더를 유발하지 않는다. */
 function useWindowPrefsScope(): IndicatorScope {
-  return { windowKey: windowScopeKey(useContext(WindowViewContext)?.windowId) };
+  const ctx = useContext(WindowViewContext);
+  return {
+    windowKey: windowScopeKey(ctx?.windowId, ctx?.instrumentKind),
+    ...(ctx?.instrumentKind ? { instrumentKind: ctx.instrumentKind } : {}),
+  };
 }
 
 /**

@@ -346,7 +346,10 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     flow_receipts.CollectionRun: frozenset({"run_id", "started_at_ms", "poll_interval_ms"}),
     flow_receipts.ReceiptGap: frozenset({"start_ms", "end_ms"}),
     KrxCloseResponse: frozenset({"code", "date", "price", "close_at_ms", "fetched_at_ms"}),
-    RankingRowModel: frozenset({"rank", "code", "name", "price", "change_pct", "trade_value_won"}),
+    RankingRowModel: frozenset({
+        "rank", "code", "name", "price", "change_pct", "trade_value_won",
+        "program_net_buy_won", "investor_net_buy_won",
+    }),
     # 프론트 미러는 ``frontend/src/api/liveQuotes.ts`` 의 ``LiveQuote``.
     #
     # 미러에는 ``expected_price``·``expected_qty``·``expected_change_pct`` 가 더 있는데

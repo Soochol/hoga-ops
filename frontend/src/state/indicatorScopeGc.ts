@@ -54,6 +54,12 @@ export function seedIndicatorScopeForWindow(
     { windowKey },
     windowScopeKey(sourceWindowId),
   );
+  const indexSource = windowScopeKey(sourceWindowId, 'index');
+  if (indexSource && Object.hasOwn(useLivePageStore.getState().indicatorsByWindow, indexSource)) {
+    useLivePageStore.getState().seedWindowIndicatorScope(
+      { windowKey: windowScopeKey(windowId, 'index'), instrumentKind: 'index' }, indexSource,
+    );
+  }
 }
 
 /**
@@ -63,7 +69,7 @@ export function seedIndicatorScopeForWindow(
 export function dropIndicatorScopesForWindows(windowIds: readonly string[]): void {
   if (windowIds.length === 0) return;
   const scopeKeys = windowIds
-    .map((id) => windowScopeKey(id))
+    .flatMap((id) => [windowScopeKey(id), windowScopeKey(id, 'index')])
     .filter((key): key is string => key !== null);
   useLivePageStore.getState().dropWindowIndicatorScopes(scopeKeys);
 }
@@ -86,6 +92,8 @@ export function dropIndicatorScopesForRemovedWindows(
 export type WindowIndicatorPayload = {
   indicators?: IndicatorSettingsByTimeframe;
   indicatorModal?: IndicatorModalByTimeframe;
+  indexIndicators?: IndicatorSettingsByTimeframe;
+  indexIndicatorModal?: IndicatorModalByTimeframe;
 };
 
 /**
@@ -101,11 +109,19 @@ export type WindowIndicatorPayload = {
 export function captureIndicatorPayloadForWindow(windowId: string): WindowIndicatorPayload {
   const key = windowScopeKey(windowId);
   if (!key) return {};
+  const indexKey = windowScopeKey(windowId, 'index')!;
+  const indexIndicators = useLivePageStore.getState().indicatorsByWindow[indexKey];
   return {
     indicators: normalizeBucketMap(useLivePageStore.getState().indicatorsByWindow[key] ?? {}),
     indicatorModal: sanitizeIndicatorModalBucketMap(
       useChartPrefsStore.getState().indicatorModalByWindow[key] ?? {},
     ),
+    ...(indexIndicators ? {
+      indexIndicators: normalizeBucketMap(indexIndicators),
+      indexIndicatorModal: sanitizeIndicatorModalBucketMap(
+        useChartPrefsStore.getState().indicatorModalByWindow[indexKey] ?? {},
+      ),
+    } : {}),
   };
 }
 
@@ -146,15 +162,18 @@ export function restoreIndicatorScopesFromPayload(
     if (win.kind !== 'chart') continue;
     const raw = byId.get(win.id);
     if (!raw) continue;
-    if (raw.indicators === undefined && raw.indicatorModal === undefined) continue;
-    const windowKey = windowScopeKey(win.id);
-    if (!windowKey) continue;
-    entries.push({
-      windowKey,
-      // payload 는 서버에서 온 신뢰 불가 값이다 — 저장소 로드와 같은 소독을 거친다.
-      indicators: normalizeBucketMap(raw.indicators ?? {}),
-      modal: sanitizeIndicatorModalBucketMap(raw.indicatorModal ?? {}),
-    });
+    for (const kind of ['stock', 'index'] as const) {
+      const indicators = kind === 'index' ? raw.indexIndicators : raw.indicators;
+      const modal = kind === 'index' ? raw.indexIndicatorModal : raw.indicatorModal;
+      if (indicators === undefined && modal === undefined) continue;
+      const windowKey = windowScopeKey(win.id, kind);
+      if (!windowKey) continue;
+      entries.push({
+        windowKey,
+        indicators: normalizeBucketMap(indicators ?? {}),
+        modal: sanitizeIndicatorModalBucketMap(modal ?? {}),
+      });
+    }
   }
   useLivePageStore.getState().restoreWindowIndicatorScopes(entries);
 }

@@ -64,10 +64,10 @@ describe('dotColorsFor', () => {
 
   // 사용자가 고르는 색이 없는 지표는 **점이 없는 것이 정답**이다 — 지어낸 색은
   // 차트와 어긋나는 순간 거짓말이 된다.
-  it('사용자 색이 없는 일곱 지표는 점을 갖지 않는다', () => {
+  it('사용자 색이 없는 여덟 지표는 점을 갖지 않는다', () => {
     const ind = base();
     for (const id of [
-      'volume', 'quote-totals', 'ratio', 'fill-strength',
+      'volume', 'trade-value', 'quote-totals', 'ratio', 'fill-strength',
       'program-trade', 'foreign-net', 'institution-net',
     ] as const) {
       expect(dotColorsFor(id, ind)).toEqual([]);
@@ -76,10 +76,10 @@ describe('dotColorsFor', () => {
 
   // 카테고리가 늘어날 때 이 표를 같이 보게 하는 총계 가드. 색이 있는 쪽/없는 쪽
   // 어느 편에 넣을지는 판단이지만, **판단했다는 사실**은 여기서 강제된다.
-  it('15종 전부가 색 축에서 한쪽에 속한다', () => {
+  it('16종 전부가 색 축에서 한쪽에 속한다', () => {
     const ind = base();
     const withDots = CATEGORIES.filter((c) => dotColorsFor(c.id, ind).length > 0);
     const withoutDots = CATEGORIES.filter((c) => dotColorsFor(c.id, ind).length === 0);
-    expect(withDots.length + withoutDots.length).toBe(15);
+    expect(withDots.length + withoutDots.length).toBe(16);
   });
 });
