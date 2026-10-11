@@ -650,6 +650,26 @@ async def test_closed_gate_defers_dead_connection_rebuild_until_open():
         await mgr.stop()
 
 
+@pytest.mark.parametrize("gate_open", [False, True])
+async def test_connection_wait_queues_display_without_full_house_and_recovers(caplog, gate_open):
+    allowed = [gate_open]
+    mgr, _ = _fake_manager(gate_fn=lambda: allowed[0])
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        mgr._conns[0].ws_task.cancel()
+        await asyncio.gather(mgr._conns[0].ws_task, return_exceptions=True)
+        assert await mgr.on_view_subscribe("Z", {"KRX"}, ref="tab")
+        assert mgr._display[("Z", "KRX")].refs == {"tab"}
+        assert mgr._display[("Z", "KRX")].owner is None
+        assert not any("on_demand_full_house" in r.message for r in caplog.records)
+        allowed[0] = True
+        await mgr.watchdog_pass(_KRX_MS)
+        assert mgr._display[("Z", "KRX")].owner == 0
+        assert "Z" in mgr._conns[0].client.expected_codes
+    finally:
+        await mgr.stop()
+
+
 async def test_blocking_gate_does_not_hold_admission_lock_or_block_status():
     entered, release = threading.Event(), threading.Event()
 
@@ -665,7 +685,7 @@ async def test_blocking_gate_does_not_hold_admission_lock_or_block_status():
         assert not mgr._lock.locked()
         async with mgr._lock:
             assert mgr.status()["connection_allowed"] is None
-        assert await mgr.on_view_subscribe("A", {"KRX"}, ref="view") is False
+        assert await mgr.on_view_subscribe("A", {"KRX"}, ref="view") is True
     finally:
         release.set()
         await task

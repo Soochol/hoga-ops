@@ -414,3 +414,82 @@ async def test_cancelled_teardown_releases_bus_subscription():
     assert bus.queues == set(), (
         f"취소 경로에서 버스 구독이 샜다: {bus.queues!r}"
     )
+
+
+@pytest.mark.parametrize('vendor_full', [False, True])
+def test_subscription_rejection_reasons_are_distinct_on_the_wire(monkeypatch, vendor_full):
+    from hoga.live import lifecycle as lc
+    from hoga.live.view_subscription import ViewSubscriptionLimitError
+
+    subscribe = AsyncMock(return_value=False) if vendor_full else AsyncMock(
+        side_effect=ViewSubscriptionLimitError('app reference limit')
+    )
+    monkeypatch.setattr(lc, 'on_view_subscribe', subscribe)
+    app, _, buf = _make_app()
+    with TestClient(app) as client, client.websocket_connect('/api/ws') as ws:
+        ws.send_json({'action': 'subscribe', 'code': '005930'})
+        frames = [ws.receive_json(), ws.receive_json()]
+        expected = 'kiwoom_full_house' if vendor_full else 'live_subscription_limit'
+        assert {'ch': 'event', 'data': {'type': expected, 'code': '005930'}} in frames
+        assert {'ch': 'subscribed', 'code': '005930'} in frames
+        ws.close()
+    assert not buf._subscribers
+
+
+def test_three_websocket_tabs_admit_900_refs_to_300_shared_codes(tmp_path, monkeypatch):
+    import contextlib
+
+    from hoga.live import lifecycle as lc
+    from hoga.live.collector_process import CaptureProcessSession
+
+    app, _, buf = _make_app()
+    owner = CaptureProcessSession(buffer=buf, data_dir=tmp_path)
+
+    async def subscribe(code, venues=None, *, ref):
+        return await owner.on_view_subscribe(code, venues or {'KRX'}, ref=ref)
+
+    async def unsubscribe(code, venues=None, *, ref):
+        await owner.on_view_unsubscribe(code, venues or {'KRX'}, ref=ref)
+
+    monkeypatch.setattr(lc, 'on_view_subscribe', subscribe)
+    monkeypatch.setattr(lc, 'on_view_unsubscribe', unsubscribe)
+    with TestClient(app) as client:
+        with contextlib.ExitStack() as tabs:
+            sockets = [tabs.enter_context(client.websocket_connect('/api/ws')) for _ in range(3)]
+            for ws in sockets:
+                for i in range(300):
+                    code = f'{i:06d}'
+                    ws.send_json({'action': 'subscribe', 'code': code})
+                    assert ws.receive_json() == {'ch': 'subscribed', 'code': code}
+            assert len(owner.views) == 900
+            assert client.portal.call(buf.stats_snapshot)['subscribers'] == 900
+            for ws in sockets:
+                ws.close()
+        assert not owner.views
+        assert not buf._subscribers
+
+
+def test_per_tab_limit_reports_application_limit_without_disconnecting(monkeypatch):
+    from hoga.api import ws as ws_module
+    from hoga.live import lifecycle as lc
+
+    monkeypatch.setattr(ws_module, '_MAX_CODE_SUBSCRIPTIONS', 1)
+    subscribe = AsyncMock(return_value=True)
+    monkeypatch.setattr(lc, 'on_view_subscribe', subscribe)
+    app, bus, buf = _make_app()
+    with TestClient(app) as client, client.websocket_connect('/api/ws') as ws:
+        ws.send_json({'action': 'subscribe', 'code': '005930'})
+        assert ws.receive_json() == {'ch': 'subscribed', 'code': '005930'}
+        ws.send_json({'action': 'subscribe', 'code': '000660'})
+        assert ws.receive_json() == {'ch': 'event', 'data': {
+            'type': 'live_subscription_limit', 'code': '000660',
+        }}
+        assert subscribe.await_count == 1
+        assert '000660' not in buf._subscribers
+        bus.publish({'type': 'watchlist_changed'})
+        assert ws.receive_json() == {'ch': 'event', 'data': {'type': 'watchlist_changed'}}
+        ws.send_json({'action': 'unsubscribe', 'code': '005930'})
+        ws.send_json({'action': 'subscribe', 'code': '000660'})
+        assert ws.receive_json() == {'ch': 'subscribed', 'code': '000660'}
+        ws.close()
+    assert not buf._subscribers

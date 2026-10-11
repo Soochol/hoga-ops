@@ -8,6 +8,10 @@ interface Store {
   pendingCodes: string[];
   /** 사용자가 토스트를 닫았는가. 새 종목이 보고되면 다시 열린다. */
   toastDismissed: boolean;
+  referenceLimitCodes: string[];
+  referenceLimitDismissed: boolean;
+  notifyReferenceLimit: (code: string) => void;
+  dismissReferenceLimit: () => void;
   notifyFullHouse: (code: string) => void;
   dismissToast: () => void;
   /** WS 재연결 시 호출 — 재구독으로 백엔드가 다시 판정하므로 stale 보류 목록을 버린다. */
@@ -17,6 +21,15 @@ interface Store {
 export const useKiwoomFullHouseStore = create<Store>((set, get) => ({
   pendingCodes: [],
   toastDismissed: false,
+  referenceLimitCodes: [],
+  referenceLimitDismissed: false,
+  notifyReferenceLimit: (code) => {
+    const { referenceLimitCodes } = get();
+    if (referenceLimitCodes.includes(code)) return;
+    set({ referenceLimitCodes: [...referenceLimitCodes, code].slice(-MAX_TRACKED_PENDING_CODES),
+      referenceLimitDismissed: false });
+  },
+  dismissReferenceLimit: () => set({ referenceLimitDismissed: true }),
 
   notifyFullHouse: (code: string) => {
     const { pendingCodes } = get();
@@ -34,5 +47,6 @@ export const useKiwoomFullHouseStore = create<Store>((set, get) => ({
 
   dismissToast: () => set({ toastDismissed: true }),
 
-  clear: () => set({ pendingCodes: [], toastDismissed: false }),
+  clear: () => set({ pendingCodes: [], toastDismissed: false,
+    referenceLimitCodes: [], referenceLimitDismissed: false }),
 }));

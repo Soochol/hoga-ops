@@ -351,11 +351,16 @@ async def test_on_tick_foreign_stored_code_routes_to_buffer():
 
 # ── kiwoom off / 연결 없음 ───────────────────────────────────────────────
 
-async def test_view_subscribe_no_connections_rejects():
-    """연결 없음(kiwoom off) → 표시 구독은 만석과 동일하게 거부(예외 없음)."""
+async def test_view_subscribe_no_connections_waits_without_full_house(caplog):
+    """연결 대기는 슬롯 만석이 아니다. 연결이 생기면 보존한 참조를 배정한다."""
     mgr = _mgr()
     accepted = await mgr.on_view_subscribe("Z", {"KRX"}, ref="tab1")
-    assert accepted is False
+    assert accepted is True
+    assert mgr._display[("Z", "KRX")].refs == {"tab1"}
+    assert not any("on_demand_full_house" in r.message for r in caplog.records)
+    await mgr.sync(("A",), n_accounts=1)
+    assert mgr._display[("Z", "KRX")].owner == 0
+    assert _wire(mgr) == {"A", "Z"}
     await mgr.stop()
 
 

@@ -185,8 +185,8 @@ class CollectorWorker:
                 await self.manager.on_view_unsubscribe(code, removed, ref=ref)
         self.views = {}
         for (code, ref), venues in desired.items():
-            if await self.manager.on_view_subscribe(code, venues, ref=ref):
-                self.views[(code, ref)] = venues
+            await self.manager.on_view_subscribe(code, venues, ref=ref)
+            self.views[(code, ref)] = venues
         await self.buffer.drop_codes_except(set(args["targets"]) | set(args.get("view_codes", [])))
         self.ready = True
         return {"version": version, "status": self.manager.status()}
@@ -197,8 +197,7 @@ class CollectorWorker:
         if method == "view_subscribe":
             key = (args["code"], args["ref"])
             result = await self.manager.on_view_subscribe(key[0], set(args["venues"]), ref=key[1])
-            if result:
-                self.views[key] = self.views.get(key, set()) | set(args["venues"])
+            self.views[key] = self.views.get(key, set()) | set(args["venues"])
             return result
         if method == "view_unsubscribe":
             key = (args["code"], args["ref"])

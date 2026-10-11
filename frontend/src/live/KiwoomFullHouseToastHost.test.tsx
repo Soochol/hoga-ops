@@ -25,7 +25,7 @@ function emit(event: PushEvent): void {
 describe('KiwoomFullHouseToastHost', () => {
   beforeEach(() => {
     subs.length = 0;
-    useKiwoomFullHouseStore.setState({ pendingCodes: [], toastDismissed: false });
+    useKiwoomFullHouseStore.getState().clear();
   });
 
   it('만석 이벤트가 오기 전에는 아무것도 렌더하지 않는다', () => {
@@ -42,7 +42,8 @@ describe('KiwoomFullHouseToastHost', () => {
     expect(toast).toHaveTextContent('실시간 구독 슬롯 부족');
     expect(toast).toHaveTextContent('005930');
     // 복구 조건을 알려 줘야 사용자가 할 일을 판단할 수 있다.
-    expect(toast).toHaveTextContent('다른 창을 닫으면');
+    expect(toast).toHaveTextContent('브라우저 탭');
+    expect(toast).toHaveTextContent('자동으로 연결');
   });
 
   it('닫으면 사라지고, 같은 종목의 반복 보고로는 다시 열리지 않는다', () => {
@@ -87,5 +88,31 @@ describe('KiwoomFullHouseToastHost', () => {
 
     expect(screen.queryByRole('status')).toBeNull();
     expect(useKiwoomFullHouseStore.getState().pendingCodes).toEqual([]);
+  });
+
+  it('앱 참조 한도는 키움 슬롯 부족과 다른 알림·복구 안내를 표시한다', () => {
+    render(<KiwoomFullHouseToastHost />);
+    emit({ type: 'live_subscription_limit', code: '005930' });
+    const toast = screen.getByRole('status', { name: '앱 화면 구독 한도 초과' });
+    expect(toast).toHaveTextContent('새로고침');
+    expect(screen.queryByText('키움 실시간 구독 슬롯 부족')).toBeNull();
+    expect(useKiwoomFullHouseStore.getState().pendingCodes).toEqual([]);
+  });
+
+  it('서로 다른 경고는 독립적으로 닫고 재연결 시 모두 지운다', () => {
+    render(<KiwoomFullHouseToastHost />);
+    emit({ type: 'live_subscription_limit', code: '005930' });
+    emit({ type: 'kiwoom_full_house', code: '000660' });
+    expect(screen.getAllByRole('status')).toHaveLength(2);
+    const appToast = screen.getByRole('status', { name: '앱 화면 구독 한도 초과' });
+    fireEvent.click(appToast.querySelector('button')!);
+    expect(screen.getByRole('status')).toHaveTextContent('키움 실시간 구독 슬롯 부족');
+    emit({ type: 'live_subscription_limit', code: '005930' });
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+    emit({ type: 'live_subscription_limit', code: '035420' });
+    expect(screen.getAllByRole('status')).toHaveLength(2);
+    emit({ type: 'disconnected' });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(useKiwoomFullHouseStore.getState().referenceLimitCodes).toEqual([]);
   });
 });

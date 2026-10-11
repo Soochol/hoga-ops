@@ -168,6 +168,6 @@ export function subscribeToScreenerUpdateEvents(handler: (e: PushEvent) => void)
 /** 키움 표시 슬롯 만석 + disconnected(stale 보류 목록 폐기용) 필터. */
 export function subscribeToKiwoomFullHouseEvents(handler: (e: PushEvent) => void): () => void {
   return subscribeEvents((e: PushEvent) => {
-    if (e.type === 'kiwoom_full_house' || e.type === 'disconnected') handler(e);
+    if (e.type === 'kiwoom_full_house' || e.type === 'live_subscription_limit' || e.type === 'disconnected') handler(e);
   });
 }

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, STATE_FRESH_S, RpcPeer, open_channel, read_frame
 from .snapshot import LiveSnapshot, SnapshotKind
+from .view_subscription import MAX_DISPLAY_CODES, MAX_DISPLAY_REFS_PER_CODE, ViewSubscriptionLimitError
 
 log = logging.getLogger(__name__)
 
@@ -260,19 +261,22 @@ class CaptureProcessSession:
 
     async def on_view_subscribe(self, code: str, venues: set[str], *, ref: str) -> bool:
         async with self.lock:
-            if len(self.views) >= 512 and (code, ref) not in self.views:  # noqa: PLR2004 — finite references
-                return False
+            if (code, ref) not in self.views:
+                # Tabs share vendor registrations. Bound distinct codes separately
+                # from their owners so three 300-code tabs do not exhaust 512 refs.
+                codes = {key[0] for key in self.views}
+                refs = sum(key[0] == code for key in self.views)
+                if (code not in codes and len(codes) >= MAX_DISPLAY_CODES
+                        or refs >= MAX_DISPLAY_REFS_PER_CODE):
+                    raise ViewSubscriptionLimitError("application display reference limit")
             previous = self.views.get((code, ref), set())
             self.views[(code, ref)] = previous | venues
             # If a reply is lost, retain desired state for reconciliation.
             if not self.alive() or self.peer is None:
                 return True
             result = await self.peer.call("view_subscribe", {"code": code, "venues": sorted(venues), "ref": ref})
-            if not result:
-                if previous:
-                    self.views[(code, ref)] = previous
-                else:
-                    self.views.pop((code, ref), None)
+            # False means vendor slots are temporarily full. Preserve desired
+            # refs for sync/restart just as the manager preserves its waitlist.
             return bool(result)
 
     async def on_view_unsubscribe(self, code: str, venues: set[str], *, ref: str) -> None:
