@@ -265,6 +265,60 @@ def test_subscribe_full_house_emits_event(monkeypatch):
     assert any(f == {"ch": "subscribed", "code": "005930"} for f in frames)
 
 
+def test_full_house_recovery_is_targeted_to_each_tabs_requested_venues(monkeypatch):
+    from types import SimpleNamespace
+
+    from hoga.live import lifecycle as lc
+
+    registered: list[str] = []
+    monkeypatch.setattr(lc._state, "kiwoom_session", SimpleNamespace(
+        status=lambda: {"ready_registrations": registered},
+    ))
+    monkeypatch.setattr(lc, "on_view_subscribe", AsyncMock(return_value=False))
+    monkeypatch.setattr(lc, "on_view_unsubscribe", AsyncMock())
+    bus, buf = EventBus(), LiveBuffer()
+    app = FastAPI()
+    app.include_router(build_ws_router(bus, lambda: buf, subscription_poll_interval_s=0.001))
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as krx, \
+            client.websocket_connect("/api/ws") as all_venues:
+        for ws, venues in [(krx, ["KRX"]), (all_venues, ["KRX", "NXT", "UN"])]:
+            ws.send_json({"action": "subscribe", "code": "005930", "venues": venues})
+            assert ws.receive_json()["data"]["type"] == "kiwoom_full_house"
+            assert ws.receive_json() == {"ch": "subscribed", "code": "005930"}
+        assert client.portal is not None
+        client.portal.call(registered.append, "005930")
+        resolved = {"ch": "event", "data": {"type": "kiwoom_full_house_resolved", "code": "005930"}}
+        assert krx.receive_json() == resolved
+        client.portal.call(registered.extend, ["005930_NX", "005930_AL"])
+        assert all_venues.receive_json() == resolved
+        # 복구는 한 번만 통지하고 기존 버퍼 구독은 유지한다.
+        krx.send_json({"action": "subscribe", "code": "005930", "venues": ["KRX"]})
+        assert krx.receive_json() == {"ch": "subscribed", "code": "005930"}
+        assert len(buf._subscribers["005930"]) == 2
+        krx.close()
+        all_venues.close()
+    assert not buf._subscribers
+    assert not bus.queues
+
+
+def test_unsubscribe_resolves_pending_warning_without_registration(monkeypatch):
+    from hoga.live import lifecycle as lc
+
+    monkeypatch.setattr(lc, "on_view_subscribe", AsyncMock(return_value=False))
+    monkeypatch.setattr(lc, "on_view_unsubscribe", AsyncMock())
+    monkeypatch.setattr(lc, "ready_view_subscription_codes", lambda _requests: set())
+    app, _, _ = _make_app()
+    with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:
+        ws.send_json({"action": "subscribe", "code": "005930"})
+        assert ws.receive_json()["data"]["type"] == "kiwoom_full_house"
+        ws.receive_json()  # ack
+        ws.send_json({"action": "unsubscribe", "code": "005930"})
+        assert ws.receive_json() == {
+            "ch": "event", "data": {"type": "kiwoom_full_house_resolved", "code": "005930"},
+        }
+        ws.close()
+
+
 def test_unsubscribe_forwards_to_lifecycle_on_view_unsubscribe(monkeypatch):
     """action:unsubscribe → lifecycle.on_view_unsubscribe(code) called exactly once.
 

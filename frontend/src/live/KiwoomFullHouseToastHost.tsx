@@ -30,6 +30,7 @@ export default function KiwoomFullHouseToastHost() {
   const toastDismissed = useKiwoomFullHouseStore((s) => s.toastDismissed);
   const dismissToast = useKiwoomFullHouseStore((s) => s.dismissToast);
   const notifyFullHouse = useKiwoomFullHouseStore((s) => s.notifyFullHouse);
+  const resolveFullHouse = useKiwoomFullHouseStore((s) => s.resolveFullHouse);
   const referenceLimitCodes = useKiwoomFullHouseStore((s) => s.referenceLimitCodes);
   const referenceLimitDismissed = useKiwoomFullHouseStore((s) => s.referenceLimitDismissed);
   const dismissReferenceLimit = useKiwoomFullHouseStore((s) => s.dismissReferenceLimit);
@@ -38,9 +39,10 @@ export default function KiwoomFullHouseToastHost() {
 
   useEffect(() => subscribeToKiwoomFullHouseEvents((e) => {
     if (e.type === 'kiwoom_full_house') notifyFullHouse(e.code);
+    else if (e.type === 'kiwoom_full_house_resolved') resolveFullHouse(e.code);
     else if (e.type === 'live_subscription_limit') notifyReferenceLimit(e.code);
     else if (e.type === 'disconnected') clear();
-  }), [notifyFullHouse, notifyReferenceLimit, clear]);
+  }), [notifyFullHouse, resolveFullHouse, notifyReferenceLimit, clear]);
 
   return <>
     <SubscriptionToast codes={pendingCodes} dismissed={toastDismissed} dismiss={dismissToast}

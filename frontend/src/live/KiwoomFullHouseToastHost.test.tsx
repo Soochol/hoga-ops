@@ -115,4 +115,45 @@ describe('KiwoomFullHouseToastHost', () => {
     expect(screen.queryByRole('status')).toBeNull();
     expect(useKiwoomFullHouseStore.getState().referenceLimitCodes).toEqual([]);
   });
+
+  it('부분 복구는 해당 종목만 제거하고 마지막 종목이 복구되면 자동으로 사라진다', () => {
+    render(<KiwoomFullHouseToastHost />);
+    emit({ type: 'kiwoom_full_house', code: '005930' });
+    emit({ type: 'kiwoom_full_house', code: '000660' });
+    emit({ type: 'kiwoom_full_house_resolved', code: '005930' });
+    expect(screen.getByRole('status')).not.toHaveTextContent('005930');
+    expect(screen.getByRole('status')).toHaveTextContent('000660');
+    emit({ type: 'kiwoom_full_house_resolved', code: '000660' });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(useKiwoomFullHouseStore.getState().pendingCodes).toEqual([]);
+  });
+
+  it('키움 복구는 같은 종목의 앱 한도 알림을 지우지 않는다', () => {
+    render(<KiwoomFullHouseToastHost />);
+    emit({ type: 'kiwoom_full_house', code: '005930' });
+    emit({ type: 'live_subscription_limit', code: '005930' });
+    emit({ type: 'kiwoom_full_house_resolved', code: '005930' });
+    expect(screen.getByRole('status')).toHaveTextContent('앱 화면 구독 한도 초과');
+    expect(useKiwoomFullHouseStore.getState().referenceLimitCodes).toEqual(['005930']);
+  });
+
+  it('닫힌 경고는 부분 복구에도 닫혀 있고, 복구 후 재발하면 다시 알린다', () => {
+    render(<KiwoomFullHouseToastHost />);
+    emit({ type: 'kiwoom_full_house', code: '005930' });
+    emit({ type: 'kiwoom_full_house', code: '000660' });
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    emit({ type: 'kiwoom_full_house_resolved', code: '005930' });
+    expect(screen.queryByRole('status')).toBeNull();
+    emit({ type: 'kiwoom_full_house_resolved', code: '000660' });
+    emit({ type: 'kiwoom_full_house', code: '000660' });
+    expect(screen.getByRole('status')).toHaveTextContent('000660');
+  });
+
+  it('중복·알 수 없는 복구 이벤트는 다른 대기 종목을 지우지 않는다', () => {
+    render(<KiwoomFullHouseToastHost />);
+    emit({ type: 'kiwoom_full_house', code: '005930' });
+    emit({ type: 'kiwoom_full_house_resolved', code: '000660' });
+    emit({ type: 'kiwoom_full_house_resolved', code: '000660' });
+    expect(screen.getByRole('status')).toHaveTextContent('005930');
+  });
 });
