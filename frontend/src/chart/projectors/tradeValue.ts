@@ -3,7 +3,7 @@ import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { candlePosition } from '../candlePosition';
 import { resolveTokensThemed } from '../../util/tokens';
-import { formatKoreanWonAmount } from '../../util/koreanNumber';
+import { formatTradeValueSeriesValue, paneValueToSeriesValue, TRADE_VALUE_WON_PER_UNIT } from '../paneValueUnits';
 import type { BoundPaneSpec } from '../paneSpecs';
 
 const TOKEN_SPEC = {
@@ -22,7 +22,7 @@ export function projectTradeValue(bundle: RangeBundle, axis: VirtualAxis): Histo
     if (!position.contained) continue;
     out.push({
       time: (position.virtual / 1000) as UTCTimestamp,
-      value,
+      value: paneValueToSeriesValue('trade-value', value),
       color: candle.close >= candle.open ? up : down,
     });
   }
@@ -36,9 +36,9 @@ export const TRADE_VALUE_SPEC = {
   legendToggleKey: 'tradeValueEnabled',
   series: [{
     type: HistogramSeries,
-    legend: { label: '거래대금', format: formatKoreanWonAmount },
+    legend: { label: '거래대금', format: formatTradeValueSeriesValue },
     options: {
-      priceFormat: { type: 'custom', formatter: formatKoreanWonAmount, minMove: 1 },
+      priceFormat: { type: 'custom', formatter: formatTradeValueSeriesValue, minMove: 1 / TRADE_VALUE_WON_PER_UNIT },
       priceScaleId: 'right',
       priceLineVisible: false,
       lastValueVisible: false,
