@@ -135,6 +135,7 @@ const LEGEND_INSET = 'var(--space-xs)';
  *  (DESIGN.md 2026-08-18). */
 const LEGEND_CELL_PANES: ReadonlySet<PaneId> = new Set<PaneId>([
   'volume',
+  'trade-value',
   'quote-totals',
   'program-trade',
   // 최대벽 강도 pane — 계단의 현재 높이가 곧 「오늘 최대」라 커서 없이도 읽을 값이

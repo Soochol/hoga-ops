@@ -15,6 +15,7 @@ export type IndicatorPaneProfileKey = 'minute' | 'D' | 'W' | 'M';
 
 export type IndicatorPanePrefs = {
   volumeEnabled: boolean;
+  tradeValueEnabled?: boolean;
   quoteTotalsEnabled: boolean;
   ratioEnabled: boolean;
   fillStrengthEnabled: boolean;
@@ -28,7 +29,9 @@ export type IndicatorPanePrefs = {
 export type PanePrefKey = keyof IndicatorPanePrefs;
 
 /** 소비자가 store 에서 골라오는, 이미 resolve 된 pane 토글 7종. */
-export type PanePrefsIndicatorSource = Pick<PersistedIndicators, Exclude<PanePrefKey, 'dailyProgramEnabled'>> & { dailyProgramEnabled?: boolean };
+export type PanePrefsIndicatorSource = Pick<
+  PersistedIndicators, Exclude<PanePrefKey, 'dailyProgramEnabled' | 'tradeValueEnabled'>
+> & { dailyProgramEnabled?: boolean; tradeValueEnabled?: boolean };
 
 export type PersistedPanePrefsByTimeframe =
   Partial<Record<IndicatorPaneProfileKey, Partial<IndicatorPanePrefs>>>;
@@ -38,6 +41,7 @@ export const INDICATOR_PANE_PROFILE_KEYS: readonly IndicatorPaneProfileKey[] =
 
 export const INDICATOR_PANE_PREF_KEYS: readonly PanePrefKey[] = [
   'volumeEnabled',
+  'tradeValueEnabled',
   'quoteTotalsEnabled',
   'ratioEnabled',
   'fillStrengthEnabled',
@@ -88,6 +92,7 @@ export function normalizePanePrefsByTimeframe(raw: unknown): PersistedPanePrefsB
 export function pickPanePrefs(indicators: PanePrefsIndicatorSource): IndicatorPanePrefs {
   return {
     volumeEnabled: indicators.volumeEnabled,
+    tradeValueEnabled: indicators.tradeValueEnabled === true,
     quoteTotalsEnabled: indicators.quoteTotalsEnabled,
     ratioEnabled: indicators.ratioEnabled,
     fillStrengthEnabled: indicators.fillStrengthEnabled,
@@ -123,6 +128,7 @@ export function resolvePaneToggles(input: {
     foreignNet: prefs.foreignNetEnabled,
     institutionNet: prefs.institutionNetEnabled,
     volumeEnabled: prefs.volumeEnabled,
+    tradeValueEnabled: prefs.tradeValueEnabled,
     quoteTotalsEnabled: prefs.quoteTotalsEnabled,
     ratioEnabled: prefs.ratioEnabled,
     fillStrengthEnabled: prefs.fillStrengthEnabled,

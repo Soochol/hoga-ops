@@ -8,6 +8,7 @@ import {
 
 const RESOLVED_PREFS = {
   volumeEnabled: true,
+  tradeValueEnabled: false,
   quoteTotalsEnabled: false,
   ratioEnabled: false,
   fillStrengthEnabled: false,

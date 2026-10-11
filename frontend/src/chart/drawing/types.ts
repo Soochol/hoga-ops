@@ -57,6 +57,7 @@ export function isDrawingKind(tool: DrawingTool): tool is DrawingKind {
 export type PaneId =
   | 'candle'
   | 'volume'
+  | 'trade-value'
   | 'ratio'
   | 'quote-totals'
   | 'fill-strength'

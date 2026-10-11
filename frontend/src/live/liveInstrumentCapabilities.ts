@@ -6,12 +6,14 @@ export type LiveInstrumentCapabilities = {
   hogaPanes: boolean;
   investorNet: LiveInvestorNetCapability;
   studySave: boolean;
+  tradeValue?: boolean;
 };
 
 export const STOCK_CAPABILITIES: LiveInstrumentCapabilities = {
   hogaPanes: true,
   investorNet: 'stock',
   studySave: true,
+  tradeValue: true,
 };
 
 export function capabilitiesForInstrument(
@@ -22,5 +24,6 @@ export function capabilitiesForInstrument(
     hogaPanes: false,
     investorNet: instrument.id === 'KOSPI' || instrument.id === 'KOSDAQ' ? 'market' : 'none',
     studySave: false,
+    tradeValue: true,
   };
 }

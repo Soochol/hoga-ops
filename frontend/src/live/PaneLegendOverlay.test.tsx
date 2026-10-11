@@ -999,7 +999,7 @@ describe('PaneLegendOverlay — 왼쪽 이름으로 pane 이동', () => {
     render(<PaneLegendOverlay
       chart={makeChart(CANONICAL_PANE_ORDER.map(() => 100))}
       timeframe="D"
-      paneToggles={{ foreignNet: true, institutionNet: true, forceHogaPanes: true, peakWallPaneEnabled: true, dailyProgramEnabled: true }}
+      paneToggles={{ foreignNet: true, institutionNet: true, forceHogaPanes: true, peakWallPaneEnabled: true, dailyProgramEnabled: true, tradeValueEnabled: true }}
     />);
     for (const pane of CANONICAL_PANE_ORDER.filter((id) => id !== 'candle')) {
       openMenu(PANE_DISPLAY_NAME[pane]);

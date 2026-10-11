@@ -47,6 +47,7 @@ class IndexCandlePoint(BaseModel):
     low: float
     close: float
     volume: int
+    trade_value_won: int | None = None  # Actual D/W/M turnover, not index level × volume.
 
 
 def daily_anchor_ms(date_yyyymmdd: str) -> int:

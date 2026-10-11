@@ -75,6 +75,7 @@ export interface AggregatedCandle {
   low: number;
   close: number;
   volume: number;
+  trade_value_won?: number;
 }
 
 export function aggregateCandles(
@@ -140,7 +141,7 @@ export function calendarBucketKey(t_ms: number, granularity: 'D' | 'W' | 'M'): s
  * `aggregateCandles`.
  */
 export function aggregateCalendar(
-  source: readonly LiveCandle[],
+  source: readonly (LiveCandle & { trade_value_won?: number | null })[],
   granularity: 'D' | 'W' | 'M',
 ): AggregatedCandle[] {
   if (source.length === 0) return [];
@@ -149,6 +150,8 @@ export function aggregateCalendar(
   let curKey: string | null = null;
   for (const c of source) {
     const key = calendarBucketKey(c.t_ms, granularity);
+    const amount = c.trade_value_won;
+    const validAmount = amount != null && Number.isFinite(amount) && amount >= 0;
     if (curKey === null || key !== curKey) {
       if (cur !== null) out.push(cur);
       curKey = key;
@@ -159,12 +162,19 @@ export function aggregateCalendar(
         low: c.low,
         close: c.close,
         volume: c.volume,
+        ...(validAmount ? { trade_value_won: amount } : {}),
       };
     } else if (cur !== null) {
       if (c.high > cur.high) cur.high = c.high;
       if (c.low < cur.low) cur.low = c.low;
       cur.close = c.close;
       cur.volume += c.volume;
+      // Never present a partial sum as the period's total. Preserve real zero.
+      if (cur.trade_value_won != null && validAmount) {
+        cur.trade_value_won += amount;
+      } else {
+        delete cur.trade_value_won;
+      }
     }
   }
   if (cur !== null) out.push(cur);

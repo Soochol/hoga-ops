@@ -28,3 +28,10 @@ export function formatKoreanWonEok(value: number): string {
   const rounded = koreanFractions[digits].format(roundedValue);
   return `${rounded}억`;
 }
+
+/** Market turnover in KRW, with a compact trillion label for large periods. */
+export function formatKoreanWonAmount(value: number): string {
+  return Number.isFinite(value) && Math.abs(value) >= 1_000_000_000_000
+    ? `${koreanFractions[2].format(value / 1_000_000_000_000)}조`
+    : formatKoreanWonEok(value);
+}

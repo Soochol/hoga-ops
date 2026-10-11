@@ -142,6 +142,32 @@ async def test_daily_parses_scaled_prices_and_filters_range() -> None:
     await c.aclose()
 
 
+@pytest.mark.parametrize(("period", "api_id", "rows_key"), [
+    ("D", "ka20006", "inds_dt_pole_qry"),
+    ("W", "ka20007", "inds_stk_pole_qry"),
+    ("M", "ka20008", "inds_mth_pole_qry"),
+])
+async def test_calendar_turnover_is_actual_million_won_not_index_times_volume(period, api_id, rows_key):
+    rows = [
+        {"dt": f"2026080{i + 1}", "open_pric": "300000", "high_pric": "300000",
+         "low_pric": "300000", "cur_prc": "300000", "trde_qty": "999999",
+         **({"trde_prica": amount} if amount is not None else {})}
+        for i, amount in enumerate(["18,840,196", "0", "", None, "bad", "-123"])
+    ]
+
+    def handler(request):
+        assert request.headers["api-id"] == api_id
+        return httpx.Response(200, json={"return_code": 0, "return_msg": "정상", rows_key: rows})
+
+    client = _client(handler)
+    try:
+        result = await fetch_index_daily_candles(client, KOSPI, "20260801", "20260806", period=period)
+        assert [c.trade_value_won for c in result.candles] == [18_840_196_000_000, 0, None, None, None, 123_000_000]
+        assert result.violations == []
+    finally:
+        await client.aclose()
+
+
 async def test_daily_stops_when_older_than_from_is_seen() -> None:
     """구조적 술어 — `from` **이전** 날짜를 봐야 `from` 이 온전하다(ADR-0136 §3)."""
     pages = [

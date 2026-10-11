@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -7,6 +8,7 @@ from hoga.live import api as live_api, lifecycle
 from hoga.live.api import build_router
 from hoga.live.candle_fetch_result import IndexCandleFetchResult
 from hoga.live.candle_models import IndexCandlePoint
+from hoga.live.index_candles_cache import IndexCandlesCache
 from hoga.live.investor import InvestorNetPoint
 from hoga.util.timeenc import KST
 
@@ -109,6 +111,34 @@ def test_index_candles_rejects_stock_code_as_index_id(tmp_path) -> None:
         "/api/live/index-candles?index_id=005930&timeframe=D&from=20260601&to=20260619",
     )
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize("timeframe", ["D", "W", "M"])
+def test_calendar_turnover_survives_route_cache_and_bypass(tmp_path, monkeypatch, timeframe):
+    monkeypatch.setattr(live_api, "index_candles_cache_instance", IndexCandlesCache())
+    fetched = []
+
+    async def fake_daily(_client, index, from_s, to_s, *, period="D", run_page=None):
+        fetched.append(period)
+        return IndexCandleFetchResult(candles=[
+            IndexCandlePoint(t_ms=_daily_t_ms("20260619"), open=3000, high=3100,
+                             low=2900, close=3050, volume=999999, trade_value_won=18_840_196_000_000),
+        ])
+
+    _patch_kiwoom_capacity(monkeypatch, fake_daily)
+    monkeypatch.setattr(live_api.live_settings, "rest_bypass_enabled", lambda *_: False)
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    client = TestClient(app)
+    path = f"/api/live/index-candles?index_id=KOSPI&timeframe={timeframe}&from=20260601&to=20260619"
+    first = client.get(path)
+    assert first.status_code == 200
+    assert first.json()["candles"][0]["trade_value_won"] == 18_840_196_000_000
+    monkeypatch.setattr(live_api.live_settings, "rest_bypass_enabled", lambda *_: True)
+    cached = client.get(path)
+    assert cached.status_code == 200
+    assert cached.json()["candles"] == first.json()["candles"]
+    assert fetched == [timeframe]
 
 
 def test_index_candles_returns_fake_kis_daily_rows(tmp_path, monkeypatch) -> None:

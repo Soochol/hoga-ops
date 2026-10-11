@@ -181,6 +181,8 @@ export type PersistedIndicators = {
   institutionNetEnabled: boolean;
   /** Pane Legend: volume pane on/off. Default TRUE (kept for legacy stores). */
   volumeEnabled: boolean;
+  /** Calendar turnover pane for stocks and indices. Opt-in; independent of volume. */
+  tradeValueEnabled: boolean;
   /** @deprecated 레거시 입력 전용 — `movingAverageEnabled` 주석 참조. */
   movingAverageHidden: boolean;
   /** 최대벽 강도 pane(당일 최대벽의 시간축 계단). opt-in(기본 false). */
@@ -671,6 +673,7 @@ export function mergeLiveIndicatorPrefs(
     institutionTradeSide: normalizeInvestorTradeSide(obj?.institutionTradeSide ?? obj?.investorTradeSide),
     institutionNetEnabled: iNet,
     volumeEnabled: vol,
+    tradeValueEnabled: obj?.tradeValueEnabled === true,
     movingAverageHidden: hidden,
     peakWallPaneEnabled: pwPaneEnabled,
     peakWallPaneMode: pwPaneMode,

@@ -91,6 +91,40 @@ describe('IndicatorPanel', () => {
     useChartPrefsStore.getState().setIndicatorModalTimeframe('1m');
   });
 
+  it.each(['D', 'W', 'M'] as const)('%s index turnover can be added and deleted independently of volume', tf => {
+    useLivePageStore.getState().setIndicatorTimeframe(tf);
+    renderPanel({ timeframe: tf,
+      capabilities: { hogaPanes: false, investorNet: 'market', studySave: false, tradeValue: true } });
+    addIndicator('거래대금');
+    expect(useLivePageStore.getState().tradeValueEnabled).toBe(true);
+    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
+    expect(screen.getByText('일봉·주봉·월봉의 거래대금을 억·조 단위로 표시합니다.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '거래대금 삭제' }));
+    expect(useLivePageStore.getState().tradeValueEnabled).toBe(false);
+    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
+  });
+
+  it.each(['D', 'W', 'M'] as const)('%s stock turnover can be added independently of volume', tf => {
+    useLivePageStore.getState().setIndicatorTimeframe(tf);
+    renderPanel({ timeframe: tf });
+    addIndicator('거래대금');
+    expect(useLivePageStore.getState().tradeValueEnabled).toBe(true);
+    expect(useLivePageStore.getState().volumeEnabled).toBe(true);
+  });
+
+  it('turnover is absent from minute index catalogs', () => {
+    renderPanel({ timeframe: '3m',
+      capabilities: { hogaPanes: false, investorNet: 'market', studySave: false, tradeValue: true } });
+    openCatalog();
+    expect(screen.queryByRole('button', { name: '거래대금 추가' })).not.toBeInTheDocument();
+  });
+
+  it('turnover is absent from minute stock catalogs', () => {
+    renderPanel({ timeframe: '3m' });
+    openCatalog();
+    expect(screen.queryByRole('button', { name: '거래대금 추가' })).not.toBeInTheDocument();
+  });
+
   // 목록이 두 모드로 갈리므로 "전 카테고리가 한 화면에" 라는 단언은 성립하지 않는다.
   // 대신 **합집합이 15종**임을 못 박는다 — 어느 쪽에도 안 나타나는 지표가 없다는 뜻이고,
   // 그게 이 목록이 지켜야 할 총계다.

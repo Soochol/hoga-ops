@@ -7,6 +7,7 @@ import {
 } from '../chart/projectors/investorNet';
 import { DAILY_PROGRAM_TRADE_SPEC } from '../chart/projectors/dailyProgramTrade';
 import { PEAK_WALL_SPEC } from './indicators/peakWallPaneSpec';
+import { TRADE_VALUE_SPEC } from '../chart/projectors/tradeValue';
 
 /** Indicator toggles that gate which panes mount. The two investor flags are
  *  required (default off); the rest are optional and default ON when omitted
@@ -15,6 +16,7 @@ export type PaneToggles = {
   foreignNet: boolean;
   institutionNet: boolean;
   volumeEnabled?: boolean;
+  tradeValueEnabled?: boolean;
   quoteTotalsEnabled?: boolean;
   ratioEnabled?: boolean;
   fillStrengthEnabled?: boolean;
@@ -73,6 +75,7 @@ const GATE_BY_NAME: Partial<Record<string, PaneGate>> = {
  */
 const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
   ...PANE_SPECS.map((spec) => ({ spec, gate: GATE_BY_NAME[spec.name] ?? ((): boolean => true) })),
+  { spec: TRADE_VALUE_SPEC, gate: (tf, t) => isCalendarTimeframe(tf) && t.tradeValueEnabled === true },
   { spec: DAILY_PROGRAM_TRADE_SPEC, gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.dailyProgramEnabled === true },
   { spec: INVESTOR_FOREIGN_SPEC, gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
   { spec: INVESTOR_INSTITUTION_SPEC, gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
