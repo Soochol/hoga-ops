@@ -214,6 +214,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 근거는 `SAVED_RANGE_VENUE` 도크스트링(ADR-0144 와 동일).
   // 훅은 항상 부르고 결과만 덮는다(조건부 호출 금지).
   const venue = isSavedRangeSubject ? SAVED_RANGE_VENUE : resolvedVenue;
+  // Today's NXT eligibility governs live frames, not historical candles:
+  // e.g. 098460 has distinct UN candles in May 2025 despite nxt_enabled=false now.
+  const dailyCandleVenue = isSavedRangeSubject ? SAVED_RANGE_VENUE : selectedVenue;
   /**
    * 저장뷰 **얼림**(2026-08-21 사용자 결정: "멈춰 있다 — 저장한 그 날만 보인다").
    *
@@ -322,6 +325,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     timeframe: view.timeframe,
     historicalFromDate: view.historicalFromDate,
     venue,
+    dailyCandleVenue,
     investorNetEnabled,
     foreignTradeSide: ind.foreignTradeSide,
     institutionTradeSide: ind.institutionTradeSide,
@@ -491,7 +495,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   );
   const clearSavedRange = useLivePageStore((s) => s.clearSavedRange);
 
-  const baseIdentity = d.workareaCode ? `${d.workareaCode}:${venue}` : venue;
+  const candleVenue = isMinuteTimeframe(view.timeframe) ? venue : dailyCandleVenue;
+  const baseIdentity = d.workareaCode ? `${d.workareaCode}:${candleVenue}` : candleVenue;
   const savedIdentity = savedRange ? `${baseIdentity}:sv=${savedRange.viewId}` : baseIdentity;
   /**
    * 점프 조각을 섞는 것이 **착지 그 자체다.**

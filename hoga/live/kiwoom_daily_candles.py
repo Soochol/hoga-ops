@@ -222,6 +222,17 @@ async def fetch_daily_candles(
     violations: list[DailyInvariantViolation] = []
     seen: set[str] = set()
     for row in rows:
+        # ka10081 can return a blank chart row for an unavailable NXT Code.
+        # It is no data (allowing the caller's KRX fallback), not a corrupt
+        # candle. A populated row with a missing date/price must still fail.
+        if all(
+            value is None or (isinstance(value, str) and not value.strip())
+            for value in (row.get(field) for field in (
+                "dt", "open_pric", "high_pric", "low_pric", "cur_prc",
+                "trde_qty", "trde_prica",
+            ))
+        ):
+            continue
         date_s = str(row.get("dt") or "").strip()
         if date_s and date_s in seen:
             continue
