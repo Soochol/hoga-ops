@@ -17,5 +17,6 @@ export const WINDOW_KIND_LABEL: Record<WindowKind, string> = {
   program: '프로그램',
   investor: '잠정투자자',
   'investor-daily': '일별 투자자',
+  news: '종목 뉴스',
   'sector-ranking': '섹터 랭킹',
 };

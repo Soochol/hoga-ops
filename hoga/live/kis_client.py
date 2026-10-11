@@ -8,7 +8,7 @@ KIS's 6-hour same-token reissue policy.
 
 Stage 4 (2026-07-08) split the 13 endpoint fetch methods into
 the error types into ``kis_errors``; PR-J(#1046)에서 `kis_endpoints`
-는 통째로 사라졌다 — 남은 표면은 **파생(옵션)뿐**이다.
+는 통째로 사라졌다. 파생과 종목 뉴스 제목(ADR-0136 개정 2026-10-11)을 제공한다.
 this file now owns the transport core (token bucket, retry ladder, _get). It
 re-exports the moved symbols so the ~60 existing ``from hoga.live.kis_client
 import ...`` sites stay unchanged (ADR-0050 single-ingress facade preserved).
@@ -39,6 +39,7 @@ from hoga.live.kis_errors import (
 )
 from hoga.live.kis_futures_endpoints import KisFuturesEndpointsMixin
 from hoga.live.kis_investor_endpoints import KisInvestorEndpointsMixin
+from hoga.live.kis_news_endpoints import KisNewsEndpointsMixin
 from hoga.live.kis_option_endpoints import KisOptionEndpointsMixin
 from hoga.util.timeenc import KST  # noqa: F401  (re-export facade)
 
@@ -230,7 +231,7 @@ class KisCredentials:
         return _BASE_REAL
 
 
-class KisClient(KisOptionEndpointsMixin, KisFuturesEndpointsMixin, KisInvestorEndpointsMixin):
+class KisClient(KisOptionEndpointsMixin, KisFuturesEndpointsMixin, KisInvestorEndpointsMixin, KisNewsEndpointsMixin):
     def __init__(
         self,
         credentials: KisCredentials,

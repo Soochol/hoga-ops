@@ -43,6 +43,7 @@ from hoga.api.live_layout_preset_routes import (
     build_router as build_live_layout_preset_router,
 )
 from hoga.api.market_routes import build_router as build_market_router
+from hoga.api.news_routes import build_router as build_news_router
 from hoga.api.origin_guard import OriginGuardMiddleware
 from hoga.api.prune import disk_headroom
 from hoga.api.queries import QueryEngine
@@ -609,6 +610,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
+    app.include_router(build_news_router(data_dir=data_dir))
     app.include_router(build_market_router(data_dir=data_dir))
     # 저장뷰 캡처-공백 자동 복구 훅은 제거됐다(2026-08-07) — 복구본 네임스페이스
     # (`kis_api`)와 함께 기능을 접었다. 근거는 `sources.SourceName` 주석: 복구본이

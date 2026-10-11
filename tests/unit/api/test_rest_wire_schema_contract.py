@@ -66,6 +66,8 @@ from hoga.live.service_status import ProviderStatus
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
+    "StockNewsItem": frozenset({"id", "title", "source", "published_at_ms", "related_codes"}),
+    "StockNewsResponse": frozenset({"code", "date", "status", "items", "fetched_at_ms", "limit"}),
     "SecondTradeDatesResponse": frozenset({"dates"}),
     "SecondAggregatesResponse": frozenset({
         "revision", "reset", "changed_ms",
@@ -427,6 +429,7 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "StockNewsStatus": (frozenset(get_args(m.StockNewsStatus)), "frontend/src/api/stockNews.ts"),
     "ComputeErrorCode": (
         frozenset(code.value for code in ComputeErrorCode), "frontend/src/api/types.ts",
     ),
