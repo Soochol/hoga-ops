@@ -13,6 +13,7 @@ interface Store {
   notifyReferenceLimit: (code: string) => void;
   dismissReferenceLimit: () => void;
   notifyFullHouse: (code: string) => void;
+  resolveFullHouse: (code: string) => void;
   dismissToast: () => void;
   /** WS 재연결 시 호출 — 재구독으로 백엔드가 다시 판정하므로 stale 보류 목록을 버린다. */
   clear: () => void;
@@ -46,6 +47,12 @@ export const useKiwoomFullHouseStore = create<Store>((set, get) => ({
   },
 
   dismissToast: () => set({ toastDismissed: true }),
+
+  resolveFullHouse: (code) => set((state) => {
+    if (!state.pendingCodes.includes(code)) return state;
+    const pendingCodes = state.pendingCodes.filter((pending) => pending !== code);
+    return { pendingCodes, toastDismissed: pendingCodes.length > 0 && state.toastDismissed };
+  }),
 
   clear: () => set({ pendingCodes: [], toastDismissed: false,
     referenceLimitCodes: [], referenceLimitDismissed: false }),

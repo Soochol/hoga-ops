@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Literal
 
@@ -31,6 +31,7 @@ from hoga.util.timeenc import KST
 
 from . import kis_runtime
 from .buffer import LiveBuffer
+from .kiwoom_venue import apply_venue
 from .promote import promote_kiwoom_today
 from .promote_executor import PromoteExecutor
 from .service_status import ProviderStatus
@@ -641,6 +642,24 @@ async def on_view_subscribe(
     if session is None:
         return True
     return await session.on_view_subscribe(code, _resolve_view_venues(code, venues), ref=ref or code)
+
+
+def ready_view_subscription_codes(requests: Mapping[str, set[str] | None]) -> set[str]:
+    """등록 ACK가 확인된 표시 구독만 반환한다. 슬롯 배정만으로는 복구가 아니다."""
+    from .coverage import subscription_venues  # noqa: PLC0415 — 순환 절단(지연)
+    from .kiwoom_session import _nxt_map  # noqa: PLC0415
+
+    session = _state.kiwoom_session
+    if session is None or not requests:
+        return set()
+    registered = set(session.status().get("ready_registrations", ()))
+    # 기본 venue를 확인할 때 마스터 맵(전체 종목)을 코드마다 다시 만들지 않는다.
+    nxt_map = _nxt_map() if any(not venues for venues in requests.values()) else None
+    return {
+        code for code, venues in requests.items()
+        if all(apply_venue(code, venue) in registered
+               for venue in (venues or subscription_venues(code, nxt_map)))
+    }
 
 
 async def on_view_unsubscribe(

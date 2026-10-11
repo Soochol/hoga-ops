@@ -47,6 +47,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
     get_buffer: Callable[[], LiveBuffer | None],
     *,
     ping_timeout_s: float = _PING_TIMEOUT_S,
+    subscription_poll_interval_s: float = 1.0,
 ) -> APIRouter:
     router = APIRouter()
 
@@ -69,6 +70,8 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         # 이 연결(탭) 식별 토큰 — 참조 카운트 장부의 ref. 두 탭이 같은 종목을 봐도
         # 각자 ref라 refcount가 정확(한 탭 닫아도 다른 탭 유지, ADR-0118 PR-C).
         view_ref = f"ws-{id(out)}"
+        pending_subs: dict[str, set[str] | None] = {}
+        pending_changed = asyncio.Event()
 
         def emit(frame: dict) -> None:
             try:
@@ -81,6 +84,20 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         async def pump_event() -> None:
             while True:
                 emit({"ch": "event", "data": await bus_q.get()})
+
+        def resolve_pending(code: str) -> None:
+            pending_subs.pop(code)
+            emit({"ch": "event", "data": {"type": "kiwoom_full_house_resolved", "code": code}})
+
+        async def monitor_pending() -> None:
+            while True:
+                await pending_changed.wait()
+                for code in lifecycle.ready_view_subscription_codes(pending_subs):
+                    resolve_pending(code)
+                if pending_subs:
+                    await asyncio.sleep(subscription_poll_interval_s)
+                else:
+                    pending_changed.clear()
 
         async def pump_live(code: str, q: asyncio.Queue[dict] | LiveDelivery) -> None:
             while True:
@@ -128,6 +145,8 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                             if not accepted:
                                 emit({"ch": "event",
                                       "data": {"type": "kiwoom_full_house", "code": code}})
+                                pending_subs[code] = venues
+                                pending_changed.set()
                     emit({"ch": "subscribed", "code": code})
                 elif action == "unsubscribe" and isinstance(code, str) and code in code_subs:
                     q, task, venues = code_subs.pop(code)
@@ -138,13 +157,16 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                         buf.unsubscribe(code, q)
                     # ADR-0067/PR-C: forward to REST poller + 키움 표시셋 lifecycle.
                     await lifecycle.on_view_unsubscribe(code, venues, ref=view_ref)
+                    if code in pending_subs:
+                        resolve_pending(code)
 
         send_task = asyncio.create_task(sender())
         recv_task = asyncio.create_task(receiver())
+        pending_task = asyncio.create_task(monitor_pending())
         overflow_task = asyncio.create_task(overflow.wait())
         try:
             await asyncio.wait(
-                {send_task, recv_task, overflow_task}, return_when=asyncio.FIRST_COMPLETED,
+                {send_task, recv_task, pending_task, overflow_task}, return_when=asyncio.FIRST_COMPLETED,
             )
             if overflow.is_set():
                 await websocket.close(code=1013, reason="Live client is too slow")
@@ -154,7 +176,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
             # 받는다 — 취소는 스코프가 끝날 때까지 재전달되기 때문이다. 그러니
             # **동기 정리를 전부 await 앞에 둔다**. 순서를 되돌리면 취소 경로에서
             # bus/버퍼 구독이 통째로 샌다(이전 판의 실제 결함).
-            for t in (send_task, recv_task, bus_task, overflow_task):
+            for t in (send_task, recv_task, bus_task, pending_task, overflow_task):
                 t.cancel()
             subs = list(code_subs.items())
             for _code, (_q, task, _v) in subs:
@@ -173,7 +195,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
             # 호출자 밖으로 새어 나간다(차단 게이트 위 flake 의 원인이었다).
             with contextlib.suppress(asyncio.CancelledError):
                 await asyncio.gather(
-                    send_task, recv_task, bus_task, overflow_task,
+                    send_task, recv_task, bus_task, pending_task, overflow_task,
                     *(task for _code, (_q, task, _v) in subs),
                     return_exceptions=True,
                 )

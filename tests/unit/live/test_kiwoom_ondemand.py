@@ -240,6 +240,33 @@ async def test_full_house_pending_ref_is_reassigned_when_slot_frees():
     await mgr.stop()
 
 
+async def test_reassigned_slot_is_only_ready_after_vendor_ack(monkeypatch):
+    from hoga.live import lifecycle
+
+    mgr = _mgr(per_account_max=2)
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        client = mgr._conns[0].client
+        client.last_recv_ms = None
+        missing = {"W"}
+        monkeypatch.setattr(client, "sub_missing", lambda: list(missing & client.expected_codes))
+        monkeypatch.setattr(lifecycle._state, "kiwoom_session", mgr)
+        assert await mgr.on_view_subscribe("Y", {"KRX"}, ref="holder")
+        assert not await lifecycle.on_view_subscribe("W", {"KRX"}, ref="waiting-tab")
+        requested = {"W": {"KRX"}}
+        assert lifecycle.ready_view_subscription_codes(requested) == set()
+        await mgr.on_view_unsubscribe("Y", {"KRX"}, ref="holder")
+        await mgr.watchdog_pass(_KRX_MS + 61_000)
+        assert "W" in client.expected_codes
+        assert lifecycle.ready_view_subscription_codes(requested) == set()
+        missing.clear()  # REG ACK가 도착한 뒤에만 알림을 해제할 수 있다.
+        assert lifecycle.ready_view_subscription_codes(requested) == {"W"}
+        client.connected = False
+        assert lifecycle.ready_view_subscription_codes(requested) == set()
+    finally:
+        await mgr.stop()
+
+
 async def test_full_house_pending_ref_is_released_when_tab_closes():
     """보류 항목도 탭이 닫히면 회수된다 — 장부에 영구 누적되지 않는다."""
     now = {"ms": _KRX_MS}
