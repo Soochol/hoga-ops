@@ -2637,6 +2637,29 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     });
   });
 
+  it.each(['D', 'W', 'M'] as const)('queries %s history using the selected daily venue while overlaying effective-venue live trades', (timeframe) => {
+    const previousCandles = dailyCandlesMock.candles;
+    const today = Date.parse('2026-05-27T09:00:00+09:00');
+    dailyCandlesMock.candles = [{ ...DEFAULT_CANDLE, t_ms: today, open: 15450, high: 15530, low: 15140, close: 15230 }];
+    const live = { ...liveFixture, trade: [{ t_ms: today + 60_000, kind: 'trade' as const, venue: 'KRX' as const,
+      trades: [{ price: 15400, qty: 10, side: 1 }] }] };
+    const { result } = renderHook(() => useLiveBundle('005930', timeframe, '20260527', live, {
+      venue: 'KRX', dailyCandleVenue: 'UN',
+    }), { wrapper });
+    expect((livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[])[3]).toBe('UN');
+    expect(result.current.chartBundle?.candles.at(-1)?.open).toBe(15450);
+    expect(result.current.chartBundle?.candles.at(-1)?.close).toBe(15400);
+    dailyCandlesMock.candles = previousCandles;
+  });
+
+  it('minute history keeps the effective venue even when the daily venue differs', () => {
+    renderHook(() => useLiveBundle('005930', '3m', '20260527', liveFixture, {
+      venue: 'KRX', dailyCandleVenue: 'UN',
+    }), { wrapper });
+    expect((livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[])[3]).toBe('KRX');
+    expect((livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[])[0]).toBeNull();
+  });
+
   /**
    * ── 캔들 축(`candleSourceKey`)에 **기준일**이 들어간다 ──────────────────────
    *

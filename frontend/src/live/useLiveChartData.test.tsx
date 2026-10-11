@@ -118,6 +118,13 @@ function renderForStock(over: Record<string, unknown> = {}) {
   );
 }
 
+it('passes the selected daily candle venue separately from the effective live venue', () => {
+  renderForStock({ timeframe: 'D', venue: 'KRX', dailyCandleVenue: 'UN' });
+  expect(liveSeriesSpy).toHaveBeenLastCalledWith('005930', 'KRX');
+  expect(useLiveBundleSpy).toHaveBeenLastCalledWith('005930', 'D', expect.any(String), liveFixture,
+    expect.objectContaining({ venue: 'KRX', dailyCandleVenue: 'UN' }));
+});
+
 describe('useLiveChartData — depth heatmap source', () => {
   beforeEach(() => {
     useLiveBundleSpy.mockReset();

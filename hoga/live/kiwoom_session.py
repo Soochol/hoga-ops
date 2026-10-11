@@ -460,7 +460,12 @@ class KiwoomSessionManager:
                     # 영구히 실시간을 못 받는다(멈춘 차트만 보인다).
                     # 미배정 항목은 슬롯을 소모하지 않고(_free_slots·_reconcile 은 owner
                     # 일치만 센다), 탭이 닫히면 on_view_unsubscribe → sweep 이 회수한다.
-                    rejected = True
+                    # Closed-market connections may have retired tasks. Keep the
+                    # reference for reopening without claiming vendor exhaustion.
+                    rejected = rejected or (
+                        self._connection_allowed is not False and bool(self._conns)
+                        and not any(self._unclaimed_slots(i) for i in self._conns)
+                    )
                     continue
                 entry.owner = account
                 touched.add(account)
@@ -520,6 +525,13 @@ class KiwoomSessionManager:
     def _free_slots(self, account_id: int) -> int:
         conn = self._conns.get(account_id)
         if conn is None or _conn_dead(conn):
+            return 0
+        return self._unclaimed_slots(account_id)
+
+    def _unclaimed_slots(self, account_id: int) -> int:
+        """Budget remaining even when a connection is temporarily unavailable."""
+        conn = self._conns.get(account_id)
+        if conn is None:
             return 0
         nxt_map = self._nxt_map_fn()
         display_used = sum(

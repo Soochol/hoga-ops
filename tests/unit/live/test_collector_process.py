@@ -20,6 +20,7 @@ from hoga.live.collector_worker import ForwardBuffer, run_worker
 from hoga.live.snapshot import SnapshotKind
 from hoga.live.stream import LiveStream
 from hoga.live.ticks import WsTick
+from hoga.live.view_subscription import MAX_DISPLAY_CODES, MAX_DISPLAY_REFS_PER_CODE, ViewSubscriptionLimitError
 from hoga.live.writer import LiveWriter
 from hoga.util.timeenc import KST
 
@@ -335,6 +336,81 @@ class OfflineSession(CaptureProcessSession):
         return {"targets": list(targets), "n_accounts": n_accounts, "nxt_map": {},
                 "calendar_date": datetime.now(KST).strftime("%Y%m%d"), "calendar_allowed": True,
                 "view_codes": [], "view_refs": [], "names": {c: c for c in targets}}
+
+
+async def test_three_tabs_share_300_codes_without_exhausting_reference_budget(tmp_path):
+    owner = CaptureProcessSession(buffer=LiveBuffer(), data_dir=tmp_path)
+    for tab in range(3):
+        for i in range(300):
+            assert await owner.on_view_subscribe(f"{i:06d}", {"KRX"}, ref=f"tab-{tab}")
+    assert len(owner.views) == 900
+    # One tab closing must not remove another tab's desired subscription.
+    for i in range(300):
+        await owner.on_view_unsubscribe(f"{i:06d}", {"KRX"}, ref="tab-0")
+    assert len(owner.views) == 600
+    assert owner.views[("000001", "tab-1")] == {"KRX"}
+    assert await owner.on_view_subscribe("000001", {"NXT"}, ref="tab-1")
+    assert owner.views[("000001", "tab-1")] == {"KRX", "NXT"}
+
+
+async def test_application_limits_are_distinct_from_vendor_full_house_and_release(tmp_path):
+    owner = CaptureProcessSession(buffer=LiveBuffer(), data_dir=tmp_path)
+    for i in range(MAX_DISPLAY_CODES):
+        assert await owner.on_view_subscribe(f"{i:06d}", {"KRX"}, ref="tab")
+    with pytest.raises(ViewSubscriptionLimitError):
+        await owner.on_view_subscribe("999999", {"KRX"}, ref="tab")
+    assert ("999999", "tab") not in owner.views
+    # Existing codes still admit other tabs at the distinct-code ceiling.
+    for i in range(1, MAX_DISPLAY_REFS_PER_CODE):
+        assert await owner.on_view_subscribe("000000", {"KRX"}, ref=f"tab-{i}")
+    with pytest.raises(ViewSubscriptionLimitError):
+        await owner.on_view_subscribe("000000", {"KRX"}, ref="overflow-tab")
+    await owner.on_view_unsubscribe("000000", {"KRX"}, ref="tab-1")
+    assert await owner.on_view_subscribe("000000", {"KRX"}, ref="overflow-tab")
+    await owner.on_view_unsubscribe("000001", {"KRX"}, ref="tab")
+    assert await owner.on_view_subscribe("999999", {"KRX"}, ref="tab")
+
+
+async def test_vendor_pending_refs_survive_parent_and_worker_reconciliation(tmp_path, monkeypatch):
+    from hoga.live.collector_worker import CollectorWorker
+
+    class Peer:
+        closed = asyncio.Event()
+        async def call(self, method, args):
+            return False
+
+    owner = CaptureProcessSession(buffer=LiveBuffer(), data_dir=tmp_path)
+    owner.peer = Peer()
+    monkeypatch.setattr(owner, "alive", lambda: True)
+    assert not await owner.on_view_subscribe("000660", {"KRX"}, ref="pending-tab")
+    assert owner.views[("000660", "pending-tab")] == {"KRX"}
+    worker = CollectorWorker(tmp_path, "epoch", None, manager_factory=FakeManager)
+    async def pending(*args, **kwargs):
+        return False
+    worker.manager.on_view_subscribe = pending
+    try:
+        assert not await worker.command("view_subscribe", {
+            "code": "000660", "venues": ["KRX"], "ref": "pending-tab",
+        })
+        assert worker.views[("000660", "pending-tab")] == {"KRX"}
+        config = await owner._configuration(("005930",), 1)
+        config["version"] = 1
+        await worker.synchronize(config)
+        assert worker.views[("000660", "pending-tab")] == {"KRX"}
+        await owner.on_view_unsubscribe("000660", {"KRX"}, ref="pending-tab")
+        assert not owner.views
+    finally:
+        await worker.manager.stop()
+        from hoga.live.kiwoom_diagnostics import configure_failure_context
+        configure_failure_context(None)
+
+
+def test_maximum_reference_configuration_fits_the_ipc_frame_budget():
+    refs = [{"code": f"{i:06d}", "ref": f"tab-{tab:036d}", "venues": ["KRX", "NXT", "UN"]}
+            for i in range(MAX_DISPLAY_CODES) for tab in range(MAX_DISPLAY_REFS_PER_CODE)]
+    # Reference fan-out remains finite and serializable during collector restart.
+    frame = encode({"view_refs": refs})
+    assert len(frame) < 8 * 1024 * 1024
 
 
 def orphan_parent(root):

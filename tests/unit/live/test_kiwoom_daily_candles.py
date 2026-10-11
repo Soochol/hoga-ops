@@ -209,6 +209,35 @@ def test_bad_rows_become_closed_set_violations(row: dict, reason: str) -> None:
     assert violation is not None and violation.reason == reason
 
 
+@pytest.mark.parametrize("row", [{}, {key: "" for key in ROW},
+                                 {**dict.fromkeys(ROW, " "), "stk_cd": "098460_NX"}])
+async def test_empty_chart_row_is_no_data_not_an_invariant_violation(row: dict) -> None:
+    client = _client(lambda _r: _ok([row]))
+    try:
+        result = await fetch_daily_candles(
+            client, "098460", "20250501", "20250531", venue="NXT",
+            adjust=True, adjusted_as_of=AS_OF,
+        )
+        assert result.candles == []
+        assert result.violations == []
+    finally:
+        await client.aclose()
+
+
+async def test_missing_date_on_a_populated_row_remains_a_violation() -> None:
+    client = _client(lambda _r: _ok([{**ROW, "dt": ""}]))
+    try:
+        result = await fetch_daily_candles(
+            client, "098460", "20250501", "20250531", venue="NXT",
+            adjust=True, adjusted_as_of=AS_OF,
+        )
+        assert not result.candles
+        assert len(result.violations) == 1
+        assert result.violations[0].reason == "malformed_row"
+    finally:
+        await client.aclose()
+
+
 async def test_rows_older_than_from_are_not_violations() -> None:
     """**설계상 반드시 생기는 넘침이라 위반이 아니다.**
 

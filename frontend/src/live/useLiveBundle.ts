@@ -447,6 +447,9 @@ type UseLiveBundleOptions = {
   institutionInvestorEnabled?: boolean;
   investorNetEnabled?: boolean;
   venue?: LiveVenueOption;
+  /** D/W/M REST history keeps the selected venue even if today's live stream
+   * falls back to KRX for a currently NXT-disabled Code. */
+  dailyCandleVenue?: LiveVenueOption;
   sidecarDemands?: SidecarDemands;
   /**
    * 저장뷰 구간에 **얼린** 창의 시작일(YYYYMMDD KST). `null`/미지정 = 평소의 라이브 창.
@@ -768,7 +771,7 @@ export function useLiveBundle(
     enableDaily ? code : null,
     enableDaily ? dailyPastFrom : null,
     enableDaily ? dailyPastTo : null,
-    venue,
+    options.dailyCandleVenue ?? venue,
   );
   // 스크리너 일봉 — D/W/M, 우회 ON 전용(디스크 소스).
   const enableScreenerDaily = !!(code && !isMinute && restBypassEnabled);

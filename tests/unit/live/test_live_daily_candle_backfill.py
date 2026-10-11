@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import json
 from collections.abc import Awaitable, Callable, Hashable
 
+import httpx
 import pytest
 
 from hoga.live import kiwoom_daily_candles, kiwoom_rest_runtime
@@ -11,6 +13,7 @@ from hoga.live.api import batched_daily_walkback
 from hoga.live.candle_fetch_result import DailyCandleFetchResult, DailyInvariantViolation
 from hoga.live.candle_models import LiveCandle
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
+from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 
@@ -165,6 +168,62 @@ def kiwoom(monkeypatch):
         return fake
 
     return _install
+
+
+@pytest.mark.parametrize("malformed", [False, True])
+async def test_nxt_blank_row_allows_krx_fill_but_populated_corruption_does_not(
+    tmp_path, monkeypatch, malformed: bool,
+) -> None:
+    """Exercise the actual daily adapter through backfill, including venue routing."""
+    class TokenProvider:
+        def get_token(self) -> str:
+            return "test-token"
+
+    krx_row = {
+        "dt": "20250529", "open_pric": "15520", "high_pric": "15530",
+        "low_pric": "15140", "cur_prc": "15200", "trde_qty": "1112611",
+    }
+    sent_codes: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        code = json.loads(request.content)["stk_cd"]
+        sent_codes.append(code)
+        if code.endswith("_NX"):
+            row = {**krx_row, "dt": ""} if malformed else {
+                field: "" for field in krx_row
+            }
+        else:
+            row = krx_row
+        return httpx.Response(
+            200, json={"return_code": 0, "stk_dt_pole_chart_qry": [row]},
+            headers={"cont-yn": "N", "next-key": ""},
+        )
+
+    client = KiwoomRestClient(TokenProvider(), transport=httpx.MockTransport(handle))
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda *_a, **_k: client)
+    backfill = LiveDailyCandleBackfill(
+        data_dir=tmp_path, cache=PastDailyCandlesCache(),
+        scheduler=_RecordingScheduler(),  # type: ignore[arg-type]
+        walkback=batched_daily_walkback,
+    )
+    try:
+        result = await backfill.collect_daily(
+            code="098460", frm=dt.date(2025, 5, 29), too=dt.date(2025, 5, 29),
+            today_d=dt.date(2025, 6, 1), policy="NXT",
+            from_label="20250529", to_label="20250529",
+        )
+        assert result["venue"] == "NXT"
+        if malformed:
+            assert sent_codes == ["098460_NX"]
+            assert result["candles"] == []
+            assert result["data_warnings"][0]["reason"] == "invariant_violation"
+        else:
+            assert sent_codes == ["098460_NX", "098460"]
+            assert result["candles"][0]["close"] == 15200
+            assert result["candles"][0]["volume"] == 1112611
+            assert result["data_warnings"][0]["reason"] == "daily_fallback_to_krx"
+    finally:
+        await client.aclose()
 
 
 @pytest.mark.asyncio

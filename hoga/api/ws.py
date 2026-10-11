@@ -18,6 +18,7 @@ from fastapi import APIRouter, WebSocket
 from hoga.api.events import EventBus
 from hoga.live.buffer import LiveBuffer
 from hoga.live.delivery import LiveDelivery, LiveOutbox
+from hoga.live.view_subscription import ViewSubscriptionLimitError
 
 logger = logging.getLogger(__name__)
 
@@ -112,17 +113,21 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                         if buf is None:
                             continue
                         if len(code_subs) >= _MAX_CODE_SUBSCRIPTIONS:  # bounded per-tab resource ownership
-                            overflow.set()
-                            return
+                            emit({"ch": "event", "data": {"type": "live_subscription_limit", "code": code}})
+                            continue
                         q = buf.subscribe(code, batch=msg.get("protocol") == _BATCH_PROTOCOL)
                         venues = _parse_venues(msg.get("venues"))
                         code_subs[code] = (q, asyncio.create_task(pump_live(code, q)), venues)
                         # ADR-0067/PR-C: forward to REST poller + 키움 표시셋 lifecycle.
                         # 만석(전 연결 슬롯 소진)이면 이 탭에 만석 이벤트(토스트).
-                        accepted = await lifecycle.on_view_subscribe(code, venues, ref=view_ref)
-                        if not accepted:
-                            emit({"ch": "event",
-                                  "data": {"type": "kiwoom_full_house", "code": code}})
+                        try:
+                            accepted = await lifecycle.on_view_subscribe(code, venues, ref=view_ref)
+                        except ViewSubscriptionLimitError:
+                            emit({"ch": "event", "data": {"type": "live_subscription_limit", "code": code}})
+                        else:
+                            if not accepted:
+                                emit({"ch": "event",
+                                      "data": {"type": "kiwoom_full_house", "code": code}})
                     emit({"ch": "subscribed", "code": code})
                 elif action == "unsubscribe" and isinstance(code, str) and code in code_subs:
                     q, task, venues = code_subs.pop(code)
