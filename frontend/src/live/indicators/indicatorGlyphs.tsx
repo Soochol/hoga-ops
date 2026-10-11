@@ -1,5 +1,5 @@
 /**
- * 지표 글리프의 SSOT — 15종, 16px, 단색.
+ * 지표 글리프의 SSOT — 16종, 16px, 단색.
  *
  * ## 글리프가 두 가지를 동시에 말한다
  *
@@ -86,6 +86,15 @@ export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
     </>,
   ),
   volume: svg(
+    <>
+      {PANE_FRAME}
+      <rect x="2" y="12.5" width="2.4" height="2.5" fill="currentColor" />
+      <rect x="5.2" y="11" width="2.4" height="4" fill="currentColor" />
+      <rect x="8.4" y="12" width="2.4" height="3" fill="currentColor" />
+      <rect x="11.6" y="10.5" width="2.4" height="4.5" fill="currentColor" />
+    </>,
+  ),
+  'trade-value': svg(
     <>
       {PANE_FRAME}
       <rect x="2" y="12.5" width="2.4" height="2.5" fill="currentColor" />

@@ -18,6 +18,7 @@ import { normalizeKeyOrder } from '../state/keyOrder';
 export const CANONICAL_PANE_ORDER = [
   'candle',
   'volume',
+  'trade-value',
   'quote-totals',
   'peak-wall',
   'ratio',
@@ -116,6 +117,7 @@ export const PANE_DISPLAY_NAME: Record<PaneId, string> = {
   'program-daily': '프로그램 순매수량',
   candle: '캔들',
   volume: '거래량',
+  'trade-value': '거래대금',
   ratio: '호가비',
   'quote-totals': '총잔량',
   'fill-strength': '체결강도',

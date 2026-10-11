@@ -125,10 +125,10 @@ describe('extractPaneToBoundary', () => {
   });
 
   it('아래 방향 이동은 자기 그룹 제거로 당겨진 인덱스를 보정한다', () => {
-    const groups = normalizePaneGroups(undefined); // [candle][volume][quote-totals][ratio]...
-    // volume(idx 1)을 quote-totals(idx 2) 바로 아래 경계(원본 기준 3)로
+    const groups = normalizePaneGroups(undefined); // [candle][volume][trade-value][quote-totals]...
+    // volume(idx 1)을 trade-value(idx 2) 바로 아래 경계(원본 기준 3)로
     const out = extractPaneToBoundary(groups, 'volume', 3);
-    expect(out[1]).toEqual(['quote-totals']);
+    expect(out[1]).toEqual(['trade-value']);
     expect(out[2]).toEqual(['volume']);
   });
 

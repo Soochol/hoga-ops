@@ -2,6 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { buildIndexBundle } from './buildIndexBundle';
 
 describe('buildIndexBundle', () => {
+  it('preserves actual calendar turnover including zero without inferring missing amounts', () => {
+    const bundle = buildIndexBundle({
+      indexId: 'KOSDAQ', from: '20260619', to: '20260619', bucketMs: 86_400_000,
+      candles: [18840196000000, 0, null, undefined].map((trade_value_won, i) => ({
+        t_ms: 1_781_830_800_000 + i * 1000, open: 2800, high: 2800, low: 2800,
+        close: 2800, volume: 450000000, trade_value_won,
+      })),
+    });
+    expect(bundle.candles.map(c => c.trade_value_won)).toEqual([18840196000000, 0, undefined, undefined]);
+  });
+
   it('converts index candles into a hoga-free RangeBundle', () => {
     const bundle = buildIndexBundle({
       indexId: 'KOSPI',

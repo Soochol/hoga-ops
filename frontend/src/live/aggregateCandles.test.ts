@@ -184,6 +184,40 @@ describe('aggregateCalendar', () => {
     volume: vol,
   });
 
+  it.each(['W', 'M'] as const)('%s sums actual turnover including zero and resets at period boundaries', tf => {
+    const src = [
+      { ...bar(sessionOpenKst(2026, 5, 25), 100, 999), trade_value_won: 120_000_000 },
+      { ...bar(sessionOpenKst(2026, 5, 26), 110, 999), trade_value_won: 0 },
+      { ...bar(sessionOpenKst(2026, 5, 27), 120, 999), trade_value_won: 340_000_000 },
+      { ...bar(sessionOpenKst(2026, 6, 1), 130, 999), trade_value_won: 560_000_000 },
+    ];
+    const out = aggregateCalendar(src, tf);
+    expect(out.map(c => c.trade_value_won)).toEqual([460_000_000, 560_000_000]);
+    expect(out.map(c => c.volume)).toEqual([2997, 999]);
+  });
+
+  it.each(['W', 'M'] as const)('%s leaves totals unknown when any source amount is missing or invalid', tf => {
+    for (const missing of [undefined, null, NaN, Infinity, -1]) {
+      for (const index of [0, 1, 2]) {
+        const src = [0, 1, 2].map(i => ({
+          ...bar(sessionOpenKst(2026, 5, 25 + i), 100),
+          trade_value_won: i === index ? missing : 120_000_000,
+        }));
+        const out = aggregateCalendar(src, tf);
+        expect(out).toHaveLength(1);
+        expect(out[0].trade_value_won).toBeUndefined();
+        expect(out[0].volume).toBe(3);
+      }
+    }
+  });
+
+  it('preserves genuine zero when all amounts are zero', () => {
+    const src = [25, 26].map(day => ({
+      ...bar(sessionOpenKst(2026, 5, day), 100), trade_value_won: 0,
+    }));
+    expect(aggregateCalendar(src, 'W')[0].trade_value_won).toBe(0);
+  });
+
   it('returns empty for empty input', () => {
     expect(aggregateCalendar([], 'D')).toEqual([]);
   });

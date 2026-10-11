@@ -35,6 +35,8 @@ export interface LiveIndexCandle {
   low: number;
   close: number;
   volume: number;
+  /** Actual turnover for a calendar candle, in KRW. */
+  trade_value_won?: number | null;
 }
 
 export interface LiveIndexCandlesWarning extends WireDataWarning {

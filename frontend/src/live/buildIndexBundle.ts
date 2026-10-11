@@ -31,6 +31,7 @@ export function buildIndexBundle(input: {
     close: c.close,
     vol_a: c.volume,
     vol_b: 0,
+    ...(c.trade_value_won != null ? { trade_value_won: c.trade_value_won } : {}),
   }));
   const dates = Array.from(new Set(input.candles.map((c) => realMsToYyyymmdd(c.t_ms))));
   return {

@@ -7,6 +7,7 @@ describe('capabilitiesForInstrument', () => {
       hogaPanes: true,
       investorNet: 'stock',
       studySave: true,
+      tradeValue: true,
     });
   });
 
@@ -15,6 +16,7 @@ describe('capabilitiesForInstrument', () => {
       hogaPanes: false,
       investorNet: 'market',
       studySave: false,
+      tradeValue: true,
     });
   });
 

@@ -6,6 +6,16 @@ import { CANDLE_SPEC } from '../chart/projectors/candle';
 import { VOLUME_SPEC } from '../chart/projectors/volume';
 
 describe('paneSpecsForTimeframe', () => {
+  it.each(['D', 'W', 'M'] as const)('%s turnover is opt-in and independent of volume', tf => {
+    const toggles = { foreignNet: false, institutionNet: false, tradeValueEnabled: true };
+    expect(paneSpecsForTimeframe(tf, toggles).map(s => s.name)).toEqual(['candle', 'volume', 'trade-value']);
+    expect(paneSpecsForTimeframe(tf, { ...toggles, volumeEnabled: false }).map(s => s.name))
+      .toEqual(['candle', 'trade-value']);
+    expect(paneSpecsForTimeframe(tf, { ...toggles, tradeValueEnabled: false }).map(s => s.name))
+      .toEqual(['candle', 'volume']);
+    expect(paneSpecsForTimeframe('3m', toggles).some(s => s.name === 'trade-value')).toBe(false);
+  });
+
   // 목록을 손으로 적지 않는다 — 새 분봉 tf 가 추가되면 여기도 자동으로 덮는다.
   it.each(MINUTE_TIMEFRAMES)(
     'minute timeframe %s → full 5-pane registry (PANE_SPECS identity)',

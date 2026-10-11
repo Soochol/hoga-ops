@@ -46,6 +46,17 @@ _MAX_DAILY_PAGES = 8
 _DATE_LEN = 8
 
 
+def _trade_value_won(raw: object) -> int | None:
+    """Calendar index turnover: Kiwoom million KRW → won; missing stays missing."""
+    text = str(raw if raw is not None else "").strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return abs(int(text)) * 1_000_000
+    except ValueError:
+        return None
+
+
 class KiwoomIndexRestError(KiwoomApiError):
     """지수 REST 어댑터 실패. `KiwoomApiError` 를 상속해 기존 degrade 팔이 흡수한다."""
 
@@ -174,6 +185,7 @@ async def fetch_index_daily_candles(
                 low=parse_price(row.get("low_pric")),
                 close=parse_price(row.get("cur_prc")),
                 volume=int(str(row.get("trde_qty") or "0").replace("-", "") or 0),
+                trade_value_won=_trade_value_won(row.get("trde_prica")),
             )
         except (TypeError, ValueError) as exc:
             # reason 은 **닫힌 집합**이다(ADR-0129 D5) — 브로커 전용 값을 새로

@@ -4,6 +4,7 @@ import { useIndicatorActions, useWindowIndicators } from '../workspace/windowVie
 import MovingAverageConfig from './MovingAverageConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
+import TradeValueConfig from './TradeValueConfig';
 import InvestorNetConfig from './InvestorNetConfig';
 import PeakWallsConfig from './PeakWallsConfig';
 import TradeVolumePocConfig from './TradeVolumePocConfig';
@@ -33,12 +34,13 @@ import {
   WORKSPACE_PANEL_HEIGHT_CLASS,
   WORKSPACE_PANEL_SHELL_CLASS,
 } from '../workspacePanel';
-import type { LiveTimeframe } from '../../state/livePage';
+import { isCalendarTimeframe, type LiveTimeframe } from '../../state/livePage';
 
 export type CategoryId =
   | 'moving-average'
   | 'daily-moving-average'
   | 'volume'
+  | 'trade-value'
   | 'foreign-net'
   | 'institution-net'
   | 'peak-walls'
@@ -107,6 +109,8 @@ export const CATEGORIES: ReadonlyArray<{
     description: '일봉 종가 기준 이평선을 분봉 차트에 투영 · 분봉 차트에서만 표시됩니다' },
   { id: 'volume',          label: '거래량',           group: 'top',  placement: 'pane',
     description: '해당 봉 동안 체결된 거래량을 막대로 표시합니다.' },
+  { id: 'trade-value',     label: '거래대금',         group: 'top', placement: 'pane',
+    description: '해당 일·주·월 동안의 거래대금을 막대로 표시합니다.' },
   { id: 'quote-totals',    label: '총잔량',           group: 'hoga', placement: 'pane',
     description: '해당 분봉 시점의 매수·매도 호가 총잔량을 라인으로 표시합니다.' },
   { id: 'ratio',           label: '호가비',           group: 'hoga', placement: 'pane',
@@ -144,6 +148,7 @@ function timeframeLabel(tf: LiveTimeframe): string {
 
 const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
   volume: 'volumeEnabled',
+  'trade-value': 'tradeValueEnabled',
   'quote-totals': 'quoteTotalsEnabled',
   ratio: 'ratioEnabled',
   'fill-strength': 'fillStrengthEnabled',
@@ -281,6 +286,7 @@ export default function IndicatorPanel({
   const setDepthHeatmapEnabled = actions.setDepthHeatmapEnabled;
   const paneIndicators: PanePrefsIndicatorSource = {
     volumeEnabled: ind.volumeEnabled,
+    tradeValueEnabled: ind.tradeValueEnabled,
     quoteTotalsEnabled: ind.quoteTotalsEnabled,
     ratioEnabled: ind.ratioEnabled,
     fillStrengthEnabled: ind.fillStrengthEnabled,
@@ -337,6 +343,7 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
+    if (c.id === 'trade-value') return capabilities.tradeValue === true && isCalendarTimeframe(timeframe);
     if (c.id === 'program-daily') return capabilities.investorNet === 'stock';
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;
     if ((c.id === 'foreign-net' || c.id === 'institution-net') && capabilities.investorNet === 'none') {
@@ -634,6 +641,7 @@ export default function IndicatorPanel({
               {selectedAdded && selectedId === 'moving-average' && <MovingAverageConfig />}
               {selectedAdded && selectedId === 'daily-moving-average' && <DailyMovingAverageConfig />}
               {selectedAdded && selectedId === 'volume' && <VolumeConfig />}
+              {selectedAdded && selectedId === 'trade-value' && <TradeValueConfig />}
               {selectedAdded && (selectedId === 'foreign-net' || selectedId === 'institution-net') && <InvestorNetConfig which={selectedId === 'foreign-net' ? 'foreign' : 'institution'} grossSupported={capabilities.investorNet === 'stock'} />}
               {selectedAdded && selectedId === 'broker-late-entry' && <BrokerLateEntryConfig />}
               {selectedAdded && selectedId === 'peak-walls' && <PeakWallsConfig />}

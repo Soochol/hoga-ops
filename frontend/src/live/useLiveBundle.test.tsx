@@ -18,6 +18,7 @@ import { type RestFailureKind, useRestBypassModeStore } from '../state/restBypas
 import type { LiveSeriesData } from '../api/liveSeries';
 import { createVirtualAxis } from '../util/virtualAxis';
 import { projectVolume } from '../chart/projectors/volume';
+import type { TradeSnapshot } from './bucketHogaSeries';
 
 // Live fixture — used to be a mock of useLiveSeries when useLiveBundle owned
 // the hook call. After the LivePage-lift refactor, `live` is a prop passed
@@ -3526,4 +3527,41 @@ it('preserves daily turnover through the API-to-chart candle projection', () => 
   } finally {
     dailyCandlesMock.candles = previous;
   }
+});
+
+it.each(['W', 'M'] as const)('%s stock turnover reaches the chart from both daily data sources', tf => {
+  for (const bypass of [false, true]) {
+    const mock = bypass ? screenerDailyCandlesMock : dailyCandlesMock;
+    const previous = mock.candles;
+    mock.candles = [
+      { ...DEFAULT_CANDLE, t_ms: DEFAULT_CANDLE.t_ms - 86_400_000, ...{ trade_value_won: 120_000_000 } },
+      { ...DEFAULT_CANDLE, ...{ trade_value_won: 340_000_000 } },
+    ];
+    try {
+      const { result, unmount } = renderHook(
+        () => useLiveBundle('005930', tf, '20260527', liveFixture, { hogaplaySourceEnabled: false }),
+        { wrapper: createWrapper({ rest_bypass_enabled: bypass }) },
+      );
+      expect(result.current.chartBundle?.candles[0]?.trade_value_won).toBe(460_000_000);
+      unmount();
+    } finally {
+      mock.candles = previous;
+    }
+  }
+});
+
+it('calendar live price updates preserve reported turnover without double-counting buffered trades', () => {
+  const candle = {
+    ts_ms: DEFAULT_CANDLE.t_ms, open: 70000, high: 70100, low: 69900, close: 70050,
+    vol_a: 1000, vol_b: 0, trade_value_won: 123_450_000_000,
+  };
+  const trades: TradeSnapshot[] = [{
+    t_ms: candle.ts_ms + 30_000, venue: 'KRX',
+    trades: [{ t_ms: candle.ts_ms + 30_000, price: 70200, qty: 100, side: 1 }],
+  }];
+  const updated = overlayLiveTradesOnCalendarCandles([candle], trades, 'D');
+  expect(updated[0].close).toBe(70200);
+  expect(updated[0].trade_value_won).toBe(candle.trade_value_won);
+  expect(overlayLiveTradesOnCalendarCandles(updated, trades, 'D')[0].trade_value_won)
+    .toBe(candle.trade_value_won);
 });

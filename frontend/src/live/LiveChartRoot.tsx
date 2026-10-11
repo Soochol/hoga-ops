@@ -450,6 +450,7 @@ interface Props {
   /** Snapshot restore can pin pane mounts to saved indicator state. Omitted means read /live store. */
   paneTogglesOverride?: {
     volumeEnabled?: boolean;
+    tradeValueEnabled?: boolean;
     quoteTotalsEnabled?: boolean;
     ratioEnabled?: boolean;
     fillStrengthEnabled?: boolean;
@@ -1970,6 +1971,7 @@ export function LiveChartRoot({
   // 창-스코프 절단 — 필드별 구독으로 전역 폴백의 재렌더 입도 보존.
   const prefMovingAverages = useWindowIndicator((s) => s.movingAverages);
   const prefVolumeEnabled = useWindowIndicator((s) => s.volumeEnabled);
+  const prefTradeValueEnabled = useWindowIndicator((s) => s.tradeValueEnabled);
   const prefQuoteTotalsEnabled = useWindowIndicator((s) => s.quoteTotalsEnabled);
   const prefRatioEnabled = useWindowIndicator((s) => s.ratioEnabled);
   const prefFillStrengthEnabled = useWindowIndicator((s) => s.fillStrengthEnabled);
@@ -1988,6 +1990,7 @@ export function LiveChartRoot({
     () => ({
       movingAverages: prefMovingAverages,
       volumeEnabled: prefVolumeEnabled,
+      tradeValueEnabled: prefTradeValueEnabled,
       quoteTotalsEnabled: prefQuoteTotalsEnabled,
       ratioEnabled: prefRatioEnabled,
       fillStrengthEnabled: prefFillStrengthEnabled,
@@ -1998,7 +2001,7 @@ export function LiveChartRoot({
       peakWallPaneEnabled: prefPeakWallPaneEnabled,
     }),
     [prefMovingAverages,
-      prefVolumeEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
+      prefVolumeEnabled, prefTradeValueEnabled, prefQuoteTotalsEnabled, prefRatioEnabled,
       prefFillStrengthEnabled, prefProgramTradeEnabled, prefForeignNetEnabled, prefDailyProgramEnabled,
       prefInstitutionNetEnabled, prefPeakWallPaneEnabled],
   );
@@ -2064,6 +2067,9 @@ export function LiveChartRoot({
       forceHogaPanes,
       hogaPanes: paneTogglesOverride?.hogaPanes,
       override: {
+        ...(paneTogglesOverride?.tradeValueEnabled !== undefined
+          ? { tradeValueEnabled: paneTogglesOverride.tradeValueEnabled }
+          : {}),
         ...(paneTogglesOverride?.volumeEnabled !== undefined
           ? { volumeEnabled: paneTogglesOverride.volumeEnabled }
           : {}),
@@ -2087,6 +2093,7 @@ export function LiveChartRoot({
       prefPeakWallPaneHasContent,
       paneTogglesOverride?.hogaPanes,
       paneTogglesOverride?.volumeEnabled,
+      paneTogglesOverride?.tradeValueEnabled,
       paneTogglesOverride?.quoteTotalsEnabled,
       paneTogglesOverride?.ratioEnabled,
       paneTogglesOverride?.fillStrengthEnabled,

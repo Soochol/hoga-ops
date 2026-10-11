@@ -17,6 +17,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       institutionTradeSide: 'net',
       institutionNetEnabled: false,
       volumeEnabled: true,
+      tradeValueEnabled: false,
       movingAverageHidden: false,
       peakWallPaneEnabled: false,
       peakWallPaneMode: 'step',
@@ -101,7 +102,7 @@ describe('mergeLiveIndicatorPrefs', () => {
       brokerLateEntrySellColor: '#3b82f6',
       panePrefsByTimeframe: {},
       paneOrder: [
-        'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
+        'candle', 'volume', 'trade-value', 'quote-totals', 'peak-wall', 'ratio',
         'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily',
       ],
       paneStretch: {},
@@ -267,7 +268,7 @@ describe('mergeLiveIndicatorPrefs', () => {
 describe('mergeLiveIndicatorPrefs — paneOrder', () => {
   it('defaults paneOrder to the canonical order with candle first', () => {
     expect(mergeLiveIndicatorPrefs(undefined).paneOrder).toEqual([
-      'candle', 'volume', 'quote-totals', 'peak-wall', 'ratio',
+      'candle', 'volume', 'trade-value', 'quote-totals', 'peak-wall', 'ratio',
       'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily',
     ]);
   });
@@ -276,7 +277,7 @@ describe('mergeLiveIndicatorPrefs — paneOrder', () => {
     const m = mergeLiveIndicatorPrefs({ paneOrder: ['ratio', 'bogus', 'candle', 'volume'] } as never);
     expect(m.paneOrder).toEqual([
       'candle', 'ratio', 'volume',
-      'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily',
+      'trade-value', 'quote-totals', 'peak-wall', 'fill-strength', 'program-trade', 'investor-foreign', 'investor-institution', 'program-daily',
     ]);
   });
 });
