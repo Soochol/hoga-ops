@@ -8,16 +8,20 @@
 // supplies pane heights via chart.panes().
 
 import { describe, expect, it, vi } from 'vitest';
-import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import type { BarPrice, Coordinate, IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
   paneIdToIndex,
   paneIdAtY,
   clampYToPane,
   paneTopY,
   canvasYToPrice,
+  priceToCanvasY,
+  priceBoundsForPane,
+  pixelToData,
   type PaneSeriesMap,
 } from './chartCoordinates';
 import type { PaneId } from './types';
+import type { VirtualAxis } from '../../util/virtualAxis';
 
 /** Stub IChartApi whose panes() returns objects with the given heights, in
  *  the actual mounted (runtime) order. */
@@ -62,6 +66,23 @@ function paneSeriesFor(paneIds: PaneId[]): PaneSeriesMap {
 const FULL: PaneId[] = ['candle', 'volume', 'quote-totals', 'ratio', 'fill-strength'];
 // Volume off on a minute timeframe — every pane below volume shifts up one.
 const NO_VOLUME: PaneId[] = ['candle', 'quote-totals', 'ratio', 'fill-strength'];
+
+it('round-trips turnover drawing prices in KRW through the scaled series', () => {
+  const chart = {
+    ...chartWithHeights([400, 100]),
+    timeScale: () => ({ coordinateToTime: () => 1 }),
+  } as unknown as IChartApi;
+  const ps = paneSeriesFor(['candle', 'trade-value']);
+  const series = ps.get('trade-value')!;
+  series.priceToCoordinate = vi.fn((value: number) => (100 - value) as Coordinate);
+  series.coordinateToPrice = vi.fn((y: number) => (100 - y) as BarPrice);
+  expect(priceToCanvasY(chart, ps, 'trade-value', 4_000_000_000)).toBe(460);
+  expect(series.priceToCoordinate).toHaveBeenCalledWith(40);
+  expect(canvasYToPrice(chart, ps, 'trade-value', 460)).toBe(4_000_000_000);
+  expect(priceBoundsForPane(chart, ps, 'trade-value')).toEqual({ top: 10_000_000_000, bottom: 0 });
+  const axis = { toReal: () => 1234 } as unknown as VirtualAxis;
+  expect(pixelToData(chart, axis, ps, 'trade-value', 0, 460)).toEqual({ realMs: 1234, price: 4_000_000_000 });
+});
 
 describe('paneIdToIndex (runtime)', () => {
   it('resolves each mounted paneId to its runtime pane index', () => {

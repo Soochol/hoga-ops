@@ -98,7 +98,7 @@ function attach(paneId: PaneId) {
   return { prim, requestUpdate };
 }
 
-const hline = (paneId: 'candle' | 'volume', price = 100): Drawing => ({
+const hline = (paneId: PaneId, price = 100): Drawing => ({
   id: `h_${paneId}`, kind: 'hline', price,
   color: '#14B8A6', width: 1.5, lineStyle: 'solid', paneId,
 });
@@ -118,6 +118,16 @@ function drawAxis(prim: DrawingsPrimitive, c: CanvasRenderingContext2D, width = 
 }
 
 describe('DrawingsPrimitive', () => {
+  it('keeps persisted turnover drawings in KRW on both plot and price-axis surfaces', () => {
+    const { prim } = attach('trade-value');
+    prim.setSource(() => snapshot({ drawings: [hline('trade-value', 10_000_000_000)] }));
+    const plot = makeCanvasSpy();
+    draw(prim, plot);
+    expect(plot.moveTo).toHaveBeenCalledWith(0, 200);
+    const axisCanvas = makeCanvasSpy();
+    drawAxis(prim, axisCanvas);
+    expect(axisCanvas.fillText.mock.calls.some(args => args[0] === '10,000,000,000' && args[2] === 200)).toBe(true);
+  });
   it('sits above the series by default', () => {
     const { prim } = attach('candle');
     expect(prim.paneViews()[0].zOrder?.()).toBe('top');

@@ -37,6 +37,7 @@ import type { IChartApi, ISeriesApi, Logical, UTCTimestamp } from 'lightweight-c
 import { INTER_SEGMENT_GAP_MS } from '../../util/time';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import type { PaneId, Point } from './types';
+import { paneValueToSeriesValue, seriesValueToPaneValue } from '../paneValueUnits';
 
 export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
 
@@ -1020,7 +1021,7 @@ export function priceToCanvasY(
 ): number | null {
   const series = paneSeries.get(paneId);
   if (!series) return null;
-  const yLocal = series.priceToCoordinate(price);
+  const yLocal = series.priceToCoordinate(paneValueToSeriesValue(paneId, price));
   if (yLocal == null) return null;
   return Number(yLocal) + paneTopY(chart, paneSeries, paneId);
 }
@@ -1048,7 +1049,7 @@ export function canvasYToPrice(
   if (!series) return null;
   const yLocal = py - paneTopY(chart, paneSeries, paneId);
   const price = series.coordinateToPrice(yLocal);
-  return price == null ? null : Number(price);
+  return price == null ? null : seriesValueToPaneValue(paneId, Number(price));
 }
 
 /**
@@ -1075,7 +1076,10 @@ export function priceBoundsForPane(
   const topPrice = series.coordinateToPrice(0);
   const bottomPrice = series.coordinateToPrice(paneH);
   if (topPrice == null || bottomPrice == null) return null;
-  return { top: Number(topPrice), bottom: Number(bottomPrice) };
+  return {
+    top: seriesValueToPaneValue(paneId, Number(topPrice)),
+    bottom: seriesValueToPaneValue(paneId, Number(bottomPrice)),
+  };
 }
 
 /**
@@ -1109,7 +1113,7 @@ export function pixelToData(
   const yLocal = py - paneTopY(chart, paneSeries, paneId);
   const price = series.coordinateToPrice(yLocal);
   if (price == null) return null;
-  return { realMs, price: Number(price) };
+  return { realMs, price: seriesValueToPaneValue(paneId, Number(price)) };
 }
 
 /**

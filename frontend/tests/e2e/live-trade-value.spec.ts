@@ -31,9 +31,10 @@ for (const timeframe of ['D', 'W', 'M'] as const) {
         screener_depth_autocollect: false, krx_prefer_hogaplay: false,
       } }));
       const dates = ['2026-09-28', '2026-09-29', '2026-09-30', '2026-10-01'];
-      const amounts = [120_000_000, 0, 340_000_000, 560_000_000];
-      const expected = bypass ? [] : timeframe === 'D' ? amounts
-        : timeframe === 'W' ? [1_020_000_000] : [460_000_000, 560_000_000];
+      const amounts = [120_000_000, 0, 340_000_000, 90_717_486_000_000];
+      const expectedWon = bypass ? [] : timeframe === 'D' ? amounts
+        : timeframe === 'W' ? [90_717_946_000_000] : [460_000_000, 90_717_486_000_000];
+      const expected = expectedWon.map(value => value / 100_000_000);
       const volumes = timeframe === 'D' ? [999, 999, 999, 999]
         : timeframe === 'W' ? [3996] : [2997, 999];
       const endpoint = bypass ? 'live/screener-daily-candles' : 'live/past-daily-candles';
@@ -68,6 +69,7 @@ for (const timeframe of ['D', 'W', 'M'] as const) {
       await page.keyboard.press('Escape');
       await expect.poll(() => turnoverBars(page, id)).toEqual([volumes, expected]);
       await expect(page.getByTestId('pane-legend-rows-trade-value')).toBeVisible();
+      if (!bypass) await expect(page.getByTestId('pane-legend-rows-trade-value')).toContainText('90.72조');
       await page.evaluate(() => history.replaceState(null, '', '/live'));
       await page.reload();
       await expect.poll(() => turnoverBars(page, id)).toEqual([volumes, expected]);
@@ -83,7 +85,8 @@ for (const timeframe of ['D', 'W', 'M'] as const) {
     const dates = timeframe === 'D' ? ['2026-09-29', '2026-09-30', '2026-10-01']
       : timeframe === 'W' ? ['2026-09-14', '2026-09-21', '2026-09-28']
         : ['2026-08-03', '2026-09-01', '2026-10-01'];
-    const amounts = [0, 54703685000000, 18840196000000];
+    const amounts = [0, 54703685000000, 90717486000000];
+    const expected = [0, 547036.85, 907174.86];
     await page.route(apiExact('live/index-candles'), route => {
       const params = new URL(route.request().url()).searchParams;
       return route.fulfill({ json: {
@@ -111,8 +114,8 @@ for (const timeframe of ['D', 'W', 'M'] as const) {
     await page.getByTestId('indicator-panel-mode-toggle').click();
     await page.getByRole('button', { name: '거래대금 추가', exact: true }).click();
     await page.keyboard.press('Escape');
-    await expect.poll(() => turnoverBars(page, id)).toEqual([[999999, 999999, 999999], amounts]);
-    await expect(page.getByTestId('pane-legend-rows-trade-value')).toContainText('18.84조');
+    await expect.poll(() => turnoverBars(page, id)).toEqual([[999999, 999999, 999999], expected]);
+    await expect(page.getByTestId('pane-legend-rows-trade-value')).toContainText('90.72조');
     await expect(page.getByTestId('pane-legend-rows-trade-value')).toBeVisible();
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
     await page.screenshot({ path: testInfo.outputPath('index-turnover.png') });
@@ -121,11 +124,11 @@ for (const timeframe of ['D', 'W', 'M'] as const) {
     // Drop the initial stock deep link so it doesn't replace the saved index.
     await page.evaluate(() => history.replaceState(null, '', '/live'));
     await page.reload();
-    await expect.poll(() => turnoverBars(page, id)).toEqual([[999999, 999999, 999999], amounts]);
+    await expect.poll(() => turnoverBars(page, id)).toEqual([[999999, 999999, 999999], expected]);
     await page.getByTestId('live-indicators-button').click();
     await page.getByRole('button', { name: '거래량 삭제', exact: true }).click();
     await page.keyboard.press('Escape');
-    await expect.poll(() => turnoverBars(page, id)).toEqual([amounts]);
+    await expect.poll(() => turnoverBars(page, id)).toEqual([expected]);
     await page.getByTestId('live-indicators-button').click();
     await page.getByRole('button', { name: '거래대금 삭제', exact: true }).click();
     await page.keyboard.press('Escape');

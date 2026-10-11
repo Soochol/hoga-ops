@@ -49,6 +49,7 @@ import {
   type ProjectCtx,
 } from './drawing/render';
 import type { Drawing, DrawingStyle, Hline, PaneId } from './drawing/types';
+import { paneValueToSeriesValue } from './paneValueUnits';
 import type {
   MeasureDraft,
   PencilDraft,
@@ -153,7 +154,7 @@ class DrawingsRenderer implements IPrimitivePaneRenderer {
         // Pane-local: lwc v5 returns pane-local Y here and this canvas is the
         // pane, so there is nothing to offset.
         priceToY: (price) => {
-          const y = series.priceToCoordinate(price);
+          const y = series.priceToCoordinate(paneValueToSeriesValue(paneId, price));
           return y == null ? null : Number(y);
         },
         width: scope.mediaSize.width,
@@ -260,7 +261,7 @@ class DrawingsPriceAxisRenderer implements IPrimitivePaneRenderer {
         realMsToX: () => null,
         realMsToXClamped: () => null,
         priceToY: (price) => {
-          const y = series.priceToCoordinate(price);
+          const y = series.priceToCoordinate(paneValueToSeriesValue(paneId, price));
           return y == null ? null : Number(y);
         },
         width: scope.mediaSize.width,
