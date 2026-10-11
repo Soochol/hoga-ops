@@ -2,7 +2,8 @@ import { memo, useEffect, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
+import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import { createMovingAverageProjection } from '../../chart/projectors/maProjection';
 import type { SeriesDataSink } from '../../chart/seriesDataDiff';
 import { syncChartSeriesData } from '../../chart/replaceSeriesData';
@@ -32,6 +33,7 @@ const priceFormat = {
 function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useWindowIndicator((s) => s.movingAverages);
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
+  const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
   const projectRef = useRef<ReturnType<typeof createMovingAverageProjection> | null>(null);
   if (projectRef.current === null) projectRef.current = createMovingAverageProjection();
@@ -78,7 +80,8 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
         existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
       }
     }
-  }, [chart, configs, candleOnlyScale, scope]);
+    if (candleAlwaysOnTop) keepCandlesOnTop(chart);
+  }, [chart, configs, candleOnlyScale, candleAlwaysOnTop, scope]);
 
   // Unmount cleanup — remove all series.
   useEffect(() => {
