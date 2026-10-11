@@ -126,7 +126,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
   const isIndex = symbol?.kind === 'index';
   // 이 창에 자기 지표 세트가 있는지 보장한다(ADR-0152) — `addWindow` 가 안 거친
   // 경로(업그레이드 직후의 기존 창·프리셋 적용·딥링크 탭)의 안전망. 멱등이다.
-  useSeedWindowIndicatorScope(win.id);
+  useSeedWindowIndicatorScope(win.id, isIndex ? 'index' : 'stock');
 
   const view: WindowViewValue = useMemo(
     () => ({
@@ -135,6 +135,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
       // 지수는 activeCode=null 시맨틱 미러(전역 instrumentToActiveCode 와 동일) —
       // 수집·WS·드로잉 등 code 게이트가 그대로 동작한다.
       code: isIndex ? null : symbol?.code ?? null,
+      instrumentKind: isIndex ? 'index' : 'stock',
       timeframe,
       historicalFromDate,
       regularSessionOnly: win.chart?.regularSessionOnly ?? false,

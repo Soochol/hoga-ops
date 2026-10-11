@@ -44,6 +44,27 @@ beforeEach(() => {
   });
 });
 
+it('copies, saves, restores and removes both instrument sets with the window', () => {
+  useLivePageStore.setState({ indicatorsByWindow: {
+    'live:src': { D: { volumeEnabled: false } },
+    'live:src:index': { D: { tradeValueEnabled: true } },
+  } });
+  useChartPrefsStore.setState({ indicatorModalByWindow: {
+    'live:src:index': { D: { surgeMarkerEnabled: false } },
+  } });
+  seedIndicatorScopeForWindow('w1', 'src');
+  expect(useLivePageStore.getState().indicatorsByWindow['live:w1:index']).toEqual({ D: { tradeValueEnabled: true } });
+  const payload = captureIndicatorPayloadForWindow('w1');
+  expect(payload.indexIndicators).toEqual({ D: { tradeValueEnabled: true } });
+  expect(payload.indexIndicatorModal).toEqual({ D: { surgeMarkerEnabled: false } });
+  dropIndicatorScopesForWindows(['w1']);
+  expect(useLivePageStore.getState().indicatorsByWindow['live:w1:index']).toBeUndefined();
+  expect(useChartPrefsStore.getState().indicatorModalByWindow['live:w1:index']).toBeUndefined();
+  restoreIndicatorScopesFromPayload([{ id: 'w1', kind: 'chart' }], [{ id: 'w1', ...payload }]);
+  expect(useLivePageStore.getState().indicatorsByWindow['live:w1:index']).toEqual({ D: { tradeValueEnabled: true } });
+  expect(useLivePageStore.getState().indicatorsByWindow['live:w1']).toEqual({ D: { volumeEnabled: false } });
+});
+
 describe('seedIndicatorScopeForWindow', () => {
   it('원본 창이 없으면 페이지 세트를 복사한다', () => {
     useLivePageStore.setState({

@@ -24,6 +24,8 @@ export interface WindowView {
   timeframe: LiveTimeframe;
   historicalFromDate: string | null;
   regularSessionOnly?: boolean;
+  /** Indicator configurations are independent for stocks and indices. */
+  instrumentKind?: 'stock' | 'index';
 }
 
 /**
@@ -67,13 +69,19 @@ export interface WindowChartStoreState {
  * 창별 지표 설정이 전부 조회 불가가 되고 모든 창이 조용히 앱 세트로 되붙는다.
  *
  * **새 접두를 추가하지 말 것.** 두 번째 값이 필요해지는 날엔 문자열 접두가 아니라
- * 축(`IndicatorScope` 의 필드)을 다시 세우는 것이 맞다 — 접두에 의미를 싣기 시작하면
- * 저장 키 포맷에 로직이 묶인다.
+ * 축(`instrumentKind`)을 다시 세우는 것이 맞다. 종류를 받는 키 생성 함수를
+ * 두 스토어가 공유하고, 소비자가 키 문자열을 파싱해 종류를 추론하지 않는다.
  */
 const WINDOW_SCOPE_PREFIX = 'live';
 
-export function windowScopeKey(windowId: string | null | undefined): string | null {
-  return windowId ? `${WINDOW_SCOPE_PREFIX}:${windowId}` : null;
+export function windowScopeKey(
+  windowId: string | null | undefined,
+  instrumentKind: 'stock' | 'index' = 'stock',
+): string | null {
+  if (!windowId) return null;
+  const legacyKey = `${WINDOW_SCOPE_PREFIX}:${windowId}`;
+  // Keep existing stock keys intact; the instrument axis adds an index bucket.
+  return instrumentKind === 'index' ? `${legacyKey}:index` : legacyKey;
 }
 
 /** 창이 공급하는 완전한 뷰 값.
@@ -87,8 +95,7 @@ export function windowScopeKey(windowId: string | null | undefined): string | nu
  *  지표는 값으로 싣지 않는다 — `useWindowIndicators` 가 그 페이지의 버킷을 이 값의
  *  `timeframe` 으로 resolve 한다. 여기 사본을 두면 진실이 둘이 되고, 다른 탭이
  *  바꾼 설정이 이 사본을 갱신하지 않아 화면만 낡는다. */
-export interface WindowViewValue extends WindowView {
-}
+export type WindowViewValue = WindowView;
 
 // 불변식: 한 컴포넌트 인스턴스의 windowId 는 수명 동안 바뀌지 않는다(창=컴포넌트
 // 1:1, WorkspaceCanvas 가 key=win.id 로 마운트). useMemo([windowId]) 캐시·effect

@@ -188,7 +188,10 @@ function useWindowIndicatorTimeframe(): LiveTimeframe | null {
  */
 export function useWindowIndicatorScope(): IndicatorScope {
   const ctx = useContext(WindowViewContext);
-  return { windowKey: windowScopeKey(ctx?.windowId) };
+  return {
+    windowKey: windowScopeKey(ctx?.windowId, ctx?.instrumentKind),
+    ...(ctx?.instrumentKind ? { instrumentKind: ctx.instrumentKind } : {}),
+  };
 }
 
 /**
@@ -208,12 +211,18 @@ export function useWindowIndicatorScope(): IndicatorScope {
  * 나는데 그때 지우면 돌아왔을 때 이유 없이 초기화된 창을 본다. 회수는 창 닫기
  * 같은 명시적 사건에서만 한다(`indicatorScopeGc`).
  */
-export function useSeedWindowIndicatorScope(windowId: string | null): void {
-  const scopeKey = windowScopeKey(windowId);
+export function useSeedWindowIndicatorScope(
+  windowId: string | null,
+  instrumentKind: 'stock' | 'index' = 'stock',
+): void {
+  const scopeKey = windowScopeKey(windowId, instrumentKind);
   useEffect(() => {
     if (!scopeKey) return;
-    useLivePageStore.getState().seedWindowIndicatorScope({ windowKey: scopeKey });
-  }, [scopeKey]);
+    useLivePageStore.getState().seedWindowIndicatorScope(
+      { windowKey: scopeKey, instrumentKind },
+      instrumentKind === 'index' ? windowScopeKey(windowId) : null,
+    );
+  }, [scopeKey, windowId, instrumentKind]);
 }
 
 /**
@@ -486,11 +495,10 @@ function buildGlobalIndicatorActions(): IndicatorActions {
  * 연속 편집(색상 드래그 등)에서 stale read 로 직전 값이 덮이고, 봉을 바꾼 직후의
  * 편집이 이전 버킷으로 간다.
  */
-function buildWindowIndicatorActions(windowId: string): IndicatorActions {
+function buildWindowIndicatorActions(windowId: string, instrumentKind: 'stock' | 'index'): IndicatorActions {
   const handle = useWorkspaceStore;
-  // 이 창의 스코프 — 창 id 가 컴포넌트 수명 동안 불변이라(windowViewContext 하단
-  // 불변식) 이 객체도 창 수명 동안 그대로다.
-  const scope: IndicatorScope = { windowKey: windowScopeKey(windowId) };
+  // 창 id는 컴포넌트 수명 동안 불변이며, 종목·지수 전환 때 액션과 스코프를 다시 만든다.
+  const scope: IndicatorScope = { windowKey: windowScopeKey(windowId, instrumentKind), instrumentKind };
   const ps = () => useLivePageStore.getState();
   const tf = (): LiveTimeframe =>
     handle.getState().windows.find((w) => w.id === windowId)?.chart?.timeframe ?? '1m';
@@ -528,9 +536,10 @@ function buildWindowIndicatorActions(windowId: string): IndicatorActions {
 export function useIndicatorActions(): IndicatorActions {
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
+  const instrumentKind = ctx?.instrumentKind ?? 'stock';
   return useMemo(
-    () => (windowId ? buildWindowIndicatorActions(windowId) : buildGlobalIndicatorActions()),
-    [windowId],
+    () => (windowId ? buildWindowIndicatorActions(windowId, instrumentKind) : buildGlobalIndicatorActions()),
+    [windowId, instrumentKind],
   );
 }
 

@@ -1,9 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
 import type { WireDataWarning } from './dataWarnings';
-import { PAST_CANDLES_REFETCH_IN_BACKGROUND } from './livePastCandles';
+import { hasBlockingWarnings, PAST_CANDLES_REFETCH_IN_BACKGROUND } from './livePastCandles';
 import type { LiveIndexId } from '../live/liveInstrument';
-import { todayKstYyyymmdd } from '../live/liveDateTime';
+import { realMsToYyyymmdd, todayKstYyyymmdd } from '../live/liveDateTime';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import { isMinuteTimeframe, type LiveTimeframe } from '../state/livePage';
 import type { InvestorNetPoint, InvestorNetUnit } from './types';
@@ -109,15 +109,36 @@ export function useLiveIndexCandles(
   from: string | null,
   to: string | null,
 ) {
+  const queryClient = useQueryClient();
   const enabled = !!(indexId && from && to && from <= to);
   const refetchInterval = () => indexCandlesRefetchInterval(timeframe, to);
   return useQuery({
     queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,
-    queryFn: ({ signal }) =>
-      apiCall<LiveIndexCandlesResponse>(
+    queryFn: async ({ signal }) => {
+      const response = await apiCall<LiveIndexCandlesResponse>(
         `/api/live/index-candles?index_id=${indexId}&timeframe=${timeframe}&from=${from}&to=${to}`,
         { signal },
-      ),
+      );
+      if (!hasBlockingWarnings(response)) return response;
+      // A degraded history request may contain no candles or only the older
+      // chunk. Retain already fetched rows in this requested window; keep the
+      // response's failure warnings so the backfill/retry policy still sees it.
+      const byTime = new Map<number, LiveIndexCandle>();
+      const cached = queryClient.getQueryCache().findAll({
+        queryKey: ['live', 'index-candles', indexId, timeframe],
+      }).sort((a, b) => a.state.dataUpdatedAt - b.state.dataUpdatedAt);
+      for (const query of cached) {
+        const previous = query.state.data as LiveIndexCandlesResponse | undefined;
+        if (previous?.index_id !== indexId || previous.timeframe !== timeframe) continue;
+        for (const row of previous.candles) {
+          const date = realMsToYyyymmdd(row.t_ms);
+          if (date >= response.from && date <= response.to) byTime.set(row.t_ms, row);
+        }
+      }
+      if (byTime.size === 0) return response;
+      for (const row of response.candles) byTime.set(row.t_ms, row);
+      return { ...response, candles: [...byTime.values()].sort((a, b) => a.t_ms - b.t_ms) };
+    },
     enabled,
     staleTime: 60_000,
     refetchInterval,
