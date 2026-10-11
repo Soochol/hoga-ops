@@ -2189,12 +2189,6 @@ export function LiveChartRoot({
   useEffect(() => {
     if (!chart || !cb) return;
     const groups = visiblePaneGroups;
-    const linkedInvestorStretch = linkedInvestorPaneIndexes === null
-      ? null
-      : Math.max(
-        paneGroupStretch(groups[linkedInvestorPaneIndexes[0]], paneStretch, paneGroupStretchOverrides),
-        paneGroupStretch(groups[linkedInvestorPaneIndexes[1]], paneStretch, paneGroupStretchOverrides),
-      );
     paneGroupsRef.current = groups;
     let cancelled = false;
     const apply = () => {
@@ -2215,11 +2209,9 @@ export function LiveChartRoot({
           // 그룹 키 오버라이드 우선, 없으면 멤버 유효값 최대(`paneGroupStretch`).
           // 저장값 재적용은 멱등이라 cb identity churn(실시간 틱·refetch)이
           // 사용자 드래그를 스펙 기본값으로 되돌리던 스냅백이 사라진다(#703).
-          const linked = linkedInvestorPaneIndexes !== null
-            && (i === linkedInvestorPaneIndexes[0] || i === linkedInvestorPaneIndexes[1]);
-          p.setStretchFactor(linked && linkedInvestorStretch !== null
-            ? linkedInvestorStretch
-            : paneGroupStretch(group, paneStretch, paneGroupStretchOverrides));
+          // Investor value ranges are linked separately. Pane heights remain
+          // user-owned; equalizing them here would undo a separator reduction.
+          p.setStretchFactor(paneGroupStretch(group, paneStretch, paneGroupStretchOverrides));
         });
       } catch {
         // chart tearing down
@@ -2230,7 +2222,7 @@ export function LiveChartRoot({
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [chart, cb, visiblePaneGroups, paneStretch, paneGroupStretchOverrides, linkedInvestorPaneIndexes]);
+  }, [chart, cb, visiblePaneGroups, paneStretch, paneGroupStretchOverrides]);
 
   // separator 드래그 캡처 — lwc(검증: 5.2.0)는 pane resize 종료 이벤트를 공개
   // API 로 제공하지 않는다. 핸들은 inline `cursor: row-resize` 를 가진 유일한

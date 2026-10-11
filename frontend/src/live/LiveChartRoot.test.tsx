@@ -5914,6 +5914,48 @@ describe('LiveChartRoot pane stretch (Pane 크기 가중치, #703)', () => {
     expect(persisted.paneStretch?.candle).toBe(3.3);
   });
 
+  it.each(['investor-foreign', 'investor-institution'] as const)(
+    'keeps a manually reduced %s pane with volume and both investor panes enabled',
+    async (reducedPane) => {
+      useLivePageStore.setState({ foreignNetEnabled: true, institutionNetEnabled: true });
+      const foreign = reducedPane === 'investor-foreign' ? 0.1 : 0.7;
+      const institution = reducedPane === 'investor-institution' ? 0.1 : 0.7;
+      const panes = [2, 0.5, foreign, institution].map(makePane);
+      vi.mocked(createChartEx).mockReturnValue(makeChartWithPanes(panes) as never);
+      const props = {
+        code: '005930', timeframe: 'D' as const, bundle: DEFAULT_BUNDLE,
+        clampEngaged: false, captureFloorEngaged: false, isPastCandlesLoading: false,
+      };
+      const { rerender, unmount } = render(<LiveChartRoot {...props} />, { wrapper });
+      await flushRaf();
+      panes.forEach(pane => pane.setStretchFactor.mockClear());
+      const el = vi.mocked(createChartEx).mock.calls.at(-1)![0] as HTMLElement;
+      const handle = document.createElement('div');
+      handle.style.cursor = 'row-resize';
+      el.appendChild(handle);
+      await act(async () => {
+        handle.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+        window.dispatchEvent(new Event('pointerup'));
+      });
+      await flushRaf();
+      expect(useLivePageStore.getState().paneStretch).toMatchObject({
+        volume: 0.5, 'investor-foreign': foreign, 'investor-institution': institution,
+      });
+      expect(panes[2].setStretchFactor).toHaveBeenLastCalledWith(foreign);
+      expect(panes[3].setStretchFactor).toHaveBeenLastCalledWith(institution);
+
+      rerender(<LiveChartRoot {...props} bundle={{ ...DEFAULT_BUNDLE }} />);
+      await flushRaf();
+      expect(panes[2].setStretchFactor).toHaveBeenLastCalledWith(foreign);
+      expect(panes[3].setStretchFactor).toHaveBeenLastCalledWith(institution);
+      unmount();
+      render(<LiveChartRoot {...props} />, { wrapper });
+      await flushRaf();
+      expect(panes[2].setStretchFactor).toHaveBeenLastCalledWith(foreign);
+      expect(panes[3].setStretchFactor).toHaveBeenLastCalledWith(institution);
+    },
+  );
+
   it('commits singleton and merged-pane stretch in one store update after drag', async () => {
     useLivePageStore.setState({
       paneGroups: [
