@@ -81,7 +81,7 @@ function isDeepLinkTab(): boolean {
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D). */
-export const WINDOW_KINDS = ['chart', 'book', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'sector-ranking'] as const;
+export const WINDOW_KINDS = ['chart', 'book', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 /**
@@ -681,6 +681,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   investor: { w: 400, h: 300 },
   // 기본은 상위 4주체. 기관 세부는 펼쳐 가로 스크롤하고 날짜/누적을 고정한다.
   'investor-daily': { w: 560, h: 420 },
+  news: { w: 420, h: 480 },
   'sector-ranking': { w: 560, h: 360 },
 };
 

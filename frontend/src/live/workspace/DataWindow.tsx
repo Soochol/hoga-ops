@@ -106,6 +106,7 @@ import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
+import { NewsWindow } from './NewsWindow';
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   // 섹터 랭킹은 지수 그룹 전용 데이터 창(PR-D) — 일반 지수 게이트보다 먼저 처리한다
@@ -148,6 +149,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     );
   }
   switch (win.kind) {
+    case 'news':
+      return <NewsWindow key={code} code={code} name={symbol?.name ?? code} />;
     case 'book':
       return <BookWindow win={win} code={code} />;
     case 'broker':

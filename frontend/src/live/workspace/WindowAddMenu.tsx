@@ -46,6 +46,7 @@ const ADD_ITEMS: readonly AddItem[] = [
   { kind: 'investor', desc: '장중 외국인·기관 추정(차수별)' },
   { kind: 'investor-daily', desc: '일별 확정 · 개인·외국인·기관 세부 8종' },
   { kind: 'vdist', desc: '가격대별 체결 분포' },
+  { kind: 'news', desc: '한국투자 뉴스 제목 · 종목·날짜 조회' },
   { kind: 'sector-ranking', desc: '지수 구성 섹터 등락 순위', indexOnly: true },
 ];
 

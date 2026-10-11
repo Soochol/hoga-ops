@@ -27,6 +27,25 @@ from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
 from hoga.util.timeenc import KST
 
+StockNewsStatus = Literal["ok", "unconfigured", "error"]
+
+
+class StockNewsItem(BaseModel):
+    id: str
+    title: str
+    source: str
+    published_at_ms: int | None
+    related_codes: list[str]
+
+
+class StockNewsResponse(BaseModel):
+    code: str
+    date: str | None = None
+    status: StockNewsStatus
+    items: list[StockNewsItem] = Field(default_factory=list)
+    fetched_at_ms: int | None = None
+    limit: int = 40
+
 
 class StockDateVenue(BaseModel):
     """한 venue 의 디스크 상태 — 보관함 날짜 행의 venue 배지 하나에 대응한다.
