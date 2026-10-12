@@ -63,6 +63,11 @@ frontend/
 
 ## Status
 
+`/live` 차트의 **보조지표 → 카탈로그 → 볼린저 밴드**에서 상단·중심·하단선을 추가할 수 있습니다.
+기본값은 종가 기준 20봉 단순이동평균 ± 표준편차 2배이며, 분봉·일봉·주봉·월봉을 지원합니다.
+기간(2–400봉), 배수(0.1–10), 기준가, 선별 색상과 공통 두께를 설정할 수 있고,
+설정은 창과 봉 종류별로 저장됩니다. 레전드는 커서가 가리키는 봉의 세 값을 표시하며 숨김·삭제·삭제 취소를 지원합니다.
+
 The shell, routing, URL state, replay views, right rail, screeners, heatmap, and `/live`
 chart workspace are wired. Live data features use backend REST/SSE endpoints and degrade
 locally when optional KIS credentials or market data are unavailable.

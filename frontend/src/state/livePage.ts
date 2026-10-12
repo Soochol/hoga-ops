@@ -380,6 +380,9 @@ type Store = Persisted & IndicatorSettings & {
   contractHistoricalRange: (date: string) => void;
   resetHistoricalRange: () => void;
   hydrateFromStorage: () => void;
+  setBollingerEnabled: (enabled: boolean) => void;
+  setBollingerHidden: (hidden: boolean) => void;
+  setBollingerSettings: import('./indicatorOps').BoundIndicatorOps['setBollingerSettings'];
   setMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addMovingAverage: () => void;
   removeMovingAverage: (id: string) => void;

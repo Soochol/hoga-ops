@@ -243,6 +243,7 @@ export const FLAG_INDICATOR_TYPES = [
   'bid-peak',
   'trade-volume-poc',
   'depth-heatmap',
+  'bollinger',
   'broker-late-entry',
 ] as const;
 
@@ -254,6 +255,7 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
   'bid-peak': '당일 매수 최대벽',
   'trade-volume-poc': '당일 최대 매물대',
   'depth-heatmap': '호가 잔량 히트맵',
+  bollinger: '볼린저 밴드',
   'broker-late-entry': '신규 거래원 등장',
 };
 
@@ -298,6 +300,11 @@ export const FLAG_INDICATOR_FIELDS: Record<
   ],
   // 배열로 승격된 지표는 **필드가 하나**다 — 삭제 = 공장 배열로 되돌리기.
   'broker-late-entry': ['brokerLateEntries'],
+  bollinger: [
+    'bollingerEnabled', 'bollingerHidden', 'bollingerPeriod', 'bollingerMultiplier',
+    'bollingerSource', 'bollingerUpperColor', 'bollingerMiddleColor', 'bollingerLowerColor',
+    'bollingerLineWidth',
+  ],
 };
 
 /**
@@ -378,6 +385,29 @@ export function brokerLateEntryRemovalUndo(
 }
 
 export const INDICATOR_OPS = {
+  setBollingerEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    enabled ? { bollingerEnabled: true, bollingerHidden: false } : { bollingerEnabled: false },
+  setBollingerHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ bollingerHidden: hidden }),
+  setBollingerSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'bollingerPeriod' | 'bollingerMultiplier' | 'bollingerSource' | 'bollingerUpperColor'
+    | 'bollingerMiddleColor' | 'bollingerLowerColor' | 'bollingerLineWidth'>>): Patch => {
+    const next = { ...patch };
+    if (next.bollingerPeriod !== undefined) {
+      if (!Number.isFinite(next.bollingerPeriod)) return null;
+      next.bollingerPeriod = clamp(Math.floor(next.bollingerPeriod), MA_PERIOD_MIN, MA_PERIOD_MAX);
+    }
+    if (next.bollingerMultiplier !== undefined) {
+      if (!Number.isFinite(next.bollingerMultiplier)) return null;
+      next.bollingerMultiplier = clamp(next.bollingerMultiplier, 0.1, 10);
+    }
+    if (next.bollingerSource !== undefined
+      && !['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'].includes(next.bollingerSource)) return null;
+    for (const key of ['bollingerUpperColor', 'bollingerMiddleColor', 'bollingerLowerColor'] as const) {
+      if (next[key] !== undefined && !/^#[0-9a-f]{6}$/i.test(next[key])) return null;
+    }
+    if (next.bollingerLineWidth !== undefined && ![1, 2, 3, 4].includes(next.bollingerLineWidth)) return null;
+    return next;
+  },
   setMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {
     const next = patchMaSlot(cur.movingAverages, id, patch);
     return next ? { movingAverages: next } : null;
