@@ -39,12 +39,14 @@ import { krxRegularCloseFromWindow } from '../util/stockSessions';
  * ## 호출 계약
  *
  * 입력은 `t_ms` 오름차순 정렬(=`aggregateCandles` 와 같은 계약). 분봉·KRX 에서만
- * 부르라 — NXT 는 마감 단일가 체계가 없어 같은 시간대 봉이 연속거래 봉이고,
+ * 부르라 — 혼합 응답은 `krxDates`로 KRX 날짜만 지정한다.
+ * NXT 는 마감 단일가 체계가 없어 같은 시간대 봉이 연속거래 봉이고,
  * 접으면 그건 왜곡이다. 캘린더(D/W/M)는 하루 1봉이라 애초에 창에 걸리지 않는다.
  */
 export function collapseClosingAuction(
   candles: readonly Candle[],
   sessionCloseByDate?: ReadonlyMap<string, { close_ms: number }>,
+  krxDates?: ReadonlySet<string>,
 ): Candle[] {
   if (candles.length === 0) return candles as Candle[];
 
@@ -75,7 +77,8 @@ export function collapseClosingAuction(
     // calendar/session bounds once per date, not once per minute of history.
     if (date !== cachedDate) { cachedDate = date; cachedCloseMs = closeMsFor(date); }
     const closeMs = cachedCloseMs;
-    const inAuction = c.ts_ms >= closeMs - AUCTION_WINDOW_LENGTH_MS && c.ts_ms <= closeMs;
+    const inAuction = (krxDates === undefined || krxDates.has(date))
+      && c.ts_ms >= closeMs - AUCTION_WINDOW_LENGTH_MS && c.ts_ms <= closeMs;
 
     if (!inAuction) {
       flush();

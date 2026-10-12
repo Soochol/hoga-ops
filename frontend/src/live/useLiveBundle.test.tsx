@@ -2644,7 +2644,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     const live = { ...liveFixture, trade: [{ t_ms: today + 60_000, kind: 'trade' as const, venue: 'KRX' as const,
       trades: [{ price: 15400, qty: 10, side: 1 }] }] };
     const { result } = renderHook(() => useLiveBundle('005930', timeframe, '20260527', live, {
-      venue: 'KRX', dailyCandleVenue: 'UN',
+      venue: 'KRX', candleVenue: 'UN',
     }), { wrapper });
     expect((livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[])[3]).toBe('UN');
     expect(result.current.chartBundle?.candles.at(-1)?.open).toBe(15450);
@@ -2652,12 +2652,65 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     dailyCandlesMock.candles = previousCandles;
   });
 
-  it('minute history keeps the effective venue even when the daily venue differs', () => {
-    renderHook(() => useLiveBundle('005930', '3m', '20260527', liveFixture, {
-      venue: 'KRX', dailyCandleVenue: 'UN',
+  it('queries selected UN minute history and preserves its premarket while effective KRX live trades update today', () => {
+    const pastOpen = Date.parse('2026-01-29T08:00:00+09:00');
+    const todayOpen = Date.parse('2026-05-27T09:00:00+09:00');
+    candlesMock.candles = [
+      { ...DEFAULT_CANDLE, t_ms: pastOpen, open: 36400, high: 39250, low: 36400, close: 38850 },
+      { ...DEFAULT_CANDLE, t_ms: todayOpen, open: 42000, close: 42100 },
+    ];
+    candlesMock.effectiveSessions = [
+      { date: '20260129', venue: 'UN', open_ms: pastOpen, close_ms: pastOpen + 12 * 3600_000 },
+      { date: '20260527', venue: 'KRX', open_ms: todayOpen, close_ms: todayOpen + 6.5 * 3600_000 },
+    ];
+    const live = { ...liveFixture, trade: [{ t_ms: todayOpen + 60_000, kind: 'trade' as const, venue: 'KRX' as const,
+      trades: [{ price: 42500, qty: 10, side: 1 }] }] };
+    const { result } = renderHook(() => useLiveBundle('005930', '3m', '20260527', live, {
+      venue: 'KRX', candleVenue: 'UN',
     }), { wrapper });
-    expect((livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[])[3]).toBe('KRX');
+    expect((livePastCandlesSpy.mock.calls.at(-1) as unknown as unknown[])[3]).toBe('UN');
     expect((livePastDailyCandlesSpy.mock.calls.at(-1) as unknown as unknown[])[0]).toBeNull();
+    const chart = result.current.chartBundle!;
+    expect(chart.candles[0].open).toBe(36400);
+    expect(chart.segments[0].session_open_ms).toBe(pastOpen);
+    const axis = createVirtualAxis(chart.segments.map(segment => ({
+      date: segment.date, sessionOpenMs: segment.session_open_ms, sessionCloseMs: segment.session_close_ms,
+    })), chart.bucket_ms);
+    expect(axis.contains(pastOpen)).toBe(true);
+    expect(chart.segments.at(-1)?.session_open_ms).toBe(todayOpen);
+    expect(chart.candles.at(-1)?.close).toBe(42500);
+  });
+
+  it('does not collapse historical UN closing bars when the live venue is KRX', () => {
+    const pastOpen = Date.parse('2026-01-29T08:00:00+09:00');
+    const todayOpen = Date.parse('2026-05-27T09:00:00+09:00');
+    const pastClose = Date.parse('2026-01-29T15:30:00+09:00');
+    const todayClose = Date.parse('2026-05-27T15:30:00+09:00');
+    const past = { ...DEFAULT_CANDLE, t_ms: pastClose, open: 36700, high: 36900, low: 36600, close: 36850 };
+    candlesMock.candles = [past, { ...DEFAULT_CANDLE, t_ms: todayClose }];
+    candlesMock.effectiveSessions = [
+      { date: '20260129', venue: 'UN', open_ms: pastOpen, close_ms: pastOpen + 12 * 3600_000 },
+      { date: '20260527', venue: 'KRX', open_ms: todayOpen, close_ms: todayClose },
+    ];
+    const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture, {
+      venue: 'KRX', candleVenue: 'UN',
+    }), { wrapper });
+    expect(result.current.chartBundle!.candles[0]).toMatchObject({
+      open: past.open, high: past.high, low: past.low, close: past.close,
+    });
+    expect(result.current.chartBundle!.candles.at(-1)).toMatchObject({
+      open: DEFAULT_CANDLE.close, high: DEFAULT_CANDLE.close, low: DEFAULT_CANDLE.close, close: DEFAULT_CANDLE.close,
+    });
+  });
+
+  it('uses the selected minute venue for session bounds when effective sessions have not arrived', () => {
+    const premarket = Date.parse('2026-01-29T08:00:00+09:00');
+    candlesMock.candles = [{ ...DEFAULT_CANDLE, t_ms: premarket, open: 36400 }];
+    candlesMock.effectiveSessions = [];
+    const { result } = renderHook(() => useLiveBundle('005930', '15m', '20260527', liveFixture, {
+      venue: 'KRX', candleVenue: 'UN',
+    }), { wrapper });
+    expect(result.current.chartBundle!.segments[0].session_open_ms).toBe(premarket);
   });
 
   /**
