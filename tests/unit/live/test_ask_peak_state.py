@@ -1,5 +1,7 @@
 import random
 
+import pytest
+
 from hoga.live.ask_peak_state import (
     _PENDING_MINUTE_SLACK,
     _TOUCH_WINDOW_MS,
@@ -159,6 +161,35 @@ def test_many_same_price_updates_within_a_minute_emit_one_traded_candidate():
     assert snap is not None
     assert len(state.closed_traded) == 1
     assert snap["traded_peaks"] == [{"price": 10_000, "qty": 1099, "t_ms": at(10, 100)}]
+
+
+@pytest.mark.parametrize("state_type", [TodayAskPeakState, TodayBidPeakState])
+def test_touched_price_updates_do_not_displace_other_ranked_prices(state_type):
+    state = state_type()
+    levels = [{"price": 10_000 + i * 10, "qty": 900 - i * 100} for i in range(3)]
+    kwargs = {"asks" if state_type is TodayAskPeakState else "bids": levels}
+    touch_price = 10_100 if state_type is TodayAskPeakState else 9_900
+    # A prior trade makes every subsequent book immediately touched. The old
+    # pending-only test missed this normal intraday input order.
+    state.ingest_trade(price=touch_price, side=1, t_ms=at(10, 1))
+    state.ingest_orderbook(t_ms=at(10, 2), **kwargs)
+    for offset in range(3, 10):
+        kwargs = {"asks" if state_type is TodayAskPeakState else "bids": [
+            {"price": 10_000, "qty": 1000 + offset},
+        ]}
+        state.ingest_orderbook(t_ms=at(10, offset), **kwargs)
+    peaks = state.snapshot()["traded_peaks"]
+    assert [(p["price"], p["qty"]) for p in peaks] == [
+        (10_000, 1009), (10_010, 800), (10_020, 700),
+    ]
+    # Repeated equal observations and seed merges are idempotent.
+    state.ingest_orderbook(t_ms=at(10, 10), **kwargs)
+    replay = state_type()
+    replay.ingest_trade(price=touch_price, side=1, t_ms=at(10, 1))
+    replay.ingest_orderbook(t_ms=at(10, 9), **kwargs)
+    state.merge_from(replay)
+    state.merge_from(replay)
+    assert state.snapshot()["traded_peaks"] == peaks
 
 
 def test_pending_walls_are_pruned_once_their_minute_can_no_longer_be_touched():

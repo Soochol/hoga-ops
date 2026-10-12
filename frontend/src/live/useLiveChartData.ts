@@ -319,6 +319,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeCode,
     liveInitial?.ask_peak_today ?? null,
     askPeakCandles,
+    venue,
   );
   const bidPeakOb = bidPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
   const bidPeakTrade = bidPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
@@ -333,6 +334,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     activeCode,
     liveInitial?.bid_peak_today ?? null,
     bidPeakCandles,
+    venue,
   );
   // 라이브 인자(trade·ob)만 토글로 끊는다 — candles·segments 는 봉 게이트만 따른다.
   // `orderbooks` 는 `firstTrailingSinglePriceBookMs` 로 들어가는데, 그 함수가 창을 조기

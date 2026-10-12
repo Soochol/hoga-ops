@@ -10,6 +10,7 @@ import {
   type PeakWallClassification,
 } from './peakWallEventClassifier';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
+import { SessionPeakWallMaxima } from './sessionPeakWallMaxima';
 import {
   buildPeakRecordSeries,
   todaySeedRow,
@@ -266,6 +267,7 @@ export function useDayAskPeaks(
   code: string | null,
   todayAskPeak: LiveTodayAskPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
+  venue = 'KRX',
 ): AskPeak[] {
   void todayCandles;
   const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
@@ -274,13 +276,19 @@ export function useDayAskPeaks(
   // 배치판과 값이 같아야 하는데 배치는 축출된 기록을 원리적으로 못 가진다).
   const recordsRef = useRef<PeakRecordAccumulator | null>(null);
   if (recordsRef.current === null) recordsRef.current = new PeakRecordAccumulator();
+  const maximaRef = useRef<SessionPeakWallMaxima | null>(null);
+  if (maximaRef.current === null) maximaRef.current = new SessionPeakWallMaxima();
+  const scopeKey = `${code}|${venue}|${todayKst}|${sessionOpenMs}`;
   return useMemo(
     () => withSessionRecords(
-      deriveDayAskPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak),
+      maximaRef.current!.update(
+        deriveDayAskPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak),
+        todayKst, scopeKey,
+      ),
       recordsRef.current!,
       todayKst,
-      `${code}|${todayKst}|${sessionOpenMs}`,
+      scopeKey,
     ),
-    [ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak, code],
+    [ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak, scopeKey],
   );
 }

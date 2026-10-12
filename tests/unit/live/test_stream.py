@@ -663,8 +663,9 @@ async def test_on_tick_continuous_trade_touches_every_same_minute_wall_at_or_bel
         "traded_t_ms": now + 2_000,
         "traded_peaks": [
             {"price": 101, "qty": 8, "t_ms": now + 2_000},
-            {"price": 101, "qty": 3, "t_ms": now},
         ],
+        # Ranking keeps the largest wall per price; both observations remain
+        # in the record sequence below, preserving the same-minute touch check.
         # `all_*` 은 가격당 최댓값으로 접힌다(터치 무관) — 102 는 9, 101 은 8.
         # 같은 가격이 두 번 기록을 세운다 — 기록 시퀀스는 **가격별 dedup 을 하지
         # 않는다**(과거일 `_peak_record_sequence` 와 같은 규약).

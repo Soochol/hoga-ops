@@ -152,9 +152,8 @@ describe('useDayBidPeaks', () => {
     expect(today.traded_peaks).toContainEqual({ price: 23900, qty: 1200, t_ms: atKst(9, 10) });
     // 09:12 의 **더 큰** 벽은 자기 분에 체결이 없어 체결 후보가 아니다.
     expect(today.traded_peaks).not.toContainEqual({ price: 23900, qty: 9000, t_ms: atKst(9, 12) });
-    expect(today.all_peaks?.slice(0, 2)).toEqual([
+    expect(today.all_peaks?.filter((p) => p.price === 23900)).toEqual([
       { price: 23900, qty: 9000, t_ms: atKst(9, 12) },
-      { price: 23900, qty: 1200, t_ms: atKst(9, 10) },
     ]);
   });
 
