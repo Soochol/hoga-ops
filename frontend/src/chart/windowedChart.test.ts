@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LineSeries, CandlestickSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { replaceSeriesData } from './replaceSeriesData';
 import { createWindowedChart, flushWindowedChart, setWindowedChartTimeMapping, windowedChartDiagnostics } from './windowedChart';
 
 /** A union-time chart model (not a candle-count time scale). Native browser
@@ -37,6 +38,7 @@ function fixture() {
         setData: vi.fn((next: any[]) => { data = next; range ??= { from: 0, to: 100 }; emit(); }),
         update: vi.fn((point: any) => { if (data.at(-1)?.time === point.time) data[data.length - 1] = point; else data.push(point); }),
         data: () => data,
+        priceToCoordinate: vi.fn((price: number) => price),
         attachPrimitive: vi.fn((p: any) => p.attached?.({ chart: native, series: s, requestUpdate: vi.fn() })),
         detachPrimitive: vi.fn(),
       };
@@ -191,6 +193,71 @@ describe('full-history chart / bounded native renderer', () => {
     await Promise.resolve();
     expect(chart.timeScale().timeToCoordinate(rows[2050].time)).toBe(x);
     chart.remove();
+  });
+
+  it('keeps stationary hover during tail updates, identical writes and value-only replacements', () => {
+    const { chart, native, rows } = fixture();
+    const line = chart.addSeries(LineSeries);
+    line.setData(rows); flushWindowedChart(chart);
+    const raw = native.panes()[0].getSeries()[0];
+    native.clearCrosshairPosition.mockClear();
+    line.update({ ...rows.at(-1)!, value: 9999 }); flushWindowedChart(chart);
+    expect(raw.update).toHaveBeenCalledOnce();
+    line.setData([...line.data()]); flushWindowedChart(chart);
+    line.setData(line.data().map(p => ({ ...p, value: 42 }))); flushWindowedChart(chart);
+    expect(native.clearCrosshairPosition).not.toHaveBeenCalled();
+    chart.remove();
+  });
+
+  it('restores a sync position after rewindowing, but honors an explicit clear', async () => {
+    const { chart, native, rows } = fixture();
+    const line = chart.addSeries(LineSeries);
+    line.setData(rows); flushWindowedChart(chart);
+    chart.setCrosshairPosition(10, rows[1900].time, line);
+    native.setCrosshairPosition.mockClear();
+    native.clearCrosshairPosition.mockClear();
+    chart.timeScale().setVisibleLogicalRange({ from: 1850, to: 1950 });
+    expect(native.clearCrosshairPosition).toHaveBeenCalledOnce();
+    await new Promise(requestAnimationFrame);
+    expect(native.setCrosshairPosition).toHaveBeenCalledWith(10, rows[1900].time, native.panes()[0].getSeries()[0]);
+    native.setCrosshairPosition.mockClear();
+    chart.timeScale().setVisibleLogicalRange({ from: 1500, to: 1600 });
+    chart.clearCrosshairPosition();
+    await new Promise(requestAnimationFrame);
+    expect(native.setCrosshairPosition).not.toHaveBeenCalled();
+    chart.remove();
+  });
+
+  it('restores pointer pixels over whitespace after grid changes and never restores after leave/removal', async () => {
+    const { chart, native, rows, mouse } = fixture();
+    const element = document.createElement('div');
+    const canvas = document.createElement('canvas'); element.append(canvas);
+    Object.defineProperty(native, 'chartElement', { value: () => element });
+    const find = vi.fn(() => [canvas]);
+    Object.defineProperty(document, 'elementsFromPoint', { value: find, configurable: true });
+    const move = vi.fn(); canvas.addEventListener('mousemove', move);
+    try {
+      const line = chart.addSeries(LineSeries);
+      line.setData(rows.slice(-100)); flushWindowedChart(chart);
+      mouse({ point: { x: 450, y: 80 }, sourceEvent: { clientX: 550, clientY: 280 }, seriesData: new Map() });
+      const prepend = () => { replaceSeriesData(chart, line, [{ time: (Number(line.data()[0].time) - 60) as Time, value: -1 }, ...line.data()], line.data()); flushWindowedChart(chart); };
+      prepend();
+      await new Promise(requestAnimationFrame);
+      expect(find).toHaveBeenCalledWith(550, 280);
+      expect(move).toHaveBeenCalledOnce();
+      expect(move.mock.lastCall?.[0]).toMatchObject({ clientX: 550, clientY: 280 });
+      move.mockClear();
+      prepend();
+      mouse({ seriesData: new Map() });
+      await new Promise(requestAnimationFrame);
+      expect(move).not.toHaveBeenCalled();
+      mouse({ point: { x: 450, y: 80 }, sourceEvent: { clientX: 550, clientY: 280 }, seriesData: new Map() });
+      prepend(); chart.remove();
+      await new Promise(requestAnimationFrame);
+      expect(move).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(document, 'elementsFromPoint');
+    }
   });
 
   it('follows new candles at the latest edge, and leaves historical views alone', () => {
