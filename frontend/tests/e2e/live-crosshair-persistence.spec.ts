@@ -58,6 +58,8 @@ test('stationary crosshair and axis labels survive data updates, rewindowing and
   await expect(page.locator('[data-drawing-overlay]').first()).toHaveAttribute('data-day-extremes-ready', 'true');
   await page.waitForFunction(() => [...((window as unknown as ChartWindow).__liveCharts?.values() ?? [])]
     .some(c => c.panes()[0].getSeries().some(s => s.seriesType() === 'Candlestick' && s.data().length > 4000)));
+  await page.evaluate(async () => { await document.fonts.ready; });
+  await settleDraw(page);
   const box = await page.evaluate(() => {
     const chart = [...(window as unknown as ChartWindow).__liveCharts.values()][0];
     chart.timeScale().setVisibleLogicalRange({ from: 1000, to: 1150 });
@@ -66,7 +68,12 @@ test('stationary crosshair and axis labels survive data updates, rewindowing and
   });
   await settleDraw(page);
   await page.mouse.move(box.x + box.width * .55, box.y + box.height * .6);
-  await expect.poll(async () => (await hoverPixels(page)).plot.total).toBeGreaterThan(100);
+  // Plot and axis canvases can finish on different draws during auto-sizing.
+  // Establish all three surfaces before sampling the stationary baseline.
+  await expect.poll(async () => {
+    const hover = await hoverPixels(page);
+    return hover.plot.total > 100 && hover.price > 0 && hover.time > 0;
+  }).toBe(true);
   const before = await hoverPixels(page);
   expect(before.price).toBeGreaterThan(0);
   expect(before.time).toBeGreaterThan(0);
