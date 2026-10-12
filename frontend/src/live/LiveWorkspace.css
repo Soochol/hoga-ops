@@ -48,10 +48,6 @@
 .live-chart-toolbar { padding: var(--space-xs) var(--space-sm); gap: var(--space-xs); min-height: 2.5rem; }
 .live-chart-toolbar button { font-size: var(--text-sm); min-height: 1.75rem; }
 .live-chart-toolbar-divider { width: 1px; height: 1rem; background: var(--border); margin-inline: var(--space-xs); }
-.chart-more-actions:not([hidden]) { display: flex; flex-direction: column; gap: var(--space-xs); }
-.chart-more-actions button { width: 100%; justify-content: flex-start; font-size: var(--text-sm); min-height: 2rem; }
-.chart-more-actions-heading { padding: var(--space-xs) var(--space-sm); font-size: var(--text-xs); color: var(--fg-dim); }
-.chart-more-actions-divider { height: 1px; margin-block: var(--space-xs); background: var(--border); }
 .live-data-context { min-height: 2rem; padding: var(--space-xs) var(--space-sm); gap: var(--space-sm); font-size: var(--live-text-meta); }
 .live-data-mode { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--fg); font-weight: 500; }
 .live-data-mode[data-tone="cursor"] { color: var(--accent); }

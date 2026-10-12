@@ -69,7 +69,7 @@ export function HogaplaySourceButton({
       }}
       style={compact ? { paddingInline: COMPACT_PADDING_INLINE } : undefined}
       icon={<DiskStackIcon filled={enabled} className={`h-3 w-3${enabled ? ' text-fg' : ''}`} />}
-    >{showLabel && (enabled ? 'hogaplay 저장 데이터 사용 중' : 'hogaplay 저장 데이터로 보기')}</IconToolbarButton>
+    >{showLabel && 'hogaplay'}</IconToolbarButton>
   );
 }
 

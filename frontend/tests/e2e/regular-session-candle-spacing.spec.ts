@@ -79,17 +79,15 @@ for (const minutes of [1, 3, 5, 10]) {
     await expect.poll(async () => (await snapshot())?.range?.to).toBe(20);
     await expect.poll(async () => (await snapshot())?.gapRatio).toBeCloseTo(1, 3);
     const before = (await snapshot())!;
-    await page.getByRole('button', { name: '차트 더보기' }).click();
-    const regularSession = page.getByRole('checkbox', { name: '정규장만 보기', exact: true });
-    await regularSession.check();
-    await expect(regularSession).toBeChecked();
+    const regularSession = page.getByRole('button', { name: '정규장만 보기', exact: true });
+    await regularSession.click();
+    await expect(regularSession).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(async () => (await snapshot())?.count).toBeLessThan(before.count);
     // Global barSpacing alone passes on broken code: adjacent candles were
     // 3/5/10 axis slots apart. Measure the real coordinate gap as well.
     await expect.poll(async () => (await snapshot())?.gapRatio).toBeCloseTo(1, 3);
     await expect.poll(async () => (await snapshot())?.spacing).toBeCloseTo(before.spacing, 5);
     // Exercise the actual native mouse pan while valid live trades arrive.
-    await page.getByRole('button', { name: '차트 더보기' }).click();
     await ws.waitForSubscribe('098460');
     await page.evaluate(() => {
       const chart = [...(window as unknown as { __liveCharts: Map<string, IChartApi> }).__liveCharts.values()][0];
@@ -119,8 +117,7 @@ for (const minutes of [1, 3, 5, 10]) {
     await expect.poll(async () => (await snapshot())?.gapRatio).toBeCloseTo(1, 3);
     await expect.poll(async () => (await snapshot())?.spacing).toBeCloseTo(before.spacing, 5);
     expect(await page.evaluate(() => (window as unknown as {panWrites: {fullWrites: number}}).panWrites.fullWrites)).toBe(0);
-    await page.getByRole('button', { name: '차트 더보기' }).click();
-    await regularSession.uncheck();
+    await regularSession.click();
     await expect.poll(async () => (await snapshot())?.count).toBe(before.count);
     await expect.poll(async () => (await snapshot())?.gapRatio).toBeCloseTo(1, 3);
     await expect.poll(async () => (await snapshot())?.spacing).toBeCloseTo(before.spacing, 5);

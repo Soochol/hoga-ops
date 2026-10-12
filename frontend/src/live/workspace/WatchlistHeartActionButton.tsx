@@ -18,7 +18,7 @@
  * 지수 창은 숨기지 않고 `disabled` 로 둔다(CollectButton 과 같은 규칙) — 행
  * 레이아웃이 창마다 흔들리지 않고, 접힘 임계도 종목 유무에 따라 달라지지 않는다.
  */
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { IconToolbarButton } from '../../ui/WorkspaceShell';
 import { HeartIcon } from '../../ui/HeartIcon';
 import { WatchlistGroupPicker } from '../../watchlist/WatchlistGroupPicker';
@@ -41,20 +41,22 @@ export function WatchlistHeartActionButton({
   compact?: boolean;
   showLabel?: boolean;
 }) {
+  const anchor = useRef<HTMLButtonElement>(null);
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null);
 
   return (
     <>
-      <IconToolbarButton
+      <IconToolbarButton ref={anchor}
         data-testid="live-watchlist-heart-button"
         disabled={code == null}
         aria-label="관심 그룹 편집"
         aria-pressed={isMember}
+        aria-haspopup="dialog" aria-expanded={picker !== null}
         title={code == null ? '관심 그룹 편집 — 지수는 지원하지 않습니다' : '관심 그룹 편집'}
         onClick={(e) => {
           if (code == null) return;
           const r = e.currentTarget.getBoundingClientRect();
-          setPicker({ x: r.left, y: r.bottom + 4 });
+          setPicker(prev => prev ? null : { x: r.left, y: r.bottom + 4 });
         }}
         style={compact ? { paddingInline: COMPACT_PADDING_INLINE } : undefined}
         icon={(
@@ -64,13 +66,14 @@ export function WatchlistHeartActionButton({
           // 클래스가 없어 부모의 hover:text-fg 를 그대로 상속받는다.
           <HeartIcon filled={isMember} className={`h-3 w-3${isMember ? ' text-fg' : ''}`} />
         )}
-      >{showLabel && '관심 그룹 편집'}</IconToolbarButton>
+      >{showLabel && '관심 그룹'}</IconToolbarButton>
       {picker && code != null && (
         <WatchlistGroupPicker
           code={code}
           name={name ?? undefined}
           x={picker.x}
           y={picker.y}
+          anchorRef={anchor}
           onClose={() => setPicker(null)}
         />
       )}
