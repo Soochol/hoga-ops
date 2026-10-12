@@ -447,9 +447,9 @@ type UseLiveBundleOptions = {
   institutionInvestorEnabled?: boolean;
   investorNetEnabled?: boolean;
   venue?: LiveVenueOption;
-  /** D/W/M REST history keeps the selected venue even if today's live stream
+  /** REST candle history keeps the selected venue even if today's live stream
    * falls back to KRX for a currently NXT-disabled Code. */
-  dailyCandleVenue?: LiveVenueOption;
+  candleVenue?: LiveVenueOption;
   sidecarDemands?: SidecarDemands;
   /**
    * 저장뷰 구간에 **얼린** 창의 시작일(YYYYMMDD KST). `null`/미지정 = 평소의 라이브 창.
@@ -695,6 +695,7 @@ export function useLiveBundle(
   const notifyRestFailure = useRestBypassModeStore((s) => s.notifyFailure);
   const resolveRestFailure = useRestBypassModeStore((s) => s.resolveFailure);
   const venue = options.venue ?? 'KRX';
+  const candleVenue = options.candleVenue ?? venue;
 
   const isMinute = isMinuteTimeframe(timeframe);
   const bucketMs = isMinute ? TIMEFRAME_TO_MS[timeframe] : 60_000;
@@ -752,7 +753,7 @@ export function useLiveBundle(
     enableMinute ? code : null,
     enableMinute ? minutePastFrom : null,
     enableMinute ? minutePastTo : null,
-    venue,
+    candleVenue,
     todayKstYyyymmdd,
     // 표시 tf 를 그대로 벤더 주기로 요청한다 — 콜당 커버리지가 tf 배수만큼 는다
     // (10분 = 900행에 약 23 거래일). 캘린더 tf(D/W/M)는 이 훅을 안 타므로
@@ -771,7 +772,7 @@ export function useLiveBundle(
     enableDaily ? code : null,
     enableDaily ? dailyPastFrom : null,
     enableDaily ? dailyPastTo : null,
-    options.dailyCandleVenue ?? venue,
+    candleVenue,
   );
   // 스크리너 일봉 — D/W/M, 우회 ON 전용(디스크 소스).
   const enableScreenerDaily = !!(code && !isMinute && restBypassEnabled);
@@ -957,10 +958,10 @@ export function useLiveBundle(
     if (raw.length === 0) return EMPTY_CANDLES;
     // 120·240 만 정규장으로 클립한 뒤 접는다. 입력은 30m 라 15:30 이 봉 경계로 남아
     // 있어 봉 단위 클립이 성립한다 — 표시 tf 로 받았다면 이미 혼합된 봉이라 불가능.
-    const src = regularSessionOnly ? keepRegularSessionCandles(raw) : needsRegularSessionClip(timeframe) ? keepMinuteSessionCandles(raw, venue) : raw;
+    const src = regularSessionOnly ? keepRegularSessionCandles(raw) : needsRegularSessionClip(timeframe) ? keepMinuteSessionCandles(raw, candleVenue) : raw;
     if (src.length === 0) return EMPTY_CANDLES;
-    return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000, venue).map(kisBarToCandle);
-  }, [isMinute, timeframe, venue, regularSessionOnly, bucketMs, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
+    return aggregateCandles(src, TIMEFRAME_TO_MS[timeframe as Timeframe] / 1000, candleVenue).map(kisBarToCandle);
+  }, [isMinute, timeframe, venue, candleVenue, regularSessionOnly, bucketMs, restBypassEnabled, minuteDiskCandles.data?.candles, pastCandlesQuery.data?.candles, minuteGapFill.candles, diskCandleDates]);
   const calendarKisCandles = useMemo<Candle[]>(() => {
     if (isMinute) return EMPTY_CANDLES;
     // 우회 ON: 스크리너 일봉. OFF: 벤더 일봉. D는 그대로, W/M은 aggregateCalendar.
@@ -1159,6 +1160,13 @@ export function useLiveBundle(
     () => effectiveSessionBoundsByDate(pastCandlesQuery.data?.effective_sessions),
     [pastCandlesQuery.data?.effective_sessions],
   );
+  // UN/NXT history can contain KRX fallback days. Only those days have a KRX
+  // closing auction; today's live venue must not flatten older UN candles.
+  const krxCandleDates = useMemo(
+    () => new Set((pastCandlesQuery.data?.effective_sessions ?? [])
+      .filter(session => session.venue === 'KRX').map(session => session.date)),
+    [pastCandlesQuery.data?.effective_sessions],
+  );
   const liveCandles = useMemo<Candle[]>(() => {
     const overlaid = isMinute
       ? overlayLiveTradesOnCandles(
@@ -1169,11 +1177,13 @@ export function useLiveBundle(
     // kisCandles 단계에서 접으면 그 뒤 오버레이가 평탄화되지 않은 봉을 다시 세울 수
     // 있다. 여기가 bundle.candles 로 넘어가는 최종 배열이라(아래 buildChartBundle),
     // 차트·거래량·MA·툴팁·레전드가 전부 같은 봉을 본다.
-    // KRX 분봉 한정 — 근거는 collapseClosingAuction 의 호출 계약 절 참조.
-    return isMinute && venue === 'KRX'
-      ? collapseClosingAuction(overlaid, effectiveSessionByDate)
+    // REST는 날짜별 실제 venue, 디스크는 기존 표시 venue의 접기 규칙을 따른다.
+    const allKrx = (restBypassEnabled ? venue : candleVenue) === 'KRX';
+    return isMinute && (allKrx || (!restBypassEnabled && krxCandleDates.size > 0))
+      ? collapseClosingAuction(overlaid, effectiveSessionByDate,
+          allKrx ? undefined : krxCandleDates)
       : overlaid;
-  }, [isMinute, timeframe, kisCandles, live.trade, bucketMs, venue, effectiveSessionByDate]);
+  }, [isMinute, timeframe, kisCandles, live.trade, bucketMs, venue, candleVenue, restBypassEnabled, effectiveSessionByDate, krxCandleDates]);
 
   const defaultKrxSession = useMemo(
     () =>
@@ -1204,10 +1214,10 @@ export function useLiveBundle(
       const effective = effectiveSessionByDate.get(todayKstYyyymmdd);
       if (effective) return effective;
       return useExtendedWindow
-        ? liveVenueSessionBoundsMs(todayKstYyyymmdd, venue)
+        ? liveVenueSessionBoundsMs(todayKstYyyymmdd, candleVenue)
         : defaultKrxSession;
     },
-    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, venue, useExtendedWindow, regularSessionOnly],
+    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, candleVenue, useExtendedWindow, regularSessionOnly],
   );
   const sessionBoundsForDate = useMemo(
     () =>
@@ -1215,13 +1225,13 @@ export function useLiveBundle(
         ? (yyyymmdd: string) =>
             (regularSessionOnly ? { open_ms: regularSessionOpenMs(yyyymmdd), close_ms: regularSessionCloseMs(yyyymmdd) } : effectiveSessionByDate.get(yyyymmdd)) ??
             (useExtendedWindow
-              ? liveVenueSessionBoundsMs(yyyymmdd, venue)
+              ? liveVenueSessionBoundsMs(yyyymmdd, candleVenue)
               : {
                   open_ms: regularSessionOpenMs(yyyymmdd),
                   close_ms: regularSessionCloseMs(yyyymmdd),
                 })
         : undefined,
-    [effectiveSessionByDate, isMinute, venue, useExtendedWindow, regularSessionOnly],
+    [effectiveSessionByDate, isMinute, candleVenue, useExtendedWindow, regularSessionOnly],
   );
 
   // CHART side (candles + segments + investor). The ob path only contributes the

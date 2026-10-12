@@ -6,6 +6,7 @@ The format follows a 4-digit `MAJOR.MINOR.PATCH.MICRO` scheme.
 ## [Unreleased]
 
 ### Fixed
+- 통합 분봉이 현재 NXT 거래 가능 여부에 따라 KRX로 바뀌던 문제를 고친다. 과거 캔들은 선택한 거래소로 조회하고 날짜별 실제 세션에 맞춰 장전 거래를 표시한다.
 - 실시간 설정 동기화 중 정상 연결을 미가동으로 표시하던 배너를 고친다. 연결·구독 준비·수집 상태 유실·저장 오류를 구분하고, 일시 동기화의 워치독 재시작을 한 번 재조회로 방지한다.
 
 ### Changed
