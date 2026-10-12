@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
+import { CANDLE_SPEC } from '../chart/projectors/candle';
+import { PEAK_WALL_SPEC } from './indicators/peakWallPaneSpec';
 import { FACTORY_INDICATOR_SETTINGS } from '../state/indicatorSettingsV2';
 import { useLivePageStore, type LiveTimeframe } from '../state/livePage';
 import { useChartPrefsStore } from '../state/chartPrefs';
@@ -95,6 +97,39 @@ function resetStore() {
   useDailyMaSeriesRegistry.setState({ byScope: new Map() });
   usePaneLegendRegistry.setState({ byScope: new Map() });
 }
+
+describe('PaneLegendOverlay — peak-wall values belong to the current candle', () => {
+  beforeEach(() => {
+    resetStore();
+    useLiveCursorStore.getState().resetCursor();
+  });
+
+  it('hides yesterday\'s ask value when today is filtered out, while showing today\'s bid value', () => {
+    const past = Date.UTC(2026, 9, 8, 0);
+    const today = Date.UTC(2026, 9, 12, 0);
+    const candles = [past, today].map((ts_ms) => ({
+      ts_ms, open: 100, high: 110, low: 90, close: 105, vol_a: 1, vol_b: 0,
+    }));
+    const axis = {
+      contains: () => true,
+      classifyAndProject: (ms: number) => ({ contained: true, virtual: ms }),
+      toVirtual: (ms: number) => ms,
+    } as never;
+    usePaneLegendRegistry.getState().register(null, 'peak-wall', [
+      { series: { data: () => [{ time: past / 1000, value: 11_400 }] } as never,
+        meta: { label: '매도 체결' } },
+      { series: { data: () => [{ time: today / 1000, value: 12_600 }] } as never,
+        meta: { label: '매수 체결' } },
+    ]);
+    render(<PaneLegendOverlay chart={makeChart([200, 100])} timeframe="3m" code="000660"
+      candles={candles} axis={axis}
+      visibleGroups={[[CANDLE_SPEC], [PEAK_WALL_SPEC]]}
+      paneToggles={{ foreignNet: false, institutionNet: false, peakWallPaneEnabled: true }} />);
+    expect(screen.queryByText('매도 체결')).toBeNull();
+    expect(screen.getByText('매수 체결')).toBeInTheDocument();
+    expect(screen.getByText('12,600')).toBeInTheDocument();
+  });
+});
 
 describe('PaneLegendOverlay — skip values outside the displayed legend', () => {
   beforeEach(resetStore);

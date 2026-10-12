@@ -313,6 +313,24 @@ export function readSeriesValue(
   return pointValue(data[data.length - 1]);
 }
 
+/** Sparse daily indicators must not borrow a value from another candle/day. */
+export function readSeriesValueAtTime(
+  series: ISeriesApi<SeriesType> | undefined,
+  timeSec: number | null,
+  logicalIndex: number | null = null,
+): number | null {
+  if (!series || timeSec === null) return null;
+  if (typeof series.dataByIndex === 'function' && logicalIndex !== null) {
+    const point = series.dataByIndex(logicalIndex);
+    return pointTime(point) === timeSec ? pointValue(point) : null;
+  }
+  const dataFn = (series as { data?: () => readonly unknown[] }).data;
+  if (typeof dataFn !== 'function') return null;
+  const data = dataFn.call(series);
+  if (!Array.isArray(data)) return null;
+  return pointValue(findPointAtTime(data, timeSec));
+}
+
 /** `timeSec` 에 **정확히** 서 있는 포인트(없으면 `undefined`).
  *
  *  series 데이터가 time 오름차순임에 기대는 이진 탐색이다 — lwc 가 그 순서를

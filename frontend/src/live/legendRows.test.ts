@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   buildLegendRows,
   readSeriesValue,
+  readSeriesValueAtTime,
   type LegendFlagInput,
   type PaneCellInput,
 } from './legendRows';
@@ -295,6 +296,25 @@ describe('buildLegendRows — generic pane cell rows', () => {
     });
     const row = rows.find((r) => r.paneId === 'program-trade');
     expect(row?.kind === 'cells' && row.cells[0].formatted).toBe('5억');
+  });
+});
+
+describe('readSeriesValueAtTime', () => {
+  it('does not display a previous day when the current candle has no peak-wall point', () => {
+    const series = { data: () => [{ time: 100, value: 11_400 }] } as never;
+    expect(readSeriesValueAtTime(series, 200)).toBeNull();
+    expect(readSeriesValueAtTime(series, 100)).toBe(11_400);
+  });
+
+  it('does not borrow a future peak before its first point or after an unreached wall disappears', () => {
+    const data = vi.fn(() => { throw new Error('must not copy points'); });
+    const dataByIndex = vi.fn((index: number) => index === 5
+      ? { time: 100, value: 12_818 } : { time: 100 });
+    const series = { data, dataByIndex } as never;
+    expect(readSeriesValueAtTime(series, 50, 4)).toBeNull();
+    expect(readSeriesValueAtTime(series, 100, 5)).toBe(12_818);
+    expect(readSeriesValueAtTime(series, 200, 6)).toBeNull();
+    expect(data).not.toHaveBeenCalled();
   });
 });
 
