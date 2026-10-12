@@ -96,3 +96,18 @@ collector 비준비를 503으로 표시하고 queue readiness와 분리한다. �
 이 결정은 ADR-0116의 API 내부 WS 조립과 ADR-0094의 program/promoter 공동 writer
 소유 설명을 확장한다. ADR-0168 Today Promoter와 ADR-0169 compute pool 분리는 유지한다.
 세 종류의 process를 같은 worker pool로 섞지 않는다.
+
+## 2026년 10월 12일 개정 수집 연결 증거와 설정 준비의 분리
+
+최근 현재 epoch의 연결 증거와 설정 준비 완료를 별도로 판정한다. 설정 버전과 ACK,
+상태 버전의 불일치만으로 실제 계정 연결 수·수신 시각을 지우지 않는다. 이때
+`capture_reason=syncing`, `collector.ready=false`이며 구독 준비와 데이터 조회의
+엄격한 조건은 유지한다. 실제 연결 0은 offline, 수집 상태 유실은
+collector_unavailable, 필수 저장 실패는 storage_error로 표시한다.
+
+신선도 10초·자식 생존·필수 IPC 작업·epoch 검증은 그대로 적용한다. ACK 대기는
+기존 RPC 30초, ACK 뒤 해당 버전 상태 대기는 10초로 제한한다. deep health는
+비준비 상태에서 503을 유지한다. 외부 워치독만 다른 실패가 없는 제한 시간 안의
+syncing에 한해 1초 뒤 한 번 재조회한다. 지속 실패와 복합 실패의 재시작은 유지한다.
+
+[개선 계획과 근거](../plans/2026-10-12-realtime-unavailable-status.md)를 함께 본다.

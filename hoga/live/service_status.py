@@ -71,7 +71,8 @@ def provider_status(
     accounts = k.get("accounts", [])
     fresh = [a for a in accounts if a.get("connected") and
              a.get("last_recv_ms") is not None and 0 <= now_ms - a["last_recv_ms"] <= FRESH_MS]
-    ready = [a for a in fresh if a.get("registration_ready") is True]
+    ready = ([a for a in fresh if a.get("registration_ready") is True]
+             if k.get("collector", {}).get("ready") is not False else [])
     if not configured:
         connection = "unconfigured"
     elif connected == 0:

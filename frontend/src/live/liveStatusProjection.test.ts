@@ -183,3 +183,19 @@ describe('projectLiveStatus', () => {
     expect(projection.captureHealth.showDot).toBe(showDot);
   });
 });
+
+describe('collector readiness projection', () => {
+  it.each([
+    ['syncing', null, 'warn'],
+    ['collector_unavailable', 'collector_unavailable', 'error'],
+    ['storage_error', 'storage_error', 'error'],
+  ] as const)('%s distinguishes preparation from failures', (reason, primary, severity) => {
+    const value = projectLiveStatus({
+      status: { capture_healthy: false, capture_reason: reason, rest_capacity_scheduler: null },
+      inventory: { kind: 'watchlist', size: 1 },
+    });
+    expect(value.banner.primary).toBe(primary);
+    expect(value.captureHealth.severity).toBe(severity);
+    expect(value.captureHealth.showDot).toBe(false);
+  });
+});

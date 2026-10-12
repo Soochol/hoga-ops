@@ -39,6 +39,7 @@ function Issue({ issue, clearedAt, expanded }: { issue: ServiceIssue; clearedAt?
         {issue.phase && <p>실패 단계 · {failurePhaseLabel(issue.phase)}</p>}
         {issue.elapsedMs != null && <p>단계 소요 · {(issue.elapsedMs / 1000).toFixed(2)}초</p>}
         {issue.code && <p>오류 코드 · {issue.code}</p>}
+        {issue.collectorDetails && <p className="whitespace-pre-line">{issue.collectorDetails}</p>}
         <p className="mt-1 text-xs">{issue.source === 'provider'
           ? issue.channel === 'ws'
             ? '실시간 연결의 마지막 실패 기록입니다. 자동 재연결 후 로그인과 구독 준비가 확인되면 관측이 해제됩니다.'
@@ -117,6 +118,7 @@ export function ServiceStatusButton() {
         <div className="flex justify-between gap-sm"><span>상태 서버</span><span className="text-fg-dim">{isError ? '확인 불가' : data ? '응답 확인' : '확인 중'}</span></div>
         <div className="mt-2 flex justify-between gap-sm"><span>앱 이벤트 연결</span><span className="text-fg-dim">{eventLive ? '수신 확인' : '재연결 중'}</span></div>
         <div className="mt-2 flex justify-between gap-sm"><span>키움 실시간</span><span className="text-fg-dim">{isError ? '확인 불가' : provider ? CONNECTION_COPY[provider.connection] : '정보 없음'}</span></div>
+        {data?.kiwoom?.collector?.state_reason === 'syncing' && <p className="mt-1 text-right text-xs text-warn">실시간 설정 반영 중</p>}
         {provider && <p className="mt-1 text-right text-xs text-fg-dim">{isError ? '이전 정보 · ' : ''}연결 {provider.connected_accounts}/{provider.configured_accounts}계정
           {' · '}{provider.ready_accounts != null ? `구독 준비 ${provider.ready_accounts}/${provider.configured_accounts}계정` : '구독 준비 정보 없음'}
         </p>}

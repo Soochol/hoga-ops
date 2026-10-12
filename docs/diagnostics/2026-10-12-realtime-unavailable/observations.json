@@ -1,0 +1,430 @@
+{
+  "investigated_date": "2026-10-12",
+  "timezone": "Asia/Seoul",
+  "server": "http://127.0.0.1:8000",
+  "api_pid": 2845833,
+  "server_commit": "f33a01925",
+  "workspace_commit": "56c37c8d4",
+  "relevant_source_identical_between_commits": true,
+  "sample_count": 219,
+  "sample_interval_seconds": 0.4,
+  "offline_samples": 2,
+  "state_transitions": [
+    {
+      "at": "2026-10-12T11:40:25.139121+09:00",
+      "capture_reason": "healthy",
+      "connected_accounts": 6,
+      "last_tick_ms": 1791772824805,
+      "collector": {
+        "epoch": "c5b0a61a07d041b1a7623c23721aad22",
+        "pid": 2846829,
+        "alive": true,
+        "ready": true,
+        "state_age_ms": 9,
+        "desired_version": 27,
+        "acked_version": 27,
+        "restarts": 0,
+        "error": null,
+        "storage_errors": [],
+        "display_gaps": 0,
+        "discarded_old_frames": 319
+      },
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 1,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 2,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 3,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 4,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        }
+      ]
+    },
+    {
+      "at": "2026-10-12T11:40:56.572589+09:00",
+      "capture_reason": "registration_incomplete",
+      "connected_accounts": 6,
+      "last_tick_ms": 1791772856101,
+      "collector": {
+        "epoch": "c5b0a61a07d041b1a7623c23721aad22",
+        "pid": 2846829,
+        "alive": true,
+        "ready": true,
+        "state_age_ms": 188,
+        "desired_version": 27,
+        "acked_version": 27,
+        "restarts": 0,
+        "error": null,
+        "storage_errors": [],
+        "display_gaps": 0,
+        "discarded_old_frames": 319
+      },
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": true,
+          "registration_ready": false,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 1,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 2,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 3,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 4,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        }
+      ]
+    },
+    {
+      "at": "2026-10-12T11:40:57.805695+09:00",
+      "capture_reason": "healthy",
+      "connected_accounts": 6,
+      "last_tick_ms": 1791772857240,
+      "collector": {
+        "epoch": "c5b0a61a07d041b1a7623c23721aad22",
+        "pid": 2846829,
+        "alive": true,
+        "ready": true,
+        "state_age_ms": 297,
+        "desired_version": 27,
+        "acked_version": 27,
+        "restarts": 0,
+        "error": null,
+        "storage_errors": [],
+        "display_gaps": 0,
+        "discarded_old_frames": 319
+      },
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 1,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 2,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 3,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 4,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        }
+      ]
+    },
+    {
+      "at": "2026-10-12T11:41:10.629802+09:00",
+      "capture_reason": "offline",
+      "connected_accounts": 0,
+      "last_tick_ms": null,
+      "collector": {
+        "epoch": "c5b0a61a07d041b1a7623c23721aad22",
+        "pid": 2846829,
+        "alive": true,
+        "ready": false,
+        "state_age_ms": 825,
+        "desired_version": 28,
+        "acked_version": 28,
+        "restarts": 0,
+        "error": null,
+        "storage_errors": [],
+        "display_gaps": 0,
+        "discarded_old_frames": 319
+      },
+      "accounts": []
+    },
+    {
+      "at": "2026-10-12T11:41:11.035835+09:00",
+      "capture_reason": "healthy",
+      "connected_accounts": 6,
+      "last_tick_ms": 1791772870688,
+      "collector": {
+        "epoch": "c5b0a61a07d041b1a7623c23721aad22",
+        "pid": 2846829,
+        "alive": true,
+        "ready": true,
+        "state_age_ms": 79,
+        "desired_version": 28,
+        "acked_version": 28,
+        "restarts": 0,
+        "error": null,
+        "storage_errors": [],
+        "display_gaps": 0,
+        "discarded_old_frames": 319
+      },
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 1,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 2,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 3,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 4,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        }
+      ]
+    },
+    {
+      "at": "2026-10-12T11:41:40.681303+09:00",
+      "capture_reason": "offline",
+      "connected_accounts": 0,
+      "last_tick_ms": null,
+      "collector": {
+        "epoch": "c5b0a61a07d041b1a7623c23721aad22",
+        "pid": 2846829,
+        "alive": true,
+        "ready": false,
+        "state_age_ms": 886,
+        "desired_version": 29,
+        "acked_version": 29,
+        "restarts": 0,
+        "error": null,
+        "storage_errors": [],
+        "display_gaps": 0,
+        "discarded_old_frames": 319
+      },
+      "accounts": []
+    },
+    {
+      "at": "2026-10-12T11:41:41.088676+09:00",
+      "capture_reason": "healthy",
+      "connected_accounts": 6,
+      "last_tick_ms": 1791772900638,
+      "collector": {
+        "epoch": "c5b0a61a07d041b1a7623c23721aad22",
+        "pid": 2846829,
+        "alive": true,
+        "ready": true,
+        "state_age_ms": 190,
+        "desired_version": 29,
+        "acked_version": 29,
+        "restarts": 0,
+        "error": null,
+        "storage_errors": [],
+        "display_gaps": 0,
+        "discarded_old_frames": 319
+      },
+      "accounts": [
+        {
+          "account_id": 0,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 1,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 2,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 3,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 4,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        },
+        {
+          "account_id": 5,
+          "connected": true,
+          "registration_ready": true,
+          "connection_generation": 1,
+          "last_error_type": null
+        }
+      ]
+    }
+  ],
+  "historical_failure_events": [
+    "2026-10-12 08:39:45,972 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=2 generation=0 phase=connect elapsed_ms=3.783548003411852 kind=gaierror",
+    "2026-10-12 08:39:45,972 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=3 generation=0 phase=connect elapsed_ms=4.04732400784269 kind=gaierror",
+    "2026-10-12 08:39:45,972 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=4 generation=0 phase=connect elapsed_ms=4.074946002219804 kind=gaierror",
+    "2026-10-12 08:39:45,972 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=1 generation=0 phase=connect elapsed_ms=4.080697006429546 kind=gaierror",
+    "2026-10-12 08:39:45,972 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=5 generation=0 phase=connect elapsed_ms=4.863730006036349 kind=gaierror",
+    "2026-10-12 08:39:45,972 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=0 generation=0 phase=connect elapsed_ms=4.616855003405362 kind=gaierror",
+    "2026-10-12 08:39:46,885 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=3 generation=0 phase=connect elapsed_ms=0.8888320007827133 kind=gaierror",
+    "2026-10-12 08:39:46,913 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=5 generation=0 phase=connect elapsed_ms=0.5942379939369857 kind=gaierror",
+    "2026-10-12 08:39:46,974 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=2 generation=0 phase=connect elapsed_ms=0.6872730009490624 kind=gaierror",
+    "2026-10-12 08:39:46,983 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=0 generation=0 phase=connect elapsed_ms=0.650041998596862 kind=gaierror",
+    "2026-10-12 08:39:47,021 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=1 generation=0 phase=connect elapsed_ms=0.8410229929722846 kind=gaierror",
+    "2026-10-12 08:39:47,039 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=4 generation=0 phase=connect elapsed_ms=0.6116110016591847 kind=gaierror",
+    "2026-10-12 08:39:48,948 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=0 generation=0 phase=connect elapsed_ms=0.6840870046289638 kind=gaierror",
+    "2026-10-12 08:39:48,954 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=2 generation=0 phase=connect elapsed_ms=0.8052140037762001 kind=gaierror",
+    "2026-10-12 08:39:48,979 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=4 generation=0 phase=connect elapsed_ms=0.6336219958029687 kind=gaierror",
+    "2026-10-12 08:39:48,998 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=3 generation=0 phase=connect elapsed_ms=0.5096789973322302 kind=gaierror",
+    "2026-10-12 08:39:49,005 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=5 generation=0 phase=connect elapsed_ms=0.29296099091880023 kind=gaierror",
+    "2026-10-12 08:39:49,193 WARNING hoga.live.kiwoom_ws_client [capture pid=2488854] live.kiwoom.failure account=1 generation=0 phase=connect elapsed_ms=0.7582560065202415 kind=gaierror",
+    "2026-10-12 09:00:56,352 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=3 generation=1 phase=receive elapsed_ms=85.37298999726772 kind=ConnectionClosedError",
+    "2026-10-12 09:00:56,372 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=4 generation=1 phase=receive elapsed_ms=111.48021501139738 kind=ConnectionClosedError",
+    "2026-10-12 09:00:56,379 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=0 generation=1 phase=receive elapsed_ms=125.13917199976277 kind=ConnectionClosedError",
+    "2026-10-12 09:00:56,416 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=5 generation=1 phase=receive elapsed_ms=215.0775350019103 kind=ConnectionClosedError",
+    "2026-10-12 09:00:56,422 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=2 generation=1 phase=receive elapsed_ms=168.6765379999997 kind=ConnectionClosedError",
+    "2026-10-12 09:00:56,451 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=1 generation=1 phase=receive elapsed_ms=197.5450010068016 kind=ConnectionClosedError",
+    "2026-10-12 09:04:09,565 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=0 generation=2 phase=receive elapsed_ms=5.19925999105908 kind=ConnectionClosedError",
+    "2026-10-12 09:04:12,816 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=2 generation=2 phase=receive elapsed_ms=2.2272790083661675 kind=ConnectionClosedError",
+    "2026-10-12 10:11:33,164 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.data_backlog account=0 depth=128 bytes=6284216 oldest_age_ms=4389.7 dispatch_count=148532 max_messages=128 max_bytes=8388608",
+    "2026-10-12 10:11:33,296 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.data_backlog account=2 depth=128 bytes=6512688 oldest_age_ms=4294.1 dispatch_count=146288 max_messages=128 max_bytes=8388608",
+    "2026-10-12 10:11:33,423 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=0 generation=3 phase=dispatch elapsed_ms=0.0 kind=KiwoomDataBacklogError",
+    "2026-10-12 10:11:33,620 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=2 generation=3 phase=dispatch elapsed_ms=0.0 kind=KiwoomDataBacklogError",
+    "2026-10-12 10:11:38,452 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.data_backlog account=3 depth=128 bytes=6203964 oldest_age_ms=4409.6 dispatch_count=142043 max_messages=128 max_bytes=8388608",
+    "2026-10-12 10:11:38,659 WARNING hoga.live.kiwoom_ws_client [capture pid=2616834] live.kiwoom.failure account=3 generation=2 phase=dispatch elapsed_ms=0.0 kind=KiwoomDataBacklogError"
+  ],
+  "offline_reproduction": {
+    "method": "Construct CaptureProcessSession with fake live process and IPC peer; retain recent child state with six connections; advance desired version, then ACK version, then state version. No server or vendor connection.",
+    "observed_capture_reasons": [
+      "healthy",
+      "offline",
+      "offline",
+      "healthy"
+    ],
+    "child_connections_remain": 6
+  },
+  "validation": {
+    "command": ".venv/bin/python -m pytest -q -m \"not wallclock\" tests/unit/live/test_lifecycle_kiwoom.py tests/unit/live/test_collector_process.py tests/unit/live/test_kiwoom_session_retirement.py tests/unit/live/test_kiwoom_control_isolation.py",
+    "passed": 64
+  },
+  "limitations": [
+    "Exact time of the user-observed banner is unknown. The two natural offline transitions prove a current false-disconnection path, but do not attribute all earlier banners to it.",
+    "Earlier simultaneous WS closures do not identify whether the broker or network caused them.",
+    "Internal backlog records prove processing fell behind input; they do not isolate CPU, disk, or scheduling as the root resource constraint."
+  ],
+  "operations": "Read-only GET sampling; no server restart, credential change, vendor session, or product code modification."
+}

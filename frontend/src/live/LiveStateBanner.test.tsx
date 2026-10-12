@@ -57,3 +57,9 @@ describe('LiveStateBanner', () => {
     expect(requestSettingsModal).toHaveBeenCalledOnce();
   });
 });
+
+it.each(['collector_unavailable', 'storage_error'] as const)('shows %s without asserting candle health', (cause) => {
+  render(<LiveStateBanner primary={cause} stack={[]} />);
+  expect(screen.getByRole('status')).toHaveTextContent(cause === 'storage_error' ? '저장 오류' : '수집 상태');
+  expect(screen.getByRole('status')).not.toHaveTextContent('캔들·지수는 정상');
+});

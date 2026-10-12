@@ -16,7 +16,9 @@ import { apiCall } from './client';
  * 수 있어서, 투영 경계(`LiveStatusProjectionInput`)는 의도적으로 `string` 을 받고
  * 미지값 폴백을 유지한다.
  */
-export type CaptureReason = 'healthy' | 'offline' | 'closed' | 'registration_incomplete';
+export type CaptureReason = 'healthy' | 'offline' | 'closed' | 'registration_incomplete' | 'syncing' | 'collector_unavailable' | 'storage_error';
+export type CollectorStateReason = 'ready' | 'syncing' | 'stopping' | 'dead' | 'ipc_closed' | 'state_stale' | 'sync_failed' | 'storage_error';
+export type CollectorSyncPhase = 'ack' | 'state';
 
 export interface ProviderStatus {
   observed_at_ms: number;
@@ -184,6 +186,10 @@ export interface KiwoomStatus {
 }
 
 export interface CaptureProcessStatus {
+  state_reason?: CollectorStateReason;
+  state_version?: number | null;
+  sync_phase?: CollectorSyncPhase | null;
+  sync_age_ms?: number | null;
   mode: 'process';
   epoch: string;
   pid: number | null;

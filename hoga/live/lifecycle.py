@@ -102,12 +102,14 @@ class LiveStatus(BaseModel):
     # 캡처 헬스(spec 2026-06-08 §2.2) — cycle_lag_ms를 대체하는 정직한 신호.
     #
     # `capture_reason` 은 **Literal 로 닫아 둔다**. 프론트
-    # (`frontend/src/api/liveStatus.ts::CaptureReason`)가 같은 4값을 미러하고 라벨·
+    # (`frontend/src/api/liveStatus.ts::CaptureReason`)가 같은 값을 미러하고 라벨·
     # 등급 표를 exhaustive 로 묶어 놓았기 때문에, 여기에 값을 늘리면 저쪽도 같이
     # 늘려야 한다. str 이던 시절엔 그 요구가 아무 데서도 발생하지 않아서 표가 조용히
     # 갈렸다 — 죽은 reason 4개가 프론트에 남고 실제 값 하나는 매핑이 없었다.
     capture_healthy: bool = True
-    capture_reason: Literal["healthy", "offline", "closed", "registration_incomplete"] = "offline"
+    capture_reason: Literal[
+        "healthy", "offline", "closed", "registration_incomplete", "syncing", "collector_unavailable", "storage_error",
+    ] = "offline"
     # 구독 유실로 실시간 미수집 중인 종목(additive; 키움 표적 재구독이 처리 → 항상 []).
     capture_missing_codes: list[str] = Field(default_factory=list)
     # broker_poll_* 필드는 제거됨 — 거래원이 키움 0F push 로 전환(PR-F2, ADR-0111 폐지).
@@ -398,6 +400,13 @@ def get_status() -> LiveStatus:
     if k is not None and k.get("connection_allowed") is False:
         cap_healthy = False
         cap_reason = "closed"
+    elif k and k.get("collector", {}).get("storage_errors"):
+        cap_healthy = False
+        cap_reason = "storage_error"
+    elif (k and k.get("collector", {}).get("ready") is False
+          and k["collector"].get("state_reason") != "syncing"):
+        cap_healthy = False
+        cap_reason = "collector_unavailable"
     elif k is None or k["connected_accounts"] == 0:
         cap_healthy = False
         # A known open connection gate includes NXT hours beyond the KRX clock.
@@ -405,7 +414,7 @@ def get_status() -> LiveStatus:
         cap_reason = "closed" if closed else "offline"
     elif k.get("collector", {}).get("ready") is False:
         cap_healthy = False
-        cap_reason = "offline"
+        cap_reason = "syncing"
     elif k.get("registration_incomplete"):
         cap_healthy = False
         cap_reason = "registration_incomplete"
