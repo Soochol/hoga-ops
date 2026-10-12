@@ -8,7 +8,6 @@ import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
 import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useWorkspaceStore, type WorkspaceWindow, type GroupSymbol } from '../../state/workspace';
-import { ChartMoreActions } from './ChartMoreActions';
 import { RegularSessionAction } from './RegularSessionAction';
 import { TimeframeControl } from '../TimeframeControl';
 import { useEffectiveVenue } from '../useEffectiveVenue';
@@ -220,7 +219,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart" data-day-count={axis.segments.length} data-bar-count={bars.length}>
     <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap overflow-x-auto">
       <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
-      <ChartMoreActions><RegularSessionAction win={win} /></ChartMoreActions>
+      <RegularSessionAction win={win} />
     </div>
     <div className="relative min-h-0 flex-1">
       <div ref={container} className="absolute inset-0 font-data"

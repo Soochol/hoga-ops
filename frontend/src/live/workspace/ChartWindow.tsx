@@ -84,7 +84,6 @@ import { CollectButton } from './CollectButton';
 import { PatternAreaButton } from './PatternAreaButton';
 import { WatchlistHeartActionButton } from './WatchlistHeartActionButton';
 import { RegularSessionAction } from './RegularSessionAction';
-import { ChartMoreActions } from './ChartMoreActions';
 import {
   HogaplaySourceButton,
   type HogaplaySourceDisabledReason,
@@ -521,7 +520,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 발행(캘린더 창)과 소비(분봉 창)가 한 창에 동시에 있을 수 없다 — 봉이 하나라
   // 헤더에도 둘 중 하나만 뜬다.
   const canJump = canPublishTimeframeJump(view.timeframe);
-  // 봉별 보조 액션은 더보기로 옮겨 기본 도구 행의 접힘 임계를 공유한다.
+  // 모든 액션은 도구 행에 두고, 좁은 창에서는 라벨을 접고 줄바꿈한다.
   const [headerFold, headerRef] = useChartHeaderFold(
     LIVE_FOCUS_HEADER_FOLD,
   );
@@ -817,7 +816,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         {/* 종목 식별·현재가·경고는 창 타이틀바(TitleBarSymbolRow)로 이관됐다.
             이 헤더는 봉·그리기·보조지표·레전드·저장·수집을 소유한다. */}
         {/* 좁아지면 액션 라벨을 접고, 더 좁아지면 일·주·월을 분봉
-            드롭다운에 합친다. 보조 기능은 더보기에서 항상 접근할 수 있다.
+            드롭다운에 합친다. 모든 기능은 도구 행에서 직접 접근한다.
             최소 폭에서도 부족하면 버튼 묶음을 줄바꿈한다. */}
         <TimeframeControl
           timeframe={view.timeframe}
@@ -878,42 +877,37 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             />
           </div>
         )}
-        <span aria-hidden className="live-chart-toolbar-divider" />
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
+        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">
+          <span aria-hidden className="live-chart-toolbar-divider" />
           <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={!headerFold.compactActions} />
           <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={!headerFold.compactActions} />
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
             showLabel={!headerFold.compactActions} />}
-          <ChartMoreActions compact={headerFold.compactActions}>
-            <span className="chart-more-actions-heading">표시 · 연동</span>
-            <RegularSessionAction win={win} disabled={!isMinuteTimeframe(view.timeframe)} />
-            <IconToolbarButton
-              aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
-              title="시가·고가·저가·종가는 항상 표시"
-              aria-pressed={indicatorLegendsVisible}
-              onClick={() => useWorkspaceStore.getState().setChartIndicatorLegendsVisible(win.id, !indicatorLegendsVisible)}
-              icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
-            >지표 레전드 {indicatorLegendsVisible ? '켜짐' : '꺼짐'}</IconToolbarButton>
-            {isMinuteTimeframe(view.timeframe) && (
-              <IconToolbarButton aria-label="호버 연동" aria-pressed={hoverLinked}
-                title="연결된 데이터 창이 분봉 커서 시점을 따라갑니다"
-                onClick={() => useWorkspaceStore.getState().setChartHoverLinked(win.id, !hoverLinked)}
-                className="aria-pressed:text-accent"
-                icon={<span aria-hidden>↔</span>}
-              >커서 연동 {hoverLinked ? '켜짐' : '꺼짐'}</IconToolbarButton>
-            )}
-            <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
-              onToggle={toggleHogaplaySource} compact={false} showLabel />
-            {onSearchPattern != null && <PatternAreaButton />}
-            <span aria-hidden className="chart-more-actions-divider" />
-            <span className="chart-more-actions-heading">종목 · 저장</span>
-            <WatchlistHeartActionButton code={heartCode} name={symbol?.name ?? null}
-              isMember={heartCode != null && isMember(heartCode)} compact={false} showLabel />
-            <LiveStudyViewSaveButton source={studySaveSource} />
-            <CollectButton code={symbol?.kind === 'index' ? null : symbol?.code ?? null}
-              name={symbol?.name ?? null} getVisibleRange={getCollectVisibleRange} />
-          </ChartMoreActions>
+          <RegularSessionAction win={win} disabled={!isMinuteTimeframe(view.timeframe)} showLabel={!headerFold.compactActions} />
+          <IconToolbarButton
+            aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
+            title="시가·고가·저가·종가는 항상 표시"
+            aria-pressed={indicatorLegendsVisible}
+            onClick={() => useWorkspaceStore.getState().setChartIndicatorLegendsVisible(win.id, !indicatorLegendsVisible)}
+            icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
+          >{!headerFold.compactActions && '레전드'}</IconToolbarButton>
+          {isMinuteTimeframe(view.timeframe) && (
+            <IconToolbarButton aria-label="호버 연동" aria-pressed={hoverLinked}
+              title="연결된 데이터 창이 분봉 커서 시점을 따라갑니다"
+              onClick={() => useWorkspaceStore.getState().setChartHoverLinked(win.id, !hoverLinked)}
+              className="aria-pressed:text-accent"
+              icon={<span aria-hidden>↔</span>}
+            >{!headerFold.compactActions && '커서 연동'}</IconToolbarButton>
+          )}
+          <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
+            onToggle={toggleHogaplaySource} compact={headerFold.compactActions} showLabel={!headerFold.compactActions} />
+          {onSearchPattern != null && <PatternAreaButton showLabel={!headerFold.compactActions} />}
+          <WatchlistHeartActionButton key={heartCode} code={heartCode} name={symbol?.name ?? null}
+            isMember={heartCode != null && isMember(heartCode)} compact={headerFold.compactActions} showLabel={!headerFold.compactActions} />
+          <LiveStudyViewSaveButton source={studySaveSource} showLabel={!headerFold.compactActions} />
+          <CollectButton code={symbol?.kind === 'index' ? null : symbol?.code ?? null}
+            name={symbol?.name ?? null} showLabel={!headerFold.compactActions} getVisibleRange={getCollectVisibleRange} />
         </div>
       </div>
       <div className="min-h-0 flex-1">

@@ -28,8 +28,12 @@ test('chart legends toggle independently while OHLC stays visible, including nar
   const second = headers.nth(1).locator('..');
   await expect(first.locator('.legend-ohlc-open')).toBeVisible();
   await expect(first.locator('.legend-row-ma')).toBeVisible();
-  await headers.nth(0).getByRole('button', { name: '차트 더보기' }).click();
-  const actions = page.getByRole('dialog', { name: '차트 추가 기능' });
+  const actions = headers.nth(0);
+  await expect(page.getByRole('button', { name: '차트 더보기' })).toHaveCount(0);
+  for (const name of ['보조지표', '그리기', '정규장만 보기', 'hogaplay 저장 데이터로 보기',
+    '관심 그룹 편집', '현재 뷰 저장', '데이터 수집']) {
+    await expect(actions.getByRole('button', { name, exact: true })).toBeVisible();
+  }
   await actions.getByRole('button', { name: '레전드 끄기', exact: true }).click();
   await expect(first.locator('.legend-row-ma')).toHaveCount(0);
   await expect(first.locator('.legend-ohlc-open')).toBeVisible();
@@ -38,7 +42,6 @@ test('chart legends toggle independently while OHLC stays visible, including nar
   await page.screenshot({ path: testInfo.outputPath('legend-off.png') });
   await actions.getByRole('button', { name: '레전드 켜기', exact: true }).click();
   await expect(first.locator('.legend-row-ma')).toBeVisible();
-  await page.keyboard.press('Escape');
   for (const timeframe of ['D', '240m']) {
     await page.evaluate(async tf => {
       const path = '/src/state/workspace.ts';
@@ -52,13 +55,14 @@ test('chart legends toggle independently while OHLC stays visible, including nar
       if (width < 200) await expect(headers.nth(0)).toHaveAttribute('data-compact-timeframe', '');
       else await expect(headers.nth(0)).not.toHaveAttribute('data-compact-timeframe');
       await expect.poll(() => headers.nth(0).evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-      await headers.nth(0).getByRole('button', { name: '차트 더보기' }).click();
       const button = actions.getByRole('button', { name: '레전드 끄기', exact: true });
       await expect(button).toBeInViewport();
+      for (const action of await headers.nth(0).getByRole('button').all()) {
+        await expect(action).toBeInViewport();
+      }
       await button.click();
       await expect(first.locator('.legend-row-ma')).toHaveCount(0);
       await actions.getByRole('button', { name: '레전드 켜기', exact: true }).click();
-      await page.keyboard.press('Escape');
     }
   }
   await page.setViewportSize({ width: 1100, height: 800 });
