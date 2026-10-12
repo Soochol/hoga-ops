@@ -1,7 +1,8 @@
 import { liveQuotesQueryKey } from '../../api/liveQuotes';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { WatchlistResponse } from '../../api/watchlist';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { publishWindowWarnings, clearWindowWarnings } from './windowWarningsSource';
@@ -15,14 +16,15 @@ function renderRow(
   props: { name?: string | null; code?: string; isIndex?: boolean; windowId?: string },
   opts: {
     watchlistCodes?: string[];
+    watchlist?: WatchlistResponse;
     quote?: { price: number; change_pct: number | null; change_won: number | null };
     liveSet?: string[];
   } = {},
 ) {
   const { name = '삼성전자', code = '005930', isIndex = false, windowId = 'w1' } = props;
   const { watchlistCodes = [], quote, liveSet = [] } = opts;
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(['watchlist'], {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  qc.setQueryData(['watchlist'], opts.watchlist ?? {
     entries: watchlistCodes.map((c) => ({
       code: c, name: c, registered_at_kst_date: '20260101', last_success_date: null,
     })),
@@ -37,11 +39,12 @@ function renderRow(
     watchlist_count: watchlistCodes.length,
     live_set: liveSet,
   });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={qc}>
       <TitleBarSymbolRow name={name} code={code} isIndex={isIndex} windowId={windowId} />
     </QueryClientProvider>,
   );
+  return { ...rendered, qc };
 }
 
 describe('TitleBarSymbolRow', () => {
@@ -96,6 +99,38 @@ describe('TitleBarSymbolRow', () => {
     // 지수는 quote 조회 자체를 안 하므로 현재가·등락률 셀이 없다.
     expect(screen.queryByTestId('titlebar-current-price')).toBeNull();
     expect(screen.queryByTestId('titlebar-change')).toBeNull();
+  });
+
+  it('shows current-stock membership and group names in the title bar', () => {
+    const folders = [{ id: 'f_a', name: '반도체', order: 0 }, { id: 'f_b', name: '장기', order: 1 }];
+    renderRow({ code: '005930' }, { watchlist: { folders, memos: [], next_run_at_ms: 0,
+      entries: folders.map(f => ({ code: '005930', name: '삼성전자', folder_id: f.id, order: 0,
+        registered_at_kst_date: '20260101', last_success_date: null })),
+    } });
+    const button = screen.getByRole('button', { name: '삼성전자 관심 그룹 관리 · 2개 그룹' });
+    expect(button).toHaveAttribute('title', '삼성전자 관심 등록됨 · 반도체, 장기 — 그룹 관리');
+    expect(button).not.toHaveAttribute('aria-pressed');
+    fireEvent.click(button);
+    expect(screen.getByTestId('watchlist-group-picker')).toHaveTextContent('삼성전자 005930');
+    expect(screen.getByRole('checkbox', { name: '반도체' })).toBeChecked();
+  });
+
+  it('closes an open picker when this window changes its stock', () => {
+    const { qc, rerender } = renderRow({ code: '005930' });
+    const button = screen.getByRole('button', { name: '삼성전자 관심종목 추가' });
+    fireEvent.pointerDown(button);
+    fireEvent.click(button);
+    expect(screen.getByTestId('watchlist-group-picker')).toHaveTextContent('005930');
+    rerender(<QueryClientProvider client={qc}>
+      <TitleBarSymbolRow name="SK하이닉스" code="000660" isIndex={false} windowId="w1" />
+    </QueryClientProvider>);
+    expect(screen.queryByTestId('watchlist-group-picker')).toBeNull();
+    expect(screen.getByRole('button', { name: 'SK하이닉스 관심종목 추가' })).toBeInTheDocument();
+  });
+
+  it('keeps the title-bar heart out of index windows', () => {
+    renderRow({ name: 'KOSPI', code: 'KOSPI', isIndex: true });
+    expect(screen.queryByTestId('titlebar-watchlist-button')).toBeNull();
   });
 
   it('shows the 과거 불러오는 중 chip from published backfillEarliestDate', () => {
