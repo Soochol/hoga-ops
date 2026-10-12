@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useWatchlist, useAddMember, useRemoveMember, useCreateFolder } from './useWatchlist';
 import { useWatchlistMembership } from './useWatchlistMembership';
@@ -12,23 +12,25 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
  * 컴포넌트를 연다. 호출처는
  * 앵커 (x,y)만 넘기고, 위치 클램프·디스미스·멤버십 토글은 이 컴포넌트가 책임진다.
  */
-export function WatchlistGroupPicker({ code, name, x, y, onClose }: {
+export function WatchlistGroupPicker({ code, name, x, y, onClose, anchorRef }: {
   code: string;
   name?: string;            // 스크리너 등 watchlist 밖 종목의 이름(낙관적 entry 시드용)
   x: number;
   y: number;
   onClose: () => void;
+  anchorRef?: RefObject<HTMLElement | null>;
 }) {
   const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
   // Register the portal as a nested layer so its clicks do not dismiss a
   // containing symbol search before the menu can handle them.
-  useDismissablePopover(true, ref, onClose, ref);
+  useDismissablePopover(true, anchorRef ?? ref, onClose, ref);
   return createPortal((
     <div ref={ref} role="dialog" aria-label="내 관심 그룹"
       data-testid="watchlist-group-picker"
+      onPointerDown={event => event.stopPropagation()}
       className="bg-bg-card border border-border rounded shadow-lg z-[60] py-1 w-72 max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-y-auto"
       style={{ position: 'fixed', left, top }}>
-      <WatchlistGroupPickerContent code={code} name={name} />
+      <WatchlistGroupPickerContent key={code} code={code} name={name} />
     </div>
   ), document.body);
 }
@@ -46,12 +48,19 @@ export function WatchlistGroupPickerContent({ code, name }: { code: string; name
   const member = folderIdsOf(code);
   // 종목명: 호출처가 준 name > view에서 첫 등장 행 > code 폴백.
   const displayName = name ?? data?.entries.find((e) => e.code === code)?.name ?? code;
+  const [undo, setUndo] = useState<{
+    folderId: string; folderName: string; removing: boolean; order?: number;
+  } | null>(null);
 
   const toggle = (folderId: string) => {
     const removing = member.has(folderId);
     const folder = folders.find((f) => f.id === folderId);
+    const order = data?.entries.find(entry => entry.code === code && entry.folder_id === folderId)?.order;
     const options = {
-      onSuccess: () => setFeedback(`${displayName} → ${folder?.name ?? ''} ${removing ? '해제됨' : '추가됨'}`),
+      onSuccess: () => {
+        setFeedback(`${displayName} → ${folder?.name ?? ''} ${removing ? '해제됨' : '추가됨'}`);
+        setUndo({ folderId, folderName: folder?.name ?? '', removing, order });
+      },
       onError: () => setFeedback('저장하지 못했습니다. 다시 시도해 주세요.'),
     };
     if (removing) removeM.mutate({ folderId, code }, options);
@@ -65,6 +74,7 @@ export function WatchlistGroupPickerContent({ code, name }: { code: string; name
       setNewName('');
       await addM.mutateAsync({ folderId: f.id, code, name: displayName });
       setFeedback(`${displayName} → ${n} 추가됨`);
+      setUndo({ folderId: f.id, folderName: n, removing: false });
     } catch {
       setFeedback('저장하지 못했습니다. 그룹 목록을 확인하고 다시 시도해 주세요.');
     }
@@ -73,6 +83,18 @@ export function WatchlistGroupPickerContent({ code, name }: { code: string; name
   const [search, setSearch] = useState('');
   const [feedback, setFeedback] = useState('');
   const busy = addM.isPending || removeM.isPending || createM.isPending;
+  const undoChange = () => {
+    if (!undo || busy) return;
+    const options = {
+      onSuccess: () => {
+        setFeedback(`${displayName} → ${undo.folderName} 변경 취소됨`);
+        setUndo(null);
+      },
+      onError: () => setFeedback('변경을 취소하지 못했습니다. 다시 시도해 주세요.'),
+    };
+    if (undo.removing) addM.mutate({ folderId: undo.folderId, code, name: displayName, at: undo.order }, options);
+    else removeM.mutate({ folderId: undo.folderId, code }, options);
+  };
   const visibleFolders = folders.filter((f) => f.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return (
     <section aria-label="관심 그룹 선택">
@@ -99,7 +121,11 @@ export function WatchlistGroupPickerContent({ code, name }: { code: string; name
           className="min-w-0 flex-1 bg-transparent text-sm" />
         <button type="submit" disabled={busy || !newName.trim()} className="text-sm text-accent disabled:opacity-40">추가</button>
       </form>
-      <div role="status" aria-live="polite" className="px-3 text-xs text-fg-dim break-words">{busy ? '저장 중…' : feedback}</div>
+      <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 px-3 text-xs text-fg-dim break-words">
+        <span>{busy ? '저장 중…' : feedback}</span>
+        {undo && <button type="button" disabled={busy} onClick={undoChange}
+          className="text-accent disabled:opacity-40">실행 취소</button>}
+      </div>
     </section>
   );
 }
