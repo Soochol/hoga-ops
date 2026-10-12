@@ -230,7 +230,8 @@ function KiwoomStatusLine() {
   const kicked = k.accounts.some((a) => a.kicked_by_peer);
   return (
     <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
-      연결 {k.connected_accounts}/{k.accounts_configured}계정 · 수집 {k.subscribed_count}종목
+      연결 {k.connected_accounts}/{k.accounts_configured}계정 · 구독 준비 {k.accounts.filter((a) => a.registration_ready === true).length}/{k.accounts_configured}계정 · 수집 {k.subscribed_count}종목
+      {k.collector?.state_reason === 'syncing' && ' · 실시간 설정 반영 중'}
       {kicked && (
         <span className="ml-1 text-warn" data-testid="kiwoom-kicked-warning">
           · 다른 프로세스가 앱키 점유 중

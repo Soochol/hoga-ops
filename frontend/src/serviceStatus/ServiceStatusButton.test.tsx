@@ -127,3 +127,39 @@ it('identifies an internal data processing failure from its stage', () => {
   expect(panel).toHaveTextContent('서버 내부 실시간 데이터 처리 지연 또는 실패');
   expect(panel).toHaveTextContent('서버의 처리 지연과 자동 재연결 상태를 확인하세요');
 });
+
+it('copies collector state evidence and does not clear failures while syncing', () => {
+  const collector = {
+    mode: 'process' as const, epoch: 'epoch', pid: 42, started_at_ms: 1, alive: true, ready: false,
+    state_reason: 'state_stale' as const, state_version: 1, sync_phase: 'state' as const, sync_age_ms: 500,
+    state_age_ms: 10_000, desired_version: 2, acked_version: 2, restarts: 0,
+    forced_terminations: 0, error: null, storage_errors: [], display_gaps: 0,
+    discarded_old_frames: 0, display: {}, gc: {},
+  };
+  const base = data(provider);
+  const status = { ...base, kiwoom: { enabled: true, accounts_configured: 5, connected_accounts: 5,
+    subscribed_count: 0, subscribed_codes: [], last_tick_ms: null, accounts: [], collector } };
+  const issues = serviceIssues(status);
+  expect(issues).toHaveLength(1);
+  expect(issues[0].source).toBe('collector');
+  expect(issues[0].collectorDetails).toContain('수집 PID: 42');
+  expect(issues[0].collectorDetails).toContain('상태 버전: 1');
+  const syncing = { ...status, kiwoom: { ...status.kiwoom, collector: { ...collector, state_reason: 'syncing' as const } } };
+  expect(serviceIssues(syncing)).toHaveLength(0);
+  expect(clearedIssues(issues, [], syncing, 1)).toHaveLength(0);
+  const ready = { ...status, kiwoom: { ...status.kiwoom, collector: { ...collector, ready: true } } };
+  expect(clearedIssues(issues, [], ready, 2)).toHaveLength(1);
+});
+
+it('does not suppress a partial transport failure during configuration sync', () => {
+  const status = data({ ...provider, connection: 'partial', connected_accounts: 4 });
+  status.kiwoom = {
+    enabled: true, accounts_configured: 5, connected_accounts: 4, subscribed_count: 0,
+    subscribed_codes: [], last_tick_ms: null, accounts: [],
+    collector: { mode: 'process', epoch: 'epoch', pid: 42, started_at_ms: 1, alive: true, ready: false,
+      state_reason: 'syncing', state_age_ms: 1, desired_version: 2, acked_version: 1, restarts: 0,
+      forced_terminations: 0, error: null, storage_errors: [], display_gaps: 0,
+      discarded_old_frames: 0, display: {}, gc: {} },
+  };
+  expect(serviceIssues(status).some(issue => issue.id === 'provider:connection')).toBe(true);
+});

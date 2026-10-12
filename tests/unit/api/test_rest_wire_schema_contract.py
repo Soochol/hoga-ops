@@ -55,6 +55,7 @@ from hoga.live.api import (
     LiveQuote,
     RankingRowModel,
 )
+from hoga.live.collector_process import CollectorStateReason, CollectorSyncPhase
 from hoga.live.daily_program_trade import DailyProgramTradePoint
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
@@ -457,6 +458,8 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
         frozenset(get_args(m.PatternTimeframe)),
         "frontend/src/api/screener.ts",
     ),
+    "CollectorStateReason": (frozenset(get_args(CollectorStateReason)), "frontend/src/api/liveStatus.ts"),
+    "CollectorSyncPhase": (frozenset(get_args(CollectorSyncPhase)), "frontend/src/api/liveStatus.ts"),
     "CaptureReason": (
         frozenset(get_args(LiveStatus.model_fields["capture_reason"].annotation)),
         "frontend/src/api/liveStatus.ts",

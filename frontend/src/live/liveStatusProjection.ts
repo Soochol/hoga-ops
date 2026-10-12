@@ -5,7 +5,9 @@ export type LiveBannerCause =
   | 'watchlist_empty'
   | 'kis_token_expired'
   | 'kiwoom_auth_failing'
-  | 'realtime_unavailable';
+  | 'realtime_unavailable'
+  | 'collector_unavailable'
+  | 'storage_error';
 
 /** 헤더 밴드에 렌더되는 우선순위-1 배너 값(액션 링크 동반). 세 소비처
  * (projection·bannerState·LiveStateBanner Props)가 이 타입 하나를 공유한다 —
@@ -13,6 +15,8 @@ export type LiveBannerCause =
 export type LiveBannerPrimary =
   | 'watchlist_empty'
   | 'realtime_unavailable'
+  | 'collector_unavailable'
+  | 'storage_error'
   | null;
 
 export type InventoryState =
@@ -20,14 +24,8 @@ export type InventoryState =
   | { kind: 'heatmap'; size: number | null }
   | { kind: 'unknown' };
 
-/**
- * 캡처 헬스 pill 의 등급. **2단이다** — 예전엔 `'warn'` 이 있었지만 그 등급으로 가는
- * 유일한 길이 `reconnecting`·`subscribing` 이었고, 두 reason 은 ADR-0118 PR-G
- * (KIS WS 계층 삭제)에서 백엔드가 내보내기를 멈춘 뒤로 도달 불가였다. 타입에만 남은
- * 등급은 "3단계 상태 기계" 라는 거짓 문서가 되므로 지웠다 — 다시 필요해지면
- * `CAPTURE_REASON_VIEW` 에 warn 을 쓰는 reason 을 추가하면서 같이 되살린다.
- */
-export type CaptureHealthSeverity = 'ok' | 'error';
+/** 설정 동기화는 warn, 실제 수집·저장 장애는 error로 구분한다. */
+export type CaptureHealthSeverity = 'ok' | 'warn' | 'error';
 
 export interface CaptureHealthView {
   severity: CaptureHealthSeverity;
@@ -93,6 +91,9 @@ interface CaptureReasonView {
  */
 const CAPTURE_REASON_VIEW: Record<CaptureReason, CaptureReasonView> = {
   healthy: { label: 'LIVE●', severity: 'ok' },
+  syncing: { label: '실시간 설정 반영 중', severity: 'warn' },
+  collector_unavailable: { label: '수집 상태 확인 불가', severity: 'error' },
+  storage_error: { label: '실시간 저장 오류', severity: 'error' },
   // 미기동·장 마감은 장애가 아니다 — 밤·주말 거짓-앰버를 막으려 ok 로 둔다.
   offline: { label: '오프라인', severity: 'ok' },
   closed: { label: '장 마감', severity: 'ok' },
@@ -139,6 +140,10 @@ export function projectLiveStatus({
 
   if (!status) {
     return { banner: { primary: null, stack }, captureHealth };
+  }
+
+  if (reason === 'collector_unavailable' || reason === 'storage_error') {
+    return { banner: { primary: reason, stack }, captureHealth };
   }
 
   if (inventory.kind === 'watchlist' && inventory.size !== null) {

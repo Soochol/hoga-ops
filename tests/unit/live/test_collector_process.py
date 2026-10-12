@@ -105,6 +105,63 @@ def fake_entry(root, epoch, sockets, parent_pid):
     asyncio.run(run_worker(root, epoch, sockets, parent_pid, manager_factory=FakeManager))
 
 
+class BlockingSyncManager(FakeManager):
+    async def sync(self, targets, *, n_accounts):
+        if self.started:
+            (self.root / "sync-entered").touch()
+            while not (self.root / "sync-release").exists():
+                await asyncio.sleep(0.01)
+        await super().sync(targets, n_accounts=n_accounts)
+
+
+def blocking_sync_entry(root, epoch, sockets, parent_pid):
+    asyncio.run(run_worker(root, epoch, sockets, parent_pid, manager_factory=BlockingSyncManager))
+
+
+async def test_spawn_sync_keeps_ws_evidence_and_degraded_http_health(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from fastapi.testclient import TestClient
+
+    from hoga.api import app as assembly, symbols
+    from hoga.live import lifecycle, session_gate
+
+    monkeypatch.setattr(symbols, "nxt_enabled_by_code", lambda: {})
+    monkeypatch.setattr(session_gate, "is_trading_day_now", lambda stamp: True)
+    owner = CaptureProcessSession(buffer=LiveBuffer(), data_dir=tmp_path, process_target=blocking_sync_entry)
+    monkeypatch.setattr(lifecycle, "_state", lifecycle._State(kiwoom_session=owner))
+    application = assembly.create_app(data_dir=tmp_path)
+    application.state.startup_runtime = SimpleNamespace(supervised_task_health=lambda: [])
+    monkeypatch.setattr(assembly._captures_module, "queue_ownership_state", lambda: {
+        "ready": True, "owned": True, "disabled_by_env": False,
+    })
+    request = None
+    try:
+        await owner.sync(("005930",), n_accounts=1)
+        await until(owner.fresh)
+        request = asyncio.create_task(owner.sync(("005930", "000660"), n_accounts=1))
+        await until(lambda: (tmp_path / "sync-entered").exists())
+        status = lifecycle.get_status()
+        assert status.ws_connected and not status.capture_healthy
+        assert status.capture_reason == "syncing"
+        client = TestClient(application)
+        response = client.get("/health?deep=1")
+        assert response.status_code == 503
+        assert response.json()["collector"]["state_reason"] == "syncing"
+        wire = client.get("/api/live/status").json()
+        assert wire["capture_reason"] == "syncing" and wire["kiwoom"]["connected_accounts"] == 1
+        (tmp_path / "sync-release").touch()
+        await request
+        await until(owner.fresh)
+        assert client.get("/health?deep=1").status_code == 200
+    finally:
+        (tmp_path / "sync-release").touch()
+        if request is not None:
+            request.cancel()
+            await asyncio.gather(request, return_exceptions=True)
+        await owner.stop()
+
+
 async def until(predicate):
     async with asyncio.timeout(15):
         while not predicate():
@@ -303,7 +360,7 @@ def test_deep_health_does_not_claim_healthy_for_failed_child(tmp_path, monkeypat
 
 async def test_storage_failure_keeps_connection_evidence_but_unhealthy(tmp_path, monkeypatch):
     owner = CaptureProcessSession(buffer=LiveBuffer(), data_dir=tmp_path)
-    monkeypatch.setattr(owner, "fresh", lambda: True)
+    monkeypatch.setattr(owner, "_health", lambda: ("storage_error", True))
     monkeypatch.setattr(owner, "alive", lambda: True)
     owner._state = {"status": {"connected_accounts": 6}, "storage_errors": ["append_failed"]}
     result = owner.status()

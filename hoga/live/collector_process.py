@@ -15,12 +15,17 @@ import socket
 import time
 import uuid
 from pathlib import Path
+from typing import Literal
 
-from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, STATE_FRESH_S, RpcPeer, open_channel, read_frame
+from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, RPC_TIMEOUT_S, STATE_FRESH_S, RpcPeer, open_channel, read_frame
 from .snapshot import LiveSnapshot, SnapshotKind
 from .view_subscription import MAX_DISPLAY_CODES, MAX_DISPLAY_REFS_PER_CODE, ViewSubscriptionLimitError
 
 log = logging.getLogger(__name__)
+CollectorStateReason = Literal[
+    "ready", "syncing", "stopping", "dead", "ipc_closed", "state_stale", "sync_failed", "storage_error",
+]
+CollectorSyncPhase = Literal["ack", "state"]
 
 
 class _Configuration:
@@ -78,16 +83,47 @@ class CaptureProcessSession:
         self._peaks: dict = {}
         self._peak_sequence_floor = 0
         self._vi: dict = {}
+        self._sync_started_at: float | None = None
+        self._sync_acked_at: float | None = None
+        self._sync_failed = False
 
     def alive(self) -> bool:
         return self.process is not None and self.process.is_alive()
 
+    def _health(self) -> tuple[CollectorStateReason, bool]:
+        """Readiness and recent transport evidence are independent during sync."""
+        if self.stopping:
+            return "stopping", False
+        if not self.alive():
+            return "dead", False
+        if self.peer is None or self.peer.closed.is_set() or any(t.done() for t in self.tasks):
+            return "ipc_closed", False
+        stamp = time.monotonic()
+        evidence = (self._state.get("epoch") == self.epoch and self._received_at > 0
+                    and 0 <= stamp - self._received_at < STATE_FRESH_S
+                    and 0 <= int(time.time() * 1000) - self._state.get("observed_at_ms", 0) < STATE_FRESH_S * 1000)
+        if not evidence:
+            return "state_stale", False
+        if self._state.get("storage_errors"):
+            return "storage_error", True
+        if self._sync_failed:
+            return "sync_failed", True
+        if (self.ack_version == self.version and self._state.get("desired_version") == self.version
+                and self._state.get("ready", False)):
+            return "ready", True
+        since = self._sync_acked_at if self.ack_version == self.version else self._sync_started_at
+        limit = STATE_FRESH_S if self.ack_version == self.version else RPC_TIMEOUT_S
+        return ("syncing" if since is not None and 0 <= stamp - since < limit else "sync_failed"), True
+
     def fresh(self) -> bool:
-        return (not self.stopping and self.alive() and self.peer is not None and not self.peer.closed.is_set()
-                and time.monotonic() - self._received_at < STATE_FRESH_S
-                and 0 <= int(time.time() * 1000) - self._state.get("observed_at_ms", 0) < STATE_FRESH_S * 1000
-                and self.ack_version == self.version and self._state.get("desired_version") == self.version
-                and self._state.get("ready", False) and not any(t.done() for t in self.tasks))
+        return self._health()[0] == "ready"
+
+    def _finish_sync(self) -> None:
+        if self._sync_started_at is not None and self.fresh():
+            log.info("collector.sync_ready pid=%s epoch=%s version=%d elapsed_ms=%.1f",
+                     self.process.pid, self.epoch, self.version,
+                     (time.monotonic() - self._sync_started_at) * 1000)
+            self._sync_started_at = self._sync_acked_at = None
 
     async def _start(self) -> None:
         if self.alive():
@@ -194,12 +230,15 @@ class CaptureProcessSession:
             if state["sequence"] <= self._state_sequence:
                 raise ValueError("collector state sequence regression")
             self._state_sequence = state["sequence"]
-            if state["desired_version"] != self.version:
+            # Old desired versions retain current-epoch connection evidence only.
+            if (state["desired_version"] > self.version
+                    or state["desired_version"] < self._state.get("desired_version", 0)):
                 continue
             self._state = state
-            if state["sequence"] > self._peak_sequence_floor:
+            if state["desired_version"] == self.version and state["sequence"] > self._peak_sequence_floor:
                 self._peaks = state["peaks"]
             self._received_at = time.monotonic()
+            self._finish_sync()
 
     async def _configuration(self, targets, n_accounts) -> dict:
         from .kiwoom_session import _nxt_map  # noqa: PLC0415 — parent symbol/calendar SSOT
@@ -224,19 +263,34 @@ class CaptureProcessSession:
     async def _sync_locked(self, kiwoom_targets, n_accounts) -> None:
         config = await self._configuration(kiwoom_targets, n_accounts)
         if (self.alive() and self.peer is not None and not self.peer.closed.is_set()
-                and self.ack_version == self.version
+                and self.ack_version == self.version and not self._sync_failed
+                and self._health()[0] in {"ready", "storage_error", "syncing"}
                 and config == {k: v for k, v in self.config.items() if k != "version"}):
             return
         self.stopping = False
+        changed = sorted(k for k, value in config.items() if self.config.get(k) != value)
         self.version += 1
         self.config = {**config, "version": self.version}
-        await self._start()
-        result = await self.peer.call("sync", self.config)
-        if result["version"] != self.version:
-            raise ConnectionError("collector desired ACK mismatch")
-        self.ack_version = result["version"]
-        for (code, ref), venues in self.views.items():
-            await self.peer.call("view_subscribe", {"code": code, "ref": ref, "venues": sorted(venues)})
+        self._sync_started_at, self._sync_acked_at = time.monotonic(), None
+        self._sync_failed = False
+        try:
+            await self._start()
+            log.info("collector.sync_started pid=%s epoch=%s version=%d changed=%s",
+                     self.process.pid, self.epoch, self.version, changed)
+            result = await self.peer.call("sync", self.config)
+            if result["version"] != self.version:
+                raise ConnectionError("collector desired ACK mismatch")
+            self.ack_version = result["version"]
+            self._sync_acked_at = time.monotonic()
+            self.error = None
+            log.info("collector.sync_acked pid=%s epoch=%s version=%d", self.process.pid, self.epoch, self.version)
+            self._finish_sync()
+            # sync already restores all desired view refs in the child.
+        except BaseException:
+            self._sync_failed = True
+            self.error = "collector_sync_failed"
+            log.warning("collector.sync_failed epoch=%s version=%d", self.epoch, self.version)
+            raise
 
     async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         async with self.lock:
@@ -341,10 +395,14 @@ class CaptureProcessSession:
 
     def status(self) -> dict:
         status = dict(self._state.get("status", {}))
-        ready = self.fresh() and not self._state.get("storage_errors")
-        if not self.fresh():
-            status.update(connected_accounts=0, subscribed_count=0, subscribed_codes=[], ready_codes=[],
-                          ready_registrations=[], last_tick_ms=None, accounts=[], registration_incomplete=True)
+        reason, evidence = self._health()
+        ready = reason == "ready"
+        if not evidence:
+            status.update(connected_accounts=0, subscribed_count=0, subscribed_codes=[],
+                          last_tick_ms=None, last_recv_ms=None, accounts=[], connection_allowed=None)
+        if not ready:
+            status.update(ready_codes=[], ready_registrations=[], registration_incomplete=True)
+            status["accounts"] = [{**a, "registration_ready": False} for a in status.get("accounts", [])]
         status.setdefault("connected_accounts", 0)
         status.setdefault("subscribed_count", 0)
         status.setdefault("subscribed_codes", [])
@@ -355,6 +413,11 @@ class CaptureProcessSession:
                                "started_at_ms": self._state.get("started_at_ms"), "alive": self.alive(),
                                "ready": ready, "state_age_ms": int((time.monotonic() - self._received_at) * 1000)
                                if self._received_at else None,
+                               "state_reason": reason, "state_version": self._state.get("desired_version"),
+                               "sync_phase": ("state" if self.ack_version == self.version else "ack")
+                               if self._sync_started_at is not None else None,
+                               "sync_age_ms": int((time.monotonic() - self._sync_started_at) * 1000)
+                               if self._sync_started_at is not None else None,
                                "desired_version": self.version, "acked_version": self.ack_version,
                                "restarts": self.restarts, "forced_terminations": self.forced_terminations,
                                "error": self.error,

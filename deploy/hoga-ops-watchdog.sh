@@ -25,6 +25,34 @@ response="$(curl -sS --max-time 10 -w $'\n%{http_code}' "$URL" 2>/dev/null)"
 code="${response##*$'\n'}"
 body="${response%$'\n'*}"
 
+# Only a bounded collector sync may get one extra observation. Keep readiness
+# at 503; a dead task, queue failure, storage error or malformed body cannot
+# use this exception to suppress recovery.
+if [ "$code" = "503" ] && python3 -c '
+import json, sys
+try:
+    value = json.load(sys.stdin)
+    collector, queue = value["collector"], value["queue"]
+    transient = (
+        value["status"] == "degraded" and value["dead_tasks"] == []
+        and (queue["ready"] is True or queue["disabled_by_env"] is True)
+        and collector["state_reason"] == "syncing" and collector["alive"] is True
+        and collector["ready"] is False and collector["error"] is None
+        and collector["storage_errors"] == []
+        and 0 <= collector["state_age_ms"] < 10000
+    )
+except (KeyError, TypeError, ValueError):
+    transient = False
+sys.exit(0 if transient else 1)
+' <<< "$body"; then
+  echo "hoga-ops-watchdog: bounded collector sync — rechecking once; body: ${body}" >&2
+  sleep 1
+  response="$(curl -sS --max-time 10 -w $'\n%{http_code}' "$URL" 2>/dev/null)"
+  code="${response##*$'\n'}"
+  body="${response%$'\n'*}"
+  echo "hoga-ops-watchdog: recheck HTTP ${code}; body: ${body}" >&2
+fi
+
 if [ "$code" = "200" ]; then
   exit 0
 fi
