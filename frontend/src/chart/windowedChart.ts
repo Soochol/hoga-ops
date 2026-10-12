@@ -1,10 +1,12 @@
-import type { IChartApi, IPriceScaleApi, ISeriesApi, ITimeScaleApi, Logical, LogicalRange, Time } from 'lightweight-charts';
-import { syncSeriesData, type SeriesDataSink } from './seriesDataDiff';
+import type { IChartApi, IPriceScaleApi, ISeriesApi, ITimeScaleApi, Logical, LogicalRange, MouseEventParams, Time } from 'lightweight-charts';
+import { classifyDataChange, syncSeriesData, type SeriesDataSink } from './seriesDataDiff';
 import { viewportHasReprojectableAnchor } from '../live/minuteViewportPolicy';
 
 type Point = Parameters<SeriesDataSink['setData']>[0][number];
 type Series = ISeriesApi<any>;
 type Range = { from: number; to: number };
+type Hover = { kind: 'pointer'; clientX: number; clientY: number }
+  | { kind: 'synthetic'; price: number; time: Time; series: Series };
 /** Immutable coordinate generation used by the data currently on screen.
  * A Virtual Axis can rebase on prepend; reading a mutable axisRef here would
  * interpret the old grid with the new calendar. */
@@ -127,6 +129,16 @@ class WindowedChart {
   private animation: { from: Range; target: Range; start: number } | null = null;
   private animationWrite = false;
   private rangeFrame: number | null = null;
+  private hover: Hover | null = null;
+  private hoverFrame: number | null = null;
+
+  private readonly trackHover = (param: MouseEventParams): void => {
+    if (this.busy) return; // transient grid changes must not erase the saved hover
+    if (!param.point) this.hover = null;
+    else if (param.sourceEvent) {
+      this.hover = { kind: 'pointer', clientX: param.sourceEvent.clientX, clientY: param.sourceEvent.clientY };
+    }
+  };
 
   constructor(native: IChartApi) {
     this.native = native;
@@ -203,7 +215,14 @@ class WindowedChart {
         this.states.delete(api);
         this.enqueue();
       },
-      setCrosshairPosition: (price: number, time: Time, api: Series) => native.setCrosshairPosition(price, time, this.states.get(api)?.native ?? api),
+      setCrosshairPosition: (price: number, time: Time, api: Series) => {
+        native.setCrosshairPosition(price, time, this.states.get(api)?.native ?? api);
+        this.hover = { kind: 'synthetic', price, time, series: api };
+      },
+      clearCrosshairPosition: () => {
+        this.hover = null;
+        native.clearCrosshairPosition();
+      },
       panes: () => native.panes().map((pane) => facade(pane, {
         getSeries: () => pane.getSeries().map((series) => this.appSeries(series)),
       })),
@@ -211,6 +230,8 @@ class WindowedChart {
         this.removed = true;
         this.stopAnimation();
         if (this.rangeFrame !== null) cancelAnimationFrame(this.rangeFrame);
+        if (this.hoverFrame !== null) cancelAnimationFrame(this.hoverFrame);
+        native.unsubscribeCrosshairMove(this.trackHover);
         this.detachInteractions?.();
         this.states.clear();
         this.times = [];
@@ -243,6 +264,7 @@ class WindowedChart {
       };
     }
     this.chart = facade(native, overrides);
+    native.subscribeCrosshairMove(this.trackHover);
     this.installMouseInteractions();
     this.scale.subscribeVisibleLogicalRangeChange(() => {
       if (this.busy || this.removed) return;
@@ -592,22 +614,63 @@ class WindowedChart {
     if (!force && start === this.offset && end === this.end) return;
     this.busy = true;
     try {
-      this.native.clearCrosshairPosition();
-      this.offset = start;
-      this.end = end;
-      for (const state of this.states.values()) {
+      const replacements = [...this.states.values()].map(state => {
         const data = start === 0 && end === count - 1 ? state.data : state.data.slice(
           lowerBound(state.data, this.times[start], timeOf),
           lowerBound(state.data, (this.times[end] ?? Infinity) + .000001, timeOf),
         );
+        return { state, data };
+      });
+      // Only a full replacement with different times needs the stale-index
+      // guard. Value replacements, tail updates and skipped writes preserve
+      // lwc's native pointer (including its pane and empty-space coordinates).
+      const resetHover = replacements.some(({ state, data }) =>
+        (state.rendered?.length !== data.length
+          || data.some((point, i) => point.time !== state.rendered![i].time))
+        && classifyDataChange(state.rendered, data).kind === 'setData');
+      if (resetHover) this.native.clearCrosshairPosition();
+      this.offset = start;
+      this.end = end;
+      for (const { state, data } of replacements) {
         state.rendered = syncSeriesData(state.native, state.rendered, data);
       }
       if (count) {
         this.requestedRange = range;
         this.scale.setVisibleLogicalRange({ from: range.from - start, to: range.to - start });
       }
+      if (resetHover) this.restoreHoverAfterDraw();
     } finally { this.busy = false; }
     this.queueRangePublish();
+  }
+
+  private restoreHoverAfterDraw(): void {
+    if (this.hoverFrame !== null || !this.hover) return;
+    // lwc applies ranges on its next draw. Read the latest hover afterwards:
+    // a leave, explicit clear or a newer pointer/sync position wins meanwhile.
+    this.hoverFrame = requestAnimationFrame(() => {
+      this.hoverFrame = null;
+      const hover = this.hover;
+      if (this.removed || !hover) return;
+      if (hover.kind === 'synthetic') {
+        const series = this.states.get(hover.series)?.native;
+        if (series && series.priceToCoordinate(hover.price) !== null
+          && this.scale.timeToIndex(hover.time) !== null) {
+          this.native.setCrosshairPosition(hover.price, hover.time, series);
+        }
+        return;
+      }
+      // Use the same native mouse path as DrawingOverlay, rather than the
+      // time-based sync API: a pointer over right-hand whitespace has no Time.
+      if (typeof this.native.chartElement !== 'function') return;
+      const element = this.native.chartElement();
+      const target = element.ownerDocument.elementsFromPoint(hover.clientX, hover.clientY)
+        .find(node => element.contains(node));
+      if (!target) return;
+      for (const type of ['mouseenter', 'mousemove']) {
+        target.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true,
+          clientX: hover.clientX, clientY: hover.clientY }));
+      }
+    });
   }
 
   private queueRangePublish(): void {

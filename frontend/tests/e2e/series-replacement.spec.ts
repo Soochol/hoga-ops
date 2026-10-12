@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { replaceSeriesData } from '../../src/chart/replaceSeriesData';
+import type { replaceSeriesData } from '../../src/chart/replaceSeriesData';
 
 const library = join(dirname(fileURLToPath(import.meta.resolve('lightweight-charts'))), 'lightweight-charts.standalone.development.js');
 
@@ -14,9 +14,17 @@ declare global {
 // Actual lwc hit-testing is required: mocked setData cannot expose stale
 // render-item indices while another series reindexes the shared time scale.
 test('replacing stock data with pending line options does not hit-test stale bars', async ({ page }) => {
-  await page.setContent('<div id="chart"></div>');
+  // Load the actual module, including its adapter ownership dependency. A
+  // stringified function silently loses imports as production code evolves.
+  await page.route('**/__series-replacement', route => route.fulfill({
+    contentType: 'text/html', body: '<div id="chart"></div>',
+  }));
+  await page.goto('/__series-replacement');
   await page.addScriptTag({ path: library });
-  await page.addScriptTag({ content: `window.replaceSeriesData = ${replaceSeriesData.toString()}` });
+  await page.evaluate(async () => {
+    const path = '/src/chart/replaceSeriesData.ts';
+    window.replaceSeriesData = (await import(path)).replaceSeriesData;
+  });
   const result = await page.evaluate(async () => {
     const { createChart, LineSeries } = window.LightweightCharts;
     const chart = createChart(document.getElementById('chart')!, { width: 900, height: 500 });

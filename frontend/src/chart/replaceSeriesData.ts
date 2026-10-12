@@ -1,5 +1,6 @@
 import type { IChartApi } from 'lightweight-charts';
 import { syncSeriesData, type SeriesDataSink } from './seriesDataDiff';
+import { ownsWindowedChartViewport } from './windowedChart';
 
 /** Clear stale hover indices before setData reindexes the shared time scale.
  * lwc 5.2 can synchronously hit-test another line's old render items during
@@ -17,7 +18,10 @@ export function replaceSeriesData(
     && data.every((point, i) => point.time === previous[i].time);
   // Some lightweight chart adapters/test doubles expose only the subset they
   // use. Real IChartApi instances have this method; tolerate partial adapters.
-  if (!sameTimes) chart.clearCrosshairPosition?.();
+  // The windowed adapter batches all series and owns the native stale-index
+  // reset/hover restoration. Clearing its facade here would discard the saved
+  // pointer before that batch can restore it.
+  if (!sameTimes && !ownsWindowedChartViewport(chart as IChartApi)) chart.clearCrosshairPosition?.();
   series.setData(data);
 }
 
