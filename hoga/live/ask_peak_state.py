@@ -524,7 +524,14 @@ def _larger_peak(
 
 
 def _top_ranked_peaks(peaks: Iterable[Peak]) -> list[Peak]:
-    return _ranked_peaks(peaks)[:_EMIT_LIMIT]
+    # Rank prices, not repeated observations of the same wall. Otherwise a burst
+    # at one price fills all three slots and permanently displaces other prices.
+    by_price: dict[int, Peak] = {}
+    for peak in peaks:
+        current = by_price.get(peak.price)
+        if current is None or _peak_rank_key(peak) < _peak_rank_key(current):
+            by_price[peak.price] = peak
+    return _ranked_peaks(by_price.values())[:_EMIT_LIMIT]
 
 
 def _peak_rank_key(peak: Peak) -> tuple[int, int, int, tuple[int, int]]:

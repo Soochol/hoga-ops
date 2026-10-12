@@ -203,9 +203,8 @@ describe('useDayAskPeaks', () => {
     expect(today.traded_peaks).toContainEqual({ price: 26000, qty: 1200, t_ms: atKst(9, 10) });
     expect(today.traded_peaks).not.toContainEqual({ price: 26000, qty: 9000, t_ms: atKst(9, 12) });
     // 터치와 무관한 all 계열에는 더 큰 09:12 벽이 1위로 남는다.
-    expect(today.all_peaks?.slice(0, 2)).toEqual([
+    expect(today.all_peaks?.filter((p) => p.price === 26000)).toEqual([
       { price: 26000, qty: 9000, t_ms: atKst(9, 12) },
-      { price: 26000, qty: 1200, t_ms: atKst(9, 10) },
     ]);
   });
 
