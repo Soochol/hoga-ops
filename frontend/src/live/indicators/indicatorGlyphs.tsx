@@ -66,6 +66,13 @@ const ZERO_LINE = (
  * 지표가 조용히 빈칸으로 렌더되지 않는다.
  */
 export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
+  bollinger: svg(
+    <>
+      {GHOST_CANDLES}
+      <path d="M1 5 Q5 1 8 4 T15 3 M1 9 Q5 5 8 8 T15 7 M1 13 Q5 9 8 12 T15 11"
+        fill="none" stroke="currentColor" strokeWidth="1.2" />
+    </>,
+  ),
   'moving-average': svg(
     <>
       {GHOST_CANDLES}

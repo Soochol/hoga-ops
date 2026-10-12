@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode } fr
 import { useChartPrefActions } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
+import BollingerConfig from './BollingerConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import TradeValueConfig from './TradeValueConfig';
@@ -37,6 +38,7 @@ import {
 import { isCalendarTimeframe, type LiveTimeframe } from '../../state/livePage';
 
 export type CategoryId =
+  | 'bollinger'
   | 'moving-average'
   | 'daily-moving-average'
   | 'volume'
@@ -105,6 +107,8 @@ export const CATEGORIES: ReadonlyArray<{
 }> = [
   { id: 'moving-average',  label: '이동평균선',       group: 'top',  placement: 'overlay',
     description: '지난 n일 동안 주가 평균값을 이은 선' },
+  { id: 'bollinger', label: '볼린저 밴드', group: 'top', placement: 'overlay',
+    description: '이동평균선을 중심으로 표준편차 배수만큼 떨어진 상단·하단 밴드를 표시합니다.' },
   { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top',  placement: 'overlay',
     description: '일봉 종가 기준 이평선을 분봉 차트에 투영 · 분봉 차트에서만 표시됩니다' },
   { id: 'volume',          label: '거래량',           group: 'top',  placement: 'pane',
@@ -361,6 +365,7 @@ export default function IndicatorPanel({
     const paneKey = PANE_CATEGORY_TO_KEY[id];
     if (paneKey) return selectedPanePrefs[paneKey] === true;
     switch (id) {
+      case 'bollinger': return ind.bollingerEnabled;
       case 'moving-average': return maEnabled;
       case 'daily-moving-average': return dailyMaEnabled;
       // 병합 카테고리: 어느 한쪽이라도 켜져 있으면 checked. 마스터 토글은 둘을 함께 켠다.
@@ -378,6 +383,7 @@ export default function IndicatorPanel({
     const paneKey = PANE_CATEGORY_TO_KEY[id];
     if (paneKey) return () => setPanePrefForTimeframe(timeframe, paneKey, present);
     switch (id) {
+      case 'bollinger': return () => actions.setBollingerEnabled(present);
       case 'moving-average': return () => setMaEnabled(present);
       case 'daily-moving-average': return () => setDailyMaEnabled(present);
       // 병합 카테고리: 매도·매수를 함께 움직인다(레전드에서는 각각 별도 행이다).
@@ -638,6 +644,7 @@ export default function IndicatorPanel({
                   onAdd={() => addFor(selectedCategory.id)}
                 />
               )}
+              {selectedAdded && selectedId === 'bollinger' && <BollingerConfig />}
               {selectedAdded && selectedId === 'moving-average' && <MovingAverageConfig />}
               {selectedAdded && selectedId === 'daily-moving-average' && <DailyMovingAverageConfig />}
               {selectedAdded && selectedId === 'volume' && <VolumeConfig />}

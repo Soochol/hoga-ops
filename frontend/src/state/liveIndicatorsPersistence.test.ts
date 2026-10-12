@@ -10,6 +10,15 @@ import { DEFAULT_LIVE_MAS } from './livePage';
 describe('mergeLiveIndicatorPrefs', () => {
   it('returns defaults for undefined input', () => {
     expect(mergeLiveIndicatorPrefs(undefined)).toEqual({
+      bollingerEnabled: false,
+      bollingerHidden: false,
+      bollingerPeriod: 20,
+      bollingerMultiplier: 2,
+      bollingerSource: 'close',
+      bollingerUpperColor: '#3B82F6',
+      bollingerMiddleColor: '#F97316',
+      bollingerLowerColor: '#3B82F6',
+      bollingerLineWidth: 1,
       movingAverages: DEFAULT_LIVE_MAS.map((m) => ({ ...m })),
       movingAverageEnabled: true,
       foreignNetEnabled: false,

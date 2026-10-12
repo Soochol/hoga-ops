@@ -99,6 +99,7 @@ import {
   LIVE_SIDEBAR_CURSOR_THROTTLE_MS,
 } from './sidebarCursorRateLimit';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
+import BollingerOverlay from './indicators/BollingerOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
@@ -2845,6 +2846,7 @@ export function LiveChartRoot({
           {candleAlwaysOnTop && (
             <>
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+              <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
           )}
@@ -2875,6 +2877,7 @@ export function LiveChartRoot({
           {!candleAlwaysOnTop && (
             <>
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
+              <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
           )}

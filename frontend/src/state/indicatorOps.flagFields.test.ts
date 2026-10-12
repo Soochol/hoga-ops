@@ -26,6 +26,7 @@ const FLAG_FIELD_PREFIXES: Record<string, string> = {
   bidPeak: 'bid-peak',
   tradeVolumePoc: 'trade-volume-poc',
   depthHeatmap: 'depth-heatmap',
+  bollinger: 'bollinger',
   brokerLateEntry: 'broker-late-entry',
 };
 

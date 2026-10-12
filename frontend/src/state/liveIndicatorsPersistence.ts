@@ -159,6 +159,16 @@ export const QUOTE_LEVEL_LINE_DEFAULT_STYLE: LineStyle = 'dashed';
 export const QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE: LineStyle = 'dotted';
 
 export type PersistedIndicators = {
+  bollingerEnabled: boolean;
+  bollingerHidden: boolean;
+  bollingerPeriod: number;
+  bollingerMultiplier: number;
+  bollingerSource: MASource;
+  bollingerUpperColor: string;
+  bollingerMiddleColor: string;
+  bollingerLowerColor: string;
+  bollingerLineWidth: 1 | 2 | 3 | 4;
+
   movingAverages: LiveMAConfig[];
   /**
    * @deprecated **레거시 입력 전용** — v2 설정(`IndicatorSettings`)에는 없다.
@@ -666,6 +676,22 @@ export function mergeLiveIndicatorPrefs(
     vol: boolean, hidden: boolean,
     qt: boolean, ratio: boolean, fill: boolean, programTrade: boolean, tradeVolumePoc: boolean,
   ): PersistedIndicators => ({
+    bollingerEnabled: obj?.bollingerEnabled === true,
+    bollingerHidden: obj?.bollingerHidden === true,
+    bollingerPeriod: typeof obj?.bollingerPeriod === 'number' && Number.isFinite(obj.bollingerPeriod)
+      ? Math.max(MA_PERIOD_MIN, Math.min(MA_PERIOD_MAX, Math.floor(obj.bollingerPeriod))) : 20,
+    bollingerMultiplier: typeof obj?.bollingerMultiplier === 'number' && Number.isFinite(obj.bollingerMultiplier)
+      ? Math.max(0.1, Math.min(10, obj.bollingerMultiplier)) : 2,
+    bollingerSource: typeof obj?.bollingerSource === 'string' && VALID_SOURCES.has(obj.bollingerSource)
+      ? obj.bollingerSource as MASource : 'close',
+    bollingerUpperColor: typeof obj?.bollingerUpperColor === 'string' && HEX_COLOR.test(obj.bollingerUpperColor)
+      ? obj.bollingerUpperColor : '#3B82F6',
+    bollingerMiddleColor: typeof obj?.bollingerMiddleColor === 'string' && HEX_COLOR.test(obj.bollingerMiddleColor)
+      ? obj.bollingerMiddleColor : '#F97316',
+    bollingerLowerColor: typeof obj?.bollingerLowerColor === 'string' && HEX_COLOR.test(obj.bollingerLowerColor)
+      ? obj.bollingerLowerColor : '#3B82F6',
+    bollingerLineWidth: typeof obj?.bollingerLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.bollingerLineWidth)
+      ? obj.bollingerLineWidth as 1 | 2 | 3 | 4 : 1,
     movingAverages: mas,
     movingAverageEnabled: enabled,
     foreignNetEnabled: fNet,

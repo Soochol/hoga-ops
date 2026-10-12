@@ -404,6 +404,7 @@ const FLAG_SET_HIDDEN: Record<
   'bid-peak': (a, h) => a.setBidPeakHidden(h),
   'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
+  bollinger: (a, h) => a.setBollingerHidden(h),
   // 이 지표는 배열로 승격돼 **인스턴스의 `enabled` 가 유일 게이트**다 — 타입 눈이
   // 따로 없으므로 행의 눈은 그 인스턴스를 끄고 켠다.
   // 배열로 승격된 지표 — 눈은 **그 인스턴스만** 끄고 켠다. 타입 전체를 움직이면
@@ -888,6 +889,13 @@ function PaneLegendOverlay({
   const windowId = useWindowScopeId();
   // 가시성이 슬롯 안(`enabled`)으로 접혀 배열 하나만 구독하면 된다 — 칩 토글이
   // 새 배열을 만들므로 재렌더 입도는 그대로다.
+  const bollingerEnabled = useWindowIndicator((s) => s.bollingerEnabled);
+  const bollingerHidden = useWindowIndicator((s) => s.bollingerHidden);
+  const bollingerPeriod = useWindowIndicator((s) => s.bollingerPeriod);
+  const bollingerMultiplier = useWindowIndicator((s) => s.bollingerMultiplier);
+  const bollingerUpperColor = useWindowIndicator((s) => s.bollingerUpperColor);
+  const bollingerMiddleColor = useWindowIndicator((s) => s.bollingerMiddleColor);
+  const bollingerLowerColor = useWindowIndicator((s) => s.bollingerLowerColor);
   const movingAverages = useWindowIndicator((s) => s.movingAverages);
   const dailyMovingAverages = useWindowIndicator((s) => s.dailyMovingAverages);
   // Candle-pane flag indicators — enabled/hidden flags + swatch colors (설정 변경 즉시 반영).
@@ -1078,6 +1086,14 @@ function PaneLegendOverlay({
     indicatorLegendsVisible && isMinute && enabled && LEGEND_FLAG_IDS.has(type)
       ? readFlagLegendValues(windowId, type, instanceId, cursorTimeSec) : [];
   const indicatorFlags: LegendFlagInput[] = [
+    {
+      type: 'bollinger', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
+      label: `볼린저 밴드 (${bollingerPeriod}, ${bollingerMultiplier})`,
+      enabled: bollingerEnabled, hidden: bollingerHidden, applicable: true,
+      swatches: [bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor],
+      cells: indicatorLegendsVisible && bollingerEnabled
+        ? readFlagLegendValues(windowId, 'bollinger', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
+    },
     {
       type: 'ask-peak',
       instanceId: FLAG_MAIN_INSTANCE,
