@@ -63,6 +63,7 @@ import {
 import {
   buildLegendRows,
   readSeriesValue,
+  readSeriesValueAtTime,
   type LegendFlagId,
   type LegendFlagInput,
   type LegendMAValue,
@@ -1036,6 +1037,15 @@ function PaneLegendOverlay({
   // Daily MA lines are drawn, but their legend row is always filtered out.
   const dailyMaValues = new Map<string, number>();
   const paneCells: PaneCellInput[] = [];
+  // Peak-wall series can end on a previous day when today's walls are filtered
+  // out. Read the hovered/synchronized/latest candle exactly, without borrowing
+  // the last point of that sparse series as today's value.
+  const latestCandle = drawnCandles[drawnCandles.length - 1];
+  const peakTimeSec = (typeof paramRef.current?.time === 'number' ? paramRef.current.time : null)
+    ?? syncValueTimeSec
+    ?? (latestCandle && axis ? axis.toVirtual(latestCandle.ts_ms) / 1000 : null);
+  const peakLogicalIndex = peakTimeSec === null || !indicatorLegendsVisible || !legendPanes.has('peak-wall') ? null
+    : chart.timeScale().timeToIndex?.(peakTimeSec as Time) ?? null;
   for (const [paneId, entries] of legendPanes) {
     if (!indicatorLegendsVisible || !LEGEND_CELL_PANES.has(paneId)) continue;
     const spec = specByPaneId.get(paneId);
@@ -1047,7 +1057,9 @@ function PaneLegendOverlay({
         key: `${paneId}:${i}`,
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
         color: entry.meta.color?.(),
-        value: readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
+        value: paneId === 'peak-wall'
+          ? readSeriesValueAtTime(entry.series, peakTimeSec, peakLogicalIndex)
+          : readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
         format: entry.meta.format,
       })),
     });
