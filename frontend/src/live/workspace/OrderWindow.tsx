@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
 import { createPortal } from 'react-dom';
@@ -6,6 +6,7 @@ import { ToastCard } from '../../ui/toast/ToastCard';
 import { ToastViewport } from '../../ui/toast/ToastViewport';
 import { ModalShell } from '../../ui/ModalShell';
 import { useTextTooltip } from '../../ui/useTextTooltip';
+import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, normalizeOrderSettings,
   quantityForAmount, validOrderInput, validOrderSettings, type OrderWindowSettings, type OrderPresets } from '../../state/orderWindowSettings';
 import {
@@ -106,6 +107,32 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const [paperConfirmed, confirmPaperReset] = useState(false);
   const busyRef = useRef(false);
   const [pendingIds, setPending] = useState<Record<string, string>>({});
+  const rootRef = useRef<HTMLDivElement>(null);
+  const infoButtonRef = useRef<HTMLButtonElement>(null);
+  const [compact, setCompact] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoId = useId();
+  const closeInfo = useCallback(() => {
+    setInfoOpen(false);
+    infoButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+  const { ref: infoRef, style: infoStyle } = useAnchoredPopover<HTMLDivElement>(infoOpen, infoButtonRef, closeInfo, 260);
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    let previousWidth = 0;
+    const measure = () => {
+      const width = root.getBoundingClientRect().width;
+      if (width <= 0) return;
+      setCompact(width < 560);
+      if (width !== previousWidth) setInfoOpen(false);
+      previousWidth = width;
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
   const [dragTarget, setDragTarget] = useState<number | null>(null);
   const [dragCancel, setDragCancel] = useState(false);
   const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
@@ -325,7 +352,10 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     }
     return recent;
   }, [live.trade]);
-  return <div className={`order-window font-data ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
+  const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
+    onScreenPrices={onScreen} limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
+    vi={vi.data?.vi} height={height} />;
+  return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}
     onKeyDown={e => {
       if (e.key === 'Escape') {
@@ -348,6 +378,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       }
     }}>
     <div className="order-controls order-account-controls">
+      <div className="order-account-group">
       <select aria-label="주문 모드" value={mode} disabled={busy || !!lockedBook} onChange={e => onModeChange(e.target.value as TradingMode)}>
         <option value="paper">로컬 모의 계좌</option><option value="live">토스 실계좌</option>
       </select>
@@ -356,7 +387,13 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         onChange={e => { onAccountChange(Number(e.target.value)); closeAction(); setPending({}); setFailedRequest(null); setNotice(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
       </select> : <span className="text-fg-dim">{accounts.data?.accounts[0]?.label ?? '계좌 연결 대기'}</span>}
+      </div>
+      <div className="order-settings-group">
       <button type="button" aria-label="주문 설정" disabled={busy || !!lockedBook} onClick={() => { closeAction(); setSettingsDraft(normalizeOrderSettings(preferences)); }}>설정</button>
+      <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span>{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
+      <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
+        disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>
+      </div>
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
@@ -364,29 +401,31 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
           onFocus={e => quantityTip.show(e.currentTarget)} onBlur={quantityTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') quantityTip.hide(); }}>
-          <span className="order-meta">매입수량</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
+          <span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
         </span>
         <span className="order-field" aria-label="매입평단가" aria-describedby={averageTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
           onMouseEnter={e => averageTip.show(e.currentTarget)} onMouseLeave={averageTip.hide}
           onFocus={e => averageTip.show(e.currentTarget)} onBlur={averageTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
-          <span className="order-meta">매입평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
+          <span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
         </span>
-        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta">평가수익</span><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingProfit == null ? '—' : fmt(holdingProfit)}</span></span>
-        <span className="order-field" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
+        <span className="order-field" aria-label="보유 종목 평가 수익"><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingProfit == null ? '—' : fmt(holdingProfit)}</span></span>
       </div>
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
-        <label className="order-field"><span className="order-meta">{amountMode ? '주문금액' : '주문수량'}</span><span className="order-field-value"><input type="number" aria-label={amountMode ? '신규 주문 금액' : '신규 주문 수량'} min="1" max={amountMode ? MAX_AMOUNT_MILLIONS : MAX_ORDER_QUANTITY} step="1" value={inputValue} onChange={e => setInputValue(Number(e.target.value))} />{amountMode ? '백만원' : '주'}</span></label>
+        <label className="order-field"><span className="order-field-value"><input type="number" aria-label={amountMode ? '신규 주문 금액' : '신규 주문 수량'} min="1" max={amountMode ? MAX_AMOUNT_MILLIONS : MAX_ORDER_QUANTITY} step="1" value={inputValue} onChange={e => setInputValue(Number(e.target.value))} />{amountMode ? '백만원' : '주'}</span></label>
         <div className="order-quantity-presets">
           {presets.map((value, index) => <button type="button" key={index} aria-pressed={inputValue === value} onClick={() => setInputValue(value)}>{fmt(value)}{amountMode ? '백만' : '주'}</button>)}
         </div>
-        <span className="order-field" aria-label={amountMode ? '예상 주문 수량' : '예상 주문 금액'}>
-          <span className="order-meta">{amountMode ? '예상수량' : '예상금액'}</span><span className="order-field-value">{amountMode ? estimateQuantity == null ? '—' : `${fmt(estimateQuantity)}주` : estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
-            {previewPrice != null && <span className="order-meta">{fmt(previewPrice)}원 기준</span>}
+        <span className="order-field" aria-label={amountMode ? '예상 주문 수량' : '예상 주문 금액'} title={previewPrice != null ? `${fmt(previewPrice)}원 기준` : undefined}>
+          <span className="order-field-value">{amountMode ? estimateQuantity == null ? '—' : `${fmt(estimateQuantity)}주` : estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
           </span>
         </span>
       </div>
     </div>
+    {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="order-info-popover font-data" style={infoStyle}>
+      <div className="order-info-heading"><span>종목 정보</span><button type="button" aria-label="종목 정보 닫기" onClick={closeInfo}>닫기</button></div>
+      {renderSummary(264)}
+    </div>, document.body)}
     {quantityTip.tooltip}
     {averageTip.tooltip}
     {draggedOrder && createPortal(<div ref={dragPreview} role="status" aria-label="주문 드래그 미리보기"
@@ -432,9 +471,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       <div className={`order-ladder ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onPointerLeave={() => setPreviewPrice(null)}
         onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPreviewPrice(null); }}>
-        {prices.length > 0 && <div className="order-summary-layer"><BookSummary summary={summary} baselinePrice={baseline ?? null}
-          onScreenPrices={onScreen} limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
-          vi={vi.data?.vi} height={240} /></div>}
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : prices.map((level, index) => {
           const key = `${index < 10 ? 'ask' : 'bid'}-${level.price}-${index}`;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
@@ -442,11 +478,11 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
             onPointerEnter={() => setPreviewPrice(level.price > 0 ? level.price : null)}
             onFocusCapture={() => setPreviewPrice(level.price > 0 ? level.price : null)}>
             {orderCell('SELL', level.price, key)}
-            {index < 10 ? <div className="order-depth order-ask" style={{ '--order-depth': `${level.qty / maxQty * 100}%` } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>
+            {index < 10 ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>
               : <div className="order-info"><span className={index === 10 ? 'order-meta' : undefined}>{index === 10 ? '체결강도' : fmt(trades[index - 11]?.price)}</span><span>{index === 10 ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trades[index - 11]?.qty)}</span></div>}
             <div className={`order-price ${quote?.price === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span>{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {index < 10 ? <div className="order-summary-slot" />
-              : <div className="order-depth order-bid" style={{ '--order-depth': `${level.qty / maxQty * 100}%` } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>}
+              : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>}
             {orderCell('BUY', level.price, key)}
           </div>;
         })}

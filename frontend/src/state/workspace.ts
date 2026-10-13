@@ -670,7 +670,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // 슬랙은 우측 통계의 라벨↔값 간격을 벌려 빈 세로 띠로 나타났다. (WindowFrameCore
   // 본문은 가로 크롬이 없어 창 폭이 곧 패널 폭 — 하한 미만으로 좁히면 가로 스크롤.)
   book: { w: BOOK_WINDOW_DEFAULT_W, h: 560 },
-  order: { w: 720, h: 720 },
+  order: { w: 576, h: 720 },
   // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
   // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
   broker: { w: 280, h: 310 },

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TossOrder } from '../../api/trading';
@@ -8,6 +8,8 @@ import type { WorkspaceWindow } from '../../state/workspace';
 import { groupPriceOrders, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
 
 const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
+vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
   useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: false }),
   useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: '100', average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
@@ -104,8 +106,8 @@ describe('호가 주문', () => {
     show();
     const field = screen.getByLabelText('보유 종목 평가 수익');
     expect(field.querySelector('.order-field-value')).toHaveClass(color);
-    expect(field.textContent).toBe(`평가수익${value}`);
-    expect(within(field).getByText('평가수익')).toHaveClass('order-meta');
+    expect(field.textContent).toBe(value);
+    expect(field.querySelector('.order-meta')).toBeNull();
   });
   it('설정 취소는 프리셋을 바꾸지 않고 적용된 프리셋·단축키로 즉시 주문한다', async () => {
     const view = show();
@@ -167,7 +169,7 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,360,000원');
     const buy = screen.getByRole('button', { name: /매수 67,300원 주문 추가/ });
     fireEvent.pointerEnter(buy.closest('.order-row')!);
-    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,365,000원67,300원 기준');
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,365,000원');
     fireEvent.doubleClick(buy);
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0][1]).toMatchObject({ side: 'BUY', quantity: 50, price: 67300 });
@@ -183,19 +185,23 @@ describe('호가 주문', () => {
     mock.buyingPower = '9759'; mock.averagePrice = '44669.963'; show();
     expect(screen.getByLabelText('매수 가능 금액')).toHaveTextContent('매수 가능9,759원');
     expect(screen.queryByLabelText('매도 가능 수량')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('매입수량').textContent).toBe('매입수량100');
-    expect(screen.getByLabelText('매입평단가').textContent).toBe('매입평단가44,670');
-    expect(screen.getByLabelText('보유 종목 평가 수익').textContent).toBe('평가수익2,253,004');
+    expect(screen.getByLabelText('매입수량').textContent).toBe('100');
+    expect(screen.getByLabelText('매입평단가').textContent).toBe('44,670');
+    expect(screen.getByLabelText('보유 종목 평가 수익').textContent).toBe('2,253,004');
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매입수량')).toBeInTheDocument();
-    expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매수 가능 금액')).toBeInTheDocument();
-    const summary = within(screen.getByTestId('book-summary'));
-    expect(summary.queryByText('매수 가능')).not.toBeInTheDocument();
-    expect(summary.queryByText('매도 가능')).not.toBeInTheDocument();
-    for (const label of ['KRX종가', '상한가', '하한가', '상승VI', '하강VI', '250일']) expect(summary.getByText(label)).toBeInTheDocument();
-    expect(summary.getByText('833만')).toBeInTheDocument();
-    expect(summary.getByText('184.55%')).toBeInTheDocument();
-    expect(summary.getByText('12조 2,908억')).toBeInTheDocument();
-    expect(summary.getByText('70,000/50,000')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '주문 설정' }).nextElementSibling).toBe(screen.getByLabelText('매수 가능 금액'));
+    expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).queryByLabelText('매수 가능 금액')).not.toBeInTheDocument();
+    for (const label of ['매입수량', '매입평단가', '평가수익', '예상금액', '주문수량']) expect(screen.queryByText(label, { exact: true })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    const summary = within(screen.getByRole('dialog', { name: '종목 상세 정보' })).getByTestId('book-summary');
+    const summaryContent = within(summary);
+    expect(summaryContent.queryByText('매수 가능')).not.toBeInTheDocument();
+    expect(summaryContent.queryByText('매도 가능')).not.toBeInTheDocument();
+    for (const label of ['KRX종가', '상한가', '하한가', '상승VI', '하강VI', '250일']) expect(summaryContent.getByText(label)).toBeInTheDocument();
+    expect(summaryContent.getByText('833만')).toBeInTheDocument();
+    expect(summaryContent.getByText('184.55%')).toBeInTheDocument();
+    expect(summaryContent.getByText('12조 2,908억')).toBeInTheDocument();
+    expect(summaryContent.getByText('70,000/50,000')).toBeInTheDocument();
   });
   it('가격이나 유효 수량이 없으면 예상 금액을 계산하지 않고 잘못된 수량은 전송하지 않는다', () => {
     mock.quotePrice = null; show();
