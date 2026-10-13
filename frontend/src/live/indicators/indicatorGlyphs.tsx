@@ -66,6 +66,13 @@ const ZERO_LINE = (
  * 지표가 조용히 빈칸으로 렌더되지 않는다.
  */
 export const INDICATOR_GLYPH: Record<CategoryId, ReactNode> = {
+  supertrend: svg(
+    <>
+      {GHOST_CANDLES}
+      <path d="M1 12 H5 V9 H8 M9 4 H12 V6 H15" fill="none"
+        stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </>,
+  ),
   bollinger: svg(
     <>
       {GHOST_CANDLES}

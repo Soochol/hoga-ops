@@ -405,6 +405,7 @@ const FLAG_SET_HIDDEN: Record<
   'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
   bollinger: (a, h) => a.setBollingerHidden(h),
+  supertrend: (a, h) => a.setSupertrendHidden(h),
   // 이 지표는 배열로 승격돼 **인스턴스의 `enabled` 가 유일 게이트**다 — 타입 눈이
   // 따로 없으므로 행의 눈은 그 인스턴스를 끄고 켠다.
   // 배열로 승격된 지표 — 눈은 **그 인스턴스만** 끄고 켠다. 타입 전체를 움직이면
@@ -889,10 +890,17 @@ function PaneLegendOverlay({
   const windowId = useWindowScopeId();
   // 가시성이 슬롯 안(`enabled`)으로 접혀 배열 하나만 구독하면 된다 — 칩 토글이
   // 새 배열을 만들므로 재렌더 입도는 그대로다.
+  const supertrendEnabled = useWindowIndicator((s) => s.supertrendEnabled);
+  const supertrendHidden = useWindowIndicator((s) => s.supertrendHidden);
+  const supertrendPeriod = useWindowIndicator((s) => s.supertrendPeriod);
+  const supertrendMultiplier = useWindowIndicator((s) => s.supertrendMultiplier);
+  const supertrendUpColor = useWindowIndicator((s) => s.supertrendUpColor);
+  const supertrendDownColor = useWindowIndicator((s) => s.supertrendDownColor);
   const bollingerEnabled = useWindowIndicator((s) => s.bollingerEnabled);
   const bollingerHidden = useWindowIndicator((s) => s.bollingerHidden);
   const bollingerPeriod = useWindowIndicator((s) => s.bollingerPeriod);
   const bollingerMultiplier = useWindowIndicator((s) => s.bollingerMultiplier);
+  const bollingerSource = useWindowIndicator((s) => s.bollingerSource);
   const bollingerUpperColor = useWindowIndicator((s) => s.bollingerUpperColor);
   const bollingerMiddleColor = useWindowIndicator((s) => s.bollingerMiddleColor);
   const bollingerLowerColor = useWindowIndicator((s) => s.bollingerLowerColor);
@@ -932,6 +940,19 @@ function PaneLegendOverlay({
   // (SSE 틱당 재렌더)을 되살리지 않는다. 반환값은 상태 객체당 memo 된 안정 참조라
   // (`prefsForScope` 의 WeakMap 캐시) 렌더마다 새로 구독되지도 않는다.
   void useScopedChartPrefs();
+
+  // Value providers register in the overlay effects, after this render reads
+  // them. Refresh once on the next frame after price data or settings change
+  // so a newly added/edited indicator cannot stay empty until the mouse moves.
+  // Hoga-only ticks retain candles/axis and do not trigger another legend render;
+  // the provider registry itself stays non-reactive.
+  useEffect(() => {
+    if (!bollingerEnabled && !supertrendEnabled) return;
+    const raf = requestAnimationFrame(() => tick());
+    return () => cancelAnimationFrame(raf);
+  }, [chart, windowId, candles, axis, bollingerEnabled, bollingerPeriod, bollingerMultiplier,
+    bollingerSource, bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor,
+    supertrendEnabled, supertrendPeriod, supertrendMultiplier, supertrendUpColor, supertrendDownColor]);
 
   // Share the time grid with the tooltip; OHLC updates keep both maps stable.
   const { drawn: drawnCandles, vsecToIndex } = useMemo(
@@ -1086,6 +1107,14 @@ function PaneLegendOverlay({
     indicatorLegendsVisible && isMinute && enabled && LEGEND_FLAG_IDS.has(type)
       ? readFlagLegendValues(windowId, type, instanceId, cursorTimeSec) : [];
   const indicatorFlags: LegendFlagInput[] = [
+    {
+      type: 'supertrend', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
+      label: `슈퍼트렌드 (${supertrendPeriod}, ${supertrendMultiplier})`,
+      enabled: supertrendEnabled, hidden: supertrendHidden, applicable: true,
+      swatches: [supertrendUpColor, supertrendDownColor],
+      cells: indicatorLegendsVisible && supertrendEnabled
+        ? readFlagLegendValues(windowId, 'supertrend', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
+    },
     {
       type: 'bollinger', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
       label: `볼린저 밴드 (${bollingerPeriod}, ${bollingerMultiplier})`,
