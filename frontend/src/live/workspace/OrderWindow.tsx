@@ -21,7 +21,7 @@ import { useLiveViStatus } from '../../api/liveViStatus';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
-import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
+import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { BookSummary, TotalQtyStrip } from './BookPanel';
 import './OrderWindow.css';
@@ -145,8 +145,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const holdingQuantity = state.data && !state.isError ? Number(state.data.holding_quantity) : null;
   const buyingPower = state.data && !state.isError ? Number(state.data.buying_power) : null;
-  const holdingAmount = holdingQuantity === 0 ? 0 : holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity > 0
-    && quote?.price != null && quote.price > 0 && Number.isSafeInteger(holdingQuantity * quote.price) ? holdingQuantity * quote.price : null;
+  const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const currentOrder = action?.order ? orders.find(o => o.orderId === action.order?.orderId) ?? action.order : null;
   const actionQty = action?.quantity ?? (currentOrder ? orderRemainder(currentOrder) : 0);
   const highValue = mode === 'live' && !!action && ['create', 'modify'].includes(action.type) && action.price * actionQty >= HIGH_VALUE_WON;
@@ -353,8 +352,8 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
         <span className="order-field" aria-label="매입수량"><span className="order-meta">매입수량</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? `${fmt(holdingQuantity)}주` : '—'}</span></span>
-        <span className="order-field" aria-label="매입평단가"><span className="order-meta">매입평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? `${fmt(state.data.average_purchase_price)}원` : '—'}</span></span>
-        <span className="order-field" aria-label="보유 종목 평가 금액"><span className="order-meta">평가금액</span><span className="order-field-value">{holdingAmount == null ? '—' : `${fmt(holdingAmount)}원`}</span></span>
+        <span className="order-field" aria-label="매입평단가"><span className="order-meta">매입평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? `${fmt(Math.ceil(Number(state.data.average_purchase_price)))}원` : '—'}</span></span>
+        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta">평가수익</span><span className="order-field-value">{holdingProfit == null ? '—' : `${fmt(holdingProfit)}원`}</span></span>
         <span className="order-field" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
       </div>
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
@@ -404,7 +403,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     </div>}
     {!accounts.data?.configured && !accounts.isLoading && <p className="order-notice">토스증권 Open API의 CLIENT_ID·CLIENT_SECRET을 서버에 설정하면 계좌가 연결됩니다.</p>}
     {(accounts.error || state.error) && <p role="alert" className="order-notice text-error">{String((accounts.error ?? state.error) instanceof Error ? (accounts.error ?? state.error as Error)?.message : '계좌 조회 실패')}</p>}
-    {!fresh && <p className="order-notice">실시간 호가 갱신 대기 · 신규·정정 주문 제한 · 취소는 계좌 연결 시 가능</p>}
     {!!state.data?.unresolved_commands.length && <div className="order-editor"><span role="alert" className="text-error">결과가 불명확한 요청이 있습니다.</span>
       <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />토스 앱·WTS에서 실제 주문·체결 여부를 확인했습니다</label>
       {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}

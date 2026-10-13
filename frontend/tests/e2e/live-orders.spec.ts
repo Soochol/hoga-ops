@@ -90,8 +90,8 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(window.getByLabel('매도 가능 수량')).toHaveCount(0);
   await expect(window.getByLabel('매입수량')).toHaveText('매입수량100주');
   await expect(window.getByLabel('매입평단가')).toHaveText('매입평단가66,000원');
-  const valuation = window.getByLabel('보유 종목 평가 금액');
-  await expect(valuation).toHaveText('평가금액6,720,000원');
+  const valuation = window.getByLabel('보유 종목 평가 수익');
+  await expect(valuation).toHaveText('평가수익120,000원');
   const averageBox = (await window.getByLabel('매입평단가').boundingBox())!;
   const valuationBox = (await valuation.boundingBox())!;
   expect(valuationBox.x).toBeGreaterThan(averageBox.x + averageBox.width);
@@ -120,7 +120,7 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(sell).toBeEnabled();
   await sell.focus();
   await expect(window.getByLabel('예상 주문 금액')).toHaveText('예상금액3,365,000원67,300원 기준');
-  await expect(valuation).toHaveText('평가금액6,720,000원');
+  await expect(valuation).toHaveText('평가수익120,000원');
   await sell.click();
   await expect(window.getByRole('button', { name: '매도 67,300원 1건 상세 정정' })).toHaveText('50주');
   expect(commands[2]).toMatchObject({ side: 'SELL', quantity: 50 });

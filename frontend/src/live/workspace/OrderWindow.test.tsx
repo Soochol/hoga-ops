@@ -5,12 +5,12 @@ import type { TossOrder } from '../../api/trading';
 import { OrderWindow } from './OrderWindow';
 import { DataWindow } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
-import { groupPriceOrders, orderRemainder } from './orderRules';
+import { groupPriceOrders, holdingProfitWon, orderRemainder } from './orderRules';
 
-const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
 vi.mock('../../api/trading', () => ({
   useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: false }),
-  useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: '100', average_purchase_price: '66000', fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
+  useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: '100', average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
 vi.mock('../../api/liveSeries', () => ({ useLiveSeries: () => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + mock.priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + mock.priceOffset - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }, trade: [] }) }));
@@ -25,9 +25,17 @@ function order(id = 'a'): TossOrder {
     execution: { filledQuantity: '30', averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null } };
 }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
-beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); });
+beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); });
 
 describe('호가 주문', () => {
+  it('평가수익은 소수 평단가로 계산해 올림하고 정수 경계에서 1원 오차를 만들지 않는다', () => {
+    expect(holdingProfitWon(100, 67200, '44669.963')).toBe(2253004);
+    expect(holdingProfitWon(100, 67200, '66000.01')).toBe(119999);
+    expect(holdingProfitWon(100, 67200, '67500.125')).toBe(-30012);
+    expect(holdingProfitWon(0, null, null)).toBe(0);
+    expect(holdingProfitWon(100, null, '66000')).toBeNull();
+    expect(holdingProfitWon(100, 67200, null)).toBeNull();
+  });
   it('설정 취소는 프리셋을 바꾸지 않고 적용된 프리셋·단축키로 즉시 주문한다', async () => {
     const view = show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
@@ -101,11 +109,12 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,360,000원');
   });
   it('보유 정보와 매수 가능 금액은 상단에만 표시하고 시세 상세는 10호가 형식을 쓴다', () => {
-    mock.buyingPower = '9759'; show();
+    mock.buyingPower = '9759'; mock.averagePrice = '44669.963'; show();
     expect(screen.getByLabelText('매수 가능 금액')).toHaveTextContent('매수 가능9,759원');
     expect(screen.queryByLabelText('매도 가능 수량')).not.toBeInTheDocument();
     expect(screen.getByLabelText('매입수량')).toHaveTextContent('매입수량100주');
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('매입평단가66,000원');
+    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('매입평단가44,670원');
+    expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('평가수익2,253,004원');
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매입수량')).toBeInTheDocument();
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매수 가능 금액')).toBeInTheDocument();
     const summary = within(screen.getByTestId('book-summary'));
@@ -120,25 +129,25 @@ describe('호가 주문', () => {
   it('가격이나 유효 수량이 없으면 예상 금액을 계산하지 않고 잘못된 수량은 전송하지 않는다', () => {
     mock.quotePrice = null; show();
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('—');
-    expect(screen.getByLabelText('보유 종목 평가 금액')).toHaveTextContent('—');
+    expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('—');
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '1.5' } });
     fireEvent.click(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     expect(mock.command).not.toHaveBeenCalled();
     expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('정수');
   });
-  it('보유 평가 금액은 전체 보유 수량과 현재가로 계산하고 선택 호가·주문 수량에는 영향받지 않는다', () => {
+  it('보유 평가 수익은 원본 평단가·전체 보유 수량·현재가로 계산하고 선택 호가·주문 수량에는 영향받지 않는다', () => {
     mock.buyingPower = '9759'; show();
-    const valuation = screen.getByLabelText('보유 종목 평가 금액');
+    const valuation = screen.getByLabelText('보유 종목 평가 수익');
     expect(screen.getByLabelText('매입수량')).toHaveTextContent('100주');
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('66,000원');
-    expect(valuation).toHaveTextContent('6,720,000원'); // 전체 보유 100주, 매도 가능 80주
+    expect(valuation).toHaveTextContent('120,000원'); // 전체 보유 100주, 매도 가능 80주
     expect(screen.getByLabelText('매입평단가').nextElementSibling).toBe(valuation);
     fireEvent.pointerEnter(screen.getByRole('button', { name: /매수 67,300원 주문 추가/ }).closest('.order-row')!);
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '50' } });
-    expect(valuation).toHaveTextContent('6,720,000원');
+    expect(valuation).toHaveTextContent('120,000원');
     mock.quotePrice = 67400;
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '20' } });
-    expect(valuation).toHaveTextContent('6,740,000원');
+    expect(valuation).toHaveTextContent('140,000원');
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('왼쪽 매도·오른쪽 매수 영역 클릭은 확인창 없이 즉시 주문한다', async () => {
@@ -166,6 +175,7 @@ describe('호가 주문', () => {
   });
   it('오래된 호가·무자격 신규 주문은 막되 개별 취소는 즉시 처리한다', async () => {
     mock.snapshotAt = mock.now - 60_000; mock.orders = [order()]; const view = show();
+    expect(screen.queryByText('실시간 호가 갱신 대기 · 신규·정정 주문 제한 · 취소는 계좌 연결 시 가능')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '매수 67,200원 1건 상세 정정' }));
     fireEvent.click(screen.getByRole('button', { name: '이 주문 취소' }));
