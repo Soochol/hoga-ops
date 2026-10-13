@@ -6,21 +6,36 @@ export const editableOrder = (order: TossOrder) => ['PENDING', 'PARTIAL_FILLED']
 export const orderRemainder = (order: TossOrder) => Math.max(0, Number(order.quantity) - Number(order.execution.filledQuantity));
 export const orderSideLabel = (side: string) => side === 'BUY' ? '매수' : '매도';
 
-/** Whole-won ceiling of unrealized P/L, retaining the API's exact decimal cost. */
-export function holdingProfitWon(quantity: number | null, price: number | null, averagePrice: string | null | undefined): number | null {
-  if (quantity === 0) return 0;
+function exactHoldingCost(quantity: number | null, averagePrice: string | null | undefined) {
   if (quantity == null || !Number.isSafeInteger(quantity) || quantity < 1
-    || price == null || !Number.isSafeInteger(price) || price <= 0
     || averagePrice == null || averagePrice.length > 128) return null;
   const decimal = /^(\d+)(?:\.(\d+))?$/.exec(averagePrice);
   if (!decimal) return null;
   const fraction = decimal[2] ?? '';
   const scale = 10n ** BigInt(fraction.length);
   const cost = BigInt(decimal[1]) * scale + BigInt(fraction || '0');
-  const profit = (BigInt(price) * scale - cost) * BigInt(quantity);
+  return { amount: cost * BigInt(quantity), scale, quantity: BigInt(quantity) };
+}
+
+function ceilWon(amount: bigint, scale: bigint): number | null {
   // BigInt division truncates toward zero; only positive remainders need +1.
-  const rounded = Number(profit / scale + (profit % scale > 0n ? 1n : 0n));
+  const rounded = Number(amount / scale + (amount % scale > 0n ? 1n : 0n));
   return Number.isSafeInteger(rounded) ? rounded : null;
+}
+
+/** Original average cost × current holding quantity, rounded up to whole won. */
+export function holdingPurchaseAmountWon(quantity: number | null, averagePrice: string | null | undefined): number | null {
+  if (quantity === 0) return 0;
+  const cost = exactHoldingCost(quantity, averagePrice);
+  return cost ? ceilWon(cost.amount, cost.scale) : null;
+}
+
+/** Whole-won ceiling of unrealized P/L, retaining the API's exact decimal cost. */
+export function holdingProfitWon(quantity: number | null, price: number | null, averagePrice: string | null | undefined): number | null {
+  if (quantity === 0) return 0;
+  if (price == null || !Number.isSafeInteger(price) || price <= 0) return null;
+  const cost = exactHoldingCost(quantity, averagePrice);
+  return cost ? ceilWon(BigInt(price) * cost.scale * cost.quantity - cost.amount, cost.scale) : null;
 }
 
 export const orderStatusLabel = (status: string) => ({

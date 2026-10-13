@@ -63,6 +63,38 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
+test('매입수량·평단가에 500ms 호버하면 매수금액을 표시하고 이탈·스크롤로 닫는다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  const quantity = window.getByLabel('매입수량');
+  const average = window.getByLabel('매입평단가');
+  const tooltip = page.getByRole('tooltip');
+  await quantity.hover();
+  await page.clock.runFor(499);
+  await expect(tooltip).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(1);
+  await expect(tooltip).toHaveCount(0);
+  await quantity.hover();
+  await page.clock.runFor(500);
+  await expect(tooltip).toHaveText('매수금액 6,600,000원');
+  await expect(quantity).toHaveAttribute('aria-describedby', await tooltip.getAttribute('id') as string);
+  await page.screenshot({ path: testInfo.outputPath('holding-purchase-tooltip.png') });
+  await average.hover();
+  await expect(tooltip).toHaveCount(0);
+  await page.clock.runFor(500);
+  await expect(tooltip).toHaveText('매수금액 6,600,000원');
+  await average.press('Escape');
+  await expect(tooltip).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  await quantity.hover();
+  await window.evaluate(el => el.dispatchEvent(new Event('scroll')));
+  await page.clock.runFor(500);
+  await expect(tooltip).toHaveCount(0);
+  expect(commands).toHaveLength(0);
+});
+
 test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신규 확인창 없음', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const add = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
@@ -94,10 +126,10 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(window.getByRole('button', { name: '매도 25%' })).toHaveCount(0);
   await expect(window.getByLabel('매수 가능 금액')).toHaveText('매수 가능20,000,000원');
   await expect(window.getByLabel('매도 가능 수량')).toHaveCount(0);
-  await expect(window.getByLabel('매입수량')).toHaveText('매입수량100주');
-  await expect(window.getByLabel('매입평단가')).toHaveText('매입평단가66,000원');
+  await expect(window.getByLabel('매입수량')).toHaveText('매입수량100');
+  await expect(window.getByLabel('매입평단가')).toHaveText('매입평단가66,000');
   const valuation = window.getByLabel('보유 종목 평가 수익');
-  await expect(valuation).toHaveText('평가수익120,000원');
+  await expect(valuation).toHaveText('평가수익120,000');
   // 숫자만 상승 색을 쓰고 라벨은 기존 메타 색을 유지한다.
   const profitColor = await window.evaluate(el => getComputedStyle(el).getPropertyValue('--price-up').trim());
   const rgb = profitColor.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i)!;
@@ -131,7 +163,7 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(sell).toBeEnabled();
   await sell.focus();
   await expect(window.getByLabel('예상 주문 금액')).toHaveText('예상금액3,365,000원67,300원 기준');
-  await expect(valuation).toHaveText('평가수익120,000원');
+  await expect(valuation).toHaveText('평가수익120,000');
   await sell.click();
   expect(commands).toHaveLength(2);
   await expect(window.locator('[data-drag-order]')).toHaveCount(0);
