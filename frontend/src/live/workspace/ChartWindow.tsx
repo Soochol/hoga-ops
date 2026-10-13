@@ -510,8 +510,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     ? `${savedIdentity}:${minuteJumpTarget.viewSeg}`
     : savedIdentity;
 
-  // 헤더가 좁아지면 액션 라벨을 접는다(#762) — 관측 대상은 컨테이너 폭이라
-  // 접힘이 관측값을 되바꾸지 않는다(피드백 루프 없음).
+  // 액션은 항상 아이콘으로 표시하고, 좁은 헤더에서는 봉 선택만 접는다.
+  // 관측 대상은 컨테이너 폭이라 접힘이 관측값을 되바꾸지 않는다.
   // 훅이 **callback ref** 를 준다: 아래 `if (!instrument)` 빈 상태를 지나 종목이
   // 붙는 순간 헤더가 처음 마운트되는데, ref 객체로는 그 등장을 관측자에게 알릴 수
   // 없었다(그 훅의 주석 참조 — 리사이즈가 통째로 죽던 원인).
@@ -519,7 +519,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 발행(캘린더 창)과 소비(분봉 창)가 한 창에 동시에 있을 수 없다 — 봉이 하나라
   // 헤더에도 둘 중 하나만 뜬다.
   const canJump = canPublishTimeframeJump(view.timeframe);
-  // 모든 액션은 도구 행에 두고, 좁은 창에서는 라벨을 접고 줄바꿈한다.
+  // 모든 액션은 도구 행에 두고, 좁은 창에서는 줄바꿈한다.
   const [headerFold, headerRef] = useChartHeaderFold(
     LIVE_FOCUS_HEADER_FOLD,
   );
@@ -532,7 +532,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 차트 좌표와 캔들 배열은 `LiveChartRoot` 안에만 있다 — 헤더가 직접 계산할 수
   // 없어 등록으로 받는다(`captureViewport` 와 같은 패턴).
   const jumpSourceRef = useRef<() => JumpRange | null>(() => null);
-  /** 목적지 날짜(YYYYMMDD) — 차트가 밀어 준다. 버튼이 호버 전에도 라벨에 쓴다(#1506 조사 A1). */
+  /** 목적지 날짜(YYYYMMDD) — 차트가 밀어 주고 분봉 이동 버튼의 툴팁에 표시한다. */
   const [jumpDestination, setJumpDestination] = useState<string | null>(null);
   const hoverLinked = win.chart?.hoverLinked ?? true;
   const indicatorLegendsVisible = win.chart?.indicatorLegendsVisible ?? true;
@@ -808,14 +808,14 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       <div
         ref={headerRef}
         data-testid="chart-window-header"
-        data-compact={headerFold.compactActions ? '' : undefined}
+        data-compact=""
         data-compact-timeframe={headerFold.compactTimeframe ? '' : undefined}
         className="live-chart-toolbar flex flex-wrap shrink-0 items-center overflow-hidden bg-bg-card"
       >
         {/* 종목 식별·현재가·경고는 창 타이틀바(TitleBarSymbolRow)로 이관됐다.
             이 헤더는 봉·그리기·보조지표·레전드·저장·수집을 소유한다. */}
-        {/* 좁아지면 액션 라벨을 접고, 더 좁아지면 일·주·월을 분봉
-            드롭다운에 합친다. 모든 기능은 도구 행에서 직접 접근한다.
+        {/* 액션은 항상 아이콘으로 표시하고 이름·상태·목적지는 title 툴팁으로 안내한다.
+            좁아지면 일·주·월을 분봉 드롭다운에 합친다. 모든 기능은 도구 행에서 직접 접근한다.
             최소 폭에서도 부족하면 버튼 묶음을 줄바꿈한다. */}
         <TimeframeControl
           timeframe={view.timeframe}
@@ -878,35 +878,36 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         )}
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">
           <span aria-hidden className="live-chart-toolbar-divider" />
-          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={!headerFold.compactActions} />
-          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={!headerFold.compactActions} />
+          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={false} />
+          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={false} />
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
-            showLabel={!headerFold.compactActions} />}
-          <RegularSessionAction win={win} disabled={!isMinuteTimeframe(view.timeframe)} showLabel={!headerFold.compactActions} />
+            showLabel={false} />}
+          <RegularSessionAction win={win} disabled={!isMinuteTimeframe(view.timeframe)} showLabel={false} />
           <IconToolbarButton
             aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
-            title="시가·고가·저가·종가는 항상 표시"
+            title={`${indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'} — 시가·고가·저가·종가는 항상 표시`}
             aria-pressed={indicatorLegendsVisible}
+            className="aria-pressed:text-accent"
             onClick={() => useWorkspaceStore.getState().setChartIndicatorLegendsVisible(win.id, !indicatorLegendsVisible)}
             icon={<EyeGlyph hidden={!indicatorLegendsVisible} />}
-          >{!headerFold.compactActions && '레전드'}</IconToolbarButton>
+          />
           {isMinuteTimeframe(view.timeframe) && (
             <IconToolbarButton aria-label="호버 연동" aria-pressed={hoverLinked}
-              title="연결된 데이터 창이 분봉 커서 시점을 따라갑니다"
+              title={`커서 연동 ${hoverLinked ? '끄기' : '켜기'} — 연결된 데이터 창이 분봉 커서 시점을 따라갑니다`}
               onClick={() => useWorkspaceStore.getState().setChartHoverLinked(win.id, !hoverLinked)}
               className="aria-pressed:text-accent"
               icon={<span aria-hidden>↔</span>}
-            >{!headerFold.compactActions && '커서 연동'}</IconToolbarButton>
+            />
           )}
           <HogaplaySourceButton enabled={hogaplaySourceEnabled} disabledReason={hogaplayDisabledReason}
-            onToggle={toggleHogaplaySource} compact={headerFold.compactActions} showLabel={!headerFold.compactActions} />
-          {onSearchPattern != null && <PatternAreaButton showLabel={!headerFold.compactActions} />}
+            onToggle={toggleHogaplaySource} compact showLabel={false} />
+          {onSearchPattern != null && <PatternAreaButton showLabel={false} />}
           <WatchlistHeartActionButton key={heartCode} code={heartCode} name={symbol?.name ?? null}
-            isMember={heartCode != null && isMember(heartCode)} compact={headerFold.compactActions} showLabel={!headerFold.compactActions} />
-          <LiveStudyViewSaveButton source={studySaveSource} showLabel={!headerFold.compactActions} />
+            isMember={heartCode != null && isMember(heartCode)} compact showLabel={false} />
+          <LiveStudyViewSaveButton source={studySaveSource} showLabel={false} />
           <CollectButton code={symbol?.kind === 'index' ? null : symbol?.code ?? null}
-            name={symbol?.name ?? null} showLabel={!headerFold.compactActions} getVisibleRange={getCollectVisibleRange} />
+            name={symbol?.name ?? null} showLabel={false} getVisibleRange={getCollectVisibleRange} />
         </div>
       </div>
       <div className="min-h-0 flex-1">

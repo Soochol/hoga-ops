@@ -50,8 +50,7 @@ test('chart legends toggle independently while OHLC stays visible, including nar
     }, timeframe);
     for (const width of [900, 400, 160]) {
       await headers.nth(0).evaluate((el, value) => { el.style.width = `${value}px`; }, width);
-      if (width < 500) await expect(headers.nth(0)).toHaveAttribute('data-compact', '');
-      else await expect(headers.nth(0)).not.toHaveAttribute('data-compact');
+      await expect(headers.nth(0)).toHaveAttribute('data-compact', '');
       if (width < 200) await expect(headers.nth(0)).toHaveAttribute('data-compact-timeframe', '');
       else await expect(headers.nth(0)).not.toHaveAttribute('data-compact-timeframe');
       await expect.poll(() => headers.nth(0).evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
