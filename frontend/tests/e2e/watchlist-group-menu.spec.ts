@@ -59,7 +59,7 @@ async function setup(page: import('@playwright/test').Page) {
     hoverHeader: async () => {
       await headerLabelButton.hover();
     },
-    dots: group.getByRole('button', { name: '스윙 그룹 메뉴' }),
+    dots: group.getByTestId('watchlist-group-header'),
     sortButton: group.getByRole('button', { name: '스윙 정렬' }),
     menuByLabel: (label: string) => page.getByRole('menu', { name: label }),
   };
@@ -75,9 +75,10 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
     // 밀도는 유지하되 발견성을 높인다". opacity 0→1 을 기대하면 항상 1 이라 실패한다.
     // hover 는 남겨 둔다(실 마우스 경로를 계속 지나가게).
     await expect(dots).toBeVisible();
+    await expect(dots.getByRole('button', { name: /그룹 메뉴|그룹 이동/ })).toHaveCount(0);
     await hoverHeader();
 
-    await dots.click();
+    await dots.click({ button: 'right' });
     await page.getByRole('menuitem', { name: '그룹 이름 변경' }).click();
     const input = page.getByPlaceholder('그룹 이름 입력');
     await expect(input).toHaveValue('스윙');                       // 기존 이름 prefill
@@ -106,7 +107,8 @@ test.describe('Watchlist Panel group ⋯ menu', () => {
 
     // 메뉴 열고 Escape → 메뉴만 닫힌다
     await hoverHeader();
-    await dots.click();
+    await dots.focus();
+    await page.keyboard.press('Shift+F10');
     await expect(menuByLabel('스윙')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(menuByLabel('스윙')).toHaveCount(0);

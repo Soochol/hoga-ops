@@ -115,10 +115,10 @@ describe('WatchlistDrawer — 중복 종목을 리스트에서 가리킨다', ()
     // 접힌 그룹은 행을 렌더하지 않는다 — 펼치지 않으면 하이라이트가 원리적으로 안 보인다.
     window.localStorage.setItem('watchlist.collapsed', JSON.stringify({ keys: ['f_0000000a'] }));
     renderPanel();
-    const menuButton = await screen.findByLabelText('스윙 그룹 메뉴');
+    const menuButton = await screen.findByRole('group', { name: '스윙 그룹' });
     expect(screen.queryByTestId('watchlist-row-005930')).toBeNull();
 
-    fireEvent.click(menuButton);
+    fireEvent.contextMenu(menuButton);
     fireEvent.click(await screen.findByText('종목 추가'));
     fireEvent.click(await screen.findByText('pick'));
 

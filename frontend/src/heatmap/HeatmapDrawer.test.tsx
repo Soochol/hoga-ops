@@ -150,12 +150,12 @@ describe('HeatmapDrawer', () => {
   it('row ⋯ menu has only 제거 — no 그룹으로 이동 (드래그로 대체)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
-    fireEvent.click(screen.getByRole('button', { name: '에코프로 행 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^에코프로 / }));
     // '히트맵에서 제거'만 있고 '그룹으로 이동' 섹션(heatmap-menu-move-*)은 없다.
     fireEvent.click(screen.getByTestId('heatmap-menu-remove'));
     await waitFor(() => expect(api.removeFromHeatmapFolder).toHaveBeenCalledWith('000001', 'f1'));
     // 이동 항목 부재 확인 (다른 행 메뉴를 열어도 move 버튼 없음).
-    fireEvent.click(screen.getByRole('button', { name: 'LG엔솔 행 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^LG엔솔 / }));
     expect(screen.queryByTestId('heatmap-menu-move-f2')).toBeNull();
   });
 
@@ -174,7 +174,7 @@ describe('HeatmapDrawer', () => {
     await screen.findByRole('button', { name: '반도체 1' });
 
     // 이름 변경
-    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 이름 변경/ }));
     const dialog = screen.getByRole('dialog', { name: '그룹 이름 변경' });
     fireEvent.change(within(dialog).getByPlaceholderText('그룹 이름 입력'), { target: { value: '반도체2' } });
@@ -182,7 +182,7 @@ describe('HeatmapDrawer', () => {
     await waitFor(() => expect(api.renameHeatmapFolder).toHaveBeenCalledWith('f2', '반도체2'));
 
     // 위로 이동 → 전체 ordered ids (f2 를 앞으로)
-    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /위로 이동/ }));
     await waitFor(() =>
       expect(api.reorderHeatmapFolders).toHaveBeenCalledWith(['f2', 'f1', 'f3']));
@@ -195,7 +195,7 @@ describe('HeatmapDrawer', () => {
     await screen.findByRole('button', { name: '반도체 1' });
 
     // 취소 → 삭제 없음
-    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
     const dialog = await screen.findByRole('dialog', { name: '삭제' });
     expect(dialog).toHaveTextContent('종목 1개');
@@ -204,7 +204,7 @@ describe('HeatmapDrawer', () => {
     expect(api.deleteHeatmapFolder).not.toHaveBeenCalled();
 
     // 확인 → 삭제
-    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
     const confirmDialog = await screen.findByRole('dialog', { name: '삭제' });
     fireEvent.click(within(confirmDialog).getByRole('button', { name: '삭제' }));
@@ -229,7 +229,7 @@ describe('HeatmapDrawer', () => {
     fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '에코' } });
     await waitFor(() =>
       expect(screen.getByTestId('heatmap-drawer-row-000001')).toHaveAttribute('data-matched'));
-    fireEvent.click(screen.getByRole('button', { name: '2차전지 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '2차전지 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
     // 확인 문구는 data.entries(SSOT)에서 센 실제 삭제될 2개를 알린다.
     const dialog = await screen.findByRole('dialog', { name: '삭제' });
@@ -240,7 +240,7 @@ describe('HeatmapDrawer', () => {
   it('빈 그룹 삭제는 확인 없이 즉시', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '빈그룹 0' });
-    fireEvent.click(screen.getByRole('button', { name: '빈그룹 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '빈그룹 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /그룹 삭제/ }));
     await waitFor(() => expect(api.deleteHeatmapFolder).toHaveBeenCalledWith('f3'));
     expect(screen.queryByRole('dialog', { name: '삭제' })).toBeNull();
@@ -280,7 +280,7 @@ describe('HeatmapDrawer', () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
     // 2차전지(f1) 그룹 ⋯ → "종목 추가" (헤더 ＋종목 버튼은 이제 없음)
-    fireEvent.click(screen.getByRole('button', { name: '2차전지 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '2차전지 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /종목 추가/ }));
     // 메뉴는 닫히고 검색 팝오버(dialog) 가 뜬다
     const dialog = screen.getByRole('dialog', { name: '종목 추가' });
@@ -437,7 +437,7 @@ describe('HeatmapDrawer', () => {
     useHeatmapPrefsStore.setState({ groupSort: 'desc' });
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '반도체 1' });
-    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
     expect(screen.getByRole('menuitem', { name: /위로 이동/ })).toBeDisabled();
     expect(screen.getByRole('menuitem', { name: /아래로 이동/ })).toBeDisabled();
   });

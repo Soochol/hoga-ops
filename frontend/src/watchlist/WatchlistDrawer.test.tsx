@@ -47,7 +47,7 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument();
     expect(screen.queryByTestId('watchlist-row-000660')).toBeNull();
     expect(screen.getByText('검색 결과 1개 · 1그룹')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '삼성전자 이동' })).toBeDisabled();
+    expect(screen.getByTestId('watchlist-row-005930')).not.toHaveAttribute('data-draggable');
     expect(scroll.scrollTop).toBe(0);
     fireEvent.change(input, { target: { value: '스윙' } });
     expect(screen.getByTestId('watchlist-row-005930')).toBeInTheDocument();
@@ -491,7 +491,7 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '스윙 그룹' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 이름 변경/ }));
     const input = await screen.findByPlaceholderText('그룹 이름 입력');
     expect((input as HTMLInputElement).value).toBe('스윙');   // 현재 이름이 미리 채워진다
@@ -508,7 +508,7 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '스윙 그룹' }));
     const deleteItem = await screen.findByRole('menuitem', { name: /그룹 삭제/ });
     // 파괴적 액션 표기: --error 텍스트 + 위쪽 separator(모터 가드).
     expect(deleteItem.className).toContain('text-error');
@@ -530,7 +530,7 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '스윙 그룹' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /그룹 삭제/ }));
     const dialog = await screen.findByRole('dialog', { name: '삭제' });
     fireEvent.click(within(dialog).getByRole('button', { name: '취소' }));
@@ -543,7 +543,7 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '스윙 그룹' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: /종목 추가/ }));
     // 메뉴와 별개 portal 레이어의 종목 검색 팝오버가 열린다.
     expect(await screen.findByTestId('watchlist-group-add-popover')).toBeInTheDocument();
@@ -588,7 +588,7 @@ describe('WatchlistDrawer', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '스윙 그룹' }));
     // 첫 그룹: 위로 이동은 disabled, 아래로 이동은 동작
     expect(await screen.findByRole('menuitem', { name: /위로 이동/ })).toBeDisabled();
     fireEvent.click(screen.getByRole('menuitem', { name: /아래로 이동/ }));
@@ -671,7 +671,7 @@ describe('WatchlistDrawer', () => {
     expect(row005930.querySelector('[data-testid="collection-dot-realtime"]')).toBeNull();
     expect(row005930.getAttribute('aria-label')).toContain('실시간 수집 중');
     // 대신 발견 가능한 행 메뉴 버튼이 슬롯을 차지.
-    expect(row005930.querySelector('[aria-label="삼성전자 행 메뉴"]')).toBeInTheDocument();
+    expect(row005930.querySelector('[aria-label="삼성전자 행 메뉴"]')).toBeNull();
   });
 
   it('live_set 밖 + watchlist에 있고 안 보는 중이면 waiting_eod 점만 표시한다', async () => {

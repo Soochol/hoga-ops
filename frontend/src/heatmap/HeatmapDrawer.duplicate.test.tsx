@@ -84,7 +84,7 @@ describe('HeatmapDrawer — 추가 팝오버의 중복 안내', () => {
   it('⋯ 메뉴 추가에서 중복이면 알리고, 그 그룹의 행을 가리키고, 보내지 않는다', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '반도체 2' });
-    fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /종목 추가/ }));
     fireEvent.click(screen.getByTestId('pick'));
 
@@ -136,7 +136,7 @@ describe('HeatmapDrawer — 추가 팝오버의 중복 안내', () => {
   it('없는 그룹이면 평소대로 추가한다', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '2차전지 1' });
-    fireEvent.click(screen.getByRole('button', { name: '2차전지 그룹 메뉴' }));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '2차전지 그룹' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /종목 추가/ }));
     fireEvent.click(screen.getByTestId('pick'));
 

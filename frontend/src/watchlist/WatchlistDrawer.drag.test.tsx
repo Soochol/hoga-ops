@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, within, waitFor, cleanup, fireEvent, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
@@ -109,7 +109,9 @@ function drop(event: { active: { id: string; data: { current: { type: string } }
 }
 
 describe('WatchlistDrawer drag wiring', () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
+    vi.stubGlobal('PointerEvent', MouseEvent);
     cleanup();
     window.localStorage.clear();
     h.onDragStart = null;
@@ -126,36 +128,39 @@ describe('WatchlistDrawer drag wiring', () => {
     vi.spyOn(watchlistApi, 'transactWatchlistItems').mockResolvedValue();
   });
 
-  it('starts entry drag only from its dedicated handle', async () => {
+  it('starts entry drag from the row while selection controls remain independent', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
-    await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-
-    const row = screen.getByTestId('watchlist-row-005930');
-    const handle = within(row).getByRole('button', { name: '삼성전자 이동' });
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handle);
-    fireEvent.pointerDown(row);
-    expect(h.onPointerDown).not.toHaveBeenCalled();
-    fireEvent.pointerDown(handle);
+    const row = await screen.findByTestId('watchlist-row-005930');
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(row);
+    expect(within(row).queryByRole('button', { name: '삼성전자 이동' })).toBeNull();
+    fireEvent.pointerDown(within(row).getByText('삼성전자'), { button: 0 });
     expect(h.onPointerDown).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(row, { button: 2 });
+    expect(h.onPointerDown).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '다중 선택' }));
+    h.onPointerDown.mockClear();
+    fireEvent.pointerDown(within(row).getByRole('checkbox'), { button: 0 });
+    expect(h.onPointerDown).not.toHaveBeenCalled();
   });
 
-  it('separates every group handle from header controls', async () => {
+  it('starts group drag from the header and name, excluding fold and sort buttons', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
-    await waitFor(() => expect(screen.getByText('장기')).toBeInTheDocument());
-
-    // 그룹 헤더 자체가 드래그 활성 영역(data-draggable). 실폴더 2개.
+    await screen.findByText('장기');
     const headers = screen.getAllByTestId('watchlist-group-header').filter((el) => el.hasAttribute('data-draggable'));
     expect(headers).toHaveLength(2);
-
-    fireEvent.pointerDown(headers[0]);
-    expect(h.onPointerDown).not.toHaveBeenCalled();
-    const handles = [screen.getByRole('button', { name: '스윙 그룹 이동' }), screen.getByRole('button', { name: '장기 그룹 이동' })];
-    handles.forEach((handle) => fireEvent.pointerDown(handle));
+    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(headers[0]);
+    fireEvent.pointerDown(headers[0], { button: 0 });
+    fireEvent.pointerDown(headers[1].querySelector('[data-panel-drag-label]')!, { button: 0 });
     expect(h.onPointerDown).toHaveBeenCalledTimes(2);
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[0]);
-    expect(h.setActivatorNodeRef).toHaveBeenCalledWith(handles[1]);
+    h.onPointerDown.mockClear();
+    for (const control of headers[0].querySelectorAll('button:not([data-panel-drag-label])')) {
+      fireEvent.pointerDown(control, { button: 0 });
+    }
+    expect(h.onPointerDown).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: '스윙 그룹 이동' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '스윙 그룹 메뉴' })).toBeNull();
   });
 
   it('entry-drag onDragEnd → reorderItems(folderId, orderedItems)', async () => {

@@ -199,7 +199,7 @@ describe('WatchlistDrawer — 메모(빈칸) 행', () => {
     });
     renderPanel();
     await screen.findByTestId('watchlist-row-005930');
-    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '스윙 그룹' }));
     fireEvent.click(screen.getByText('빈칸 추가'));
     await waitFor(() => expect(add).toHaveBeenCalledWith('f_0000000a', '', undefined));
   });
@@ -226,7 +226,7 @@ describe('WatchlistDrawer — 메모(빈칸) 행', () => {
     // 결과도 안 보인다 → 항목 자체를 띄우지 않는다.
     expect(screen.queryByText('위에 빈칸 삽입')).not.toBeInTheDocument();
     // 그룹 ⋯ 의 "빈칸 추가"(맨 아래)는 위치 모호성이 없어 그대로 남는다
-    fireEvent.click(screen.getByLabelText('스윙 그룹 메뉴'));
+    fireEvent.contextMenu(screen.getByRole('group', { name: '스윙 그룹' }));
     expect(screen.getByText('빈칸 추가')).toBeInTheDocument();
   });
 

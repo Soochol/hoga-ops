@@ -1,5 +1,6 @@
 import { RailSelectionControl } from '../rightrail/RailSelectionControl';
-import { MoreIcon, GripIcon } from '../ui/RailActionIcons';
+import { PanelContextMenu } from '../ui/PanelContextMenu';
+import { openPanelContextMenuFromKeyboard, panelDragListeners } from '../ui/panelRowInteractions';
 import { RailDestination } from '../rightrail/RailDestination';
 import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import {
@@ -38,7 +39,6 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useOptimisticDuplicateGate } from '../util/useOptimisticDuplicateGate';
 import { Banner } from '../ui/Banner';
 import { DUPLICATE_FLASH_MS } from '../watchlist/duplicateFlash';
-import { useDismissablePopover } from '../util/useDismissablePopover';
 import { HeatmapRowMenu } from './HeatmapRowMenu';
 import { useAddToFolder } from './useAddToFolder';
 import { SortCycleButton } from './SortCycleButton';
@@ -78,22 +78,12 @@ const ArrowUpIcon = () => <MenuGlyph><path d="M12 19V5" /><path d="M6 11l6-6 6 6
 const ArrowDownIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M6 13l6 6 6-6" /></MenuGlyph>;
 const PlusIcon = () => <MenuGlyph><path d="M12 5v14" /><path d="M5 12h14" /></MenuGlyph>;
 
-/** 우측 정렬 앵커드 메뉴 셸 — WatchlistDrawer.AnchoredMenu 사본(독립 표면). */
-function AnchoredMenu({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div role="menu" aria-label={label}
-      className="absolute right-0 z-30 mt-1 bg-bg-card border border-border rounded shadow-lg py-1 min-w-[150px]">
-      <div className="px-3 py-1 text-xs text-fg-dim">{label}</div>
-      {children}
-    </div>
-  );
-}
-
-/** 그룹 헤더에 부착할 드래그 핸들 — listeners만(포인터 전용; 관심종목과 동일 계약). */
+/** 그룹 헤더 전체에 부착할 드래그 동작(포인터 전용; 관심종목과 동일 계약). */
 type GroupDragHandle = {
   listeners: DraggableSyntheticListeners;
   attributes: DraggableAttributes;
   setActivatorNodeRef: (node: HTMLElement | null) => void;
+  isDragging: boolean;
 };
 
 /** 폴더(그룹)의 sortable 단위 = 그룹 블록 전체(헤더 + 종목들). setNodeRef/transform 은
@@ -112,7 +102,7 @@ function SortableGroup({ folderId, busy, children }: {
         transform: CSS.Transform.toString(transform), transition,
         ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 1 } : {}),
       }}>
-      {children({ listeners, attributes, setActivatorNodeRef })}
+      {children({ listeners, attributes, setActivatorNodeRef, isDragging })}
     </div>
   );
 }
@@ -169,7 +159,7 @@ function SortableEntryRow({ code, name, folderId, busy, children }: {
 const typeAwareCollision = createPanelCollision('[data-testid="heatmap-drawer-scroll"]');
 
 /**
- * 그룹 헤더 행 — ⠿ 드래그 핸들(수동 정렬 시) + chevron 접기 + 라벨/개수 + 평균 등락률 + ⋯ 메뉴
+ * 그룹 헤더 행 — 헤더 전체 드래그 + chevron 접기 + 라벨/개수 + 평균 등락률 + 우클릭 메뉴
  * (종목 추가/이름 변경/순서/삭제). WatchlistDrawer.GroupHeader
  * 미러(폴더별 행 정렬 토글은 드로어 툴바로 승격돼 헤더엔 없음).
  */
@@ -193,28 +183,37 @@ function GroupHeader(props: {
   const { setNodeRef: setHeaderRef } = useDroppable({
     id: `header:${props.folderId}`, data: { type: 'entry-target', folderId: props.folderId, header: true },
   });
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(null);
+  const menuOpen = menuPoint !== null;
+  const closeMenu = useCallback(() => setMenuPoint(null), []);
   const [addOpen, setAddOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(menuOpen, menuRef, () => setMenuOpen(false));
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
   return (
-    <div ref={setHeaderRef} data-testid="heatmap-group-header"
-      data-draggable={props.dragHandle ? '' : undefined}
-      className={`group sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover`}>
-      {props.dragHandle && <button type="button" aria-label={`${props.label} 그룹 이동`}
-        ref={props.dragHandle?.setActivatorNodeRef} {...(props.dragHandle?.listeners ?? {})} disabled={props.busy}
-        onClick={(e) => e.stopPropagation()}
-        className="grid h-5 w-4 shrink-0 place-items-center cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-40"><GripIcon /></button>}
+    <div ref={(node) => { menuRef.current = node; setHeaderRef(node); props.dragHandle?.setActivatorNodeRef(node); }} data-testid="heatmap-group-header"
+      data-draggable={props.dragHandle && !props.busy ? '' : undefined}
+      role="group" tabIndex={props.onRename ? 0 : undefined}
+      aria-label={`${props.label} 그룹`} aria-haspopup={props.onRename ? 'menu' : undefined}
+      aria-expanded={props.onRename ? menuOpen : undefined}
+      aria-keyshortcuts={props.onRename ? 'Shift+F10 ContextMenu' : undefined}
+      onContextMenu={(event) => {
+        if (!props.onRename || props.busy || !event.currentTarget.contains(event.target as Node)) return;
+        event.preventDefault(); event.stopPropagation(); event.currentTarget.focus();
+        setMenuPoint({ x: event.clientX, y: event.clientY });
+      }}
+      onKeyDown={(event) => { if (props.onRename && event.currentTarget.contains(event.target as Node)) openPanelContextMenuFromKeyboard(event); }}
+      {...panelDragListeners(props.busy ? undefined : props.dragHandle?.listeners)}
+      className={`group ${props.dragHandle && !props.busy ? props.dragHandle.isDragging ? 'cursor-grabbing' : 'cursor-grab' : ''} select-none touch-none sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover`}>
+
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
         onClick={props.onToggle} className="h-6 w-6 grid place-items-center shrink-0 rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
         <ChevronIcon collapsed={props.collapsed} />
       </button>
-      <button type="button" onClick={props.onToggle}
+      <button type="button" data-panel-drag-label onClick={props.onToggle}
         aria-label={`${props.label} ${props.count}`} aria-expanded={!props.collapsed}
-        className="flex-1 min-w-0 text-left flex items-baseline gap-1.5">
+        className={`flex-1 min-w-0 text-left flex items-baseline gap-1.5 ${props.dragHandle && !props.busy ? props.dragHandle.isDragging ? 'cursor-grabbing' : 'cursor-grab' : ''}`}>
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
@@ -228,36 +227,31 @@ function GroupHeader(props: {
         </span>
       )}
       {props.onRename && (
-        <div className="relative" ref={menuRef}>
-          <button type="button" aria-label={`${props.label} 그룹 메뉴`}
-            aria-haspopup="menu" aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-            className="h-6 w-6 grid place-items-center shrink-0 rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg">
-            <MoreIcon />
-          </button>
+        <>
+
           {menuOpen && (
-            <AnchoredMenu label={props.label}>
+            <PanelContextMenu point={menuPoint!} label={props.label} onClose={closeMenu}>
               {/* 종목 추가 — 클릭 시 메뉴를 닫고 검색 팝오버를 연다(팝오버는 메뉴와 별개 레이어라
                   메뉴 언마운트에 딸려 사라지지 않는다). 예전 헤더의 ＋종목 버튼을 이 항목으로 이동. */}
               {props.onAddSymbol && (
                 <button type="button" role="menuitem"
-                  onClick={() => { setMenuOpen(false); setAddOpen(true); }}
+                  onClick={() => { closeMenu(); setAddOpen(true); }}
                   className={itemClass}>
                   <span className="w-4 grid place-items-center"><PlusIcon /></span> 종목 추가
                 </button>
               )}
               <button type="button" role="menuitem"
-                onClick={() => { setMenuOpen(false); props.onRename?.(); }}
+                onClick={() => { closeMenu(); props.onRename?.(); }}
                 className={itemClass}>
                 <span className="w-4 grid place-items-center"><PencilIcon /></span> 그룹 이름 변경
               </button>
               <button type="button" role="menuitem" disabled={!props.canMoveUp}
-                onClick={() => { setMenuOpen(false); props.onMoveUp?.(); }}
+                onClick={() => { closeMenu(); props.onMoveUp?.(); }}
                 className={itemClass}>
                 <span className="w-4 grid place-items-center"><ArrowUpIcon /></span> 위로 이동
               </button>
               <button type="button" role="menuitem" disabled={!props.canMoveDown}
-                onClick={() => { setMenuOpen(false); props.onMoveDown?.(); }}
+                onClick={() => { closeMenu(); props.onMoveDown?.(); }}
                 className={itemClass}>
                 <span className="w-4 grid place-items-center"><ArrowDownIcon /></span> 아래로 이동
               </button>
@@ -265,11 +259,11 @@ function GroupHeader(props: {
               {/* v3 (ADR-0112): 그룹 삭제는 파괴적(멤버 종목도 함께 삭제) — watchlist 와
                   동일하게 호출측(deleteFolderWithConfirm)이 멤버가 있으면 confirm 을 띄운다. */}
               <button type="button" role="menuitem"
-                onClick={() => { setMenuOpen(false); props.onDelete?.(); }}
+                onClick={() => { closeMenu(); props.onDelete?.(); }}
                 className="w-full text-left px-3 py-1.5 text-sm text-error hover:bg-tint-error flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent">
                 <span className="w-4 grid place-items-center"><TrashIcon className="w-[1em] h-[1em]" /></span> 그룹 삭제
               </button>
-            </AnchoredMenu>
+            </PanelContextMenu>
           )}
           {addOpen && props.onAddSymbol && (
             <SymbolAddPopover anchorRef={menuRef} onClose={() => setAddOpen(false)}
@@ -277,43 +271,25 @@ function GroupHeader(props: {
               isDuplicate={(code) => !!props.isDuplicateInGroup?.(code)}
               onDuplicate={(code) => props.onDuplicateSymbol?.(code)} />
           )}
-        </div>
+        </>
       )}
     </div>
   );
 }
 
-/** 행 우측 ⋯ 버튼 — 평시 opacity-0(호버/포커스 시 등장), 클릭이 행(차트 이동)으로
- *  통과하지 않게 stopPropagation. WatchlistDrawer.RowTrailing 의 수집상태 점을 뺀 최소판. */
-function RowTrailing({ name, onOpenMenu }: { name: string; onOpenMenu: (e: React.MouseEvent) => void }) {
-  return (
-    <button
-      type="button"
-      aria-label={`${name} 행 메뉴`}
-      aria-haspopup="menu"
-      onClick={(e) => { e.stopPropagation(); onOpenMenu(e); }}
-      className="grid h-5 w-5 place-items-center shrink-0 rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
-    >
-      <MoreIcon />
-    </button>
-  );
-}
-
-// w-64 = 256px @ 16px root(2026-08-07 다이얼 1.0×). FolderAddButton 과 동일한
-// 우측정렬 초기추정폭 — 클램프가 덮으므로 상수로 둔다(그쪽 주석에 근거).
 const POP_W = 320;
 
 /** 종목 검색 팝오버 (controlled) — 마운트되면 열린 상태. anchorRef 우하단 기준 우측정렬 후
  *  useClampedFixedPosition 으로 뷰포트 보정, createPortal 로 body 에 fixed(드로어 overflow
  *  탈출). 선택+추가 시 onAdd(code, folderId) 후 onClose; 바깥 클릭·Escape 로도 onClose.
  *  헤더 "종목 추가"(folders 전달 → 그룹 선택 셀렉트 표시, v3 는 그룹 필수 — ADR-0112)와
- *  그룹 ⋯ 메뉴 "종목 추가"(folders 미전달 — 그 그룹으로 고정)가 공유. */
+ *  그룹 우클릭 메뉴 "종목 추가"(folders 미전달 — 그 그룹으로 고정)가 공유. */
 function SymbolAddPopover({ anchorRef, onClose, onAdd, isDuplicate, onDuplicate, folders }: {
   anchorRef: React.RefObject<HTMLElement | null>;
   onClose: () => void;
   onAdd: (code: string, folderId?: string) => Promise<void>;
   /** 그 그룹에 그 코드가 이미 있는가. **폴더 인자를 받는다** — 헤더 경로는 셀렉트로
-   *  대상 그룹이 바뀌므로 판정이 그때마다 달라진다(`undefined` = ⋯ 메뉴의 고정 그룹). */
+   *  대상 그룹이 바뀌므로 판정이 그때마다 달라진다(`undefined` = 우클릭 메뉴의 고정 그룹). */
   isDuplicate: (code: string, folderId?: string) => boolean;
   /** 이미 있는 종목을 고른 순간 — 드로어가 그 그룹의 행을 가리킨다. */
   onDuplicate: (code: string, folderId?: string) => void;
@@ -532,7 +508,7 @@ export function HeatmapDrawer() {
       onError: () => setNotice('제외하지 못했습니다. 최신 목록에서 다시 시도하세요.'),
     });
   };
-  // 그룹 지정 종목 추가(⋯ 메뉴의 "종목 추가"). 훅 1회, folderId 는 호출 시 바인딩.
+  // 그룹 지정 종목 추가(우클릭 메뉴의 "종목 추가"). 훅 1회, folderId 는 호출 시 바인딩.
   // pending 을 내리지 않는 이유: 제출 게이트는 팝오버가 `useOptimisticDuplicateGate` 로
   // 자기 것을 갖는다 — 여기 것을 함께 내리면 게이트가 두 곳으로 갈린다(그 훅이 재는 창이
   // mutation 의 isPending 보다 정확하다는 것이 그 훅의 존재 이유다).
@@ -904,19 +880,13 @@ export function HeatmapDrawer() {
                               sortableRef={drag.setNodeRef}
                               dropIndicator={destination?.rowId === entrySortableId(entry.folder_id, entry.code) ? destination.side : undefined}
                               draggingAppearance="placeholder"
-                              leading={<span className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                                {selecting && <input type="checkbox" aria-label={`${entry.name} 선택`} disabled={busy}
-                                  checked={selected.has(entrySortableId(entry.folder_id, entry.code))}
-                                  onChange={() => toggleSelected(entrySortableId(entry.folder_id, entry.code))} />}
-                                <button type="button" aria-label={`${entry.name} 이동`} disabled={busy}
-                                  ref={drag.setActivatorNodeRef} {...drag.listeners}
-                                  className="grid h-5 w-4 shrink-0 place-items-center cursor-grab touch-none text-fg-dim opacity-0 group-hover:opacity-100 focus:opacity-100 disabled:opacity-40"><GripIcon /></button>
-                              </span>}
+                              dragListeners={busy ? undefined : drag.listeners}
+                              dragActivatorRef={busy ? undefined : drag.setActivatorNodeRef}
+                              leading={selecting ? <input type="checkbox" aria-label={`${entry.name} 선택`} disabled={busy}
+                                checked={selected.has(entrySortableId(entry.folder_id, entry.code))}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={() => toggleSelected(entrySortableId(entry.folder_id, entry.code))} /> : undefined}
                               dragging={drag.isDragging}
-                              trailingAction={
-                                <RowTrailing name={entry.name}
-                                  onOpenMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)} />
-                              }
                             />
                           );
                         };
@@ -952,7 +922,7 @@ export function HeatmapDrawer() {
             })}
           </SortableContext>
           <RailDragOverlay droppedOnChart fitContentHeight>
-            {ghost && <li data-testid="heatmap-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">⠿ {ghost} {isEntryDragging ? copyIntent ? '복제' : '이동' : '그룹 이동'}</li>}
+            {ghost && <li data-testid="heatmap-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">{ghost} {isEntryDragging ? copyIntent ? '복제' : '이동' : '그룹 이동'}</li>}
           </RailDragOverlay>
         </DndContext>
       </RailDrawerBody>
@@ -960,11 +930,11 @@ export function HeatmapDrawer() {
       <div role="status" aria-live="polite" aria-atomic="true" className={`flex shrink-0 items-center text-xs text-fg-dim${ghost || notice || transfer.message || transfer.canUndo ? ' min-h-12 gap-2 border-t border-border px-md py-1' : ''}`}>
         <span className="line-clamp-3 flex-1">{ghost
           ? destination ? `${data?.folders.find((f) => f.id === destination.folderId)?.name} · ${destination.where} ${copyIntent ? '복제' : '이동'}${!entrySortEnabled ? isSearching ? ' · 검색 중에는 맨 아래에 배치' : ' · 정렬 기준에 따라 배치' : ''}${destination.duplicates ? ` · 기존 ${destination.duplicates}종목${copyIntent ? '은 유지' : '과 합침'}` : ''}`
-            : isEntryDragging ? dragHint : '그룹 핸들을 원하는 그룹 위치에 놓으세요'
+            : isEntryDragging ? dragHint : '그룹 헤더를 원하는 그룹 위치에 놓으세요'
           : notice || transfer.message || null}</span>
         {!ghost && transfer.canUndo && <button type="button" className="shrink-0 text-accent" disabled={busy} onClick={() => { setNotice(''); void transfer.undo(); }}>되돌리기</button>}
       </div>
-      {/* 행 ⋯ 메뉴는 '이 그룹에서 제거'만 — 그룹 이동은 행 드래그앤드롭으로 대체(folders/onMove
+      {/* 행 우클릭 메뉴는 '이 그룹에서 제거'만 — 그룹 이동은 행 드래그앤드롭으로 대체(folders/onMove
           미전달 → HeatmapRowMenu 가 '그룹으로 이동' 섹션을 자체 생략). 제거는 menu.folderId
           스코프 — 다른 그룹에 같은 종목이 등록돼 있으면 그쪽은 남는다. */}
       {menu && (
