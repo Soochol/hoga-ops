@@ -309,7 +309,7 @@ async def venue_capture_windows_async(now_ms: int) -> frozenset[str]:
 DERIV_OPEN_MIN = 9 * 60             # 09:00 KST
 DERIV_CLOSE_MIN = 15 * 60 + 45      # 15:45 KST
 #: 마감 후 지연 갱신을 받기 위한 투자자 수급 수집 종료. 차트 축은 거래시간을 유지한다.
-DERIV_FLOW_CAPTURE_CLOSE_MIN = 16 * 60  # 16:00 KST
+DERIV_FLOW_CAPTURE_CLOSE_MIN = 16 * 60 + 30  # 16:30 KST
 
 
 def _within_deriv_clock(t_ms: int) -> bool:
@@ -318,7 +318,7 @@ def _within_deriv_clock(t_ms: int) -> bool:
 
 
 def deriv_capture_window(now_ms: int) -> bool:
-    """파생 수급 수집 게이트: 거래일 && 09:00–16:00 KST.
+    """파생 수급 수집 게이트: 거래일 && 09:00–16:30 KST.
 
     ⚠ BLOCKING: 거래일 판정이 캐시 미스 시 동기 KIS HTTP 를 칠 수 있다 — 이벤트
     루프에서 직접 호출 금지, 코루틴은 ``deriv_capture_window_async`` 를 await.
