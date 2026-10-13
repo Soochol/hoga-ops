@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { LineSeries, CandlestickSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import { replaceSeriesData } from './replaceSeriesData';
-import { createWindowedChart, flushWindowedChart, setWindowedChartTimeMapping, windowedChartDiagnostics } from './windowedChart';
+import { createWindowedChart, flushWindowedChart, readChartInteractionViewport, setWindowedChartTimeMapping, windowedChartDiagnostics } from './windowedChart';
 
 /** A union-time chart model (not a candle-count time scale). Native browser
  * integration is covered separately by the backfill/viewport E2E driver. */
@@ -78,6 +78,86 @@ describe('full-history chart / bounded native renderer', () => {
     apply(pending!);
     expect(chart.timeScale().getVisibleLogicalRange()).toEqual({ from: 989.5, to: 1110.5 });
     chart.remove();
+  });
+
+  it('keeps pending input coordinates through transient native range events and a prepend', () => {
+    const { chart, native, rows } = fixture();
+    const line = chart.addSeries(LineSeries);
+    line.setData(rows); flushWindowedChart(chart);
+    chart.timeScale().setVisibleLogicalRange({ from: 1800, to: 1900 });
+    const scale = native.timeScale();
+    const apply = scale.setVisibleLogicalRange;
+    scale.setVisibleLogicalRange = () => {}; // next native draw has not happened
+    chart.timeScale().setVisibleLogicalRange({ from: 1700, to: 2000 });
+    const before = readChartInteractionViewport(chart)!;
+    expect(before.range).toEqual({ from: 1700, to: 2000 });
+    const cursor = before.coordinateToLogical(250)!;
+    const offset = windowedChartDiagnostics(chart)!.offset;
+    // Reading setData's temporary range emits a native event between draws.
+    apply({ from: 1739 - offset, to: 2039 - offset });
+    expect(readChartInteractionViewport(chart)!.range).toEqual(before.range);
+    const extra = Array.from({ length: 1000 }, (_, i) => ({ time: (40000 + i * 60) as Time, value: -i }));
+    line.setData([...extra, ...rows]); flushWindowedChart(chart);
+    const after = readChartInteractionViewport(chart)!;
+    expect(after.range).toEqual({ from: 2700, to: 3000 });
+    expect(after.coordinateToLogical(250)).toBe(cursor + 1000);
+    chart.remove();
+  });
+
+  it('settles native range clamps after the draw and cancels settlement on removal', () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { callbacks.set(++id, cb); return id; });
+    vi.stubGlobal('cancelAnimationFrame', (key: number) => callbacks.delete(key));
+    try {
+      const { chart, native, rows } = fixture();
+      chart.addSeries(LineSeries).setData(rows); flushWindowedChart(chart);
+      chart.timeScale().setVisibleLogicalRange({ from: 1800, to: 1900 });
+      const scale = native.timeScale();
+      const apply = scale.setVisibleLogicalRange;
+      scale.setVisibleLogicalRange = () => {};
+      chart.timeScale().setVisibleLogicalRange({ from: 1700, to: 2000 });
+      const offset = windowedChartDiagnostics(chart)!.offset;
+      apply({ from: 1701 - offset, to: 2000 - offset });
+      expect(readChartInteractionViewport(chart)!.range.from).toBe(1700);
+      const frame = [...callbacks.values()]; callbacks.clear();
+      for (const cb of frame) cb(performance.now());
+      expect(readChartInteractionViewport(chart)!.range.from).toBe(1701);
+      chart.timeScale().setVisibleLogicalRange({ from: 1800, to: 2100 });
+      chart.remove();
+      expect(callbacks.size).toBe(0);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('publishes only settled ranges and does not keep polling an empty chart', () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let id = 0;
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => { callbacks.set(++id, cb); return id; });
+    vi.stubGlobal('cancelAnimationFrame', (key: number) => callbacks.delete(key));
+    try {
+      const { chart, native, rows } = fixture();
+      const line = chart.addSeries(LineSeries);
+      line.setData(rows); flushWindowedChart(chart);
+      const publish = vi.fn(); chart.timeScale().subscribeVisibleLogicalRangeChange(publish);
+      const scale = native.timeScale();
+      const apply = scale.setVisibleLogicalRange;
+      let pending: { from: number; to: number } | null = null;
+      scale.setVisibleLogicalRange = r => { pending = r; };
+      chart.timeScale().setVisibleLogicalRange({ from: 1800, to: 2100 });
+      // The old publish callback is queued before the replacement settlement.
+      const [key, callback] = [...callbacks.entries()][0]; callbacks.delete(key);
+      callback(performance.now());
+      expect(publish).not.toHaveBeenCalled();
+      apply(pending!);
+      const frame = [...callbacks.values()]; callbacks.clear();
+      for (const cb of frame) cb(performance.now());
+      expect(publish.mock.lastCall?.[0]).toEqual({ from: 1800, to: 2100 });
+      line.setData([]); flushWindowedChart(chart);
+      const emptyFrame = [...callbacks.values()]; callbacks.clear();
+      for (const cb of emptyFrame) cb(performance.now());
+      expect(callbacks.size).toBe(0);
+      chart.remove();
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('batches a commit and keeps full data, latest lookup and union indices', () => {

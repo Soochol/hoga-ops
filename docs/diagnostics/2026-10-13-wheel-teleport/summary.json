@@ -1,0 +1,89 @@
+{
+  "date_kst": "2026-10-13",
+  "commit": "3cf2d8ddd14f137e9d0b49f830484d52c73c705b",
+  "status": "원인 재현 및 제품 코드 수정 완료",
+  "conclusion_ko": "과거 데이터 반영 또는 렌더 구간 교체의 setData 뒤, 예약된 논리 범위가 다음 프레임에 적용되기 전에 휠 입력이 들어오면 임시 범위를 읽고 다른 날짜로 이동할 수 있다.",
+  "root_cause": {
+    "writer": "frontend/src/chart/windowedChart.ts:632",
+    "getter": "frontend/src/chart/windowedChart.ts:495",
+    "coordinate_getter": "frontend/src/chart/windowedChart.ts:157",
+    "consumer": "frontend/src/live/useWheelInteractions.ts:80",
+    "sequence": [
+      "render가 offset/end를 바꾸고 native 시리즈를 setData한다.",
+      "native setData의 기준 인덱스와 rightOffset 변화가 임시 범위를 만든다.",
+      "setVisibleLogicalRange는 다음 draw까지 예약 상태다.",
+      "공개 getVisibleLogicalRange와 coordinateToLogical는 예약된 범위 대신 native 임시 좌표를 새 offset으로 환산한다.",
+      "다음 wheel이 임시 범위와 커서 인덱스로 계산한 결과를 쓰면서 잘못된 위치가 다음 draw에 확정된다."
+    ],
+    "requested_range_detail": "내부 range()는 requestedRange를 우선하지만 공개 getter는 appliedRange()를 읽는다. 공개 좌표 getter도 native 좌표를 읽으므로 범위 getter만 예약값으로 바꾸면 Ctrl 앵커의 일관성이 깨질 수 있다."
+  },
+  "verified": {
+    "runtime": "system Chrome, lightweight-charts 5.2.0, real production useWheelInteractions hook",
+    "input": "bubbling, cancelable synthetic WheelEvent on native canvas; deltaY=120, cursor x=450px",
+    "no_data_case": {
+      "matrix_cases": 32,
+      "count_4000_control": "일반/Ctrl 두 입력이 한 draw 전에 들어와도 기준점 유지",
+      "count_8000_single_event_per_draw": "일반/Ctrl 기준점 유지",
+      "count_8000_two_events_per_draw": {
+        "plain_max_right_edge_drift_bars": 338,
+        "ctrl_max_cursor_index_drift_bars": 785
+      },
+      "native_control": "데이터 고정 조건에서 동일 일반/Ctrl 입력의 기준점 유지"
+    },
+    "three_minute_prepend": {
+      "matrix_cases": 12,
+      "starting_candles": 8000,
+      "prepended_candles": 1000,
+      "initial_range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "same_frame_followup": {
+        "plain_right_edge_drift_bars": 39,
+        "plain_shift_minutes": 117,
+        "ctrl_anchor_drift_px": -163.83360001653006
+      },
+      "followup_after_draw": {
+        "plain_right_edge_drift_bars": 0,
+        "ctrl_anchor_drift_px": -0.013320325685242551
+      },
+      "no_followup_wheel": {
+        "plain_right_edge_drift_bars": 0,
+        "ctrl_anchor_drift_px": -0.0070569407449170285
+      }
+    },
+    "result": "44개의 진단 시나리오에서 결함 재현과 비교 조건을 확인했다. 통과는 제품의 정상 동작이나 수정 완료를 뜻하지 않는다.",
+    "repeat_validation": {
+      "cases": 40,
+      "repeats_per_scenario": 5,
+      "result": "40 passed; same-frame plain/Ctrl defects reproduced and after-draw/no-followup controls preserved anchors"
+    },
+    "existing_unit_tests": {
+      "files": [
+        "src/util/wheelInteractions.test.ts",
+        "src/live/useWheelInteractions.test.tsx",
+        "src/chart/windowedChart.test.ts"
+      ],
+      "passed": 64,
+      "interpretation": "기존 단위 테스트는 모두 통과하지만 실제 차트의 draw 지연과 native setData의 임시 범위가 결합되는 이번 경합을 잡지 못한다."
+    }
+  },
+  "scope": [
+    "실제 차트와 실제 휠 훅을 사용하지만 캔들과 축은 합성 입력이다. 사용자의 3분봉 종목·거래소·지표 조합을 그대로 재생한 검증은 아니다.",
+    "과거 응답 반영 단계는 series.setData와 flushWindowedChart로 재현했다. 네트워크 조회 훅 전체를 통과한 통합 테스트는 아니다.",
+    "합집합 시각 4000개 초과와 fallback 없음이 렌더 구간 절단의 조건이다. 4000이라는 숫자는 반드시 캔들 수와 같지는 않다.",
+    "가로 deltaX 두 입력에서도 native control과 범위가 어긋났으나 plain/Ctrl 확정 원인과 별도의 판정으로 남긴다.",
+    "native 단독 비교는 데이터 고정 조건의 대조군이다. native 단독 prepend는 상위 보정이 없는 조건에서 별도 위치 보존 문제를 보였으므로 어댑터 우회만으로 해결된다고 결론 내리지 않는다."
+  ],
+  "proposed_fix_contract": [
+    "데이터/offset 세대와 범위/좌표 세대를 일치시키고 pending draw 동안 임시 범위를 사용자 입력의 기준으로 노출하지 않는다.",
+    "getVisibleLogicalRange와 coordinateToLogical/timeToCoordinate를 함께 일관되게 처리하거나 휠 계산을 최종 위치가 적용된 draw로 모은다.",
+    "일반 휠 오른쪽 기준점, Ctrl 커서 기준점, 과거 응답 대기 중 연속 입력을 실제 VirtualAxis 통합 테스트로 검증한다."
+  ],
+  "reproduce_command": "cd frontend && npx playwright test -c tests/diagnostics/wheelTeleport/playwright.config.ts",
+  "product_code_changed": false,
+  "evidence": "measurements.json",
+  "diagnostic_sources": "frontend/tests/diagnostics/wheelTeleport/",
+  "resolution": "fix-validation.json",
+  "current_reproduce_command": "cd frontend && npx playwright test tests/e2e/wheel-viewport-preservation.spec.ts tests/e2e/wheel-backfill-integration.spec.ts --reporter=list"
+}

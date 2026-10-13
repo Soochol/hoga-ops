@@ -1,0 +1,52 @@
+{
+  "date_kst": "2026-10-13",
+  "status": "수정 및 회귀 검증 완료",
+  "product_code_changed": true,
+  "changes_ko": [
+    "휠의 범위와 커서 좌표를 동일한 예정 범위에서 계산해, native setData 직후의 임시 좌표를 입력 기준으로 쓰지 않는다.",
+    "예정 범위는 실제 draw 또는 draw 뒤 정착 단계에서만 해제한다. native 클램프도 이 단계에서 승계한다.",
+    "예정 범위가 남아 있으면 날짜 헤더와 연결 창에 중간 범위를 발행하지 않는다.",
+    "최소 봉 간격의 최대 span에 양 끝 봉 포함 규칙을 반영해 축소 한계의 반복 밀림을 막는다.",
+    "정착 콜백은 새 쓰기로 교체하고 차트 종료 시 취소한다. 빈 차트는 정착 대기를 지속하지 않는다."
+  ],
+  "validation": {
+    "typecheck": "npm run typecheck: passed (app, unit tests, E2E)",
+    "vitest": {
+      "files": 611,
+      "tests": 7842,
+      "result": "passed"
+    },
+    "build": "Vite build passed, including final product code in full E2E startup",
+    "e2e": {
+      "full_suite_passed": 228,
+      "added_api_integration_cases_passed": 2,
+      "unique_cases_passed": 230
+    },
+    "virtual_axis_and_prepend_repeats": {
+      "cases": 8,
+      "repeats": 5,
+      "runs_passed": 40
+    },
+    "api_backfill_wheel_repeats": {
+      "cases": 2,
+      "repeats": 5,
+      "runs_passed": 10,
+      "max_ctrl_anchor_drift_px": 0.017005579076510458,
+      "each_response_grew_candle_count": true
+    },
+    "diff_check": "passed"
+  },
+  "tests": [
+    "frontend/src/chart/windowedChart.test.ts",
+    "frontend/src/live/useWheelInteractions.test.tsx",
+    "frontend/tests/e2e/wheel-viewport-preservation.spec.ts",
+    "frontend/tests/e2e/wheel-backfill-integration.spec.ts"
+  ],
+  "scope_ko": "실제 앱의 과거 조회 훅, Virtual Axis, 차트 어댑터와 휠 훅을 함께 통과했다. API 응답은 고정된 합성 시장 데이터이며 실벤더나 사용자의 브라우저 상태를 바꾸지 않았다.",
+  "reproduce_commands": [
+    "cd frontend && npx playwright test tests/e2e/wheel-viewport-preservation.spec.ts tests/e2e/wheel-backfill-integration.spec.ts --reporter=list",
+    "cd frontend && npx playwright test tests/e2e/wheel-backfill-integration.spec.ts --repeat-each=5 --reporter=list"
+  ],
+  "delivery": "검증 당시 현재 작업트리의 코드에 반영. 병합 이후 상태는 PR과 Git 커밋 기록을 기준으로 한다.",
+  "validated_base_commit": "3cf2d8ddd14f137e9d0b49f830484d52c73c705b"
+}
