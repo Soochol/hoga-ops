@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { useLivePageStore } from '../state/livePage';
@@ -230,16 +231,18 @@ export function LivePage() {
         captureHealth={liveStatus.captureHealth}
       />
       <WorkspaceCanvas />
-      {indicatorTargetId != null && (
+      {/* 전체 화면 모달은 main-stack의 isolation 밖에서 우측 패널까지 덮는다. */}
+      {indicatorTargetId != null && createPortal(
         <WorkspaceIndicatorDrawer
           windowId={indicatorTargetId}
           onClose={() => setIndicatorTargetId(null)}
-        />
+        />,
+        document.body,
       )}
       {/* 설정 모달은 순수 전역 — 창 Provider 래핑도 key 재마운트도 필요 없다.
           유일한 창 소유 필드였던 VI 선 스타일이 자기 토글 옆(전역 chartPrefs)
           으로 옮겨가면서 이 모달은 앱 설정만 편집한다(#759). */}
-      {collectTarget && (
+      {collectTarget && createPortal(
         <SingleCodeCollectDialog
           // 다이얼로그가 열린 채 종목이 바뀌면 remount 로 미리보기·기간 상태를 초기화한다.
           key={collectTarget.code}
@@ -247,7 +250,8 @@ export function LivePage() {
           name={collectSymbolName ?? collectTarget.name}
           visibleRange={collectTarget.visibleRange ?? null}
           onClose={() => setCollectTarget(null)}
-        />
+        />,
+        document.body,
       )}
     </div>
   );
