@@ -9,14 +9,16 @@ test('초봉 증분 갱신은 실제 차트에서 지연 체결·새 봉·과거
     const writerPath = '/src/live/workspace/secondChartSeriesWriter.ts';
     const axisPath = '/src/util/virtualAxis.ts';
     const projectorsPath = '/src/live/workspace/secondAggregateProjectors.ts';
+    const crosshairPath = '/src/chart/persistentCrosshair.ts';
     const { createChart, CandlestickSeries, HistogramSeries, LineSeries } = await import(chartsPath);
     const { createSecondChartSeriesWriter } = await import(writerPath);
     const { createVirtualAxis } = await import(axisPath);
     const { movingAverageSeconds } = await import(projectorsPath);
+    const { createPersistentCrosshairChart } = await import(crosshairPath);
     const element = document.createElement('div');
     element.style.cssText = 'position:fixed;left:0;top:0;width:800px;height:400px;z-index:100000';
     document.body.append(element);
-    const chart = createChart(element, { width: 800, height: 400 });
+    const chart = createPersistentCrosshairChart(createChart(element, { width: 800, height: 400 }));
     try {
       const candles = chart.addSeries(CandlestickSeries, { upColor: '#ff0000', downColor: '#0000ff' });
       const volume = chart.addSeries(HistogramSeries);
@@ -27,7 +29,7 @@ test('초봉 증분 갱신은 실제 차트에서 지연 체결·새 봉·과거
         series.setData = (data: unknown) => { replacements++; setData(data); };
         series.update = (point: unknown, historical: boolean) => { updates++; update(point, historical); };
       }
-      const write = createSecondChartSeriesWriter({ candles, volume, ma });
+      const write = createSecondChartSeriesWriter({ candles, volume, ma }, chart);
       const open = Date.parse('2026-09-30T09:00:00+09:00');
       const bars = Array.from({length: 10000}, (_, i) => ({ t_ms: open+i*1000,
         open: 100,high: 110,low: 90,close: 100+i%7,volume: 10,count: 1,trade_value: 1000 }));

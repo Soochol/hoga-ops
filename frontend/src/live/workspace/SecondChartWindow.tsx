@@ -25,6 +25,7 @@ import { currentThemeKey } from '../../util/tokens';
 import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
 import { captureSecondViewport, restoreSecondViewport, type SecondChartViewport } from './secondChartViewport';
+import { createPersistentCrosshairChart } from '../../chart/persistentCrosshair';
 
 const kstTimeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const kstTime = (value: number) => kstTimeFormatter.format(value * 1000);
@@ -112,13 +113,13 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     const style = getComputedStyle(container.current);
     const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
     const up = color('--price-up', '#ef4444'), down = color('--price-down', '#3b82f6');
-    const chart = createChart(container.current, {
+    const chart = createPersistentCrosshairChart(createChart(container.current, {
       width: container.current.clientWidth, height: container.current.clientHeight,
       layout: { ...CHART_LAYOUT_OPTIONS, attributionLogo: false, background: { color: color('--bg-card', '#ffffff') }, textColor: color('--fg-dim', '#64748b') },
       grid: { vertLines: { visible: false }, horzLines: { color: color('--border', '#e2e8f0') } },
       timeScale: { timeVisible: true, secondsVisible: true, tickMarkFormatter: (t: Time) => typeof t === 'number' ? `${isoDate(realMsToYyyymmdd(axisRef.current.toReal(t * 1000))).slice(5)} ${kstTime(axisRef.current.toReal(t * 1000) / 1000)}` : '' },
       localization: { timeFormatter: (t: Time) => typeof t === 'number' ? `${isoDate(realMsToYyyymmdd(axisRef.current.toReal(t * 1000)))} ${kstTime(axisRef.current.toReal(t * 1000) / 1000)}` : '' },
-    });
+    }));
     const candles = chart.addSeries(CandlestickSeries, { upColor: up, downColor: down, wickUpColor: up, wickDownColor: down, borderVisible: false, priceFormat: { type: 'price', precision: 0, minMove: 1 } }, 0);
     const ma = chart.addSeries(LineSeries, { color: color('--accent', '#2563eb'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false }, 0);
     const volume = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceLineVisible: false }, 1);
@@ -158,7 +159,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     chart.subscribeCrosshairMove(onCursor);
     chartRef.current = chart;
     seriesRef.current = { candles, ma, volume };
-    writeSeries.current = createSecondChartSeriesWriter({ candles, ma, volume });
+    writeSeries.current = createSecondChartSeriesWriter({ candles, ma, volume }, chart);
     userGesture.current = false;
     wheelGestureUntil.current = 0;
     initial.current = true;

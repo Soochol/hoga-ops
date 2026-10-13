@@ -1,12 +1,13 @@
 import type { IChartApi } from 'lightweight-charts';
 import { syncSeriesData, type SeriesDataSink } from './seriesDataDiff';
 import { ownsWindowedChartViewport } from './windowedChart';
+import { preserveCrosshairDuringDataChange } from './persistentCrosshair';
 
 /** Clear stale hover indices before setData reindexes the shared time scale.
  * lwc 5.2 can synchronously hit-test another line's old render items during
  * replacement, throwing `Value is null` in SeriesBarColorer.Line.
  * Keep hover on value-only replacements; only a changed time grid needs a
- * reset. The next pointer move restores hover after a time-grid change.
+ * reset. Restore the saved pointer after the replacement has drawn.
  */
 export function replaceSeriesData(
   chart: Partial<Pick<IChartApi, 'clearCrosshairPosition'>>,
@@ -21,8 +22,9 @@ export function replaceSeriesData(
   // The windowed adapter batches all series and owns the native stale-index
   // reset/hover restoration. Clearing its facade here would discard the saved
   // pointer before that batch can restore it.
-  if (!sameTimes && !ownsWindowedChartViewport(chart as IChartApi)) chart.clearCrosshairPosition?.();
-  series.setData(data);
+  if (!sameTimes && !ownsWindowedChartViewport(chart as IChartApi)) {
+    preserveCrosshairDuringDataChange(chart, () => series.setData(data));
+  } else series.setData(data);
 }
 
 /** Apply the incremental series diff while routing full replacements through

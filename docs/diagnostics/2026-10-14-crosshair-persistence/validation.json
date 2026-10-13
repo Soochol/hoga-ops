@@ -1,0 +1,128 @@
+{
+  "client_date": "2026-10-14",
+  "client_timezone": "Asia/Seoul",
+  "scope": "Preserve chart pointer crosshair and native axis labels during history loading and structural data updates. Bridge the otherwise blank native redraw without copying candle layers.",
+  "tested_head": "40c19fb4c2c70a648310230a2ed5ee08a5e086bd",
+  "working_tree_changes": true,
+  "upstream_main_checked": "ae5fc58e96a9750bb114be9aaa068d537eac3176",
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "chrome": "Google Chrome 155.0.8059.39",
+    "python": "Python 3.14.7",
+    "lightweight-charts": "5.2.0",
+    "react": "18.3.1",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0"
+  },
+  "e2e": {
+    "backend_port": 20088,
+    "frontend_port": 21088,
+    "data_dir": "/tmp/hoga-e2e-data-88",
+    "vendor_credentials": "empty per playwright.config.ts",
+    "crosshair_fixture_date": "2026-10-01"
+  },
+  "input_fingerprint": {
+    "algorithm": "SHA256 of sorted relative path, NUL, and per-file SHA256 bytes",
+    "file_count": 1765,
+    "sha256": "7b01e50bbacf908c8e9a1c5a8cd81445b3270d79356afdf349859da4a91be912",
+    "scope": "Frontend source, tests, public assets, manifests and validation configs; backend source, fixtures and Python manifests."
+  },
+  "changed_file_sha256": {
+    "frontend/src/chart/persistentCrosshair.test.ts": "600a4cab5ee8def7d54368d95b76b4741b553a897ba5bb5fd0a2c318c2a6a46a",
+    "frontend/src/chart/persistentCrosshair.ts": "8269706ae4a4fe809efc3ce696fa1a7177c517f519ec06ba67637dbb77180962",
+    "frontend/src/chart/replaceSeriesData.ts": "0c7fa1d708aecd6757b67cd28683dce31dfd236eb6f56e9b7712b1d3fd9ba556",
+    "frontend/src/chart/windowedChart.test.ts": "6eb3da1af03c2b977815775367012e7b9703667d6e6033f7d49dc8c0a640c698",
+    "frontend/src/chart/windowedChart.ts": "f9b3c2df0e12529ff429331ee76f9a252f61c7201db18358aa0361c228024dcf",
+    "frontend/src/live/LiveChartRoot.tsx": "364130147c2020df9b6f9b4d6ddc89d7ed097a5e9ff9e999dbdeb4c97584d427",
+    "frontend/src/live/workspace/SecondChartWindow.tsx": "768d0be668e01699032fc519e069f1eb77332983228eab50d820f196333d5f77",
+    "frontend/src/live/workspace/secondChartSeriesWriter.ts": "d9c541a227033a2626ca6711b3293a1d58aec1fc5ef1d37f2736e95a18ab8826",
+    "frontend/tests/e2e/live-crosshair-persistence.spec.ts": "b71f7d6eb12611565afd70e1df03f580cb2c6f5594c93c3c27664673486bc425",
+    "frontend/tests/e2e/second-chart-updates.spec.ts": "40e864a6cf6a8c23cadcbf6243c13a64c4365b8262b19e1797d221fdbfc65002"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed",
+      "scope": "app, unit-test and E2E TypeScript projects"
+    },
+    {
+      "command": "npx vitest run src/chart src/live tests/component/ChartErrorBoundary.test.tsx",
+      "cwd": "frontend",
+      "result": "passed",
+      "files": 291,
+      "tests": 4405
+    },
+    {
+      "command": "npx vite build",
+      "cwd": "frontend",
+      "result": "passed",
+      "note": "Build emits a chunk-size warning."
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-crosshair-persistence.spec.ts tests/e2e/live-viewport-preservation.spec.ts tests/e2e/wheel-viewport-preservation.spec.ts tests/e2e/drawing-rectangle-free.spec.ts tests/e2e/drawing-multiline.spec.ts tests/e2e/second-candles.spec.ts tests/e2e/second-chart-updates.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "passed",
+      "tests": 50
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-crosshair-persistence.spec.ts --repeat-each=5 --reporter=list",
+      "cwd": "frontend",
+      "result": "passed",
+      "tests": 25
+    },
+    {
+      "command": "npx eslint src/chart/persistentCrosshair.ts src/chart/persistentCrosshair.test.ts src/chart/replaceSeriesData.ts src/live/workspace/secondChartSeriesWriter.ts tests/e2e/live-crosshair-persistence.spec.ts",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "negative_controls": [
+    {
+      "case": "D history request and prepend on original product source",
+      "result": "expected failure",
+      "observation": "Stationary plot crosshair has zero painted pixels after the prepend."
+    },
+    {
+      "case": "D prepend with saved hover layers disabled by temporary CSS",
+      "result": "expected failure",
+      "observation": "Frame alpha counts [315,315,315,315,315,315,315,315,315,315,0,315] expose the intermediate blank frame. Temporary diagnostic spec removed."
+    }
+  ],
+  "existing_lint_diagnostics": [
+    {
+      "file": "src/chart/windowedChart.ts",
+      "baseline_errors": 13,
+      "current_errors": 13,
+      "baseline_warnings": 0,
+      "current_warnings": 0,
+      "unchanged_diagnostics_ignoring_source_locations": true
+    },
+    {
+      "file": "src/live/LiveChartRoot.tsx",
+      "baseline_errors": 23,
+      "current_errors": 23,
+      "baseline_warnings": 3,
+      "current_warnings": 3,
+      "unchanged_diagnostics_ignoring_source_locations": true
+    },
+    {
+      "file": "src/live/workspace/SecondChartWindow.tsx",
+      "baseline_errors": 1,
+      "current_errors": 1,
+      "baseline_warnings": 0,
+      "current_warnings": 0,
+      "unchanged_diagnostics_ignoring_source_locations": true
+    }
+  ],
+  "limits": [
+    "Browser checks use isolated synthetic history fixtures and system Chrome; they do not exercise a real vendor request.",
+    "Existing touched-file ESLint findings remain (37 errors, 3 warnings); their diagnostics match HEAD after ignoring source-location shifts."
+  ]
+}
