@@ -63,7 +63,7 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
-test('왼쪽 매도·오른쪽 매수 즉시 주문, 상하단 정보·신규 확인창 없음', async ({ page }, testInfo) => {
+test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신규 확인창 없음', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const add = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await expect(add).toHaveText('');
@@ -73,9 +73,15 @@ test('왼쪽 매도·오른쪽 매수 즉시 주문, 상하단 정보·신규 �
   await expect(window.locator('.order-topline,.order-quote,.order-footer,.order-position,.order-cancel-zone,.order-status,.order-history')).toHaveCount(0);
   await expect(window.getByRole('checkbox', { name: '즉시 주문' })).toHaveCount(0);
   await add.click();
+  await add.press('Enter');
+  await add.press('Space');
+  expect(commands).toHaveLength(0);
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
+  await add.dblclick();
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
   await expect(window.getByRole('button', { name: '주문 접수', exact: true })).toHaveCount(0);
   await expect(window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' })).toBeVisible();
+  expect(commands).toHaveLength(1);
   expect(commands[0]).toMatchObject({ code: '005930', account_seq: 1, side: 'BUY', price: 67200, quantity: 10 });
   await expect(window).not.toContainText('⠿');
   await window.screenshot({ path: testInfo.outputPath('order-window.png') });
@@ -92,6 +98,11 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(window.getByLabel('매입평단가')).toHaveText('매입평단가66,000원');
   const valuation = window.getByLabel('보유 종목 평가 수익');
   await expect(valuation).toHaveText('평가수익120,000원');
+  // 숫자만 상승 색을 쓰고 라벨은 기존 메타 색을 유지한다.
+  const profitColor = await window.evaluate(el => getComputedStyle(el).getPropertyValue('--price-up').trim());
+  const rgb = profitColor.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i)!;
+  await expect(valuation.locator('.order-field-value')).toHaveCSS('color', `rgb(${rgb.slice(1).map(hex => parseInt(hex, 16)).join(', ')})`);
+  await expect(valuation.locator('.order-meta')).not.toHaveCSS('color', `rgb(${rgb.slice(1).map(hex => parseInt(hex, 16)).join(', ')})`);
   const averageBox = (await window.getByLabel('매입평단가').boundingBox())!;
   const valuationBox = (await valuation.boundingBox())!;
   expect(valuationBox.x).toBeGreaterThan(averageBox.x + averageBox.width);
@@ -112,7 +123,7 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   const summaryBox = await summary.boundingBox();
   const bidBox = await window.locator('[data-order-price="67200"]').boundingBox();
   expect(summaryBox!.y + summaryBox!.height).toBeLessThanOrEqual(bidBox!.y + 1);
-  await buy.click();
+  await buy.dblclick();
   await expect(window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' })).toHaveText('50주');
   expect(commands[0]).toMatchObject({ side: 'BUY', quantity: 50 });
   await drag(page, window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' }), window.getByRole('combobox', { name: '주문 모드' }));
@@ -122,6 +133,9 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(window.getByLabel('예상 주문 금액')).toHaveText('예상금액3,365,000원67,300원 기준');
   await expect(valuation).toHaveText('평가수익120,000원');
   await sell.click();
+  expect(commands).toHaveLength(2);
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
+  await sell.dblclick();
   await expect(window.getByRole('button', { name: '매도 67,300원 1건 상세 정정' })).toHaveText('50주');
   expect(commands[2]).toMatchObject({ side: 'SELL', quantity: 50 });
   await window.screenshot({ path: testInfo.outputPath('unified-order-controls.png') });
@@ -155,7 +169,7 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   const buy = window.getByRole('button', { name: /매수 68,200원 주문 추가/ });
   await buy.hover();
   await expect(window.getByLabel('예상 주문 수량')).toHaveText('예상수량87주68,200원 기준');
-  await buy.click();
+  await buy.dblclick();
   await expect(window.getByRole('button', { name: '매수 68,200원 1건 상세 정정' })).toHaveText('87주');
   expect(commands[0]).toMatchObject({ side: 'BUY', price: 68200, quantity: 87 });
   await settings.click();
@@ -265,7 +279,7 @@ test('로컬 모의 계좌: 실제 백엔드 부분 체결·드래그 정정·�
   const { window } = await setup(page, false, 'paper');
   await expect(window.getByRole('combobox', { name: '주문 모드' })).toHaveValue('paper');
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('50');
-  await window.getByRole('button', { name: /매수 67,300원 주문 추가/ }).click();
+  await window.getByRole('button', { name: /매수 67,300원 주문 추가/ }).dblclick();
   const partial = window.getByRole('button', { name: '매수 67,300원 1건 상세 정정' });
   await expect(partial).toHaveText('20주');
   await expect(window.locator('.order-position')).toHaveCount(0);
@@ -277,9 +291,9 @@ test('로컬 모의 계좌: 실제 백엔드 부분 체결·드래그 정정·�
   await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
   await expect(window.locator('[data-drag-order]')).toHaveCount(0);
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('5');
-  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).click();
+  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
   await expect(window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' })).toHaveText('5주');
-  await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).click();
+  await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
   await expect(window.locator('[data-drag-order]')).toHaveCount(2);
   await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).focus();
   await page.keyboard.press('Control+Shift+Backspace');
@@ -355,7 +369,7 @@ test('주문창 폭을 줄여도 같은 설정·5열·잔량·상세 정보를 �
     await expect(buy).toBeInViewport();
     await expect(window.getByTestId('book-summary').getByText('250일', { exact: true })).toBeInViewport();
   }
-  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).click();
+  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
   const chip = window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' });
   await expect(chip).toBeVisible();
   expect(commands[0]).toMatchObject({ side: 'BUY', price: 67200, quantity: 10 });
