@@ -63,6 +63,7 @@ from hoga.live.krx_close import KrxCloseResponse
 from hoga.live.lifecycle import LiveStatus
 from hoga.live.provider_errors import ProviderFailure
 from hoga.live.service_status import ProviderStatus
+from hoga.trading import models as trading_models
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -314,6 +315,27 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    trading_models.TradingAccount: frozenset({"account_seq", "label"}),
+    trading_models.TradingAccountsResponse: frozenset({"configured", "accounts"}),
+    trading_models.TradingStateResponse: frozenset({
+        "account_seq", "code", "orders", "recent_orders", "buying_power", "sellable_quantity",
+        "holding_quantity", "average_purchase_price",
+        "fetched_at_ms", "events_connected", "unresolved_commands",
+    }),
+    trading_models.TossOrder: frozenset({
+        "orderId", "symbol", "side", "orderType", "timeInForce", "status", "price", "quantity",
+        "orderAmount", "currency", "orderedAt", "canceledAt", "execution",
+    }),
+    trading_models.TossExecution: frozenset({
+        "filledQuantity", "averageFilledPrice", "filledAmount", "commission", "tax", "filledAt", "settlementDate",
+    }),
+    trading_models.TradingCommandResponse: frozenset({"command_id", "order_id", "status"}),
+    trading_models.TradingCancelResult: frozenset({"order_id", "accepted", "operation_id", "code", "message"}),
+    trading_models.TradingCancelResponse: frozenset({"results"}),
+    trading_models.TradingReviewResponse: frozenset({"command_id"}),
+    trading_models.ResetPaperAccount: frozenset({
+        "account_seq", "command_id", "code", "cash", "holding_quantity", "average_purchase_price", "confirmed",
+    }),
     ProviderFailure: frozenset({
         "channel", "kind", "operation", "observed_at_ms", "code", "account_id",
         "connection_generation", "phase", "elapsed_ms",
@@ -430,6 +452,7 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "TradingSide": (frozenset(get_args(trading_models.TradingSide)), "frontend/src/api/trading.ts"),
     "StockNewsStatus": (frozenset(get_args(m.StockNewsStatus)), "frontend/src/api/stockNews.ts"),
     "ComputeErrorCode": (
         frozenset(code.value for code in ComputeErrorCode), "frontend/src/api/types.ts",
@@ -695,7 +718,7 @@ INTENTIONALLY_UNMIRRORED: dict[str, str] = {
 
 # 감사 대상 백엔드 모듈 — 명시 목록이다(registry 철학과 같다). 여기 없는 모듈의
 # Literal 별칭은 감사되지 않으므로, 새 wire enum 을 다른 모듈에 두면 추가할 것.
-_AUDITED_BACKEND_MODULES = (m, sources, events, futures_runtime, market_overview, flow_receipts)
+_AUDITED_BACKEND_MODULES = (m, sources, events, futures_runtime, market_overview, flow_receipts, trading_models)
 
 
 def _backend_literal_alias_names() -> set[str]:

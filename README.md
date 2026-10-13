@@ -2,6 +2,11 @@
 
 Personal local-first tool to capture, store, and replay Korean stock orderbook + trade data from hogaplay.com and 키움 (Kiwoom).
 
+`/live` 창 추가의 **호가 주문**은 실제 통합 호가를 사용하는 로컬 모의 계좌와
+토스증권 국내 지정가 주문을 지원합니다. 기본은 가상 현금 1억원의 모의 모드이며,
+부분 체결·드래그 정정·취소·현재 종목 전체 취소를 연습할 수 있습니다.
+설정과 체결 규칙은 [호가 주문창 사용법](./docs/plans/2026-10-13-toss-order-window.md)을 참고하세요.
+
 See [`CONTEXT.md`](./CONTEXT.md) for the glossary, [`DESIGN.md`](./DESIGN.md) for frontend UI rules, [`CHANGELOG.md`](./CHANGELOG.md) for release history, [`docs/adr/`](./docs/adr/) for architecture decisions, and [`docs/superpowers/specs/`](./docs/superpowers/specs/) / [`docs/superpowers/plans/`](./docs/superpowers/plans/) for design specs and implementation plans.
 
 성능 변경의 측정 조건·결과·재현 방법은 [2026-09-05 성능 개선 기록](./docs/research/2026-09-05-performance-improvements.md)에 정리했다.

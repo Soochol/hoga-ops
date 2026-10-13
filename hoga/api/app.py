@@ -57,6 +57,7 @@ from hoga.api.startup_runtime import StartupRuntimeDeps, start_app_runtime
 from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
+from hoga.api.trading_routes import build_paper_router, build_router as build_trading_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
@@ -96,6 +97,8 @@ from hoga.live.live_quote_fetcher import LiveQuoteFetcher
 from hoga.live.migrate import migrate_to_v2_layout
 from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.second_trade_api import build_router as build_second_trade_router
+from hoga.trading.paper import PaperTradingService
+from hoga.trading.service import TradingService
 
 
 def _gc_health_section(gc_objects: bool) -> dict:
@@ -360,6 +363,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         # bus + loop for thread-safe publishes from the watchdog thread.
         set_captures_bus(bus, loop)
         await live_get_buffer().refresh_budget_from_env()
+        _app.state.paper_trading_service.start()
         # Single entry point bundles restore-before-spawn invariant (ADR-0019).
         lifespan_tasks: list[asyncio.Task] = [
             await _captures_module.start_capture_runtime(data_dir),
@@ -435,6 +439,8 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         try:
             yield
         finally:
+            await _app.state.trading_service.close()
+            await _app.state.paper_trading_service.close()
             _captures_module.begin_capture_shutdown()
             # 복원은 **프로덕션이 아니라 테스트를 위한 것**이다. 프로세스가 오래 사는
             # 운영에서는 의미가 없지만, `TestClient` 는 한 pytest 프로세스 안에서
@@ -611,6 +617,15 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_news_router(data_dir=data_dir))
+    app.state.trading_service = TradingService(
+        data_dir, on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision}),
+    )
+    app.include_router(build_trading_router(app.state.trading_service))
+    app.state.paper_trading_service = PaperTradingService(
+        data_dir, book_getter=lambda code: live_get_buffer().get_last_ob(code, "UN"),
+        on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision}),
+    )
+    app.include_router(build_paper_router(app.state.paper_trading_service))
     app.include_router(build_market_router(data_dir=data_dir))
     # 저장뷰 캡처-공백 자동 복구 훅은 제거됐다(2026-08-07) — 복구본 네임스페이스
     # (`kis_api`)와 함께 기능을 접었다. 근거는 `sources.SourceName` 주석: 복구본이

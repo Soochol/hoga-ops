@@ -116,6 +116,7 @@ export default defineConfig({
         KIWOOM_APP_KEY_3: '', KIWOOM_APP_SECRET_3: '',
         KIWOOM_APP_KEY_4: '', KIWOOM_APP_SECRET_4: '',
         KIS_APP_KEY: '', KIS_APP_SECRET: '',
+        TOSSINVEST_CLIENT_ID: '', TOSSINVEST_CLIENT_SECRET: '',
         // 커맨드 인라인이 아니라 여기 두는 이유: `E2E_DIST_DIR` 은 `prepare-dist.mjs`
         // 가, 나머지는 `hoga serve` 가 읽는데 둘이 같은 커맨드 체인에 있어서
         // 한 자리에 모으는 편이 파생값을 빠뜨릴 여지가 적다.

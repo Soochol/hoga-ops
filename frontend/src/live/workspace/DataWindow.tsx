@@ -18,7 +18,7 @@
  * kind 별로 필요한 훅이 다르므로 하위 컴포넌트로 분기한다(한 컴포넌트에서 조건부
  * 훅 호출 금지 — 각 하위 컴포넌트가 자기 훅만 무조건 호출).
  */
-import { useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
 import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
 import { returnGroupToLatest } from './returnGroupToLatest';
@@ -107,6 +107,7 @@ import { isLiveIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
 import { NewsWindow } from './NewsWindow';
+const OrderWindow = lazy(() => import('./OrderWindow').then(module => ({ default: module.OrderWindow })));
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   // 섹터 랭킹은 지수 그룹 전용 데이터 창(PR-D) — 일반 지수 게이트보다 먼저 처리한다
@@ -149,6 +150,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     );
   }
   switch (win.kind) {
+    case 'order':
+      return <Suspense fallback={<div className="p-2 text-sm text-fg-dim">호가 주문창 불러오는 중…</div>}><OrderWindow key={code} code={code} name={symbol?.name ?? code} /></Suspense>;
     case 'news':
       return <NewsWindow key={code} code={code} name={symbol?.name ?? code} />;
     case 'book':

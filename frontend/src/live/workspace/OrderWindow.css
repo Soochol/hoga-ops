@@ -1,0 +1,45 @@
+.order-window { container-type:inline-size; height:100%; display:flex; flex-direction:column; background:var(--bg-card); color:var(--fg); font-size:var(--text-sm); overflow:auto; }
+.order-window button,.order-window select,.order-window input { font:inherit; color:inherit; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm,4px); }
+.order-window button { padding:3px 6px; }
+.order-window button:hover { background:var(--bg-input-hover); }
+.order-window button:disabled { opacity:.5; cursor:default; }
+.order-topline,.order-controls,.order-footer,.order-totals,.order-editor { padding:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.order-topline,.order-totals { justify-content:space-between; }
+.order-quote { display:flex; align-items:baseline; gap:8px; padding:0 8px 4px; }
+.order-quote strong { font-size:var(--text-xl); font-weight:500; }
+.order-position { padding:0 8px 6px; font-size:var(--text-xs); color:var(--fg-dim); }
+.order-controls { border-bottom:1px solid var(--border); }
+.order-controls label,.order-editor label { display:flex; align-items:center; gap:4px; }
+.order-controls input[type=number] { width:70px; padding:3px; }
+.order-controls input[aria-label="주문 기준 금액"] { width:100px; }
+.order-scroll { flex:1; min-height:160px; overflow:auto; }
+.order-ladder { min-width:670px; padding:4px 8px 0; }
+.order-row { display:grid; grid-template-columns:90px minmax(100px,1fr) 163px minmax(160px,1fr) 90px; height:24px; align-items:center; }
+.order-divider,.order-totals,.order-footer { border-top:1px solid var(--border); }
+.order-target { background:var(--tint-selection); }
+.order-lane { display:flex; align-items:center; gap:3px; padding:0 3px; height:100%; min-width:0; }
+.order-buy { --order-side:var(--price-up); --order-tint:var(--tint-price-up); }
+.order-sell { --order-side:var(--price-down); --order-tint:var(--tint-price-down); }
+.order-window .order-add { height:21px; flex:1; min-width:16px; border:0; background:color-mix(in srgb,var(--order-side) 5%,var(--bg-card)); }
+.order-window .order-chip { color:var(--order-side); background:var(--order-tint); border:0; height:22px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:0 3px; }
+.order-chip[data-drag-order] { cursor:grab; touch-action:none; }
+.order-lane:has(.order-chip) .order-add { flex:0 0 16px; }
+.order-price { display:flex; justify-content:center; align-items:center; gap:8px; height:100%; white-space:nowrap; }
+.order-price small { font-size:var(--text-xs); min-width:48px; text-align:right; }
+.order-current { outline:1px solid var(--accent); outline-offset:-2px; border-radius:4px; }
+.order-info { display:flex; align-items:center; justify-content:space-between; gap:4px; padding:0 6px; font-size:var(--text-xs); }
+.order-depth { position:relative; padding:0 6px; font-size:var(--text-xs); }
+.order-depth::before { content:""; position:absolute; right:3px; height:16px; top:calc(50% - 8px); width:var(--order-depth); background:var(--bar-ask); border-radius:3px; }
+.order-depth span { position:relative; }
+.order-ask { text-align:right; color:var(--price-down); }
+.order-bid { color:var(--price-up); }
+.order-bid::before { left:3px; right:auto; background:var(--bar-bid); }
+.order-cancel-zone { margin:0 8px 6px; padding:8px; text-align:center; background:var(--bg-subtle); color:var(--fg-dim); border-radius:4px; }
+.order-cancel-active { color:var(--error); background:var(--tint-error); outline:1px dashed var(--error); }
+.order-editor { margin:0 8px 6px; background:var(--bg-subtle); border-radius:4px; }
+.order-editor input[type=number] { width:100px; padding:3px; }
+.order-window .order-submit { color:var(--accent); border-color:var(--accent); }
+.order-status,.order-notice,.order-history,.order-outside { padding:4px 8px; overflow-wrap:anywhere; font-size:var(--text-xs); }
+.order-status { min-height:24px; color:var(--fg-dim); }
+.order-outside { display:flex; gap:6px; flex-wrap:wrap; }
+@container(max-width:669px) { .order-ladder { min-width:320px; } .order-row { grid-template-columns:minmax(80px,1fr) 150px minmax(80px,1fr); } .order-info,.order-depth { display:none; } }
