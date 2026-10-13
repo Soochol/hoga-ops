@@ -106,6 +106,7 @@ import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
+import { useWorkspaceStore } from '../../state/workspace';
 import { NewsWindow } from './NewsWindow';
 const OrderWindow = lazy(() => import('./OrderWindow').then(module => ({ default: module.OrderWindow })));
 
@@ -151,7 +152,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   }
   switch (win.kind) {
     case 'order':
-      return <Suspense fallback={<div className="p-2 text-sm text-fg-dim">호가 주문창 불러오는 중…</div>}><OrderWindow code={code} name={symbol?.name ?? code} /></Suspense>;
+      return <Suspense fallback={<div className="p-2 text-sm text-fg-dim">호가 주문창 불러오는 중…</div>}><OrderWindow code={code} name={symbol?.name ?? code}
+        settings={win.order} onSettingsChange={settings => useWorkspaceStore.getState().setOrderWindowSettings(win.id, settings)} /></Suspense>;
     case 'news':
       return <NewsWindow key={code} code={code} name={symbol?.name ?? code} />;
     case 'book':

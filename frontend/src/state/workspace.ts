@@ -23,6 +23,7 @@ import {
 import { liveDefaultWindows } from './liveDefaultLayout';
 import { isLiveIndexId } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
+import { normalizeOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
 
 /**
  * `/live` 멀티창 워크스페이스 상태 (ADR-0119, 스펙 #715).
@@ -169,6 +170,8 @@ export interface WorkspaceWindow {
   rect: WorkspaceRect;
   /** kind==='chart' 에서만 존재. */
   chart?: ChartWindowConfig;
+  /** Order input mode and independently editable presets, scoped to this window. */
+  order?: OrderWindowSettings;
   /** 포커스·종목 고정과 독립적인 표시 순서. */
   alwaysOnTop?: boolean;
   /**
@@ -252,6 +255,7 @@ type Store = Persisted & {
   /** 여러 창 rect 를 한 번에 커밋(스플리터: 드래그 창 + follower 들). */
   setWindowRects: (updates: readonly { id: string; rect: WorkspaceRect }[]) => void;
   setWindowGroup: (id: string, group: GroupId) => void;
+  setOrderWindowSettings: (id: string, settings: OrderWindowSettings) => void;
   setGroupSymbol: (group: GroupId, symbol: GroupSymbol) => void;
   /**
    * 창 종목 고정 토글. 켤 때 지금 그리고 있는 종목을 창 슬롯으로 복사하고, 끌 때
@@ -392,6 +396,7 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
     if (pinned) win.pinned = pinned;
   }
   if (w.alwaysOnTop === true) win.alwaysOnTop = true;
+  if (w.kind === 'order' && w.order != null) win.order = normalizeOrderSettings(w.order);
   if (w.kind === 'chart') {
     const cfg = (w.chart ?? {}) as Record<string, unknown>;
     // 구 스냅샷의 `cfg.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
@@ -1016,6 +1021,16 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     });
   },
 
+  setOrderWindowSettings: (id, settings) => {
+    if (!validOrderSettings(settings)) return;
+    set(state => {
+      if (!state.windows.some(w => w.id === id && w.kind === 'order')) return {};
+      const windows = state.windows.map(w => w.id === id ? { ...w, order: normalizeOrderSettings(settings) } : w);
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
   setChartRegularSessionOnly: (id, enabled) => {
     set((state) => {
       const windows = withChart(state, id, chart => ({ ...chart, regularSessionOnly: enabled }));
@@ -1221,6 +1236,7 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
       ...w,
       rect: { ...w.rect },
       ...(w.chart ? { chart: { ...w.chart } } : {}),
+      ...(w.order ? { order: normalizeOrderSettings(w.order) } : {}),
     })),
     zOrder: [...s.zOrder],
   };

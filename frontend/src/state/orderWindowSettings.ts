@@ -1,0 +1,44 @@
+export type OrderInputUnit = 'quantity' | 'amount';
+export type OrderPresets = [number, number, number];
+export interface OrderWindowSettings {
+  unit: OrderInputUnit;
+  quantityPresets: OrderPresets;
+  amountPresets: OrderPresets;
+}
+
+export const MILLION_WON = 1_000_000;
+export const MAX_ORDER_QUANTITY = 1_000_000_000;
+export const MAX_AMOUNT_MILLIONS = 1_000_000;
+export const DEFAULT_ORDER_SETTINGS: OrderWindowSettings = {
+  unit: 'quantity', quantityPresets: [10, 50, 100], amountPresets: [1, 5, 10],
+};
+
+export const validOrderInput = (value: number, unit: OrderInputUnit) => Number.isSafeInteger(value)
+  && value >= 1 && value <= (unit === 'quantity' ? MAX_ORDER_QUANTITY : MAX_AMOUNT_MILLIONS);
+
+export function validOrderSettings(value: OrderWindowSettings): boolean {
+  return (value.unit === 'quantity' || value.unit === 'amount')
+    && value.quantityPresets.length === 3 && value.amountPresets.length === 3
+    && value.quantityPresets.every(n => validOrderInput(n, 'quantity'))
+    && value.amountPresets.every(n => validOrderInput(n, 'amount'));
+}
+
+/** Stored window settings are untrusted; a corrupt field must not discard the window. */
+export function normalizeOrderSettings(raw: unknown): OrderWindowSettings {
+  const value = raw && typeof raw === 'object' ? raw as Partial<OrderWindowSettings> : {};
+  const presets = (source: unknown, unit: OrderInputUnit, fallback: OrderPresets): OrderPresets => {
+    if (!Array.isArray(source) || source.length !== 3) return [...fallback];
+    return source.map((n, i) => typeof n === 'number' && validOrderInput(n, unit) ? n : fallback[i]) as OrderPresets;
+  };
+  return {
+    unit: value.unit === 'amount' ? 'amount' : 'quantity',
+    quantityPresets: presets(value.quantityPresets, 'quantity', DEFAULT_ORDER_SETTINGS.quantityPresets),
+    amountPresets: presets(value.amountPresets, 'amount', DEFAULT_ORDER_SETTINGS.amountPresets),
+  };
+}
+
+/** Convert at the clicked limit price, using whole shares and no fee allowance. */
+export function quantityForAmount(millions: number, price: number): number | null {
+  if (!validOrderInput(millions, 'amount') || !Number.isSafeInteger(price) || price <= 0) return null;
+  return Math.floor(millions * MILLION_WON / price);
+}
