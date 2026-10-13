@@ -1296,14 +1296,14 @@ function PaneLegendOverlay({
         // Pane not mounted yet (first frame after a toggle/reorder) → skip;
         // self-heals next tick once chart.panes() includes it.
         if (idx >= paneTops.length) return null;
-        // 값이 없거나 값 레전드를 숨긴 pane 도 이름 핸들은 항상 제공한다.
+        // 값이 없거나 값 레전드를 숨긴 pane 도 이름 핸들과 제거 버튼은 항상 제공한다.
         // 빈 cells 행을 써 데이터가 도착해도 드래그 핸들의 DOM 을 유지한다.
         const paneRows = group.flatMap<LegendRow>((member) => {
           const memberRows = rowsByPane.get(member.name) ?? [];
           return idx > 0 && !memberRows.some((row) => row.kind === 'cells')
             ? [{
               kind: 'cells', paneId: member.name, title: paneDisplayName(member.name), cells: [],
-              toggleKey: group.length > 1 ? member.legendToggleKey : undefined,
+              toggleKey: member.legendToggleKey,
             }, ...memberRows]
             : memberRows;
         });

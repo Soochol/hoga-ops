@@ -20,7 +20,7 @@ import {
 } from './indicators/paneLegendRegistry';
 import type { PaneId } from '../chart/drawing/types';
 import { CANONICAL_PANE_ORDER, PANE_DISPLAY_NAME } from '../chart/paneOrder';
-import type { PaneToggles } from './paneSpecsForTimeframe';
+import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import { formatKoreanWonEok } from '../util/koreanNumber';
 import {
   extractPaneToBoundary,
@@ -1023,6 +1023,51 @@ describe('PaneLegendOverlay — 화이트리스트 cells 행 표시(2026-08-04 �
     render(<PaneLegendOverlay chart={minutePanes()} timeframe="1m" paneToggles={toggles} />);
     fireEvent.click(screen.getByRole('button', { name: '거래량 지표 끄기' }));
     expect(useLivePageStore.getState().volumeEnabled).toBe(false);
+  });
+});
+
+describe('PaneLegendOverlay — 모든 pane 지표의 제거 버튼', () => {
+  // 모든 pane을 한 표면에 노출해 새 지표도 제거 버튼 검증에 포함한다.
+  const toggles: PaneToggles = {
+    foreignNet: true, institutionNet: true, volumeEnabled: true, tradeValueEnabled: true,
+    quoteTotalsEnabled: true, ratioEnabled: true, fillStrengthEnabled: true,
+    programTradeEnabled: true, dailyProgramEnabled: true, peakWallPaneEnabled: true,
+    forceHogaPanes: true,
+  };
+  const specs = paneSpecsForTimeframe('D', toggles);
+  const indicators = specs.filter((spec) => spec.name !== 'candle');
+  let previousState: ReturnType<typeof useLivePageStore.getState>;
+
+  beforeEach(() => {
+    previousState = useLivePageStore.getState();
+    resetStore();
+    const canonical = normalizePaneGroups(undefined);
+    useLivePageStore.setState({
+      movingAverages: [], indicatorTimeframe: 'D',
+      paneGroups: canonical, paneOrder: flattenPaneGroups(canonical), paneAxisMode: {},
+    });
+    for (const spec of indicators) {
+      if (spec.legendToggleKey) useLivePageStore.getState().setPanePrefForTimeframe('D', spec.legendToggleKey, true);
+    }
+  });
+  afterEach(() => {
+    cleanup();
+    useLivePageStore.setState(previousState);
+  });
+
+  describe.each([false, true])('값 데이터 있음: %s', (hasData) => {
+    it.each(indicators)('$name 레전드의 ×로 해당 지표만 제거한다', (spec) => {
+      if (hasData) registerLegend(spec.name, [{ label: PANE_DISPLAY_NAME[spec.name], value: 100 }]);
+      render(<PaneLegendOverlay chart={makeChart(specs.map(() => 100))} timeframe="D" paneToggles={toggles} />);
+      const row = within(screen.getByTestId(`pane-legend-rows-${spec.name}`));
+      const remove = row.getByRole('button', { name: /지표 끄기$/ });
+      expect(remove).toHaveAttribute('title', `${PANE_DISPLAY_NAME[spec.name]} 지표 끄기`);
+      fireEvent.click(remove);
+      expect(spec.legendToggleKey).toBeDefined();
+      for (const indicator of indicators) {
+        expect(useLivePageStore.getState()[indicator.legendToggleKey!]).toBe(indicator.name !== spec.name);
+      }
+    });
   });
 });
 

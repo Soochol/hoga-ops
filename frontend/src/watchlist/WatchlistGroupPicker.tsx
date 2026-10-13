@@ -1,9 +1,8 @@
 import { useMemo, useState, type RefObject } from 'react';
-import { createPortal } from 'react-dom';
 import { useWatchlist, useAddMember, useRemoveMember, useCreateFolder } from './useWatchlist';
 import { useWatchlistMembership } from './useWatchlistMembership';
-import { useDismissablePopover } from '../util/useDismissablePopover';
-import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
+import { CheckIcon } from '../ui/CheckIcon';
+import { WatchlistGroupPopover } from './WatchlistGroupPopover';
 
 /**
  * 단일 멤버십 primitive (v3, ADR-0070). code의 그룹 소속을 체크박스로 토글 + 새 그룹
@@ -20,23 +19,20 @@ export function WatchlistGroupPicker({ code, name, x, y, onClose, anchorRef }: {
   onClose: () => void;
   anchorRef?: RefObject<HTMLElement | null>;
 }) {
-  const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
-  // Register the portal as a nested layer so its clicks do not dismiss a
-  // containing symbol search before the menu can handle them.
-  useDismissablePopover(true, anchorRef ?? ref, onClose, ref);
-  return createPortal((
-    <div ref={ref} role="dialog" aria-label="내 관심 그룹"
-      data-testid="watchlist-group-picker"
-      onPointerDown={event => event.stopPropagation()}
-      className="bg-bg-card border border-border rounded shadow-lg z-[60] py-1 w-72 max-w-[calc(100vw-16px)] max-h-[calc(100vh-16px)] overflow-y-auto"
-      style={{ position: 'fixed', left, top }}>
+  return (
+    <WatchlistGroupPopover x={x} y={y} role="dialog" label="내 관심 그룹"
+      testId="watchlist-group-picker" onClose={onClose} anchorRef={anchorRef}>
       <WatchlistGroupPickerContent key={code} code={code} name={name} />
-    </div>
-  ), document.body);
+    </WatchlistGroupPopover>
+  );
 }
 
 /** 관심 그룹 선택 내용을 공유해 컨텍스트 메뉴에서도 한 번에 등록한다. */
-export function WatchlistGroupPickerContent({ code, name }: { code: string; name?: string }) {
+export function WatchlistGroupPickerContent({ code, name, selectionRole = 'checkbox' }: {
+  code: string;
+  name?: string;
+  selectionRole?: 'checkbox' | 'menuitemcheckbox';
+}) {
   const { data, isError, refetch } = useWatchlist();
   const { folderIdsOf } = useWatchlistMembership();
   const addM = useAddMember();
@@ -53,6 +49,7 @@ export function WatchlistGroupPickerContent({ code, name }: { code: string; name
   } | null>(null);
 
   const toggle = (folderId: string) => {
+    if (busy) return;
     const removing = member.has(folderId);
     const folder = folders.find((f) => f.id === folderId);
     const order = data?.entries.find(entry => entry.code === code && entry.folder_id === folderId)?.order;
@@ -68,7 +65,7 @@ export function WatchlistGroupPickerContent({ code, name }: { code: string; name
   };
   const createAndAdd = async () => {
     const n = newName.trim();
-    if (!n || busy) return;
+    if (!n || busy || !data) return;
     try {
       const f = await createM.mutateAsync(n);
       setNewName('');
@@ -97,35 +94,51 @@ export function WatchlistGroupPickerContent({ code, name }: { code: string; name
   };
   const visibleFolders = folders.filter((f) => f.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return (
-    <section aria-label="관심 그룹 선택">
-      <div className="px-3 py-2 border-b border-border">
-        <div className="text-sm font-medium text-fg">{displayName} <span className="text-xs text-fg-dim">{code}</span></div>
-        <div className="text-xs text-fg-dim mt-1">관심 그룹 · 선택 즉시 반영</div>
+    <section aria-label="관심 그룹 선택" className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 px-3 py-2">
+        <div className="flex min-w-0 items-baseline gap-2 text-sm font-medium text-fg">
+          <span className="truncate" title={displayName}>{displayName}</span>{' '}
+          <span className="shrink-0 font-data text-xs font-normal text-fg-dim">{code}</span>
+        </div>
+        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-fg-dim">
+          <span>관심 그룹에 추가</span>
+          <span className="font-data">{member.size > 0 ? `${member.size}개 그룹에 등록` : '선택 즉시 반영'}</span>
+        </div>
       </div>
-      {folders.length > 6 && <input aria-label="관심 그룹 검색" placeholder="관심 그룹 검색"
-        value={search} onChange={(e) => setSearch(e.target.value)}
-        className="block w-full px-3 py-2 text-sm bg-transparent border-b border-border" />}
-      {data ? <div className="max-h-52 overflow-y-auto overscroll-contain py-1">
-        {visibleFolders.map((f) => (
-          <label key={f.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-bg-input-hover">
-            <input type="checkbox" checked={member.has(f.id)} disabled={busy}
-              onChange={() => toggle(f.id)} />
-            <span className="truncate" title={f.name}>{f.name}</span>
-          </label>
-        ))}
+      {folders.length > 6 && <div className="shrink-0 px-3 pb-2">
+        <input aria-label="관심 그룹 검색" placeholder="관심 그룹 검색"
+          value={search} onChange={(e) => setSearch(e.target.value)}
+          className="block w-full rounded-md bg-bg-input-hover px-2 py-1.5 text-sm text-fg placeholder:text-fg-dim focus-visible:outline-accent" />
+      </div>}
+      {data ? <div className="min-h-0 max-h-52 overflow-y-auto overscroll-contain px-1 py-1">
+        {visibleFolders.map((f) => {
+          const checked = member.has(f.id);
+          return <button key={f.id} type="button" role={selectionRole} aria-checked={checked}
+            aria-label={f.name} disabled={busy} data-testid={`quote-menu-group-${f.id}`}
+            onClick={() => toggle(f.id)}
+            className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-accent disabled:opacity-50 ${checked ? 'bg-tint-selection text-fg' : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'}`}>
+            <span className="grid w-4 shrink-0 place-items-center"><CheckIcon filled={checked} size={16} /></span>
+            <span className="min-w-0 truncate" title={f.name}>{f.name}</span>
+          </button>;
+        })}
         {!visibleFolders.length && <p className="px-3 py-2 text-xs text-fg-dim">{folders.length ? '검색 결과가 없습니다' : '관심 그룹을 만들어 추가하세요'}</p>}
       </div> : <p className="px-3 py-2 text-xs text-fg-dim">{isError ? <button type="button" onClick={() => void refetch()}>불러오기 실패 · 다시 시도</button> : '관심 그룹을 불러오는 중…'}</p>}
-      <form onSubmit={(e) => { e.preventDefault(); void createAndAdd(); }} className="border-t border-border px-3 py-2 flex gap-2">
+      <form onSubmit={(e) => { e.preventDefault(); void createAndAdd(); }} className="mt-1 flex shrink-0 items-center gap-2 border-t border-border px-3 py-2">
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-fg-dim">
+          <path d="M12 5v14M5 12h14" />
+        </svg>
         <input value={newName} onChange={(e) => setNewName(e.target.value)} maxLength={40}
           placeholder="새 그룹 만들기" aria-label="새 그룹 만들기" disabled={busy}
-          className="min-w-0 flex-1 bg-transparent text-sm" />
-        <button type="submit" disabled={busy || !newName.trim()} className="text-sm text-accent disabled:opacity-40">추가</button>
+          onKeyDown={event => { if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault(); }}
+          className="min-w-0 flex-1 rounded-sm bg-transparent py-1 text-sm text-fg placeholder:text-fg-dim focus-visible:outline-accent" />
+        <button type="submit" disabled={!data || busy || !newName.trim()}
+          className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-tint-selection disabled:opacity-40">추가</button>
       </form>
-      <div role="status" aria-live="polite" className="flex flex-wrap items-center gap-2 px-3 text-xs text-fg-dim break-words">
+      {(busy || feedback) && <div role="status" aria-live="polite" className="flex shrink-0 flex-wrap items-center gap-2 break-words border-t border-border px-3 py-2 text-xs text-fg-dim">
         <span>{busy ? '저장 중…' : feedback}</span>
         {undo && <button type="button" disabled={busy} onClick={undoChange}
           className="text-accent disabled:opacity-40">실행 취소</button>}
-      </div>
+      </div>}
     </section>
   );
 }

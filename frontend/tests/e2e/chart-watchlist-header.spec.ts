@@ -122,6 +122,7 @@ test('chart title heart adds the local stock, supports undo and stays usable in 
   expect(heart.x + heart.width).toBeLessThan(narrow.x + narrow.width);
   await secondHeart.click();
   await expect(picker).toContainText('삼성전자 005930');
+  await picker.screenshot({ path: testInfo.outputPath('watchlist-heart-popover.png') });
   await page.screenshot({ path: testInfo.outputPath('chart-watchlist-header.png') });
   expect(entries.map(e => e.code).sort()).toEqual(['005930', '098460']);
 });
