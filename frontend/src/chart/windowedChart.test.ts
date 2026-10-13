@@ -329,6 +329,7 @@ describe('full-history chart / bounded native renderer', () => {
       move.mockClear();
       prepend();
       mouse({ seriesData: new Map() });
+      element.dispatchEvent(new MouseEvent('mouseleave'));
       await new Promise(requestAnimationFrame);
       expect(move).not.toHaveBeenCalled();
       mouse({ point: { x: 450, y: 80 }, sourceEvent: { clientX: 550, clientY: 280 }, seriesData: new Map() });

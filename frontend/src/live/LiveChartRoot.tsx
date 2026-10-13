@@ -44,6 +44,7 @@ import {
   type DayBoundaryTick,
 } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
+import { createPersistentCrosshairChart } from '../chart/persistentCrosshair';
 import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSync';
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
@@ -1895,7 +1896,7 @@ export function LiveChartRoot({
     });
     const c = isMinuteTimeframe(timeframe) && code != null && /^\d{6}$/.test(code)
       ? createWindowedChart(nativeChart as IChartApi)
-      : nativeChart;
+      : createPersistentCrosshairChart(nativeChart as IChartApi);
     const releasePriceScaleWidth = retainRightPriceScaleWidth(c as IChartApi);
     setChartEntry({ chart: c as IChartApi, key: viewKey });
     // autoSize: true already attaches lightweight-charts' own ResizeObserver

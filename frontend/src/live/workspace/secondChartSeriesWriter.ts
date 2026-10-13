@@ -1,7 +1,8 @@
-import type { ISeriesApi, UTCTimestamp } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, UTCTimestamp } from 'lightweight-charts';
 import type { SecondBar } from '../../api/secondAggregates';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { movingAverageSeconds } from './secondAggregateProjectors';
+import { preserveCrosshairDuringDataChange } from '../../chart/persistentCrosshair';
 
 type Series = { candles: ISeriesApi<'Candlestick'>; volume: ISeriesApi<'Histogram'>; ma: ISeriesApi<'Line'> };
 const PERIOD = 20;
@@ -11,7 +12,7 @@ const sameBar = (a: SecondBar, b: SecondBar) => a === b || a.t_ms === b.t_ms
 /** Replace structural changes; update the tail and late corrections in place.
  * Existing day projections must stay fixed before historical updates are safe.
  */
-export function createSecondChartSeriesWriter(series: Series) {
+export function createSecondChartSeriesWriter(series: Series, chart?: IChartApi) {
   let previous: readonly SecondBar[] = [];
   let previousAxis: VirtualAxis | null = null;
   return (bars: readonly SecondBar[], axis: VirtualAxis) => {
@@ -35,9 +36,13 @@ export function createSecondChartSeriesWriter(series: Series) {
       if (changes.length > 64) reset = true;
     }
     if (reset) {
-      series.candles.setData(bars.map(candle));
-      series.volume.setData(bars.map(volume));
-      series.ma.setData(movingAverageSeconds(bars, PERIOD).map(p => ({ ...p, time: projected(Number(p.time) * 1000) })));
+      const replace = () => {
+        series.candles.setData(bars.map(candle));
+        series.volume.setData(bars.map(volume));
+        series.ma.setData(movingAverageSeconds(bars, PERIOD).map(p => ({ ...p, time: projected(Number(p.time) * 1000) })));
+      };
+      if (chart) preserveCrosshairDuringDataChange(chart, replace);
+      else replace();
     } else {
       for (let i = previous.length; i < bars.length; i++) changes.push(i);
       const affectedMa = new Set<number>();
