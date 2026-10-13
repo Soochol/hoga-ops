@@ -217,16 +217,17 @@ async def test_receipt_write_failure_preserves_raw_capture_and_dedup_success(tmp
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("hour", "minute", "expected_calls"), [
-    (15, 45, len(PRODUCTS)), (15, 59, len(PRODUCTS)), (16, 0, 0),
+@pytest.mark.parametrize(("hour", "minute", "second", "expected_calls"), [
+    (15, 45, 0, len(PRODUCTS)), (15, 59, 0, len(PRODUCTS)),
+    (16, 0, 0, len(PRODUCTS)), (16, 29, 59, len(PRODUCTS)), (16, 30, 0, 0),
 ])
-async def test_collects_delayed_updates_until_1600(tmp_path, monkeypatch, hour, minute, expected_calls):
+async def test_collects_delayed_updates_until_1630(tmp_path, monkeypatch, hour, minute, second, expected_calls):
     from datetime import datetime
 
     from hoga.util.timeenc import KST
 
     monkeypatch.setattr("hoga.live.session_gate.is_trading_day_now", lambda _: True)
-    stamp = int(datetime(2026, 8, 7, hour, minute, tzinfo=KST).timestamp() * 1000)
+    stamp = int(datetime(2026, 8, 7, hour, minute, second, tzinfo=KST).timestamp() * 1000)
     calls = []
 
     async def fetch(iscd, key):
