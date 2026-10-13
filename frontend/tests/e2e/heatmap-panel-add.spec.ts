@@ -30,7 +30,7 @@ async function setup(page: Page, panel: 'watchlist' | 'heatmap' = 'watchlist') {
   if (!(await page.getByTestId(`${panelTestId}${A}`).isVisible())) {
     await page.getByRole('button', { name: panel === 'watchlist' ? /관심종목 패널 토글/ : /히트맵 패널 토글/ }).click();
   }
-  const handle = page.getByTestId(`${panelTestId}${A}`).getByRole('button', { name: '삼성전자 이동', exact: true });
+  const handle = page.getByTestId(`${panelTestId}${A}`).getByTestId(`${panel === 'watchlist' ? 'watchlist' : 'heatmap-drawer'}-row-005930`);
   await expect(handle).toBeVisible();
   const target = page.locator(`[data-heatmap-drop-folder="${B}"]`);
   await expect(target).toBeVisible();

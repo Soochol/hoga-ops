@@ -1,5 +1,6 @@
 import { useTextTooltip } from '../ui/useTextTooltip';
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core';
+import { openPanelContextMenuFromKeyboard, panelDragListeners } from '../ui/panelRowInteractions';
 import { priceDirClass } from '../ui/priceDir';
 import {
   dropIndicatorClass, sortableDraggingStyle, sortablePlaceholderStyle,
@@ -116,6 +117,7 @@ export function QuoteRow({
     // 포커스됐을 때만 동작한다.
     if (e.key === 'Escape') nameTip.hide();
     if (e.target !== e.currentTarget) return;
+    if (onContextMenu && openPanelContextMenuFromKeyboard(e)) return;
     // Delete 만 삭제 트리거 — Backspace 는 뒤로가기/문자삭제 머슬메모리와 충돌하는
     // 파괴적 오발동이라 제외(undo 없음).
     if (onDelete && e.key === 'Delete') {
@@ -140,22 +142,23 @@ export function QuoteRow({
     <li
       ref={setRowRef}
       {...dragAttributes}
-      {...dragListeners}
+      {...panelDragListeners(dragListeners)}
       data-testid={testId}
       data-quote-row=""
+      data-draggable={dragListeners ? '' : undefined}
       data-matched={matched ? '' : undefined}
       role="button"
       tabIndex={0}
       aria-current={active ? 'true' : undefined}
       aria-label={ariaLabel}
-      aria-keyshortcuts={onDelete ? 'Delete' : undefined}
+      aria-keyshortcuts={[onDelete ? 'Delete' : '', onContextMenu ? 'Shift+F10 ContextMenu' : ''].filter(Boolean).join(' ') || undefined}
       onClick={onClick}
       onKeyDown={onKeyDown}
       aria-describedby={nameTip.id}
       onBlur={nameTip.hide}
       onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
-      className={`group cursor-pointer touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{

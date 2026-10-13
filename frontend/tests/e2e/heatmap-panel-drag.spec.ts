@@ -9,7 +9,7 @@ const names: Record<string, string> = { '005930': '삼성전자', '000660': 'SK�
 const code = (code: string) => code;
 const group = (page: Page, id: string) => page.getByTestId(`heatmap-drawer-group-${id}`);
 const row = (page: Page, id: string, symbol: string) => group(page, id).getByTestId(`heatmap-drawer-row-${symbol}`);
-const handle = (page: Page, id: string, symbol: string) => row(page, id, symbol).getByRole('button', { name: `${names[symbol] ?? symbol} 이동`, exact: true });
+const handle = (page: Page, id: string, symbol: string) => row(page, id, symbol);
 
 async function setup(page: Page, initial: Record<string, string[]> = {
   [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('051910')],
@@ -181,9 +181,9 @@ test('이동 이후 다른 변경이 있으면 되돌리기가 덮어쓰지 않�
   expect(state.items()[B]).toEqual(changed);
 });
 
-test('그룹 핸들로만 순서를 옮기고 드롭 후 목록이 돌아온다', async ({ page }) => {
+test('그룹 헤더로 순서를 옮기고 드롭 후 목록이 돌아온다', async ({ page }) => {
   const state = await setup(page);
-  await start(page, page.getByRole('button', { name: '스윙 그룹 이동', exact: true }));
+  await start(page, group(page, A).getByTestId('heatmap-group-header'));
   await over(page, group(page, B));
   await page.mouse.up();
   await expect.poll(state.folders).toEqual([B, A]);
@@ -234,11 +234,11 @@ test('저장 중 추가 드래그를 막고 완료 후 다시 사용할 수 있�
   const state = await setup(page);
   const release = state.hold();
   await move(page, handle(page, A, '005930'), row(page, B, '035420'), 0.8);
-  await expect(handle(page, A, '000660')).toBeDisabled();
+  await expect(handle(page, A, '000660')).not.toHaveAttribute('data-draggable');
   await expect(page.getByRole('status').filter({ hasText: '저장 중' })).toBeVisible();
   expect(state.requests).toHaveLength(1);
   release();
-  await expect(handle(page, A, '000660')).toBeEnabled();
+  await expect(handle(page, A, '000660')).toHaveAttribute('data-draggable', '');
   await expect(page.getByRole('button', { name: '되돌리기', exact: true })).toBeVisible();
 });
 
@@ -261,7 +261,8 @@ test('Delete는 포커스된 그룹에서만 제외하고 중첩 버튼에서는
     removals.push('005930'); state.change(A, ['000660']);
     return r.fulfill({ status: 204, body: '' });
   });
-  await handle(page, A, '005930').focus();
+  await page.getByRole('button', { name: '다중 선택', exact: true }).click();
+  await row(page, A, '005930').getByRole('checkbox').focus();
   await page.keyboard.press('Delete');
   expect(removals).toEqual([]);
   await row(page, A, '005930').focus();
@@ -287,4 +288,36 @@ test('Delete 안내에 이전 이동의 되돌리기를 표시하지 않는다',
   await expect(page.getByRole('status').filter({ hasText: '현재 그룹에서 제외했습니다' })).toBeVisible();
   await expect(page.getByRole('button', { name: '되돌리기', exact: true })).toHaveCount(0);
   expect(state.items()[B]).toContain('005930');
+});
+
+
+test('아이콘 없이 클릭·드래그·키보드 우클릭 메뉴를 각각 사용할 수 있다', async ({ page }, testInfo) => {
+  const state = await setup(page);
+  const first = row(page, A, '005930');
+  const header = group(page, A).getByTestId('heatmap-group-header');
+  await expect(first.getByRole('button', { name: /이동|행 메뉴/ })).toHaveCount(0);
+  await expect(header.getByRole('button', { name: /그룹 이동|그룹 메뉴/ })).toHaveCount(0);
+  await row(page, A, '000660').click();
+  const activeCode = () => page.evaluate(async () => {
+    const path = '/src/state/livePage.ts';
+    const { useLivePageStore } = await import(path);
+    return useLivePageStore.getState().activeCode;
+  });
+  await expect.poll(activeCode).toBe('000660');
+  await start(page, first.getByText('삼성전자', { exact: true }));
+  await over(page, row(page, A, '000660'), 0.8);
+  await page.mouse.up();
+  await expect.poll(() => codes(state.items()[A])).toEqual(['000660', '005930']);
+  await expect.poll(activeCode).toBe('000660');
+  await first.focus();
+  await page.keyboard.press('Shift+F10');
+  await expect(page.getByRole('menu', { name: '삼성전자 관심 그룹', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(first).toBeFocused();
+  await header.focus();
+  await page.keyboard.press('Shift+F10');
+  await expect(page.getByRole('menu', { name: '스윙', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(header).toBeFocused();
+  await group(page, A).screenshot({ path: testInfo.outputPath('panel-without-handles.png') });
 });
