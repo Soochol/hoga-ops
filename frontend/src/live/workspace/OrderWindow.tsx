@@ -13,11 +13,14 @@ import {
 import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
+import { useLiveKrxClose } from '../../api/liveKrxClose';
+import { useLiveViStatus } from '../../api/liveViStatus';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
-import { TotalQtyStrip } from './BookPanel';
+import { realMsToYyyymmdd } from '../liveDateTime';
+import { BookSummary, TotalQtyStrip } from './BookPanel';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -49,14 +52,15 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const quote = useQuoteByCode([code], 'UN').get(code);
   const limits = useLiveStockLimits(code);
   const now = useWallClockSecond();
+  const todayKst = realMsToYyyymmdd(now);
+  const krxClose = useLiveKrxClose(code, todayKst);
+  const vi = useLiveViStatus(code, 'UN');
   const snapshot = useMemo(() => latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob), [live.latestOb, live.ob]);
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [lockedBook, lockBook] = useState<OrderbookSnapshot | null>(null);
   const book = lockedBook ?? snapshot;
-  const [buyQty, setBuyQty] = useState(10);
-  const [sellQty, setSellQty] = useState(10);
-  const [qtySide, setQtySide] = useState<TradingSide>('BUY');
-  const [amount, setAmount] = useState('');
+  const [quantity, setQuantity] = useState(10);
+  const [previewPrice, setPreviewPrice] = useState<number | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
@@ -95,8 +99,9 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const outside = orders.filter(o => o.price == null || !onScreen.has(Number(o.price)));
   const maxQty = Math.max(1, ...prices.map(l => l.qty));
   const baseline = quote?.baseline_price ?? summary.prevClose;
-  const selectedQty = qtySide === 'BUY' ? buyQty : sellQty;
-  const setQty = (qty: number) => qtySide === 'BUY' ? setBuyQty(qty) : setSellQty(qty);
+  const estimatePrice = previewPrice ?? quote?.price ?? null;
+  const estimateAmount = estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
+    && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const currentOrder = action?.order ? orders.find(o => o.orderId === action.order?.orderId) ?? action.order : null;
   const actionQty = action?.quantity ?? (currentOrder ? orderRemainder(currentOrder) : 0);
   const highValue = mode === 'live' && !!action && ['create', 'modify'].includes(action.type) && action.price * actionQty >= HIGH_VALUE_WON;
@@ -184,8 +189,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     finally { await client.invalidateQueries({ queryKey: ['trading', 'paper', 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number) {
-    const preset = side === 'BUY' ? buyQty : sellQty;
-    const qty = amount ? Math.floor(Number(amount) / price) : preset;
+    const qty = quantity;
     if (!Number.isSafeInteger(qty) || qty < 1 || qty > 1_000_000_000) { setNotice('주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
     if (orders.some(o => o.side !== side)) { setNotice('반대 방향 미체결 주문을 먼저 취소하거나 체결 후 주문하세요.'); return; }
     request({ type: 'create', base: base(), side, price, quantity: qty });
@@ -204,9 +208,11 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     d.active = true;
     const rect = ladder.current?.getBoundingClientRect();
     const viewport = ladder.current?.closest('.order-scroll')?.getBoundingClientRect();
-    if (!rect || !viewport) return;
-    const left = Math.max(rect.left, viewport.left), right = Math.min(rect.right, viewport.right);
-    const top = Math.max(rect.top, viewport.top), bottom = Math.min(rect.bottom, viewport.bottom);
+    const windowBounds = ladder.current?.closest('.order-window')?.getBoundingClientRect();
+    if (!rect || !viewport || !windowBounds) return;
+    // The outer window also clips the ladder when its fixed columns are horizontally scrolled.
+    const left = Math.max(rect.left, viewport.left, windowBounds.left), right = Math.min(rect.right, viewport.right, windowBounds.right);
+    const top = Math.max(rect.top, viewport.top, windowBounds.top), bottom = Math.min(rect.bottom, viewport.bottom, windowBounds.bottom);
     d.cancel = e.clientX < left || e.clientX > right || e.clientY < top || e.clientY > bottom;
     const hit = document.elementFromPoint(e.clientX, e.clientY);
     const row = hit?.closest<HTMLElement>('[data-order-price]');
@@ -259,12 +265,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     }
     return recent;
   }, [live.trade]);
-  const stats: [string, number | null | undefined][] = [
-    ['시작', summary.dayOpen], ['최고', summary.dayHigh], ['최저', summary.dayLow], ['거래량', summary.cumVolume],
-    ['어제보다', summary.vsPrevVolumePct], ['거래대금', summary.cumValue], ['상한가', limits.data?.upper_limit],
-    ['하한가', limits.data?.lower_limit], ['매수 가능', state.data ? Number(state.data.buying_power) : null],
-    ['매도 가능', state.data ? Number(state.data.sellable_quantity) : null],
-  ];
   return <div className="order-window font-data" data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}
     onKeyDown={e => {
@@ -273,7 +273,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         endDrag(undefined, true); closeAction(); return;
       }
       if (!e.ctrlKey || e.repeat || busy || (e.target instanceof HTMLElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName))) return;
-      if (['1', '2', '3'].includes(e.key)) { e.preventDefault(); setQty([10, 50, 100][Number(e.key) - 1]); setAmount(''); }
+      if (['1', '2', '3'].includes(e.key)) { e.preventDefault(); setQuantity([10, 50, 100][Number(e.key) - 1]); }
       else if (e.shiftKey && e.key === 'Backspace' && ready) { e.preventDefault(); request({ type: 'bulk', base: base(), side: null, price: 0, quantity: null }); }
       else {
         const selected = orders.find(o => o.orderId === selectedOrderId);
@@ -286,7 +286,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         }
       }
     }}>
-    <div className="order-controls">
+    <div className="order-controls order-account-controls">
       <select aria-label="주문 모드" value={mode} disabled={busy || !!lockedBook} onChange={e => onModeChange(e.target.value as TradingMode)}>
         <option value="paper">로컬 모의 계좌</option><option value="live">토스 실계좌</option>
       </select>
@@ -295,11 +295,20 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         onChange={e => { onAccountChange(Number(e.target.value)); closeAction(); setPending({}); setFailedRequest(null); setNotice(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
       </select> : <span className="text-fg-dim">{accounts.data?.accounts[0]?.label ?? '계좌 연결 대기'}</span>}
-      <label><select aria-label="수량 방향" value={qtySide} onChange={e => setQtySide(e.target.value as TradingSide)}><option value="BUY">매수 수량</option><option value="SELL">매도 수량</option></select>
-        <input type="number" aria-label="신규 주문 수량" min="1" step="1" value={selectedQty} onChange={e => { setQty(Number(e.target.value)); setAmount(''); }} />주</label>
-      {[10, 50, 100].map(q => <button type="button" key={q} onClick={() => { setQty(q); setAmount(''); }}>{q}</button>)}
-      <label>금액<input aria-label="주문 기준 금액" type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} />원</label>
-      {[25, 50, 100].map(percent => <button type="button" key={percent} disabled={!ready} onClick={() => { setSellQty(Math.floor(Number(state.data?.sellable_quantity ?? 0) * percent / 100)); setQtySide('SELL'); setAmount(''); }}>매도 {percent}%</button>)}
+      <div className="order-account-capacity">
+        <span aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span> {state.data && !state.isError ? `${fmt(state.data.buying_power)}원` : '—'}</span>
+        <span aria-label="매도 가능 수량"><span className="order-meta">매도 가능</span> {state.data && !state.isError ? `${fmt(state.data.sellable_quantity)}주` : '—'}</span>
+      </div>
+    </div>
+    <div className="order-controls order-quantity-controls" role="group" aria-label="공통 주문 수량">
+      <label>수량<input type="number" aria-label="신규 주문 수량" min="1" max="1000000000" step="1" value={quantity} onChange={e => setQuantity(Number(e.target.value))} />주</label>
+      <div className="order-quantity-presets">
+        {[10, 50, 100].map(q => <button type="button" key={q} aria-pressed={quantity === q} onClick={() => setQuantity(q)}>{q}주</button>)}
+      </div>
+      <span className="order-amount-preview" aria-label="예상 주문 금액">
+        <span className="order-meta">예상</span> {estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
+        <span className="order-meta">{previewPrice == null ? '현재가 기준' : `${fmt(previewPrice)}원 기준`}</span>
+      </span>
     </div>
     {paperSettings && mode === 'paper' && <div className="order-editor" role="group" aria-label="모의 계좌 초기화">
       <label>가상 현금<input aria-label="모의 초기 현금" type="number" min="0" max="1000000000000" step="1" value={paperCash} onChange={e => setPaperCash(Number(e.target.value))} />원</label>
@@ -317,16 +326,23 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
     </div>}
     <div className="order-scroll" role="region" aria-label="실시간 호가 주문 사다리">
-      <div className={`order-ladder ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}>
+      <div className={`order-ladder ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
+        onPointerLeave={() => setPreviewPrice(null)}
+        onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPreviewPrice(null); }}>
+        {prices.length > 0 && <div className="order-summary-layer"><BookSummary summary={summary} baselinePrice={baseline ?? null}
+          onScreenPrices={onScreen} limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
+          vi={vi.data?.vi} height={240} /></div>}
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : prices.map((level, index) => {
           const key = `${index < 10 ? 'ask' : 'bid'}-${level.price}-${index}`;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
-          return <div className={`order-row ${index === 10 ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}>
+          return <div className={`order-row ${index === 10 ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}
+            onPointerEnter={() => setPreviewPrice(level.price > 0 ? level.price : null)}
+            onFocusCapture={() => setPreviewPrice(level.price > 0 ? level.price : null)}>
             {orderCell('SELL', level.price, key)}
             {index < 10 ? <div className="order-depth order-ask" style={{ '--order-depth': `${level.qty / maxQty * 100}%` } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>
               : <div className="order-info"><span className={index === 10 ? 'order-meta' : undefined}>{index === 10 ? '체결강도' : fmt(trades[index - 11]?.price)}</span><span>{index === 10 ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trades[index - 11]?.qty)}</span></div>}
             <div className={`order-price ${quote?.price === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span>{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
-            {index < 10 ? <div className="order-info"><span className="order-meta">{stats[index][0]}</span><span>{fmt(stats[index][1])}</span></div>
+            {index < 10 ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': `${level.qty / maxQty * 100}%` } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>}
             {orderCell('BUY', level.price, key)}
           </div>;

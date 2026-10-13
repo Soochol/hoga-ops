@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 // jsdom cannot measure the absolute badge spilling into the depth column.
 // Render the real component and styles with seven-digit prices and +30.00%.
-test('시·고·저와 긴 가격은 일반·축소 호가창의 가격 열 안에 정렬된다', async ({ page }) => {
+test('폭이 좁아져도 시·고·저와 긴 가격·전체 통계를 유지하고 가로 스크롤한다', async ({ page }) => {
   await page.goto('/tests/e2e/fixtures/book-price-layout.html');
   const panel = page.locator('.book-panel');
   await expect(panel.getByText('고', { exact: true })).toBeVisible();
@@ -33,14 +33,28 @@ test('시·고·저와 긴 가격은 일반·축소 호가창의 가격 열 안�
           });
           return {
             count: prices.length,
+            gridWidth: grid.getBoundingClientRect().width,
+            summaryRows: [...el.querySelectorAll('[data-testid="book-summary"] [style*="22px"]')].filter(row => getComputedStyle(row).display !== 'none').length,
             alignment: Math.max(...edges) - Math.min(...edges),
             overflow: contents.filter((rect) => rect.left < bounds.left - 0.5 || rect.right > bounds.right + 0.5),
           };
         });
         expect(geometry.count).toBe(20);
+        expect(geometry.gridWidth).toBeGreaterThanOrEqual(479);
+        expect(geometry.summaryRows).toBe(12);
         expect(geometry.overflow, `${width}px, live=${live}`).toEqual([]);
         expect(geometry.alignment).toBeLessThan(0.5);
       }).toPass({ timeout: 5000 });
+      await expect(panel.getByRole('button', { name: /상세 통계/ })).toHaveCount(0);
+      await expect(panel.getByText('체결강도', { exact: true })).toBeVisible();
+      if (width < 479) {
+        const region = panel.getByRole('region', { name: '10호가 사다리와 요약' });
+        expect(await region.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+        await region.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+        await expect(region).toHaveJSProperty('scrollLeft', 479 - width);
+        await expect(panel.getByText('250일', { exact: true })).toBeInViewport();
+        await region.evaluate(el => { el.scrollLeft = 0; });
+      }
     }
   }
 });

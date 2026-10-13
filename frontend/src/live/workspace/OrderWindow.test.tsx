@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TossOrder } from '../../api/trading';
 import { OrderWindow } from './OrderWindow';
@@ -7,15 +7,17 @@ import { DataWindow } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
 import { groupPriceOrders, orderRemainder } from './orderRules';
 
-const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, quotePrice: 67200 as number | null, buyingPower: '50000000', now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
 vi.mock('../../api/trading', () => ({
   useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: false }),
-  useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: '50000000', sellable_quantity: '80', holding_quantity: '100', average_purchase_price: '66000', fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
+  useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: '100', average_purchase_price: '66000', fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
 vi.mock('../../api/liveSeries', () => ({ useLiveSeries: () => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }, trade: [] }) }));
-vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: () => new Map([['005930', { price: 67200, baseline_price: 66000 }]]) }));
-vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { upper_limit: 85800, lower_limit: 46200 } }) }));
+vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: () => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55 }]]) }));
+vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 70000, low_250: 50000 } }) }));
+vi.mock('../../api/liveKrxClose', () => ({ useLiveKrxClose: () => ({ data: { date: '20261013', price: 67100 } }) }));
+vi.mock('../../api/liveViStatus', () => ({ useLiveViStatus: () => ({ data: { vi: null } }) }));
 vi.mock('../../util/useWallClockSecond', () => ({ useWallClockSecond: () => mock.now }));
 
 function order(id = 'a'): TossOrder {
@@ -23,9 +25,54 @@ function order(id = 'a'): TossOrder {
     execution: { filledQuantity: '30', averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null } };
 }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
-beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); });
+beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); });
 
 describe('호가 주문', () => {
+  it('공통 수량을 양방향 주문에 사용하고 현재가·선택 호가의 예상 금액을 표시한다', async () => {
+    const view = show();
+    expect(screen.queryByLabelText('수량 방향')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('주문 기준 금액')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '매도 25%' })).not.toBeInTheDocument();
+    const preset = screen.getByRole('button', { name: '50주' });
+    fireEvent.click(preset);
+    expect(preset).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,360,000원현재가 기준');
+    const buy = screen.getByRole('button', { name: /매수 67,300원 주문 추가/ });
+    fireEvent.pointerEnter(buy.closest('.order-row')!);
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,365,000원67,300원 기준');
+    fireEvent.click(buy);
+    await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
+    expect(mock.command.mock.calls[0][1]).toMatchObject({ side: 'BUY', quantity: 50, price: 67300 });
+    const sell = screen.getByRole('button', { name: /매도 67,200원 주문 추가/ });
+    await waitFor(() => expect(sell).toBeEnabled());
+    fireEvent.click(sell);
+    await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(2));
+    expect(mock.command.mock.calls[1][1]).toMatchObject({ side: 'SELL', quantity: 50, price: 67200 });
+    fireEvent.pointerLeave(view.container.querySelector('.order-ladder')!);
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('현재가 기준');
+  });
+  it('매수 가능 원·매도 가능 주는 상단에만 표시하고 시세 상세는 10호가 형식을 쓴다', () => {
+    mock.buyingPower = '9759'; show();
+    expect(screen.getByLabelText('매수 가능 금액')).toHaveTextContent('매수 가능 9,759원');
+    expect(screen.getByLabelText('매도 가능 수량')).toHaveTextContent('매도 가능 80주');
+    expect(screen.getByLabelText('매수 가능 금액').closest('.order-account-controls')).not.toBeNull();
+    const summary = within(screen.getByTestId('book-summary'));
+    expect(summary.queryByText('매수 가능')).not.toBeInTheDocument();
+    expect(summary.queryByText('매도 가능')).not.toBeInTheDocument();
+    for (const label of ['KRX종가', '상한가', '하한가', '상승VI', '하강VI', '250일']) expect(summary.getByText(label)).toBeInTheDocument();
+    expect(summary.getByText('833만')).toBeInTheDocument();
+    expect(summary.getByText('184.55%')).toBeInTheDocument();
+    expect(summary.getByText('12조 2,908억')).toBeInTheDocument();
+    expect(summary.getByText('70,000/50,000')).toBeInTheDocument();
+  });
+  it('가격이나 유효 수량이 없으면 예상 금액을 계산하지 않고 잘못된 수량은 전송하지 않는다', () => {
+    mock.quotePrice = null; show();
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('—');
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '1.5' } });
+    fireEvent.click(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    expect(mock.command).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('정수');
+  });
   it('왼쪽 매도·오른쪽 매수 영역 클릭은 확인창 없이 즉시 주문한다', async () => {
     const view = show(); const add = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
     expect(add).toHaveTextContent(''); expect(view.container.textContent).not.toContain('⠿');
