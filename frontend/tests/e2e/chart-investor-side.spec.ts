@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiPrefix } from './helpers/apiRoutes';
 
-test('investor panes have independent modes and restore both after reload', async ({ page }, testInfo) => {
+test('investor panes have independent modes, restore after reload and can be removed from their legends', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1800, height: 1000 });
   await installLiveMocks(page);
   const t = Date.UTC(2026, 4, 27);
@@ -65,4 +65,15 @@ test('investor panes have independent modes and restore both after reload', asyn
   await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 총매도량');
   await expect(first.getByTestId('pane-chip-investor-institution')).toHaveText('기관 총매수량');
   await expect(second.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 순매수량');
+  await first.getByRole('button', { name: '외국인 총매도량 지표 끄기', exact: true }).click();
+  await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveCount(0);
+  await expect(first.getByTestId('pane-chip-investor-institution')).toHaveText('기관 총매수량');
+  await expect(second.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 순매수량');
+  await first.getByRole('button', { name: '기관 총매수량 지표 끄기', exact: true }).click();
+  await expect(first.getByTestId('pane-chip-investor-institution')).toHaveCount(0);
+  await page.reload();
+  await expect(first.getByTestId('pane-chip-investor-foreign')).toHaveCount(0);
+  await expect(first.getByTestId('pane-chip-investor-institution')).toHaveCount(0);
+  await expect(second.getByTestId('pane-chip-investor-foreign')).toHaveText('외국인 순매수량');
+  await expect(second.getByTestId('pane-chip-investor-institution')).toHaveText('기관 순매수량');
 });

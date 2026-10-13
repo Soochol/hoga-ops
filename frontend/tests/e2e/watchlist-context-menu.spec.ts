@@ -69,7 +69,7 @@ test.describe('Watchlist Panel context menu', () => {
     await expect(menu).toHaveCount(0);                             // 메뉴 닫힘
   });
 
-  test('right-click → 관심 그룹 추가 preserves existing membership', async ({ page }) => {
+  test('right-click → 관심 그룹 추가 preserves existing membership', async ({ page }, testInfo) => {
     await installLiveMocks(page);
 
     let entries = makeEntries();
@@ -83,8 +83,9 @@ test.describe('Watchlist Panel context menu', () => {
       const code = (JSON.parse(route.request().postData() || '{}') as { code?: string }).code;
       if (!code || !folderId) return route.fallback();
       movedTo = folderId;
-      entries = [...entries, { ...entries.find((e) => e.code === code)!, code, folder_id: folderId, order: 0 }];
-      return route.fulfill({ status: 204, body: '' });
+      const entry = { ...entries.find((e) => e.code === code)!, code, folder_id: folderId, order: 0 };
+      entries = [...entries, entry];
+      return json(route, entry);
     });
     await page.route(apiExact('watchlist'), (r) =>
       json(r, { folders: FOLDERS, entries, memos: [], next_run_at_ms: 0 }));
@@ -101,6 +102,9 @@ test.describe('Watchlist Panel context menu', () => {
     await expect.poll(() => page.locator('[data-testid="watchlist-row-000660"]').count()).toEqual(2);
     await expect(menu.getByRole('menuitemcheckbox', { name: '스윙', exact: true })).toBeChecked();
     await expect(menu.getByRole('menuitemcheckbox', { name: '장기', exact: true })).toBeChecked();
+    await expect(menu.getByRole('status')).toContainText('SK하이닉스 → 스윙 추가됨');
+    await expect(menu.getByRole('button', { name: '실행 취소', exact: true })).toBeEnabled();
+    await menu.screenshot({ path: testInfo.outputPath('watchlist-panel-popover.png') });
     // v3 supports multiple real folders; adding 스윙 retains the 장기 membership.
   });
 });
