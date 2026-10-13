@@ -53,16 +53,16 @@ describe('호가 주문', () => {
     expect(holdingProfitWon(100, 67200, null)).toBeNull();
   });
   it.each([
-    [67200, 'text-price-up', '120,000원'],
-    [65700, 'text-price-down', '-30,000원'],
-    [66000, 'text-fg', '0원'],
+    [67200, 'text-price-up', '120,000'],
+    [65700, 'text-price-down', '-30,000'],
+    [66000, 'text-fg', '0'],
     [null, 'text-fg', '—'],
   ] as const)('평가수익은 현재가 %s에서 수익·손실·중립 색을 적용한다', (price, color, value) => {
     mock.quotePrice = price;
     show();
     const field = screen.getByLabelText('보유 종목 평가 수익');
     expect(field.querySelector('.order-field-value')).toHaveClass(color);
-    expect(field).toHaveTextContent(`평가수익${value}`);
+    expect(field.textContent).toBe(`평가수익${value}`);
     expect(within(field).getByText('평가수익')).toHaveClass('order-meta');
   });
   it('설정 취소는 프리셋을 바꾸지 않고 적용된 프리셋·단축키로 즉시 주문한다', async () => {
@@ -141,9 +141,9 @@ describe('호가 주문', () => {
     mock.buyingPower = '9759'; mock.averagePrice = '44669.963'; show();
     expect(screen.getByLabelText('매수 가능 금액')).toHaveTextContent('매수 가능9,759원');
     expect(screen.queryByLabelText('매도 가능 수량')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('매입수량')).toHaveTextContent('매입수량100주');
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('매입평단가44,670원');
-    expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('평가수익2,253,004원');
+    expect(screen.getByLabelText('매입수량').textContent).toBe('매입수량100');
+    expect(screen.getByLabelText('매입평단가').textContent).toBe('매입평단가44,670');
+    expect(screen.getByLabelText('보유 종목 평가 수익').textContent).toBe('평가수익2,253,004');
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매입수량')).toBeInTheDocument();
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매수 가능 금액')).toBeInTheDocument();
     const summary = within(screen.getByTestId('book-summary'));
@@ -167,16 +167,16 @@ describe('호가 주문', () => {
   it('보유 평가 수익은 원본 평단가·전체 보유 수량·현재가로 계산하고 선택 호가·주문 수량에는 영향받지 않는다', () => {
     mock.buyingPower = '9759'; show();
     const valuation = screen.getByLabelText('보유 종목 평가 수익');
-    expect(screen.getByLabelText('매입수량')).toHaveTextContent('100주');
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('66,000원');
-    expect(valuation).toHaveTextContent('120,000원'); // 전체 보유 100주, 매도 가능 80주
+    expect(screen.getByLabelText('매입수량')).toHaveTextContent('100');
+    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('66,000');
+    expect(valuation).toHaveTextContent('120,000'); // 전체 보유 100주, 매도 가능 80주
     expect(screen.getByLabelText('매입평단가').nextElementSibling).toBe(valuation);
     fireEvent.pointerEnter(screen.getByRole('button', { name: /매수 67,300원 주문 추가/ }).closest('.order-row')!);
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '50' } });
-    expect(valuation).toHaveTextContent('120,000원');
+    expect(valuation).toHaveTextContent('120,000');
     mock.quotePrice = 67400;
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '20' } });
-    expect(valuation).toHaveTextContent('140,000원');
+    expect(valuation).toHaveTextContent('140,000');
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('왼쪽 매도·오른쪽 매수 영역 더블클릭은 확인창 없이 즉시 주문한다', async () => {

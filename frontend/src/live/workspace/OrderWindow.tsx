@@ -352,9 +352,9 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
-        <span className="order-field" aria-label="매입수량"><span className="order-meta">매입수량</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? `${fmt(holdingQuantity)}주` : '—'}</span></span>
-        <span className="order-field" aria-label="매입평단가"><span className="order-meta">매입평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? `${fmt(Math.ceil(Number(state.data.average_purchase_price)))}원` : '—'}</span></span>
-        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta">평가수익</span><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingProfit == null ? '—' : `${fmt(holdingProfit)}원`}</span></span>
+        <span className="order-field" aria-label="매입수량"><span className="order-meta">매입수량</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span></span>
+        <span className="order-field" aria-label="매입평단가"><span className="order-meta">매입평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span></span>
+        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta">평가수익</span><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingProfit == null ? '—' : fmt(holdingProfit)}</span></span>
         <span className="order-field" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
       </div>
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
