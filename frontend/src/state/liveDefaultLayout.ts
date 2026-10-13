@@ -44,10 +44,9 @@
  */
 import type { WorkspaceWindow } from './workspace';
 
-/** 우측 열 폭. 1208px 캔버스에서 0.43 × 1208 = 519px로
- * BOOK_WINDOW_DEFAULT_W(511px)를 확보한다. 2026-10-06 시·고·저 칩 여백 추가로
- * 종전 0.41에서 늘렸다. 아래 위치와 기본 창 배치는 이 값에서 유도된다. */
-export const LIVE_RIGHT_COL_W = 0.43;
+/** 우측 열 폭도 20% 줄인다. 1208px 캔버스에서 약 416px로 새 창 기본 409px를
+ * 확보한다. 회수한 폭은 차트가 흡수하며 저장된 사용자 배치는 유지한다. */
+export const LIVE_RIGHT_COL_W = 0.43 * 0.8;
 /** 우측 열 시작 = 차트 오른쪽 끝. 둘 사이에 좌표 틈이 없다(위 "여백" 절). */
 export const LIVE_RIGHT_COL_X = 1 - LIVE_RIGHT_COL_W;
 /**

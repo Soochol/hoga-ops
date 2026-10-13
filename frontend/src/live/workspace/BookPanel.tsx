@@ -8,7 +8,8 @@
  *
  * 중앙 가격축을 좌우 4개 블록이 둘러싼다. **우측 요약 패널의 높이는 정확히 11행
  * (상한가 1 + 매도 10)이어야** 그 아래 매수 잔량 바가 매수 가격 행과 정렬된다 —
- * 요약 12항목은 이 높이 안에 균등 배치한다. SUMMARY_ROWS는 항목 수가 아닌 호가 높이다.
+ * 요약 12항목은 이 높이 안에 균등 배치한다. 압축형은 같은 높이의 정보 버튼 슬롯으로
+ * 바꿔 정렬을 유지한다. SUMMARY_ROWS는 항목 수가 아닌 호가 높이다.
  *
  * **전체 패널 소비처는 `DataWindow` 하나다.** 총잔량 스트립은 `OrderWindow`도 공유한다. 한때 `/study` 의 BookContent 와 공유하는 단일
  * 표면이었으나 그 페이지는 2026-08-23 에 삭제됐다 — 이 파일 곳곳의 주석이 아직
@@ -16,6 +17,9 @@
  * 그렇게 생겼는지의 내력**이지 지금 살아 있는 소비처가 아니다.
  */
 import './BookPanel.css';
+import { useCallback, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { BookScrollArea } from './BookScrollArea';
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
@@ -25,7 +29,7 @@ import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
 import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
 import { otherBookSessionMode } from '../bookSessionMode';
-import { BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W, BOOK_PANEL_PRICE_COL_W } from './bookPanelMetrics';
+import { BOOK_PANEL_COMPACT_GRID_COLS, BOOK_PANEL_COMPACT_MIN_W, BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W, BOOK_PANEL_PRICE_COL_W } from './bookPanelMetrics';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
@@ -142,6 +146,14 @@ export default function BookPanel({
   onSelectSessionMode,
   stale = false,
 }: Props) {
+  const [infoOpen, setInfoOpen] = useState(false);
+  const infoButtonRef = useRef<HTMLButtonElement>(null);
+  const infoId = useId();
+  const closeInfo = useCallback(() => {
+    setInfoOpen(false);
+    infoButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+  const { ref: infoRef, style: infoStyle } = useAnchoredPopover<HTMLDivElement>(infoOpen, infoButtonRef, closeInfo, 260);
   // 스냅샷 파생 블록에만 얹는 딤. 값은 읽히되 확정이 아님을 말한다 — 전환은
   // DESIGN.md Motion 의 상태 전환 규격(150ms ease-in-out).
   const staleDim = `transition-opacity duration-150 ease-in-out${stale ? ' opacity-50' : ''}`;
@@ -235,18 +247,14 @@ export default function BookPanel({
         baselinePrice={baselinePrice}
         dimClass={staleDim}
       />
-      {/* min-w 가 load-bearing: 창을 좁히면 좌우 열이 0 으로 수렴해 잔량 숫자가
-          겹친다. 최소 폭을 잡아 두면 대신 가로 스크롤이 생긴다(깨지지 않는다).
-          우측 열 하한도 같은 계약 — fr 의 auto-min 은 콘텐츠를 min-content 까지
-          쥐어짜는데, 요약 값이 최장인 경우(250일 "1,319,000/1,081,100" 7자리 고가
-          종목)가 딱 그 경계라 개행으로 행 높이 계약이 깨졌었다(NAVER 실사례).
-
-          두 값의 근거·실측표는 `bookPanelMetrics` 에 있다. **Tailwind 임의값으로
-          되돌리지 말 것** — JIT 가 리터럴만 스캔해서 상수 보간이 조용히 죽는다. */}
+      {/* 컨테이너 폭으로 요약만 팝오버로 옮긴다. 압축 하한 아래는 가로 스크롤하며
+          가격·등락률·잔량·체결의 폰트와 21행 정렬을 유지한다. */}
       <BookScrollArea>
         <div
           className="book-panel-grid grid"
-          style={{ '--book-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-cols': BOOK_PANEL_GRID_COLS, '--book-price-w': `${BOOK_PANEL_PRICE_COL_W}px` } as React.CSSProperties}
+          style={{ '--book-wide-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-wide-cols': BOOK_PANEL_GRID_COLS,
+            '--book-compact-min-w': `${BOOK_PANEL_COMPACT_MIN_W}px`, '--book-compact-cols': BOOK_PANEL_COMPACT_GRID_COLS,
+            '--book-price-w': `${BOOK_PANEL_PRICE_COL_W}px` } as React.CSSProperties}
         >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
           <div className="flex flex-col">
@@ -286,14 +294,15 @@ export default function BookPanel({
                 2행 삐져나와 하단이 어긋났다. `중` 행이 21→22 로 밀었던 것을 ADR-0170
                 이 되돌렸다 — **한 열에서만 행을 더하거나 빼면 하단이 어긋난다.** */}
             {trades.slice(0, 9).map((t, i) => (
-              <div key={i} className="flex items-center justify-between px-2" style={{ height: ROW_H }}>
+              <div key={i} className="book-trade-row flex items-center justify-between gap-1 px-2" style={{ height: ROW_H }}>
                 <span
-                  className={`font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
+                  className={`shrink-0 font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
                 >
                   {t.price.toLocaleString('ko-KR')}
                 </span>
                 <span
-                  className={`font-data text-sm tabular-nums ${
+                  title={t.qty.toLocaleString('ko-KR')}
+                  className={`min-w-0 truncate font-data text-sm tabular-nums ${
                     t.side > 0 ? 'text-price-up' : t.side < 0 ? 'text-price-down' : 'text-fg-dim'
                   }`}
                 >
@@ -331,8 +340,17 @@ export default function BookPanel({
 
           {/* 우: 요약 12항목(11호가 높이 고정) → 매수 잔량 바 */}
           <div className="flex flex-col">
-            <BookSummary summary={summary} baselinePrice={baselinePrice} onScreenPrices={onScreenPrices}
-              limits={limits} krxClose={krxClose} vi={vi} />
+            <div className="book-summary-slot" style={{ height: ROW_H * SUMMARY_ROWS }}>
+              <div className="book-inline-summary">
+                <BookSummary summary={summary} baselinePrice={baselinePrice} onScreenPrices={onScreenPrices}
+                  limits={limits} krxClose={krxClose} vi={vi} />
+              </div>
+              <div className="book-compact-info">
+                <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog"
+                  aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
+                  onClick={() => setInfoOpen(open => !open)}>정보</button>
+              </div>
+            </div>
             {bids.map((l, i) => (
               <QtyBar
                 key={`b-${i}`}
@@ -347,6 +365,11 @@ export default function BookPanel({
           </div>
         </div>
       </BookScrollArea>
+      {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="book-info-popover font-data" style={infoStyle}>
+        <div className="book-info-heading"><span>종목 상세 정보</span><button type="button" aria-label="상세 정보 닫기" onClick={closeInfo}>닫기</button></div>
+        <BookSummary summary={summary} baselinePrice={baselinePrice} onScreenPrices={onScreenPrices}
+          limits={limits} krxClose={krxClose} vi={vi} height={264} />
+      </div>, document.body)}
       {/* 총잔량은 **출처가 둘**이라 딤 조건도 둘이다. 시간외(0E·ka10087) 값이면
           커서 스팟 경로를 타지 않으므로 흐리지 않는다 — 사다리가 낡았다는 말이
           그 숫자에는 해당하지 않는다. */}
@@ -688,7 +711,8 @@ function QtyBar({
             증감 오버레이는 teal/fuchsia 를 썼지만(히트맵과의 색 충돌 회피), 2026-08-25
             에 제거됐다. */}
         {badge !== null && (
-          <span className={`book-qty-delta shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>
+          <span title={`${badge.delta > 0 ? '+' : '−'}${Math.abs(badge.delta).toLocaleString('ko-KR')}`}
+            className={`book-qty-delta shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>
             {badge.delta > 0 ? '+' : '−'}
             {Math.abs(badge.delta).toLocaleString('ko-KR')}
           </span>
