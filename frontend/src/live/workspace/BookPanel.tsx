@@ -10,7 +10,7 @@
  * (상한가 1 + 매도 10)이어야** 그 아래 매수 잔량 바가 매수 가격 행과 정렬된다 —
  * 요약 12항목은 이 높이 안에 균등 배치한다. SUMMARY_ROWS는 항목 수가 아닌 호가 높이다.
  *
- * **소비처는 `DataWindow` 하나다.** 한때 `/study` 의 BookContent 와 공유하는 단일
+ * **전체 패널 소비처는 `DataWindow` 하나다.** 총잔량 스트립은 `OrderWindow`도 공유한다. 한때 `/study` 의 BookContent 와 공유하는 단일
  * 표면이었으나 그 페이지는 2026-08-23 에 삭제됐다 — 이 파일 곳곳의 주석이 아직
  * `/study` 를 "같은 패널을 쓰는 다른 화면" 으로 언급하는데, 그건 **왜 그 처리가
  * 그렇게 생겼는지의 내력**이지 지금 살아 있는 소비처가 아니다.
@@ -781,7 +781,7 @@ function SummaryRow({
   );
 }
 
-function TotalQtyStrip({
+export function TotalQtyStrip({
   totals,
   maskRatio,
   afterHoursTotals,
@@ -799,7 +799,7 @@ function TotalQtyStrip({
   /** 그릴 총잔량. **어느 출처를 쓸지는 호출부가 정한다** — 시간외 값이 있으면 그것,
    *  없으면 사다리 스냅샷의 총잔량. 여기서 `snapshot` 을 직접 받아 `?? ` 로 떨어뜨리면
    *  "사다리도 없고 시간외도 없다" 는 **불가능한 상태가 타입에 생기고**, 그 폴백이
-   *  0 을 조용히 삼켜 `0fr 0fr` 격자가 된다. 두 호출부 모두 non-null 을 보장한다. */
+   *  0 을 조용히 삼켜 `0fr 0fr` 격자가 된다. 각 호출부가 non-null 을 보장한다. */
   totals: { ask: number; bid: number };
   maskRatio: boolean;
   /** 값이 아니라 **출처 판정**용이다 — non-null 이면 위 `totals` 가 시간외 값이라는 뜻이라
