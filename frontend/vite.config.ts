@@ -108,6 +108,8 @@ export default defineConfig({
          */
         codeSplitting: {
           groups: [
+            // The trading surface is loaded only when an order window opens.
+            { name: 'live-orders', test: /[\\/]src[\\/]live[\\/]workspace[\\/](OrderWindow|orderRules)/, priority: 41 },
             { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/, priority: 40 },
             { name: 'router', test: /node_modules[\\/]react-router[\\/]/, priority: 39 },
             { name: 'query', test: /node_modules[\\/]@tanstack[\\/]/, priority: 38 },

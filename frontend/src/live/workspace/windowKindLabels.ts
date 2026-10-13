@@ -11,6 +11,7 @@ import type { WindowKind } from '../../state/workspace';
 export const WINDOW_KIND_LABEL: Record<WindowKind, string> = {
   chart: '차트',
   book: '10호가',
+  order: '호가 주문',
   broker: '거래원',
   trade: '체결',
   vdist: '매물대',

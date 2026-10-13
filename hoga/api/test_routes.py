@@ -13,7 +13,7 @@ import shutil
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from hoga.api.captures_fake import configure_fake_to_raise_on
@@ -23,6 +23,11 @@ from hoga.parser import parse_stock_date
 
 class CookieExpireAt(BaseModel):
     index: int
+
+
+class PaperBookFixtureResponse(BaseModel):
+    code: str
+    t_ms: int
 
 
 def build_test_router(data_dir: Path) -> APIRouter:
@@ -181,5 +186,21 @@ def build_test_router(data_dir: Path) -> APIRouter:
         _calendar.reset_cache_for_tests()
         _calendar.set_data_dir(data_dir)
         return {"ok": True, "year": year, "month": month, "trading_days": len(weekdays)}
+
+    @router.post("/paper-book")
+    async def paper_book(
+        code: Code, ask: int = Query(gt=1000), quantity: int = Query(ge=0, le=1_000_000_000),
+    ) -> PaperBookFixtureResponse:
+        # Feed the real LiveBuffer and matching engine in E2E, with vendor keys blocked.
+        from hoga.live.lifecycle import get_buffer  # noqa: PLC0415 — test-only fixture
+        from hoga.live.snapshot import LiveSnapshot, SnapshotKind  # noqa: PLC0415 — test-only fixture
+
+        at = int(time.time() * 1000)
+        await get_buffer().publish(code, [LiveSnapshot(at, SnapshotKind.OB, {
+            "venue": "UN", "total_ask_qty": quantity * 10, "total_bid_qty": quantity * 10,
+            "asks": [{"price": ask + i * 100, "qty": quantity} for i in range(10)],
+            "bids": [{"price": ask - (i + 1) * 100, "qty": quantity} for i in range(10)],
+        })])
+        return PaperBookFixtureResponse(code=code, t_ms=at)
 
     return router

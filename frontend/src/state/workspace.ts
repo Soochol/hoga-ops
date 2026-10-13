@@ -81,7 +81,7 @@ function isDeepLinkTab(): boolean {
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D). */
-export const WINDOW_KINDS = ['chart', 'book', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking'] as const;
+export const WINDOW_KINDS = ['chart', 'book', 'order', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 /**
@@ -665,6 +665,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // 슬랙은 우측 통계의 라벨↔값 간격을 벌려 빈 세로 띠로 나타났다. (WindowFrameCore
   // 본문은 가로 크롬이 없어 창 폭이 곧 패널 폭 — 하한 미만으로 좁히면 가로 스크롤.)
   book: { w: BOOK_WINDOW_DEFAULT_W, h: 560 },
+  order: { w: 720, h: 720 },
   // broker = 헤더 27 + 시점 상한 10행(매수5+매도5) 23.25×10 + divide 9 ≈ 269 → 280.
   // (하루 누적 유니온은 10행을 넘을 수 있고 그때는 스크롤이 정상.)
   broker: { w: 280, h: 310 },

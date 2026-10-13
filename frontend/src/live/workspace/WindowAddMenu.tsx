@@ -38,6 +38,7 @@ type AddItem = {
 const ADD_ITEMS: readonly AddItem[] = [
   { kind: 'chart', desc: '캔들 + 보조지표 스택' },
   { kind: 'book', desc: '매수·매도 호가 잔량' },
+  { kind: 'order', desc: '토스증권 지정가 주문 · 드래그 정정·취소' },
   { kind: 'trade', desc: '실시간 체결 틱 흐름' },
   { kind: 'broker', desc: '증권사별 매수·매도 상위' },
   { kind: 'program', desc: '프로그램 매매 순매수' },

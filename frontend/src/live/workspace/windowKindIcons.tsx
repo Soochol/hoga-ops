@@ -31,6 +31,7 @@ const svg = (children: ReactNode) => (
 );
 
 export const WINDOW_KIND_ICON: Record<IconWindowKind, ReactNode> = {
+  order: svg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 4v16M16 4v16M3 12h18" /></>),
   news: svg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 8h10M7 12h4M7 16h4M15 12h2M15 16h2" /></>),
   chart: svg(
     <>
