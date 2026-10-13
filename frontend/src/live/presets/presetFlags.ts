@@ -21,6 +21,7 @@ export const PRESET_INDICATOR_FLAG_KEYS = [
   'tradeVolumePocEnabled',
   'depthHeatmapEnabled',
   'bollingerEnabled',
+  'supertrendEnabled',
   'brokerLateEntryEnabled',
   'volumeDistributionEnabled',
   // pane 토글

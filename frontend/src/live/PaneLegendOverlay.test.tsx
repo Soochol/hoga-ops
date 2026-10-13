@@ -76,6 +76,8 @@ function renderOverlay({
 
 function resetStore() {
   useLivePageStore.setState({
+    bollingerEnabled: false,
+    supertrendEnabled: false,
     candleTimeframe: 'D',
     movingAverages: [
       { id: 'ma-1', enabled: true, period: 5, color: '#EC4899', lineWidth: 1, source: 'close' },
@@ -97,6 +99,33 @@ function resetStore() {
   useDailyMaSeriesRegistry.setState({ byScope: new Map() });
   usePaneLegendRegistry.setState({ byScope: new Map() });
 }
+
+describe('price indicator legend provider refresh', () => {
+  beforeEach(resetStore);
+  afterEach(cleanup);
+
+  it.each(['bollinger', 'supertrend'] as const)('%s reads a late provider after add and parameter edits without a cursor event', async type => {
+    useLivePageStore.setState(type === 'bollinger'
+      ? { bollingerEnabled: true, bollingerPeriod: 10 }
+      : { supertrendEnabled: true, supertrendPeriod: 10 });
+    let provider: FlagLegendValueProvider = () => [{ key: 'value', value: 'fresh-price-10' }];
+    renderOverlay();
+    // Overlay effects register after the legend's render has already read.
+    registerFlagLegendValues(null, type, 'main', provider);
+    try {
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(screen.getByText('fresh-price-10')).toBeInTheDocument();
+      act(() => useLivePageStore.setState(type === 'bollinger'
+        ? { bollingerPeriod: 20 } : { supertrendPeriod: 20 }));
+      provider = () => [{ key: 'value', value: 'fresh-price-20' }];
+      registerFlagLegendValues(null, type, 'main', provider);
+      await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+      expect(screen.getByText('fresh-price-20')).toBeInTheDocument();
+    } finally {
+      unregisterFlagLegendValues(null, type, 'main', provider);
+    }
+  });
+});
 
 describe('PaneLegendOverlay — peak-wall values belong to the current candle', () => {
   beforeEach(() => {

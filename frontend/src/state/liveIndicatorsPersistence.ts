@@ -159,6 +159,13 @@ export const QUOTE_LEVEL_LINE_DEFAULT_STYLE: LineStyle = 'dashed';
 export const QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE: LineStyle = 'dotted';
 
 export type PersistedIndicators = {
+  supertrendEnabled: boolean;
+  supertrendHidden: boolean;
+  supertrendPeriod: number;
+  supertrendMultiplier: number;
+  supertrendUpColor: string;
+  supertrendDownColor: string;
+  supertrendLineWidth: 1 | 2 | 3 | 4;
   bollingerEnabled: boolean;
   bollingerHidden: boolean;
   bollingerPeriod: number;
@@ -676,6 +683,18 @@ export function mergeLiveIndicatorPrefs(
     vol: boolean, hidden: boolean,
     qt: boolean, ratio: boolean, fill: boolean, programTrade: boolean, tradeVolumePoc: boolean,
   ): PersistedIndicators => ({
+    supertrendEnabled: obj?.supertrendEnabled === true,
+    supertrendHidden: obj?.supertrendHidden === true,
+    supertrendPeriod: typeof obj?.supertrendPeriod === 'number' && Number.isFinite(obj.supertrendPeriod)
+      ? Math.max(1, Math.min(400, Math.floor(obj.supertrendPeriod))) : 10,
+    supertrendMultiplier: typeof obj?.supertrendMultiplier === 'number' && Number.isFinite(obj.supertrendMultiplier)
+      ? Math.max(0.1, Math.min(10, obj.supertrendMultiplier)) : 3,
+    supertrendUpColor: typeof obj?.supertrendUpColor === 'string' && HEX_COLOR.test(obj.supertrendUpColor)
+      ? obj.supertrendUpColor : '#F04452',
+    supertrendDownColor: typeof obj?.supertrendDownColor === 'string' && HEX_COLOR.test(obj.supertrendDownColor)
+      ? obj.supertrendDownColor : '#3485FA',
+    supertrendLineWidth: typeof obj?.supertrendLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.supertrendLineWidth)
+      ? obj.supertrendLineWidth as 1 | 2 | 3 | 4 : 2,
     bollingerEnabled: obj?.bollingerEnabled === true,
     bollingerHidden: obj?.bollingerHidden === true,
     bollingerPeriod: typeof obj?.bollingerPeriod === 'number' && Number.isFinite(obj.bollingerPeriod)

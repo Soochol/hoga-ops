@@ -244,6 +244,7 @@ export const FLAG_INDICATOR_TYPES = [
   'trade-volume-poc',
   'depth-heatmap',
   'bollinger',
+  'supertrend',
   'broker-late-entry',
 ] as const;
 
@@ -256,6 +257,7 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
   'trade-volume-poc': '당일 최대 매물대',
   'depth-heatmap': '호가 잔량 히트맵',
   bollinger: '볼린저 밴드',
+  supertrend: '슈퍼트렌드',
   'broker-late-entry': '신규 거래원 등장',
 };
 
@@ -300,6 +302,10 @@ export const FLAG_INDICATOR_FIELDS: Record<
   ],
   // 배열로 승격된 지표는 **필드가 하나**다 — 삭제 = 공장 배열로 되돌리기.
   'broker-late-entry': ['brokerLateEntries'],
+  supertrend: [
+    'supertrendEnabled', 'supertrendHidden', 'supertrendPeriod', 'supertrendMultiplier',
+    'supertrendUpColor', 'supertrendDownColor', 'supertrendLineWidth',
+  ],
   bollinger: [
     'bollingerEnabled', 'bollingerHidden', 'bollingerPeriod', 'bollingerMultiplier',
     'bollingerSource', 'bollingerUpperColor', 'bollingerMiddleColor', 'bollingerLowerColor',
@@ -385,6 +391,27 @@ export function brokerLateEntryRemovalUndo(
 }
 
 export const INDICATOR_OPS = {
+  setSupertrendEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    enabled ? { supertrendEnabled: true, supertrendHidden: false } : { supertrendEnabled: false },
+  setSupertrendHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ supertrendHidden: hidden }),
+  setSupertrendSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'supertrendPeriod' | 'supertrendMultiplier' | 'supertrendUpColor' | 'supertrendDownColor'
+    | 'supertrendLineWidth'>>): Patch => {
+    const next = { ...patch };
+    if (next.supertrendPeriod !== undefined) {
+      if (!Number.isFinite(next.supertrendPeriod)) return null;
+      next.supertrendPeriod = clamp(Math.floor(next.supertrendPeriod), 1, 400);
+    }
+    if (next.supertrendMultiplier !== undefined) {
+      if (!Number.isFinite(next.supertrendMultiplier)) return null;
+      next.supertrendMultiplier = clamp(next.supertrendMultiplier, 0.1, 10);
+    }
+    for (const key of ['supertrendUpColor', 'supertrendDownColor'] as const) {
+      if (next[key] !== undefined && !/^#[0-9a-f]{6}$/i.test(next[key])) return null;
+    }
+    if (next.supertrendLineWidth !== undefined && ![1, 2, 3, 4].includes(next.supertrendLineWidth)) return null;
+    return next;
+  },
   setBollingerEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     enabled ? { bollingerEnabled: true, bollingerHidden: false } : { bollingerEnabled: false },
   setBollingerHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ bollingerHidden: hidden }),

@@ -27,6 +27,8 @@ export function dotColorsFor(id: CategoryId, ind: IndicatorSettings): string[] {
   const capped = (colors: string[]) => colors.slice(0, INDICATOR_DOT_LIMIT);
 
   switch (id) {
+    case 'supertrend':
+      return [ind.supertrendUpColor, ind.supertrendDownColor];
     case 'bollinger':
       return [ind.bollingerUpperColor, ind.bollingerMiddleColor, ind.bollingerLowerColor];
     case 'moving-average':

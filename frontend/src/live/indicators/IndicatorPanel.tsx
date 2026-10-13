@@ -3,6 +3,7 @@ import { useChartPrefActions } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
 import BollingerConfig from './BollingerConfig';
+import SupertrendConfig from './SupertrendConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
 import TradeValueConfig from './TradeValueConfig';
@@ -38,6 +39,7 @@ import {
 import { isCalendarTimeframe, type LiveTimeframe } from '../../state/livePage';
 
 export type CategoryId =
+  | 'supertrend'
   | 'bollinger'
   | 'moving-average'
   | 'daily-moving-average'
@@ -107,6 +109,8 @@ export const CATEGORIES: ReadonlyArray<{
 }> = [
   { id: 'moving-average',  label: '이동평균선',       group: 'top',  placement: 'overlay',
     description: '지난 n일 동안 주가 평균값을 이은 선' },
+  { id: 'supertrend', label: '슈퍼트렌드', group: 'top', placement: 'overlay',
+    description: 'ATR 변동성을 기준으로 추세선을 표시합니다. 상승·하락 추세는 종가와 밴드의 돌파로 전환됩니다.' },
   { id: 'bollinger', label: '볼린저 밴드', group: 'top', placement: 'overlay',
     description: '이동평균선을 중심으로 표준편차 배수만큼 떨어진 상단·하단 밴드를 표시합니다.' },
   { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top',  placement: 'overlay',
@@ -365,6 +369,7 @@ export default function IndicatorPanel({
     const paneKey = PANE_CATEGORY_TO_KEY[id];
     if (paneKey) return selectedPanePrefs[paneKey] === true;
     switch (id) {
+      case 'supertrend': return ind.supertrendEnabled;
       case 'bollinger': return ind.bollingerEnabled;
       case 'moving-average': return maEnabled;
       case 'daily-moving-average': return dailyMaEnabled;
@@ -383,6 +388,7 @@ export default function IndicatorPanel({
     const paneKey = PANE_CATEGORY_TO_KEY[id];
     if (paneKey) return () => setPanePrefForTimeframe(timeframe, paneKey, present);
     switch (id) {
+      case 'supertrend': return () => actions.setSupertrendEnabled(present);
       case 'bollinger': return () => actions.setBollingerEnabled(present);
       case 'moving-average': return () => setMaEnabled(present);
       case 'daily-moving-average': return () => setDailyMaEnabled(present);
@@ -644,6 +650,7 @@ export default function IndicatorPanel({
                   onAdd={() => addFor(selectedCategory.id)}
                 />
               )}
+              {selectedAdded && selectedId === 'supertrend' && <SupertrendConfig />}
               {selectedAdded && selectedId === 'bollinger' && <BollingerConfig />}
               {selectedAdded && selectedId === 'moving-average' && <MovingAverageConfig />}
               {selectedAdded && selectedId === 'daily-moving-average' && <DailyMovingAverageConfig />}
