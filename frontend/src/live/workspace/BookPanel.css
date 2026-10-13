@@ -1,4 +1,17 @@
-.book-panel-grid { min-width: var(--book-min-w); grid-template-columns: var(--book-cols); }
+.book-scroll-region { container-type:inline-size; }
+.book-panel-grid { min-width:var(--book-wide-min-w); grid-template-columns:var(--book-wide-cols); }
+.book-compact-info { display:none; justify-content:flex-end; padding:0 8px; height:22px; }
+.book-compact-info button,.book-info-heading button { font:inherit; color:var(--fg); background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:0 6px; }
+.book-compact-info button { font-size:var(--live-text-meta,var(--text-xs)); }
+.book-compact-info button:hover,.book-info-heading button:hover { background:var(--bg-input-hover); }
+@container (width < 531px) {
+  .book-panel-grid { min-width:var(--book-compact-min-w); grid-template-columns:var(--book-compact-cols); }
+  .book-inline-summary { display:none; }
+  .book-compact-info { display:flex; }
+  .book-qty-delta { min-width:0; flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}
+.book-info-popover { padding:8px; max-height:calc(100vh - 16px); overflow-y:auto; background:var(--bg-card); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-overlay); font-size:var(--live-text-data,var(--text-sm)); }
+.book-info-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 8px 8px; }
 
 /* Twelve summary items fit the same eleven ladder rows; bid bars stay aligned. */
 .book-summary { --book-summary-row-height: calc(242px / 12); }
