@@ -2,8 +2,8 @@
   "client_date": "2026-10-14",
   "client_timezone": "Asia/Seoul",
   "scope": "Preserve chart pointer crosshair and native axis labels during history loading and structural data updates. Bridge the otherwise blank native redraw without copying candle layers.",
-  "tested_head": "40c19fb4c2c70a648310230a2ed5ee08a5e086bd",
-  "working_tree_changes": true,
+  "tested_head": "f3efa76aa6e68d1ca7f30ff68dec77d653840d7f",
+  "working_tree_changes": false,
   "upstream_main_checked": "ae5fc58e96a9750bb114be9aaa068d537eac3176",
   "environment": {
     "node": "v24.13.1",
@@ -26,7 +26,7 @@
   "input_fingerprint": {
     "algorithm": "SHA256 of sorted relative path, NUL, and per-file SHA256 bytes",
     "file_count": 1765,
-    "sha256": "7b01e50bbacf908c8e9a1c5a8cd81445b3270d79356afdf349859da4a91be912",
+    "sha256": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2",
     "scope": "Frontend source, tests, public assets, manifests and validation configs; backend source, fixtures and Python manifests."
   },
   "changed_file_sha256": {
@@ -38,7 +38,7 @@
     "frontend/src/live/LiveChartRoot.tsx": "364130147c2020df9b6f9b4d6ddc89d7ed097a5e9ff9e999dbdeb4c97584d427",
     "frontend/src/live/workspace/SecondChartWindow.tsx": "768d0be668e01699032fc519e069f1eb77332983228eab50d820f196333d5f77",
     "frontend/src/live/workspace/secondChartSeriesWriter.ts": "d9c541a227033a2626ca6711b3293a1d58aec1fc5ef1d37f2736e95a18ab8826",
-    "frontend/tests/e2e/live-crosshair-persistence.spec.ts": "b71f7d6eb12611565afd70e1df03f580cb2c6f5594c93c3c27664673486bc425",
+    "frontend/tests/e2e/live-crosshair-persistence.spec.ts": "860c1de8db1836d21fd9a2e95902037ff3eac540a3b9330a2a76ef5af9d57e62",
     "frontend/tests/e2e/second-chart-updates.spec.ts": "40e864a6cf6a8c23cadcbf6243c13a64c4365b8262b19e1797d221fdbfc65002"
   },
   "checks": [
@@ -46,7 +46,8 @@
       "command": "npm run typecheck",
       "cwd": "frontend",
       "result": "passed",
-      "scope": "app, unit-test and E2E TypeScript projects"
+      "scope": "app, unit-test and E2E TypeScript projects",
+      "tested_input": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2"
     },
     {
       "command": "npx vitest run src/chart src/live tests/component/ChartErrorBoundary.test.tsx",
@@ -65,13 +66,15 @@
       "command": "npx playwright test tests/e2e/live-crosshair-persistence.spec.ts tests/e2e/live-viewport-preservation.spec.ts tests/e2e/wheel-viewport-preservation.spec.ts tests/e2e/drawing-rectangle-free.spec.ts tests/e2e/drawing-multiline.spec.ts tests/e2e/second-candles.spec.ts tests/e2e/second-chart-updates.spec.ts --reporter=list",
       "cwd": "frontend",
       "result": "passed",
-      "tests": 50
+      "tests": 50,
+      "tested_input": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2"
     },
     {
       "command": "npx playwright test tests/e2e/live-crosshair-persistence.spec.ts --repeat-each=5 --reporter=list",
       "cwd": "frontend",
       "result": "passed",
-      "tests": 25
+      "tests": 25,
+      "tested_input": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2"
     },
     {
       "command": "npx eslint src/chart/persistentCrosshair.ts src/chart/persistentCrosshair.test.ts src/chart/replaceSeriesData.ts src/live/workspace/secondChartSeriesWriter.ts tests/e2e/live-crosshair-persistence.spec.ts",
@@ -124,5 +127,71 @@
   "limits": [
     "Browser checks use isolated synthetic history fixtures and system Chrome; they do not exercise a real vendor request.",
     "Existing touched-file ESLint findings remain (37 errors, 3 warnings); their diagnostics match HEAD after ignoring source-location shifts."
-  ]
+  ],
+  "prior_base_validation": {
+    "tested_head": "40c19fb4c2c70a648310230a2ed5ee08a5e086bd",
+    "input_fingerprint": {
+      "algorithm": "SHA256 of sorted relative path, NUL, and per-file SHA256 bytes",
+      "file_count": 1765,
+      "sha256": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2",
+      "scope": "Frontend source, tests, public assets, manifests and validation configs; backend source, fixtures and Python manifests."
+    },
+    "checks": [
+      {
+        "command": "npm run typecheck",
+        "cwd": "frontend",
+        "result": "passed",
+        "scope": "app, unit-test and E2E TypeScript projects",
+        "tested_input": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2"
+      },
+      {
+        "command": "npx vitest run src/chart src/live tests/component/ChartErrorBoundary.test.tsx",
+        "cwd": "frontend",
+        "result": "passed",
+        "files": 291,
+        "tests": 4405
+      },
+      {
+        "command": "npx vite build",
+        "cwd": "frontend",
+        "result": "passed",
+        "note": "Build emits a chunk-size warning."
+      },
+      {
+        "command": "npx playwright test tests/e2e/live-crosshair-persistence.spec.ts tests/e2e/live-viewport-preservation.spec.ts tests/e2e/wheel-viewport-preservation.spec.ts tests/e2e/drawing-rectangle-free.spec.ts tests/e2e/drawing-multiline.spec.ts tests/e2e/second-candles.spec.ts tests/e2e/second-chart-updates.spec.ts --reporter=list",
+        "cwd": "frontend",
+        "result": "passed",
+        "tests": 50,
+        "tested_input": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2"
+      },
+      {
+        "command": "npx playwright test tests/e2e/live-crosshair-persistence.spec.ts --repeat-each=5 --reporter=list",
+        "cwd": "frontend",
+        "result": "passed",
+        "tests": 25,
+        "tested_input": "46e86935223f257fde6edfc459bf9baf5ef9dec0e98ad413f6de9e6d9c3adbf2"
+      },
+      {
+        "command": "npx eslint src/chart/persistentCrosshair.ts src/chart/persistentCrosshair.test.ts src/chart/replaceSeriesData.ts src/live/workspace/secondChartSeriesWriter.ts tests/e2e/live-crosshair-persistence.spec.ts",
+        "cwd": "frontend",
+        "result": "passed"
+      },
+      {
+        "command": "git diff --check",
+        "result": "passed"
+      }
+    ]
+  },
+  "tested_base": "ae5fc58e96a9750bb114be9aaa068d537eac3176",
+  "pr_url": "https://github.com/Soochol/hoga-ops/pull/1962",
+  "validation_record_note": "A subsequent commit updates this record only. Product, test, fixture and configuration inputs are identified by the recorded fingerprint.",
+  "latest_main_followup": {
+    "unit_tests": 4405,
+    "unit_files": 291,
+    "related_browser_tests": 50,
+    "crosshair_repeat_tests": 25,
+    "typecheck": "passed",
+    "production_build": "passed",
+    "pixel_probe_correction": "Measure a crosshair column near the physical pointer, allowing native bar snapping. A day-boundary column (316 pixels at x=1010) exceeded the actual crosshair column (315 pixels at x=587) in the expanded default chart, causing a false coordinate failure with the global-maximum probe."
+  }
 }
