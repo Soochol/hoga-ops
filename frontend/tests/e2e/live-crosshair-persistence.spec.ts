@@ -7,27 +7,35 @@ import type { WorkspaceWindow } from '../../src/state/workspace';
 type ChartWindow = Window & { __liveCharts: Map<string, IChartApi>;
   __crosshairSampling?: boolean; __crosshairFrames?: number[] };
 
-async function hoverPixels(page: Page) {
-  return page.evaluate(() => {
+async function hoverPixels(page: Page, expectedX: number) {
+  return page.evaluate(expectedX => {
     const chart = [...(window as unknown as ChartWindow).__liveCharts.values()][0];
     const tops = [...chart.chartElement().querySelectorAll('canvas')].filter(c => c.style.zIndex === '2');
     const paneTop = chart.panes()[0].getHTMLElement()!.getBoundingClientRect().top;
     const plots = tops.filter(c => Math.abs(c.clientWidth - chart.timeScale().width()) < 1
       && Math.abs(c.getBoundingClientRect().top - paneTop) < 1);
-    const ink = (c: HTMLCanvasElement) => {
+    const ink = (c: HTMLCanvasElement, pointerX?: number) => {
       const rgba = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
       const columns = new Uint32Array(c.width);
       let total = 0;
       for (let i = 3; i < rgba.length; i += 4) if (rgba[i]) { total++; columns[((i - 3) / 4) % c.width]++; }
-      let x = 0;
-      for (let i = 1; i < columns.length; i++) if (columns[i] > columns[x]) x = i;
+      // Day boundaries also draw tall dashed lines on this same top canvas.
+      // Locate ink around the actual pointer, allowing native bar snapping,
+      // rather than mistaking the tallest day boundary for the crosshair.
+      const ratio = c.width / c.clientWidth;
+      const radius = Math.ceil(chart.timeScale().options().barSpacing * ratio / 2) + 2;
+      const from = pointerX === undefined ? 0 : Math.max(0, Math.floor(pointerX * ratio - radius));
+      const to = pointerX === undefined ? columns.length - 1 : Math.min(columns.length - 1, Math.ceil(pointerX * ratio + radius));
+      let x = from;
+      for (let i = from + 1; i <= to; i++) if (columns[i] > columns[x]) x = i;
+      if (pointerX !== undefined) total = columns[x];
       return { total, x: x * c.clientWidth / c.width };
     };
-    return { plot: plots.map(ink).reduce((a, b) => a.total >= b.total ? a : b),
+    return { plot: plots.map(c => ink(c, expectedX)).reduce((a, b) => a.total >= b.total ? a : b),
       price: tops.filter(c => c.clientWidth < 150 && c.clientHeight > 50).reduce((n, c) => n + ink(c).total, 0),
       time: tops.filter(c => c.clientWidth > 150 && c.clientHeight < 50).reduce((n, c) => n + ink(c).total, 0),
     };
-  });
+  }, expectedX);
 }
 
 async function settleDraw(page: Page) {
@@ -97,10 +105,10 @@ for (const timeframe of ['1m', 'D', 'W', 'M'] as const) {
     });
     await page.mouse.move(box.x + box.width * .55, box.y + box.height * .6);
     await expect.poll(async () => {
-      const hover = await hoverPixels(page);
+      const hover = await hoverPixels(page, box.width * .55);
       return hover.plot.total > 100 && hover.price > 0 && hover.time > 0;
     }).toBe(true);
-    const before = await hoverPixels(page);
+    const before = await hoverPixels(page, box.width * .55);
     await page.evaluate(x => {
       const w = window as unknown as ChartWindow;
       w.__crosshairSampling = true;
@@ -131,7 +139,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M'] as const) {
       }, { id, timeframe });
       await expect.poll(() => pending).toBeGreaterThan(0);
       await settleDraw(page);
-      const waiting = await hoverPixels(page);
+      const waiting = await hoverPixels(page, box.width * .55);
       expect(waiting.plot.total).toBeGreaterThan(100);
       expect(waiting.plot.x).toBeCloseTo(before.plot.x, 0);
       expect(waiting.price).toBeGreaterThan(0);
@@ -142,7 +150,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M'] as const) {
       return chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!.data().length > beforeCount;
     }, beforeCount);
     await settleDraw(page);
-    const after = await hoverPixels(page);
+    const after = await hoverPixels(page, box.width * .55);
     expect(after.plot.total).toBeGreaterThan(100);
     expect(after.plot.x).toBeCloseTo(before.plot.x, 0);
     expect(after.price).toBeGreaterThan(0);
@@ -199,10 +207,10 @@ test('stationary crosshair and axis labels survive data updates, rewindowing and
   // Plot and axis canvases can finish on different draws during auto-sizing.
   // Establish all three surfaces before sampling the stationary baseline.
   await expect.poll(async () => {
-    const hover = await hoverPixels(page);
+    const hover = await hoverPixels(page, box.width * .55);
     return hover.plot.total > 100 && hover.price > 0 && hover.time > 0;
   }).toBe(true);
-  const before = await hoverPixels(page);
+  const before = await hoverPixels(page, box.width * .55);
   expect(before.price).toBeGreaterThan(0);
   expect(before.time).toBeGreaterThan(0);
 
@@ -226,7 +234,7 @@ test('stationary crosshair and axis labels survive data updates, rewindowing and
       flushWindowedChart(chart);
     }, mode);
     await settleDraw(page);
-    const after = await hoverPixels(page);
+    const after = await hoverPixels(page, box.width * .55);
     expect(after.plot.total, mode).toBeGreaterThan(100);
     expect(Math.abs(after.plot.x - before.plot.x), mode).toBeLessThan(1);
     expect(after.price, mode).toBeGreaterThan(0);
@@ -244,7 +252,7 @@ test('stationary crosshair and axis labels survive data updates, rewindowing and
   await settleDraw(page);
   await page.mouse.move(box.x + box.width * .8, box.y + box.height * .6);
   await settleDraw(page);
-  const blank = await hoverPixels(page);
+  const blank = await hoverPixels(page, box.width * .8);
   await page.evaluate(async () => {
     const chart = [...(window as unknown as ChartWindow).__liveCharts.values()][0];
     const series = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
@@ -254,7 +262,7 @@ test('stationary crosshair and axis labels survive data updates, rewindowing and
     replaceSeriesData(chart, series, rows.filter((_, i) => i !== rows.length - 50), rows);
   });
   await settleDraw(page);
-  const afterBlank = await hoverPixels(page);
+  const afterBlank = await hoverPixels(page, box.width * .8);
   expect(afterBlank.plot.total).toBeGreaterThan(100);
   expect(Math.abs(afterBlank.plot.x - blank.plot.x)).toBeLessThan(1);
   await page.screenshot({ path: testInfo.outputPath('stationary-crosshair.png') });
@@ -267,6 +275,6 @@ test('stationary crosshair and axis labels survive data updates, rewindowing and
     series.setData(series.data().slice(1));
   });
   await settleDraw(page);
-  expect((await hoverPixels(page)).plot.total).toBe(0);
+  expect((await hoverPixels(page, box.width * .8)).plot.total).toBe(0);
   expect(errors).toEqual([]);
 });
