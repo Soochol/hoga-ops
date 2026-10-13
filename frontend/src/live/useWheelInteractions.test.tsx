@@ -11,7 +11,7 @@ import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 const RIGHT_OFFSET = CHART_TIMESCALE_OPTIONS.rightOffset ?? 0;
 
 // 훅이 실제로 사용하는 timeScale 표면만 흉내 낸다. 테스트별로 필요한
-// 메서드만 override. width 1000 × minBarSpacing 0.5 → maxSpan 2000:
+// 메서드만 override. width 1000 × minBarSpacing 0.5 → maxSpan 1999:
 // 기본 케이스들의 요청 span(≤111)에는 플로어 클램프가 발동하지 않는다.
 // timeToIndex 기본값 null → trueLast undefined → plain 앵커는 to-고정 폴백
 // (lastBarIndex를 검증하는 테스트만 timeToIndex를 override한다).
@@ -230,16 +230,16 @@ describe('useWheelInteractions', () => {
     expect(arg.from).toBeCloseTo(100 - 100 * FACTOR, 6); // 환산 없으면 ≈ -0.31로 실패
   });
 
-  it('줌아웃 플로어: maxSpan(=width/minBarSpacing) 초과 요청은 앵커 보존 클램프로 전달', () => {
-    // width 52.5 × minBarSpacing 0.5 → maxSpan 105. ctrl 줌아웃 요청 span
-    // ≈110.5 > 105 → 앵커(50, 비율 0.5) 보존 클램프 {-2.5, 102.5}.
+  it('줌아웃 플로어: 양 끝 봉을 포함한 최대 span에서 앵커 보존 클램프로 전달', () => {
+    // width 52.5 / minBarSpacing 0.5 → 105봉, span 104. ctrl 요청 span
+    // ≈110.5 > 104 → 앵커(50, 비율 0.5) 보존 클램프 {-2, 102}.
     // 클램프가 없으면 {≈-5.26, ≈105.26}이 그대로 전달되어 실패한다.
     const ts = makeTs({ width: vi.fn(() => 52.5), coordinateToLogical: vi.fn(() => 50) });
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
     wheel(getByTestId('wheel-host'), { deltaY: 100, ctrlKey: true, clientX: 50 });
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
-    expect(arg.from).toBeCloseTo(-2.5, 9);
-    expect(arg.to).toBeCloseTo(102.5, 9);
+    expect(arg.from).toBeCloseTo(-2, 9);
+    expect(arg.to).toBeCloseTo(102, 9);
   });
 
   it('bundle 교체 시 마지막 캔들 ms는 ref로 갱신 — 리스너 재부착 없음', () => {

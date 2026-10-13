@@ -4,6 +4,7 @@ import type { RangeBundle } from '../api/types';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { computeWheelOutcome } from '../util/wheelInteractions';
 import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
+import { readChartInteractionViewport } from '../chart/windowedChart';
 
 /**
  * /live 차트의 modifier-aware 휠 인터랙션 배선.
@@ -77,8 +78,9 @@ export function useWheelInteractions(
       // 현재는 effect 선언 순서상 리스너가 c.remove()보다 먼저 해제되어
       // 도달 불가지만, 레포의 다른 lwc viewport 호출부와 같은 관례적 가드.
       try {
-        const range = ts.getVisibleLogicalRange();
-        if (!range) return; // 데이터 로드 전 — 페이지 스크롤을 방해하지 않는다
+        const viewport = readChartInteractionViewport(chart);
+        if (!viewport) return; // 데이터 로드 전 — 페이지 스크롤을 방해하지 않는다
+        const { range } = viewport;
         e.preventDefault(); // 페이지 스크롤(특히 shift+휠 가로 스크롤)/브라우저 줌 차단
         // deltaMode 정규화 — 브라우저별 deltaY 단위 차이를 픽셀로 환산한다.
         // Firefox는 휠을 LINE 단위(노치당 ±3)로 보내므로 환산 없이는 줌이
@@ -96,12 +98,12 @@ export function useWheelInteractions(
         // 요청이 플로어에서 우측 팬으로 변질되어 ctrl 앵커가 풀린다
         // (/diagnose 2026-06-08). 요청 span을 플로어 한계로 미리 클램프하면
         // 앵커 비율이 보존된다. width()는 리사이즈 대응을 위해 이벤트 시점에
-        // 읽는다 (plot 폭 px / minBarSpacing px = 최대 표시 바 수).
+        // 읽는다. 논리 범위는 양 끝 봉을 포함하므로 span = 표시 바 수 - 1이다.
         const plotWidth = ts.width();
         const minBarSpacing = chart.options().timeScale.minBarSpacing;
         const maxSpan =
           plotWidth > 0 && minBarSpacing > 0
-            ? plotWidth / minBarSpacing
+            ? Math.max(1, plotWidth / minBarSpacing - 1)
             : Number.POSITIVE_INFINITY;
         // 마지막 캔들의 합집합 논리 인덱스(trueLast)를 이벤트 시점에 변환:
         // candles.length-1은 호가 페인 합집합 때문에 작게 어긋난다(상단 주석).
@@ -128,7 +130,7 @@ export function useWheelInteractions(
           shiftKey: e.shiftKey,
           ctrlOrMetaKey: e.ctrlKey || e.metaKey,
           mouseX: e.clientX - rect.left,
-          coordinateToLogical: (x) => ts.coordinateToLogical(x),
+          coordinateToLogical: viewport.coordinateToLogical,
           maxTo,
           lastBarIndex,
           maxSpan,

@@ -56,7 +56,7 @@ export interface WheelInput {
   lastBarIndex?: number;
   /**
    * Upper bound for the result's span (visible bar count). Typically
-   * `timeScale.width() / minBarSpacing` — the library's zoom-out floor.
+   * `timeScale.width() / minBarSpacing - 1` — the inclusive-range zoom floor.
    * Without this clamp, a zoom request past the floor gets its barSpacing
    * rejected by lightweight-charts while the right edge still applies,
    * degenerating the zoom into a rightward PAN that breaks the ctrl

@@ -1,0 +1,142 @@
+[
+  {
+    "title": "3m history response and same-frame plain wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": false,
+    "before": {
+      "x": 905.4916943521595,
+      "count": 5632,
+      "anchorClose": 296876
+    },
+    "after": {
+      "x": 905.661750142927,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame Ctrl wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": true,
+    "before": {
+      "x": 407.750830564784,
+      "count": 5632,
+      "anchorClose": 295325
+    },
+    "after": {
+      "x": 407.7338249857075,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame plain wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": false,
+    "before": {
+      "x": 905.4916943521595,
+      "count": 5632,
+      "anchorClose": 296876
+    },
+    "after": {
+      "x": 905.661750142927,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame Ctrl wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": true,
+    "before": {
+      "x": 407.750830564784,
+      "count": 5632,
+      "anchorClose": 295325
+    },
+    "after": {
+      "x": 407.7338249857075,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame plain wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": false,
+    "before": {
+      "x": 905.4916943521595,
+      "count": 5632,
+      "anchorClose": 296876
+    },
+    "after": {
+      "x": 905.661750142927,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame Ctrl wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": true,
+    "before": {
+      "x": 407.750830564784,
+      "count": 5632,
+      "anchorClose": 295325
+    },
+    "after": {
+      "x": 407.7338249857075,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame plain wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": false,
+    "before": {
+      "x": 905.4916943521595,
+      "count": 5632,
+      "anchorClose": 296876
+    },
+    "after": {
+      "x": 905.661750142927,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame Ctrl wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": true,
+    "before": {
+      "x": 407.750830564784,
+      "count": 5632,
+      "anchorClose": 295325
+    },
+    "after": {
+      "x": 407.7338249857075,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame plain wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": false,
+    "before": {
+      "x": 905.4916943521595,
+      "count": 5632,
+      "anchorClose": 296876
+    },
+    "after": {
+      "x": 905.661750142927,
+      "count": 6912
+    }
+  },
+  {
+    "title": "3m history response and same-frame Ctrl wheel preserve the viewed date",
+    "status": "passed",
+    "ctrl": true,
+    "before": {
+      "x": 407.750830564784,
+      "count": 5632,
+      "anchorClose": 295325
+    },
+    "after": {
+      "x": 407.7338249857075,
+      "count": 6912
+    }
+  }
+]

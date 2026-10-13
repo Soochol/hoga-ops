@@ -1,0 +1,7842 @@
+[
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "plain",
+    "burst": 1,
+    "drift": 0,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1764,
+        "requested": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1746,
+        "requested": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1727,
+        "requested": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1705,
+        "requested": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1680,
+        "requested": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1652,
+        "requested": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1620,
+        "requested": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1585,
+        "requested": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1217.904153070925,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1544,
+        "requested": {
+          "from": 1217.904153070925,
+          "to": 1900
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "plain",
+    "burst": 2,
+    "drift": 0,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1764,
+        "requested": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1746,
+        "requested": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1727,
+        "requested": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1705,
+        "requested": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1680,
+        "requested": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1652,
+        "requested": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1620,
+        "requested": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1585,
+        "requested": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1217.904153070925,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1544,
+        "requested": {
+          "from": 1217.904153070925,
+          "to": 1900
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "ctrl",
+    "burst": 1,
+    "drift": 1,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845728,
+          "to": 1914.1049558167133
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011038,
+          "to": 1922.5331295571377
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.200188101104,
+          "to": 1922.533129557138
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.4284286947411,
+          "to": 1932.0358689140303
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.4284286947413,
+          "to": 1932.0358689140305
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "ctrl",
+    "burst": 2,
+    "drift": 1,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845728,
+          "to": 1914.1049558167133
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011038,
+          "to": 1922.5331295571377
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.200188101104,
+          "to": 1922.533129557138
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.4284286947411,
+          "to": 1932.0358689140303
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.4284286947413,
+          "to": 1932.0358689140305
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "shift",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 0,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 0,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 0,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 0,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 0,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 0,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 0,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 0,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 0,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 0,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 0,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 0,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 0,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 0,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 0,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 0,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "shift",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 0,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 0,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 0,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 0,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 0,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 0,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 0,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 0,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 0,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 0,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 0,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 0,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 0,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 0,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 0,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 0,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "horizontal",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1789.7070063694268,
+          "to": 1889.7070063694268
+        },
+        "offset": 0,
+        "mouseIndex": 1838,
+        "requested": {
+          "from": 1789.7070063694268,
+          "to": 1889.7070063694268
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        },
+        "offset": 0,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1769.1210191082805,
+          "to": 1869.1210191082805
+        },
+        "offset": 0,
+        "mouseIndex": 1817,
+        "requested": {
+          "from": 1769.1210191082805,
+          "to": 1869.1210191082805
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        },
+        "offset": 0,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1748.5350318471342,
+          "to": 1848.5350318471342
+        },
+        "offset": 0,
+        "mouseIndex": 1796,
+        "requested": {
+          "from": 1748.5350318471342,
+          "to": 1848.5350318471342
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        },
+        "offset": 0,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1727.9490445859878,
+          "to": 1827.9490445859878
+        },
+        "offset": 0,
+        "mouseIndex": 1776,
+        "requested": {
+          "from": 1727.9490445859878,
+          "to": 1827.9490445859878
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        },
+        "offset": 0,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1707.3630573248415,
+          "to": 1807.3630573248415
+        },
+        "offset": 0,
+        "mouseIndex": 1755,
+        "requested": {
+          "from": 1707.3630573248415,
+          "to": 1807.3630573248415
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        },
+        "offset": 0,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1686.7770700636952,
+          "to": 1786.7770700636952
+        },
+        "offset": 0,
+        "mouseIndex": 1735,
+        "requested": {
+          "from": 1686.7770700636952,
+          "to": 1786.7770700636952
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        },
+        "offset": 0,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1666.1910828025489,
+          "to": 1766.1910828025489
+        },
+        "offset": 0,
+        "mouseIndex": 1714,
+        "requested": {
+          "from": 1666.1910828025489,
+          "to": 1766.1910828025489
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        },
+        "offset": 0,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1645.6050955414025,
+          "to": 1745.6050955414025
+        },
+        "offset": 0,
+        "mouseIndex": 1693,
+        "requested": {
+          "from": 1645.6050955414025,
+          "to": 1745.6050955414025
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        },
+        "offset": 0,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 4000,
+    "mode": "horizontal",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        },
+        "offset": 0,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        },
+        "offset": 0,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        },
+        "offset": 0,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        },
+        "offset": 0,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        },
+        "offset": 0,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        },
+        "offset": 0,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        },
+        "offset": 0,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        },
+        "offset": 0,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1614.726114649683,
+          "to": 1714.726114649683
+        },
+        "offset": 0,
+        "mouseIndex": 1663,
+        "requested": {
+          "from": 1614.726114649683,
+          "to": 1714.726114649683
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1594.1401273885367,
+          "to": 1694.1401273885367
+        },
+        "offset": 0,
+        "mouseIndex": 1642,
+        "requested": {
+          "from": 1594.1401273885367,
+          "to": 1694.1401273885367
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1573.5541401273904,
+          "to": 1673.5541401273904
+        },
+        "offset": 0,
+        "mouseIndex": 1621,
+        "requested": {
+          "from": 1573.5541401273904,
+          "to": 1673.5541401273904
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1552.968152866244,
+          "to": 1652.968152866244
+        },
+        "offset": 0,
+        "mouseIndex": 1601,
+        "requested": {
+          "from": 1552.968152866244,
+          "to": 1652.968152866244
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1532.3821656050977,
+          "to": 1632.3821656050977
+        },
+        "offset": 0,
+        "mouseIndex": 1580,
+        "requested": {
+          "from": 1532.3821656050977,
+          "to": 1632.3821656050977
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1511.7961783439514,
+          "to": 1611.7961783439514
+        },
+        "offset": 0,
+        "mouseIndex": 1560,
+        "requested": {
+          "from": 1511.7961783439514,
+          "to": 1611.7961783439514
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1491.210191082805,
+          "to": 1591.210191082805
+        },
+        "offset": 0,
+        "mouseIndex": 1539,
+        "requested": {
+          "from": 1491.210191082805,
+          "to": 1591.210191082805
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1470.6242038216587,
+          "to": 1570.6242038216587
+        },
+        "offset": 0,
+        "mouseIndex": 1518,
+        "requested": {
+          "from": 1470.6242038216587,
+          "to": 1570.6242038216587
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "plain",
+    "burst": 1,
+    "drift": 0,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1764,
+        "requested": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1746,
+        "requested": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1727,
+        "requested": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1705,
+        "requested": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1680,
+        "requested": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1652,
+        "requested": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1620,
+        "requested": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1585,
+        "requested": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1217.904153070925,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1544,
+        "requested": {
+          "from": 1217.904153070925,
+          "to": 1900
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "plain",
+    "burst": 2,
+    "drift": 0,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1764,
+        "requested": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1746,
+        "requested": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1727,
+        "requested": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1705,
+        "requested": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1680,
+        "requested": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1652,
+        "requested": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1620,
+        "requested": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1585,
+        "requested": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1217.904153070925,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1544,
+        "requested": {
+          "from": 1217.904153070925,
+          "to": 1900
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "ctrl",
+    "burst": 1,
+    "drift": 1,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.8801511241895,
+          "to": 1906.6298362821271
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845719,
+          "to": 1914.1049558167124
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.980040784572,
+          "to": 1914.1049558167126
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011026,
+          "to": 1922.5331295571368
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.2001881011029,
+          "to": 1922.533129557137
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.42842869474,
+          "to": 1932.0358689140294
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.42842869474,
+          "to": 1932.0358689140294
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812543,
+          "to": 1942.7501776203053
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812543,
+          "to": 1942.7501776203053
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890925,
+          "to": 1954.8305269534812
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.387205889092,
+          "to": 1954.8305269534808
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145066,
+          "to": 1968.451082792616
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145064,
+          "to": 1968.4510827926158
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.638569275689,
+          "to": 1983.808216618001
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.6385692756892,
+          "to": 1983.8082166180013
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488533,
+          "to": 2001.123336655406
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488533,
+          "to": 2001.123336655406
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1688.6343877086438,
+          "to": 2020.646079982299
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1688.634387708644,
+          "to": 2020.6460799822992
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1668.315773891477,
+          "to": 2042.6579116175635
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1668.3157738914765,
+          "to": 2042.657911617563
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1645.4066007841632,
+          "to": 2067.476182483819
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1645.4066007841636,
+          "to": 2067.4761824838192
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1619.7040770849603,
+          "to": 2095.586201598746
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1619.7040770849599,
+          "to": 2095.5862015987454
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1590.597065684885,
+          "to": 2127.1526627970825
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1590.597065684885,
+          "to": 2127.1526627970825
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1557.9064988239943,
+          "to": 2162.871245265289
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1557.9064988239943,
+          "to": 2162.871245265289
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1520.9204907604158,
+          "to": 2203.0163376894907
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1520.9204907604158,
+          "to": 2203.0163376894907
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "ctrl",
+    "burst": 2,
+    "drift": 1,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.8801511241895,
+          "to": 1906.6298362821271
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845719,
+          "to": 1914.1049558167124
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.980040784572,
+          "to": 1914.1049558167126
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011026,
+          "to": 1922.5331295571368
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.2001881011029,
+          "to": 1922.533129557137
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.42842869474,
+          "to": 1932.0358689140294
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.42842869474,
+          "to": 1932.0358689140294
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812543,
+          "to": 1942.7501776203053
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812543,
+          "to": 1942.7501776203053
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890925,
+          "to": 1954.8305269534812
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.387205889092,
+          "to": 1954.8305269534808
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145066,
+          "to": 1968.451082792616
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145064,
+          "to": 1968.4510827926158
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.638569275689,
+          "to": 1983.808216618001
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.6385692756892,
+          "to": 1983.8082166180013
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488533,
+          "to": 2001.123336655406
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488533,
+          "to": 2001.123336655406
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1688.6343877086438,
+          "to": 2020.646079982299
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1688.634387708644,
+          "to": 2020.6460799822992
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1668.315773891477,
+          "to": 2042.6579116175635
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1668.3157738914765,
+          "to": 2042.657911617563
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1645.4066007841632,
+          "to": 2067.476182483819
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1645.4066007841636,
+          "to": 2067.4761824838192
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1619.7040770849603,
+          "to": 2095.586201598746
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1619.7040770849599,
+          "to": 2095.5862015987454
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1590.597065684885,
+          "to": 2127.1526627970825
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1590.597065684885,
+          "to": 2127.1526627970825
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1557.9064988239943,
+          "to": 2162.871245265289
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1557.9064988239943,
+          "to": 2162.871245265289
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1520.9204907604158,
+          "to": 2203.0163376894907
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1520.9204907604158,
+          "to": 2203.0163376894907
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "shift",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 0,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 0,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 0,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 0,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 0,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 0,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 0,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 0,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 0,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 0,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 0,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 0,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 0,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 0,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 0,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 0,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "shift",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 0,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 0,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 0,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 0,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 0,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 0,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 0,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 0,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 0,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 0,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 0,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 0,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 0,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 0,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 0,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 0,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "horizontal",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1789.7070063694264,
+          "to": 1889.7070063694264
+        },
+        "offset": 0,
+        "mouseIndex": 1838,
+        "requested": {
+          "from": 1789.7070063694264,
+          "to": 1889.7070063694264
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1779.4140127388528,
+          "to": 1879.4140127388528
+        },
+        "offset": 0,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388528,
+          "to": 1879.4140127388528
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1769.1210191082791,
+          "to": 1869.1210191082791
+        },
+        "offset": 0,
+        "mouseIndex": 1817,
+        "requested": {
+          "from": 1769.1210191082791,
+          "to": 1869.1210191082791
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1758.8280254777055,
+          "to": 1858.8280254777055
+        },
+        "offset": 0,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.8280254777055,
+          "to": 1858.8280254777055
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1748.535031847132,
+          "to": 1848.535031847132
+        },
+        "offset": 0,
+        "mouseIndex": 1796,
+        "requested": {
+          "from": 1748.535031847132,
+          "to": 1848.535031847132
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1738.2420382165583,
+          "to": 1838.2420382165583
+        },
+        "offset": 0,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.2420382165583,
+          "to": 1838.2420382165583
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1727.9490445859847,
+          "to": 1827.9490445859847
+        },
+        "offset": 0,
+        "mouseIndex": 1776,
+        "requested": {
+          "from": 1727.9490445859847,
+          "to": 1827.9490445859847
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1717.656050955411,
+          "to": 1817.656050955411
+        },
+        "offset": 0,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.656050955411,
+          "to": 1817.656050955411
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1707.3630573248374,
+          "to": 1807.3630573248374
+        },
+        "offset": 0,
+        "mouseIndex": 1755,
+        "requested": {
+          "from": 1707.3630573248374,
+          "to": 1807.3630573248374
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1697.0700636942638,
+          "to": 1797.0700636942638
+        },
+        "offset": 0,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942638,
+          "to": 1797.0700636942638
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1686.7770700636902,
+          "to": 1786.7770700636902
+        },
+        "offset": 0,
+        "mouseIndex": 1735,
+        "requested": {
+          "from": 1686.7770700636902,
+          "to": 1786.7770700636902
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1676.4840764331166,
+          "to": 1776.4840764331166
+        },
+        "offset": 0,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.4840764331166,
+          "to": 1776.4840764331166
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1666.191082802543,
+          "to": 1766.191082802543
+        },
+        "offset": 0,
+        "mouseIndex": 1714,
+        "requested": {
+          "from": 1666.191082802543,
+          "to": 1766.191082802543
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1655.8980891719693,
+          "to": 1755.8980891719693
+        },
+        "offset": 0,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.8980891719693,
+          "to": 1755.8980891719693
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1645.6050955413957,
+          "to": 1745.6050955413957
+        },
+        "offset": 0,
+        "mouseIndex": 1693,
+        "requested": {
+          "from": 1645.6050955413957,
+          "to": 1745.6050955413957
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1635.312101910822,
+          "to": 1735.312101910822
+        },
+        "offset": 0,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.312101910822,
+          "to": 1735.312101910822
+        }
+      }
+    ]
+  },
+  {
+    "windowed": false,
+    "count": 8000,
+    "mode": "horizontal",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1779.4140127388528,
+          "to": 1879.4140127388528
+        },
+        "offset": 0,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388528,
+          "to": 1879.4140127388528
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1758.8280254777055,
+          "to": 1858.8280254777055
+        },
+        "offset": 0,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.8280254777055,
+          "to": 1858.8280254777055
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1738.2420382165583,
+          "to": 1838.2420382165583
+        },
+        "offset": 0,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.2420382165583,
+          "to": 1838.2420382165583
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1717.656050955411,
+          "to": 1817.656050955411
+        },
+        "offset": 0,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.656050955411,
+          "to": 1817.656050955411
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1697.0700636942638,
+          "to": 1797.0700636942638
+        },
+        "offset": 0,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942638,
+          "to": 1797.0700636942638
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1676.4840764331166,
+          "to": 1776.4840764331166
+        },
+        "offset": 0,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.4840764331166,
+          "to": 1776.4840764331166
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1655.8980891719693,
+          "to": 1755.8980891719693
+        },
+        "offset": 0,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.8980891719693,
+          "to": 1755.8980891719693
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1635.312101910822,
+          "to": 1735.312101910822
+        },
+        "offset": 0,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.312101910822,
+          "to": 1735.312101910822
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1614.7261146496749,
+          "to": 1714.7261146496749
+        },
+        "offset": 0,
+        "mouseIndex": 1663,
+        "requested": {
+          "from": 1614.7261146496749,
+          "to": 1714.7261146496749
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1594.1401273885276,
+          "to": 1694.1401273885276
+        },
+        "offset": 0,
+        "mouseIndex": 1642,
+        "requested": {
+          "from": 1594.1401273885276,
+          "to": 1694.1401273885276
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1573.5541401273804,
+          "to": 1673.5541401273804
+        },
+        "offset": 0,
+        "mouseIndex": 1621,
+        "requested": {
+          "from": 1573.5541401273804,
+          "to": 1673.5541401273804
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1552.9681528662331,
+          "to": 1652.9681528662331
+        },
+        "offset": 0,
+        "mouseIndex": 1601,
+        "requested": {
+          "from": 1552.9681528662331,
+          "to": 1652.9681528662331
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1532.382165605086,
+          "to": 1632.382165605086
+        },
+        "offset": 0,
+        "mouseIndex": 1580,
+        "requested": {
+          "from": 1532.382165605086,
+          "to": 1632.382165605086
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1511.7961783439387,
+          "to": 1611.7961783439387
+        },
+        "offset": 0,
+        "mouseIndex": 1560,
+        "requested": {
+          "from": 1511.7961783439387,
+          "to": 1611.7961783439387
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1491.2101910827914,
+          "to": 1591.2101910827914
+        },
+        "offset": 0,
+        "mouseIndex": 1539,
+        "requested": {
+          "from": 1491.2101910827914,
+          "to": 1591.2101910827914
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1470.6242038216442,
+          "to": 1570.6242038216442
+        },
+        "offset": 0,
+        "mouseIndex": 1518,
+        "requested": {
+          "from": 1470.6242038216442,
+          "to": 1570.6242038216442
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "plain",
+    "burst": 1,
+    "drift": 0,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1764,
+        "requested": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1746,
+        "requested": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1727,
+        "requested": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1705,
+        "requested": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1680,
+        "requested": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1652,
+        "requested": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1620,
+        "requested": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1585,
+        "requested": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1217.904153070925,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1544,
+        "requested": {
+          "from": 1217.904153070925,
+          "to": 1900
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "plain",
+    "burst": 2,
+    "drift": 0,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1764,
+        "requested": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1746,
+        "requested": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1727,
+        "requested": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1705,
+        "requested": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1680,
+        "requested": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1652,
+        "requested": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1620,
+        "requested": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1585,
+        "requested": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1217.904153070925,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1544,
+        "requested": {
+          "from": 1217.904153070925,
+          "to": 1900
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "ctrl",
+    "burst": 1,
+    "drift": 1,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845728,
+          "to": 1914.1049558167133
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011038,
+          "to": 1922.5331295571377
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.200188101104,
+          "to": 1922.533129557138
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.4284286947411,
+          "to": 1932.0358689140303
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.4284286947413,
+          "to": 1932.0358689140305
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "ctrl",
+    "burst": 2,
+    "drift": 1,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845728,
+          "to": 1914.1049558167133
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011038,
+          "to": 1922.5331295571377
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.200188101104,
+          "to": 1922.533129557138
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.4284286947411,
+          "to": 1932.0358689140303
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.4284286947413,
+          "to": 1932.0358689140305
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812556,
+          "to": 1942.7501776203062
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.3872058890934,
+          "to": 1954.830526953482
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145076,
+          "to": 1968.4510827926165
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.6385692756903,
+          "to": 1983.8082166180018
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488548,
+          "to": 2001.1233366554068
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1688.6343877086456,
+          "to": 2020.6460799822999
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1668.3157738914783,
+          "to": 2042.6579116175642
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1645.4066007841652,
+          "to": 2067.47618248382
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1619.7040770849621,
+          "to": 2095.5862015987473
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1590.597065684887,
+          "to": 2127.1526627970843
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        },
+        "offset": 0,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1557.9064988239966,
+          "to": 2162.8712452652912
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        },
+        "offset": 0,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1520.9204907604183,
+          "to": 2203.0163376894934
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "shift",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 0,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 0,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 0,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 0,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 0,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 0,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 0,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 0,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 0,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 0,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 0,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 0,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 0,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 0,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 0,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 0,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "shift",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 0,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 0,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 0,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 0,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 0,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 0,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 0,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 0,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 0,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 0,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 0,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 0,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 0,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 0,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 0,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 0,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "horizontal",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1789.7070063694268,
+          "to": 1889.7070063694268
+        },
+        "offset": 0,
+        "mouseIndex": 1838,
+        "requested": {
+          "from": 1789.7070063694268,
+          "to": 1889.7070063694268
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        },
+        "offset": 0,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1769.1210191082805,
+          "to": 1869.1210191082805
+        },
+        "offset": 0,
+        "mouseIndex": 1817,
+        "requested": {
+          "from": 1769.1210191082805,
+          "to": 1869.1210191082805
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        },
+        "offset": 0,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1748.5350318471342,
+          "to": 1848.5350318471342
+        },
+        "offset": 0,
+        "mouseIndex": 1796,
+        "requested": {
+          "from": 1748.5350318471342,
+          "to": 1848.5350318471342
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        },
+        "offset": 0,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1727.9490445859878,
+          "to": 1827.9490445859878
+        },
+        "offset": 0,
+        "mouseIndex": 1776,
+        "requested": {
+          "from": 1727.9490445859878,
+          "to": 1827.9490445859878
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        },
+        "offset": 0,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1707.3630573248415,
+          "to": 1807.3630573248415
+        },
+        "offset": 0,
+        "mouseIndex": 1755,
+        "requested": {
+          "from": 1707.3630573248415,
+          "to": 1807.3630573248415
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        },
+        "offset": 0,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1686.7770700636952,
+          "to": 1786.7770700636952
+        },
+        "offset": 0,
+        "mouseIndex": 1735,
+        "requested": {
+          "from": 1686.7770700636952,
+          "to": 1786.7770700636952
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        },
+        "offset": 0,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1666.1910828025489,
+          "to": 1766.1910828025489
+        },
+        "offset": 0,
+        "mouseIndex": 1714,
+        "requested": {
+          "from": 1666.1910828025489,
+          "to": 1766.1910828025489
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        },
+        "offset": 0,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1645.6050955414025,
+          "to": 1745.6050955414025
+        },
+        "offset": 0,
+        "mouseIndex": 1693,
+        "requested": {
+          "from": 1645.6050955414025,
+          "to": 1745.6050955414025
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        },
+        "offset": 0,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 4000,
+    "mode": "horizontal",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 0,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        },
+        "offset": 0,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        },
+        "offset": 0,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        },
+        "offset": 0,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        },
+        "offset": 0,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        },
+        "offset": 0,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        },
+        "offset": 0,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        },
+        "offset": 0,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        },
+        "offset": 0,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1614.726114649683,
+          "to": 1714.726114649683
+        },
+        "offset": 0,
+        "mouseIndex": 1663,
+        "requested": {
+          "from": 1614.726114649683,
+          "to": 1714.726114649683
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1594.1401273885367,
+          "to": 1694.1401273885367
+        },
+        "offset": 0,
+        "mouseIndex": 1642,
+        "requested": {
+          "from": 1594.1401273885367,
+          "to": 1694.1401273885367
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1573.5541401273904,
+          "to": 1673.5541401273904
+        },
+        "offset": 0,
+        "mouseIndex": 1621,
+        "requested": {
+          "from": 1573.5541401273904,
+          "to": 1673.5541401273904
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1552.968152866244,
+          "to": 1652.968152866244
+        },
+        "offset": 0,
+        "mouseIndex": 1601,
+        "requested": {
+          "from": 1552.968152866244,
+          "to": 1652.968152866244
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1532.3821656050977,
+          "to": 1632.3821656050977
+        },
+        "offset": 0,
+        "mouseIndex": 1580,
+        "requested": {
+          "from": 1532.3821656050977,
+          "to": 1632.3821656050977
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1511.7961783439514,
+          "to": 1611.7961783439514
+        },
+        "offset": 0,
+        "mouseIndex": 1560,
+        "requested": {
+          "from": 1511.7961783439514,
+          "to": 1611.7961783439514
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1491.210191082805,
+          "to": 1591.210191082805
+        },
+        "offset": 0,
+        "mouseIndex": 1539,
+        "requested": {
+          "from": 1491.210191082805,
+          "to": 1591.210191082805
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1470.6242038216587,
+          "to": 1570.6242038216587
+        },
+        "offset": 0,
+        "mouseIndex": 1518,
+        "requested": {
+          "from": 1470.6242038216587,
+          "to": 1570.6242038216587
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "plain",
+    "burst": 1,
+    "drift": 0,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        },
+        "offset": 1377,
+        "mouseIndex": 1764,
+        "requested": {
+          "from": 1638.8303526576883,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        },
+        "offset": 1377,
+        "mouseIndex": 1746,
+        "requested": {
+          "from": 1605.5320448934476,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        },
+        "offset": 1377,
+        "mouseIndex": 1727,
+        "requested": {
+          "from": 1567.9883077263453,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        },
+        "offset": 1377,
+        "mouseIndex": 1705,
+        "requested": {
+          "from": 1525.6578622739137,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        },
+        "offset": 1055,
+        "mouseIndex": 1680,
+        "requested": {
+          "from": 1477.9304183003446,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        },
+        "offset": 1055,
+        "mouseIndex": 1652,
+        "requested": {
+          "from": 1424.1178754862144,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        },
+        "offset": 1055,
+        "mouseIndex": 1620,
+        "requested": {
+          "from": 1363.4444028878024,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        },
+        "offset": 1055,
+        "mouseIndex": 1585,
+        "requested": {
+          "from": 1295.0352535587053,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1217.904153070925,
+          "to": 1900
+        },
+        "offset": 535,
+        "mouseIndex": 1544,
+        "requested": {
+          "from": 1217.904153070925,
+          "to": 1900
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "plain",
+    "burst": 2,
+    "drift": 338,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1841,
+        "requested": {
+          "from": 1787.2503148420624,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1834,
+        "requested": {
+          "from": 1772.8750849678595,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1756.667058543966,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1825,
+        "requested": {
+          "from": 1756.667058543966,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1816,
+        "requested": {
+          "from": 1738.3925597807108,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1805,
+        "requested": {
+          "from": 1717.7881199609492,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1793,
+        "requested": {
+          "from": 1694.5566789356112,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1779,
+        "requested": {
+          "from": 1668.3633023218908,
+          "to": 1900
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1700.8303526576883,
+          "to": 1962
+        },
+        "offset": 1377,
+        "mouseIndex": 1826,
+        "requested": {
+          "from": 1700.8303526576883,
+          "to": 1962
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1667.5320448934476,
+          "to": 1962
+        },
+        "offset": 1377,
+        "mouseIndex": 1808,
+        "requested": {
+          "from": 1667.5320448934476,
+          "to": 1962
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1629.9883077263453,
+          "to": 1962
+        },
+        "offset": 1377,
+        "mouseIndex": 1789,
+        "requested": {
+          "from": 1629.9883077263453,
+          "to": 1962
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1587.6578622739137,
+          "to": 1962
+        },
+        "offset": 1377,
+        "mouseIndex": 1767,
+        "requested": {
+          "from": 1587.6578622739137,
+          "to": 1962
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1539.9304183003446,
+          "to": 1962
+        },
+        "offset": 1377,
+        "mouseIndex": 1742,
+        "requested": {
+          "from": 1539.9304183003446,
+          "to": 1962
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1762.1178754862144,
+          "to": 2238
+        },
+        "offset": 1010,
+        "mouseIndex": 1990,
+        "requested": {
+          "from": 1762.1178754862144,
+          "to": 2238
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1701.4444028878024,
+          "to": 2238
+        },
+        "offset": 1010,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1701.4444028878024,
+          "to": 2238
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1633.0352535587053,
+          "to": 2238
+        },
+        "offset": 1010,
+        "mouseIndex": 1923,
+        "requested": {
+          "from": 1633.0352535587053,
+          "to": 2238
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1555.904153070925,
+          "to": 2238
+        },
+        "offset": 1010,
+        "mouseIndex": 1882,
+        "requested": {
+          "from": 1555.904153070925,
+          "to": 2238
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "ctrl",
+    "burst": 1,
+    "drift": 1,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011035,
+          "to": 1922.5331295571377
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.2001881011035,
+          "to": 1922.5331295571377
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.428428694741,
+          "to": 1932.0358689140305
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.428428694741,
+          "to": 1932.0358689140305
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812554,
+          "to": 1942.7501776203067
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812554,
+          "to": 1942.7501776203067
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890931,
+          "to": 1954.8305269534824
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.3872058890931,
+          "to": 1954.8305269534824
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145073,
+          "to": 1968.451082792617
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145073,
+          "to": 1968.451082792617
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.63856927569,
+          "to": 1983.8082166180022
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.63856927569,
+          "to": 1983.8082166180022
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488546,
+          "to": 2001.1233366554075
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488546,
+          "to": 2001.1233366554075
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1688.6343877086454,
+          "to": 2020.6460799823008
+        },
+        "offset": 1356,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1688.6343877086454,
+          "to": 2020.6460799823008
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1668.315773891478,
+          "to": 2042.657911617565
+        },
+        "offset": 1356,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1668.315773891478,
+          "to": 2042.657911617565
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1645.406600784165,
+          "to": 2067.476182483821
+        },
+        "offset": 1356,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1645.406600784165,
+          "to": 2067.476182483821
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1619.704077084962,
+          "to": 2095.586201598748
+        },
+        "offset": 1356,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1619.704077084962,
+          "to": 2095.586201598748
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1590.5970656848867,
+          "to": 2127.152662797085
+        },
+        "offset": 1356,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1590.5970656848867,
+          "to": 2127.152662797085
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1557.9064988239963,
+          "to": 2162.871245265292
+        },
+        "offset": 1356,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1557.9064988239963,
+          "to": 2162.871245265292
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1520.920490760418,
+          "to": 2203.0163376894943
+        },
+        "offset": 838,
+        "mouseIndex": 1847,
+        "requested": {
+          "from": 1520.920490760418,
+          "to": 2203.0163376894943
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "ctrl",
+    "burst": 2,
+    "drift": 785,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1793.88015112419,
+          "to": 1906.6298362821276
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1786.9800407845726,
+          "to": 1914.104955816713
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1779.2001881011035,
+          "to": 1922.5331295571377
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1779.2001881011035,
+          "to": 1922.5331295571377
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1770.428428694741,
+          "to": 1932.0358689140305
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1770.428428694741,
+          "to": 1932.0358689140305
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1760.5382975812554,
+          "to": 1942.7501776203067
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1760.5382975812554,
+          "to": 1942.7501776203067
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1749.3872058890931,
+          "to": 1954.8305269534824
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1749.3872058890931,
+          "to": 1954.8305269534824
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1736.8143851145073,
+          "to": 1968.451082792617
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1736.8143851145073,
+          "to": 1968.451082792617
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1722.63856927569,
+          "to": 1983.8082166180022
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1722.63856927569,
+          "to": 1983.8082166180022
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1706.6553815488546,
+          "to": 2001.1233366554075
+        },
+        "offset": 1600,
+        "mouseIndex": 1848,
+        "requested": {
+          "from": 1706.6553815488546,
+          "to": 2001.1233366554075
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1941.6343877086454,
+          "to": 2273.6460799823008
+        },
+        "offset": 1609,
+        "mouseIndex": 2101,
+        "requested": {
+          "from": 1941.6343877086454,
+          "to": 2273.6460799823008
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1921.315773891478,
+          "to": 2295.6579116175653
+        },
+        "offset": 1609,
+        "mouseIndex": 2101,
+        "requested": {
+          "from": 1921.315773891478,
+          "to": 2295.6579116175653
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1898.406600784165,
+          "to": 2320.4761824838215
+        },
+        "offset": 1609,
+        "mouseIndex": 2100,
+        "requested": {
+          "from": 1898.406600784165,
+          "to": 2320.4761824838215
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1872.704077084962,
+          "to": 2348.5862015987486
+        },
+        "offset": 1609,
+        "mouseIndex": 2101,
+        "requested": {
+          "from": 1872.704077084962,
+          "to": 2348.5862015987486
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1843.5970656848867,
+          "to": 2380.1526627970857
+        },
+        "offset": 1609,
+        "mouseIndex": 2100,
+        "requested": {
+          "from": 1843.5970656848867,
+          "to": 2380.1526627970857
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1810.9064988239963,
+          "to": 2415.8712452652926
+        },
+        "offset": 1609,
+        "mouseIndex": 2101,
+        "requested": {
+          "from": 1810.9064988239963,
+          "to": 2415.8712452652926
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 2306.9204907604176,
+          "to": 2989.016337689495
+        },
+        "offset": 1624,
+        "mouseIndex": 2633,
+        "requested": {
+          "from": 2306.9204907604176,
+          "to": 2989.016337689495
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "shift",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 1600,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 1600,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 1600,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 1600,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 1600,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 1600,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 1600,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 1600,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 1600,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 1600,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 1600,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 1600,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 1600,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 1600,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 1600,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 1600,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "shift",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1810,
+          "to": 1910
+        },
+        "offset": 1600,
+        "mouseIndex": 1858,
+        "requested": {
+          "from": 1810,
+          "to": 1910
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1820,
+          "to": 1920
+        },
+        "offset": 1600,
+        "mouseIndex": 1868,
+        "requested": {
+          "from": 1820,
+          "to": 1920
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1830,
+          "to": 1930
+        },
+        "offset": 1600,
+        "mouseIndex": 1878,
+        "requested": {
+          "from": 1830,
+          "to": 1930
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1840,
+          "to": 1940
+        },
+        "offset": 1600,
+        "mouseIndex": 1888,
+        "requested": {
+          "from": 1840,
+          "to": 1940
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1850,
+          "to": 1950
+        },
+        "offset": 1600,
+        "mouseIndex": 1898,
+        "requested": {
+          "from": 1850,
+          "to": 1950
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1860,
+          "to": 1960
+        },
+        "offset": 1600,
+        "mouseIndex": 1908,
+        "requested": {
+          "from": 1860,
+          "to": 1960
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1870,
+          "to": 1970
+        },
+        "offset": 1600,
+        "mouseIndex": 1918,
+        "requested": {
+          "from": 1870,
+          "to": 1970
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1880,
+          "to": 1980
+        },
+        "offset": 1600,
+        "mouseIndex": 1928,
+        "requested": {
+          "from": 1880,
+          "to": 1980
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1890,
+          "to": 1990
+        },
+        "offset": 1600,
+        "mouseIndex": 1938,
+        "requested": {
+          "from": 1890,
+          "to": 1990
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1900,
+          "to": 2000
+        },
+        "offset": 1600,
+        "mouseIndex": 1948,
+        "requested": {
+          "from": 1900,
+          "to": 2000
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1910,
+          "to": 2010
+        },
+        "offset": 1600,
+        "mouseIndex": 1958,
+        "requested": {
+          "from": 1910,
+          "to": 2010
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1920,
+          "to": 2020
+        },
+        "offset": 1600,
+        "mouseIndex": 1968,
+        "requested": {
+          "from": 1920,
+          "to": 2020
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1930,
+          "to": 2030
+        },
+        "offset": 1600,
+        "mouseIndex": 1978,
+        "requested": {
+          "from": 1930,
+          "to": 2030
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1940,
+          "to": 2040
+        },
+        "offset": 1600,
+        "mouseIndex": 1988,
+        "requested": {
+          "from": 1940,
+          "to": 2040
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1950,
+          "to": 2050
+        },
+        "offset": 1600,
+        "mouseIndex": 1998,
+        "requested": {
+          "from": 1950,
+          "to": 2050
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1960,
+          "to": 2060
+        },
+        "offset": 1600,
+        "mouseIndex": 2008,
+        "requested": {
+          "from": 1960,
+          "to": 2060
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "horizontal",
+    "burst": 1,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1789.7070063694268,
+          "to": 1889.7070063694268
+        },
+        "offset": 1600,
+        "mouseIndex": 1838,
+        "requested": {
+          "from": 1789.7070063694268,
+          "to": 1889.7070063694268
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        },
+        "offset": 1600,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388537,
+          "to": 1879.4140127388537
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1769.1210191082805,
+          "to": 1869.1210191082805
+        },
+        "offset": 1600,
+        "mouseIndex": 1817,
+        "requested": {
+          "from": 1769.1210191082805,
+          "to": 1869.1210191082805
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        },
+        "offset": 1600,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.8280254777073,
+          "to": 1858.8280254777073
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1748.5350318471342,
+          "to": 1848.5350318471342
+        },
+        "offset": 1600,
+        "mouseIndex": 1796,
+        "requested": {
+          "from": 1748.5350318471342,
+          "to": 1848.5350318471342
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        },
+        "offset": 1600,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.242038216561,
+          "to": 1838.242038216561
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1727.9490445859878,
+          "to": 1827.9490445859878
+        },
+        "offset": 1600,
+        "mouseIndex": 1776,
+        "requested": {
+          "from": 1727.9490445859878,
+          "to": 1827.9490445859878
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        },
+        "offset": 1600,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.6560509554147,
+          "to": 1817.6560509554147
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1707.3630573248415,
+          "to": 1807.3630573248415
+        },
+        "offset": 1600,
+        "mouseIndex": 1755,
+        "requested": {
+          "from": 1707.3630573248415,
+          "to": 1807.3630573248415
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        },
+        "offset": 1600,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942684,
+          "to": 1797.0700636942684
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1686.7770700636952,
+          "to": 1786.7770700636952
+        },
+        "offset": 1600,
+        "mouseIndex": 1735,
+        "requested": {
+          "from": 1686.7770700636952,
+          "to": 1786.7770700636952
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        },
+        "offset": 1600,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.484076433122,
+          "to": 1776.484076433122
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1666.1910828025489,
+          "to": 1766.1910828025489
+        },
+        "offset": 1600,
+        "mouseIndex": 1714,
+        "requested": {
+          "from": 1666.1910828025489,
+          "to": 1766.1910828025489
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        },
+        "offset": 1600,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.8980891719757,
+          "to": 1755.8980891719757
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1645.6050955414025,
+          "to": 1745.6050955414025
+        },
+        "offset": 1600,
+        "mouseIndex": 1693,
+        "requested": {
+          "from": 1645.6050955414025,
+          "to": 1745.6050955414025
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        },
+        "offset": 1600,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.3121019108294,
+          "to": 1735.3121019108294
+        }
+      }
+    ]
+  },
+  {
+    "windowed": true,
+    "count": 8000,
+    "mode": "horizontal",
+    "burst": 2,
+    "drift": null,
+    "samples": [
+      {
+        "tag": "before",
+        "range": {
+          "from": 1800,
+          "to": 1900
+        },
+        "offset": 1600,
+        "mouseIndex": 1848
+      },
+      {
+        "tag": "wheel-0-drawn",
+        "range": {
+          "from": 1779.4140127388534,
+          "to": 1879.4140127388534
+        },
+        "offset": 1600,
+        "mouseIndex": 1827,
+        "requested": {
+          "from": 1779.4140127388534,
+          "to": 1879.4140127388534
+        }
+      },
+      {
+        "tag": "wheel-1-drawn",
+        "range": {
+          "from": 1758.828025477707,
+          "to": 1858.828025477707
+        },
+        "offset": 1600,
+        "mouseIndex": 1807,
+        "requested": {
+          "from": 1758.828025477707,
+          "to": 1858.828025477707
+        }
+      },
+      {
+        "tag": "wheel-2-drawn",
+        "range": {
+          "from": 1738.2420382165603,
+          "to": 1838.2420382165603
+        },
+        "offset": 1600,
+        "mouseIndex": 1786,
+        "requested": {
+          "from": 1738.2420382165603,
+          "to": 1838.2420382165603
+        }
+      },
+      {
+        "tag": "wheel-3-drawn",
+        "range": {
+          "from": 1717.6560509554138,
+          "to": 1817.6560509554138
+        },
+        "offset": 1600,
+        "mouseIndex": 1766,
+        "requested": {
+          "from": 1717.6560509554138,
+          "to": 1817.6560509554138
+        }
+      },
+      {
+        "tag": "wheel-4-drawn",
+        "range": {
+          "from": 1697.0700636942672,
+          "to": 1797.0700636942672
+        },
+        "offset": 1600,
+        "mouseIndex": 1745,
+        "requested": {
+          "from": 1697.0700636942672,
+          "to": 1797.0700636942672
+        }
+      },
+      {
+        "tag": "wheel-5-drawn",
+        "range": {
+          "from": 1676.4840764331207,
+          "to": 1776.4840764331207
+        },
+        "offset": 1600,
+        "mouseIndex": 1724,
+        "requested": {
+          "from": 1676.4840764331207,
+          "to": 1776.4840764331207
+        }
+      },
+      {
+        "tag": "wheel-6-drawn",
+        "range": {
+          "from": 1655.898089171974,
+          "to": 1755.898089171974
+        },
+        "offset": 1600,
+        "mouseIndex": 1704,
+        "requested": {
+          "from": 1655.898089171974,
+          "to": 1755.898089171974
+        }
+      },
+      {
+        "tag": "wheel-7-drawn",
+        "range": {
+          "from": 1635.3121019108276,
+          "to": 1735.3121019108276
+        },
+        "offset": 1600,
+        "mouseIndex": 1683,
+        "requested": {
+          "from": 1635.3121019108276,
+          "to": 1735.3121019108276
+        }
+      },
+      {
+        "tag": "wheel-8-drawn",
+        "range": {
+          "from": 1429.726114649681,
+          "to": 1529.726114649681
+        },
+        "offset": 1229,
+        "mouseIndex": 1478,
+        "requested": {
+          "from": 1429.726114649681,
+          "to": 1529.726114649681
+        }
+      },
+      {
+        "tag": "wheel-9-drawn",
+        "range": {
+          "from": 1409.1401273885344,
+          "to": 1509.1401273885344
+        },
+        "offset": 1229,
+        "mouseIndex": 1457,
+        "requested": {
+          "from": 1409.1401273885344,
+          "to": 1509.1401273885344
+        }
+      },
+      {
+        "tag": "wheel-10-drawn",
+        "range": {
+          "from": 1388.5541401273879,
+          "to": 1488.5541401273879
+        },
+        "offset": 1229,
+        "mouseIndex": 1436,
+        "requested": {
+          "from": 1388.5541401273879,
+          "to": 1488.5541401273879
+        }
+      },
+      {
+        "tag": "wheel-11-drawn",
+        "range": {
+          "from": 1367.9681528662413,
+          "to": 1467.9681528662413
+        },
+        "offset": 1229,
+        "mouseIndex": 1416,
+        "requested": {
+          "from": 1367.9681528662413,
+          "to": 1467.9681528662413
+        }
+      },
+      {
+        "tag": "wheel-12-drawn",
+        "range": {
+          "from": 1347.3821656050948,
+          "to": 1447.3821656050948
+        },
+        "offset": 1229,
+        "mouseIndex": 1395,
+        "requested": {
+          "from": 1347.3821656050948,
+          "to": 1447.3821656050948
+        }
+      },
+      {
+        "tag": "wheel-13-drawn",
+        "range": {
+          "from": 1326.7961783439482,
+          "to": 1426.7961783439482
+        },
+        "offset": 1229,
+        "mouseIndex": 1375,
+        "requested": {
+          "from": 1326.7961783439482,
+          "to": 1426.7961783439482
+        }
+      },
+      {
+        "tag": "wheel-14-drawn",
+        "range": {
+          "from": 1306.2101910828017,
+          "to": 1406.2101910828017
+        },
+        "offset": 1229,
+        "mouseIndex": 1354,
+        "requested": {
+          "from": 1306.2101910828017,
+          "to": 1406.2101910828017
+        }
+      },
+      {
+        "tag": "wheel-15-drawn",
+        "range": {
+          "from": 1285.624203821655,
+          "to": 1385.624203821655
+        },
+        "offset": 1229,
+        "mouseIndex": 1333,
+        "requested": {
+          "from": 1285.624203821655,
+          "to": 1385.624203821655
+        }
+      }
+    ]
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": false,
+    "mode": "plain",
+    "followup": "immediate",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1800,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2761.750944526187,
+        "to": 3100
+      },
+      "nativeRange": {
+        "from": 2761.750944526187,
+        "to": 3100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 2924,
+      "x": 245.4313721951837,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1761.7509445261871,
+          "to": 2100
+        },
+        {
+          "from": 2761.750944526187,
+          "to": 3100
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 506.4431526888074,
+    "drift": 0,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788598800
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": false,
+    "mode": "plain",
+    "followup": "after-frame",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1800,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 1718.6252549035785,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1718.6252549035785,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1901,
+      "x": 2787.432090649617,
+      "spacing": 2.4635518220808765,
+      "changes": [
+        {
+          "from": 1761.7509445261871,
+          "to": 2100
+        },
+        {
+          "from": 1718.6252549035785,
+          "to": 2100
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 3019.0059619252193,
+    "drift": -1000,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788418800
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": false,
+    "mode": "plain",
+    "followup": "none",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1800,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 1761.7509445261871,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1761.7509445261871,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1924,
+      "x": 3022.1524412762865,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1761.7509445261871,
+          "to": 2100
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 3283.1642217699105,
+    "drift": -1000,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788418800
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": false,
+    "mode": "ctrl",
+    "followup": "immediate",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1800,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2781.6404533725704,
+        "to": 3119.8895088463833
+      },
+      "nativeRange": {
+        "from": 2781.6404533725704,
+        "to": 3119.8895088463833
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 2944,
+      "x": 190.20375392775634,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1781.64045337257,
+          "to": 2119.889508846383
+        },
+        {
+          "from": 2781.64045337257,
+          "to": 3119.889508846383
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 451.21553442138,
+    "drift": -0.007056940746224427,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788602220
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": false,
+    "mode": "ctrl",
+    "followup": "after-frame",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1800,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 1760.9401223537184,
+        "to": 2142.31486745014
+      },
+      "nativeRange": {
+        "from": 1760.9401223537184,
+        "to": 2142.31486745014
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 2683.187221841714,
+      "spacing": 2.4635518220808765,
+      "changes": [
+        {
+          "from": 1781.64045337257,
+          "to": 2119.889508846383
+        },
+        {
+          "from": 1760.9401223537184,
+          "to": 2142.31486745014
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 2914.7610931173167,
+    "drift": 2463.5385017551903,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788426360
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": false,
+    "mode": "ctrl",
+    "followup": "none",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 1800,
+        "to": 2100
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 1781.6404533725704,
+        "to": 2119.8895088463833
+      },
+      "nativeRange": {
+        "from": 1781.6404533725704,
+        "to": 2119.8895088463833
+      },
+      "offset": 0,
+      "rendered": 8000,
+      "mouseIndex": 1944,
+      "x": 2966.924823008859,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1781.64045337257,
+          "to": 2119.889508846383
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 3227.9366035024827,
+    "drift": 2776.7140121403563,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788422220
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": true,
+    "mode": "plain",
+    "followup": "immediate",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 300,
+        "to": 600
+      },
+      "offset": 1500,
+      "rendered": 901,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2800.750944526187,
+        "to": 3139
+      },
+      "nativeRange": {
+        "from": 377.75094452618714,
+        "to": 716
+      },
+      "offset": 2423,
+      "rendered": 1017,
+      "mouseIndex": 2963,
+      "x": 137.13925050102068,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1761.7509445261871,
+          "to": 2100
+        },
+        {
+          "from": 2800.750944526187,
+          "to": 3139
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 398.15103099464443,
+    "drift": 39,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788605820
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": true,
+    "mode": "plain",
+    "followup": "after-frame",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 300,
+        "to": 600
+      },
+      "offset": 1500,
+      "rendered": 901,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2718.6252549035785,
+        "to": 3100
+      },
+      "nativeRange": {
+        "from": 295.6252549035785,
+        "to": 677
+      },
+      "offset": 2423,
+      "rendered": 1017,
+      "mouseIndex": 2901,
+      "x": 323.88026856874046,
+      "spacing": 2.4635518220808765,
+      "changes": [
+        {
+          "from": 1761.7509445261871,
+          "to": 2100
+        },
+        {
+          "from": 2718.6252549035785,
+          "to": 3100
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 555.4541398443428,
+    "drift": 0,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788598800
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": true,
+    "mode": "plain",
+    "followup": "none",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 300,
+        "to": 600
+      },
+      "offset": 1500,
+      "rendered": 901,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2761.750944526187,
+        "to": 3100
+      },
+      "nativeRange": {
+        "from": 338.75094452618714,
+        "to": 677
+      },
+      "offset": 2423,
+      "rendered": 1017,
+      "mouseIndex": 2924,
+      "x": 245.4313721951837,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1761.7509445261871,
+          "to": 2100
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 506.4431526888074,
+    "drift": 0,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788598800
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": true,
+    "mode": "ctrl",
+    "followup": "immediate",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 300,
+        "to": 600
+      },
+      "offset": 1500,
+      "rendered": 901,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2840.64045337257,
+        "to": 3178.889508846383
+      },
+      "nativeRange": {
+        "from": 397.64045337256994,
+        "to": 735.8895088463828
+      },
+      "offset": 2443,
+      "rendered": 1017,
+      "mouseIndex": 3003,
+      "x": 26.377210851972563,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1781.64045337257,
+          "to": 2119.889508846383
+        },
+        {
+          "from": 2840.64045337257,
+          "to": 3178.889508846383
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 287.3889913455962,
+    "drift": -163.83360001653006,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788612840
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": true,
+    "mode": "ctrl",
+    "followup": "after-frame",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 300,
+        "to": 600
+      },
+      "offset": 1500,
+      "rendered": 901,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2760.940122353718,
+        "to": 3142.3148674501394
+      },
+      "nativeRange": {
+        "from": 317.9401223537179,
+        "to": 699.3148674501394
+      },
+      "offset": 2443,
+      "rendered": 1017,
+      "mouseIndex": 2944,
+      "x": 219.6353997608386,
+      "spacing": 2.4635518220808765,
+      "changes": [
+        {
+          "from": 1781.64045337257,
+          "to": 2119.889508846383
+        },
+        {
+          "from": 2760.940122353718,
+          "to": 3142.3148674501394
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 451.209271036441,
+    "drift": -0.013320325685242551,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788606360
+  },
+  {
+    "kind": "3m-prepend",
+    "windowed": true,
+    "mode": "ctrl",
+    "followup": "none",
+    "before": {
+      "range": {
+        "from": 1800,
+        "to": 2100
+      },
+      "nativeRange": {
+        "from": 300,
+        "to": 600
+      },
+      "offset": 1500,
+      "rendered": 901,
+      "mouseIndex": 1944,
+      "x": 157.04318936877075,
+      "spacing": 3.129568106312292,
+      "changes": []
+    },
+    "after": {
+      "range": {
+        "from": 2781.64045337257,
+        "to": 3119.889508846383
+      },
+      "nativeRange": {
+        "from": 338.64045337256994,
+        "to": 676.8895088463828
+      },
+      "offset": 2443,
+      "rendered": 1017,
+      "mouseIndex": 2944,
+      "x": 190.2037539277577,
+      "spacing": 2.776721069081103,
+      "changes": [
+        {
+          "from": 1781.64045337257,
+          "to": 2119.889508846383
+        }
+      ]
+    },
+    "beforeX": 451.22259136212625,
+    "afterX": 451.21553442138134,
+    "drift": -0.0070569407449170285,
+    "rightTimeBefore": 1788598800,
+    "rightTimeAfter": 1788602220
+  }
+]

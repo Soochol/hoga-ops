@@ -92,6 +92,19 @@ export function ownsWindowedChartViewport(chart: IChartApi): boolean {
   return controllers.has(chart);
 }
 
+/** Input must read its range and cursor in the same coordinate generation.
+ * Native setData can expose an intermediate range before the requested draw. */
+export function readChartInteractionViewport(chart: IChartApi): {
+  range: Range;
+  coordinateToLogical: (x: number) => number | null;
+} | null {
+  const controller = controllers.get(chart);
+  if (controller) return controller.interactionViewport();
+  const scale = chart.timeScale();
+  const range = scale.getVisibleLogicalRange();
+  return range ? { range, coordinateToLogical: x => scale.coordinateToLogical(x) } : null;
+}
+
 /** Also lets performance tests measure real native setData rather than the
  * inexpensive application-facing enqueue. No extra global chart ownership. */
 export function windowedChartDiagnostics(chart: IChartApi) {
@@ -110,6 +123,7 @@ class WindowedChart {
   // lwc applies setVisibleLogicalRange on its next draw. A second batch before
   // that frame must inherit the requested position, not the stale native one.
   private requestedRange: Range | null = null;
+  private settlementFrame: number | null = null;
   private offset = 0;
   private end = -1;
   private dirty = false;
@@ -231,6 +245,7 @@ class WindowedChart {
         this.stopAnimation();
         if (this.rangeFrame !== null) cancelAnimationFrame(this.rangeFrame);
         if (this.hoverFrame !== null) cancelAnimationFrame(this.hoverFrame);
+        if (this.settlementFrame !== null) cancelAnimationFrame(this.settlementFrame);
         native.unsubscribeCrosshairMove(this.trackHover);
         this.detachInteractions?.();
         this.states.clear();
@@ -268,6 +283,14 @@ class WindowedChart {
     this.installMouseInteractions();
     this.scale.subscribeVisibleLogicalRangeChange(() => {
       if (this.busy || this.removed) return;
+      // A getter can synchronously publish setData's intermediate range.
+      // Only the requested draw (or its settlement frame for native clamps)
+      // may replace the pending input position.
+      if (this.requestedRange) {
+        const applied = this.appliedRange();
+        if (!applied || Math.abs(applied.from - this.requestedRange.from) > .000001
+          || Math.abs(applied.to - this.requestedRange.to) > .000001) return;
+      }
       this.requestedRange = null;
       const range = this.range();
       if (range) this.render(range);
@@ -497,6 +520,45 @@ class WindowedChart {
     return local ? { from: (local.from + this.offset) as Logical, to: (local.to + this.offset) as Logical } : null;
   }
 
+  interactionViewport(): ReturnType<typeof readChartInteractionViewport> {
+    this.flush();
+    const drawn = this.range();
+    const range = this.requestedRange ?? drawn;
+    if (!range) return null;
+    if (!this.requestedRange) {
+      const offset = this.offset;
+      return { range, coordinateToLogical: x => {
+        const local = this.scale.coordinateToLogical(x);
+        return local === null ? null : local + offset;
+      } };
+    }
+    // A logical range includes both boundary bars. Match lwc's cursor-bin
+    // convention using the pending range, without consulting the stale grid.
+    const width = this.scale.width();
+    const spacing = width / (range.to - range.from + 1);
+    return { range, coordinateToLogical: x => width > 0 && spacing > 0
+      ? Math.ceil(Math.round((range.to - (width - 1 - x) / spacing) * 1e6) / 1e6)
+      : null };
+  }
+
+  private requestRange(range: Range): void {
+    this.requestedRange = range;
+    this.scale.setVisibleLogicalRange({ from: range.from - this.offset, to: range.to - this.offset });
+    // Schedule after the native draw, and replace this callback on every
+    // write so a newer batch during a frame cannot settle against an old draw.
+    if (this.settlementFrame !== null) cancelAnimationFrame(this.settlementFrame);
+    this.settlementFrame = requestAnimationFrame(() => {
+      this.settlementFrame = null;
+      if (this.removed) return;
+      this.busy = true;
+      let applied: LogicalRange | null;
+      try { applied = this.appliedRange(); } finally { this.busy = false; }
+      this.requestedRange = null;
+      if (applied) this.render(applied);
+      this.queueRangePublish();
+    });
+  }
+
   setTimeMapping(mapping: WindowedChartTimeMapping): void {
     this.nextMapping = mapping;
   }
@@ -548,8 +610,7 @@ class WindowedChart {
     this.flush();
     this.rebaseDrag(range);
     this.render(range);
-    this.requestedRange = range;
-    this.scale.setVisibleLogicalRange({ from: range.from - this.offset, to: range.to - this.offset });
+    this.requestRange(range);
   }
 
   private stopAnimation(): void {
@@ -629,14 +690,14 @@ class WindowedChart {
           || data.some((point, i) => point.time !== state.rendered![i].time))
         && classifyDataChange(state.rendered, data).kind === 'setData');
       if (resetHover) this.native.clearCrosshairPosition();
+      this.requestedRange = count ? range : null;
       this.offset = start;
       this.end = end;
       for (const { state, data } of replacements) {
         state.rendered = syncSeriesData(state.native, state.rendered, data);
       }
       if (count) {
-        this.requestedRange = range;
-        this.scale.setVisibleLogicalRange({ from: range.from - start, to: range.to - start });
+        this.requestRange(range);
       }
       if (resetHover) this.restoreHoverAfterDraw();
     } finally { this.busy = false; }
@@ -686,6 +747,12 @@ class WindowedChart {
   }
 
   private publishRange(): void {
+    // A later data batch can move settlement behind this already queued
+    // callback. Header dates and linked charts must not see its interim grid.
+    if (this.requestedRange) {
+      this.queueRangePublish();
+      return;
+    }
     const range = this.range();
     for (const cb of this.logicalListeners) cb(range);
     const times = this.visibleTimes();
