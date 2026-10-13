@@ -151,7 +151,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   }
   switch (win.kind) {
     case 'order':
-      return <Suspense fallback={<div className="p-2 text-sm text-fg-dim">호가 주문창 불러오는 중…</div>}><OrderWindow key={code} code={code} name={symbol?.name ?? code} /></Suspense>;
+      return <Suspense fallback={<div className="p-2 text-sm text-fg-dim">호가 주문창 불러오는 중…</div>}><OrderWindow code={code} name={symbol?.name ?? code} /></Suspense>;
     case 'news':
       return <NewsWindow key={code} code={code} name={symbol?.name ?? code} />;
     case 'book':

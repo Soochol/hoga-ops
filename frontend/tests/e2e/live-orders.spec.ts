@@ -18,7 +18,7 @@ async function setup(page: Page, withOrder = false, mode: 'paper' | 'live' = 'li
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => mode === 'paper' ? route.continue() : route.fulfill({ json: {
     code: '005930', date: new URL(route.request().url()).searchParams.get('date'), session_open_ms: Date.now(), session_close_ms: null, is_open: true,
-    snapshots: [{ kind: 'ob', venue: 'UN', t_ms: Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
+    snapshots: [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
     trades: [], brokers: [], programs: [], after_hours: [], expected: [], today_ask_peak: null, today_bid_peak: null,
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/accounts$/, route => route.fulfill({ json: { configured: true, accounts: [{ account_seq: 1, label: '토스증권 · ****1234' }] } }));
@@ -58,12 +58,18 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
-test('빈 주문 영역·확인 접수·아이콘 없는 잔량 표시', async ({ page }, testInfo) => {
+test('왼쪽 매도·오른쪽 매수 즉시 주문, 상하단 정보·신규 확인창 없음', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const add = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await expect(add).toHaveText('');
-  await add.click(); expect(commands).toHaveLength(0);
-  await window.getByRole('button', { name: '주문 접수', exact: true }).click();
+  const sellBox = await window.getByRole('button', { name: /매도 67,200원 주문 추가/ }).boundingBox();
+  const buyBox = await add.boundingBox();
+  expect(sellBox!.x).toBeLessThan(buyBox!.x);
+  await expect(window.locator('.order-topline,.order-quote,.order-footer,.order-position,.order-cancel-zone,.order-status,.order-history')).toHaveCount(0);
+  await expect(window.getByRole('checkbox', { name: '즉시 주문' })).toHaveCount(0);
+  await add.click();
+  await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
+  await expect(window.getByRole('button', { name: '주문 접수', exact: true })).toHaveCount(0);
   await expect(window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' })).toBeVisible();
   expect(commands[0]).toMatchObject({ code: '005930', account_seq: 1, side: 'BUY', price: 67200, quantity: 10 });
   await expect(window).not.toContainText('⠿');
@@ -74,13 +80,12 @@ test('수량 영역을 직접 끌어 정정·드래그 아웃 취소', async ({ 
   const { window, commands } = await setup(page, true);
   const original = window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' });
   await expect(original).toHaveText('70주');
-  await window.getByRole('checkbox', { name: '즉시 주문' }).check();
   await drag(page, original, window.getByRole('button', { name: /매수 67,000원 주문 추가/ }));
   await expect(window.getByRole('button', { name: '매수 67,000원 1건 상세 정정' })).toBeVisible();
   expect(commands[0]).toMatchObject({ price: 67000, quantity: null });
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
-  await drag(page, window.getByRole('button', { name: '매수 67,000원 1건 상세 정정' }), window.getByText('주문을 호가 영역 밖으로 끌어 취소', { exact: true }));
-  await expect(window.getByText('미체결 0건 · 0주', { exact: true })).toBeVisible();
+  await drag(page, window.getByRole('button', { name: '매수 67,000원 1건 상세 정정' }), window.getByRole('combobox', { name: '주문 모드' }));
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
   expect(commands).toHaveLength(2);
 });
 
@@ -101,28 +106,72 @@ test('로컬 모의 계좌: 실제 백엔드 부분 체결·드래그 정정·�
   expect((await page.request.post(`${API_URL}/api/test/paper-book?code=005930&ask=67300&quantity=30`)).ok()).toBeTruthy();
   const { window } = await setup(page, false, 'paper');
   await expect(window.getByRole('combobox', { name: '주문 모드' })).toHaveValue('paper');
-  await window.getByRole('checkbox', { name: '즉시 주문' }).check();
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('50');
   await window.getByRole('button', { name: /매수 67,300원 주문 추가/ }).click();
   const partial = window.getByRole('button', { name: '매수 67,300원 1건 상세 정정' });
   await expect(partial).toHaveText('20주');
-  await expect(window.getByText(/보유 30주 · 평균 매입 67,300원/)).toBeVisible();
+  await expect(window.locator('.order-position')).toHaveCount(0);
   await page.request.post(`${API_URL}/api/test/paper-book?code=005930&ask=67300&quantity=40`);
   await expect(partial).toHaveText('10주');
   await drag(page, partial, window.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
   const moved = window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' });
   await expect(moved).toHaveText('10주');
-  await drag(page, moved, window.getByText('주문을 호가 영역 밖으로 끌어 취소', { exact: true }));
-  await expect(window.getByText('미체결 0건 · 0주', { exact: true })).toBeVisible();
+  await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('5');
   await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).click();
   await expect(window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' })).toHaveText('5주');
   await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).click();
-  await expect(window.getByText('미체결 2건 · 10주', { exact: true })).toBeVisible();
-  await window.getByRole('button', { name: '삼성전자 전체 취소', exact: true }).click();
+  await expect(window.locator('[data-drag-order]')).toHaveCount(2);
+  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).focus();
+  await page.keyboard.press('Control+Shift+Backspace');
   await window.getByRole('button', { name: '취소 접수', exact: true }).click();
-  await expect(window.getByText('미체결 0건 · 0주', { exact: true })).toBeVisible();
-  await expect(window.getByText(/보유 40주 · 평균 매입 67,300원/)).toBeVisible();
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
+  const state = await page.request.get(`${API_URL}/api/paper-trading/state?account_seq=1&code=005930`);
+  expect((await state.json()).holding_quantity).toBe('40');
+  await expect(window.locator('.order-topline,.order-quote,.order-footer,.order-position,.order-status,.order-history')).toHaveCount(0);
   expect(realRequests).toEqual([]);
   await window.screenshot({ path: testInfo.outputPath('paper-order-window.png') });
+});
+
+
+test('호가 경계 1px 밖 드롭은 즉시 취소하고 Esc로 중단할 수 있다', async ({ page }) => {
+  const { window, commands } = await setup(page, true);
+  const chip = window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' });
+  const a = await chip.boundingBox(), bounds = await window.locator('.order-ladder').boundingBox();
+  expect(a).not.toBeNull(); expect(bounds).not.toBeNull();
+  const x = a!.x + a!.width / 2, y = a!.y + a!.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(bounds!.x + bounds!.width + 1, y, { steps: 8 });
+  expect(commands).toHaveLength(0);
+  await expect(window.locator('.order-cancel-active')).toHaveCount(1);
+  await page.keyboard.press('Escape'); await page.mouse.up();
+  expect(commands).toHaveLength(0);
+  expect(await window.locator('.order-ladder').boundingBox()).toEqual(bounds);
+  await expect(chip).toHaveText('70주');
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(bounds!.x + bounds!.width + 1, y, { steps: 8 });
+  expect(commands).toHaveLength(0);
+  await page.mouse.up();
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
+  expect(commands).toHaveLength(1);
+  await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
+});
+
+
+test('호가 주문 가격·잔량·총잔량 폰트는 기존 10호가창과 동일하다', async ({ page }) => {
+  const { window } = await setup(page);
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-book').click();
+  const book = page.locator('.book-panel');
+  await expect(book.locator('.font-data.text-base').first()).toBeAttached();
+  const dataFont = await book.locator('.font-data.text-base').first().evaluate(el => getComputedStyle(el).fontSize);
+  const metaFont = await book.locator('.text-xs').first().evaluate(el => getComputedStyle(el).fontSize);
+  for (const selector of ['.order-price > span', '.order-depth > span', '.order-info > span:last-child', '[data-testid="book-total-strip"] .font-data']) {
+    expect(await window.locator(selector).first().evaluate(el => getComputedStyle(el).fontSize)).toBe(dataFont);
+  }
+  expect(await window.locator('.order-meta').first().evaluate(el => getComputedStyle(el).fontSize)).toBe(metaFont);
+  await expect(window.getByLabel('매도총잔량 1,000')).toHaveText('1,000');
+  await expect(window.getByLabel('매수총잔량 2,000')).toHaveText('2,000');
+  await expect(window.getByTestId('book-total-fill')).toHaveCSS('height', '4px');
 });
