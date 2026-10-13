@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { TossOrder } from '../../api/trading';
 import { OrderWindow } from './OrderWindow';
 import { DataWindow } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
-import { groupPriceOrders, holdingProfitWon, orderRemainder } from './orderRules';
+import { groupPriceOrders, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
 
 const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
 vi.mock('../../api/trading', () => ({
@@ -28,6 +28,48 @@ function show() { return render(<QueryClientProvider client={new QueryClient({ d
 beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); });
 
 describe('호가 주문', () => {
+  it('매수금액은 원본 소수 평단가로 계산하고 정수 경계·누락·보유 없음도 처리한다', () => {
+    expect(holdingPurchaseAmountWon(100, '44669.963')).toBe(4466997);
+    expect(holdingPurchaseAmountWon(100, '66000.01')).toBe(6600001);
+    expect(holdingPurchaseAmountWon(0, null)).toBe(0);
+    expect(holdingPurchaseAmountWon(100, null)).toBeNull();
+    expect(holdingPurchaseAmountWon(-1, '66000')).toBeNull();
+    expect(holdingPurchaseAmountWon(1, '9007199254740992')).toBeNull();
+  });
+  it('매입수량·평단가는 500ms 호버 후 같은 매수금액을 표시하고 이탈·스크롤·Escape로 닫는다', () => {
+    vi.useFakeTimers();
+    try {
+      mock.averagePrice = '44669.963';
+      const view = show();
+      const quantity = screen.getByLabelText('매입수량');
+      const average = screen.getByLabelText('매입평단가');
+      fireEvent.mouseEnter(quantity);
+      act(() => vi.advanceTimersByTime(499));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      fireEvent.mouseLeave(quantity);
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      fireEvent.mouseEnter(quantity);
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('매수금액 4,466,997원');
+      expect(quantity).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+      fireEvent.mouseLeave(quantity);
+      fireEvent.mouseEnter(average);
+      fireEvent.scroll(window);
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      fireEvent.focus(average);
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('매수금액 4,466,997원');
+      fireEvent.keyDown(average, { key: 'Escape' });
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      fireEvent.mouseEnter(quantity);
+      view.unmount();
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
   it.each(['paper', 'live'] as const)('%s 계좌의 매수·매도는 단일 클릭으로 보내지 않고 더블클릭당 한 건만 보낸다', async mode => {
     show();
     fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: mode } });

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { ToastCard } from '../../ui/toast/ToastCard';
 import { ToastViewport } from '../../ui/toast/ToastViewport';
 import { ModalShell } from '../../ui/ModalShell';
+import { useTextTooltip } from '../../ui/useTextTooltip';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, normalizeOrderSettings,
   quantityForAmount, validOrderInput, validOrderSettings, type OrderWindowSettings, type OrderPresets } from '../../state/orderWindowSettings';
 import {
@@ -21,7 +22,7 @@ import { useLiveViStatus } from '../../api/liveViStatus';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
-import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
+import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { BookSummary, TotalQtyStrip } from './BookPanel';
 import './OrderWindow.css';
@@ -146,6 +147,13 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const holdingQuantity = state.data && !state.isError ? Number(state.data.holding_quantity) : null;
   const buyingPower = state.data && !state.isError ? Number(state.data.buying_power) : null;
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
+  const purchaseAmount = holdingPurchaseAmountWon(holdingQuantity, state.data?.average_purchase_price);
+  const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
+  const quantityTip = useTextTooltip(purchaseText, 500);
+  const averageTip = useTextTooltip(purchaseText, 500);
+  useEffect(() => {
+    quantityTip.hide(); averageTip.hide();
+  }, [account, quantityTip.hide, averageTip.hide]);
   const currentOrder = action?.order ? orders.find(o => o.orderId === action.order?.orderId) ?? action.order : null;
   const actionQty = action?.quantity ?? (currentOrder ? orderRemainder(currentOrder) : 0);
   const highValue = mode === 'live' && !!action && ['create', 'modify'].includes(action.type) && action.price * actionQty >= HIGH_VALUE_WON;
@@ -352,8 +360,18 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
-        <span className="order-field" aria-label="매입수량"><span className="order-meta">매입수량</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span></span>
-        <span className="order-field" aria-label="매입평단가"><span className="order-meta">매입평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span></span>
+        <span className="order-field" aria-label="매입수량" aria-describedby={quantityTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
+          onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
+          onFocus={e => quantityTip.show(e.currentTarget)} onBlur={quantityTip.hide}
+          onKeyDown={e => { if (e.key === 'Escape') quantityTip.hide(); }}>
+          <span className="order-meta">매입수량</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
+        </span>
+        <span className="order-field" aria-label="매입평단가" aria-describedby={averageTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
+          onMouseEnter={e => averageTip.show(e.currentTarget)} onMouseLeave={averageTip.hide}
+          onFocus={e => averageTip.show(e.currentTarget)} onBlur={averageTip.hide}
+          onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
+          <span className="order-meta">매입평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
+        </span>
         <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta">평가수익</span><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingProfit == null ? '—' : fmt(holdingProfit)}</span></span>
         <span className="order-field" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
       </div>
@@ -369,6 +387,8 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         </span>
       </div>
     </div>
+    {quantityTip.tooltip}
+    {averageTip.tooltip}
     {draggedOrder && createPortal(<div ref={dragPreview} role="status" aria-label="주문 드래그 미리보기"
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
       {fmt(orderRemainder(draggedOrder))}주
