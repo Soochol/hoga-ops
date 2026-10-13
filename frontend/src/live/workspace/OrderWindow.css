@@ -1,16 +1,25 @@
-.order-window { container-type:inline-size; height:100%; display:flex; flex-direction:column; background:var(--bg-card); color:var(--fg); font-size:var(--live-text-data,var(--text-sm)); overflow:auto; }
+.order-window { height:100%; display:flex; flex-direction:column; background:var(--bg-card); color:var(--fg); font-size:var(--live-text-data,var(--text-sm)); overflow:auto; }
+.order-window > * { min-width:700px; }
 .order-window button,.order-window select,.order-window input { font:inherit; color:inherit; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm,4px); }
 .order-window button { padding:3px 6px; }
 .order-window button:hover { background:var(--bg-input-hover); }
 .order-window button:disabled { opacity:.5; cursor:default; }
 .order-controls,.order-editor { padding:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .order-controls { border-bottom:1px solid var(--border); }
+.order-account-controls { padding-bottom:4px; border-bottom:0; }
+.order-account-capacity { margin-left:auto; display:flex; align-items:center; flex-wrap:wrap; gap:6px 12px; }
+.order-account-capacity > span { white-space:nowrap; }
+.order-quantity-controls { padding-top:4px; }
+.order-quantity-presets { display:flex; gap:4px; }
+.order-window .order-quantity-presets button[aria-pressed=true] { background:var(--tint-selection); border-color:var(--accent); }
+.order-amount-preview { display:flex; align-items:baseline; flex-wrap:wrap; gap:6px; }
 .order-controls label,.order-editor label { display:flex; align-items:center; gap:4px; }
 .order-controls input[type=number] { width:70px; padding:3px; }
-.order-controls input[aria-label="주문 기준 금액"] { width:100px; }
 .order-scroll { flex:1; min-height:160px; overflow:auto; }
-.order-ladder { min-width:670px; padding:4px 8px 0; }
-.order-row { display:grid; grid-template-columns:90px minmax(100px,1fr) 163px minmax(160px,1fr) 90px; height:24px; align-items:center; }
+.order-ladder { --order-columns:90px minmax(100px,1fr) 163px minmax(190px,1fr) 90px; position:relative; min-width:700px; padding:4px 8px 0; }
+.order-row { display:grid; grid-template-columns:var(--order-columns); height:24px; align-items:center; }
+.order-summary-layer { position:absolute; inset:4px 8px auto; display:grid; grid-template-columns:var(--order-columns); pointer-events:none; }
+.order-summary-layer > .book-summary { grid-column:4; }
 .order-divider { border-top:1px solid var(--border); }
 .order-target { background:var(--tint-selection); }
 .order-lane { display:flex; align-items:center; gap:3px; padding:0 3px; height:100%; min-width:0; }
@@ -37,4 +46,3 @@
 .order-window .order-submit { color:var(--accent); border-color:var(--accent); }
 .order-notice,.order-outside { padding:4px 8px; overflow-wrap:anywhere; font-size:var(--live-text-meta,var(--text-xs)); }
 .order-outside { display:flex; gap:6px; flex-wrap:wrap; }
-@container(max-width:669px) { .order-ladder { min-width:320px; } .order-row { grid-template-columns:minmax(80px,1fr) 150px minmax(80px,1fr); } .order-info,.order-depth { display:none; } }

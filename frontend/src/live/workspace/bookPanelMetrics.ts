@@ -7,8 +7,8 @@
  * 2026-10-06 중앙 139→163, 패널 하한 455→479: absolute 칩도 폭 예산에
  * 포함해 잔량 열 침범을 막는다. 칩 없는 행에도 같은 여백을 둬 가격 정렬을 유지한다.
  *
- * 축소 모드는 요약을 접고 잔량 열을 각각 76px까지 줄인다. 중앙 폭은 그대로이므로
- * 최소 315px가 필요하며, 그보다 좁으면 BookScrollArea가 가로 스크롤을 제공한다.
+ * 창 폭에 따라 요약·체결을 접지 않는다. 최소 479px 열 배분을 유지하고,
+ * 그보다 좁으면 BookScrollArea가 가로 스크롤을 제공한다.
  */
 export const BOOK_PANEL_PRICE_COL_W = 163;
 export const BOOK_PANEL_MIN_W = 132 + BOOK_PANEL_PRICE_COL_W + 184;

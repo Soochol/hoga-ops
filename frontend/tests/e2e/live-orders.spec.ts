@@ -31,9 +31,11 @@ async function setup(page: Page, withOrder = false, mode: 'paper' | 'live' = 'li
     const body = route.request().postDataJSON(); commands.push(body);
     expect(route.request().headers()['x-hoga-order']).toBe('1');
     const path = new URL(route.request().url()).pathname;
+    const operationId = `replacement-${commands.length}`;
     if (path.endsWith('/cancel')) orders = [];
-    else orders = [mkOrder('replacement', String(body.price), path.endsWith('/modify') ? '30' : '0')];
-    await route.fulfill({ json: { command_id: body.command_id, order_id: 'replacement', status: 'accepted' } });
+    else orders = [{ ...mkOrder(operationId, String(body.price), path.endsWith('/modify') ? '30' : '0'),
+      side: body.side ?? orders[0]?.side ?? 'BUY', quantity: String(body.quantity ?? orders[0]?.quantity ?? 100) }];
+    await route.fulfill({ json: { command_id: body.command_id, order_id: operationId, status: 'accepted' } });
   });
   await page.goto('/live');
   await page.getByRole('button', { name: '종목 검색 열기' }).click();
@@ -74,6 +76,40 @@ test('왼쪽 매도·오른쪽 매수 즉시 주문, 상하단 정보·신규 �
   expect(commands[0]).toMatchObject({ code: '005930', account_seq: 1, side: 'BUY', price: 67200, quantity: 10 });
   await expect(window).not.toContainText('⠿');
   await window.screenshot({ path: testInfo.outputPath('order-window.png') });
+});
+
+test('공통 수량·환산 금액·상단 계좌 가용 금액과 수량', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page);
+  await expect(window.getByRole('combobox', { name: '수량 방향' })).toHaveCount(0);
+  await expect(window.getByLabel('주문 기준 금액')).toHaveCount(0);
+  await expect(window.getByRole('button', { name: '매도 25%' })).toHaveCount(0);
+  await expect(window.getByLabel('매수 가능 금액')).toHaveText('매수 가능 20,000,000원');
+  await expect(window.getByLabel('매도 가능 수량')).toHaveText('매도 가능 100주');
+  const preset = window.getByRole('button', { name: '50주', exact: true });
+  await preset.click();
+  await expect(preset).toHaveAttribute('aria-pressed', 'true');
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await buy.hover();
+  await expect(window.getByLabel('예상 주문 금액')).toHaveText('예상 3,360,000원67,200원 기준');
+  const summary = window.getByTestId('book-summary');
+  await expect(summary.getByText('매수 가능', { exact: true })).toHaveCount(0);
+  await expect(summary.getByText('매도 가능', { exact: true })).toHaveCount(0);
+  for (const label of ['KRX종가', '상승VI', '하강VI', '250일']) await expect(summary.getByText(label, { exact: true })).toBeVisible();
+  const summaryBox = await summary.boundingBox();
+  const bidBox = await window.locator('[data-order-price="67200"]').boundingBox();
+  expect(summaryBox!.y + summaryBox!.height).toBeLessThanOrEqual(bidBox!.y + 1);
+  await buy.click();
+  await expect(window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' })).toHaveText('50주');
+  expect(commands[0]).toMatchObject({ side: 'BUY', quantity: 50 });
+  await drag(page, window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' }), window.getByRole('combobox', { name: '주문 모드' }));
+  const sell = window.getByRole('button', { name: /매도 67,300원 주문 추가/ });
+  await expect(sell).toBeEnabled();
+  await sell.focus();
+  await expect(window.getByLabel('예상 주문 금액')).toHaveText('예상 3,365,000원67,300원 기준');
+  await sell.click();
+  await expect(window.getByRole('button', { name: '매도 67,300원 1건 상세 정정' })).toHaveText('50주');
+  expect(commands[2]).toMatchObject({ side: 'SELL', quantity: 50 });
+  await window.screenshot({ path: testInfo.outputPath('unified-order-controls.png') });
 });
 
 test('수량 영역을 직접 끌어 정정·드래그 아웃 취소', async ({ page }) => {
@@ -174,4 +210,34 @@ test('호가 주문 가격·잔량·총잔량 폰트는 기존 10호가창과 �
   await expect(window.getByLabel('매도총잔량 1,000')).toHaveText('1,000');
   await expect(window.getByLabel('매수총잔량 2,000')).toHaveText('2,000');
   await expect(window.getByTestId('book-total-fill')).toHaveCSS('height', '4px');
+});
+
+test('주문창 폭을 줄여도 같은 설정·5열·잔량·상세 정보를 유지한다', async ({ page }) => {
+  const { window, commands } = await setup(page);
+  const controls = window.getByRole('group', { name: '공통 주문 수량' });
+  const originalHeight = (await controls.boundingBox())!.height;
+  for (const width of [699, 478, 360]) {
+    await window.evaluate((el, nextWidth) => { (el as HTMLElement).style.width = `${nextWidth}px`; }, width);
+    await expect(window.getByTestId('book-summary')).toBeVisible();
+    await expect(window.locator('.order-depth')).toHaveCount(20);
+    expect(await window.locator('.order-row').first().evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(5);
+    await expect.poll(async () => (await controls.boundingBox())!.height).toBe(originalHeight);
+    expect(await window.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+    await window.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+    const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    await expect(buy).toBeInViewport();
+    await expect(window.getByTestId('book-summary').getByText('250일', { exact: true })).toBeInViewport();
+  }
+  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).click();
+  const chip = window.getByRole('button', { name: '매수 67,200원 1건 상세 정정' });
+  await expect(chip).toBeVisible();
+  expect(commands[0]).toMatchObject({ side: 'BUY', price: 67200, quantity: 10 });
+  const chipBox = (await chip.boundingBox())!, windowBox = (await window.boundingBox())!;
+  const y = chipBox.y + chipBox.height / 2;
+  await page.mouse.move(chipBox.x + chipBox.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(windowBox.x - 1, y, { steps: 8 });
+  await page.mouse.up();
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
+  expect(commands).toHaveLength(2);
 });

@@ -15,7 +15,6 @@
  * `/study` 를 "같은 패널을 쓰는 다른 화면" 으로 언급하는데, 그건 **왜 그 처리가
  * 그렇게 생겼는지의 내력**이지 지금 살아 있는 소비처가 아니다.
  */
-import { useState } from 'react';
 import './BookPanel.css';
 import { BookScrollArea } from './BookScrollArea';
 import type { OrderbookSnapshot } from '../../api/types';
@@ -143,7 +142,6 @@ export default function BookPanel({
   onSelectSessionMode,
   stale = false,
 }: Props) {
-  const [expandedSummary, setExpandedSummary] = useState(false);
   // 스냅샷 파생 블록에만 얹는 딤. 값은 읽히되 확정이 아님을 말한다 — 전환은
   // DESIGN.md Motion 의 상태 전환 규격(150ms ease-in-out).
   const staleDim = `transition-opacity duration-150 ease-in-out${stale ? ' opacity-50' : ''}`;
@@ -228,11 +226,7 @@ export default function BookPanel({
   );
 
   return (
-    <div className="book-panel flex h-full flex-col bg-bg-card" data-expanded-summary={expandedSummary}>
-      <button type="button" className={`book-details-toggle shrink-0 px-2 py-1 text-right text-sm text-accent${expandedSummary ? ' is-expanded' : ''}`}
-        aria-expanded={expandedSummary} onClick={() => setExpandedSummary((value) => !value)}>
-        {expandedSummary ? '상세 통계 접기' : '상세 통계 펼치기'}
-      </button>
+    <div className="book-panel flex h-full flex-col bg-bg-card">
       {/* 예상체결 배너(동시호가에만) — 호가창 전폭 중앙. 평시엔 null 이라 높이 0.
           `exp_price`/`exp_qty` 가 스냅샷 필드라 사다리와 같이 흐려진다. */}
       <ExpectedFillBanner
@@ -273,7 +267,7 @@ export default function BookPanel({
                 C안: strong→border 한 단계 완화, 격자는 잔향만). */}
             <div
               data-book-divider=""
-              className="book-compact-secondary flex items-center justify-between border-t border-border px-2"
+              className="flex items-center justify-between border-t border-border px-2"
               style={{ height: ROW_H }}
             >
               <span className="text-xs text-fg-dim">체결강도</span>
@@ -292,7 +286,7 @@ export default function BookPanel({
                 2행 삐져나와 하단이 어긋났다. `중` 행이 21→22 로 밀었던 것을 ADR-0170
                 이 되돌렸다 — **한 열에서만 행을 더하거나 빼면 하단이 어긋난다.** */}
             {trades.slice(0, 9).map((t, i) => (
-              <div key={i} className="book-compact-secondary flex items-center justify-between px-2" style={{ height: ROW_H }}>
+              <div key={i} className="flex items-center justify-between px-2" style={{ height: ROW_H }}>
                 <span
                   className={`font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
                 >
@@ -337,63 +331,8 @@ export default function BookPanel({
 
           {/* 우: 요약 12항목(11호가 높이 고정) → 매수 잔량 바 */}
           <div className="flex flex-col">
-            <div className="book-summary flex flex-col" style={{ height: ROW_H * SUMMARY_ROWS }}>
-              {/* 칩은 **사다리 밖일 때만** 뜬다 — 등장 자체가 「이 값은 지금 사다리에
-                  없다」는 신호다(`offLadderChip`). 폭은 안전하다: 실측 최고+칩 111px
-                  vs 이 열의 제약을 쥔 `250일` 149px. */}
-              <SummaryRow
-                label="시작"
-                value={fmtOr(summary.dayOpen)}
-                chip={offLadderChip('시', summary, onScreenPrices)}
-              />
-              <SummaryRow
-                label="최고"
-                value={fmtOr(summary.dayHigh)}
-                color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
-                chip={offLadderChip('고', summary, onScreenPrices)}
-              />
-              <SummaryRow
-                label="최저"
-                value={fmtOr(summary.dayLow)}
-                color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
-                chip={offLadderChip('저', summary, onScreenPrices)}
-              />
-              <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
-              {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
-                  620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
-              {/* 순서 = 거래량 → 어제보다(그 거래량의 전일 대비) → 거래대금
-                  (사용자 지정 2026-07-21) — 어제보다가 거래량 바로 아래 붙어야
-                  수식 관계가 읽힌다. */}
-              <SummaryRow label="거래량" value={fmtVolumeKo(summary.cumVolume)} divider />
-              <SummaryRow
-                label="어제보다"
-                value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
-              />
-              <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
-              <div className="book-summary-extra">
-                {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
-                <SummaryRow
-                  label="상한가"
-                  value={fmtOr(limits?.upper_limit ?? null)}
-                  color={
-                    limits?.upper_limit != null ? dirClass(limits.upper_limit, baselinePrice) : undefined
-                  }
-                  divider
-                />
-                <SummaryRow
-                  label="하한가"
-                  value={fmtOr(limits?.lower_limit ?? null)}
-                  color={
-                    limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
-                  }
-                />
-                <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
-                <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
-                {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
-                    라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
-                <SummaryRow label="250일" value={fmtHighLow(limits)} />
-              </div>
-            </div>
+            <BookSummary summary={summary} baselinePrice={baselinePrice} onScreenPrices={onScreenPrices}
+              limits={limits} krxClose={krxClose} vi={vi} />
             {bids.map((l, i) => (
               <QtyBar
                 key={`b-${i}`}
@@ -421,6 +360,80 @@ export default function BookPanel({
         onSelectSessionMode={onSelectSessionMode}
         dimClass={afterHoursTotals === null ? staleDim : ''}
       />
+    </div>
+  );
+}
+
+/** 10호가·주문창이 공유하는 시세 상세 정보. 계좌 잔고는 포함하지 않는다. */
+export function BookSummary({
+  summary, baselinePrice, onScreenPrices, limits = null, krxClose = null, vi = null,
+  height = ROW_H * SUMMARY_ROWS,
+}: {
+  summary: LiveTradeSummary;
+  baselinePrice: number | null;
+  onScreenPrices: ReadonlySet<number>;
+  limits?: BookStockLimits | null;
+  krxClose?: number | null;
+  vi?: LiveViEvent | null;
+  height?: number;
+}) {
+  return (
+    <div className="book-summary flex flex-col" data-testid="book-summary" style={{ height, '--book-summary-row-height': `${height / 12}px` } as React.CSSProperties}>
+      {/* 칩은 **사다리 밖일 때만** 뜬다 — 등장 자체가 「이 값은 지금 사다리에
+          없다」는 신호다(`offLadderChip`). 폭은 안전하다: 실측 최고+칩 111px
+          vs 이 열의 제약을 쥔 `250일` 149px. */}
+      <SummaryRow
+        label="시작"
+        value={fmtOr(summary.dayOpen)}
+        chip={offLadderChip('시', summary, onScreenPrices)}
+      />
+      <SummaryRow
+        label="최고"
+        value={fmtOr(summary.dayHigh)}
+        color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
+        chip={offLadderChip('고', summary, onScreenPrices)}
+      />
+      <SummaryRow
+        label="최저"
+        value={fmtOr(summary.dayLow)}
+        color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
+        chip={offLadderChip('저', summary, onScreenPrices)}
+      />
+      <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
+      {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
+          620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
+      {/* 순서 = 거래량 → 어제보다(그 거래량의 전일 대비) → 거래대금
+          (사용자 지정 2026-07-21) — 어제보다가 거래량 바로 아래 붙어야
+          수식 관계가 읽힌다. */}
+      <SummaryRow label="거래량" value={fmtVolumeKo(summary.cumVolume)} divider />
+      <SummaryRow
+        label="어제보다"
+        value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
+      />
+      <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
+      <div className="book-summary-extra">
+        {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
+        <SummaryRow
+          label="상한가"
+          value={fmtOr(limits?.upper_limit ?? null)}
+          color={
+            limits?.upper_limit != null ? dirClass(limits.upper_limit, baselinePrice) : undefined
+          }
+          divider
+        />
+        <SummaryRow
+          label="하한가"
+          value={fmtOr(limits?.lower_limit ?? null)}
+          color={
+            limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
+          }
+        />
+        <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
+        <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
+        {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
+            라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
+        <SummaryRow label="250일" value={fmtHighLow(limits)} />
+      </div>
     </div>
   );
 }
