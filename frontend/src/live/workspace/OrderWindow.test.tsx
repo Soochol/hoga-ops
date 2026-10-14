@@ -580,6 +580,32 @@ describe('호가 주문', () => {
     expect(strip).not.toHaveTextContent('매도 잔량'); expect(strip).not.toHaveTextContent('매수 잔량');
   });
 
+  it('10호가창과 호가주문창 모두 하단에 시간외종가를 표시한다', () => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    const previousNow = mock.now;
+    mock.now = Date.UTC(2026, 9, 14, 6, 47); // 15:47 KST
+    vi.mocked(useLiveSeries).mockImplementation(() => ({ ...originalSeries('005930', 'KRX'),
+      latestOb: { t_ms: Date.UTC(2026, 9, 14, 6, 30), asks: [{ price: 241500, qty: 879 }],
+        bids: [{ price: 241000, qty: 538 }], total_ask_qty: 879, total_bid_qty: 538 },
+    }));
+    try {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const win: WorkspaceWindow = { id: 'close-book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
+      render(<QueryClientProvider client={client}>
+        <div data-testid="close-book"><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></div>
+        <div data-testid="close-order"><OrderWindow code="005930" name="삼성전자" /></div>
+      </QueryClientProvider>);
+      for (const id of ['close-book', 'close-order']) {
+        const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
+        expect(strip).toHaveTextContent('879시간외종가538');
+        expect(strip).not.toHaveTextContent('정규장 · 마지막');
+      }
+    } finally {
+      mock.now = previousNow;
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+    }
+  });
+
   it('우클릭 메뉴의 Esc는 창 복원 이벤트로 전파하지 않는다', () => {
     mock.orders = [order()]; show();
     const onGlobalEscape = vi.fn(); window.addEventListener('keydown', onGlobalEscape);

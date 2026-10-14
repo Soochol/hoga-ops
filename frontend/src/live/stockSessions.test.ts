@@ -16,6 +16,9 @@ import { isKrxAftermarketWindow, krxBookPhaseLabel } from '../util/stockSessions
 const at = (day: number, hour: number, minute = 0) => Date.UTC(2026, 8, day, hour - 9, minute);
 
 describe('KRX after-market launch', () => {
+  it.each([[15, 30], [15, 59], [20, 0]] as const)('labels the regular close book at %i:%i as 시간외종가', (hour, minute) => {
+    expect(krxBookPhaseLabel(at(14, hour, minute), at(14, 15, 29))).toBe('시간외종가');
+  });
   it.each([
     [11, 17, 0, false], [14, 15, 59, false], [14, 16, 0, true],
     [14, 19, 59, true], [14, 20, 0, false], [19, 17, 0, false],
