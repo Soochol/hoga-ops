@@ -1,25 +1,31 @@
-.account-trading-panel { display:flex; flex-direction:column; max-height:min(440px,calc(100vh - 16px)); background:var(--bg-card); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-overlay); font-size:var(--live-text-data,var(--text-sm)); }
-.account-trading-panel button { padding:4px 8px; font:inherit; color:inherit; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); }
+.account-trading-panel { display:flex; flex-direction:column; max-height:min(27.5rem,calc(100vh - 1rem)); overflow:hidden; }
+.account-trading-panel button { padding:0.25rem 0.5rem; font:inherit; color:inherit; background:transparent; border:0; border-radius:var(--radius-md); }
 .account-trading-panel button:hover:not(:disabled) { background:var(--bg-input-hover); }
 .account-trading-panel button:disabled { opacity:.5; cursor:default; }
-.account-trading-heading,.account-trading-toolbar { display:flex; justify-content:space-between; align-items:center; gap:8px; padding:8px; }
-.account-trading-heading { border-bottom:1px solid var(--border); }
-.account-trading-heading [role=tablist],.account-trading-filters { display:flex; gap:4px; }
-.account-trading-panel [aria-selected=true],.account-trading-panel [aria-pressed=true] { background:var(--tint-selection); border-color:var(--accent); }
-.account-trading-toolbar { color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
-.account-trading-filters { padding:0 8px 8px; }
+.account-trading-panel [role=tablist] { display:flex; gap:1rem; }
+.account-trading-panel [role=tab] { padding:0.3125rem 0; border-bottom:2px solid transparent; border-radius:0; color:var(--fg-dim); font-weight:400; }
+.account-trading-panel [role=tab][aria-selected=true] { border-color:var(--accent); color:var(--fg); font-weight:500; }
+.account-trading-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; padding:0.5rem 0.75rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
+.account-trading-toolbar > span { overflow-wrap:anywhere; }
 .account-trading-scroll { min-height:0; overflow:auto; }
-.account-trading-panel table { width:100%; border-collapse:collapse; }
-.account-trading-panel th { position:sticky; top:0; background:var(--bg-card); color:var(--fg-dim); font-weight:400; font-size:var(--live-text-meta,var(--text-xs)); }
-.account-trading-panel th,.account-trading-panel td { padding:6px 8px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border); }
+.account-trading-panel table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.account-trading-panel th { position:sticky; top:0; z-index:1; background:var(--bg-input-hover); color:var(--fg-dim); font-weight:400; font-size:var(--live-text-meta,var(--text-xs)); }
+.account-trading-panel th,.account-trading-panel td { padding:0.5rem 0.75rem; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border); }
 .account-trading-panel th:first-child,.account-trading-panel td:first-child { text-align:left; white-space:normal; }
-.account-trading-panel td:first-child { min-width:130px; }
+.account-trading-panel td:first-child { min-width:7rem; }
+.account-trading-panel tr:last-child td { border-bottom:0; }
+.account-trading-panel tbody tr:hover { background:var(--bg-input); }
 .account-trading-panel .account-stock-link { text-align:left; padding:0; border:0; background:transparent; }
 .account-trading-panel .account-stock-link:hover { text-decoration:underline; }
-.account-trading-panel small { display:block; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
+.account-trading-panel small { display:block; margin-top:0.125rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
 .account-order-buy td:nth-child(2) { color:var(--price-up); }
 .account-order-sell td:nth-child(2) { color:var(--price-down); }
-.account-trading-message { padding:6px 8px; color:var(--fg-dim); }
-.account-row-error { display:block; max-width:240px; color:var(--error); overflow-wrap:anywhere; font-size:var(--live-text-meta,var(--text-xs)); }
-
+.account-trading-panel .account-cancel { border:1px solid var(--border); padding:0.25rem 0.5rem; }
+.account-trading-panel .account-cancel:hover:not(:disabled) { color:var(--error); border-color:var(--error); }
+.account-trading-message { padding:0.5rem 0.75rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
+.account-row-error { display:block; max-width:15rem; color:var(--error); overflow-wrap:anywhere; font-size:var(--live-text-meta,var(--text-xs)); }
 .account-trading-message.text-error { color:var(--error); }
+@media(max-width:35rem) {
+  .account-trading-panel th,.account-trading-panel td { padding:0.5rem 0.375rem; }
+  .account-trading-panel td:first-child { min-width:6rem; }
+}

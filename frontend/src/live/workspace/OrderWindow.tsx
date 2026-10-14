@@ -34,6 +34,7 @@ import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookP
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
+import { OrderSurfaceHeading } from './OrderSurface';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -54,7 +55,8 @@ type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: numbe
 
 function OrderToastPortal({ children }: { children: ReactNode }) {
   const [host] = useState(() => document.getElementById('toast-viewport'));
-  return createPortal(host ? children : <ToastViewport>{children}</ToastViewport>, host ?? document.body);
+  const content = <div className="order-toast">{children}</div>;
+  return createPortal(host ? content : <ToastViewport>{content}</ToastViewport>, host ?? document.body);
 }
 
 export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }: {
@@ -234,8 +236,8 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const purchaseAmount = holdingPurchaseAmountWon(holdingQuantity, state.data?.average_purchase_price);
   const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
-  const quantityTip = useTextTooltip(purchaseText, 500);
-  const averageTip = useTextTooltip(purchaseText, 500);
+  const quantityTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
+  const averageTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
   useEffect(() => {
     quantityTip.hide(); averageTip.hide();
   }, [account, quantityTip.hide, averageTip.hide]);
@@ -477,14 +479,14 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       </div>
       <div className="order-settings-group">
       <button type="button" aria-label="주문 설정" disabled={busy || !!lockedBook} onClick={() => { closeAction(); setSettingsDraft(normalizeOrderSettings(preferences)); }}>설정</button>
-      <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span>{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
       {!expanded && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
     </div>
     <AccountTradingPanel key={account} account={account} accountLabel={accounts.data?.accounts.find(item => item.account_seq === account)?.label ?? '계좌 연결 대기'}
       tab={accountTab} anchorRef={accountAnchor} onTabChange={setAccountTab} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
-    <div className="order-controls order-quantity-controls">
+    <div className="order-controls order-overview-controls">
+      <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
         <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
           disabled={!canFillHoldingQuantity} onClick={() => {
@@ -496,30 +498,37 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
           onFocus={e => quantityTip.show(e.currentTarget)} onBlur={quantityTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') quantityTip.hide(); }}>
-          <span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
+          <span className="order-meta" aria-hidden="true">보유</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
         </button>
         <span className="order-field" aria-label="매입평단가" aria-describedby={averageTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
           onMouseEnter={e => averageTip.show(e.currentTarget)} onMouseLeave={averageTip.hide}
           onFocus={e => averageTip.show(e.currentTarget)} onBlur={averageTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
-          <span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
+          <span className="order-meta" aria-hidden="true">평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
         </span>
-        <span className="order-field" aria-label="보유 종목 평가 수익"><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingProfit == null ? '—' : fmt(holdingProfit)}</span></span>
+        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingQuantity === 0 || holdingProfit == null ? '—' : fmt(holdingProfit)}</span></span>
       </div>
+    </div>
+    <div className="order-controls order-quantity-controls">
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
-        <label className="order-field"><span className="order-field-value"><input type="number" aria-label={amountMode ? '신규 주문 금액' : '신규 주문 수량'} min="1" max={amountMode ? MAX_AMOUNT_MILLIONS : MAX_ORDER_QUANTITY} step="1" value={inputValue} onChange={e => setInputValue(Number(e.target.value))} />{amountMode ? '백만원' : '주'}</span></label>
-        <div className="order-quantity-presets">
-          {presets.map((value, index) => <button type="button" key={index} aria-pressed={inputValue === value} onClick={() => setInputValue(value)}>{fmt(value)}{amountMode ? '백만' : '주'}</button>)}
+        <div className="order-input-mode order-surface-segment" role="group" aria-label="주문 입력 방식">
+          {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || !!lockedBook}
+            onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '수량'}</button>)}
         </div>
-        <span className="order-field" aria-label={amountMode ? '예상 주문 수량' : '예상 주문 금액'} title={previewPrice != null ? `${fmt(previewPrice)}원 기준` : undefined}>
+        <label className="order-input-field"><input type="number" aria-label={amountMode ? '신규 주문 금액' : '신규 주문 수량'} min="1" max={amountMode ? MAX_AMOUNT_MILLIONS : MAX_ORDER_QUANTITY} step="1" value={inputValue} onChange={e => setInputValue(Number(e.target.value))} /><span className="order-meta">{amountMode ? '백만원' : '주'}</span></label>
+        <div className="order-quantity-presets">
+          {presets.map((value, index) => <button type="button" key={index} aria-pressed={inputValue === value} onClick={() => setInputValue(value)}>{fmt(amountMode ? value * 100 : value)}{amountMode ? '만' : '주'}</button>)}
+        </div>
+        <span className="order-field order-estimate" aria-label={amountMode ? '예상 주문 수량' : '예상 주문 금액'} title={estimatePrice != null ? `${fmt(estimatePrice)}원 기준` : undefined}>
+          <span className="order-meta" aria-hidden="true">{amountMode ? '예상' : '금액'}</span>
           <span className="order-field-value">{amountMode ? estimateQuantity == null ? '—' : `${fmt(estimateQuantity)}주` : estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
           </span>
         </span>
       </div>
     </div>
-    {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="order-info-popover font-data" style={infoStyle}>
-      <div className="order-info-heading"><span>종목 정보</span><button type="button" aria-label="종목 정보 닫기" onClick={closeInfo}>닫기</button></div>
-      {renderSummary(264)}
+    {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="order-info-popover order-surface font-data" style={infoStyle}>
+      <OrderSurfaceHeading closeLabel="종목 정보 닫기" onClose={closeInfo}>종목 정보</OrderSurfaceHeading>
+      <div className="order-info-body">{renderSummary(264)}</div>
     </div>, document.body)}
     {quantityTip.tooltip}
     {averageTip.tooltip}
@@ -529,7 +538,8 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     </div>, document.body)}
     {settingsDraft && createPortal(<div className="order-settings-surface font-data" onKeyDown={e => {
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); setSettingsDraft(null); }
-    }}><ModalShell ariaLabel="주문 설정" title="주문 설정" width="w-[360px]" onClose={() => setSettingsDraft(null)}>
+    }}><ModalShell ariaLabel="주문 설정" width="w-[360px]" onClose={() => setSettingsDraft(null)}>
+      <div className="order-modal"><OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={() => setSettingsDraft(null)}>주문 설정</OrderSurfaceHeading>
       <form onSubmit={e => { e.preventDefault(); if (!busy && validOrderSettings(settingsDraft)) { onApplySettings(settingsDraft); setSettingsDraft(null); } }}>
         <div className="order-settings-body">
           <fieldset><legend>주문 방식</legend><div className="order-settings-mode">
@@ -542,11 +552,12 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
                 onChange={e => { const key = unit === 'quantity' ? 'quantityPresets' : 'amountPresets'; setSettingsDraft({ ...settingsDraft, [key]: settingsDraft[key].map((n, i) => i === index ? Number(e.target.value) : n) as OrderPresets }); }} />
             </label>)}</div>
           </fieldset>)}
-          <span className="order-meta">1백만원 = 100만원 · 양의 정수로 입력</span>
+          <span className="order-meta">1 = 100만원 · 5 = 500만원 · 10 = 1,000만원</span>
           {!validOrderSettings(settingsDraft) && <p role="alert" className="text-error">프리셋은 허용 범위의 양의 정수로 입력하세요</p>}
         </div>
-        <div className="order-settings-footer"><button type="button" onClick={() => setSettingsDraft(null)}>취소</button><button type="submit" disabled={busy || !validOrderSettings(settingsDraft)}>적용</button></div>
+        <div className="order-surface-footer"><button type="button" onClick={() => setSettingsDraft(null)}>취소</button><button type="submit" className="order-primary" disabled={busy || !validOrderSettings(settingsDraft)}>적용</button></div>
       </form>
+      </div>
     </ModalShell></div>, document.body)}
     {!accounts.data?.configured && !accounts.isLoading && <p className="order-notice">토스증권 Open API의 CLIENT_ID·CLIENT_SECRET을 서버에 설정하면 계좌가 연결됩니다.</p>}
     {(accounts.error || state.error) && <p role="alert" className="order-notice text-error">{String((accounts.error ?? state.error) instanceof Error ? (accounts.error ?? state.error as Error)?.message : '계좌 조회 실패')}</p>}
@@ -586,8 +597,10 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}
       onSelectSessionMode={selectSessionMode} />}
     {contextMenu?.side && contextMenu.price != null ? <PanelContextMenu point={contextMenu}
-      label={`${orderSideLabel(contextMenu.side)} ${fmt(contextMenu.price)}원 주문 목록`} showLabel={false} onClose={closeMenu}>
+      label={`${orderSideLabel(contextMenu.side)} ${fmt(contextMenu.price)}원 주문 목록`} showLabel={false} onClose={closeMenu} className="order-surface order-context-surface">
+      <OrderSurfaceHeading closeLabel="가격별 주문 목록 닫기" onClose={closeMenu}><span className={contextMenu.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(contextMenu.side)}</span> · {fmt(contextMenu.price)}원</OrderSurfaceHeading>
       <div data-order-list className="order-list font-data">
+        <div className="order-list-summary"><span>{groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length ?? 0}건</span><span>총 {fmt((groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? []).reduce((sum, order) => sum + orderRemainder(order), 0))}</span></div>
         {(groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? []).map((order, index) =>
           <button key={order.orderId} type="button" role="menuitem"
             className={`order-list-item ${order.side === 'BUY' ? 'order-buy' : 'order-sell'} ${draggingOrderId === order.orderId ? 'order-chip-dragging' : ''}`}
@@ -598,20 +611,28 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
             <span>주문 {index + 1}</span><strong>{fmt(orderRemainder(order))}</strong>
           </button>)}
         {!(groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length) && <p className="order-list-hint">미체결 주문 없음</p>}
+        <p className="order-list-hint">개별 주문을 밖으로 드래그하면 해당 주문 취소</p>
       </div>
-    </PanelContextMenu> : contextMenu && <PanelContextMenu point={contextMenu} label="주문 취소" onClose={closeMenu}>
+    </PanelContextMenu> : contextMenu && <PanelContextMenu point={contextMenu} label="주문 취소" showLabel={false} onClose={closeMenu} className="order-surface order-context-surface">
+      <OrderSurfaceHeading closeLabel="주문 취소 메뉴 닫기" onClose={closeMenu}>주문 취소</OrderSurfaceHeading>
       {([{ label: '매수 모두 취소', side: 'BUY' }, { label: '매도 모두 취소', side: 'SELL' }, { label: '전체 주문 취소', side: null }] as const).map(item =>
-        <button key={item.label} type="button" role="menuitem" className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input-hover disabled:opacity-50"
+        <button key={item.label} type="button" role="menuitem" aria-label={item.label} className="order-cancel-menu-item"
           disabled={!ready || !orders.some(order => (item.side == null || order.side === item.side) && editableOrder(order) && !pending(order))}
-          onClick={() => request({ type: 'bulk', base: base(), side: item.side, price: 0, quantity: null })}>{item.label}</button>)}
+          onClick={() => request({ type: 'bulk', base: base(), side: item.side, price: 0, quantity: null })}><span>{item.label}</span><span className="order-meta">{orders.filter(order => (item.side == null || order.side === item.side) && editableOrder(order) && !pending(order)).length}건</span></button>)}
     </PanelContextMenu>}
-    {action && highValue && createPortal(<div className="order-settings-surface font-data"><ModalShell ariaLabel="고액 주문 확인" title="고액 주문 확인" width="w-[360px]" onClose={closeAction}>
-      <div className="order-editor" role="group" aria-label="고액 주문 확인">
-        <span>{orderSideLabel(action.side!)} {fmt(actionQty)}주 · {fmt(action.price * actionQty)}원</span>
+    {action && highValue && createPortal(<div className="order-settings-surface font-data"><ModalShell ariaLabel="고액 주문 확인" width="w-[360px]" onClose={closeAction}>
+      <div className="order-modal"><OrderSurfaceHeading closeLabel="고액 주문 확인 닫기" onClose={closeAction}>고액 주문 확인</OrderSurfaceHeading>
+      <div className="order-confirm-body" role="group" aria-label="고액 주문 확인">
+        <div className="order-confirm-row"><span className={action.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(action.side!)}</span><span>{fmt(actionQty)}주</span></div>
+        <div className="order-confirm-row"><span className="order-meta">주문 가격</span><span>{fmt(action.price)}원</span></div>
+        <div className="order-confirm-row"><span className="order-meta">주문 금액</span><strong>{fmt(action.price * actionQty)}원</strong></div>
         <label><input type="checkbox" checked={confirmedHigh} onChange={e => confirmHigh(e.target.checked)} />1억원 이상 주문 금액을 확인했습니다</label>
-        <button type="button" disabled={busy || !confirmedHigh || (action.type === 'modify' && !!currentOrder && (!editableOrder(currentOrder) || pending(currentOrder)))}
+      </div>
+      <div className="order-surface-footer">
+        <button type="button" disabled={busy} onClick={closeAction}>취소</button>
+        <button type="button" className="order-primary" disabled={busy || !confirmedHigh || (action.type === 'modify' && !!currentOrder && (!editableOrder(currentOrder) || pending(currentOrder)))}
           onClick={() => void submit(action, true)}>확인 후 주문</button>
-        <button type="button" disabled={busy} onClick={closeAction}>닫기</button>
+      </div>
       </div>
     </ModalShell></div>, document.body)}
     {(notice || receipt) && <OrderToastPortal>{notice ? <ToastCard visible variant="error" role="alert" ariaLabel="주문 알림">

@@ -56,3 +56,14 @@ it('a holding selects its symbol without placing an order and closes the panel',
   expect(onSelectSymbol).toHaveBeenCalledWith('000660', 'SK하이닉스');
   expect(onClose).toHaveBeenCalledOnce(); expect(mock.command).not.toHaveBeenCalled();
 });
+it('moves between account tabs with the keyboard without sending a trading command', () => {
+  const { onTabChange } = show();
+  const ordersTab = screen.getByRole('tab', { name: '미체결 주문' });
+  const holdingsTab = screen.getByRole('tab', { name: '보유종목' });
+  ordersTab.focus();
+  fireEvent.keyDown(ordersTab, { key: 'ArrowRight' });
+  expect(onTabChange).toHaveBeenCalledWith('holdings');
+  expect(holdingsTab).toHaveFocus();
+  expect(ordersTab).toHaveAttribute('aria-controls', screen.getByRole('tabpanel').id);
+  expect(mock.command).not.toHaveBeenCalled();
+});
