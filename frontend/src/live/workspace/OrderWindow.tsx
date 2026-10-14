@@ -355,10 +355,11 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     positionDragPreview();
     if (d.list) {
       const bounds = d.list.getBoundingClientRect();
-      d.cancel = e.clientX < bounds.left || e.clientX > bounds.right || e.clientY < bounds.top || e.clientY > bounds.bottom;
-      d.price = null;
-      setDragTarget(null); setDragCancel(d.cancel);
-      return;
+      if (e.clientX >= bounds.left && e.clientX <= bounds.right && e.clientY >= bounds.top && e.clientY <= bounds.bottom) {
+        d.cancel = false; d.price = null;
+        setDragTarget(null); setDragCancel(false);
+        return;
+      }
     }
     const rect = ladder.current?.getBoundingClientRect();
     const viewport = ladder.current?.closest('.order-scroll')?.getBoundingClientRect();
@@ -591,18 +592,16 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}
       onSelectSessionMode={selectSessionMode} />}
     {contextMenu?.side && contextMenu.price != null ? <PanelContextMenu point={contextMenu}
-      label={`${orderSideLabel(contextMenu.side)} ${fmt(contextMenu.price)}원 주문 목록`} onClose={closeMenu}>
+      label={`${orderSideLabel(contextMenu.side)} ${fmt(contextMenu.price)}원 주문 목록`} showLabel={false} onClose={closeMenu}>
       <div data-order-list className="order-list font-data">
-        <p className="order-list-hint">주문을 목록 밖으로 드래그하면 개별 취소</p>
         {(groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? []).map((order, index) =>
           <button key={order.orderId} type="button" role="menuitem"
             className={`order-list-item ${order.side === 'BUY' ? 'order-buy' : 'order-sell'} ${draggingOrderId === order.orderId ? 'order-chip-dragging' : ''}`}
-            aria-label={`주문 ${index + 1} · ${fmt(orderRemainder(order))}주 · ${order.orderId}`}
+            aria-label={`주문 ${index + 1} · ${fmt(orderRemainder(order))}주`}
             disabled={!ready || !editableOrder(order) || pending(order)}
             onPointerDown={e => beginDrag(e, [order], true)} onPointerMove={moveDrag} onPointerUp={endDrag}
             onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
             <span>주문 {index + 1}</span><strong>{fmt(orderRemainder(order))}주</strong>
-            <small>{order.orderId}</small>{(!editableOrder(order) || pending(order)) && <small>처리 중</small>}
           </button>)}
         {!(groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length) && <p className="order-list-hint">미체결 주문 없음</p>}
       </div>
