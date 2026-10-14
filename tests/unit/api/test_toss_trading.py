@@ -389,3 +389,93 @@ async def test_stock_info_uses_official_market_and_currency_fields_and_rejects_u
         await service.execute(command, "create")
     assert error.value.code == "unsupported-market"
     assert broker.posts == []
+
+
+async def test_orders_part_does_not_wait_for_balances(setup, monkeypatch):
+    broker, service, api = setup
+    broker.open = [order(filled="40")]
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = service.holdings
+
+    async def slow_holdings(account):
+        entered.set()
+        await release.wait()
+        return await original(account)
+
+    monkeypatch.setattr(service, "holdings", slow_holdings)
+    balances = asyncio.create_task(api.get("/api/trading/state?account_seq=1&code=005930&part=balances"))
+    try:
+        await asyncio.wait_for(entered.wait(), 1)
+        response = await asyncio.wait_for(api.get("/api/trading/state?account_seq=1&code=005930&part=orders"), 1)
+        assert response.status_code == 200
+        assert response.json()["orders"][0]["execution"]["filledQuantity"] == "40"
+        assert "buying_power" not in response.json()
+        assert not balances.done()
+    finally:
+        release.set()
+        result = await balances
+    assert result.status_code == 200
+    assert result.json()["buying_power"] == "20000000"
+    assert "orders" not in result.json()
+
+
+async def test_split_snapshots_cannot_hide_fills_from_modify_validation(setup):
+    broker, service, _ = setup
+    broker.open = [order(filled="30")]
+    assert (await service.order_state(1, "005930")).orders[0].execution.filledQuantity == "30"
+    broker.detail = order(filled="55")
+    await service.execute(
+        ModifyTradingOrder(account_seq=1, code="005930", command_id="fresh-split", price=67100), "modify", "old"
+    )
+    assert json.loads(broker.posts[0].content)["quantity"] == "45"
+    with pytest.raises(TradingError) as blocked:
+        await service.execute(
+            TradingCommand(account_seq=1, code="005930", command_id="duplicate-split"), "cancel", "old"
+        )
+    assert blocked.value.code == "order-processing"
+    assert len(broker.posts) == 1
+
+
+async def test_valid_order_event_publishes_display_snapshot_without_rest(setup):
+    broker, service, _ = setup
+    await service.authorize(1)
+    messages = []
+    service.on_order_change = lambda account, snapshot, revision: messages.append((account, snapshot, revision))
+    service.order_event({"topic": "personal:order:1", "data": {"accountSeq": "1", "order": order(filled="50")}})
+    assert len(messages) == 1
+    assert messages[0][0] == 1
+    assert messages[0][1].execution.filledQuantity == "50"
+    assert messages[0][2] == service.revision
+    assert broker.posts == []
+
+
+async def test_event_cannot_replace_fresh_rest_validation_or_allow_stale_remainder(setup):
+    broker, service, _ = setup
+    await service.authorize(1)
+    service.order_event({"topic": "personal:order:1", "data": {"accountSeq": "1", "order": order(filled="50")}})
+    broker.detail = order(filled="30")
+    command = ModifyTradingOrder(account_seq=1, code="005930", command_id="stale-rest", price=67000)
+    with pytest.raises(TradingError) as lag:
+        await service.execute(command, "modify", "old")
+    assert lag.value.code == "order-state-syncing"
+    assert broker.posts == []
+    broker.detail = order(filled="60")
+    await service.execute(command.model_copy(update={"command_id": "fresh-rest"}), "modify", "old")
+    assert json.loads(broker.posts[0].content)["quantity"] == "40"
+    await service.execute(command.model_copy(update={"command_id": "fresh-rest"}), "modify", "old")
+    assert len(broker.posts) == 1
+
+
+async def test_terminal_event_and_foreign_account_are_not_usable_as_open_order(setup):
+    broker, service, _ = setup
+    await service.authorize(1)
+    messages = []
+    service.on_order_change = lambda *args: messages.append(args)
+    service.order_event({"topic": "personal:order:2", "data": {"accountSeq": "2", "order": order()}})
+    assert messages == []
+    service.order_event({"topic": "personal:order:1", "data": {"accountSeq": "1", "order": order(status="CANCELED")}})
+    service.order_event({"topic": "personal:order:1", "data": {"accountSeq": "1", "order": order()}})
+    with pytest.raises(TradingError) as lag:
+        await service.execute(TradingCommand(account_seq=1, code="005930", command_id="late-open"), "cancel", "old")
+    assert lag.value.code == "order-state-syncing"
+    assert broker.posts == []

@@ -625,12 +625,17 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_news_router(data_dir=data_dir))
     app.state.trading_service = TradingService(
-        data_dir, on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision}),
+        data_dir,
+        on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision, "mode": "live"}),
+        on_order_change=lambda account, order, revision: bus.publish({
+            "type": "trading_order", "mode": "live", "account_seq": account,
+            "order": order.model_dump(), "revision": revision,
+        }),
     )
     app.include_router(build_trading_router(app.state.trading_service))
     app.state.paper_trading_service = PaperTradingService(
         data_dir, book_getter=_paper_live_book,
-        on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision}),
+        on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision, "mode": "paper"}),
     )
     app.include_router(build_paper_router(app.state.paper_trading_service))
     app.include_router(build_market_router(data_dir=data_dir))

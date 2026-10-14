@@ -1,0 +1,77 @@
+{
+  "note": "Isolated mock broker; display-data latency, not browser paint or real-account latency.",
+  "samples": [
+    {
+      "policy": "pause_reads",
+      "action": "cancel",
+      "broker_rtt_ms": 200.0,
+      "write_complete_ms": 2020.6,
+      "fill_to_display_max_ms": 2382.9,
+      "fill_to_display_median_ms": 2082.8,
+      "vendor_gets": 7,
+      "vendor_posts": 5,
+      "fresh_remainder_validated": true,
+      "same_command_not_replayed": true
+    },
+    {
+      "policy": "continuous_rest",
+      "action": "cancel",
+      "broker_rtt_ms": 200.0,
+      "write_complete_ms": 2942.0,
+      "fill_to_display_max_ms": 609.9,
+      "fill_to_display_median_ms": 573.7,
+      "vendor_gets": 17,
+      "vendor_posts": 5,
+      "fresh_remainder_validated": true,
+      "same_command_not_replayed": true
+    },
+    {
+      "policy": "event_overlay",
+      "action": "cancel",
+      "broker_rtt_ms": 200.0,
+      "write_complete_ms": 2016.3,
+      "fill_to_display_max_ms": 0.1,
+      "fill_to_display_median_ms": 0.1,
+      "vendor_gets": 7,
+      "vendor_posts": 5,
+      "fresh_remainder_validated": true,
+      "same_command_not_replayed": true
+    },
+    {
+      "policy": "pause_reads",
+      "action": "modify",
+      "broker_rtt_ms": 200.0,
+      "write_complete_ms": 2015.3,
+      "fill_to_display_max_ms": 2377.3,
+      "fill_to_display_median_ms": 2076.7,
+      "vendor_gets": 7,
+      "vendor_posts": 5,
+      "fresh_remainder_validated": true,
+      "same_command_not_replayed": true
+    },
+    {
+      "policy": "continuous_rest",
+      "action": "modify",
+      "broker_rtt_ms": 200.0,
+      "write_complete_ms": 2942.2,
+      "fill_to_display_max_ms": 610.4,
+      "fill_to_display_median_ms": 573.8,
+      "vendor_gets": 17,
+      "vendor_posts": 5,
+      "fresh_remainder_validated": true,
+      "same_command_not_replayed": true
+    },
+    {
+      "policy": "event_overlay",
+      "action": "modify",
+      "broker_rtt_ms": 200.0,
+      "write_complete_ms": 2015.1,
+      "fill_to_display_max_ms": 0.1,
+      "fill_to_display_median_ms": 0.0,
+      "vendor_gets": 7,
+      "vendor_posts": 5,
+      "fresh_remainder_validated": true,
+      "same_command_not_replayed": true
+    }
+  ]
+}

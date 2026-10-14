@@ -7,13 +7,22 @@ Unknown write outcomes are distinct from rejected writes.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import math
 import time
+from collections import defaultdict
+from datetime import datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
 HTTP_UNAUTHORIZED = 401
 HTTP_SERVER_ERROR = 500
+HTTP_TOO_MANY_REQUESTS = 429
+INFO_PEAK_HOUR = 9
+INFO_PEAK_END_MINUTE = 10
 
 
 class TradingError(Exception):
@@ -37,8 +46,10 @@ class TossClient:
         self._token = ""
         self._expires_at = 0.0
         self._token_lock = asyncio.Lock()
-        self._rate_lock = asyncio.Lock()
+        self._rate_locks: defaultdict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._next: dict[str, float] = {}
+        self._last: dict[str, float] = {}
+        self._limits: dict[str, int] = {}
 
     async def close(self) -> None:
         await self.http.aclose()
@@ -70,20 +81,73 @@ class TossClient:
                     503, "toss-auth-unavailable", "토스증권 인증을 확인하세요. 허용 IP와 API 설정을 확인해주세요."
                 ) from exc
 
-    async def _pace(self, path: str, method: str) -> None:
-        group, interval = ("order", 0.12) if method == "POST" else ("history", 0.25)
+    @staticmethod
+    def _rate_group(path: str, method: str) -> str:
         if path == "/api/v1/accounts":
-            group, interval = "account", 1.05
-        elif path in ("/api/v1/buying-power", "/api/v1/sellable-quantity"):
-            group, interval = "info", 0.4
-        elif path == "/api/v1/stocks":
-            group, interval = "stock", 0.25
-        elif path == "/api/v1/holdings":
-            group, interval = "asset", 0.25
-        async with self._rate_lock:
-            slot = max(time.monotonic(), self._next.get(group, 0))
-            self._next[group] = slot + interval
-        await asyncio.sleep(max(0, slot - time.monotonic()))
+            return "account"
+        if path in ("/api/v1/buying-power", "/api/v1/sellable-quantity"):
+            return "info"
+        if path == "/api/v1/stocks":
+            return "stock"
+        if path == "/api/v1/holdings":
+            return "asset"
+        return "order" if method == "POST" else "history"
+
+    @staticmethod
+    def _info_peak() -> bool:
+        now = datetime.now(ZoneInfo("Asia/Seoul"))
+        return now.hour == INFO_PEAK_HOUR and now.minute < INFO_PEAK_END_MINUTE
+
+    def _interval(self, group: str) -> float:
+        # Official group quotas, with 5% headroom. Lower response limits always win.
+        limit = {"order": 10, "history": 5, "info": 3 if self._info_peak() else 6,
+                 "account": 1, "stock": 5, "asset": 5}[group]
+        return 1.05 / min(limit, self._limits.get(group, limit))
+
+    async def _pace(self, path: str, method: str) -> None:
+        group = self._rate_group(path, method)
+        async with self._rate_locks[group]:
+            # Recheck after waking: a response may lower the quota while we wait.
+            while True:
+                now = time.monotonic()
+                deadline = max(self._next.get(group, 0), self._last.get(group, -math.inf) + self._interval(group))
+                if deadline <= now:
+                    break
+                await asyncio.sleep(deadline - now)
+            self._last[group] = now
+            self._next[group] = now + self._interval(group)
+
+    @staticmethod
+    def _seconds(value: str | None) -> float | None:
+        if value is None:
+            return None
+        try:
+            seconds = float(value)
+            return seconds if math.isfinite(seconds) and seconds >= 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def _observe_rate(self, path: str, method: str, response: httpx.Response) -> None:
+        group = self._rate_group(path, method)
+        try:
+            limit = int(response.headers.get("X-RateLimit-Limit", ""))
+            if limit > 0:
+                self._limits[group] = limit
+        except ValueError:
+            pass
+        delay = None
+        if response.headers.get("X-RateLimit-Remaining") == "0":
+            delay = self._seconds(response.headers.get("X-RateLimit-Reset"))
+        if response.status_code == HTTP_TOO_MANY_REQUESTS:
+            retry = response.headers.get("Retry-After")
+            after = self._seconds(retry)
+            if after is None and retry:
+                with contextlib.suppress(TypeError, ValueError, OverflowError):
+                    after = max(0, parsedate_to_datetime(retry).timestamp() - time.time())
+            delay = max(delay or 0, after or self._interval(group))
+        now = time.monotonic()
+        self._next[group] = max(self._next.get(group, 0), self._last.get(group, now) + self._interval(group),
+                                now + (delay or 0))
 
     async def request(
         self,
@@ -109,6 +173,7 @@ class TossClient:
                 if method == "POST"
                 else "토스증권 조회 연결을 확인하세요.",
             ) from exc
+        self._observe_rate(path, method, response)
         if response.status_code == HTTP_UNAUTHORIZED:
             self._expires_at = 0  # Refresh on the next call, never replay this write.
         try:

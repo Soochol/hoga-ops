@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import ValidationError
@@ -13,9 +13,11 @@ from hoga.trading.models import (
     ResetPaperAccount,
     ReviewTradingCommand,
     TradingAccountsResponse,
+    TradingBalancesResponse,
     TradingCancelResponse,
     TradingCommand,
     TradingCommandResponse,
+    TradingOrderStateResponse,
     TradingReviewResponse,
     TradingStateResponse,
 )
@@ -52,8 +54,13 @@ def build_router(service: TradingService | PaperTradingService, prefix: str = "/
 
     @router.get("/state")
     async def state(
-        account_seq: int = Query(gt=0), code: str = Query(pattern=r"^[A-Za-z0-9]{6}$")
-    ) -> TradingStateResponse:
+        account_seq: int = Query(gt=0), code: str = Query(pattern=r"^[A-Za-z0-9]{6}$"),
+        part: Literal["all", "orders", "balances"] = "all",
+    ) -> TradingStateResponse | TradingOrderStateResponse | TradingBalancesResponse:
+        if part == "orders":
+            return await invoke(service.order_state(account_seq, code))
+        if part == "balances":
+            return await invoke(service.balances(account_seq, code))
         return await invoke(service.state(account_seq, code))
 
     @router.post("/orders")

@@ -31,10 +31,12 @@ from hoga.trading.models import (
     TossOrder,
     TradingAccount,
     TradingAccountsResponse,
+    TradingBalancesResponse,
     TradingCancelResponse,
     TradingCancelResult,
     TradingCommand,
     TradingCommandResponse,
+    TradingOrderStateResponse,
     TradingStateResponse,
 )
 from hoga.trading.service import TradingService
@@ -275,6 +277,12 @@ class PaperTradingService:
             if await self._reconcile(doc, code):
                 self._save(doc)
             return self._state(doc, code)
+
+    async def order_state(self, account: int, code: str) -> TradingOrderStateResponse:
+        return TradingOrderStateResponse.model_validate((await self.state(account, code)).model_dump())
+
+    async def balances(self, account: int, code: str) -> TradingBalancesResponse:
+        return TradingBalancesResponse.model_validate((await self.state(account, code)).model_dump())
 
     @staticmethod
     def _cached(doc: dict, command: TradingCommand, action: str, order_id: str = "") -> tuple[dict, dict | None]:

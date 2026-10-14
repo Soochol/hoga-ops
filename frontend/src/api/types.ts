@@ -327,7 +327,8 @@ export interface CaptureEventBase {
 }
 
 export type PushEvent =
-  | { type: 'trading_changed'; revision: number }
+  | { type: 'trading_order'; mode: 'live'; account_seq: number; order: import('./trading').TossOrder; revision: number }
+  | { type: 'trading_changed'; revision: number; mode?: 'paper' | 'live' }
   | { type: 'live_history_gap'; code: string }
   | { type: 'inventory_added'; code: string; date: string }
   | { type: 'inventory_removed'; code: string; date: string }
