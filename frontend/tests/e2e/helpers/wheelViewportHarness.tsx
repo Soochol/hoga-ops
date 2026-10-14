@@ -5,6 +5,7 @@ import { createWindowedChart, flushWindowedChart, windowedChartDiagnostics } fro
 import type { RangeBundle } from '../../../src/api/types';
 import { createVirtualAxis } from '../../../src/util/virtualAxis';
 import { useWheelInteractions } from '../../../src/live/useWheelInteractions';
+import { retainRightPriceScaleWidth } from '../../../src/chart/util/retainRightPriceScaleWidth';
 
 export async function mount(windowed: boolean, count = 8000, interval = 60) {
   const host = document.createElement('div');
@@ -14,6 +15,7 @@ export async function mount(windowed: boolean, count = 8000, interval = 60) {
     handleScale: { mouseWheel: false },
     timeScale: { minBarSpacing: .5, rightOffset: 12 } });
   const chart = windowed ? createWindowedChart(native) : native;
+  retainRightPriceScaleWidth(chart);
   const series = chart.addSeries(CandlestickSeries, { priceLineVisible: false, lastValueVisible: false });
   const base = Date.UTC(2026, 8, 1) / 1000;
   const rows = Array.from({ length: count }, (_, i) => ({ time: (base + i * interval) as UTCTimestamp,
@@ -37,11 +39,11 @@ export async function mount(windowed: boolean, count = 8000, interval = 60) {
       mouseIndex: ts.coordinateToLogical(450), x: ts.timeToCoordinate(rows[1850].time),
       spacing: ts.options().barSpacing, changes: [...changes] };
   };
-  const wheel = (deltaY: number, ctrlKey: boolean, deltaX = 0, shiftKey = false) => {
+  const wheel = (deltaY: number, ctrlKey: boolean, deltaX = 0, shiftKey = false, mouseX = 450) => {
     const rect = container.getBoundingClientRect();
     container.querySelector('canvas')!.dispatchEvent(new WheelEvent('wheel', {
       bubbles: true, cancelable: true, deltaY, deltaX, ctrlKey, shiftKey,
-      clientX: rect.left + 450, clientY: rect.top + 200 }));
+      clientX: rect.left + mouseX, clientY: rect.top + 200 }));
   };
   return { chart, rows, series, snap, wheel, frame, changes };
 }

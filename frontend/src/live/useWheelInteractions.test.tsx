@@ -26,10 +26,10 @@ function makeTs(over: Record<string, unknown> = {}) {
   };
 }
 
-function makeChart(ts: ReturnType<typeof makeTs>): IChartApi {
+function makeChart(ts: ReturnType<typeof makeTs>, maxBarSpacing = 0): IChartApi {
   return {
     timeScale: () => ts,
-    options: () => ({ timeScale: { minBarSpacing: 0.5 } }),
+    options: () => ({ timeScale: { minBarSpacing: 0.5, maxBarSpacing } }),
   } as unknown as IChartApi;
 }
 
@@ -78,14 +78,16 @@ function Harness({
   bundle,
   axis = makeAxis(false),
   getRightOffsetBars,
+  onViewportChanged,
 }: {
   chart: IChartApi | null;
   bundle: RangeBundle | null;
   axis?: VirtualAxis;
   getRightOffsetBars?: (visibleBars: number, plotWidth: number) => number;
+  onViewportChanged?: (range: { from: number; to: number }) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useWheelInteractions(chart, ref, bundle, axis, undefined, getRightOffsetBars);
+  useWheelInteractions(chart, ref, bundle, axis, onViewportChanged, getRightOffsetBars);
   return <div data-testid="wheel-host" ref={ref} />;
 }
 
@@ -127,6 +129,8 @@ function wheel(el: Element, init: WheelEventInit): WheelEvent {
 
 // deltaY=100 → factor = exp(0.1) ≈ 1.10517 (줌아웃 ~10.5%)
 const FACTOR = Math.exp(100 * 0.001);
+const pixelX = (range: { from: number; to: number }, anchor: number, width = 1000) =>
+  width - 1 - (range.to - anchor + .5) * width / (range.to - range.from + 1);
 
 describe('useWheelInteractions', () => {
   it('plain wheel: 오른쪽 끝 고정 줌 — to 유지, from만 왼쪽으로 (bundle 없음)', () => {
@@ -136,14 +140,13 @@ describe('useWheelInteractions', () => {
     expect(ts.setVisibleLogicalRange).toHaveBeenCalledTimes(1);
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
     expect(arg.to).toBe(100);
-    expect(arg.from).toBeCloseTo(100 - 100 * FACTOR, 6); // ≈ -10.517
+    expect(arg.to - arg.from + 1).toBeCloseTo(101 * FACTOR, 6);
   });
 
   it('plain wheel 줌인: 마지막 캔들의 합집합 인덱스(ts.timeToIndex)를 앵커로 전달', () => {
     // 훅은 마지막 캔들 ts_ms를 ts.timeToIndex로 변환해 trueLast를 얻는다
     // (candles.length-1이 아님 — 호가 합집합 skew 회피). timeToIndex가 85를
-    // 돌려주면 range {0,100} 기준 anchor=min(100,85)=85. 줌인 factor=exp(-0.1):
-    // from=85·(1−f)≈8.09, to=85+15·f≈98.57. to가 100으로 고정되지 않음 = 회귀 해소.
+    // 돌려주면 range {0,100} 기준 85번째 봉 중심의 픽셀 위치를 보존한다.
     const f = Math.exp(-0.1);
     const ts = makeTs({ timeToIndex: vi.fn(() => 85) });
     const { getByTestId } = render(
@@ -152,18 +155,19 @@ describe('useWheelInteractions', () => {
     wheel(getByTestId('wheel-host'), { deltaY: -100 });
     expect(ts.timeToIndex).toHaveBeenCalled(); // candles.length-1 대신 변환을 거쳤다
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
-    expect(arg.from).toBeCloseTo(85 * (1 - f), 6); // ≈ 8.089
-    expect(arg.to).toBeCloseTo(85 + 15 * f, 6); // ≈ 98.573 (100 고정 아님)
+    expect(arg.to - arg.from + 1).toBeCloseTo(101 * f, 6);
+    expect(pixelX(arg, 85)).toBeCloseTo(pixelX({ from: 0, to: 100 }, 85), 9);
   });
 
-  it('ctrl wheel: 커서 앵커 줌 — 양변이 앵커(50) 기준 확장', () => {
+  it('ctrl wheel: 정수 봉으로 스냅하지 않고 연속 커서 좌표를 보존', () => {
     const ts = makeTs({ coordinateToLogical: vi.fn(() => 50) });
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
     wheel(getByTestId('wheel-host'), { deltaY: 100, ctrlKey: true, clientX: 50 });
-    expect(ts.coordinateToLogical).toHaveBeenCalledWith(50);
+    expect(ts.coordinateToLogical).not.toHaveBeenCalled();
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
-    expect(arg.from).toBeCloseTo(50 - 50 * FACTOR, 6); // ≈ -5.259
-    expect(arg.to).toBeCloseTo(50 + 50 * FACTOR, 6);   // ≈ 105.259
+    const anchor = 100.5 - (999 - 50) * 101 / 1000;
+    expect(pixelX(arg, anchor)).toBeCloseTo(50, 9);
+    expect(arg.to - arg.from + 1).toBeCloseTo(101 * FACTOR, 6);
   });
 
   it('shift wheel: 스팬 유지 팬 (+스팬의 10%)', () => {
@@ -227,19 +231,42 @@ describe('useWheelInteractions', () => {
     wheel(getByTestId('wheel-host'), { deltaY: 3.125, deltaMode: WheelEvent.DOM_DELTA_LINE });
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
     expect(arg.to).toBe(100);
-    expect(arg.from).toBeCloseTo(100 - 100 * FACTOR, 6); // 환산 없으면 ≈ -0.31로 실패
+    expect(arg.to - arg.from + 1).toBeCloseTo(101 * FACTOR, 6);
   });
 
   it('줌아웃 플로어: 양 끝 봉을 포함한 최대 span에서 앵커 보존 클램프로 전달', () => {
-    // width 52.5 / minBarSpacing 0.5 → 105봉, span 104. ctrl 요청 span
-    // ≈110.5 > 104 → 앵커(50, 비율 0.5) 보존 클램프 {-2, 102}.
-    // 클램프가 없으면 {≈-5.26, ≈105.26}이 그대로 전달되어 실패한다.
+    // width 52.5 / minBarSpacing 0.5 → 105봉, span 104.
     const ts = makeTs({ width: vi.fn(() => 52.5), coordinateToLogical: vi.fn(() => 50) });
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);
     wheel(getByTestId('wheel-host'), { deltaY: 100, ctrlKey: true, clientX: 50 });
     const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
-    expect(arg.from).toBeCloseTo(-2, 9);
-    expect(arg.to).toBeCloseTo(102, 9);
+    expect(arg.to - arg.from).toBeCloseTo(104, 9);
+    const anchor = 100.5 - (52.5 - 1 - 50) * 101 / 52.5;
+    expect(pixelX(arg, anchor, 52.5)).toBeCloseTo(50, 9);
+  });
+
+  for (const ctrlKey of [false, true]) {
+    for (const limit of ['in', 'out'] as const) {
+      it(`zoom ${limit} limit consumes wheel without a viewport write/notification, ctrl=${ctrlKey}`, () => {
+        const range = limit === 'in' ? { from: 99, to: 100 } : { from: 0, to: 1999 };
+        const ts = makeTs({ getVisibleLogicalRange: vi.fn(() => range) });
+        const changed = vi.fn();
+        const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} onViewportChanged={changed} />);
+        const e = wheel(getByTestId('wheel-host'), { deltaY: limit === 'in' ? -120 : 120, ctrlKey });
+        expect(e.defaultPrevented).toBe(true);
+        expect(ts.setVisibleLogicalRange).not.toHaveBeenCalled();
+        expect(changed).not.toHaveBeenCalled();
+      });
+    }
+  }
+
+  it('honours configured maxBarSpacing when clamping zoom-in', () => {
+    const ts = makeTs({ timeToIndex: vi.fn(() => 85) });
+    const { getByTestId } = render(<Harness chart={makeChart(ts, 100)} bundle={makeBundle(86)} axis={makeAxis(true)} />);
+    wheel(getByTestId('wheel-host'), { deltaY: -5000 });
+    const arg = ts.setVisibleLogicalRange.mock.calls[0][0] as { from: number; to: number };
+    expect(arg.to - arg.from).toBeCloseTo(9, 9); // 1000px / 100px = 10 bars
+    expect(pixelX(arg, 85)).toBeCloseTo(pixelX({ from: 0, to: 100 }, 85), 9);
   });
 
   it('bundle 교체 시 마지막 캔들 ms는 ref로 갱신 — 리스너 재부착 없음', () => {

@@ -5720,7 +5720,7 @@ describe('LiveChartRoot wheel interactions wiring', () => {
     // 마지막 호출이 휠 결과여야 한다 (초기 뷰 effect의 호출이 선행할 수 있음).
     const last = ts.setVisibleLogicalRange.mock.calls.at(-1)![0] as { from: number; to: number };
     expect(last.to).toBe(100);
-    expect(last.from).toBeCloseTo(100 - 100 * Math.exp(0.1), 6); // ≈ -10.517
+    expect(last.to - last.from + 1).toBeCloseTo(101 * Math.exp(0.1), 6);
   });
 });
 

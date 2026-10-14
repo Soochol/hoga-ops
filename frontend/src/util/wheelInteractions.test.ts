@@ -1,417 +1,140 @@
 import { describe, expect, it, vi } from 'vitest';
 import { computeWheelOutcome, type WheelInput } from './wheelInteractions';
 
-// Reusable base — tests override the fields they care about.
 function baseInput(over: Partial<WheelInput> = {}): WheelInput {
   return {
-    range: { from: 0, to: 100 },
-    deltaY: 100,
-    shiftKey: false,
-    ctrlOrMetaKey: false,
-    mouseX: 0,
-    coordinateToLogical: () => 50,
-    maxTo: Number.POSITIVE_INFINITY,
-    ...over,
+    range: { from: 0, to: 100 }, deltaY: 100,
+    shiftKey: false, ctrlOrMetaKey: false, mouseX: 450,
+    coordinateToLogical: () => 50, maxTo: Infinity, ...over,
   };
 }
 
+// Actual CSS pixel coordinate of a candle centre in lightweight-charts.
+function pixelX(range: { from: number; to: number }, index: number, width = 942) {
+  return width - 1 - (range.to - index + 0.5) * width / (range.to - range.from + 1);
+}
+
+function cursorIndex(range: { from: number; to: number }, x: number, width = 942) {
+  return range.to + 0.5 - (width - 1 - x) * (range.to - range.from + 1) / width;
+}
+
 describe('computeWheelOutcome', () => {
-  describe('plain wheel — right-edge-anchored zoom', () => {
-    it('zooms out keeping `to` fixed when deltaY > 0', () => {
-      const out = computeWheelOutcome(baseInput({ deltaY: 100 }));
-      expect(out).not.toBeNull();
-      expect(out!.to).toBe(100);
-      expect(out!.from).toBeLessThan(0); // span grew, `from` moved left
-    });
-
-    it('zooms in keeping `to` fixed when deltaY < 0', () => {
-      const out = computeWheelOutcome(baseInput({ deltaY: -100 }));
-      expect(out).not.toBeNull();
-      expect(out!.to).toBe(100);
-      expect(out!.from).toBeGreaterThan(0); // span shrank, `from` moved right
-    });
-
-    it('does not call coordinateToLogical when no Ctrl/Cmd', () => {
+  for (const deltaY of [-120, 120]) {
+    it(`keeps the historical right logical edge on zoom ${deltaY}`, () => {
       const spy = vi.fn(() => 50);
-      computeWheelOutcome(baseInput({ deltaY: 100, coordinateToLogical: spy }));
+      const input = baseInput({deltaY, lastBarIndex: 300, coordinateToLogical: spy});
+      const out = computeWheelOutcome(input)!;
+      expect(out.to).toBe(input.range.to);
+      expect(out.to - out.from + 1).toBeCloseTo(101 * Math.exp(deltaY * .001), 10);
       expect(spy).not.toHaveBeenCalled();
     });
+  }
+
+  it('keeps the right edge when the latest candle is unavailable, ignoring the Shift wall', () => {
+    expect(computeWheelOutcome(baseInput({maxTo: 50}))!.to).toBe(100);
   });
 
-  describe('Ctrl/Cmd wheel — mouse-anchored zoom', () => {
-    it('expands both edges outward from the anchor on zoom out', () => {
-      const out = computeWheelOutcome(
-        baseInput({
-          deltaY: 100,
-          ctrlOrMetaKey: true,
-          coordinateToLogical: () => 50, // anchor in the middle
-        }),
-      );
-      expect(out).not.toBeNull();
-      expect(out!.from).toBeLessThan(0);
-      expect(out!.to).toBeGreaterThan(100);
+  for (const span of [1, 3, 10, 30, 100, 420]) {
+    it(`keeps the latest candle pixel fixed through repeated zooms at span ${span}`, () => {
+      let range = {from: 3999 - span * .7, to: 3999 + span * .3};
+      const beforeX = pixelX(range, 3999);
+      for (const deltaY of [-120, 120, -120, 120]) {
+        range = computeWheelOutcome(baseInput({range, deltaY, lastBarIndex: 3999, minSpan: 1}))!;
+        expect(pixelX(range, 3999)).toBeCloseTo(beforeX, 8);
+      }
     });
+  }
 
-    it('contracts both edges toward the anchor on zoom in', () => {
-      const out = computeWheelOutcome(
-        baseInput({
-          deltaY: -100,
-          ctrlOrMetaKey: true,
-          coordinateToLogical: () => 50,
-        }),
-      );
-      expect(out).not.toBeNull();
-      expect(out!.from).toBeGreaterThan(0);
-      expect(out!.to).toBeLessThan(100);
+  for (const mouseX of [0, 450.25, 920]) {
+    it(`preserves the continuous Ctrl/Cmd cursor at x=${mouseX}, including blank space`, () => {
+      let range = {from: 3990, to: 4002};
+      const anchor = cursorIndex(range, mouseX);
+      const callback = vi.fn(() => 3999);
+      for (const deltaY of [-120, -120, 120, 120]) {
+        range = computeWheelOutcome(baseInput({range, deltaY, ctrlOrMetaKey: true,
+          plotWidth: 942, mouseX, coordinateToLogical: callback, maxTo: 4000, minSpan: 1}))!;
+        expect(pixelX(range, anchor)).toBeCloseTo(mouseX, 8);
+      }
+      expect(callback).not.toHaveBeenCalled();
     });
+  }
 
-    it('falls back to `to` as anchor when coordinateToLogical returns null', () => {
-      const out = computeWheelOutcome(
-        baseInput({
-          deltaY: 100,
-          ctrlOrMetaKey: true,
-          coordinateToLogical: () => null,
-        }),
-      );
-      // With anchor = to (100), span 100 → factor ~1.105
-      // from' = 100 - (100 - 0) * 1.105 ≈ -10.5; to' = 100 + (100 - 100) * 1.105 = 100
-      expect(out).not.toBeNull();
-      expect(out!.to).toBe(100);
-      expect(out!.from).toBeLessThan(0);
-    });
+  it('uses the supplied cursor mapping when no plot width is available', () => {
+    const callback = vi.fn(() => 80);
+    const input = baseInput({range: {from: 50, to: 99}, ctrlOrMetaKey: true,
+      coordinateToLogical: callback, maxTo: 100});
+    const out = computeWheelOutcome(input)!;
+    expect(out.to).toBeGreaterThan(100);
+    expect(pixelX(out, 80)).toBeCloseTo(pixelX(input.range, 80), 10);
+    expect(callback).toHaveBeenCalledWith(input.mouseX);
   });
 
-  describe('Shift wheel — pan', () => {
-    it('pans right (toward future) on deltaY > 0, span unchanged', () => {
-      const out = computeWheelOutcome(baseInput({ deltaY: 100, shiftKey: true }));
-      expect(out).toEqual({ from: 10, to: 110 });
+  it('falls back to the right edge when the cursor mapping is null', () => {
+    const out = computeWheelOutcome(baseInput({ctrlOrMetaKey: true, coordinateToLogical: () => null}))!;
+    expect(out.to).toBe(100);
+  });
+
+  for (const ctrlOrMetaKey of [false, true]) {
+    for (const bound of ['min', 'max'] as const) {
+      it(`preserves the pixel anchor when clamping ${bound} span, ctrl=${ctrlOrMetaKey}`, () => {
+        const input = baseInput({range: {from: 90, to: 110}, lastBarIndex: 100,
+          ctrlOrMetaKey, coordinateToLogical: () => 100,
+          deltaY: bound === 'min' ? -1000 : 1000, minSpan: 10, maxSpan: 25});
+        const out = computeWheelOutcome(input)!;
+        expect(out.to - out.from).toBeCloseTo(bound === 'min' ? 10 : 25, 9);
+        expect(pixelX(out, 100)).toBeCloseTo(pixelX(input.range, 100), 9);
+      });
+
+      it(`does not pan at the ${bound} span limit, ctrl=${ctrlOrMetaKey}`, () => {
+        const span = bound === 'min' ? 1 : 100;
+        const range = {from: 99 - span, to: 99};
+        const input = baseInput({range, ctrlOrMetaKey, lastBarIndex: 99,
+          plotWidth: 942, minSpan: 1, maxSpan: 100, deltaY: bound === 'min' ? -120 : 120});
+        expect(computeWheelOutcome(input)).toEqual(range);
+      });
+    }
+  }
+
+  it('preserves the historical right edge when clamped', () => {
+    expect(computeWheelOutcome(baseInput({maxSpan: 105}))).toEqual({from: -5, to: 100});
+  });
+
+  it('ignores invalid nonpositive maxSpan instead of collapsing the viewport', () => {
+    const unlimited = computeWheelOutcome(baseInput());
+    expect(computeWheelOutcome(baseInput({maxSpan: 0}))).toEqual(unlimited);
+    expect(computeWheelOutcome(baseInput({maxSpan: NaN}))).toEqual(unlimited);
+  });
+
+  it('allows zooming out from a single-bar inclusive range', () => {
+    const out = computeWheelOutcome(baseInput({range: {from: 5, to: 5}, lastBarIndex: 5}))!;
+    expect(out.to - out.from).toBeGreaterThan(0);
+    expect(pixelX(out, 5)).toBeCloseTo(pixelX({from: 5, to: 5}, 5), 9);
+  });
+
+  for (const input of [baseInput({range: {from: 10, to: 5}}), baseInput({deltaY: 0}),
+    baseInput({deltaY: NaN}), baseInput({range: {from: 0, to: Infinity}})]) {
+    it(`ignores invalid/no-op input ${JSON.stringify(input.range)} delta=${input.deltaY}`, () => {
+      expect(computeWheelOutcome(input)).toBeNull();
     });
+  }
 
-    it('pans left (toward past) on deltaY < 0', () => {
-      const out = computeWheelOutcome(baseInput({ deltaY: -100, shiftKey: true }));
-      expect(out).toEqual({ from: -10, to: 90 });
-    });
-
-    it('returns null when deltaY is zero (no direction)', () => {
-      expect(computeWheelOutcome(baseInput({ deltaY: 0, shiftKey: true }))).toBeNull();
-    });
+  it('pans left and right by 10% of the span', () => {
+    expect(computeWheelOutcome(baseInput({shiftKey: true}))).toEqual({from: 10, to: 110});
+    expect(computeWheelOutcome(baseInput({shiftKey: true, deltaY: -100}))).toEqual({from: -10, to: 90});
   });
 
-  describe('modifier precedence', () => {
-    it('Shift wins over Ctrl/Cmd when both held', () => {
-      const out = computeWheelOutcome(
-        baseInput({ deltaY: 100, shiftKey: true, ctrlOrMetaKey: true }),
-      );
-      // Pan result, not zoom
-      expect(out).toEqual({ from: 10, to: 110 });
-    });
+  it('gives Shift priority over Ctrl/Cmd and ignores zoom limits', () => {
+    expect(computeWheelOutcome(baseInput({shiftKey: true, ctrlOrMetaKey: true, maxSpan: 50})))
+      .toEqual({from: 10, to: 110});
   });
 
-  describe('degenerate inputs', () => {
-    it('returns null for zero-width range', () => {
-      expect(
-        computeWheelOutcome(baseInput({ range: { from: 5, to: 5 } })),
-      ).toBeNull();
-    });
-
-    it('returns null for negative-width range', () => {
-      expect(
-        computeWheelOutcome(baseInput({ range: { from: 10, to: 5 } })),
-      ).toBeNull();
-    });
+  it('clamps Shift pan-right at its wall while preserving span', () => {
+    expect(computeWheelOutcome(baseInput({range: {from: 50, to: 99}, shiftKey: true, maxTo: 100})))
+      .toEqual({from: 51, to: 100});
   });
 
-  describe('Ctrl/Cmd zoom-out — anchor preserved past right wall', () => {
-    // The right wall does NOT clamp ctrl-zoom. The mouse-anchor invariant
-    // (anchor's screen-x stays under the mouse) is sacred — clamping `to`
-    // while leaving `from` at the formula value breaks that invariant by
-    // narrowing the visible span asymmetrically. The library renders empty
-    // space past the last candle by design; ctrl-zoom-out is allowed to
-    // extend that padding. See ADR-0045 (this fix).
-    it('lets ctrl zoom-out push `to` past maxTo and preserves anchor ratio', () => {
-      // range={50,99}, anchor=80, deltaY=100, maxTo=100
-      // span=49, factor=exp(0.1)≈1.10517
-      // newFrom = 80 - (80-50)*factor ≈ 46.8448
-      // newTo   = 80 + (99-80)*factor ≈ 100.998  (> maxTo, but NOT clamped)
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 50, to: 99 },
-          deltaY: 100,
-          ctrlOrMetaKey: true,
-          coordinateToLogical: () => 80,
-          maxTo: 100,
-        }),
-      );
-      expect(out).not.toBeNull();
-      expect(out!.from).toBeCloseTo(46.8448, 3);
-      expect(out!.to).toBeCloseTo(100.998, 2);
-      // Anchor ratio invariant: (anchor - from)/(to - from) preserved.
-      const pBefore = (80 - 50) / (99 - 50);
-      const pAfter = (80 - out!.from) / (out!.to - out!.from);
-      expect(pAfter).toBeCloseTo(pBefore, 10);
-    });
-
-    it('does not clamp ctrl zoom-out that stays under the wall', () => {
-      // range={50,90}, anchor=70, deltaY=100, maxTo=100
-      // newTo ≈ 70 + 20*1.105 = 92.1 — below wall
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 50, to: 90 },
-          deltaY: 100,
-          ctrlOrMetaKey: true,
-          coordinateToLogical: () => 70,
-          maxTo: 100,
-        }),
-      );
-      expect(out).not.toBeNull();
-      expect(out!.to).toBeCloseTo(92.1, 1);
-      expect(out!.from).toBeCloseTo(47.9, 1);
-    });
-
-    it('does not clamp ctrl zoom-in even when current `to` is past the wall', () => {
-      // range={0,115}, anchor=50, deltaY=-100, maxTo=100
-      // factor < 1 — newTo < to, direction gate prevents clamp
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 0, to: 115 },
-          deltaY: -100,
-          ctrlOrMetaKey: true,
-          coordinateToLogical: () => 50,
-          maxTo: 100,
-        }),
-      );
-      expect(out).not.toBeNull();
-      expect(out!.to).toBeLessThan(115);
-      // No clamp applied — to should be the formula value, not 100.
-      expect(out!.to).not.toBe(100);
-    });
-  });
-
-  describe('right wall — Shift pan-right clamp', () => {
-    it('does not clamp shift pan-right that stays under the wall', () => {
-      // range={50,90}, deltaY=100, maxTo=100; span=40, step=4 → newTo=94
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 50, to: 90 },
-          deltaY: 100,
-          shiftKey: true,
-          maxTo: 100,
-        }),
-      );
-      expect(out).toEqual({ from: 54, to: 94 });
-    });
-
-    it('clamps shift pan-right at the wall, preserving span', () => {
-      // range={50,99}, deltaY=100, maxTo=100; span=49, step=4.9 → newTo=103.9
-      // Clamp to=100, from=100-49=51
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 50, to: 99 },
-          deltaY: 100,
-          shiftKey: true,
-          maxTo: 100,
-        }),
-      );
-      expect(out).toEqual({ from: 51, to: 100 });
-    });
-
-    it('does not clamp shift pan-left even when `to` is past the wall', () => {
-      // range={20,115}, deltaY=-100, maxTo=100; step=-9.5
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 20, to: 115 },
-          deltaY: -100,
-          shiftKey: true,
-          maxTo: 100,
-        }),
-      );
-      expect(out).toEqual({ from: 10.5, to: 105.5 });
-    });
-
-    it('clamps shift pan-right with large span preserving span at wall', () => {
-      // range={5,95}, deltaY=100, maxTo=100; span=90, step=9 → newTo=104
-      // Clamp to=100, from=100-90=10
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 5, to: 95 },
-          deltaY: 100,
-          shiftKey: true,
-          maxTo: 100,
-        }),
-      );
-      expect(out).toEqual({ from: 10, to: 100 });
-    });
-  });
-
-  describe('right wall — plain wheel and Infinity maxTo', () => {
-    it('plain wheel ignores maxTo entirely', () => {
-      // Plain wheel keeps `to` fixed regardless of maxTo.
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 0, to: 100 },
-          deltaY: 100,
-          maxTo: 50, // wall well below current to
-        }),
-      );
-      expect(out).not.toBeNull();
-      expect(out!.to).toBe(100); // unchanged
-      expect(out!.from).toBeLessThan(0);
-    });
-
-    it('maxTo=Infinity preserves pre-wall behavior on ctrl', () => {
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 0, to: 100 },
-          deltaY: 100,
-          ctrlOrMetaKey: true,
-          coordinateToLogical: () => 50,
-          maxTo: Number.POSITIVE_INFINITY,
-        }),
-      );
-      expect(out).not.toBeNull();
-      expect(out!.to).toBeGreaterThan(100); // no clamp
-    });
-
-    it('maxTo=Infinity preserves pre-wall behavior on shift', () => {
-      const out = computeWheelOutcome(
-        baseInput({
-          range: { from: 0, to: 100 },
-          deltaY: 100,
-          shiftKey: true,
-          maxTo: Number.POSITIVE_INFINITY,
-        }),
-      );
-      expect(out).toEqual({ from: 10, to: 110 });
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// maxSpan — 라이브러리 barSpacing 플로어와의 앵커 보존 합성
-// (/diagnose 2026-06-08: 플로어 도달 후 ctrl 줌아웃이 우측 팬으로 변질되어
-//  커서 앵커가 풀리던 회귀. maxSpan = timeScale.width() / minBarSpacing.)
-// ---------------------------------------------------------------------------
-
-describe('computeWheelOutcome — maxSpan (zoom-out floor, anchor-preserving)', () => {
-  it('ctrl 줌아웃: 결과 span이 maxSpan을 넘으면 앵커 비율을 보존하며 span을 클램프', () => {
-    // range {0,100}, anchor 80 (ratio 0.8), deltaY=100 → 요청 span ≈110.52 > 105.
-    // 클램프: span=105, from = 80 − 0.8×105 = −4, to = 101 — 앵커 비율 0.8 유지.
-    const out = computeWheelOutcome(
-      baseInput({
-        deltaY: 100,
-        ctrlOrMetaKey: true,
-        coordinateToLogical: () => 80,
-        maxSpan: 105,
-      }),
-    );
-    expect(out).not.toBeNull();
-    expect(out!.to - out!.from).toBeCloseTo(105, 9);
-    expect(out!.from).toBeCloseTo(-4, 9);
-    expect(out!.to).toBeCloseTo(101, 9);
-    // 앵커 비율 불변식: (anchor − from)/span === 요청 범위에서의 비율
-    expect((80 - out!.from) / (out!.to - out!.from)).toBeCloseTo(0.8, 9);
-  });
-
-  it('ctrl 줌아웃: maxSpan 여유가 있으면 수식 결과 그대로 (클램프 미발동)', () => {
-    const f = Math.exp(0.1);
-    const out = computeWheelOutcome(
-      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 50, maxSpan: 200 }),
-    );
-    expect(out!.from).toBeCloseTo(50 - 50 * f, 9);
-    expect(out!.to).toBeCloseTo(50 + 50 * f, 9);
-  });
-
-  it('ctrl 줌아웃: maxSpan === 현재 span이면 정확히 no-op (플로어에서 멈춤, 팬 변질 없음)', () => {
-    const out = computeWheelOutcome(
-      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 80, maxSpan: 100 }),
-    );
-    expect(out!.from).toBeCloseTo(0, 9);
-    expect(out!.to).toBeCloseTo(100, 9);
-  });
-
-  it('ctrl 줌인: 이미 플로어를 넘긴 상태(span > maxSpan)에서도 앵커 보존 클램프', () => {
-    // 리사이즈 등으로 현재 span 100 > maxSpan 50인 상태에서 줌인(요청 span ≈90.5)
-    // → 여전히 > 50 → 앵커 비율 보존하며 span 50으로.
-    const out = computeWheelOutcome(
-      baseInput({ deltaY: -100, ctrlOrMetaKey: true, coordinateToLogical: () => 50, maxSpan: 50 }),
-    );
-    expect(out!.to - out!.from).toBeCloseTo(50, 9);
-    expect((50 - out!.from) / (out!.to - out!.from)).toBeCloseTo(0.5, 9);
-  });
-
-  it('plain 줌아웃: maxSpan 클램프 시에도 to(오른쪽 끝) 고정 유지', () => {
-    const out = computeWheelOutcome(baseInput({ deltaY: 100, maxSpan: 105 }));
-    expect(out!.to).toBe(100);
-    expect(out!.from).toBeCloseTo(-5, 9);
-  });
-
-  it('shift 팬: maxSpan과 무관 — span이 maxSpan보다 커도 그대로 평행이동', () => {
-    const out = computeWheelOutcome(baseInput({ deltaY: 100, shiftKey: true, maxSpan: 50 }));
-    expect(out).toEqual({ from: 10, to: 110 });
-  });
-
-  it('maxSpan 미지정: 기존 동작 그대로 (무클램프)', () => {
-    const f = Math.exp(0.1);
-    const out = computeWheelOutcome(
-      baseInput({ deltaY: 100, ctrlOrMetaKey: true, coordinateToLogical: () => 50 }),
-    );
-    expect(out!.from).toBeCloseTo(50 - 50 * f, 9);
-    expect(out!.to).toBeCloseTo(50 + 50 * f, 9);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// plain wheel — latest-candle anchor (lastBarIndex)
-// (개선 2026-06-08: range.to(우측 패딩 끝) 고정은 줌인 시 마지막 캔들을 화면
-//  왼쪽으로 밀어내 앵커가 풀렸다. 라이브 엣지에서는 마지막 캔들을 앵커하고,
-//  과거로 스크롤한 상태(to < lastBarIndex)에서는 기존대로 to를 고정한다.)
-// ---------------------------------------------------------------------------
-
-describe('computeWheelOutcome — plain wheel latest-candle anchor', () => {
-  it('라이브 엣지 줌인: 마지막 캔들(lastBarIndex)을 앵커 — to 고정 아님, 캔들 비율 보존', () => {
-    // range {0,115}, lastBarIndex 100 (to = lastBar + 15 패딩). 줌인 factor=exp(-0.1).
-    const f = Math.exp(-0.1);
-    const out = computeWheelOutcome(
-      baseInput({ range: { from: 0, to: 115 }, deltaY: -100, lastBarIndex: 100 }),
-    );
-    expect(out).not.toBeNull();
-    expect(out!.from).toBeCloseTo(100 - 100 * f, 9); // ≈ 9.52
-    expect(out!.to).toBeCloseTo(100 + 15 * f, 9); // ≈ 113.57 (to가 줄어듦 — 고정 아님)
-    // 마지막 캔들 화면 비율 불변식: (lastBar − from)/span === 줌 전 비율(100/115)
-    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
-  });
-
-  it('라이브 엣지 줌아웃: 마지막 캔들 앵커 — 캔들 비율 보존', () => {
-    const f = Math.exp(0.1);
-    const out = computeWheelOutcome(
-      baseInput({ range: { from: 0, to: 115 }, deltaY: 100, lastBarIndex: 100 }),
-    );
-    expect(out!.from).toBeCloseTo(100 - 100 * f, 9);
-    expect(out!.to).toBeCloseTo(100 + 15 * f, 9);
-    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
-  });
-
-  it('과거로 스크롤(to < lastBarIndex): 오른쪽 끝(to) 고정 — 기존 결정 #1 유지', () => {
-    // 마지막 캔들이 화면 밖 오른쪽 → anchor = min(to, lastBar) = to.
-    const out = computeWheelOutcome(
-      baseInput({ range: { from: 0, to: 100 }, deltaY: -100, lastBarIndex: 300 }),
-    );
-    expect(out!.to).toBe(100); // 우측 끝 고정
-    expect(out!.from).toBeGreaterThan(0);
-  });
-
-  it('lastBarIndex 미지정: 기존 to-고정 동작 (하위호환)', () => {
-    const out = computeWheelOutcome(baseInput({ range: { from: 0, to: 100 }, deltaY: -100 }));
-    expect(out!.to).toBe(100);
-  });
-
-  it('마지막 캔들 앵커 + maxSpan 플로어: 캔들 비율 보존하며 클램프', () => {
-    // 줌아웃이 플로어를 넘으면 마지막 캔들(앵커) 비율을 보존하며 span 클램프.
-    // range {0,115}, lastBar 100 (비율 100/115), maxSpan 120.
-    const out = computeWheelOutcome(
-      baseInput({ range: { from: 0, to: 115 }, deltaY: 100, lastBarIndex: 100, maxSpan: 120 }),
-    );
-    expect(out!.to - out!.from).toBeCloseTo(120, 9);
-    expect((100 - out!.from) / (out!.to - out!.from)).toBeCloseTo(100 / 115, 9);
+  it('lets Shift pan-left return from beyond the wall', () => {
+    expect(computeWheelOutcome(baseInput({range: {from: 20, to: 115}, shiftKey: true, deltaY: -100, maxTo: 100})))
+      .toEqual({from: 10.5, to: 105.5});
   });
 });
