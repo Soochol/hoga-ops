@@ -38,6 +38,8 @@ export interface QuoteRowProps {
   onClick: (e?: React.MouseEvent<HTMLLIElement> | React.KeyboardEvent<HTMLLIElement>) => void;
   // 행 좌측 선행 슬롯(순위 패널의 순위번호). 미전달 시 기존 레이아웃 그대로.
   leading?: React.ReactNode;
+  /** Content inside the existing group indent; reserves no column space. */
+  indentContent?: React.ReactNode;
   trailingAction?: React.ReactNode;
   /** Flat occurrence lists reserve more room for the name in narrow rails. */
   compact?: boolean;
@@ -90,7 +92,7 @@ function formatPct(pct: number | null): string {
 
 export function QuoteRow({
   name, code, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
-  active, ariaLabel, testId, onClick, leading, trailingAction, compact = false, nameTooltip, nameDetail,
+  active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, nameTooltip, nameDetail,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
   onContextMenu, onDelete, selected, selectionId, onSelectionKeyDown, indented, flash, matched,
@@ -166,7 +168,7 @@ export function QuoteRow({
       onBlur={nameTip.hide}
       onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
-      className={`group ${selected !== undefined ? 'select-none' : ''} ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group ${indentContent != null ? 'relative' : ''} ${selected !== undefined ? 'select-none' : ''} ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
@@ -183,6 +185,9 @@ export function QuoteRow({
     >
       {nameTip.tooltip}
       {leading}
+      {indentContent != null && <span className="absolute bottom-0 left-3 top-0 flex w-6 items-center justify-center">
+        {indentContent}
+      </span>}
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분.
           flex 아이템은 min-w-0, 내부 이름은 block truncate 로 폭을 제한한다.

@@ -345,7 +345,7 @@ function GroupHeader(props: {
 }
 
 /** 정상 상태는 비워 두고 수집 상태의 예외 점만 표시한다. */
-function RowTrailing({ status }: { status: DisplayStatus }) {
+function RowCollectionStatus({ status }: { status: DisplayStatus }) {
   return status === 'realtime' ? null : <CollectionDot status={status} showLabel={false} />;
 }
 
@@ -511,7 +511,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
       dragging={isDragging}
       draggingAppearance="placeholder"
       dropIndicator={props.indicator ?? memoIndicator}
-      trailingAction={<RowTrailing status={props.status} />}
+      indentContent={<RowCollectionStatus status={props.status} />}
     />
   );
 });
@@ -642,7 +642,7 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
       testId="watchlist-drag-ghost"
       onClick={GHOST_NOOP}
       indented
-      trailingAction={<RowTrailing status={ghost.status} />}
+      indentContent={<RowCollectionStatus status={ghost.status} />}
     />
   );
 }
