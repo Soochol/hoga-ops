@@ -74,7 +74,7 @@ describe('useWorkspaceStore 액션', () => {
   it('주문 설정은 창별로 영속하고 프리셋 스냅샷과 배열을 공유하지 않는다', () => {
     const first = useWorkspaceStore.getState().addWindow('order');
     const second = useWorkspaceStore.getState().addWindow('order');
-    const settings = { unit: 'amount' as const, quantityPresets: [25, 75, 250] as [number, number, number], amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: false };
+    const settings = { unit: 'amount' as const, quantityPresets: [25, 75, 250] as [number, number, number], amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: false, orderReceiptSound: true };
     useWorkspaceStore.getState().setOrderWindowSettings(first, settings);
     expect(useWorkspaceStore.getState().windows.find(w => w.id === second)?.order).toBeUndefined();
     const persisted = JSON.parse(sessionStorage.getItem(WORKSPACE_STORAGE_KEY)!);
@@ -82,7 +82,7 @@ describe('useWorkspaceStore 액션', () => {
     const snapshot = snapshotWorkspace();
     snapshot.windows.find(w => w.id === first)!.order!.amountPresets[0] = 99;
     settings.quantityPresets[0] = 999;
-    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order).toEqual({ unit: 'amount', quantityPresets: [25, 75, 250], amountPresets: [2, 6, 12], showAveragePrice: false });
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.order).toEqual({ unit: 'amount', quantityPresets: [25, 75, 250], amountPresets: [2, 6, 12], showAveragePrice: false, orderReceiptSound: true });
   });
 
   it('새 차트 창은 포커스 차트 창의 timeframe 을 복제한다(#712)', () => {

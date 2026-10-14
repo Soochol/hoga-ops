@@ -10,6 +10,11 @@ import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
+import { notifyOrderReceiptAccepted, playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
+
+vi.mock('./orderReceiptSound', () => ({
+  notifyOrderReceiptAccepted: vi.fn(), playOrderReceiptSound: vi.fn(), prepareOrderReceiptSound: vi.fn(),
+}));
 
 const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -42,9 +47,82 @@ function order(id = 'a'): TossOrder {
     execution: { filledQuantity: '30', averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null } };
 }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
+function enableReceiptSound() {
+  fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: '주문접수 소리' }));
+  fireEvent.click(screen.getByRole('button', { name: '적용' }));
+}
+beforeEach(() => {
+  vi.mocked(notifyOrderReceiptAccepted).mockReset();
+  vi.mocked(prepareOrderReceiptSound).mockReset();
+  vi.mocked(playOrderReceiptSound).mockReset().mockResolvedValue(true);
+});
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('소리 들어보기는 끄기 상태에서도 재생하고 설정 적용이나 주문은 하지 않는다', async () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    const checkbox = screen.getByRole('checkbox', { name: '주문접수 소리' });
+    expect(checkbox).not.toBeChecked();
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '소리 들어보기' }));
+    await waitFor(() => expect(playOrderReceiptSound).toHaveBeenCalledOnce());
+    expect(checkbox).not.toBeChecked();
+    expect(mock.command).not.toHaveBeenCalled();
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    expect(screen.getByRole('checkbox', { name: '주문접수 소리' })).not.toBeChecked();
+  });
+  it('미리듣기 차단을 설정 안에서 안내한다', async () => {
+    vi.mocked(playOrderReceiptSound).mockResolvedValue(false);
+    show();
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    fireEvent.click(screen.getByRole('button', { name: '소리 들어보기' }));
+    await screen.findByText('소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it.each(['매수 67,200원 주문 추가', '매도 67,300원 주문 추가'])('%s는 전송 중에는 울리지 않고 성공 응답에서만 알린다', async label => {
+    let resolve!: (response: object) => void;
+    mock.command.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+    show(); enableReceiptSound();
+    vi.mocked(prepareOrderReceiptSound).mockClear();
+    fireEvent.doubleClick(screen.getByRole('button', { name: new RegExp(label) }));
+    expect(prepareOrderReceiptSound).toHaveBeenCalledOnce();
+    expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
+    expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 중');
+    await act(async () => resolve({ command_id: mock.command.mock.calls[0][1].command_id, order_id: 'new', status: 'accepted' }));
+    expect(notifyOrderReceiptAccepted).toHaveBeenCalledExactlyOnceWith(1, mock.command.mock.calls[0][1].command_id);
+    expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 접수됨');
+  });
+  it('소리 끄기는 접수 성공에도 오디오를 준비하거나 재생하지 않는다', async () => {
+    show();
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    await screen.findByText('주문 요청 접수됨');
+    expect(prepareOrderReceiptSound).not.toHaveBeenCalled();
+    expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
+  });
+  it('소리를 켜도 결과 불명확은 울리지 않고 같은 요청 확인 후 접수되면 알린다', async () => {
+    mock.command.mockRejectedValueOnce(new Error('주문 처리 결과 확인 필요'));
+    show(); enableReceiptSound();
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    await screen.findByText('주문 처리 결과 확인 필요');
+    expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
+    await screen.findByText('주문 요청 접수됨');
+    expect(mock.command.mock.calls[1]).toEqual(mock.command.mock.calls[0]);
+    expect(notifyOrderReceiptAccepted).toHaveBeenCalledExactlyOnceWith(1, mock.command.mock.calls[0][1].command_id);
+  });
+  it('소리를 켜도 취소 접수는 신규 주문 소리를 내지 않는다', async () => {
+    mock.orders = [order()];
+    mock.command.mockResolvedValueOnce({ results: [{ order_id: 'a', accepted: true, operation_id: 'cancel-a' }] });
+    const view = show(); enableReceiptSound();
+    fireEvent.contextMenu(view.container.querySelector('.order-ladder')!, { clientX: 100, clientY: 100 });
+    fireEvent.click(screen.getByRole('menuitem', { name: '전체 주문 취소' }));
+    await screen.findByText('취소 요청 접수됨');
+    expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
+  });
   it('원본 소수 평단가로 최근접 호가를 고르고 동률이면 낮은 호가를 고른다', () => {
     const prices = [67300, 67200, 0, NaN];
     expect(holdingBookMarker(100, '67240.5', prices)).toEqual({ price: 67200, outside: false });

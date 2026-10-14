@@ -98,6 +98,64 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
+test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
+  // Observe the real Web Audio node without replacing playback or autoplay policy.
+  await page.addInitScript(() => {
+    const observed = globalThis.window as unknown as { __orderSoundStates: string[] };
+    observed.__orderSoundStates = [];
+    const start = OscillatorNode.prototype.start;
+    OscillatorNode.prototype.start = function (when?: number) {
+      observed.__orderSoundStates.push(this.context.state);
+      start.call(this, when);
+    };
+  });
+  const soundStates = () => page.evaluate(() => (globalThis.window as unknown as { __orderSoundStates: string[] }).__orderSoundStates);
+  const { window, commands } = await setup(page);
+  const settings = window.getByRole('button', { name: '주문 설정', exact: true });
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  const checkbox = dialog.getByRole('checkbox', { name: '주문접수 소리', exact: true });
+  await settings.click();
+  await expect(checkbox).not.toBeChecked();
+  await expect(dialog.getByRole('slider')).toHaveCount(0);
+  await dialog.getByRole('button', { name: '소리 들어보기', exact: true }).click();
+  await expect.poll(soundStates).toEqual(['running']);
+  expect(commands).toHaveLength(0);
+  await checkbox.check();
+  await dialog.screenshot({ path: testInfo.outputPath('order-sound-settings.png') });
+  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+
+  await page.reload();
+  await settings.click();
+  await expect(checkbox).toBeChecked();
+  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  expect(await soundStates()).toEqual([]);
+
+  let accept!: () => void;
+  const accepted = new Promise<void>(resolve => { accept = resolve; });
+  await page.route(/^https?:\/\/[^/]+\/api\/trading\/orders$/, async route => {
+    await accepted;
+    const body = route.request().postDataJSON();
+    await route.fulfill({ json: { command_id: body.command_id, order_id: 'sound-order', status: 'accepted' } });
+  });
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const receipt = page.getByRole('status', { name: '주문 접수 알림' });
+  await buy.dblclick();
+  await expect(receipt).toHaveText('주문 요청 중');
+  expect(await soundStates()).toEqual([]);
+  accept();
+  await expect(receipt).toHaveText('주문 요청 접수됨');
+  await expect.poll(soundStates).toEqual(['running']);
+
+  await settings.click();
+  await checkbox.uncheck();
+  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/trading/orders');
+  await buy.dblclick();
+  await response;
+  await expect(receipt).toHaveText('주문 요청 접수됨');
+  expect(await soundStates()).toEqual(['running']);
+});
+
 test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하며 보유종목으로 이동한다', async ({ page }, testInfo) => {
   const other = { ...mkOrder('other-sell', '185000', '0'), symbol: '000660', side: 'SELL', quantity: '22' };
   const reads: string[] = [];

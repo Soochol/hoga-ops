@@ -1,6 +1,7 @@
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
   type OrderPresets, type OrderWindowSettings } from '../../state/orderWindowSettings';
+import { playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
 import './OrderSettingsForm.css';
 
 export function OrderSettingsSection({ title, children }: { title: string; children: ReactNode }) {
@@ -38,8 +39,13 @@ export function OrderSettingsForm({ draft, onChange, onApply, onCancel, busy }: 
   onApply: (settings: OrderWindowSettings) => void; onCancel: () => void; busy: boolean;
 }) {
   const valid = validOrderSettings(draft);
+  const [previewFailed, setPreviewFailed] = useState(false);
   return <form className="order-settings-form" onSubmit={e => {
-    e.preventDefault(); if (!busy && valid) onApply(draft);
+    e.preventDefault();
+    if (!busy && valid) {
+      if (draft.orderReceiptSound) prepareOrderReceiptSound();
+      onApply(draft);
+    }
   }}>
     <div className="order-settings-body">
       <OrderSettingsSection title="주문 입력">
@@ -53,6 +59,21 @@ export function OrderSettingsForm({ draft, onChange, onApply, onCancel, busy }: 
         <OrderSettingsCheckboxRow label="내 평단가 표시"
           icon={<span className="order-settings-average-dot" aria-hidden="true" />}
           checked={draft.showAveragePrice} onChange={showAveragePrice => onChange({ ...draft, showAveragePrice })} />
+      </OrderSettingsSection>
+      <OrderSettingsSection title="주문 알림">
+        <OrderSettingsCheckboxRow label="주문접수 소리" checked={draft.orderReceiptSound}
+          onChange={orderReceiptSound => {
+            if (orderReceiptSound) prepareOrderReceiptSound();
+            onChange({ ...draft, orderReceiptSound });
+          }} />
+        <div className="order-settings-sound-preview">
+          <button type="button" disabled={busy} onClick={async () => {
+            setPreviewFailed(false);
+            setPreviewFailed(!await playOrderReceiptSound());
+          }}>소리 들어보기</button>
+          <span className="text-xs text-fg-dim">매수·매도 주문접수 시 재생</span>
+        </div>
+        {previewFailed && <p role="status" className="text-xs text-fg-dim">소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.</p>}
       </OrderSettingsSection>
       {!valid && <p role="alert" className="text-error">프리셋은 허용 범위의 양의 정수로 입력하세요</p>}
     </div>

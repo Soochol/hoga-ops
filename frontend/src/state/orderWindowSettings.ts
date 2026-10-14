@@ -5,13 +5,14 @@ export interface OrderWindowSettings {
   quantityPresets: OrderPresets;
   amountPresets: OrderPresets;
   showAveragePrice: boolean;
+  orderReceiptSound: boolean;
 }
 
 export const MILLION_WON = 1_000_000;
 export const MAX_ORDER_QUANTITY = 1_000_000_000;
 export const MAX_AMOUNT_MILLIONS = 1_000_000;
 export const DEFAULT_ORDER_SETTINGS: OrderWindowSettings = {
-  unit: 'quantity', quantityPresets: [10, 50, 100], amountPresets: [1, 5, 10], showAveragePrice: true,
+  unit: 'quantity', quantityPresets: [10, 50, 100], amountPresets: [1, 5, 10], showAveragePrice: true, orderReceiptSound: false,
 };
 
 export const validOrderInput = (value: number, unit: OrderInputUnit) => Number.isSafeInteger(value)
@@ -20,6 +21,7 @@ export const validOrderInput = (value: number, unit: OrderInputUnit) => Number.i
 export function validOrderSettings(value: OrderWindowSettings): boolean {
   return (value.unit === 'quantity' || value.unit === 'amount')
     && typeof value.showAveragePrice === 'boolean'
+    && typeof value.orderReceiptSound === 'boolean'
     && value.quantityPresets.length === 3 && value.amountPresets.length === 3
     && value.quantityPresets.every(n => validOrderInput(n, 'quantity'))
     && value.amountPresets.every(n => validOrderInput(n, 'amount'));
@@ -37,6 +39,7 @@ export function normalizeOrderSettings(raw: unknown): OrderWindowSettings {
     quantityPresets: presets(value.quantityPresets, 'quantity', DEFAULT_ORDER_SETTINGS.quantityPresets),
     amountPresets: presets(value.amountPresets, 'amount', DEFAULT_ORDER_SETTINGS.amountPresets),
     showAveragePrice: typeof value.showAveragePrice === 'boolean' ? value.showAveragePrice : DEFAULT_ORDER_SETTINGS.showAveragePrice,
+    orderReceiptSound: typeof value.orderReceiptSound === 'boolean' ? value.orderReceiptSound : DEFAULT_ORDER_SETTINGS.orderReceiptSound,
   };
 }
 

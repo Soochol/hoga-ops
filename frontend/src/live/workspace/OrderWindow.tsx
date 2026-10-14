@@ -36,6 +36,7 @@ import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
+import { notifyOrderReceiptAccepted, prepareOrderReceiptSound } from './orderReceiptSound';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -288,6 +289,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     if (busyRef.current) return;
     if (!account || next.base.account_seq !== account || next.base.code !== code) { setNotice('계좌·종목이 변경되었습니다. 다시 선택하세요.'); return; }
     if (changesPrice(next) && !fresh) { setNotice('실시간 호가가 오래되었습니다. 갱신 후 주문하세요.'); return; }
+    if (next.type === 'create' && preferences.orderReceiptSound) prepareOrderReceiptSound();
     busyRef.current = true; setBusy(true); setNotice(null); setFailedRequest(null);
     const resumeRefresh = pauseTradingRefresh(client, mode, account);
     const label = next.type === 'create' ? '주문' : (next.operation ?? next.type) === 'modify' ? '정정' : '취소';
@@ -325,6 +327,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         if (next.type === 'create') {
           const body: CreateTradingOrder = { ...next.base, side: next.side!, price: next.price, quantity: next.quantity!, confirm_high_value: high };
           response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
+          if (preferences.orderReceiptSound) notifyOrderReceiptAccepted(account, next.base.command_id);
         } else {
           const path = `/orders/${encodeURIComponent(next.order!.orderId)}/${next.type}`;
           if (next.type === 'modify') {
