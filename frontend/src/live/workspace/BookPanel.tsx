@@ -225,12 +225,6 @@ export default function BookPanel({
 
   const asksDesc = [...snapshot.ask].reverse(); // 높은 가격이 위
   const bids = snapshot.bid;
-  // 지금 **화면에 가격이 그려진** 자리 전부 = 사다리 20행. 요약표 칩이 뜰지 말지의
-  // 유일한 판정 근거다(`offLadderChip`) — 사다리에 있는 값은 그 행이 이미 라벨한다.
-  const onScreenPrices = new Set<number>([
-    ...snapshot.ask.map((l) => l.price),
-    ...snapshot.bid.map((l) => l.price),
-  ]);
   const maxQty = Math.max(
     1,
     ...snapshot.ask.map((l) => l.qty),
@@ -342,7 +336,7 @@ export default function BookPanel({
           <div className="flex flex-col">
             <div className="book-summary-slot" style={{ height: ROW_H * SUMMARY_ROWS }}>
               <div className="book-inline-summary">
-                <BookSummary summary={summary} baselinePrice={baselinePrice} onScreenPrices={onScreenPrices}
+                <BookSummary summary={summary} baselinePrice={baselinePrice}
                   limits={limits} krxClose={krxClose} vi={vi} />
               </div>
               <div className="book-compact-info">
@@ -367,7 +361,7 @@ export default function BookPanel({
       </BookScrollArea>
       {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="book-info-popover font-data" style={infoStyle}>
         <div className="book-info-heading"><span>종목 상세 정보</span><button type="button" aria-label="상세 정보 닫기" onClick={closeInfo}>닫기</button></div>
-        <BookSummary summary={summary} baselinePrice={baselinePrice} onScreenPrices={onScreenPrices}
+        <BookSummary summary={summary} baselinePrice={baselinePrice}
           limits={limits} krxClose={krxClose} vi={vi} height={264} />
       </div>, document.body)}
       {/* 총잔량은 **출처가 둘**이라 딤 조건도 둘이다. 시간외(0E·ka10087) 값이면
@@ -389,12 +383,11 @@ export default function BookPanel({
 
 /** 10호가·주문창이 공유하는 시세 상세 정보. 계좌 잔고는 포함하지 않는다. */
 export function BookSummary({
-  summary, baselinePrice, onScreenPrices, limits = null, krxClose = null, vi = null,
+  summary, baselinePrice, limits = null, krxClose = null, vi = null,
   height = ROW_H * SUMMARY_ROWS,
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
-  onScreenPrices: ReadonlySet<number>;
   limits?: BookStockLimits | null;
   krxClose?: number | null;
   vi?: LiveViEvent | null;
@@ -402,25 +395,19 @@ export function BookSummary({
 }) {
   return (
     <div className="book-summary flex flex-col" data-testid="book-summary" style={{ height, '--book-summary-row-height': `${height / 12}px` } as React.CSSProperties}>
-      {/* 칩은 **사다리 밖일 때만** 뜬다 — 등장 자체가 「이 값은 지금 사다리에
-          없다」는 신호다(`offLadderChip`). 폭은 안전하다: 실측 최고+칩 111px
-          vs 이 열의 제약을 쥔 `250일` 149px. */}
       <SummaryRow
         label="시작"
         value={fmtOr(summary.dayOpen)}
-        chip={offLadderChip('시', summary, onScreenPrices)}
       />
       <SummaryRow
         label="최고"
         value={fmtOr(summary.dayHigh)}
         color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
-        chip={offLadderChip('고', summary, onScreenPrices)}
       />
       <SummaryRow
         label="최저"
         value={fmtOr(summary.dayLow)}
         color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
-        chip={offLadderChip('저', summary, onScreenPrices)}
       />
       <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
       {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
@@ -508,16 +495,15 @@ function ExpectedFillBanner({
 type PriceMarker = { label: string; bg: string };
 
 /** 시·고·저의 라벨·색·출처를 **한 곳에서** 정의한다. **배열 순서가 곧 우선순위**다
- *  (고 > 저 > 시) — `dayMarker` 가 앞에서부터 처음 맞는 하나만 고른다. 사다리 칩과
- *  요약표 칩(`offLadderChip`)이 같은 표를 보므로 색이 두 표면에서 갈릴 수 없다 —
- *  두 벌로 두면 한쪽만 고쳤을 때 같은 뜻의 칩이 다른 색으로 조용히 갈린다. */
+ *  (고 > 저 > 시) — `dayMarker` 가 앞에서부터 처음 맞는 하나만 고른다.
+ *  10호가·주문창 모두 호가 가격 왼쪽에만 표시한다. */
 const DAY_MARKERS = [
   { label: '고', bg: 'bg-price-up', of: (s: LiveTradeSummary) => s.dayHigh },
   { label: '저', bg: 'bg-price-down', of: (s: LiveTradeSummary) => s.dayLow },
   { label: '시', bg: 'bg-fg-dim', of: (s: LiveTradeSummary) => s.dayOpen },
 ] as const;
 
-/** 뱃지 한 알의 공통 형태. 사다리 칩과 요약표 칩이 둘 다 이걸 쓴다. */
+/** 호가 가격 왼쪽 뱃지 한 알의 공통 형태. */
 const BADGE_CLS =
   'items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
 
@@ -549,38 +535,6 @@ function dayMarker(price: number, summary: LiveTradeSummary): PriceMarker | null
     return v !== null && price === v;
   });
   return hit ? { label: hit.label, bg: hit.bg } : null;
-}
-
-/**
- * 요약표(시작·최고·최저) 값에 붙는 칩 — **사다리에 그 가격의 행이 없을 때만** 낸다.
- *
- * 사다리는 현재가 위아래 10틱씩만 덮는다(호가 단위 기준 대략 ±1~2%). 일중 변동이
- * 그보다 크면 시·고·저가 사다리 밖으로 나가 **칩을 붙일 행 자체가 사라진다** —
- * 실측 2026-08-24 삼성전자(-8.5%)는 사다리 252,500~262,500 인데 고가 272,000 ·
- * 시가 271,500 이 전부 밖이었다. 드문 경우가 아니라 변동성 있는 날의 기본값이다.
- *
- * 규칙은 **배타**다: 한 값의 칩은 사다리 아니면 요약표, 한쪽에만 있다. 그래서
- * 「요약표에 칩이 떴다」가 곧 「그 값은 지금 사다리에 없다」를 뜻하고, 칩의
- * **등장 자체가 신호**다(상시 표시면 아무것도 말하지 않는다).
- *
- * ⚠ 예외 하나: 사다리 칩은 **한 가격에 하나**라(`dayMarker`, 고 > 저 > 시) 시가가
- * 고가·저가와 **같은 가격**이고 그 가격이 사다리에 있으면 `시` 칩은 어디에도 안
- * 뜬다 — 그 행은 `고`(또는 `저`)로 라벨되고 `시작` 행은 값만 남는다. 의도한
- * 동작이다: 같은 가격을 두 번 라벨하지 않는 것이 우선순위 규칙의 요점이다.
- *
- * ⚠ `onScreen` 은 **화면에 가격을 그리는 자리 전부**여야 한다 — 빠뜨린 자리가
- * 있으면 사다리에 칩이 있는데 요약표에도 뜨는 이중 표시가 된다. ADR-0170 이 `중`
- * 행을 지운 뒤로는 사다리 20행이 그 전부다.
- */
-function offLadderChip(
-  label: '시' | '고' | '저',
-  summary: LiveTradeSummary,
-  onScreen: ReadonlySet<number>,
-): PriceMarker | undefined {
-  const m = DAY_MARKERS.find((x) => x.label === label);
-  const v = m ? m.of(summary) : null;
-  if (!m || v === null || v <= 0 || onScreen.has(v)) return undefined;
-  return { label: m.label, bg: m.bg };
 }
 
 /** 가격 span의 상시 왼쪽 여백(24px) 안에 놓는다. ADR-0170의 absolute 배치를
@@ -790,16 +744,12 @@ function SummaryRow({
   color,
   divider,
   highlight,
-  chip,
 }: {
   label: string;
   value: string;
   color?: string;
   divider?: boolean;
   highlight?: boolean;
-  /** 시/고/저 칩 — 그 값이 사다리 밖일 때만 온다(`offLadderChip`). 값 **왼쪽**에
-   *  붙어 오른쪽 정렬된 숫자의 우측 끝을 흔들지 않는다. */
-  chip?: PriceMarker;
 }) {
   const empty = value === '−';
   return (
@@ -817,7 +767,6 @@ function SummaryRow({
           color ?? (empty ? 'text-fg-dimmer' : 'text-fg')
         }`}
       >
-        {chip && <span className={`mr-1 flex ${BADGE_CLS} text-white ${chip.bg}`}>{chip.label}</span>}
         {value}
       </span>
     </div>
