@@ -595,6 +595,18 @@ function PriceBadges({ marker }: { marker: PriceMarker | null }) {
   );
 }
 
+/** 10호가·주문창의 가격 왼쪽 시·고·저 칩과 우선순위를 공유한다. */
+export function BookDayMarker({ price, summary }: { price: number; summary: LiveTradeSummary }) {
+  return <PriceBadges marker={dayMarker(price, summary)} />;
+}
+
+/** 같은 가격의 잔량 유입·유출 표시. 10호가와 주문창이 같은 색·부호를 쓴다. */
+export function BookQtyDelta({ badge }: { badge: OrderbookDeltaBadge | null }) {
+  if (badge === null) return null;
+  const text = `${badge.delta > 0 ? '+' : '−'}${Math.abs(badge.delta).toLocaleString('ko-KR')}`;
+  return <span title={text} className={`book-qty-delta shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>{text}</span>;
+}
+
 function PriceCell({
   price,
   baselinePrice,
@@ -710,13 +722,7 @@ function QtyBar({
             겹치는 레이어가 없어 관례색을 그대로 쓴다 — 차트 위에 같은 셀로 겹쳐 그리던
             증감 오버레이는 teal/fuchsia 를 썼지만(히트맵과의 색 충돌 회피), 2026-08-25
             에 제거됐다. */}
-        {badge !== null && (
-          <span title={`${badge.delta > 0 ? '+' : '−'}${Math.abs(badge.delta).toLocaleString('ko-KR')}`}
-            className={`book-qty-delta shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>
-            {badge.delta > 0 ? '+' : '−'}
-            {Math.abs(badge.delta).toLocaleString('ko-KR')}
-          </span>
-        )}
+        <BookQtyDelta badge={badge} />
         {/* 잔량 숫자 색은 side 별 토큰(--qty-ask/--qty-bid). 증감 뱃지의
             priceDirClass 와는 **다른 축**이다 — 뱃지는 delta 의 부호(늘었나/줄었나),
             이건 호가의 방향(매도냐/매수냐)이라 같은 행에서 두 색이 어긋날 수 있고

@@ -7,6 +7,8 @@ import { ToastViewport } from '../../ui/toast/ToastViewport';
 import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { useTextTooltip } from '../../ui/useTextTooltip';
+import { priceDirClass } from '../../ui/priceDir';
+import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, normalizeOrderSettings,
   quantityForAmount, validOrderInput, validOrderSettings, type OrderWindowSettings, type OrderPresets } from '../../state/orderWindowSettings';
@@ -26,7 +28,7 @@ import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
 import { realMsToYyyymmdd } from '../liveDateTime';
-import { BookSummary, TotalQtyStrip } from './BookPanel';
+import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip, type BookTrade } from './BookPanel';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -86,6 +88,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [lockedBook, lockBook] = useState<OrderbookSnapshot | null>(null);
   const book = lockedBook ?? snapshot;
+  const deltaBadges = useOrderbookDeltaBadges(live.ob, !lockedBook);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
   const [previewPrice, setPreviewPrice] = useState<number | null>(null);
   const [action, setAction] = useState<Action | null>(null);
@@ -129,9 +132,9 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       if (width <= 0) return;
       setCompact(width < 560);
       const scroll = root.querySelector<HTMLElement>('.order-scroll');
-      const usableWidth = Math.min(width, scroll?.clientWidth || width);
+      const usableWidth = width - (scroll ? scroll.offsetWidth - scroll.clientWidth : 0);
       setExpanded(usableWidth >= 560);
-      setSpacious(usableWidth >= 672);
+      setSpacious(usableWidth >= 696);
       if (width !== previousWidth) setInfoOpen(false);
       previousWidth = width;
     };
@@ -181,6 +184,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const estimateAmount = estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const holdingQuantity = state.data && !state.isError ? Number(state.data.holding_quantity) : null;
+  const canFillHoldingQuantity = holdingQuantity != null && validOrderInput(holdingQuantity, 'quantity');
   const buyingPower = state.data && !state.isError ? Number(state.data.buying_power) : null;
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const purchaseAmount = holdingPurchaseAmountWon(holdingQuantity, state.data?.average_purchase_price);
@@ -348,13 +352,15 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   }
 
   const trades = useMemo(() => {
-    const recent: { price: number; qty: number }[] = [];
+    const recent: BookTrade[] = [];
     for (let i = live.trade.length - 1; i >= 0 && recent.length < 9; i--) {
       const rows = live.trade[i].trades;
       if (!Array.isArray(rows)) continue;
       for (let j = rows.length - 1; j >= 0 && recent.length < 9; j--) {
-        const row = rows[j] as { price: number; qty: number };
-        recent.push(row);
+        const row = rows[j] as { price?: unknown; qty?: unknown; side?: unknown };
+        if (typeof row?.price === 'number' && typeof row.qty === 'number') {
+          recent.push({ price: row.price, qty: row.qty, side: typeof row.side === 'number' ? row.side : 0 });
+        }
       }
     }
     return recent;
@@ -393,12 +399,18 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
-        <span className="order-field" aria-label="매입수량" aria-describedby={quantityTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
+        <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
+          disabled={!canFillHoldingQuantity} onClick={() => {
+            if (!canFillHoldingQuantity || holdingQuantity == null) return;
+            if (amountMode) onApplySettings({ ...preferences, unit: 'quantity' });
+            onQuantityChange(holdingQuantity);
+            quantityTip.hide();
+          }}
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
           onFocus={e => quantityTip.show(e.currentTarget)} onBlur={quantityTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') quantityTip.hide(); }}>
           <span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
-        </span>
+        </button>
         <span className="order-field" aria-label="매입평단가" aria-describedby={averageTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
           onMouseEnter={e => averageTip.show(e.currentTarget)} onMouseLeave={averageTip.hide}
           onFocus={e => averageTip.show(e.currentTarget)} onBlur={averageTip.hide}
@@ -471,15 +483,17 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : prices.map((level, index) => {
           const key = `${index < 10 ? 'ask' : 'bid'}-${level.price}-${index}`;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
+          const trade = index > 10 ? trades[index - 11] : undefined;
+          const tradePriceColor = trade && baseline != null && baseline > 0 ? priceDirClass(trade.price - baseline) : 'text-fg-dim';
           return <div className={`order-row ${index === 10 ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}
             onPointerEnter={() => setPreviewPrice(level.price > 0 ? level.price : null)}
             onFocusCapture={() => setPreviewPrice(level.price > 0 ? level.price : null)}>
             {orderCell('SELL', level.price, key)}
-            {index < 10 ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>
-              : <div className="order-info"><span className={index === 10 ? 'order-meta' : undefined}>{index === 10 ? '체결강도' : fmt(trades[index - 11]?.price)}</span><span>{index === 10 ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trades[index - 11]?.qty)}</span></div>}
-            <div className={`order-price ${quote?.price === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span>{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
+            {index < 10 ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
+              : <div className="order-info"><span className={index === 10 ? 'order-meta' : tradePriceColor}>{index === 10 ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? priceDirClass(trade.side) : undefined}>{index === 10 ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>}
+            <div className={`order-price ${quote?.price === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker price={level.price} summary={summary} />{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {index < 10 ? <div className="order-summary-slot" />
-              : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span>{fmt(level.qty)}</span></div>}
+              : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
             {orderCell('BUY', level.price, key)}
           </div>;
         })}
