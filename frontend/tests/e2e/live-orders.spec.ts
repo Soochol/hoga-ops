@@ -777,6 +777,10 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   await expect(dialog.getByText('주문 방식', { exact: true })).toHaveCount(0);
   await expect(dialog.getByRole('radio')).toHaveCount(0);
+  await expect(dialog.getByText(/^프리셋 [123]$/)).toHaveCount(0);
+  await expect(dialog.getByText(/100만원|500만원|1,000만원/)).toHaveCount(0);
+  await expect(dialog.getByText('주', { exact: true })).toHaveCount(3);
+  await expect(dialog.getByText('백만원', { exact: true })).toHaveCount(3);
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('25');
   await dialog.getByRole('button', { name: '취소', exact: true }).click();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('10');
@@ -788,6 +792,17 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   await expect(dialog.getByRole('button', { name: '적용', exact: true })).toBeDisabled();
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
   await page.screenshot({ path: testInfo.outputPath('order-settings-dialog.png') });
+  const originalViewport = page.viewportSize()!;
+  await page.setViewportSize({ width: 320, height: 640 });
+  const layout = await dialog.getByRole('spinbutton').evaluateAll(inputs => inputs.map(input => {
+    const bounds = input.getBoundingClientRect();
+    const field = input.parentElement!.getBoundingClientRect();
+    return bounds.left >= field.left && bounds.right <= field.right && bounds.width > 0
+      && input.scrollWidth <= input.clientWidth;
+  }));
+  expect(layout).toEqual(Array(6).fill(true));
+  await page.screenshot({ path: testInfo.outputPath('order-settings-narrow.png') });
+  await page.setViewportSize(originalViewport);
   await dialog.getByRole('button', { name: '적용', exact: true }).click();
   await expect(settings).toBeFocused();
   await window.getByRole('button', { name: '금액', exact: true }).click();
