@@ -1,9 +1,9 @@
 /** GET /api/live/index-quotes — 하단 시장지표 바 데이터.
  *
- * 백엔드가 20s TTL 로 KIS 콜을 코얼레스하므로 프론트는 30s 폴링만 한다
+ * 백엔드가 20s TTL 로 키움 콜을 코얼레스하므로 프론트는 30s 폴링만 한다
  * (RQ 기본값이 백그라운드 탭 폴링을 멈춘다). 자격증명/용량 부재 시 빈
  * 배열이 오고, MarketIndexBar 가 행 자체를 렌더하지 않는다. */
-import { useQuery } from '@tanstack/react-query';
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
 
 interface MarketIndexQuoteWire {
@@ -51,19 +51,30 @@ export function mergeIndexQuotes(previous: MarketIndexQuote[] | undefined, incom
 export const MARKET_INDEX_QUOTES_REFETCH_MS = 30_000;
 
 export function useMarketIndexQuotes() {
-  return useQuery({
+  const qc = useQueryClient();
+  // WS가 쓰는 표시 캐시에는 타이머를 걸지 않는다. setQueryData마다 QueryObserver가
+  // 타이머를 다시 시작하므로 잦은 틱이 REST 전용 KRX100의 조회를 영원히 미룬다.
+  const display = useQuery<MarketIndexQuote[]>({
     queryKey: ['market-index-quotes'],
+    queryFn: skipToken,
+  });
+  const poll = useQuery({
+    queryKey: ['market-index-quotes-poll'],
     queryFn: async ({ signal }) => {
       const response = await apiCall<MarketIndexQuotesResponseWire>(
         '/api/live/index-quotes',
         { signal },
       );
-      return response.quotes.map(mapQuote);
+      const incoming = response.quotes.map(mapQuote);
+      qc.setQueryData<MarketIndexQuote[]>(['market-index-quotes'], (previous) =>
+        mergeIndexQuotes(previous, incoming),
+      );
+      return incoming;
     },
-    structuralSharing: (previous, incoming) => mergeIndexQuotes(
-      previous as MarketIndexQuote[] | undefined, incoming as MarketIndexQuote[],
-    ),
     refetchInterval: MARKET_INDEX_QUOTES_REFETCH_MS,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     staleTime: 20_000,
   });
+  return { ...poll, data: display.data ?? poll.data };
 }
