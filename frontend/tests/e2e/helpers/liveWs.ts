@@ -22,6 +22,7 @@ export interface LiveWsHandle {
   /** `{ch:'live', code, data}` 한 프레임. */
   pushLive(code: string, data: Record<string, unknown>): void;
   pushBatch(code: string, data: Record<string, unknown>[], latest: Record<string, unknown>[], dropped?: number): void;
+  pushEvent(data: Record<string, unknown>): void;
   /** 지금까지 구독된 코드들(디버깅용). */
   subscribed(): string[];
   connectionCount(): number;
@@ -76,6 +77,10 @@ export async function installLiveWs(page: Page): Promise<LiveWsHandle> {
     pushBatch(code, data, latest, dropped = 0) {
       if (socket === null) throw new Error('WebSocket is not connected');
       socket.send(JSON.stringify({ ch: 'live_batch', code, data, latest, dropped, queue_age_ms: 0 }));
+    },
+    pushEvent(data) {
+      if (socket === null) throw new Error('WebSocket is not connected');
+      socket.send(JSON.stringify({ ch: 'event', data }));
     },
     subscribed: () => [...subs],
     connectionCount: () => connections,

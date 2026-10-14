@@ -43,18 +43,29 @@ class TradingAccountsResponse(BaseModel):
     accounts: list[TradingAccount] = Field(default_factory=list)
 
 
-class TradingStateResponse(BaseModel):
+class TradingOrderStateResponse(BaseModel):
     account_seq: int
     code: str
     orders: list[TossOrder]
     recent_orders: list[TossOrder]
+    fetched_at_ms: int
+    events_connected: bool
+    unresolved_commands: list[str] = Field(default_factory=list)
+    revision: int = 0
+
+
+class TradingBalancesResponse(BaseModel):
+    account_seq: int
+    code: str
     buying_power: str
     sellable_quantity: str
     holding_quantity: str
     average_purchase_price: str | None = None
     fetched_at_ms: int
-    events_connected: bool
-    unresolved_commands: list[str] = Field(default_factory=list)
+
+
+class TradingStateResponse(TradingOrderStateResponse, TradingBalancesResponse):
+    pass
 
 
 class TradingCommand(BaseModel):

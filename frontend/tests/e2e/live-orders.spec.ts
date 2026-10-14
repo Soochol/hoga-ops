@@ -33,9 +33,14 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/accounts$/, route => route.fulfill({ json: { configured: true, accounts: [{ account_seq: 1, label: '토스증권 · ****1234' }] } }));
   let orders = Array.isArray(withOrder) ? withOrder : withOrder ? [mkOrder('old')] : [];
   const commands: Record<string, unknown>[] = [];
-  await page.route(/^https?:\/\/[^/]+\/api\/trading\/state\?/, route => route.fulfill({ json: {
-    account_seq: 1, code: '005930', orders, recent_orders: [], buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: '66000', fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [],
-  } }));
+  const stateRequests: string[] = [];
+  await page.route(/^https?:\/\/[^/]+\/api\/trading\/state\?/, route => {
+    const part = new URL(route.request().url()).searchParams.get('part') ?? 'all';
+    stateRequests.push(part);
+    const orderState = { account_seq: 1, code: '005930', orders, recent_orders: [], fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [] };
+    const balances = { account_seq: 1, code: '005930', buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: '66000', fetched_at_ms: Date.now() };
+    return route.fulfill({ json: part === 'orders' ? orderState : part === 'balances' ? balances : { ...balances, ...orderState } });
+  });
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/orders(?:\/[^/]+\/(?:modify|cancel))?$/, async route => {
     const body = route.request().postDataJSON(); commands.push(body);
     expect(route.request().headers()['x-hoga-order']).toBe('1');
@@ -73,7 +78,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   const initialSide = orders[0]?.side === 'SELL' ? '매도' : '매수';
   const initialPrice = (initialSide === '매도' ? 67300 : 67200) + priceOffset;
   await expect(window.getByRole('button', { name: new RegExp(`${initialSide} ${initialPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
-  return { window, commands, ws };
+  return { window, commands, ws, stateRequests };
 }
 
 async function drag(page: Page, from: Locator, to: Locator) {
@@ -84,6 +89,105 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.move(b!.x + b!.width / 2, b!.y + b!.height / 2, { steps: 12 });
   await page.mouse.up();
 }
+
+test('느린 주문 상태 조회 중에도 접수 응답을 표시하고 기존 주문의 중복 취소는 막는다', async ({ page }) => {
+  const { window, commands } = await setup(page, true);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(/\/api\/trading\/state\?/, async route => {
+    if (new URL(route.request().url()).searchParams.get('part') === 'orders') await gate;
+    await route.fallback();
+  });
+  try {
+    const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    await drag(page, cell, window.getByRole('combobox', { name: '주문 모드' }));
+    await expect(page.getByRole('status', { name: '주문 접수 알림' })).toHaveText('취소 요청 접수됨');
+    await expect(window.getByRole('combobox', { name: '주문 모드' })).toBeEnabled();
+    await expect(cell).toHaveText('70주 · 처리 중');
+    await cell.click({ button: 'right' });
+    await expect(page.getByRole('menuitem', { name: '주문 1 · 70주', exact: true })).toBeDisabled();
+    await page.keyboard.press('Escape');
+    expect(commands).toHaveLength(1);
+    await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
+    await expect.poll(() => commands.length).toBe(2);
+    await expect(window.getByRole('combobox', { name: '주문 모드' })).toBeEnabled();
+    release();
+    await expect(cell).toBeEmpty();
+  } finally { release(); }
+});
+
+test('느린 잔고 조회는 주문 수량 표시와 다음 주문을 지연시키지 않는다', async ({ page }) => {
+  const { window, commands } = await setup(page);
+  let release!: () => void, entered = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(/\/api\/trading\/state\?/, async route => {
+    if (new URL(route.request().url()).searchParams.get('part') === 'balances') { entered = true; await gate; }
+    await route.fallback();
+  });
+  try {
+    const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    await buy.dblclick();
+    await expect(buy).toHaveText('10주');
+    await expect.poll(() => entered).toBe(true);
+    await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
+    await expect(window.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveText('10주');
+    expect(commands).toHaveLength(2);
+  } finally { release(); }
+});
+
+test('5건 묶음 취소 중 주문 이벤트가 와도 조회를 끼워 넣지 않고 마지막에 한번 갱신한다', async ({ page }) => {
+  const { window, commands, ws, stateRequests } = await setup(page, Array.from({ length: 5 }, (_, i) => mkOrder(`item-${i}`)));
+  await expect(window.getByLabel('매수 가능 금액')).toContainText('20,000,000원');
+  stateRequests.length = 0;
+  const readsDuringWrites: number[] = [];
+  await page.route(/\/api\/trading\/orders\/item-\d+\/cancel$/, async route => {
+    ws!.pushEvent({ type: 'trading_changed', mode: 'live', revision: commands.length + 1 });
+    // Inject broker latency so each event exceeds the refresh coalescing window.
+    await new Promise(resolve => setTimeout(resolve, 200));
+    readsDuringWrites.push(stateRequests.length);
+    await route.fallback();
+  });
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await drag(page, cell, window.getByRole('combobox', { name: '주문 모드' }));
+  await expect(cell).toBeEmpty();
+  expect(commands).toHaveLength(5);
+  expect(readsDuringWrites).toEqual([0, 0, 0, 0, 0]);
+  expect(stateRequests.filter(part => part === 'orders')).toHaveLength(1);
+});
+
+test('묶음 취소 응답을 기다리는 동안 다른 주문의 체결·취소 이벤트를 즉시 표시하고 늦은 조회가 되돌리지 않는다', async ({ page }, testInfo) => {
+  const other = mkOrder('other', '67100');
+  const { window, commands, ws, stateRequests } = await setup(page, [...Array.from({ length: 5 }, (_, i) => mkOrder(`item-${i}`)), other]);
+  await expect(window.getByLabel('매수 가능 금액')).toContainText('20,000,000원');
+  const target = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+  const source = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  let release!: () => void, entered = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(/\/api\/trading\/orders\/item-0\/cancel$/, async route => { entered = true; await gate; await route.fallback(); });
+  stateRequests.length = 0;
+  try {
+    await drag(page, source, window.getByRole('combobox', { name: '주문 모드' }));
+    await expect.poll(() => entered).toBe(true);
+    const at = Date.now();
+    ws!.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 100,
+      order: { ...other, execution: { ...other.execution, filledQuantity: '50' } } });
+    await expect(target).toHaveText('50주');
+    await testInfo.attach('event-to-display-observed', { body: JSON.stringify({ upper_bound_ms: Date.now() - at }), contentType: 'application/json' });
+    expect(commands).toHaveLength(0);
+    expect(stateRequests.filter(part => part === 'orders')).toHaveLength(0);
+    ws!.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 99, order: other });
+    await expect(target).toHaveText('50주');
+    ws!.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 101,
+      order: { ...other, status: 'CANCELED', execution: { ...other.execution, filledQuantity: '50' } } });
+    await expect(target).toBeEmpty();
+    ws!.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 102,
+      order: { ...other, execution: { ...other.execution, filledQuantity: '50' } } });
+    release();
+    await expect(source).toBeEmpty();
+    await expect(target).toBeEmpty();
+    expect(commands).toHaveLength(5);
+  } finally { release(); }
+});
 
 test('주문한 칸은 버튼 하나이며 수량과 칸 가장자리 더블클릭으로 추가 주문한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, true, 'live', false);

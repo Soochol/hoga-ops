@@ -24,10 +24,12 @@ from hoga.trading.models import (
     TossOrder,
     TradingAccount,
     TradingAccountsResponse,
+    TradingBalancesResponse,
     TradingCancelResponse,
     TradingCancelResult,
     TradingCommand,
     TradingCommandResponse,
+    TradingOrderStateResponse,
     TradingStateResponse,
 )
 from hoga.trading.toss import HTTP_UNAUTHORIZED, TossClient, TradingError
@@ -39,6 +41,7 @@ HIGH_VALUE_WON = 100_000_000
 ACCOUNT_CACHE_SECONDS = 60
 STATE_CACHE_SECONDS = 3
 HOLDINGS_CACHE_SECONDS = 10
+DOMESTIC_CODE_LENGTH = 6
 
 
 def remaining(order: TossOrder) -> int:
@@ -130,7 +133,8 @@ class CommandJournal:
 
 class TradingService:
     def __init__(
-        self, data_dir: Path, client: TossClient | None = None, on_change: Callable[[int], None] | None = None
+        self, data_dir: Path, client: TossClient | None = None, on_change: Callable[[int], None] | None = None,
+        on_order_change: Callable[[int, TossOrder, int], None] | None = None,
     ) -> None:
         self.client = client
         self.journal = CommandJournal(data_dir / "trading" / "commands.sqlite3")
@@ -139,7 +143,9 @@ class TradingService:
         self._accounts_lock = asyncio.Lock()
         self._locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._state_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
-        self._snapshots: dict[tuple[int, str], tuple[float, TradingStateResponse]] = {}
+        self._balance_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._snapshots: dict[tuple[int, str], tuple[float, TradingOrderStateResponse]] = {}
+        self._balances: dict[tuple[int, str], tuple[float, TradingBalancesResponse]] = {}
         self._holdings: dict[int, tuple[float, list[dict[str, Any]]]] = {}
         self._holding_locks: defaultdict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
         self._stocks: dict[str, tuple[float, dict[str, Any]]] = {}
@@ -149,6 +155,8 @@ class TradingService:
         self.events_connected = False
         self.revision = 0
         self.on_change = on_change
+        self.on_order_change = on_order_change
+        self._event_orders: dict[tuple[int, str], TossOrder] = {}
 
     def configured(self) -> bool:
         return self.client is not None or bool(
@@ -185,12 +193,43 @@ class TradingService:
         if not any(a.account_seq == account for a in accounts.accounts):
             raise TradingError(403, "account-not-found", "본인 토스증권 계좌를 선택하세요.")
 
-    def changed(self) -> None:
+    def changed(self, *, notify: bool = True) -> None:
         self._snapshots.clear()
+        self._balances.clear()
         self._holdings.clear()
         self.revision += 1
-        if self.on_change:
+        if notify and self.on_change:
             self.on_change(self.revision)
+
+    def order_event(self, frame: dict[str, Any]) -> None:
+        """Publish validated display snapshots; command validation still uses fresh REST."""
+        try:
+            data = frame["data"]
+            account = int(data["accountSeq"])
+            if frame.get("topic") != f"personal:order:{account}" or not any(
+                a["accountSeq"] == account for a in self._accounts
+            ):
+                return
+            order = TossOrder.model_validate(data["order"])
+            quantity = Decimal(order.quantity)
+            filled = Decimal(order.execution.filledQuantity)
+            if order.currency != "KRW" or len(order.symbol) != DOMESTIC_CODE_LENGTH or not order.symbol.isalnum():
+                self.changed()
+                return
+            invalid = any(not n.is_finite() or n < 0 or n != n.to_integral_value() for n in (quantity, filled))
+            if invalid or filled > quantity:
+                raise ValueError("invalid domestic execution quantity")
+        except (KeyError, TypeError, ValueError, InvalidOperation):
+            self.changed()  # Unknown/malformed frames trigger canonical reconciliation.
+            return
+        self.changed(notify=self.on_order_change is None)
+        key = (account, order.orderId)
+        previous = self._event_orders.get(key)
+        if previous is None or (filled >= Decimal(previous.execution.filledQuantity)
+                               and not (previous.status in TERMINAL_STATES and order.status not in TERMINAL_STATES)):
+            self._event_orders[key] = order
+        if self.on_order_change:
+            self.on_order_change(account, order, self.revision)
 
     def start_events(self) -> None:
         if self._events_task is None or self._events_task.done():
@@ -225,7 +264,7 @@ class TradingService:
                         elif frame.get("type") == "message" and str(frame.get("topic", "")).startswith(
                             "personal:order:"
                         ):
-                            self.changed()  # Fetch canonical REST state; do not reorder partial event snapshots.
+                            self.order_event(frame)
                         elif frame.get("type") == "error":
                             raise TradingError(503, "order-events-unavailable", "주문 이벤트 연결을 확인하세요.")
             except InvalidStatus as exc:
@@ -240,6 +279,10 @@ class TradingService:
             delay = min(30, delay * 2)
 
     async def state(self, account: int, code: str) -> TradingStateResponse:
+        orders, balances = await asyncio.gather(self.order_state(account, code), self.balances(account, code))
+        return TradingStateResponse(**{**balances.model_dump(), **orders.model_dump()})
+
+    async def order_state(self, account: int, code: str) -> TradingOrderStateResponse:
         await self.authorize(account)
         self.start_events()
         key = (account, code)
@@ -249,31 +292,50 @@ class TradingService:
                 return cached[1]
             client = self._client()
             revision = self.revision
-            open_data, closed_data, power, sellable, holdings = await asyncio.gather(
+            open_data, closed_data = await asyncio.gather(
                 client.request("GET", "/api/v1/orders", account=account, params={"status": "OPEN", "symbol": code}),
                 client.request(
                     "GET", "/api/v1/orders", account=account, params={"status": "CLOSED", "symbol": code, "limit": 10}
                 ),
+            )
+            result = TradingOrderStateResponse(
+                account_seq=account,
+                code=code,
+                orders=[TossOrder.model_validate(o) for o in open_data["orders"]],
+                recent_orders=[TossOrder.model_validate(o) for o in closed_data["orders"]],
+                fetched_at_ms=int(time.time() * 1000),
+                events_connected=self.events_connected,
+                unresolved_commands=self.uncertain(account, code),
+                revision=revision,
+            )
+            if revision == self.revision:
+                self._snapshots[key] = time.monotonic(), result
+            return result
+
+    async def balances(self, account: int, code: str) -> TradingBalancesResponse:
+        await self.authorize(account)
+        key = (account, code)
+        async with self._balance_locks[key]:
+            cached = self._balances.get(key)
+            if cached and time.monotonic() - cached[0] < STATE_CACHE_SECONDS:
+                return cached[1]
+            revision = self.revision
+            client = self._client()
+            power, sellable, holdings = await asyncio.gather(
                 client.request("GET", "/api/v1/buying-power", account=account, params={"currency": "KRW"}),
                 client.request("GET", "/api/v1/sellable-quantity", account=account, params={"symbol": code}),
                 self.holdings(account),
             )
             holding = next((h for h in holdings if h["symbol"] == code), None)
-            result = TradingStateResponse(
-                account_seq=account,
-                code=code,
-                orders=[TossOrder.model_validate(o) for o in open_data["orders"]],
-                recent_orders=[TossOrder.model_validate(o) for o in closed_data["orders"]],
-                buying_power=power["cashBuyingPower"],
-                sellable_quantity=sellable["sellableQuantity"],
+            result = TradingBalancesResponse(
+                account_seq=account, code=code,
+                buying_power=power["cashBuyingPower"], sellable_quantity=sellable["sellableQuantity"],
                 holding_quantity=holding["quantity"] if holding else "0",
                 average_purchase_price=holding["averagePurchasePrice"] if holding else None,
                 fetched_at_ms=int(time.time() * 1000),
-                events_connected=self.events_connected,
-                unresolved_commands=self.uncertain(account, code),
             )
             if revision == self.revision:
-                self._snapshots[key] = time.monotonic(), result
+                self._balances[key] = time.monotonic(), result
             return result
 
     async def holdings(self, account: int) -> list[dict[str, Any]]:
@@ -281,9 +343,11 @@ class TradingService:
             cached = self._holdings.get(account)
             if cached and time.monotonic() - cached[0] < HOLDINGS_CACHE_SECONDS:
                 return cached[1]
+            revision = self.revision
             result = await self._client().request("GET", "/api/v1/holdings", account=account)
             items = result["items"]
-            self._holdings[account] = time.monotonic(), items
+            if revision == self.revision:
+                self._holdings[account] = time.monotonic(), items
             return items
 
     async def domestic(self, code: str) -> None:
@@ -304,6 +368,13 @@ class TradingService:
         order = TossOrder.model_validate(data)
         if order.orderId != order_id or order.symbol != code or order.currency != "KRW":
             raise TradingError(409, "order-context-mismatch", "선택한 종목의 국내 주식 주문만 변경할 수 있습니다.")
+        remaining(order)  # Validate decimals before comparing them with event observations.
+        observed = self._event_orders.get((account, order_id))
+        if observed and (Decimal(order.execution.filledQuantity) < Decimal(observed.execution.filledQuantity)
+                         or (observed.status in TERMINAL_STATES and order.status in EDITABLE_STATES)):
+            raise TradingError(
+                409, "order-state-syncing", "최신 체결·취소 내역을 동기화 중입니다. 갱신 후 다시 시도하세요."
+            )
         return order
 
     async def review(self, command: TradingCommand) -> None:
@@ -339,7 +410,7 @@ class TradingService:
     async def _cancel_all(self, command: CancelTradingOrders, saved: dict[str, Any] | None) -> TradingCancelResponse:
         try:
             if saved is None:
-                snapshot = await self.state(command.account_seq, command.code)
+                snapshot = await self.order_state(command.account_seq, command.code)
                 saved = {
                     "targets": [
                         {"id": o.orderId, "status": o.status}
