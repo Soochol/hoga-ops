@@ -81,6 +81,7 @@ from hoga.live.kiwoom_index_candles import (
     supports_bucket_seconds as kiwoom_supports_bucket,
 )
 from hoga.live.kiwoom_rankings import (
+    RANKING_MAX_LIMIT,
     Direction as RankingDirection,
     KiwoomRankingsError,
     KiwoomRankingsFetcher,
@@ -1891,6 +1892,8 @@ class RankingsResponse(BaseModel):
     venue: str | None = "KRX"
     #: 기관·외국인 순위에 보완한 현재가·등락률의 거래소.
     quote_venue: str | None = None
+    queried_count: int = 0
+    has_more: bool = False
     source: Literal["kiwoom"] = "kiwoom"
     # 비치명 경고(스크리너 ScreenerResponse.warnings 와 같은 관용구). 현재 유일한
     # 값은 "etf_filter_unavailable" — exclude_etf 를 요청했으나 심볼 마스터가
@@ -3226,6 +3229,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # 기존 순위·프로그램은 stex_tp로 거래소를 선택한다. 기관·외국인은
         # 거래소 입력이 없으므로 venue는 보완 시세에만 적용한다.
         venue: str = Query("KRX"),
+        limit: int | None = Query(None, ge=1, le=RANKING_MAX_LIMIT),
     ) -> RankingsResponse:
         """시장 전체 순위 및 프로그램·기관·외국인 순매수 금액 순위.
 
@@ -3233,6 +3237,10 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         의미 있고 나머지는 무시된다. 일반 순위는 10초, 순매수는 30초 폴링이다.
         market_open=False면 60초로 낮추고 "장 외" 라벨을 단다.
         비거래일엔 상류를 건너뛰며, 순매수는 전일 목록을 재사용하지 않는다.
+
+        limit는 일반 순위 기본 100, 프로그램 기본 50, 최대 5,000이다. 매 조회마다 첫 페이지부터
+        해당 범위를 조회한다. queried_count는 ETF 제외 전 범위이고 has_more는
+        더 펼칠 데이터가 남았다는 뜻이다. 기관·외국인은 기존 상한을 유지한다.
 
         exclude_etf=True 면 심볼 마스터의 security_type(etf/etn) 종목을 응답에서
         제거한다. 필터는 라우트 후처리 — fetcher 캐시는 전체 리스트를 그대로 캐싱해
@@ -3246,7 +3254,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         if kiwoom_rankings_fetcher_instance is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "kiwoom credentials not configured"})
         try:
-            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction, venue)
+            snap = await kiwoom_rankings_fetcher_instance.get(kind, market, direction, venue, limit=limit)
         except KiwoomRankingsError as e:
             raise HTTPException(502, {"code": LiveErrorCode.KIWOOM_API_ERROR, "message": str(e)}) from e
         except httpx.HTTPError as e:
@@ -3278,6 +3286,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             # 여지를 남기지 않는다(캐시 히트가 다른 venue 를 줬다면 여기서 드러난다).
             venue=snap.venue,
             quote_venue=snap.quote_venue,
+            queried_count=snap.queried_count,
+            has_more=snap.has_more,
             warnings=warnings,
         )
 

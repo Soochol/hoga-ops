@@ -105,6 +105,49 @@ async def test_program_stops_after_four_pages_and_schedules_every_page(make_fetc
     assert seen[0][0] == {"trde_upper_tp": "2", "amt_qty_tp": "1", "mrkt_tp": "P10102", "stex_tp": "2"}
     assert [s[1]["next-key"] for s in seen] == ["", "15", "30", "45"]
     assert [s[1]["cont-yn"] for s in seen] == ["N", "Y", "Y", "Y"]
+    assert snapshot.queried_count == 50 and snapshot.has_more
+
+
+async def test_program_expands_50_to_150_and_refreshes_both_market_ranges(make_fetcher, monkeypatch):
+    seen = []
+    clock = 1000.0
+    monkeypatch.setattr(kiwoom_rankings.time, "time", lambda: clock)
+
+    def handler(request):
+        body = json.loads(request.content)
+        offset = int(request.headers["next-key"] or "0")
+        kospi = body["mrkt_tp"] == "P00101"
+        seen.append((body["mrkt_tp"], offset))
+        return response([
+            program_row(f"{i + (0 if kospi else 1000):06d}", str(1000 - i * 2 - (0 if kospi else 1)))
+            for i in range(offset, offset + 15)
+        ], cont="Y", key=str(offset + 15))
+
+    fetcher, scheduler = make_fetcher(handler)
+    first = await fetcher.get("program", "all", "up")
+    assert first.queried_count == len(first.rows) == 50 and first.has_more
+    expanded = await fetcher.get("program", "all", "up", limit=150)
+    assert expanded.queried_count == len(expanded.rows) == 150 and expanded.has_more
+    assert [r.code for r in expanded.rows[:4]] == ["000000", "001000", "000001", "001001"]
+    assert [r.rank for r in expanded.rows] == list(range(1, 151))
+    assert len(seen) == len(scheduler.submissions) == 28  # 4+10페이지 × 두 시장
+    clock += 31
+    refreshed = await fetcher.get("program", "all", "up", limit=150)
+    assert len(refreshed.rows) == 150 and len(seen) == 48
+    assert seen.count(("P00101", 0)) == seen.count(("P10102", 0)) == 3
+
+
+async def test_program_stops_at_nonpositive_amounts_even_if_cursor_continues(make_fetcher):
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return response([program_row("000001", "2"), program_row("000002", "0")], cont="Y", key="next")
+
+    fetcher, _ = make_fetcher(handler)
+    snapshot = await fetcher.get("program", "kospi", "up", limit=150)
+    assert snapshot.queried_count == 1 and not snapshot.has_more
+    assert len(seen) == 1
 
 
 async def test_all_market_merges_by_amount_removes_duplicates_and_caps_50(make_fetcher):
