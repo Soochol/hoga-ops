@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useTradingState } from './trading';
+import { useTradingAccountList, useTradingState } from './trading';
 import { pauseTradingRefresh, scheduleTradingRefresh } from './tradingRefresh';
 
 const mock = vi.hoisted(() => ({ call: vi.fn(), listeners: new Set<(event: { type: string; mode?: string }) => void>() }));
@@ -120,4 +120,31 @@ describe('independent trading reads and refresh coordination', () => {
     await advance(100);
     expect(orderCalls()).toBe(3);
   });
+});
+
+it('account tabs are lazy, pause through writes, and merge events from every symbol', async () => {
+  const accountOrders = { ...orders, code: '', revision: 1 };
+  mock.call.mockImplementation((path: string) => Promise.resolve(path.includes('account-orders') ? accountOrders
+    : { account_seq: 1, holdings: [], fetched_at_ms: 1 }));
+  const { result, rerender } = renderHook(({ tab }: { tab: 'orders' | 'holdings' | null }) => useTradingAccountList(1, tab),
+    { wrapper, initialProps: { tab: null as 'orders' | 'holdings' | null } });
+  await advance(500); expect(mock.call).not.toHaveBeenCalled();
+  rerender({ tab: 'orders' }); await advance();
+  expect(mock.call).toHaveBeenCalledOnce();
+  let finish!: () => void;
+  act(() => { finish = pauseTradingRefresh(client, 'live', 1); });
+  const event = { type: 'trading_order', mode: 'live', account_seq: 1, revision: 2, order: {
+    orderId: 'other-symbol', symbol: '000660', side: 'SELL', orderType: 'LIMIT', timeInForce: 'DAY', status: 'PENDING',
+    price: '180000', quantity: '22', currency: 'KRW', orderedAt: '', execution: { filledQuantity: '0' },
+  } };
+  act(() => mock.listeners.forEach(listener => listener(event)));
+  await advance(4_000);
+  expect(result.current.orders.data?.orders.map(order => order.symbol)).toEqual(['000660']);
+  expect(mock.call).toHaveBeenCalledOnce();
+  rerender({ tab: 'holdings' }); await advance(); expect(mock.call).toHaveBeenCalledOnce();
+  act(() => finish()); await advance();
+  expect(mock.call).toHaveBeenCalledTimes(2);
+  expect(mock.call.mock.calls[1][0]).toContain('/holdings?account_seq=1');
+  rerender({ tab: null }); await advance(12_000);
+  expect(mock.call).toHaveBeenCalledTimes(2);
 });

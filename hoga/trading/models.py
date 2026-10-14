@@ -54,6 +54,19 @@ class TradingOrderStateResponse(BaseModel):
     revision: int = 0
 
 
+class TradingHolding(BaseModel):
+    code: str
+    name: str
+    quantity: str
+    average_purchase_price: str
+
+
+class TradingHoldingsResponse(BaseModel):
+    account_seq: int
+    holdings: list[TradingHolding] = Field(default_factory=list)
+    fetched_at_ms: int
+
+
 class TradingBalancesResponse(BaseModel):
     account_seq: int
     code: str

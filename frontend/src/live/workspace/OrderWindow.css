@@ -100,3 +100,5 @@
 
 .order-expanded:not(.order-spacious) .order-lane { padding-inline:0; gap:2px; }
 .order-expanded:not(.order-spacious) .order-chip { padding-inline:0; }
+
+.order-account-label { max-width:132px; overflow:hidden; text-overflow:ellipsis; }

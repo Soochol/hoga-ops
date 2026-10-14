@@ -141,7 +141,7 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
   switch (win.kind) {
     case 'order':
       return <Suspense fallback={<div className="p-2 text-sm text-fg-dim">호가 주문창 불러오는 중…</div>}><OrderWindow code={code} name={symbol?.name ?? code}
-        settings={win.order} onSettingsChange={settings => useWorkspaceStore.getState().setOrderWindowSettings(win.id, settings)} /></Suspense>;
+        settings={win.order} onSelectSymbol={(nextCode, name) => { if (nextCode !== code) useWorkspaceStore.getState().setWindowSymbol(win.id, { code: nextCode, name }); }} onSettingsChange={settings => useWorkspaceStore.getState().setOrderWindowSettings(win.id, settings)} /></Suspense>;
     case 'news':
       return <NewsWindow key={code} code={code} name={symbol?.name ?? code} />;
     case 'book':

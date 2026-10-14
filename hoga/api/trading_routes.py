@@ -17,6 +17,7 @@ from hoga.trading.models import (
     TradingCancelResponse,
     TradingCommand,
     TradingCommandResponse,
+    TradingHoldingsResponse,
     TradingOrderStateResponse,
     TradingReviewResponse,
     TradingStateResponse,
@@ -51,6 +52,15 @@ def build_router(service: TradingService | PaperTradingService, prefix: str = "/
     @router.get("/accounts")
     async def accounts() -> TradingAccountsResponse:
         return await invoke(service.accounts())
+
+    if isinstance(service, TradingService):
+        @router.get("/account-orders")
+        async def account_orders(account_seq: int = Query(gt=0)) -> TradingOrderStateResponse:
+            return await invoke(service.account_orders(account_seq))
+
+        @router.get("/holdings")
+        async def holdings(account_seq: int = Query(gt=0)) -> TradingHoldingsResponse:
+            return await invoke(service.account_holdings(account_seq))
 
     @router.get("/state")
     async def state(

@@ -73,13 +73,13 @@ export function useTradingAccounts(mode: TradingMode) {
     apiCall<TradingAccountsResponse>(`${tradingPrefix(mode)}/accounts`, { signal }), staleTime: 60_000, retry: false });
 }
 
-export function useTradingState(account: number, code: string, mode: TradingMode) {
+function useTradingRefresh(account: number, mode: TradingMode, listen = true) {
   const client = useQueryClient();
   const subscribe = useCallback((listener: () => void) => subscribeTradingRefresh(client, mode, account, listener), [client, mode, account]);
   const snapshot = useCallback(() => tradingRefreshVersion(client, mode, account), [client, mode, account]);
   useSyncExternalStore(subscribe, snapshot, snapshot);
   const paused = tradingRefreshPaused(client, mode, account);
-  useEffect(() => account > 0 ? subscribeEvents(event => {
+  useEffect(() => account > 0 && listen ? subscribeEvents(event => {
     if (event.type === 'trading_order' && event.mode === mode && event.account_seq === account) {
       const applied = applyTradingOrderEvent(client, mode, account, event.order, event.revision);
       scheduleTradingRefresh(client, mode, account, !applied);
@@ -89,7 +89,12 @@ export function useTradingState(account: number, code: string, mode: TradingMode
       if (event.type === 'connected') resetTradingOrderEvents(client, mode, account);
       scheduleTradingRefresh(client, mode, account);
     }
-  }) : undefined, [account, client, mode]);
+  }) : undefined, [account, client, mode, listen]);
+  return { client, paused };
+}
+
+export function useTradingState(account: number, code: string, mode: TradingMode) {
+  const { client, paused } = useTradingRefresh(account, mode);
   const path = `${tradingPrefix(mode)}/state?account_seq=${account}&code=${encodeURIComponent(code)}`;
   const orders = useQuery({
     queryKey: [...tradingStateKey(mode, account), 'orders', code], enabled: account > 0 && !paused,
@@ -108,6 +113,31 @@ export function useTradingState(account: number, code: string, mode: TradingMode
     error: orders.error ?? balances.error,
     balancesError: balances.isError,
   };
+}
+
+export interface TradingHolding {
+  code: string; name: string; quantity: string; average_purchase_price: string;
+}
+export interface TradingHoldingsResponse {
+  account_seq: number; holdings: TradingHolding[]; fetched_at_ms: number;
+}
+
+/** Only the visible tab fetches; account-wide write coordination also pauses these queries. */
+export function useTradingAccountList(account: number, tab: 'orders' | 'holdings' | null) {
+  const { client, paused } = useTradingRefresh(account, 'live', tab !== null);
+  const orders = useQuery({
+    queryKey: [...tradingStateKey('live', account), 'orders', 'account'],
+    enabled: account > 0 && tab === 'orders' && !paused,
+    queryFn: ({ signal }) => apiCall<OrderStateResponse>(`/api/trading/account-orders?account_seq=${account}`, { signal }),
+    staleTime: 500, refetchInterval: tab === 'orders' ? 3_000 : false, retry: false,
+  });
+  const holdings = useQuery({
+    queryKey: [...tradingStateKey('live', account), 'balances', 'holdings'],
+    enabled: account > 0 && tab === 'holdings' && !paused,
+    queryFn: ({ signal }) => apiCall<TradingHoldingsResponse>(`/api/trading/holdings?account_seq=${account}`, { signal }),
+    staleTime: 10_000, refetchInterval: tab === 'holdings' ? 10_000 : false, retry: false,
+  });
+  return { orders: { ...orders, data: mergeTradingOrderEvents(client, 'live', account, null, orders.data) }, holdings, paused };
 }
 
 export function tradingCommand<T>(path: string, body: TradingCommand, mode: TradingMode): Promise<T> {
