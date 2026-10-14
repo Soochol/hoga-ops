@@ -486,8 +486,8 @@ async def reorder_entries(data_dir: Path, *, folder_id: str,
 
 
 async def remove_entries(data_dir: Path, *, codes: list[str]) -> None:
-    """Bulk remove — every registration of each code, in ALL groups (there is
-    no folder-scoped bulk surface). Absent codes are ignored (idempotent)."""
+    """Bulk remove — every registration of each code, in ALL groups. Selected
+    group removal is a separate command. Absent codes are ignored (idempotent)."""
     async with _lock:
         doc = load_document(data_dir)
         keep = [e for e in doc.entries if e.code not in set(codes)]
@@ -529,4 +529,36 @@ async def transact_entries(data_dir: Path, *, changes: list[HeatmapFolderEntries
                     update={"folder_id": change.folder_id, "order": order})
                 for order, code in enumerate(change.after)
             )
+        save_document(data_dir, doc.model_copy(update={"entries": entries}))
+
+
+async def remove_selected_memberships(
+    data_dir: Path, *, changes: list[HeatmapFolderEntriesChange], orphan_codes: list[str],
+) -> None:
+    """Remove selected group registrations atomically, preserving all other groups.
+
+    Both touched folder order and final-membership loss must match confirmation;
+    stale previews cannot silently delete more than the user approved.
+    """
+    async with _lock:
+        doc = load_document(data_dir)
+        folder_ids = {f.id for f in doc.folders}
+        touched = {c.folder_id for c in changes}
+        if len(touched) != len(changes):
+            raise HeatmapSetMismatchError("duplicate folders")
+        entries = [e for e in doc.entries if e.folder_id not in touched]
+        for change in changes:
+            if change.folder_id not in folder_ids:
+                raise FolderNotFoundError(change.folder_id)
+            current = sorted((e for e in doc.entries if e.folder_id == change.folder_id), key=lambda e: e.order)
+            if change.before != [e.code for e in current]:
+                raise HeatmapSetMismatchError("folder changed since confirmation")
+            keep = set(change.after)
+            if change.after != [code for code in change.before if code in keep]:
+                raise HeatmapSetMismatchError("only registration removal is allowed")
+            entries.extend(e.model_copy(update={"order": i})
+                           for i, e in enumerate(e for e in current if e.code in keep))
+        orphaned = {e.code for e in doc.entries} - {e.code for e in entries}
+        if orphaned != set(orphan_codes):
+            raise HeatmapSetMismatchError("final memberships changed since confirmation")
         save_document(data_dir, doc.model_copy(update={"entries": entries}))

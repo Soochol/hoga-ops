@@ -44,6 +44,7 @@ from hoga.api.heatmap import (
     move_entries,
     remove_entries,
     remove_entry,
+    remove_selected_memberships,
     rename_folder,
     reorder_entries,
     reorder_folders,
@@ -60,6 +61,7 @@ from hoga.api.models import (
     HeatmapEntriesTransactionRequest,
     HeatmapEntry,
     HeatmapFolderView,
+    HeatmapMembershipsRemoveRequest,
     HeatmapResponse,
     MemberAddRequest,
     WatchlistFolder,
@@ -145,6 +147,19 @@ def build_router(  # noqa: PLR0915
             capture_markers=doc.capture_markers,
             next_run_at_ms=next_run_at_ms(dt.datetime.now(tz=ZoneInfo("Asia/Seoul"))),
         )
+
+    @router.post("/entries/remove", status_code=204)
+    async def remove_memberships(req: HeatmapMembershipsRemoveRequest) -> Response:
+        try:
+            await remove_selected_memberships(data_dir, changes=req.changes, orphan_codes=req.orphan_codes)
+        except FolderNotFoundError as e:
+            raise HTTPException(status_code=404, detail={"code": "folder_not_found"}) from e
+        except HeatmapSetMismatchError as e:
+            raise HTTPException(status_code=409, detail={
+                "code": "heatmap_changed", "message": "목록이 변경되었습니다. 최신 목록에서 다시 시도하세요.",
+            }) from e
+        await _refresh_storage_targets(data_dir, op="selected_remove")
+        return Response(status_code=204)
 
     @router.put("/entries/transaction", status_code=204)
     async def transaction(req: HeatmapEntriesTransactionRequest) -> Response:

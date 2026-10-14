@@ -87,3 +87,65 @@ def test_undo_conflict_preserves_later_edit(client, tmp_path):
     before = load_document(tmp_path).model_dump()
     assert send(client, inverse(request)).status_code == 409
     assert load_document(tmp_path).model_dump() == before
+
+
+def removal():
+    return {
+        'changes': [
+            {'folder_id': A, 'before': ['005930', '000660'], 'after': []},
+            {'folder_id': B, 'before': ['035420', '005930'], 'after': ['005930']},
+        ],
+        'orphan_codes': ['035420'],
+    }
+
+
+def test_selected_removal_preserves_unselected_memberships_and_markers(client, tmp_path):
+    assert client.post('/api/heatmap/entries/remove', json=removal()).status_code == 204
+    doc = load_document(tmp_path)
+    assert sorted((e.folder_id, e.code) for e in doc.entries) == [(B, '005930'), (C, '000660')]
+    assert doc.capture_markers == {'005930': '20260907'}
+    assert len(doc.folders) == 3
+
+
+@pytest.mark.parametrize(
+    'fault', ['stale', 'duplicate_code', 'duplicate_folder', 'unknown', 'reorder', 'folder', 'orphan'],
+)
+def test_invalid_selected_removal_never_partially_writes(client, tmp_path, fault):
+    request = removal()
+    if fault == 'stale':
+        request['changes'][1]['before'].reverse()
+    elif fault == 'duplicate_code':
+        request['changes'][1]['after'].append('005930')
+    elif fault == 'duplicate_folder':
+        request['changes'].append(request['changes'][0])
+    elif fault == 'unknown':
+        request['changes'][1]['after'] = ['123456']
+    elif fault == 'reorder':
+        request['changes'][1]['after'] = ['005930', '035420']
+    elif fault == 'folder':
+        request['changes'][1]['folder_id'] = 'f_99999999'
+    else:
+        request['orphan_codes'] = []
+    before = load_document(tmp_path).model_dump()
+    assert client.post('/api/heatmap/entries/remove', json=request).status_code in (404, 409)
+    assert load_document(tmp_path).model_dump() == before
+
+
+def test_selected_removal_rejects_changed_unselected_final_membership(client, tmp_path):
+    request = removal()
+    assert client.delete(f'/api/heatmap/folders/{B}/members/005930').status_code == 204
+    request['changes'] = request['changes'][:1]
+    request['orphan_codes'] = []  # Before B changed, A's Samsung membership was not final.
+    before = load_document(tmp_path).model_dump()
+    assert client.post('/api/heatmap/entries/remove', json=request).status_code == 409
+    assert load_document(tmp_path).model_dump() == before
+
+
+def test_selected_removal_refreshes_storage_targets(client, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    refresh = AsyncMock()
+    monkeypatch.setattr('hoga.api.heatmap_routes._refresh_storage_targets', refresh)
+    assert client.post('/api/heatmap/entries/remove', json=removal()).status_code == 204
+    assert refresh.await_count == 1
+    assert refresh.await_args.kwargs['op'] == 'selected_remove'

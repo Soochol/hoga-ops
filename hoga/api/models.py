@@ -1530,6 +1530,12 @@ class WatchlistItemsTransactionRequest(BaseModel):
     changes: list[WatchlistFolderItemsChange] = Field(min_length=1, max_length=256)
 
 
+class WatchlistMembershipsRemoveRequest(WatchlistItemsTransactionRequest):
+    """Remove selected memberships, guarding the confirmed final-membership loss."""
+
+    orphan_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+
+
 class EntriesRemoveRequest(BaseModel):
     codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
 
@@ -1577,6 +1583,12 @@ class HeatmapFolderEntriesChange(BaseModel):
 
 class HeatmapEntriesTransactionRequest(BaseModel):
     changes: list[HeatmapFolderEntriesChange] = Field(min_length=1, max_length=256)
+
+
+class HeatmapMembershipsRemoveRequest(HeatmapEntriesTransactionRequest):
+    """Selected group registrations with the confirmed final-membership loss."""
+
+    orphan_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
 
 
 class HeatmapEntriesMoveRequest(BaseModel):

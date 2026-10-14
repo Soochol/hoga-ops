@@ -75,6 +75,7 @@ const api = vi.hoisted(() => ({
   moveHeatmapEntries: vi.fn(() => Promise.resolve()),
   reorderHeatmapEntries: vi.fn(() => Promise.resolve()),
   removeHeatmapEntries: vi.fn(() => Promise.resolve()),
+  removeSelectedHeatmapMemberships: vi.fn<() => Promise<void>>(() => Promise.resolve()),
 }));
 vi.mock('../api/heatmap', () => api);
 vi.mock('../api/indexSectorRankings', () => ({ INDEX_SECTOR_RANKINGS_KEY: ['index-sector-rankings'] }));

@@ -30,12 +30,8 @@ test('Delete excludes only the focused group membership and keeps keyboard focus
   const other = page.getByTestId('watchlist-dropzone-f_b');
   const row = source.getByTestId('watchlist-row-005930');
   await expect(row).toBeVisible();
-  // 선택 체크박스의 Delete는 행 제외로 전파되지 않는다.
-  await page.getByRole('button', { name: '다중 선택', exact: true }).click();
-  await row.getByRole('checkbox').focus();
-  await page.keyboard.press('Delete');
-  await expect(row).toBeVisible();
-  expect(memberDeletes).toEqual([]);
+  await expect(panel.getByRole('button', { name: '다중 선택', exact: true })).toHaveCount(0);
+  await expect(row.getByRole('checkbox')).toHaveCount(0);
   await row.focus();
   await page.keyboard.press('Backspace');
   await expect(row).toBeVisible();

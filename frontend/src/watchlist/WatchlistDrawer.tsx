@@ -1,12 +1,14 @@
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
-import { RailSelectionControl } from '../rightrail/RailSelectionControl';
+import { usePanelRowSelection } from '../rightrail/usePanelRowSelection';
+import { ModalShell } from '../ui/ModalShell';
+import { ConfirmModal } from '../ui/ConfirmModal';
 import { PanelContextMenu } from '../ui/PanelContextMenu';
 import { openPanelContextMenuFromKeyboard, panelDragListeners } from '../ui/panelRowInteractions';
 import { RailDestination } from '../rightrail/RailDestination';
 import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
+import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
@@ -20,7 +22,7 @@ import {
   useWatchlist, useCatchupAll, useRemoveFromWatchlist,
   useCreateFolder, useRenameFolder, useDeleteFolder, useReorderFolders,
   useReorderItems, useAddMemo, useUpdateMemo, useRemoveMemo,
-  useRemoveMember, useAddMember,
+  useRemoveMember, useAddMember, useRemoveSelectedMemberships,
 } from './useWatchlist';
 import { persistJson, readJsonObject } from '../state/persist';
 import { ChevronIcon } from '../ui/ChevronIcon';
@@ -46,8 +48,8 @@ import {
 } from '@dnd-kit/core';
 import { precisePanelCollision } from './panelDragCollision';
 import { DragPanelAssist } from './DragPanelAssist';
-import { folderItems, planTransfer, type TransferSource } from './transferItems';
-import { useWatchlistTransfer } from './useWatchlistTransfer';
+import { folderItems, planTransfer, planMembershipRemoval, type TransferSource } from './transferItems';
+import { useWatchlistTransfer, WATCHLIST_TRANSFER_NOTICE_MS } from './useWatchlistTransfer';
 import { WatchlistTransferToast } from './WatchlistTransferToast';
 import { RailDragOverlay } from '../rightrail/RailDragOverlay';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
@@ -460,16 +462,16 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   /** 「이미 이 그룹에 있습니다」가 가리킨 행. 공용 `.row-flash`(QuoteRow 의 flash) 를
    *  그대로 쓴다 — 스크리너 신규 편입 플래시와 **같은 메커니즘**이다. */
   flash?: boolean;
-  onPick: (entry: WatchlistEntry, e?: JumpModifiers) => void;
+  onPick: (entry: WatchlistEntry, e?: React.MouseEvent<HTMLLIElement> | React.KeyboardEvent<HTMLLIElement>) => void;
   onOpenMenu: (e: React.MouseEvent, entry: WatchlistEntry) => void;
   onDelete: (entry: WatchlistEntry) => void;
   dragEnabled?: boolean;
   selected?: boolean;
-  onToggleSelection?: (rowId: string) => void;
+  onSelectionKeyDown?: (e: React.KeyboardEvent<HTMLLIElement>) => boolean;
   indicator?: 'before' | 'after';
 }) {
   const { entry, onPick, onOpenMenu, onDelete } = props;
-  const handlePick = useCallback((e?: JumpModifiers) => onPick(entry, e), [onPick, entry]);
+  const handlePick = useCallback((e?: React.MouseEvent<HTMLLIElement> | React.KeyboardEvent<HTMLLIElement>) => onPick(entry, e), [onPick, entry]);
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(e, entry), [onOpenMenu, entry]);
   const handleDelete = useCallback(() => onDelete(entry), [onDelete, entry]);
@@ -496,10 +498,16 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
       onDelete={handleDelete}
       indented
       sortableRef={setNodeRef}
-      dragListeners={props.dragEnabled === false ? undefined : listeners}
+      dragListeners={props.dragEnabled === false ? undefined : { ...listeners,
+        onPointerDown: (event: React.PointerEvent<HTMLLIElement>) => {
+          if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+          listeners?.onPointerDown?.(event);
+        },
+      }}
       dragActivatorRef={props.dragEnabled === false ? undefined : setActivatorNodeRef}
-      leading={props.onToggleSelection ? <input type="checkbox" aria-label={`${entry.name} 이동 선택`} checked={props.selected}
-        onClick={(event) => event.stopPropagation()} onChange={() => props.onToggleSelection?.(entrySortableId(entry.folder_id, entry.code))} /> : undefined}
+      selected={props.selected}
+      selectionId={entrySortableId(entry.folder_id, entry.code)}
+      onSelectionKeyDown={props.onSelectionKeyDown}
       dragging={isDragging}
       draggingAppearance="placeholder"
       dropIndicator={props.indicator ?? memoIndicator}
@@ -645,8 +653,8 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
  * and click → activeCode + /live jump. The 편집 control opens a small menu
  * (관심 편집 → WatchlistEditModal, 새 그룹 만들기 → GroupNameModal); group
  * headers carry a context menu (이름 변경/순서/삭제), and the row context menu
- * does quick-remove + 그룹으로 이동. Entry add/multi-delete live in the edit
- * modal; precise transfers, multi-selection and guarded undo also live in-panel.
+ * provides membership menus and direct row selection. Precise transfers,
+ * confirmed bulk removal and guarded move undo also live in-panel.
  * Entries and group headers support whole-row pointer dragging, excluding internal controls.
  * While a group drag is in flight every group renders header-only.
  * Collapse state persists via localStorage.
@@ -671,6 +679,7 @@ export function WatchlistDrawer() {
   const unfilteredScroll = useRef(0);
   const [searchCollapsed, setSearchCollapsed] = useState<Set<string>>(() => new Set());
   const changeQuery = (next: string) => {
+    clearSelection();
     if (!searching && next.trim()) unfilteredScroll.current = scrollRef.current?.scrollTop ?? 0;
     setSearchCollapsed(new Set());
     setQuery(next);
@@ -678,15 +687,8 @@ export function WatchlistDrawer() {
   useLayoutEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = searching ? 0 : unfilteredScroll.current;
   }, [searchText, searching]);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedRows, setSelectedRows] = useState<Set<string>>(() => new Set());
   const [expandedDuringDrag, setExpandedDuringDrag] = useState<Set<string>>(() => new Set());
   const expandDuringDrag = useCallback((id: string) => setExpandedDuringDrag((old) => old.has(id) ? old : new Set([...old, id])), []);
-  const toggleSelectedRow = useCallback((rowId: string) => setSelectedRows((old) => {
-    const next = new Set(old);
-    if (next.has(rowId)) next.delete(rowId); else next.add(rowId);
-    return next;
-  }), []);
   const dragSources = useRef<TransferSource[]>([]);
   const [dragHint, setDragHint] = useState('그룹의 원하는 위치에 놓으세요 · 바깥에 놓으면 취소');
   const dragPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -825,13 +827,15 @@ export function WatchlistDrawer() {
   }, [data, liveStatusData, codes, activeCode]);
 
   // 함수형 업데이터 — 같은 배치의 다중 toggle도 최신 Set 위에서 계산된다.
-  const toggle = (key: string) =>
+  const toggle = (key: string) => {
+    clearSelection();
     setCollapsed((s) => {
       const n = new Set(s);
       if (n.has(key)) n.delete(key);
       else n.add(key);
       return n;
     });
+  };
   // 영속화는 상태 변화에 반응. 기록 시점에 실존 그룹 키만 남겨 삭제된 그룹의
   // 키가 localStorage에 누적되지 않게 한다(메모리의 inert 키는 다음 마운트에서 소멸).
   useEffect(() => {
@@ -843,7 +847,7 @@ export function WatchlistDrawer() {
       e.preventDefault();                                 // 네이티브 우클릭 메뉴 억제
       setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });  // raw 좌표 — 클램프는 메뉴가 실측
     },
-    [],
+    [setMenu],
   );
 
   // 폴더별 정렬 모드가 아직 없을 때 쓰는 이월값(구 전역 설정). 아래 renderGroups 가
@@ -907,6 +911,13 @@ export function WatchlistDrawer() {
     });
   }, [renderGroups, query]);
   const shownCollapsed = searching ? searchCollapsed : collapsed;
+  const visibleSelectionIds = useMemo(() => filteredGroups.flatMap(g => shownCollapsed.has(g.key) ? []
+    : g.rows.flatMap(r => r.kind === 'entry' && r.entry.folder_id ? [entrySortableId(r.entry.folder_id, r.entry.code)] : [])),
+  [filteredGroups, shownCollapsed]);
+  const { selectedRows, clear: clearSelection, select: selectRow } = usePanelRowSelection(visibleSelectionIds);
+  const selectedSources = renderGroups.flatMap(g => g.rows.flatMap(r => r.kind === 'entry' && r.entry.folder_id
+    && selectedRows.has(entrySortableId(r.entry.folder_id, r.entry.code)) && visibleSelectionIds.includes(entrySortableId(r.entry.folder_id, r.entry.code))
+    ? [{ folderId: r.entry.folder_id, code: r.entry.code }] : []));
   const setShownCollapsed = searching ? setSearchCollapsed : setCollapsed;
   const folderCount = data?.folders.length ?? 0;
   const realFolderIds = useMemo(
@@ -922,7 +933,8 @@ export function WatchlistDrawer() {
     .map((g) => g.key);
   const allCollapsed =
     visibleGroupKeys.length > 0 && visibleGroupKeys.every((k) => shownCollapsed.has(k));
-  const toggleAll = () =>
+  const toggleAll = () => {
+    clearSelection();
     setShownCollapsed((s) => {
       const n = new Set(s);
       for (const k of visibleGroupKeys) {
@@ -931,6 +943,7 @@ export function WatchlistDrawer() {
       }
       return n;
     });
+  };
   useEffect(() => {
     if (!data) return;
     const folderIds = data?.folders.map((f) => f.id) ?? [];
@@ -959,6 +972,7 @@ export function WatchlistDrawer() {
   }, [groupSortModes]);
 
   const setFolderSortMode = (folderId: string, mode: QuoteSortMode) => {
+    clearSelection();
     setGroupSortModes((prev) => {
       if (prev[folderId] === mode) return prev;
       return { ...prev, [folderId]: mode };
@@ -988,6 +1002,27 @@ export function WatchlistDrawer() {
   // 실폴더 간 이동·재정렬·되돌리기는 하나의 원자적 저장 계약을 쓴다.
   const addMemberM = useAddMember(); // 구버전 응답의 미분류 호환 경로
   const transfer = useWatchlistTransfer();
+  const removeSelectedM = useRemoveSelectedMemberships();
+  const busy = transfer.busy || removeSelectedM.isPending;
+  const removalSucceeded = removeSelectedM.isSuccess;
+  const resetRemoval = removeSelectedM.reset;
+  useEffect(() => {
+    if (!removalSucceeded) return;
+    const timer = window.setTimeout(resetRemoval, WATCHLIST_TRANSFER_NOTICE_MS);
+    return () => window.clearTimeout(timer);
+  }, [removalSucceeded, resetRemoval]);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number } | null>(null);
+  const [moveSelection, setMoveSelection] = useState<TransferSource[] | null>(null);
+  const [removeSelection, setRemoveSelection] = useState<ReturnType<typeof planMembershipRemoval> | null>(null);
+  const requestRemoval = (sources: TransferSource[]) => {
+    if (!data || !sources.length || busy) return;
+    resetRemoval();
+    setRemoveSelection(planMembershipRemoval(data, sources));
+  };
+  const selectionHandlersRef = useRef({ selectRow, selectedRows, selectedSources, visibleSelectionIds, busy, requestRemoval, clearSelection, isDragging });
+  useLayoutEffect(() => {
+    selectionHandlersRef.current = { selectRow, selectedRows, selectedSources, visibleSelectionIds, busy, requestRemoval, clearSelection, isDragging };
+  });
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   // --- 행에 넘길 안정 콜백(P2) ---
@@ -1001,18 +1036,60 @@ export function WatchlistDrawer() {
   const removeMemberMutate = removeMemberM.mutate;
   const updateMemoMutate = updateMemoM.mutate;
   const removeMemoMutate = removeMemoM.mutate;
-  const handleRowPick = useCallback((entry: WatchlistEntry, e?: JumpModifiers) => {
+  const handleRowPick = useCallback((entry: WatchlistEntry, e?: React.MouseEvent<HTMLLIElement> | React.KeyboardEvent<HTMLLIElement>) => {
+    const selection = selectionHandlersRef.current;
+    if (selection.busy) return;
+    if (selection.selectRow(entrySortableId(entry.folder_id, entry.code), e ?? {})) return;
     onPickRef.current(entry.code, entry.name, e);
   }, []);
   const handleRowMenu = useCallback((e: React.MouseEvent, entry: WatchlistEntry) => {
+    const selection = selectionHandlersRef.current;
+    if (selection.busy) { e.preventDefault(); return; }
+    const id = entrySortableId(entry.folder_id, entry.code);
+    if (selection.selectedRows.has(id) && selection.selectedSources.length) {
+      e.preventDefault();
+      setMenu(null);
+      setSelectionMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    selection.clearSelection();
+    setSelectionMenu(null);
     openMenu(e, entry.code, entry.name, entry.folder_id);
   }, [openMenu]);
   const handleRowDelete = useCallback((entry: WatchlistEntry) => {
+    const selection = selectionHandlersRef.current;
+    if (selection.busy) return;
+    if (selection.selectedSources.length) {
+      selection.requestRemoval(selection.selectedSources);
+      return;
+    }
     // Delete는 포커스된 그룹의 소속만 해제한다. 다중 소속 종목을 전체 삭제하지 않는다.
     // 미분류는 해제할 그룹이 없으므로 기존 관심목록 제외 동작을 유지한다.
     if (entry.folder_id !== null) removeMemberMutate({ folderId: entry.folder_id, code: entry.code });
     else removeMutate(entry.code);
   }, [removeMutate, removeMemberMutate]);
+  const handleSelectionKeyDown = useCallback((e: React.KeyboardEvent<HTMLLIElement>) => {
+    const selection = selectionHandlersRef.current;
+    if (e.key === 'Escape' && !selection.isDragging && selection.selectedRows.size) {
+      e.preventDefault(); e.stopPropagation(); selection.clearSelection(); return true;
+    }
+    if (e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+      e.preventDefault(); e.stopPropagation();
+      if (selection.busy) return true;
+      const id = e.currentTarget.dataset.selectionId!;
+      const index = selection.visibleSelectionIds.indexOf(id);
+      const next = selection.visibleSelectionIds[index + (e.key === 'ArrowDown' ? 1 : -1)];
+      if (index < 0 || !next) return true;
+      // Starting from keyboard focus also establishes the range anchor.
+      if (!selection.selectedRows.size) selection.selectRow(id, {});
+      selection.selectRow(next, { shiftKey: true, ctrlKey: e.ctrlKey, metaKey: e.metaKey });
+      const scope = e.currentTarget.closest('[data-quote-nav]');
+      const target = Array.from(scope?.querySelectorAll<HTMLElement>('[data-selection-id]') ?? []).find(row => row.dataset.selectionId === next);
+      target?.focus(); target?.scrollIntoView?.({ block: 'nearest' });
+      return true;
+    }
+    return false;
+  }, []);
   const handleMemoSave = useCallback((memoId: string, text: string) => {
     updateMemoMutate({ memoId, text });
   }, [updateMemoMutate]);
@@ -1022,7 +1099,7 @@ export function WatchlistDrawer() {
   const handleMemoMenu = useCallback((e: React.MouseEvent, folderId: string, memo: WatchlistMemo) => {
     e.preventDefault();                                  // 네이티브 우클릭 메뉴 억제
     setMemoMenu({ x: e.clientX, y: e.clientY, folderId, memoId: memo.id, text: memo.text });
-  }, []);
+  }, [setMemoMenu]);
 
   /** 열려 있는 삽입 팝오버의 items 인덱스를 **지금** 다시 읽는다(submit 시점 호출).
    *  앵커 행이 그 사이 사라졌으면 undefined → 백엔드가 맨 아래로 클램프한다. */
@@ -1073,7 +1150,7 @@ export function WatchlistDrawer() {
     }
     flashDuplicate(folderId, code);
     setSymbolInsert(null);
-  }, [symbolInsert, data, memos, getFolderSortMode, reorderItemsM, removeMemoMutate, flashDuplicate]);
+  }, [symbolInsert, data, memos, getFolderSortMode, reorderItemsM, removeMemoMutate, flashDuplicate, setSymbolInsert]);
 
   // "차트로 드롭" 공유 상태 — WorkspaceCanvas가 구독해 드롭 타깃 오버레이를 띄운다.
   const startEntryDrag = useEntryDragStore((s) => s.startDrag);
@@ -1265,7 +1342,7 @@ export function WatchlistDrawer() {
         const changes = planTransfer(data, dragSources.current, target.folderId, target.at, getFolderSortMode(target.folderId) !== 'default');
         const count = new Set(dragSources.current.map((s) => s.code)).size;
         const label = `${count > 1 ? `${count}종목` : String(ev.active.data.current?.name ?? '')} → ${target.label}`;
-        void transfer.run(changes, label).then((ok) => { if (ok) setSelectedRows(new Set()); });
+        void transfer.run(changes, label).then((ok) => { if (ok) clearSelection(); });
       }
       return;
     }
@@ -1290,7 +1367,12 @@ export function WatchlistDrawer() {
   };
 
   return (
-    <RailDrawer id="right-rail-watchlist-panel" testId="watchlist-panel" ariaLabel="관심종목">
+    <RailDrawer id="right-rail-watchlist-panel" testId="watchlist-panel" ariaLabel="관심종목"
+      onKeyDown={event => {
+        if (event.key !== 'Escape' || event.defaultPrevented || isDragging || selectionMenu || menu || memoMenu
+          || (event.target as HTMLElement).closest('[role="dialog"]')) return;
+        if (selectedRows.size) { event.preventDefault(); event.stopPropagation(); clearSelection(); }
+      }}>
       <RailDrawerHeader
         title="관심종목"
         actions={(
@@ -1324,12 +1406,14 @@ export function WatchlistDrawer() {
               {allCollapsed ? <ExpandAllIcon className="h-3.5 w-3.5" /> : <CollapseAllIcon className="h-3.5 w-3.5" />}
             </button>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <RailSelectionControl active={selectionMode}
-            count={data?.entries.filter((e) => selectedRows.has(entrySortableId(e.folder_id, e.code))).length ?? 0}
-            disabled={transfer.busy} onToggle={() => { setSelectionMode(!selectionMode); setSelectedRows(new Set()); }} />
-
-        </div>
+        {selectedSources.length > 0 && <div className="flex min-h-7 items-center gap-2 text-xs" data-testid="watchlist-selection-actions">
+          <span role="status" className="mr-auto text-fg-dim">{selectedSources.length}개 선택</span>
+          <button type="button" disabled={busy} onClick={() => setMoveSelection(selectedSources)} className="text-accent disabled:opacity-40">이동</button>
+          <button type="button" disabled={busy} onClick={() => requestRemoval(selectedSources)} className="text-accent disabled:opacity-40">삭제</button>
+          <button type="button" disabled={busy} onClick={clearSelection} className="text-fg-dim disabled:opacity-40">선택 해제</button>
+        </div>}
+        {removeSelectedM.isError && <p role="alert" className="text-xs text-error">삭제하지 못했습니다 · {removeSelectedM.error.message}</p>}
+        {removeSelectedM.isSuccess && <p role="status" className="text-xs text-fg-dim">선택 항목을 삭제했습니다</p>}
         {searching && <p role="status" className="text-xs text-fg-dim">검색 결과 {filteredGroups.reduce((n, g) => n + g.count, 0)}개 · {filteredGroups.length}그룹</p>}
       </div>
       <WatchlistTransferToast transfer={transfer} />
@@ -1369,7 +1453,7 @@ export function WatchlistDrawer() {
                             onSave={handleMemoSave}
                             onDelete={handleMemoDelete}
                             onOpenMenu={handleMemoMenu}
-                            dragEnabled={rowDragEnabled && !transfer.busy && !searching}
+                            dragEnabled={rowDragEnabled && !busy && !searching}
                             indicator={destination?.rowId === memoSortableId(folder!.id, row.memo.id) ? destination.side : undefined}
                           />
                         );
@@ -1397,9 +1481,9 @@ export function WatchlistDrawer() {
                           onPick={handleRowPick}
                           onOpenMenu={handleRowMenu}
                           onDelete={handleRowDelete}
-                          dragEnabled={!transfer.busy && !searching}
+                          dragEnabled={!busy && !searching}
                           selected={selectedRows.has(rowId)}
-                          onToggleSelection={selectionMode && entry.folder_id ? toggleSelectedRow : undefined}
+                          onSelectionKeyDown={handleSelectionKeyDown}
                           indicator={destination?.rowId === rowId ? destination.side : undefined}
                         />
                       );
@@ -1409,7 +1493,7 @@ export function WatchlistDrawer() {
               );
               const renderHeader = (dragHandle?: GroupDragHandle) => (
                 <GroupHeader label={label} count={g.count} collapsed={isCollapsed}
-                  onToggle={() => searching ? setSearchCollapsed((old) => { const next = new Set(old); if (next.has(key)) next.delete(key); else next.add(key); return next; }) : toggle(key)}
+                  onToggle={() => { clearSelection(); if (searching) setSearchCollapsed((old) => { const next = new Set(old); if (next.has(key)) next.delete(key); else next.add(key); return next; }); else toggle(key); }}
                   onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
                   onDelete={folder ? () => deleteFolderWithConfirm(folder.id) : undefined}
                   onMoveUp={folder ? () => moveFolder(folder.id, -1) : undefined}
@@ -1421,11 +1505,11 @@ export function WatchlistDrawer() {
                   onSort={folder ? (mode) => setFolderSortMode(folder.id, mode) : undefined}
                   folderId={folder?.id}
                   onDuplicateSymbol={flashDuplicate}
-                  dragHandle={dragHandle} busy={transfer.busy || searching} />
+                  dragHandle={dragHandle} busy={busy || searching} />
               );
               return folder ? (
                 <GroupDropZone key={key} folderId={folder.id}>
-                  <SortableGroup folderId={folder.id} disabled={transfer.busy || searching}>
+                  <SortableGroup folderId={folder.id} disabled={busy || searching}>
                     {(dragHandle) => (<>{renderHeader(dragHandle)}{entriesList}</>)}
                   </SortableGroup>
                 </GroupDropZone>
@@ -1484,8 +1568,49 @@ export function WatchlistDrawer() {
         </div>
       </RailDrawerSection>
 
+      {selectionMenu && selectedSources.length > 0 && <PanelContextMenu point={selectionMenu} label={`${selectedSources.length}개 선택`} onClose={() => setSelectionMenu(null)}>
+        <button type="button" role="menuitem" disabled={busy} className="w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover"
+          onClick={() => { setMoveSelection(selectedSources); setSelectionMenu(null); }}>선택 항목 이동…</button>
+        <button type="button" role="menuitem" disabled={busy} className="w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover"
+          onClick={() => { requestRemoval(selectedSources); setSelectionMenu(null); }}>선택 항목 삭제</button>
+      </PanelContextMenu>}
+      {moveSelection && <ModalShell ariaLabel="선택 항목 이동" title="이동할 그룹 선택" width="w-[360px]" onClose={() => setMoveSelection(null)}>
+        <div className="max-h-[60vh] overflow-y-auto p-2">
+          {data?.folders.map(folder => <button key={folder.id} type="button" disabled={busy}
+            className="block w-full rounded px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover disabled:opacity-40"
+            onClick={() => {
+              const changes = planTransfer(data, moveSelection, folder.id, folderItems(data, folder.id).length, getFolderSortMode(folder.id) !== 'default');
+              setMoveSelection(null);
+              void transfer.run(changes, `${new Set(moveSelection.map(s => s.code)).size}종목 → ${folder.name}`).then(ok => { if (ok) clearSelection(); });
+            }}>{folder.name}</button>)}
+        </div>
+      </ModalShell>}
+      {removeSelection && <ConfirmModal confirmLabel="삭제" tone="destructive" onClose={() => setRemoveSelection(null)}
+        message={<>
+          선택한 {removeSelection.changes.reduce((n, c) => n + c.before.length - c.after.length, 0)}개 항목을 해당 그룹에서 삭제합니다
+          {removeSelection.orphan_codes.length > 0 && <p className="mt-2">마지막 그룹 소속이 사라지는 {removeSelection.orphan_codes.length}종목은 관심종목에서 빠집니다(데이터 수집 중단)</p>}
+          <p className="mt-2 text-fg-dim">다른 그룹에 남아 있는 소속은 유지됩니다</p>
+        </>}
+        onConfirm={() => {
+          const request = removeSelection;
+          setRemoveSelection(null);
+          removeSelectedM.mutate(request, { onSuccess: () => {
+            const scope = scrollRef.current;
+            const focused = document.activeElement as HTMLElement | null;
+            const removedIds = new Set(request.changes.flatMap(c => c.before.flatMap(i => i.kind === 'code'
+              && !c.after.some(a => a.kind === 'code' && a.code === i.code) ? [entrySortableId(c.folder_id, i.code)] : [])));
+            const panel = scope?.closest('aside');
+            if (panel && focused && (focused === document.body || panel.contains(focused))) {
+              const survivor = Array.from(scope?.querySelectorAll<HTMLElement>('[data-selection-id]') ?? [])
+                .find(row => !removedIds.has(row.dataset.selectionId!));
+              (survivor ?? panel.querySelector<HTMLElement>('button[aria-label="새 그룹 만들기"]'))?.focus();
+            }
+            clearSelection();
+          } });
+        }} />}
       {menu && (
         <WatchlistRowMenu code={menu.code} x={menu.x} y={menu.y} name={menu.name}
+          onOpenNewTab={() => onPick(menu.code, menu.name, { ctrlKey: true, metaKey: false })}
           // 이 행이 차지한 items 인덱스에 삽입 → 기존 행은 한 칸 밀린다("위에" 삽입).
           //
           // 두 경우에 항목을 아예 띄우지 않는다:

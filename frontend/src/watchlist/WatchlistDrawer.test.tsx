@@ -121,7 +121,7 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
-  it('Ctrl-click 은 새 브라우저 탭으로 열고 현재 뷰의 종목은 그대로 둔다', async () => {
+  it('Ctrl-click 은 개별 선택하고 새 탭 열기는 우클릭 메뉴로 제공한다', async () => {
     const open = vi.fn();
     vi.stubGlobal('open', open);
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
@@ -136,6 +136,12 @@ describe('WatchlistDrawer', () => {
 
     fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
 
+    expect(open).not.toHaveBeenCalled();
+    const row = screen.getByTestId('watchlist-row-005930');
+    expect(row).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.keyDown(row, { key: 'Escape' });
+    fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('menuitem', { name: '새 탭에서 차트 열기' }));
     expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?code=005930&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
     // 현재 뷰는 건드리지 않는다 — 종목도 경로도 그대로.
     expect(useLivePageStore.getState().activeCode).toBe('000660');

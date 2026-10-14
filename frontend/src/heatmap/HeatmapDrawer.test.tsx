@@ -8,6 +8,7 @@ import type { HeatmapResponse } from '../api/heatmap';
 // --- fetch 계층만 목킹하고 실제 useHeatmap(react-query) 배선을 검증한다.
 //     드로어 변경이 진짜 mutation fn 을 호출하는지(→ /heatmap 페이지 동기화의 근거)까지 확인. ---
 const api = vi.hoisted(() => ({
+  transactHeatmapEntries: vi.fn(() => Promise.resolve()),
   getHeatmap: vi.fn<() => Promise<HeatmapResponse>>(),
   addToHeatmapFolder: vi.fn(() => Promise.resolve({ code: '', name: '', folder_id: 'f1', order: 0 })),
   removeFromHeatmap: vi.fn(() => Promise.resolve()),
@@ -19,6 +20,7 @@ const api = vi.hoisted(() => ({
   moveHeatmapEntries: vi.fn(() => Promise.resolve()),
   reorderHeatmapEntries: vi.fn(() => Promise.resolve()),
   removeHeatmapEntries: vi.fn(() => Promise.resolve()),
+  removeSelectedHeatmapMemberships: vi.fn<() => Promise<void>>(() => Promise.resolve()),
 }));
 vi.mock('../api/heatmap', () => api);
 
@@ -467,5 +469,111 @@ describe('HeatmapDrawer', () => {
     await screen.findByTestId('heatmap-drawer-row-000001');
     fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
     await waitFor(() => expect(draggableHeaders()).toHaveLength(0));
+  });
+});
+
+describe('HeatmapDrawer direct membership selection', () => {
+  async function setupSelection() {
+    const data = makeData();
+    data.entries.push({ ...data.entries[0], folder_id: 'f2', order: 1 });
+    api.getHeatmap.mockResolvedValue(data);
+    wrap(<HeatmapDrawer />);
+    const a = await screen.findByTestId('heatmap-drawer-group-f1');
+    const b = screen.getByTestId('heatmap-drawer-group-f2');
+    return { first: within(a).getByTestId('heatmap-drawer-row-000001'), second: within(a).getByTestId('heatmap-drawer-row-000002'),
+      third: within(b).getByTestId('heatmap-drawer-row-000003'), duplicate: within(b).getByTestId('heatmap-drawer-row-000001') };
+  }
+
+  it('Shift selects across groups; Ctrl and Meta toggle memberships without chart activation', async () => {
+    const { first, second, third, duplicate } = await setupSelection();
+    expect(screen.queryByRole('button', { name: '다중 선택' })).toBeNull();
+    expect(within(first).queryByRole('checkbox')).toBeNull();
+    fireEvent.click(first);
+    expect(onPick).toHaveBeenCalledOnce();
+    fireEvent.click(third, { shiftKey: true });
+    for (const selected of [first, second, third]) expect(selected).toHaveAttribute('aria-pressed', 'true');
+    expect(duplicate).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(second, { ctrlKey: true });
+    fireEvent.click(duplicate, { metaKey: true });
+    expect(second).toHaveAttribute('aria-pressed', 'false');
+    expect(duplicate).toHaveAttribute('aria-pressed', 'true');
+    expect(onPick).toHaveBeenCalledOnce();
+    fireEvent.keyDown(duplicate, { key: 'Escape' });
+    expect(screen.queryByTestId('heatmap-selection-actions')).toBeNull();
+  });
+
+  it('Shift arrows extend and contract a visible range without opening another chart', async () => {
+    const { first, second, third } = await setupSelection();
+    fireEvent.click(first);
+    first.focus();
+    fireEvent.keyDown(first, { key: 'ArrowDown', shiftKey: true });
+    expect(second).toHaveFocus();
+    fireEvent.keyDown(second, { key: 'ArrowDown', shiftKey: true });
+    expect(third).toHaveFocus();
+    expect(third).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.keyDown(third, { key: 'ArrowUp', shiftKey: true });
+    expect(third).toHaveAttribute('aria-pressed', 'false');
+    expect(first).toHaveAttribute('aria-pressed', 'true');
+    expect(onPick).toHaveBeenCalledOnce();
+  });
+
+  it('collapse/search/explicit sort clear selection; collapsed groups are excluded from range selection', async () => {
+    const { first, third } = await setupSelection();
+    fireEvent.click(first, { ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '2차전지 접기' }));
+    expect(screen.queryByTestId('heatmap-selection-actions')).toBeNull();
+    fireEvent.click(third, { shiftKey: true });
+    expect(screen.getByTestId('heatmap-selection-actions')).toHaveTextContent('1개 선택');
+    fireEvent.change(screen.getByTestId('heatmap-drawer-search'), { target: { value: '삼성' } });
+    expect(screen.queryByTestId('heatmap-selection-actions')).toBeNull();
+    fireEvent.click(third, { ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '종목 정렬' }));
+    expect(screen.queryByTestId('heatmap-selection-actions')).toBeNull();
+  });
+
+  it('selected context menu handles the batch; outside context menu clears it and provides new-tab opening', async () => {
+    const { first, second, third } = await setupSelection();
+    fireEvent.click(first);
+    fireEvent.click(second, { shiftKey: true });
+    fireEvent.contextMenu(first);
+    expect(screen.getByRole('menu', { name: '2개 선택' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('menuitem', { name: '선택 항목 이동…' }));
+    const dialog = screen.getByRole('dialog', { name: '선택 항목 이동' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '반도체' }));
+    await waitFor(() => expect(api.transactHeatmapEntries).toHaveBeenCalledWith({ changes: [
+      { folder_id: 'f1', before: ['000001', '000002'], after: [] },
+      { folder_id: 'f2', before: ['000003', '000001'], after: ['000003', '000001', '000002'] },
+    ] }));
+    fireEvent.contextMenu(third);
+    fireEvent.click(screen.getByRole('menuitem', { name: '새 탭에서 차트 열기' }));
+    expect(onPick).toHaveBeenLastCalledWith('000003', '삼성전자', { ctrlKey: true, metaKey: false });
+  });
+
+  it('Delete confirms a multi-group removal and leaves the unselected duplicate registration', async () => {
+    const { first, second, third } = await setupSelection();
+    fireEvent.click(first);
+    fireEvent.click(second, { shiftKey: true });
+    fireEvent.click(third, { ctrlKey: true });
+    fireEvent.keyDown(second, { key: 'Delete' });
+    const dialog = screen.getByRole('dialog', { name: '삭제' });
+    expect(dialog).toHaveTextContent('선택한 3개 항목');
+    expect(dialog).toHaveTextContent('2종목은 히트맵에서 빠집니다');
+    expect(api.removeSelectedHeatmapMemberships).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: '삭제' }));
+    await waitFor(() => expect(api.removeSelectedHeatmapMemberships).toHaveBeenCalledWith({
+      changes: [{ folder_id: 'f1', before: ['000001', '000002'], after: [] }, { folder_id: 'f2', before: ['000003', '000001'], after: ['000001'] }],
+      orphan_codes: ['000002', '000003'],
+    }));
+    expect(api.removeFromHeatmap).not.toHaveBeenCalled();
+  });
+
+  it('failed deletion retains selection and reports the failure', async () => {
+    const { first } = await setupSelection();
+    api.removeSelectedHeatmapMemberships.mockRejectedValueOnce(new Error('목록이 변경되었습니다'));
+    fireEvent.click(first, { ctrlKey: true });
+    fireEvent.click(within(screen.getByTestId('heatmap-selection-actions')).getByRole('button', { name: '삭제' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '삭제' })).getByRole('button', { name: '삭제' }));
+    await waitFor(() => expect(screen.getByText(/삭제하지 못했습니다/)).toHaveTextContent('목록이 변경되었습니다'));
+    expect(first).toHaveAttribute('aria-pressed', 'true');
   });
 });

@@ -53,3 +53,20 @@ export function applyTransfer(data: WatchlistResponse, changes: WatchlistFolderI
   });
   return { ...data, entries, memos };
 }
+
+/** Delete memberships rather than codes; the orphan set is part of confirmation. */
+export function planMembershipRemoval(data: WatchlistResponse, sources: TransferSource[]) {
+  const removed = new Map<string, Set<string>>();
+  for (const source of sources) {
+    const codes = removed.get(source.folderId) ?? new Set<string>();
+    codes.add(source.code);
+    removed.set(source.folderId, codes);
+  }
+  const changes = [...removed].map(([folder_id, codes]) => {
+    const before = folderItems(data, folder_id);
+    return { folder_id, before, after: before.filter(i => i.kind !== 'code' || !codes.has(i.code)) };
+  });
+  const remaining = new Set(data.entries.filter(e => !removed.get(e.folder_id ?? '')?.has(e.code)).map(e => e.code));
+  const orphan_codes = [...new Set(sources.map(s => s.code))].filter(code => !remaining.has(code));
+  return { changes, orphan_codes };
+}

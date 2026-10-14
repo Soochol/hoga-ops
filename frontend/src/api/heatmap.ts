@@ -108,3 +108,11 @@ export function transactHeatmapEntries(request: HeatmapEntriesTransactionRequest
     method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
   });
 }
+
+
+export interface HeatmapMembershipsRemoval extends HeatmapEntriesTransactionRequest { orphan_codes: string[] }
+export function removeSelectedHeatmapMemberships(request: HeatmapMembershipsRemoval): Promise<void> {
+  return apiAction('/api/heatmap/entries/remove', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  });
+}

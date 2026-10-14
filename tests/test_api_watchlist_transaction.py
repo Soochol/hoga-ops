@@ -101,3 +101,60 @@ def test_undo_conflict_preserves_later_edit(client, tmp_path):
     }
     assert client.put("/api/watchlist/items/transaction", json=inverse).status_code == 409
     assert load_document(tmp_path).model_dump() == before
+
+
+def removal():
+    memo = {"kind": "memo", "id": "m_00000001"}
+    return {
+        "changes": [
+            {"folder_id": A, "before": [*refs("005930", "000660"), memo], "after": [memo]},
+            {"folder_id": B, "before": refs("035420", "005930"), "after": refs("005930")},
+        ],
+        "orphan_codes": ["000660", "035420"],
+    }
+
+
+def test_selected_removal_is_atomic_and_preserves_other_memberships(client, tmp_path):
+    before = load_document(tmp_path)
+    assert client.post("/api/watchlist/items/remove", json=removal()).status_code == 204
+    after = load_document(tmp_path)
+    assert [(f.id, f.code_members()) for f in after.folders] == [(A, []), (B, ["005930"])]
+    assert after.folders[0].items == [before.folders[0].items[-1]]
+    assert after.entries == [before.entries[0]]
+
+
+@pytest.mark.parametrize(
+    "fault", ["stale", "duplicate_folder", "unknown", "memo_delete", "reorder", "folder", "orphan"],
+)
+def test_invalid_selected_removal_never_partially_writes(client, tmp_path, fault):
+    before = load_document(tmp_path).model_dump()
+    request = removal()
+    a, b = request["changes"]
+    if fault == "stale":
+        b["before"].reverse()
+    elif fault == "duplicate_folder":
+        request["changes"].append(a)
+    elif fault == "unknown":
+        b["after"] = refs("123456")
+    elif fault == "memo_delete":
+        a["after"] = []
+    elif fault == "reorder":
+        b["after"] = list(reversed(b["before"]))
+    elif fault == "folder":
+        b["folder_id"] = "f_99999999"
+    else:
+        request["orphan_codes"] = []
+    assert client.post("/api/watchlist/items/remove", json=request).status_code in (404, 409)
+    assert load_document(tmp_path).model_dump() == before
+
+
+def test_selected_removal_guards_unselected_final_membership_change(client, tmp_path):
+    request = removal()
+    # Select only A, expecting Samsung to remain in B. Concurrent removal from B
+    # would make the confirmation understate final-membership loss.
+    request["changes"] = request["changes"][:1]
+    request["orphan_codes"] = ["000660"]
+    assert client.delete(f"/api/watchlist/folders/{B}/members/005930").status_code == 204
+    before = load_document(tmp_path).model_dump()
+    assert client.post("/api/watchlist/items/remove", json=request).status_code == 409
+    assert load_document(tmp_path).model_dump() == before

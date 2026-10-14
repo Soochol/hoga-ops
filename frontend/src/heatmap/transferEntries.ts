@@ -41,3 +41,19 @@ export function applyHeatmapTransfer(data: HeatmapResponse, changes: HeatmapFold
   });
   return { ...data, entries };
 }
+
+
+export function planHeatmapMembershipRemoval(data: HeatmapResponse, sources: HeatmapTransferSource[]) {
+  const removed = new Map<string, Set<string>>();
+  for (const source of sources) {
+    const codes = removed.get(source.folderId) ?? new Set<string>();
+    codes.add(source.code);
+    removed.set(source.folderId, codes);
+  }
+  const changes = [...removed].map(([folder_id, codes]) => {
+    const before = folderCodes(data, folder_id);
+    return { folder_id, before, after: before.filter(code => !codes.has(code)) };
+  });
+  const remaining = new Set(data.entries.filter(e => !removed.get(e.folder_id)?.has(e.code)).map(e => e.code));
+  return { changes, orphan_codes: [...new Set(sources.map(s => s.code))].filter(code => !remaining.has(code)) };
+}
