@@ -71,6 +71,17 @@ def _open_now() -> datetime:
     return datetime(2026, 7, 20, 10, 0, tzinfo=_KST)
 
 
+@pytest.fixture(autouse=True)
+def _ranking_scheduler(monkeypatch):
+    from hoga.live import kiwoom_rest_runtime
+
+    class Scheduler:
+        async def submit(self, **kwargs):
+            return await kwargs["call"](None)
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda _dir: Scheduler())
+
+
 # --- 파서 ---
 
 

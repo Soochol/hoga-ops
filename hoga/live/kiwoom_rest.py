@@ -108,6 +108,15 @@ class TrSpec:
 # === TR 스펙 테이블 =========================================================
 # ADR-0136 §1 의 대응 매핑. 표면 이관 PR(#1039~#1045)이 여기에 줄을 더한다.
 TR: dict[str, TrSpec] = {
+    # 순위 — 2026-10-14 실측: 등락률·급증 200행, 거래량·대금 100행/페이지.
+    "ka10027": TrSpec("ka10027", PATH_RKINFO, "pred_pre_flu_rt_upper", cursor=True,
+                      required=("mrkt_tp", "sort_tp", "stex_tp")),
+    "ka10023": TrSpec("ka10023", PATH_RKINFO, "trde_qty_sdnin", cursor=True,
+                      required=("mrkt_tp", "sort_tp", "tm_tp", "tm", "stex_tp")),
+    "ka10030": TrSpec("ka10030", PATH_RKINFO, "tdy_trde_qty_upper", cursor=True,
+                      required=("mrkt_tp", "sort_tp", "stex_tp")),
+    "ka10032": TrSpec("ka10032", PATH_RKINFO, "trde_prica_upper", cursor=True,
+                      required=("mrkt_tp", "mang_stk_incls", "stex_tp")),
     # 차트 — 전부 base_dt 랜덤 액세스 + 커서(#1008)
     "ka10080": TrSpec("ka10080", PATH_CHART, "stk_min_pole_chart_qry", cursor=True,
                       required=("stk_cd", "tic_scope", "upd_stkpc_tp")),

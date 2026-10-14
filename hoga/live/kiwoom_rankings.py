@@ -1,7 +1,7 @@
 """키움 순위정보 fetcher — /live 우측 RightRail "순위" 드로어(특징주).
 
 프로그램 순매수 금액 순위(ka90003)는 stkinfo 경로의 연속조회다. 공용 REST
-거버너를 거쳐 시장별 상위 50개를 확보·병합하고 30초 동안 결과를 공유한다.
+거버너를 거쳐 시장별 요청 범위(기본 50개)를 확보·병합하고 30초 동안 결과를 공유한다.
 기관·외국인(ka10065)은 장중 추정 순매수 금액이며 거래소 지정이 없다.
 순위 거래소는 null로 명시하고 선택 거래소의 ka10095 시세를 별도로 보완한다.
 
@@ -19,7 +19,7 @@ api-id 헤더로 분기(스펙 실측: docs/research/2026-07-22-kiwoom-ranking-t
 대비 등락방향 부호가 붙으므로 크기만 취하고(`kiwoom_stock_info._abs_price` 와 동형),
 등락률(flu_rt)은 부호를 보존한다(상승 +/하락 −). 콤마는 방어적으로 제거한다.
 
-캐시는 (kind, market, direction) 키의 TTL(~8s) 단위 — 프론트가 10s 폴링하므로
+캐시는 (kind, market, direction, venue, limit) 키의 TTL(~8s) 단위 — 프론트가 10s 폴링하므로
 연타·다중 소비자를 single-flight + TTL 로 흡수해 상류 유량을 아낀다(WS 순위 푸시가
 없어 REST 폴링이 유일 경로). 실패는 캐시하지 않는다(다음 요청이 재시도).
 
@@ -44,10 +44,11 @@ import httpx
 
 from hoga.api.calendar import is_trading_day
 from hoga.config import resolve_data_dir
-from hoga.live import kiwoom_access, kiwoom_http, kiwoom_multi_quote, kiwoom_rest_runtime
+from hoga.live import kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime
 from hoga.util.timeenc import KST
 
 from .kiwoom_errors import KiwoomRestError
+from .kiwoom_rest import KiwoomRestClient, Page
 from .kiwoom_token_provider import KiwoomTokenProvider
 from .kiwoom_venue import split_venue
 from .single_flight import SingleFlight
@@ -58,12 +59,15 @@ log = logging.getLogger(__name__)
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
 _KST = KST
 _BASE_REAL = "https://api.kiwoom.com"
-_RKINFO_PATH = "/api/dostk/rkinfo"
 _CACHE_TTL_MS = 8_000
 _NET_BUY_CACHE_TTL_MS = 30_000
 _PROGRAM_LIMIT = 50
+_PROGRAM_MAX_PAGES = 400
 _INVESTOR_LIMIT = 100
 _NET_BUY_MAX_PAGES = 8
+RANKING_DEFAULT_LIMIT = 100
+RANKING_MAX_LIMIT = 5_000
+_RANKING_MAX_PAGES = 100
 
 # 정규장 시간(KST): 09:00 ~ 15:30. 이 창 밖이면 market_open=False → 프론트 폴링 정지
 # (그릴링 결정 9: 장외엔 열 때 1회 조회 후 정지). 동시호가/시간외는 순위 갱신 관성이
@@ -121,6 +125,9 @@ class RankingSnapshot:
     # ka10065에는 거래소 입력이 없다. 순위의 거래소를 추정해 붙이지 않는다.
     # 보완 시세만 사용자가 고른 거래소를 따른다.
     quote_venue: str | None = None
+    # ETF 후처리 전 조회 범위. 표시 행 수와 구분한다.
+    queried_count: int = 0
+    has_more: bool = False
 
 
 @dataclass(frozen=True)
@@ -303,11 +310,10 @@ def _is_trading_day_now(now: datetime | None = None) -> bool:
 
 
 class KiwoomRankingsFetcher:
-    """순위 스냅샷의 (kind, market, direction) TTL 캐시 + single-flight fetcher.
+    """순위 스냅샷의 조건·거래소·조회 범위 TTL 캐시 + single-flight fetcher.
 
-    동기 httpx 를 `asyncio.to_thread` 로 돌린다(stock_info 와 동형) — 폴링 주기가
-    10s 라 비동기 클라이언트를 새로 들일 무게가 없다. 비거래일엔 상류를 건너뛰고
-    빈 스냅샷(웜 캐시가 있으면 그 rows 유지)을 준다.
+    순위의 각 페이지는 공용 REST 거버너를 통과한다. 비거래일엔 상류를
+    건너뛰고 빈 스냅샷(웜 캐시가 있으면 그 rows 유지)을 준다.
     """
 
     def __init__(
@@ -315,26 +321,29 @@ class KiwoomRankingsFetcher:
         token_provider: KiwoomTokenProvider,
         *,
         base_url: str = _BASE_REAL,
-        _transport: httpx.BaseTransport | None = None,
+        _transport: httpx.AsyncBaseTransport | None = None,
         _now: Callable[[], datetime] | None = None,
         data_dir: Path | None = None,
     ):
-        self._provider = token_provider
-        self._client = httpx.Client(
-            base_url=base_url,
-            # 주입이 이긴다(테스트 MockTransport). 기본은 연결 재사용 + 연결 단계
-            # 재시도 — 근거·함정은 `kiwoom_http` 도크스트링.
-            transport=_transport or kiwoom_http.sync_transport(),
-            timeout=10.0,
+        # 실서비스 클라이언트는 runtime이 소유한다. 테스트/별도 endpoint만 격리한다.
+        self._injected_client = (
+            KiwoomRestClient(token_provider, base_url=base_url, transport=_transport)
+            if _transport is not None or base_url != _BASE_REAL else None
         )
-        # (kind, market, direction) → (snapshot, cached_at_ms)
+        # 조건·거래소·조회 범위 → (snapshot, cached_at_ms)
         self._cache: dict[tuple[str, ...], tuple[RankingSnapshot, int]] = {}
         self._flight = SingleFlight()
         self._now = _now  # 테스트 주입용 시각 소스
         self._data_dir = data_dir
 
     def close(self) -> None:
-        self._client.close()
+        if self._injected_client is not None:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                asyncio.run(self._injected_client.aclose())
+            else:
+                loop.create_task(self._injected_client.aclose())
 
     def _now_kst(self) -> datetime:
         return self._now() if self._now is not None else datetime.now(_KST)
@@ -349,12 +358,18 @@ class KiwoomRankingsFetcher:
     async def get(
         self, kind: RankingKind, market: Market, direction: Direction,
         venue: str = "KRX",
+        limit: int | None = None,
     ) -> RankingSnapshot:
         # direction 은 change 에서만 의미 — 캐시 키를 갈라 상승/하락을 각각 캐시한다.
         # ⚠ venue 도 키에 있어야 한다. 없으면 NXT 요청이 30초 TTL 안에서 KRX 순위를
         # 그대로 받는다 — 값이 그럴듯해 화면에서 안 드러난다.
         now = self._now_kst()
+        limit = limit if limit is not None else (_PROGRAM_LIMIT if kind == "program" else RANKING_DEFAULT_LIMIT)
         key = (kind, market, direction if kind == "change" else "-", venue)
+        if kind not in _INVESTOR_KINDS:
+            if not 1 <= limit <= RANKING_MAX_LIMIT:
+                raise ValueError("순위 조회 범위를 벗어났습니다")
+            key += (str(limit),)
         ttl_ms = _CACHE_TTL_MS
         if kind in _NET_BUY_KINDS:
             direction = "up"  # 이 탭은 순매수 금액 상위이며 등락률 방향과 무관하다.
@@ -385,20 +400,26 @@ class KiwoomRankingsFetcher:
                     kind=kind, market=market, direction=direction,
                     rows=prev_rows, market_open=False, fetched_at_ms=now_ms,
                     venue=snapshot_venue, quote_venue=quote_venue,
+                    queried_count=hit[0].queried_count if hit else 0,
+                    has_more=hit[0].has_more if hit else False,
                 )
                 self._cache[key] = (snap, now_ms)
                 return snap
+            has_more = False
             if kind == "program":
-                rows = await self._fetch_program(market, venue)
+                rows, has_more = await self._fetch_program(market, venue, limit)
+                queried_count = len(rows)
             elif kind in _INVESTOR_KINDS:
                 rows = await self._fetch_investor(kind, market, venue)
+                queried_count = len(rows)
             else:
-                rows = await asyncio.to_thread(self._fetch_sync, kind, market, direction, venue)
+                rows, queried_count, has_more = await self._fetch_rankings(kind, market, direction, venue, limit)
             now_ms = int(time.time() * 1000)
             snap = RankingSnapshot(
                 kind=kind, market=market, direction=direction,
                 rows=rows, market_open=market_open, fetched_at_ms=now_ms,
                 venue=snapshot_venue, quote_venue=quote_venue,
+                queried_count=queried_count, has_more=has_more,
             )
             self._cache[key] = (snap, now_ms)
             return snap
@@ -469,11 +490,12 @@ class KiwoomRankingsFetcher:
             for i, row in enumerate(rows, 1)
         )
 
-    async def _fetch_program(self, market: Market, venue: str) -> tuple[RankingRow, ...]:
-        """시장별 상위 50개를 조회해 전체 시장에서는 순매수 금액으로 병합한다.
+    async def _fetch_program(self, market: Market, venue: str, limit: int) -> tuple[tuple[RankingRow, ...], bool]:
+        """시장별 요청 범위를 조회해 전체 시장에서는 순매수 금액으로 병합한다.
 
         실측: 한 페이지 15개이며 50위 뒤로도 커서가 계속된다. 50개를 확보한
-        시점에 멈추고, 각 페이지를 공용 거버너에 제출해 유량·인증 복구를 공유한다.
+        기본 50개에서 시작한다. 순매수 양수 구간만 조회하고 각 페이지를
+        공용 거버너에 제출해 유량·인증 복구를 공유한다.
         """
         data_dir = self._data_dir or resolve_data_dir()
         client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
@@ -482,66 +504,101 @@ class KiwoomRankingsFetcher:
         scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
         markets = ("kospi", "kosdaq") if market == "all" else (market,)
 
-        async def fetch_market(selected_market: str) -> tuple[RankingRow, ...]:
+        async def fetch_market(selected_market: str) -> tuple[tuple[RankingRow, ...], bool]:
             body = {
                 "trde_upper_tp": "2", "amt_qty_tp": "1",
                 "mrkt_tp": "P00101" if selected_market == "kospi" else "P10102",
                 "stex_tp": _STEX_BY_VENUE[venue],
             }
+            last_page: Page | None = None
+            seen_keys: set[str] = set()
 
             async def run_page(fetch_fn, page_idx):
+                nonlocal last_page
                 page = await kiwoom_access.run_with_capacity(
-                    scheduler, key=("program-rankings", selected_market, venue, page_idx),
+                    scheduler, key=("program-rankings", selected_market, venue, limit, page_idx),
                     api_id="ka90003", priority="user_visible", client=client, fetch_fn=fetch_fn,
                 )
                 if not isinstance(page.raw.get("prm_netprps_upper_50"), list):
                     raise KiwoomRankingsError("프로그램 순위 응답 형식이 올바르지 않습니다")
-                if page.cont and not page.next_key:
-                    raise KiwoomRankingsError("프로그램 순위 연속 조회 키가 없습니다")
+                if page.cont:
+                    if not page.next_key or page.next_key in seen_keys:
+                        raise KiwoomRankingsError("프로그램 순위 연속 조회 키가 없거나 반복됩니다")
+                    seen_keys.add(page.next_key)
+                last_page = page
                 return page
 
             raw, truncated = await client.walk(
-                "ka90003", body, max_pages=_NET_BUY_MAX_PAGES,
-                stop=lambda rows, _page: len(rows) >= _PROGRAM_LIMIT, run_page=run_page,
+                "ka90003", body, max_pages=_PROGRAM_MAX_PAGES,
+                stop=lambda rows, _page: len(rows) >= limit or (
+                    (tail := _net_buy_won(rows[-1].get("prm_netprps_amt"))) is not None and tail <= 0
+                ), run_page=run_page,
             )
             if truncated:
                 raise KiwoomRankingsError("프로그램 순위 연속 조회 한도에 도달했습니다")
-            return parse_rankings("program", {"prm_netprps_upper_50": raw[:_PROGRAM_LIMIT]})
+            parsed = parse_rankings("program", {"prm_netprps_upper_50": raw})
+            # API는 순매도까지 이어지지만 이 탭은 양수 순매수 순위다.
+            tail_amount = _net_buy_won(raw[-1].get("prm_netprps_amt")) if raw else None
+            has_more = any((r.program_net_buy_won or 0) > 0 for r in parsed[limit:]) or bool(
+                last_page and last_page.rows and last_page.cont and (tail_amount is None or tail_amount > 0)
+            )
+            return parsed[:limit], has_more
 
         try:
             batches = await asyncio.gather(*(fetch_market(m) for m in markets))
         except KiwoomRestError as exc:
             raise KiwoomRankingsError(str(exc)) from exc
         by_code: dict[str, RankingRow] = {}
-        for batch in batches:
+        for batch, _has_more in batches:
             for row in batch:
                 if row.program_net_buy_won is not None and row.program_net_buy_won > 0:
                     by_code.setdefault(row.code, row)
         ordered = sorted(by_code.values(), key=lambda r: (-(r.program_net_buy_won or 0), r.code))
-        return tuple(replace(row, rank=i) for i, row in enumerate(ordered[:_PROGRAM_LIMIT], 1))
+        has_more = len(ordered) > limit or any(more for _batch, more in batches)
+        return tuple(replace(row, rank=i) for i, row in enumerate(ordered[:limit], 1)), has_more
 
-    def _fetch_sync(
+    async def _fetch_rankings(
         self, kind: RankingKind, market: Market, direction: Direction,
-        venue: str = "KRX",
-    ) -> tuple[RankingRow, ...]:
+        venue: str, limit: int,
+    ) -> tuple[tuple[RankingRow, ...], int, bool]:
+        """커서를 재사용하지 않고 매 조회마다 첫 페이지부터 요청 범위를 갱신한다."""
         spec = _KIND_SPEC[kind]
-        token = self._provider.get_token()
-        resp = self._client.post(
-            _RKINFO_PATH,
-            json=_build_body(kind, market, direction, venue),
-            headers={
-                "Content-Type": "application/json;charset=UTF-8",
-                "authorization": f"Bearer {token}",
-                "api-id": spec.api_id,
-            },
-        )
-        if resp.status_code != 200:  # noqa: PLR2004
-            raise KiwoomRankingsError(
-                f"{spec.api_id} HTTP {resp.status_code} {resp.text[:200]}"
+        data_dir = self._data_dir or resolve_data_dir()
+        client = self._injected_client or kiwoom_rest_runtime.ensure_rest_client(data_dir)
+        if client is None:
+            raise KiwoomRankingsError("kiwoom client not initialized")
+        scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+        last_page: Page | None = None
+        seen_keys: set[str] = set()
+
+        async def run_page(fetch_fn, page_idx):
+            nonlocal last_page
+            page = await kiwoom_access.run_with_capacity(
+                scheduler, key=("rankings", kind, market, direction, venue, limit, page_idx),
+                api_id=spec.api_id, priority="user_visible", client=client, fetch_fn=fetch_fn,
             )
-        body = resp.json()
-        if body.get("return_code") != 0:
-            raise KiwoomRankingsError(
-                f"{spec.api_id} return_code={body.get('return_code')} {body.get('return_msg')}"
+            if not isinstance(page.raw.get(spec.wrapper_key), list):
+                raise KiwoomRankingsError("순위 응답 형식이 올바르지 않습니다")
+            if page.cont:
+                if not page.next_key or page.next_key in seen_keys:
+                    raise KiwoomRankingsError("순위 연속 조회 키가 없거나 반복됩니다")
+                seen_keys.add(page.next_key)
+            last_page = page
+            return page
+
+        try:
+            raw, truncated = await client.walk(
+                spec.api_id, _build_body(kind, market, direction, venue),
+                max_pages=_RANKING_MAX_PAGES,
+                stop=lambda rows, _page: len(rows) >= limit, run_page=run_page,
             )
-        return parse_rankings(kind, body)
+        except KiwoomRestError as exc:
+            raise KiwoomRankingsError(str(exc)) from exc
+        if truncated:
+            raise KiwoomRankingsError("순위 연속 조회 한도에 도달했습니다")
+        has_more = len(raw) > limit or bool(last_page and last_page.rows and last_page.cont)
+        # 장중 페이지 이동 사이 순위가 바뀌면 같은 코드가 겹칠 수 있다.
+        by_code: dict[str, RankingRow] = {}
+        for row in parse_rankings(kind, {spec.wrapper_key: raw[:limit]}):
+            by_code.setdefault(row.code, row)
+        return tuple(by_code.values()), min(len(raw), limit), has_more

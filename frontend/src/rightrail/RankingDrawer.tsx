@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   PointerSensor,
@@ -14,6 +14,10 @@ import { RailDragOverlay } from './RailDragOverlay';
 import { useChartDropDrag, type ChartDropGhost } from './useChartDropDrag';
 import {
   useLiveRankings,
+  RANKINGS_PAGE_SIZE,
+  RANKINGS_MAX_LIMIT,
+  supportsRankingExpansion,
+  rankingInitialLimit,
   type RankingDirection,
   type RankingKind,
   type RankingMarket,
@@ -31,6 +35,7 @@ import {
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
 import { SegmentedControl } from '../ui/PageShell';
 import { SortCycleButton } from '../ui/SortCycleButton';
+import { useLiveVenueStore } from '../state/liveVenue';
 
 /**
  * 순위 패널 (특징주) — 앱 전역 RightRail 형제(스크리너/관심종목과 동일 계열).
@@ -197,12 +202,22 @@ export function RankingDrawer() {
   const [direction, setDirection] = useState<RankingDirection>('up');
   const [excludeEtf, setExcludeEtf] = useState(false);
   const [sortMode, setSortMode] = useState<RankingSortMode>('default');
+  const venue = useLiveVenueStore((s) => s.venue);
+  const scope = `${kind}:${market}:${kind === 'change' ? direction : '-'}:${venue}`;
+  const initialLimit = rankingInitialLimit(kind);
+  const [range, setRange] = useState({ scope, limit: initialLimit });
+  const limit = range.scope === scope ? range.limit : initialLimit;
+  if (range.scope !== scope) setRange({ scope, limit: initialLimit });
+  const expandable = supportsRankingExpansion(kind);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<{ testId: string; offset: number } | null>(null);
 
   // 행 우클릭 → 관심 그룹 편집 메뉴(스크리너 패널과 동일 관용구). raw 커서 좌표만
   // 담고 위치 클램프는 QuoteRowGroupMenu 가 실측 보정한다.
   const [rowMenu, setRowMenu] = useState<{ code: string; name: string; x: number; y: number } | null>(null);
 
-  const { data, isPending, isError, error } = useLiveRankings({ kind, market, direction, excludeEtf });
+  const { data, isPending, isError, error, isFetching, refetch } = useLiveRankings({ kind, market, direction, excludeEtf, limit });
+  const expansion = data != null && limit > data.requestedLimit;
 
   const sensors = useSensors(useSensor(PointerSensor, RANKING_DRAG_SENSOR_OPTIONS));
   // 좌표 아래 창이 없을 때의 폴백(활성 그룹 교체). useJumpToLive 는 매 렌더 새 함수라
@@ -219,6 +234,44 @@ export function RankingDrawer() {
   // 순위가 통째로 갈리고, 잡고 있던 행이 언마운트되면 드래그가 그대로 끊긴다.
   const liveRows = useMemo(() => sortRankingRows(data?.rows ?? [], sortMode), [data?.rows, sortMode]);
   const rows = useFrozenWhileDragging(liveRows, drag.isDragging);
+
+  const captureAnchor = useCallback(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    const top = scroller.getBoundingClientRect().top;
+    const nodes = scroller.querySelectorAll<HTMLElement>('li[data-testid^="ranking-row-"]');
+    // 순위 수가 커져도 매 스크롤마다 모든 행의 레이아웃을 읽지 않는다.
+    let lo = 0;
+    let hi = nodes.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (nodes[mid].getBoundingClientRect().bottom <= top) lo = mid + 1;
+      else hi = mid;
+    }
+    const first = nodes[lo];
+    anchorRef.current = first ? { testId: first.dataset.testid!, offset: first.getBoundingClientRect().top - top } : null;
+  }, []);
+    // 펼친 목록이 갱신돼도 화면 위쪽 종목의 위치를 유지한다.
+  const scrollScopeRef = useRef(scope);
+  useLayoutEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+    if (scrollScopeRef.current !== scope) {
+      scroller.scrollTop = 0;
+      anchorRef.current = null;
+      scrollScopeRef.current = scope;
+    } else if (anchorRef.current) {
+      const anchor = anchorRef.current;
+      const row = scroller.querySelector<HTMLElement>(`[data-testid="${anchor.testId}"]`);
+      if (row) scroller.scrollTop += row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - anchor.offset;
+    }
+    captureAnchor();
+  }, [rows, scope, captureAnchor]);
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    scroller?.addEventListener('scroll', captureAnchor, { passive: true });
+    return () => scroller?.removeEventListener('scroll', captureAnchor);
+  }, [captureAnchor]);
 
   const onDragStart = (ev: DragStartEvent) => {
     const code = String((ev.active.data.current as { code?: string } | undefined)?.code ?? '');
@@ -323,11 +376,22 @@ export function RankingDrawer() {
             label="등락률 정렬"
             description={rankingSortDescription(sortMode)}
             disabled={rows.length === 0}
-            onClick={() => setSortMode(nextRankingSortMode(sortMode))}
+            onClick={() => {
+              anchorRef.current = null;
+              if (scrollRef.current) scrollRef.current.scrollTop = 0;
+              setSortMode(nextRankingSortMode(sortMode));
+            }}
           />
         </div>
         {sortMode !== 'default' && <p className="mt-1 text-xs text-accent">등락률 {rankingSortDirection(sortMode) === 'asc' ? '↑ 낮은 순' : '↓ 높은 순'}</p>}
-        {netBuyLabel && <p className="text-xs text-fg-dim">{investor ? '장중 추정 · ' : ''}순매수 금액 · 상위 {investor ? 100 : 50} · 30초 갱신</p>}
+        {expandable && data && (
+          <p className="text-xs text-fg-dim" aria-live="polite">
+            상위 {data.queriedCount}위 조회
+            {data.queriedCount !== data.rows.length && ` · ${data.rows.length}개 표시`}
+            {sortMode !== 'default' && ' · 조회 범위 내 등락률순'}
+          </p>
+        )}
+        {netBuyLabel && <p className="text-xs text-fg-dim">{investor ? '장중 추정 · ' : ''}순매수 금액 · 상위 {investor ? 100 : data?.requestedLimit ?? limit} · 30초 갱신</p>}
         {investor && (
           <p className="text-xs text-fg-dim">
             순위: 거래소 지정 미지원 · 시세: {data?.quoteVenue === 'UN' ? '통합' : data?.quoteVenue ?? '—'}
@@ -335,7 +399,7 @@ export function RankingDrawer() {
         )}
       </RailDrawerSection>
 
-      <RailDrawerBody testId="ranking-scroll" quoteNav>
+      <RailDrawerBody testId="ranking-scroll" quoteNav scrollRef={scrollRef}>
         {/* 토글은 켰는데 심볼 마스터가 없어 거르지 못한 경우. 배지가 없으면 사용자에겐
             "ETF 제외가 안 먹는" 상태로만 보인다(원인 단서 0). 스크리너 경고와 같은 관용구. */}
         {data?.etfFilterUnavailable && (
@@ -343,14 +407,14 @@ export function RankingDrawer() {
             종목 마스터를 불러오지 못해 ETF 를 거르지 못했습니다
           </div>
         )}
-        {isError ? (
+        {isError && !data ? (
           <RailState tone="error">
             <div className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패</div>
             {error instanceof Error && error.message && (
               <div className="text-fg-dim">{error.message}</div>
             )}
           </RailState>
-        ) : isPending ? (
+        ) : isPending && !data ? (
           <RailState>불러오는 중…</RailState>
         ) : rows.length === 0 ? (
           <RailState>{marketClosed ? '장 외 — 표시할 순위가 없습니다' : '표시할 종목이 없습니다'}</RailState>
@@ -380,6 +444,31 @@ export function RankingDrawer() {
               {drag.ghost && <RankingDragGhost ghost={drag.ghost} />}
             </RailDragOverlay>
           </DndContext>
+        )}
+        {data && isError && (
+          <div className={`px-md py-sm text-xs text-error ${expandable ? 'min-h-[3.5rem]' : ''}`} role="status">
+            {isFetching ? '다시 조회 중…' : expansion ? '추가 조회 실패' : '갱신 실패 · 이전 목록을 표시합니다'}
+            <button type="button" className="ml-2 underline" disabled={isFetching || drag.isDragging} onClick={() => { void refetch(); }}>
+              {isFetching ? '불러오는 중…' : '다시 시도'}
+            </button>
+          </div>
+        )}
+        {expandable && data && !isError && (
+          <div className="min-h-[3.5rem] px-md py-sm text-center text-xs text-fg-dim" aria-live="polite">
+            {data.hasMore && data.requestedLimit < RANKINGS_MAX_LIMIT ? (
+              <button
+                type="button"
+                className="w-full rounded-lg border border-border px-2 py-2 hover:bg-bg-input-hover disabled:cursor-default disabled:opacity-60"
+                disabled={isFetching || drag.isDragging}
+                onClick={() => {
+                  captureAnchor();
+                  setRange({ scope, limit: Math.min(data.requestedLimit + RANKINGS_PAGE_SIZE, RANKINGS_MAX_LIMIT) });
+                }}
+              >
+                {expansion && isFetching ? '불러오는 중…' : `${data.requestedLimit + 1}~${Math.min(data.requestedLimit + RANKINGS_PAGE_SIZE, RANKINGS_MAX_LIMIT)}위 더 보기`}
+              </button>
+            ) : data.hasMore ? '상위 5,000위까지 조회했습니다' : '마지막 순위입니다'}
+          </div>
         )}
       </RailDrawerBody>
 

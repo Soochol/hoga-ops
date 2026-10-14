@@ -7,6 +7,7 @@
  * market_open 으로 게이트해 프론트에 장운영 시계를 두지 않는다. 자격증명 부재 시
  * 503 이고, 드로어가 에러 상태를 렌더한다. */
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { apiCall } from './client';
 import { useLiveVenueStore } from '../state/liveVenue';
 
@@ -37,6 +38,8 @@ interface RankingsResponseWire {
   quote_venue?: string | null;
   /** 비치명 경고. 구버전 백엔드는 이 키가 없으므로 옵셔널. */
   warnings?: string[];
+  queried_count?: number;
+  has_more?: boolean;
 }
 
 export interface RankingsView {
@@ -49,6 +52,18 @@ export interface RankingsView {
   /** exclude_etf 를 요청했으나 심볼 마스터 미로드로 걸러내지 못했다. 드로어가
    *  배지를 띄운다 — 이게 없으면 사용자에겐 "토글이 안 먹는" 상태로만 보인다. */
   etfFilterUnavailable: boolean;
+  queriedCount: number;
+  hasMore: boolean;
+  requestedLimit: number;
+}
+
+export const RANKINGS_PAGE_SIZE = 100;
+export const RANKINGS_MAX_LIMIT = 5_000;
+export function rankingInitialLimit(kind: RankingKind): number {
+  return kind === 'program' ? 50 : RANKINGS_PAGE_SIZE;
+}
+export function supportsRankingExpansion(kind: RankingKind): boolean {
+  return kind === 'change' || kind === 'surge' || kind === 'volume' || kind === 'value' || kind === 'program';
 }
 
 export const RANKINGS_REFETCH_MS = 10_000;
@@ -62,6 +77,7 @@ export function useLiveRankings(params: {
   market: RankingMarket;
   direction: RankingDirection;
   excludeEtf: boolean;
+  limit?: number;
 }) {
   const { kind, market, direction, excludeEtf } = params;
   const netBuy = kind === 'program' || kind === 'institution' || kind === 'foreign';
@@ -70,13 +86,24 @@ export function useLiveRankings(params: {
   // 기존 순위와 프로그램은 거래소 선택기를 따른다(ADR-0140).
   // 기관·외국인은 거래소 입력이 없어 순위를 그대로 두고 보완 시세에만 적용한다.
   const venue = useLiveVenueStore((s) => s.venue);
-  return useQuery({
+  const expandable = supportsRankingExpansion(kind);
+  const initialLimit = rankingInitialLimit(kind);
+  const limit = expandable ? params.limit ?? initialLimit : initialLimit;
+  const scopeKey = ['live-rankings', kind, market, requestDirection, excludeEtf, venue];
+  const scope = JSON.stringify(scopeKey);
+  const [saved, setSaved] = useState<{ scope: string; data: RankingsView } | null>(null);
+  const query = useQuery<RankingsView>({
     // ⚠ venue 가 **쿼리 키에도** 있어야 한다 — 없으면 venue 를 바꿔도 캐시가 안 갈려
     // 이전 거래소 순위가 그대로 보인다.
-    queryKey: ['live-rankings', kind, market, requestDirection, excludeEtf, venue],
+    queryKey: [...scopeKey, limit],
+    // 범위만 늘어나는 동안 기존 행을 유지한다. 다른 시장/탭의 행은 섞지 않는다.
+    placeholderData: (previous, previousQuery) =>
+      JSON.stringify(previousQuery?.queryKey.slice(0, -1)) === scope ? previous : undefined,
+    ...(limit > initialLimit ? { retry: false } : {}),
     queryFn: async ({ signal }): Promise<RankingsView> => {
       const q = new URLSearchParams({ kind, market, direction: requestDirection, venue });
       if (excludeEtf) q.set('exclude_etf', 'true');
+      if (expandable) q.set('limit', String(limit));
       const res = await apiCall<RankingsResponseWire>(`/api/live/rankings?${q}`, { signal });
       return {
         rows: res.rows,
@@ -86,6 +113,9 @@ export function useLiveRankings(params: {
         venue: res.venue === undefined ? 'KRX' : res.venue,
         quoteVenue: res.quote_venue,
         etfFilterUnavailable: res.warnings?.includes('etf_filter_unavailable') ?? false,
+        queriedCount: res.queried_count ?? res.rows.length,
+        hasMore: res.has_more ?? false,
+        requestedLimit: limit,
       };
     },
     // 장중이면 10s, 장외면 60s 하트비트. **`false` 로 완전히 멈추면 안 된다** —
@@ -95,7 +125,15 @@ export function useLiveRankings(params: {
     // 장외 폴링을 아끼려던 원 의도(그릴링 결정 9)는 60s 하트비트로 지킨다 —
     // 백엔드가 TTL~8s 로 코얼레스하므로 유휴 요청은 캐시 응답이다.
     refetchInterval: (query) =>
-      query.state.data?.marketOpen ? refetchMs : RANKINGS_OFF_HOURS_MS,
+      (query.state.data?.marketOpen ?? (saved?.scope === scope && saved.data.marketOpen))
+        ? refetchMs : RANKINGS_OFF_HOURS_MS,
     staleTime: netBuy ? NET_BUY_RANKINGS_REFETCH_MS : 8_000,
   });
+  // placeholderData는 추가 조회가 실패하면 사라진다. 마지막 성공 목록을
+  // 같은 조건에서만 유지해 하단 재시도가 가능하게 한다.
+  if (query.isSuccess && !query.isPlaceholderData && query.data &&
+      (saved?.scope !== scope || saved.data !== query.data)) {
+    setSaved({ scope, data: query.data });
+  }
+  return { ...query, data: query.data ?? (saved?.scope === scope ? saved.data : undefined) };
 }

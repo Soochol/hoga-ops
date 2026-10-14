@@ -21,9 +21,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(kind: RankingKind) {
+function mount(kind: RankingKind, limit = 100) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const hook = renderHook(() => useLiveRankings({ kind, market: 'all', direction: 'down', excludeEtf: false }), {
+  const hook = renderHook(() => useLiveRankings({ kind, market: 'all', direction: 'down', excludeEtf: false, limit }), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={qc}>{children}</QueryClientProvider>
     ),
@@ -32,6 +32,27 @@ function mount(kind: RankingKind) {
 }
 
 describe('live ranking polling', () => {
+  it('refreshes the expanded range instead of returning to the first 100', async () => {
+    const call = vi.spyOn(client, 'apiCall').mockResolvedValue({ ...RESPONSE, queried_count: 200, has_more: true } as never);
+    const { qc, result } = mount('value', 200);
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls.every(([url]) => String(url).includes('limit=200'))).toBe(true);
+    expect(result.current.data?.queriedCount).toBe(200);
+    expect(result.current.data?.hasMore).toBe(true);
+    qc.clear();
+  });
+
+  it('refreshes an expanded program range every 30 seconds', async () => {
+    const call = vi.spyOn(client, 'apiCall').mockResolvedValue({ ...RESPONSE, queried_count: 150, has_more: true } as never);
+    const { qc, result } = mount('program', 150);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call.mock.calls.every(([url]) => String(url).includes('limit=150'))).toBe(true);
+    expect(result.current.data?.queriedCount).toBe(150);
+    qc.clear();
+  });
+
   it.each([['program', 30_000], ['institution', 30_000], ['foreign', 30_000], ['change', 10_000]] as const)(
     '%s polls after %i ms while open', async (kind, interval) => {
       const call = vi.spyOn(client, 'apiCall').mockResolvedValue(RESPONSE as never);
