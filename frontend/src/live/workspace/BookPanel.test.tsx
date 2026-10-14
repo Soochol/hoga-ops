@@ -88,10 +88,9 @@ describe('BookPanel', () => {
     // 중복되지 않는 것이 그때의 픽스처 이점이었다. ADR-0170 이 그 행을 지우면서
     // **사다리 행(매도1)으로 재앵커**했다. 재는 정책은 그대로다 — 이 커버리지가
     // `중` 행과 함께 사라지면 우선순위 규칙은 테스트 0 이 된다.
-    const ON_LADDER = 251_500; // 매도1. 사다리에 있으므로 요약표 칩은 뜨지 않는다.
+    const ON_LADDER = 251_500; // 매도1. 시·고·저 칩은 호가 가격에만 표시한다.
 
-    /** 칩이 **사다리 행**에 붙었는지 — 뱃지 띠의 기준 요소(가격 span)로 판정한다.
-     *  전역 `getByText('고')` 만으로는 요약표 칩(`offLadderChip`)과 구별되지 않는다. */
+    /** 칩이 **사다리 행**의 가격 왼쪽 뱃지 띠에 붙었는지 판정한다. */
     function expectChipOnLadder(label: string, price: string) {
       const strip = screen.getByText(label).parentElement!;
       expect(strip).toHaveAttribute('data-price-badges');
@@ -273,41 +272,37 @@ describe('BookPanel', () => {
     expect(label.className).toContain('whitespace-nowrap');
   });
 
-  describe('요약표 시/고/저 칩 — 사다리 밖일 때만 (배타 규칙)', () => {
-    // 사다리는 현재가 ±10틱만 덮는다. 일중 변동이 그보다 크면 시·고·저가 밖으로
-    // 나가 칩을 붙일 행이 사라진다(실측 2026-08-24 삼성전자 −8.5%: 고가·시가 둘 다
-    // 밖). 그때 요약표가 칩을 대신 받는다 — **등장 자체가 신호**다.
+  describe('정보 영역은 시·고·저 아이콘 없이 항목과 가격만 표시한다', () => {
     const summaryRow = (label: string) => screen.getByText(label).parentElement!;
 
-    it('고가가 사다리 밖이면 `최고` 행에 칩이 뜬다', () => {
+    it('고가가 사다리 밖이어도 `최고` 행에는 가격만 표시한다', () => {
       renderPanel({ summary: { ...SUMMARY, dayHigh: 999_000 } });
-      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
+      expect(summaryRow('최고')).toHaveTextContent('최고999,000');
+      expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
     });
 
-    it('시·저도 같은 규칙이다 — 셋 다 밖이면 셋 다 뜬다', () => {
+    it('시·고·저 모두 사다리 밖이어도 정보 영역의 아이콘은 없다', () => {
       // 기본 픽스처가 이미 셋 다 밖이다(시 245,500 · 고 257,500 · 저 238,500 vs
       // 사다리 246,500~256,000).
       renderPanel();
-      expect(within(summaryRow('시작')).getByText('시')).toBeInTheDocument();
-      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
-      expect(within(summaryRow('최저')).getByText('저')).toBeInTheDocument();
+      expect(summaryRow('시작')).toHaveTextContent('시작245,500');
+      expect(summaryRow('최고')).toHaveTextContent('최고257,500');
+      expect(summaryRow('최저')).toHaveTextContent('최저238,500');
+      for (const label of ['시', '고', '저']) expect(within(screen.getByTestId('book-summary')).queryByText(label)).toBeNull();
     });
 
-    it('사다리 행에 있으면 요약표엔 안 뜬다 — 칩은 정확히 한쪽에만', () => {
+    it('호가 가격의 칩은 유지하고 정보 영역에는 표시하지 않는다', () => {
       renderPanel({ summary: { ...SUMMARY, dayHigh: 251_500 } }); // 매도1
       expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
       // 대조군: 사다리 쪽에는 있어야 한다. 없으면 위 단언은 아무것도 증명 못 한다.
       expect(screen.getAllByText('고')).toHaveLength(1);
     });
 
-    it('스프레드 안쪽 가격은 요약표 칩으로 뜬다 — 사다리에 그릴 행이 없다', () => {
+    it('스프레드 안쪽 가격도 정보 영역에는 아이콘 없이 표시한다', () => {
       // 251,250 은 매도1(251,500)과 매수1(251,000) 사이라 사다리 20행 어디에도 없다.
-      // `중` 행이 있던 시절엔 그 행이 이 가격을 그려 칩도 거기 붙었다 — ADR-0170 이
-      // 그 행을 지우면서 `offLadderChip` 이 받는다. **손실이 아니라 이동이다.**
       renderPanel({ summary: { ...SUMMARY, dayHigh: 251_250 } });
-      expect(within(summaryRow('최고')).getByText('고')).toBeInTheDocument();
-      // 대조군: 배타 규칙(칩은 사다리 아니면 요약표, 한쪽에만)이 유지되는가.
-      expect(screen.getAllByText('고')).toHaveLength(1);
+      expect(summaryRow('최고')).toHaveTextContent('최고251,250');
+      expect(screen.queryByText('고')).toBeNull();
     });
 
     it('값이 없으면 칩도 없다 — 대시 행에 색딱지가 붙지 않는다', () => {
@@ -317,11 +312,9 @@ describe('BookPanel', () => {
       expect(screen.queryByText('시')).toBeNull();
     });
 
-    it('칩이 붙어도 값은 개행되지 않는다 — 행 높이 계약의 CSS 방어선', () => {
-      // 실측 폭: 칩 달린 `최고` 111px < 이 열의 제약을 쥔 `250일` 149px 이라
-      // 칩이 새 제약이 되지 않는다. jsdom 은 폭을 못 재므로 여기선 계약(클래스)만.
+    it('아이콘을 제거해도 가격은 개행되지 않는다 — 행 높이 계약의 CSS 방어선', () => {
       renderPanel({ summary: { ...SUMMARY, dayHigh: 1_319_000 } });
-      const value = within(summaryRow('최고')).getByText('고').parentElement!;
+      const value = within(summaryRow('최고')).getByText('1,319,000');
       expect(value.className).toContain('whitespace-nowrap');
     });
   });

@@ -366,7 +366,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     return recent;
   }, [live.trade]);
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
-    onScreenPrices={onScreen} limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
+    limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     vi={vi.data?.vi} height={height} />;
   return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}
