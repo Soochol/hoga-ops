@@ -52,6 +52,49 @@ afterEach(() => {
   resetWs(); vi.useRealTimers(); vi.restoreAllMocks();
 });
 
+it('retains usable ladders through empty resets and never rewinds on delayed WS or REST frames', async () => {
+  vi.useFakeTimers();
+  subscribe();
+  const sock = await socket();
+  const book = (t_ms: number, price: number, seq = t_ms) => ({ t_ms, seq, kind: 'ob', venue: 'KRX',
+    asks: [{ price, qty: 1 }], bids: [{ price, qty: 1 }] });
+  const valid = book(100, 33350);
+  sock.message({ ch: 'live', code: CODE, data: valid });
+  sock.message({ ch: 'live', code: CODE, data: book(110, 0) });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb?.t_ms).toBe(110);
+  expect(readLiveSeries(CODE, DATE, 'KRX').lastValidOb).toEqual(valid);
+  const early = book(120, 33400);
+  sock.message({ ch: 'live_batch', code: CODE, data: [book(99, 33000)], latest: [early], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ last_ob: book(115, 33200) }));
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb?.asks).toEqual(early.asks);
+  expect(readLiveSeries(CODE, DATE, 'KRX').lastValidOb?.asks).toEqual(early.asks);
+  sock.message({ ch: 'live_batch', code: CODE, data: [], latest: [book(120, 33100, 119)], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb?.asks).toEqual(early.asks);
+  const sameSecond = book(120, 33450, 121);
+  sock.message({ ch: 'live', code: CODE, data: sameSecond });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb).toEqual(sameSecond);
+  expect(readLiveSeries(CODE, DATE, 'NXT').lastValidOb).toBeUndefined();
+});
+
+it('preserves the pre-auction WS ladder even after auction/reset frames and history eviction', async () => {
+  vi.useFakeTimers();
+  subscribe('20261014');
+  const sock = await socket();
+  const at = (hour: number, minute: number, second = 0) => Date.UTC(2026, 9, 14, hour - 9, minute, second);
+  const preAuction = { t_ms: at(15, 19, 59), kind: 'ob', venue: 'KRX', asks: [{ price: 33400, qty: 2 }], bids: [{ price: 33350, qty: 3 }] };
+  sock.message({ ch: 'live', code: CODE, data: preAuction });
+  sock.message({ ch: 'live', code: CODE, data: { ...preAuction, t_ms: at(15, 25), asks: [{ price: 33500, qty: 10 }] } });
+  sock.message({ ch: 'live', code: CODE, data: { ...preAuction, t_ms: at(15, 40), asks: [], bids: [] } });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries(CODE, '20261014', 'KRX').preAuctionOb).toEqual(preAuction);
+  expect(readLiveSeries(CODE, '20261014', 'KRX').ob.some(row => row.t_ms === preAuction.t_ms)).toBe(false);
+  expect(readLiveSeries(CODE, '20261014', 'NXT').preAuctionOb).toBeUndefined();
+});
+
 it('eight same-code views share one push and snapshot; closing one leaves the others live', async () => {
   const response = body();
   const api = vi.spyOn(client, 'apiCall').mockImplementation(async (path) => path.startsWith('/api/live/series') ? response : []);

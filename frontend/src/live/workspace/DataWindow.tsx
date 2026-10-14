@@ -245,7 +245,6 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }, [venueOb, live.latestOb, nowMs, venue]);
   // HTS식 순간 증감 뱃지 — 라이브 latest 표시일 때만. 스팟 커서 중에는 비활성
   // (과거 시점 위에 "방금 변화" 뱃지는 거짓 정보) + 상태도 비워 복귀 시 낡은 뱃지 방지.
-  const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot);
   const spotSnap = spotOrderbook === undefined ? undefined : spotOrderbook.snapshot;
   // 파케이 스팟이 비었을 때 WS 버퍼로 그 버킷의 실제 호가를 복원(ADR-0044 개정 —
   // 승격 지연 ~2-5분 커버). 레거시 LiveSidebar 폴백과 동일 조성.
@@ -262,10 +261,13 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     scope, spotSnapshot: spotSnap, inactiveSnapshot: latestSnapshot, bufferFallbackSnapshot: bufferSnap,
   });
   const todayKst = link?.todayKst ?? realMsToYyyymmdd(nowMs);
-  const { snapshot, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
+  const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
+  const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
+  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
     afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
-    code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, afterHours: live.afterHours,
+    code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
+  const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot && !storedLadder);
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
   //
