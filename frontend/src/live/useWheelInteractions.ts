@@ -100,11 +100,18 @@ export function useWheelInteractions(
         // 앵커 비율이 보존된다. width()는 리사이즈 대응을 위해 이벤트 시점에
         // 읽는다. 논리 범위는 양 끝 봉을 포함하므로 span = 표시 바 수 - 1이다.
         const plotWidth = ts.width();
-        const minBarSpacing = chart.options().timeScale.minBarSpacing;
+        const { minBarSpacing, maxBarSpacing } = chart.options().timeScale;
         const maxSpan =
           plotWidth > 0 && minBarSpacing > 0
             ? Math.max(1, plotWidth / minBarSpacing - 1)
             : Number.POSITIVE_INFINITY;
+        // The default maximum spacing is half the plot width (two bars).
+        // Clamp zoom-in too: lwc otherwise limits only spacing and applies
+        // the requested right edge, moving the anchor at the ceiling.
+        const spacingCeiling = maxBarSpacing > 0 ? maxBarSpacing : plotWidth / 2;
+        const minSpan = plotWidth > 0 && spacingCeiling > 0
+          ? Math.max(0, plotWidth / spacingCeiling - 1)
+          : 0;
         // 마지막 캔들의 합집합 논리 인덱스(trueLast)를 이벤트 시점에 변환:
         // candles.length-1은 호가 페인 합집합 때문에 작게 어긋난다(상단 주석).
         // null/비정상이면 undefined → plain 앵커는 to-고정, shift 벽은 Infinity로
@@ -130,12 +137,14 @@ export function useWheelInteractions(
           shiftKey: e.shiftKey,
           ctrlOrMetaKey: e.ctrlKey || e.metaKey,
           mouseX: e.clientX - rect.left,
+          plotWidth,
           coordinateToLogical: viewport.coordinateToLogical,
           maxTo,
           lastBarIndex,
           maxSpan,
+          minSpan,
         });
-        if (outcome) {
+        if (outcome && (outcome.from !== range.from || outcome.to !== range.to)) {
           ts.setVisibleLogicalRange(outcome);
           onViewportChanged?.(outcome);
         }

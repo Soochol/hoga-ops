@@ -1,0 +1,327 @@
+{
+  "recorded_at_kst": "2026-10-14T14:00:11.689323+09:00",
+  "baseline_commit": "8e968d0d07abb62fe9675eeaa24a36c8b7407a3f",
+  "base_commit": "9e729844b20d9a9be09cfb0301f4aa546ef0ec52",
+  "branch": "codex/fix-wheel-pixel-anchor",
+  "source_state": "uncommitted implementation on updated main",
+  "input_fingerprint_sha256": "9f87dbcb07e0dc95f66be8b9d431b335b3536a8fc086b6c7c746184078edfe9a",
+  "input_file_count": 1515,
+  "runtime": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "chrome": "155.0.8059.39",
+    "packages": {
+      "lightweight-charts": "5.2.0",
+      "@playwright/test": "1.60.0",
+      "vitest": "4.1.7",
+      "vite": "8.0.16",
+      "typescript": "6.0.3"
+    }
+  },
+  "checks": [
+    {
+      "command": "npm exec vitest -- run src/util/wheelInteractions.test.ts src/live/useWheelInteractions.test.tsx src/live/LiveChartRoot.test.tsx src/chart/windowedChart.test.ts src/live/workspace/WorkspaceCanvas.resize.test.tsx src/workspace/WorkspaceCanvas.test.tsx",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "passed": 253,
+      "files": 6
+    },
+    {
+      "command": "npm exec playwright -- test --config ../docs/diagnostics/2026-10-14-wheel-axis/playwright.config.mts",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "passed": 52,
+      "workers": 1,
+      "stats": {
+        "startTime": "2026-10-14T04:58:37.465Z",
+        "duration": 39729.52,
+        "expected": 52,
+        "skipped": 0,
+        "unexpected": 0,
+        "flaky": 0
+      }
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "exit_code": 0
+    },
+    {
+      "command": "npm exec eslint -- . --quiet",
+      "cwd": "frontend",
+      "exit_code": 0
+    },
+    {
+      "command": "npm run build",
+      "cwd": "frontend",
+      "exit_code": 0,
+      "notes": "Build emits a >700KB chunk warning."
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "pixel_anchor_cases": [
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=false span=420",
+      "max_pixel_drift": 5.95719029661268e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        6,
+        6
+      ],
+      "notifications_at_zoom_out_limit": [
+        12,
+        12
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=false span=10",
+      "max_pixel_drift": 4.433786671143025e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        2,
+        2
+      ],
+      "notifications_at_zoom_out_limit": [
+        8,
+        8
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=false span=3",
+      "max_pixel_drift": 4.240519047016278e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        2,
+        2
+      ],
+      "notifications_at_zoom_out_limit": [
+        8,
+        8
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=false span=1",
+      "max_pixel_drift": 5.4569682106375694e-12,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        0,
+        0
+      ],
+      "notifications_at_zoom_out_limit": [
+        6,
+        6
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=true span=420",
+      "max_pixel_drift": 2.0463630789890885e-12,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        2,
+        2
+      ],
+      "notifications_at_zoom_out_limit": [
+        6,
+        6
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=true span=10",
+      "max_pixel_drift": 3.6834535421803594e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        2,
+        2
+      ],
+      "notifications_at_zoom_out_limit": [
+        8,
+        8
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=true span=3",
+      "max_pixel_drift": 1.0459189070388675e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        2,
+        2
+      ],
+      "notifications_at_zoom_out_limit": [
+        8,
+        8
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=false ctrl=true span=1",
+      "max_pixel_drift": 1.0277290130034089e-10,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        0,
+        0
+      ],
+      "notifications_at_zoom_out_limit": [
+        6,
+        6
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=false span=420",
+      "max_pixel_drift": 5.95719029661268e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        3,
+        3
+      ],
+      "notifications_at_zoom_out_limit": [
+        6,
+        6
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=false span=10",
+      "max_pixel_drift": 4.433786671143025e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        1,
+        1
+      ],
+      "notifications_at_zoom_out_limit": [
+        4,
+        4
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=false span=3",
+      "max_pixel_drift": 4.229150363244116e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        1,
+        1
+      ],
+      "notifications_at_zoom_out_limit": [
+        4,
+        4
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=false span=1",
+      "max_pixel_drift": 5.6843418860808015e-12,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        0,
+        0
+      ],
+      "notifications_at_zoom_out_limit": [
+        3,
+        3
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=true span=420",
+      "max_pixel_drift": 2.0463630789890885e-12,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        1,
+        1
+      ],
+      "notifications_at_zoom_out_limit": [
+        3,
+        3
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=true span=10",
+      "max_pixel_drift": 3.6834535421803594e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        1,
+        1
+      ],
+      "notifications_at_zoom_out_limit": [
+        4,
+        4
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=true span=3",
+      "max_pixel_drift": 1.0459189070388675e-11,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        1,
+        1
+      ],
+      "notifications_at_zoom_out_limit": [
+        4,
+        4
+      ]
+    },
+    {
+      "case": "blank-area wheel keeps pixel anchor: windowed=true ctrl=true span=1",
+      "max_pixel_drift": 1.0277290130034089e-10,
+      "plot_width": 942,
+      "axis_width": 58,
+      "axis_width_stable": true,
+      "notifications_at_zoom_in_limit": [
+        0,
+        0
+      ],
+      "notifications_at_zoom_out_limit": [
+        3,
+        3
+      ]
+    }
+  ],
+  "notes": [
+    "Wheel checks use synthetic chart data and mocked LiveChartRoot HTTP; no backend/vendor credentials.",
+    "Mocked full-page backfill tests emit a ResizeObserver loop warning; numerical anchor checks pass.",
+    "Code is in this worktree. User server localhost:5173 serves the separate main checkout."
+  ],
+  "changed_file_hashes": {
+    "docs/diagnostics/2026-10-14-wheel-axis/playwright.config.mts": "d1879bd16f3caad1d954f5e0e3ac181eed991f157c3ac139c6928b756623c235",
+    "frontend/package-lock.json": "6518f271e9fd9dc89f460eab41267fc03b6260638a6266d33f206ef6302780fd",
+    "frontend/playwright.config.ts": "5db48591aea25b3e51659784e5e6a31e38073effc3b9090bb0b2bda61c32c11d",
+    "frontend/src/live/LiveChartRoot.test.tsx": "5a2a459e24002ea188bd5c24f21aa67bc8e3035c5c74e7a0aee38c5e68dbca9a",
+    "frontend/src/live/useWheelInteractions.test.tsx": "61f485b4e973bdb6c797a78b2bd3f520b2c6194260d85a9b29f305d35e850d79",
+    "frontend/src/live/useWheelInteractions.ts": "043cd911e651e49e2bbb246be75f64eddfbda1c1fec277d305e9f31e4d06aa83",
+    "frontend/src/util/wheelInteractions.test.ts": "7cb99edd1a64f5093bd1ff567958bbad70393424b11c27292f8aa8e18c6e8630",
+    "frontend/src/util/wheelInteractions.ts": "0afe0b00c8114411b7e862cc5bcabd276d10bbd573dabd1d04ee1f6dd99f4f1b",
+    "frontend/tests/e2e/helpers/wheelViewportHarness.tsx": "a8e95229dd686ab4342c3f0e3f613bcfd70032fe3e8c1a7af2ba953029d63853",
+    "frontend/tests/e2e/wheel-pixel-anchor.spec.ts": "faca1914417edc75f046d8241dda1d1e190517106febcee072a7745efe893842",
+    "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493"
+  },
+  "input_scope": "All tracked frontend/src and frontend/tests files, package manifests and lockfile, Vite/Playwright/ESLint/TS configurations, plus new wheel-pixel-anchor.spec.ts and diagnostic Playwright config.",
+  "fingerprint_definition": "SHA256 of json.dumps(sorted path->file SHA256 mapping, sort_keys=True). Source/test/dependency/config inputs only; documentation and generated outputs are excluded."
+}
