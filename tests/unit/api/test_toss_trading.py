@@ -479,3 +479,110 @@ async def test_terminal_event_and_foreign_account_are_not_usable_as_open_order(s
         await service.execute(TradingCommand(account_seq=1, code="005930", command_id="late-open"), "cancel", "old")
     assert lag.value.code == "order-state-syncing"
     assert broker.posts == []
+
+
+async def test_account_orders_returns_all_domestic_symbols_and_keeps_symbol_snapshots_separate(setup):
+    broker, service, api = setup
+    broker.open = [order(f"kr-{i}", code="005930" if i % 2 else "000660") for i in range(130)]
+    broker.open.append({**order("us", code="ABCDEF"), "currency": "USD"})
+    seen = []
+    original = broker.handle
+
+    async def handle(request):
+        if request.url.path == "/api/v1/orders":
+            seen.append(dict(request.url.params))
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    response = await api.get("/api/trading/account-orders?account_seq=1")
+    assert response.status_code == 200
+    assert len(response.json()["orders"]) == 130
+    assert {o["symbol"] for o in response.json()["orders"]} == {"005930", "000660"}
+    assert seen[0] == {"status": "OPEN"}
+    assert seen[1] == {"status": "CLOSED", "limit": "100"}
+    await api.get("/api/trading/account-orders?account_seq=1")
+    assert len(seen) == 2  # Shared account snapshot, no extra broker read.
+    await api.get("/api/trading/state?account_seq=1&code=005930&part=orders")
+    assert len(seen) == 4 and seen[2]["symbol"] == "005930"
+    forbidden = await api.get("/api/trading/account-orders?account_seq=2")
+    assert forbidden.status_code == 403
+    assert len(broker.posts) == 0
+
+
+async def test_account_holdings_filters_domestic_positive_positions_and_reuses_cache(setup):
+    broker, service, api = setup
+    original = broker.handle
+    reads = 0
+
+    async def handle(request):
+        nonlocal reads
+        if request.url.path == "/api/v1/holdings":
+            reads += 1
+            base = {"symbol": "000660", "name": "SK하이닉스", "marketCountry": "KR", "currency": "KRW",
+                    "quantity": "22", "averagePurchasePrice": "180000.5"}
+            return httpx.Response(200, json={"result": {"items": [base, {**base, "quantity": "0"},
+                {**base, "marketCountry": "US", "currency": "USD", "symbol": "AAPL"}]}})
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    response = await api.get("/api/trading/holdings?account_seq=1")
+    assert response.status_code == 200
+    assert response.json()["holdings"] == [{
+        "code": "000660", "name": "SK하이닉스", "quantity": "22", "average_purchase_price": "180000.5",
+    }]
+    await api.get("/api/trading/holdings?account_seq=1")
+    assert reads == 1
+    service.changed()
+    await api.get("/api/trading/holdings?account_seq=1")
+    assert reads == 2
+    assert (await api.get("/api/trading/holdings?account_seq=2")).status_code == 403
+    assert len(broker.posts) == 0
+
+
+async def test_account_list_cancel_uses_target_symbol_and_latest_validation_with_dedup(setup):
+    broker, _service, api = setup
+    broker.detail = order("target", filled="80", code="000660", side="SELL")
+    body = {"account_seq": 1, "code": "000660", "command_id": "account-list-cancel"}
+    responses = await asyncio.gather(*[api.post("/api/trading/orders/target/cancel", json=body,
+        headers={"X-Hoga-Order": "1"}) for _ in range(2)])
+    assert all(response.status_code == 200 for response in responses)
+    assert len(broker.posts) == 1
+    assert broker.posts[0].url.path == "/api/v1/orders/target/cancel"
+
+
+async def test_incomplete_account_order_response_is_not_presented_as_a_full_list(setup):
+    broker, service, api = setup
+    original = broker.handle
+
+    async def handle(request):
+        if request.url.path == "/api/v1/orders" and request.url.params["status"] == "OPEN":
+            return httpx.Response(200, json={"result": {"orders": [order()], "hasNext": True, "nextCursor": "next"}})
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    response = await api.get("/api/trading/account-orders?account_seq=1")
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "invalid-toss-response"
+    assert not service._snapshots
+
+
+async def test_invalid_holding_quantity_is_reported_instead_of_silently_hidden(setup):
+    broker, service, api = setup
+    original = broker.handle
+
+    async def handle(request):
+        if request.url.path == "/api/v1/holdings":
+            return httpx.Response(200, json={"result": {"items": [{
+                "symbol": "005930", "name": "삼성전자", "marketCountry": "KR", "currency": "KRW",
+                "quantity": "NaN", "averagePurchasePrice": "67200",
+            }]}})
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(handle))
+    response = await api.get("/api/trading/holdings?account_seq=1")
+    assert response.status_code == 503
+    assert response.json()["detail"]["code"] == "invalid-toss-response"

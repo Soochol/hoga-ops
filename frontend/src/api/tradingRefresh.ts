@@ -120,10 +120,10 @@ export function applyTradingOrderEvent(client: QueryClient, mode: TradingMode, a
   return true;
 }
 
-export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, account: number, code: string,
+export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, account: number, code: string | null,
   base: OrderStateResponse | undefined): OrderStateResponse | undefined {
   if (!base) return undefined;
-  const events = [...shared(client, mode, account).events.values()].filter(event => event.order.symbol === code);
+  const events = [...shared(client, mode, account).events.values()].filter(event => code === null || event.order.symbol === code);
   if (!events.length) return base;
   const orders = new Map(base.orders.map(order => [order.orderId, order]));
   const recent = new Map([...base.recent_orders].reverse().map(order => [order.orderId, order]));

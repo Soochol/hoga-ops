@@ -17,6 +17,7 @@ afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
   useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: false }),
   useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: '100', average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
+  useTradingAccountList: () => ({ orders: { data: undefined }, holdings: { data: undefined }, paused: false }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
 vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + mock.priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + mock.priceOffset - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }, trade: [], afterHours: [] })) }));
@@ -364,7 +365,7 @@ describe('호가 주문', () => {
   });
   it('부분 체결을 제외한 잔량만 표시하고 클릭해도 하단 편집 UI가 열리지 않는다', () => {
     mock.orders = [order()]; show(); const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
-    expect(chip).toHaveTextContent('70주'); fireEvent.click(chip);
+    expect(chip).toHaveTextContent(/^70$/); fireEvent.click(chip);
     expect(screen.queryByLabelText('정정 수량')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('주문 가격')).not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
@@ -424,13 +425,13 @@ describe('호가 주문', () => {
   it('같은 가격의 여러 주문은 한 칸에 합산하고 우클릭 목록에서 개별 잔량을 표시한다', () => {
     mock.orders = [order('a'), order('b'), { ...order('other'), price: '67100' }]; show();
     const cell = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
-    expect(cell).toHaveTextContent('140주');
+    expect(cell).toHaveTextContent(/^140$/);
     fireEvent.contextMenu(cell, { clientX: 100, clientY: 100 });
     const menu = screen.getByRole('menu', { name: '매수 67,200원 주문 목록' });
     expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);
     expect(within(menu).getByRole('menuitem', { name: '주문 1 · 70주' })).toBeEnabled();
     expect(within(menu).getByRole('menuitem', { name: '주문 2 · 70주' })).toBeEnabled();
-    expect(menu.textContent).toBe('주문 170주주문 270주');
+    expect(menu.textContent).toBe('주문 170주문 270');
     expect(menu).not.toHaveTextContent('other');
     expect(mock.command).not.toHaveBeenCalled();
     const a = order(), b = { ...order('b'), side: 'SELL' as const }; expect(groupPriceOrders([a, b]).size).toBe(2); expect(orderRemainder(a)).toBe(70);
@@ -441,7 +442,7 @@ describe('호가 주문', () => {
     fireEvent.contextMenu(cell, { clientX: 100, clientY: 100 });
     const item = screen.getByRole('menuitem', { name: '주문 2 · 70주' });
     expect(item).toBeDisabled();
-    expect(item.textContent).toBe('주문 270주');
+    expect(item.textContent).toBe('주문 270');
     fireEvent.keyDown(item, { key: 'Escape' });
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(mock.command).not.toHaveBeenCalled();

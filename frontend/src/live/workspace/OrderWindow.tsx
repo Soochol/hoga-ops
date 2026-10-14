@@ -33,6 +33,7 @@ import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
+import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -56,8 +57,8 @@ function OrderToastPortal({ children }: { children: ReactNode }) {
   return createPortal(host ? children : <ToastViewport>{children}</ToastViewport>, host ?? document.body);
 }
 
-export function OrderWindow({ code, settings, onSettingsChange }: {
-  code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void;
+export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }: {
+  code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
 }) {
   const [selectedAccount, selectAccount] = useState(0);
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
@@ -74,15 +75,15 @@ export function OrderWindow({ code, settings, onSettingsChange }: {
   return <OrderWindowContent key={code} code={code}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} amountMillions={amountMillions}
     onAmountChange={setAmountMillions} onApplySettings={applySettings}
-    chosenAccount={selectedAccount} onAccountChange={selectAccount} />;
+    chosenAccount={selectedAccount} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} />;
 }
 
-function OrderWindowContent({ code, chosenAccount, onAccountChange,
+function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymbol,
   preferences, quantity, onQuantityChange, amountMillions, onAmountChange, onApplySettings }: {
   code: string;
   chosenAccount: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
   quantity: number; onQuantityChange: (quantity: number) => void; amountMillions: number; onAmountChange: (millions: number) => void;
-  onApplySettings: (settings: OrderWindowSettings) => void;
+  onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
 }) {
   const client = useQueryClient();
   const accounts = useTradingAccounts(mode);
@@ -133,6 +134,9 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [pendingIds, setPending] = useState<Record<string, string>>({});
+  const [accountTab, setAccountTab] = useState<AccountListTab | null>(null);
+  const accountAnchor = useRef<HTMLDivElement>(null);
+  const closeAccountPanel = useCallback(() => setAccountTab(null), []);
   const rootRef = useRef<HTMLDivElement>(null);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const [compact, setCompact] = useState(false);
@@ -406,7 +410,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
       disabled={!ready || blocked} data-drag-order={!blocked ? order.orderId : undefined}
       onPointerDown={e => beginDrag(e, [order])} onPointerMove={moveDrag} onPointerUp={endDrag}
       onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
-      {content ?? `${fmt(orderRemainder(order))}주`}{blocked ? ' · 처리 중' : ''}
+      {content ?? fmt(orderRemainder(order))}{blocked ? ' · 처리 중' : ''}
     </button>;
   }
   function orderCell(side: TradingSide, price: number, rowKey: string) {
@@ -432,7 +436,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
       {group.length > 0 && <span className={`order-quantity ${!canDrag ? 'order-quantity-blocked' : ''} ${draggingOrders.some(order => group.some(item => item.orderId === order.orderId)) ? 'order-chip-dragging' : ''}`}
         aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ' 합계' : ''}`}
         data-drag-order={group.some(order => editableOrder(order) && !pending(order)) ? group.map(order => order.orderId).join(',') : undefined}>
-        {fmt(group.reduce((sum, order) => sum + orderRemainder(order), 0))}주{group.some(order => !editableOrder(order) || pending(order)) ? ' · 처리 중' : ''}
+        {fmt(group.reduce((sum, order) => sum + orderRemainder(order), 0))}{group.some(order => !editableOrder(order) || pending(order)) ? ' · 처리 중' : ''}
       </span>}
     </button>;
   }
@@ -461,11 +465,15 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
       if (['1', '2', '3'].includes(e.key)) { e.preventDefault(); setInputValue(presets[Number(e.key) - 1]); }
     }}>
     <div className="order-controls order-account-controls">
-      <div className="order-account-group">
+      <div className="order-account-group" ref={accountAnchor}>
       {accounts.data && accounts.data.accounts.length > 1 ? <select aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
         onChange={e => { onAccountChange(Number(e.target.value)); closeAction(); setPending({}); setFailedRequest(null); setNotice(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
-      </select> : <span className="text-fg-dim">{accounts.data?.accounts[0]?.label ?? '계좌 연결 대기'}</span>}
+      </select> : <span className="order-account-label text-fg-dim" title={accounts.data?.accounts[0]?.label}>{accounts.data?.accounts[0]?.label ?? '계좌 연결 대기'}</span>}
+      {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
+        disabled={!account || !!lockedBook || busy} onClick={() => { closeAction(); setAccountTab(accountTab === tab ? null : tab); }}>
+        {tab === 'orders' ? '미체결 주문' : '보유종목'}
+      </button>)}
       </div>
       <div className="order-settings-group">
       <button type="button" aria-label="주문 설정" disabled={busy || !!lockedBook} onClick={() => { closeAction(); setSettingsDraft(normalizeOrderSettings(preferences)); }}>설정</button>
@@ -474,6 +482,8 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
         disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
     </div>
+    <AccountTradingPanel key={account} account={account} accountLabel={accounts.data?.accounts.find(item => item.account_seq === account)?.label ?? '계좌 연결 대기'}
+      tab={accountTab} anchorRef={accountAnchor} onTabChange={setAccountTab} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
         <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
@@ -515,7 +525,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
     {averageTip.tooltip}
     {draggedOrder && createPortal(<div ref={dragPreview} role="status" aria-label="주문 드래그 미리보기"
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
-      {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}주
+      {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}
     </div>, document.body)}
     {settingsDraft && createPortal(<div className="order-settings-surface font-data" onKeyDown={e => {
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); setSettingsDraft(null); }
@@ -569,7 +579,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
         {expanded && <div className="order-summary-layer">{renderSummary(240)}</div>}
       </div>
       {outside.length > 0 && <div className="order-outside">{outside.map(o => <div key={o.orderId} className={o.side === 'BUY' ? 'order-buy' : 'order-sell'}>
-        {orderChip(o, `호가 밖 ${orderSideLabel(o.side)} ${fmt(o.price)}원 주문`, `${orderSideLabel(o.side)} ${fmt(o.price)}원 · ${fmt(orderRemainder(o))}주`)}
+        {orderChip(o, `호가 밖 ${orderSideLabel(o.side)} ${fmt(o.price)}원 주문`, `${orderSideLabel(o.side)} ${fmt(o.price)}원 · ${fmt(orderRemainder(o))}`)}
       </div>)}</div>}
     </div>
     {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={{ ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 }} maskRatio={!book || book.tot_ask + book.tot_bid === 0}
@@ -585,7 +595,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
             disabled={!ready || !editableOrder(order) || pending(order)}
             onPointerDown={e => beginDrag(e, [order], true)} onPointerMove={moveDrag} onPointerUp={endDrag}
             onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
-            <span>주문 {index + 1}</span><strong>{fmt(orderRemainder(order))}주</strong>
+            <span>주문 {index + 1}</span><strong>{fmt(orderRemainder(order))}</strong>
           </button>)}
         {!(groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length) && <p className="order-list-hint">미체결 주문 없음</p>}
       </div>

@@ -29,6 +29,8 @@ from hoga.trading.models import (
     TradingCancelResult,
     TradingCommand,
     TradingCommandResponse,
+    TradingHolding,
+    TradingHoldingsResponse,
     TradingOrderStateResponse,
     TradingStateResponse,
 )
@@ -292,12 +294,23 @@ class TradingService:
                 return cached[1]
             client = self._client()
             revision = self.revision
+            symbol_filter = {"symbol": code} if code else {}
             open_data, closed_data = await asyncio.gather(
-                client.request("GET", "/api/v1/orders", account=account, params={"status": "OPEN", "symbol": code}),
+                client.request("GET", "/api/v1/orders", account=account,
+                               params={"status": "OPEN", **symbol_filter}),
                 client.request(
-                    "GET", "/api/v1/orders", account=account, params={"status": "CLOSED", "symbol": code, "limit": 10}
+                    "GET", "/api/v1/orders", account=account,
+                    params={"status": "CLOSED", "limit": 10 if code else 100, **symbol_filter}
                 ),
             )
+            if not code:
+                # OPEN is an all-orders response under the official API contract.
+                if open_data.get("hasNext"):
+                    raise TradingError(503, "invalid-toss-response", "전체 미체결 주문을 확인할 수 없습니다.")
+                for data in (open_data, closed_data):
+                    data["orders"] = [o for o in data["orders"] if o.get("currency") == "KRW"
+                                      and len(o.get("symbol", "")) == DOMESTIC_CODE_LENGTH
+                                      and o["symbol"].isascii() and o["symbol"].isalnum()]
             result = TradingOrderStateResponse(
                 account_seq=account,
                 code=code,
@@ -311,6 +324,31 @@ class TradingService:
             if revision == self.revision:
                 self._snapshots[key] = time.monotonic(), result
             return result
+
+    async def account_orders(self, account: int) -> TradingOrderStateResponse:
+        """Empty code is an account snapshot; the public symbol route still requires a code."""
+        return await self.order_state(account, "")
+
+    async def account_holdings(self, account: int) -> TradingHoldingsResponse:
+        await self.authorize(account)
+        result = []
+        for item in await self.holdings(account):
+            code = item["symbol"]
+            if (item.get("marketCountry") != "KR" or item.get("currency") != "KRW"
+                    or len(code) != DOMESTIC_CODE_LENGTH or not code.isascii() or not code.isalnum()):
+                continue
+            try:
+                quantity = Decimal(item["quantity"])
+                average = Decimal(item["averagePurchasePrice"])
+                if (not quantity.is_finite() or quantity < 0 or quantity != quantity.to_integral_value()
+                        or not average.is_finite() or average < 0):
+                    raise ValueError("invalid domestic holding")
+            except (InvalidOperation, ValueError):
+                raise TradingError(503, "invalid-toss-response", "보유종목 수량을 확인할 수 없습니다.") from None
+            if quantity > 0:
+                result.append(TradingHolding(code=code, name=item.get("name") or code, quantity=item["quantity"],
+                                             average_purchase_price=item["averagePurchasePrice"]))
+        return TradingHoldingsResponse(account_seq=account, holdings=result, fetched_at_ms=int(time.time() * 1000))
 
     async def balances(self, account: int, code: str) -> TradingBalancesResponse:
         await self.authorize(account)
