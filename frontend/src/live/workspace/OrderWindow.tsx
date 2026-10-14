@@ -16,7 +16,7 @@ import {
   tradingCommand, useTradingAccounts, useTradingState,
   type TossOrder, type TradingSide, type TradingCommand, type TradingCommandResponse,
   type CreateTradingOrder, type ModifyTradingOrder, type CancelTradingOrders, type TradingCancelResponse,
-  type ReviewTradingCommand, type TradingReviewResponse, type TradingMode, type ResetPaperAccount, type TradingStateResponse,
+  type ReviewTradingCommand, type TradingReviewResponse,
 } from '../../api/trading';
 import { useLiveSeries } from '../../api/liveSeries';
 import { pauseTradingRefresh } from '../../api/tradingRefresh';
@@ -24,7 +24,7 @@ import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
 import { useLiveViStatus } from '../../api/liveViStatus';
-import { LIVE_VENUE_LABELS, useLiveVenueStore } from '../../state/liveVenue';
+import { useLiveVenueStore } from '../../state/liveVenue';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
@@ -37,6 +37,7 @@ import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const EMPTY_ORDERS: TossOrder[] = [];
+const mode = 'live' as const;
 type Action = {
   type: 'create' | 'modify' | 'cancel' | 'bulk' | 'group';
   base: TradingCommand;
@@ -55,11 +56,10 @@ function OrderToastPortal({ children }: { children: ReactNode }) {
   return createPortal(host ? children : <ToastViewport>{children}</ToastViewport>, host ?? document.body);
 }
 
-export function OrderWindow({ code, name, settings, onSettingsChange }: {
+export function OrderWindow({ code, settings, onSettingsChange }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void;
 }) {
-  const [mode, setMode] = useState<TradingMode>('paper');
-  const [selectedAccounts, selectAccount] = useState<Record<TradingMode, number>>({ paper: 0, live: 0 });
+  const [selectedAccount, selectAccount] = useState(0);
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
   const preferences = settings ?? localSettings;
   const [quantity, setQuantity] = useState(() => preferences.quantityPresets[0]);
@@ -71,15 +71,15 @@ export function OrderWindow({ code, name, settings, onSettingsChange }: {
     if (amountSlot >= 0) setAmountMillions(next.amountPresets[amountSlot]);
     setLocalSettings(next); onSettingsChange?.(next);
   }
-  return <OrderWindowContent key={`${mode}:${code}`} code={code} name={name} mode={mode} onModeChange={setMode}
+  return <OrderWindowContent key={code} code={code}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} amountMillions={amountMillions}
     onAmountChange={setAmountMillions} onApplySettings={applySettings}
-    chosenAccount={selectedAccounts[mode]} onAccountChange={account => selectAccount(previous => ({ ...previous, [mode]: account }))} />;
+    chosenAccount={selectedAccount} onAccountChange={selectAccount} />;
 }
 
-function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onAccountChange,
+function OrderWindowContent({ code, chosenAccount, onAccountChange,
   preferences, quantity, onQuantityChange, amountMillions, onAmountChange, onApplySettings }: {
-  code: string; name: string; mode: TradingMode; onModeChange: (mode: TradingMode) => void;
+  code: string;
   chosenAccount: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
   quantity: number; onQuantityChange: (quantity: number) => void; amountMillions: number; onAmountChange: (millions: number) => void;
   onApplySettings: (settings: OrderWindowSettings) => void;
@@ -131,11 +131,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     return () => window.clearTimeout(timer);
   }, [notice]);
   const [busy, setBusy] = useState(false);
-  const [paperSettings, showPaperSettings] = useState(false);
-  const [paperCash, setPaperCash] = useState(100_000_000);
-  const [paperHolding, setPaperHolding] = useState(0);
-  const [paperAverage, setPaperAverage] = useState(1);
-  const [paperConfirmed, confirmPaperReset] = useState(false);
   const busyRef = useRef(false);
   const [pendingIds, setPending] = useState<Record<string, string>>({});
   const rootRef = useRef<HTMLDivElement>(null);
@@ -242,7 +237,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   }, [account, quantityTip.hide, averageTip.hide]);
   const currentOrder = action?.order ? orders.find(o => o.orderId === action.order?.orderId) ?? action.order : null;
   const actionQty = action?.quantity ?? (currentOrder ? orderRemainder(currentOrder) : 0);
-  const highValue = mode === 'live' && !!action && changesPrice(action) && action.price * actionQty >= HIGH_VALUE_WON;
+  const highValue = !!action && changesPrice(action) && action.price * actionQty >= HIGH_VALUE_WON;
 
   function base(): TradingCommand { return { account_seq: account, code, command_id: nanoid() }; }
   function closeAction() { setAction(null); closeMenu(); confirmHigh(false); }
@@ -319,8 +314,8 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     const qty = next.quantity ?? (next.order ? orderRemainder(next.order) : 0);
     const high = changesPrice(next) && next.price * qty >= HIGH_VALUE_WON;
     setFailedRequest(null); setNotice(null);
-    if (mode === 'live' && high) setAction(next);
-    else { closeAction(); void submit(next, mode === 'paper' && high); }
+    if (high) setAction(next);
+    else { closeAction(); void submit(next); }
   }
   async function reviewCommand(commandId: string) {
     if (!reviewedUnknown || busyRef.current) return;
@@ -331,17 +326,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       closeAction(); reviewUnknown(false);
     } catch (error) { setNotice(error instanceof Error ? error.message : '내역 확인 기록 실패'); }
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
-  }
-  async function resetPaper() {
-    if (mode !== 'paper' || !paperConfirmed || busyRef.current) return;
-    busyRef.current = true; setBusy(true);
-    try {
-      const body: ResetPaperAccount = { ...base(), cash: paperCash, holding_quantity: paperHolding, average_purchase_price: paperAverage, confirmed: true };
-      await tradingCommand<TradingStateResponse>('/reset', body, 'paper');
-      showPaperSettings(false); closeAction(); setPending({});
-      setNotice(null); setFailedRequest(null);
-    } catch (error) { setNotice(error instanceof Error ? error.message : '모의 계좌 초기화 실패'); }
-    finally { await client.invalidateQueries({ queryKey: ['trading', 'paper', 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number) {
     if (!validOrderInput(inputValue, preferences.unit)) { setNotice(amountMode ? '주문 금액은 1백만원 이상의 정수로 설정하세요.' : '주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
@@ -476,10 +460,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     }}>
     <div className="order-controls order-account-controls">
       <div className="order-account-group">
-      <select aria-label="주문 모드" value={mode} disabled={busy || !!lockedBook} onChange={e => onModeChange(e.target.value as TradingMode)}>
-        <option value="paper">로컬 모의 계좌</option><option value="live">토스 실계좌</option>
-      </select>
-      {mode === 'paper' && <button type="button" disabled={!ready || !!lockedBook} onClick={() => { closeAction(); showPaperSettings(!paperSettings); setPaperAverage(Math.max(1, quote?.price ?? 1)); confirmPaperReset(false); }}>모의 계좌 설정</button>}
       {accounts.data && accounts.data.accounts.length > 1 ? <select aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
         onChange={e => { onAccountChange(Number(e.target.value)); closeAction(); setPending({}); setFailedRequest(null); setNotice(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
@@ -491,10 +471,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       {!expanded && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
-    </div>
-    <div className="order-market-basis" aria-label="시세·주문 기준">
-      시세 {LIVE_VENUE_LABELS[effectiveVenue]}{venue !== effectiveVenue ? ` (${LIVE_VENUE_LABELS[venue]} 선택)` : ''}
-      {' · '}{mode === 'live' ? '주문 통합(SOR)' : '모의 체결 통합'}
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
@@ -560,14 +536,6 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         <div className="order-settings-footer"><button type="button" onClick={() => setSettingsDraft(null)}>취소</button><button type="submit" disabled={busy || !validOrderSettings(settingsDraft)}>적용</button></div>
       </form>
     </ModalShell></div>, document.body)}
-    {paperSettings && mode === 'paper' && <div className="order-editor" role="group" aria-label="모의 계좌 초기화">
-      <label>가상 현금<input aria-label="모의 초기 현금" type="number" min="0" max="1000000000000" step="1" value={paperCash} onChange={e => setPaperCash(Number(e.target.value))} />원</label>
-      <label>{name} 초기 보유<input aria-label="모의 초기 보유 수량" type="number" min="0" max="1000000000" step="1" value={paperHolding} onChange={e => setPaperHolding(Number(e.target.value))} />주</label>
-      <label>평균 매입<input aria-label="모의 초기 평균 매입가" type="number" min="1" max="1000000000" step="1" value={paperAverage} onChange={e => setPaperAverage(Number(e.target.value))} />원</label>
-      <label><input type="checkbox" checked={paperConfirmed} onChange={e => confirmPaperReset(e.target.checked)} />모든 종목의 모의 주문·보유 내역을 지우고 초기화합니다</label>
-      <button type="button" disabled={busy || !paperConfirmed || !Number.isSafeInteger(paperCash) || paperCash < 0 || paperCash > 1_000_000_000_000 || !Number.isSafeInteger(paperHolding) || paperHolding < 0 || paperHolding > 1_000_000_000 || !Number.isSafeInteger(paperAverage) || paperAverage < 1 || paperAverage > 1_000_000_000} onClick={() => void resetPaper()}>모의 계좌 초기화</button>
-      <button type="button" disabled={busy} onClick={() => showPaperSettings(false)}>닫기</button>
-    </div>}
     {!accounts.data?.configured && !accounts.isLoading && <p className="order-notice">토스증권 Open API의 CLIENT_ID·CLIENT_SECRET을 서버에 설정하면 계좌가 연결됩니다.</p>}
     {(accounts.error || state.error) && <p role="alert" className="order-notice text-error">{String((accounts.error ?? state.error) instanceof Error ? (accounts.error ?? state.error as Error)?.message : '계좌 조회 실패')}</p>}
     {!!state.data?.unresolved_commands.length && <div className="order-editor"><span role="alert" className="text-error">결과가 불명확한 요청이 있습니다.</span>
