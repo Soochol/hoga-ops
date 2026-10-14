@@ -2,6 +2,7 @@
 .order-window.order-compact { --order-min-w:504px; }
 .order-window.order-expanded.order-spacious { --order-min-w:696px; }
 .order-window > * { min-width:var(--order-min-w); }
+.order-window > .book-expected-fill { min-width:0; }
 .order-window button,.order-window select,.order-window input { font:inherit; color:inherit; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm,4px); }
 .order-window button { padding:3px 6px; }
 .order-window button:hover { background:var(--bg-input-hover); }

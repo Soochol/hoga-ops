@@ -1,5 +1,49 @@
 import { test, expect } from '@playwright/test';
 
+for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as const) {
+  test(`${depth} 호가는 빈 가격 없이 잔량과 정렬되고 상세 정보를 열 수 있다`, async ({ page }, testInfo) => {
+    await page.goto(`/tests/e2e/fixtures/book-price-layout.html?depth=${depth}`);
+    const panel = page.locator('.book-panel');
+    const grid = panel.locator('.book-panel-grid');
+    await expect(grid.locator('.font-data.text-base')).toHaveCount(askCount + bidCount);
+    for (const width of [640, 409]) {
+      await page.locator('#fixture').evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
+      await expect(panel.locator('.book-inline-summary')).toBeHidden();
+      await expect(async () => {
+        const rows = await grid.evaluate(el => {
+          const [left, center, right] = Array.from(el.children);
+          const prices = Array.from(center.children).slice(1);
+          const askBars = Array.from(left.children).slice(1, left.children.length - 2);
+          const bidBars = Array.from(right.children).slice(1);
+          const bars = [...askBars, ...bidBars];
+          return prices.map((price, i) => ({
+            text: price.textContent,
+            offset: price.getBoundingClientRect().top - bars[i].getBoundingClientRect().top,
+            priceHeight: price.getBoundingClientRect().height,
+            barHeight: bars[i].getBoundingClientRect().height,
+          }));
+        });
+        expect(rows).toHaveLength(askCount + bidCount);
+        for (const row of rows) {
+          expect(row.text).not.toContain('—');
+          expect(row.offset).toBeCloseTo(0, 1);
+          expect(row.priceHeight).toBe(22);
+          expect(row.barHeight).toBe(22);
+        }
+      }).toPass({ timeout: 5000 });
+      const info = panel.getByRole('button', { name: '종목 상세 정보' });
+      await expect(info).toBeVisible();
+      await info.click();
+      const dialog = page.getByRole('dialog', { name: '종목 상세 정보' });
+      await expect(dialog.getByText('250일', { exact: true })).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(dialog).toHaveCount(0);
+      await expect(info).toBeFocused();
+    }
+    await panel.screenshot({ path: testInfo.outputPath(`${depth}-book.png`) });
+  });
+}
+
 // Real font metrics and container queries are unavailable in jsdom.
 test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 하한 스크롤', async ({ page }) => {
   await page.goto('/tests/e2e/fixtures/book-price-layout.html');

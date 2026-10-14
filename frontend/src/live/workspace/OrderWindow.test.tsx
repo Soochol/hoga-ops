@@ -11,7 +11,7 @@ import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
 
-const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, holdingQuantity: '100', priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, holdingQuantity: '100', priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
@@ -20,7 +20,7 @@ vi.mock('../../api/trading', () => ({
   useTradingAccountList: () => ({ orders: { data: undefined }, holdings: { data: undefined }, paused: false }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
-vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + mock.priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + mock.priceOffset - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }, trade: [], afterHours: [] })) }));
+vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => i < mock.askCount ? { price: 67300 + mock.priceOffset + i * 100, qty: 100 + i } : { price: 0, qty: 0 }), bids: Array.from({ length: 10 }, (_, i) => i < mock.bidCount ? { price: 67200 + mock.priceOffset - i * 100, qty: 200 + i } : { price: 0, qty: 0 }), total_ask_qty: 1000, total_bid_qty: 2000, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }, trade: [], afterHours: [] })) }));
 vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55 }]])) }));
 vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 70000, low_250: 50000 } }) }));
 vi.mock('../../api/liveKrxClose', () => ({ useLiveKrxClose: () => ({ data: { date: '20261013', price: 67100 } }) }));
@@ -42,9 +42,36 @@ function order(id = 'a'): TossOrder {
     execution: { filledQuantity: '30', averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null } };
 }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
-beforeEach(() => { mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
+beforeEach(() => { mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('10호가창과 같은 예상 체결가·체결량을 사다리 위에 표시하고 갱신한다', () => {
+    mock.expectedPrice = 241_000; mock.expectedQty = 6_140;
+    const view = show();
+    const banner = screen.getByTestId('book-expected-fill');
+    expect(banner).toHaveTextContent('예상 체결가241,000원');
+    expect(banner).toHaveTextContent('예상 체결량6,140');
+    const ladder = screen.getByRole('region', { name: '실시간 호가 주문 사다리' });
+    expect(banner.nextElementSibling).toBe(ladder);
+    mock.expectedQty = 0;
+    view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
+    expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+  });
+  it('예상 체결가·체결량을 제공하지 않으면 배너를 표시하지 않는다', () => {
+    show();
+    expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+  });
+  it('빈 호가를 제거해도 매도·매수 잔량과 경계선은 실제 가격에 맞춘다', () => {
+    mock.askCount = 4; mock.bidCount = 3;
+    const { container } = show();
+    const rows = container.querySelectorAll('[data-order-price]');
+    expect(Array.from(rows).map(row => row.getAttribute('data-order-price'))).toEqual(['67600', '67500', '67400', '67300', '67200', '67100', '67000']);
+    expect(container.querySelectorAll('.order-ask')).toHaveLength(4);
+    expect(container.querySelectorAll('.order-bid')).toHaveLength(3);
+    expect(container.querySelector('.order-divider')).toBe(rows[4]);
+    expect(rows[4]).toHaveTextContent('체결강도');
+    expect(container.querySelector('[data-order-price="0"]')).toBeNull();
+  });
   it.each(['KRX', 'NXT', 'UN'] as const)('%s 시세를 조회해도 실계좌 주문 본문에는 거래소를 보내지 않는다', async venue => {
     useLiveVenueStore.setState({ venue });
     show();
