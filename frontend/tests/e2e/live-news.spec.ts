@@ -94,7 +94,7 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await settings.click();
     const dialog = page.getByRole('dialog', { name: '뉴스 설정', exact: true });
     await expect(dialog.getByRole('button', { name: '새로고침', exact: true })).toBeVisible();
-    await dialog.getByRole('checkbox', { name: '종목 연결만', exact: true }).check();
+    await dialog.getByRole('checkbox', { name: /종목 연결만/ }).check();
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(settings).toBeFocused();
