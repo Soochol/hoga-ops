@@ -205,7 +205,7 @@ describe('bookSessionControl — 갈래 판정', () => {
     const c = bookSessionControl({
       ...base, nxtEnabled: true, venue: 'KRX', nowMs: kst(DAY, 16, 0),
     });
-    expect(c).toEqual({ kind: 'label', label: '정규장 · 마지막' });
+    expect(c).toEqual({ kind: 'label', label: '시간외종가' });
   });
 
   it('KRX 를 고른 NXT 종목도 장중에는 그냥 정규장', () => {

@@ -58,7 +58,7 @@ test('KRX 15:30 → 16:00 → 20:00 keeps the live ladder and evening candle', a
   push(at(15,29),31000);
   await expect.poll(() => chartCloses(page,chartId)).toContain(31000);
   await page.clock.fastForward(60_000);
-  await expect(page.getByText('정규장 · 마지막',{exact:true})).toBeVisible();
+  await expect(page.getByText('시간외종가',{exact:true})).toBeVisible();
   await page.clock.fastForward(30*60_000);
   await expect(page.getByText('애프터마켓 · 수신 대기',{exact:true})).toBeVisible();
   push(at(16),32000);

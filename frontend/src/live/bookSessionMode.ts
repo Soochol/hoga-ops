@@ -26,7 +26,7 @@
  */
 import { unixMsToKSTClock, unixMsToKSTDate, unixMsToKSTHhmm } from '../util/time';
 import type { LiveVenueOption } from '../state/liveVenue';
-import { krxAftermarketIntroduced, krxBookPhaseLabel } from '../util/stockSessions';
+import { KRX_AFTER_HOURS_CLOSE_LABEL, krxAftermarketIntroduced, krxBookPhaseLabel } from '../util/stockSessions';
 
 /** 사다리가 어느 장의 것인가. */
 export type BookSessionMode = 'regular' | 'afterHours';
@@ -188,7 +188,7 @@ export function hasBookSessionToggle(
  * "NXT 상장" 과 "지금 NXT 데이터를 보는 중" 은 다르다. venue 선택기에서 KRX 를
  * 고르면 `liveVenueAcceptsFrame` 이 NXT 태그 프레임을 전부 버리므로, 15:30 이후
  * 화면에는 KRX 15:30 정지본이 떠 있다. 거기에 '애프터마켓' 을 붙이면 라벨이
- * 화면과 다른 말을 한다 — 그래서 그 조합은 '정규장 · 마지막' 이다.
+ * 화면과 다른 말을 한다 — 그래서 그 조합은 '시간외종가' 이다.
  *
  * `venue` 는 **유효 venue**(`useEffectiveVenue`)여야 한다. 선택값을 그대로 넘기면
  * NXT 미상장 종목에 UN 을 고른 경우가 갈래 판정과 어긋난다.
@@ -234,7 +234,7 @@ export function bookSessionControl(args: {
   if (nxtEnabled === true) {
     // KRX 를 고른 NXT 종목: 애프터마켓 프레임이 걸러지므로 그 라벨을 쓸 수 없다.
     if (venue === 'KRX') {
-      return { kind: 'label', label: unixMsToKSTHhmm(nowMs) >= 1530 ? '정규장 · 마지막' : '정규장' };
+      return { kind: 'label', label: unixMsToKSTHhmm(nowMs) >= 1530 ? KRX_AFTER_HOURS_CLOSE_LABEL : '정규장' };
     }
     return { kind: 'label', label: nxtPhaseLabel(nowMs) };
   }

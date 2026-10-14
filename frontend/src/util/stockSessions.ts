@@ -2,6 +2,8 @@ import { unixMsToKSTDate, unixMsToKSTHhmm } from './time';
 
 /** Mirror of hoga/live/stock_sessions.py. Market hours do not imply eligibility. */
 export const KRX_AFTERMARKET_START_DATE = '20260914';
+/** Shared footer wording for the regular close book in both book windows. */
+export const KRX_AFTER_HOURS_CLOSE_LABEL = '시간외종가';
 
 export function krxAftermarketIntroduced(date: string): boolean {
   return date >= KRX_AFTERMARKET_START_DATE;
@@ -25,11 +27,11 @@ export function isKrxAftermarketWindow(nowMs: number = Date.now()): boolean {
 export function krxBookPhaseLabel(nowMs: number, ladderAtMs?: number | null): string {
   const hhmm = unixMsToKSTHhmm(nowMs);
   if (hhmm < 1530) return '정규장';
-  if (hhmm < 1600) return '정규장 · 마지막';
+  if (hhmm < 1600) return KRX_AFTER_HOURS_CLOSE_LABEL;
   const observed = ladderAtMs != null
     && unixMsToKSTDate(ladderAtMs) === unixMsToKSTDate(nowMs)
     && unixMsToKSTHhmm(ladderAtMs) >= 1600;
-  if (!observed) return isKrxAftermarketWindow(nowMs) ? '애프터마켓 · 수신 대기' : '정규장 · 마지막';
+  if (!observed) return isKrxAftermarketWindow(nowMs) ? '애프터마켓 · 수신 대기' : KRX_AFTER_HOURS_CLOSE_LABEL;
   return isKrxAftermarketWindow(nowMs) ? '애프터마켓' : '애프터마켓 · 마지막';
 }
 
