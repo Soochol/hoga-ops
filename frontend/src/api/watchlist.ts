@@ -87,6 +87,17 @@ export function removeFromWatchlist(code: string): Promise<void> {
   return apiAction(`/api/watchlist/${code}`, { method: 'DELETE' });
 }
 
+export interface WatchlistMembershipsRemoval {
+  changes: WatchlistFolderItemsChange[];
+  orphan_codes: string[];
+}
+
+export function removeSelectedMemberships(request: WatchlistMembershipsRemoval): Promise<void> {
+  return apiAction('/api/watchlist/items/remove', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+  });
+}
+
 // --- Folders + bulk move/reorder/remove (spec 2026-05-31) -----------------
 
 export function createFolder(name: string): Promise<WatchlistFolder> {

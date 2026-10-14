@@ -12,6 +12,8 @@ import {
   moveHeatmapEntries,
   reorderHeatmapEntries,
   removeHeatmapEntries,
+  removeSelectedHeatmapMemberships,
+  type HeatmapMembershipsRemoval,
   type HeatmapResponse,
 } from '../api/heatmap';
 
@@ -48,6 +50,14 @@ export function useRemoveFromHeatmap() {
         ? removeFromHeatmap(v.code)
         : removeFromHeatmapFolder(v.code, v.folderId)),
     onSuccess: () => invalidateHeatmapDependents(qc),
+  });
+}
+
+export function useRemoveSelectedHeatmapMemberships() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (request: HeatmapMembershipsRemoval) => removeSelectedHeatmapMemberships(request),
+    onSettled: () => invalidateHeatmapDependents(qc),
   });
 }
 

@@ -11,6 +11,7 @@ interface Props {
   onClose: () => void;
   /** '지난 N일 수집' — 미전달이면 항목이 빠진다. */
   onCollect?: () => void;
+  onOpenNewTab?: () => void;
 }
 
 /**
@@ -22,8 +23,9 @@ interface Props {
  * 보드에서 메뉴가 화면을 덮었다(38개 실측). 그룹 간 이동은 드래그앤드롭이 대신한다 —
  * 보드·드로어 모두 다른 그룹 블록에 떨구면 이동, Ctrl 을 누른 채면 복제(ADR-0132).
  */
-export function HeatmapRowMenu({ x, y, code, name, onRemove, onClose, onCollect }: Props) {
+export function HeatmapRowMenu({ x, y, code, name, onRemove, onClose, onCollect, onOpenNewTab }: Props) {
   const items: HeatmapMenuItem[] = [
+    ...(onOpenNewTab ? [{ key: 'new-tab', label: '새 탭에서 차트 열기', icon: <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10" /></svg>, onClick: onOpenNewTab }] : []),
     ...(onCollect ? [{
       key: 'collect',
       label: '지난 N일 수집',

@@ -1,4 +1,5 @@
-import { RailSelectionControl } from '../rightrail/RailSelectionControl';
+import { usePanelRowSelection } from '../rightrail/usePanelRowSelection';
+import { ModalShell } from '../ui/ModalShell';
 import { PanelContextMenu } from '../ui/PanelContextMenu';
 import { openPanelContextMenuFromKeyboard, panelDragListeners } from '../ui/panelRowInteractions';
 import { RailDestination } from '../rightrail/RailDestination';
@@ -21,7 +22,7 @@ import { useDragPointPublisher } from '../state/useDragPointPublisher';
 import { createPanelCollision } from '../watchlist/panelDragCollision';
 import { DragPanelAssist } from '../watchlist/DragPanelAssist';
 import { RailDragOverlay } from '../rightrail/RailDragOverlay';
-import { folderCodes, planHeatmapTransfer, type HeatmapTransferSource } from './transferEntries';
+import { folderCodes, planHeatmapTransfer, planHeatmapMembershipRemoval, type HeatmapTransferSource } from './transferEntries';
 import { useHeatmapTransfer } from './useHeatmapTransfer';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { useLivePageStore } from '../state/livePage';
@@ -51,7 +52,7 @@ import { filterGroups, entryMatchesQuery } from './filterGroups';
 import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort, SORT_THROTTLE_MS } from './heat';
 import { useThrottledValue } from '../util/useThrottledValue';
 import {
-  useHeatmap, useRemoveFromHeatmap,
+  useHeatmap, useRemoveFromHeatmap, useRemoveSelectedHeatmapMemberships,
   useCreateHeatmapFolder, useRenameHeatmapFolder, useDeleteHeatmapFolder,
   useReorderHeatmapFolders,
 } from './useHeatmap';
@@ -446,11 +447,11 @@ function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDis
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-1">
-        {selection}
         <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />
         <SortCycleButton label="그룹" mode={groupSort} onCycle={() => setGroupSort(nextSort(groupSort))} />
 
       </div>
+      {selection}
     </div>
   );
 }
@@ -480,15 +481,18 @@ export function HeatmapDrawer() {
   const { publishDragPoint, cancelDragPointFlush } = useDragPointPublisher();
   const { data, isLoading, error } = useHeatmap();
   const removeM = useRemoveFromHeatmap();
+  const removeSelectedM = useRemoveSelectedHeatmapMemberships();
   const transfer = useHeatmapTransfer();
   const createM = useCreateHeatmapFolder();
   const renameM = useRenameHeatmapFolder();
   const deleteM = useDeleteHeatmapFolder();
   const reorderFoldersM = useReorderHeatmapFolders();
-  const busy = transfer.busy || reorderFoldersM.isPending || removeM.isPending;
+  const busy = transfer.busy || reorderFoldersM.isPending || removeM.isPending || removeSelectedM.isPending;
   const [notice, setNotice] = useState('');
-  const [selecting, setSelecting] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [selectionMenu, setSelectionMenu] = useState<{ x: number; y: number } | null>(null);
+  const [moveSelection, setMoveSelection] = useState<HeatmapTransferSource[] | null>(null);
+  const [removeSelection, setRemoveSelection] = useState<ReturnType<typeof planHeatmapMembershipRemoval> | null>(null);
   const dragDataRef = useRef<HeatmapResponse | null>(null);
   const sourcesRef = useRef<HeatmapTransferSource[]>([]);
   const pointRef = useRef<{ x: number; y: number } | null>(null);
@@ -497,9 +501,6 @@ export function HeatmapDrawer() {
   const [destination, setDestination] = useState<{ folderId: string; at: number; rowId?: string; side?: 'before' | 'after'; where: string; duplicates: number } | null>(null);
   const [expandedDuringDrag, setExpandedDuringDrag] = useState<Set<string>>(new Set());
   const expandDuringDrag = useCallback((id: string) => setExpandedDuringDrag((old) => old.has(id) ? old : new Set([...old, id])), []);
-  const toggleSelected = (id: string) => setSelected((old) => {
-    const next = new Set(old); if (next.has(id)) next.delete(id); else next.add(id); return next;
-  });
   const removeRow = (code: string, folderId: string) => {
     if (busy) return;
     transfer.dismiss();
@@ -542,13 +543,15 @@ export function HeatmapDrawer() {
   const venue = useLiveVenueStore((s) => s.venue);
   const quoteByCode = useQuoteByCode(codes, venue);
 
-  const toggle = (key: string) =>
+  const toggle = (key: string) => {
+    clearSelection();
     setCollapsed((s) => {
       const n = new Set(s);
       if (n.has(key)) n.delete(key);
       else n.add(key);
       return n;
     });
+  };
   // 추가 팝오버가 "이미 이 그룹에 있습니다" 를 띄울 때 **그 행을 가리킨다**
   // (관심종목 드로어와 같은 계약). 코드만으로는 부족하다 — 한 종목이 여러 그룹에 있을 수
   // 있어 대상 그룹의 행만 깜빡여야 한다.
@@ -597,6 +600,14 @@ export function HeatmapDrawer() {
 
   const openMenu = (e: React.MouseEvent, code: string, name: string, folderId: string) => {
     e.preventDefault();
+    if (busy) return;
+    if (selected.has(entrySortableId(folderId, code)) && selectedSources.length) {
+      setMenu(null);
+      setSelectionMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    clearSelection();
+    setSelectionMenu(null);
     setMenu({ x: e.clientX, y: e.clientY, code, name, folderId });
   };
 
@@ -646,6 +657,43 @@ export function HeatmapDrawer() {
   const entrySortEnabled = sortMode === 'manual' && !isSearching;
   // G1: 행 드래그 중 그룹 순서 동결(텔레포트 방지), drag-end 에 최신 반영. 페이지와 동일 가드.
   const displayGroups = useFrozenWhileDragging(visibleGroups, ghost !== null);
+  const rowGroups = useMemo(() => displayGroups.map(g => ({ ...g, rows: sortEntries(g.entries, sortMode, sortPctOf) })),
+    [displayGroups, sortMode, sortPctOf]);
+  const visibleEntries = useMemo(() => rowGroups.flatMap(g => !isSearching && collapsed.has(g.folder.id) && !expandedDuringDrag.has(g.folder.id) ? [] : g.rows),
+    [rowGroups, isSearching, collapsed, expandedDuringDrag]);
+  const visibleIds = useMemo(() => visibleEntries.map(e => entrySortableId(e.folder_id, e.code)), [visibleEntries]);
+  const { selectedRows: selected, clear: clearSelection, select: selectRow } = usePanelRowSelection(visibleIds);
+  const selectedSources = visibleEntries.filter(e => selected.has(entrySortableId(e.folder_id, e.code)))
+    .map(e => ({ folderId: e.folder_id, code: e.code }));
+  // Mode changes from the shared heatmap page also clear selection, quote ticks do not.
+  useEffect(() => useHeatmapPrefsStore.subscribe((next, previous) => {
+    if (next.sortMode !== previous.sortMode || next.groupSort !== previous.groupSort) clearSelection();
+  }), [clearSelection]);
+  const changeQuery = (value: string) => { clearSelection(); setQuery(value); };
+  const requestRemoval = () => {
+    if (!data || busy || !selectedSources.length) return;
+    setRemoveSelection(planHeatmapMembershipRemoval(data, selectedSources));
+  };
+  const handleSelectionKeyDown = (event: React.KeyboardEvent<HTMLLIElement>) => {
+    if (event.key === 'Escape' && ghost === null && selected.size) {
+      event.preventDefault(); event.stopPropagation(); clearSelection(); return true;
+    }
+    if (event.shiftKey && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+      event.preventDefault(); event.stopPropagation();
+      if (busy) return true;
+      const id = event.currentTarget.dataset.selectionId!;
+      const index = visibleIds.indexOf(id);
+      const next = visibleIds[index + (event.key === 'ArrowDown' ? 1 : -1)];
+      if (index < 0 || !next) return true;
+      if (!selected.size) selectRow(id, {});
+      selectRow(next, { shiftKey: true, ctrlKey: event.ctrlKey, metaKey: event.metaKey });
+      const target = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>('[data-selection-id]') ?? [])
+        .find(row => row.dataset.selectionId === next);
+      target?.focus(); target?.scrollIntoView?.({ block: 'nearest' });
+      return true;
+    }
+    return false;
+  };
 
   // 전체 접기/펼치기. 대상은 **화면에 보이는 그룹**(visibleGroups)이지 collapsed Set 이 아니다.
   // collapsed.size 로 "모두 접힘"을 판정하면 삭제된 그룹의 잔여 키에 걸려 거짓 양성이 난다
@@ -655,7 +703,8 @@ export function HeatmapDrawer() {
   const allCollapsed =
     visibleGroups.length > 0 && visibleGroups.every((g) => collapsed.has(g.folder.id));
   const toggleAllDisabled = isSearching || visibleGroups.length === 0;
-  const toggleAll = () =>
+  const toggleAll = () => {
+    clearSelection();
     setCollapsed((s) => {
       const n = new Set(s);
       for (const g of visibleGroups) {
@@ -664,6 +713,7 @@ export function HeatmapDrawer() {
       }
       return n;
     });
+  };
 
   // ⋯ 위/아래 이동은 수동 정렬 + 비검색일 때만(정렬 중엔 folder.order 가 화면과 어긋나 애매).
   const canMoveGroups = groupSort === 'manual' && !isSearching;
@@ -719,9 +769,9 @@ export function HeatmapDrawer() {
     }
     seed(ev.activatorEvent);
     setIsEntryDragging(true);
-    sourcesRef.current = displayGroups.flatMap((g) => sortEntries(g.entries, sortMode, sortPctOf)
-      .filter((e) => selected.has(String(ev.active.id)) ? selected.has(entrySortableId(e.folder_id, e.code)) : entrySortableId(e.folder_id, e.code) === String(ev.active.id))
-      .map((e) => ({ folderId: e.folder_id, code: e.code })));
+    sourcesRef.current = selected.has(String(ev.active.id)) ? selectedSources : visibleEntries
+      .filter(e => entrySortableId(e.folder_id, e.code) === String(ev.active.id))
+      .map(e => ({ folderId: e.folder_id, code: e.code }));
     const count = new Set(sourcesRef.current.map((source) => source.code)).size;
     setGhost(sourcesRef.current.length > 1 ? `${count}종목` : String(d.name ?? d.code));
     if (sourcesRef.current.length === 1) startEntryDrag(String(d.code));
@@ -775,7 +825,7 @@ export function HeatmapDrawer() {
       }
       const name = data.folders.find((f) => f.id === target.folderId)?.name ?? '';
       void transfer.run(changes, `${ghost ?? '종목'} → ${name} 그룹으로 ${copy ? '복제' : '이동'}했습니다`).then((saved) => {
-        if (saved) setSelected(new Set());
+        if (saved) clearSelection();
       });
       return;
     }
@@ -791,7 +841,12 @@ export function HeatmapDrawer() {
   };
 
   return (
-    <RailDrawer id="right-rail-heatmap-panel" testId="heatmap-panel" ariaLabel="히트맵">
+    <RailDrawer id="right-rail-heatmap-panel" testId="heatmap-panel" ariaLabel="히트맵"
+      onKeyDown={event => {
+        if (event.key !== 'Escape' || event.defaultPrevented || ghost !== null || selectionMenu || menu
+          || (event.target as HTMLElement).closest('[role="dialog"]')) return;
+        if (selected.size) { event.preventDefault(); event.stopPropagation(); clearSelection(); }
+      }}>
       <RailDrawerHeader
         title="히트맵"
         actions={(
@@ -808,12 +863,16 @@ export function HeatmapDrawer() {
         )}
       />
 
-      <DrawerToolbar selection={<RailSelectionControl active={selecting} count={selected.size} disabled={busy}
-        onToggle={() => { setSelecting(!selecting); setSelected(new Set()); }} />} query={query} onQuery={setQuery}
+      <DrawerToolbar selection={selectedSources.length > 0 ? <div className="flex min-h-7 items-center gap-2 text-xs" data-testid="heatmap-selection-actions">
+        <span role="status" className="mr-auto text-fg-dim">{selectedSources.length}개 선택</span>
+        <button type="button" disabled={busy} onClick={() => setMoveSelection(selectedSources)} className="text-accent disabled:opacity-40">이동</button>
+        <button type="button" disabled={busy} onClick={requestRemoval} className="text-accent disabled:opacity-40">삭제</button>
+        <button type="button" disabled={busy} onClick={clearSelection} className="text-fg-dim disabled:opacity-40">선택 해제</button>
+      </div> : null} query={query} onQuery={changeQuery}
         allCollapsed={allCollapsed} onToggleAll={toggleAll} toggleAllDisabled={toggleAllDisabled} />
 
       <RailDestination />
-      <RailDrawerBody testId="heatmap-drawer-scroll" quoteNav>
+      <RailDrawerBody testId="heatmap-drawer-scroll" scrollRef={scrollRef} quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">히트맵을 불러올 수 없습니다</RailState>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
@@ -827,7 +886,7 @@ export function HeatmapDrawer() {
           onDragCancel={finishEntryDrag}>
           <DragPanelAssist collapsed={collapsed} onExpand={expandDuringDrag} pointRef={pointRef} scrollSelector='[data-testid="heatmap-drawer-scroll"]' />
           <SortableContext items={draggableFolderIds} strategy={verticalListSortingStrategy}>
-            {displayGroups.map((g, gi) => {
+            {rowGroups.map((g, gi) => {
               const folder = g.folder;
               const key = folder.id;
               // 빈 그룹도 표시 — 새 그룹 직후 종목 추가로 채울 수 있어야 하기 때문
@@ -835,7 +894,7 @@ export function HeatmapDrawer() {
               //  그룹을 채울 표면을 없애 데드엔드였다).
               // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
               const isCollapsed = !isSearching && collapsed.has(key) && !expandedDuringDrag.has(key);
-              const rows = sortEntries(g.entries, sortMode, sortPctOf);
+              const rows = g.rows;
               const renderGroup = (dragHandle?: GroupDragHandle) => (
                 <>
                   <GroupHeader folderId={folder.id} busy={busy} label={folder.name} count={g.entries.length} collapsed={isCollapsed}
@@ -873,19 +932,28 @@ export function HeatmapDrawer() {
                               // 그룹에 있고, 가리켜야 할 것은 대상 그룹의 행이다.
                               flash={duplicateHit?.folderId === folder.id
                                 && duplicateHit.code === entry.code}
-                              onClick={(e) => onPick(entry.code, entry.name, e)}
+                              onClick={(event) => {
+                                if (busy) return;
+                                if (selectRow(entrySortableId(entry.folder_id, entry.code), event ?? {})) return;
+                                onPick(entry.code, entry.name, event);
+                              }}
                               onContextMenu={(e) => openMenu(e, entry.code, entry.name, entry.folder_id)}
-                              onDelete={() => removeRow(entry.code, entry.folder_id)}
+                              onDelete={() => selectedSources.length ? requestRemoval() : removeRow(entry.code, entry.folder_id)}
+                              onSelectionKeyDown={handleSelectionKeyDown}
+                              selected={selected.has(entrySortableId(entry.folder_id, entry.code))}
+                              selectionId={entrySortableId(entry.folder_id, entry.code)}
                               indented
                               sortableRef={drag.setNodeRef}
                               dropIndicator={destination?.rowId === entrySortableId(entry.folder_id, entry.code) ? destination.side : undefined}
                               draggingAppearance="placeholder"
-                              dragListeners={busy ? undefined : drag.listeners}
+                              dragListeners={busy ? undefined : { ...drag.listeners,
+                                onPointerDown: (event: React.PointerEvent<HTMLLIElement>) => {
+                                  // Ctrl drag keeps the existing copy gesture; Shift is selection only.
+                                  if (event.shiftKey || event.metaKey) return;
+                                  drag.listeners?.onPointerDown?.(event);
+                                },
+                              }}
                               dragActivatorRef={busy ? undefined : drag.setActivatorNodeRef}
-                              leading={selecting ? <input type="checkbox" aria-label={`${entry.name} 선택`} disabled={busy}
-                                checked={selected.has(entrySortableId(entry.folder_id, entry.code))}
-                                onClick={(event) => event.stopPropagation()}
-                                onChange={() => toggleSelected(entrySortableId(entry.folder_id, entry.code))} /> : undefined}
                               dragging={drag.isDragging}
                             />
                           );
@@ -937,9 +1005,51 @@ export function HeatmapDrawer() {
       {/* 행 우클릭 메뉴는 '이 그룹에서 제거'만 — 그룹 이동은 행 드래그앤드롭으로 대체(folders/onMove
           미전달 → HeatmapRowMenu 가 '그룹으로 이동' 섹션을 자체 생략). 제거는 menu.folderId
           스코프 — 다른 그룹에 같은 종목이 등록돼 있으면 그쪽은 남는다. */}
+      {selectionMenu && selectedSources.length > 0 && <PanelContextMenu point={selectionMenu} label={`${selectedSources.length}개 선택`} onClose={() => setSelectionMenu(null)}>
+        <button type="button" role="menuitem" disabled={busy} className="w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover"
+          onClick={() => { setMoveSelection(selectedSources); setSelectionMenu(null); }}>선택 항목 이동…</button>
+        <button type="button" role="menuitem" disabled={busy} className="w-full px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover"
+          onClick={() => { requestRemoval(); setSelectionMenu(null); }}>선택 항목 삭제</button>
+      </PanelContextMenu>}
+      {moveSelection && <ModalShell ariaLabel="선택 항목 이동" title="이동할 그룹 선택" width="w-[360px]" onClose={() => setMoveSelection(null)}>
+        <div className="max-h-[60vh] overflow-y-auto p-2">
+          {data?.folders.map(folder => <button key={folder.id} type="button" disabled={busy}
+            className="block w-full rounded px-3 py-2 text-left text-sm text-fg hover:bg-bg-input-hover disabled:opacity-40"
+            onClick={() => {
+              const changes = planHeatmapTransfer(data, moveSelection, folder.id, folderCodes(data, folder.id).length, false, !entrySortEnabled);
+              setMoveSelection(null); setNotice('');
+              void transfer.run(changes, `${new Set(moveSelection.map(s => s.code)).size}종목 → ${folder.name} 그룹으로 이동했습니다`)
+                .then(ok => { if (ok) clearSelection(); });
+            }}>{folder.name}</button>)}
+        </div>
+      </ModalShell>}
+      {removeSelection && <ConfirmModal confirmLabel="삭제" tone="destructive" onClose={() => setRemoveSelection(null)}
+        message={<>
+          선택한 {removeSelection.changes.reduce((n, c) => n + c.before.length - c.after.length, 0)}개 항목을 해당 그룹에서 삭제합니다
+          {removeSelection.orphan_codes.length > 0 && <p className="mt-2">마지막 그룹 소속이 사라지는 {removeSelection.orphan_codes.length}종목은 히트맵에서 빠집니다</p>}
+          <p className="mt-2 text-fg-dim">다른 그룹에 남아 있는 소속은 유지됩니다</p>
+        </>}
+        onConfirm={() => {
+          const request = removeSelection;
+          setRemoveSelection(null); transfer.dismiss(); setNotice('삭제 중…');
+          removeSelectedM.mutate(request, {
+            onSuccess: () => {
+              const panel = scrollRef.current?.closest('aside');
+              const focused = document.activeElement;
+              if (panel && (focused === document.body || panel.contains(focused))) {
+                const removedIds = new Set(request.changes.flatMap(c => c.before.filter(code => !c.after.includes(code)).map(code => entrySortableId(c.folder_id, code))));
+                const survivor = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>('[data-selection-id]') ?? []).find(row => !removedIds.has(row.dataset.selectionId!));
+                (survivor ?? panel.querySelector<HTMLElement>('button[aria-label="새 그룹 만들기"]'))?.focus();
+              }
+              clearSelection(); setNotice('선택 항목을 해당 그룹에서 삭제했습니다');
+            },
+            onError: error => setNotice(`삭제하지 못했습니다 · ${error.message}`),
+          });
+        }} />}
       {menu && (
         <HeatmapRowMenu x={menu.x} y={menu.y} code={menu.code} name={menu.name}
           onRemove={() => removeRow(menu.code, menu.folderId)}
+          onOpenNewTab={() => onPick(menu.code, menu.name, { ctrlKey: true, metaKey: false })}
           onClose={() => setMenu(null)} />
       )}
       {addGroupOpen && (

@@ -59,6 +59,10 @@ export interface QuoteRowProps {
   // --- 관심종목 패널 전용 우클릭/Delete (미전달 시 무동작) ---
   onContextMenu?: (e: React.MouseEvent<HTMLLIElement>) => void;
   onDelete?: () => void;
+  /** Optional membership selection; undefined preserves other panels' navigation. */
+  selected?: boolean;
+  selectionId?: string;
+  onSelectionKeyDown?: (e: React.KeyboardEvent<HTMLLIElement>) => boolean;
   // --- 좌측 들여쓰기(pl-10 = 2.5rem). 출발은 관심종목 전용 교정이었다: 그룹 헤더의
   // chevron+라벨 구조보다 종목명이 왼쪽에서 시작해 위계가 역전되던 것을 밀어냈다
   // (실측 @1.0× 다이얼: 라벨 시작 990px < 종목명 992px — 여유 2px).
@@ -89,7 +93,7 @@ export function QuoteRow({
   active, ariaLabel, testId, onClick, leading, trailingAction, compact = false, nameTooltip, nameDetail,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
-  onContextMenu, onDelete, indented, flash, matched,
+  onContextMenu, onDelete, selected, selectionId, onSelectionKeyDown, indented, flash, matched,
 }: QuoteRowProps) {
   const nameTip = useTextTooltip(nameTooltip ?? (code ? `${name} · ${code}` : name));
   void _changeWon;
@@ -118,6 +122,7 @@ export function QuoteRow({
     if (e.key === 'Escape') nameTip.hide();
     if (e.target !== e.currentTarget) return;
     if (onContextMenu && openPanelContextMenuFromKeyboard(e)) return;
+    if (onSelectionKeyDown?.(e)) return;
     // Delete 만 삭제 트리거 — Backspace 는 뒤로가기/문자삭제 머슬메모리와 충돌하는
     // 파괴적 오발동이라 제외(undo 없음).
     if (onDelete && e.key === 'Delete') {
@@ -149,6 +154,9 @@ export function QuoteRow({
       data-matched={matched ? '' : undefined}
       role="button"
       tabIndex={0}
+      aria-pressed={selected}
+      data-selected={selected ? 'true' : undefined}
+      data-selection-id={selectionId}
       aria-current={active ? 'true' : undefined}
       aria-label={ariaLabel}
       aria-keyshortcuts={[onDelete ? 'Delete' : '', onContextMenu ? 'Shift+F10 ContextMenu' : ''].filter(Boolean).join(' ') || undefined}
@@ -158,14 +166,14 @@ export function QuoteRow({
       onBlur={nameTip.hide}
       onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
-      className={`group ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group ${selected !== undefined ? 'select-none' : ''} ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
         // 선택 표식은 배경 틴트(--tint-selection)만 — 인벤토리(ListRow) 기준으로 통일.
         // 좌측 accent 바(borderLeft: 2px solid var(--accent))를 다시 넣지 말 것.
         // 관심·히트맵·스크리너·순위가 이 행을 공유하므로 여기 한 곳이 네 리스트를 결정한다(2026-07-23).
-        background: active || matched ? 'var(--tint-selection)' : 'transparent',
+        background: (selected ?? (active || matched)) ? 'var(--tint-selection)' : 'transparent',
         ...sortableStyle,
         ...(dragging
           ? (draggingAppearance === 'placeholder' ? sortablePlaceholderStyle() : sortableDraggingStyle(18))
@@ -181,7 +189,7 @@ export function QuoteRow({
           가격/% 는 flex-none 고정폭이라
           종목명이 대신 잘리고(전체 이름은 행 aria-label), 행마다 우측 끝자리가 정렬된다. */}
       <span className="flex-1 min-w-0">
-        <span onMouseEnter={(e) => nameTip.show(e.currentTarget)} onMouseLeave={nameTip.hide} className="block truncate text-xs text-fg leading-tight">
+        <span onMouseEnter={(e) => nameTip.show(e.currentTarget)} onMouseLeave={nameTip.hide} className={`block truncate text-xs leading-tight ${selected !== undefined && active ? 'font-semibold text-accent' : selected !== undefined && matched ? 'font-semibold text-fg' : 'text-fg'}`}>
           {/* 동시호가 예상 마커. 긴 종목명은 뒤쪽이 잘리며 마커는 항상 남는다.
               크기는 종목명 상속(text-xs) — 별표 글리프 자체가 이미 작아
               text-2xs 로 더 줄이면 밀도 다이얼 하단에서 사라진다. 색은 3차 텍스트

@@ -66,6 +66,7 @@ function ContextMenuShell({ x, y, ariaLabel, testId, items, onClose }: {
 }
 
 interface Props {
+  onOpenNewTab?: () => void;
   code: string;
   x: number;            // raw 커서 viewport 좌표
   y: number;
@@ -81,9 +82,11 @@ interface Props {
 
 /** 스크리너와 같은 관심 그룹 메뉴에 종목·빈칸 삽입 작업을 제공한다. */
 export function WatchlistRowMenu({
-  x, y, code, name, onAddSymbolAbove, onInsertMemoAbove, onClose,
+  x, y, code, name, onAddSymbolAbove, onInsertMemoAbove, onOpenNewTab, onClose,
 }: Props) {
   const items: MenuItem[] = [
+    ...(onOpenNewTab ? [{ key: 'new-tab', label: '새 탭에서 차트 열기', icon: <PlusIcon />,
+      onClick: () => { onOpenNewTab(); onClose(); } }] : []),
     ...(onAddSymbolAbove ? [{
       key: 'add-symbol',
       label: '위에 종목 추가',

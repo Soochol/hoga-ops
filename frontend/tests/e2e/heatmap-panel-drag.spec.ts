@@ -110,9 +110,10 @@ test('그룹 헤더는 맨 아래, 빈 그룹에도 이동 가능', async ({ pag
 test('다중 선택 이동은 중복을 합치고 되돌리기는 원래 양쪽 소속을 복원한다', async ({ page }) => {
   const initial = { [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('005930')] };
   const state = await setup(page, initial);
-  await page.getByRole('button', { name: '다중 선택' }).click();
-  await row(page, A, '005930').getByRole('checkbox').check();
-  await row(page, A, '000660').getByRole('checkbox').check();
+  await row(page, A, '005930').click();
+  await row(page, A, '000660').click({ modifiers: ['Shift'] });
+  await expect(row(page, A, '005930')).toHaveAttribute('aria-pressed', 'true');
+  await expect(row(page, A, '000660')).toHaveAttribute('aria-pressed', 'true');
   await start(page, handle(page, A, '005930'));
   await expect(page.getByTestId('heatmap-drag-ghost')).toContainText('2종목');
   await over(page, row(page, B, '035420'), 0.8);
@@ -214,9 +215,10 @@ test('가장자리에서 자동 스크롤하며 멀어지면 멈춘다', async (
 test('Ctrl 복제는 원본과 기존 목적지 위치를 유지하고 되돌릴 수 있다', async ({ page }) => {
   const initial = { [A]: ['005930', '000660'], [B]: ['035420', '005930', '051910'] };
   const state = await setup(page, initial);
-  await page.getByRole('button', { name: '다중 선택' }).click();
-  await row(page, A, '005930').getByRole('checkbox').check();
-  await row(page, A, '000660').getByRole('checkbox').check();
+  await row(page, A, '005930').click();
+  await row(page, A, '000660').click({ modifiers: ['Shift'] });
+  await expect(row(page, A, '005930')).toHaveAttribute('aria-pressed', 'true');
+  await expect(row(page, A, '000660')).toHaveAttribute('aria-pressed', 'true');
   await start(page, handle(page, A, '005930'));
   await over(page, row(page, B, '035420'), 0.2);
   await page.keyboard.down('Control');
@@ -226,6 +228,8 @@ test('Ctrl 복제는 원본과 기존 목적지 위치를 유지하고 되돌릴
   await page.keyboard.up('Control');
   await expect.poll(() => state.items()[B]).toEqual(['000660', '035420', '005930', '051910']);
   expect(state.items()[A]).toEqual(initial[A]);
+  // Same dnd-kit 50ms document click suppression guard as the move() helper.
+  await page.waitForTimeout(60);
   await page.getByRole('button', { name: '되돌리기', exact: true }).click();
   await expect.poll(state.items).toEqual(initial);
 });
@@ -261,8 +265,8 @@ test('Delete는 포커스된 그룹에서만 제외하고 중첩 버튼에서는
     removals.push('005930'); state.change(A, ['000660']);
     return r.fulfill({ status: 204, body: '' });
   });
-  await page.getByRole('button', { name: '다중 선택', exact: true }).click();
-  await row(page, A, '005930').getByRole('checkbox').focus();
+  await expect(page.getByTestId('heatmap-panel').getByRole('button', { name: '다중 선택', exact: true })).toHaveCount(0);
+  await page.getByTestId('heatmap-drawer-search').focus();
   await page.keyboard.press('Delete');
   expect(removals).toEqual([]);
   await row(page, A, '005930').focus();
@@ -320,4 +324,110 @@ test('아이콘 없이 클릭·드래그·키보드 우클릭 메뉴를 각각 �
   await page.keyboard.press('Escape');
   await expect(header).toBeFocused();
   await group(page, A).screenshot({ path: testInfo.outputPath('panel-without-handles.png') });
+});
+
+test('Shift 범위·Ctrl 개별 선택과 Shift 화살표는 차트를 바꾸지 않는다', async ({ page }) => {
+  await setup(page);
+  const first = row(page, A, '005930'), second = row(page, A, '000660'), third = row(page, B, '035420');
+  await expect(page.getByTestId('heatmap-panel').getByRole('button', { name: '다중 선택' })).toHaveCount(0);
+  await expect(first.getByRole('checkbox')).toHaveCount(0);
+  await first.click();
+  await third.click({ modifiers: ['Shift'] });
+  for (const selected of [first, second, third]) await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect(third).not.toHaveAttribute('aria-current', 'true');
+  await second.click({ modifiers: ['Control'] });
+  await expect(second).toHaveAttribute('aria-pressed', 'false');
+  await third.focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('heatmap-selection-actions')).toHaveCount(0);
+  await first.focus();
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(second).toBeFocused();
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(third).toBeFocused();
+  await expect(third).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(third).toHaveAttribute('aria-pressed', 'false');
+  await expect(first).toHaveAttribute('aria-current', 'true');
+  await page.screenshot({ path: '/tmp/hoga-heatmap-shift-selection.png' });
+});
+
+test('선택 항목 우클릭 메뉴로 이동하고 되돌릴 수 있다', async ({ page }) => {
+  const state = await setup(page);
+  await row(page, A, '005930').click();
+  await row(page, A, '000660').click({ modifiers: ['Shift'] });
+  await row(page, A, '005930').focus();
+  await page.keyboard.press('Shift+F10');
+  await page.getByRole('menuitem', { name: '선택 항목 이동…' }).click();
+  await page.getByRole('dialog', { name: '선택 항목 이동' }).getByRole('button', { name: '반도체' }).click();
+  await expect.poll(() => state.items()[B]).toEqual(['035420', '051910', '005930', '000660']);
+  expect(state.items()[A]).toEqual([]);
+  await page.getByRole('button', { name: '되돌리기', exact: true }).click();
+  await expect.poll(() => state.items()[A]).toEqual(['005930', '000660']);
+});
+
+test('Ctrl 클릭 선택과 Ctrl을 먼저 누른 드래그 복제를 구분한다', async ({ page }) => {
+  const initial = { [A]: ['005930', '000660'], [B]: ['035420', '051910'] };
+  const state = await setup(page, initial);
+  await row(page, A, '005930').click({ modifiers: ['Control'] });
+  await row(page, A, '000660').click({ modifiers: ['Control'] });
+  await expect(page.getByTestId('heatmap-selection-actions')).toContainText('2개 선택');
+  expect(state.requests).toHaveLength(0);
+  await page.keyboard.down('Control');
+  await start(page, handle(page, A, '005930'));
+  await expect(page.getByTestId('heatmap-drag-ghost')).toContainText('복제');
+  await over(page, row(page, B, '051910'), 0.8);
+  await page.mouse.up();
+  await page.keyboard.up('Control');
+  await expect.poll(() => state.items()[B]).toEqual(['035420', '051910', '005930', '000660']);
+  expect(state.items()[A]).toEqual(initial[A]);
+  expect(state.requests).toHaveLength(1);
+});
+
+for (const all of [false, true]) {
+  test(`일괄 삭제는 ${all ? '전체 행 삭제 후 포커스를 유지한다' : '다른 그룹의 같은 종목을 유지한다'}`, async ({ page }) => {
+    const state = await setup(page, { [A]: ['005930', '000660'], [B]: ['035420', '005930'] });
+    const requests: { changes: HeatmapFolderEntriesChange[]; orphan_codes: string[] }[] = [];
+    await page.route(apiExact('heatmap/entries/remove'), async route => {
+      const request = route.request().postDataJSON() as typeof requests[number];
+      requests.push(request);
+      for (const c of request.changes) state.change(c.folder_id, c.after);
+      await route.fulfill({ status: 204 });
+    });
+    await row(page, A, '005930').click();
+    await row(page, B, all ? '005930' : '035420').click({ modifiers: ['Shift'] });
+    await expect(page.getByTestId('heatmap-selection-actions')).toContainText(all ? '4개 선택' : '3개 선택');
+    if (all) await page.getByTestId('heatmap-selection-actions').getByRole('button', { name: '삭제', exact: true }).click();
+    else {
+      await row(page, B, '035420').focus();
+      await page.keyboard.press('Delete');
+    }
+    const dialog = page.getByRole('dialog', { name: '삭제' });
+    await expect(dialog).toContainText(`${all ? 3 : 2}종목은 히트맵에서 빠집니다`);
+    expect(requests).toHaveLength(0);
+    await dialog.getByRole('button', { name: '삭제', exact: true }).click();
+    await expect(row(page, A, '005930')).toHaveCount(0);
+    await expect(row(page, B, '035420')).toHaveCount(0);
+    if (all) await expect(page.getByRole('button', { name: '새 그룹 만들기', exact: true })).toBeFocused();
+    else {
+      await expect(row(page, B, '005930')).toBeVisible();
+      await expect(row(page, B, '005930')).toBeFocused();
+    }
+    await expect(page.getByTestId('heatmap-selection-actions')).toHaveCount(0);
+    expect(requests).toHaveLength(1);
+    expect(state.items()[B]).toEqual(all ? [] : ['005930']);
+  });
+}
+
+test('삭제 실패는 선택과 원래 목록을 유지하고 다시 시도할 수 있다', async ({ page }) => {
+  const state = await setup(page);
+  await page.route(apiExact('heatmap/entries/remove'), route => route.fulfill({ status: 409, json: { detail: { message: '목록이 변경되었습니다' } } }));
+  await row(page, A, '005930').click();
+  await row(page, A, '000660').click({ modifiers: ['Shift'] });
+  await page.getByTestId('heatmap-selection-actions').getByRole('button', { name: '삭제', exact: true }).click();
+  await page.getByRole('dialog', { name: '삭제' }).getByRole('button', { name: '삭제', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: '삭제하지 못했습니다' })).toContainText('목록이 변경되었습니다');
+  await expect(row(page, A, '005930')).toHaveAttribute('aria-pressed', 'true');
+  await expect(row(page, A, '000660')).toHaveAttribute('aria-pressed', 'true');
+  expect(state.items()[A]).toEqual(['005930', '000660']);
 });

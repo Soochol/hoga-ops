@@ -122,9 +122,10 @@ test('메모 앞뒤 위치를 선택하고 메모 내용을 유지한다', async
 test('다중 선택 이동은 중복을 합치고 되돌리기는 원래 양쪽 소속을 복원한다', async ({ page }) => {
   const initial = { [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('005930')] };
   const state = await setup(page, initial);
-  await page.getByRole('button', { name: '다중 선택' }).click();
-  await row(page, A, '005930').getByRole('checkbox').check();
-  await row(page, A, '000660').getByRole('checkbox').check();
+  await row(page, A, '005930').click();
+  await row(page, A, '000660').click({ modifiers: ['Shift'] });
+  await expect(row(page, A, '005930')).toHaveAttribute('aria-pressed', 'true');
+  await expect(row(page, A, '000660')).toHaveAttribute('aria-pressed', 'true');
   await start(page, handle(page, A, '005930'));
   await expect(page.getByTestId('watchlist-drag-ghost')).toContainText('2종목');
   await over(page, row(page, B, '035420'), 0.8);
@@ -264,4 +265,90 @@ test('아이콘 없이 클릭·드래그·키보드 우클릭 메뉴를 각각 �
   await page.keyboard.press('Escape');
   await expect(header).toBeFocused();
   await group(page, A).screenshot({ path: testInfo.outputPath('panel-without-handles.png') });
+});
+
+test('Shift 범위와 Ctrl 개별 선택은 차트를 유지하고 키보드로 범위를 조절한다', async ({ page }) => {
+  await setup(page);
+  const first = row(page, A, '005930'), second = row(page, A, '000660'), third = row(page, B, '035420');
+  await expect(page.getByTestId('watchlist-panel').getByRole('button', { name: '다중 선택' })).toHaveCount(0);
+  await expect(first.getByRole('checkbox')).toHaveCount(0);
+  await first.click();
+  await third.click({ modifiers: ['Shift'] });
+  for (const selected of [first, second, third]) await expect(selected).toHaveAttribute('aria-pressed', 'true');
+  await expect(third).not.toHaveAttribute('aria-current', 'true');
+  await second.click({ modifiers: ['Control'] });
+  await expect(second).toHaveAttribute('aria-pressed', 'false');
+  await third.focus();
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('watchlist-selection-actions')).toHaveCount(0);
+  await first.focus();
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(second).toBeFocused();
+  await expect(second).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect(third).toBeFocused();
+  await expect(third).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Shift+ArrowUp');
+  await expect(third).toHaveAttribute('aria-pressed', 'false');
+  await expect(first).toHaveAttribute('aria-current', 'true');
+  await page.screenshot({ path: '/tmp/hoga-watchlist-shift-selection.png' });
+});
+
+test('선택한 여러 그룹 소속만 한 번에 삭제하고 다른 소속과 메모를 유지한다', async ({ page }) => {
+  const state = await setup(page, { [A]: [code('005930'), { kind: 'memo', id: 'm_00000001' }, code('000660')], [B]: [code('035420'), code('005930')] });
+  const requests: unknown[] = [];
+  await page.route(apiExact('watchlist/items/remove'), async route => {
+    const request = route.request().postDataJSON() as { changes: WatchlistFolderItemsChange[]; orphan_codes: string[] };
+    requests.push(request);
+    for (const c of request.changes) state.change(c.folder_id, c.after);
+    await route.fulfill({ status: 204 });
+  });
+  await row(page, A, '005930').click();
+  await row(page, A, '000660').click({ modifiers: ['Shift'] });
+  await row(page, B, '035420').click({ modifiers: ['Control'] });
+  await expect(page.getByTestId('watchlist-selection-actions')).toContainText('3개 선택');
+  await row(page, A, '005930').click({ button: 'right' });
+  await page.getByRole('menuitem', { name: '선택 항목 삭제' }).click();
+  const dialog = page.getByRole('dialog', { name: '삭제' });
+  await expect(dialog).toContainText('2종목은 관심종목에서 빠집니다');
+  expect(requests).toHaveLength(0);
+  await dialog.getByRole('button', { name: '삭제', exact: true }).click();
+  await expect(row(page, A, '005930')).toHaveCount(0);
+  await expect(row(page, B, '005930')).toBeVisible();
+  await expect(page.getByTestId('watchlist-memo-m_00000001')).toContainText('관찰 메모');
+  await expect(row(page, B, '005930')).toBeFocused();
+  expect(requests).toHaveLength(1);
+  expect(codes(state.items()[A])).toEqual(['m_00000001']);
+  expect(codes(state.items()[B])).toEqual(['005930']);
+});
+
+test('우클릭 그룹 이동도 다중 선택을 옮기고 되돌릴 수 있다', async ({ page }) => {
+  const state = await setup(page);
+  await row(page, A, '005930').click();
+  await row(page, A, '000660').click({ modifiers: ['Shift'] });
+  await row(page, A, '005930').focus();
+  await page.keyboard.press('Shift+F10');
+  await page.getByRole('menuitem', { name: '선택 항목 이동…' }).click();
+  await page.getByRole('dialog', { name: '선택 항목 이동' }).getByRole('button', { name: '반도체' }).click();
+  await expect.poll(() => codes(state.items()[B])).toEqual(['035420', '051910', '005930', '000660']);
+  expect(state.items()[A]).toEqual([]);
+  await page.getByRole('button', { name: '실행취소', exact: true }).click();
+  await expect.poll(() => codes(state.items()[A])).toEqual(['005930', '000660']);
+});
+
+test('전체 선택을 도구 버튼으로 삭제하면 남아 있는 패널 버튼에 포커스한다', async ({ page }) => {
+  const state = await setup(page);
+  await page.route(apiExact('watchlist/items/remove'), async route => {
+    const request = route.request().postDataJSON() as { changes: WatchlistFolderItemsChange[] };
+    for (const change of request.changes) state.change(change.folder_id, change.after);
+    await route.fulfill({ status: 204 });
+  });
+  await row(page, A, '005930').click();
+  await row(page, B, '051910').click({ modifiers: ['Shift'] });
+  await page.getByTestId('watchlist-selection-actions').getByRole('button', { name: '삭제', exact: true }).click();
+  await page.getByRole('dialog', { name: '삭제' }).getByRole('button', { name: '삭제', exact: true }).click();
+  await expect(row(page, A, '005930')).toHaveCount(0);
+  await expect(row(page, B, '051910')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '새 그룹 만들기' })).toBeFocused();
+  await expect(page.getByTestId('watchlist-selection-actions')).toHaveCount(0);
 });

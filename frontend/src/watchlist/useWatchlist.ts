@@ -5,6 +5,8 @@ import {
   addMember,
   removeMember,
   removeMembers,
+  removeSelectedMemberships,
+  type WatchlistMembershipsRemoval,
   removeFromWatchlist,
   catchupNow,
   catchupAll,
@@ -38,6 +40,14 @@ export function useRemoveFromWatchlist() {
     mutationKey: ['watchlist', 'remove'],
     mutationFn: (code: string) => removeFromWatchlist(code),
     onSuccess: () => qc.invalidateQueries({ queryKey: WATCHLIST_KEY }),
+  });
+}
+
+export function useRemoveSelectedMemberships() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (request: WatchlistMembershipsRemoval) => removeSelectedMemberships(request),
+    onSettled: () => qc.invalidateQueries({ queryKey: WATCHLIST_KEY }),
   });
 }
 

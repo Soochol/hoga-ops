@@ -684,3 +684,42 @@ async def transact_items(data_dir: Path, *, changes: list[WatchlistFolderItemsCh
             raise WatchlistSetMismatchError("transaction must preserve all codes")
         new_folders: list[WatchlistFolder] = [replacements.get(f.id, f) for f in doc.folders]
         save_document(data_dir, doc.model_copy(update={"folders": new_folders}))
+
+
+async def remove_selected_memberships(
+    data_dir: Path, *, changes: list[WatchlistFolderItemsChange], orphan_codes: list[str],
+) -> None:
+    """Remove only selected folder memberships in one save, or change nothing.
+
+    Folder snapshots protect against concurrent edits. The expected orphan set
+    also guards changes in unselected folders while the confirmation is open.
+    Memo text, retained order and unselected memberships remain server-owned.
+    """
+    async with _lock:
+        doc = load_document(data_dir)
+        folders = {f.id: f for f in doc.folders}
+        if len({c.folder_id for c in changes}) != len(changes):
+            raise WatchlistSetMismatchError("duplicate folders")
+        replacements: dict[str, WatchlistFolder] = {}
+        for change in changes:
+            folder = folders.get(change.folder_id)
+            if folder is None:
+                raise FolderNotFoundError(change.folder_id)
+            before = [(i.kind, i.code if i.kind == "code" else i.id) for i in change.before]
+            after = [(i.kind, i.code if i.kind == "code" else i.id) for i in change.after]
+            if before != [_item_key(i) for i in folder.items]:
+                raise WatchlistSetMismatchError("folder changed since confirmation")
+            keep = set(after)
+            if after != [k for k in before if k in keep] or any(
+                k[0] == "memo" and k not in keep for k in before
+            ):
+                raise WatchlistSetMismatchError("only code removal is allowed")
+            replacements[folder.id] = folder.model_copy(update={
+                "items": [i for i in folder.items if _item_key(i) in keep],
+            })
+        new_folders = [replacements.get(f.id, f) for f in doc.folders]
+        remaining = {c for f in new_folders for c in f.code_members()}
+        orphaned = {e.code for e in doc.entries if e.code not in remaining}
+        if orphaned != set(orphan_codes):
+            raise WatchlistSetMismatchError("final memberships changed since confirmation")
+        save_document(data_dir, doc.model_copy(update={"folders": new_folders}))

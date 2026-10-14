@@ -9,6 +9,7 @@ export function RailDrawer({
   id,
   testId,
   className = '',
+  onKeyDown,
   ariaLabel,
   children,
 }: {
@@ -16,12 +17,14 @@ export function RailDrawer({
   testId?: string;
   className?: string;
   ariaLabel?: string;
+  onKeyDown?: HTMLAttributes<HTMLElement>['onKeyDown'];
   children: ReactNode;
 }) {
   return (
     <aside
       id={id}
       aria-label={ariaLabel}
+      onKeyDown={onKeyDown}
       data-testid={testId}
       className={`h-full min-w-0 overflow-hidden bg-bg ${className}`.trim()}
       style={{ width: 'var(--watchlist-panel-w)' }}
