@@ -1140,6 +1140,51 @@ test('시간외종가의 잔량은 정규장 잔량이 0이어도 두 호가창�
   expect(commands).toHaveLength(0);
 });
 
+test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 빈 슬롯은 주문 대상이 아니다', async ({ page }, testInfo) => {
+  const { window, ws, commands } = await setup(page, true);
+  await ws.waitForSubscribe('005930');
+  const ladder = window.locator('.order-ladder');
+  const divider = window.locator('.order-divider');
+  const initialY = (await divider.boundingBox())!.y;
+  const frame = { kind: 'ob', venue: 'UN', t_ms: Date.now(),
+    asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: i === 0 ? 0 : 100 + i })),
+    bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 + i })),
+    total_ask_qty: 1000, total_bid_qty: 2000 };
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: frame.t_ms,
+    fill_strength_pct: 75.14, trades: Array.from({ length: 9 }, (_, i) => ({ price: 67200, qty: 901 + i, side: 1 })) });
+  let nextTimestamp = frame.t_ms;
+  for (const [askCount, bidCount] of [[3, 3], [0, 3], [3, 0], [10, 10]]) {
+    ws.pushLive('005930', { ...frame, t_ms: ++nextTimestamp,
+      asks: frame.asks.map((level, i) => i < askCount ? level : { price: 0, qty: 0 }),
+      bids: frame.bids.map((level, i) => i < bidCount ? level : { price: 0, qty: 0 }) });
+    await expect(window.locator('[data-order-price]')).toHaveCount(askCount + bidCount);
+    await expect(window.locator('.order-row')).toHaveCount(20);
+    await expect(window.locator('.order-empty button, .order-empty [data-order-price]')).toHaveCount(0);
+    await expect(window.locator('.order-row').nth(10)).toContainText('체결강도');
+    await expect(window.locator('.order-row').nth(19).locator('.order-info')).toContainText('901');
+    await expect(window.getByTestId('book-summary')).toBeVisible();
+    const bounds = (await ladder.boundingBox())!;
+    expect((await divider.boundingBox())!.y).toBeCloseTo(bounds.y + bounds.height / 2, 1);
+    if (askCount === 3 && bidCount === 3) {
+      expect((await divider.boundingBox())!.y).toBeCloseTo(initialY, 1);
+      const viewport = (await window.locator('.order-scroll').boundingBox())!;
+      expect((await divider.boundingBox())!.y).toBeCloseTo(viewport.y + viewport.height / 2, 1);
+      await expect(window.locator('.order-ask').last()).toHaveText('0');
+      const empty = window.locator('.order-row').nth(19);
+      await empty.dblclick();
+      await drag(page, window.getByLabel('매수 67,200원 주문', { exact: true }), empty);
+      expect(commands).toHaveLength(0);
+      await window.screenshot({ path: testInfo.outputPath('order-partial-centered.png') });
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 600 });
+  await expect.poll(() => window.locator('.order-scroll').evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await expect(window.locator('.order-row').first()).toHaveCSS('height', '24px');
+  await window.locator('.order-row').last().scrollIntoViewIfNeeded();
+  await expect(window.locator('.order-row').last()).toBeInViewport();
+  expect(commands).toHaveLength(0);
+});
+
 test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시되고 빈 호가는 제거된다', async ({ page }, testInfo) => {
   const { window, ws, commands } = await setup(page);
   const book = page.locator('.book-panel'); // 기본 배치의 10호가창과 비교
