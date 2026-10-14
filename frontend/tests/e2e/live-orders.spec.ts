@@ -768,6 +768,70 @@ test('압축형 팝오버는 다크 테마에서도 표시하고 키보드 탭 �
   expect(commands).toHaveLength(0);
 });
 
+test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고 바깥 클릭·재클릭으로 편집을 버린다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page);
+  const settings = window.getByRole('button', { name: '주문 설정', exact: true });
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  for (const theme of ['toss-light', 'toss-dark']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
+    const accountPanel = page.getByRole('dialog', { name: '계좌 목록' });
+    const accountStyle = await accountPanel.evaluate(el => {
+      const s = getComputedStyle(el);
+      return [s.backgroundColor, s.color, s.borderColor, s.borderRadius, s.boxShadow, s.fontSize];
+    });
+    await settings.click();
+    await expect(accountPanel).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(dialog).not.toHaveAttribute('aria-modal', 'true');
+    await expect(settings).toHaveAttribute('aria-expanded', 'true');
+    const settingsStyle = await dialog.evaluate(el => {
+      const s = getComputedStyle(el);
+      return [s.backgroundColor, s.color, s.borderColor, s.borderRadius, s.boxShadow, s.fontSize];
+    });
+    expect(settingsStyle).toEqual(accountStyle);
+    const anchor = (await settings.boundingBox())!;
+    const panel = (await dialog.boundingBox())!;
+    expect(panel.y).toBeCloseTo(anchor.y + anchor.height + 4, 0);
+    expect(panel.x + panel.width).toBeCloseTo(anchor.x + anchor.width, 0);
+    await dialog.screenshot({ path: testInfo.outputPath(`order-settings-${theme}.png`) });
+    await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('29');
+    await settings.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(settings).toHaveAttribute('aria-expanded', 'false');
+    await settings.click();
+    await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('10');
+    await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('31');
+    await window.getByLabel('매수 가능 금액').click();
+    await expect(dialog).toHaveCount(0);
+    await settings.click();
+    await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('10');
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(settings).toBeFocused();
+  }
+  await page.setViewportSize({ width: 320, height: 640 });
+  await settings.scrollIntoViewIfNeeded();
+  await settings.click();
+  await expect(dialog).toBeVisible();
+  const bounds = (await dialog.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0);
+  expect(bounds.x + bounds.width).toBeLessThanOrEqual(320);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(640);
+  const layout = await dialog.getByRole('spinbutton').evaluateAll(inputs => inputs.map(input => {
+    const bounds = input.getBoundingClientRect();
+    const field = input.parentElement!.getBoundingClientRect();
+    return bounds.left >= field.left && bounds.right <= field.right && bounds.width > 0
+      && input.scrollWidth <= input.clientWidth;
+  }));
+  expect(layout).toEqual(Array(6).fill(true));
+  await page.screenshot({ path: testInfo.outputPath('order-settings-anchored-narrow.png') });
+  await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(settings).toBeFocused();
+  expect(commands).toHaveLength(0);
+});
+
 test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정수 수량으로 환산', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const settings = window.getByRole('button', { name: '주문 설정', exact: true });
@@ -792,17 +856,6 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   await expect(dialog.getByRole('button', { name: '적용', exact: true })).toBeDisabled();
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
   await page.screenshot({ path: testInfo.outputPath('order-settings-dialog.png') });
-  const originalViewport = page.viewportSize()!;
-  await page.setViewportSize({ width: 320, height: 640 });
-  const layout = await dialog.getByRole('spinbutton').evaluateAll(inputs => inputs.map(input => {
-    const bounds = input.getBoundingClientRect();
-    const field = input.parentElement!.getBoundingClientRect();
-    return bounds.left >= field.left && bounds.right <= field.right && bounds.width > 0
-      && input.scrollWidth <= input.clientWidth;
-  }));
-  expect(layout).toEqual(Array(6).fill(true));
-  await page.screenshot({ path: testInfo.outputPath('order-settings-narrow.png') });
-  await page.setViewportSize(originalViewport);
   await dialog.getByRole('button', { name: '적용', exact: true }).click();
   await expect(settings).toBeFocused();
   await window.getByRole('button', { name: '금액', exact: true }).click();

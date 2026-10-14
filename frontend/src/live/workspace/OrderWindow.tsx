@@ -119,6 +119,13 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const book = lockedBook ?? snapshot;
   const deltaBadges = useOrderbookDeltaBadges(live.ob, !lockedBook && !storedLadder);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsId = useId();
+  const closeSettings = useCallback(() => {
+    setSettingsDraft(null);
+    settingsButtonRef.current?.focus({ preventScroll: true });
+  }, []);
+  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 360);
   const [previewPrice, setPreviewPrice] = useState<number | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
@@ -473,7 +480,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     }}
     onKeyDown={e => {
       if (e.key === 'Escape') {
-        if (settingsDraft) { e.preventDefault(); e.stopPropagation(); setSettingsDraft(null); return; }
+        if (settingsDraft) { e.preventDefault(); e.stopPropagation(); closeSettings(); return; }
         if (drag.current || action || contextMenu) { e.preventDefault(); e.stopPropagation(); }
         endDrag(undefined, true); closeAction(); return;
       }
@@ -487,12 +494,16 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
       </select> : <span className="order-account-label text-fg-dim" title={accounts.data?.accounts[0]?.label}>{accounts.data?.accounts[0]?.label ?? '계좌 연결 대기'}</span>}
       {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
-        disabled={!account || !!lockedBook || busy} onClick={() => { closeAction(); setAccountTab(accountTab === tab ? null : tab); }}>
+        disabled={!account || !!lockedBook || busy} onClick={() => { closeAction(); setSettingsDraft(null); setAccountTab(accountTab === tab ? null : tab); }}>
         {tab === 'orders' ? '미체결 주문' : '보유종목'}
       </button>)}
       </div>
       <div className="order-settings-group">
-      <button type="button" aria-label="주문 설정" disabled={busy || !!lockedBook} onClick={() => { closeAction(); setSettingsDraft(normalizeOrderSettings(preferences)); }}>설정</button>
+      <button ref={settingsButtonRef} type="button" aria-label="주문 설정" aria-haspopup="dialog" aria-expanded={!!settingsDraft} aria-controls={settingsDraft ? settingsId : undefined}
+        disabled={busy || !!lockedBook} onClick={() => {
+          if (settingsDraft) { closeSettings(); return; }
+          closeAction(); setAccountTab(null); setInfoOpen(false); setSettingsDraft(normalizeOrderSettings(preferences));
+        }}>설정</button>
       {!showInlineSummary && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
@@ -562,11 +573,11 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
       {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}
     </div>, document.body)}
-    {settingsDraft && createPortal(<div className="order-settings-surface font-data" onKeyDown={e => {
-      e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); setSettingsDraft(null); }
-    }}><ModalShell ariaLabel="주문 설정" width="w-[360px]" onClose={() => setSettingsDraft(null)}>
-      <div className="order-modal order-settings-modal"><OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={() => setSettingsDraft(null)}>주문 설정</OrderSurfaceHeading>
-      <form onSubmit={e => { e.preventDefault(); if (!busy && validOrderSettings(settingsDraft)) { onApplySettings(settingsDraft); setSettingsDraft(null); } }}>
+    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover order-surface font-data" onKeyDown={e => {
+      e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
+    }}>
+      <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings}>주문 설정</OrderSurfaceHeading>
+      <form onSubmit={e => { e.preventDefault(); if (!busy && validOrderSettings(settingsDraft)) { onApplySettings(settingsDraft); closeSettings(); } }}>
         <div className="order-settings-body">
           {(['quantity', 'amount'] as const).map(unit => <fieldset key={unit}><legend>{unit === 'quantity' ? '수량 프리셋' : '금액 프리셋'}</legend>
             <div className="order-settings-presets">{(unit === 'quantity' ? settingsDraft.quantityPresets : settingsDraft.amountPresets).map((value, index) => <label key={index}>
@@ -577,10 +588,9 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           </fieldset>)}
           {!validOrderSettings(settingsDraft) && <p role="alert" className="text-error">프리셋은 허용 범위의 양의 정수로 입력하세요</p>}
         </div>
-        <div className="order-surface-footer"><button type="button" onClick={() => setSettingsDraft(null)}>취소</button><button type="submit" className="order-primary" disabled={busy || !validOrderSettings(settingsDraft)}>적용</button></div>
+        <div className="order-surface-footer"><button type="button" onClick={closeSettings}>취소</button><button type="submit" className="order-primary" disabled={busy || !validOrderSettings(settingsDraft)}>적용</button></div>
       </form>
-      </div>
-    </ModalShell></div>, document.body)}
+    </div>, document.body)}
     {!accounts.data?.configured && !accounts.isLoading && <p className="order-notice">토스증권 Open API의 CLIENT_ID·CLIENT_SECRET을 서버에 설정하면 계좌가 연결됩니다.</p>}
     {(accounts.error || state.error) && <p role="alert" className="order-notice text-error">{String((accounts.error ?? state.error) instanceof Error ? (accounts.error ?? state.error as Error)?.message : '계좌 조회 실패')}</p>}
     {!!state.data?.unresolved_commands.length && <div className="order-editor"><span role="alert" className="text-error">결과가 불명확한 요청이 있습니다.</span>
