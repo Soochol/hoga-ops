@@ -1,3 +1,6 @@
+import type { Mock } from 'vitest';
+import type { MouseEventParams, ISeriesPrimitive, SeriesAttachedParameter } from 'lightweight-charts';
+import type { SeriesType } from 'lightweight-charts';
 import { describe, expect, it, vi } from 'vitest';
 import { LineSeries, CandlestickSeries, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import { replaceSeriesData } from './replaceSeriesData';
@@ -5,12 +8,24 @@ import { createWindowedChart, flushWindowedChart, readChartInteractionViewport, 
 
 /** A union-time chart model (not a candle-count time scale). Native browser
  * integration is covered separately by the backfill/viewport E2E driver. */
+type FixturePoint = { time: Time; value?: number; open?: number; high?: number; low?: number; close?: number };
+type FixtureSeries = {
+  options: () => Record<string, unknown>; seriesType: () => SeriesType;
+  data: () => FixturePoint[]; setData: Mock<(next: FixturePoint[]) => void>; update: Mock<(point: FixturePoint) => void>;
+  priceToCoordinate: Mock<(price: number) => number>; attachPrimitive: Mock<(primitive: ISeriesPrimitive<Time>) => void>;
+  detachPrimitive: Mock;
+};
+type FixtureMouse = Omit<Partial<MouseEventParams<Time>>, 'point' | 'sourceEvent' | 'logical' | 'hoveredSeries' | 'seriesData'> & {
+  point?: { x: number; y: number }; sourceEvent?: { clientX: number; clientY: number };
+  logical?: number; hoveredSeries?: FixtureSeries | ISeriesApi<SeriesType>;
+  seriesData: Map<FixtureSeries | ISeriesApi<SeriesType>, FixturePoint>;
+};
 function fixture() {
-  const series: any[] = [];
+  const series: FixtureSeries[] = [];
   const logicalListeners = new Set<() => void>();
-  const mouseListeners = new Set<(p: any) => void>();
+  const mouseListeners = new Set<(p: MouseEventParams<Time>) => void>();
   let range: { from: number; to: number } | null = null;
-  const times = () => [...new Set<number>(series.flatMap((s) => s.data().map((p: any) => p.time)))].sort((a, b) => a - b);
+  const times = () => [...new Set<number>(series.flatMap((s) => s.data().map((p) => Number(p.time))))].sort((a, b) => a - b);
   const emit = () => { for (const cb of logicalListeners) cb(); };
   const scale = {
     getVisibleLogicalRange: () => range,
@@ -30,16 +45,16 @@ function fixture() {
   };
   const native = {
     timeScale: () => scale,
-    addSeries: (definition: any, options: any = {}) => {
-      let data: any[] = [];
+    addSeries: (definition: { type: SeriesType }, options: Record<string, unknown> = {}) => {
+      let data: FixturePoint[] = [];
       const s = {
         options: () => ({ priceLineVisible: false, lastValueVisible: false, ...options }),
         seriesType: () => definition.type,
-        setData: vi.fn((next: any[]) => { data = next; range ??= { from: 0, to: 100 }; emit(); }),
-        update: vi.fn((point: any) => { if (data.at(-1)?.time === point.time) data[data.length - 1] = point; else data.push(point); }),
+        setData: vi.fn((next: FixturePoint[]) => { data = next; range ??= { from: 0, to: 100 }; emit(); }),
+        update: vi.fn((point: FixturePoint) => { if (data.at(-1)?.time === point.time) data[data.length - 1] = point; else data.push(point); }),
         data: () => data,
         priceToCoordinate: vi.fn((price: number) => price),
-        attachPrimitive: vi.fn((p: any) => p.attached?.({ chart: native, series: s, requestUpdate: vi.fn() })),
+        attachPrimitive: vi.fn((p: ISeriesPrimitive<Time>) => p.attached?.({ chart: native as unknown as IChartApi, series: s as unknown as ISeriesApi<SeriesType>, requestUpdate: vi.fn() } as unknown as SeriesAttachedParameter<Time>)),
         detachPrimitive: vi.fn(),
       };
       series.push(s);
@@ -50,14 +65,14 @@ function fixture() {
     options: () => ({ timeScale: { barSpacing: 5 } }),
     clearCrosshairPosition: vi.fn(),
     setCrosshairPosition: vi.fn(),
-    subscribeCrosshairMove: (cb: (p: any) => void) => mouseListeners.add(cb),
-    unsubscribeCrosshairMove: (cb: (p: any) => void) => mouseListeners.delete(cb),
+    subscribeCrosshairMove: (cb: (p: MouseEventParams<Time>) => void) => mouseListeners.add(cb),
+    unsubscribeCrosshairMove: (cb: (p: MouseEventParams<Time>) => void) => mouseListeners.delete(cb),
     subscribeDblClick: vi.fn(),
     remove: vi.fn(),
   };
   const chart = createWindowedChart(native as unknown as IChartApi);
   const rows = Array.from({ length: 8000 }, (_, i) => ({ time: (i * 60 + 100000) as Time, value: i }));
-  return { chart, native, rows, mouse: (p: any) => { for (const cb of mouseListeners) cb(p); } };
+  return { chart, native, rows, mouse: (p: FixtureMouse) => { for (const cb of mouseListeners) cb(p as unknown as MouseEventParams<Time>); } };
 }
 
 describe('full-history chart / bounded native renderer', () => {
@@ -450,7 +465,7 @@ describe('full-history chart / bounded native renderer', () => {
     const line = chart.addSeries(LineSeries, { lastValueVisible: true });
     line.setData(rows); flushWindowedChart(chart);
     expect(windowedChartDiagnostics(chart)?.renderedPoints).toBe(8000);
-    chart.removeSeries(line as ISeriesApi<any>); flushWindowedChart(chart);
+    chart.removeSeries(line as ISeriesApi<SeriesType>); flushWindowedChart(chart);
     const candle = chart.addSeries(CandlestickSeries);
     candle.setData(rows.slice(0, 100).map((p) => ({ time: p.time, open: p.value, high: p.value, low: p.value, close: p.value })));
     flushWindowedChart(chart);

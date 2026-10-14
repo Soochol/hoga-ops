@@ -1,3 +1,4 @@
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect } from 'vitest';
 import { projectBuy, projectSell, projectCumulativeNetFill } from './fillStrength';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -9,14 +10,14 @@ const axis = createVirtualAxis([
 
 describe('projectBuy', () => {
   it('maps fill_strength.points to {time, buy_qty} in virtual seconds', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       fill_strength: {
         points: [
           { t: sessionOpenMs, buy_qty: 50, sell_qty: 30 },
           { t: sessionOpenMs + 1000, buy_qty: 40, sell_qty: 60 },
         ],
       },
-    };
+    });
     expect(projectBuy(bundle, axis, false)).toEqual([
       { time: 0, value: 50 },
       { time: 1, value: 40 },
@@ -24,14 +25,14 @@ describe('projectBuy', () => {
   });
 
   it('drops pre-open points via axis.contains', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       fill_strength: {
         points: [
           { t: sessionOpenMs - 30 * 60_000, buy_qty: 1, sell_qty: 1 },
           { t: sessionOpenMs, buy_qty: 50, sell_qty: 30 },
         ],
       },
-    };
+    });
     expect(projectBuy(bundle, axis, false)).toHaveLength(1);
     expect((projectBuy(bundle, axis, false)[0] as { value: number }).value).toBe(50);
   });
@@ -39,14 +40,14 @@ describe('projectBuy', () => {
 
 describe('projectSell', () => {
   it('emits NEGATED sell_qty so the series mirrors below the 0 baseline', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       fill_strength: {
         points: [
           { t: sessionOpenMs, buy_qty: 50, sell_qty: 30 },
           { t: sessionOpenMs + 1000, buy_qty: 40, sell_qty: 60 },
         ],
       },
-    };
+    });
     expect(projectSell(bundle, axis, false)).toEqual([
       { time: 0, value: -30 },
       { time: 1, value: -60 },
@@ -67,7 +68,7 @@ describe('projectCumulativeNetFill — single-day', () => {
   ], day1Open, { mode: 'calendar' });
 
   it('runs the sum monotonically and emits per-bucket cumulative values', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
@@ -76,7 +77,7 @@ describe('projectCumulativeNetFill — single-day', () => {
           { t: day1Open + 2000, buy_qty: 50, sell_qty: 50 }, //  0  → 10
         ],
       },
-    };
+    });
     expect(projectCumulativeNetFill(bundle, singleDayAxis, false)).toEqual([
       { time: 0, value: 70 },
       { time: 1, value: 10 },
@@ -85,7 +86,7 @@ describe('projectCumulativeNetFill — single-day', () => {
   });
 
   it('returns [] on calendar axes because cumulative fill is intraday-only', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
@@ -93,20 +94,20 @@ describe('projectCumulativeNetFill — single-day', () => {
           { t: day1Open + 1000, buy_qty: 20, sell_qty: 80 },
         ],
       },
-    };
+    });
     expect(projectCumulativeNetFill(bundle, singleDayCalendarAxis, false)).toEqual([]);
   });
 
   it('returns [] for an empty fill_strength.points list', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: { points: [] },
-    };
+    });
     expect(projectCumulativeNetFill(bundle, singleDayAxis, false)).toEqual([]);
   });
 
   it('excludes pre-open and after-session points from the running sum', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
@@ -115,7 +116,7 @@ describe('projectCumulativeNetFill — single-day', () => {
           { t: day1Open + sessionDurationMs + 60_000, buy_qty: 0, sell_qty: 500 }, // after — must NOT contribute
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, singleDayAxis, false);
     // First in-session point lands exactly at session_open → zero anchor
     // suppressed (would collide with this point's timestamp), so only the
@@ -126,7 +127,7 @@ describe('projectCumulativeNetFill — single-day', () => {
   });
 
   it('inserts a zero anchor at session_open when first in-viewport point lands later', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
@@ -134,7 +135,7 @@ describe('projectCumulativeNetFill — single-day', () => {
           { t: day1Open + 60_000, buy_qty: 100, sell_qty: 30 }, // +70 → 70
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, singleDayAxis, false);
     expect(out).toHaveLength(2);
     // Anchor: line visibly starts from 0 at session open.
@@ -150,7 +151,7 @@ describe('projectCumulativeNetFill — multi-day', () => {
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
       { date: '20260519', sessionOpenMs: day2Open, sessionCloseMs: day2Open + sessionDurationMs },
     ]);
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [
         { date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs },
         { date: '20260519', session_open_ms: day2Open, session_close_ms: day2Open + sessionDurationMs },
@@ -163,7 +164,7 @@ describe('projectCumulativeNetFill — multi-day', () => {
           { t: day2Open + 1000, buy_qty: 100, sell_qty: 100 }, // day2 +1s: 0 → 30
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, axis, false);
     // 2 day1 points + 1 whitespace break + 2 day2 points = 5. Both segments'
     // first points coincide with session_open, so zero-anchor is suppressed
@@ -196,7 +197,7 @@ describe('projectCumulativeNetFill — viewport invariant', () => {
     ]);
     // The bundle's segments still describe the FULL day (the wire format never
     // narrows segments by viewport — only the axis does).
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [
@@ -205,7 +206,7 @@ describe('projectCumulativeNetFill — viewport invariant', () => {
           { t: day1Open + halfDay, buy_qty: 20, sell_qty: 10 },    // in-viewport: +10 → 50
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, zoomedAxis, false);
     // session_open is out of viewport, so the zero-anchor is suppressed —
     // the line correctly resumes from the running sum at the first
@@ -236,12 +237,12 @@ describe('FILL_STRENGTH_SPEC shape', () => {
   });
 
   it('cumulative series projector returns [] when cumulativeEnabled is false', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
         points: [{ t: day1Open, buy_qty: 100, sell_qty: 30 }],
       },
-    };
+    });
     const axis = createVirtualAxis([
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
     ]);
@@ -256,14 +257,14 @@ describe('FILL_STRENGTH_SPEC shape', () => {
 describe('projectBuy/projectSell — closing-auction hide', () => {
   it('emits in-window buy/sell points as WhitespaceData when auctionWindowMask=true (Histogram skips bars for whitespace; time scale density preserved)', () => {
     const auctionStartMs = day1Open + 22_800_000; // 15:20 KST
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       fill_strength: {
         points: [
           { t: day1Open, buy_qty: 50, sell_qty: 30 },                  // outside → kept
           { t: auctionStartMs + 60_000, buy_qty: 70, sell_qty: 70 },   // inside → whitespace
         ],
       },
-    };
+    });
     const axisLocal = createVirtualAxis([
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
     ]);
@@ -280,11 +281,11 @@ describe('projectBuy/projectSell — closing-auction hide', () => {
 
   it('keeps in-window buy/sell points when auctionWindowMask=false', () => {
     const auctionStartMs = day1Open + 22_800_000;
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       fill_strength: {
         points: [{ t: auctionStartMs + 60_000, buy_qty: 70, sell_qty: 80 }],
       },
-    };
+    });
     const axisLocal = createVirtualAxis([
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
     ]);
@@ -300,7 +301,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
   const auctionStartMs = day1Open + 22_800_000;
 
   it('drops the in-window point and suppresses anchors/color-patch in the last (only) segment', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
@@ -309,7 +310,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
           { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 },    // inside → dropped (isAuctionHidden)
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, singleDayAxis, true);
 
     // This is a single-segment bundle, so this segment is BOTH the only and
@@ -326,7 +327,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
   });
 
   it('keeps in-window cumulative emission and does NOT synthesize anchors when mask=false', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
       fill_strength: {
@@ -335,7 +336,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
           { t: auctionStartMs + 60_000, buy_qty: 0, sell_qty: 100 }, // -30
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, singleDayAxis, false);
     expect(out).toHaveLength(2);
     expect(out[0]).toMatchObject({ value: 70 });
@@ -351,7 +352,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
     // projectCumulativeSegment's isLastSegment gate). The point retains its
     // plain, unpatched color.
     const preAuctionMs = day1Open + 22_740_000; // 15:19
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       segments: [
         { date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs },
@@ -362,7 +363,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
           { t: preAuctionMs, buy_qty: 0, sell_qty: 250 },    // -250 → -150 (last pre-auction)
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, singleDayAxis, true);
 
     // Find the last pre-auction value-bearing point (cumulative=-150 at 15:19).
@@ -388,7 +389,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
       { date: '20260519', sessionOpenMs: day2Open, sessionCloseMs: day2Open + sessionDurationMs },
     ]);
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       segments: [
         { date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs },
@@ -400,7 +401,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
           { t: day2Open, buy_qty: 40, sell_qty: 10 },   // day2 (last) RESET: +30 → 30
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, twoDayAxis, true);
 
     // Segment 0 (day1, virtual times map 1:1 since it's the first segment):
@@ -445,7 +446,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
     const extendedAxis = createVirtualAxis([
       { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: extendedClose },
     ]);
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: extendedClose }],
       fill_strength: {
@@ -455,7 +456,7 @@ describe('projectCumulativeNetFill — closing-auction hide', () => {
           { t: day1Open + sessionDurationMs + 60_000, buy_qty: 50, sell_qty: 0 }, // post-window: +50 → cum should be 20
         ],
       },
-    };
+    });
     const out = projectCumulativeNetFill(bundle, extendedAxis, true);
     // The last value-bearing emission should carry the full accumulated
     // running sum. Synthesized anchors are all value=0 (and transparent),
@@ -474,13 +475,13 @@ describe('FILL_STRENGTH_SPEC — auctionWindowMask threading', () => {
   const axis = createVirtualAxis([
     { date: '20260518', sessionOpenMs: day1Open, sessionCloseMs: day1Open + sessionDurationMs },
   ]);
-  const bundle: any = {
+  const bundle = rangeBundleFixture( {
     bucket_ms: 60_000,
     segments: [{ date: '20260518', session_open_ms: day1Open, session_close_ms: day1Open + sessionDurationMs }],
     fill_strength: {
       points: [{ t: day1Open + 22_800_000 + 60_000, buy_qty: 99, sell_qty: 99 }], // in-auction
     },
-  };
+  });
 
   it('buy histogram series data() emits whitespace for in-auction when ctx.auctionWindowMask=true', () => {
     const buy = FILL_STRENGTH_SPEC.series[0];

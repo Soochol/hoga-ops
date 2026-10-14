@@ -1,5 +1,5 @@
 import type { IndicatorSettings } from '../../state/indicatorSettingsV2';
-import type { CategoryId } from './IndicatorPanel';
+import type { CategoryId } from './IndicatorPanelHelpers';
 
 /** 한 행에 찍는 색 점의 최대 개수.
  *

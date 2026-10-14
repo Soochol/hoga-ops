@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { StockDate } from '../api/types';
 import { useStockDateGroups } from './useStockDateGroups';
 import { StockDateGroupListItem } from './StockDateGroupListItem';
-import { aggregateDiskState } from './DiskStateBadge';
+import { aggregateDiskState } from './DiskStateBadgeHelpers';
 
 type Props = {
   rows: StockDate[];

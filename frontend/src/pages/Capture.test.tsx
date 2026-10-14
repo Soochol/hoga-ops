@@ -22,7 +22,7 @@ function W(qc: QueryClient) {
 beforeEach(() => {
   vi.restoreAllMocks();
   useLivePageStore.setState({ activeInstrument: null, activeCode: null });
-  vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+  vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
     const s = String(url);
     if (s.includes('/api/symbols/all')) {
       return {
@@ -133,7 +133,7 @@ describe('Capture page', () => {
   // 큐(우측) → 폼(좌측) 방향의 유일한 연결. 두 pane 은 형제라 서로를 직접 못 보고,
   // 이 페이지가 seq 를 매겨 "선택 이벤트"로 내려보낸다.
   it('큐 행을 클릭하면 좌측 캡처 요청 폼에 그 종목이 선택된다', async () => {
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/symbols/all')) {
         return { ok: true, status: 200, json: async () => ({

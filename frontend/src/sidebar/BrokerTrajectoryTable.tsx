@@ -7,12 +7,15 @@ import { brokerDisplayShort, isForeignBroker } from './brokerDisplayNames';
 import { priceDirClass } from '../ui/priceDir';
 import { hoverMsFromClientX } from './sparklineHover';
 import { SidebarState } from './SidebarSurface';
+import { netAtCursor } from './BrokerTrajectoryTableHelpers';
+
 
 /** Gap detection threshold (ms). Consecutive points farther apart are
  *  rendered with a dashed segment indicating the broker was outside top-5
  *  between observations. Honest about the brokers parquet's top-5 truncation
  *  rather than forward-fill (see ADR-0023 and the spec's § 4 Data Gaps). */
 export const GAP_THRESHOLD_MS = 30_000;
+
 
 type Props = {
   series: BrokerSeriesEntry[] | null | undefined;
@@ -27,6 +30,7 @@ type Props = {
   venue: LiveVenueOption;
   gapThresholdMs?: number;
 };
+
 
 export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThresholdMs = GAP_THRESHOLD_MS }: Props) {
   // 스파크라인 열 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
@@ -211,6 +215,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
   );
 }
 
+
 /** 표시 창 밖 관측을 버린다 — 창은 **venue 가 정한다**(KRX 09:00–15:30 · NXT·통합
  *  08:00–20:00).
  *
@@ -236,27 +241,6 @@ function clipEntryToVenueSession(
   return points.length === entry.points.length ? entry : { ...entry, points };
 }
 
-/** Pure function. Binary-searches entry.points for the last ts <= cursorMs.
- *  Returns null when cursorMs is null or precedes the first observation —
- *  "아직 등장 전"을 진짜 순매수 0과 구분하기 위해서다(표시는 —). */
-export function netAtCursor(
-  entry: BrokerSeriesEntry,
-  cursorMs: number | null,
-): number | null {
-  if (cursorMs == null) return null;
-  const pts = entry.points;
-  if (pts.length === 0) return null;
-  if (cursorMs < pts[0].ts_ms) return null;
-  // Binary search for the rightmost point with ts_ms <= cursorMs.
-  let lo = 0;
-  let hi = pts.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (pts[mid].ts_ms <= cursorMs) lo = mid;
-    else hi = mid - 1;
-  }
-  return pts[lo].net;
-}
 
 function Sparkline({
   entry,
@@ -428,6 +412,7 @@ function Sparkline({
   );
 }
 
+
 /** 커서 시각에서 "그려진 라인" 위의 net 값(선형 보간). netAtCursor(계단
  *  의미론, 표시 숫자용)와 달리 도트를 시각적 궤적 위에 정확히 앉히기 위한
  *  기하용이다. 궤적 범위 밖이면 null. */
@@ -448,9 +433,11 @@ function netOnDrawnLineAt(pts: BrokerSeriesPoint[], cursorMs: number): number | 
   return a.net + (b.net - a.net) * t;
 }
 
+
 type Segment =
   | { kind: 'solid'; pts: BrokerSeriesPoint[] }
-  | { kind: 'dashed'; pts: BrokerSeriesPoint[] };   // always exactly 2 points
+  | { kind: 'dashed'; pts: BrokerSeriesPoint[] };
+   // always exactly 2 points
 
 /** Split consecutive points into solid runs and 2-point dashed bridges.
  *  A gap > threshold between p[i] and p[i+1] flushes the current solid run

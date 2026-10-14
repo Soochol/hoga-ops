@@ -61,11 +61,7 @@ import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'reac
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
 import { useInvestorDailyHistory } from '../useInvestorDailyHistory';
 import type { InvestorNetUnit, InvestorTradeSide } from '../../api/types';
-import {
-  formatAmount,
-  formatQty,
-  qtyClass,
-} from '../../sidebar/InvestorTrendEstimateCard';
+import { formatAmount, formatQty, qtyClass } from '../../sidebar/InvestorTrendEstimateCardHelpers';
 import { useInvestorDailySpanStore } from '../../state/investorDailySpan';
 import {
   useInvestorDailyDisplayStore,

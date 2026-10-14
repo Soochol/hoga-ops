@@ -1,3 +1,7 @@
+import type { RangeBundle } from '../../api/types';
+import type { VirtualAxis } from '../../util/virtualAxis';
+import type { BaselineData, Time } from 'lightweight-charts';
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect } from 'vitest';
 import { makePastCachedProjector } from './pastCachedProjector';
 import { projectRatio, projectRatioPoints, RATIO_SPEC, type RatioPaneContext } from './ratio';
@@ -44,12 +48,12 @@ function makeAxisAndBundle(nDays: number, extraTodayPoints: QRSeed[] = []) {
   const axis = createVirtualAxis(axisSegs);
   // fill_strength.points는 quote_ratio.points와 같은 t 격자에 정렬(buy/sell 동등성 테스트용).
   const fsPoints = points.map((p) => ({ t: p.t, buy_qty: p.bid_total % 700, sell_qty: p.ask_total % 600 }));
-  const bundle: any = {
+  const bundle = rangeBundleFixture( {
     segments: snakeSegs,
     bucket_ms: 60_000,
     quote_ratio: { points },
     fill_strength: { points: fsPoints },
-  };
+  });
   return { axis, bundle };
 }
 
@@ -60,7 +64,7 @@ function makeBoundaryGapBundle() {
     { date: 'd0', sessionOpenMs: day0Open, sessionCloseMs: day0Open + SESSION },
     { date: 'd1', sessionOpenMs: day1Open, sessionCloseMs: day1Open + SESSION },
   ]);
-  const bundle: any = {
+  const bundle = rangeBundleFixture( {
     bucket_ms: 60_000,
     segments: [
       { date: 'd0', session_open_ms: day0Open, session_close_ms: day0Open + SESSION, source: 'kiwoom_live' as const },
@@ -95,7 +99,7 @@ function makeBoundaryGapBundle() {
         },
       ],
     },
-  };
+  });
   return { axis, bundle };
 }
 
@@ -107,7 +111,7 @@ const CTX_MASKED: RatioPaneContext = {
 };
 
 describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영과 동일 (P0)', () => {
-  const getQR = (b: any) => b.quote_ratio.points;
+  const getQR = (b: RangeBundle) => b.quote_ratio.points;
 
   it('3일 번들 + 동시호가 마스킹 + outlier clamp 에서 풀 투영과 바이트 동일', () => {
     const { axis, bundle } = makeAxisAndBundle(3);
@@ -166,7 +170,7 @@ describe('makePastCachedProjector — 과거/당일 분리 캐시가 풀 투영�
 });
 
 describe('makePastCachedProjector — 종목 전환 시 캐시 무효화 (code 키 회귀)', () => {
-  const getQR = (b: any) => b.quote_ratio.points;
+  const getQR = (b: RangeBundle) => b.quote_ratio.points;
 
   // 종목 전환 시 useLiveBundle의 segments-identity 안정화 때문에 axis 객체가 살아남을
   // 수 있고, 풀-커버리지 종목끼리는 과거 버킷 그리드(pastLen/pastLastT)까지 일치한다.
@@ -218,8 +222,8 @@ describe('makePastCachedProjector — 종목 전환 시 캐시 무효화 (code �
 });
 
 describe('makePastCachedProjector — 총잔량(bid/ask)·체결강도 히스토그램(buy/sell) 동등성', () => {
-  const getQR = (b: any) => b.quote_ratio.points;
-  const getFS = (b: any) => b.fill_strength.points;
+  const getQR = (b: RangeBundle) => b.quote_ratio.points;
+  const getFS = (b: RangeBundle) => b.fill_strength.points;
   const MASK = true; // 총잔량/체결강도 ctx = auctionWindowMask boolean
 
   it('projectBid 분리-캐시 == 풀(마스킹 on)', () => {
@@ -274,8 +278,8 @@ describe('makePastCachedProjector — day split 경계의 synthetic hoga gap sen
       brokerLateEntries: [],
     };
 
-    const cached = RATIO_SPEC.series[0].data(bundle, axis, ctx) as any[];
-    const full = projectRatio(bundle, axis, ctx) as any[];
+    const cached = RATIO_SPEC.series[0].data(bundle, axis, ctx) as BaselineData<Time>[];
+    const full = projectRatio(bundle, axis, ctx) as BaselineData<Time>[];
 
     expect(cached).toEqual(full);
     expect(cached[0]).toMatchObject({
@@ -305,8 +309,8 @@ describe('makePastCachedProjector — day split 경계의 synthetic hoga gap sen
   surgeTickConfirmPct: 10,
     };
 
-    const cachedBid = QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx) as any[];
-    const cachedAsk = QUOTE_TOTALS_SPEC.series[1].data(bundle, axis, ctx) as any[];
+    const cachedBid = QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx) as BaselineData<Time>[];
+    const cachedAsk = QUOTE_TOTALS_SPEC.series[1].data(bundle, axis, ctx) as BaselineData<Time>[];
 
     expect(cachedBid).toEqual(projectBid(bundle, axis, false));
     expect(cachedAsk).toEqual(projectAsk(bundle, axis, false));
@@ -349,7 +353,7 @@ describe('makePastCachedProjector — hoga gap expansion happens after the split
     const expandCalls: Array<{ points: number; fromT?: number; toT?: number }> = [];
     const cached = makePastCachedProjector(
       projectRatioPoints,
-      (b: any) => b.quote_ratio.points,
+      (b: RangeBundle) => b.quote_ratio.points,
       {
         shouldPatchBoundary: isSyntheticHogaGapPoint,
         patchPastTail: {
@@ -364,7 +368,7 @@ describe('makePastCachedProjector — hoga gap expansion happens after the split
     );
 
     cached(bundle, axis, CTX_MASKED);
-    cached(tickBundle as any, axis, CTX_MASKED);
+    cached(tickBundle as never, axis, CTX_MASKED);
 
     expect(expandCalls).toEqual([
       { points: 1, fromT: undefined, toT: todayOpen },
@@ -375,9 +379,9 @@ describe('makePastCachedProjector — hoga gap expansion happens after the split
 });
 
 describe('Split Cache 등가 — Intra-Bar Max 필드 포함, intraMax ON/OFF 양쪽 (P5 회귀)', () => {
-  const getQR = (b: any) => b.quote_ratio.points;
-  const bidProj = (im: boolean) => (pts: any, ax: any, mask: boolean) => projectBidPoints(pts, ax, mask, im);
-  const askProj = (im: boolean) => (pts: any, ax: any, mask: boolean) => projectAskPoints(pts, ax, mask, im);
+  const getQR = (b: RangeBundle) => b.quote_ratio.points;
+  const bidProj = (im: boolean) => (pts: Readonly<RangeBundle['quote_ratio']['points']>, ax: VirtualAxis, mask: boolean) => projectBidPoints(pts, ax, mask, im);
+  const askProj = (im: boolean) => (pts: Readonly<RangeBundle['quote_ratio']['points']>, ax: VirtualAxis, mask: boolean) => projectAskPoints(pts, ax, mask, im);
   const CTX_RATIO_OFF: RatioPaneContext = {
     auctionWindowMask: true,
     outlierFilterEnabled: true,
@@ -461,7 +465,7 @@ function makeCumulativeBundle(nDays: number, extraToday: number[] = []) {
   fs.sort((a, b) => a.t - b.t);
   return {
     axis: createVirtualAxis(axisSegs),
-    bundle: { segments: snakeSegs, bucket_ms: 60_000, fill_strength: { points: fs } } as any,
+    bundle: { segments: snakeSegs, bucket_ms: 60_000, fill_strength: { points: fs } } as RangeBundle,
   };
 }
 

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ModalShell } from '../ui/ModalShell';
 import type { StudyViewGroup } from '../api/studyViews';
-import { StudyGroupPicker, validStudyGroupChoice, type StudyGroupChoice } from './StudyGroupPicker';
+import { StudyGroupPicker } from './StudyGroupPicker';
+import { validStudyGroupChoice, type StudyGroupChoice } from './StudyGroupPickerHelpers';
 import { useStudyViewMutations } from './useStudyViews';
 import { useLivePageStore } from '../state/livePage';
 

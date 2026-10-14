@@ -16,7 +16,8 @@ import {
 import MAStylePicker from './indicators/MAStylePicker';
 import ColorSwatchPicker from './indicators/ColorSwatchPicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
-import { SettingsRow, highlightLabel } from './settings/SettingsRow';
+import { SettingsRow } from './settings/SettingsRow';
+import { highlightLabel } from './settings/SettingsRowHelpers';
 import { DataSourceDetail } from './settings/DataSourceDetail';
 import {
   GeneralSection,

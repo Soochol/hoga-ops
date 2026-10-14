@@ -11,6 +11,8 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
 
 async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, mode: 'paper' | 'live' = 'live', maximize = true, sameDepth = false, priceOffset = 0) {
   await page.setViewportSize({ width: 1440, height: 1100 });
+  // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
+  await page.addInitScript(() => localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'UN' })));
   await installLiveMocks(page);
   const ws = mode === 'live' ? await installLiveWs(page) : null;
   await page.route(/^https?:\/\/[^/]+\/api\/symbols\/all$/, route => route.fulfill({ json: {
@@ -48,6 +50,15 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
       orders = path.endsWith('/modify') ? orders.map(order => order.orderId === targetId ? next : order) : [...orders, next];
     }
     await route.fulfill({ json: { command_id: body.command_id, order_id: operationId, status: 'accepted' } });
+  });
+  await page.route(/^https?:\/\/[^/]+\/api\/trading\/cancel-all$/, async route => {
+    const body = route.request().postDataJSON(); commands.push(body);
+    expect(route.request().headers()['x-hoga-order']).toBe('1');
+    const canceled = orders.filter(order => body.side == null || order.side === body.side);
+    orders = orders.filter(order => !canceled.includes(order));
+    await route.fulfill({ json: { command_id: body.command_id,
+      results: canceled.map(order => ({ order_id: order.orderId, accepted: true, operation_id: `cancel-${order.orderId}`, code: null, message: null })),
+    } });
   });
   await page.goto('/live');
   await page.getByRole('button', { name: '종목 검색 열기' }).click();
@@ -113,6 +124,104 @@ test('주문 한 건이 있는 칸의 가장자리도 드래그 정정하고 드
   await destination.dblclick();
   await expect(destination).toHaveText('80주');
   expect(commands).toHaveLength(2);
+});
+
+test('오른쪽 가장자리 주문 취소 메뉴는 실시간 갱신 중에도 화면 안에서 안정적으로 열린다', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  // ErrorBoundary가 처리한 렌더 오류도 검출한다.
+  page.on('console', message => {
+    if (message.type() === 'error' && message.text().includes('Maximum update depth')) errors.push(message.text());
+  });
+  const { window, commands, ws } = await setup(page, true);
+  await ws!.waitForSubscribe('005930');
+  const menu = page.getByRole('menu', { name: '주문 취소', exact: true });
+  for (const viewport of [{ width: 1440, height: 1100 }, { width: 800, height: 700 }]) {
+    await page.setViewportSize(viewport);
+    const row = window.locator('.order-row').last();
+    await row.scrollIntoViewIfNeeded();
+    const box = (await row.boundingBox())!;
+    await row.click({ button: 'right', position: { x: box.width - 0.25, y: box.height - 0.25 } });
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem', { name: '매수 모두 취소' })).toBeFocused();
+    const bounds = (await menu.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
+    const strength = viewport.width === 1440 ? 141 : 142;
+    ws!.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(), fill_strength_pct: strength,
+      trades: [{ price: 67200, qty: 78, side: 1 }],
+    });
+    await expect(window.locator('.order-info').nth(0)).toHaveText(`체결강도${strength}%`);
+    await expect(menu).toBeVisible();
+    expect(await menu.boundingBox()).toEqual(bounds);
+    expect(errors).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+  }
+  await window.locator('.order-row').last().click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: '전체 주문 취소' }).click();
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
+  expect(commands).toHaveLength(1);
+  expect(errors).toEqual([]);
+});
+
+test('venue 선택은 시세·잔량·체결을 바꾸고 주문은 같은 지정가로 통합 처리한다', async ({ page }) => {
+  const { window, commands, ws } = await setup(page);
+  await ws!.waitForSubscribe('005930');
+  await page.getByTestId('live-venue-picker').click();
+  await page.getByTestId('live-venue-option-NXT').click();
+  await expect(window.getByLabel('시세·주문 기준')).toHaveText('시세 NXT · 주문 통합(SOR)');
+  ws!.pushLive('005930', { kind: 'ob', venue: 'NXT', t_ms: Date.now(),
+    asks: Array.from({ length: 10 }, (_, i) => ({ price: 68300 + i * 100, qty: 300 + i })),
+    bids: Array.from({ length: 10 }, (_, i) => ({ price: 68200 - i * 100, qty: 400 + i })),
+    total_ask_qty: 3300, total_bid_qty: 4400,
+  });
+  ws!.pushLive('005930', { kind: 'trade', venue: 'NXT', t_ms: Date.now(), fill_strength_pct: 140,
+    trades: [{ price: 68200, qty: 77, side: 1 }],
+  });
+  await expect(window.getByLabel('매도총잔량 3,300')).toBeVisible();
+  await expect(window.getByLabel('매수총잔량 4,400')).toBeVisible();
+  await expect(window.locator('[data-order-price="68300"] .order-depth-qty')).toHaveText('300');
+  await expect(window.locator('.order-info').nth(0)).toHaveText('체결강도140%');
+  await expect(window.locator('.order-info').nth(1)).toHaveText('68,20077');
+  // Another market's prints must not replace the selected NXT tape.
+  ws!.pushLive('005930', { kind: 'trade', venue: 'KRX', t_ms: Date.now(), fill_strength_pct: 50,
+    trades: [{ price: 65000, qty: 999, side: -1 }],
+  });
+  await window.getByRole('button', { name: /매수 68,200원 주문 추가/ }).dblclick();
+  await expect(window.getByLabel('매수 68,200원 주문', { exact: true })).toHaveText('10주');
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toEqual({ account_seq: 1, command_id: expect.any(String), code: '005930',
+    side: 'BUY', price: 68200, quantity: 10, confirm_high_value: false });
+  await expect(window.locator('.order-info').nth(1)).toHaveText('68,20077');
+});
+
+test('다른 탭의 venue 전환은 드래그를 중단하고 입력 수량과 계좌 주문을 유지한다', async ({ page, context }, testInfo) => {
+  const { window, commands } = await setup(page, true);
+  await window.getByLabel('신규 주문 수량').fill('75');
+  const sibling = await context.newPage();
+  await sibling.goto(new URL('/config.json', page.url()).href);
+  const chip = window.getByLabel('매수 67,200원 주문', { exact: true });
+  const from = (await chip.boundingBox())!;
+  const target = (await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 });
+  await expect(page.getByLabel('주문 드래그 미리보기')).toBeVisible();
+  await expect(window.getByRole('combobox', { name: '주문 모드' })).toBeDisabled();
+  await sibling.evaluate(() => localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'NXT' })));
+  await expect(window.getByLabel('시세·주문 기준')).toHaveText('시세 NXT · 주문 통합(SOR)');
+  await expect(page.getByLabel('주문 드래그 미리보기')).toHaveCount(0);
+  await expect(window.locator('.order-target')).toHaveCount(0);
+  await expect(window.getByRole('combobox', { name: '주문 모드' })).toBeEnabled();
+  await page.mouse.up();
+  await expect(window.getByLabel('신규 주문 수량')).toHaveValue('75');
+  await expect(chip).toHaveText('70주');
+  expect(commands).toHaveLength(0);
+  await window.screenshot({ path: testInfo.outputPath('venue-order-window.png') });
+  await sibling.close();
 });
 
 test('576px 주문창은 폰트·24px 호가·수량 한 줄을 유지하고 매수 가능을 설정 오른쪽에 표시한다', async ({ page }, testInfo) => {

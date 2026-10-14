@@ -6,7 +6,7 @@ beforeAll(async () => {
   // Prime the apiUrl config cache so the first fetch in each test is the
   // actual API call (and f.mock.calls[0] is the endpoint, not /config.json).
   __resetConfigForTests();
-  const primer = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  const primer = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok: true,
     status: 200,
     json: async () => ({ api_url: 'http://test.local' }),
@@ -21,7 +21,7 @@ beforeEach(() => {
 
 describe('getCalendar', () => {
   it('encodes code/year/month query params and returns CalendarResponse', async () => {
-    const f = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    const f = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -40,7 +40,7 @@ describe('getCalendar', () => {
   });
 
   it('throws on non-ok response', async () => {
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: false,
       status: 500,
     } as Response);

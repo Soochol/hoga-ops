@@ -164,7 +164,7 @@ const candlesRangeMock: {
   isPlaceholderData: boolean; isFetching: boolean; isHistoricalDeltaFetching: boolean;
   data: unknown;
 } = { isPlaceholderData: false, isFetching: false, isHistoricalDeltaFetching: false, data: null };
-const useRangeCandlesDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+const useRangeCandlesDeltaSpy = vi.fn<(...args: unknown[]) => Record<string, unknown>>(() => ({
   data: candlesRangeMock.data,
   isLoading: false,
   error: null,
@@ -172,7 +172,7 @@ const useRangeCandlesDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   isFetching: candlesRangeMock.isFetching,
   isHistoricalDeltaFetching: candlesRangeMock.isHistoricalDeltaFetching,
 }));
-const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => Record<string, unknown>>(() => ({
   data: null,
   isLoading: false,
   error: null,
@@ -180,7 +180,7 @@ const useRangeHogaDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
   isFetching: rangeMock.isFetching,
   isHistoricalDeltaFetching: rangeMock.isHistoricalDeltaFetching,
 }));
-const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => Record<string, unknown>>(() => ({
   data: null,
   isLoading: false,
   isPending: false,
@@ -192,7 +192,7 @@ const useRangeSidecarDeltaSpy = vi.fn<(...args: unknown[]) => any>(() => ({
 // 일·주·월 프로그램 폴백(오늘분 단일 날짜)은 델타가 아니라 `useRange` 를 쓴다.
 // 스파이가 없으면 그 import 가 undefined 가 되어 훅이 통째로 죽으므로, 새 소비를
 // 추가할 때 이 팩토리도 같이 늘려야 한다.
-const useRangeSpy = vi.fn<(...args: unknown[]) => any>(() => ({
+const useRangeSpy = vi.fn<(...args: unknown[]) => Record<string, unknown>>(() => ({
   data: null,
   isLoading: false,
   error: null,

@@ -2,7 +2,8 @@
  *  Stateless — owner passes the current checked value and a click handler.
  *  Shared (both via `IndicatorPrefRows`) by `SettingsSections` (⚙️ Settings
  *  modal) and the 「지표」 modal's hoga Configs, so one row style serves both. */
-import { SettingsRow, ToggleSwitch, highlightLabel } from './SettingsRow';
+import { SettingsRow, ToggleSwitch } from './SettingsRow';
+import { highlightLabel } from './SettingsRowHelpers';
 
 export default function ToggleRow({
   label,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildDepthHeatmapCells } from './DepthHeatmapOverlay';
+import { buildDepthHeatmapCells } from './DepthHeatmapOverlayHelpers';
 import type { DepthHeatmapPoint } from './depthHeatmapWire';
 
 const axis = { toVirtual: (ms: number) => ms } as never; // identity axis

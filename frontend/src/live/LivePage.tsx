@@ -1,3 +1,4 @@
+import { targetChartWindow } from '../state/workspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router';
@@ -18,7 +19,6 @@ import { WorkspaceCanvas } from './workspace/WorkspaceCanvas';
 import { WorkspaceLiveToolbar } from './workspace/WorkspaceLiveToolbar';
 import {
   WorkspaceIndicatorDrawer,
-  targetChartWindow,
 } from './workspace/WorkspaceIndicatorDrawer';
 import { requestTimeframeJumpFrom } from './workspace/jumpControls';
 import { registerIndicatorDrawerOpener } from './workspace/indicatorDrawerControls';

@@ -1,7 +1,7 @@
 import type { CatalogEntry } from './types';
 import { DepthPeakForm } from '../paramForms';
 
-export const ask_depth_new_high: CatalogEntry = {
+export const ask_depth_new_high: CatalogEntry<'ask_depth_new_high'> = {
   label: '매도 총잔량 peak',
   defaultParams: { lookback: 20, threshold_pct: 100 },
   ParamForm: DepthPeakForm,

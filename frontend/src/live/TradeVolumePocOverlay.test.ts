@@ -3,7 +3,8 @@ import { createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { createVirtualAxis } from '../util/virtualAxis';
 import type { PaneId } from '../chart/drawing/types';
-import TradeVolumePocOverlay, { buildTradeVolumePocSegments } from './TradeVolumePocOverlay';
+import TradeVolumePocOverlay from './TradeVolumePocOverlay';
+import { buildTradeVolumePocSegments } from './TradeVolumePocOverlayHelpers';
 
 const primitiveMocks = vi.hoisted(() => ({
   instances: [] as Array<{ setSegments: ReturnType<typeof vi.fn>; options: unknown }>,

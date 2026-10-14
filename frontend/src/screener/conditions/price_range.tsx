@@ -1,16 +1,8 @@
-import type { PriceRangeParams } from '../../api/screener';
 import type { CatalogEntry } from './types';
-import { Num } from '../paramForms';
+import { PriceRangeForm } from './price_rangeForm';
 
-function PriceRangeForm({ params, onChange }: { params: PriceRangeParams; onChange: (p: PriceRangeParams) => void }) {
-  return <div className="flex items-center gap-2">
-    <Num ariaLabel="최저가(원)" min={0} value={params.min} onChange={(n) => onChange({ ...params, min: n })} w="w-24" />
-    <span className="text-sm text-fg-dim">~</span>
-    <Num ariaLabel="최고가(원)" min={0} value={params.max} onChange={(n) => onChange({ ...params, max: n })} w="w-24" />
-    <span className="text-sm text-fg-dim">원</span></div>;
-}
 
-export const price_range: CatalogEntry = {
+export const price_range: CatalogEntry<'price_range'> = {
   label: '현재가 범위', defaultParams: { min: 1000 }, ParamForm: PriceRangeForm,
   summarize: (p) => {
     if (p.min != null && p.max != null) return `${p.min}~${p.max}원`;

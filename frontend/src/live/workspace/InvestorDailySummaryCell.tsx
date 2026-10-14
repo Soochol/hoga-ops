@@ -1,6 +1,6 @@
 import { formatInvestorK } from '../investorDailySummary';
 import type { InvestorNetUnit, InvestorTradeSide } from '../../api/types';
-import { formatAmount, qtyClass } from '../../sidebar/InvestorTrendEstimateCard';
+import { formatAmount, qtyClass } from '../../sidebar/InvestorTrendEstimateCardHelpers';
 
 
 const exactQuantity = new Intl.NumberFormat('en-US');

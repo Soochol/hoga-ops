@@ -1,27 +1,11 @@
 import type { BreakoutParams, DepthPeakParams, DepthPeakPeriodParams, DepthRenewalParams, PeriodParams } from '../api/screener';
+import { RENEWAL_MIN_HHMM, RENEWAL_MAX_HHMM, hhmmToTimeValue, timeValueToHhmm } from './paramFormsHelpers';
 
-// 기준시각 허용 범위(KST) — 백엔드 validate_session_start_hhmm 과 같은 경계다.
-// 여기서 막는 것은 편의고, 진짜 계약은 서버가 지킨다.
-const RENEWAL_MIN_HHMM = 900;
-const RENEWAL_MAX_HHMM = 1959;
-
-/** HHMM 정수(1200) ↔ <input type="time"> 값('12:00'). 저장 형식은 정수로 유지한다. */
-export function hhmmToTimeValue(hhmm: number): string {
-  const hh = Math.floor(hhmm / 100);
-  const mm = hhmm % 100;
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-export function timeValueToHhmm(value: string): number | null {
-  const m = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!m) return null;
-  const hhmm = Number(m[1]) * 100 + Number(m[2]);
-  if (hhmm < RENEWAL_MIN_HHMM || hhmm > RENEWAL_MAX_HHMM) return null;
-  return hhmm;
-}
 
 export function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div className="text-2xs font-semibold uppercase text-fg-dim">{children}</div>;
 }
+
 export function Num({ value, onChange, label, ariaLabel, w = 'w-20', min, max }: {
   value: number | undefined; onChange: (n: number | undefined) => void;
   /** 눈에 보이는 라벨. 문장형 폼에서는 생략하고 ariaLabel 만 준다. */
@@ -57,6 +41,7 @@ export function Num({ value, onChange, label, ariaLabel, w = 'w-20', min, max }:
     </label>
   );
 }
+
 export function Select<T extends string>({ value, onChange, options, label }: {
   value: T; onChange: (v: T) => void; options: [T, string][]; label: string;
 }) {
@@ -67,6 +52,7 @@ export function Select<T extends string>({ value, onChange, options, label }: {
     </select>
   );
 }
+
 
 /** (lookback N, period M) 돌파 폼 — new_high / new_high_vol 공용. 문장형:
  *  "최근 [N]일 내 [M]일 신고" — 신고가/신고거래량 어느 쪽인지는 조건 행 라벨이 말한다. */
@@ -81,6 +67,7 @@ export function BreakoutForm({ params, onChange }: { params: BreakoutParams; onC
     <span className="text-sm text-fg-dim">일 신고</span></div>;
 }
 
+
 /** (period M)일 폼 — new_high_today / new_high_vol_today(당일) 공용. */
 export function PeriodForm({ params, onChange }: { params: PeriodParams; onChange: (p: PeriodParams) => void }) {
   return <div className="flex items-center gap-2">
@@ -88,6 +75,7 @@ export function PeriodForm({ params, onChange }: { params: PeriodParams; onChang
       value={params.period} onChange={(n) => onChange({ period: n ?? 1 })} />
     <span className="text-sm text-fg-dim">일</span></div>;
 }
+
 
 /** (비교기간 N, 과거 peak 대비 X%) 폼 — ask/bid_depth_new_high(총잔량 신고) 공용. */
 export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; onChange: (p: DepthPeakParams) => void }) {
@@ -103,6 +91,7 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
     <div className="text-2xs text-fg-dim">관심·히트맵 종목 중 데이터 보유 종목 대상</div>
   </div>;
 }
+
 
 /** (기간 N, 비교 창 M, 과거 peak 대비 X%) 폼 — ask/bid_depth_new_high_period 공용.
  *  문장형은 BreakoutForm("최근 [N]일 내 [M]일 신고")을 따른다 — 같은 (N, M) 규약이라
@@ -127,6 +116,7 @@ export function DepthPeakPeriodForm({ params, onChange }: { params: DepthPeakPer
     </div>
   </div>;
 }
+
 
 /** (기준시각, 이전 최대 대비 X%) 폼 — ask/bid_depth_renewal 공용. 당일 전용.
  *  문구는 side 중립이다(DepthPeakForm 과 같은 규칙) — 어느 쪽인지는 조건 행 라벨이
@@ -158,5 +148,3 @@ export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalPar
     </div>
   </div>;
 }
-
-

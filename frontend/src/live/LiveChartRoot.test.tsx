@@ -23,7 +23,8 @@ if (typeof window !== 'undefined' && !window.ResizeObserver) {
   };
 }
 
-import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS, shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRoot';
+import { LiveChartRoot, SIDECAR_REVEAL_CAP_MS } from './LiveChartRoot';
+import { shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRootHelpers';
 import { useLivePageStore } from '../state/livePage';
 import { retainRightPriceScaleWidth } from '../chart/util/retainRightPriceScaleWidth';
 import { CandlestickSeries, createChartEx, LineSeries, TickMarkType, type IChartApi } from 'lightweight-charts';
@@ -2502,7 +2503,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // logical.from >= 0 means the visible-range origin is inside loaded
     // bars — no extension needed.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2530,7 +2531,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // so scrolling there is already covered by the seeded fetch and must NOT
     // trigger an additional extension.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2559,7 +2560,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Handler should prepend one step of STEP_TRADING_DAYS['1m']=5 trading days,
     // weekend-skipped (subtractWeekdaysKst) — one backend date-parallel batch.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2593,7 +2594,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // SAME `from` legitimately extends (test above); with NO data it must not.
     const emptyBundle = { ...TWO_SEGMENT_BUNDLE, candles: [] };
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2618,13 +2619,13 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 
   it('does NOT fire extendHistoricalRange before the initial viewport has been applied', () => {
     const handlers: Array<(r: unknown) => void> = [];
-    const chart = buildChartMockCapturing(handlers) as any;
+    const chart = buildChartMockCapturing(handlers);
     const ts = chart.timeScale();
     ts.subscribeVisibleLogicalRangeChange = vi.fn((h: (r: unknown) => void) => {
       handlers.push(h);
       h({ from: -50.3, to: 100.7 });
     });
-    vi.mocked(createChartEx).mockImplementationOnce(() => chart);
+    vi.mocked(createChartEx).mockImplementationOnce(() => chart as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2648,7 +2649,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
 
   it('does NOT apply a stale backfill debounce after the timeframe changed', () => {
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
     useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
 
     render(
@@ -2680,7 +2681,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // 트리거가 candles>0(데이터 도착) + from<0(빈영역)에 자동 dispatch함을 잠근다.
     // 연속 스텝(settle-loop)은 'dispatches the next step ... while whitespace remains'가 커버.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2715,7 +2716,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     useLivePageStore.setState({ historicalFromDate: '20260519' }); // earlier than axisEarliest '20260526'
 
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2750,7 +2751,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // ever seeing more history; this guards against that regression.
     useLivePageStore.setState({ candleTimeframe: 'D' });
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2781,7 +2782,7 @@ describe('LiveChartRoot lazy fetch trigger', () => {
     // Any positive 'from' means the user is still inside the loaded
     // range and we should NOT prefetch yet.
     const handlers: Array<(r: unknown) => void> = [];
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildChartMockCapturing(handlers) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot
@@ -2936,7 +2937,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('repositions to the pre-swap view (same bars) after a historical prepend', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     // 1) Initial paint: today-only, historicalFromDate=null. The initial-view
     //    effect owns the FIRST viewport placement; the layout-effect snapshot
@@ -2999,7 +3000,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex = vi.fn(() => VR_TO_SEC); // index unchanged across the swap
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3030,7 +3031,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('restore: a scrolled-back tab reprojects its saved time anchor to a logical range', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const rightEdgeMs = TODAY_OPEN_MS + 2 * 3600_000; // 2h past open, mid-session
     const barSpan = 120;
@@ -3059,7 +3060,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(99);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     // 100 candles + saved span 50 + rightOffset 15 → from max(0,100-50)=50,
     // to 115. Distinct from the default 300-window ({from:0,to:115}) so this
@@ -3080,7 +3081,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(99);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3105,7 +3106,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(249);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3128,7 +3129,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(100).mockReturnValueOnce(99).mockReturnValueOnce(99);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const restoreViewport = {
       rightEdgeMs: TODAY_OPEN_MS + 100 * 60_000,
@@ -3161,7 +3162,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('restore: a user-adjusted live-edge tab preserves the saved time anchor', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const rightEdgeMs = TODAY_OPEN_MS + 100 * 60_000;
     const barSpan = 50;
@@ -3187,7 +3188,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(119);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3212,7 +3213,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(249);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="D"
@@ -3238,7 +3239,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const ts = makeTs(handlers);
     ts.width.mockReturnValue(628);
     ts.timeToIndex.mockReturnValue(463);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="D"
@@ -3263,7 +3264,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(200);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="D"
@@ -3289,7 +3290,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const ts = makeTs(handlers);
     ts.width.mockReturnValue(628);
     ts.timeToIndex.mockReturnValue(249);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="D"
@@ -3321,7 +3322,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(null);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3337,7 +3338,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(699);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="3m"
@@ -3360,7 +3361,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.timeToIndex.mockReturnValue(null);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3382,7 +3383,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.getVisibleLogicalRange = vi.fn(() => ({ from: -3000, to: 100 })); // 빈영역
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
@@ -3411,7 +3412,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.getVisibleLogicalRange = vi.fn(() => ({ from: -9000, to: 100 }));
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
@@ -3449,7 +3450,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.getVisibleLogicalRange = vi.fn(() => ({ from: -50, to: 100 })); // 빈영역 남음
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={emptyBundle}
@@ -3472,7 +3473,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.getVisibleLogicalRange = vi.fn(() => ({ from: 4, to: 100 })); // 꽉 참
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" bundle={TWO_SEGMENT_BUNDLE}
@@ -3497,7 +3498,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.getVisibleLogicalRange = vi.fn(() => ({ from: -60, to: 100 }));
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
@@ -3524,7 +3525,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
     ts.getVisibleLogicalRange = vi.fn(() => ({ from: -60, to: 100 }));
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const props = (ext: boolean) => (
       <LiveChartRoot code="005930" timeframe="D" bundle={TWO_SEGMENT_BUNDLE}
@@ -3548,7 +3549,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('does NOT restore on pure SSE growth while historicalFromDate is null', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3572,7 +3573,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('does NOT restore when the extension adds no earlier bar (holiday-only chunk)', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3609,7 +3610,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
     // initial-view (first paint) and the repositioner (prepends).
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     // 1) Fresh load, minute: initial-view effect applies ONCE.
     const { rerender } = render(
@@ -3660,7 +3661,7 @@ describe('LiveChartRoot historical-prepend viewport preservation', () => {
   it('reposition target derives from the at-swap view, not the at-trigger view (no staleness)', () => {
     const handlers: Array<(r: unknown) => void> = [];
     const ts = makeTs(handlers);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildStableCapturingMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m"
@@ -3805,7 +3806,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
   it('live edge: 소스가 갈리면 초기 분봉 배치를 다시 적용한다(span 이 데이터로 클램프)', () => {
     // 오른쪽 끝을 벤더 마지막 봉에 둔다 → 스냅샷의 atLiveEdge = true.
     const ts = makeTs(todayIdx(TODAY_OPEN_MS + 60_000), todayIdx(VENDOR_TS[4]));
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
@@ -3848,7 +3849,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     // 갱신하지 않는다(오전 실측: set 직후 scrollPosition() 이 여전히 3534) —
     // scrollToPosition 만이 setData 재앵커가 참조하는 상태를 바꾼다.
     const ts = makeTs(todayIdx(TODAY_OPEN_MS + 60_000), todayIdx(VENDOR_TS[4]));
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
@@ -3880,7 +3881,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     // 오른쪽 끝을 마지막 봉보다 한참 과거로 → atLiveEdge = false.
     const anchorMs = TODAY_OPEN_MS + 60_000;
     const ts = makeTs(todayIdx(TODAY_OPEN_MS), todayIdx(anchorMs));
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
@@ -3916,8 +3917,8 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     // 봉 전환이 `viewKey` 를 바꿔 차트를 remount 하므로 **두 번** 만들어진다.
     // `mockImplementation`(영구)을 쓰면 뒤따르는 테스트의 mock 까지 덮어써서
     // 크로스헤어 스위트가 통째로 깨진다 — Once 를 필요한 수만큼 건다.
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as unknown as ReturnType<typeof createChartEx>);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="vendor"
@@ -3966,7 +3967,7 @@ describe('LiveChartRoot source-swap viewport reseat', () => {
     // 되먹임이 멈추지 않는다 — 게이트를 넓혔을 때 토글 한 번에 84봉 → 1,688봉으로
     // 워크백이 폭주했다. 그래서 재착석은 **소스가 실제로 갈린 커밋 한 번**뿐이다.
     const ts = makeTs(todayIdx(TODAY_OPEN_MS), todayIdx(TODAY_OPEN_MS + 60_000));
-    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => buildMock(ts) as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4112,7 +4113,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
 
   it('중간 삽입이면 재투영한다 — 팬을 한 적 없어도(좌단을 안 건드리므로 안전)', () => {
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4157,7 +4158,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
 
   it('SSE 성장(마지막 봉이 늘어나는 것)에는 손대지 않는다', () => {
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4191,7 +4192,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     // 들어왔다 빠지는 커밋** — 공유 timeScale 의 union 인덱스는 전부 밀리는데 캔들
     // 모양(firstMs·lastMs·count)은 불변이라 기존 판별식 네 행이 모두 눈멀었다.
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4228,7 +4229,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     // 위 행이 열리면 캔들 불변 커밋(SSE 시세 틱 등)마다 재투영 경로가 돈다 —
     // 리매핑이 없으면 shift=0 이라 EPSILON 스킵으로 끝나야 중복 repaint 가 없다.
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4270,7 +4271,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
     // 구별하지 못한다. 구별하는 값은 **shift** 다: 0 이면 축이 안 움직였다는 뜻이고,
     // 스냅샷과 현재의 차이는 전부 사용자가 만든 것이라 보존해야 한다.
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4305,7 +4306,7 @@ describe('LiveChartRoot mid-array gap-fill insertion', () => {
 
   it('드래그 중이어도 축이 **실제로** 밀렸으면 재투영한다 — 게이트가 넓어지기만 한 게 아니다', () => {
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4432,7 +4433,7 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
 
   it('좌측 트림이면 재투영한다 — 같은 봉이 화면에 남는다', () => {
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"
@@ -4474,7 +4475,7 @@ describe('LiveChartRoot left-trim (contraction) viewport preservation', () => {
 
   it('좌단·우단이 함께 바뀌면(소스 교체 모양) 손대지 않는다 — 판별식은 lastMs 불변을 요구한다', () => {
     const h = makeHarness();
-    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as any);
+    vi.mocked(createChartEx).mockImplementationOnce(() => h.chart as unknown as ReturnType<typeof createChartEx>);
 
     const { rerender } = render(
       <LiveChartRoot code="005930" timeframe="1m" candleSourceKey="disk"

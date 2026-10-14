@@ -1,5 +1,5 @@
 import type { StockDate } from '../api/types';
-import { STATE_SEVERITY } from './DiskStateBadge';
+import { STATE_SEVERITY } from './DiskStateBadgeHelpers';
 
 export type SortKey =
   | 'state' | 'date' | 'captured' | 'volume' | 'pages' | 'size' | 'ohlc'

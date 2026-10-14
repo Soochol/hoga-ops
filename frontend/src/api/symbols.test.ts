@@ -6,7 +6,7 @@ beforeEach(() => {
 });
 
 function mockFetch(body: unknown, ok = true) {
-  return vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  return vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok,
     status: ok ? 200 : 500,
     json: async () => body,

@@ -1,37 +1,14 @@
-import { Suspense, lazy } from 'react';
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+import './styles/global.css';
+import { Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { LivePage } from './live/LivePage';
 import AppErrorBoundary from './ui/AppErrorBoundary';
-// 앱 서체(Pretendard dynamic-subset)를 번들에 내장한다 — ADR-0134 §4 (폰트
-// self-host). 이전에는 index.html 이 jsdelivr CDN 을 렌더 블로킹으로 링크해,
-// CDN 이 느린 날 첫 페인트 전체가 따라 늦어졌다(유일한 외부 런타임 의존).
-// vite 가 이 CSS 를 entry 스타일시트로 추출해 <link> 로 싣으므로 "첫 페인트에
-// 올바른 서체" 라는 렌더 블로킹 성질은 prod 빌드에서 그대로 유지된다.
-// unicode-range 92분할이라 실제로 화면에 있는 글자 범위의 woff2 만 받는다.
-import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
-import './styles/global.css';
+import { LandingPage, Heatmap, Inventory, Screener, Capture, Sentiment, Market, StudyBookmarkRedirect } from './mainRoutes';
 
-/*
- * `/live` 만 정적(기본 라우트 — lazy 로 내리면 첫 페인트에 왕복만 추가된다).
- * 나머지는 lazy — 이 파일이 전 페이지를 정적 import 하던 동안 vite.config 의
- * manualChunks 는 **아무 효과가 없었다**: 청크로 쪼개지긴 하지만 정적 그래프에
- * 있으면 전부 modulepreload 로 즉시 페치되므로 `/live` 첫 페인트가 screener·
- * capture·inventory·heatmap 코드를 다 기다렸다.
- *
- * App.tsx 의 드로어·설정 모달도 같은 이유로 함께 lazy 여야 한다 — App 은 레이아웃
- * 라우트라 항상 로드되므로, 거기서 정적 import 하면 라우트만 lazy 로 바꿔도 초기
- * 번들이 줄지 않는다(그쪽 주석에 실측 수치).
- */
-const LandingPage = lazy(() => import('./home/LandingPage'));
-const Heatmap = lazy(() => import('./pages/Heatmap').then((m) => ({ default: m.Heatmap })));
-const Inventory = lazy(() => import('./pages/Inventory'));
-const Screener = lazy(() => import('./pages/Screener').then((m) => ({ default: m.Screener })));
-const Capture = lazy(() => import('./pages/Capture'));
-const Sentiment = lazy(() => import('./pages/Sentiment'));
-const Market = lazy(() => import('./pages/Market'));
 // `/settings` **페이지는 없다** — 설정은 앱 전역 드로어 하나이고(`App` 소유), 트리거는
 // 전부 `requestSettingsModal()` 로 모인다. 페이지 사본이 있던 시절엔 같은 내용이 두
 // 표면으로 열렸다. 옛 북마크는 아래 라우트가 `/live` 로 받는다.
@@ -57,11 +34,13 @@ const qc = new QueryClient({
   },
 });
 
+
 // past-candles 청크·canonical 병합본은 불변(완결 과거일)이므로 전역 30분보다 오래
 // 살려 "점심 후 복귀"(gcTime 초과) 시나리오에서도 네트워크 재-워크백 없이 캐시에서
 // 병합 히스토리를 복원한다. 훅이 명시하는 staleTime/refetchInterval 은 우선순위가
 // 높아 불변(RQ v5: 훅 옵션 > setQueryDefaults > defaultOptions) — gcTime 만 승격된다.
 qc.setQueryDefaults(['live', 'past-candles'], { gcTime: 2 * 60 * 60_000 });
+
 
 // range 지표(mode=hoga/sidecar) 델타의 canonical 병합본도 캔들과 동일 수명(2h)으로
 // 승격 — 그래야 웜 복귀 시 캔들만 딥·지표는 얕은 비대칭이 안 생긴다. 실 청크 쿼리
@@ -69,24 +48,6 @@ qc.setQueryDefaults(['live', 'past-candles'], { gcTime: 2 * 60 * 60_000 });
 // identity당 1개인 병합본(['live','range-merged',identity])에만 준다.
 qc.setQueryDefaults(['live', 'range-merged'], { gcTime: 2 * 60 * 60_000 });
 
-// AppErrorBoundary sits OUTSIDE the providers on purpose: a throw from the
-// QueryClientProvider/BrowserRouter subtree — including anything a route
-// renders — must still land somewhere that can paint. Inside them, a failure
-// during provider setup would escape to the root and blank the page again.
-/**
- * 옛 `/study` 북마크의 착지점.
- *
- * `<Navigate to="/live" replace />` 로는 **안 된다** — 그건 쿼리를 버리고, `/study` 의
- * 유일한 딥링크 파라미터가 하필 `?view=`(저장뷰)였다. 그대로 실어 보내면 `/live` 의
- * `useSavedRangeDeepLink` 가 같은 파라미터를 읽어 저장뷰가 열린다: 북마크가 가리키던
- * 화면이 새 페이지에서 재현된다.
- *
- * `search` 를 통째로 넘기는 것도 의도다 — 알던 키만 골라 옮기면 나중에 파라미터가
- * 늘 때 이 자리가 조용히 낡는다.
- */
-function StudyBookmarkRedirect() {
-  return <Navigate to={{ pathname: '/live', search: useLocation().search }} replace />;
-}
 
 // 갱신 루프 덫 — DEV 에서만. 동적 import 라 프로덕션 번들에는 들어가지 않는다
 // (`import.meta.env.DEV` 가 상수 false 로 접히며 분기째 제거된다). 감시는 스토어
@@ -94,6 +55,7 @@ function StudyBookmarkRedirect() {
 if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
   void import('./state/updateLoopWatch').then((m) => m.installUpdateLoopWatch());
 }
+
 
 createRoot(document.getElementById('root')!).render(
   <AppErrorBoundary>

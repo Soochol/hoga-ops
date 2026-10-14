@@ -16,7 +16,8 @@
 import { act, fireEvent, render } from '@testing-library/react';
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createVirtualAxis } from '../util/virtualAxis';
-import DrawingOverlay, { __test__ } from './DrawingOverlay';
+import DrawingOverlay from './DrawingOverlay';
+import { __test__ } from './DrawingOverlayHelpers';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing } from './drawing/types';
 

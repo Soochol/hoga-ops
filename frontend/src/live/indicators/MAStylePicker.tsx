@@ -5,6 +5,8 @@ import { resolveTokens } from '../../util/tokens';
 import { createPortal } from 'react-dom';
 import { LINE_STYLES, type LineStyle } from '../../chart/drawing/types';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
+import { MA_COLOR_ROWS } from './MAStylePickerHelpers';
+
 
 /** 모양 라벨(한국어). LineStyle 값이 CSS border-style 키워드와 동일해 미리보기는 값 그대로 사용. */
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
@@ -13,23 +15,14 @@ const LINE_STYLE_LABELS: Record<LineStyle, string> = {
   dotted: '점선',
 };
 
-/** 8 hue × 4 shade. shade 인덱스 0=darkest → 3=lightest. mockup의
- *  컬러 palette layout과 1:1 일치. tokens.css의 --ma-N 8색 (단일 행)
- *  과는 별개의 확장 set — 사용자가 슬롯당 색상을 더 풍부하게 고를 수
- *  있도록 한다. tokens.css의 --ma-N 은 default 슬롯 자동 배정용으로
- *  남는다. */
-export const MA_COLOR_ROWS: readonly (readonly string[])[] = [
-  ['#374151', '#1E3A8A', '#581C87', '#7F1D1D', '#7C2D12', '#78350F', '#134E4A', '#14532D'],
-  ['#6B7280', '#1D4ED8', '#7E22CE', '#B91C1C', '#C2410C', '#B45309', '#0F766E', '#15803D'],
-  ['#9CA3AF', '#3B82F6', '#A855F7', '#EF4444', '#F97316', '#FBBF24', '#14B8A6', '#22C55E'],
-  ['#D1D5DB', '#93C5FD', '#D8B4FE', '#FCA5A5', '#FDBA74', '#FDE68A', '#5EEAD4', '#86EFAC'],
-];
 
 const LINE_WIDTHS: readonly (1 | 2 | 3 | 4)[] = [1, 2, 3, 4];
+
 
 /** 팝오버 폭. 8열 팔레트(22px 스와치 + 4px gap)와 4열 굵기 카드가 함께 눕는 폭이자
  *  `useAnchoredPopover` 의 오른쪽 정렬 기준 — 그래서 CSS 가 아니라 값으로 산다. */
 const POPOVER_WIDTH = 280;
+
 
 type Props = {
   color: string;
@@ -43,6 +36,7 @@ type Props = {
   lineStyle?: LineStyle;
   onLineStyleChange?: (lineStyle: LineStyle) => void;
 };
+
 
 /** MA 슬롯의 color + lineWidth 를 한 popover에서 동시에 고른다.
  *  trigger는 현재 색을 보여주는 작은 swatch. 클릭하면 32색 grid +

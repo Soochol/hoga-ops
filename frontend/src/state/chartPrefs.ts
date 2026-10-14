@@ -863,11 +863,11 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
       })),
 
     setLineStyle: (key, patch) =>
-      set((s) => {
+      set((_s) => {
         const out: Record<string, unknown> = {};
         if (patch.color !== undefined) out[`${key}Color`] = patch.color;
         if (patch.lineWidth !== undefined) out[`${key}Width`] = patch.lineWidth;
-        return out as Partial<typeof s>;
+        return out as Partial<typeof _s>;
       }),
 
     resetIndicatorModalBucket: () =>

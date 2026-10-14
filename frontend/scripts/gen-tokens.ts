@@ -9,7 +9,7 @@
  *
  * Run via: npm run gen:tokens
  *
- * Color tokens in tokens.css (`/* ───── Color · ... ───── *​/` blocks) are
+ * Color tokens in tokens.css (`/* ───── Color · ... ───── * /` blocks) are
  * preserved verbatim — only the regions between BEGIN/END auto-generated
  * markers are rewritten.
  *

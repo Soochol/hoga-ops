@@ -24,7 +24,7 @@ const SYMBOLS = {
 const CALENDAR = { cells: [], as_of_ms: 1 };
 
 function setup(addItemsResp: unknown = { enqueued: [{}], deduped: [] }) {
-  const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+  const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
     const s = String(url);
     if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
     if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
@@ -291,7 +291,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
 
   it('shows the blocked message when all pairs blocked (HTTP 409)', async () => {
     // Mock /api/captures/items to return 409 with the blocked payload.
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
       if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;
@@ -322,7 +322,7 @@ describe('CaptureForm enqueue 503 reason surfacing', () => {
   });
 
   it('shows the blocked message on a 201 partial-success (some accepted + some blocked)', async () => {
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => SYMBOLS } as Response;
       if (s.includes('/api/inventory/calendar')) return { ok: true, status: 200, json: async () => CALENDAR } as Response;

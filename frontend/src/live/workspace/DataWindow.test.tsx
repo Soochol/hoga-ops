@@ -3,7 +3,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-import { DataWindow, resolveBookBaseline } from './DataWindow';
+import { DataWindow } from './DataWindow';
+import { resolveBookBaseline } from './bookDisplay';
 import type { WorkspaceWindow } from '../../state/workspace';
 import {
   __resetGroupChartLinksForTests,

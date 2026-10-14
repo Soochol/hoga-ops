@@ -159,7 +159,7 @@ test('refresh, minute jump and held drag keep the target date and backfill ancho
     store.getState().applyWorkspaceSnapshot({ windows: [] });
     store.getState().addWindow('chart');
     const wins = store.getState().windows.filter((w: { kind: string }) => w.kind === 'chart').slice(0, 2);
-    store.setState({ windows: wins.map((w: any, i: number) => ({ ...w, group: 1,
+    store.setState({ windows: wins.map((w: WorkspaceWindow, i: number) => ({ ...w, group: 1,
       rect: { x: i * .5, y: 0, w: .5, h: 1 }, chart: { ...w.chart, timeframe: i ? 'D' : '1m' } })),
       zOrder: wins.map((w: { id: string }) => w.id), maximizedId: null });
     for (const w of wins) store.getState().setWindowSymbol(w.id, { code: '098460', name: '고영', kind: 'stock' });

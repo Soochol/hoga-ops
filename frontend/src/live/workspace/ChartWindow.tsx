@@ -88,7 +88,8 @@ import {
   HogaplaySourceButton,
   type HogaplaySourceDisabledReason,
 } from './HogaplaySourceButton';
-import { HogaplaySourceChip, type HogaplayChipGapFill } from './HogaplaySourceChip';
+import { HogaplaySourceChip } from './HogaplaySourceChip';
+import { type HogaplayChipGapFill } from './HogaplaySourceChipHelpers';
 import {
   LIVE_FOCUS_HEADER_FOLD,
 } from './chartHeaderCompact';

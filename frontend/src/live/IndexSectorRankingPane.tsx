@@ -220,7 +220,7 @@ export function IndexSectorRankingPane({
     [activeSectorId, sectors],
   );
 
-  let body: ReactNode = null;
+  let body: ReactNode;
   if (isLoading) {
     body = <div className="p-md text-sm text-fg-dim">섹터 랭킹을 불러오는 중입니다</div>;
   } else if (error) {

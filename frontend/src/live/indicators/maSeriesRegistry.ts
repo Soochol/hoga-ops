@@ -1,7 +1,8 @@
+import type { SeriesType } from 'lightweight-charts';
 import type { ISeriesApi } from 'lightweight-charts';
 import { createWindowScopedRegistry } from './windowScopedRegistry';
 
-type MaSeries = ISeriesApi<'Line'>;
+type MaSeries = ISeriesApi<SeriesType>;
 
 /** Registry of MA slot line series, keyed by **(창, slot id)**. PaneLegendOverlay
  *  reads it to match `param.seriesData` entries to a slot (id → series → value),

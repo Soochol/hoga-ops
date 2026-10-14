@@ -44,15 +44,8 @@ import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { PAGE_MAX_W, PageContainer } from '../layout/PageContainer';
 import { persistJson, readJsonObject } from '../state/persist';
-import {
-  CARD_HEADER_RULE,
-  CardHeader,
-  DataStamp,
-  EmptyNote,
-  MarketCard,
-  ModeSwitch,
-  useCardPref,
-} from './marketCardBits';
+import { CARD_HEADER_RULE, CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
+import { useCardPref } from './marketCardBitsHelpers';
 import { priceDirClass } from '../ui/priceDir';
 import {
   AdvanceDeclineBar,

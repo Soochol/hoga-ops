@@ -1,7 +1,8 @@
+import type { SeriesType } from 'lightweight-charts';
 import type { ISeriesApi } from 'lightweight-charts';
 import { createWindowScopedRegistry } from './windowScopedRegistry';
 
-type DailyMaSeries = ISeriesApi<'Line'>;
+type DailyMaSeries = ISeriesApi<SeriesType>;
 
 /** Registry of daily-MA slot line series, keyed by **(창, slot id)** — the daily
  *  mirror of `maSeriesRegistry`. PaneLegendOverlay reads it to resolve each

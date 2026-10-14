@@ -21,7 +21,7 @@ const DEFAULT_ENVELOPE: SymbolsAllResponse = {
 };
 
 function setup(envelope: SymbolsAllResponse = DEFAULT_ENVELOPE) {
-  vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok: true, status: 200, json: async () => envelope,
   } as Response);
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });

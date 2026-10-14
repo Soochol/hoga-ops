@@ -9,6 +9,8 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
+from hoga.api import app as app_module
+from hoga.api.app import create_app
 from hoga.api.trading_routes import build_paper_router
 from hoga.live.buffer import LiveBuffer
 from hoga.live.snapshot import LiveSnapshot, SnapshotKind
@@ -38,7 +40,9 @@ class Feed:
         self.buffer = LiveBuffer()
         self.at = int(time.time() * 1000)
 
-    async def publish(self, qty: int = 30, ask: int = 100, bid: int = 99, code: str = CODE, delta: int = 1):
+    async def publish(
+        self, qty: int = 30, ask: int = 100, bid: int = 99, code: str = CODE, delta: int = 1, venue: str = "UN",
+    ):
         self.at += delta
         await self.buffer.publish(
             code,
@@ -47,7 +51,7 @@ class Feed:
                     self.at,
                     SnapshotKind.OB,
                     {
-                        "venue": "UN",
+                        "venue": venue,
                         "asks": [{"price": ask, "qty": qty}, {"price": ask + 1, "qty": 100}],
                         "bids": [{"price": bid, "qty": 20}, {"price": bid - 1, "qty": 100}],
                     },
@@ -92,6 +96,42 @@ async def reset(service: PaperTradingService, qty: int = 0, cash: int = 10000):
 
 async def snapshot(service: PaperTradingService):
     return await service.state(1, CODE)
+
+
+@pytest.mark.parametrize("nxt_enabled,expected_price", [(False, "100"), (True, "120"), (None, "120")])
+async def test_app_paper_book_matches_integrated_venue_policy(tmp_path, monkeypatch, nxt_enabled, expected_price):
+    feed = Feed()
+    await feed.publish(ask=100, bid=99, venue="KRX")
+    await feed.publish(ask=120, bid=119, venue="UN")
+    monkeypatch.setattr(app_module, "live_get_buffer", lambda: feed.buffer)
+    monkeypatch.setattr(app_module._symbols_module, "nxt_enabled_for_code", lambda _: nxt_enabled)
+    app = create_app(tmp_path)
+    service = app.state.paper_trading_service
+    await service.execute(buy("buy", price=120, qty=1), "create")
+    state = await snapshot(service)
+    assert state.holding_quantity == "1"
+    assert state.recent_orders[0].execution.averageFilledPrice == expected_price
+    await service.close()
+
+
+@pytest.mark.parametrize("nxt_enabled", [False, True, None])
+async def test_app_paper_krx_fallback_does_not_hide_missing_un(tmp_path, monkeypatch, nxt_enabled):
+    feed = Feed()
+    await feed.publish(venue="KRX")
+    monkeypatch.setattr(app_module, "live_get_buffer", lambda: feed.buffer)
+    monkeypatch.setattr(app_module._symbols_module, "nxt_enabled_for_code", lambda _: nxt_enabled)
+    app = create_app(tmp_path)
+    service = app.state.paper_trading_service
+    if nxt_enabled is False:
+        await service.execute(buy("buy", qty=50), "create")
+        state = await snapshot(service)
+        assert state.holding_quantity == "30"
+        assert state.orders[0].execution.filledQuantity == "30"
+    else:
+        with pytest.raises(TradingError) as rejected:
+            await service.execute(buy("buy", qty=50), "create")
+        assert rejected.value.code == "paper-book-stale"
+    await service.close()
 
 
 async def test_http_real_buffer_partial_fill_and_cash_reservation(setup):

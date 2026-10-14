@@ -1,4 +1,4 @@
-import { compactStudyViewPeriod, studyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
+import { studyViewPeriod, studyTimeframeLabel } from './studyViewPeriod';
 import { StudyGroupDialog, type StudyGroupAction } from './StudyGroupDialog';
 import { useStudyViewReveal } from './studyViewReveal';
 import { useDismissablePopover } from '../util/useDismissablePopover';
@@ -13,16 +13,7 @@ import { RailDragOverlay } from '../rightrail/RailDragOverlay';
 import { dropPoint } from '../state/entryDrag';
 import { dropIndicatorClass, type DropIndicator } from '../ui/sortableDragVisuals';
 import { useNavigate, useLocation } from 'react-router';
-import {
-  DndContext,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DraggableSyntheticListeners,
-  type DragEndEvent,
-  type DragStartEvent,
-  type DragMoveEvent,
-} from '@dnd-kit/core';
+import { DndContext, PointerSensor, useSensor, useSensors, type DraggableSyntheticListeners, type DragEndEvent, type DragStartEvent, type DragMoveEvent } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import type { StudyViewListRow } from '../api/studyViews';
 import { wantsNewTab } from '../live/useJumpToLive';
@@ -31,54 +22,25 @@ import { useLivePageStore } from '../state/livePage';
 import { savedRangeFocusFromView } from './savedRangeFocus';
 import { openSavedViewInNewTab } from './studyDeepLink';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
-import {
-  RailDrawer,
-  RailDrawerBody,
-  RailDrawerHeader,
-  RailDrawerSection,
-  RailGroupHeader,
-  RailState,
-  RailToolbarIconButton,
-  RailTreeRow,
-} from '../ui/RailShell';
+import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailGroupHeader, RailState, RailToolbarIconButton, RailTreeRow } from '../ui/RailShell';
 import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { SortCycleButton } from '../ui/SortCycleButton';
-import { normalizeStudyViewQuery } from './studyViewTree';
-import {
-  resolveStudyViewTreeDrag,
-  studyViewGroupDndId,
-  studyViewRowDndId,
-  studyViewTreeCollision,
-} from './studyViewTreeDnd';
+import { resolveStudyViewTreeDrag, studyViewGroupDndId, studyViewRowDndId, studyViewTreeCollision } from './studyViewTreeDnd';
 import { useStudyViewTreeState } from './useStudyViewTreeState';
 import { StudyViewRowMenu } from './StudyViewRowMenu';
+import { formatStudyViewTitle, formatStudyViewMeta } from './StudyViewsDrawerHelpers';
+
 
 const EMPTY_GROUPS: import('../api/studyViews').StudyViewGroup[] = [];
+
 const NO_COLLAPSED_GROUPS = new Set<string>();
+
 const ignoreExpand = () => {};
 
-export function filterStudyViews<T extends { name: string; code: string; memo: string }>(rows: T[], query: string): T[] {
-  const q = normalizeStudyViewQuery(query);
-  if (!q) return rows;
-  return rows.filter((row) => [row.name, row.code, row.memo].some((v) => normalizeStudyViewQuery(v).includes(q)));
-}
-
-/** 이미 종목명으로 시작하는 저장 이름에는 종목명을 다시 붙이지 않는다. */
-export function formatStudyViewTitle(row: { label: string; code: string; name: string }): string {
-  const stock = row.label || row.code;
-  const name = row.name.trim();
-  const suffix = name.slice(stock.length);
-  return name.startsWith(stock) && (suffix === '' || /^[\s·:：—–-]/.test(suffix))
-    ? name
-    : `${stock} · ${name}`;
-}
-
-export function formatStudyViewMeta(row: { timeframe: string; range: { from_date: string; to_date: string; from_ms?: number; to_ms?: number } }): string {
-  return `${studyTimeframeLabel(row.timeframe)} · ${compactStudyViewPeriod(row.range, row.timeframe)}`;
-}
 
 type TreeDragHandle = { listeners: DraggableSyntheticListeners; setActivatorNodeRef: (node: HTMLElement | null) => void };
+
 function SortableStudyViewGroup({ id, disabled, indicator, children }: {
   id: string; disabled: boolean; indicator?: DropIndicator;
   children: (handle: TreeDragHandle) => ReactNode;
@@ -91,6 +53,7 @@ function SortableStudyViewGroup({ id, disabled, indicator, children }: {
     {children({ listeners, setActivatorNodeRef })}
   </div>;
 }
+
 function SortableStudyViewRow({ row, groupKey, disabled, indicator, children }: {
   row: StudyViewListRow; groupKey: string; disabled: boolean; indicator?: DropIndicator;
   children: (handle: TreeDragHandle) => ReactNode;
@@ -103,6 +66,7 @@ function SortableStudyViewRow({ row, groupKey, disabled, indicator, children }: 
     {children({ listeners, setActivatorNodeRef })}
   </div>;
 }
+
 
 export function StudyViewsDrawer() {
   const { data, isLoading, isError, refetch } = useStudyViews();

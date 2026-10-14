@@ -1,10 +1,12 @@
+import type { MouseEventHandler, MouseEventParams, ISeriesPrimitive, SeriesAttachedParameter } from 'lightweight-charts';
+import type { SeriesType } from 'lightweight-charts';
 import type { IChartApi, IPriceScaleApi, ISeriesApi, ITimeScaleApi, Logical, LogicalRange, Time } from 'lightweight-charts';
 import { classifyDataChange, syncSeriesData, type SeriesDataSink } from './seriesDataDiff';
 import { viewportHasReprojectableAnchor } from '../live/minuteViewportPolicy';
 import { createPersistentCrosshairChart, preserveCrosshairDuringDataChange } from './persistentCrosshair';
 
 type Point = Parameters<SeriesDataSink['setData']>[0][number];
-type Series = ISeriesApi<any>;
+type Series = ISeriesApi<SeriesType>;
 type Range = { from: number; to: number };
 /** Immutable coordinate generation used by the data currently on screen.
  * A Virtual Axis can rebase on prepend; reading a mutable axisRef here would
@@ -132,7 +134,7 @@ class WindowedChart {
   private fallback: string | null = null;
   private readonly logicalListeners = new Set<(range: LogicalRange | null) => void>();
   private readonly timeListeners = new Set<(range: { from: Time; to: Time } | null) => void>();
-  private readonly mouseListeners = new Map<string, Map<any, any>>();
+  private readonly mouseListeners = new Map<string, Map<MouseEventHandler<Time>, MouseEventHandler<Time>>>();
   private detachInteractions: (() => void) | null = null;
   private drag: { id: number; x: number; lastX: number; range: Range;
     vertical: { scale: IPriceScaleApi; range: Range; y: number; slope: number; logarithmic: boolean } | null;
@@ -242,14 +244,14 @@ class WindowedChart {
       },
     };
     for (const event of ['Click', 'DblClick', 'CrosshairMove'] as const) {
-      const wrapped = new Map<any, any>();
+      const wrapped = new Map<MouseEventHandler<Time>, MouseEventHandler<Time>>();
       this.mouseListeners.set(event, wrapped);
-      overrides[`subscribe${event}`] = (cb: any) => {
+      overrides[`subscribe${event}`] = (cb: MouseEventHandler<Time>) => {
         if (wrapped.has(cb)) return;
-        const listener = (param: any) => {
+        const listener = (param: MouseEventParams<Time>) => {
           if (this.busy) return;
           cb({ ...param,
-            logical: param.logical == null ? param.logical : param.logical + this.offset,
+            logical: param.logical == null ? param.logical : (param.logical + this.offset) as Logical,
             hoveredSeries: param.hoveredSeries ? this.appSeries(param.hoveredSeries) : undefined,
             seriesData: new Map([...param.seriesData].map(([series, point]) => [this.appSeries(series), point])),
           });
@@ -257,7 +259,7 @@ class WindowedChart {
         wrapped.set(cb, listener);
         native[`subscribe${event}`](listener);
       };
-      overrides[`unsubscribe${event}`] = (cb: any) => {
+      overrides[`unsubscribe${event}`] = (cb: MouseEventHandler<Time>) => {
         const listener = wrapped.get(cb);
         if (listener) native[`unsubscribe${event}`](listener);
         wrapped.delete(cb);
@@ -364,7 +366,7 @@ class WindowedChart {
   }
 
   private add(native: Series): Series {
-    const primitives = new Map<any, any>();
+    const primitives = new Map<ISeriesPrimitive<Time>, ISeriesPrimitive<Time>>();
     const state: State = { native, api: native, data: [], rendered: null, listeners: new Set(), change: null };
     const api = facade(native, {
       setData: (data: Point[]) => { state.data = data; state.change = 'full'; this.enqueue(); },
@@ -405,14 +407,14 @@ class WindowedChart {
       },
       subscribeDataChanged: (cb: (scope: 'full' | 'update') => void) => state.listeners.add(cb),
       unsubscribeDataChanged: (cb: (scope: 'full' | 'update') => void) => state.listeners.delete(cb),
-      attachPrimitive: (primitive: any) => {
+      attachPrimitive: (primitive: ISeriesPrimitive<Time>) => {
         const wrapped = facade(primitive, {
-          attached: (param: any) => primitive.attached?.({ ...param, chart: this.chart, series: api }),
+          attached: (param: SeriesAttachedParameter<Time>) => primitive.attached?.({ ...param, chart: this.chart, series: api }),
         });
         primitives.set(primitive, wrapped);
         native.attachPrimitive(wrapped);
       },
-      detachPrimitive: (primitive: any) => {
+      detachPrimitive: (primitive: ISeriesPrimitive<Time>) => {
         native.detachPrimitive(primitives.get(primitive) ?? primitive);
         primitives.delete(primitive);
       },

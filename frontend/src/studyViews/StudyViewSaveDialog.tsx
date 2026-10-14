@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ModalShell } from '../ui/ModalShell';
 import type { StudyViewGroup } from '../api/studyViews';
-import { StudyGroupPicker, validStudyGroupChoice, type StudyGroupChoice } from './StudyGroupPicker';
+import { StudyGroupPicker } from './StudyGroupPicker';
+import { validStudyGroupChoice, type StudyGroupChoice } from './StudyGroupPickerHelpers';
 
 /** 저장 구간의 hogaplay 커버리지 — 저장과 함께 수집할지 판단할 재료. */
 export type SaveCoverage = {

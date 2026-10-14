@@ -1,3 +1,4 @@
+import { bindPaneSpec } from '../chart/paneSpecs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import PaneLegendOverlay from './PaneLegendOverlay';
@@ -152,7 +153,7 @@ describe('PaneLegendOverlay — peak-wall values belong to the current candle', 
     ]);
     render(<PaneLegendOverlay chart={makeChart([200, 100])} timeframe="3m" code="000660"
       candles={candles} axis={axis}
-      visibleGroups={[[CANDLE_SPEC], [PEAK_WALL_SPEC]]}
+      visibleGroups={[[bindPaneSpec(CANDLE_SPEC)], [bindPaneSpec(PEAK_WALL_SPEC)]]}
       paneToggles={{ foreignNet: false, institutionNet: false, peakWallPaneEnabled: true }} />);
     expect(screen.queryByText('매도 체결')).toBeNull();
     expect(screen.getByText('매수 체결')).toBeInTheDocument();

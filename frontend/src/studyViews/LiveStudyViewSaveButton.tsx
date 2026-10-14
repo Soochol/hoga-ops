@@ -1,6 +1,6 @@
 import { studyTimeframeLabel } from './studyViewPeriod';
 import { persistJson, readJsonObject } from '../state/persist';
-import { useStudySaveNotice } from './StudyViewSaveToastHost';
+import { useStudySaveNotice } from './StudyViewSaveToastHostHelpers';
 import { createPortal } from 'react-dom';
 import { ModalShell } from '../ui/ModalShell';
 /**

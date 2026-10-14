@@ -1,14 +1,8 @@
-import type { TradeValueParams } from '../../api/screener';
 import type { CatalogEntry } from './types';
-import { Num } from '../paramForms';
+import { TradeValueForm } from './trade_valueForm';
 
-function TradeValueForm({ params, onChange }: { params: TradeValueParams; onChange: (p: TradeValueParams) => void }) {
-  return <div className="flex items-center gap-2"><span className="text-sm text-fg-dim">≥</span>
-    <Num ariaLabel="최소 거래대금(억)" min={0}
-      value={params.min_eok} onChange={(n) => onChange({ min_eok: n ?? 0 })} /><span className="text-sm text-fg-dim">억</span></div>;
-}
 
-export const trade_value: CatalogEntry = {
+export const trade_value: CatalogEntry<'trade_value'> = {
   label: '거래대금', defaultParams: { min_eok: 50 }, ParamForm: TradeValueForm,
   summarize: (p) => `≥ ${p.min_eok}억`,
 };

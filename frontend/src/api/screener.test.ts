@@ -13,7 +13,7 @@ describe('runScan', () => {
       limit: 20,
       basis: 'intraday',
     });
-    const [path, init] = (apiCall as any).mock.calls[0] as [string, RequestInit];
+    const [path, init] = vi.mocked(apiCall).mock.calls[0] as [string, RequestInit];
     expect(path).toBe('/api/screener/scan');
     expect(init.method).toBe('POST');
     const body = JSON.parse(init.body as string);

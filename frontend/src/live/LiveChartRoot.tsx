@@ -1,30 +1,15 @@
+import type { SeriesType } from 'lightweight-charts';
 import { barPitchPx } from '../chart/drawing/chartCoordinates';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import {
-  createChartEx,
-  TickMarkType,
-  type IChartApi,
-  type ISeriesApi,
-  type Time,
-  type UTCTimestamp,
-} from 'lightweight-charts';
+import { createChartEx, TickMarkType, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
 import { useThemeChangeRerender } from '../state/themePrefs';
-import {
-  chartCrosshairOptions,
-  CHART_LAYOUT_OPTIONS,
-  CHART_TIMESCALE_OPTIONS,
-} from '../util/chartScale';
+import { chartCrosshairOptions, CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
 import RangeSeriesPane, { type PaneBundleKind, type SeriesLegendMeta } from '../chart/RangeSeriesPane';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
-import {
-  paneGroupIds,
-  paneGroupSpecsForTimeframe,
-  paneGroupStretch,
-  type PaneSpecGroup,
-} from './paneGroupSpecs';
+import { paneGroupIds, paneGroupSpecsForTimeframe, paneGroupStretch, type PaneSpecGroup } from './paneGroupSpecs';
 import { paneGroupKey, resolveAxisMode, type PaneGroupStretchMap } from '../chart/paneGroups';
 import { useLinkedInvestorPaneScale } from './useLinkedInvestorPaneScale';
 import { retainRightPriceScaleWidth } from '../chart/util/retainRightPriceScaleWidth';
@@ -37,12 +22,7 @@ import type { CandleEmptyState as CandleEmptyStateValue } from './candleEmptySta
 import { resolvePaneToggles } from './indicators/indicatorPaneProfiles';
 import { peakWallPaneHasContent } from '../state/indicatorOps';
 import DayBoundaryOverlay from '../chart/DayBoundaryOverlay';
-import {
-  NO_DAY_BOUNDARY_TICKS,
-  resolveDayBoundaryTicks,
-  sameDayBoundaryTicks,
-  type DayBoundaryTick,
-} from '../chart/sessionSpans';
+import { NO_DAY_BOUNDARY_TICKS, resolveDayBoundaryTicks, sameDayBoundaryTicks, type DayBoundaryTick } from '../chart/sessionSpans';
 import CursorSyncCrosshair from '../chart/CursorSyncCrosshair';
 import { createPersistentCrosshairChart } from '../chart/persistentCrosshair';
 import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
@@ -57,25 +37,8 @@ import { savedRangeAnchorTs } from './savedRangeAnchor';
 import { jumpPublicationRange, type JumpRange } from './minuteJumpDestination';
 import { viewedDateOf } from './viewedDate';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
-import {
-  type CalendarTimeframe,
-  type LiveMAConfig,
-  type LiveTimeframe,
-  isMinuteTimeframe,
-  isCalendarTimeframe,
-} from '../state/livePage';
-import {
-  WindowViewContext,
-  useHistoricalRangeActions,
-  useIndicatorActions,
-  useWindowIndicator,
-  useWindowPaneAxisMode,
-  useWindowPaneGroups,
-  useWindowPaneGroupStretch,
-  useWindowPaneStretch,
-  useWindowScopeId,
-  useWindowViewGuard,
-} from './workspace/windowView';
+import { type CalendarTimeframe, type LiveMAConfig, type LiveTimeframe, isMinuteTimeframe, isCalendarTimeframe } from '../state/livePage';
+import { WindowViewContext, useHistoricalRangeActions, useIndicatorActions, useWindowIndicator, useWindowPaneAxisMode, useWindowPaneGroups, useWindowPaneGroupStretch, useWindowPaneStretch, useWindowScopeId, useWindowViewGuard } from './workspace/windowView';
 import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
@@ -85,20 +48,10 @@ import { minuteRestoreGeometry, minuteRightOffsetBars } from './minuteViewportPo
 import { summarizeWarnings, type LiveDataWarning } from './liveDataWarnings';
 import { useViewportBackfill } from './useViewportBackfill';
 import { createWindowedChart, flushWindowedChart, setWindowedChartTimeMapping } from '../chart/windowedChart';
-import {
-  viewportFromRanges,
-  computeRestoreRange,
-  realMsToVirtualSeconds,
-  type TabViewport,
-} from './viewportAnchor';
+import { viewportFromRanges, computeRestoreRange, realMsToVirtualSeconds, type TabViewport } from './viewportAnchor';
 import { useWheelInteractions } from './useWheelInteractions';
 import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorStore';
-import {
-  alignSidebarCursorMs,
-  shouldPublishSidebarCursor,
-  sidebarCursorPublishDelayMs,
-  LIVE_SIDEBAR_CURSOR_THROTTLE_MS,
-} from './sidebarCursorRateLimit';
+import { alignSidebarCursorMs, shouldPublishSidebarCursor, sidebarCursorPublishDelayMs, LIVE_SIDEBAR_CURSOR_THROTTLE_MS } from './sidebarCursorRateLimit';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import BollingerOverlay from './indicators/BollingerOverlay';
 import SupertrendOverlay from './indicators/SupertrendOverlay';
@@ -111,24 +64,12 @@ import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmen
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
 import { buildBarModePanePoints, type PeakWallStepBuilder } from './peakWallPanePoints';
-import {
-  buildPeakWallStepPoints,
-  buildUnreachedStepPoints,
-  type PeakWallStepPoint,
-} from '../chart/peakWallSteps';
-import {
-  usePeakWallStepsPublisher,
-  type PeakWallStepKey,
-} from './indicators/peakWallStepsRegistry';
+import { buildPeakWallStepPoints, buildUnreachedStepPoints, type PeakWallStepPoint } from '../chart/peakWallSteps';
+import { usePeakWallStepsPublisher, type PeakWallStepKey } from './indicators/peakWallStepsRegistry';
 import { usePeakWallCountsPublisher } from './indicators/peakWallCountsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
 import { usePeakDailyMaFilters } from './peakWallDailyMaFilter';
-
-import {
-} from './useDayAskPeaks';
-import {
-} from './useDayBidPeaks';
 import { IncrementalPeakWallSource } from './incrementalPeakWallSource';
 import LivePeakWallDockedLabels from './LivePeakWallDockedLabels';
 import TradeVolumePocOverlay from './TradeVolumePocOverlay';
@@ -144,15 +85,14 @@ import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
 import { useDrawingHost } from '../chart/useDrawingHost';
-import {
-  canvasXToRealMs, realMsToCanvasX, priceToCanvasY, canvasYToPrice,
-  priceBoundsForPane, dragBarDomain, futureBandFor,
-} from '../chart/drawing/chartCoordinates';
+import { canvasXToRealMs, realMsToCanvasX, priceToCanvasY, canvasYToPrice, priceBoundsForPane, dragBarDomain, futureBandFor } from '../chart/drawing/chartCoordinates';
 import type { AlignCoords } from '../chart/drawing/translate';
 import { measureTextWidth } from '../chart/drawing/render';
 import { drawingBarMsFor, drawingScopeFor } from '../state/drawings';
 import type { TradeVolumePoc } from './tradeVolumePoc';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+import { shouldShowTradeVolumePocOverlay, shouldShowDepthHeatmapOverlay } from './LiveChartRootHelpers';
+
 
 const TOKEN_SPEC = {
   bgCard: ['--bg-card', '#121216'],
@@ -172,6 +112,7 @@ const TOKEN_SPEC = {
   accent: ['--accent', '#f0b429'],
 } as const;
 
+
 function chartGridOptions(
   gridColor: string,
   horizontalEnabled: boolean,
@@ -183,14 +124,17 @@ function chartGridOptions(
   };
 }
 
+
 function pad(n: number): string {
   return String(n).padStart(2, '0');
 }
+
 
 function kstDateFromMs(realMs: number): string {
   const d = new Date(realMs + 9 * 60 * 60 * 1000);
   return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}`;
 }
+
 
 function readNumericCrosshairTimeFromSeriesData(seriesData: unknown): number | null {
   if (!(seriesData instanceof Map)) return null;
@@ -202,6 +146,7 @@ function readNumericCrosshairTimeFromSeriesData(seriesData: unknown): number | n
   }
   return null;
 }
+
 
 function nearestCandleMs(realMs: number, candleMs: readonly number[], bucketMs: number): number {
   if (candleMs.length === 0 || bucketMs <= 0) return realMs;
@@ -218,29 +163,40 @@ function nearestCandleMs(realMs: number, candleMs: readonly number[], bucketMs: 
   return Math.abs(nearest - realMs) <= bucketMs / 2 ? nearest : realMs;
 }
 
+
 /** Empty axis used while the bundle is loading. timeFormatter / tickMarkFormatter
  * read through `axisRef.current` to convert virtual seconds back to real KST;
  * before the real axis arrives they need a working `.toReal()` to return
  * something that doesn't crash. Mirrors ChartStage's `axisRef` pattern. */
 const EMPTY_AXIS: VirtualAxis = createVirtualAxis([]);
+
 /** 안정 빈 배열 — 기본값이 매 렌더 새 []를 만들지 않게. */
 /** 동기화 소비자가 없는 봉(W/M)의 캔들 자리. identity 가 안정적이어야 소비자의
  *  memo 가 헛돌지 않는다 — 매번 새 `[]` 를 내면 그 창의 다리가 프레임마다 재생성된다. */
 const EMPTY_SYNC_CANDLES: readonly Candle[] = [];
+
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
+
 const EMPTY_BID_PEAKS: readonly BidPeak[] = [];
+
 const EMPTY_TRADE_SNAPSHOTS: ReadonlyArray<TradeSnapshot> = [];
+
 const EMPTY_CANDLE_MS: readonly number[] = [];
+
 /** 모듈 상수 — 렌더마다 `[]` 를 새로 만들면 캔들을 deps 로 쓰는 훅이 매 렌더 돈다. */
 const EMPTY_CANDLES: readonly Candle[] = [];
+
 // 최대벽 계단의 빈 상태 — 공유 참조여야 pane ctx 가 흔들리지 않는다.
 // 최대벽 렌더 훅의 빈 입력 — **공유 상수**여야 memo 결과가 참조로 안정된다
 // (빈 배열 리터럴은 매 렌더 새 참조라 계산이 매번 다시 돈다).
 const EMPTY_RANGE_SEGMENTS: readonly RangeSegment[] = [];
+
 const CURSOR_LEAVE_CLEAR_DELAY_MS = 120;
+
 /** 번들이 아직 없을 때 일봉 MA 필터에 넘기는 빈 캔들 — 매 렌더 새 배열을 만들면 훅의
  *  memo 가 매번 깨진다. */
 const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];
+
 // 회피 입력의 빈 상태 — **공유 상수**여야 memo 결과가 참조로 안정되어 하위 스냅샷
 // effect 가 매 렌더 다시 돌지 않는다(빈 배열 리터럴은 매번 새 참조다).
 /** 캔들·호가가 settle된 뒤 **사이드카 지표만** 더 기다리는 상한.
@@ -268,8 +224,11 @@ const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];
  * pane 을 새로 만들지는 않지만, 빈 pane 을 lwc 가 지웠다가 되살리는 경로가 있어
  * 리플로우가 보일 수 있다. 11.7초 커버와 맞바꾼 값이다. */
 export const SIDECAR_REVEAL_CAP_MS = 700;
+
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
+
 const CALENDAR_MIN_VIEWPORT_WIDTH_PX = 120;
+
 function dailyLogicalRange(
   totalBars: number,
   plotWidth: number,
@@ -286,6 +245,7 @@ function dailyLogicalRange(
   const span = Math.min(loadedSpan, maxLegibleSpan);
   return { from: Math.max(0, to - span), to };
 }
+
 
 interface Props {
   hoverLinked?: boolean;
@@ -498,21 +458,6 @@ interface Props {
   onCandleBasisClick?: (date: string | null) => void;
 }
 
-export function shouldShowTradeVolumePocOverlay(
-  timeframe: LiveTimeframe,
-  forceHogaPanes: boolean,
-  tradeVolumePocCount: number,
-): boolean {
-  return isMinuteTimeframe(timeframe) || (forceHogaPanes && tradeVolumePocCount > 0);
-}
-
-export function shouldShowDepthHeatmapOverlay(
-  timeframe: LiveTimeframe,
-  enabled: boolean,
-  pointCount: number,
-): boolean {
-  return isMinuteTimeframe(timeframe) && enabled && pointCount > 0;
-}
 
 /** /live's single-chart root. Mounts the timeframe-appropriate pane set
  * (see `paneSpecsForTimeframe`) inside one createChart instance so
@@ -793,7 +738,7 @@ export function LiveChartRoot({
   // would be a fresh function every render and defeat memo). register/unregister
   // are already stable (useCallback in useDrawingHost).
   const handleSeriesReady = useCallback(
-    (s: ISeriesApi<any>, name: string) => registerPaneSeries(name as PaneId, s),
+    (s: ISeriesApi<SeriesType>, name: string) => registerPaneSeries(name as PaneId, s),
     [registerPaneSeries],
   );
   const handleSeriesGone = useCallback(
@@ -809,7 +754,7 @@ export function LiveChartRoot({
   // 차트 창끼리 서로의 레전드를 덮어쓰고 지운다.
   const legendScope = useWindowScopeId();
   const handleLegendReady = useCallback(
-    (name: string, entries: { series: ISeriesApi<any>; meta: SeriesLegendMeta }[]) =>
+    (name: string, entries: { series: ISeriesApi<SeriesType>; meta: SeriesLegendMeta }[]) =>
       registerPaneLegend(legendScope, name as PaneId, entries),
     [registerPaneLegend, legendScope],
   );
@@ -1210,7 +1155,7 @@ export function LiveChartRoot({
     // 좌표 읽기만 여기서 한다 — 규칙은 `jumpPublicationRange` 가 갖고 차트 없이
     // 테스트된다. 봉은 ref 로 읽는다(이 콜백은 `useCallback([])` 이라 렌더 클로저를
     // 못 본다 — `candlesRef` 와 같은 규약).
-    let vr: { to: unknown } | null = null;
+    let vr: { to: unknown } | null;
     try {
       vr = c.timeScale().getVisibleRange();
     } catch {
@@ -1263,7 +1208,7 @@ export function LiveChartRoot({
     let lastPublishedDate: string | null | undefined;
     const publish = () => {
       raf = null;
-      let vr: { to: unknown } | null = null;
+      let vr: { to: unknown } | null;
       try {
         vr = chart.timeScale().getVisibleRange();
       } catch {
@@ -3171,5 +3116,6 @@ export function LiveChartRoot({
     </div>
   );
 }
+
 
 export default LiveChartRoot;

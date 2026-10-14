@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CONDITION_CATALOG, makeLeaf } from './catalog';
-import { CONDITION_GROUPS } from './ConditionBuilder';
+import { CONDITION_GROUPS } from './ConditionBuilderHelpers';
 
 describe('catalog', () => {
   it('covers all 16 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {

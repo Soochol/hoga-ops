@@ -27,7 +27,7 @@
  * 정의만 따라간다. 조각을 JSX 상수로 두면 그런 전역이 아예 없다.
  */
 import type { ReactNode } from 'react';
-import type { CategoryId } from './IndicatorPanel';
+import type { CategoryId } from './IndicatorPanelHelpers';
 
 const svg = (children: ReactNode) => (
   <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none">

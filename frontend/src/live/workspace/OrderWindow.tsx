@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
 import { createPortal } from 'react-dom';
@@ -23,12 +23,15 @@ import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
 import { useLiveViStatus } from '../../api/liveViStatus';
+import { LIVE_VENUE_LABELS, useLiveVenueStore } from '../../state/liveVenue';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
-import { realMsToYyyymmdd } from '../liveDateTime';
-import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip, type BookTrade } from './BookPanel';
+import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
+import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
+import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
+import { useBookSessionDisplay } from './useBookSessionDisplay';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -45,6 +48,11 @@ type Action = {
 };
 const changesPrice = (action: Action) => action.type === 'create' || action.type === 'modify' || (action.type === 'group' && action.operation === 'modify');
 type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
+
+function OrderToastPortal({ children }: { children: ReactNode }) {
+  const [host] = useState(() => document.getElementById('toast-viewport'));
+  return createPortal(host ? children : <ToastViewport>{children}</ToastViewport>, host ?? document.body);
+}
 
 export function OrderWindow({ code, name, settings, onSettingsChange }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void;
@@ -79,15 +87,24 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const accounts = useTradingAccounts(mode);
   const account = chosenAccount || accounts.data?.accounts[0]?.account_seq || 0;
   const state = useTradingState(account, code, mode);
-  // Orders always use LIVE integrated quotes, independent of chart cursor/global venue.
-  const live = useLiveSeries(code, 'UN');
-  const quote = useQuoteByCode([code], 'UN').get(code);
+  // Display follows the 10-level book's venue; broker orders remain SOR.
+  const venue = useLiveVenueStore(s => s.venue);
+  const live = useLiveSeries(code, venue);
+  const quote = useQuoteByCode([code], venue).get(code);
   const limits = useLiveStockLimits(code);
   const now = useWallClockSecond();
   const todayKst = realMsToYyyymmdd(now);
   const krxClose = useLiveKrxClose(code, todayKst);
-  const vi = useLiveViStatus(code, 'UN');
-  const snapshot = useMemo(() => latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob), [live.latestOb, live.ob]);
+  const latestSnapshot = useMemo(() => {
+    const snap = latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob);
+    return snap !== null && previousDayObExpired(snap.ts_ms, now, venue) ? null : snap;
+  }, [live.latestOb, live.ob, now, venue]);
+  const { snapshot, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
+    afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+    code, venue, nowMs: now, todayKst, isSpot: false, regularSnapshot: latestSnapshot,
+    latestSnapshot, afterHours: live.afterHours,
+  });
+  const vi = useLiveViStatus(code, effectiveVenue);
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [lockedBook, lockBook] = useState<OrderbookSnapshot | null>(null);
   const book = lockedBook ?? snapshot;
@@ -155,31 +172,48 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const drag = useRef<Drag | null>(null);
   const dragPreview = useRef<HTMLDivElement>(null);
   // Cursor motion updates only the floating preview, not the live order ladder.
-  function positionDragPreview() {
+  const positionDragPreview = useCallback(() => {
     const node = dragPreview.current, current = drag.current;
     if (!node || !current) return;
     const x = Math.max(8, Math.min(current.cursorX + 12, window.innerWidth - node.offsetWidth - 8));
     const y = Math.max(8, Math.min(current.cursorY + 12, window.innerHeight - node.offsetHeight - 8));
     node.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-  }
-  useLayoutEffect(positionDragPreview, [draggingOrderId, dragTarget, dragCancel]);
-  const toastHost = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => { toastHost.current = document.getElementById('toast-viewport'); }, []);
+  }, []);
+  useLayoutEffect(positionDragPreview, [positionDragPreview, draggingOrderId, dragTarget, dragCancel]);
   const suppressClick = useRef(false);
   const suppressDoubleClick = useRef(false);
   const ladder = useRef<HTMLDivElement>(null);
+  const resetDrag = useCallback(() => {
+    const current = drag.current;
+    drag.current = null;
+    if (current?.element.hasPointerCapture(current.pointer)) current.element.releasePointerCapture(current.pointer);
+    suppressClick.current = current?.active ?? false;
+    if (current?.active) suppressDoubleClick.current = true;
+    lockBook(null); setDragTarget(null); setDragCancel(false); setDraggingOrders([]);
+  }, []);
+  const displayKey = `${venue}:${effectiveVenue}:${sessionMode}:${activeSinglePrice !== null}`;
+  const previousDisplayKey = useRef(displayKey);
+  useLayoutEffect(() => {
+    if (previousDisplayKey.current === displayKey) return;
+    previousDisplayKey.current = displayKey;
+    resetDrag(); suppressClick.current = false;
+    setPreviewPrice(null); setAction(null); confirmHigh(false); closeMenu();
+  }, [displayKey, resetDrag, closeMenu]);
   const orders = state.data?.orders ?? EMPTY_ORDERS;
   const draggedOrder = draggingOrders[0] ?? null;
   const latestOrders = useRef(orders);
   useLayoutEffect(() => { latestOrders.current = orders; }, [orders]);
   const groups = useMemo(() => groupPriceOrders(orders), [orders]);
-  const fresh = !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
+  // Legacy single-price books are display-only; these commands are LIMIT/DAY.
+  const fresh = activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
   const ready = account > 0 && !!state.data && !state.isError && !busy;
   const prices = book ? [...book.ask].reverse().concat(book.bid) : [];
   const onScreen = new Set(prices.map(l => l.price));
   const outside = orders.filter(o => o.price == null || !onScreen.has(Number(o.price)));
   const maxQty = Math.max(1, ...prices.map(l => l.qty));
-  const baseline = quote?.baseline_price ?? summary.prevClose;
+  const baseline = resolveBookBaseline({ isPastDateLadder: false, ladderBaseline: null,
+    singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
+    liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
   const estimatePrice = previewPrice ?? quote?.price ?? null;
   const amountMode = preferences.unit === 'amount';
   const inputValue = amountMode ? amountMillions : quantity;
@@ -310,7 +344,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     if (e.button !== 0 || !targets.length || !ready) return;
     e.stopPropagation();
     drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
-    lockBook(snapshot); e.currentTarget.setPointerCapture(e.pointerId);
+    lockBook(snapshot ?? null); e.currentTarget.setPointerCapture(e.pointerId);
   }
   function moveDrag(e: PointerEvent<HTMLElement>) {
     const d = drag.current;
@@ -349,11 +383,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     if (e && !aborted) moveDrag(e);
     const d = drag.current;
     if (!d || (e && e.pointerId !== d.pointer)) return;
-    drag.current = null;
-    if (d.element.hasPointerCapture(d.pointer)) d.element.releasePointerCapture(d.pointer);
-    suppressClick.current = d.active;
-    if (d.active) suppressDoubleClick.current = true;
-    lockBook(null); setDragTarget(null); setDragCancel(false); setDraggingOrders([]);
+    resetDrag();
     if (aborted || !d.active) return;
     const targets = d.orders.flatMap(original => {
       const order = latestOrders.current.find(o => o.orderId === original.orderId);
@@ -406,20 +436,9 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     </button>;
   }
 
-  const trades = useMemo(() => {
-    const recent: BookTrade[] = [];
-    for (let i = live.trade.length - 1; i >= 0 && recent.length < 9; i--) {
-      const rows = live.trade[i].trades;
-      if (!Array.isArray(rows)) continue;
-      for (let j = rows.length - 1; j >= 0 && recent.length < 9; j--) {
-        const row = rows[j] as { price?: unknown; qty?: unknown; side?: unknown };
-        if (typeof row?.price === 'number' && typeof row.qty === 'number') {
-          recent.push({ price: row.price, qty: row.qty, side: typeof row.side === 'number' ? row.side : 0 });
-        }
-      }
-    }
-    return recent;
-  }, [live.trade]);
+  const recentTrades = useMemo(() => recentBookTrades(live.trade, 9), [live.trade]);
+  const trades = activeSinglePrice !== null ? singlePriceFills : recentTrades;
+  const lastPrice = activeSinglePrice !== null ? (afterHoursBook.data?.cur_price ?? null) : (recentTrades[0]?.price ?? null);
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     vi={vi.data?.vi} height={height} />;
@@ -457,6 +476,10 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       {!expanded && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
+    </div>
+    <div className="order-market-basis" aria-label="시세·주문 기준">
+      시세 {LIVE_VENUE_LABELS[effectiveVenue]}{venue !== effectiveVenue ? ` (${LIVE_VENUE_LABELS[venue]} 선택)` : ''}
+      {' · '}{mode === 'live' ? '주문 통합(SOR)' : '모의 체결 통합'}
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
@@ -552,7 +575,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
             {orderCell('SELL', level.price, key)}
             {index < 10 ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
               : <div className="order-info"><span className={index === 10 ? 'order-meta' : tradePriceColor}>{index === 10 ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? priceDirClass(trade.side) : undefined}>{index === 10 ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>}
-            <div className={`order-price ${quote?.price === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker price={level.price} summary={summary} />{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
+            <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker price={level.price} summary={summary} />{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {index < 10 ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
             {orderCell('BUY', level.price, key)}
@@ -564,8 +587,9 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         {orderChip(o, `호가 밖 ${orderSideLabel(o.side)} ${fmt(o.price)}원 주문`, `${orderSideLabel(o.side)} ${fmt(o.price)}원 · ${fmt(orderRemainder(o))}주`)}
       </div>)}</div>}
     </div>
-    {book && <TotalQtyStrip totals={{ ask: book.tot_ask, bid: book.tot_bid }} maskRatio={book.tot_ask + book.tot_bid === 0}
-      afterHoursTotals={null} afterHoursLabel="시간외" sessionControl={{ kind: 'none' }} sessionMode="regular" />}
+    {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={{ ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 }} maskRatio={!book || book.tot_ask + book.tot_bid === 0}
+      afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}
+      onSelectSessionMode={selectSessionMode} />}
     {contextMenu?.side && contextMenu.price != null ? <PanelContextMenu point={contextMenu}
       label={`${orderSideLabel(contextMenu.side)} ${fmt(contextMenu.price)}원 주문 목록`} onClose={closeMenu}>
       <div data-order-list className="order-list font-data">
@@ -597,14 +621,10 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
         <button type="button" disabled={busy} onClick={closeAction}>닫기</button>
       </div>
     </ModalShell></div>, document.body)}
-    {notice && (() => {
-      const card = <ToastCard visible variant="error" role="alert" ariaLabel="주문 알림">
+    {notice && <OrderToastPortal><ToastCard visible variant="error" role="alert" ariaLabel="주문 알림">
         <div className="flex items-start justify-between gap-2"><span>{notice}</span>
           <button type="button" aria-label="주문 알림 닫기" onClick={() => setNotice(null)}>닫기</button></div>
         {failedRequest && <button type="button" disabled={busy} onClick={() => void submit(failedRequest.action, failedRequest.high)}>같은 요청 다시 확인</button>}
-      </ToastCard>;
-      const host = toastHost.current;
-      return host ? createPortal(card, host) : createPortal(<ToastViewport>{card}</ToastViewport>, document.body);
-    })()}
+      </ToastCard></OrderToastPortal>}
   </div>;
 }

@@ -16,7 +16,7 @@ import { PROGRAM_TRADE_SPEC } from './projectors/programTrade';
  * Specs that mount inside an existing pane (candle-pane overlays etc.)
  * remain plain `PaneSpec` because their `name` is not a persistence key.
  */
-export type BoundPaneSpec<Ctx = any> = PaneSpec<Ctx> & { name: PaneId };
+export type BoundPaneSpec<Ctx = unknown> = PaneSpec<Ctx> & { name: PaneId };
 
 /**
  * Master registry of `PaneSpec`s rendered by ChartStage in paneIndex
@@ -38,13 +38,20 @@ export type BoundPaneSpec<Ctx = any> = PaneSpec<Ctx> & { name: PaneId };
  * name, not index). Adding a new pane: append a new literal to
  * `PaneId` in types.ts and use it as the `name` of the new spec.
  */
+/** A heterogeneous registry owns each spec's context hook and projector as a
+ * pair. Erase that private context only at registration, keeping projector
+ * inputs checked where each spec is declared. */
+export function bindPaneSpec<Ctx>(spec: PaneSpec<Ctx> & { name: PaneId }): BoundPaneSpec {
+  return spec as unknown as BoundPaneSpec;
+}
+
 export const PANE_SPECS: BoundPaneSpec[] = [
-  CANDLE_SPEC,         // paneIndex 0
-  VOLUME_SPEC,         // paneIndex 1
-  QUOTE_TOTALS_SPEC,   // paneIndex 2
-  RATIO_SPEC,          // paneIndex 3
-  FILL_STRENGTH_SPEC,  // paneIndex 4
-  PROGRAM_TRADE_SPEC,  // paneIndex 5
+  bindPaneSpec(CANDLE_SPEC),         // paneIndex 0
+  bindPaneSpec(VOLUME_SPEC),         // paneIndex 1
+  bindPaneSpec(QUOTE_TOTALS_SPEC),   // paneIndex 2
+  bindPaneSpec(RATIO_SPEC),          // paneIndex 3
+  bindPaneSpec(FILL_STRENGTH_SPEC),  // paneIndex 4
+  bindPaneSpec(PROGRAM_TRADE_SPEC),  // paneIndex 5
 ];
 
 export const PANE_STRETCH = PANE_SPECS.map((s) => s.stretch);

@@ -21,7 +21,8 @@ function savedRange() {
 function openSavedView(save: StudyViewReference) {
   useLivePageStore.getState().focusSavedRange(savedRangeFocusFromView(save));
 }
-import { StudyViewsDrawer, filterStudyViews, formatStudyViewMeta, formatStudyViewTitle } from './StudyViewsDrawer';
+import { StudyViewsDrawer } from './StudyViewsDrawer';
+import { filterStudyViews, formatStudyViewMeta, formatStudyViewTitle } from './StudyViewsDrawerHelpers';
 
 type DndHandlers = {
   onDragStart: null | ((event: unknown) => void);

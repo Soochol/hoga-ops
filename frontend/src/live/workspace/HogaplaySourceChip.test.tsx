@@ -1,11 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  HogaplaySourceChip,
-  hogaplayGapFillSentence,
-  hogaplayPeriodLabel,
-  type HogaplayChipGapFill,
-} from './HogaplaySourceChip';
+import { HogaplaySourceChip } from './HogaplaySourceChip';
+import { hogaplayGapFillSentence, hogaplayPeriodLabel, type HogaplayChipGapFill } from './HogaplaySourceChipHelpers';
 
 describe('hogaplayPeriodLabel', () => {
   it('같은 날은 하루만 적는다', () => {

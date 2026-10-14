@@ -1,8 +1,10 @@
-import type { ConditionLeaf } from '../../api/screener';
+import type { ComponentType } from 'react';
+import type { ConditionLeaf, ConditionType } from '../../api/screener';
 
-export interface CatalogEntry {
+export type ConditionParams<T extends ConditionType> = Extract<ConditionLeaf, { type: T }>['params'];
+export interface CatalogEntry<T extends ConditionType = ConditionType> {
   label: string;
-  defaultParams: ConditionLeaf['params'];
-  ParamForm: React.FC<{ params: any; onChange: (p: any) => void }>;
-  summarize: (p: any) => string;
+  defaultParams: ConditionParams<T>;
+  ParamForm: ComponentType<{ params: ConditionParams<T>; onChange: (params: ConditionParams<T>) => void }>;
+  summarize: (params: ConditionParams<T>) => string;
 }
