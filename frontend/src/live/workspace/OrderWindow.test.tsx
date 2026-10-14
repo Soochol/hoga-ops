@@ -580,13 +580,14 @@ describe('호가 주문', () => {
     expect(strip).not.toHaveTextContent('매도 잔량'); expect(strip).not.toHaveTextContent('매수 잔량');
   });
 
-  it('10호가창과 호가주문창 모두 하단에 시간외종가를 표시한다', () => {
+  it.each([true, false])('정규장 사다리 존재=%s여도 두 창은 같은 시간외종가 잔량을 표시한다', hasBook => {
     const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
     const previousNow = mock.now;
     mock.now = Date.UTC(2026, 9, 14, 6, 47); // 15:47 KST
     vi.mocked(useLiveSeries).mockImplementation(() => ({ ...originalSeries('005930', 'KRX'),
-      latestOb: { t_ms: Date.UTC(2026, 9, 14, 6, 30), asks: [{ price: 241500, qty: 879 }],
-        bids: [{ price: 241000, qty: 538 }], total_ask_qty: 879, total_bid_qty: 538 },
+      latestOb: hasBook ? { t_ms: Date.UTC(2026, 9, 14, 6, 30), asks: [{ price: 241500, qty: 0 }],
+        bids: [{ price: 241000, qty: 0 }], total_ask_qty: 0, total_bid_qty: 0 } : undefined,
+      afterHours: [{ t_ms: mock.now, total_ask_qty: 879, total_bid_qty: 538 }],
     }));
     try {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -599,6 +600,7 @@ describe('호가 주문', () => {
         const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
         expect(strip).toHaveTextContent('879시간외종가538');
         expect(strip).not.toHaveTextContent('정규장 · 마지막');
+        expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '879fr 538fr' });
       }
     } finally {
       mock.now = previousNow;

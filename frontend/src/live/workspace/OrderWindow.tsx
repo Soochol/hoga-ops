@@ -222,6 +222,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const onScreen = new Set(prices.map(l => l.price));
   const outside = orders.filter(o => o.price == null || !onScreen.has(Number(o.price)));
   const maxQty = Math.max(1, ...prices.map(l => l.qty));
+  const displayTotals = afterHoursTotals ?? { ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 };
   const baseline = resolveBookBaseline({ isPastDateLadder: false, ladderBaseline: null,
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
@@ -603,7 +604,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         {orderChip(o, `호가 밖 ${orderSideLabel(o.side)} ${fmt(o.price)}원 주문`, `${orderSideLabel(o.side)} ${fmt(o.price)}원 · ${fmt(orderRemainder(o))}`)}
       </div>)}</div>}
     </div>
-    {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={{ ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 }} maskRatio={!book || book.tot_ask + book.tot_bid === 0}
+    {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={displayTotals} maskRatio={displayTotals.ask + displayTotals.bid === 0}
       afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}
       onSelectSessionMode={selectSessionMode} />}
     {contextMenu?.side && contextMenu.price != null ? <PanelContextMenu point={contextMenu}

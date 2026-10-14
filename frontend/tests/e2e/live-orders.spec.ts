@@ -8,10 +8,10 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN' } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
-  await page.addInitScript(() => localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'UN' })));
+  await page.addInitScript(venue => localStorage.setItem('live.venue.v1', JSON.stringify({ venue })), market.venue ?? 'UN');
   await installLiveMocks(page);
   const ws = await installLiveWs(page);
   await page.route(/^https?:\/\/[^/]+\/api\/symbols\/all$/, route => route.fulfill({ json: {
@@ -22,7 +22,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => route.fulfill({ json: {
     code: new URL(route.request().url()).searchParams.get('code') ?? '005930', date: new URL(route.request().url()).searchParams.get('date'), session_open_ms: Date.now(), session_close_ms: null, is_open: true,
-    snapshots: [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
+    snapshots: [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
     trades: [], brokers: [], programs: [], after_hours: [], expected: [], today_ask_peak: null, today_bid_peak: null,
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/stock-limits\?/, route => route.fulfill({ json: {
@@ -895,6 +895,34 @@ test('호가 경계 1px 밖 드롭은 즉시 취소하고 Esc로 중단할 수 �
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
 });
 
+
+test('시간외종가의 잔량은 정규장 잔량이 0이어도 두 호가창에 함께 갱신된다', async ({ page }) => {
+  const time = Date.UTC(2026, 9, 14, 6, 47); // 15:47 KST
+  await page.clock.install({ time });
+  const { window, ws, commands } = await setup(page, false, true, false, 0, 1, { time, venue: 'KRX' });
+  const book = page.locator('.book-panel');
+  await ws.waitForSubscribe('005930');
+  ws.pushLive('005930', { kind: 'ob', venue: 'KRX', t_ms: time + 1,
+    asks: [{ price: 67300, qty: 0 }], bids: [{ price: 67200, qty: 0 }],
+    total_ask_qty: 0, total_bid_qty: 0 });
+  await expect(window.getByLabel('매도총잔량 0', { exact: true })).toBeVisible();
+  const connections = ws.connectionCount();
+  await page.clock.fastForward(65_000);
+  // Advancing past the heartbeat watchdog reconnects the mocked socket.
+  await expect.poll(ws.connectionCount).toBeGreaterThan(connections);
+  await ws.waitForSubscribe('005930');
+  for (const [index, ask, bid] of [[0, 879, 538], [1, 0, 620]] as const) {
+    ws.pushLive('005930', { kind: 'ah', venue: 'KRX', t_ms: time + 65_000 + index,
+      total_ask_qty: ask, total_bid_qty: bid });
+    for (const panel of [window, book]) {
+      const strip = panel.getByTestId('book-total-strip');
+      await expect(strip).toHaveText(`${ask}시간외종가${bid}`);
+      await expect(strip.getByTestId('book-total-fill')).toBeVisible();
+      expect(await strip.getByTestId('book-total-fill').evaluate(el => (el as HTMLElement).style.gridTemplateColumns)).toBe(`${ask}fr ${bid}fr`);
+    }
+  }
+  expect(commands).toHaveLength(0);
+});
 
 test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시되고 빈 호가는 제거된다', async ({ page }, testInfo) => {
   const { window, ws, commands } = await setup(page);
