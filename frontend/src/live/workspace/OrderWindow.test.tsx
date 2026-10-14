@@ -47,11 +47,10 @@ describe('호가 주문', () => {
   it.each(['KRX', 'NXT', 'UN'] as const)('%s 시세를 조회해도 실계좌 주문 본문에는 거래소를 보내지 않는다', async venue => {
     useLiveVenueStore.setState({ venue });
     show();
-    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
     expect(useLiveSeries).toHaveBeenLastCalledWith('005930', venue);
     expect(useQuoteByCode).toHaveBeenLastCalledWith(['005930'], venue);
     expect(useLiveViStatus).toHaveBeenLastCalledWith('005930', venue);
-    expect(screen.getByLabelText('시세·주문 기준')).toHaveTextContent(`시세 ${venue === 'UN' ? '통합' : venue} · 주문 통합(SOR)`);
+    expect(screen.queryByLabelText('시세·주문 기준')).not.toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0]).toEqual(['/orders', {
@@ -59,17 +58,16 @@ describe('호가 주문', () => {
       quantity: 10, confirm_high_value: false,
     }, 'live']);
   });
-  it('통합 선택의 NXT 미상장 종목은 시세 KRX 대체와 모의 체결 기준을 표시한다', () => {
+  it('통합 선택의 NXT 미상장 종목은 기준 라벨 없이 KRX 시세를 사용한다', () => {
     symbolMaster.nxtEnabled = false;
     useLiveVenueStore.setState({ venue: 'UN' });
     show();
-    expect(screen.getByLabelText('시세·주문 기준')).toHaveTextContent('시세 KRX (통합 선택) · 모의 체결 통합');
+    expect(screen.queryByLabelText('시세·주문 기준')).not.toBeInTheDocument();
     expect(useLiveViStatus).toHaveBeenLastCalledWith('005930', 'KRX');
   });
   it('venue 전환은 가격 미리보기와 고액 확인을 닫고 주문 수량·계좌 주문을 유지한다', () => {
     mock.orders = [order()];
     show();
-    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2000' } });
     fireEvent.pointerEnter(screen.getByRole('button', { name: /매수 67,300원 주문 추가/ }).closest('.order-row')!);
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,300원 주문 추가/ }));
@@ -132,9 +130,8 @@ describe('호가 주문', () => {
       vi.mocked(useQuoteByCode).mockImplementation(originalQuotes);
     }
   });
-  it.each(['paper', 'live'] as const)('%s 계좌의 매입수량 클릭은 전체 보유 수량을 채우고 다음 주문에 사용한다', async mode => {
+  it('실계좌의 매입수량 클릭은 전체 보유 수량을 채우고 다음 주문에 사용한다', async () => {
     show();
-    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: mode } });
     fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(100);
     expect(mock.command).not.toHaveBeenCalled();
@@ -142,7 +139,7 @@ describe('호가 주문', () => {
     await waitFor(() => expect(buy).toBeEnabled());
     fireEvent.doubleClick(buy);
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ quantity: 100 }), mode]);
+    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ quantity: 100 }), 'live']);
   });
   it('금액 모드에서 매입수량을 클릭하면 수량 모드로 전환하고 보유 수량을 채운다', () => {
     show();
@@ -197,9 +194,8 @@ describe('호가 주문', () => {
       expect(mock.command).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
-  it.each(['paper', 'live'] as const)('%s 계좌의 매수·매도는 단일 클릭으로 보내지 않고 더블클릭당 한 건만 보낸다', async mode => {
+  it('실계좌의 매수·매도는 단일 클릭으로 보내지 않고 더블클릭당 한 건만 보낸다', async () => {
     show();
-    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: mode } });
     for (const [label, side] of [['매수', 'BUY'], ['매도', 'SELL']] as const) {
       const add = screen.getByRole('button', { name: new RegExp(`${label} 67,200원 주문 추가`) });
       await waitFor(() => expect(add).toBeEnabled());
@@ -210,7 +206,7 @@ describe('호가 주문', () => {
       expect(mock.command).not.toHaveBeenCalled();
       fireEvent.doubleClick(add);
       await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-      expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ side, price: 67200, quantity: 10 }), mode]);
+      expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ side, price: 67200, quantity: 10 }), 'live']);
     }
   });
   it('평가수익은 소수 평단가로 계산해 올림하고 정수 경계에서 1원 오차를 만들지 않는다', () => {
@@ -363,7 +359,7 @@ describe('호가 주문', () => {
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '주문 접수' })).not.toBeInTheDocument();
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-    expect(mock.command.mock.calls[0][2]).toBe('paper');
+    expect(mock.command.mock.calls[0][2]).toBe('live');
     expect(mock.command.mock.calls[0][1]).toMatchObject({ account_seq: 1, code: '005930', side: 'BUY', price: 67200, quantity: 10, confirm_high_value: false });
   });
   it('부분 체결을 제외한 잔량만 표시하고 클릭해도 하단 편집 UI가 열리지 않는다', () => {
@@ -413,23 +409,17 @@ describe('호가 주문', () => {
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     view.unmount(); mock.configured = false; show(); expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
   });
-  it('모의 고액 주문은 즉시 보내고 실계좌의 필수 금액 확인만 유지한다', async () => {
+  it('실계좌 고액 주문은 금액 확인 전에는 전송하지 않는다', async () => {
     show(); fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2000' } });
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
-    await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-    expect(mock.command.mock.calls[0][1]).toMatchObject({ quantity: 2000, confirm_high_value: true });
-    expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
-    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2000' } });
-    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
-    expect(mock.command).toHaveBeenCalledOnce();
+    expect(mock.command).not.toHaveBeenCalled();
     expect(screen.getByRole('group', { name: '고액 주문 확인' })).toBeInTheDocument();
     expect(screen.queryByLabelText('주문 가격')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '확인 후 주문' })).toBeDisabled();
     fireEvent.click(screen.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }));
     fireEvent.click(screen.getByRole('button', { name: '확인 후 주문' }));
-    await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(2));
-    expect(mock.command.mock.calls[1][2]).toBe('live');
+    await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
+    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ quantity: 2000, confirm_high_value: true }), 'live']);
   });
   it('같은 가격의 여러 주문은 한 칸에 합산하고 우클릭 목록에서 개별 잔량을 표시한다', () => {
     mock.orders = [order('a'), order('b'), { ...order('other'), price: '67100' }]; show();
@@ -466,21 +456,12 @@ describe('호가 주문', () => {
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     fireEvent.keyDown(chip, { key: '2', ctrlKey: true }); expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(50);
   });
-  it('모의 초기화는 확인 후 로컬 API에만 전송한다', async () => {
+  it('모의투자 UI 없이 항상 실계좌로 즉시 주문한다', async () => {
     show();
-    expect(screen.getByRole('combobox', { name: '주문 모드' })).toHaveValue('paper');
-    fireEvent.click(screen.getByRole('button', { name: '모의 계좌 설정' }));
-    fireEvent.change(screen.getByLabelText('모의 초기 보유 수량'), { target: { value: '100' } });
-    expect(screen.getByRole('button', { name: '모의 계좌 초기화' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('checkbox', { name: '모든 종목의 모의 주문·보유 내역을 지우고 초기화합니다' }));
-    fireEvent.click(screen.getByRole('button', { name: '모의 계좌 초기화' }));
-    await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-    expect(mock.command.mock.calls[0]).toEqual(['/reset', expect.objectContaining({ cash: 100_000_000, holding_quantity: 100, average_purchase_price: 67200, confirmed: true }), 'paper']);
-  });
-  it('실계좌 선택 후에도 더블클릭으로 즉시 주문한다', async () => {
-    show();
-    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
+    expect(screen.queryByRole('combobox', { name: '주문 모드' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '모의 계좌 설정' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: '모의 계좌 초기화' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('시세·주문 기준')).not.toBeInTheDocument();
     expect(screen.queryByRole('checkbox', { name: '즉시 주문' })).not.toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
@@ -492,8 +473,7 @@ describe('호가 주문', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const win: WorkspaceWindow = { id: 'order-context', kind: 'order', group: 1, rect: { x: 0, y: 0, w: 720, h: 720 } };
     const view = render(<QueryClientProvider client={client}><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></QueryClientProvider>);
-    await screen.findByRole('combobox', { name: '주문 모드' });
-    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
+    await screen.findByRole('combobox', { name: '주문 계좌' });
     fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: '2' } });
     fireEvent.click(screen.getByLabelText('매수 67,200원 주문', { exact: true }));
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
