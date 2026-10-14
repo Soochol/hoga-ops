@@ -96,6 +96,10 @@ export interface LiveSeriesData {
   initial: LiveSeriesResponse | undefined;
   /** Coalesced display state; never mixed into the ordered indicator history. */
   latestOb?: ObSnapshot;
+  /** Latest usable ladder, retained when a reset frame has no prices. */
+  lastValidOb?: ObSnapshot;
+  /** KRX ladder immediately before the regular closing auction. */
+  preAuctionOb?: ObSnapshot;
   isLoading: boolean;
   error: unknown;
   // ob/trade are narrowed to the shapes their consumers read (SR-1). The SSE

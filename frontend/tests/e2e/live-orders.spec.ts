@@ -954,7 +954,7 @@ test('시간외종가의 잔량은 정규장 잔량이 0이어도 두 호가창�
       total_ask_qty: ask, total_bid_qty: bid });
     for (const panel of [window, book]) {
       const strip = panel.getByTestId('book-total-strip');
-      await expect(strip).toHaveText(`${ask}시간외종가${bid}`);
+      await expect(strip).toHaveText(`${ask}마지막 수신 · 15:47:00${bid}`);
       await expect(strip.getByTestId('book-total-fill')).toBeVisible();
       expect(await strip.getByTestId('book-total-fill').evaluate(el => (el as HTMLElement).style.gridTemplateColumns)).toBe(`${ask}fr ${bid}fr`);
     }

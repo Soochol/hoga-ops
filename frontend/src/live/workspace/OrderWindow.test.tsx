@@ -622,8 +622,9 @@ describe('호가 주문', () => {
     expect(strip).not.toHaveTextContent('매도 잔량'); expect(strip).not.toHaveTextContent('매수 잔량');
   });
 
-  it.each([true, false])('정규장 사다리 존재=%s여도 두 창은 같은 시간외종가 잔량을 표시한다', hasBook => {
+  it.each([true, false])('정규장 사다리 존재=%s여도 두 창은 저장 호가를 공유하고 15:59:50 수신 즉시 전환한다', async hasBook => {
     const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    const api = vi.spyOn(await import('../../api/client'), 'apiCall');
     const previousNow = mock.now;
     mock.now = Date.UTC(2026, 9, 14, 6, 47); // 15:47 KST
     vi.mocked(useLiveSeries).mockImplementation(() => ({ ...originalSeries('005930', 'KRX'),
@@ -633,19 +634,63 @@ describe('호가 주문', () => {
     }));
     try {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const saved = { ts_ms: Date.UTC(2026, 9, 14, 6, 19, 50), seq: 0,
+        ask: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 })),
+        bid: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 })),
+        tot_ask: 1000, tot_bid: 2000 };
+      api.mockResolvedValue({ snapshot: saved });
       const win: WorkspaceWindow = { id: 'close-book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
-      render(<QueryClientProvider client={client}>
+      const content = () => <QueryClientProvider client={client}>
         <div data-testid="close-book"><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></div>
         <div data-testid="close-order"><OrderWindow code="005930" name="삼성전자" /></div>
-      </QueryClientProvider>);
+      </QueryClientProvider>;
+      const view = render(content());
+      await waitFor(() => expect(screen.getAllByText(/정규장 마지막 · 15:19:50/)).toHaveLength(2));
       for (const id of ['close-book', 'close-order']) {
         const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
+        expect(strip).toHaveTextContent('1,000정규장 마지막 · 15:19:502,000');
+        expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '1000fr 2000fr' });
+      }
+      expect(api).toHaveBeenCalledTimes(1);
+      expect(new URL(api.mock.calls[0][0], 'http://test').searchParams.get('t')).toBe(String(Date.UTC(2026, 9, 14, 6, 20) - 1));
+      const frozenBuy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+      expect(frozenBuy).toBeDisabled();
+      mock.now = Date.UTC(2026, 9, 14, 6, 59, 50);
+      vi.mocked(useLiveSeries).mockImplementation(() => originalSeries('005930', 'KRX'));
+      mock.snapshotAt = mock.now;
+      view.rerender(content());
+      await waitFor(() => expect(screen.getAllByText('실시간 호가 · 15:59:50')).toHaveLength(2));
+      expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeEnabled();
+    } finally {
+      api.mockRestore();
+      mock.now = previousNow;
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+    }
+  });
+
+  it('저장 사다리도 없으면 두 창은 실제 시간외 총잔량과 막대를 표시한다', async () => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    const previousNow = mock.now;
+    const api = vi.spyOn(await import('../../api/client'), 'apiCall').mockResolvedValue({ snapshot: null });
+    mock.now = Date.UTC(2026, 9, 14, 6, 47);
+    vi.mocked(useLiveSeries).mockImplementation(() => ({ ...originalSeries('005930', 'KRX'), latestOb: undefined,
+      afterHours: [{ t_ms: mock.now, total_ask_qty: 879, total_bid_qty: 538 }],
+    }));
+    try {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const win: WorkspaceWindow = { id: 'no-book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
+      render(<QueryClientProvider client={client}>
+        <div data-testid="no-book"><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></div>
+        <div data-testid="no-book-order"><OrderWindow code="005930" name="삼성전자" /></div>
+      </QueryClientProvider>);
+      await waitFor(() => expect(api).toHaveBeenCalledOnce());
+      for (const id of ['no-book', 'no-book-order']) {
+        const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
         expect(strip).toHaveTextContent('879시간외종가538');
-        expect(strip).not.toHaveTextContent('정규장 · 마지막');
         expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '879fr 538fr' });
       }
     } finally {
-      mock.now = previousNow;
+      api.mockRestore(); mock.now = previousNow;
       vi.mocked(useLiveSeries).mockImplementation(originalSeries);
     }
   });

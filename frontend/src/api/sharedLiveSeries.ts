@@ -7,9 +7,11 @@ import { LiveSnapshotBuffer, type RawSnapshot, type SnapshotKind } from '../live
 import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../live/liveVenuePolicy';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
 import type { LiveVenueOption } from '../state/liveVenue';
+import { regularSessionOpenMs } from '../live/liveDateTime';
+import { preAuctionCutoff } from './livePreAuctionBook';
 
 export const LIVE_FLUSH_MS = 150;
-type Frames = Pick<LiveSeriesData, 'ob' | 'trade' | 'broker' | 'program' | 'afterHours' | 'expected' | 'latestOb'>;
+type Frames = Pick<LiveSeriesData, 'ob' | 'trade' | 'broker' | 'program' | 'afterHours' | 'expected' | 'latestOb' | 'lastValidOb' | 'preAuctionOb'>;
 type Raw = Record<SnapshotKind, readonly RawSnapshot[]>;
 const KINDS = ['ob', 'trade', 'broker', 'program', 'ah', 'expected'] as const;
 const EMPTY: readonly never[] = Object.freeze([]);
@@ -24,6 +26,11 @@ export function pickLastKnownOb(latched: ObSnapshot | undefined, served: ObSnaps
 
 function sameFrames(a: readonly RawSnapshot[], b: readonly RawSnapshot[]): boolean {
   return a.length === b.length && a.every((frame, i) => frame === b[i]);
+}
+
+function bookIsAtLeastAsNew(book: ObSnapshot, previous: ObSnapshot | undefined): boolean {
+  if (!previous || book.t_ms !== previous.t_ms) return !previous || book.t_ms > previous.t_ms;
+  return typeof book.seq !== 'number' || typeof previous.seq !== 'number' || book.seq >= previous.seq;
 }
 
 function frameKey(frame: RawSnapshot): string {
@@ -70,15 +77,46 @@ class SharedSeries {
   private unsubscribe: (() => void) | null = null;
   private unsubscribeLatest: (() => void) | null = null;
   private latestOb = new Map<string, ObSnapshot>();
+  private lastValidOb = new Map<string, ObSnapshot>();
+  private preAuctionOb?: ObSnapshot;
+  private readonly regularOpen: number;
+  private readonly auctionCutoff: number;
   readonly listeners = new Set<() => void>();
+
+  constructor(date: string) {
+    this.regularOpen = regularSessionOpenMs(date);
+    this.auctionCutoff = preAuctionCutoff(date);
+  }
+
+  private retainBook(entry: RawSnapshot, latest = true): void {
+    if (entry.kind !== 'ob') return;
+    const venue = typeof entry.venue === 'string' ? entry.venue : 'KRX';
+    const book = entry as ObSnapshot;
+    if (!Number.isFinite(book.t_ms)) return;
+    const previous = this.latestOb.get(venue);
+    // HHMMSS is not unique: newer arrivals within the same second still update.
+    if (latest && bookIsAtLeastAsNew(book, previous)) this.latestOb.set(venue, book);
+    const valid = this.lastValidOb.get(venue);
+    const usable = [book.asks, book.bids].some(levels => Array.isArray(levels)
+      && levels.some(level => Number.isFinite(level.price) && level.price > 0));
+    if (usable && bookIsAtLeastAsNew(book, valid) && (latest || !valid || book.t_ms > valid.t_ms)) {
+      this.lastValidOb.set(venue, book);
+    }
+    const saved = this.preAuctionOb;
+    if (usable && venue === 'KRX' && book.t_ms >= this.regularOpen && book.t_ms < this.auctionCutoff
+      && bookIsAtLeastAsNew(book, saved) && (latest || !saved || book.t_ms > saved.t_ms)) {
+      this.preAuctionOb = book;
+    }
+  }
 
   start(code: string): void {
     this.unsubscribeLatest = subscribeLiveLatest(code, (entry) => {
       if (entry.kind !== 'ob') return;
-      this.latestOb.set(typeof entry.venue === 'string' ? entry.venue : 'KRX', entry as ObSnapshot);
+      this.retainBook(entry);
       if (this.timer === null) this.timer = setTimeout(() => this.publish(), LIVE_FLUSH_MS);
     });
     this.unsubscribe = subscribeLive(code, (entry) => {
+      this.retainBook(entry, false);
       this.buffer.push(entry);
       if (this.timer === null) this.timer = setTimeout(() => this.publish(), LIVE_FLUSH_MS);
     });
@@ -105,6 +143,8 @@ class SharedSeries {
     const fresh = !this.hydrated.has(initial);
     if (!fresh && this.served.get(venue) === served) return;
     this.served.set(venue, served);
+    for (const entry of initial.snapshots) this.retainBook({ ...entry, kind: 'ob' } as RawSnapshot, false);
+    if (served) this.retainBook({ ...served, kind: 'ob' }, false);
     if (fresh) {
       this.hydrated.add(initial);
       const data = {
@@ -143,7 +183,8 @@ class SharedSeries {
     }
     let frames: Frames = { ob, trade: filtered.trade as readonly TradeSnapshot[], broker: filtered.broker, program: filtered.program,
       afterHours: filtered.ah, expected: filtered.expected,
-      latestOb: this.latestOb.get(venue) };
+      latestOb: this.latestOb.get(venue), lastValidOb: this.lastValidOb.get(venue),
+      preAuctionOb: venue === 'KRX' ? this.preAuctionOb : undefined };
     if (prev && Object.keys(frames).every((k) => frames[k as keyof Frames] === prev.frames[k as keyof Frames])) {
       frames = prev.frames;
     }
@@ -160,7 +201,7 @@ export function subscribeLiveSeries(code: string, date: string, listener: () => 
   const key = keyFor(code, date);
   let entry = entries.get(key);
   if (!entry) {
-    entry = new SharedSeries();
+    entry = new SharedSeries(date);
     entries.set(key, entry);
     entry.start(code);
   }

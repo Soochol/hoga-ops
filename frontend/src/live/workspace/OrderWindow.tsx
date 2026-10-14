@@ -106,16 +106,18 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     const snap = latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob);
     return snap !== null && previousDayObExpired(snap.ts_ms, now, venue) ? null : snap;
   }, [live.latestOb, live.ob, now, venue]);
-  const { snapshot, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
+  const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
+  const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
+  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
     afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs: now, todayKst, isSpot: false, regularSnapshot: latestSnapshot,
-    latestSnapshot, afterHours: live.afterHours,
+    latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   const vi = useLiveViStatus(code, effectiveVenue);
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [lockedBook, lockBook] = useState<OrderbookSnapshot | null>(null);
   const book = lockedBook ?? snapshot;
-  const deltaBadges = useOrderbookDeltaBadges(live.ob, !lockedBook);
+  const deltaBadges = useOrderbookDeltaBadges(live.ob, !lockedBook && !storedLadder);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
   const [previewPrice, setPreviewPrice] = useState<number | null>(null);
   const [action, setAction] = useState<Action | null>(null);
@@ -216,7 +218,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   useLayoutEffect(() => { latestOrders.current = orders; }, [orders]);
   const groups = useMemo(() => groupPriceOrders(orders), [orders]);
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
-  const fresh = activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
+  const fresh = !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
   const ready = account > 0 && !!state.data && !state.isError && !busy;
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
