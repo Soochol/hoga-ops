@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 /** Portal keeps a long name visible outside the clipped, scrolling list. */
-export function useTextTooltip(text: string, delayMs = 0) {
+export function useTextTooltip(text: string, delayMs = 0, className = '') {
   const id = useId();
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
   const [active, setActive] = useState(false);
@@ -50,7 +50,7 @@ export function useTextTooltip(text: string, delayMs = 0) {
     },
     hide,
     tooltip: anchor ? createPortal(<div id={id} role="tooltip"
-      className="pointer-events-none fixed z-50 max-w-72 rounded border border-border-strong bg-bg-card px-2 py-1 text-xs text-fg shadow-panel"
+      className={`pointer-events-none fixed z-50 max-w-72 rounded border border-border-strong bg-bg-card px-2 py-1 text-xs text-fg shadow-panel ${className}`}
       style={anchor}>{text}</div>, document.body) : null,
   };
 }
