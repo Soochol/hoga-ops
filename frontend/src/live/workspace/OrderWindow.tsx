@@ -34,14 +34,17 @@ import './OrderWindow.css';
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const EMPTY_ORDERS: TossOrder[] = [];
 type Action = {
-  type: 'create' | 'modify' | 'cancel' | 'bulk';
+  type: 'create' | 'modify' | 'cancel' | 'bulk' | 'group';
   base: TradingCommand;
   side: TradingSide | null;
   price: number;
   quantity: number | null;
   order?: TossOrder;
+  operation?: 'modify' | 'cancel';
+  batch?: { order: TossOrder; base: TradingCommand }[];
 };
-type Drag = { order: TossOrder; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLButtonElement };
+const changesPrice = (action: Action) => action.type === 'create' || action.type === 'modify' || (action.type === 'group' && action.operation === 'modify');
+type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
 
 export function OrderWindow({ code, name, settings, onSettingsChange }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void;
@@ -94,7 +97,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
   const [notice, setNotice] = useState<string | null>(null);
   const [failedRequest, setFailedRequest] = useState<{ action: Action; high: boolean } | null>(null);
@@ -147,7 +150,8 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   }, []);
   const [dragTarget, setDragTarget] = useState<number | null>(null);
   const [dragCancel, setDragCancel] = useState(false);
-  const [draggingOrderId, setDraggingOrderId] = useState<string | null>(null);
+  const [draggingOrders, setDraggingOrders] = useState<TossOrder[]>([]);
+  const draggingOrderId = draggingOrders[0]?.orderId ?? null;
   const drag = useRef<Drag | null>(null);
   const dragPreview = useRef<HTMLDivElement>(null);
   // Cursor motion updates only the floating preview, not the live order ladder.
@@ -162,9 +166,10 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const toastHost = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => { toastHost.current = document.getElementById('toast-viewport'); }, []);
   const suppressClick = useRef(false);
+  const suppressDoubleClick = useRef(false);
   const ladder = useRef<HTMLDivElement>(null);
   const orders = state.data?.orders ?? EMPTY_ORDERS;
-  const draggedOrder = draggingOrderId ? orders.find(o => o.orderId === draggingOrderId) ?? drag.current?.order : null;
+  const draggedOrder = draggingOrders[0] ?? null;
   const latestOrders = useRef(orders);
   useLayoutEffect(() => { latestOrders.current = orders; }, [orders]);
   const groups = useMemo(() => groupPriceOrders(orders), [orders]);
@@ -196,7 +201,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   }, [account, quantityTip.hide, averageTip.hide]);
   const currentOrder = action?.order ? orders.find(o => o.orderId === action.order?.orderId) ?? action.order : null;
   const actionQty = action?.quantity ?? (currentOrder ? orderRemainder(currentOrder) : 0);
-  const highValue = mode === 'live' && !!action && ['create', 'modify'].includes(action.type) && action.price * actionQty >= HIGH_VALUE_WON;
+  const highValue = mode === 'live' && !!action && changesPrice(action) && action.price * actionQty >= HIGH_VALUE_WON;
 
   function base(): TradingCommand { return { account_seq: account, code, command_id: nanoid() }; }
   function closeAction() { setAction(null); closeMenu(); confirmHigh(false); }
@@ -208,10 +213,28 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   async function submit(next: Action, high = false) {
     if (busyRef.current) return;
     if (!account || next.base.account_seq !== account || next.base.code !== code) { setNotice('계좌·종목이 변경되었습니다. 다시 선택하세요.'); return; }
-    if ((next.type === 'create' || next.type === 'modify') && !fresh) { setNotice('실시간 호가가 오래되었습니다. 갱신 후 주문하세요.'); return; }
+    if (changesPrice(next) && !fresh) { setNotice('실시간 호가가 오래되었습니다. 갱신 후 주문하세요.'); return; }
     busyRef.current = true; setBusy(true); setNotice(null); setFailedRequest(null);
+    let retryAction = next;
     try {
-      if (next.type === 'bulk') {
+      if (next.type === 'group') {
+        const failed: NonNullable<Action['batch']> = [];
+        const messages: string[] = [];
+        for (const item of next.batch ?? []) {
+          try {
+            const body = next.operation === 'modify' ? { ...item.base, price: next.price, quantity: null, confirm_high_value: high } : item.base;
+            const response = await tradingCommand<TradingCommandResponse>(`/orders/${encodeURIComponent(item.order.orderId)}/${next.operation}`, body, mode);
+            setPending(prev => ({ ...prev, [item.order.orderId]: response.order_id }));
+          } catch (error) {
+            failed.push(item);
+            messages.push(error instanceof Error ? error.message : '처리 결과 확인 필요');
+          }
+        }
+        if (failed.length) {
+          retryAction = { ...next, batch: failed };
+          throw new Error(`${next.operation === 'cancel' ? '취소' : '정정'} 미접수 ${failed.length}건 · ${messages.join(' · ')}`);
+        }
+      } else if (next.type === 'bulk') {
         const body: CancelTradingOrders = { ...next.base, side: next.side };
         const result = await tradingCommand<TradingCancelResponse>('/cancel-all', body, mode);
         const rejected = result.results.filter(r => !r.accepted);
@@ -234,8 +257,9 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       closeAction();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : '주문 처리 결과를 확인하세요.');
+      if (next.type === 'group') closeAction();
       // A failure never opens the removed new-order editor. Retry retains its ID.
-      setFailedRequest({ action: next, high });
+      setFailedRequest({ action: retryAction, high });
     } finally {
       await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] });
       busyRef.current = false; setBusy(false);
@@ -245,7 +269,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   function request(next: Action) {
     closeMenu(); confirmHigh(false);
     const qty = next.quantity ?? (next.order ? orderRemainder(next.order) : 0);
-    const high = ['create', 'modify'].includes(next.type) && next.price * qty >= HIGH_VALUE_WON;
+    const high = changesPrice(next) && next.price * qty >= HIGH_VALUE_WON;
     setFailedRequest(null); setNotice(null);
     if (mode === 'live' && high) setAction(next);
     else { closeAction(); void submit(next, mode === 'paper' && high); }
@@ -281,19 +305,27 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     request({ type: 'create', base: base(), side, price, quantity: qty });
   }
 
-  function beginDrag(e: PointerEvent<HTMLButtonElement>, order: TossOrder) {
-    if (e.button !== 0 || !editableOrder(order) || pending(order) || !ready) return;
+  function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false) {
+    const targets = candidates.filter(order => editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
+    if (e.button !== 0 || !targets.length || !ready) return;
     e.stopPropagation();
-    drag.current = { order, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
+    drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
     lockBook(snapshot); e.currentTarget.setPointerCapture(e.pointerId);
   }
-  function moveDrag(e: PointerEvent<HTMLButtonElement>) {
+  function moveDrag(e: PointerEvent<HTMLElement>) {
     const d = drag.current;
     if (!d || d.pointer !== e.pointerId) return;
     if (!d.active && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
-    if (!d.active) { d.active = true; setDraggingOrderId(d.order.orderId); }
+    if (!d.active) { d.active = true; setDraggingOrders(d.orders); }
     d.cursorX = e.clientX; d.cursorY = e.clientY;
     positionDragPreview();
+    if (d.list) {
+      const bounds = d.list.getBoundingClientRect();
+      d.cancel = e.clientX < bounds.left || e.clientX > bounds.right || e.clientY < bounds.top || e.clientY > bounds.bottom;
+      d.price = null;
+      setDragTarget(null); setDragCancel(d.cancel);
+      return;
+    }
     const rect = ladder.current?.getBoundingClientRect();
     const viewport = ladder.current?.closest('.order-scroll')?.getBoundingClientRect();
     const windowBounds = ladder.current?.closest('.order-window')?.getBoundingClientRect();
@@ -310,21 +342,30 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
           return e.clientY >= bounds.top && e.clientY < bounds.bottom;
         }) : null);
     const lane = hit?.closest<HTMLElement>('[data-order-side]');
-    d.price = !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.order.side) ? Number(row.dataset.orderPrice) : null;
+    d.price = !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.orders[0].side) ? Number(row.dataset.orderPrice) : null;
     setDragTarget(d.price); setDragCancel(d.cancel);
   }
-  function endDrag(e?: PointerEvent<HTMLButtonElement>, aborted = false) {
+  function endDrag(e?: PointerEvent<HTMLElement>, aborted = false) {
     if (e && !aborted) moveDrag(e);
     const d = drag.current;
     if (!d || (e && e.pointerId !== d.pointer)) return;
     drag.current = null;
     if (d.element.hasPointerCapture(d.pointer)) d.element.releasePointerCapture(d.pointer);
-    suppressClick.current = d.active; lockBook(null); setDragTarget(null); setDragCancel(false); setDraggingOrderId(null);
+    suppressClick.current = d.active;
+    if (d.active) suppressDoubleClick.current = true;
+    lockBook(null); setDragTarget(null); setDragCancel(false); setDraggingOrders([]);
     if (aborted || !d.active) return;
-    const order = latestOrders.current.find(o => o.orderId === d.order.orderId);
-    if (!order || !editableOrder(order) || orderRemainder(order) === 0) { setNotice('드래그 중 주문 상태가 변경되었습니다. 최신 내역을 확인하세요.'); return; }
-    if (d.cancel) request({ type: 'cancel', base: base(), side: order.side, price: 0, quantity: null, order });
-    else if (d.price && d.price !== Number(order.price)) request({ type: 'modify', base: base(), side: order.side, price: d.price, quantity: null, order });
+    const targets = d.orders.flatMap(original => {
+      const order = latestOrders.current.find(o => o.orderId === original.orderId);
+      return order && order.side === original.side && order.price === original.price && editableOrder(order) && !pending(order) && orderRemainder(order) > 0 ? [order] : [];
+    });
+    if (!targets.length) { setNotice('드래그 중 주문 상태가 변경되었습니다. 최신 내역을 확인하세요.'); return; }
+    const operation = d.cancel ? 'cancel' : d.price && d.price !== Number(targets[0].price) ? 'modify' : null;
+    if (!operation) return;
+    const price = operation === 'cancel' ? 0 : d.price!;
+    if (targets.length === 1) request({ type: operation, base: base(), side: targets[0].side, price, quantity: null, order: targets[0] });
+    else request({ type: 'group', operation, base: base(), side: targets[0].side, price,
+      quantity: targets.reduce((sum, order) => sum + orderRemainder(order), 0), batch: targets.map(order => ({ order, base: base() })) });
   }
 
   function orderChip(order: TossOrder, label: string, content?: string) {
@@ -332,7 +373,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     return <button key={order.orderId} className={`order-chip ${order.orderId === draggingOrderId ? 'order-chip-dragging' : ''}`} type="button"
       aria-label={label} title={`${orderSideLabel(order.side)} ${fmt(order.price)}원 · 잔여 ${fmt(orderRemainder(order))}주`}
       disabled={!ready || blocked} data-drag-order={!blocked ? order.orderId : undefined}
-      onPointerDown={e => beginDrag(e, order)} onPointerMove={moveDrag} onPointerUp={endDrag}
+      onPointerDown={e => beginDrag(e, [order])} onPointerMove={moveDrag} onPointerUp={endDrag}
       onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
       {content ?? `${fmt(orderRemainder(order))}주`}{blocked ? ' · 처리 중' : ''}
     </button>;
@@ -341,14 +382,28 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     const group = groups.get(`${side}:${price}`) ?? [];
     const opposite = orders.some(o => o.side !== side);
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
-    return <div className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`} data-order-side={side}>
-      {group.map((order, index) => orderChip(order, `${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ` ${index + 1}` : ''}`))}
-      <button type="button" className="order-add" aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
-        title={`${orderSideLabel(side)} 주문 · 더블클릭`}
-        disabled={!ready || !fresh || price <= 0 || opposite || !!settingsDraft || !!state.data?.unresolved_commands.length
-          || (amountMode && (quantityForAmount(amountMillions, price) ?? 0) < 1)}
-        onDoubleClick={() => create(side, price)} />
-    </div>;
+    const canCreate = ready && fresh && price > 0 && !opposite && !settingsDraft && !state.data?.unresolved_commands.length
+      && (!amountMode || (quantityForAmount(amountMillions, price) ?? 0) >= 1);
+    const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
+    return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
+      data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
+      title={`${orderSideLabel(side)} 주문 · 더블클릭으로 추가${group.length ? ' · 드래그로 정정·취소' : ''}`}
+      disabled={!canCreate && !canDrag}
+      onDoubleClick={() => { if (canCreate && !suppressClick.current) create(side, price); }}
+      onPointerDown={e => beginDrag(e, group)}
+      onContextMenu={e => {
+        if (!group.length) return;
+        e.preventDefault(); e.stopPropagation();
+        if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY, side, price });
+      }}
+      onPointerMove={moveDrag} onPointerUp={endDrag}
+      onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
+      {group.length > 0 && <span className={`order-quantity ${!canDrag ? 'order-quantity-blocked' : ''} ${draggingOrders.some(order => group.some(item => item.orderId === order.orderId)) ? 'order-chip-dragging' : ''}`}
+        aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ' 합계' : ''}`}
+        data-drag-order={group.some(order => editableOrder(order) && !pending(order)) ? group.map(order => order.orderId).join(',') : undefined}>
+        {fmt(group.reduce((sum, order) => sum + orderRemainder(order), 0))}주{group.some(order => !editableOrder(order) || pending(order)) ? ' · 처리 중' : ''}
+      </span>}
+    </button>;
   }
 
   const trades = useMemo(() => {
@@ -369,7 +424,13 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     vi={vi.data?.vi} height={height} />;
   return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
-    onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}
+    onClickCapture={e => {
+      if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; }
+      else if (e.detail === 1) suppressDoubleClick.current = false;
+    }}
+    onDoubleClickCapture={e => {
+      if (suppressDoubleClick.current) { e.preventDefault(); e.stopPropagation(); suppressDoubleClick.current = false; }
+    }}
     onKeyDown={e => {
       if (e.key === 'Escape') {
         if (settingsDraft) { e.preventDefault(); e.stopPropagation(); setSettingsDraft(null); return; }
@@ -438,7 +499,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     {averageTip.tooltip}
     {draggedOrder && createPortal(<div ref={dragPreview} role="status" aria-label="주문 드래그 미리보기"
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
-      {fmt(orderRemainder(draggedOrder))}주
+      {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}주
     </div>, document.body)}
     {settingsDraft && createPortal(<div className="order-settings-surface font-data" onKeyDown={e => {
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); setSettingsDraft(null); }
@@ -505,7 +566,23 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     </div>
     {book && <TotalQtyStrip totals={{ ask: book.tot_ask, bid: book.tot_bid }} maskRatio={book.tot_ask + book.tot_bid === 0}
       afterHoursTotals={null} afterHoursLabel="시간외" sessionControl={{ kind: 'none' }} sessionMode="regular" />}
-    {contextMenu && <PanelContextMenu point={contextMenu} label="주문 취소" onClose={closeMenu}>
+    {contextMenu?.side && contextMenu.price != null ? <PanelContextMenu point={contextMenu}
+      label={`${orderSideLabel(contextMenu.side)} ${fmt(contextMenu.price)}원 주문 목록`} onClose={closeMenu}>
+      <div data-order-list className="order-list font-data">
+        <p className="order-list-hint">주문을 목록 밖으로 드래그하면 개별 취소</p>
+        {(groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? []).map((order, index) =>
+          <button key={order.orderId} type="button" role="menuitem"
+            className={`order-list-item ${order.side === 'BUY' ? 'order-buy' : 'order-sell'} ${draggingOrderId === order.orderId ? 'order-chip-dragging' : ''}`}
+            aria-label={`주문 ${index + 1} · ${fmt(orderRemainder(order))}주 · ${order.orderId}`}
+            disabled={!ready || !editableOrder(order) || pending(order)}
+            onPointerDown={e => beginDrag(e, [order], true)} onPointerMove={moveDrag} onPointerUp={endDrag}
+            onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
+            <span>주문 {index + 1}</span><strong>{fmt(orderRemainder(order))}주</strong>
+            <small>{order.orderId}</small>{(!editableOrder(order) || pending(order)) && <small>처리 중</small>}
+          </button>)}
+        {!(groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length) && <p className="order-list-hint">미체결 주문 없음</p>}
+      </div>
+    </PanelContextMenu> : contextMenu && <PanelContextMenu point={contextMenu} label="주문 취소" onClose={closeMenu}>
       {([{ label: '매수 모두 취소', side: 'BUY' }, { label: '매도 모두 취소', side: 'SELL' }, { label: '전체 주문 취소', side: null }] as const).map(item =>
         <button key={item.label} type="button" role="menuitem" className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input-hover disabled:opacity-50"
           disabled={!ready || !orders.some(order => (item.side == null || order.side === item.side) && editableOrder(order) && !pending(order))}

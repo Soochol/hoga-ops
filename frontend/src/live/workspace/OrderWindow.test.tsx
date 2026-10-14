@@ -265,7 +265,7 @@ describe('호가 주문', () => {
     expect(mock.command.mock.calls[0][1]).toMatchObject({ account_seq: 1, code: '005930', side: 'BUY', price: 67200, quantity: 10, confirm_high_value: false });
   });
   it('부분 체결을 제외한 잔량만 표시하고 클릭해도 하단 편집 UI가 열리지 않는다', () => {
-    mock.orders = [order()]; show(); const chip = screen.getByRole('button', { name: '매수 67,200원 주문' });
+    mock.orders = [order()]; show(); const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
     expect(chip).toHaveTextContent('70주'); fireEvent.click(chip);
     expect(screen.queryByLabelText('정정 수량')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('주문 가격')).not.toBeInTheDocument();
@@ -277,11 +277,36 @@ describe('호가 주문', () => {
     mock.orders = [order()]; show(); expect(screen.getByRole('button', { name: /매도 67,200원 주문 추가/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeEnabled();
   });
+  it.each(['BUY', 'SELL'] as const)('%s 주문 수량과 칸 전체의 더블클릭은 같은 가격에 현재 수량으로 추가 주문한다', async side => {
+    mock.orders = [{ ...order(), side }];
+    const view = show();
+    const label = side === 'BUY' ? '매수' : '매도';
+    const cell = screen.getByRole('button', { name: new RegExp(`${label} 67,200원 주문 추가`) });
+    const quantity = screen.getByLabelText(`${label} 67,200원 주문`, { exact: true });
+    expect(quantity.closest('button')).toBe(cell);
+    expect(cell.querySelector('button')).toBeNull();
+    expect(view.container.querySelector('.order-add')).toBeNull();
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    for (const target of [quantity, cell]) {
+      await waitFor(() => expect(cell).toBeEnabled());
+      mock.command.mockClear();
+      fireEvent.click(target, { detail: 1 });
+      fireEvent.click(target, { detail: 2 });
+      expect(mock.command).not.toHaveBeenCalled();
+      fireEvent.doubleClick(target);
+      await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
+      expect(mock.command.mock.calls[0][1]).toMatchObject({ side, price: 67200, quantity: 25 });
+    }
+  });
   it('오래된 호가·무자격 신규 주문은 막되 연결된 주문의 드래그 취소는 허용한다', () => {
     mock.snapshotAt = mock.now - 60_000; mock.orders = [order()]; const view = show();
-    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
-    const chip = screen.getByRole('button', { name: '매수 67,200원 주문' });
-    expect(chip).toBeEnabled(); expect(chip).toHaveAttribute('data-drag-order', 'a');
+    const cell = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    expect(cell).toBeEnabled();
+    fireEvent.doubleClick(cell);
+    expect(mock.command).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toBeDisabled();
+    const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
+    expect(chip.closest('button')).toBeEnabled(); expect(chip).toHaveAttribute('data-drag-order', 'a');
     fireEvent.click(chip);
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     view.unmount(); mock.configured = false; show(); expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
@@ -304,19 +329,32 @@ describe('호가 주문', () => {
     await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(2));
     expect(mock.command.mock.calls[1][2]).toBe('live');
   });
-  it('같은 가격의 여러 주문도 개별 수량 칩으로 표시하고 모두 드래그할 수 있다', () => {
-    mock.orders = [order('a'), order('b')]; show();
-    const chips = [1, 2].map(i => screen.getByRole('button', { name: `매수 67,200원 주문 ${i}` }));
-    chips.forEach((chip, i) => {
-      expect(chip).toHaveTextContent('70주'); expect(chip).toHaveAttribute('data-drag-order', i ? 'b' : 'a'); fireEvent.click(chip);
-    });
-    expect(screen.queryByText('개별 주문 선택')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('정정 수량')).not.toBeInTheDocument(); expect(mock.command).not.toHaveBeenCalled();
+  it('같은 가격의 여러 주문은 한 칸에 합산하고 우클릭 목록에서 개별 잔량을 표시한다', () => {
+    mock.orders = [order('a'), order('b'), { ...order('other'), price: '67100' }]; show();
+    const cell = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    expect(cell).toHaveTextContent('140주');
+    fireEvent.contextMenu(cell, { clientX: 100, clientY: 100 });
+    const menu = screen.getByRole('menu', { name: '매수 67,200원 주문 목록' });
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);
+    expect(within(menu).getByRole('menuitem', { name: '주문 1 · 70주 · a' })).toBeEnabled();
+    expect(within(menu).getByRole('menuitem', { name: '주문 2 · 70주 · b' })).toBeEnabled();
+    expect(menu).not.toHaveTextContent('other');
+    expect(mock.command).not.toHaveBeenCalled();
     const a = order(), b = { ...order('b'), side: 'SELL' as const }; expect(groupPriceOrders([a, b]).size).toBe(2); expect(orderRemainder(a)).toBe(70);
+  });
+  it('우클릭 목록의 처리 중 주문은 개별 드래그를 막고 Escape로 목록을 닫는다', () => {
+    mock.orders = [order('a'), { ...order('b'), status: 'PENDING_CANCEL' }]; show();
+    const cell = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    fireEvent.contextMenu(cell, { clientX: 100, clientY: 100 });
+    const item = screen.getByRole('menuitem', { name: '주문 2 · 70주 · b' });
+    expect(item).toBeDisabled();
+    fireEvent.keyDown(item, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(mock.command).not.toHaveBeenCalled();
   });
   it('키보드 단축키는 주문을 전송하지 않고 수량 프리셋 선택만 유지한다', () => {
     mock.orders = [order()]; show();
-    const chip = screen.getByRole('button', { name: '매수 67,200원 주문' });
+    const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
     fireEvent.click(chip);
     for (const key of ['ArrowUp', 'ArrowDown', 'Delete']) fireEvent.keyDown(chip, { key, ctrlKey: true });
     fireEvent.keyDown(chip, { key: 'Backspace', ctrlKey: true, shiftKey: true });
@@ -353,7 +391,7 @@ describe('호가 주문', () => {
     await screen.findByRole('combobox', { name: '주문 모드' });
     fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
     fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: '매수 67,200원 주문' }));
+    fireEvent.click(screen.getByLabelText('매수 67,200원 주문', { exact: true }));
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     mock.orders = [];
     view.rerender(<QueryClientProvider client={client}><DataWindow win={win} symbol={{ code: '000660', name: 'SK하이닉스' }} /></QueryClientProvider>);
@@ -408,7 +446,7 @@ describe('호가 주문', () => {
     mock.orders = [order()]; show();
     const onGlobalEscape = vi.fn(); window.addEventListener('keydown', onGlobalEscape);
     try {
-      const chip = screen.getByRole('button', { name: '매수 67,200원 주문' });
+      const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
       fireEvent.contextMenu(chip.closest('.order-ladder')!, { clientX: 100, clientY: 100 });
       fireEvent.keyDown(chip, { key: 'Escape' });
       expect(screen.queryByRole('menu')).not.toBeInTheDocument();

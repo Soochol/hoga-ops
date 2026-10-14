@@ -72,6 +72,49 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
+test('주문한 칸은 버튼 하나이며 수량과 칸 가장자리 더블클릭으로 추가 주문한다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, true, 'live', false);
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const quantity = window.getByLabel('매수 67,200원 주문', { exact: true });
+  await expect(cell).toHaveText('70주');
+  await expect(cell.locator('button')).toHaveCount(0);
+  await expect(window.locator('.order-add')).toHaveCount(0);
+  await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('25');
+  await quantity.click();
+  expect(commands).toHaveLength(0);
+  await quantity.dblclick();
+  await expect(cell).toHaveText('95주');
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({ side: 'BUY', price: 67200, quantity: 25 });
+  await cell.dblclick({ position: { x: 1, y: 1 } });
+  await expect(cell).toHaveText('120주');
+  expect(commands).toHaveLength(2);
+  expect(commands[1]).toMatchObject({ side: 'BUY', price: 67200, quantity: 25 });
+  await page.screenshot({ path: testInfo.outputPath('order-single-cell.png') });
+});
+
+test('주문 한 건이 있는 칸의 가장자리도 드래그 정정하고 드래그 클릭은 추가 주문하지 않는다', async ({ page }) => {
+  const { window, commands } = await setup(page, true);
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const destination = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+  const source = (await cell.boundingBox())!;
+  const target = (await destination.boundingBox())!;
+  await page.mouse.move(source.x + 1, source.y + 1);
+  await page.mouse.down();
+  await page.mouse.move(target.x + 1, target.y + 1, { steps: 12 });
+  await page.mouse.up();
+  await expect(destination).toHaveText('70주');
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({ price: 67100, quantity: null });
+  // A browser dblclick immediately following a drag must never create an order.
+  await destination.dispatchEvent('click', { detail: 2 });
+  await destination.dispatchEvent('dblclick', { detail: 2 });
+  expect(commands).toHaveLength(1);
+  await destination.dblclick();
+  await expect(destination).toHaveText('80주');
+  expect(commands).toHaveLength(2);
+});
+
 test('576px 주문창은 폰트·24px 호가·수량 한 줄을 유지하고 매수 가능을 설정 오른쪽에 표시한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, false, 'live', false);
   const frame = page.locator('[data-win]').filter({ has: window });
@@ -97,14 +140,14 @@ test('576px 주문창은 폰트·24px 호가·수량 한 줄을 유지하고 매
   await buy.click();
   expect(commands).toHaveLength(0);
   await buy.dblclick();
-  const chip = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const chip = window.getByLabel('매수 67,200원 주문', { exact: true });
   await expect(chip).toHaveText('10주');
   await chip.click();
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
   await expect(window.getByRole('spinbutton', { name: '정정 수량' })).toHaveCount(0);
   expect(commands).toHaveLength(1);
   await drag(page, chip, window.getByRole('button', { name: /매수 67,100원 주문 추가/ }));
-  const moved = window.getByRole('button', { name: '매수 67,100원 주문', exact: true });
+  const moved = window.getByLabel('매수 67,100원 주문', { exact: true });
   await expect(moved).toHaveText('10주');
   expect(commands).toHaveLength(2);
   await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
@@ -209,7 +252,7 @@ test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신
   await add.dblclick();
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
   await expect(window.getByRole('button', { name: '주문 접수', exact: true })).toHaveCount(0);
-  await expect(window.getByRole('button', { name: '매수 67,200원 주문', exact: true })).toBeVisible();
+  await expect(window.getByLabel('매수 67,200원 주문', { exact: true })).toBeVisible();
   expect(commands).toHaveLength(1);
   expect(commands[0]).toMatchObject({ code: '005930', account_seq: 1, side: 'BUY', price: 67200, quantity: 10 });
   await expect(window).not.toContainText('⠿');
@@ -250,9 +293,9 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(summary.getByText('매도 가능', { exact: true })).toHaveCount(0);
   for (const label of ['KRX종가', '상승VI', '하강VI', '250일']) await expect(summary.getByText(label, { exact: true })).toBeVisible();
   await buy.dblclick();
-  await expect(window.getByRole('button', { name: '매수 67,200원 주문', exact: true })).toHaveText('50주');
+  await expect(window.getByLabel('매수 67,200원 주문', { exact: true })).toHaveText('50주');
   expect(commands[0]).toMatchObject({ side: 'BUY', quantity: 50 });
-  await drag(page, window.getByRole('button', { name: '매수 67,200원 주문', exact: true }), window.getByRole('combobox', { name: '주문 모드' }));
+  await drag(page, window.getByLabel('매수 67,200원 주문', { exact: true }), window.getByRole('combobox', { name: '주문 모드' }));
   const sell = window.getByRole('button', { name: /매도 67,300원 주문 추가/ });
   await expect(sell).toBeEnabled();
   await sell.focus();
@@ -262,7 +305,7 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   expect(commands).toHaveLength(2);
   await expect(window.locator('[data-drag-order]')).toHaveCount(0);
   await sell.dblclick();
-  await expect(window.getByRole('button', { name: '매도 67,300원 주문', exact: true })).toHaveText('50주');
+  await expect(window.getByLabel('매도 67,300원 주문', { exact: true })).toHaveText('50주');
   expect(commands[2]).toMatchObject({ side: 'SELL', quantity: 50 });
   await window.screenshot({ path: testInfo.outputPath('unified-order-controls.png') });
 });
@@ -296,7 +339,7 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   await buy.hover();
   await expect(window.getByLabel('예상 주문 수량')).toHaveText('87주');
   await buy.dblclick();
-  await expect(window.getByRole('button', { name: '매수 68,200원 주문', exact: true })).toHaveText('87주');
+  await expect(window.getByLabel('매수 68,200원 주문', { exact: true })).toHaveText('87주');
   expect(commands[0]).toMatchObject({ side: 'BUY', price: 68200, quantity: 87 });
   await settings.click();
   await dialog.getByRole('radio', { name: '수량', exact: true }).check();
@@ -339,7 +382,7 @@ test('주문 방식·프리셋은 새로고침 후 유지하고 다른 주문창
 
 test('드래그 주문이 커서를 따라 떠다니며 정정 호가·드래그 아웃 취소를 표시한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, true);
-  const original = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const original = window.getByLabel('매수 67,200원 주문', { exact: true });
   await expect(original).toHaveText('70주');
   const source = (await original.boundingBox())!;
   const preview = page.getByRole('status', { name: '주문 드래그 미리보기' });
@@ -355,7 +398,7 @@ test('드래그 주문이 커서를 따라 떠다니며 정정 호가·드래그
   await expect(preview).toHaveCSS('pointer-events', 'none');
   expect(await preview.evaluate(el => getComputedStyle(el).fontSize)).toBe(await original.evaluate(el => getComputedStyle(el).fontSize));
   await expect(original).toHaveCSS('opacity', '0.35');
-  await expect(destination.locator('..')).toHaveClass(/order-drag-destination/);
+  await expect(destination).toHaveClass(/order-drag-destination/);
   expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-order-price]')?.dataset.orderPrice, { x, y })).toBe('67000');
   expect(commands).toHaveLength(0);
   await page.screenshot({ path: testInfo.outputPath('order-drag-modify.png') });
@@ -364,7 +407,7 @@ test('드래그 주문이 커서를 따라 떠다니며 정정 호가·드래그
   await page.mouse.move(x, y + 3);
   expect((await preview.boundingBox())!.y).toBeGreaterThan(before.y);
   await page.mouse.up();
-  const moved = window.getByRole('button', { name: '매수 67,000원 주문', exact: true });
+  const moved = window.getByLabel('매수 67,000원 주문', { exact: true });
   await expect(moved).toBeVisible();
   await expect(preview).toHaveCount(0);
   await expect(moved).toHaveCSS('opacity', '1');
@@ -406,19 +449,19 @@ test('로컬 모의 계좌: 실제 백엔드 부분 체결·드래그 정정·�
   await expect(window.getByRole('combobox', { name: '주문 모드' })).toHaveValue('paper');
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('50');
   await window.getByRole('button', { name: /매수 67,300원 주문 추가/ }).dblclick();
-  const partial = window.getByRole('button', { name: '매수 67,300원 주문', exact: true });
+  const partial = window.getByLabel('매수 67,300원 주문', { exact: true });
   await expect(partial).toHaveText('20주');
   await expect(window.locator('.order-position')).toHaveCount(0);
   await page.request.post(`${API_URL}/api/test/paper-book?code=005930&ask=67300&quantity=40`);
   await expect(partial).toHaveText('10주');
   await drag(page, partial, window.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
-  const moved = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const moved = window.getByLabel('매수 67,200원 주문', { exact: true });
   await expect(moved).toHaveText('10주');
   await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
   await expect(window.locator('[data-drag-order]')).toHaveCount(0);
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('5');
   await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
-  await expect(window.getByRole('button', { name: '매수 67,200원 주문', exact: true })).toHaveText('5주');
+  await expect(window.getByLabel('매수 67,200원 주문', { exact: true })).toHaveText('5주');
   await window.getByRole('button', { name: /매수 67,100원 주문 추가/ }).dblclick();
   await expect(window.locator('[data-drag-order]')).toHaveCount(2);
   await window.locator('.order-price').first().click({ button: 'right' });
@@ -434,7 +477,7 @@ test('로컬 모의 계좌: 실제 백엔드 부분 체결·드래그 정정·�
 
 test('호가 경계 1px 밖 드롭은 즉시 취소하고 Esc로 중단할 수 있다', async ({ page }) => {
   const { window, commands } = await setup(page, true);
-  const chip = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const chip = window.getByLabel('매수 67,200원 주문', { exact: true });
   const a = await chip.boundingBox(), bounds = await window.locator('.order-ladder').boundingBox();
   expect(a).not.toBeNull(); expect(bounds).not.toBeNull();
   const x = a!.x + a!.width / 2, y = a!.y + a!.height / 2;
@@ -559,7 +602,7 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
   await window.evaluate(el => { el.scrollLeft = el.scrollWidth; });
   await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeInViewport();
   await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
-  const chip = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const chip = window.getByLabel('매수 67,200원 주문', { exact: true });
   await expect(chip).toBeVisible();
   expect(commands[0]).toMatchObject({ side: 'BUY', price: 67200, quantity: 10 });
   const chipBox = (await chip.boundingBox())!, windowBox = (await window.boundingBox())!;
@@ -572,32 +615,90 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
   expect(commands).toHaveLength(2);
 });
 
-test('같은 가격의 여러 주문을 클릭해도 편집창 없이 각각 드래그 정정·취소한다', async ({ page }) => {
-  const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two')], 'live', false);
-  const first = window.getByRole('button', { name: '매수 67,200원 주문 1', exact: true });
-  const second = window.getByRole('button', { name: '매수 67,200원 주문 2', exact: true });
-  await expect(first).toHaveText('70주');
-  await expect(second).toHaveText('70주');
-  await second.click();
-  await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
-  await expect(window.getByText('개별 주문 선택', { exact: true })).toHaveCount(0);
-  await expect(window.getByRole('spinbutton', { name: '정정 수량' })).toHaveCount(0);
+test('같은 가격 칸의 드래그 아웃은 그 가격의 주문만 모두 취소한다', async ({ page }) => {
+  const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67100')]);
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await expect(cell).toHaveText('140주');
+  await cell.click();
   expect(commands).toHaveLength(0);
-  await first.scrollIntoViewIfNeeded();
-  await drag(page, first, window.getByRole('button', { name: /매수 67,100원 주문 추가/ }));
-  const moved = window.getByRole('button', { name: '매수 67,100원 주문', exact: true });
-  const remaining = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
-  await expect(moved).toHaveText('70주');
-  await expect(remaining).toHaveText('70주');
+  await drag(page, cell, window.getByRole('combobox', { name: '주문 모드' }));
+  await expect(cell).toBeEmpty();
+  await expect(window.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveText('70주');
+  expect(commands).toHaveLength(2);
+  expect(commands.every(body => !('price' in body))).toBe(true);
+});
+
+test('같은 가격의 여러 주문은 다른 호가로 모두 함께 정정한다', async ({ page }) => {
+  const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67000')]);
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const destination = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+  await drag(page, cell, destination);
+  await expect(cell).toBeEmpty();
+  await expect(destination).toHaveText('140주');
+  await expect(window.getByRole('button', { name: /매수 67,000원 주문 추가/ })).toHaveText('70주');
+  expect(commands).toHaveLength(2);
+  expect(commands.every(body => body.price === 67100 && body.quantity === null)).toBe(true);
+});
+
+test('묶음 정정은 합산 금액의 고액 확인을 거쳐 모든 주문에 적용한다', async ({ page }) => {
+  const large = ['one', 'two'].map(id => ({ ...mkOrder(id, '67200', '0'), quantity: '800' }));
+  const { window, commands } = await setup(page, large);
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const destination = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+  await drag(page, cell, destination);
+  const confirmation = page.getByRole('dialog', { name: '고액 주문 확인' });
+  await expect(confirmation).toContainText('1,600주');
+  expect(commands).toHaveLength(0);
+  await expect(confirmation.getByRole('button', { name: '확인 후 주문' })).toBeDisabled();
+  await confirmation.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }).check();
+  await confirmation.getByRole('button', { name: '확인 후 주문' }).click();
+  await expect(destination).toHaveText('1,600주');
+  expect(commands).toHaveLength(2);
+  expect(commands.every(body => body.price === 67100 && body.confirm_high_value === true)).toBe(true);
+});
+
+test('묶음 취소 일부 실패는 성공한 주문을 다시 보내지 않고 실패 요청만 같은 ID로 재시도한다', async ({ page }) => {
+  const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two')]);
+  const failures: Record<string, unknown>[] = [];
+  await page.route(/\/api\/trading\/orders\/two\/cancel$/, async route => {
+    if (failures.length) { await route.fallback(); return; }
+    failures.push(route.request().postDataJSON());
+    await route.fulfill({ status: 409, json: { detail: { code: 'cancel-rejected', message: '취소 거절' } } });
+  });
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await drag(page, cell, window.getByRole('combobox', { name: '주문 모드' }));
+  await expect(cell).toHaveText('70주');
+  await expect(page.getByRole('alert', { name: '주문 알림' })).toContainText('취소 미접수 1건');
   expect(commands).toHaveLength(1);
-  expect(commands[0]).toMatchObject({ price: 67100, quantity: null });
-  await drag(page, remaining, window.getByRole('combobox', { name: '주문 모드' }));
-  await expect(remaining).toHaveCount(0);
-  await expect(moved).toBeVisible();
-  await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
-  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
-  expect(commands).toHaveLength(3);
-  await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
+  const retry = page.getByRole('button', { name: '같은 요청 다시 확인' });
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(cell).toBeEmpty();
+  expect(commands).toHaveLength(2);
+  expect(commands[1].command_id).toBe(failures[0].command_id);
+});
+
+test('가격 칸의 우클릭 목록에서 한 주문을 드래그 아웃하면 그 주문만 취소한다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67100')], 'live', false);
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await cell.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: '매수 67,200원 주문 목록' });
+  await expect(menu.getByRole('menuitem')).toHaveCount(2);
+  const first = menu.getByRole('menuitem', { name: '주문 1 · 70주 · one', exact: true });
+  await first.click();
+  expect(commands).toHaveLength(0);
+  await page.screenshot({ path: testInfo.outputPath('order-price-list.png') });
+  // The list can overlap the ladder; leaving the list still cancels only this order.
+  await drag(page, first, window.getByRole('button', { name: /매수 66,300원 주문 추가/ }));
+  await expect(menu).toHaveCount(0);
+  await expect(cell).toHaveText('70주');
+  await expect(window.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveText('70주');
+  expect(commands).toHaveLength(1);
+  await cell.click({ button: 'right' });
+  await expect(page.getByRole('menuitem', { name: '주문 1 · 70주 · two', exact: true })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  expect(commands).toHaveLength(1);
 });
 
 test('호가 밖 주문도 드래그로 사다리에 정정하고 밖으로 끌어 즉시 취소한다', async ({ page }) => {
@@ -607,7 +708,7 @@ test('호가 밖 주문도 드래그로 사다리에 정정하고 밖으로 끌�
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
   expect(commands).toHaveLength(0);
   await drag(page, outside, window.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
-  const moved = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const moved = window.getByLabel('매수 67,200원 주문', { exact: true });
   await expect(moved).toHaveText('70주');
   expect(commands[0]).toMatchObject({ price: 67200, quantity: null });
   await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
@@ -625,7 +726,7 @@ test('고액 실계좌 신규·드래그 정정의 기존 확인은 입력창 �
   expect(commands).toHaveLength(0);
   await confirmation.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }).check();
   await confirmation.getByRole('button', { name: '확인 후 주문' }).click();
-  const original = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const original = window.getByLabel('매수 67,200원 주문', { exact: true });
   await expect(original).toHaveText('2,000주');
   expect(commands[0]).toMatchObject({ confirm_high_value: true });
   await drag(page, original, window.getByRole('button', { name: /매수 67,100원 주문 추가/ }));
@@ -634,7 +735,7 @@ test('고액 실계좌 신규·드래그 정정의 기존 확인은 입력창 �
   expect(commands).toHaveLength(1);
   await confirmation.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }).check();
   await confirmation.getByRole('button', { name: '확인 후 주문' }).click();
-  const moved = window.getByRole('button', { name: '매수 67,100원 주문', exact: true });
+  const moved = window.getByLabel('매수 67,100원 주문', { exact: true });
   await expect(moved).toHaveText('2,000주');
   expect(commands[1]).toMatchObject({ price: 67100, quantity: null, confirm_high_value: true });
   await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
@@ -647,7 +748,7 @@ test('넓은 창의 상세 정보 위로 드래그해도 해당 호가로 정정
   const { window, commands } = await setup(page, true);
   await expect(window).toHaveClass(/order-expanded/);
   await expect(window.getByRole('button', { name: '종목 상세 정보', exact: true })).toHaveCount(0);
-  const chip = window.getByRole('button', { name: '매수 67,200원 주문', exact: true });
+  const chip = window.getByLabel('매수 67,200원 주문', { exact: true });
   const chipBox = (await chip.boundingBox())!;
   const summary = (await window.locator('.order-summary-layer').boundingBox())!;
   const row = (await window.locator('.order-row').nth(9).boundingBox())!;
@@ -656,7 +757,7 @@ test('넓은 창의 상세 정보 위로 드래그해도 해당 호가로 정정
   await page.mouse.move(summary.x + summary.width / 2, row.y + row.height / 2, { steps: 12 });
   await expect(window.locator('.order-target')).toHaveAttribute('data-order-price', '67300');
   await page.mouse.up();
-  await expect(window.getByRole('button', { name: '매수 67,300원 주문', exact: true })).toHaveText('70주');
+  await expect(window.getByLabel('매수 67,300원 주문', { exact: true })).toHaveText('70주');
   expect(commands).toHaveLength(1);
   expect(commands[0]).toMatchObject({ price: 67300, quantity: null });
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
@@ -693,10 +794,10 @@ test('기본 576px에서도 7자리 가격·긴 상세 값·폰트를 유지하�
   await window.evaluate(el => { (el as HTMLElement).style.width = '568px'; });
   await expect(window).not.toHaveClass(/order-spacious/);
   await window.getByRole('button', { name: /매수 1,469,000원 주문 추가/ }).dblclick();
-  const order = window.getByRole('button', { name: '매수 1,469,000원 주문', exact: true });
+  const order = window.getByLabel('매수 1,469,000원 주문', { exact: true });
   await expect(order).toHaveText('10주');
   await drag(page, order, window.getByRole('button', { name: /매수 1,468,900원 주문 추가/ }));
-  const moved = window.getByRole('button', { name: '매수 1,468,900원 주문', exact: true });
+  const moved = window.getByLabel('매수 1,468,900원 주문', { exact: true });
   await expect(moved).toHaveText('10주');
   await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
   await expect(window.locator('[data-drag-order]')).toHaveCount(0);
