@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { ToastCard } from '../../ui/toast/ToastCard';
 import { ToastViewport } from '../../ui/toast/ToastViewport';
 import { ModalShell } from '../../ui/ModalShell';
+import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { useTextTooltip } from '../../ui/useTextTooltip';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, normalizeOrderSettings,
@@ -23,7 +24,7 @@ import { useLiveViStatus } from '../../api/liveViStatus';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
-import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
+import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { BookSummary, TotalQtyStrip } from './BookPanel';
 import './OrderWindow.css';
@@ -90,8 +91,8 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
-  const [detailOrders, setDetails] = useState<TossOrder[]>([]);
-  const [selectedOrderId, selectOrder] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const closeMenu = useCallback(() => setContextMenu(null), []);
   const [notice, setNotice] = useState<string | null>(null);
   const [failedRequest, setFailedRequest] = useState<{ action: Action; high: boolean } | null>(null);
   useEffect(() => {
@@ -110,6 +111,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const rootRef = useRef<HTMLDivElement>(null);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const [compact, setCompact] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const infoId = useId();
   const closeInfo = useCallback(() => {
@@ -125,12 +127,16 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       const width = root.getBoundingClientRect().width;
       if (width <= 0) return;
       setCompact(width < 560);
+      const scroll = root.querySelector<HTMLElement>('.order-scroll');
+      setExpanded(Math.min(width, scroll?.clientWidth || width) >= 672);
       if (width !== previousWidth) setInfoOpen(false);
       previousWidth = width;
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(root);
+    const scroll = root.querySelector('.order-scroll');
+    if (scroll) observer.observe(scroll);
     return () => observer.disconnect();
   }, []);
   const [dragTarget, setDragTarget] = useState<number | null>(null);
@@ -186,21 +192,12 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const highValue = mode === 'live' && !!action && ['create', 'modify'].includes(action.type) && action.price * actionQty >= HIGH_VALUE_WON;
 
   function base(): TradingCommand { return { account_seq: account, code, command_id: nanoid() }; }
-  function closeAction() { setAction(null); setDetails([]); confirmHigh(false); }
+  function closeAction() { setAction(null); closeMenu(); confirmHigh(false); }
   function pending(order: TossOrder) {
     const replacement = pendingIds[order.orderId];
     // Keep the old order disabled until it leaves OPEN, or a reject is confirmed.
     return !!replacement && !state.data?.recent_orders.some(o => o.orderId === replacement && ['CANCEL_REJECTED', 'REPLACE_REJECTED'].includes(o.status));
   }
-  function showDetails(group: TossOrder[]) {
-    if (group.length > 1) { setDetails(group); setAction(null); return; }
-    const order = group[0];
-    if (!order) return;
-    selectOrder(order.orderId);
-    setDetails([]); confirmHigh(false);
-    setAction({ type: 'modify', base: base(), side: order.side, price: Number(order.price) || quote?.price || 0, quantity: null, order });
-  }
-
   async function submit(next: Action, high = false) {
     if (busyRef.current) return;
     if (!account || next.base.account_seq !== account || next.base.code !== code) { setNotice('계좌·종목이 변경되었습니다. 다시 선택하세요.'); return; }
@@ -239,11 +236,11 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   }
 
   function request(next: Action) {
-    setDetails([]); confirmHigh(false);
+    closeMenu(); confirmHigh(false);
     const qty = next.quantity ?? (next.order ? orderRemainder(next.order) : 0);
     const high = ['create', 'modify'].includes(next.type) && next.price * qty >= HIGH_VALUE_WON;
     setFailedRequest(null); setNotice(null);
-    if (next.type === 'bulk' || (mode === 'live' && high)) setAction(next);
+    if (mode === 'live' && high) setAction(next);
     else { closeAction(); void submit(next, mode === 'paper' && high); }
   }
   async function reviewCommand(commandId: string) {
@@ -262,7 +259,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     try {
       const body: ResetPaperAccount = { ...base(), cash: paperCash, holding_quantity: paperHolding, average_purchase_price: paperAverage, confirmed: true };
       await tradingCommand<TradingStateResponse>('/reset', body, 'paper');
-      showPaperSettings(false); closeAction(); setPending({}); selectOrder(null);
+      showPaperSettings(false); closeAction(); setPending({});
       setNotice(null); setFailedRequest(null);
     } catch (error) { setNotice(error instanceof Error ? error.message : '모의 계좌 초기화 실패'); }
     finally { await client.invalidateQueries({ queryKey: ['trading', 'paper', 'state', account] }); busyRef.current = false; setBusy(false); }
@@ -299,7 +296,12 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     const top = Math.max(rect.top, viewport.top, windowBounds.top), bottom = Math.min(rect.bottom, viewport.bottom, windowBounds.bottom);
     d.cancel = e.clientX < left || e.clientX > right || e.clientY < top || e.clientY > bottom;
     const hit = document.elementFromPoint(e.clientX, e.clientY);
-    const row = hit?.closest<HTMLElement>('[data-order-price]');
+    const row = hit?.closest<HTMLElement>('[data-order-price]')
+      ?? (hit?.closest('.order-summary-layer') && ladder.current?.contains(hit)
+        ? [...ladder.current.querySelectorAll<HTMLElement>('[data-order-price]')].find(row => {
+          const bounds = row.getBoundingClientRect();
+          return e.clientY >= bounds.top && e.clientY < bounds.bottom;
+        }) : null);
     const lane = hit?.closest<HTMLElement>('[data-order-side]');
     d.price = !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.order.side) ? Number(row.dataset.orderPrice) : null;
     setDragTarget(d.price); setDragCancel(d.cancel);
@@ -318,20 +320,22 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     else if (d.price && d.price !== Number(order.price)) request({ type: 'modify', base: base(), side: order.side, price: d.price, quantity: null, order });
   }
 
+  function orderChip(order: TossOrder, label: string, content?: string) {
+    const blocked = !editableOrder(order) || pending(order);
+    return <button key={order.orderId} className={`order-chip ${order.orderId === draggingOrderId ? 'order-chip-dragging' : ''}`} type="button"
+      aria-label={label} title={`${orderSideLabel(order.side)} ${fmt(order.price)}원 · 잔여 ${fmt(orderRemainder(order))}주`}
+      disabled={!ready || blocked} data-drag-order={!blocked ? order.orderId : undefined}
+      onPointerDown={e => beginDrag(e, order)} onPointerMove={moveDrag} onPointerUp={endDrag}
+      onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
+      {content ?? `${fmt(orderRemainder(order))}주`}{blocked ? ' · 처리 중' : ''}
+    </button>;
+  }
   function orderCell(side: TradingSide, price: number, rowKey: string) {
     const group = groups.get(`${side}:${price}`) ?? [];
     const opposite = orders.some(o => o.side !== side);
-    const total = group.reduce((sum, o) => sum + orderRemainder(o), 0);
-    const blocked = group.some(o => !editableOrder(o) || pending(o));
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
     return <div className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`} data-order-side={side}>
-      {group.length > 0 && <button className={`order-chip ${group.some(o => o.orderId === draggingOrderId) ? 'order-chip-dragging' : ''}`} type="button" aria-label={`${orderSideLabel(side)} ${fmt(price)}원 ${group.length}건 상세 정정`}
-        disabled={busy} data-drag-order={group.length === 1 && !blocked ? group[0].orderId : undefined}
-        onPointerDown={e => { if (group.length === 1) beginDrag(e, group[0]); }} onPointerMove={moveDrag}
-        onPointerUp={endDrag} onPointerCancel={() => endDrag(undefined, true)}
-        onLostPointerCapture={() => endDrag(undefined, true)} onClick={() => showDetails(group)}>
-        {fmt(total)}주{group.length > 1 ? `·${group.length}` : ''}{blocked ? ' · 처리 중' : ''}
-      </button>}
+      {group.map((order, index) => orderChip(order, `${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ` ${index + 1}` : ''}`))}
       <button type="button" className="order-add" aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
         title={`${orderSideLabel(side)} 주문 · 더블클릭`}
         disabled={!ready || !fresh || price <= 0 || opposite || !!settingsDraft || !!state.data?.unresolved_commands.length
@@ -355,27 +359,16 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     onScreenPrices={onScreen} limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     vi={vi.data?.vi} height={height} />;
-  return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
+  return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}
     onKeyDown={e => {
       if (e.key === 'Escape') {
         if (settingsDraft) { e.preventDefault(); e.stopPropagation(); setSettingsDraft(null); return; }
-        if (drag.current || action || detailOrders.length) { e.preventDefault(); e.stopPropagation(); }
+        if (drag.current || action || contextMenu) { e.preventDefault(); e.stopPropagation(); }
         endDrag(undefined, true); closeAction(); return;
       }
       if (!e.ctrlKey || e.repeat || busy || (e.target instanceof HTMLElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName))) return;
       if (['1', '2', '3'].includes(e.key)) { e.preventDefault(); setInputValue(presets[Number(e.key) - 1]); }
-      else if (e.shiftKey && e.key === 'Backspace' && ready) { e.preventDefault(); request({ type: 'bulk', base: base(), side: null, price: 0, quantity: null }); }
-      else {
-        const selected = orders.find(o => o.orderId === selectedOrderId);
-        if (!selected || !editableOrder(selected) || pending(selected) || !ready) return;
-        if (e.key === 'Delete') { e.preventDefault(); request({ type: 'cancel', base: base(), side: selected.side, price: 0, quantity: null, order: selected }); }
-        else if (['ArrowUp', 'ArrowDown'].includes(e.key)) {
-          const candidates = [...onScreen].filter(p => e.key === 'ArrowUp' ? p > Number(selected.price) : p < Number(selected.price));
-          const price = e.key === 'ArrowUp' ? Math.min(...candidates) : Math.max(...candidates);
-          if (candidates.length) { e.preventDefault(); request({ type: 'modify', base: base(), side: selected.side, price, quantity: null, order: selected }); }
-        }
-      }
     }}>
     <div className="order-controls order-account-controls">
       <div className="order-account-group">
@@ -391,8 +384,8 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       <div className="order-settings-group">
       <button type="button" aria-label="주문 설정" disabled={busy || !!lockedBook} onClick={() => { closeAction(); setSettingsDraft(normalizeOrderSettings(preferences)); }}>설정</button>
       <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span>{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
-      <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
-        disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>
+      {!expanded && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
+        disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
     </div>
     <div className="order-controls order-quantity-controls">
@@ -469,6 +462,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
     </div>}
     <div className="order-scroll" role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}
         onPointerLeave={() => setPreviewPrice(null)}
         onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPreviewPrice(null); }}>
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : prices.map((level, index) => {
@@ -486,31 +480,29 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
             {orderCell('BUY', level.price, key)}
           </div>;
         })}
+        {expanded && <div className="order-summary-layer">{renderSummary(240)}</div>}
       </div>
-      {outside.length > 0 && <div className="order-outside">{outside.map(o => <button key={o.orderId} type="button" disabled={busy} onClick={() => showDetails([o])}>호가 밖 {orderSideLabel(o.side)} {fmt(o.price)}원 · 잔여 {fmt(orderRemainder(o))}주</button>)}</div>}
+      {outside.length > 0 && <div className="order-outside">{outside.map(o => <div key={o.orderId} className={o.side === 'BUY' ? 'order-buy' : 'order-sell'}>
+        {orderChip(o, `호가 밖 ${orderSideLabel(o.side)} ${fmt(o.price)}원 주문`, `${orderSideLabel(o.side)} ${fmt(o.price)}원 · ${fmt(orderRemainder(o))}주`)}
+      </div>)}</div>}
     </div>
     {book && <TotalQtyStrip totals={{ ask: book.tot_ask, bid: book.tot_bid }} maskRatio={book.tot_ask + book.tot_bid === 0}
       afterHoursTotals={null} afterHoursLabel="시간외" sessionControl={{ kind: 'none' }} sessionMode="regular" />}
-    {detailOrders.length > 0 && <div className="order-editor"><span>개별 주문 선택</span>{detailOrders.map(o => <button type="button" key={o.orderId} onClick={() => showDetails([o])}>{orderSideLabel(o.side)} 잔여 {fmt(orderRemainder(o))}주 · 체결 {fmt(o.execution.filledQuantity)}주</button>)}<button type="button" onClick={closeAction}>닫기</button></div>}
-    {action && action.type !== 'create' && <div className="order-editor" role="group" aria-label="주문 확인">
-      <span>{name} · {action.side ? orderSideLabel(action.side) : '매수·매도'} · {action.type === 'modify' ? '정정' : '취소'}</span>
-      {action.type === 'bulk' ? <span>현재 계좌·현재 종목 {orders.filter(o => action.side == null || o.side === action.side).length}건</span> : action.type !== 'cancel' ? <>
-        <label>가격<input type="number" aria-label="주문 가격" min="1" value={action.price} onChange={e => { setAction({ ...action, base: { ...action.base, command_id: nanoid() }, price: Number(e.target.value) }); confirmHigh(false); }} /></label>
-        <label>잔여 수량<input type="number" aria-label="정정 수량" min="1" value={actionQty} onChange={e => { setAction({ ...action, base: { ...action.base, command_id: nanoid() }, quantity: Number(e.target.value) }); confirmHigh(false); }} />주</label>
-        <span>{fmt(action.price * actionQty)}원</span></> : <span>잔여 {fmt(actionQty)}주 취소</span>}
-      {currentOrder && <span className="text-fg-dim">주문 {fmt(currentOrder.quantity)}주 · 체결 {fmt(currentOrder.execution.filledQuantity)}주 · 평균 {fmt(currentOrder.execution.averageFilledPrice)}원 · {orderStatusLabel(currentOrder.status)}</span>}
-      {highValue && <label><input type="checkbox" checked={confirmedHigh} onChange={e => confirmHigh(e.target.checked)} />1억원 이상 주문 금액을 확인했습니다</label>}
-      <button type="button" className="order-submit" disabled={busy || (highValue && !confirmedHigh) || (action.type === 'modify' && !!currentOrder && (!editableOrder(currentOrder) || pending(currentOrder))) || (action.type === 'modify' && (!Number.isSafeInteger(actionQty) || actionQty < 1 || !Number.isSafeInteger(action.price) || action.price < 1))}
-        onClick={() => void submit(action, confirmedHigh || (mode === 'paper' && action.price * actionQty >= HIGH_VALUE_WON))}>{busy ? '요청 중' : action.type === 'modify' ? '정정 접수' : '취소 접수'}</button>
-      {action.type === 'modify' && currentOrder && <button type="button" disabled={busy || !editableOrder(currentOrder) || pending(currentOrder)} onClick={() => request({ ...action, type: 'cancel', base: base(), price: 0, quantity: null })}>이 주문 취소</button>}
-      <button type="button" disabled={busy} onClick={closeAction}>닫기</button>
-    </div>}
-    {action?.type === 'create' && highValue && <div className="order-editor" role="group" aria-label="고액 주문 확인">
-      <span>{orderSideLabel(action.side!)} {fmt(actionQty)}주 · {fmt(action.price * actionQty)}원</span>
-      <label><input type="checkbox" checked={confirmedHigh} onChange={e => confirmHigh(e.target.checked)} />1억원 이상 주문 금액을 확인했습니다</label>
-      <button type="button" disabled={busy || !confirmedHigh} onClick={() => void submit(action, true)}>확인 후 주문</button>
-      <button type="button" disabled={busy} onClick={closeAction}>닫기</button>
-    </div>}
+    {contextMenu && <PanelContextMenu point={contextMenu} label="주문 취소" onClose={closeMenu}>
+      {([{ label: '매수 모두 취소', side: 'BUY' }, { label: '매도 모두 취소', side: 'SELL' }, { label: '전체 주문 취소', side: null }] as const).map(item =>
+        <button key={item.label} type="button" role="menuitem" className="block w-full px-3 py-1.5 text-left text-sm hover:bg-bg-input-hover disabled:opacity-50"
+          disabled={!ready || !orders.some(order => (item.side == null || order.side === item.side) && editableOrder(order) && !pending(order))}
+          onClick={() => request({ type: 'bulk', base: base(), side: item.side, price: 0, quantity: null })}>{item.label}</button>)}
+    </PanelContextMenu>}
+    {action && highValue && createPortal(<div className="order-settings-surface font-data"><ModalShell ariaLabel="고액 주문 확인" title="고액 주문 확인" width="w-[360px]" onClose={closeAction}>
+      <div className="order-editor" role="group" aria-label="고액 주문 확인">
+        <span>{orderSideLabel(action.side!)} {fmt(actionQty)}주 · {fmt(action.price * actionQty)}원</span>
+        <label><input type="checkbox" checked={confirmedHigh} onChange={e => confirmHigh(e.target.checked)} />1억원 이상 주문 금액을 확인했습니다</label>
+        <button type="button" disabled={busy || !confirmedHigh || (action.type === 'modify' && !!currentOrder && (!editableOrder(currentOrder) || pending(currentOrder)))}
+          onClick={() => void submit(action, true)}>확인 후 주문</button>
+        <button type="button" disabled={busy} onClick={closeAction}>닫기</button>
+      </div>
+    </ModalShell></div>, document.body)}
     {notice && (() => {
       const card = <ToastCard visible variant="error" role="alert" ariaLabel="주문 알림">
         <div className="flex items-start justify-between gap-2"><span>{notice}</span>
