@@ -114,6 +114,57 @@ test('느린 주문 상태 조회 중에도 접수 응답을 표시하고 기존
   } finally { release(); }
 });
 
+for (const timing of ['before', 'after'] as const) {
+  test(`정정 완료 이벤트가 접수 응답 ${timing}에 와도 새 주문의 회색 잠금을 조회 없이 해제한다`, async ({ page }) => {
+    const { window, ws } = await setup(page, true);
+    const replacement = { ...mkOrder('new-modified', '67100', '0'), quantity: '70', status: 'PENDING_REPLACE' };
+    let releaseAck!: () => void, releaseRead!: () => void, entered = false;
+    const ackGate = new Promise<void>(resolve => { releaseAck = resolve; });
+    const readGate = new Promise<void>(resolve => { releaseRead = resolve; });
+    const writes: Record<string, unknown>[] = [];
+    await page.route(/\/api\/trading\/orders\/old\/modify$/, async route => {
+      const body = route.request().postDataJSON(); writes.push(body); entered = true;
+      await ackGate;
+      await route.fulfill({ json: { command_id: body.command_id, order_id: replacement.orderId, status: 'accepted' } });
+    });
+    await page.route(/\/api\/trading\/state\?/, async route => {
+      if (new URL(route.request().url()).searchParams.get('part') !== 'orders') return route.fallback();
+      await readGate;
+      // Even a later REST response can lag the final broker event.
+      await route.fulfill({ json: { account_seq: 1, code: '005930', orders: [replacement, { ...mkOrder('old'), status: 'PENDING_REPLACE' }], recent_orders: [],
+        fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [], revision: 900 } });
+    });
+    const from = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    const to = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+    try {
+      await drag(page, from, to);
+      await expect.poll(() => entered).toBe(true);
+      ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 100, order: replacement });
+      ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 101, order: { ...mkOrder('old'), status: 'PENDING_REPLACE' } });
+      await expect(to).toHaveText('70주 · 처리 중');
+      const completed = { type: 'trading_order', mode: 'live', account_seq: 1, revision: 102, order: { ...replacement, status: 'PENDING' } };
+      if (timing === 'before') {
+        ws.pushEvent(completed);
+        await expect(to).toHaveText('70주 · 처리 중');
+      }
+      releaseAck();
+      await expect(page.getByRole('status', { name: '주문 접수 알림' })).toHaveText('정정 요청 접수됨');
+      if (timing === 'after') {
+        await expect(to).toHaveText('70주 · 처리 중');
+        ws.pushEvent(completed);
+      }
+      await expect(to).toHaveText('70주');
+      await expect(window.getByLabel('매수 67,100원 주문', { exact: true })).toHaveAttribute('data-drag-order', replacement.orderId);
+      await expect(from).toBeEmpty();
+      expect(writes).toHaveLength(1);
+      expect(writes[0]).toMatchObject({ quantity: null, price: 67100 });
+      releaseRead();
+      await expect(to).toHaveText('70주');
+      await expect(from).toBeEmpty();
+    } finally { releaseAck(); releaseRead(); }
+  });
+}
+
 test('느린 잔고 조회는 주문 수량 표시와 다음 주문을 지연시키지 않는다', async ({ page }) => {
   const { window, commands } = await setup(page);
   let release!: () => void, entered = false;

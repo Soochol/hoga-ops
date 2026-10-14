@@ -8,7 +8,8 @@ type Refresh = {
   balancesTimer?: ReturnType<typeof setTimeout>;
   lastBalancesAt: number;
   version: number;
-  events: Map<string, { order: TossOrder; revision: number }>;
+  events: Map<string, { order: TossOrder; revision: number; completion?: TossOrder; replacementReady?: boolean; replaces?: string }>;
+  replacements: Map<string, string>;
 };
 const clients = new WeakMap<QueryClient, Map<string, Refresh>>();
 export const tradingStateKey = (mode: TradingMode, account: number) => ['trading', mode, 'state', account] as const;
@@ -19,13 +20,14 @@ function shared(client: QueryClient, mode: TradingMode, account: number): Refres
   const key = `${mode}:${account}`;
   let refresh = contexts.get(key);
   if (!refresh) {
-    refresh = { pending: 0, listeners: new Set(), lastBalancesAt: 0, version: 0, events: new Map() };
+    refresh = { pending: 0, listeners: new Set(), lastBalancesAt: 0, version: 0, events: new Map(), replacements: new Map() };
     contexts.set(key, refresh);
   }
   return refresh;
 }
 
 const openStates = new Set(['PENDING', 'PARTIAL_FILLED', 'PENDING_CANCEL', 'PENDING_REPLACE']);
+const completedReplacementStates = new Set(['PENDING', 'PARTIAL_FILLED', 'FILLED', 'CANCELED', 'REPLACED', 'EXPIRED']);
 const terminalStates = new Set(['FILLED', 'CANCELED', 'REPLACED', 'REJECTED', 'EXPIRED', 'CANCEL_REJECTED', 'REPLACE_REJECTED']);
 function publish(refresh: Refresh) {
   refresh.version++;
@@ -54,12 +56,39 @@ export function tradingRefreshVersion(client: QueryClient, mode: TradingMode, ac
 
 export function resetTradingOrderEvents(client: QueryClient, mode: TradingMode, account: number) {
   const refresh = shared(client, mode, account);
+  refresh.replacements.clear();
   if (!refresh.events.size) return;
   // Reconcile active orders after reconnect, but never resurrect a known terminal ID.
   for (const [key, event] of refresh.events) {
     if (terminalStates.has(event.order.status)) refresh.events.set(key, { ...event, revision: -1 });
     else refresh.events.delete(key);
   }
+  publish(refresh);
+}
+
+/** The broker ACK identifies the new order, but only its ready snapshot completes a replacement. */
+export function acceptTradingReplacement(client: QueryClient, mode: TradingMode, account: number, code: string,
+  originalId: string, replacementId: string) {
+  if (!replacementId || replacementId === originalId) return;
+  const refresh = shared(client, mode, account);
+  const key = `${code}:${replacementId}`;
+  const originalKey = `${code}:${originalId}`;
+  refresh.replacements.delete(originalKey);
+  const original = refresh.events.get(originalKey);
+  if (original) refresh.events.set(originalKey, { ...original, replacementReady: false });
+  refresh.replacements.set(key, originalId);
+  // Events may arrive before the HTTP ACK. Retain their raw ready snapshot until identity is known.
+  const event = refresh.events.get(key);
+  if (event?.order.status === 'PENDING_REPLACE' && event.completion) {
+    const completed = mergeOrderSnapshot(event.order, event.completion, true);
+    if (completed) refresh.events.set(key, { order: completed, revision: event.revision, replacementReady: true, replaces: originalId });
+  }
+  const current = refresh.events.get(key);
+  const status = current?.order.status;
+  if (current && status && completedReplacementStates.has(status)) refresh.events.set(key, { ...current, replacementReady: true, replaces: originalId });
+  if (status && (['PENDING', 'PARTIAL_FILLED'].includes(status) || terminalStates.has(status))) refresh.replacements.delete(key);
+  // If the stream is absent, normal REST polling reconciles it. Bound unmatched ACK bookkeeping.
+  while (refresh.replacements.size > 200) refresh.replacements.delete(refresh.replacements.keys().next().value!);
   publish(refresh);
 }
 
@@ -71,10 +100,19 @@ export function applyTradingOrderEvent(client: QueryClient, mode: TradingMode, a
   const base = client.getQueryData<OrderStateResponse>([...tradingStateKey(mode, account), 'orders', order.symbol]);
   const previous = prior?.order ?? base?.orders.find(o => o.orderId === order.orderId)
     ?? base?.recent_orders.find(o => o.orderId === order.orderId);
-  const merged = mergeOrderSnapshot(previous, order);
+  const originalId = refresh.replacements.get(key);
+  const acknowledged = originalId !== undefined;
+  const completing = acknowledged && previous?.status === 'PENDING_REPLACE';
+  const merged = mergeOrderSnapshot(previous, order, completing);
   if (!merged) return false;
   refresh.events.delete(key);
-  refresh.events.set(key, { order: merged, revision });
+  const completion = previous?.status === 'PENDING_REPLACE' && ['PENDING', 'PARTIAL_FILLED'].includes(order.status)
+    && merged.status !== order.status ? order : undefined;
+  const ready = completedReplacementStates.has(merged.status);
+  const replacementReady = ready && (acknowledged || prior?.replacementReady === true);
+  const replaces = ready && acknowledged ? originalId : prior?.replaces;
+  refresh.events.set(key, { order: merged, revision, completion, replacementReady, replaces });
+  if (['PENDING', 'PARTIAL_FILLED'].includes(merged.status) || terminalStates.has(merged.status)) refresh.replacements.delete(key);
   // Keep active orders, plus a bounded set of terminal tombstones against late REST reads.
   const terminals = [...refresh.events].filter(([, event]) => terminalStates.has(event.order.status));
   for (const [oldKey] of terminals.slice(0, -200)) refresh.events.delete(oldKey);
@@ -91,13 +129,17 @@ export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, 
   const recent = new Map([...base.recent_orders].reverse().map(order => [order.orderId, order]));
   for (const event of events) {
     const canonical = orders.get(event.order.orderId) ?? recent.get(event.order.orderId);
-    if ((base.revision ?? -1) >= event.revision && canonical && mergeOrderSnapshot(event.order, canonical, true)) continue;
-    const order = mergeOrderSnapshot(canonical, event.order) ?? canonical;
+    // A full ready event for the ACK's new ID beats an eventually consistent PENDING_REPLACE read.
+    const completed = event.replacementReady === true && canonical?.status === 'PENDING_REPLACE';
+    if (!completed && (base.revision ?? -1) >= event.revision && canonical && mergeOrderSnapshot(event.order, canonical, true)) continue;
+    const order = mergeOrderSnapshot(canonical, event.order, completed) ?? canonical;
     if (!order) continue;
     if (terminalStates.has(order.status)) {
       orders.delete(order.orderId); recent.delete(order.orderId); recent.set(order.orderId, order);
     } else { orders.set(order.orderId, order); recent.delete(order.orderId); }
   }
+  // A ready snapshot for the ACK's new ID proves the original was replaced, even if its event is late.
+  for (const event of events) if (event.replaces) orders.delete(event.replaces);
   return { ...base, orders: [...orders.values()], recent_orders: [...recent.values()].reverse().slice(0, 10) };
 }
 
