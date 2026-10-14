@@ -284,6 +284,19 @@ class DerivFlowResponse(BaseModel):
     products: dict[str, DerivFlowProduct] = Field(default_factory=dict)
 
 
+class InvestorFlowSummaryGroup(BaseModel):
+    date: str
+    unit: str | None = None
+    confirmed: bool = False
+    collection: FlowCollection | None = None
+    markets: dict[str, InvestorFlowPoint | None] = Field(default_factory=dict)
+
+
+class InvestorFlowSummaryResponse(BaseModel):
+    stock: InvestorFlowSummaryGroup
+    futures: InvestorFlowSummaryGroup
+
+
 class SectorFlowRow(InvestorValues):
     """업종 1행 — 3주체 순매수(억원) + 지수 레벨·등락률.
 
@@ -848,6 +861,36 @@ def _deriv_flow_payload(data_dir: Path) -> dict[str, Any]:
         "session_start_sec": DERIV_OPEN_MIN * 60,
         "session_end_sec": DERIV_CLOSE_MIN * 60,
         "products": products,
+    }
+
+
+def _investor_flow_summary_payload(data_dir: Path) -> dict[str, Any]:
+    """하단 바용 최신 수급만 전달한다. 이력 조회나 벤더 호출은 추가하지 않는다.
+
+    기존 환산·확정본·수신 상태 규약을 그대로 사용한다. 하루치 표본의 파일 읽기는
+    기존 스토어 캐시가 공유하고, 응답에는 시장별 최신 점 하나만 남긴다.
+    """
+    stock = _investor_flow_payload(data_dir, daily_days=0)
+    deriv = _deriv_flow_payload(data_dir)
+    points = deriv["products"].get("F001", {}).get("points", [])
+    return {
+        "stock": {
+            "date": stock["date"],
+            "unit": stock["unit"],
+            "confirmed": stock["confirmed"],
+            "collection": stock["collection"],
+            "markets": {
+                key: stock["markets"].get(key, [])[-1]
+                if stock["markets"].get(key) else None
+                for key in ("KOSPI", "KOSDAQ")
+            },
+        },
+        "futures": {
+            "date": deriv["date"],
+            "unit": deriv["unit"],
+            "collection": deriv["collection"],
+            "markets": {"F001": points[-1] if points else None},
+        },
     }
 
 
@@ -1428,6 +1471,11 @@ def build_router(*, data_dir: Path) -> APIRouter:  # noqa: PLR0915 — 라우트
         재시작 공백은 `gap_ranges` 로 정직하게 드러나고 **메울 수는 없다**(#1105).
         """
         return await asyncio.to_thread(_investor_flow_payload, data_dir)
+
+    @router.get("/investor-flow-summary")
+    async def get_investor_flow_summary() -> InvestorFlowSummaryResponse:
+        """한 줄 시장지표 바: 코스피·코스닥·코스피200 선물의 최신 순매수."""
+        return await asyncio.to_thread(_investor_flow_summary_payload, data_dir)
 
     @router.get("/deriv-flow")
     async def get_deriv_flow() -> DerivFlowResponse:

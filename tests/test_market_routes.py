@@ -20,6 +20,7 @@ def test_router_exposes_the_market_surfaces():
         "/api/market/futures-candles",
         "/api/market/futures-quotes",
         "/api/market/investor-flow",
+        "/api/market/investor-flow-summary",
         "/api/market/program",
         "/api/market/sector-flow",
         "/api/market/sectors",
