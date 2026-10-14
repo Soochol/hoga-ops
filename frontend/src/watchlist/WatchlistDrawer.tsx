@@ -499,7 +499,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
       sortableRef={setNodeRef}
       dragListeners={props.dragEnabled === false ? undefined : { ...listeners,
         onPointerDown: (event: React.PointerEvent<HTMLLIElement>) => {
-          if (event.shiftKey || event.ctrlKey || event.metaKey) return;
+          if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
           listeners?.onPointerDown?.(event);
         },
       }}
@@ -1081,7 +1081,7 @@ export function WatchlistDrawer() {
       if (index < 0 || !next) return true;
       // Starting from keyboard focus also establishes the range anchor.
       if (!selection.selectedRows.size) selection.selectRow(id, {});
-      selection.selectRow(next, { shiftKey: true, ctrlKey: e.ctrlKey, metaKey: e.metaKey });
+      selection.selectRow(next, { shiftKey: true, altKey: e.altKey });
       const scope = e.currentTarget.closest('[data-quote-nav]');
       const target = Array.from(scope?.querySelectorAll<HTMLElement>('[data-selection-id]') ?? []).find(row => row.dataset.selectionId === next);
       target?.focus(); target?.scrollIntoView?.({ block: 'nearest' });

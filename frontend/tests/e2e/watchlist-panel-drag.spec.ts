@@ -267,7 +267,36 @@ test('아이콘 없이 클릭·드래그·키보드 우클릭 메뉴를 각각 �
   await group(page, A).screenshot({ path: testInfo.outputPath('panel-without-handles.png') });
 });
 
-test('Shift 범위와 Ctrl 개별 선택은 차트를 유지하고 키보드로 범위를 조절한다', async ({ page }) => {
+for (const modifier of ['Control', 'Meta'] as const) {
+  test(`${modifier}+클릭은 새 탭을 열고 현재 차트·선택·시작점을 유지한다`, async ({ page, context }) => {
+    await setup(page);
+    const first = row(page, A, '005930'), second = row(page, A, '000660'), third = row(page, B, '035420');
+    await first.click();
+    await second.click({ modifiers: ['Alt'] });
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    const tabOpened = context.waitForEvent('page');
+    await third.click({ modifiers: [modifier] });
+    const newTab = await tabOpened;
+    await expect(newTab).toHaveURL(/\/live\?code=035420&workspaceTransfer=[\w-]+$/);
+    await newTab.waitForLoadState('domcontentloaded');
+    await expect.poll(() => newTab.evaluate(async () => {
+      const path = '/src/state/livePage.ts';
+      const { useLivePageStore } = await import(path);
+      return useLivePageStore.getState().activeCode;
+    })).toBe('035420');
+    await expect(first).toHaveAttribute('aria-current', 'true');
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    await expect(third).toHaveAttribute('aria-pressed', 'false');
+    await expect(page).toHaveURL(/\/live$/);
+    await newTab.close();
+    await first.click({ modifiers: ['Shift'] });
+    await expect(first).toHaveAttribute('aria-pressed', 'true');
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    await expect(third).toHaveAttribute('aria-pressed', 'false');
+  });
+}
+
+test('Shift 범위와 Alt 개별 선택은 차트를 유지하고 키보드로 범위를 조절한다', async ({ page }) => {
   await setup(page);
   const first = row(page, A, '005930'), second = row(page, A, '000660'), third = row(page, B, '035420');
   await expect(page.getByTestId('watchlist-panel').getByRole('button', { name: '다중 선택' })).toHaveCount(0);
@@ -276,7 +305,7 @@ test('Shift 범위와 Ctrl 개별 선택은 차트를 유지하고 키보드로 
   await third.click({ modifiers: ['Shift'] });
   for (const selected of [first, second, third]) await expect(selected).toHaveAttribute('aria-pressed', 'true');
   await expect(third).not.toHaveAttribute('aria-current', 'true');
-  await second.click({ modifiers: ['Control'] });
+  await second.click({ modifiers: ['Alt'] });
   await expect(second).toHaveAttribute('aria-pressed', 'false');
   await third.focus();
   await page.keyboard.press('Escape');
@@ -305,7 +334,7 @@ test('선택한 여러 그룹 소속만 한 번에 삭제하고 다른 소속과
   });
   await row(page, A, '005930').click();
   await row(page, A, '000660').click({ modifiers: ['Shift'] });
-  await row(page, B, '035420').click({ modifiers: ['Control'] });
+  await row(page, B, '035420').click({ modifiers: ['Alt'] });
   await expect(page.getByTestId('watchlist-selection-actions')).toContainText('3개 선택');
   await row(page, A, '005930').click({ button: 'right' });
   await page.getByRole('menuitem', { name: '선택 항목 삭제' }).click();

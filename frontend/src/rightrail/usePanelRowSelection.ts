@@ -19,7 +19,10 @@ export function usePanelRowSelection(visibleIds: string[]) {
     }
   }, [visibleIds, selectedRows]);
 
-  const select = (id: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean }) => {
+  const select = (id: string, modifiers: { shiftKey?: boolean; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }) => {
+    // Ctrl/⌘ opens a browser tab through onPick. Leave selection and its anchor intact,
+    // including when Shift or Alt is also held.
+    if (modifiers.ctrlKey || modifiers.metaKey) return false;
     if (!visibleIds.includes(id)) return false;
     if (modifiers.shiftKey) {
       const start = visibleIds.indexOf(anchor.current ?? id);
@@ -28,11 +31,11 @@ export function usePanelRowSelection(visibleIds: string[]) {
       else if (!anchor.current) anchor.current = id;
       const from = start < 0 ? end : start;
       const range = visibleIds.slice(Math.min(from, end), Math.max(from, end) + 1);
-      setSelectedRows(old => new Set(modifiers.ctrlKey || modifiers.metaKey ? [...old, ...range] : range));
+      setSelectedRows(old => new Set(modifiers.altKey ? [...old, ...range] : range));
       return true;
     }
     anchor.current = id;
-    if (modifiers.ctrlKey || modifiers.metaKey) {
+    if (modifiers.altKey) {
       setSelectedRows(old => {
         const next = new Set(old);
         if (next.has(id)) next.delete(id); else next.add(id);

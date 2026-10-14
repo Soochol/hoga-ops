@@ -685,7 +685,7 @@ export function HeatmapDrawer() {
       const next = visibleIds[index + (event.key === 'ArrowDown' ? 1 : -1)];
       if (index < 0 || !next) return true;
       if (!selected.size) selectRow(id, {});
-      selectRow(next, { shiftKey: true, ctrlKey: event.ctrlKey, metaKey: event.metaKey });
+      selectRow(next, { shiftKey: true, altKey: event.altKey });
       const target = Array.from(scrollRef.current?.querySelectorAll<HTMLElement>('[data-selection-id]') ?? [])
         .find(row => row.dataset.selectionId === next);
       target?.focus(); target?.scrollIntoView?.({ block: 'nearest' });
@@ -946,8 +946,8 @@ export function HeatmapDrawer() {
                               draggingAppearance="placeholder"
                               dragListeners={busy ? undefined : { ...drag.listeners,
                                 onPointerDown: (event: React.PointerEvent<HTMLLIElement>) => {
-                                  // Ctrl drag keeps the existing copy gesture; Shift is selection only.
-                                  if (event.shiftKey || event.metaKey) return;
+                                  // Ctrl drag copies; Shift/Alt select and ⌘ opens a tab.
+                                  if (event.shiftKey || event.metaKey || event.altKey) return;
                                   drag.listeners?.onPointerDown?.(event);
                                 },
                               }}
