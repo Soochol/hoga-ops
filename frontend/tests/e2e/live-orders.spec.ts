@@ -70,7 +70,9 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   const window = page.getByTestId('order-window');
   if (maximize) await page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '창 최대화', exact: true }).click();
   await window.getByRole('combobox', { name: '주문 모드' }).selectOption(mode);
-  await expect(window.getByRole('button', { name: new RegExp(`매수 ${(67200 + priceOffset).toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
+  const initialSide = orders[0]?.side === 'SELL' ? '매도' : '매수';
+  const initialPrice = (initialSide === '매도' ? 67300 : 67200) + priceOffset;
+  await expect(window.getByRole('button', { name: new RegExp(`${initialSide} ${initialPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
   return { window, commands, ws };
 }
 
@@ -787,24 +789,66 @@ test('묶음 취소 일부 실패는 성공한 주문을 다시 보내지 않고
   expect(commands[1].command_id).toBe(failures[0].command_id);
 });
 
-test('가격 칸의 우클릭 목록에서 한 주문을 드래그 아웃하면 그 주문만 취소한다', async ({ page }, testInfo) => {
+for (const side of ['BUY', 'SELL'] as const) {
+  test(`${side} 우클릭 목록의 개별 주문은 다른 호가로 드래그하면 그 가격으로 정정한다`, async ({ page }) => {
+    const price = side === 'BUY' ? 67200 : 67300;
+    const destinationPrice = side === 'BUY' ? 66300 : 68200;
+    const label = side === 'BUY' ? '매수' : '매도';
+    const orderId = `one-${'long-order-id-'.repeat(8)}`;
+    const { window, commands } = await setup(page, [
+      { ...mkOrder(orderId, String(price)), side },
+      { ...mkOrder('two', String(price)), side },
+      { ...mkOrder('other', String(destinationPrice)), side },
+    ], 'live', false);
+    const paths: string[] = [];
+    page.on('request', request => {
+      if (request.method() === 'POST' && new URL(request.url()).pathname.startsWith('/api/trading/orders/'))
+        paths.push(new URL(request.url()).pathname);
+    });
+    const cell = window.getByRole('button', { name: new RegExp(`${label} ${price.toLocaleString('ko-KR')}원 주문 추가`) });
+    const cellBox = (await cell.boundingBox())!;
+    await cell.click({ button: 'right', position: { x: cellBox.width - 1, y: cellBox.height - 1 } });
+    const menu = page.getByRole('menu', { name: `${label} ${price.toLocaleString('ko-KR')}원 주문 목록` });
+    const first = menu.getByRole('menuitem', { name: '주문 1 · 70주', exact: true });
+    await expect(menu).toHaveText('주문 170주주문 270주');
+    // Staying inside the list or returning to the original price sends no command.
+    await drag(page, first, menu.getByRole('menuitem', { name: '주문 2 · 70주', exact: true }));
+    await expect(menu).toBeVisible();
+    expect(commands).toHaveLength(0);
+    await drag(page, first, cell);
+    await expect(menu).toBeVisible();
+    expect(commands).toHaveLength(0);
+    const destination = window.getByRole('button', { name: new RegExp(`${label} ${destinationPrice.toLocaleString('ko-KR')}원 주문 추가`) });
+    await drag(page, first, destination);
+    await expect(menu).toHaveCount(0);
+    await expect(cell).toHaveText('70주');
+    await expect(destination).toHaveText('140주');
+    expect(commands).toHaveLength(1);
+    expect(commands[0]).toMatchObject({ price: destinationPrice, quantity: null });
+    expect(paths).toEqual([`/api/trading/orders/${encodeURIComponent(orderId)}/modify`]);
+  });
+}
+
+test('가격 칸의 우클릭 목록에서 한 주문을 호가 밖으로 드래그하면 그 주문만 취소한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67100')], 'live', false);
   const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await cell.click({ button: 'right' });
   const menu = page.getByRole('menu', { name: '매수 67,200원 주문 목록' });
   await expect(menu.getByRole('menuitem')).toHaveCount(2);
-  const first = menu.getByRole('menuitem', { name: '주문 1 · 70주 · one', exact: true });
+  const first = menu.getByRole('menuitem', { name: '주문 1 · 70주', exact: true });
   await first.click();
   expect(commands).toHaveLength(0);
   await page.screenshot({ path: testInfo.outputPath('order-price-list.png') });
-  // The list can overlap the ladder; leaving the list still cancels only this order.
-  await drag(page, first, window.getByRole('button', { name: /매수 66,300원 주문 추가/ }));
+  await expect(menu).toHaveText('주문 170주주문 270주');
+  // Releasing outside both the list and the ladder cancels only this order.
+  await drag(page, first, window.getByRole('combobox', { name: '주문 모드' }));
   await expect(menu).toHaveCount(0);
   await expect(cell).toHaveText('70주');
   await expect(window.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveText('70주');
   expect(commands).toHaveLength(1);
+  expect(commands[0]).toEqual({ account_seq: 1, code: '005930', command_id: expect.any(String) });
   await cell.click({ button: 'right' });
-  await expect(page.getByRole('menuitem', { name: '주문 1 · 70주 · two', exact: true })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: '주문 1 · 70주', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
   expect(commands).toHaveLength(1);

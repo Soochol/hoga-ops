@@ -438,8 +438,9 @@ describe('호가 주문', () => {
     fireEvent.contextMenu(cell, { clientX: 100, clientY: 100 });
     const menu = screen.getByRole('menu', { name: '매수 67,200원 주문 목록' });
     expect(within(menu).getAllByRole('menuitem')).toHaveLength(2);
-    expect(within(menu).getByRole('menuitem', { name: '주문 1 · 70주 · a' })).toBeEnabled();
-    expect(within(menu).getByRole('menuitem', { name: '주문 2 · 70주 · b' })).toBeEnabled();
+    expect(within(menu).getByRole('menuitem', { name: '주문 1 · 70주' })).toBeEnabled();
+    expect(within(menu).getByRole('menuitem', { name: '주문 2 · 70주' })).toBeEnabled();
+    expect(menu.textContent).toBe('주문 170주주문 270주');
     expect(menu).not.toHaveTextContent('other');
     expect(mock.command).not.toHaveBeenCalled();
     const a = order(), b = { ...order('b'), side: 'SELL' as const }; expect(groupPriceOrders([a, b]).size).toBe(2); expect(orderRemainder(a)).toBe(70);
@@ -448,8 +449,9 @@ describe('호가 주문', () => {
     mock.orders = [order('a'), { ...order('b'), status: 'PENDING_CANCEL' }]; show();
     const cell = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
     fireEvent.contextMenu(cell, { clientX: 100, clientY: 100 });
-    const item = screen.getByRole('menuitem', { name: '주문 2 · 70주 · b' });
+    const item = screen.getByRole('menuitem', { name: '주문 2 · 70주' });
     expect(item).toBeDisabled();
+    expect(item.textContent).toBe('주문 270주');
     fireEvent.keyDown(item, { key: 'Escape' });
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(mock.command).not.toHaveBeenCalled();

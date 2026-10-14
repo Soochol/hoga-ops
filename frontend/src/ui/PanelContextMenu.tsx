@@ -4,9 +4,10 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 
 /** 고정 헤더와 스크롤 영역 밖에 표시하는 그룹 우클릭 메뉴. */
-export function PanelContextMenu({ point, label, onClose, children }: {
+export function PanelContextMenu({ point, label, showLabel = true, onClose, children }: {
   point: { x: number; y: number };
   label: string;
+  showLabel?: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -27,7 +28,7 @@ export function PanelContextMenu({ point, label, onClose, children }: {
       onContextMenu={event => { event.preventDefault(); event.stopPropagation(); }}
       className="fixed z-[60] min-w-[150px] max-h-[calc(100vh-16px)] max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border border-border bg-bg-card py-1 shadow-overlay"
       style={{ left, top }}>
-      <div className="px-3 py-1 text-xs text-fg-dim">{label}</div>
+      {showLabel && <div className="px-3 py-1 text-xs text-fg-dim">{label}</div>}
       {children}
     </div>, document.body,
   );
