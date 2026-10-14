@@ -7,6 +7,7 @@ import * as liveNavigate from '../live/liveNavigate';
 import * as watchlistApi from '../api/watchlist';
 import { useEntryDragStore } from '../state/entryDrag';
 import { RankingDrawer } from './RankingDrawer';
+import { useLiveVenueStore } from '../state/liveVenue';
 
 // DnD 는 렌더 골격만 필요 — 실제 센서/포인터는 이 테스트 범위 밖.
 const dnd = vi.hoisted(() => ({
@@ -72,6 +73,7 @@ function renderDrawer() {
 }
 
 beforeEach(() => {
+  useLiveVenueStore.setState({ venue: 'KRX' });
   vi.spyOn(liveNavigate, 'activateLiveCode').mockImplementation(() => {});
 });
 
@@ -81,6 +83,139 @@ afterEach(() => {
 });
 
 describe('RankingDrawer', () => {
+  const expandableResponse = {
+    ...OPEN_RESPONSE, queried_count: 100, has_more: true, venue: 'KRX',
+  };
+  const expandedResponse = {
+    ...expandableResponse, queried_count: 200,
+    rows: [...OPEN_RESPONSE.rows, { rank: 101, code: '000660', name: 'SK하이닉스', price: 180000, change_pct: 30 }],
+  };
+
+  it('program starts at 50 and expands to 150 while retaining net-buy amounts', async () => {
+    const call = vi.spyOn(client, 'apiCall').mockImplementation(async (url) => {
+      const params = new URL(String(url), 'http://localhost').searchParams;
+      const program = params.get('kind') === 'program';
+      return {
+        ...expandableResponse,
+        queried_count: program ? Number(params.get('limit')) : 100,
+        rows: OPEN_RESPONSE.rows.map(row => ({ ...row, program_net_buy_won: 1_000_000_000 })),
+      };
+    });
+    renderDrawer();
+    await screen.findByText('삼성전자');
+    fireEvent.click(screen.getByRole('button', { name: '프로그램' }));
+    fireEvent.click(await screen.findByRole('button', { name: '51~150위 더 보기' }));
+    await screen.findByRole('button', { name: '151~250위 더 보기' });
+    expect(screen.getByText('순매수 금액 · 상위 150 · 30초 갱신')).toBeInTheDocument();
+    expect(screen.getAllByText('+10.00억')).toHaveLength(2);
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=150');
+  });
+
+  it.each(['등락률', '량급증', '거래량', '대금'])(
+    '%s expands by 100 and keeps rows, selection and scroll while loading', async (label) => {
+      let finish: (value: never) => void = () => {};
+      const call = vi.spyOn(client, 'apiCall').mockImplementation((url) => (
+        String(url).includes('limit=200')
+          ? new Promise((resolve) => { finish = resolve; })
+          : Promise.resolve(expandableResponse)
+      ) as never);
+      renderDrawer();
+      await screen.findByText('삼성전자');
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      await screen.findByRole('button', { name: '101~200위 더 보기' });
+      const scroller = screen.getByTestId('ranking-scroll');
+      scroller.scrollTop = 75;
+      fireEvent.scroll(scroller);
+      fireEvent.click(screen.getByTestId('ranking-row-005930'));
+      fireEvent.click(screen.getByRole('button', { name: '101~200위 더 보기' }));
+      expect(await screen.findByRole('button', { name: '불러오는 중…' })).toBeDisabled();
+      expect(screen.getByText('삼성전자')).toBeInTheDocument();
+      expect(scroller.scrollTop).toBe(75);
+      expect(screen.queryByText('조회 실패')).not.toBeInTheDocument();
+      await act(async () => { finish(expandedResponse as never); });
+      expect(await screen.findByText('SK하이닉스')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '201~300위 더 보기' })).toBeInTheDocument();
+      expect(screen.getByText(/상위 200위 조회/)).toBeInTheDocument();
+      expect(scroller.scrollTop).toBe(75);
+      expect(call.mock.calls.some(([url]) => String(url).includes('limit=200'))).toBe(true);
+      expect(liveNavigate.activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
+    },
+  );
+
+  it('keeps the loaded range for ETF and sorting but resets market, direction, venue and tab', async () => {
+    const call = vi.spyOn(client, 'apiCall').mockImplementation(async (url) => (
+      String(url).includes('limit=200') ? expandedResponse : expandableResponse
+    ) as never);
+    renderDrawer();
+    const expand = async () => {
+      fireEvent.click(await screen.findByRole('button', { name: '101~200위 더 보기' }));
+      await screen.findByRole('button', { name: '201~300위 더 보기' });
+    };
+    await expand();
+    fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
+    await screen.findByRole('button', { name: '201~300위 더 보기' });
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=200');
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('exclude_etf=true');
+    fireEvent.click(screen.getByRole('button', { name: '등락률 정렬' }));
+    expect(screen.getByText(/조회 범위 내 등락률순/)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /차트 열기/ })[0]).toHaveTextContent('SK하이닉스');
+    const scroller = screen.getByTestId('ranking-scroll');
+    scroller.scrollTop = 75;
+    fireEvent.change(screen.getByRole('combobox', { name: '시장' }), { target: { value: 'kosdaq' } });
+    await screen.findByRole('button', { name: '101~200위 더 보기' });
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=100');
+    expect(scroller.scrollTop).toBe(0);
+    await expand();
+    fireEvent.click(screen.getByRole('button', { name: '↓하락' }));
+    await screen.findByRole('button', { name: '101~200위 더 보기' });
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=100');
+    await expand();
+    act(() => { useLiveVenueStore.setState({ venue: 'NXT' }); });
+    await screen.findByRole('button', { name: '101~200위 더 보기' });
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('venue=NXT');
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=100');
+    await expand();
+    fireEvent.click(screen.getByRole('button', { name: '대금' }));
+    await screen.findByRole('button', { name: '101~200위 더 보기' });
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('kind=value');
+    expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=100');
+  });
+
+  it('retains the previous rows after expansion failure and retries the same range', async () => {
+    let fail = true;
+    const call = vi.spyOn(client, 'apiCall').mockImplementation(async (url) => {
+      if (String(url).includes('limit=200')) {
+        if (fail) throw new Error('server failure');
+        return expandedResponse;
+      }
+      return expandableResponse;
+    });
+    renderDrawer();
+    fireEvent.click(await screen.findByRole('button', { name: '101~200위 더 보기' }));
+    expect(await screen.findByText('추가 조회 실패')).toBeInTheDocument();
+    expect(screen.getByText('삼성전자')).toBeInTheDocument();
+    expect(screen.queryByText('조회 실패')).not.toBeInTheDocument();
+    fail = false;
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+    await screen.findByText('SK하이닉스');
+    expect(screen.queryByText('추가 조회 실패')).not.toBeInTheDocument();
+    expect(call.mock.calls.filter(([url]) => String(url).includes('limit=200'))).toHaveLength(2);
+  });
+
+  it('allows more results even if ETF filtering removes every displayed row, and shows the end', async () => {
+    vi.spyOn(client, 'apiCall').mockImplementation(async (url) => (
+      String(url).includes('limit=200')
+        ? { ...expandedResponse, queried_count: 150, has_more: false }
+        : { ...expandableResponse, rows: [] }
+    ) as never);
+    renderDrawer();
+    expect(await screen.findByText('상위 100위 조회 · 0개 표시')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '101~200위 더 보기' }));
+    expect(await screen.findByText('마지막 순위입니다')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /위 더 보기/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/상위 150위 조회/)).toBeInTheDocument();
+  });
+
   it.each([['institution', '기관'], ['foreign', '외국인']] as const)(
     '%s shows provisional amounts, source scope, quotes and a matching drag ghost', async (kind, label) => {
       const investor = {
@@ -384,7 +519,7 @@ describe('RankingDrawer', () => {
     const rowNames = () =>
       screen.getAllByRole('button', { name: /차트 열기/ }).map((li) => li.getAttribute('aria-label'));
     expect(rowNames()[0]).toContain('HDC현대산업개발');
-    const key = ['live-rankings', 'change', 'all', 'up', false, 'KRX'];
+    const key = ['live-rankings', 'change', 'all', 'up', false, 'KRX', 100];
 
     act(() => { dnd.onDragStart!(DRAG_START); });
     // 드래그 도중 10초 폴링이 착지해 순위가 통째로 갈린다.
@@ -393,6 +528,7 @@ describe('RankingDrawer', () => {
         rows: [{ rank: 1, code: '000660', name: 'SK하이닉스', price: 180000, change_pct: 12.3 }],
         marketOpen: true,
         fetchedAtMs: 1_700_000_001_000,
+        queriedCount: 1, hasMore: false, requestedLimit: 100,
       });
     });
     // 캐시 갱신만으로는 이 시점에 리렌더가 보장되지 않는다(react-query 알림이 배치된다).
