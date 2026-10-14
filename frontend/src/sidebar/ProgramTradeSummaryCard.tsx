@@ -1,3 +1,4 @@
+import { ResponsiveDataControls } from '../ui/ResponsiveDataControls';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DataContext } from '../live/workspace/DataContext';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
@@ -117,42 +118,46 @@ export default function ProgramTradeSummaryCard({
   const anchorT = point?.t ?? effectiveCursor ?? latest?.t ?? 0;
 
   return (
-    <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
-      <div className="flex justify-between gap-2">
-        <ViewChips view="intraday" onSelect={setView} />
-        <div className="ui-segmented" role="group" aria-label="프로그램 표시 단위">
-        {(['amount', 'qty'] as const).map((value) => (
-          <button key={value} type="button" aria-pressed={measure === value}
-            onClick={() => setMeasure(value)}
-            className={`border px-2 py-px text-2xs first:rounded-l last:rounded-r ${measure === value
-              ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
-            {value === 'amount' ? '금액' : '수량'}
-          </button>
-        ))}
+    <div className="flex h-full min-h-0 flex-col px-3 py-2 font-data text-xs">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <div className="flex h-full min-h-[132px] flex-col">
+          <div className="flex justify-between gap-2">
+            <ViewChips view="intraday" onSelect={setView} />
+            <div className="ui-segmented" role="group" aria-label="프로그램 표시 단위">
+            {(['amount', 'qty'] as const).map((value) => (
+              <button key={value} type="button" aria-pressed={measure === value}
+                onClick={() => setMeasure(value)}
+                className={`border px-2 py-px text-2xs first:rounded-l last:rounded-r ${measure === value
+                  ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
+                {value === 'amount' ? '금액' : '수량'}
+              </button>
+            ))}
+            </div>
+          </div>
+          <div
+            data-testid="program-metric-strip"
+            className="mt-1 grid grid-cols-3 divide-x divide-border py-1 tabular-nums"
+          >
+            {(['net', 'buy', 'sell'] as const).map((candidate) => {
+              const value = programValue(point, candidate, measure);
+              return <div key={candidate} className="min-w-0 px-2 text-center first:pl-0 last:pr-0">
+                <span className="block truncate text-xs text-fg-dim">{METRIC_LABELS[candidate]}</span>
+                <span className={`mt-0.5 block truncate ${candidate === 'net' ? 'font-semibold' : 'font-normal'} ${programValueClass(candidate, value)}`}>
+                  {formatProgramValue(value, candidate, measure)}
+                </span>
+              </div>;
+            })}
+          </div>
+          <ProgramTradeSparkline
+            points={points}
+            anchorT={anchorT}
+            cursorMs={effectiveCursor}
+            measure={measure}
+            closePoints={closePoints}
+            onHoverMsChange={setHoverMs}
+          />
         </div>
       </div>
-      <div
-        data-testid="program-metric-strip"
-        className="mt-1 grid grid-cols-3 divide-x divide-border py-1 tabular-nums"
-      >
-        {(['net', 'buy', 'sell'] as const).map((candidate) => {
-          const value = programValue(point, candidate, measure);
-          return <div key={candidate} className="min-w-0 px-2 text-center first:pl-0 last:pr-0">
-            <span className="block truncate text-xs text-fg-dim">{METRIC_LABELS[candidate]}</span>
-            <span className={`mt-0.5 block truncate ${candidate === 'net' ? 'font-semibold' : 'font-normal'} ${programValueClass(candidate, value)}`}>
-              {formatProgramValue(value, candidate, measure)}
-            </span>
-          </div>;
-        })}
-      </div>
-      <ProgramTradeSparkline
-        points={points}
-        anchorT={anchorT}
-        cursorMs={effectiveCursor}
-        measure={measure}
-        closePoints={closePoints}
-        onHoverMsChange={setHoverMs}
-      />
       <DataContext mode={effectiveCursor == null ? '최근 누적' : '커서 시점'} time={point?.t}
         detail={measure === 'amount' ? '금액(억원)' : '수량(주)'} tone={effectiveCursor == null ? 'latest' : 'cursor'} />
     </div>
@@ -250,9 +255,8 @@ function ProgramDailySummary({
     }, 300);
     return () => window.clearTimeout(timer);
   }, [cursorDate, followCursor, rows, span]);
-  return <div className="flex h-full min-h-[96px] flex-col bg-bg-card font-data text-xs">
-    <div className="flex shrink-0 flex-wrap items-center gap-2 px-2.5 py-1">
-      <ViewChips view="daily" onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
+  return <div className="live-data-table-panel flex h-full min-h-0 flex-col bg-bg-card font-data text-xs">
+    <ResponsiveDataControls secondary={<>
       <div role="group" aria-label="일별 프로그램 표시 기간" className="ui-segmented">
         {([5, 20, 60, 0] as const).map((value) => <button key={value} type="button"
           aria-pressed={span === value} onClick={() => {
@@ -277,8 +281,10 @@ function ProgramDailySummary({
       <button type="button" aria-pressed={followCursor} onClick={() => setFollowCursor(!followCursor)}
         className={`rounded border px-1.5 py-px text-2xs ${followCursor
           ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>커서 따라가기</button>
-    </div>
-    <div ref={scrollRef} aria-label="일별 프로그램 내역" className="min-h-0 flex-1 overflow-auto">
+    </>}>
+      <ViewChips view="daily" onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
+    </ResponsiveDataControls>
+    <div ref={scrollRef} aria-label="일별 프로그램 내역" className="live-data-table-viewport min-h-0 flex-1 overflow-auto">
       {error ? <SidebarState>일별 프로그램 조회 실패</SidebarState>
         : loading && rows.length === 0 ? <SidebarState>일별 프로그램 조회 중</SidebarState>
           : rows.length === 0 ? <SidebarState>일별 프로그램 데이터 없음</SidebarState>

@@ -255,7 +255,10 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const averagePriceText = averageWhole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (averageFraction ? `.${averageFraction}` : '');
   const averageMarkerLabel = averageMarker.price == null ? '' : `내 평단가 ${averagePriceText}원${
     Number(averageWhole) === averageMarker.price && (!averageFraction || /^0+$/.test(averageFraction)) ? '' : ` · 가장 가까운 호가 ${fmt(averageMarker.price)}원`}`;
-  const canFillHoldingQuantity = holdingQuantity != null && validOrderInput(holdingQuantity, 'quantity');
+  // The server's sellable quantity already excludes outstanding sell orders.
+  const sellableQuantity = state.data?.sellable_quantity != null && !state.balancesError ? Number(state.data.sellable_quantity) : null;
+  const canFillHoldingQuantity = holdingQuantity != null && validOrderInput(holdingQuantity, 'quantity')
+    && sellableQuantity != null && validOrderInput(sellableQuantity, 'quantity') && sellableQuantity <= holdingQuantity;
   const buyingPower = state.data?.buying_power != null && !state.balancesError ? Number(state.data.buying_power) : null;
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const profitPercent = holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
@@ -453,7 +456,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
-      title={`${orderSideLabel(side)} 주문 · 더블클릭으로 추가${group.length ? ' · 드래그로 정정·취소' : ''}`}
       disabled={!canCreate && !canDrag}
       onDoubleClick={() => { if (canCreate && !suppressClick.current) create(side, price); }}
       onPointerDown={e => beginDrag(e, group)}
@@ -523,9 +525,9 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
         <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
           disabled={!canFillHoldingQuantity} onClick={() => {
-            if (!canFillHoldingQuantity || holdingQuantity == null) return;
+            if (!canFillHoldingQuantity || sellableQuantity == null) return;
             if (amountMode) onApplySettings({ ...preferences, unit: 'quantity' });
-            onQuantityChange(holdingQuantity);
+            onQuantityChange(sellableQuantity);
             quantityTip.hide();
           }}
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
@@ -538,7 +540,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           onFocus={e => averageTip.show(e.currentTarget)} onBlur={averageTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
           <span className="order-meta" aria-hidden="true">평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
-          {averageMarker.outside && <span className="order-meta">호가 범위 밖</span>}
         </span>
         <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span>
           <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}

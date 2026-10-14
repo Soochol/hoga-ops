@@ -11,12 +11,12 @@ import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
 
-const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
   useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: false }),
-  useTradingState: () => ({ balancesError: mock.balancesError, data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: mock.holdingQuantity, average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
+  useTradingState: () => ({ balancesError: mock.balancesError, data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: mock.sellableQuantity, holding_quantity: mock.holdingQuantity, average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
   useTradingAccountList: () => ({ orders: { data: undefined }, holdings: { data: undefined }, paused: false }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
@@ -42,7 +42,7 @@ function order(id = 'a'): TossOrder {
     execution: { filledQuantity: '30', averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null } };
 }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
-beforeEach(() => { mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
+beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
   it('원본 소수 평단가로 최근접 호가를 고르고 동률이면 낮은 호가를 고른다', () => {
@@ -83,10 +83,10 @@ describe('호가 주문', () => {
       .closest('.order-row')).toHaveAttribute('data-order-price', '67200');
     expect(container.querySelectorAll('.order-average-marker')).toHaveLength(1);
   });
-  it('범위 밖 평단가는 끝 행에 표시하지 않고 상단에 안내한다', () => {
+  it('범위 밖 평단가는 끝 행에 표시하지 않고 별도 안내도 추가하지 않는다', () => {
     const { container } = show();
     expect(container.querySelector('.order-average-marker')).toBeNull();
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('호가 범위 밖');
+    expect(screen.getByLabelText('매입평단가')).not.toHaveTextContent('호가 범위 밖');
   });
   it('미보유면 평단가 원과 범위 밖 안내를 숨긴다', () => {
     mock.holdingQuantity = '0'; mock.averagePrice = '67200';
@@ -100,7 +100,7 @@ describe('호가 주문', () => {
     expect(container.querySelector('.order-average-marker')).toBeNull();
     expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
   });
-  it('계좌 전환 시 새 평단가로 원을 이동하고 호가가 범위를 벗어나면 안내로 바꾼다', () => {
+  it('계좌 전환 시 새 평단가로 원을 이동하고 호가가 범위를 벗어나면 숨긴다', () => {
     mock.accountCount = 2; mock.averagePrice = '67240.5';
     const { container } = show();
     expect(container.querySelector('.order-average-marker')?.closest('.order-row')).toHaveAttribute('data-order-price', '67200');
@@ -110,7 +110,7 @@ describe('호가 주문', () => {
     mock.priceOffset = 3000;
     act(() => useLiveVenueStore.setState({ venue: 'NXT' }));
     expect(container.querySelector('.order-average-marker')).toBeNull();
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('호가 범위 밖');
+    expect(screen.getByLabelText('매입평단가')).not.toHaveTextContent('호가 범위 밖');
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('10호가창과 같은 예상 체결가·체결량을 사다리 위에 표시하고 갱신한다', () => {
@@ -226,24 +226,54 @@ describe('호가 주문', () => {
       vi.mocked(useQuoteByCode).mockImplementation(originalQuotes);
     }
   });
-  it('실계좌의 매입수량 클릭은 전체 보유 수량을 채우고 다음 주문에 사용한다', async () => {
+  it('매입수량 클릭은 미체결 매도를 제외한 매도 가능 수량을 채우고 다음 주문에 사용한다', async () => {
+    mock.holdingQuantity = '63'; mock.sellableQuantity = '43';
+    const sell = { ...order(), side: 'SELL' as const, quantity: '30', execution: { ...order().execution, filledQuantity: '10' } };
+    mock.orders = [sell];
     show();
     fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
-    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(100);
+    expect(screen.getByLabelText('매입수량')).toHaveTextContent('보유63');
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(43);
     expect(mock.command).not.toHaveBeenCalled();
-    const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
-    await waitFor(() => expect(buy).toBeEnabled());
-    fireEvent.doubleClick(buy);
+    const sellButton = screen.getByRole('button', { name: /매도 67,200원 주문 추가/ });
+    await waitFor(() => expect(sellButton).toBeEnabled());
+    fireEvent.doubleClick(sellButton);
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ quantity: 100 }), 'live']);
+    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ side: 'SELL', quantity: 43 }), 'live']);
   });
-  it('금액 모드에서 매입수량을 클릭하면 수량 모드로 전환하고 보유 수량을 채운다', () => {
+  it('금액 모드에서 매입수량을 클릭하면 수량 모드로 전환하고 매도 가능 수량을 채운다', () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '금액' }));
     fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
-    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(100);
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(80);
     expect(screen.queryByLabelText('신규 주문 금액')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('6,720,000원');
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('5,376,000원');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it('매수 주문 수량은 차감하지 않고 서버가 갱신한 매도 가능 수량을 클릭할 때 반영한다', () => {
+    mock.holdingQuantity = '63'; mock.sellableQuantity = '63'; mock.orders = [order()];
+    const view = show();
+    fireEvent.click(screen.getByLabelText('매입수량'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(63);
+    mock.sellableQuantity = '43';
+    view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
+    fireEvent.click(screen.getByLabelText('매입수량'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(43);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it.each(['0', '-1', 'NaN', '1.5', '101', undefined])('매도 가능 수량 %s가 없거나 유효하지 않으면 기존 입력값을 유지한다', sellable => {
+    mock.sellableQuantity = sellable;
+    show();
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '37' } });
+    expect(screen.getByLabelText('매입수량')).toBeDisabled();
+    fireEvent.click(screen.getByLabelText('매입수량'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(37);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it('잔고 조회 실패 시 남아 있는 매도 가능 수량을 입력하지 않는다', () => {
+    mock.balancesError = true;
+    show();
+    expect(screen.getByLabelText('매입수량')).toBeDisabled();
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('매수금액은 원본 소수 평단가로 계산하고 정수 경계·누락·보유 없음도 처리한다', () => {
@@ -422,9 +452,9 @@ describe('호가 주문', () => {
     expect(marker()).not.toBeNull();
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it('평단가 표시를 끄면 범위 밖 안내도 숨기고 상단 숫자는 유지한다', () => {
+  it('평단가 표시 설정과 관계없이 범위 밖 안내 없이 상단 숫자를 유지한다', () => {
     show();
-    expect(screen.getByText('호가 범위 밖')).toBeInTheDocument();
+    expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '내 평단가 표시' }));
     fireEvent.click(screen.getByRole('button', { name: '적용' }));

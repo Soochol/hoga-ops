@@ -18,7 +18,7 @@ export function BrokerScrollArea({ children }: { children: ReactNode }) {
   }, []);
   return <div className="relative min-h-0 flex-1">
     <div ref={viewport} tabIndex={0} role="region" aria-label="거래원 목록" className="h-full overflow-auto">
-      <div ref={content}>{children}</div>
+      <div ref={content} className="flex min-h-full flex-col">{children}</div>
     </div>
     {more && <button type="button" className="absolute bottom-0 left-1/2 -translate-x-1/2 rounded bg-bg-card px-2 py-0.5 text-2xs text-accent shadow-overlay"
       onClick={() => viewport.current?.scrollBy({ top: viewport.current.clientHeight / 2 })}>거래원 더 보기 ↓</button>}

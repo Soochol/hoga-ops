@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
+import { DataControlPopover, ResponsiveDataControls } from '../../ui/ResponsiveDataControls';
 import { useStockNews, type StockNewsItem, type StockNewsResponse } from '../../api/stockNews';
 import { useThemePrefsStore } from '../../state/themePrefs';
 
@@ -19,7 +20,8 @@ export function NewsWindow({ code, name }: { code: string; name: string }) {
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-card text-fg" data-testid="stock-news-window"
       style={{ colorScheme: dark ? 'dark' : 'light' }}>
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-2 py-1.5">
+      <NewsList key={`${code}:${date}`} code={code} name={name} date={date.replaceAll('-', '') || null}
+        dateControls={<>
         <button type="button" aria-pressed={!date} onClick={() => setDate('')}
           className={`rounded px-2 py-1 text-sm ${!date ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-subtle'}`}>
           최신
@@ -30,13 +32,12 @@ export function NewsWindow({ code, name }: { code: string; name: string }) {
             onChange={(event) => setDate(event.target.value)}
             className="ui-field" />
         </label>
-      </div>
-      <NewsList key={`${code}:${date}`} code={code} name={name} date={date.replaceAll('-', '') || null} />
+        </>} />
     </div>
   );
 }
 
-function NewsList({ code, name, date }: { code: string; name: string; date: string | null }) {
+function NewsList({ code, name, date, dateControls }: { code: string; name: string; date: string | null; dateControls: ReactNode }) {
   const query = useStockNews(code, date);
   const [snapshot, setSnapshot] = useState<StockNewsResponse | null>(null);
   const [linkedOnly, setLinkedOnly] = useState(false);
@@ -63,7 +64,7 @@ function NewsList({ code, name, date }: { code: string; name: string; date: stri
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-1 border-b border-border px-2 py-1 text-sm">
+      <ResponsiveDataControls label="뉴스 설정" secondary={<>
         <label className="flex items-center gap-1 text-fg-dim" title="응답의 종목코드 또는 제목의 종목명이 일치하는 기사만 표시합니다. 기사 내용의 관련성을 보장하지는 않습니다.">
           <input type="checkbox" checked={linkedOnly} onChange={(event) => setLinkedOnly(event.target.checked)} />
           종목 연결만
@@ -73,7 +74,7 @@ function NewsList({ code, name, date }: { code: string; name: string; date: stri
           className="rounded px-2 py-1 text-fg-dim hover:bg-bg-subtle disabled:opacity-50">
           {query.isFetching ? '조회 중…' : '새로고침'}
         </button>
-      </div>
+      </>}>{dateControls}</ResponsiveDataControls>
       {pending > 0 && <button type="button" onClick={accept}
         className="shrink-0 border-b border-border bg-tint-selection px-2 py-2 text-sm text-accent">
         새 뉴스 {pending}건 · 목록에 반영
@@ -113,12 +114,15 @@ function NewsList({ code, name, date }: { code: string; name: string; date: stri
           </article>
         ))}
       </div>
-      <div className="shrink-0 border-t border-border px-2 py-1.5 text-xs text-fg-dim">
+      <div className="flex shrink-0 items-center justify-between gap-1 border-t border-border px-2 py-0.5 text-xs text-fg-dim">
+        <span className="min-w-0 truncate">한국투자 · {date ? '선택일' : '최근'} 최대 {current?.limit ?? 40}건</span>
+        <DataControlPopover label="뉴스 제공 안내">
         <p>한국투자 · {date ? '선택일' : '최근'} 최대 {current?.limit ?? 40}건 · 전체 기사 아님 · 원문 링크 미제공</p>
         <p title="한국투자 종목 메타데이터에도 다른 종목 기사가 섞일 수 있습니다.">
           종목 연결은 제공 코드·제목 기준{!date && ' · 60초마다 확인'}
           {query.data?.fetched_at_ms != null && ` · 확인 ${timeFormat.format(query.data.fetched_at_ms)}`}
         </p>
+        </DataControlPopover>
       </div>
     </>
   );
