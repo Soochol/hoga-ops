@@ -116,9 +116,6 @@
 .order-settings-body { padding:0.75rem; display:flex; flex-direction:column; gap:1rem; }
 .order-settings-body fieldset { min-width:0; }
 .order-settings-body legend { margin-bottom:0.375rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
-.order-settings-mode { display:flex; gap:0; padding:0.125rem; background:var(--bg-input-hover); border-radius:var(--radius-md); }
-.order-settings-mode label { display:flex; flex:1; align-items:center; justify-content:center; gap:0.25rem; padding:0.375rem; border-radius:var(--radius-md); cursor:pointer; }
-.order-settings-mode label:has(input:checked) { background:var(--bg-card); }
 .order-settings-presets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:0.5rem; }
 .order-settings-presets label { display:flex; flex-direction:column; gap:0.25rem; min-width:0; }
 .order-settings-presets input { width:100%; min-width:0; font:inherit; color:var(--fg); background:var(--bg-input-hover); border:1px solid var(--border); border-radius:var(--radius-md); padding:0.375rem 0.5rem; }

@@ -171,9 +171,7 @@ describe('호가 주문', () => {
   });
   it('금액 모드에서 매입수량을 클릭하면 수량 모드로 전환하고 보유 수량을 채운다', () => {
     show();
-    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('radio', { name: '금액' }));
-    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '금액' }));
     fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(100);
     expect(screen.queryByLabelText('신규 주문 금액')).not.toBeInTheDocument();
@@ -328,6 +326,10 @@ describe('호가 주문', () => {
   it('설정 취소는 프리셋을 바꾸지 않고 적용된 프리셋·단축키로 즉시 주문한다', async () => {
     const view = show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    const dialog = screen.getByRole('dialog', { name: '주문 설정' });
+    expect(within(dialog).queryByText('주문 방식')).not.toBeInTheDocument();
+    expect(within(dialog).queryAllByRole('radio')).toHaveLength(0);
+    expect(within(dialog).getAllByRole('spinbutton')).toHaveLength(6);
     fireEvent.change(screen.getByLabelText('수량 프리셋 1'), { target: { value: '25' } });
     fireEvent.click(screen.getByRole('button', { name: '취소' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(10);
@@ -349,9 +351,7 @@ describe('호가 주문', () => {
   });
   it('금액은 백만원으로 입력하고 현재가가 아닌 클릭 호가로 양방향 주수를 계산한다', async () => {
     show();
-    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('radio', { name: '금액' }));
-    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '금액' }));
     expect(screen.getByLabelText('신규 주문 금액')).toHaveValue(1);
     fireEvent.click(screen.getByRole('button', { name: '500만' }));
     expect(screen.getByLabelText('예상 주문 수량')).toHaveTextContent('74주');
@@ -362,14 +362,12 @@ describe('호가 주문', () => {
     await waitFor(() => expect(sell).toBeEnabled()); fireEvent.doubleClick(sell);
     await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(2));
     expect(mock.command.mock.calls[1][1]).toMatchObject({ side: 'SELL', price: 66300, quantity: 75 });
-    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('radio', { name: '수량' })); fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '수량' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(10);
   });
   it('금액이 1주 미만이면 예상 0주를 표시하고 신규 주문을 제한한다', () => {
     mock.priceOffset = 1400000; mock.quotePrice = 1467200; show();
-    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('radio', { name: '금액' })); fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '금액' }));
     expect(screen.getByLabelText('예상 주문 수량')).toHaveTextContent('0주');
     expect(screen.getByRole('button', { name: /매수 1,467,200원 주문 추가/ })).toBeDisabled();
     expect(mock.command).not.toHaveBeenCalled();

@@ -775,13 +775,13 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   const bounds = await frame.boundingBox();
   await settings.click();
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  await expect(dialog.getByText('주문 방식', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('radio')).toHaveCount(0);
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('25');
-  await dialog.getByRole('radio', { name: '금액', exact: true }).check();
   await dialog.getByRole('button', { name: '취소', exact: true }).click();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('10');
   await settings.click();
   await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('10');
-  await dialog.getByRole('radio', { name: '금액', exact: true }).check();
   for (const [index, value] of [25, 75, 250].entries()) await dialog.getByRole('spinbutton', { name: `수량 프리셋 ${index + 1}`, exact: true }).fill(String(value));
   for (const [index, value] of [2, 6, 12].entries()) await dialog.getByRole('spinbutton', { name: `금액 프리셋 ${index + 1}`, exact: true }).fill(String(value));
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('1.5');
@@ -790,6 +790,7 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   await page.screenshot({ path: testInfo.outputPath('order-settings-dialog.png') });
   await dialog.getByRole('button', { name: '적용', exact: true }).click();
   await expect(settings).toBeFocused();
+  await window.getByRole('button', { name: '금액', exact: true }).click();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('2');
   await window.getByRole('button', { name: '600만', exact: true }).click();
   await expect(window.getByLabel('예상 주문 수량').locator('.order-field-value')).toHaveText('89주');
@@ -800,7 +801,7 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   await expect(window.getByLabel('매수 68,200원 주문', { exact: true })).toHaveText('87');
   expect(commands[0]).toMatchObject({ side: 'BUY', price: 68200, quantity: 87 });
   await settings.click();
-  await dialog.getByRole('radio', { name: '수량', exact: true }).check();
+  await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('30');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(frame.getByRole('button', { name: '원래 크기로 복원', exact: true })).toBeVisible();
@@ -811,9 +812,9 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
 
 test('주문 방식·프리셋은 새로고침 후 유지하고 다른 주문창과 독립적이다', async ({ page }) => {
   const { window } = await setup(page);
+  await window.getByRole('button', { name: '금액', exact: true }).click();
   await window.getByRole('button', { name: '주문 설정', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
-  await dialog.getByRole('radio', { name: '금액', exact: true }).check();
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('25');
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
   await dialog.getByRole('button', { name: '적용', exact: true }).click();
@@ -821,7 +822,8 @@ test('주문 방식·프리셋은 새로고침 후 유지하고 다른 주문창
   await expect(window.getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('2');
   await expect(window.getByRole('button', { name: '200만', exact: true })).toBeVisible();
   await window.getByRole('button', { name: '주문 설정', exact: true }).click();
-  await expect(dialog.getByRole('radio', { name: '금액', exact: true })).toBeChecked();
+  await expect(dialog.getByRole('radio')).toHaveCount(0);
+  await expect(window.getByRole('button', { name: '금액', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('25');
   await dialog.getByRole('button', { name: '취소', exact: true }).click();
   const restore = page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '원래 크기로 복원', exact: true });
