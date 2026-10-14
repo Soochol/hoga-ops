@@ -75,11 +75,11 @@
 .order-drag-preview-cancel { color:var(--error); border-color:var(--error); border-style:dashed; background:color-mix(in srgb,var(--error) 10%,var(--bg-card)); }
 .order-outside .order-chip { width:auto; max-width:none; }
 .order-price { display:flex; justify-content:center; align-items:center; gap:4px; height:100%; white-space:nowrap; }
-/* Separate fixed slots for the day badge (0–16px) and average dot (18–24px).
- * Moving 4px from the percentage gap preserves the existing price-column budget. */
-.order-price-value { position:relative; padding-left:28px; flex-shrink:0; }
+/* Separate fixed slots for the day badge (0–16px) and average dot (18–30px),
+ * followed by a 4px gap before the price. */
+.order-price-value { position:relative; padding-left:34px; flex-shrink:0; }
 .order-price-value > [data-price-badges] { width:16px; }
-.order-average-marker { position:absolute; left:18px; top:50%; transform:translateY(-50%); width:6px; height:6px; border-radius:50%; background:var(--price-up); }
+.order-average-marker { position:absolute; left:18px; top:50%; transform:translateY(-50%); width:12px; height:12px; border-radius:50%; background:var(--price-up); }
 .order-price small { font-size:var(--live-text-meta,var(--text-xs)); min-width:48px; text-align:right; }
 .order-current { outline:1px solid var(--accent); outline-offset:-2px; border-radius:4px; }
 .order-info { display:flex; align-items:center; justify-content:space-between; gap:4px; padding:0 6px; font-size:var(--live-text-data,var(--text-sm)); }
