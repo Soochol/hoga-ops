@@ -243,8 +243,9 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const profitPercent = holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const canToggleProfit = holdingQuantity != null && holdingQuantity > 0 && holdingProfit != null && profitPercent != null;
-  const profitText = holdingQuantity === 0 || holdingProfit == null ? '—'
-    : profitAsPercent ? profitPercent == null ? '—' : `${profitPercent.toFixed(2)}%` : fmt(holdingProfit);
+  const profitAmountText = holdingQuantity === 0 || holdingProfit == null ? '—' : fmt(holdingProfit);
+  const profitPercentText = holdingProfit == null || profitPercent == null ? '—' : `${profitPercent.toFixed(2)}%`;
+  const profitText = profitAsPercent ? profitPercentText : profitAmountText;
   const purchaseAmount = holdingPurchaseAmountWon(holdingQuantity, state.data?.average_purchase_price);
   const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
   const quantityTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
@@ -519,6 +520,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         </span>
         <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span>
           <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
+            data-profit-amount={profitAmountText} data-profit-percent={profitPercentText}
             title={`더블클릭하여 ${profitAsPercent ? '금액' : '수익률(%)'}으로 전환`} disabled={!canToggleProfit}
             onDoubleClick={onToggleProfitDisplay} onKeyDown={event => {
               if (event.key === 'Enter' || event.key === ' ') {
