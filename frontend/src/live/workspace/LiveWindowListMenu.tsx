@@ -40,6 +40,7 @@ export function LiveWindowListMenu() {
             ...(w.pinned ? { sublabel: `고정 ${w.pinned.name}` } : {}),
             icon: WINDOW_KIND_ICON[w.kind],
             isFocused: w.id === focusedId,
+            badges: [w.pinned ? '종목 고정' : null, w.alwaysOnTop ? '항상 위' : null].filter((label): label is string => label !== null),
             closable: true,
           })),
       };

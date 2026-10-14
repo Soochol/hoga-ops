@@ -65,7 +65,8 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
   useEffect(() => {
     const prev = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const card = cardRef.current;
-    const first = card?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    const first = card?.querySelector<HTMLElement>('[data-modal-autofocus]:not(:disabled)')
+      ?? card?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
     (first ?? card)?.focus();
     return () => {
       if (prev?.isConnected) prev.focus();
@@ -108,12 +109,12 @@ export function ModalShell({ ariaLabel, title, width = 'w-[640px]', height, side
       onKeyDown={trapTab}
       className={backdropClass}
     >
-      <div ref={cardRef} tabIndex={-1} className={`outline-none ${cardClass}`}>
+      <div ref={cardRef} tabIndex={-1} className={`ui-modal outline-none ${cardClass}`}>
         {title && (
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="ui-modal-header flex items-center justify-between px-4 py-3 border-b border-border">
             <h2 className="text-fg text-base font-medium">{title}</h2>
             <button type="button" aria-label="닫기" onClick={onClose}
-              className="text-fg-dim hover:text-fg text-lg leading-none">✕</button>
+              className="ui-icon-button text-lg leading-none">✕</button>
           </div>
         )}
         {children}

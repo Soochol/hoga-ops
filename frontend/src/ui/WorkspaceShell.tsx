@@ -59,7 +59,7 @@ export const IconToolbarButton = forwardRef<
       // shrink-0 + nowrap: 좁은 창 헤더에서 flex 가 버튼을 눌러 CJK 라벨이 두 줄로
       // 꺾이던 것을 막는다 — 넘치는 폭은 헤더의 overflow-hidden + 접힘 정책(#762)이
       // 담당한다(잘림은 접힘 임계가 처리하는 실패 모드, 줄바꿈은 아니었다).
-      className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-transparent px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50 ${className}`.trim()}
+      className={`ui-toolbar-button inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md bg-transparent px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:opacity-50 ${className}`.trim()}
     >
       {icon}
       {children}

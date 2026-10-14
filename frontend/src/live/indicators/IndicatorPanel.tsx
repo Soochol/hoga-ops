@@ -27,6 +27,7 @@ import ToggleRow from '../settings/ToggleRow';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
+import { SegmentedControl } from '../../ui/SegmentedControl';
 import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS, WORKSPACE_PANEL_SHELL_CLASS } from '../workspacePanel';
 import { isCalendarTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { type CategoryId, type GroupId, type Placement, CATEGORIES } from './IndicatorPanelHelpers';
@@ -425,6 +426,12 @@ export default function IndicatorPanel({
           aria-label={mode === 'mine' ? '내 지표' : '지표 추가'}
         >
           <div className="p-2 pb-1">
+            <SegmentedControl label="지표 목록" value={mode} className="mb-2 w-full"
+              options={[
+                { value: 'mine', label: '내 지표', testId: mode === 'catalog' ? 'indicator-panel-mode-toggle' : undefined },
+                { value: 'catalog', label: '지표 추가', testId: mode === 'mine' ? 'indicator-panel-mode-toggle' : undefined },
+              ]}
+              onChange={next => { setMode(next); setQuery(''); setKbdIndex(-1); }} />
             <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-fg-dim">
                 <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -432,6 +439,7 @@ export default function IndicatorPanel({
               </svg>
               <input
                 type="text"
+                data-modal-autofocus
                 value={query}
                 aria-label="지표 검색"
                 placeholder="지표 검색"
@@ -496,20 +504,6 @@ export default function IndicatorPanel({
             보려고 여는 것이고, 「추가할 수 있는 것」은 가끔 찾으러 들어가는 곳이다.
             전환할 때 검색어는 지운다 — 한쪽에서 친 검색어가 다른 목록에 그대로
             걸려 있으면 "왜 비어 있지" 가 된다. */}
-        <div className="border-t border-border p-2">
-          <button
-            type="button"
-            onClick={() => {
-              setMode(mode === 'mine' ? 'catalog' : 'mine');
-              setQuery('');
-              setKbdIndex(-1);
-            }}
-            data-testid="indicator-panel-mode-toggle"
-            className="w-full rounded-lg px-3 py-2 text-left text-sm text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
-          >
-            {mode === 'mine' ? '＋ 지표 추가' : '← 내 지표'}
-          </button>
-        </div>
       </div>
         <div className="flex min-h-0 flex-col">
           {/* 헤더는 그룹명이 아니라 '지금 편집 중인 지표'를 보여준다(그룹은 eyebrow).
@@ -551,7 +545,7 @@ export default function IndicatorPanel({
                 type="button"
                 aria-label="닫기"
                 onClick={onClose}
-                className="-mr-1 px-1 text-lg leading-none text-fg-dim transition-colors hover:text-fg"
+                className="ui-icon-button text-lg leading-none"
               >
                 ✕
               </button>

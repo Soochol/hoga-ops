@@ -57,6 +57,8 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     quote && !isStaleLiveQuote(quote) && Number.isFinite(quote.price) && quote.price > 0
       ? quote.price
       : null;
+  const symbolTitle = [symbolLabel, currentPrice !== null ? `최신 시세 ${formatKoreanInt(currentPrice)}원` : null,
+    quote?.change_pct != null ? `${quote.change_pct.toFixed(2)}%` : null].filter(Boolean).join(' · ');
 
   // 히트맵 그룹명 — 주식만. 데이터 로드 전엔 숨겨 '없음'→그룹명 플리커 방지.
   const { data: heatmapData } = useHeatmap();
@@ -97,15 +99,15 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
       className="live-symbol-row tabular-nums"
     >
       <span className="live-symbol-identity">
-        <span className="live-symbol-name truncate text-fg" title={symbolLabel} tabIndex={0}>{name ?? code}</span>
+        <span className="live-symbol-name truncate text-fg" title={symbolTitle} tabIndex={0}>{name ?? code}</span>
         {name && name !== code && <span className="live-symbol-code font-data">{code}</span>}
         {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
       </span>
       {!isIndex && <TitleBarWatchlistButton key={code} code={code} name={name}
         groups={watchlistGroups} ready={watchlistData != null} />}
       {!isIndex && partial && (
-        <span className="text-2xs text-warn" title="실시간 이력 일부 누락 — 보존된 데이터는 다시 조회하지만 원본 틱 전체 복구는 보장되지 않습니다">
-          실시간 이력 일부 누락
+        <span role="status" aria-label="실시간 이력 일부 누락" className="live-symbol-warning text-2xs text-warn" title="실시간 이력 일부 누락 — 보존된 데이터는 다시 조회하지만 원본 틱 전체 복구는 보장되지 않습니다">
+          <span aria-hidden>!</span><span className="live-symbol-warning-label">실시간 이력 일부 누락</span>
         </span>
       )}
       {currentPrice !== null && (
@@ -135,10 +137,10 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
           <span
             data-testid="past-backfill-progress-chip"
             title={`과거 데이터 불러오는 중 — ${md}까지 로드됨`}
-            className="font-data whitespace-nowrap rounded px-1.5 text-2xs"
+            className="live-symbol-backfill font-data whitespace-nowrap rounded px-1.5 text-2xs"
             style={{ background: pill.bg, border: pill.border, color: pill.fg }}
           >
-            과거 불러오는 중 · {md}까지
+            <span aria-hidden>↻</span><span className="live-symbol-warning-label">과거 불러오는 중 · {md}까지</span>
           </span>
         );
       })()}

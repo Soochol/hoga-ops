@@ -86,7 +86,7 @@ describe('IndexSectorRankingPane', () => {
       />,
     );
 
-    expect(screen.getByText('2026/06/19 기준 · hover')).toBeInTheDocument();
+    expect(screen.getByText('2026.06.19 기준 · hover')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /1위 반도체/ })).toBeInTheDocument();
     expect(screen.getByText('삼성전자')).toBeInTheDocument();
     expect(screen.queryByText('셀트리온')).toBeNull();
@@ -268,6 +268,6 @@ describe('IndexSectorRankingPane', () => {
     expect(screen.getByTestId('index-sector-ranking-pane')).toHaveStyle({ height: '100%' });
     expect(screen.queryByRole('separator', { name: '섹터 랭킹 높이 조절' })).not.toBeInTheDocument();
     // latest 모드 헤더는 한국어 라벨.
-    expect(screen.getByText('2026/06/19 기준 · 최신')).toBeInTheDocument();
+    expect(screen.getByText('2026.06.19 기준 · 최신')).toBeInTheDocument();
   });
 });

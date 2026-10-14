@@ -9,8 +9,8 @@
 .order-surface-heading .order-surface-icon:hover:not(:disabled) { background:var(--bg-input-hover); color:var(--fg); }
 .order-surface-footer { display:flex; align-items:center; justify-content:flex-end; gap:0.5rem; padding:0.625rem 0.75rem; border-top:1px solid var(--border); }
 .order-surface-footer button { padding:0.3125rem 0.75rem; border:1px solid var(--border); background:var(--bg-input); }
-.order-surface-footer .order-primary { color:var(--bg-card); background:var(--fg); border-color:var(--fg); }
-.order-surface-footer .order-primary:hover:not(:disabled) { opacity:.9; background:var(--fg); }
+.order-surface-footer .order-primary { color:var(--accent-fg); background:var(--accent); border-color:var(--accent); }
+.order-surface-footer .order-primary:hover:not(:disabled) { opacity:.9; background:var(--accent); }
 .order-surface-segment { display:flex; align-items:center; gap:0.125rem; padding:0.125rem; border-radius:var(--radius-md); background:var(--bg-input-hover); }
 .order-surface-segment button { padding:0.1875rem 0.5rem; border:0; background:transparent; color:var(--fg-dim); }
 .order-surface-segment button[aria-pressed=true] { background:var(--bg-card); color:var(--fg); box-shadow:var(--shadow); }

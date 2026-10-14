@@ -86,7 +86,9 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
     afterHoursStoredAtMs: afterHoursBook.data?.source === 'stored' ? afterHoursBook.data.fetched_at_ms : null,
     regularLadderAtMs: sessionMode === 'regular' && afterHoursTotals !== null && snapshot != null ? snapshot.ts_ms : null,
   });
+  const timedSessionControl = sessionControl.kind === 'label' && snapshot && !sessionControl.label.includes(':')
+    ? { ...sessionControl, label: `${sessionControl.label} · ${unixMsToKSTClock(snapshot.ts_ms)}` } : sessionControl;
   return { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
     afterHoursTotals, afterHoursLabel: activeSinglePrice !== null ? '시간외 단일가' : '시간외',
-    sessionControl, sessionMode, selectSessionMode };
+    sessionControl: timedSessionControl, sessionMode, selectSessionMode };
 }

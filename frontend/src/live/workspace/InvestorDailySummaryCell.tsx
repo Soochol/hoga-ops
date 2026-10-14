@@ -32,7 +32,7 @@ export function InvestorDailySummaryCell({ values, unit, useK = true, foot = fal
           {index > 0 && <span aria-hidden="true" className="text-fg-dimmer">·</span>}
           <span title={`${labels[side]} ${exact}`} aria-label={`${labels[side]} ${exact}`}
             className={value === null ? 'text-fg-dimmer' : side === 'net' ? `font-semibold ${qtyClass(value)}`
-              : `${side === 'buy' ? 'text-price-up' : 'text-price-down'} opacity-90`}>
+              : 'text-fg-dim'}>
             {text}
           </span>
         </span>;

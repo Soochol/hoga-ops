@@ -55,7 +55,7 @@ it('requires confirmation wording for overwrite mode', () => {
       onSubmit={onSubmit}
     />,
   );
-  expect(screen.getByRole('heading', { name: '덮어쓰기' })).toBeTruthy();
+  expect(screen.getByRole('heading', { name: '저장뷰 덮어쓰기' })).toBeTruthy();
   expect(screen.getByText(/기존 저장뷰를 현재 복기 구간/)).toBeTruthy();
 });
 
@@ -108,6 +108,7 @@ it('prevents duplicate group creation and permits switching back to the existing
   expect(screen.getByRole('alert')).toHaveTextContent('이미 있는 그룹');
   expect(screen.getByRole('button', { name: '그룹 만들고 저장' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: '기존 그룹 선택' }));
-  await userEvent.selectOptions(screen.getByLabelText('저장 그룹'), 'g');
+  await userEvent.click(screen.getByRole('combobox', { name: '저장 그룹' }));
+  await userEvent.click(screen.getByRole('option', { name: '복기' }));
   expect(screen.getByRole('button', { name: '저장' })).toBeEnabled();
 });

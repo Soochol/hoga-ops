@@ -723,7 +723,7 @@ describe('호가 주문', () => {
   it('10호가창의 총잔량 스트립과 세션 라벨을 공유한다', () => {
     show();
     const strip = screen.getByTestId('book-total-strip');
-    expect(strip).toHaveTextContent('1,000정규장2,000');
+    expect(strip).toHaveTextContent('1,000정규장 · 11:00:002,000');
     expect(screen.getByLabelText('매도총잔량 1,000')).toHaveTextContent('1,000');
     expect(screen.getByLabelText('매수총잔량 2,000')).toHaveTextContent('2,000');
     expect(screen.getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '1000fr 2000fr' });

@@ -24,7 +24,9 @@ export function SettingsRow({
       <div className="min-w-0 flex-1">
         <div className="text-fg text-sm">{label}</div>
         {description !== undefined && (
-          <div className="text-fg-dim text-xs mt-0.5">{description}</div>
+          typeof description === 'string' && description.length > 110
+            ? <details className="mt-0.5 text-xs text-fg-dim"><summary className="cursor-pointer leading-relaxed">{description.slice(0, 76)}…</summary><p className="mt-1 leading-relaxed">{description}</p></details>
+            : <div className="text-fg-dim text-xs mt-0.5">{description}</div>
         )}
       </div>
       {children}

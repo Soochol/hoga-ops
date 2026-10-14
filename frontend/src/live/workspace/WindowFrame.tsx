@@ -8,12 +8,13 @@
 import { memo } from 'react';
 import type { ResizeMode } from '../../workspace/snapEngine';
 import { WindowFrameCore, type WindowRectPx } from '../../workspace/WindowFrame';
-import { GroupBadge } from '../../workspace/GroupBadge';
+import { LiveGroupBadge } from './LiveGroupBadge';
 import type { GroupId, WindowKind } from '../../state/workspace';
 // 창 제목은 창 추가 메뉴와 같은 문자열이어야 "고른 것 = 생긴 것" 이 맞는다
 // (windowKindLabels 의 SSOT 취지). 여기에 사본을 두면 그 약속이 조용히 깨진다.
 import { WINDOW_KIND_LABEL as KIND_LABEL } from './windowKindLabels';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
+import { WindowActionsMenu } from './WindowActionsMenu';
 
 export type { WindowRectPx };
 
@@ -125,7 +126,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
         <>
           {/* 뱃지·팔레트 마크업은 `/study` 와 공유한다(`workspace/GroupBadge`) —
               번호가 가리키는 것만 페이지가 정하고 제스처는 하나다. */}
-          <GroupBadge
+          <LiveGroupBadge
             showLabel
             group={group}
             open={paletteOpen}
@@ -138,9 +139,9 @@ function WindowFrameImpl(props: WindowFrameProps) {
             <TitleBarSymbolRow name={symbolLabel} code={symbolCode} isIndex={isIndex} windowId={id} />
           ) : (
             <>
-              <span className="flex min-w-0 items-center gap-1 text-sm font-medium text-fg" title={`${KIND_LABEL[kind]} · ${title}${symbolCode ? ` (${symbolCode})` : ''}`} tabIndex={0}>
-                {kind !== 'chart' && <span className="shrink-0">{KIND_LABEL[kind]} ·</span>}
-                <span className="truncate">{title}</span>
+              <span className="live-data-title flex min-w-0 items-center gap-1 text-sm font-medium text-fg" title={`${KIND_LABEL[kind]} · ${title}${symbolCode ? ` (${symbolCode})` : ''}`} tabIndex={0}>
+                {kind !== 'chart' && <span className="live-data-title-kind shrink-0">{KIND_LABEL[kind]} ·</span>}
+                <span className="live-symbol-name truncate">{title}</span>
               </span>
             </>
           )}
@@ -148,7 +149,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
               스페이서 한 곳이 여유를 흡수해 버튼 사이 간격을 일정하게 유지한다. */}
           <span aria-hidden data-testid="window-header-spacer" className={kind === 'chart' && symbolCode ? 'hidden' : 'flex-1'} />
           {onToggleMaximize && (
-            <button type="button" className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
+            <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
               aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
               onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -159,6 +160,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
           {onToggleAlwaysOnTop && (
             <button
               type="button"
+              data-window-secondary-action
               aria-label="항상 위"
               aria-pressed={alwaysOnTop}
               title={alwaysOnTop ? '항상 위 해제' : '항상 위 — 다른 창에 가려지지 않게 표시'}
@@ -178,6 +180,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
             <>
               <button
                 type="button"
+                data-window-secondary-action
                 data-testid="window-pin-toggle"
                 aria-pressed={pinned}
                 disabled={!canPin}
@@ -202,6 +205,10 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </button>
             </>
           )}
+          <WindowActionsMenu maximized={maximized} alwaysOnTop={alwaysOnTop} pinned={pinned} canPin={canPin}
+            onMaximize={onToggleMaximize ? () => onToggleMaximize(id) : undefined}
+            onAlwaysOnTop={onToggleAlwaysOnTop ? () => onToggleAlwaysOnTop(id) : undefined}
+            onPin={onTogglePin ? () => onTogglePin(id) : undefined} />
         </>
       }
     >

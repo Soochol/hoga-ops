@@ -11,6 +11,7 @@ import {
   type LiveLayoutPresetPayload,
 } from '../../api/liveLayoutPresets';
 import type { ApiError } from '../../api/client';
+import { LayoutPresetPreview } from './LayoutPresetPreview';
 
 /**
  * `/live` 레이아웃 프리셋 드롭다운 (ADR-0119 PR-E). LiveToolbar 전용.
@@ -30,6 +31,7 @@ export function LayoutPresetMenu() {
   return (
     <PresetMenu<LiveLayoutPresetPayload>
       testIdPrefix="layout-preset"
+      renderPreview={payload => <LayoutPresetPreview payload={payload} />}
       presets={(data?.presets ?? []) as PresetRow<LiveLayoutPresetPayload>[]}
       refetchPresets={() => void refetch()}
       activePresetId={lastAppliedPresetId}

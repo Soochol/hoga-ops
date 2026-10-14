@@ -90,7 +90,7 @@ describe('SectorRankingWindow', () => {
     // 랭킹 쿼리는 마지막 봉 날짜 + enabled=true 로 호출된다.
     expect(useIndexSectorRankings).toHaveBeenCalledWith('20260619', true, expect.any(String));
     // 헤더는 latest 모드로 최신 거래일을 표시한다.
-    expect(screen.getByText('2026/06/19 기준 · 최신')).toBeInTheDocument();
+    expect(screen.getByText('2026.06.19 기준 · 최신')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /1위 반도체/ })).toBeInTheDocument();
   });
 

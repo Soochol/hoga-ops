@@ -110,6 +110,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
     <ModalShell ariaLabel={title} title={title} width="w-[440px]" onClose={onClose}>
       <div className="flex flex-col gap-4 px-4 py-4">
         {scopeDescription && <p className="text-xs text-fg-dim">{scopeDescription}</p>}
+        <p className="mb-2 text-xs text-fg-dim">1. 기간 선택 → 2. 보유 현황 확인 → 3. 수집 시작</p>
         <fieldset disabled={previewM.isPending || collectM.isPending} className="contents">
         {/* 기간 프리셋 */}
         <div className="flex flex-col gap-2">
@@ -192,7 +193,7 @@ export function CollectDialog({ groups, title = '지난 N일 데이터 수집', 
           <div className="rounded-md border border-border bg-bg-subtle px-3 py-2.5 text-sm">
             <div className="grid grid-cols-2 gap-y-1 font-data tabular-nums">
               <span className="text-fg-dim">이미 보유</span><span className="text-right text-fg">{preview.have}</span>
-              <span className="text-fg-dim">상류 무데이터</span><span className="text-right text-fg-dimmer">{preview.no_upstream}</span>
+              <span className="text-fg-dim">제공처 데이터 없음</span><span className="text-right text-fg-dimmer">{preview.no_upstream}</span>
               <span className="text-fg-dim">수집 예정</span><span className="text-right text-accent">{preview.to_collect}</span>
               <span className="text-fg-dim">예상 소요</span><span className="text-right text-fg">≈ {preview.est_minutes}분</span>
             </div>

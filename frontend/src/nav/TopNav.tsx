@@ -32,7 +32,7 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
   return (
     <nav
       aria-label="주요 메뉴"
-      className="h-top-nav min-w-0 bg-bg px-lg"
+      className={`h-top-nav min-w-0 bg-bg px-lg ${isLive ? 'live-top-nav' : ''}`}
     >
       {/* 3열 대칭 그리드 — **시계를 상단바 정중앙에 앉히기 위한 구조다**.
           양옆이 같은 `1fr` 이므로 가운데 `auto` 열의 중심 = 상단바의 중심이 된다.

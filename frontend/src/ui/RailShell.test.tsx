@@ -38,7 +38,7 @@ describe('RailShell primitives', () => {
         <RailDrawerBody>rows</RailDrawerBody>
       </RailDrawer>,
     );
-    expect(screen.getByText('스크리너')).toHaveClass('uppercase');
+    expect(screen.getByText('스크리너')).toHaveClass('font-semibold');
     expect(screen.getByText('controls')).not.toHaveClass('border-b');
     expect(screen.getByText('rows')).toHaveClass('overflow-auto');
   });

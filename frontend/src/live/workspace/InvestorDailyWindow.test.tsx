@@ -168,7 +168,7 @@ describe('InvestorDailyWindow', () => {
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
     expect(useLivePastInvestorNet.mock.calls.at(-1)?.[3]).toBe('qty');
 
-    fireEvent.click(screen.getByRole('button', { name: /표시 단위/ }));
+    fireEvent.click(screen.getByRole('button', { name: '금액(억원)' }));
 
     expect(useLivePastInvestorNet.mock.calls.at(-1)?.[3]).toBe('amount');
   });
@@ -201,7 +201,7 @@ describe('InvestorDailyWindow', () => {
     expect(within(row).getByText('+8,658K')).toBeInTheDocument();
     expect(within(row).queryByText(/억/)).toBeNull();
     // 칩은 스토어를 따른다 — 눌림 상태와 숫자의 출처가 다른 것이 요점이다.
-    expect(screen.getByRole('button', { name: /표시 단위/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '금액(억원)' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('축 전환이 도착하기 전에는 **전환 중임을 말한다** — 버튼이 죽은 것과 구별된다', () => {
@@ -356,7 +356,7 @@ it('매매 기준을 바꾸는 동안 기존 순매수를 재해석하지 않고
   const row = screen.getByTestId('investor-daily-row-20260803');
   expect(within(row).getByText('123')).toBeInTheDocument();
   expect(within(row).queryByText('+123')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /표시 단위/ }));
+  fireEvent.click(screen.getByRole('button', { name: '금액(억원)' }));
   expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['amount', 'sell']);
   fireEvent.click(screen.getByRole('button', { name: '총매수' }));
   expect(useLivePastInvestorNet.mock.lastCall?.slice(3)).toEqual(['amount', 'buy']);

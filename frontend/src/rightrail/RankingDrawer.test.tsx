@@ -111,7 +111,7 @@ describe('RankingDrawer', () => {
     expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=150');
   });
 
-  it.each(['등락률', '량급증', '거래량', '대금'])(
+  it.each(['등락률', '거래량 급증', '거래량', '거래대금'])(
     '%s expands by 100 and keeps rows, selection and scroll while loading', async (label) => {
       let finish: (value: never) => void = () => {};
       const call = vi.spyOn(client, 'apiCall').mockImplementation((url) => (
@@ -175,7 +175,7 @@ describe('RankingDrawer', () => {
     expect(String(call.mock.calls.at(-1)?.[0])).toContain('venue=NXT');
     expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=100');
     await expand();
-    fireEvent.click(screen.getByRole('button', { name: '대금' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래대금' }));
     await screen.findByRole('button', { name: '101~200위 더 보기' });
     expect(String(call.mock.calls.at(-1)?.[0])).toContain('kind=value');
     expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=100');
@@ -285,7 +285,7 @@ describe('RankingDrawer', () => {
     await waitFor(() => expect(apiCall.mock.calls.some(([url]) => (
       String(url).includes('kind=program') && String(url).includes('market=kosdaq')
     ))).toBe(true));
-    fireEvent.click(screen.getByRole('button', { name: '대금' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래대금' }));
     await screen.findByText('삼성전자');
     expect(screen.queryByText('+644.99억')).not.toBeInTheDocument();
   });
@@ -327,7 +327,7 @@ describe('RankingDrawer', () => {
     renderDrawer();
     await screen.findByText('삼성전자');
 
-    fireEvent.click(screen.getByRole('button', { name: '대금' }));
+    fireEvent.click(screen.getByRole('button', { name: '거래대금' }));
 
     await waitFor(() => {
       expect(apiCall.mock.calls.some((c) => (c[0] as string).includes('kind=value'))).toBe(true);

@@ -63,7 +63,7 @@ export function StudyViewSaveDialog({
       : `≈ ${coverage.estMinutes}분`;
 
   return createPortal(
-    <ModalShell ariaLabel={title} width="w-[400px]" onClose={() => { if (!isSubmitting) onCancel(); }}>
+    <ModalShell ariaLabel={title} title={title} width="w-[400px]" onClose={() => { if (!isSubmitting) onCancel(); }}>
       <form
         className="max-h-[85vh] overflow-y-auto space-y-3 p-4"
         onKeyDown={(e) => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }}
@@ -72,7 +72,6 @@ export function StudyViewSaveDialog({
           if (valid && !isSubmitting) onSubmit({ name: name.trim() || fallbackName || defaultName || '저장뷰', memo: memo.trim(), capture, ...group, ...(group.new_group_name !== undefined ? { new_group_name: group.new_group_name.trim() } : {}) });
         }}
       >
-        <h2 className="text-sm font-semibold">{mode === 'overwrite' ? '덮어쓰기' : '저장뷰 저장'}</h2>
         {mode === 'overwrite' && (
           <p className="text-xs text-fg-dim">기존 저장뷰를 현재 복기 구간으로 덮어쓰기합니다.</p>
         )}
@@ -93,7 +92,7 @@ export function StudyViewSaveDialog({
             placeholder={fallbackName ? `자동: ${fallbackName}` : '비우면 종목·기준일로 자동 생성'}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="mt-1 w-full rounded border bg-bg-input px-2 py-1 text-sm"
+            className="ui-field mt-1 w-full"
           />
         </label>
         <label className="block text-xs">
@@ -102,7 +101,7 @@ export function StudyViewSaveDialog({
             aria-label="메모"
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
-            className="mt-1 min-h-20 w-full rounded border bg-bg-input px-2 py-1 text-sm"
+            className="ui-field mt-1 min-h-20 w-full"
           />
         </label>
         <p className="text-xs text-fg-dim">저장 학습뷰는 현재 화면의 기간을 저장하고 다시 불러와 분석합니다.</p>
@@ -151,7 +150,7 @@ export function StudyViewSaveDialog({
         )}
         <div className="flex justify-end gap-2">
           <button type="button" onClick={onCancel} disabled={isSubmitting} className="rounded border px-3 py-1 text-sm disabled:opacity-50">취소</button>
-          <button type="submit" disabled={!valid || isSubmitting} className="rounded border bg-accent px-3 py-1 text-sm text-white disabled:opacity-50">
+          <button type="submit" disabled={!valid || isSubmitting} className="ui-primary">
             {isSubmitting ? '저장 중...' : group.new_group_name !== undefined ? '그룹 만들고 저장' : '저장'}
           </button>
         </div>

@@ -15,8 +15,8 @@ describe('StalenessChip', () => {
     const el = chip({ ...base, days_behind: 0 });
     expect(el.style.color).toBe('var(--fg-dim)');
     expect(el.textContent).not.toMatch(/확정분 대기/);
-    expect(el.textContent).toContain('EOD 아카이브');
-    expect(el.textContent).toContain('20260514');
+    expect(el.textContent).toContain('일봉 기준');
+    expect(el.textContent).toContain('2026.05.14');
   });
 
   it('days_behind >= 1 → amber (--warn) + shows EOD archive pending text', () => {

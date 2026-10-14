@@ -208,7 +208,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
         }}
       >
         <span aria-hidden="true" className="font-data">{drawing ? activeSpec.glyph : '✎'}</span>
-        {showLabel && <span>{drawing ? activeSpec.label : '그리기'}</span>}
+        {showLabel && <span className="live-action-label">{drawing ? activeSpec.label : '그리기'}</span>}
       </button>
       {menu && createPortal(menu, document.body)}
     </div>

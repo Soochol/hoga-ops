@@ -80,7 +80,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
 
   it('단일 스크롤 — 모든 섹션이 클릭 없이 동시에 문서에 있다', () => {
     renderSettings();
-    for (const name of ['차트', '체결창', '알림', '데이터소스', '테마', 'Symbol Master', '앱 정보', '로드맵']) {
+    for (const name of ['차트', '체결창', '알림', '데이터소스', '테마', '종목 목록', '앱 정보', '로드맵']) {
       expect(screen.getByRole('region', { name })).toBeTruthy();
     }
   });

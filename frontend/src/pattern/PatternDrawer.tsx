@@ -455,7 +455,7 @@ function MatchRow({
       </span>
       <CandleThumb bars={row.bars} tail={row.tail} ma={row.ma} maPeriods={maPeriods} height={34} />
       <span className="flex flex-col items-end gap-[3px]">
-        <span className="font-data text-xs font-semibold text-accent">{row.corr.toFixed(3)}</span>
+        <span className="font-data text-xs font-semibold text-fg" title={`유사도(상관계수) ${row.corr.toFixed(3)} · 1에 가까울수록 비슷한 모양`}>{row.corr.toFixed(3)}</span>
         {mode === 'history' ? (
           <span
             className="font-data text-2xs"

@@ -251,13 +251,13 @@ describe('InvestorTrendEstimateCard', () => {
 
 describe('unit chip', () => {
   function chip() {
-    return screen.getByRole('button', { name: /표시 단위/ });
+    return screen.getByRole('button', { name: '금액(억원)' });
   }
 
   it('starts on quantity and shows raw share counts', () => {
     render(<InvestorTrendEstimateCard query={{ data: response() }} />);
 
-    expect(chip()).toHaveTextContent('주');
+    expect(screen.getByRole('button', { name: '수량(주)' })).toHaveAttribute('aria-pressed', 'true');
     expect(chip()).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByText('+1,500')).toBeInTheDocument();
   });

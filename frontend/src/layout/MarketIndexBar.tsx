@@ -140,6 +140,7 @@ export function MarketIndexBar() {
   const { data: status } = useLiveStatus();
   const flow = useMarketInvestorFlowSummary();
   const [page, setPage] = useState({ mode: 'indices' as 'indices' | 'flow', revision: 0 });
+  const [autoRotate, setAutoRotate] = useState(true);
   const hasIndices = data != null && data.length > 0;
   const hasKiwoom = status?.kiwoom != null;
   const summary = flow.data;
@@ -149,12 +150,12 @@ export function MarketIndexBar() {
   const showFlow = hasFlow && (!hasIndices || page.mode === 'flow');
   // 값이 없는 페이지로 자동 전환하지 않는다. 클릭은 다음 전환까지 10초를 보장한다.
   useEffect(() => {
-    if (!canRotate) return;
+    if (!canRotate || !autoRotate) return;
     const timer = window.setInterval(() => {
       setPage((previous) => ({ ...previous, mode: previous.mode === 'indices' ? 'flow' : 'indices' }));
     }, ROTATE_MS);
     return () => window.clearInterval(timer);
-  }, [canRotate, page.revision]);
+  }, [canRotate, autoRotate, page.revision]);
 
   const switchPage = () => {
     if (!canRotate) return;
@@ -199,10 +200,15 @@ export function MarketIndexBar() {
           aria-label={showFlow ? '지수 화면으로 전환' : '투자자 수급 화면으로 전환'}
           title="빈 영역 클릭으로 전환 · 10초마다 자동 전환"
           onClick={switchPage}
-          className="h-full min-w-6 flex-1 self-stretch rounded-sm"
-        />
+          className="h-full min-w-6 shrink-0 self-stretch rounded-sm px-1 text-xs text-fg-dim hover:bg-bg-input-hover"
+        >{showFlow ? '지수 ›' : '수급 ›'}</button>
       )}
       </div>
+      {canRotate && <button type="button" aria-label="시장지표 자동 전환" aria-pressed={autoRotate}
+        title={autoRotate ? '10초마다 자동 전환 · 누르면 일시 정지' : '자동 전환 일시 정지 · 누르면 재개'}
+        onClick={() => setAutoRotate(value => !value)} className="shrink-0 rounded px-1 text-xs text-fg-dim hover:bg-bg-input-hover">
+        {autoRotate ? '자동' : '정지'}
+      </button>}
       <CoverageChip leadingDivider={hasIndices || hasFlow} />
     </footer>
   );

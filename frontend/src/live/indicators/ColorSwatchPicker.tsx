@@ -53,7 +53,7 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
           ref={popoverRef}
           role="dialog"
           aria-label={`${label} 팔레트`}
-          className="rounded p-3 shadow-lg"
+          className="ui-popover p-3"
           style={{
             ...popoverStyle,
             background: 'var(--bg-card)',
@@ -71,7 +71,7 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
                       type="button"
                       aria-label={`${label} ${c}`}
                       aria-pressed={selected}
-                      className="h-5 w-5 rounded-full"
+                      className="ui-color-swatch h-5 w-5 rounded-full"
                       style={{
                         backgroundColor: c,
                         outline: selected ? '2px solid var(--fg)' : 'none',

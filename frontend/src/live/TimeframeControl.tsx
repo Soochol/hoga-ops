@@ -89,7 +89,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
       role="menu"
       aria-label="분봉 목록"
       onMouseDown={(event) => event.stopPropagation()}
-      className="w-24 bg-bg-card border border-border rounded shadow-lg z-50 py-1"
+      className="ui-popover w-24 z-50 py-1"
       style={{ position: 'fixed', left, top }}
     >
       {compact && CALENDAR_TIMEFRAMES.map((calendar) => {
@@ -145,7 +145,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
   // shrink-0 + nowrap: 좁은 창 헤더에서 "1분"·"일" 라벨이 두 줄로 꺾이지 않게 —
   // 넘치는 폭은 헤더 overflow-hidden + 접힘 정책(#762)이 처리한다.
   return (
-    <div className="flex shrink-0 gap-1" role="group" aria-label="LiveTimeframe">
+    <div className="ui-segmented" role="group" aria-label="LiveTimeframe">
       <div ref={minuteWrapRef} className="relative">
         <button
           ref={minuteButtonRef}
@@ -154,14 +154,8 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
           aria-label={minuteButtonLabel}
           aria-haspopup="menu"
           aria-expanded={minuteMenuOpen}
-          className="inline-flex min-h-6 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
-          style={{
-            padding: '4px 10px',
-            // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
-            // compact 에서는 이 버튼이 항상 현재 봉을 나타내므로 늘 활성이다.
-            background: compact || isCurrentMinute || isSecondTimeframe(timeframe) ? 'var(--tint-selection)' : 'transparent',
-            color: compact || isCurrentMinute || isSecondTimeframe(timeframe) ? 'var(--accent)' : 'var(--fg-dim)',
-          }}
+          aria-pressed={compact || isCurrentMinute || isSecondTimeframe(timeframe)}
+          className="ui-choice inline-flex items-center gap-1 font-data"
         >
           <span>{triggerLabel}</span>
           <span aria-hidden="true">⌄</span>
@@ -176,12 +170,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
             type="button"
             onClick={() => pickCalendar(calendar)}
             aria-pressed={active}
-            className="min-h-6 shrink-0 whitespace-nowrap rounded-lg px-2 py-1 font-data text-xs transition-colors hover:bg-bg-input-hover hover:text-fg"
-            style={{
-              // 테두리 없는 ghost(2026-07-15) — 비활성은 투명, 활성만 tint-selection+accent로 강조.
-              background: active ? 'var(--tint-selection)' : 'transparent',
-              color: active ? 'var(--accent)' : 'var(--fg-dim)',
-            }}
+            className="ui-choice font-data"
           >
             {CALENDAR_LABELS[calendar]}
           </button>

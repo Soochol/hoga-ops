@@ -40,7 +40,7 @@ export function IndicatorsButton({
         </svg>
       )}
     >
-      {showLabel && <span>보조지표</span>}
+      {showLabel && <span className="live-action-label">보조지표</span>}
     </IconToolbarButton>
   );
 }

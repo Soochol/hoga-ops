@@ -53,7 +53,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     expect(await screen.findByText('표시 소스')).toBeInTheDocument();
     expect(screen.getByText('캡처 저장')).toBeInTheDocument();
     expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '저장 데이터로 캔들 보기' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
     expect(screen.queryByRole('radio', { name: '스크리너 일봉 우선' })).toBeNull();
     // 「호가·체결 데이터 기준」 그룹은 **라디오 3종이 폐지되고 옵트인 토글 하나로**
@@ -73,7 +73,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     for (const name of ['hogaplay 우선', '실시간 WS 우선', '완결성 우선', 'KIS API 우선']) {
       expect(screen.queryByRole('radio', { name })).toBeNull();
     }
-    expect(screen.getByText(/'REST 우회'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
+    expect(screen.getByText(/'저장 데이터로 캔들 보기'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
   });
 
   it('복기뷰 캔들 안내는 REST 우회 토글을 숨기지 않고 동반 문구로 붙는다', async () => {
@@ -84,7 +84,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
 
     render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
-    expect(await screen.findByRole('switch', { name: 'REST 우회' })).toBeInTheDocument();
+    expect(await screen.findByRole('switch', { name: '저장 데이터로 캔들 보기' })).toBeInTheDocument();
     expect(screen.getByTestId('study-candle-source-note')).toHaveTextContent(/항상 저장 데이터/);
   });
 
@@ -114,7 +114,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
 
     render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
-    const toggle = await screen.findByRole('switch', { name: 'REST 우회' });
+    const toggle = await screen.findByRole('switch', { name: '저장 데이터로 캔들 보기' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
 
     fireEvent.click(toggle);
@@ -124,7 +124,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ rest_bypass_enabled: true }),
     }));
-    await waitFor(() => expect(screen.getByRole('switch', { name: 'REST 우회' })).toHaveAttribute('aria-checked', 'true'));
+    await waitFor(() => expect(screen.getByRole('switch', { name: '저장 데이터로 캔들 보기' })).toHaveAttribute('aria-checked', 'true'));
   });
 
   it('KRX hogaplay 우선 토글을 backend settings로 저장한다', async () => {

@@ -879,8 +879,8 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         )}
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">
           <span aria-hidden className="live-chart-toolbar-divider" />
-          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={false} />
-          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={false} />
+          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} />
+          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} />
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
             showLabel={false} />}

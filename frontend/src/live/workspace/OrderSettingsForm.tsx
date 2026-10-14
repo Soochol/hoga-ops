@@ -43,6 +43,7 @@ export function OrderSettingsForm({ draft, onChange, onApply, onCancel, busy }: 
   }}>
     <div className="order-settings-body">
       <OrderSettingsSection title="주문 입력">
+        <p className="mb-2 text-xs text-fg-dim">변경한 값은 적용 후 반영됩니다.</p>
         <PresetInputs label="수량 프리셋" suffix="주" max={MAX_ORDER_QUANTITY} values={draft.quantityPresets}
           onChange={quantityPresets => onChange({ ...draft, quantityPresets })} />
         <PresetInputs label="금액 프리셋" suffix="백만원" max={MAX_AMOUNT_MILLIONS} values={draft.amountPresets}

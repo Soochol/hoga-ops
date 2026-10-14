@@ -61,8 +61,8 @@ export default function TradeTickTable({
         className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-2xs text-fg-dim`}
       >
         <span>시각</span>
-        <span className="text-right">체결가</span>
-        <span className="text-right">체결량</span>
+        <span className="text-right">체결가(원)</span>
+        <span className="text-right">체결량(주)</span>
       </div>
       {view.ticks.map((t) => (
         <Row key={t.key} tick={t} prevClose={view.prevClose} highlight={highlight} />
@@ -88,7 +88,7 @@ function Row({
   const highlighted = highlight !== null && price * qty >= highlight.thresholdWon;
   return (
     <div className={`grid ${COLS} gap-2 px-2.5 py-0.5`}>
-      <span className="text-fg-dimmer">{unixMsToKSTClock(tMs)}</span>
+      <span className="text-fg-dim">{unixMsToKSTClock(tMs)}</span>
       <span className={`text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       <span
         data-testid={highlighted ? 'trade-qty-highlighted' : undefined}

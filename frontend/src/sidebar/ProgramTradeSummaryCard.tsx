@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { DataContext } from '../live/workspace/DataContext';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
@@ -119,7 +120,7 @@ export default function ProgramTradeSummaryCard({
     <div className="flex h-full min-h-[96px] flex-col px-3 py-2 font-data text-xs">
       <div className="flex justify-between gap-2">
         <ViewChips view="intraday" onSelect={setView} />
-        <div className="flex" role="group" aria-label="프로그램 표시 단위">
+        <div className="ui-segmented" role="group" aria-label="프로그램 표시 단위">
         {(['amount', 'qty'] as const).map((value) => (
           <button key={value} type="button" aria-pressed={measure === value}
             onClick={() => setMeasure(value)}
@@ -137,8 +138,8 @@ export default function ProgramTradeSummaryCard({
         {(['net', 'buy', 'sell'] as const).map((candidate) => {
           const value = programValue(point, candidate, measure);
           return <div key={candidate} className="min-w-0 px-2 text-center first:pl-0 last:pr-0">
-            <span className="block truncate text-2xs text-fg-dimmer">{METRIC_LABELS[candidate]}</span>
-            <span className={`mt-0.5 block truncate font-semibold ${programValueClass(candidate, value)}`}>
+            <span className="block truncate text-xs text-fg-dim">{METRIC_LABELS[candidate]}</span>
+            <span className={`mt-0.5 block truncate ${candidate === 'net' ? 'font-semibold' : 'font-normal'} ${programValueClass(candidate, value)}`}>
               {formatProgramValue(value, candidate, measure)}
             </span>
           </div>;
@@ -152,6 +153,8 @@ export default function ProgramTradeSummaryCard({
         closePoints={closePoints}
         onHoverMsChange={setHoverMs}
       />
+      <DataContext mode={effectiveCursor == null ? '최근 누적' : '커서 시점'} time={point?.t}
+        detail={measure === 'amount' ? '금액(억원)' : '수량(주)'} tone={effectiveCursor == null ? 'latest' : 'cursor'} />
     </div>
   );
 }
@@ -161,7 +164,7 @@ function ViewChips({ view, onSelect }: {
   view: 'intraday' | 'daily';
   onSelect: (value: 'intraday' | 'daily') => void;
 }) {
-  return <div className="flex shrink-0 items-center gap-1" role="group" aria-label="프로그램 조회 구분">
+  return <div className="ui-segmented" role="group" aria-label="프로그램 조회 구분">
     {(['intraday', 'daily'] as const).map((value) => <button key={value} type="button"
       aria-pressed={view === value} onClick={() => onSelect(value)}
       className={`rounded border px-1.5 py-px text-2xs ${view === value
@@ -250,7 +253,7 @@ function ProgramDailySummary({
   return <div className="flex h-full min-h-[96px] flex-col bg-bg-card font-data text-xs">
     <div className="flex shrink-0 flex-wrap items-center gap-2 px-2.5 py-1">
       <ViewChips view="daily" onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
-      <div role="group" aria-label="일별 프로그램 표시 기간" className="flex gap-1">
+      <div role="group" aria-label="일별 프로그램 표시 기간" className="ui-segmented">
         {([5, 20, 60, 0] as const).map((value) => <button key={value} type="button"
           aria-pressed={span === value} onClick={() => {
             setSpan(value);
@@ -262,7 +265,7 @@ function ProgramDailySummary({
           {value === 0 ? '전체' : `${value}일`}
         </button>)}
       </div>
-      <div role="group" aria-label="일별 프로그램 표기 방법" className="flex gap-1">
+      <div role="group" aria-label="일별 프로그램 표기 방법" className="ui-segmented">
         {(Object.keys(labels) as ProgramDailyDisplay[]).map((value) => <button key={value} type="button"
           aria-pressed={display === value} onClick={() => setDisplay(value)}
           className={`rounded border px-1.5 py-px text-2xs ${display === value
@@ -282,7 +285,7 @@ function ProgramDailySummary({
             : <table className="w-full border-collapse font-data text-xs tabular-nums">
               <thead className="sticky top-0 z-20 text-fg-dim"><tr>
                 <th className="sticky left-0 z-10 whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-left font-medium">날짜</th>
-                <th className="whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램</th>
+                <th className="whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램 {display === 'all' && <span className="ml-1 font-normal">순·매수·매도</span>}</th>
               </tr></thead>
               <tbody>{rowContents.map(({ date, cells }) => <ProgramDailyRow key={date} date={date}
                 isCursor={followCursor && cursorDate === date} cells={cells} />)}</tbody>

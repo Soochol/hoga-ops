@@ -102,7 +102,7 @@ describe('WindowAddMenu', () => {
     openMenu();
 
     const first = screen.getByTestId(`workspace-add-${WINDOW_KINDS[0]}`);
-    const last = screen.getByTestId(`workspace-add-${WINDOW_KINDS[WINDOW_KINDS.length - 1]}`);
+    const last = screen.getAllByRole('menuitem').at(-1)!;
     expect(first).toHaveFocus();
 
     fireEvent.keyDown(first, { key: 'ArrowUp' });

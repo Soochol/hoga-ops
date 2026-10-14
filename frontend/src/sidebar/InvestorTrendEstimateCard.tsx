@@ -1,3 +1,4 @@
+import { SegmentedControl } from '../ui/SegmentedControl';
 import type { LiveInvestorTrendEstimateResponse, LiveInvestorTrendEstimateRow } from '../api/liveInvestorTrendEstimate';
 import { useInvestorEstimateUnitStore, type InvestorEstimateUnit } from '../state/investorEstimateUnit';
 import { SidebarState } from './SidebarSurface';
@@ -110,25 +111,12 @@ function ValueCell({
 
 
 /** 두 투자자 창은 단위 상태를 공유한다. 전체 단위 이름을 표시해 토글의 뜻을 알린다. */
-function UnitChip({ unit, onToggle }: { unit: InvestorEstimateUnit; onToggle: () => void }) {
-  const isAmount = unit === 'amount';
-  const description = isAmount ? '금액(억원) — 누르면 수량(주)' : '수량(주) — 누르면 금액(억원)';
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={isAmount}
-      aria-label={`표시 단위 ${isAmount ? '금액' : '수량'}, 누르면 ${isAmount ? '수량' : '금액'}`}
-      title={description}
-      className={`rounded border px-1.5 py-px text-2xs leading-normal transition-colors ${
-        isAmount
-          ? 'border-accent text-accent'
-          : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'
-      }`}
-    >
-      {isAmount ? '금액(억원)' : '수량(주)'}
-    </button>
-  );
+function UnitChip({ unit, onToggle, compact = false }: {
+  unit: InvestorEstimateUnit; onToggle: () => void; compact?: boolean;
+}) {
+  return <SegmentedControl label="표시 단위" value={unit}
+    options={[{ value: 'qty', label: compact ? '수량(K주)' : '수량(주)' }, { value: 'amount', label: '금액(억원)' }]}
+    onChange={next => { if (next !== unit) onToggle(); }} />;
 }
 
 

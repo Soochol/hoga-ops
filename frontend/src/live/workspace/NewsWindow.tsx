@@ -28,7 +28,7 @@ export function NewsWindow({ code, name }: { code: string; name: string }) {
           날짜
           <input type="date" aria-label="뉴스 날짜" value={date} max={today}
             onChange={(event) => setDate(event.target.value)}
-            className="min-w-0 rounded border border-border bg-bg-card px-1 py-0.5 text-sm text-fg" />
+            className="ui-field" />
         </label>
       </div>
       <NewsList key={`${code}:${date}`} code={code} name={name} date={date.replaceAll('-', '') || null} />
@@ -67,7 +67,7 @@ function NewsList({ code, name, date }: { code: string; name: string; date: stri
         <label className="flex items-center gap-1 text-fg-dim" title="응답의 종목코드 또는 제목의 종목명이 일치하는 기사만 표시합니다. 기사 내용의 관련성을 보장하지는 않습니다.">
           <input type="checkbox" checked={linkedOnly} onChange={(event) => setLinkedOnly(event.target.checked)} />
           종목 연결만
-          <span className="text-fg-dimmer">{shown.length}건</span>
+          <span className="text-fg-dim">{shown.length}건</span>
         </label>
         <button type="button" disabled={query.isFetching} onClick={() => void query.refetch()}
           className="rounded px-2 py-1 text-fg-dim hover:bg-bg-subtle disabled:opacity-50">
@@ -94,17 +94,17 @@ function NewsList({ code, name, date }: { code: string; name: string; date: stri
           <article key={item.id} className="border-b border-border">
             <button type="button" aria-expanded={selected === item.id} onClick={() => setSelected(selected === item.id ? null : item.id)}
               className={`w-full px-3 py-2 text-left hover:bg-bg-subtle ${selected === item.id ? 'bg-tint-selection' : ''}`}>
-              <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-fg-dim">
+              <p className="mb-1 break-words text-sm font-medium leading-relaxed">{item.title}</p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-fg-dim">
                 <span>{item.source}</span>
                 <time dateTime={item.published_at_ms === null ? undefined : new Date(item.published_at_ms).toISOString()}>
                   {item.published_at_ms === null ? '시각 미상' : timeFormat.format(item.published_at_ms)}
                 </time>
-                <span className={relation(item, code, name) === '조회 결과' ? 'text-fg-dimmer' : 'text-accent'}
+                <span className={relation(item, code, name) === '조회 결과' ? 'text-fg-dim' : 'text-accent'}
                   title="한국투자 응답의 종목코드·제목 기준입니다. 기사 내용의 관련성과는 다를 수 있습니다.">
                   {relation(item, code, name)}
                 </span>
               </div>
-              <p className="break-words text-base leading-relaxed">{item.title}</p>
             </button>
             {selected === item.id && <div className="px-3 pb-2 text-sm text-fg-dim">
               제공 종목코드: {item.related_codes.join(' · ') || '없음'}
@@ -113,7 +113,7 @@ function NewsList({ code, name, date }: { code: string; name: string; date: stri
           </article>
         ))}
       </div>
-      <div className="shrink-0 border-t border-border px-2 py-1.5 text-xs text-fg-dimmer">
+      <div className="shrink-0 border-t border-border px-2 py-1.5 text-xs text-fg-dim">
         <p>한국투자 · {date ? '선택일' : '최근'} 최대 {current?.limit ?? 40}건 · 전체 기사 아님 · 원문 링크 미제공</p>
         <p title="한국투자 종목 메타데이터에도 다른 종목 기사가 섞일 수 있습니다.">
           종목 연결은 제공 코드·제목 기준{!date && ' · 60초마다 확인'}

@@ -96,6 +96,7 @@ import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
 import { useWorkspaceStore } from '../../state/workspace';
 import { NewsWindow } from './NewsWindow';
+import { focusLiveSearch } from '../liveSearchFocus';
 const OrderWindow = lazy(() => import('./OrderWindow').then(module => ({ default: module.OrderWindow })));
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
@@ -106,35 +107,38 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       return <SectorRankingWindow indexId={symbol.code} group={win.group} />;
     }
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-xs text-fg-dim">
+      <div className="flex h-full w-full flex-col gap-2 items-center justify-center bg-bg-subtle/40 text-center text-xs text-fg-dim">
         <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · 지수 그룹 전용
           <br />
           {symbol ? `${symbol.name} 은 지수가 아닙니다` : `종목 없음 (그룹 ${win.group})`}
         </span>
+        <button type="button" className="ui-choice" onClick={focusLiveSearch}>지수 검색</button>
       </div>
     );
   }
   // 지수는 호가/거래원/투자자 데이터가 없다 — 구독 오염 대신 안내 카드(C2c-2c).
   if (symbol?.kind === 'index') {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-center text-xs text-fg-dim">
+      <div className="flex h-full w-full flex-col gap-2 items-center justify-center bg-bg-subtle/40 text-center text-xs text-fg-dim">
         <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · {symbol.name}
           <br />
           지수는 지원하지 않습니다
         </span>
+        <button type="button" className="ui-choice" onClick={focusLiveSearch}>종목 검색</button>
       </div>
     );
   }
   const code = symbol?.code ?? null;
   if (!code) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">
+      <div className="flex h-full w-full flex-col gap-2 items-center justify-center bg-bg-subtle/40 text-xs text-fg-dim">
         <span className="font-data">
           {WINDOW_KIND_LABEL[win.kind]} · 종목 없음 (그룹 {win.group})
           <br />그룹 {win.group}에서 종목 선택
         </span>
+        <button type="button" className="ui-choice" onClick={focusLiveSearch}>종목 검색</button>
       </div>
     );
   }
@@ -575,9 +579,10 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      {scope.kind === 'minute-cursor' && <div className="flex shrink-0 justify-end p-1">
-        <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>
-      </div>}
+      <DataContext mode={scope.kind === 'minute-cursor' ? '커서 시점' : '최근 수신'}
+        time={card.cursorMs} detail="순매수(주)" tone={scope.kind === 'minute-cursor' ? 'cursor' : 'latest'}>
+        {scope.kind === 'minute-cursor' && <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>}
+      </DataContext>
       <BrokerScrollArea>
       <BrokerTrajectoryTable
         series={card.series}
@@ -626,6 +631,7 @@ function TradeWindow({ code }: { code: string }) {
       <div className="min-h-0 flex-1 overflow-auto">
         <TradeTickTable view={view} highlight={highlight} emptyText={connected ? '최근 수신 체결 없음 · 새 체결 수신 대기' : '실시간 연결 확인 중 · 체결 수신 대기'} />
       </div>
+      <DataContext mode="최근 체결" time={live.trade.at(-1)?.t_ms} detail={`최대 ${TRADE_TICK_LIMIT}건 · 커서와 독립`} />
     </div>
   );
 }
