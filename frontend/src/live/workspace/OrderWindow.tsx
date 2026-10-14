@@ -568,10 +568,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       <div className="order-modal"><OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={() => setSettingsDraft(null)}>주문 설정</OrderSurfaceHeading>
       <form onSubmit={e => { e.preventDefault(); if (!busy && validOrderSettings(settingsDraft)) { onApplySettings(settingsDraft); setSettingsDraft(null); } }}>
         <div className="order-settings-body">
-          <fieldset><legend>주문 방식</legend><div className="order-settings-mode">
-            <label><input type="radio" name="order-input-unit" value="quantity" checked={settingsDraft.unit === 'quantity'} onChange={() => setSettingsDraft({ ...settingsDraft, unit: 'quantity' })} />수량</label>
-            <label><input type="radio" name="order-input-unit" value="amount" checked={settingsDraft.unit === 'amount'} onChange={() => setSettingsDraft({ ...settingsDraft, unit: 'amount' })} />금액</label>
-          </div></fieldset>
           {(['quantity', 'amount'] as const).map(unit => <fieldset key={unit}><legend>{unit === 'quantity' ? '수량 프리셋 · 주' : '금액 프리셋 · 백만원'}</legend>
             <div className="order-settings-presets">{(unit === 'quantity' ? settingsDraft.quantityPresets : settingsDraft.amountPresets).map((value, index) => <label key={index}>
               <span className="order-meta">프리셋 {index + 1}</span><input type="number" aria-label={`${unit === 'quantity' ? '수량' : '금액'} 프리셋 ${index + 1}`} min="1" max={unit === 'quantity' ? MAX_ORDER_QUANTITY : MAX_AMOUNT_MILLIONS} step="1" value={value}
