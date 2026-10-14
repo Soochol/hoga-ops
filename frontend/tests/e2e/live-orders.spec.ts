@@ -868,6 +868,11 @@ test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고
   }));
   expect(layout).toEqual(Array(6).fill(true));
   await page.screenshot({ path: testInfo.outputPath('order-settings-anchored-narrow.png') });
+  await page.setViewportSize({ width: 320, height: 360 });
+  await expect(dialog.getByRole('button', { name: '적용', exact: true })).toBeInViewport();
+  await expect(dialog.getByRole('button', { name: '취소', exact: true })).toBeInViewport();
+  await expect.poll(() => dialog.locator('.order-settings-body').evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await dialog.screenshot({ path: testInfo.outputPath('order-settings-short-viewport.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(settings).toBeFocused();
@@ -918,6 +923,52 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   expect(await frame.boundingBox()).toEqual(bounds);
   await expect(window.getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('6');
   await window.screenshot({ path: testInfo.outputPath('order-amount-controls.png') });
+});
+
+test('평단가 표시 체크박스는 적용 후 저장하며 다른 주문 창에는 영향을 주지 않는다', async ({ page }, testInfo) => {
+  const { commands } = await setup(page, false, false, false, 0, 1, { averagePrice: '67000.1' });
+  const first = page.getByTestId('order-window').first();
+  const settings = first.getByRole('button', { name: '주문 설정', exact: true });
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  const checkbox = dialog.getByRole('checkbox', { name: '내 평단가 표시', exact: true });
+  await expect(first.locator('.order-average-marker')).toHaveCount(1);
+  await settings.click();
+  await expect(checkbox).toBeChecked();
+  for (const theme of ['toss-light', 'toss-dark']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    await dialog.screenshot({ path: testInfo.outputPath(`order-average-settings-${theme}.png`) });
+  }
+  await checkbox.focus();
+  await page.keyboard.press('Space');
+  await expect(checkbox).not.toBeChecked();
+  await expect(first.locator('.order-average-marker')).toHaveCount(1);
+  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await settings.click();
+  await expect(checkbox).toBeChecked();
+  await checkbox.uncheck();
+  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await expect(first.locator('.order-average-marker')).toHaveCount(0);
+  await expect(first.getByLabel('매입평단가')).toContainText('67,001');
+  await page.reload();
+  await expect(first.getByLabel('매입평단가')).toContainText('67,001');
+  await expect(first.locator('.order-average-marker')).toHaveCount(0);
+  await settings.click();
+  await expect(checkbox).not.toBeChecked();
+  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await page.getByTestId('workspace-add-menu-button').click();
+  await page.getByTestId('workspace-add-order').click();
+  const second = page.getByTestId('order-window').nth(1);
+  await expect(second.locator('.order-average-marker')).toHaveCount(1);
+  await second.getByRole('button', { name: '주문 설정', exact: true }).click();
+  await expect(checkbox).toBeChecked();
+  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await page.locator('[data-win]').filter({ has: page.getByTestId('order-window') }).nth(1)
+    .getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
+  await settings.click();
+  await checkbox.check();
+  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await expect(first.locator('.order-average-marker')).toHaveCount(1);
+  expect(commands).toHaveLength(0);
 });
 
 test('주문 방식·프리셋은 새로고침 후 유지하고 다른 주문창과 독립적이다', async ({ page }) => {

@@ -11,7 +11,7 @@ import { priceDirClass } from '../../ui/priceDir';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, normalizeOrderSettings,
-  quantityForAmount, validOrderInput, validOrderSettings, type OrderWindowSettings, type OrderPresets } from '../../state/orderWindowSettings';
+  quantityForAmount, validOrderInput, type OrderWindowSettings } from '../../state/orderWindowSettings';
 import {
   tradingCommand, useTradingAccounts, useTradingState,
   type TossOrder, type TradingSide, type TradingCommand, type TradingCommandResponse,
@@ -35,6 +35,7 @@ import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
+import { OrderSettingsForm } from './OrderSettingsForm';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -247,7 +248,8 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const estimateAmount = estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const holdingQuantity = state.data?.holding_quantity != null && !state.balancesError ? Number(state.data.holding_quantity) : null;
-  const averageMarker = holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen);
+  const averageMarker = preferences.showAveragePrice
+    ? holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen) : { price: null, outside: false };
   const averageMarkerIndex = prices.findIndex(level => level.price === averageMarker.price);
   const [averageWhole, averageFraction] = (state.data?.average_purchase_price ?? '').split('.');
   const averagePriceText = averageWhole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (averageFraction ? `.${averageFraction}` : '');
@@ -584,19 +586,8 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
     }}>
       <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings}>주문 설정</OrderSurfaceHeading>
-      <form onSubmit={e => { e.preventDefault(); if (!busy && validOrderSettings(settingsDraft)) { onApplySettings(settingsDraft); closeSettings(); } }}>
-        <div className="order-settings-body">
-          {(['quantity', 'amount'] as const).map(unit => <fieldset key={unit}><legend>{unit === 'quantity' ? '수량 프리셋' : '금액 프리셋'}</legend>
-            <div className="order-settings-presets">{(unit === 'quantity' ? settingsDraft.quantityPresets : settingsDraft.amountPresets).map((value, index) => <label key={index}>
-              <input type="number" aria-label={`${unit === 'quantity' ? '수량' : '금액'} 프리셋 ${index + 1}`} min="1" max={unit === 'quantity' ? MAX_ORDER_QUANTITY : MAX_AMOUNT_MILLIONS} step="1" value={value}
-                onChange={e => { const key = unit === 'quantity' ? 'quantityPresets' : 'amountPresets'; setSettingsDraft({ ...settingsDraft, [key]: settingsDraft[key].map((n, i) => i === index ? Number(e.target.value) : n) as OrderPresets }); }} />
-              <span className="order-preset-unit" aria-hidden="true">{unit === 'quantity' ? '주' : '백만원'}</span>
-            </label>)}</div>
-          </fieldset>)}
-          {!validOrderSettings(settingsDraft) && <p role="alert" className="text-error">프리셋은 허용 범위의 양의 정수로 입력하세요</p>}
-        </div>
-        <div className="order-surface-footer"><button type="button" onClick={closeSettings}>취소</button><button type="submit" className="order-primary" disabled={busy || !validOrderSettings(settingsDraft)}>적용</button></div>
-      </form>
+      <OrderSettingsForm draft={settingsDraft} onChange={setSettingsDraft} busy={busy} onCancel={closeSettings}
+        onApply={next => { onApplySettings(next); closeSettings(); }} />
     </div>, document.body)}
     {!accounts.data?.configured && !accounts.isLoading && <p className="order-notice">토스증권 Open API의 CLIENT_ID·CLIENT_SECRET을 서버에 설정하면 계좌가 연결됩니다.</p>}
     {(accounts.error || state.error) && <p role="alert" className="order-notice text-error">{String((accounts.error ?? state.error) instanceof Error ? (accounts.error ?? state.error as Error)?.message : '계좌 조회 실패')}</p>}
