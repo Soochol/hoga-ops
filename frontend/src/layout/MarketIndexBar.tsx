@@ -22,7 +22,7 @@ import { fmtSigned } from '../market/marketFormat';
 const ROTATE_MS = 10_000;
 const ACTORS = [['individual', '개인'], ['foreign', '외인'], ['institution', '기관']] as const;
 const STATUS_LABELS = {
-  waiting: '수신 대기', receiving: '', delayed: '수신 지연', closed: '수집 종료',
+  waiting: '수신 대기', receiving: '', delayed: '수신 지연', closed: '',
   unavailable: '수집 설정 없음', unknown: '수신 상태 확인 불가',
 };
 

@@ -11,7 +11,7 @@
  * 현재가는 candles 폴백이 없어(타이틀바 스코프 밖) quote.price 를 직접 쓴다 —
  * 장중 실시간 시세면 채워지고, 없으면(장전·오프라인) 미표시한다.
  */
-import { useMemo, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { historyPartial, subscribeHistoryStatus } from '../../api/ws';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useLiveVenueStore } from '../../state/liveVenue';
@@ -28,7 +28,6 @@ import { deriveCollectionView } from '../collectionStatus';
 import { captureHealthPillColor } from '../captureHealthPill';
 import { formatKoreanInt } from '../../util/koreanNumber';
 import { useWindowWarnings } from './windowWarningsSource';
-import { TitleBarWatchlistButton } from './TitleBarWatchlistButton';
 
 interface Props {
   /** 창 제목 종목명(그룹 스토어의 symbol.name). code=name 딥링크면 코드일 수 있다. */
@@ -69,13 +68,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
 
   // ADR-0067: 수집 상태 점(표시 전용) — 지수는 수집 개념이 없어 숨긴다.
   const { data: watchlistData } = useWatchlist();
-  const watchlistGroups = useMemo(() => {
-    const ids = new Set(watchlistData?.entries
-      .filter(entry => entry.code === code && entry.folder_id != null)
-      .map(entry => entry.folder_id));
-    return [...(watchlistData?.folders ?? [])].sort((a, b) => a.order - b.order)
-      .filter(folder => ids.has(folder.id)).map(folder => folder.name);
-  }, [watchlistData, code]);
   const { data: liveStatusData } = useLiveStatus();
   const collection = deriveCollectionView({
     code,
@@ -103,8 +95,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
         {name && name !== code && <span className="live-symbol-code font-data">{code}</span>}
         {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
       </span>
-      {!isIndex && <TitleBarWatchlistButton key={code} code={code} name={name}
-        groups={watchlistGroups} ready={watchlistData != null} />}
       {!isIndex && partial && (
         <span role="status" aria-label="실시간 이력 일부 누락" className="live-symbol-warning text-2xs text-warn" title="실시간 이력 일부 누락 — 보존된 데이터는 다시 조회하지만 원본 틱 전체 복구는 보장되지 않습니다">
           <span aria-hidden>!</span><span className="live-symbol-warning-label">실시간 이력 일부 누락</span>

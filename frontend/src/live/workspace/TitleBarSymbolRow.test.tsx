@@ -1,6 +1,6 @@
 import { liveQuotesQueryKey } from '../../api/liveQuotes';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { WatchlistResponse } from '../../api/watchlist';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
@@ -101,31 +101,14 @@ describe('TitleBarSymbolRow', () => {
     expect(screen.queryByTestId('titlebar-change')).toBeNull();
   });
 
-  it('shows current-stock membership and group names in the title bar', () => {
+  it('관심 등록 종목이어도 헤더의 중복 관심 버튼을 표시하지 않는다', () => {
     const folders = [{ id: 'f_a', name: '반도체', order: 0 }, { id: 'f_b', name: '장기', order: 1 }];
     renderRow({ code: '005930' }, { watchlist: { folders, memos: [], next_run_at_ms: 0,
       entries: folders.map(f => ({ code: '005930', name: '삼성전자', folder_id: f.id, order: 0,
         registered_at_kst_date: '20260101', last_success_date: null })),
     } });
-    const button = screen.getByRole('button', { name: '삼성전자 관심 그룹 관리 · 2개 그룹' });
-    expect(button).toHaveAttribute('title', '삼성전자 관심 등록됨 · 반도체, 장기 — 그룹 관리');
-    expect(button).not.toHaveAttribute('aria-pressed');
-    fireEvent.click(button);
-    expect(screen.getByTestId('watchlist-group-picker')).toHaveTextContent('삼성전자 005930');
-    expect(screen.getByRole('checkbox', { name: '반도체' })).toBeChecked();
-  });
-
-  it('closes an open picker when this window changes its stock', () => {
-    const { qc, rerender } = renderRow({ code: '005930' });
-    const button = screen.getByRole('button', { name: '삼성전자 관심종목 추가' });
-    fireEvent.pointerDown(button);
-    fireEvent.click(button);
-    expect(screen.getByTestId('watchlist-group-picker')).toHaveTextContent('005930');
-    rerender(<QueryClientProvider client={qc}>
-      <TitleBarSymbolRow name="SK하이닉스" code="000660" isIndex={false} windowId="w1" />
-    </QueryClientProvider>);
+    expect(screen.queryByTestId('titlebar-watchlist-button')).toBeNull();
     expect(screen.queryByTestId('watchlist-group-picker')).toBeNull();
-    expect(screen.getByRole('button', { name: 'SK하이닉스 관심종목 추가' })).toBeInTheDocument();
   });
 
   it('keeps the title-bar heart out of index windows', () => {
