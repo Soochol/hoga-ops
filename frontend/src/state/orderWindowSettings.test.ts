@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeOrderSettings, quantityForAmount } from './orderWindowSettings';
+import { normalizeOrderSettings, quantityForAmount, validOrderSettings } from './orderWindowSettings';
 
 describe('주문 금액 변환과 설정 복구', () => {
   it('백만원을 클릭 호가의 정수 주수로 변환하고 한 주 미만·잘못된 금액을 구분한다', () => {
@@ -13,9 +13,16 @@ describe('주문 금액 변환과 설정 복구', () => {
   it('손상된 저장 필드만 복구하고 수량·금액 프리셋 사본을 만든다', () => {
     const raw = { unit: 'amount', quantityPresets: [25, 1.5, -1], amountPresets: [2, 6, 12] };
     const restored = normalizeOrderSettings(raw);
-    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12] });
+    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12], showAveragePrice: true });
     restored.amountPresets[0] = 99;
     expect(raw.amountPresets[0]).toBe(2);
     expect(normalizeOrderSettings({ unit: 'invalid', amountPresets: null }).unit).toBe('quantity');
+  });
+  it('기존 저장 설정은 평단가 표시를 켜고 명시적으로 끈 설정은 유지한다', () => {
+    expect(normalizeOrderSettings(undefined).showAveragePrice).toBe(true);
+    expect(normalizeOrderSettings({ showAveragePrice: false }).showAveragePrice).toBe(false);
+    for (const value of ['false', 0, null]) expect(normalizeOrderSettings({ showAveragePrice: value }).showAveragePrice).toBe(true);
+    expect(validOrderSettings(normalizeOrderSettings({ showAveragePrice: false }))).toBe(true);
+    expect(validOrderSettings({ ...normalizeOrderSettings(null), showAveragePrice: undefined } as unknown as ReturnType<typeof normalizeOrderSettings>)).toBe(false);
   });
 });
