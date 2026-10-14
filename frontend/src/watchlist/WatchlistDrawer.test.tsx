@@ -703,7 +703,7 @@ describe('WatchlistDrawer', () => {
     expect(row000660.getAttribute('aria-label')).toContain('관심종목 대기 중');
   });
 
-  it('uses the trailing LED as the only per-row collection indicator', async () => {
+  it('uses the collection LED as the only per-row collection indicator', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue({
       folders: [
         { id: 'f_enabled', name: '저장', order: 0 },
