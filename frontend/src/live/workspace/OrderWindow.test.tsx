@@ -129,7 +129,7 @@ describe('호가 주문', () => {
     show();
     expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
   });
-  it('빈 호가를 제거해도 매도·매수 잔량과 경계선은 실제 가격에 맞춘다', () => {
+  it('부분 호가는 빈 공간을 유지하고 실제 가격에만 주문을 허용한다', () => {
     mock.askCount = 4; mock.bidCount = 3;
     const { container } = show();
     const rows = container.querySelectorAll('[data-order-price]');
@@ -139,6 +139,24 @@ describe('호가 주문', () => {
     expect(container.querySelector('.order-divider')).toBe(rows[4]);
     expect(rows[4]).toHaveTextContent('체결강도');
     expect(container.querySelector('[data-order-price="0"]')).toBeNull();
+    const slots = container.querySelectorAll('.order-row');
+    expect(slots).toHaveLength(20);
+    expect(slots[9]).toBe(rows[3]);
+    expect(slots[10]).toBe(rows[4]);
+    expect(container.querySelectorAll('.order-empty')).toHaveLength(13);
+    expect(container.querySelector('.order-empty button')).toBeNull();
+    expect(container.querySelector('.order-empty [data-order-side]')).toBeNull();
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it.each([[0, 3], [3, 0], [10, 10]])('매도 %i단·매수 %i단에서도 경계와 체결강도의 위치를 유지한다', (askCount, bidCount) => {
+    mock.askCount = askCount; mock.bidCount = bidCount;
+    const { container } = show();
+    const slots = container.querySelectorAll('.order-row');
+    expect(slots).toHaveLength(20);
+    expect(container.querySelector('.order-divider')).toBe(slots[10]);
+    expect(slots[10]).toHaveTextContent('체결강도');
+    expect(container.querySelectorAll('[data-order-price]')).toHaveLength(askCount + bidCount);
+    expect(container.querySelector('.order-empty button')).toBeNull();
   });
   it.each(['KRX', 'NXT', 'UN'] as const)('%s 시세를 조회해도 실계좌 주문 본문에는 거래소를 보내지 않는다', async venue => {
     useLiveVenueStore.setState({ venue });
