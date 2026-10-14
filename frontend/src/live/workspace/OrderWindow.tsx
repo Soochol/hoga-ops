@@ -19,7 +19,7 @@ import {
   type ReviewTradingCommand, type TradingReviewResponse,
 } from '../../api/trading';
 import { useLiveSeries } from '../../api/liveSeries';
-import { pauseTradingRefresh } from '../../api/tradingRefresh';
+import { acceptTradingReplacement, pauseTradingRefresh } from '../../api/tradingRefresh';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
@@ -264,6 +264,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
           try {
             const body = next.operation === 'modify' ? { ...item.base, price: next.price, quantity: null, confirm_high_value: high } : item.base;
             const response = await tradingCommand<TradingCommandResponse>(`/orders/${encodeURIComponent(item.order.orderId)}/${next.operation}`, body, mode);
+            if (next.operation === 'modify') acceptTradingReplacement(client, mode, account, code, item.order.orderId, response.order_id);
             setPending(prev => ({ ...prev, [item.order.orderId]: response.order_id }));
           } catch (error) {
             failed.push(item);
@@ -292,6 +293,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange,
             const body: ModifyTradingOrder = { ...next.base, price: next.price, quantity: next.quantity, confirm_high_value: high };
             response = await tradingCommand<TradingCommandResponse>(path, body, mode);
           } else response = await tradingCommand<TradingCommandResponse>(path, next.base, mode);
+          if (next.type === 'modify') acceptTradingReplacement(client, mode, account, code, next.order!.orderId, response.order_id);
           setPending(prev => ({ ...prev, [next.order!.orderId]: response.order_id }));
         }
       }
