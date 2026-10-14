@@ -351,8 +351,8 @@ describe('레거시 마이그레이션 하이드레이션(#713, PR-C)', () => {
     const wins = mod.useWorkspaceStore.getState().windows;
     const chart = wins.find((w) => w.kind === 'chart')!;
     const book = wins.find((w) => w.kind === 'book')!;
-    // 좌표 틈은 0 이다(2026-08-17) — 인접 창의 시각 간격은 `WindowFrameCore` 의
-    // GAP(2px, 좌표는 그대로 두고 카드만 물러난다)이 담당하므로 좌표가 벌어질 이유가 없다.
+    // 좌표 틈은 0 이다(2026-08-17) — 인접 창의 시각 간격은 `/live` 프레임의
+    // gap(4px, 좌표는 그대로 두고 카드만 물러난다)이 담당하므로 좌표가 벌어질 이유가 없다.
     expect(book.rect.x - (chart.rect.x + chart.rect.w)).toBe(0);
     // 차트가 캔버스 절반보다 넓다 — 회수 방향이 뒤집히면(우측 열이 다시 먹으면) 깨진다.
     expect(chart.rect.w).toBeGreaterThan(0.5);
