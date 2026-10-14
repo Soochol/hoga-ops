@@ -84,7 +84,17 @@ for (const theme of ['toss-light', 'toss-dark']) {
     const news = page.getByTestId('stock-news-window');
     await expect(news.getByText(/삼성전자 테스트 기사:/)).toBeVisible();
     await expect(news.getByLabel('뉴스 날짜')).toBeVisible();
-    await expect(news.getByRole('button', { name: '새로고침', exact: true })).toBeVisible();
+    const settings = news.getByRole('button', { name: '뉴스 설정', exact: true });
+    await settings.click();
+    const dialog = page.getByRole('dialog', { name: '뉴스 설정', exact: true });
+    await expect(dialog.getByRole('button', { name: '새로고침', exact: true })).toBeVisible();
+    await dialog.getByRole('checkbox', { name: '종목 연결만', exact: true }).check();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(settings).toBeFocused();
+    await news.getByRole('button', { name: '뉴스 제공 안내', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: '뉴스 제공 안내', exact: true })).toContainText('전체 기사 아님 · 원문 링크 미제공');
+    await page.keyboard.press('Escape');
     expect(await news.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await news.screenshot({ path: testInfo.outputPath(`news-${theme}.png`) });
   });
