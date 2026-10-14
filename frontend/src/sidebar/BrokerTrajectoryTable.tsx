@@ -112,7 +112,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
     // 있을 때(내용이 넘칠 때)만 바닥에 붙고, 창을 키워 여유가 생기면 마지막 행
     // 바로 아래에 떠 버린다. min-h-full 이라 짧을 땐 창을 채우고 길면 늘어난다.
     <div
-      className="flex min-h-full flex-col font-data text-sm"
+      className="flex min-h-full flex-1 flex-col font-data text-sm"
       onMouseEnter={() => setPointerInside(true)}
       onMouseLeave={() => {
         setPointerInside(false);

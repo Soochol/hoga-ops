@@ -26,7 +26,8 @@ import { SidebarState } from './SidebarSurface';
 import type { TradeTick, TradeTickView } from '../live/tradeTicks';
 
 /** 3열 트랙 SSOT — 헤더와 본문이 어긋나면 표가 아니라 목록이 된다. */
-const COLS = 'grid-cols-[6.2em_1fr_1fr]';
+// Resolve the time column against the shared data size, independently of header typography.
+const COLS = 'grid-cols-[calc(var(--text-sm)*6.2)_1fr_1fr]';
 
 /** 강조 배경 알파(hex 2자리, ≈35%) — 저장 색은 6자리 hex 이므로 렌더 시 얹는다.
  *  불투명 배경은 다크/라이트 양 테마에서 글자색(매수/매도)을 잡아먹는다. */

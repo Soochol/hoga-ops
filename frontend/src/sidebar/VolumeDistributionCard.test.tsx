@@ -230,7 +230,8 @@ describe('VolumeDistributionCard', () => {
     );
     expect(maxRowIndex).toBeGreaterThanOrEqual(0);
     const pocLabel = screen.getByTestId('volume-distribution-poc-label') as HTMLElement;
-    expect(centersPct[maxRowIndex]).toBeCloseTo(parsePct(pocLabel.style.top), 6);
+    // The percentage anchor is unchanged; clamp only keeps the text inside short axes.
+    expect(centersPct[maxRowIndex]).toBeCloseTo(parsePct(pocLabel.style.getPropertyValue('--volume-poc-position')), 6);
   });
 });
 

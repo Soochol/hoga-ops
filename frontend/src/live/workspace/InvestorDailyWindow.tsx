@@ -1,3 +1,4 @@
+import { ResponsiveDataControls } from '../../ui/ResponsiveDataControls';
 import { SegmentedControl } from '../../ui/SegmentedControl';
 /**
  * 일별 투자자 창 — `ka10059` 순매수·총매수·총매도를 주체 13종으로 펼친 표.
@@ -299,14 +300,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     : getStateText(query, table.rows.length);
 
   return (
-    <div className="flex h-full flex-col bg-bg-card">
-      <div className="live-data-controls flex shrink-0 flex-wrap items-center justify-between gap-1 px-2.5 py-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-1">
-          <SpanChips span={span} onSelect={(value) => {
-            setSpan(value);
-            setDepth({ scope: `${code}:${unit}:${tradeSide}:${value}`, count: 60 });
-            if (scrollRef.current) scrollRef.current.scrollTop = 0;
-          }} />
+    <div className="live-data-table-panel flex h-full flex-col bg-bg-card">
+      <ResponsiveDataControls status={table.rows.length > 0 ? stateText : null} secondary={<>
           {showDetails && <div role="group" aria-label="매매 기준" className="ui-segmented">
             {(Object.keys(TRADE_SIDE_LABELS) as InvestorTradeSide[]).map((side) => (
               <button key={side} type="button" aria-pressed={tradeSide === side}
@@ -337,15 +332,13 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
             title="K 단위: 1K = 1,000주"
             className={`shrink-0 rounded border px-1.5 py-px text-2xs ${useK ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>K 단위</button>}
           <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails(!showDetails)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
-        </div>
-        {/* 상태는 표가 거짓말을 하고 있을 때만 한 줄이 생긴다 — 항상 있는 크롬이면
-            그게 라벨이 된다(잠정투자자 카드와 같은 방침).
-            행이 없을 때는 **본문이 같은 문구를 크게 말하므로** 여기서는 뺀다 —
-            둘 다 그리면 한 화면에 같은 문장이 두 번 뜬다. */}
-        {table.rows.length > 0 && stateText && (
-          <span className="truncate font-data text-2xs text-fg-dim">{stateText}</span>
-        )}
-      </div>
+      </>}>
+          <SpanChips span={span} onSelect={(value) => {
+            setSpan(value);
+            setDepth({ scope: `${code}:${unit}:${tradeSide}:${value}`, count: 60 });
+            if (scrollRef.current) scrollRef.current.scrollTop = 0;
+          }} />
+      </ResponsiveDataControls>
 
       {!showDetails && compactDisplay === 'all'
         && (buyQuery.isLoading || sellQuery.isLoading || buyQuery.error || sellQuery.error)
@@ -371,7 +364,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
           key={`${code}:${unit}:${tradeSide}`}
           ref={scrollRef}
           aria-label="일별 투자자 내역"
-          className="min-h-0 flex-1 overflow-auto"
+          className="live-data-table-viewport min-h-0 flex-1 overflow-auto"
           onWheel={() => { automaticScrollRef.current = false; }}
           onTouchMove={() => { automaticScrollRef.current = false; }}
           onKeyDown={() => { automaticScrollRef.current = false; }}

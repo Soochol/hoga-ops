@@ -107,7 +107,7 @@ function SectorButton({
       style={{
         gridTemplateColumns: '1.5rem minmax(0, 1fr) 4rem',
         gap: 'var(--space-sm)',
-        minHeight: 32,
+        minHeight: 30,
         padding: 'var(--space-xs) var(--space-sm)',
         border: active ? '1px solid var(--accent)' : '1px solid transparent',
         background: active ? 'var(--tint-selection)' : 'transparent',
@@ -271,7 +271,7 @@ export function IndexSectorRankingPane({
               setShowStocks(false);
               requestAnimationFrame(() => paneRef.current?.querySelector<HTMLButtonElement>('.sector-ranking-sectors [aria-pressed="true"]')?.focus());
             }}>← 섹터 목록</button>
-          <div className="px-2 py-1 text-xs font-medium text-fg" title={activeSector?.folder_name}>{activeSector?.folder_name}</div>
+          <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs font-medium text-fg" title={activeSector?.folder_name}>{activeSector?.folder_name}</div>
           {(activeSector?.stocks ?? []).map((stock, index) => (
             <StockButton key={stock.code} stock={stock} rank={index + 1} onOpenStock={onOpenStock} />
           ))}

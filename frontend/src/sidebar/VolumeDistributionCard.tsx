@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useState, type CSSProperties } from 'react';
+import './VolumeDistributionCard.css';
+import { priceTickPcts } from './volumePriceAxis';
 import type { DayVolumeDistribution } from '../api/types';
 import { classifyWithinSegment } from '../util/sessionTime';
 import { unixMsToKSTClock } from '../util/time';
@@ -29,8 +31,6 @@ type ClosePoint = {
 
 const EMPTY_CLOSE_POINTS: readonly ClosePoint[] = [];
 const PRICE_AXIS_WIDTH_PX = 48;
-// 가격 눈금이 POC 라벨과 이 거리(%) 안으로 붙으면 눈금을 양보한다(POC가 우선).
-const PRICE_TICK_POC_CLEARANCE_PCT = 9;
 // bar 행 슬롯(= 컨테이너 높이 / bin 수) 중 간격이 차지하는 비율. 옛 고정 치수
 // (트랙 8px + gap 4px)의 밀도감을 그대로 옮긴 값이다. px 이 아닌 비율이라야
 // 좌표가 순수 백분율로 닫히고(가격축과 같은 단위), 창이 작아져도 간격이 트랙을
@@ -45,6 +45,23 @@ export function VolumeDistributionCard({
   maxColor,
   axisStartMs,
 }: Props) {
+  const [axisElement, setAxisElement] = useState<HTMLDivElement | null>(null);
+  const [axisMetrics, setAxisMetrics] = useState({ height: 240, fontSize: 10.5 });
+  useLayoutEffect(() => {
+    if (!axisElement) return;
+    const update = () => {
+      const height = axisElement.clientHeight;
+      if (height <= 0) return;
+      const fontSize = parseFloat(getComputedStyle(axisElement).fontSize);
+      setAxisMetrics(previous => previous.height === height && previous.fontSize === fontSize
+        ? previous : { height, fontSize });
+    };
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(update);
+    observer.observe(axisElement);
+    return () => observer.disconnect();
+  }, [axisElement]);
   const priceMin = profile?.price_min, priceMax = profile?.price_max;
   const open = profile?.session_open_ms, close = profile?.session_close_ms, last = profile?.last_trade_ms;
   const geometryFrom = open == null ? null : Math.min(axisStartMs ?? open, open);
@@ -104,8 +121,7 @@ export function VolumeDistributionCard({
   const pocPct = maxBinIndex >= 0 ? ((maxBinIndex + 0.5) / rows.length) * 100 : null;
   const priceRange = profile.price_max - profile.price_min;
   const priceTicks = priceRange > 0
-    ? [0, 50, 100]
-      .filter((pct) => pocPct == null || Math.abs(pct - pocPct) >= PRICE_TICK_POC_CLEARANCE_PCT)
+    ? priceTickPcts(axisMetrics.height, axisMetrics.fontSize, pocPct)
       .map((pct) => ({ pct, label: formatPrice(profile.price_max - (pct / 100) * priceRange) }))
     : [];
   // 데이터가 세션 시작 시각뿐이면(축 스팬 0) 예정 세션 종료를 눈금 폴백으로 쓴다.
@@ -229,6 +245,7 @@ export function VolumeDistributionCard({
           </div>
         </div>
         <div
+          ref={setAxisElement}
           data-testid="volume-distribution-price-axis"
           className="relative shrink-0 font-data text-2xs leading-none tabular-nums text-fg-dim"
           style={{ width: PRICE_AXIS_WIDTH_PX }}
@@ -249,8 +266,8 @@ export function VolumeDistributionCard({
             <span
               data-testid="volume-distribution-poc-label"
               title={`최대 거래량 가격 · ${formatPrice((pocBin.price_low + pocBin.price_high) / 2)}원`}
-              className="absolute right-0 -translate-y-1/2 font-medium"
-              style={{ top: `${pocPct}%`, color: maxColor }}
+              className="volume-distribution-poc-label absolute right-0 -translate-y-1/2 font-medium"
+              style={{ '--volume-poc-position': `${pocPct}%`, color: maxColor } as CSSProperties}
             >
               {formatPrice((pocBin.price_low + pocBin.price_high) / 2)}
             </span>

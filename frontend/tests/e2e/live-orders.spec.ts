@@ -8,7 +8,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
   await page.addInitScript(venue => localStorage.setItem('live.venue.v1', JSON.stringify({ venue })), market.venue ?? 'UN');
@@ -38,7 +38,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
     stateRequests.push(part);
     const code = new URL(route.request().url()).searchParams.get('code') ?? '005930';
     const orderState = { account_seq: 1, code, orders: orders.filter(order => order.symbol === code), recent_orders: [], fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [] };
-    const balances = { account_seq: 1, code: '005930', buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: market.averagePrice ?? '66000', fetched_at_ms: Date.now() };
+    const balances = { account_seq: 1, code: '005930', buying_power: '20000000', sellable_quantity: market.sellableQuantity ?? '100', holding_quantity: market.holdingQuantity ?? '100', average_purchase_price: market.averagePrice ?? '66000', fetched_at_ms: Date.now() };
     return route.fulfill({ json: part === 'orders' ? orderState : part === 'balances' ? balances : { ...balances, ...orderState } });
   });
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/account-orders\?/, route => route.fulfill({ json: {
@@ -767,6 +767,21 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await expect(window.getByLabel('매도 67,300원 주문', { exact: true })).toHaveText('50');
   expect(commands[2]).toMatchObject({ side: 'SELL', quantity: 50 });
   await window.screenshot({ path: testInfo.outputPath('unified-order-controls.png') });
+});
+
+test('보유 63주 클릭은 미체결 매도 20주를 제외한 43주를 입력하고 주문을 전송하지 않는다', async ({ page }) => {
+  const sell = { ...mkOrder('reserved-sell', '67300', '10'), side: 'SELL', quantity: '30' };
+  const { window, commands } = await setup(page, [sell], false, false, 0, 1, { holdingQuantity: '63', sellableQuantity: '43' });
+  const holding = window.getByLabel('매입수량');
+  await expect(holding).toContainText('63');
+  await expect(holding).toBeEnabled();
+  await holding.click();
+  await expect(window.getByLabel('신규 주문 수량')).toHaveValue('43');
+  await window.getByRole('button', { name: '금액', exact: true }).click();
+  await holding.click();
+  await expect(window.getByLabel('신규 주문 수량')).toHaveValue('43');
+  await expect(holding).toContainText('63');
+  expect(commands).toHaveLength(0);
 });
 
 test('압축형 바로 전환은 입력값을 보존하고 금액 프리셋은 클릭 호가로 환산한다', async ({ page }, testInfo) => {
