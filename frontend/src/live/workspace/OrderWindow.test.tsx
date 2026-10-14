@@ -5,18 +5,18 @@ import type { TossOrder } from '../../api/trading';
 import { OrderWindow } from './OrderWindow';
 import { DataWindow } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
-import { groupPriceOrders, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
+import { groupPriceOrders, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
 import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
 
-const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, holdingQuantity: '100', priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
   useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: false }),
-  useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: mock.holdingQuantity, average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
+  useTradingState: () => ({ balancesError: mock.balancesError, data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: mock.holdingQuantity, average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
   useTradingAccountList: () => ({ orders: { data: undefined }, holdings: { data: undefined }, paused: false }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
@@ -42,9 +42,77 @@ function order(id = 'a'): TossOrder {
     execution: { filledQuantity: '30', averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null } };
 }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
-beforeEach(() => { mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
+beforeEach(() => { mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('원본 소수 평단가로 최근접 호가를 고르고 동률이면 낮은 호가를 고른다', () => {
+    const prices = [67300, 67200, 0, NaN];
+    expect(holdingBookMarker(100, '67240.5', prices)).toEqual({ price: 67200, outside: false });
+    expect(holdingBookMarker(100, '67250', prices)).toEqual({ price: 67200, outside: false });
+    expect(holdingBookMarker(100, '67250.00000000000000001', prices)).toEqual({ price: 67300, outside: false });
+    expect(holdingBookMarker(100, '67200', prices)).toEqual({ price: 67200, outside: false });
+    expect(holdingBookMarker(100, '67300', prices)).toEqual({ price: 67300, outside: false });
+  });
+  it('범위 밖 평단가와 미보유·잘못된 평단가·빈 호가를 구분한다', () => {
+    expect(holdingBookMarker(100, '67199.99999999999999999', [67300, 67200])).toEqual({ price: null, outside: true });
+    expect(holdingBookMarker(100, '67300.1', [67300, 67200])).toEqual({ price: null, outside: true });
+    for (const average of [null, '', '0', '-1', 'NaN', 'Infinity']) {
+      expect(holdingBookMarker(100, average, [67300, 67200])).toEqual({ price: null, outside: false });
+    }
+    for (const quantity of [null, 0, -1, NaN]) {
+      expect(holdingBookMarker(quantity, '67200', [67300, 67200])).toEqual({ price: null, outside: false });
+    }
+    expect(holdingBookMarker(100, '67200', [0, NaN])).toEqual({ price: null, outside: false });
+    expect(holdingBookMarker(100, '67200', [])).toEqual({ price: null, outside: false });
+  });
+  it('평단가 원과 저가 배지를 같은 가격에 함께 표시하고 정확한 원본 평단가를 설명한다', () => {
+    mock.averagePrice = '67000.1';
+    const { container } = show();
+    const marker = screen.getByRole('img', { name: '내 평단가 67,000.1원 · 가장 가까운 호가 67,000원' });
+    const value = container.querySelector('[data-order-price="67000"] .order-price-value')!;
+    expect(value).toContainElement(marker);
+    expect(value.querySelector('[data-price-badges]')).toHaveTextContent('저');
+    expect(marker).toHaveAttribute('title', '내 평단가 67,000.1원 · 가장 가까운 호가 67,000원');
+    expect(container.querySelectorAll('.order-average-marker')).toHaveLength(1);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it.each(['67200', '67200.000'])('평단가 %s와 호가가 일치하면 내 평단가로 설명한다', average => {
+    mock.averagePrice = average;
+    const { container } = show();
+    expect(screen.getByRole('img', { name: `내 평단가 ${average === '67200' ? '67,200' : '67,200.000'}원` })
+      .closest('.order-row')).toHaveAttribute('data-order-price', '67200');
+    expect(container.querySelectorAll('.order-average-marker')).toHaveLength(1);
+  });
+  it('범위 밖 평단가는 끝 행에 표시하지 않고 상단에 안내한다', () => {
+    const { container } = show();
+    expect(container.querySelector('.order-average-marker')).toBeNull();
+    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('호가 범위 밖');
+  });
+  it('미보유면 평단가 원과 범위 밖 안내를 숨긴다', () => {
+    mock.holdingQuantity = '0'; mock.averagePrice = '67200';
+    const { container } = show();
+    expect(container.querySelector('.order-average-marker')).toBeNull();
+    expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
+  });
+  it('잔고 조회 실패 시 남아 있는 평단가 데이터로 원을 표시하지 않는다', () => {
+    mock.averagePrice = '67200'; mock.balancesError = true;
+    const { container } = show();
+    expect(container.querySelector('.order-average-marker')).toBeNull();
+    expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
+  });
+  it('계좌 전환 시 새 평단가로 원을 이동하고 호가가 범위를 벗어나면 안내로 바꾼다', () => {
+    mock.accountCount = 2; mock.averagePrice = '67240.5';
+    const { container } = show();
+    expect(container.querySelector('.order-average-marker')?.closest('.order-row')).toHaveAttribute('data-order-price', '67200');
+    mock.averagePrice = '67540.5';
+    fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: '2' } });
+    expect(container.querySelector('.order-average-marker')?.closest('.order-row')).toHaveAttribute('data-order-price', '67500');
+    mock.priceOffset = 3000;
+    act(() => useLiveVenueStore.setState({ venue: 'NXT' }));
+    expect(container.querySelector('.order-average-marker')).toBeNull();
+    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('호가 범위 밖');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
   it('10호가창과 같은 예상 체결가·체결량을 사다리 위에 표시하고 갱신한다', () => {
     mock.expectedPrice = 241_000; mock.expectedQty = 6_140;
     const view = show();

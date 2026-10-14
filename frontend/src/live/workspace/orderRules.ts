@@ -17,6 +17,30 @@ function exactHoldingCost(quantity: number | null, averagePrice: string | null |
   return { amount: cost * BigInt(quantity), scale, quantity: BigInt(quantity) };
 }
 
+/** Compare the original decimal cost; ties select the lower displayed price. */
+export function holdingBookMarker(quantity: number | null, averagePrice: string | null | undefined, prices: Iterable<number>) {
+  const hidden = { price: null, outside: false };
+  const cost = exactHoldingCost(quantity, averagePrice);
+  if (!cost || cost.amount <= 0n) return hidden;
+  const scale = cost.scale * cost.quantity;
+  let nearest: number | null = null, distance: bigint | null = null;
+  let min: bigint | null = null, max: bigint | null = null;
+  for (const price of prices) {
+    if (!Number.isSafeInteger(price) || price <= 0) continue;
+    const scaled = BigInt(price) * scale;
+    const delta = scaled - cost.amount;
+    const absolute = delta < 0n ? -delta : delta;
+    if (distance === null || absolute < distance || (absolute === distance && (nearest === null || price < nearest))) {
+      nearest = price; distance = absolute;
+    }
+    if (min === null || scaled < min) min = scaled;
+    if (max === null || scaled > max) max = scaled;
+  }
+  if (min === null || max === null) return hidden;
+  const outside = cost.amount < min || cost.amount > max;
+  return { price: outside ? null : nearest, outside };
+}
+
 function ceilWon(amount: bigint, scale: bigint): number | null {
   // BigInt division truncates toward zero; only positive remainders need +1.
   const rounded = Number(amount / scale + (amount % scale > 0n ? 1n : 0n));

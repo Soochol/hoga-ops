@@ -8,7 +8,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN' } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
   await page.addInitScript(venue => localStorage.setItem('live.venue.v1', JSON.stringify({ venue })), market.venue ?? 'UN');
@@ -38,7 +38,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
     stateRequests.push(part);
     const code = new URL(route.request().url()).searchParams.get('code') ?? '005930';
     const orderState = { account_seq: 1, code, orders: orders.filter(order => order.symbol === code), recent_orders: [], fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [] };
-    const balances = { account_seq: 1, code: '005930', buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: '66000', fetched_at_ms: Date.now() };
+    const balances = { account_seq: 1, code: '005930', buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: market.averagePrice ?? '66000', fetched_at_ms: Date.now() };
     return route.fulfill({ json: part === 'orders' ? orderState : part === 'balances' ? balances : { ...balances, ...orderState } });
   });
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/account-orders\?/, route => route.fulfill({ json: {
@@ -566,6 +566,48 @@ test('매입수량·평단가에 500ms 호버하면 매수금액을 표시하고
   await window.evaluate(el => el.dispatchEvent(new Event('scroll')));
   await page.clock.runFor(500);
   await expect(tooltip).toHaveCount(0);
+  expect(commands).toHaveLength(0);
+});
+
+test('평단가 원은 시고저 배지·7자리 가격과 좁은 창에서도 겹치지 않는다', async ({ page }, testInfo) => {
+  const { window, commands, ws } = await setup(page, false, false, false, 1_401_800, 1, { averagePrice: '1469040.5' });
+  await ws!.waitForSubscribe('005930');
+  const value = window.locator('[data-order-price="1469000"] .order-price-value');
+  const dot = window.getByRole('img', { name: '내 평단가 1,469,040.5원 · 가장 가까운 호가 1,469,000원' });
+  await expect(dot).toBeVisible();
+  await expect(window.locator('.order-average-marker')).toHaveCount(1);
+  for (const [field, label] of [['day_open', '시'], ['day_high', '고'], ['day_low', '저']] as const) {
+    ws!.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(),
+      day_open: 1_470_000, day_high: 1_470_000, day_low: 1_468_100, [field]: 1_469_000,
+      trades: [{ price: 1_469_000, qty: 1, side: 1 }],
+    });
+    const badge = value.locator('[data-price-badges] > span');
+    await expect(badge).toHaveText(label);
+    await expect(value.locator('..')).toHaveClass(/order-current/);
+    for (const width of [800, 696, 576, 560, 504, 360]) {
+      await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; (el as HTMLElement).style.flexShrink = '0'; }, width);
+      await expect(window).toHaveClass(width < 560 ? /order-compact/ : /order-expanded/);
+      // Measure in one frame: ResizeObserver may switch density between separate reads.
+      await expect.poll(() => value.evaluate(el => {
+        const badgeBox = el.querySelector('[data-price-badges] > span')!.getBoundingClientRect();
+        const dotBox = el.querySelector('.order-average-marker')!.getBoundingClientRect();
+        const text = Array.from(el.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.includes('1,469,000'))!;
+        const range = document.createRange(); range.selectNode(text);
+        const textBox = range.getBoundingClientRect();
+        const priceBox = el.parentElement!.getBoundingClientRect();
+        const percentBox = el.parentElement!.querySelector('small')!.getBoundingClientRect();
+        return {
+          badgeBeforeDot: badgeBox.right + 1 <= dotBox.left,
+          dotBeforeText: dotBox.right + 1 <= textBox.left,
+          textBeforePercent: textBox.right <= percentBox.left,
+          withinPrice: badgeBox.left >= priceBox.left && percentBox.right <= priceBox.right,
+        };
+      })).toEqual({ badgeBeforeDot: true, dotBeforeText: true, textBeforePercent: true, withinPrice: true });
+    }
+  }
+  await window.evaluate(el => { (el as HTMLElement).style.width = '576px'; });
+  await expect(window).toHaveClass(/order-expanded/);
+  await window.screenshot({ path: testInfo.outputPath('order-average-day-badge.png') });
   expect(commands).toHaveLength(0);
 });
 

@@ -28,7 +28,7 @@ import { useLiveVenueStore } from '../../state/liveVenue';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
-import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
+import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
 import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, ExpectedFillBanner, TotalQtyStrip } from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
@@ -247,6 +247,12 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const estimateAmount = estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const holdingQuantity = state.data?.holding_quantity != null && !state.balancesError ? Number(state.data.holding_quantity) : null;
+  const averageMarker = holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen);
+  const averageMarkerIndex = prices.findIndex(level => level.price === averageMarker.price);
+  const [averageWhole, averageFraction] = (state.data?.average_purchase_price ?? '').split('.');
+  const averagePriceText = averageWhole.replace(/\B(?=(\d{3})+(?!\d))/g, ',') + (averageFraction ? `.${averageFraction}` : '');
+  const averageMarkerLabel = averageMarker.price == null ? '' : `내 평단가 ${averagePriceText}원${
+    Number(averageWhole) === averageMarker.price && (!averageFraction || /^0+$/.test(averageFraction)) ? '' : ` · 가장 가까운 호가 ${fmt(averageMarker.price)}원`}`;
   const canFillHoldingQuantity = holdingQuantity != null && validOrderInput(holdingQuantity, 'quantity');
   const buyingPower = state.data?.buying_power != null && !state.balancesError ? Number(state.data.buying_power) : null;
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
@@ -530,6 +536,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           onFocus={e => averageTip.show(e.currentTarget)} onBlur={averageTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
           <span className="order-meta" aria-hidden="true">평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
+          {averageMarker.outside && <span className="order-meta">호가 범위 밖</span>}
         </span>
         <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span>
           <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
@@ -617,7 +624,9 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
             {orderCell('SELL', level.price, key)}
             {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
               : <div className="order-info"><span className={firstBid ? 'order-meta' : tradePriceColor}>{firstBid ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? priceDirClass(trade.side) : undefined}>{firstBid ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>}
-            <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker price={level.price} summary={summary} />{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
+            <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker price={level.price} summary={summary} />
+              {index === averageMarkerIndex && <span className="order-average-marker" role="img" aria-label={averageMarkerLabel} title={averageMarkerLabel} />}
+              {level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {isAsk ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
             {orderCell('BUY', level.price, key)}
