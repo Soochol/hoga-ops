@@ -5,7 +5,7 @@ import type { TossOrder } from '../../api/trading';
 import { OrderWindow } from './OrderWindow';
 import { DataWindow } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
-import { groupPriceOrders, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
+import { groupPriceOrders, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
 import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
@@ -245,6 +245,47 @@ describe('호가 주문', () => {
     expect(holdingProfitWon(100, null, '66000')).toBeNull();
     expect(holdingProfitWon(100, 67200, null)).toBeNull();
   });
+  it('수익률은 원본 소수 평단가로 계산하고 0.01% 경계에서 반올림한다', () => {
+    expect(holdingProfitPercent(100, 67200, '70304.99999')).toBe(-4.42);
+    expect(holdingProfitPercent(100, 67200, '66000')).toBe(1.82);
+    expect(holdingProfitPercent(1, 20001, '20000')).toBe(0.01);
+    expect(holdingProfitPercent(100, 19999, '20000')).toBe(-0.01);
+    expect(holdingProfitPercent(100, 66000, '66000')).toBe(0);
+    expect(holdingProfitPercent(0, 67200, '66000')).toBeNull();
+    expect(holdingProfitPercent(100, null, '66000')).toBeNull();
+    expect(holdingProfitPercent(100, 67200, null)).toBeNull();
+    expect(holdingProfitPercent(100, 67200, '0')).toBeNull();
+  });
+  it('평가손익 숫자는 더블클릭으로 금액과 %를 전환하며 주문하지 않는다', () => {
+    mock.averagePrice = '70304.99999';
+    show();
+    const toggle = screen.getByRole('button', { name: '평가손익 표시 전환' });
+    expect(toggle).toHaveTextContent('-310,499');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveTextContent('-310,499');
+    fireEvent.doubleClick(toggle);
+    expect(toggle).toHaveTextContent('-4.42%');
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(toggle.querySelector('.order-field-value')).toHaveClass('text-price-down');
+    fireEvent.doubleClick(toggle);
+    expect(toggle).toHaveTextContent('-310,499');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it('수익률 표시는 시세 갱신을 따르고 종목 변경 후에도 유지한다', () => {
+    const view = show();
+    const toggle = () => screen.getByRole('button', { name: '평가손익 표시 전환' });
+    fireEvent.keyDown(toggle(), { key: 'Enter' });
+    expect(toggle()).toHaveTextContent('1.82%');
+    mock.quotePrice = 65700;
+    view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
+    expect(toggle()).toHaveTextContent('-0.45%');
+    fireEvent.keyDown(toggle(), { key: ' ' });
+    expect(toggle()).toHaveTextContent('-30,000');
+    fireEvent.keyDown(toggle(), { key: 'Enter' });
+    view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="000660" name="SK하이닉스" /></QueryClientProvider>);
+    expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
   it.each([
     [67200, 'text-price-up', '120,000'],
     [65700, 'text-price-down', '-30,000'],
@@ -281,6 +322,7 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('매입수량')).toBeDisabled();
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('평단가—');
     expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('평가손익—');
+    expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).toBeDisabled();
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('설정 취소는 프리셋을 바꾸지 않고 적용된 프리셋·단축키로 즉시 주문한다', async () => {

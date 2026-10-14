@@ -638,6 +638,27 @@ test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신
   await window.screenshot({ path: testInfo.outputPath('order-window.png') });
 });
 
+test('평가손익 숫자를 더블클릭하면 금액과 수익률을 전환하고 주문하지 않는다', async ({ page }) => {
+  const { window, commands } = await setup(page);
+  const toggle = window.getByRole('button', { name: '평가손익 표시 전환' });
+  await expect(toggle).toHaveText('120,000');
+  const originalColor = await toggle.locator('.order-field-value').evaluate(el => getComputedStyle(el).color);
+  await toggle.click();
+  await expect(toggle).toHaveText('120,000');
+  await toggle.dblclick();
+  await expect(toggle).toHaveText('1.82%');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await expect(toggle.locator('.order-field-value')).toHaveCSS('color', originalColor);
+  await toggle.dblclick();
+  await expect(toggle).toHaveText('120,000');
+  await toggle.focus();
+  await page.keyboard.press('Enter');
+  await expect(toggle).toHaveText('1.82%');
+  await page.keyboard.press('Space');
+  await expect(toggle).toHaveText('120,000');
+  expect(commands).toHaveLength(0);
+});
+
 test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   await expect(window.getByRole('combobox', { name: '수량 방향' })).toHaveCount(0);

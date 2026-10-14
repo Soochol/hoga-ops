@@ -28,7 +28,7 @@ import { useLiveVenueStore } from '../../state/liveVenue';
 import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
-import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
+import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
 import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, ExpectedFillBanner, TotalQtyStrip } from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
@@ -67,6 +67,7 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   const preferences = settings ?? localSettings;
   const [quantity, setQuantity] = useState(() => preferences.quantityPresets[0]);
   const [amountMillions, setAmountMillions] = useState(() => preferences.amountPresets[0]);
+  const [profitAsPercent, setProfitAsPercent] = useState(false);
   function applySettings(next: OrderWindowSettings) {
     const quantitySlot = preferences.quantityPresets.indexOf(quantity);
     const amountSlot = preferences.amountPresets.indexOf(amountMillions);
@@ -77,15 +78,17 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   return <OrderWindowContent key={code} code={code}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} amountMillions={amountMillions}
     onAmountChange={setAmountMillions} onApplySettings={applySettings}
+    profitAsPercent={profitAsPercent} onToggleProfitDisplay={() => setProfitAsPercent(value => !value)}
     chosenAccount={selectedAccount} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} />;
 }
 
 function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymbol,
-  preferences, quantity, onQuantityChange, amountMillions, onAmountChange, onApplySettings }: {
+  preferences, quantity, onQuantityChange, amountMillions, onAmountChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string;
   chosenAccount: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
   quantity: number; onQuantityChange: (quantity: number) => void; amountMillions: number; onAmountChange: (millions: number) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
+  profitAsPercent: boolean; onToggleProfitDisplay: () => void;
 }) {
   const client = useQueryClient();
   const accounts = useTradingAccounts(mode);
@@ -238,6 +241,10 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const canFillHoldingQuantity = holdingQuantity != null && validOrderInput(holdingQuantity, 'quantity');
   const buyingPower = state.data?.buying_power != null && !state.balancesError ? Number(state.data.buying_power) : null;
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
+  const profitPercent = holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
+  const canToggleProfit = holdingQuantity != null && holdingQuantity > 0 && holdingProfit != null && profitPercent != null;
+  const profitText = holdingQuantity === 0 || holdingProfit == null ? '—'
+    : profitAsPercent ? profitPercent == null ? '—' : `${profitPercent.toFixed(2)}%` : fmt(holdingProfit);
   const purchaseAmount = holdingPurchaseAmountWon(holdingQuantity, state.data?.average_purchase_price);
   const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
   const quantityTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
@@ -510,7 +517,18 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
           <span className="order-meta" aria-hidden="true">평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
         </span>
-        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span><span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{holdingQuantity === 0 || holdingProfit == null ? '—' : fmt(holdingProfit)}</span></span>
+        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span>
+          <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
+            title={`더블클릭하여 ${profitAsPercent ? '금액' : '수익률(%)'}으로 전환`} disabled={!canToggleProfit}
+            onDoubleClick={onToggleProfitDisplay} onKeyDown={event => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                if (!event.repeat && canToggleProfit) onToggleProfitDisplay();
+              }
+            }}>
+            <span className={`order-field-value ${holdingProfit != null && holdingProfit > 0 ? 'text-price-up' : holdingProfit != null && holdingProfit < 0 ? 'text-price-down' : 'text-fg'}`}>{profitText}</span>
+          </button>
+        </span>
       </div>
     </div>
     <div className="order-controls order-quantity-controls">
