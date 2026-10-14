@@ -30,6 +30,29 @@ function show() { return render(<QueryClientProvider client={new QueryClient({ d
 beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); });
 
 describe('호가 주문', () => {
+  it.each(['paper', 'live'] as const)('%s 계좌의 매입수량 클릭은 전체 보유 수량을 채우고 다음 주문에 사용한다', async mode => {
+    show();
+    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: mode } });
+    fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(100);
+    expect(mock.command).not.toHaveBeenCalled();
+    const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    await waitFor(() => expect(buy).toBeEnabled());
+    fireEvent.doubleClick(buy);
+    await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
+    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ quantity: 100 }), mode]);
+  });
+  it('금액 모드에서 매입수량을 클릭하면 수량 모드로 전환하고 보유 수량을 채운다', () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    fireEvent.click(screen.getByRole('radio', { name: '금액' }));
+    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(100);
+    expect(screen.queryByLabelText('신규 주문 금액')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('6,720,000원');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
   it('매수금액은 원본 소수 평단가로 계산하고 정수 경계·누락·보유 없음도 처리한다', () => {
     expect(holdingPurchaseAmountWon(100, '44669.963')).toBe(4466997);
     expect(holdingPurchaseAmountWon(100, '66000.01')).toBe(6600001);
