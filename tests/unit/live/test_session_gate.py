@@ -14,7 +14,7 @@ from hoga.live.session_gate import (
     ws_capture_window_async,
     ws_connection_window,
 )
-from hoga.util.timeenc import KST
+from hoga.util.timeenc import KST, hhmmssms_to_unix_ms
 
 
 def _ms(year: int, month: int, day: int, hour: int, minute: int) -> int:
@@ -85,11 +85,12 @@ def test_connection_window_strictly_wider_than_capture_window(monkeypatch):
 
 
 def test_is_auction_window_krx_covers_open_and_close_single_price():
-    """KRX 동시호가 창: 장전 08:30–09:00, 장마감 15:20–15:30 KST. 순수 시계.
+    """KRX 예상체결 공개 창: 장전 08:50–09:00, 장마감 15:20–15:30 KST. 순수 시계.
     경계: 시작 포함, 끝 배제. 연속거래·NXT 단일가 시각은 False(예상체결 게이트)."""
     # 장전 동시호가
     assert is_auction_window(_ms(2026, 5, 27, 8, 29), "KRX") is False  # 창 직전
-    assert is_auction_window(_ms(2026, 5, 27, 8, 30), "KRX") is True   # 시작(포함)
+    assert is_auction_window(_ms(2026, 5, 27, 8, 30), "KRX") is False  # 호가 접수만 시작
+    assert is_auction_window(_ms(2026, 5, 27, 8, 50), "KRX") is True   # 예상가 공개 시작(포함)
     assert is_auction_window(_ms(2026, 5, 27, 8, 55), "KRX") is True
     assert is_auction_window(_ms(2026, 5, 27, 9, 0), "KRX") is False   # 개장(배제) — 연속거래 시작
     # 연속거래 중
@@ -106,7 +107,7 @@ def test_is_auction_window_krx_covers_open_and_close_single_price():
 
 
 def test_is_auction_window_nxt_covers_after_market_opening_call_only():
-    """NXT 단일가는 애프터마켓 시가 15:30–15:40 **하나뿐**이다.
+    """NXT의 예정 단일가 창은 애프터마켓 시가 15:30–15:40이다(VI는 별도).
 
     프리마켓(08:00–08:50)·애프터마켓(15:40–20:00)은 접속매매고, KRX 단일가 동안
     (08:50–09:00:30 · 15:20–15:30)은 NXT 가 거래정지다 — 증권사 안내 4곳 일치
@@ -138,6 +139,19 @@ def test_is_auction_window_unknown_venue_is_closed():
     """모르는 venue 는 닫힘 — 단일가 시각을 모르는 시장에 창을 열면 값이 샌다."""
     assert is_auction_window(_ms(2026, 5, 27, 8, 55), "KOSDAQ_ATS") is False
     assert is_auction_window(_ms(2026, 5, 27, 15, 35), "") is False
+
+
+@pytest.mark.parametrize("venue", ["KRX", "UN"])
+@pytest.mark.parametrize("hhmmss_ms, expected", [
+    (83000000, False),
+    (84959999, False),
+    (85000000, True),
+    (85959999, True),
+    (90000000, False),
+])
+def test_preopen_expected_publication_boundaries(venue, hhmmss_ms, expected):
+    t_ms = hhmmssms_to_unix_ms("20261015", hhmmss_ms)
+    assert is_auction_window(t_ms, venue) is expected
 
 
 # ── 투자자 수급(ka10051) 수집 창: 정규장보다 늦게 닫는다 ──────────────────────

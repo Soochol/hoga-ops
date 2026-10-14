@@ -10,6 +10,8 @@ parity 테스트로 고정한다.
 import json
 from pathlib import Path
 
+import pytest
+
 from hoga.live.kiwoom_frames import parse_real_message, parse_real_row
 from hoga.live.snapshot import SnapshotKind
 from hoga.util.timeenc import hhmmssms_to_unix_ms
@@ -152,6 +154,47 @@ def test_orderbook_expected_fill_dropped_outside_auction_window():
     assert t is not None
     assert "expected_price" not in t.payload
     assert "expected_qty" not in t.payload
+
+
+@pytest.mark.parametrize("suffix", ["", "_AL"])
+@pytest.mark.parametrize("hhmmss, expected", [
+    ("083000", False),
+    ("084959", False),
+    ("085000", True),
+    ("085959", True),
+    ("090000", False),
+])
+def test_orderbook_preopen_expected_starts_at_publication(suffix, hhmmss, expected):
+    row = {"type": "0D", "item": f"042700{suffix}", "values": {
+        **REAL_0D_KRX["values"], "21": hhmmss, "23": "-203000", "24": "3156",
+    }}
+    tick = parse_real_row(row, date="20261015", now_ms=hhmmssms_to_unix_ms("20261015", 90000000))
+    assert tick is not None
+    assert tick.payload["asks"][0] == {"price": 6500, "qty": 20}
+    assert tick.payload["bids"][0] == {"price": 6490, "qty": 2}
+    if expected:
+        assert tick.payload["expected_price"] == 203000
+        assert tick.payload["expected_qty"] == 3156
+    else:
+        assert "expected_price" not in tick.payload
+        assert "expected_qty" not in tick.payload
+
+
+@pytest.mark.parametrize("code, price, qty", [
+    ("042700", "-203000", "3156"),
+    ("298040", "-2000000", "343"),
+    ("053800", "-85600", "1400"),
+])
+def test_orderbook_un_0841_residual_expected_fields_are_not_published(code, price, qty):
+    # 2026-10-15 08:41 원본 0D에서 발췌. 291/292는 이번 변경에서 소비하지 않는다.
+    row = {"type": "0D", "item": f"{code}_AL", "values": {
+        "21": "084129", "23": price, "24": qty, "291": " 0", "292": "0",
+    }}
+    tick = parse_real_row(row, date="20261015", now_ms=hhmmssms_to_unix_ms("20261015", 84130000))
+    assert tick is not None
+    assert tick.venue == "UN"
+    assert "expected_price" not in tick.payload
+    assert "expected_qty" not in tick.payload
 
 
 def test_orderbook_expected_fill_present_for_nxt_in_after_market_call():
