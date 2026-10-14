@@ -140,7 +140,7 @@ describe('WatchlistDrawer drag wiring', () => {
     expect(h.onPointerDown).toHaveBeenCalledOnce();
     expect(screen.queryByRole('button', { name: '다중 선택' })).toBeNull();
     expect(within(row).queryByRole('checkbox')).toBeNull();
-    fireEvent.click(row, { ctrlKey: true });
+    fireEvent.click(row, { altKey: true });
     expect(row).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -690,7 +690,7 @@ describe('WatchlistDrawer membership selection', () => {
       duplicate: within(b).getByTestId('watchlist-row-005930'), last: within(b).getByTestId('watchlist-row-035420'), qc };
   }
 
-  it('Shift spans visible groups while Ctrl and Meta toggle independent memberships without chart activation', async () => {
+  it('Shift spans visible groups while Alt toggles independent memberships without chart activation', async () => {
     const { first, second, duplicate, last } = await setupSelection();
     fireEvent.click(first);
     const active = useLivePageStore.getState().activeCode;
@@ -698,8 +698,8 @@ describe('WatchlistDrawer membership selection', () => {
     for (const row of [first, second, duplicate]) expect(row).toHaveAttribute('aria-pressed', 'true');
     expect(last).toHaveAttribute('aria-pressed', 'false');
     expect(useLivePageStore.getState().activeCode).toBe(active);
-    fireEvent.click(second, { ctrlKey: true });
-    fireEvent.click(last, { metaKey: true });
+    fireEvent.click(second, { altKey: true });
+    fireEvent.click(last, { altKey: true });
     expect(second).toHaveAttribute('aria-pressed', 'false');
     expect(last).toHaveAttribute('aria-pressed', 'true');
     fireEvent.keyDown(last, { key: 'Escape' });
@@ -707,6 +707,26 @@ describe('WatchlistDrawer membership selection', () => {
     fireEvent.click(last, { shiftKey: true });
     expect(last).toHaveAttribute('aria-pressed', 'true');
     expect(first).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('opening a tab keeps the range anchor; Alt+Shift adds a separate range', async () => {
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const { first, second, duplicate, last } = await setupSelection();
+    fireEvent.click(first, { altKey: true });
+    fireEvent.click(last, { ctrlKey: true });
+    expect(open).toHaveBeenCalledOnce();
+    expect(first).toHaveAttribute('aria-pressed', 'true');
+    expect(last).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(second, { shiftKey: true });
+    expect(first).toHaveAttribute('aria-pressed', 'true');
+    expect(second).toHaveAttribute('aria-pressed', 'true');
+    expect(duplicate).toHaveAttribute('aria-pressed', 'false');
+    expect(last).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(last, { altKey: true });
+    fireEvent.click(duplicate, { altKey: true, shiftKey: true });
+    for (const row of [first, second, duplicate, last]) expect(row).toHaveAttribute('aria-pressed', 'true');
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(open).toHaveBeenCalledOnce();
   });
 
   it('Shift arrows extend and contract a range across groups without changing the chart', async () => {
@@ -726,16 +746,16 @@ describe('WatchlistDrawer membership selection', () => {
 
   it('search, collapse and explicit sorting clear selection, refresh reordering preserves membership identity', async () => {
     const { first, second, qc } = await setupSelection();
-    fireEvent.click(first, { ctrlKey: true });
+    fireEvent.click(first, { altKey: true });
     act(() => qc.setQueryData(WATCHLIST_KEY, { ...DATA, entries: [{ ...ENTRIES[0], order: 1 }, { ...ENTRIES[1], order: 0 }] }));
     expect(first).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByLabelText('스윙 정렬'));
     expect(screen.queryByTestId('watchlist-selection-actions')).toBeNull();
-    fireEvent.click(second, { ctrlKey: true });
+    fireEvent.click(second, { altKey: true });
     fireEvent.change(screen.getByTestId('watchlist-search'), { target: { value: '삼성' } });
     expect(screen.queryByTestId('watchlist-selection-actions')).toBeNull();
     fireEvent.change(screen.getByTestId('watchlist-search'), { target: { value: '' } });
-    fireEvent.click(first, { ctrlKey: true });
+    fireEvent.click(first, { altKey: true });
     fireEvent.click(screen.getByRole('button', { name: '스윙 접기' }));
     expect(screen.queryByTestId('watchlist-selection-actions')).toBeNull();
   });
@@ -745,7 +765,7 @@ describe('WatchlistDrawer membership selection', () => {
     const { first, second, last } = await setupSelection();
     fireEvent.click(first);
     fireEvent.click(second, { shiftKey: true });
-    fireEvent.click(last, { ctrlKey: true });
+    fireEvent.click(last, { altKey: true });
     fireEvent.keyDown(second, { key: 'Delete' });
     const dialog = screen.getByRole('dialog', { name: '삭제' });
     expect(dialog).toHaveTextContent('선택한 3개 항목');
@@ -776,7 +796,7 @@ describe('WatchlistDrawer membership selection', () => {
   it('failed deletion retains selection and exposes a retryable error', async () => {
     vi.spyOn(watchlistApi, 'removeSelectedMemberships').mockRejectedValue(new Error('목록이 변경되었습니다'));
     const { first } = await setupSelection();
-    fireEvent.click(first, { ctrlKey: true });
+    fireEvent.click(first, { altKey: true });
     fireEvent.click(within(screen.getByTestId('watchlist-selection-actions')).getByRole('button', { name: '삭제' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '삭제' })).getByRole('button', { name: '삭제' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('목록이 변경되었습니다');

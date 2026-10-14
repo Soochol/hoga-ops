@@ -228,6 +228,7 @@ test('Ctrl 복제는 원본과 기존 목적지 위치를 유지하고 되돌릴
   await page.keyboard.up('Control');
   await expect.poll(() => state.items()[B]).toEqual(['000660', '035420', '005930', '051910']);
   expect(state.items()[A]).toEqual(initial[A]);
+  expect(page.context().pages()).toHaveLength(1); // Ctrl drag must not open a tab on release.
   // Same dnd-kit 50ms document click suppression guard as the move() helper.
   await page.waitForTimeout(60);
   await page.getByRole('button', { name: '되돌리기', exact: true }).click();
@@ -326,7 +327,36 @@ test('아이콘 없이 클릭·드래그·키보드 우클릭 메뉴를 각각 �
   await group(page, A).screenshot({ path: testInfo.outputPath('panel-without-handles.png') });
 });
 
-test('Shift 범위·Ctrl 개별 선택과 Shift 화살표는 차트를 바꾸지 않는다', async ({ page }) => {
+for (const modifier of ['Control', 'Meta'] as const) {
+  test(`${modifier}+클릭은 새 탭을 열고 현재 차트·선택·시작점을 유지한다`, async ({ page, context }) => {
+    await setup(page);
+    const first = row(page, A, '005930'), second = row(page, A, '000660'), third = row(page, B, '035420');
+    await first.click();
+    await second.click({ modifiers: ['Alt'] });
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    const tabOpened = context.waitForEvent('page');
+    await third.click({ modifiers: [modifier] });
+    const newTab = await tabOpened;
+    await expect(newTab).toHaveURL(/\/live\?code=035420&workspaceTransfer=[\w-]+$/);
+    await newTab.waitForLoadState('domcontentloaded');
+    await expect.poll(() => newTab.evaluate(async () => {
+      const path = '/src/state/livePage.ts';
+      const { useLivePageStore } = await import(path);
+      return useLivePageStore.getState().activeCode;
+    })).toBe('035420');
+    await expect(first).toHaveAttribute('aria-current', 'true');
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    await expect(third).toHaveAttribute('aria-pressed', 'false');
+    await expect(page).toHaveURL(/\/live$/);
+    await newTab.close();
+    await first.click({ modifiers: ['Shift'] });
+    await expect(first).toHaveAttribute('aria-pressed', 'true');
+    await expect(second).toHaveAttribute('aria-pressed', 'true');
+    await expect(third).toHaveAttribute('aria-pressed', 'false');
+  });
+}
+
+test('Shift 범위·Alt 개별 선택과 Shift 화살표는 차트를 바꾸지 않는다', async ({ page }) => {
   await setup(page);
   const first = row(page, A, '005930'), second = row(page, A, '000660'), third = row(page, B, '035420');
   await expect(page.getByTestId('heatmap-panel').getByRole('button', { name: '다중 선택' })).toHaveCount(0);
@@ -335,7 +365,7 @@ test('Shift 범위·Ctrl 개별 선택과 Shift 화살표는 차트를 바꾸지
   await third.click({ modifiers: ['Shift'] });
   for (const selected of [first, second, third]) await expect(selected).toHaveAttribute('aria-pressed', 'true');
   await expect(third).not.toHaveAttribute('aria-current', 'true');
-  await second.click({ modifiers: ['Control'] });
+  await second.click({ modifiers: ['Alt'] });
   await expect(second).toHaveAttribute('aria-pressed', 'false');
   await third.focus();
   await page.keyboard.press('Escape');
@@ -366,11 +396,11 @@ test('선택 항목 우클릭 메뉴로 이동하고 되돌릴 수 있다', asyn
   await expect.poll(() => state.items()[A]).toEqual(['005930', '000660']);
 });
 
-test('Ctrl 클릭 선택과 Ctrl을 먼저 누른 드래그 복제를 구분한다', async ({ page }) => {
+test('Alt 개별 선택 후 Ctrl 드래그로 선택한 종목을 복제한다', async ({ page }) => {
   const initial = { [A]: ['005930', '000660'], [B]: ['035420', '051910'] };
   const state = await setup(page, initial);
-  await row(page, A, '005930').click({ modifiers: ['Control'] });
-  await row(page, A, '000660').click({ modifiers: ['Control'] });
+  await row(page, A, '005930').click({ modifiers: ['Alt'] });
+  await row(page, A, '000660').click({ modifiers: ['Alt'] });
   await expect(page.getByTestId('heatmap-selection-actions')).toContainText('2개 선택');
   expect(state.requests).toHaveLength(0);
   await page.keyboard.down('Control');
@@ -381,6 +411,7 @@ test('Ctrl 클릭 선택과 Ctrl을 먼저 누른 드래그 복제를 구분한�
   await page.keyboard.up('Control');
   await expect.poll(() => state.items()[B]).toEqual(['035420', '051910', '005930', '000660']);
   expect(state.items()[A]).toEqual(initial[A]);
+  expect(page.context().pages()).toHaveLength(1); // Ctrl drag must not open a tab on release.
   expect(state.requests).toHaveLength(1);
 });
 

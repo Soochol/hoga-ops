@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
@@ -33,6 +33,7 @@ const ENTRIES = [
 const DATA = { folders: FOLDERS, entries: ENTRIES, memos: [], next_run_at_ms: 0 };
 
 describe('WatchlistDrawer', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it('searches codes and groups while restoring original folds and scroll after Escape', async () => {
     window.localStorage.setItem('watchlist.collapsed', JSON.stringify({ keys: ['f_0000000a'] }));
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
@@ -121,7 +122,11 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByTestId('pathname').textContent).toBe('/live'));
   });
 
-  it('Ctrl-click 은 개별 선택하고 새 탭 열기는 우클릭 메뉴로 제공한다', async () => {
+  it.each([
+    { ctrlKey: true },
+    { metaKey: true },
+    { ctrlKey: true, shiftKey: true },
+  ])('Ctrl/⌘-click opens a tab and preserves selection and the current chart: %o', async (modifiers) => {
     const open = vi.fn();
     vi.stubGlobal('open', open);
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
@@ -134,19 +139,22 @@ describe('WatchlistDrawer', () => {
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText('삼성전자'), { ctrlKey: true });
-
-    expect(open).not.toHaveBeenCalled();
     const row = screen.getByTestId('watchlist-row-005930');
+    fireEvent.click(row, { altKey: true });
+    expect(open).not.toHaveBeenCalled();
+    expect(row).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(row, modifiers);
+    expect(open).toHaveBeenCalledOnce();
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?code=005930&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
     expect(row).toHaveAttribute('aria-pressed', 'true');
     fireEvent.keyDown(row, { key: 'Escape' });
     fireEvent.contextMenu(row);
     fireEvent.click(screen.getByRole('menuitem', { name: '새 탭에서 차트 열기' }));
+    expect(open).toHaveBeenCalledTimes(2);
     expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\/live\?code=005930&workspaceTransfer=[\w-]+$/), '_blank', 'noopener');
     // 현재 뷰는 건드리지 않는다 — 종목도 경로도 그대로.
     expect(useLivePageStore.getState().activeCode).toBe('000660');
     expect(screen.getByTestId('pathname').textContent).toBe('/inventory');
-    vi.unstubAllGlobals();
   });
 
   it('shows empty message when no entries and no folders', async () => {
