@@ -115,7 +115,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
       outlined
       className={`live-window live-window-${kind}`}
       headerClassName="live-window-titlebar"
-      gap={8}
+      gap={4}
       onHandleDown={maximized ? () => {} : onHandleDown}
       resizable={!maximized}
       onFocus={onFocus}
