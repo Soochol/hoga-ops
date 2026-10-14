@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { act } from 'react';
-import ClockLabel, { kstClockParts } from './ClockLabel';
+import ClockLabel from './ClockLabel';
+import { kstClockParts } from './ClockLabelHelpers';
 
 /** **이 파일은 UTC 워크스테이션을 흉내 낸다.**
  *

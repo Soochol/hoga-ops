@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { useState } from 'react';
+import { StrictMode, useState } from 'react';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { useClampedFixedPosition } from './useClampedFixedPosition';
 
@@ -15,9 +15,9 @@ import { useClampedFixedPosition } from './useClampedFixedPosition';
 let height = 40;
 const VIEWPORT_H = 720;
 
-function Harness() {
+function Harness({ x = 100, y = 700 }: { x?: number; y?: number }) {
   const [grown, setGrown] = useState(false);
-  const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(100, 700);
+  const { ref, left, top } = useClampedFixedPosition<HTMLDivElement>(x, y);
   return (
     <>
       <button onClick={() => { height = 150; setGrown(true); }}>자라기</button>
@@ -57,5 +57,33 @@ describe('useClampedFixedPosition', () => {
     rerender(<Harness />);
     rerender(<Harness />);
     expect(screen.getByTestId('layer').style.top).toBe(before);
+  });
+
+  it('오른쪽 가장자리에서 위치에 따라 폭·줄바꿈이 달라져도 수렴한다', () => {
+    // auto 폭의 fixed 메뉴는 left에 따라 가용 폭과 높이가 바뀐다.
+    // 소수점 위치에서 측정한 rect가 반복 보정의 입력이 되지 않아야 한다.
+    const measure = vi.mocked(Element.prototype.getBoundingClientRect);
+    measure.mockImplementation(function (this: HTMLElement) {
+      const left = parseFloat(this.style.left);
+      return { width: left > 999.9 ? 280.25 : 280, height: left > 999.9 ? 100 : 40 } as DOMRect;
+    });
+    render(<StrictMode><Harness x={1250.5} y={700.5} /></StrictMode>);
+    const layer = screen.getByTestId('layer');
+    expect(layer.style.left).toBe('1000px');
+    expect(layer.style.top).toBe('680px');
+    expect(measure.mock.calls.length).toBeLessThan(10);
+  });
+
+  it('측정 후 앵커 이동과 메뉴 크기 변화를 함께 반영한다', () => {
+    const { rerender } = render(<Harness x={1250} />);
+    const layer = screen.getByTestId('layer');
+    expect(layer.style.left).toBe('1000px');
+    height = 150;
+    rerender(<Harness x={50.5} y={100.25} />);
+    expect(layer.style.left).toBe('50.5px');
+    expect(layer.style.top).toBe('100.25px');
+    rerender(<Harness x={1250} y={700} />);
+    expect(layer.style.left).toBe('1000px');
+    expect(layer.style.top).toBe('570px');
   });
 });

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import MAStylePicker, { MA_COLOR_ROWS } from './MAStylePicker';
+import MAStylePicker from './MAStylePicker';
+import { MA_COLOR_ROWS } from './MAStylePickerHelpers';
 
 describe('MAStylePicker', () => {
   it('renders trigger with color dot + line-width preview reflecting props', () => {

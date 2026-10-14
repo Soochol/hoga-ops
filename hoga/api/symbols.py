@@ -726,6 +726,14 @@ def all_etf_etn_codes() -> frozenset[str] | None:
     return frozenset(codes)
 
 
+def nxt_enabled_for_code(code: str) -> bool | None:
+    """Single-symbol NXT eligibility; absence is unknown, never False."""
+    for hit in _cache or ():
+        if hit.code == code:
+            return hit.nxt_enabled
+    return None
+
+
 def nxt_enabled_by_code() -> dict[str, bool | None] | None:
     """``code`` → NXT 상장 여부. 마스터 미로드면 ``None``.
 

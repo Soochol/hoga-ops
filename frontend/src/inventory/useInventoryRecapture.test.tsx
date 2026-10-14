@@ -17,7 +17,7 @@ function wrapper(qc: QueryClient) {
 }
 
 function setupFetch(addItemsResp: unknown = { enqueued: [{}], deduped: [] }, status = 201) {
-  return vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url) => {
+  return vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url) => {
     const s = String(url);
     if (s.includes('/api/captures/items') && !s.includes('/retry')) {
       return { ok: status < 400, status, json: async () => addItemsResp } as Response;

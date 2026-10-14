@@ -1,4 +1,6 @@
-"""Local cash account. Consumes the existing UN live book, never a broker API.
+"""Local cash account. Consumes the integrated live book, never a broker API.
+
+For known NXT exclusions, the integrated book is the KRX book.
 
 Price/time priority within this account; displayed liquidity is shared by all
 orders and only replenished by positive depth changes. No exchange queue,

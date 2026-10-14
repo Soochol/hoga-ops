@@ -1,3 +1,6 @@
+import type { RangeBundle } from '../../api/types';
+import type { VirtualAxis } from '../../util/virtualAxis';
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect } from 'vitest';
 import { RATIO_SPEC } from './ratio';
 import { QUOTE_TOTALS_SPEC } from './quoteTotals';
@@ -34,15 +37,15 @@ function build(nowOffsetMin: number) {
     }
   }
   const axis = createVirtualAxis(axisSegs);
-  const bundle: any = {
+  const bundle = rangeBundleFixture( {
     segments: snakeSegs, bucket_ms: BUCKET,
     quote_ratio: { points: qr }, fill_strength: { points: fs },
-  };
+  });
   return { axis, bundle };
 }
 
 // 틱: today 마지막 버킷(=지금)의 값만 바뀐 새 번들(같은 axis/ctx).
-function tick(axis: any, prevBundle: any, dataFn: any, ctx: any) {
+function tick<C>(axis: VirtualAxis, prevBundle: RangeBundle, dataFn: (bundle: RangeBundle, axis: VirtualAxis, ctx: C) => NonNullable<Parameters<typeof classifyDataChange>[0]>, ctx: C) {
   const before = dataFn(prevBundle, axis, ctx);
   const qr2 = prevBundle.quote_ratio.points.slice();
   const fs2 = prevBundle.fill_strength.points.slice();
@@ -50,12 +53,12 @@ function tick(axis: any, prevBundle: any, dataFn: any, ctx: any) {
   qr2[li] = { ...qr2[li], ask_total: qr2[li].ask_total + 500, bid_total: qr2[li].bid_total + 300 };
   const fl = fs2.length - 1;
   fs2[fl] = { ...fs2[fl], buy_qty: fs2[fl].buy_qty + 100, sell_qty: fs2[fl].sell_qty + 80 };
-  const nextBundle = { ...prevBundle, quote_ratio: { points: qr2 }, fill_strength: { points: fs2 } };
+  const nextBundle = { ...prevBundle, quote_ratio: { ...prevBundle.quote_ratio, points: qr2 }, fill_strength: { ...prevBundle.fill_strength, points: fs2 } };
   const after = dataFn(nextBundle, axis, ctx);
   return classifyDataChange(before, after).kind;
 }
 
-const RATIO_CTX = { auctionWindowMask: true, outlierFilterEnabled: true, outlierThreshold: 100 };
+const RATIO_CTX = { auctionWindowMask: true, outlierFilterEnabled: true, outlierThreshold: 100, brokerLateEntries: [] };
 
 describe('장중 틱 → 증분 update() 분류 (P2 win 실재 검증)', () => {
   it('호가비(ratio)는 장중 틱에 update', () => {
@@ -65,8 +68,8 @@ describe('장중 틱 → 증분 update() 분류 (P2 win 실재 검증)', () => {
 
   it('총잔량 bid/ask 둘 다 장중 틱에 update', () => {
     const { axis, bundle } = build(180);
-    expect(tick(axis, bundle, QUOTE_TOTALS_SPEC.series[0].data, true)).toBe('update');
-    expect(tick(axis, bundle, QUOTE_TOTALS_SPEC.series[1].data, true)).toBe('update');
+    expect(tick(axis, bundle, QUOTE_TOTALS_SPEC.series[0].data, { auctionMask: true, intraMax: false, surgeEnabled: false, surgeApproachPct: 100, surgeRearmPct: 100, surgeStartHHMM: 0, tickNormalize: false, surgeTickConfirmPct: 0 })).toBe('update');
+    expect(tick(axis, bundle, QUOTE_TOTALS_SPEC.series[1].data, { auctionMask: true, intraMax: false, surgeEnabled: false, surgeApproachPct: 100, surgeRearmPct: 100, surgeStartHHMM: 0, tickNormalize: false, surgeTickConfirmPct: 0 })).toBe('update');
   });
 
   it('체결강도 매수/매도 히스토그램 둘 다 장중 틱에 update', () => {
@@ -97,7 +100,7 @@ describe('장중 틱 → 증분 update() 분류 (P2 win 실재 검증)', () => {
     const fs2 = bundle.fill_strength.points.slice();
     const last = fs2[fs2.length - 1];
     fs2.push({ t: last.t + BUCKET, buy_qty: 700, sell_qty: 300 });
-    const nextBundle = { ...bundle, fill_strength: { points: fs2 } };
+    const nextBundle = { ...bundle, fill_strength: { ...bundle.fill_strength, points: fs2 } };
     const after = dataFn(nextBundle, axis, ctx);
     expect(classifyDataChange(before, after).kind).toBe('update');
   });

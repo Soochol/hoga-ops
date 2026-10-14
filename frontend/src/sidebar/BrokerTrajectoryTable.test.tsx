@@ -1,10 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import BrokerTrajectoryTable, {
-  netAtCursor,
-  GAP_THRESHOLD_MS,
-} from './BrokerTrajectoryTable';
+import BrokerTrajectoryTable, { GAP_THRESHOLD_MS } from './BrokerTrajectoryTable';
+import { netAtCursor } from './BrokerTrajectoryTableHelpers';
 import type { BrokerSeriesEntry } from '../api/types';
 
 function entry(

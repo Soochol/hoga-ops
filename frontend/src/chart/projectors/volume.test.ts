@@ -1,3 +1,4 @@
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect } from 'vitest';
 import { projectVolume, VOLUME_SPEC } from './volume';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -9,12 +10,12 @@ const axis = createVirtualAxis([
 
 describe('projectVolume', () => {
   it('emits {time, value, color} per candle; up candles get up color, down candles get down color', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       candles: [
         { ts_ms: sessionOpenMs, open: 100, close: 110, high: 115, low: 95, vol_a: 50, vol_b: 30 }, // up
         { ts_ms: sessionOpenMs + 1000, open: 110, close: 105, high: 112, low: 100, vol_a: 20, vol_b: 10 }, // down
       ],
-    };
+    });
     const data = projectVolume(bundle, axis);
     expect(data).toHaveLength(2);
     expect(data[0].time).toBe(0);
@@ -25,12 +26,12 @@ describe('projectVolume', () => {
   });
 
   it('drops candles outside the segment via axis.contains', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       candles: [
         { ts_ms: sessionOpenMs - 60_000, open: 100, close: 100, high: 100, low: 100, vol_a: 5, vol_b: 0 }, // pre-open
         { ts_ms: sessionOpenMs, open: 100, close: 110, high: 115, low: 95, vol_a: 50, vol_b: 30 },
       ],
-    };
+    });
     const data = projectVolume(bundle, axis);
     expect(data).toHaveLength(1);
     expect(data[0].value).toBe(80);
@@ -87,7 +88,7 @@ describe('VOLUME_SPEC', () => {
         return { contained: true, virtual: t - day0Open };
       },
     } as never;
-    const dataFn = VOLUME_SPEC.series[0].data as (...args: any[]) => Array<{ value: number }>;
+    const dataFn = VOLUME_SPEC.series[0].data as (...args: Parameters<typeof VOLUME_SPEC.series[0]['data']>) => Array<{ value: number }>;
 
     dataFn({ segments, candles: [past0, past1, today] } as never, countingAxis, {
       cumulativeEnabled: false,

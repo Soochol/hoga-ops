@@ -29,7 +29,7 @@ beforeEach(() => {
       return new Response(null, { status: 204 });
     }
     return new Response(JSON.stringify({ id: 'view1', name: '저장뷰' }), { status: init?.method === 'POST' ? 201 : 200 });
-  }) as any;
+  }) as never;
 });
 
 afterEach(() => {
@@ -52,7 +52,7 @@ it('calls study view endpoints', async () => {
   fetchMock.mockClear();
 
   const createBody = { name: '저장뷰' };
-  await createStudyView(createBody as any);
+  await createStudyView(createBody as never);
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock.mock.calls[0][0]).toBe('/api/study-views/saves');
   expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({
@@ -64,7 +64,7 @@ it('calls study view endpoints', async () => {
   fetchMock.mockClear();
 
   const updateBody = { name: '수정' };
-  await updateStudyView('view1', updateBody as any);
+  await updateStudyView('view1', updateBody as never);
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(fetchMock.mock.calls[0][0]).toBe('/api/study-views/saves/view1');
   expect(fetchMock.mock.calls[0][1]).toEqual(expect.objectContaining({

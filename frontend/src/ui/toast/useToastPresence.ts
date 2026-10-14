@@ -51,7 +51,7 @@ export function useToastPresence(visible: boolean, onExited?: () => void) {
     }, TOAST_EXIT_MS);
     return () => window.clearTimeout(timer);
     // rendered 는 ref 로 읽어 재실행을 피한다 — visible 변화에만 반응한다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [visible]);
 
   return { rendered, phase };

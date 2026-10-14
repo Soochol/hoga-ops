@@ -2493,7 +2493,7 @@ describe('trimRangeBundleBefore — 병합본 왼쪽 잘라내기', () => {
 describe('useRangeSidecarDelta — 창이 좁아지면 **어느 경로로 나오든** 잘린다 (배선)', () => {
   /** 요청 URL 의 from/to 를 그대로 되싣는 번들. 세그먼트는 날짜당 1개. */
   function bundleFor(url: string): RangeBundle {
-    const [, from, to] = /from=(\d+)&to=(\d+)/.exec(url) ?? [, '', ''];
+    const [, from, to] = /from=(\d+)&to=(\d+)/.exec(url) ?? ['', '', ''];
     const dates: string[] = [];
     for (let d = Number(from); d <= Number(to); d += 1) dates.push(String(d));
     const openOf = (date: string) => (Number(date) - 20260800) * 86_400_000 + 1_780_000_000_000;

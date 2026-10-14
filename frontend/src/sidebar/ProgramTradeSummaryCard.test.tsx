@@ -2,11 +2,8 @@ import * as summaryFormatting from '../live/investorDailySummary';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import ProgramTradeSummaryCard, {
-  buildTimeGapSegments,
-  pickProgramTradePoint,
-  PROGRAM_SPARK_GAP_THRESHOLD_MS,
-} from './ProgramTradeSummaryCard';
+import ProgramTradeSummaryCard, { PROGRAM_SPARK_GAP_THRESHOLD_MS } from './ProgramTradeSummaryCard';
+import { buildTimeGapSegments, pickProgramTradePoint } from './ProgramTradeSummaryCardHelpers';
 import { useProgramTradeDisplayStore } from '../state/programTradeDisplay';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 

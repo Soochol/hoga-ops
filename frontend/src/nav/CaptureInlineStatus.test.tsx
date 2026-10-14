@@ -19,7 +19,7 @@ function W(qc: QueryClient) {
 }
 
 function setup(snap: QueueSnapshot) {
-  vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok: true,
     status: 200,
     json: async () => snap,

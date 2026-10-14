@@ -1,7 +1,8 @@
 import type { CatalogEntry } from './types';
-import { DepthRenewalForm, hhmmToTimeValue } from '../paramForms';
+import { DepthRenewalForm } from '../paramForms';
+import { hhmmToTimeValue } from '../paramFormsHelpers';
 
-export const bid_depth_renewal: CatalogEntry = {
+export const bid_depth_renewal: CatalogEntry<'bid_depth_renewal'> = {
   label: '매수 총잔량 기준시각 돌파',
   defaultParams: { start_hhmm: 1200, threshold_pct: 100 },
   ParamForm: DepthRenewalForm,

@@ -18,14 +18,16 @@
  * kind 별로 필요한 훅이 다르므로 하위 컴포넌트로 분기한다(한 컴포넌트에서 조건부
  * 훅 호출 금지 — 각 하위 컴포넌트가 자기 훅만 무조건 호출).
  */
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo } from 'react';
 import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
 import { returnGroupToLatest } from './returnGroupToLatest';
 import { useConnectionLiveness } from '../../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../../api/liveness';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
-import BookPanel, { type BookTrade } from './BookPanel';
+import BookPanel from './BookPanel';
+import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
+import { useBookSessionDisplay } from './useBookSessionDisplay';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import TradeTickTable from '../../sidebar/TradeTickTable';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
@@ -56,15 +58,7 @@ import {
 } from '../../api/useLiveCursor';
 import { useScreenerDailyCandles, prevCloseBeforeDate } from '../../api/screenerDailyCandles';
 import { useLiveVenueStore } from '../../state/liveVenue';
-import { useEffectiveVenue, useKrxAftermarketExcluded, useNxtEnabledResolver } from '../useEffectiveVenue';
-import {
-  bookSessionControl,
-  bookSessionEpoch,
-  hasBookSessionToggle,
-  resolveBookSessionMode,
-  type BookSessionMode,
-  type BookSessionOverride,
-} from '../bookSessionMode';
+import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { isSecondTimeframe, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
@@ -75,18 +69,12 @@ import {
   mergeBrokerSeriesWithLiveTail,
   aggregateProgramTrade,
   mergeProgramTradeWithLiveTail,
-  latestAfterHoursTotals,
   latestOrderbookSnapshot,
   latestTradeSummary,
   fillTradeSummaryFromQuote,
   orderbookSnapshotAtCursor,
   orderbookSnapshotBeforeCursor,
 } from '../liveSidebarAdapters';
-import {
-  afterHoursBookToSnapshot,
-  afterHoursFillRows,
-  useAfterHoursBook,
-} from '../../api/liveAfterHoursBook';
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { useGroupChartLink } from './groupChartLinkSource';
 import {
@@ -268,160 +256,15 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         : isSpot && spotSnap === null && spotTimeframe !== null && scope.cursorMs !== null
         ? orderbookSnapshotAtCursor(venueOb, scope.cursorMs, TIMEFRAME_TO_MS[spotTimeframe as Timeframe])
         : null,
-    [isSpot, spotSnap, spotTimeframe, scope.cursorMs, venueOb],
-  );
-  // ── 세션 모드 ────────────────────────────────────────────────────────────
-  // 갈래 판정은 **종목의 NXT 상장 여부**다(`bookSessionMode`). 갈래 A(KRX 전용)만
-  // 토글을 갖고, 그 토글이 **사다리·총잔량·체결창의 출처를 한꺼번에** 가른다.
-  //
-  // 셋을 함께 묶는 것이 요점이다 — 한 모드는 한 장만 보여준다.
-  //
-  // ⚠ **예외가 하나 있고, 의도된 것이다**(2026-08-28). 15:40–16:00 의 정규장 모드는
-  // 사다리(15:30 정규장)와 총잔량(0E 시간외)의 출처가 갈린다. 그 구간엔 시간외
-  // 사다리라는 것이 아예 없어서(단일 가격) 묶을 대상이 한쪽뿐이고, 묶겠다고 0E 를
-  // 버리면 **그 20분의 유일한 실시간 신호**가 화면에서 사라진다. 그래서 종전의
-  // "합이 안 맞는 게 정상 + 라벨이 설명" 규약을 그 구간에만 되살렸다(`afterHoursTotals`).
-  //
-  // 이 블록이 아래 조회들보다 **앞에 와야 한다**: 시간외 조회를 창 밖에서도 걸지가
-  // 모드에 달렸기 때문이다.
-  const nxtEnabledOf = useNxtEnabledResolver();
-  const nxtEnabled = nxtEnabledOf(code);
-  const aftermarketExcluded = useKrxAftermarketExcluded(code);
-  const effectiveVenue = useEffectiveVenue(code, venue);
-  // 오버라이드가 **자기 epoch 를 달고 다닌다** — 만료를 타이머가 아니라 판정으로
-  // 하기 위해서다(탭이 잠들었다 깨어나도 맞는다. `bookSessionMode` docstring).
-  const [sessionOverride, setSessionOverride] = useState<BookSessionOverride>(null);
-  const sessionMode = resolveBookSessionMode(sessionOverride);
-  const selectSessionMode = useCallback((mode: BookSessionMode) => {
-    setSessionOverride({ mode, epoch: bookSessionEpoch() });
-  }, []);
-  /** 모드가 출처를 가르는가 — 갈래 A 에서만 참. 갈래 B·모름은 종전 동작 그대로다. */
-  const modeGated = hasBookSessionToggle(nxtEnabled, isSpot, nowMs);
-  const showAfterHours = !modeGated || sessionMode === 'afterHours';
-
-  // 시간외 단일가 5단(ka10087) — 16:00–18:00 창에서는 벤더를 폴링한다. 그 구간엔 WS
-  // 가 침묵해 이게 유일한 호가 소스다(`liveAfterHoursBook` 참조). 스팟 커서 중에는
-  // 아예 끈다 — 과거 시점 위에 "지금 호가"를 얹으면 거짓 정보다.
-  //
-  // `includeStored` 는 **창 밖 조회**를 연다(그날 마지막 저장본). 갈래 A 가 시간외를
-  // 가리킬 때만 켜는 이유: 모든 창이 종일 이걸 물으면 저장본이 없는 종목에까지
-  // 무의미한 왕복이 생긴다.
-  const afterHoursBook = useAfterHoursBook(isSpot ? null : code, {
-    includeStored: modeGated && sessionMode === 'afterHours',
-  });
-  // 예상체결(`exp_price`/`exp_qty`)은 이 응답에 **함께** 실려 온다 — 백엔드가 ka10087
-  // 과 ka10001 을 같은 TTL 축에서 치기 때문이다. 따로 폴링하지 않는 이유는 두 값의
-  // 시점이 갈리면 사다리와 배너가 다른 순간을 가리키기 때문이다.
-  const singlePriceSnapshot = useMemo(
-    () => afterHoursBookToSnapshot(afterHoursBook.data),
-    [afterHoursBook.data],
-  );
-  /**
-   * 시간외 단일가 응답을 **이 창이 실제로 쓰는가** — 쓰면 그 스냅샷, 아니면 null.
-   *
-   * ⚠ **게이트를 값에 굽는 것이 요점이다.** 종전에는 소비처마다
-   * `showAfterHours && singlePriceSnapshot !== null` 을 손으로 따로 적었고, 그 중
-   * **등락률 분모 한 곳만 `showAfterHours` 를 빠뜨렸다**. 결과: 갈래 A 에서 16:00–18:00
-   * 에 정규장으로 되돌리면 사다리·체결창·총잔량은 정규장인데 **분모만 시간외 종가**로
-   * 남아 한 창에 두 기준이 섞였다(사용자 보고 2026-08-28). `resolveBookBaseline` 이
-   * 시각 축에서 고쳤다고 적어 둔 바로 그 오류가 모드 축에서 재발한 것이다.
-   *
-   * 소비처가 이 값 하나만 보면 같은 실수가 구조적으로 불가능해진다.
-   *
-   * ⚠ 사다리(`snapshot`)는 **이 값을 쓰지 않는다.** 갈래 A 의 시간외 모드는 응답이
-   * 없어도 정규장으로 폴백하지 않는다는 별도 규약이라 식이 다르다(아래 참조).
-   */
-  const activeSinglePrice = showAfterHours ? singlePriceSnapshot : null;
-  // 합성 체결 — 이 구간의 체결창 내용이다. 벤더가 개별 체결을 주지 않아 백엔드가
-  // 누적 증분에서 만든 것이고(`AfterHoursFillModel`), **WS 체결 경로를 타지 않는다**.
-  // 그래서 venue 필터와도 무관하다 — 애초에 그 파이프에 들어오지 않는다.
-  const singlePriceFills = useMemo(
-    () => afterHoursFillRows(afterHoursBook.data),
-    [afterHoursBook.data],
+    [isSpot, spotSnap, spotTimeframe, scope.kind, scope.cursorMs, venueOb],
   );
   const regularSnapshot = resolveOrderbookCardSnapshot({
-    scope,
-    spotSnapshot: spotSnap,
-    inactiveSnapshot: latestSnapshot,
-    bufferFallbackSnapshot: bufferSnap,
+    scope, spotSnapshot: spotSnap, inactiveSnapshot: latestSnapshot, bufferFallbackSnapshot: bufferSnap,
   });
-  // 시간외 단일가 호가가 있으면 **사다리째** 그것으로 간다(5단이라 격자 바깥 5행은
-  // 빈다 — 사용자 결정). 없으면 정규장 스냅샷 그대로: `active=false` 는 "창 밖이거나
-  // 볼 호가가 없다" 라서 화면을 비우는 것보다 15:30 값을 남기는 편이 낫다.
-  //
-  // 갈래 A 의 시간외 모드에서는 그 폴백을 **하지 않는다**. 정규장 사다리를 "시간외"
-  // 라벨 아래 두면 라벨이 거짓말이 되고, 되돌릴 토글이 바로 옆에 있기 때문이다.
-  const snapshot = modeGated
-    ? (sessionMode === 'afterHours' ? singlePriceSnapshot : regularSnapshot)
-    : (singlePriceSnapshot ?? regularSnapshot);
-  // 오늘(KST). 등락률 기준가 판정과 아래 총잔량 날짜 가드가 **같은 값을 봐야** 한다 —
-  // 둘이 갈리면 자정 근처에서 한쪽만 날짜를 넘긴다.
-  const todayKst = link?.todayKst ?? realMsToYyyymmdd(Date.now());
-  // 하단 총잔량 스트립의 출처. deltaBadges 와 같은 규율로 스팟 중에는 전부 끈다.
-  //   16:00–18:00  ka10087 총잔량(사다리와 같은 출처라 합이 맞는다)
-  //   15:40–16:00  WS 0E 총잔량(사다리는 15:30 정규장 마지막 — 합이 **안 맞는 게 정상**)
-  const afterHoursTotals = useMemo(() => {
-    if (isSpot) return null;
-    // ka10087 총잔량은 **사다리와 한 몸이다** — 같은 응답에서 왔고 합이 맞는다.
-    // 그래서 시간외 모드에서만 쓴다. 정규장 모드의 사다리는 정규장 값이라, 거기에
-    // 5단 총잔량을 얹으면 두 숫자가 화면에 없는 사다리를 설명하게 된다.
-    if (activeSinglePrice !== null) {
-      // 누적 체결량(`acc_volume`)은 **싣지 않는다** — 스트립에서 뺐다(2026-08-19).
-      // 그 구간의 체결은 이제 체결창이 주기별 행으로 그린다.
-      return { ask: activeSinglePrice.tot_ask, bid: activeSinglePrice.tot_bid };
-    }
-    // 사다리 t_ms 를 함께 넘긴다 — 0E 덧씌우기는 **사다리가 멈춰 있을 때만** 옳다.
-    // 넘기지 않으면 NXT 프리마켓처럼 사다리가 살아 있는 구간에서 08:40 에 멎은
-    // KRX 시간외 총잔량이 그 위에 덮인다(판정 근거는 `latestAfterHoursTotals`).
-    const totals = latestAfterHoursTotals(live.afterHours, latestSnapshot?.ts_ms ?? null);
-    if (totals === null || showAfterHours) return totals;
-    // ── 여기부터가 갈래 A 의 **정규장 모드**다(사용자 결정 2026-08-28).
-    //
-    // 종전엔 여기서 `null` 로 끊었다. 근거는 "모드가 사다리와 총잔량을 같은 장으로
-    // 묶는다" 였는데, 그 규율이 15:40–16:00 을 **두 모드 모두 쓸 수 없게** 만들었다:
-    // 정규장 모드는 사다리가 있지만 잔량이 15:30 에 얼어붙고(스트립이 스냅샷 총잔량
-    // 으로 떨어진다), 시간외 모드는 잔량이 살아 있지만 사다리가 통째로 빈다(그 구간엔
-    // ka10087 창이 아직 안 열렸다). 그 20분에 존재하는 **유일한 실시간 호가 신호가
-    // 0E 두 숫자**이므로 정규장 사다리 위에 그것을 얹고, 출처가 갈렸다는 사실은
-    // 라벨이 말한다(`regularTotalsAreAfterHours`).
-    //
-    // 날짜 가드가 **여기에만** 붙는다: `last_ob` 는 날짜를 넘겨 복원되므로 사다리가
-    // **어제** 것일 수 있다. 그 위에 오늘 0E 를 얹으면 두 숫자가 다른 날을 가리킨다.
-    // 시간외 모드(`showAfterHours`)에는 걸지 **않는다** — 그쪽은 사다리 없이 총잔량만
-    // 그리는 화면이라 섞일 것이 없고, 걸면 아침의 유일한 신호가 사라지는 회귀가 된다.
-    //
-    // ⚠ **사다리 부재(`null`)는 통과시킨다.** 08:00 만료가 전일 사다리를 내리면서
-    // 08:30–08:40 이 정확히 그 상태가 됐는데, 부재를 막으면 만료가 이 구간의 총잔량을
-    // 함께 죽인다 — 위 "아침의 유일한 신호" 와 같은 회귀를 만료가 뒷문으로 되살리는
-    // 꼴이다. 섞일 사다리가 없으면 섞일 위험도 없다.
-    if (snapshot == null) return totals;
-    return realMsToYyyymmdd(snapshot.ts_ms) === todayKst ? totals : null;
-  }, [
-    isSpot, showAfterHours, activeSinglePrice, live.afterHours, afterHoursBook.data,
-    latestSnapshot, snapshot, todayKst,
-  ]);
-  const afterHoursLabel = activeSinglePrice !== null ? '시간외 단일가' : '시간외';
-  const sessionControl = bookSessionControl({
-    nowMs,
-    ladderAtMs: snapshot?.ts_ms,
-    aftermarketExcluded,
-    nxtEnabled,
-    // **유효 venue** 다 — NXT 상장 종목에 KRX 를 고르면 애프터마켓 프레임이 걸러져
-    // 화면엔 15:30 정지본이 뜨므로, 라벨이 그 사실을 말해야 한다.
-    venue: effectiveVenue,
-    isSpot,
-    // 저장본이면 **그 시각**을 라벨에 싣는다. 저장은 프론트가 마지막으로 본 순간에
-    // 일어나므로(라우트 write-through) 언제 값인지 말하지 않으면 그날 최종가로
-    // 오해한다.
-    afterHoursStoredAtMs:
-      afterHoursBook.data?.source === 'stored' ? afterHoursBook.data.fetched_at_ms : null,
-    // 정규장 모드인데 하단 총잔량만 시간외 값이면 **그리고 있는 사다리의 시각**.
-    // **렌더 조건을 다시 쓰지 않고 그 결과를 넘긴다** — 조건을 두 곳에 적으면 라벨이
-    // 화면과 갈린다(저장값을 그린 토글이 첫 화면에서 거짓말한 그 함정과 같은 형태).
-    regularLadderAtMs:
-      sessionMode === 'regular' && afterHoursTotals !== null && snapshot != null
-        ? snapshot.ts_ms
-        : null,
+  const todayKst = link?.todayKst ?? realMsToYyyymmdd(nowMs);
+  const { snapshot, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
+    afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
+    code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, afterHours: live.afterHours,
   });
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
@@ -571,21 +414,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   );
   // 체결 리스트: 버퍼 엔트리 1건에 체결 여러 개가 실린다. 최신이 위로 오도록
   // 뒤에서부터 펼치고, 표시분(9행 — BookPanel 3열 바닥 정렬)보다 넉넉히 잡아 자른다.
-  const recentTrades = useMemo(() => {
-    if (isSpot) return [];
-    const out: BookTrade[] = [];
-    for (let i = venueTrade.length - 1; i >= 0 && out.length < 24; i--) {
-      const rows = venueTrade[i].trades;
-      if (!Array.isArray(rows)) continue;
-      for (let j = rows.length - 1; j >= 0 && out.length < 24; j--) {
-        const r = rows[j] as { price?: unknown; qty?: unknown; side?: unknown };
-        if (typeof r?.price === 'number' && typeof r.qty === 'number') {
-          out.push({ price: r.price, qty: r.qty, side: typeof r.side === 'number' ? r.side : 0 });
-        }
-      }
-    }
-    return out;
-  }, [isSpot, venueTrade]);
+  const recentTrades = useMemo(() => isSpot ? [] : recentBookTrades(venueTrade, 24), [isSpot, venueTrade]);
   // 시간외 단일가 구간에는 **합성 체결**이 체결창을 채운다. WS 체결(0B)은 16:00 에
   // 끊기므로 `recentTrades` 는 그때부터 15:59 의 화석이고, 그것을 "지금 흐르는 체결"
   // 자리에 두면 시각이 안 보이는 만큼 조용히 거짓이 된다.
@@ -1095,45 +924,4 @@ function candleRangeUnbounded(
     if (Number.isFinite(candle.high)) max = Math.max(max, candle.high);
   }
   return Number.isFinite(min) && Number.isFinite(max) && min < max ? { min, max } : null;
-}
-
-/**
- * 10호가 창 등락률의 **분모**를 고른다. 세 갈래이고 우선순위가 있다.
- *
- * 1. **과거 날짜 사다리** → 그날의 전일종가. 분자(호가)만 과거로 가고 분모가 오늘에
- *    남으면 부호까지 뒤집힌다(2026-08-03 실측: −20.00% 로 찍힌 값의 정답이 +0.72%).
- *
- *    **판정 기준은 커서가 아니라 사다리다**(2026-08-20). 두 날짜는 스팟 조회가
- *    비행 중일 때 갈리는데, 그때 커서로 판정하면 같은 오류의 축소판이 매 이동마다
- *    난다 — 옛 사다리에 새 날짜의 분모. 커서가 아니라 **화면에 그려진 가격**이
- *    분모의 짝이다.
- * 2. **시간외 단일가(16:00–18:00)** → **당일 종가**. 그 구간의 거래는 종가 ±10%
- *    안에서 이뤄지므로 전일종가 기준 등락률은 화면에서 의미가 없다 — 종가가 곧
- *    0% 여야 한다. 벤더도 자기 `change_pct` 를 종가 기준으로 주는데 사다리만
- *    정규장 분모를 써서 **한 창 안에 두 기준이 섞여** 있었다(2026-08-18 실측,
- *    028050: 요약의 −0.42% 는 종가 47,900 기준인데 같은 화면 사다리의 47,900 은
- *    −3.82% = 전일종가 49,800 기준).
- * 3. 그 외 → 전일종가.
- *
- * **모름은 전일종가로 떨어지지 않는다.** 2번에서 `singlePriceClose` 가 null 이면
- * null 을 그대로 돌려준다 — `?? liveBaseline` 로 접으면 모름이 조용히 정규장 분모로
- * 대체돼 원래 버그가 그대로 돌아온다. 분모를 모르면 등락률을 **생략**하는 것이
- * 이 코드베이스의 규율이다(`hidden_pre_open` 이 같은 이유로 값을 죽인다).
- */
-export function resolveBookBaseline({
-  isPastDateLadder,
-  ladderBaseline,
-  singlePriceActive,
-  singlePriceClose,
-  liveBaseline,
-}: {
-  isPastDateLadder: boolean;
-  ladderBaseline: number | null;
-  singlePriceActive: boolean;
-  singlePriceClose: number | null;
-  liveBaseline: number | null;
-}): number | null {
-  if (isPastDateLadder) return ladderBaseline;
-  if (singlePriceActive) return singlePriceClose;
-  return liveBaseline;
 }

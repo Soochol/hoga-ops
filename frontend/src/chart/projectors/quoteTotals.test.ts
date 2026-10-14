@@ -1,3 +1,4 @@
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect } from 'vitest';
 import { projectBid, projectAsk, QUOTE_TOTALS_SPEC, askSurgeMarkers, bidSurgeMarkers } from './quoteTotals';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -12,14 +13,14 @@ const ask = '#3485FA';
 
 describe('projectBid', () => {
   it('maps quote_ratio.points to {time, bid_total} in virtual seconds', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },
           { t: sessionOpenMs + 1000, bid_total: 150, ask_total: 180 },
         ],
       },
-    };
+    });
     expect(projectBid(bundle, axis, false)).toEqual([
       { time: 0, value: 100, color: bid },
       { time: 1, value: 150, color: bid },
@@ -27,20 +28,20 @@ describe('projectBid', () => {
   });
 
   it('drops pre-open auction points via axis.contains', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs - 30 * 60_000, bid_total: 99, ask_total: 99 },
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },
         ],
       },
-    };
+    });
     expect(projectBid(bundle, axis, false)).toHaveLength(1);
     expect((projectBid(bundle, axis, false) as { time: number; value: number }[])[0].value).toBe(100);
   });
 
   it('masks a mid-session (0,0) excluded bucket (장중 VI) when mask on, shows it when off (ADR-0062 v2)', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },        // 연속거래
@@ -48,26 +49,26 @@ describe('projectBid', () => {
           { t: sessionOpenMs + 2000, bid_total: 150, ask_total: 180 },
         ],
       },
-    };
+    });
     // mask ON: 구조 센티넬로 (0,0) 점이 숨김색(transparent)으로 마스킹된다.
-    const masked = projectBid(bundle, axis, true) as any[];
+    const masked = projectBid(bundle, axis, true) as never[];
     expect(masked[1]).toMatchObject({ time: 1, value: 0, ...LINE_HIDDEN_COLOR });
     // mask OFF: (0,0)을 그대로 노출(숨김색 아님).
-    const shown = projectBid(bundle, axis, false) as any[];
+    const shown = projectBid(bundle, axis, false) as never[];
     expect(shown[1]).toEqual({ time: 1, value: 0, color: bid });
   });
 });
 
 describe('projectAsk', () => {
   it('maps quote_ratio.points to {time, ask_total} in virtual seconds', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },
           { t: sessionOpenMs + 1000, bid_total: 150, ask_total: 180 },
         ],
       },
-    };
+    });
     expect(projectAsk(bundle, axis, false)).toEqual([
       { time: 0, value: 200, color: ask },
       { time: 1, value: 180, color: ask },
@@ -75,7 +76,7 @@ describe('projectAsk', () => {
   });
 
   it('keeps both quote-total sides bright regardless of ratio dominance', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 300, ask_total: 100 },
@@ -83,7 +84,7 @@ describe('projectAsk', () => {
           { t: sessionOpenMs + 2000, bid_total: 100, ask_total: 100 },
         ],
       },
-    };
+    });
     expect(projectBid(bundle, axis, false).map((p) => p.color)).toEqual([bid, bid, bid]);
     expect(projectAsk(bundle, axis, false).map((p) => p.color)).toEqual([ask, ask, ask]);
   });
@@ -92,7 +93,7 @@ describe('projectAsk', () => {
 describe('closing-auction-window hide', () => {
   it('emits in-window bid/ask points with transparent per-point color when auctionWindowMask=true', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → kept
@@ -100,7 +101,7 @@ describe('closing-auction-window hide', () => {
           { t: auctionStartMs + 120_000, bid_total: 600, ask_total: 1000 },  // inside → transparent
         ],
       },
-    };
+    });
     const bids = projectBid(bundle, axis, true);
     const asks = projectAsk(bundle, axis, true);
 
@@ -134,14 +135,14 @@ describe('closing-auction-window hide', () => {
     // masked value=0. The last pre-auction point's outgoing segment must be
     // transparent too. (numbers from 한진칼 2026-06-04 3m 15:18 bucket.)
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: auctionStartMs - 60_000, bid_total: 274, ask_total: 404 }, // last continuous (15:19)
           { t: auctionStartMs + 60_000, bid_total: 33, ask_total: 3039 },  // auction (masked)
         ],
       },
-    };
+    });
     const tCont = (auctionStartMs - 60_000 - sessionOpenMs) / 1000;
     const tAuc = (auctionStartMs + 60_000 - sessionOpenMs) / 1000;
     expect(projectBid(bundle, axis, true)).toEqual([
@@ -156,13 +157,13 @@ describe('closing-auction-window hide', () => {
 
   it('keeps in-window points when auctionWindowMask=false', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000;
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: auctionStartMs + 60_000, bid_total: 500, ask_total: 900 },
         ],
       },
-    };
+    });
     expect(projectBid(bundle, axis, false)).toEqual([
       { time: (auctionStartMs + 60_000 - sessionOpenMs) / 1000, value: 500, color: bid },
     ]);
@@ -202,7 +203,7 @@ describe('QUOTE_TOTALS_SPEC crosshair marker', () => {
 
 describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () => {
   const ctx = { auctionMask: false, intraMax: false, surgeEnabled: true, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900, tickNormalize: false, surgeTickConfirmPct: 10 };
-  const bundle: any = {
+  const bundle = rangeBundleFixture( {
     quote_ratio: {
       points: [
         { t: sessionOpenMs, bid_total: 0, ask_total: 100 },           // 고가 100
@@ -211,7 +212,7 @@ describe('급증 마커 (askSurgeMarkers) — 근접 95% + 재무장 85%', () =>
       ],
     },
     segments: [{ session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
-  };
+  });
 
   it('직전 고가 96% 재접근 지점에 마커(time·price·color) — 라벨 없는 점, SurgeMarkersPrimitive가 렌더', () => {
     const m = askSurgeMarkers(bundle, axis, ctx);
@@ -253,7 +254,7 @@ describe('hoga data gaps', () => {
   }
 
   it('breaks bid/ask connectors across candle buckets with no hoga point', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       candles: [
         candle(sessionOpenMs),
@@ -284,7 +285,7 @@ describe('hoga data gaps', () => {
           },
         ],
       },
-    };
+    });
 
     expect(projectBid(bundle, axis, false)).toEqual([
       { time: 0, value: 100, color: 'rgba(0,0,0,0)' },
@@ -299,18 +300,18 @@ describe('hoga data gaps', () => {
   });
 
   it('does not synthesize a total line when all hoga data is missing', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       candles: [candle(sessionOpenMs), candle(sessionOpenMs + 60_000)],
       quote_ratio: { points: [] },
-    };
+    });
 
     expect(projectBid(bundle, axis, false)).toEqual([]);
     expect(projectAsk(bundle, axis, false)).toEqual([]);
   });
 
   it('applies the same hoga gap hiding through QUOTE_TOTALS_SPEC cached data path', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       segments: [
         { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'kiwoom_live' },
@@ -344,7 +345,7 @@ describe('hoga data gaps', () => {
           },
         ],
       },
-    };
+    });
     const ctx = { auctionMask: false, intraMax: false, surgeEnabled: false, surgeApproachPct: 95, surgeRearmPct: 85, surgeStartHHMM: 900, tickNormalize: false, surgeTickConfirmPct: 10 };
 
     expect(QUOTE_TOTALS_SPEC.series[0].data(bundle, axis, ctx)).toEqual([

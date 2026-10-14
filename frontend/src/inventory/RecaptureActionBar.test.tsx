@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { RecaptureActionBar } from './RecaptureActionBar';
-import { RECAPTURABLE_DISK_STATES, STATE_SHORT_LABEL } from './DiskStateBadge';
+import { RECAPTURABLE_DISK_STATES, STATE_SHORT_LABEL } from './DiskStateBadgeHelpers';
 
 const baseProps = {
   recapturableCount: 3,

@@ -18,7 +18,7 @@ async function connect(): Promise<FakeWebSocket> {
 
 describe('ws.ts', () => {
   it('delivers ch:event frames and emits connected on open', async () => {
-    const got: any[] = [];
+    const got: Array<Parameters<Parameters<typeof subscribeEvents>[0]>[0]> = [];
     subscribeEvents((e) => got.push(e));
     const sock = await connect();
     sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20260530' } });
@@ -27,7 +27,7 @@ describe('ws.ts', () => {
   });
 
   it('delivers ch:live frames only to the matching code', async () => {
-    const a: any[] = []; const b: any[] = [];
+    const a: Array<Parameters<Parameters<typeof subscribeLive>[1]>[0]> = []; const b: Array<Parameters<Parameters<typeof subscribeLive>[1]>[0]> = [];
     subscribeLive('005930', (d) => a.push(d));
     subscribeLive('000660', (d) => b.push(d));
     const sock = await connect();
@@ -50,7 +50,7 @@ describe('ws.ts', () => {
   });
 
   it('emits disconnected once on close', async () => {
-    const got: any[] = [];
+    const got: Array<Parameters<Parameters<typeof subscribeEvents>[0]>[0]> = [];
     subscribeEvents((e) => got.push(e));
     const sock = await connect();
     sock.serverClose();

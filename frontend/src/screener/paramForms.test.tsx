@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import {
-  BreakoutForm, DepthPeakForm, DepthPeakPeriodForm, DepthRenewalForm,
-  hhmmToTimeValue, timeValueToHhmm,
-} from './paramForms';
+import { BreakoutForm, DepthPeakForm, DepthPeakPeriodForm, DepthRenewalForm } from './paramForms';
+import { hhmmToTimeValue, timeValueToHhmm } from './paramFormsHelpers';
 
 describe('기준시각 HHMM ↔ <input type="time"> 변환', () => {
   it('HHMM 정수를 0 패딩된 시각 문자열로', () => {

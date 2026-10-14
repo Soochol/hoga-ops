@@ -1,3 +1,6 @@
+import type { RangeBundle } from '../../api/types';
+import type { VirtualAxis } from '../../util/virtualAxis';
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 // @vitest-environment node
 //
 // **벽시계가 아니라 축 호출 횟수로 주장한다.**
@@ -46,11 +49,11 @@ function countingAxis<T extends object>(target: T): { axis: T; calls: Record<str
 // 레거시 3-콜 경로를 재현한 레퍼런스 projector — **대조군**이다.
 // pre-Task-2 경로 그대로: filter→map, 3개 axis 호출, color 계산, 8필드.
 // 실제 토큰 색은 candle.ts에 module-private이라, 같은 작업량 재현 목적의 로컬 상수.
-function projectCandleLegacy(bundle: any, axis: any) {
+function projectCandleLegacy(bundle: RangeBundle, axis: VirtualAxis) {
   const up = 'up', down = 'down', muted = 'muted';
   return bundle.candles
-    .filter((c: any) => axis.contains(c.ts_ms))
-    .map((c: any) => {
+    .filter((c) => axis.contains(c.ts_ms))
+    .map((c) => {
       const inAuction = axis.inClosingAuctionWindow(c.ts_ms);
       const color = inAuction ? muted : c.close >= c.open ? up : down;
       return {
@@ -89,7 +92,7 @@ describe('projectCandle single-pass 계약', () => {
       candles.push({ ts_ms: open + m * 60_000, open: 100, close: 101, high: 102, low: 99 });
     }
   }
-  const bundle: any = { candles };
+  const bundle = rangeBundleFixture( { candles });
   const N = candles.length;
 
   const AXIS_METHODS = ['classifyAndProject', 'contains', 'inClosingAuctionWindow', 'toVirtual'] as const;
@@ -123,8 +126,8 @@ describe('projectCandle single-pass 계약', () => {
 
     expect(fused.length).toBe(legacy.length);
     // 색 토큰은 구현이 module-private 이라 값이 다르다 — 숫자 필드만 비교한다.
-    expect(fused.map((c: any) => [c.time, c.open, c.close, c.high, c.low]))
-      .toEqual(legacy.map((c: any) => [c.time, c.open, c.close, c.high, c.low]));
+    expect(fused.map((c) => [c.time, c.open, c.close, c.high, c.low]))
+      .toEqual(legacy.map((c) => [c.time, c.open, c.close, c.high, c.low]));
   });
 });
 
@@ -173,12 +176,12 @@ describe('호가 pane 프로젝터 single-pass 계약', () => {
     }
   }
   const N = quotePoints.length;
-  const bundle: any = {
+  const bundle = rangeBundleFixture( {
     code: '005930', bucket_ms: 60_000, segments: bundleSegments, candles: [],
     quote_ratio: { bucket_ms: 60_000, points: quotePoints },
     fill_strength: { bucket_ms: 60_000, points: fillPoints },
     program_trade: { points: programPoints },
-  };
+  });
 
   const AXIS_METHODS = ['classifyAndProject', 'contains', 'inClosingAuctionWindow', 'toVirtual'] as const;
   const totalAxisCalls = (calls: Record<string, number>) =>
@@ -194,10 +197,10 @@ describe('호가 pane 프로젝터 single-pass 계약', () => {
   };
 
   it.each([
-    ['총잔량 매수', (b: any, a: any) => projectBidPoints(b.quote_ratio.points, a, true)],
-    ['총잔량 매도', (b: any, a: any) => projectAskPoints(b.quote_ratio.points, a, true)],
-    ['체결강도 매수', (b: any, a: any) => projectBuyPoints(b.fill_strength.points, a, true)],
-    ['체결강도 매도', (b: any, a: any) => projectSellPoints(b.fill_strength.points, a, true)],
+    ['총잔량 매수', (b: RangeBundle, a: VirtualAxis) => projectBidPoints(b.quote_ratio.points, a, true)],
+    ['총잔량 매도', (b: RangeBundle, a: VirtualAxis) => projectAskPoints(b.quote_ratio.points, a, true)],
+    ['체결강도 매수', (b: RangeBundle, a: VirtualAxis) => projectBuyPoints(b.fill_strength.points, a, true)],
+    ['체결강도 매도', (b: RangeBundle, a: VirtualAxis) => projectSellPoints(b.fill_strength.points, a, true)],
   ])('%s — 점당 축 1회', (_label, run) => {
     const { axis: counted, calls } = countingAxis(axis);
     run(bundle, counted);
@@ -208,7 +211,7 @@ describe('호가 pane 프로젝터 single-pass 계약', () => {
     const { axis: counted, calls } = countingAxis(axis);
     projectRatioPoints(bundle.quote_ratio.points, counted, {
       auctionWindowMask: true, outlierFilterEnabled: false, outlierThreshold: 100, intraMax: false,
-    } as any);
+    } as never);
     expectOnePerPoint(calls, N);
   });
 
@@ -235,7 +238,7 @@ describe('호가 pane 프로젝터 single-pass 계약', () => {
 
   it('누적 체결강도 — 세그먼트 안 점당 축 1회', () => {
     const { axis: counted, calls } = countingAxis(axis);
-    projectCumulativeSegment(bundleSegments[0] as any, 0, fillPoints as any, counted, true, 60_000, true);
+    projectCumulativeSegment(bundleSegments[0] as never, 0, fillPoints as never, counted, true, 60_000, true);
     // 세그먼트 0 의 점만 방출 대상 — 나머지는 경계 검사에서 걸러 축을 안 두드린다.
     expect(calls.classifyAndProject).toBe(PER_DAY);
     // 남은 `contains`/`toVirtual` 은 **세그먼트당 1회**(0 앵커를 놓을 자리인지 보는

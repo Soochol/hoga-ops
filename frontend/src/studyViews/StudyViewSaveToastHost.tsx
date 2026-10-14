@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { create } from 'zustand';
 import { ToastCard } from '../ui/toast/ToastCard';
 import { useRightRailStore } from '../state/rightRail';
 import { useStudyViewReveal } from './studyViewReveal';
+import { useStudySaveNotice } from './StudyViewSaveToastHostHelpers';
 
-type Notice = { id: string; groupId: string; label: string; retryCapture?: () => void };
-export const useStudySaveNotice = create<{ notice: Notice | null }>(() => ({ notice: null }));
 const AUTO_DISMISS_MS = 6000;
+
 
 export function StudyViewSaveToastHost() {
   const notice = useStudySaveNotice((s) => s.notice);

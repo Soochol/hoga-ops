@@ -20,7 +20,7 @@ const HISTORY_RESPONSE = {
 };
 
 function setupCalendar() {
-  vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok: true, status: 200, json: async () => HISTORY_RESPONSE,
   } as Response);
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -150,7 +150,7 @@ describe('DateRangePicker reason banner', () => {
   // the same reason is returned for both months.
   function setupCalendarWithReason(reason: string | null) {
     const response = { ...HISTORY_RESPONSE, reason };
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200, json: async () => response,
     } as Response);
     return new QueryClient({ defaultOptions: { queries: { retry: false } } });

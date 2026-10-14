@@ -1,6 +1,7 @@
 import { render, fireEvent, screen, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach } from 'vitest';
-import DrawingPropertyPanel, { patternButtonState } from './DrawingPropertyPanel';
+import DrawingPropertyPanel from './DrawingPropertyPanel';
+import { patternButtonState } from './DrawingPropertyPanelHelpers';
 import { useDrawingsStore } from '../state/drawings';
 import type { Drawing } from './drawing/types';
 import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES } from './drawing/types';

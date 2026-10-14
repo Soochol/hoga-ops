@@ -1,7 +1,8 @@
 import { Fragment, useMemo, useState } from 'react';
 import type { StockDateGroup } from './types';
 import { fmtDate, fmtTime, fmtSize, fmtOHLC, fmtVolume, fmtClock, fmtGapDuration } from './format';
-import { DiskStateBadge, VenueStateCell, isRecapturable } from './DiskStateBadge';
+import { DiskStateBadge, VenueStateCell } from './DiskStateBadge';
+import { isRecapturable } from './DiskStateBadgeHelpers';
 import { sortDates, nextSortState, type SortKey, type SortState } from './sortDates';
 import { useInventoryRecapture } from './useInventoryRecapture';
 import { useInventoryUnblock } from './useInventoryUnblock';

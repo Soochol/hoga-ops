@@ -211,6 +211,13 @@ APP_VERSION: str = _read_app_version()
 APP_COMMIT: str = _read_git_commit()
 
 
+async def _paper_live_book(code: str) -> dict | None:
+    # Match the display's UN interpretation: KRX only for known NXT exclusions.
+    # Missing/stale UN for an eligible or unknown stock must never use KRX depth.
+    venue = "KRX" if _symbols_module.nxt_enabled_for_code(code) is False else "UN"
+    return await live_get_buffer().get_last_ob(code, venue)
+
+
 class HealthResponse(BaseModel):
     """GET /health 의 wire model — 얕은·부팅중·deep 세 형태를 한 모델로 담는다.
 
@@ -622,7 +629,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     )
     app.include_router(build_trading_router(app.state.trading_service))
     app.state.paper_trading_service = PaperTradingService(
-        data_dir, book_getter=lambda code: live_get_buffer().get_last_ob(code, "UN"),
+        data_dir, book_getter=_paper_live_book,
         on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision}),
     )
     app.include_router(build_paper_router(app.state.paper_trading_service))

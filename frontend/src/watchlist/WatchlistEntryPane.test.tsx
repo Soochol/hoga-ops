@@ -198,7 +198,7 @@ describe('WatchlistEntryPane', () => {
 
   it('per-row ↻ triggers catch-up and shows a result banner', async () => {
     vi.spyOn(api, 'getWatchlist').mockResolvedValue(DATA);
-    const c = vi.spyOn(api, 'catchupNow').mockResolvedValue({ enqueued: ['x'], deduped: [] } as any);
+    const c = vi.spyOn(api, 'catchupNow').mockResolvedValue({ enqueued: ['x'], deduped: [] } as never);
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistEntryPane selected="f_a" />, { wrapper: wrap(qc) });
     await screen.findByText('삼성전자');

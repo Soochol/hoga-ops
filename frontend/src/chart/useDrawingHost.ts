@@ -1,20 +1,21 @@
+import type { SeriesType } from 'lightweight-charts';
 import { useCallback, useEffect, useState } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import type { PaneId } from './drawing/types';
 import { useDrawingsStore } from '../state/drawings';
 
 export type DrawingHost = {
-  paneSeries: Map<PaneId, ISeriesApi<'Line'>>;
-  registerPaneSeries: (paneId: PaneId, series: ISeriesApi<'Line'>) => void;
+  paneSeries: Map<PaneId, ISeriesApi<SeriesType>>;
+  registerPaneSeries: (paneId: PaneId, series: ISeriesApi<SeriesType>) => void;
   unregisterPaneSeries: (paneId: PaneId) => void;
 };
 
 type PaneSeriesState = {
   chart: IChartApi | null;
-  paneSeries: Map<PaneId, ISeriesApi<'Line'>>;
+  paneSeries: Map<PaneId, ISeriesApi<SeriesType>>;
 };
 
-const EMPTY_PANE_SERIES = new Map<PaneId, ISeriesApi<'Line'>>();
+const EMPTY_PANE_SERIES = new Map<PaneId, ISeriesApi<SeriesType>>();
 
 /**
  * Drawing-host concerns extracted from LiveChartRoot: the paneSeries registry
@@ -35,7 +36,7 @@ export function useDrawingHost(
     paneSeriesState.chart === chart ? paneSeriesState.paneSeries : EMPTY_PANE_SERIES;
 
   const registerPaneSeries = useCallback(
-    (paneId: PaneId, series: ISeriesApi<'Line'>) => {
+    (paneId: PaneId, series: ISeriesApi<SeriesType>) => {
       setPaneSeriesState((prev) => {
         const base = prev.chart === chart ? prev.paneSeries : EMPTY_PANE_SERIES;
         const next = new Map(base);

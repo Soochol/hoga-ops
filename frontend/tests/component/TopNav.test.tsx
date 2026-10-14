@@ -18,7 +18,7 @@ vi.mock('../../src/nav/StatusDot', () => ({
 
 beforeEach(() => {
   vi.restoreAllMocks();
-  vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok: true,
     status: 200,
     json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }),

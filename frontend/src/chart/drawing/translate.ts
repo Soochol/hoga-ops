@@ -331,7 +331,7 @@ function pixelSpan(m: Drawing, axis: GeometryAxis, coords: AlignCoords): Span | 
     if (px != null) projected.push(px);
   }
   if (projected.length === 0) return null;
-  let min = Math.min(...projected);
+  const min = Math.min(...projected);
   let max = Math.max(...projected);
   if (m.kind === 'text') {
     const layout = textLayout(m.text, m.fontSize, coords.measureTextWidth);

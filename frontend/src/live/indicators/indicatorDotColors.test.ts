@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 import type { IndicatorSettings } from '../../state/indicatorSettingsV2';
 import { dotColorsFor, INDICATOR_DOT_LIMIT } from './indicatorDotColors';
-import { CATEGORIES } from './IndicatorPanel';
+import { CATEGORIES } from './IndicatorPanelHelpers';
 
 const base = (patch: Partial<IndicatorSettings> = {}): IndicatorSettings => ({
   ...FACTORY_INDICATOR_SETTINGS,

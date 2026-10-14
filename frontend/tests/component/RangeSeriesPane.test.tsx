@@ -1,7 +1,10 @@
+import type { RangeBundle } from '../../src/api/types';
+import type { VirtualAxis } from '../../src/util/virtualAxis';
+import { rangeBundleFixture } from '../fixtures/rangeBundle';
 import { render, act } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { LineSeries, type UTCTimestamp } from 'lightweight-charts';
+import { LineSeries, type UTCTimestamp, type IChartApi } from 'lightweight-charts';
 import RangeSeriesPane, { type PaneSpec } from '../../src/chart/RangeSeriesPane';
 import { createVirtualAxis } from '../../src/util/virtualAxis';
 
@@ -11,25 +14,23 @@ const makeMockChart = () => {
     update: ReturnType<typeof vi.fn>;
     createPriceLine: ReturnType<typeof vi.fn>;
   }> = [];
-  return {
-    chart: {
-      addSeries: vi.fn(() => {
+  const chart = {
+      addSeries: vi.fn((_definition: unknown, _options?: unknown, _paneIndex?: number) => {
         const s = { setData: vi.fn(), update: vi.fn(), createPriceLine: vi.fn() };
         seriesList.push(s);
         return s;
       }),
       clearCrosshairPosition: vi.fn(),
       removeSeries: vi.fn(),
-    } as any,
-    seriesList,
   };
+  return { chart: chart as typeof chart & IChartApi, seriesList };
 };
 
 const sessionOpenMs = 1_779_062_400_000;
 const axis = createVirtualAxis([
   { date: '20260518', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
 ]);
-const baseBundle: any = { quote_ratio: { points: [{ t: sessionOpenMs, bid_total: 100, ask_total: 200 }] } };
+const baseBundle = rangeBundleFixture({ quote_ratio: { points: [{ t: sessionOpenMs, bid_total: 100, ask_total: 200 }] } });
 
 describe('RangeSeriesPane', () => {
   it('mounts each series on the given paneIndex and feeds projector output to setData', () => {
@@ -41,7 +42,7 @@ describe('RangeSeriesPane', () => {
         {
           type: LineSeries,
           options: { color: '#aaa' },
-          data: (b, ax) => b.quote_ratio.points.map((p: any) => ({
+          data: (b, ax) => b.quote_ratio.points.map((p) => ({
             time: (ax.toVirtual(p.t) / 1000) as UTCTimestamp,
             value: p.bid_total,
           })),
@@ -112,7 +113,7 @@ describe('RangeSeriesPane', () => {
     // takes the update(tail) path. The intent under test is "ctx change re-runs
     // the data effect on the existing handle (no recreate)", independent of
     // whether that push is a setData or an update.
-    const dataFn = vi.fn((_b: any, _ax: any, ctx: { period: number }) => [
+    const dataFn = vi.fn((_b: RangeBundle, _ax: VirtualAxis, ctx: { period: number }) => [
       { time: 0 as UTCTimestamp, value: 1 },
       { time: 1 as UTCTimestamp, value: ctx.period },
     ]);

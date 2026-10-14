@@ -25,13 +25,24 @@ export function useClampedFixedPosition<T extends HTMLElement = HTMLElement>(
   // 문장이 뷰포트 밖으로 잘린다**(실측 bottom 779 > 720 — 정작 상황을 설명하는 부분이
   // 안 보인다). 크기 변화는 곧 리렌더이므로 매 커밋에서 다시 재면 그 순간을 놓치지 않는다.
   //
-  // 무한 루프는 두 가지가 함께 막는다: `clampToViewport` 는 현재 위치를 입력으로 받지
-  // 않는 **순수·멱등** 함수이고(같은 rect 면 같은 답), 값이 같으면 setPos 를 아예 부르지
-  // 않는다. 후자가 없으면 새 객체 identity 때문에 매번 리렌더가 돈다.
+  // auto 폭의 fixed 메뉴는 현재 left에 따라 가용 폭·줄바꿈·높이가 달라진다.
+  // 보정된 위치에서 다시 재면 크기 → 위치 → 크기의 순환이 생길 수 있으므로,
+  // paint 전에 잠깐 원점에서 재고 원래 inline 위치를 복구한다. 매 커밋 같은
+  // 공간에서 측정하므로 내용이 바뀔 때만 크기가 바뀐다.
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const { width, height } = el.getBoundingClientRect();
+    const { left, top } = el.style;
+    let rect: DOMRect;
+    try {
+      el.style.left = '0px';
+      el.style.top = '0px';
+      rect = el.getBoundingClientRect();
+    } finally {
+      el.style.left = left;
+      el.style.top = top;
+    }
+    const { width, height } = rect;
     const next = clampToViewport(rawLeft, rawTop, width, height, window.innerWidth, window.innerHeight);
     setPos((prev) => (prev.left === next.left && prev.top === next.top ? prev : next));
   });

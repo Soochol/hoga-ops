@@ -103,6 +103,13 @@ uv python install "$(cat .python-version)" \
 
 For frontend development:
 
+Frontend lint runs with `npm run lint`; TypeScript checks use `npm run typecheck`.
+Ordinary ESLint/Rules of Hooks errors fail lint. React Compiler diagnostics remain warnings while
+this React 18 app uses its existing incremental caches without the compiler;
+they are visible migration work, not a claim of compiler compatibility. Test
+fixtures use explicit wire or adapter types, and component modules keep utility
+exports in separate modules so Vite Fast Refresh has a component boundary.
+
 ```sh
 uv run --frozen uvicorn hoga.api.app:default_app --factory --host 127.0.0.1 --port 8000 --reload --reload-dir hoga
 cd frontend

@@ -12,6 +12,7 @@
 .order-window > .order-account-controls { min-width:0; }
 .order-account-group,.order-settings-group { display:flex; align-items:center; gap:6px; white-space:nowrap; }
 .order-account-controls > * { flex-shrink:0; }
+.order-market-basis { padding:2px 8px; white-space:nowrap; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
 .order-buying-power { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; }
 .order-quantity-controls { padding-top:4px; flex-wrap:nowrap; align-items:center; gap:8px; }
 .order-holdings-summary { display:flex; align-items:center; gap:10px; flex-shrink:0; }

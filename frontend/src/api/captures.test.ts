@@ -12,7 +12,7 @@ import { apiUrl, __resetConfigForTests } from './client';
 
 beforeAll(async () => {
   __resetConfigForTests();
-  const primer = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  const primer = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok: true,
     status: 200,
     json: async () => ({ api_url: 'http://test.local' }),
@@ -26,7 +26,7 @@ beforeEach(() => {
 });
 
 function mockFetch(body: unknown, ok = true, status = 200) {
-  return vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+  return vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
     ok,
     status,
     json: async () => body,

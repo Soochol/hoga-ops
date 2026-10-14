@@ -6,7 +6,7 @@ import { WATCHLIST_KEY } from './watchlistKeys';
 import { WatchlistAddForm } from './WatchlistAddForm';
 
 vi.mock('../capture/SymbolSearch', () => ({
-  SymbolSearch: ({ onChange }: { onChange: (h: any) => void }) => (
+  SymbolSearch: ({ onChange }: { onChange: (h: { code: string; name: string }) => void }) => (
     <button onClick={() => onChange({ code: '005930', name: '삼성전자' })}>pick</button>
   ),
 }));

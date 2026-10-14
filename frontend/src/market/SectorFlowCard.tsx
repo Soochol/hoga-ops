@@ -25,7 +25,8 @@ import {
   type MarketName,
   type SectorFlowRow,
 } from '../api/market';
-import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch, useCardPref } from './marketCardBits';
+import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
+import { useCardPref } from './marketCardBitsHelpers';
 
 type Actor = 'foreign' | 'institution' | 'individual';
 /** 시장 라벨은 `api/market` 의 `MarketName` 하나로 모은다 — 같은 union 을 두 벌 두면

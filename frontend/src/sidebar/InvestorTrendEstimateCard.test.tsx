@@ -2,13 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import {
-  formatAggregationSlot,
-  formatAmount,
-  formatQty,
-  InvestorTrendEstimateCard,
-  toDescendingDisplayRows,
-} from './InvestorTrendEstimateCard';
+import { InvestorTrendEstimateCard } from './InvestorTrendEstimateCard';
+import { formatAggregationSlot, formatAmount, formatQty, toDescendingDisplayRows } from './InvestorTrendEstimateCardHelpers';
 import type { LiveInvestorTrendEstimateResponse } from '../api/liveInvestorTrendEstimate';
 import { useInvestorEstimateUnitStore } from '../state/investorEstimateUnit';
 

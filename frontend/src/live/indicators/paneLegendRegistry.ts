@@ -1,3 +1,4 @@
+import type { SeriesType } from 'lightweight-charts';
 import type { ISeriesApi } from 'lightweight-charts';
 import type { PaneId } from '../../chart/drawing/types';
 import type { SeriesLegendMeta } from '../../chart/RangeSeriesPane';
@@ -7,7 +8,7 @@ import { createWindowScopedRegistry } from './windowScopedRegistry';
  *  colocated `SeriesLegendMeta` (label/color/format). `PaneLegendOverlay` reads
  *  the value back through `readSeriesValue(series, param.seriesData)` so the
  *  legend shows the SAME value the chart draws (no recompute / drift). */
-export type LegendSeriesEntry = { series: ISeriesApi<any>; meta: SeriesLegendMeta };
+export type LegendSeriesEntry = { series: ISeriesApi<SeriesType>; meta: SeriesLegendMeta };
 
 /** Registry of pane legend series, keyed by **(창, `PaneId`)**. Registered by
  *  `RangeSeriesPane`'s series-lifecycle effect for every pane whose spec

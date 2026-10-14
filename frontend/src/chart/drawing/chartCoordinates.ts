@@ -1,3 +1,4 @@
+import type { SeriesType } from 'lightweight-charts';
 // frontend/src/chart/drawing/chartCoordinates.ts
 //
 // Chart Coordinates — pixel ↔ (realMs, price) conversions for the Drawing
@@ -39,7 +40,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import type { PaneId, Point } from './types';
 import { paneValueToSeriesValue, seriesValueToPaneValue } from '../paneValueUnits';
 
-export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<any>>;
+export type PaneSeriesMap = ReadonlyMap<PaneId, ISeriesApi<SeriesType>>;
 
 /**
  * Reference for extrapolating time into the empty band right of the last candle
@@ -737,7 +738,7 @@ function extrapolateFutureRealMs(
 }
 
 /** A series' live pane index, or -1 if the chart/series is mid-teardown. */
-function safePaneIndex(series: ISeriesApi<any>): number {
+function safePaneIndex(series: ISeriesApi<SeriesType>): number {
   try {
     return series.getPane().paneIndex();
   } catch {

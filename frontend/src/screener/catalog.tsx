@@ -22,7 +22,7 @@ import type { CatalogEntry } from './conditions/types';
 // 평평한 순서 배열(구 CONDITION_ORDER)을 함께 두었더니, 그쪽만 채우고 그룹 목록을
 // 빠뜨려도 테스트가 통과해 조건이 메뉴에서 사라지는 일이 있었다(#1021). 렌더에 쓰이지
 // 않는 두 번째 순서 목록은 두지 않는다.
-export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
+export const CONDITION_CATALOG: { [T in ConditionType]: CatalogEntry<T> } = {
   trade_value, trade_value_period, new_high_today, new_high,
   new_high_vol_today, new_high_vol, high_off_peak, ask_depth_new_high, bid_depth_new_high,
   ask_depth_new_high_period, bid_depth_new_high_period,
@@ -31,4 +31,9 @@ export const CONDITION_CATALOG: Record<ConditionType, CatalogEntry> = {
 
 export function makeLeaf(type: ConditionType): ConditionLeaf {
   return { id: nanoid(8), type, params: structuredClone(CONDITION_CATALOG[type].defaultParams) } as ConditionLeaf;
+}
+
+/** Preserve the type/params correlation when a condition is selected dynamically. */
+export function catalogEntry<T extends ConditionType>(type: T): CatalogEntry<T> {
+  return CONDITION_CATALOG[type] as CatalogEntry<T>;
 }

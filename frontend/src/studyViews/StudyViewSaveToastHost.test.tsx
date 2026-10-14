@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { StudyViewSaveToastHost, useStudySaveNotice } from './StudyViewSaveToastHost';
+import { StudyViewSaveToastHost } from './StudyViewSaveToastHost';
+import { useStudySaveNotice } from './StudyViewSaveToastHostHelpers';
 
 const notice = { id: 'view-1', groupId: 'group-1', label: '관심 그룹' };
 beforeEach(() => {

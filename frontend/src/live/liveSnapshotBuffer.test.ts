@@ -37,7 +37,7 @@ describe('LiveSnapshotBuffer', () => {
 
   it('ignores entries with unknown kind', () => {
     const buf = new LiveSnapshotBuffer();
-    buf.push({ t_ms: 1, kind: 'bogus' } as any);
+    buf.push({ t_ms: 1, kind: 'bogus' } as never);
     expect(buf.get('ob')).toHaveLength(0);
     expect(buf.get('trade')).toHaveLength(0);
     expect(buf.get('broker')).toHaveLength(0);

@@ -1,3 +1,4 @@
+import type { WorkspaceWindow } from '../../src/state/workspace';
 import { test, expect } from '@playwright/test';
 import type { IChartApi } from 'lightweight-charts';
 import { installLiveMocks } from './helpers/liveMocks';
@@ -126,7 +127,7 @@ test('deep history: cached drag, backfill anchor, native window and latest value
       const rows = new Map(full.data().map(p => [p.time, p]));
       return native.panes()[i].getSeries()[j].data().every(p => {
         const original = rows.get(p.time)!;
-        return ['open', 'high', 'low', 'close', 'value'].every(key => (p as any)[key] === (original as any)[key]);
+        return ['open', 'high', 'low', 'close', 'value'].every(key => (p as unknown as Record<string, unknown>)[key] === (original as unknown as Record<string, unknown>)[key]);
       });
     }));
     return { x: ts.timeToCoordinate(anchor.time), spacing: ts.options().barSpacing,
@@ -176,7 +177,7 @@ test('deep history: cached drag, backfill anchor, native window and latest value
     const { useWorkspaceStore } = await import(path);
     const state = useWorkspaceStore.getState(); state.addWindow('chart');
     const wins = useWorkspaceStore.getState().windows.filter((w: { kind: string }) => w.kind === 'chart');
-    useWorkspaceStore.setState({ windows: wins.map((w: any, i: number) => ({ ...w, rect: { x: i / 2, y: 0, w: .5, h: 1 } })) });
+    useWorkspaceStore.setState({ windows: wins.map((w: WorkspaceWindow, i: number) => ({ ...w, rect: { x: i / 2, y: 0, w: .5, h: 1 } })) });
     state.setWindowSymbol(wins[1].id, { code: '098460', name: '고영', kind: 'stock' });
   }, requestPath);
   await page.waitForFunction(() => (window as unknown as ChartWindow).__liveCharts.size === 2);

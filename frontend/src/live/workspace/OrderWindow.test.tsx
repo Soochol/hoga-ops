@@ -6,6 +6,10 @@ import { OrderWindow } from './OrderWindow';
 import { DataWindow } from './DataWindow';
 import type { WorkspaceWindow } from '../../state/workspace';
 import { groupPriceOrders, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
+import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
+import { useLiveSeries } from '../../api/liveSeries';
+import { useQuoteByCode } from '../../api/liveQuotes';
+import { useLiveViStatus } from '../../api/liveViStatus';
 
 const mock = vi.hoisted(() => ({ configured: true, accountCount: 1, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -15,21 +19,119 @@ vi.mock('../../api/trading', () => ({
   useTradingState: () => ({ data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: '80', holding_quantity: '100', average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
-vi.mock('../../api/liveSeries', () => ({ useLiveSeries: () => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + mock.priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + mock.priceOffset - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }, trade: [] }) }));
-vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: () => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55 }]]) }));
+vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + mock.priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + mock.priceOffset - i * 100, qty: 200 + i })), total_ask_qty: 1000, total_bid_qty: 2000 }, trade: [], afterHours: [] })) }));
+vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55 }]])) }));
 vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 70000, low_250: 50000 } }) }));
 vi.mock('../../api/liveKrxClose', () => ({ useLiveKrxClose: () => ({ data: { date: '20261013', price: 67100 } }) }));
-vi.mock('../../api/liveViStatus', () => ({ useLiveViStatus: () => ({ data: { vi: null } }) }));
+vi.mock('../../api/liveViStatus', () => ({ useLiveViStatus: vi.fn(() => ({ data: { vi: null } })) }));
 vi.mock('../../util/useWallClockSecond', () => ({ useWallClockSecond: () => mock.now }));
+vi.mock('../useMinuteClock', () => ({ useMinuteClock: () => mock.now }));
+const symbolMaster = vi.hoisted(() => ({ nxtEnabled: true as boolean | null }));
+vi.mock('../../capture/useSymbols', () => ({ useSymbols: () => ({ data: { symbols: [{ code: '005930', nxt_enabled: symbolMaster.nxtEnabled }] } }) }));
+vi.mock('../../api/liveAfterHoursBook', async importOriginal => ({
+  ...await importOriginal<typeof import('../../api/liveAfterHoursBook')>(), useAfterHoursBook: () => ({ data: undefined }),
+}));
+vi.mock('../../api/useLiveCursor', () => ({ useLiveOrderbookAtCursor: () => ({ spot: undefined, stale: false, error: null }) }));
+vi.mock('../../api/screenerDailyCandles', async importOriginal => ({
+  ...await importOriginal<typeof import('../../api/screenerDailyCandles')>(), useScreenerDailyCandles: () => ({ data: undefined }),
+}));
 
 function order(id = 'a'): TossOrder {
   return { orderId: id, symbol: '005930', side: 'BUY', orderType: 'LIMIT', timeInForce: 'DAY', status: 'PARTIAL_FILLED', price: '67200', quantity: '100', orderAmount: null, currency: 'KRW', orderedAt: '', canceledAt: null,
     execution: { filledQuantity: '30', averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null } };
 }
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
-beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); });
+beforeEach(() => { mock.orders = []; mock.configured = true; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it.each(['KRX', 'NXT', 'UN'] as const)('%s 시세를 조회해도 실계좌 주문 본문에는 거래소를 보내지 않는다', async venue => {
+    useLiveVenueStore.setState({ venue });
+    show();
+    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
+    expect(useLiveSeries).toHaveBeenLastCalledWith('005930', venue);
+    expect(useQuoteByCode).toHaveBeenLastCalledWith(['005930'], venue);
+    expect(useLiveViStatus).toHaveBeenLastCalledWith('005930', venue);
+    expect(screen.getByLabelText('시세·주문 기준')).toHaveTextContent(`시세 ${venue === 'UN' ? '통합' : venue} · 주문 통합(SOR)`);
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
+    expect(mock.command.mock.calls[0]).toEqual(['/orders', {
+      account_seq: 1, command_id: expect.any(String), code: '005930', side: 'BUY', price: 67200,
+      quantity: 10, confirm_high_value: false,
+    }, 'live']);
+  });
+  it('통합 선택의 NXT 미상장 종목은 시세 KRX 대체와 모의 체결 기준을 표시한다', () => {
+    symbolMaster.nxtEnabled = false;
+    useLiveVenueStore.setState({ venue: 'UN' });
+    show();
+    expect(screen.getByLabelText('시세·주문 기준')).toHaveTextContent('시세 KRX (통합 선택) · 모의 체결 통합');
+    expect(useLiveViStatus).toHaveBeenLastCalledWith('005930', 'KRX');
+  });
+  it('venue 전환은 가격 미리보기와 고액 확인을 닫고 주문 수량·계좌 주문을 유지한다', () => {
+    mock.orders = [order()];
+    show();
+    fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: 'live' } });
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2000' } });
+    fireEvent.pointerEnter(screen.getByRole('button', { name: /매수 67,300원 주문 추가/ }).closest('.order-row')!);
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,300원 주문 추가/ }));
+    expect(screen.getByRole('dialog', { name: '고액 주문 확인' })).toBeInTheDocument();
+    act(() => useLiveVenueStore.setState({ venue: 'NXT' }));
+    expect(screen.queryByRole('dialog', { name: '고액 주문 확인' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(2000);
+    expect(screen.getByLabelText('매수 67,200원 주문', { exact: true })).toBeInTheDocument();
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('134,400,000원');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it('거래소를 바꾸면 10호가창과 주문창의 잔량·체결·체결강도·요약이 함께 바뀐다', () => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    const originalQuotes = vi.mocked(useQuoteByCode).getMockImplementation()!;
+    const indexOf = (venue: LiveVenueOption) => ['KRX', 'NXT', 'UN'].indexOf(venue) + 1;
+    vi.mocked(useLiveSeries).mockImplementation((_code, venue) => {
+      const index = indexOf(venue), price = 67200 + index * 1000;
+      return { initial: undefined, isLoading: false, error: null, broker: [], program: [], expected: [], afterHours: [], ob: [],
+        latestOb: { t_ms: mock.now, asks: Array.from({ length: 10 }, (_, i) => ({ price: price + 100 + i * 100, qty: index * 1000 + i })),
+          bids: Array.from({ length: 10 }, (_, i) => ({ price: price - i * 100, qty: index * 2000 + i })), total_ask_qty: index * 10000, total_bid_qty: index * 20000 },
+        trade: [{ t_ms: mock.now, fill_strength_pct: index * 50, trades: [{ price, qty: index * 7, side: 1 }] }],
+      };
+    });
+    vi.mocked(useQuoteByCode).mockImplementation((_codes, venue = 'KRX') => {
+      const index = indexOf(venue);
+      return new Map([['005930', { code: '005930', price: 67200 + index * 1000, change_pct: 0, change_won: 0,
+        baseline_price: 66000, volume: index * 100000, trade_value: index * 100000000, high: 70000, low: 65000, open: 67000 }]]);
+    });
+    try {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const win: WorkspaceWindow = { id: 'book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
+      const view = render(<QueryClientProvider client={client}>
+        <div data-testid="compare-book"><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></div>
+        <div data-testid="compare-order"><OrderWindow code="005930" name="삼성전자" /></div>
+      </QueryClientProvider>);
+      const book = within(screen.getByTestId('compare-book'));
+      const orderWindow = within(screen.getByTestId('compare-order'));
+      fireEvent.click(orderWindow.getByRole('button', { name: '종목 상세 정보' }));
+      const orderSummary = screen.getByRole('dialog', { name: '종목 상세 정보' });
+      for (const venue of ['KRX', 'NXT', 'UN'] as const) {
+        act(() => useLiveVenueStore.setState({ venue }));
+        const index = indexOf(venue), price = 67200 + index * 1000;
+        for (const scope of [book, orderWindow]) {
+          expect(scope.getByLabelText(`매도총잔량 ${(index * 10000).toLocaleString('ko-KR')}`)).toBeInTheDocument();
+          expect(scope.getByLabelText(`매수총잔량 ${(index * 20000).toLocaleString('ko-KR')}`)).toBeInTheDocument();
+        }
+        const bestAsk = screen.getByTestId('compare-order').querySelector(`[data-order-price="${price + 100}"] .order-depth-qty`);
+        expect(bestAsk).toHaveTextContent((index * 1000).toLocaleString('ko-KR'));
+        expect(screen.getByTestId('compare-book')).toHaveTextContent((index * 1000).toLocaleString('ko-KR'));
+        expect(screen.getByTestId('compare-book')).toHaveTextContent(`${(index * 50).toFixed(2)}%`);
+        expect(screen.getByTestId('compare-order')).toHaveTextContent(`체결강도${index * 50}%`);
+        expect(screen.getByTestId('compare-order').querySelectorAll('.order-info')[1]).toHaveTextContent(`${price.toLocaleString('ko-KR')}${index * 7}`);
+        expect(screen.getByTestId('compare-book')).toHaveTextContent(price.toLocaleString('ko-KR'));
+        expect(book.getByTestId('book-summary').textContent).toBe(within(orderSummary).getByTestId('book-summary').textContent);
+      }
+      expect(mock.command).not.toHaveBeenCalled();
+      view.unmount();
+    } finally {
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+      vi.mocked(useQuoteByCode).mockImplementation(originalQuotes);
+    }
+  });
   it.each(['paper', 'live'] as const)('%s 계좌의 매입수량 클릭은 전체 보유 수량을 채우고 다음 주문에 사용한다', async mode => {
     show();
     fireEvent.change(screen.getByRole('combobox', { name: '주문 모드' }), { target: { value: mode } });
@@ -432,10 +534,10 @@ describe('호가 주문', () => {
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0][1]).toMatchObject({ side });
   });
-  it('10호가창의 총잔량 스트립을 공유하고 숫자·비율 바만 표시한다', () => {
+  it('10호가창의 총잔량 스트립과 세션 라벨을 공유한다', () => {
     show();
     const strip = screen.getByTestId('book-total-strip');
-    expect(strip).toHaveTextContent('1,0002,000');
+    expect(strip).toHaveTextContent('1,000정규장2,000');
     expect(screen.getByLabelText('매도총잔량 1,000')).toHaveTextContent('1,000');
     expect(screen.getByLabelText('매수총잔량 2,000')).toHaveTextContent('2,000');
     expect(screen.getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '1000fr 2000fr' });

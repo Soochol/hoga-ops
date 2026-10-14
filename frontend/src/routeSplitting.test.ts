@@ -7,7 +7,7 @@
  *
  * 실측 2026-07-30: 초기 로드 1303KB → 1071KB (dist/index.html 의 modulepreload 집합
  * 합계). 두 곳이 함께여야 성립한다 —
- *   - main.tsx: 비-`/live` 라우트
+ *   - mainRoutes.tsx: 비-`/live` 라우트
  *   - App.tsx: 드로어·설정 모달 (App 은 레이아웃 라우트라 항상 로드된다)
  */
 import { describe, expect, it } from 'vitest';
@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 // setTimeout 반환형이 바뀌는 부작용). useLiveCursor.invariant.test.ts 와 같은 방식.
 import APP from './App.tsx?raw';
 import MAIN from './main.tsx?raw';
+import MAIN_ROUTES from './mainRoutes.tsx?raw';
 
 /** 정적 import 문만 추출 — `import(...)`(동적)과 구분한다. */
 function staticImportSources(src: string): string[] {
@@ -35,7 +36,7 @@ describe('초기 번들 코드 분할', () => {
       './pages/Market',
       './pages/Settings',
     ];
-    const statics = staticImportSources(MAIN);
+    const statics = [...staticImportSources(MAIN), ...staticImportSources(MAIN_ROUTES)];
     expect(statics.filter((s) => lazyOnly.includes(s))).toEqual([]);
   });
 
@@ -63,7 +64,8 @@ describe('초기 번들 코드 분할', () => {
   });
 
   it('두 파일 모두 lazy 를 실제로 쓴다 — 가드가 빈 목록을 훑고 통과하지 않게', () => {
-    expect(MAIN).toContain('lazy(');
+    expect(staticImportSources(MAIN)).toContain('./mainRoutes');
+    expect(MAIN_ROUTES).toContain('lazy(');
     expect(APP).toContain('lazy(');
   });
 });

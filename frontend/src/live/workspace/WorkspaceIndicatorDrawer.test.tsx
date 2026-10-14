@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { targetChartWindow, WorkspaceIndicatorDrawer } from './WorkspaceIndicatorDrawer';
-import { useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
+import { WorkspaceIndicatorDrawer } from './WorkspaceIndicatorDrawer';
+import { targetChartWindow, useWorkspaceStore, type WorkspaceWindow } from '../../state/workspace';
 import { useLivePageStore } from '../../state/livePage';
 import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 

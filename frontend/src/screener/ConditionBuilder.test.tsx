@@ -36,7 +36,7 @@ describe('ConditionBuilder', () => {
 
   it('repeated same-type leaves keep distinct ids', () => {
     const two = [{ id: 'p', type: 'new_high', params: { lookback: 200, period: 500 } },
-                 { id: 'q', type: 'new_high', params: { lookback: 20, period: 60 } }] as any;
+                 { id: 'q', type: 'new_high', params: { lookback: 20, period: 60 } }] as never;
     render(<ConditionBuilder conditions={two} universe={{}} onConditionsChange={vi.fn()} onUniverseChange={vi.fn()} />);
     expect(screen.getAllByText('기간내 신고가')).toHaveLength(2);
   });
@@ -47,7 +47,7 @@ describe('ConditionBuilder', () => {
       { id: 'a', type: 'trade_value', params: { min_eok: 1000 } },
       { id: 'b', type: 'new_high', params: { lookback: 250, period: 250 } },
       { id: 'c', type: 'ma', params: { source: 'high', op: 'above', period: 20 } },
-    ] as any;
+    ] as never;
 
     render(<ConditionBuilder conditions={conditions} universe={{}} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);
 

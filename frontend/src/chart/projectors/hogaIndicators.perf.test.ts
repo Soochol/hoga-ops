@@ -1,3 +1,5 @@
+import type { RangeBundle } from '../../api/types';
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 // @vitest-environment node
 //
 // **단언이 하나도 없는 벤치마크다** — 숫자를 console 로 찍을 뿐 아무것도 주장하지 않는다.
@@ -57,14 +59,14 @@ function makePoints(days: number) {
 function makeBundle(days: number) {
   const { axis, bundleSegs } = makeAxisAndSegments(days);
   const { qr, fs } = makePoints(days);
-  const bundle: any = {
+  const bundle = rangeBundleFixture( {
     segments: bundleSegs,
     bucket_ms: BUCKET_MS,
     quote_ratio: { bucket_ms: BUCKET_MS, points: qr },
     fill_strength: { bucket_ms: BUCKET_MS, points: fs },
     investorPoints: [],
     candles: [],
-  };
+  });
   return { bundle, axis, pointCount: qr.length };
 }
 
@@ -104,16 +106,16 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
     for (const days of [1, 5, 30, 90]) {
       const { bundle, axis, pointCount } = makeBundle(days);
       // warm-up
-      projectRatio(bundle, axis, RATIO_CTX as any);
+      projectRatio(bundle, axis, RATIO_CTX as never);
       projectBid(bundle, axis, FS_CTX_MASK);
       projectCumulativeNetFill(bundle, axis, FS_CTX_MASK);
 
-      const tRatio = median(() => projectRatio(bundle, axis, RATIO_CTX as any));
+      const tRatio = median(() => projectRatio(bundle, axis, RATIO_CTX as never));
       const tQuoteTotals = median(() => { projectBid(bundle, axis, FS_CTX_MASK); projectAsk(bundle, axis, FS_CTX_MASK); });
       const tFsHist = median(() => { projectBuy(bundle, axis, FS_CTX_MASK); projectSell(bundle, axis, FS_CTX_MASK); });
       const tCumulative = median(() => (CUMULATIVE_ON ? projectCumulativeNetFill(bundle, axis, FS_CTX_MASK) : []));
       const perTick = tRatio + tQuoteTotals + tFsHist + tCumulative;
-      // eslint-disable-next-line no-console
+
       console.log(
         `[A] days=${String(days).padStart(2)} pts=${String(pointCount).padStart(5)} | ` +
         `ratio=${tRatio.toFixed(2)} totals=${tQuoteTotals.toFixed(2)} fsHist=${tFsHist.toFixed(2)} ` +
@@ -129,7 +131,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       const t = median(() => bucketHogaSeries(ob, trade, BUCKET_MS, sessionCloseMs));
       // 낭비되는 정렬분만 분리 측정 (버퍼는 이미 t_ms 오름차순)
       const tSort = median(() => { [...ob].sort((a, b) => a.t_ms - b.t_ms); [...trade].sort((a, b) => a.t_ms - b.t_ms); });
-      // eslint-disable-next-line no-console
+
       console.log(
         `[B] ob=${String(obN).padStart(5)} trade=${String(trN).padStart(5)} | ` +
         `bucket=${t.toFixed(2)}ms (정렬분=${tSort.toFixed(2)}ms, ${((tSort / t) * 100).toFixed(0)}%) → ` +
@@ -151,7 +153,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       const t = median(() => {
         build({ ...base, sseOb: ob, sseTrade: trade });
       });
-      // eslint-disable-next-line no-console
+
       console.log(
         `[B2] ob=${String(obN).padStart(5)} trade=${String(trN).padStart(5)} | ` +
         `incremental append=${t.toFixed(4)}ms → /초=${(t * FLUSH_HZ).toFixed(1)}ms`,
@@ -162,12 +164,12 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
   it('C) 증분 emit 달성 가능 바닥 (마지막 버킷만) vs 풀-배열', () => {
     const { bundle, axis, pointCount } = makeBundle(90);
     // 풀-배열 ratio
-    const full = median(() => projectRatio(bundle, axis, RATIO_CTX as any));
+    const full = median(() => projectRatio(bundle, axis, RATIO_CTX as never));
     // 증분: 마지막 점 1개만 처리 (O(1)) — 리팩터 후 달성 가능한 이론 바닥
     const lastP = bundle.quote_ratio.points[bundle.quote_ratio.points.length - 1];
-    const oneBundle: any = { ...bundle, quote_ratio: { ...bundle.quote_ratio, points: [lastP] } };
-    const incr = median(() => projectRatio(oneBundle, axis, RATIO_CTX as any), 21);
-    // eslint-disable-next-line no-console
+    const oneBundle = rangeBundleFixture( { ...bundle, quote_ratio: { ...bundle.quote_ratio, points: [lastP] } });
+    const incr = median(() => projectRatio(oneBundle, axis, RATIO_CTX as never), 21);
+
     console.log(`[C] pts=${pointCount} | 풀배열 ratio=${full.toFixed(2)}ms vs 증분(1점)=${incr.toFixed(4)}ms → ${(full / Math.max(incr, 0.0001)).toFixed(0)}× 절감 여지`);
   });
 
@@ -177,25 +179,25 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       // 당일 세그먼트만 담은 미니 번들 (과거는 캐시 동결 가정)
       const todayOpen = BASE + (days - 1) * DAY;
       const todayClose = todayOpen + SESSION;
-      const todayQr = bundle.quote_ratio.points.filter((p: any) => p.t >= todayOpen);
-      const todayFs = bundle.fill_strength.points.filter((p: any) => p.t >= todayOpen);
-      const todayBundle: any = {
+      const todayQr = bundle.quote_ratio.points.filter((p) => p.t >= todayOpen);
+      const todayFs = bundle.fill_strength.points.filter((p) => p.t >= todayOpen);
+      const todayBundle = rangeBundleFixture( {
         segments: [{ date: `d${days - 1}`, session_open_ms: todayOpen, session_close_ms: todayClose, source: 'kiwoom_live' }],
         bucket_ms: BUCKET_MS,
         quote_ratio: { bucket_ms: BUCKET_MS, points: todayQr },
         fill_strength: { bucket_ms: BUCKET_MS, points: todayFs },
         investorPoints: [], candles: [],
-      };
+      });
       // 과거 투영은 캐시에서 동결 배열로 온다고 가정 (틱당 비용 0). concat 대상으로 더미 길이만 맞춤.
       const cachedPastLen = bundle.quote_ratio.points.length - todayQr.length;
       const cachedPast = new Array(cachedPastLen).fill({ time: 0, value: 0 });
 
       // warm
-      projectRatio(todayBundle, axis, RATIO_CTX as any);
+      projectRatio(todayBundle, axis, RATIO_CTX as never);
 
       const perTick = median(() => {
         // 당일만 재투영 (6 projector)
-        const r = projectRatio(todayBundle, axis, RATIO_CTX as any);
+        const r = projectRatio(todayBundle, axis, RATIO_CTX as never);
         const b = projectBid(todayBundle, axis, FS_CTX_MASK);
         const a = projectAsk(todayBundle, axis, FS_CTX_MASK);
         const buy = projectBuy(todayBundle, axis, FS_CTX_MASK);
@@ -205,7 +207,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
         void [...cachedPast, ...r]; void [...cachedPast, ...b]; void [...cachedPast, ...a];
         void [...cachedPast, ...buy]; void [...cachedPast, ...sell]; void [...cachedPast, ...c];
       });
-      // eslint-disable-next-line no-console
+
       console.log(`[E] days=${String(days).padStart(2)} | P0 틱합=${perTick.toFixed(2)}ms (당일투영+concat) → /초=${(perTick * FLUSH_HZ).toFixed(0)}ms`);
     }
   });
@@ -220,24 +222,24 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
     const fsCtx = { cumulativeEnabled: true, auctionWindowMask: true };
 
     // 3개 호가 팬 전체 series(6개) data() 1회 = 틱 1회
-    const tickOnce = (b: any) => {
-      RATIO_SPEC.series.forEach((s) => s.data(b, axis, ratioCtx as any));
-      QUOTE_TOTALS_SPEC.series.forEach((s) => s.data(b, axis, true as any));
-      FILL_STRENGTH_SPEC.series.forEach((s) => s.data(b, axis, fsCtx as any));
+    const tickOnce = (b: RangeBundle) => {
+      RATIO_SPEC.series.forEach((s) => s.data(b, axis, ratioCtx as never));
+      QUOTE_TOTALS_SPEC.series.forEach((s) => s.data(b, axis, true as never));
+      FILL_STRENGTH_SPEC.series.forEach((s) => s.data(b, axis, fsCtx as never));
     };
 
     // 매 틱 당일 마지막 버킷이 바뀐 새 번들 (과거 동결, axis/ctx 안정 → 캐시 적중)
     const todayOpen = BASE + (days - 1) * DAY;
     const makeTickBundle = (k: number) => {
       const { bundle } = makeBundle(days);
-      bundle.quote_ratio.points.push({ t: todayOpen + (300 + k) * BUCKET_MS, ask_total: 50000 + k, bid_total: 50000 - k });
+      bundle.quote_ratio.points.push({ t: todayOpen + (300 + k) * BUCKET_MS, ask_total: 50000 + k, bid_total: 50000 - k, bid_max: 0, ask_max: 0, imb_max_bid: 0, imb_max_ask: 0, band_pct: 0, tick: 0 });
       bundle.fill_strength.points.push({ t: todayOpen + (300 + k) * BUCKET_MS, buy_qty: 100 + k, sell_qty: 50 });
       return bundle;
     };
 
     tickOnce(makeTickBundle(0)); // 워밍(과거 캐시 채움)
     const warmed = median(() => tickOnce(makeTickBundle(1)), 9);
-    // eslint-disable-next-line no-console
+
     console.log(`[F] END-TO-END 90일 워밍 후 틱당=${warmed.toFixed(2)}ms → /초=${(warmed * FLUSH_HZ).toFixed(0)}ms (비교: [A]90일=~35ms/틱)`);
   });
 
@@ -249,14 +251,14 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       const { bundle, axis, pointCount } = makeBundle(days);
       // 캐시 경로(현 구현): markers 프로젝터가 makePastCachedProjector를 거쳐 과거 동결.
       // 동일 번들 재호출 → 과거 캐시 적중(=틱당 비용이 깊이 무관함을 보임).
-      QUOTE_TOTALS_SPEC.series.forEach((s) => s.markers?.(bundle, axis, ctx as any)); // warm
-      const tSeam = median(() => QUOTE_TOTALS_SPEC.series.forEach((s) => s.markers?.(bundle, axis, ctx as any)));
+      QUOTE_TOTALS_SPEC.series.forEach((s) => s.markers?.(bundle, axis, ctx as never)); // warm
+      const tSeam = median(() => QUOTE_TOTALS_SPEC.series.forEach((s) => s.markers?.(bundle, axis, ctx as never)));
       // 비교용: seam 없이 detectSurgeSide를 ask+bid 전구간 직접 호출(=리팩터 전 경로).
       const tFull = median(() => {
         detectSurgeSide(bundle.quote_ratio.points, 'ask', { approachRatio: 0.95, rearmRatio: 0.85, isClosingAuction: (t) => axis.inClosingAuctionWindow(t) });
         detectSurgeSide(bundle.quote_ratio.points, 'bid', { approachRatio: 0.95, rearmRatio: 0.85, isClosingAuction: (t) => axis.inClosingAuctionWindow(t) });
       });
-      // eslint-disable-next-line no-console
+
       console.log(
         `[G] days=${String(days).padStart(2)} pts=${String(pointCount).padStart(5)} | ` +
         `seam(캐시)=${tSeam.toFixed(3)}ms vs 전구간=${tFull.toFixed(3)}ms → seam /초=${(tSeam * FLUSH_HZ).toFixed(1)}ms ` +
@@ -276,7 +278,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       // 조기 반환한다 — 센티넬 경로(전체 t 의 Set + 캔들 전량 순회)를 **과소 측정**한다.
       // 이 항목만 캔들을 채워 실제 `/live` 모양으로 잰다.
       bundle.candles = bundle.quote_ratio.points.map((q: { t: number }) => ({
-        ts_ms: q.t, open: 100, high: 102, low: 99, close: 101, volume: 10,
+        ts_ms: q.t, open: 100, high: 102, low: 99, close: 101, vol_a: 10, vol_b: 0,
       }));
       const noAuction = (t: number): boolean => axis.inClosingAuctionWindow(t);
 
@@ -300,7 +302,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
         for (const q of bundle.quote_ratio.points) m.set(q.t, q);
         return m;
       });
-      // eslint-disable-next-line no-console
+
       console.log(
         `[H] days=${String(days).padStart(2)} pts=${String(pointCount).padStart(5)} | ` +
         `파생3회=${tDerive.toFixed(3)}ms (대조 materialize3회=${tMaterialize.toFixed(3)}ms) | ` +
@@ -319,7 +321,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       // 빈 배열로 조기 반환해 측정이 공허해진다.
       bundle.program_trade = {
         points: bundle.quote_ratio.points.map((q: { t: number }, i: number) => ({
-          t: q.t, net_amount: ((i % 200) - 100) * 1_000_000,
+          t: q.t, net_amount: ((i % 200) - 100) * 1_000_000, net_qty: 0, gap_risk: false,
         })),
       };
       const cachedPt = makeCachedProgramTradeProjector();
@@ -332,7 +334,7 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
       const tCumWarm = median(() => cachedCum(bundle, axis, true));
       // 미스 경로 = 5분 refetch · 마스크 토글 · 좌측 팬. 인스턴스를 새로 만들어 재현한다.
       const tCumMiss = median(() => makeCumulativeCachedProjector()(bundle, axis, true));
-      // eslint-disable-next-line no-console
+
       console.log(
         `[I] days=${String(days).padStart(2)} pts=${String(pointCount).padStart(5)} segs=${String(days).padStart(2)} | ` +
         `프로그램: 캐시=${tPtCached.toFixed(3)}ms vs 풀=${tPtFull.toFixed(3)}ms | ` +
@@ -354,11 +356,11 @@ describe('라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래�
     for (const nCfg of [3, 6]) {
       const t = median(() => {
         for (let k = 0; k < nCfg; k++) {
-          const values = inSession.map((c) => selectSource(c as any, 'close'));
+          const values = inSession.map((c) => selectSource(c as never, 'close'));
           computeSMA(values, 20 + k * 20);
         }
       });
-      // eslint-disable-next-line no-console
+
       console.log(`[D] MA configs=${nCfg} candles=${inSession.length} | 재계산=${t.toFixed(2)}ms (캔들 변화 시에만, 틱당 아님)`);
     }
   });

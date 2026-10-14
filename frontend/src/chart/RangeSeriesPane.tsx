@@ -163,7 +163,7 @@ type Props<Ctx> = {
    *  passed back so the caller can use ONE stable callback for all panes instead
    *  of a per-pane closure — required for React.memo on this component to skip
    *  re-renders when only the live bundle (hoga panes) changed. */
-  onPrimarySeriesReady?: (series: ISeriesApi<any>, paneName: string) => void;
+  onPrimarySeriesReady?: (series: ISeriesApi<SeriesType>, paneName: string) => void;
   /** Fired right before the primary series is removed from the chart
    *  (component unmount or spec change). `paneName` = spec.name (see above). */
   onPrimarySeriesGone?: (paneName: string) => void;
@@ -176,7 +176,7 @@ type Props<Ctx> = {
    *  series declares `legend`. */
   onLegendReady?: (
     paneName: string,
-    entries: { series: ISeriesApi<any>; meta: SeriesLegendMeta }[],
+    entries: { series: ISeriesApi<SeriesType>; meta: SeriesLegendMeta }[],
   ) => void;
   /** Fired before legend series teardown (unmount / spec change). */
   onLegendGone?: (paneName: string) => void;
@@ -261,10 +261,10 @@ function RangeSeriesPaneInner<Ctx>({
   // caller (spec.useContext presence never flips between renders), so
   // this conditional call doesn't violate rules-of-hooks. See PaneSpec
   // JSDoc for the full justification.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
+
   const specContext = spec.useContext ? spec.useContext() : (undefined as Ctx);
   const ctx = contextOverride !== undefined ? contextOverride : specContext;
-  const seriesRef = useRef<ISeriesApi<any>[]>([]);
+  const seriesRef = useRef<ISeriesApi<SeriesType>[]>([]);
   // Last data array pushed to each series (by index). The data effect diffs the
   // new projection against this (classifyDataChange) to decide skip / update(tail)
   // / setData(full). Storing the ARRAY (not a hash) lets the diff do an exact
@@ -287,7 +287,7 @@ function RangeSeriesPaneInner<Ctx>({
   // handles. Without this split, MA edits visibly redraw the entire MA
   // layer because all 5 LineSeries are removed and re-added.
   useEffect(() => {
-    const seriesList: ISeriesApi<any>[] = new Array(spec.series.length);
+    const seriesList: ISeriesApi<SeriesType>[] = new Array(spec.series.length);
     const creationOrder = creationOrderForSpec(
       spec.series.length,
       candleAlwaysOnTop && spec.name === 'candle',
@@ -327,7 +327,7 @@ function RangeSeriesPaneInner<Ctx>({
     // the legend never re-derives pane visibility from toggle state.
     const legendEntries = spec.series
       .map((s, i) => (s.legend ? { series: seriesList[i], meta: s.legend } : null))
-      .filter((e): e is { series: ISeriesApi<any>; meta: SeriesLegendMeta } => e !== null);
+      .filter((e): e is { series: ISeriesApi<SeriesType>; meta: SeriesLegendMeta } => e !== null);
     if (legendEntries.length > 0) {
       onLegendReady?.(spec.name, legendEntries);
     }

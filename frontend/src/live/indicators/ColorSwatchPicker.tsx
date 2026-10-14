@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { MA_COLOR_ROWS } from './MAStylePicker';
+import { MA_COLOR_ROWS } from './MAStylePickerHelpers';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 
 /** 팝오버 폭 — 오른쪽 정렬 기준. 8열 팔레트(20px 스와치)만 들어 MAStylePicker 보다 좁다. */

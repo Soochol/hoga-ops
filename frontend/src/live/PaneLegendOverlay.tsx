@@ -1214,7 +1214,7 @@ function PaneLegendOverlay({
   );
 
   // ── pane geometry (runtime order, not static paneTopY) ─────────────────
-  let panes: ReturnType<IChartApi['panes']> = [];
+  let panes: ReturnType<IChartApi['panes']>;
   try {
     panes = chart.panes();
   } catch {
@@ -1235,7 +1235,7 @@ function PaneLegendOverlay({
   // 드래그 핸들러가 이벤트 시점에 읽는 지오메트리 미러 — 렌더가 쓰는 값과 같은
   // 소스라 드롭 존과 화면이 어긋날 수 없다. (렌더 중 ref 쓰기 대신 effect —
   // 폐기된 concurrent 렌더의 값이 남지 않게.)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     geometryRef.current = { paneTops, paneHeights, groups };
   });

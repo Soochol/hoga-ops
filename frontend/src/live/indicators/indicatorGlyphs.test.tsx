@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { INDICATOR_GLYPH } from './indicatorGlyphs';
-import { CATEGORIES } from './IndicatorPanel';
+import { CATEGORIES } from './IndicatorPanelHelpers';
 
 describe('INDICATOR_GLYPH', () => {
   // `Record<CategoryId, …>` 가 컴파일 타임에 이미 강제하지만, 그건 **타입에 있는**

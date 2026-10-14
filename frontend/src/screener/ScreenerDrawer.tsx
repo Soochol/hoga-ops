@@ -1,4 +1,4 @@
-import { CONDITION_CATALOG } from './catalog';
+import { catalogEntry } from './catalog';
 import { useOccurrenceExclusions } from './useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from './OccurrenceExclusions';
 import { RailDestination } from '../rightrail/RailDestination';
@@ -349,7 +349,7 @@ export function ScreenerDrawer() {
         {selected && <details className="text-xs text-fg-dim">
           <summary className="cursor-pointer rounded py-1 hover:text-fg">적용 조건 {selected.conditions.length}개 · 모두 충족</summary>
           <ul className="mt-1 space-y-1">
-            {selected.conditions.map((condition) => <li key={condition.id}>{CONDITION_CATALOG[condition.type].label} {CONDITION_CATALOG[condition.type].summarize(condition.params)}</li>)}
+            {selected.conditions.map((condition) => <li key={condition.id}>{catalogEntry(condition.type).label} {catalogEntry(condition.type).summarize(condition.params)}</li>)}
           </ul>
         </details>}
         {/* 대기 = 시작(즉시 1회 조회 + 실시간 유지)만. 별도의 수동 조회 버튼은 두지

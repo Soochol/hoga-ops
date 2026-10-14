@@ -4,23 +4,14 @@ import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import type { VirtualAxis } from '../util/virtualAxis';
 import { useActivePrefs } from '../state/chartPrefs';
-import { DepthHeatmapPrimitive, type DepthHeatmapCell } from '../chart/DepthHeatmapPrimitive';
-import {
-  depthHeatmapSourceOf,
-  depthLevelsOf,
-  type DepthHeatmapLevel,
-  type DepthHeatmapPoint,
-  type DepthHeatmapSource,
-} from './depthHeatmapWire';
-import { levelAlpha, sliceDepthHeatmapRange, visibleMaxQty } from './depthHeatmapAlpha';
-import {
-  registerFlagLegendValues,
-  unregisterFlagLegendValues,
-  type FlagLegendValueProvider,
-} from './indicators/flagLegendValueRegistry';
+import { DepthHeatmapPrimitive } from '../chart/DepthHeatmapPrimitive';
+import { depthHeatmapSourceOf, depthLevelsOf, type DepthHeatmapPoint } from './depthHeatmapWire';
+import { registerFlagLegendValues, unregisterFlagLegendValues, type FlagLegendValueProvider } from './indicators/flagLegendValueRegistry';
 import { formatPriceQty } from './peakLegendValues';
 import { useWindowIndicator, useWindowScopeId } from './workspace/windowView';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+import { buildDepthHeatmapCells, maxQtyLevel } from './DepthHeatmapOverlayHelpers';
+
 
 /** 가시 시간범위(가상초 {from,to}). 초기 마운트엔 null, 차트 teardown 중엔 throw → null.
  *  HighLowLabelsPrimitive.readVisibleRange 와 동일 관용구. */
@@ -33,137 +24,6 @@ function readVisibleRange(ts: ITimeScaleApi<Time>): { from: number; to: number }
   }
 }
 
-type Rgb = { r: number; g: number; b: number };
-
-// base hex 는 build 내내 고정(bidColor/askColor)이라 셀마다 regex+parseInt 로 재파싱하지
-// 않는다 — build 진입 시 1회 파싱해 두고 alpha 만 셀별로 포맷한다.
-function parseHex(hex: string): Rgb {
-  const match = /^#?([0-9a-f]{6})$/i.exec(hex);
-  if (!match) return { r: 128, g: 128, b: 128 };
-  const raw = match[1];
-  return {
-    r: Number.parseInt(raw.slice(0, 2), 16),
-    g: Number.parseInt(raw.slice(2, 4), 16),
-    b: Number.parseInt(raw.slice(4, 6), 16),
-  };
-}
-
-function rgba(c: Rgb, opacity: number): string {
-  const alpha = Math.max(0, Math.min(1, opacity));
-  return `rgba(${c.r}, ${c.g}, ${c.b}, ${alpha})`;
-}
-
-function halfTickFor(prices: number[]): number {
-  let minGap = Infinity;
-  const sorted = [...prices].sort((a, b) => a - b);
-  for (let i = 1; i < sorted.length; i += 1) {
-    const gap = sorted[i] - sorted[i - 1];
-    if (gap > 0 && gap < minGap) minGap = gap;
-  }
-  if (!Number.isFinite(minGap)) return 0.5;
-  return minGap / 2;
-}
-
-// halfTick 은 point 의 가격 집합에만 의존(vmax·가시범위 무관)하고, IncrementalHogaBucketer
-// 가 미변경 버킷에 안정적인 point 참조를 주므로(depthHeatmapWire 불변식) point 별로 1회만
-// 계산한다. SSE 틱마다 전 point 를 정렬(+ allPrices 스프레드 할당)하던 것을 실제 바뀐
-// 버킷 1개로 줄인다. **소스마다 가격 집합이 다르므로 소스별로 따로 캐시한다** — 특히
-// perPriceMax 는 가격 수가 10 을 넘을 수 있어(그 분에 등장한 distinct 가격) 다른 소스의
-// halfTick 을 재사용하면 셀 높이가 틀어진다.
-const _halfTickCache = new WeakMap<DepthHeatmapPoint, Partial<Record<DepthHeatmapSource, number>>>();
-
-function halfTickForPoint(pt: DepthHeatmapPoint, source: DepthHeatmapSource): number {
-  let entry = _halfTickCache.get(pt);
-  if (entry === undefined) {
-    entry = {};
-    _halfTickCache.set(pt, entry);
-  }
-  const cached = entry[source];
-  if (cached !== undefined) return cached;
-  const asks = depthLevelsOf(pt, 'ask', source);
-  const bids = depthLevelsOf(pt, 'bid', source);
-  const value = halfTickFor([...asks, ...bids].map((l) => l.price));
-  entry[source] = value;
-  return value;
-}
-
-type StyleOpts = { bidColor: string; askColor: string; maxOpacity: number };
-
-/** 어느 호가 스냅샷의, 어느 레벨을 셀로 만들지 — 색·불투명도(StyleOpts)와 달리
- *  **소스 선택**이라 따로 묶는다. 두 축은 직교한다: 소스를 고른 뒤 그 안에서 자른다. */
-export type SourceOpts = {
-  /** 종가 · 총잔량 최대 순간 · 가격대마다 따로 최댓값 중 무엇을 그릴지(기본 `close`). */
-  source?: DepthHeatmapSource;
-  /** 매수·매도 **각 사이드에서** 잔량 상위 몇 레벨만 그릴지. null/미지정 = 전 레벨. */
-  topPerSide?: number | null;
-};
-
-/** 잔량 상위 `n` 레벨. `n` 이 null·0 이하이거나 레벨 수 이상이면 **원본 배열 그대로**
- *  돌려준다(할당 0 — 옵션 OFF 가 기본 경로다). n===1 도 정렬 없이 선형 최대로 뽑는다.
- *  동점은 JS 안정 정렬/선형 스캔 모두 먼저 온 레벨(호가 순)을 남긴다. */
-function topLevelsByQty(
-  levels: readonly DepthHeatmapLevel[],
-  n: number | null,
-): readonly DepthHeatmapLevel[] {
-  if (n === null || n <= 0 || levels.length <= n) return levels;
-  if (n === 1) {
-    const best = maxQtyLevel(levels);
-    return best === null ? [] : [best];
-  }
-  return [...levels].sort((a, b) => b.qty - a.qty).slice(0, n);
-}
-
-export function buildDepthHeatmapCells(
-  points: readonly DepthHeatmapPoint[],
-  axis: VirtualAxis,
-  fromMs: number,
-  toMs: number,
-  style: StyleOpts,
-  source: SourceOpts = {},
-): DepthHeatmapCell[] {
-  // wire/live 결합 결과는 tMs 오름차순. 화면 밖 이력은 정규화·셀 생성에서 순회하지 않는다.
-  const visiblePoints = sliceDepthHeatmapRange(points, fromMs, toMs);
-  const sourceKind = source.source ?? 'close';
-  const topPerSide = source.topPerSide ?? null;
-  // 정규화 천장은 셀 소스와 반드시 같아야 한다 → 같은 소스를 그대로 전달.
-  //
-  // **topPerSide 는 여기에 넘기지 않는다.** 전 레벨의 최댓값은 곧 사이드별 최댓값들의
-  // 최댓값이라 상위 N 만 남겨도 천장은 구성상 같고, 필터된 사다리로 재정규화하면
-  // 오히려 강도의 의미("보이는 범위의 최대 잔량 대비")가 조용히 바뀐다.
-  const vmax = visibleMaxQty(visiblePoints, fromMs, toMs, sourceKind);
-  if (vmax <= 0) return [];
-  const askRgb = parseHex(style.askColor);
-  const bidRgb = parseHex(style.bidColor);
-  const out: DepthHeatmapCell[] = [];
-  for (const pt of visiblePoints) {
-    // 소스 선택 → 그 안에서 상위 N 자르기 순. 두 옵션이 조합된다.
-    const asks = topLevelsByQty(depthLevelsOf(pt, 'ask', sourceKind), topPerSide);
-    const bids = topLevelsByQty(depthLevelsOf(pt, 'bid', sourceKind), topPerSide);
-    const time = (axis.toVirtual(pt.tMs) / 1000) as Time;
-    // ⚠ 셀 높이는 **자르기 전 전체 호가 사다리**의 최소 gap 이다 — 남은 레벨로
-    // 재계산하면 사이드 간 거리가 최소 gap 이 되어 셀이 몇 배로 부푼다.
-    const halfTick = halfTickForPoint(pt, sourceKind);
-    for (const lvl of asks) {
-      if (lvl.qty <= 0) continue;
-      out.push({
-        time,
-        price: lvl.price,
-        halfTick,
-        fillColor: rgba(askRgb, levelAlpha(lvl.qty, vmax, style.maxOpacity)),
-      });
-    }
-    for (const lvl of bids) {
-      if (lvl.qty <= 0) continue;
-      out.push({
-        time,
-        price: lvl.price,
-        halfTick,
-        fillColor: rgba(bidRgb, levelAlpha(lvl.qty, vmax, style.maxOpacity)),
-      });
-    }
-  }
-  return out;
-}
 
 type Props = {
   chart: IChartApi;
@@ -171,6 +31,7 @@ type Props = {
   axis: VirtualAxis;
   points: readonly DepthHeatmapPoint[];
 };
+
 
 function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const series = paneSeries.get('candle' as PaneId) as ISeriesApi<SeriesType> | undefined;
@@ -282,6 +143,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   return null;
 }
 
+
 /** points는 tMs 오름차순 — realMs 이하의 마지막 스냅샷(이진 탐색). */
 function latestPointAtOrBefore(
   points: readonly DepthHeatmapPoint[],
@@ -302,12 +164,5 @@ function latestPointAtOrBefore(
   return ans >= 0 ? points[ans] : null;
 }
 
-function maxQtyLevel(levels: readonly DepthHeatmapLevel[]): DepthHeatmapLevel | null {
-  let best: { price: number; qty: number } | null = null;
-  for (const level of levels) {
-    if (best === null || level.qty > best.qty) best = level;
-  }
-  return best;
-}
 
 export default memo(DepthHeatmapOverlay);

@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import type { ScreenerOccurrence, ScreenerRow } from '../api/screener';
-import { CONDITION_CATALOG } from './catalog';
+import { catalogEntry } from './catalog';
 import type { OccurrenceExclusions } from './useOccurrenceExclusions';
 import { ModalShell } from '../ui/ModalShell';
 import { ToolbarButton } from '../ui/PageShell';
@@ -25,8 +25,8 @@ export function OccurrenceExclusionToolbar({ controller }: { controller: Occurre
           {exclusions.map(entry => <li key={entry.id} className="flex items-center gap-2 border-b border-border py-sm">
             <div className="min-w-0 flex-1">
               <div>{entry.stock_name} · {entry.code} · {entry.date}</div>
-              <div className="text-xs text-fg-dim">{CONDITION_CATALOG[entry.condition.type].label}{' '}
-                {CONDITION_CATALOG[entry.condition.type].summarize(entry.condition.params)}</div>
+              <div className="text-xs text-fg-dim">{catalogEntry(entry.condition.type).label}{' '}
+                {catalogEntry(entry.condition.type).summarize(entry.condition.params)}</div>
             </div>
             <ToolbarButton disabled={busy} aria-label={`${entry.stock_name} ${entry.date} 복원`} onClick={() => restore(entry)}>복원</ToolbarButton>
           </li>)}
@@ -42,7 +42,7 @@ export function OccurrenceAction({ code, name, occurrence, controller }: {
 }) {
   const [confirm, setConfirm] = useState(false);
   const condition = controller.conditions.find(c => c.id === occurrence.condition_id);
-  const label = condition ? CONDITION_CATALOG[condition.type].label : '';
+  const label = condition ? catalogEntry(condition.type).label : '';
   const remove = () => { controller.exclude(code, name, occurrence); setConfirm(false); };
   return <span onClick={e => e.stopPropagation()} onPointerDown={e => e.stopPropagation()}>
     <ToolbarButton disabled={controller.busy || !controller.ready || !condition}
@@ -62,7 +62,7 @@ export function OccurrenceAction({ code, name, occurrence, controller }: {
 export function OccurrenceLabel({ occurrence, controller }: { occurrence: ScreenerOccurrence; controller: OccurrenceExclusions }) {
   const condition = controller.conditions.find(c => c.id === occurrence.condition_id);
   return <span className="text-xs text-fg-dim">{condition
-    ? `${CONDITION_CATALOG[condition.type].label} ${CONDITION_CATALOG[condition.type].summarize(condition.params)}`
+    ? `${catalogEntry(condition.type).label} ${catalogEntry(condition.type).summarize(condition.params)}`
     : '조건 정보 없음 · 재조회 필요'}</span>;
 }
 

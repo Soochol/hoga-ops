@@ -1,6 +1,6 @@
 import type { DragEvent } from 'react';
 import type { ConditionLeaf } from '../api/screener';
-import { CONDITION_CATALOG } from './catalog';
+import { catalogEntry } from './catalog';
 
 export function ConditionRow({
   leaf,
@@ -23,7 +23,7 @@ export function ConditionRow({
   onChange: (next: ConditionLeaf) => void;
   onRemove: () => void;
 }) {
-  const entry = CONDITION_CATALOG[leaf.type];
+  const entry = catalogEntry(leaf.type);
   const ParamForm = entry.ParamForm;
   return (
     <div onDragOver={onDragOver} onDrop={onDrop}

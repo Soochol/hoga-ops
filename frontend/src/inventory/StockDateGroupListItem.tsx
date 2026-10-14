@@ -1,6 +1,7 @@
 import { fmtSize } from './format';
 import type { StockDateGroup } from './types';
-import { aggregateDiskState, DiskStateDot } from './DiskStateBadge';
+import { DiskStateDot } from './DiskStateBadge';
+import { aggregateDiskState } from './DiskStateBadgeHelpers';
 import { ListRow } from '../ui/DataSurface';
 
 type Props = {

@@ -8,11 +8,9 @@ import type { DailyProgramTradePoint } from '../api/liveDailyProgramTrade';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
 import { InvestorDailySummaryCell } from '../live/workspace/InvestorDailySummaryCell';
-import {
-  useProgramTradeDisplayStore,
-  type ProgramTradeMeasure,
-  type ProgramDailyDisplay,
-} from '../state/programTradeDisplay';
+import { useProgramTradeDisplayStore, type ProgramTradeMeasure, type ProgramDailyDisplay } from '../state/programTradeDisplay';
+import { type SparkPoint, buildTimeGapSegments, pickProgramTradePoint } from './ProgramTradeSummaryCardHelpers';
+
 
 /** 스파크라인 점선(관측 공백) 판정 임계. 수집 주기(program_trade_collector
  *  30초 drain)의 3배 — 이보다 벌어진 이웃 점 사이는 실측 없이 잇는
@@ -21,9 +19,11 @@ import {
  *  드레인 체제에서 매 드레인을 갭으로 오탐해(장중 전 점 true) 신호가 없다. */
 export const PROGRAM_SPARK_GAP_THRESHOLD_MS = 90_000;
 
+
 /** 당일 종가 오버레이용 점. 캔들의 { ts_ms, close } 를 그대로 받는다
  *  (volumeDistributionClosePointsFromCandles 반환형). 순매수와 같은 ms 축. */
 export type ProgramClosePoint = { t_ms: number; close: number };
+
 
 type Props = {
   series?: ProgramTradeSeries | null;
@@ -46,11 +46,14 @@ type Props = {
   onLoadOlder?: () => void;
 };
 
+
 type ProgramTradeMetric = 'net' | 'buy' | 'sell';
+
 
 const METRIC_LABELS: Record<ProgramTradeMetric, string> = {
   net: '순매수', buy: '총매수', sell: '총매도',
 };
+
 
 export default function ProgramTradeSummaryCard({
   series,
@@ -153,6 +156,7 @@ export default function ProgramTradeSummaryCard({
   );
 }
 
+
 function ViewChips({ view, onSelect }: {
   view: 'intraday' | 'daily';
   onSelect: (value: 'intraday' | 'daily') => void;
@@ -166,6 +170,7 @@ function ViewChips({ view, onSelect }: {
     </button>)}
   </div>;
 }
+
 
 function ProgramDailySummary({
   points, loading, error, cursorDate, hasOlder, loadingOlder, olderError,
@@ -305,10 +310,12 @@ function ProgramDailySummary({
   </div>;
 }
 
+
 function formatDailyDate(ms: number): string {
   const ymd = realMsToYyyymmdd(ms);
   return `${ymd.slice(4, 6)}-${ymd.slice(6, 8)}`;
 }
+
 
 function ProgramDailyValueCell({ value, side, format, foot = false }: {
   value: number | null;
@@ -323,10 +330,12 @@ function ProgramDailyValueCell({ value, side, format, foot = false }: {
   </td>;
 }
 
+
 function formatProgramDailyValue(value: number | null, side: ProgramTradeMetric, format: (v: number | null) => string): string {
   const out = format(value);
   return side === 'net' && value != null && value > 0 ? `+${out}` : out;
 }
+
 
 /** 카드 하단 금액(net_amount) 누적 스파크라인. 메인 차트의 '프로그램 순매수'
  *  pane(projectors/programTrade.ts)과 같은 데이터·같은 색(--accent).
@@ -622,34 +631,6 @@ function ProgramTradeSparkline({
   );
 }
 
-type SparkPoint = { t: number; v: number };
-type SparkSegment =
-  | { kind: 'solid'; pts: SparkPoint[] }
-  | { kind: 'dashed'; pts: SparkPoint[] }; // always exactly 2 points
-
-/** 이웃 점 사이 시간 간격이 임계를 넘으면 그 브리지만 2점 점선으로 떼어내고
- *  나머지는 solid run 으로 묶는다 (브로커 buildSegments 와 같은 규칙). */
-export function buildTimeGapSegments(
-  pts: readonly SparkPoint[],
-  thresholdMs: number,
-): SparkSegment[] {
-  if (pts.length === 0) return [];
-  if (pts.length === 1) return [{ kind: 'solid', pts: [pts[0]] }];
-
-  const out: SparkSegment[] = [];
-  let run: SparkPoint[] = [pts[0]];
-  for (let i = 1; i < pts.length; i++) {
-    if (pts[i].t - pts[i - 1].t <= thresholdMs) {
-      run.push(pts[i]);
-    } else {
-      if (run.length >= 1) out.push({ kind: 'solid', pts: run });
-      out.push({ kind: 'dashed', pts: [pts[i - 1], pts[i]] });
-      run = [pts[i]];
-    }
-  }
-  if (run.length >= 1) out.push({ kind: 'solid', pts: run });
-  return out;
-}
 
 /** 커서 시각에서 "그려진 라인" 위의 금액 값(선형 보간). 카드 숫자
  *  (pickProgramTradePoint, 계단 의미론)와 달리 도트를 시각적 궤적 위에
@@ -671,40 +652,6 @@ function amountOnDrawnLineAt(pts: readonly SparkPoint[], cursorMs: number): numb
   return a.v + (b.v - a.v) * t;
 }
 
-export function pickProgramTradePoint(
-  points: readonly ProgramTradePoint[],
-  cursorMs: number | null,
-  todayKst: string | null = null,
-): ProgramTradePoint | null {
-  const last = points.length > 0 ? points[points.length - 1] : null;
-  if (last == null) return null;
-  // latest 모드, 또는 커서가 마지막 관측 이후(미래 whitespace·다음날 칸)면 최신값
-  // 고정 — 거래원·호가가 미래 whitespace 에서 latest 로 복귀하는 것과 일관.
-  // 이 클램프가 없으면 아래 floor 가 "다음날 이하 최대 = 전날 마지막 점"을 집어
-  // 전날 값이 새어나온다(병합 번들이 여러 날을 담기 때문).
-  if (cursorMs === null || cursorMs >= last.t) {
-    // 커서가 마지막 관측과 같은 KST 날짜(장중·장 마감 후 미래 whitespace)면
-    // 오늘 스코프와 무관하게 최신값 고정 — 전일 캔들 뒤쪽 호버도 그 날 마지막
-    // 값을 읽는다(floor 의 날짜 경계 가드와 같은 "같은 날" 규칙).
-    if (cursorMs !== null && realMsToYyyymmdd(last.t) === realMsToYyyymmdd(cursorMs)) {
-      return last;
-    }
-    // 오늘 스코프(거래원 latest 와 같은 의미론, ADR-0044): todayKst 가 주어지면
-    // 마지막 점이 오늘일 때만 latest 로 인정한다 — 새날 아침(오늘 관측 0건)에
-    // 전일 마감 누적이 현재값처럼 남는 것을 막는다.
-    return todayKst === null || realMsToYyyymmdd(last.t) === todayKst ? last : null;
-  }
-  for (let i = points.length - 1; i >= 0; i -= 1) {
-    const p = points[i];
-    if (p != null && p.t <= cursorMs) {
-      // 날짜 경계 가드: floor 결과가 커서와 다른 KST 날짜면(그 날엔 관측 없음)
-      // 전날 값으로 넘기지 않는다. 스파크라인의 날짜 스코프(realMsToYyyymmdd
-      // 필터)와 대칭 — 카드 숫자와 궤적의 날짜 규칙을 일치시킨다.
-      return realMsToYyyymmdd(p.t) === realMsToYyyymmdd(cursorMs) ? p : null;
-    }
-  }
-  return null;
-}
 
 function programValue(
   point: ProgramTradePoint | null,
@@ -716,6 +663,7 @@ function programValue(
   return typeof value === 'number' ? value : null;
 }
 
+
 function formatProgramValue(
   value: number | null,
   side: ProgramTradeMetric,
@@ -726,9 +674,11 @@ function formatProgramValue(
   return side === 'net' && value > 0 ? `+${formatted}` : formatted;
 }
 
+
 function formatProgramAxisValue(value: number, measure: ProgramTradeMeasure): string {
   return measure === 'amount' ? formatKoreanWonEok(value) : formatKoreanInt(value);
 }
+
 
 function programValueClass(side: ProgramTradeMetric, value: number | null): string {
   if (side === 'buy') return 'text-price-up';
@@ -736,10 +686,12 @@ function programValueClass(side: ProgramTradeMetric, value: number | null): stri
   return signedClass(value);
 }
 
+
 function signedClass(value: number | null): string {
   if (value === null || value === 0) return 'text-fg-dimmer';
   return value > 0 ? 'text-price-up' : 'text-price-down';
 }
+
 
 
 const ProgramDailyRow = memo(function ProgramDailyRow({ date, isCursor, cells }: {

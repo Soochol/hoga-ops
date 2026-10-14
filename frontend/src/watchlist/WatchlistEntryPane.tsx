@@ -90,7 +90,7 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
   const folders = [...(data?.folders ?? [])].sort((a, b) => a.order - b.order);
   const allChecked = entries.length > 0 && entries.every((e) => checked.has(e.code));
   const toggle = (code: string) =>
-    setChecked((s) => { const n = new Set(s); n.has(code) ? n.delete(code) : n.add(code); return n; });
+    setChecked((s) => { const n = new Set(s); if (n.has(code)) n.delete(code); else n.add(code); return n; });
   const toggleAll = () =>
     setChecked(allChecked ? new Set() : new Set(entries.map((e) => e.code)));
   // Derive from `entries` (already .order-sorted) so the selection is in VISUAL

@@ -61,7 +61,7 @@ describe('patchQueueItem (pure)', () => {
 
 describe('useCaptureQueue SSE multiplex', () => {
   it('capture_progress patches the matching item in cache', async () => {
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
@@ -80,7 +80,7 @@ describe('useCaptureQueue SSE multiplex', () => {
   });
 
   it('capture_finished invalidates the queue query (triggers refetch)', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
@@ -101,7 +101,7 @@ describe('useCaptureQueue SSE multiplex', () => {
     // GET /queue 는 done 버킷 전체를 돌려주고 _done 은 계속 자란다. 완료 1건마다
     // 무효화하면 N 건 백필이 크기 1,2,...,N 인 응답을 N 번 받아 전송량이 O(N^2)
     // 가 된다. 동시 워커의 완료는 거의 동시에 도착하므로 짧은 창으로 접힌다.
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
@@ -125,7 +125,7 @@ describe('useCaptureQueue SSE multiplex', () => {
 
   it('접기 창이 지난 뒤의 완료는 다시 refetch 한다', async () => {
     // 접기가 "한 번만 하고 마는" 것이 되어선 안 된다 — 창마다 최신 상태를 받아야 한다.
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ active: [], queued: [QUEUED_ITEM], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
@@ -147,7 +147,7 @@ describe('useCaptureQueue SSE multiplex', () => {
   });
 
   it('capture_queued + capture_queue_paused + capture_queue_resumed all invalidate', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ active: [], queued: [], done: [], paused: false, max_concurrent: 3 }),
     } as Response);
@@ -186,7 +186,7 @@ describe('useCaptureQueue capture_dismissed handling', () => {
   });
 
   it('removes item_ids from active/queued/done buckets when capture_dismissed arrives', async () => {
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url) => {
       if (String(url).includes('/queue')) {
         return { ok: true, status: 200, json: async () => failedSnap() } as Response;
       }
@@ -208,7 +208,7 @@ describe('useCaptureQueue capture_dismissed handling', () => {
 describe('useCaptureQueue retryItems mutation', () => {
   it('exposes retryItems mutation that posts to /items/retry', async () => {
     let postedBody: unknown = null;
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url, init) => {
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url, init) => {
       const s = String(url);
       if (s.includes('/items/retry')) {
         postedBody = JSON.parse(String(init?.body));

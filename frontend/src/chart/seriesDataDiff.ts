@@ -99,7 +99,7 @@ export function classifyDataChange(
 /** syncSeriesData 가 구동하는 최소 sink — 호출하는 lwc 메서드 딱 둘. 전체
  *  `ISeriesApi<SeriesType>` 로 타이핑하지 않는 이유: lightweight-charts 의 union-typed
  *  `setData` 가 `SeriesType` 분배 하에서 파라미터가 `never` 로 붕괴한다(차트 시리즈
- *  타입 결함). 호출자의 `ISeriesApi<any>` 는 이 구조적 모양을 만족하므로 그대로 넘긴다. */
+ *  타입 결함). 호출자의 `ISeriesApi<SeriesType>` 는 이 구조적 모양을 만족하므로 그대로 넘긴다. */
 export interface SeriesDataSink {
   setData(data: SeriesItem[]): void;
   update(point: SeriesItem): void;

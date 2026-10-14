@@ -1,3 +1,4 @@
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect, vi } from 'vitest';
 import { CANDLE_SPEC, projectCandle } from './candle';
 import { createVirtualAxis } from '../../util/virtualAxis';
@@ -9,12 +10,12 @@ const axis = createVirtualAxis([
 
 describe('projectCandle', () => {
   it('maps OHLC and assigns up color to up candles, down color to down candles', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       candles: [
         { ts_ms: sessionOpenMs, open: 100, close: 110, high: 115, low: 95, vol_a: 0, vol_b: 0 },
         { ts_ms: sessionOpenMs + 1000, open: 110, close: 105, high: 112, low: 100, vol_a: 0, vol_b: 0 },
       ],
-    };
+    });
     const data = projectCandle(bundle, axis);
     expect(data).toHaveLength(2);
     expect(data[0].time).toBe(0);
@@ -31,32 +32,32 @@ describe('projectCandle', () => {
   it('applies muted color to candles inside the closing Auction Window (15:20-15:30 KST)', () => {
     // sessionOpenMs = 09:00 KST. 15:20 KST = sessionOpenMs + 6h20m = sessionOpenMs + 22_800_000.
     const auctionStartMs = sessionOpenMs + 22_800_000;
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       candles: [
         { ts_ms: sessionOpenMs + 60_000, open: 100, close: 110, high: 115, low: 95, vol_a: 0, vol_b: 0 },
         { ts_ms: auctionStartMs + 60_000, open: 110, close: 115, high: 116, low: 109, vol_a: 0, vol_b: 0 },
       ],
-    };
+    });
     const data = projectCandle(bundle, axis);
     expect(data[0].color).not.toBe(data[1].color); // first up colored, second muted
     // muted color is the same regardless of close>=open
-    const sameSlot: any = {
+    const sameSlot = rangeBundleFixture( {
       candles: [
         { ts_ms: auctionStartMs + 60_000, open: 110, close: 105, high: 116, low: 100, vol_a: 0, vol_b: 0 },
       ],
-    };
+    });
     expect(projectCandle(sameSlot, axis)[0].color).toBe(data[1].color);
   });
 
   it('keeps normal up/down candle colors when auction muting is disabled', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000;
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       candles: [
         { ts_ms: sessionOpenMs + 60_000, open: 100, close: 110, high: 115, low: 95, vol_a: 0, vol_b: 0 },
         { ts_ms: auctionStartMs + 60_000, open: 110, close: 115, high: 116, low: 109, vol_a: 0, vol_b: 0 },
         { ts_ms: auctionStartMs + 120_000, open: 115, close: 105, high: 116, low: 100, vol_a: 0, vol_b: 0 },
       ],
-    };
+    });
 
     const normal = projectCandle(bundle, axis, { muteAuctionCandles: false });
 
@@ -65,12 +66,12 @@ describe('projectCandle', () => {
   });
 
   it('drops candles outside the segment via axis.contains', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       candles: [
         { ts_ms: sessionOpenMs - 60_000, open: 100, close: 100, high: 100, low: 100, vol_a: 0, vol_b: 0 },
         { ts_ms: sessionOpenMs, open: 100, close: 110, high: 115, low: 95, vol_a: 0, vol_b: 0 },
       ],
-    };
+    });
     expect(projectCandle(bundle, axis)).toHaveLength(1);
     expect(projectCandle(bundle, axis)[0].open).toBe(100);
   });
@@ -92,7 +93,7 @@ describe('projectCandle', () => {
         return { contained: true, inAuction: false, virtual: t - day0Open };
       },
     } as never;
-    const dataFn = CANDLE_SPEC.series[0].data as (...args: any[]) => Array<{ close: number }>;
+    const dataFn = CANDLE_SPEC.series[0].data as (...args: Parameters<typeof CANDLE_SPEC.series[0]['data']>) => Array<{ close: number }>;
 
     dataFn({ segments, candles: [past0, past1, today] } as never, countingAxis);
     calls.length = 0;
@@ -134,7 +135,7 @@ describe('projectCandle', () => {
     const axisObj = {
       classifyAndProject: (t: number) => ({ contained: true, inAuction: false, virtual: t - day0Open }),
     } as never;
-    const dataFn = CANDLE_SPEC.series[0].data as (...args: any[]) => Array<{ color?: string }>;
+    const dataFn = CANDLE_SPEC.series[0].data as (...args: Parameters<typeof CANDLE_SPEC.series[0]['data']>) => Array<{ color?: string }>;
     const bundle = { segments, candles: [past0, past1, today] } as never;
 
     document.documentElement.setAttribute('data-theme', 'thm-a');

@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  aggregateDiskState,
-  displayStateFor,
-  isRecapturable,
-  RECAPTURABLE_DISK_STATES,
-  STATE_SEVERITY,
-} from './DiskStateBadge';
+import { aggregateDiskState, displayStateFor, isRecapturable, RECAPTURABLE_DISK_STATES, STATE_SEVERITY } from './DiskStateBadgeHelpers';
 
 describe('displayStateFor', () => {
   it('확정 결손만 별도 표시 키로 갈라진다', () => {

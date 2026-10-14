@@ -1,3 +1,5 @@
+import type { BaselineData, Time } from 'lightweight-charts';
+import { rangeBundleFixture } from '../../../tests/fixtures/rangeBundle';
 import { describe, it, expect } from 'vitest';
 import { TRADING_TIME_MIN_HHMM } from '../../util/tradingTime';
 import { projectRatio, RATIO_SPEC, type RatioPaneContext } from './ratio';
@@ -43,14 +45,14 @@ describe('projectRatio', () => {
   });
 
   it('emits {time, value} using quoteImbalance from bid_total / ask_total', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 100 }, // balanced → 0
           { t: sessionOpenMs + 1000, bid_total: 100, ask_total: 200 }, // sell-heavy → +1.0
         ],
       },
-    };
+    });
     const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
     expect(data[0].time).toBe(0);
     expect(data[0].value).toBe(0);
@@ -58,20 +60,20 @@ describe('projectRatio', () => {
   });
 
   it('drops pre-open auction points via axis.contains', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs - 30 * 60_000, bid_total: 100, ask_total: 200 },
           { t: sessionOpenMs, bid_total: 100, ask_total: 100 },
         ],
       },
-    };
+    });
     expect(projectRatio(bundle, axis, baseCtx)).toHaveLength(1);
   });
 
   it('emits in-auction points with transparent per-point colors when auctionWindowMask=true', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 200 },              // outside → kept
@@ -79,7 +81,7 @@ describe('projectRatio', () => {
           { t: auctionStartMs + 120_000, bid_total: 100, ask_total: 1000 },  // inside → transparent
         ],
       },
-    };
+    });
     const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true });
 
     // 1 kept data point + 2 in-auction transparent points = 3 entries.
@@ -95,11 +97,11 @@ describe('projectRatio', () => {
     // The last pre-auction point's OUTGOING connector is transparent so the 호가비
     // line does not slope into the auction window (ADR-0029 connector-gap fix);
     // its value is still shown via the incoming segment from the prior point.
-    expect((first as any).topLineColor).toBe('rgba(0,0,0,0)');
+    expect((first as BaselineData<Time>).topLineColor).toBe('rgba(0,0,0,0)');
 
     // In-auction entries: value present but rendered invisible via colors.
-    const hidden1 = masked[1] as any;
-    const hidden2 = masked[2] as any;
+    const hidden1 = masked[1] as BaselineData<Time>;
+    const hidden2 = masked[2] as BaselineData<Time>;
     expect(hidden1.time).toBe((auctionStartMs + 60_000 - sessionOpenMs) / 1000);
     expect(hidden1.value).toBe(0);
     expect(hidden1.topLineColor).toBe('rgba(0,0,0,0)');
@@ -112,15 +114,15 @@ describe('projectRatio', () => {
     // OUTGOING segment must be transparent so the 호가비 baseline does not slope
     // from the last continuous bucket into the auction window.
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: auctionStartMs - 60_000, bid_total: 100, ask_total: 200 },  // last continuous → connector broken
           { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 }, // auction (masked)
         ],
       },
-    };
-    const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true }) as any[];
+    });
+    const masked = projectRatio(bundle, axis, { ...baseCtx, auctionWindowMask: true }) as BaselineData<Time>[];
     expect(masked).toHaveLength(2);
     // last pre-auction point: value kept, outgoing connector transparent.
     expect(masked[0].value).toBeCloseTo(1.0, 5);
@@ -133,13 +135,13 @@ describe('projectRatio', () => {
 
   it('keeps auction-window points when auctionWindowMask=false', () => {
     const auctionStartMs = sessionOpenMs + 22_800_000;
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: auctionStartMs + 60_000, bid_total: 100, ask_total: 1000 },
         ],
       },
-    };
+    });
     const unmasked = projectRatio(bundle, axis, baseCtx);
     expect(unmasked).toHaveLength(1);
     const p = unmasked[0] as { value: number };
@@ -153,18 +155,18 @@ describe('projectRatio', () => {
     // OFF (the diagnostic view) — no projector-level guard needed. This pins the
     // composed behavior; the degenerate contract itself is pinned in imbalance.test.ts.
     const auctionStartMs = sessionOpenMs + 22_800_000; // 15:20 KST
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [{ t: auctionStartMs + 60_000, bid_total: 0, ask_total: 0 }],
       },
-    };
+    });
     const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
     expect(data).toHaveLength(1);
     expect(data[0].value).toBe(0);
   });
 
   it('masks outlier points to 0 when outlierFilterEnabled=true and label >= threshold', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 9900 }, // label=99 (raw 98)
@@ -172,7 +174,7 @@ describe('projectRatio', () => {
           { t: sessionOpenMs + 2000, bid_total: 100, ask_total: 20000 }, // label=200 (raw 199)
         ],
       },
-    };
+    });
     const ctx: RatioPaneContext = {
       auctionWindowMask: false,
       outlierFilterEnabled: true,
@@ -189,19 +191,19 @@ describe('projectRatio', () => {
   });
 
   it('does not mask outliers when outlierFilterEnabled=false', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       quote_ratio: {
         points: [
           { t: sessionOpenMs, bid_total: 100, ask_total: 20000 }, // label=200
         ],
       },
-    };
+    });
     const data = projectRatio(bundle, axis, baseCtx) as { time: number; value: number }[];
     expect(data[0].value).toBeCloseTo(199, 5);
   });
 
   it('projects broker late-entry label markers from the ratio spec when enabled', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       quote_ratio: {
         points: [
@@ -220,9 +222,9 @@ describe('projectRatio', () => {
       broker_late_entries: [
         { t_ms: sessionOpenMs, broker: '삼성증권', side: 'buy' },
       ],
-    };
+    });
 
-    const markers = (RATIO_SPEC.series[0] as any).labelMarkers?.(bundle, axis, {
+    const markers = RATIO_SPEC.series[0].labelMarkers?.(bundle, axis, {
       auctionWindowMask: false,
       outlierFilterEnabled: false,
       outlierThreshold: 10,
@@ -255,7 +257,7 @@ describe('projectRatio', () => {
       t, bid_total: 200, ask_total: 100, bid_max: 200, ask_max: 100,
       imb_max_bid: 200, imb_max_ask: 100, band_pct: 0, tick: 0,
     });
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       code: '005930', from_date: '20260527', to_date: '20260527',
       segments: [{ date: '20260527', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
       candles: [], bucket_ms: 60_000,
@@ -266,9 +268,9 @@ describe('projectRatio', () => {
         // 14:00 등장 — 두 세트 모두에 잡힌다.
         { t_ms: sessionOpenMs + 5 * 3_600_000, broker: '오후증권', side: 'buy' },
       ],
-    };
+    });
 
-    const markers = (RATIO_SPEC.series[0] as any).labelMarkers?.(bundle, axis, {
+    const markers = RATIO_SPEC.series[0].labelMarkers?.(bundle, axis, {
       auctionWindowMask: false,
       outlierFilterEnabled: false,
       outlierThreshold: 10,
@@ -280,7 +282,7 @@ describe('projectRatio', () => {
     });
 
     // 09:00 세트는 둘 다, 14:00 세트는 오후만 — 합쳐서 셋.
-    expect(markers.map((m: any) => `${m.broker}:${m.color}`)).toEqual([
+    expect(markers.map((m) => `${m.broker}:${m.color}`)).toEqual([
       '아침증권:#111111',
       '오후증권:#111111',
       '오후증권:#222222',
@@ -292,14 +294,14 @@ describe('projectRatio', () => {
     const axis = createVirtualAxis([
       { date: '20260527', sessionOpenMs, sessionCloseMs: sessionOpenMs + 23_400_000 },
     ]);
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       code: '005930', from_date: '20260527', to_date: '20260527',
       segments: [{ date: '20260527', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000 }],
       candles: [], bucket_ms: 60_000,
       quote_ratio: { points: [{ t: sessionOpenMs, bid_total: 200, ask_total: 100, bid_max: 200, ask_max: 100, imb_max_bid: 200, imb_max_ask: 100, band_pct: 0, tick: 0 }] },
       broker_late_entries: [{ t_ms: sessionOpenMs, broker: '삼성증권', side: 'buy' }],
-    };
-    const markers = (RATIO_SPEC.series[0] as any).labelMarkers?.(bundle, axis, {
+    });
+    const markers = RATIO_SPEC.series[0].labelMarkers?.(bundle, axis, {
       auctionWindowMask: false, outlierFilterEnabled: false, outlierThreshold: 10, intraMax: false,
       brokerLateEntries: [
         { id: 'ble-1', enabled: false, startHHMM: 900, sideMode: 'both' as const, buyColor: '#111111', sellColor: '#111111' },
@@ -315,7 +317,7 @@ describe('hoga data gaps', () => {
   }
 
   it('breaks the ratio connector across candle buckets with no hoga point', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       candles: [
         candle(sessionOpenMs),
@@ -346,9 +348,9 @@ describe('hoga data gaps', () => {
           },
         ],
       },
-    };
+    });
 
-    const data = projectRatio(bundle, axis, baseCtx) as any[];
+    const data = projectRatio(bundle, axis, baseCtx) as BaselineData<Time>[];
 
     expect(data).toHaveLength(3);
     expect(data[0].time).toBe(0);
@@ -369,17 +371,17 @@ describe('hoga data gaps', () => {
   });
 
   it('does not synthesize a ratio baseline when all hoga data is missing', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       candles: [candle(sessionOpenMs), candle(sessionOpenMs + 60_000)],
       quote_ratio: { points: [] },
-    };
+    });
 
     expect(projectRatio(bundle, axis, baseCtx)).toEqual([]);
   });
 
   it('applies the same hoga gap hiding through RATIO_SPEC cached data path', () => {
-    const bundle: any = {
+    const bundle = rangeBundleFixture( {
       bucket_ms: 60_000,
       segments: [
         { date: '20260518', session_open_ms: sessionOpenMs, session_close_ms: sessionOpenMs + 23_400_000, source: 'kiwoom_live' },
@@ -413,9 +415,9 @@ describe('hoga data gaps', () => {
           },
         ],
       },
-    };
+    });
 
-    const data = RATIO_SPEC.series[0].data(bundle, axis, baseCtx) as any[];
+    const data = RATIO_SPEC.series[0].data(bundle, axis, baseCtx) as BaselineData<Time>[];
 
     expect(data).toHaveLength(3);
     expect(data[0].time).toBe(0);

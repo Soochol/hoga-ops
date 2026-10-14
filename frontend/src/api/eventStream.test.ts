@@ -82,7 +82,7 @@ describe('useEventStream promotion handler', () => {
     expect(useLivePromotionStore.getState().byCode['005930']).toBeGreaterThan(0);
     // simple useRange consumers invalidated via predicate on ['range', code]
     const calls = spy.mock.calls.map((c) => c[0]);
-    expect(calls.some((c: any) => typeof c?.predicate === 'function')).toBe(true);
+    expect(calls.some((c) => typeof c?.predicate === 'function')).toBe(true);
   });
 });
 
@@ -99,9 +99,9 @@ describe('useEventStream disconnect handler', () => {
     sock.open(); // Deterministic transport reconnect, no retry timer sleep.
     await new Promise((r) => setTimeout(r, 0));
     const calls = spy.mock.calls.map((c) => c[0]);
-    expect(calls.some((c: any) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'stock-dates')).toBe(true);
-    expect(calls.some((c: any) => Array.isArray(c?.queryKey) && c.queryKey.join(',') === 'capture,queue')).toBe(true);
-    expect(calls.some((c: any) => typeof c?.predicate === 'function')).toBe(true);
+    expect(calls.some((c) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'stock-dates')).toBe(true);
+    expect(calls.some((c) => Array.isArray(c?.queryKey) && c.queryKey.join(',') === 'capture,queue')).toBe(true);
+    expect(calls.some((c) => typeof c?.predicate === 'function')).toBe(true);
   });
 });
 

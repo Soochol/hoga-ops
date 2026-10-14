@@ -72,7 +72,7 @@ describe('filterSymbols', () => {
 
 describe('useSymbols', () => {
   it('fires one fetch and exposes the envelope on data', async () => {
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 }),
     } as Response);
@@ -87,7 +87,7 @@ describe('useSymbols', () => {
 
 describe('useSymbolSearch', () => {
   it('returns the filtered list from the cached SymbolsAllResponse', async () => {
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockResolvedValue({
+    vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,
       json: async () => ({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 }),
     } as Response);

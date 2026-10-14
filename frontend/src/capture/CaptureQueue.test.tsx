@@ -34,7 +34,7 @@ const SNAPSHOT = (): QueueSnapshot => ({
 beforeEach(() => { vi.restoreAllMocks(); });
 
 function setup(snapshot: QueueSnapshot = SNAPSHOT()) {
-  vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+  vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
     const s = String(url);
     if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => snapshot } as Response;
     if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
@@ -89,7 +89,7 @@ describe('CaptureQueue', () => {
 
   it('전체 취소 first click arms confirmation; second click POSTs cancel-all', async () => {
     const qc = setup();
-    const fetchMock = vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url: RequestInfo | URL) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => SNAPSHOT() } as Response;
       if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
@@ -150,14 +150,14 @@ describe('CaptureQueue 실패 재시도 (ADR-0031)', () => {
   });
 
   it('실패 재시도 enabled when failed > 0, POSTs all failed item_ids', async () => {
-    let postedBody: any = null;
+    let postedBody: unknown = null;
     const failed1 = { ...item('f1', 'failed'), date: '20260518' };
     const failed2 = { ...item('f2', 'failed'), date: '20260519' };
     const snap: QueueSnapshot = {
       active: [], queued: [], done: [failed1, failed2],
       paused: false, max_concurrent: 3,
     };
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url, init) => {
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url, init) => {
       const s = String(url);
       if (s.includes('/queue')) return { ok: true, status: 200, json: async () => snap } as Response;
       if (s.includes('/items/retry')) {
@@ -187,7 +187,7 @@ describe('CaptureQueue 실패 재시도 (ADR-0031)', () => {
       active: [], queued: [], done: [failed],
       paused: false, max_concurrent: 3,
     };
-    vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url) => {
+    vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url) => {
       const s = String(url);
       if (s.includes('/items/retry')) { calls.push('retry'); return { ok: true, status: 201, json: async () => ({ enqueued: [], skipped: [] }) } as Response; }
       if (s.includes('/items')) { calls.push('items'); return { ok: true, status: 201, json: async () => ({ enqueued: [], deduped: [] }) } as Response; }

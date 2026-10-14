@@ -12,7 +12,7 @@ function wrapper(qc: QueryClient) {
 }
 
 function setupFetch(action: 'unblocked' | 'noop' = 'unblocked') {
-  return vi.spyOn(globalThis, 'fetch' as 'fetch').mockImplementation(async (url) => {
+  return vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url) => {
     const s = String(url);
     if (s.includes('/config.json')) {
       return { ok: true, status: 200, json: async () => ({ api_url: '' }) } as Response;

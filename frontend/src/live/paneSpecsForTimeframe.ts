@@ -1,3 +1,4 @@
+import { bindPaneSpec } from '../chart/paneSpecs';
 import { type LiveTimeframe, isCalendarTimeframe } from '../state/livePage';
 import { PANE_SPECS, type BoundPaneSpec } from '../chart/paneSpecs';
 import type { PaneId } from '../chart/drawing/types';
@@ -75,14 +76,14 @@ const GATE_BY_NAME: Partial<Record<string, PaneGate>> = {
  */
 const GATED: ReadonlyArray<{ spec: BoundPaneSpec; gate: PaneGate }> = [
   ...PANE_SPECS.map((spec) => ({ spec, gate: GATE_BY_NAME[spec.name] ?? ((): boolean => true) })),
-  { spec: TRADE_VALUE_SPEC, gate: (tf, t) => isCalendarTimeframe(tf) && t.tradeValueEnabled === true },
-  { spec: DAILY_PROGRAM_TRADE_SPEC, gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.dailyProgramEnabled === true },
-  { spec: INVESTOR_FOREIGN_SPEC, gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
-  { spec: INVESTOR_INSTITUTION_SPEC, gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
+  { spec: bindPaneSpec(TRADE_VALUE_SPEC), gate: (tf, t) => isCalendarTimeframe(tf) && t.tradeValueEnabled === true },
+  { spec: bindPaneSpec(DAILY_PROGRAM_TRADE_SPEC), gate: (tf, t) => tf === 'D' && t.hogaPanes !== false && t.dailyProgramEnabled === true },
+  { spec: bindPaneSpec(INVESTOR_FOREIGN_SPEC), gate: (tf, t): boolean => tf === 'D' && t.foreignNet },
+  { spec: bindPaneSpec(INVESTOR_INSTITUTION_SPEC), gate: (tf, t): boolean => tf === 'D' && t.institutionNet },
   // 최대벽 강도 pane — `PANE_SPECS` 가 아니라 여기 append 하는 이유는 spec 파일
   // (`peakWallPaneSpec`) 머리말 참조: chart/→live/ 계층 규칙 + all-base identity.
   // 호가 파생 지표라 hogaAllowed 를 탄다(분봉 전용 · 인덱스 차트의 hogaPanes:false 존중).
-  { spec: PEAK_WALL_SPEC, gate: (tf, t): boolean => hogaAllowed(tf, t) && t.peakWallPaneEnabled === true },
+  { spec: bindPaneSpec(PEAK_WALL_SPEC), gate: (tf, t): boolean => hogaAllowed(tf, t) && t.peakWallPaneEnabled === true },
 ];
 
 /**

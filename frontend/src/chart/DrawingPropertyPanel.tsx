@@ -1,32 +1,16 @@
-// frontend/src/chart/DrawingPropertyPanel.tsx
-//
-// Drawing Property Panel — the floating DOM affordance that lets the user
-// edit the selected Drawing's color, stroke width, and line style, and
-// delete it. See CONTEXT.md "Drawing Property Panel" and ADR-0032.
-
 import { extendRectToTime } from './drawing/rectCoordinates';
 import { useCallback, useMemo, useState, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
-import {
-  eligibleFor, planAlign, planDistribute,
-  type AlignCoords, type AlignEdge, type DistributeAxis,
-} from './drawing/translate';
-import {
-  COLOR_PALETTE,
-  STROKE_WIDTHS,
-  LINE_STYLES,
-  RECT_FILL_OPACITIES,
-  TEXT_FONT_SIZES,
-  isLocked,
-  isExtendedRight,
-  type DrawingKind,
-  type LineStyle,
-  type Drawing,
-} from './drawing/types';
+import { eligibleFor, planAlign, planDistribute, type AlignCoords, type AlignEdge, type DistributeAxis } from './drawing/translate';
+import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, RECT_FILL_OPACITIES, TEXT_FONT_SIZES, isLocked, isExtendedRight, type DrawingKind, type LineStyle, type Drawing } from './drawing/types';
+import { type PatternSpan, patternButtonState } from './DrawingPropertyPanelHelpers';
+
 
 export type DrawingAnchor = { x: number; y: number };
+
 export type ComputeAnchorFn = (d: Drawing) => DrawingAnchor | null;
+
 
 // The panel now docks to the chart's top-center (see the re-dock effect) rather
 // than anchoring to each drawing, so it takes no positioning props.
@@ -64,28 +48,36 @@ type Props = {
   resolveAlignCoords?: () => AlignCoords | null;
 };
 
+
 const LINE_STYLE_LABELS: Record<LineStyle, string> = {
   solid: '실선',
   dashed: '대시',
   dotted: '도트',
 };
 
+
 const previewBorderStyle = (style: LineStyle): 'solid' | 'dashed' | 'dotted' =>
   style === 'solid' ? 'solid' : style === 'dashed' ? 'dashed' : 'dotted';
 
+
 type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | 'align' | null;
+
 
 /** 참조 안정 빈 목록 — 셀렉터 fallback (EMPTY_SELECTION 과 같은 이유). */
 const EMPTY_DRAWINGS: readonly Drawing[] = [];
 
+
 /** Top-center dock offset from the chart's top edge (candle pane top). */
 const TOP_DOCK_Y = 8;
+
 
 /** 다중 선택에서 일괄 편집할 수 있는 스타일 속성. */
 type StyleProp = 'color' | 'width' | 'lineStyle' | 'fillOpacity' | 'fontSize';
 
+
 /** 값이 갈렸을 때 트리거에 쓰는 라벨. */
 const MIXED_LABEL = '혼합';
+
 
 /**
  * 이 종류가 그 스타일 속성을 갖는가.
@@ -109,9 +101,11 @@ function kindHasProp(kind: DrawingKind, prop: StyleProp): boolean {
   }
 }
 
+
 function carriersOf(members: readonly Drawing[], prop: StyleProp): Drawing[] {
   return members.filter((m) => kindHasProp(m.kind, prop));
 }
+
 
 /**
  * 이 속성을 **가진 멤버들**의 공통값.
@@ -132,8 +126,10 @@ function commonValue(members: readonly Drawing[], prop: StyleProp): string | num
   return carriers.every((m) => read(m) === first) ? first : null;
 }
 
+
 /** 팝오버 껍데기 — 위치·테두리·그림자만. 안의 목록은 호출부가 넣는다. */
 type PopoverRef = React.MutableRefObject<HTMLDivElement | null>;
+
 
 function PopoverShell({
   popoverRef, wide, children,
@@ -153,6 +149,7 @@ function PopoverShell({
     </div>
   );
 }
+
 
 /** 목록형 팝오버의 한 줄. `selected` 는 **현재 값과 일치**할 때만 참이다 —
  *  다중 선택에서 값이 갈리면(혼합) 어느 줄도 강조되지 않는다. */
@@ -181,6 +178,7 @@ function PopoverItem({
   );
 }
 
+
 // 아래 다섯 팝오버는 단일 선택 패널과 다중 선택 툴바가 **함께** 쓴다. `current` 가
 // null 이면 "값이 갈렸다"(혼합)는 뜻이고, 그때는 아무 줄도 강조하지 않는다.
 
@@ -206,6 +204,7 @@ function ColorPalettePopover({
   );
 }
 
+
 function WidthPopover({
   popoverRef, current, onPick,
 }: { popoverRef: PopoverRef; current: number | null; onPick: (w: number) => void }) {
@@ -220,6 +219,7 @@ function WidthPopover({
     </PopoverShell>
   );
 }
+
 
 function LineStylePopover({
   popoverRef, current, onPick,
@@ -244,6 +244,7 @@ function LineStylePopover({
   );
 }
 
+
 function FillOpacityPopover({
   popoverRef, current, previewColor, onPick,
 }: { popoverRef: PopoverRef; current: number | null; previewColor: string; onPick: (op: number) => void }) {
@@ -261,6 +262,7 @@ function FillOpacityPopover({
     </PopoverShell>
   );
 }
+
 
 function FontSizePopover({
   popoverRef, current, onPick,
@@ -282,6 +284,7 @@ function FontSizePopover({
   );
 }
 
+
 /** 정렬 6 + 분배 2. 각 항목이 자기 비활성 조건을 함께 들고 다닌다. */
 const ALIGN_ITEMS: { edge: AlignEdge; label: string }[] = [
   { edge: 'left', label: '왼쪽' },
@@ -291,10 +294,12 @@ const ALIGN_ITEMS: { edge: AlignEdge; label: string }[] = [
   { edge: 'vcenter', label: '세로 가운데' },
   { edge: 'bottom', label: '아래' },
 ];
+
 const DISTRIBUTE_ITEMS: { axis: DistributeAxis; label: string }[] = [
   { axis: 'horizontal', label: '가로 균등' },
   { axis: 'vertical', label: '세로 균등' },
 ];
+
 
 /**
  * 정렬·분배 팝오버.
@@ -356,6 +361,7 @@ function AlignPopover({
   );
 }
 
+
 /**
  * 겹침 순서 버튼 한 쌍 — 단일 패널과 다중 툴바가 함께 쓴다.
  *
@@ -397,6 +403,7 @@ function ZOrderButtons({
     </>
   );
 }
+
 
 /**
  * 다중 선택 툴바 — 개수, 스타일 일괄 편집, 겹침 순서, 잠금·삭제.
@@ -768,28 +775,6 @@ function MultiSelectionToolbar({
   );
 }
 
-/** 구간의 봉 수를 아는 호스트가 준 값 — 없으면(구형 호출부) 막지 않는다. */
-export type PatternSpan = { bars: number; min: number; max: number };
-
-/**
- * 「패턴 찾기」 버튼의 상태. **누르기 전에 되는지 말하기 위한** 순수 함수다 —
- * 없으면 범위 밖 구간이 "눌렀는데 아무 일도 안 나는 버튼" 이 된다(시드가 조용히
- * null 이 되고 화면은 그대로다).
- */
-export function patternButtonState(span: PatternSpan | undefined): {
-  disabled: boolean;
-  title: string;
-  suffix: string;
-} {
-  const out = span != null && (span.bars < span.min || span.bars > span.max);
-  return {
-    disabled: out,
-    title: out
-      ? `${span!.bars}봉 — 패턴 검색은 ${span!.min}~${span!.max}봉이다`
-      : '이 봉들과 닮은 캔들 패턴을 가진 종목을 찾는다',
-    suffix: out ? ` · ${span!.bars}봉` : '',
-  };
-}
 
 export default function DrawingPropertyPanel({
   scope, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern, patternBarCount,

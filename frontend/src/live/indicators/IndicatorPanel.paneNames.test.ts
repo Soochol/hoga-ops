@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { CATEGORIES } from './IndicatorPanel';
+import { CATEGORIES } from './IndicatorPanelHelpers';
 import { PANE_DISPLAY_NAME } from '../../chart/paneOrder';
 import type { PaneId } from '../../chart/drawing/types';
 

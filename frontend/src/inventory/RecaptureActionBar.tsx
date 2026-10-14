@@ -1,5 +1,5 @@
 import type { RecaptureStatus } from './useInventoryRecapture';
-import { RECAPTURABLE_DISK_STATES, STATE_SHORT_LABEL } from './DiskStateBadge';
+import { RECAPTURABLE_DISK_STATES, STATE_SHORT_LABEL } from './DiskStateBadgeHelpers';
 
 export type { RecaptureStatus };
 
