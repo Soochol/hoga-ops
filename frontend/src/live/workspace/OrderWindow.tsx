@@ -565,16 +565,16 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     {settingsDraft && createPortal(<div className="order-settings-surface font-data" onKeyDown={e => {
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); setSettingsDraft(null); }
     }}><ModalShell ariaLabel="주문 설정" width="w-[360px]" onClose={() => setSettingsDraft(null)}>
-      <div className="order-modal"><OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={() => setSettingsDraft(null)}>주문 설정</OrderSurfaceHeading>
+      <div className="order-modal order-settings-modal"><OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={() => setSettingsDraft(null)}>주문 설정</OrderSurfaceHeading>
       <form onSubmit={e => { e.preventDefault(); if (!busy && validOrderSettings(settingsDraft)) { onApplySettings(settingsDraft); setSettingsDraft(null); } }}>
         <div className="order-settings-body">
-          {(['quantity', 'amount'] as const).map(unit => <fieldset key={unit}><legend>{unit === 'quantity' ? '수량 프리셋 · 주' : '금액 프리셋 · 백만원'}</legend>
+          {(['quantity', 'amount'] as const).map(unit => <fieldset key={unit}><legend>{unit === 'quantity' ? '수량 프리셋' : '금액 프리셋'}</legend>
             <div className="order-settings-presets">{(unit === 'quantity' ? settingsDraft.quantityPresets : settingsDraft.amountPresets).map((value, index) => <label key={index}>
-              <span className="order-meta">프리셋 {index + 1}</span><input type="number" aria-label={`${unit === 'quantity' ? '수량' : '금액'} 프리셋 ${index + 1}`} min="1" max={unit === 'quantity' ? MAX_ORDER_QUANTITY : MAX_AMOUNT_MILLIONS} step="1" value={value}
+              <input type="number" aria-label={`${unit === 'quantity' ? '수량' : '금액'} 프리셋 ${index + 1}`} min="1" max={unit === 'quantity' ? MAX_ORDER_QUANTITY : MAX_AMOUNT_MILLIONS} step="1" value={value}
                 onChange={e => { const key = unit === 'quantity' ? 'quantityPresets' : 'amountPresets'; setSettingsDraft({ ...settingsDraft, [key]: settingsDraft[key].map((n, i) => i === index ? Number(e.target.value) : n) as OrderPresets }); }} />
+              <span className="order-preset-unit" aria-hidden="true">{unit === 'quantity' ? '주' : '백만원'}</span>
             </label>)}</div>
           </fieldset>)}
-          <span className="order-meta">1 = 100만원 · 5 = 500만원 · 10 = 1,000만원</span>
           {!validOrderSettings(settingsDraft) && <p role="alert" className="text-error">프리셋은 허용 범위의 양의 정수로 입력하세요</p>}
         </div>
         <div className="order-surface-footer"><button type="button" onClick={() => setSettingsDraft(null)}>취소</button><button type="submit" className="order-primary" disabled={busy || !validOrderSettings(settingsDraft)}>적용</button></div>
