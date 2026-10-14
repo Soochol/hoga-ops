@@ -61,9 +61,7 @@ export function WorkspaceLiveToolbar({ captureHealth }: Props) {
       {/* 창 목록 — 죽어 있던 "N창 · 그룹 X" 라벨의 후계. 개수만 알리던 텍스트를
           열린 창으로 점프·닫기 하는 진입점으로 승격했다(개수는 트리거 뱃지가 계승). */}
       <LiveWindowListMenu />
-      <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
       <WindowAddMenu />
-      <span className="mx-1 h-[14px] w-px shrink-0 bg-border-strong" />
       {/* 보조지표는 차트 창 헤더로 이관됐고(#758 — 창의 것이라 창이 연다), 설정은
           상단 TopNav 로 모였다(2026-08-17). 설정이 여기 있던 근거는 "편집 값이 앱
           전역이라 창 헤더에 두면 「이 창의 설정」으로 읽힌다"(#759 결정 1)였는데,

@@ -91,11 +91,11 @@ export function DataSourceDetail() {
         {/* 캔들 소스는 'REST 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기). */}
         <RoleSourceGroup
           title="캔들 데이터 기준"
-          description="기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다 'REST 우회'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다"
+          description="기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다 '저장 데이터로 캔들 보기'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다"
         >
-          <SettingsRow label="REST 우회" testId="kis-rest-bypass-row">
+          <SettingsRow label="저장 데이터로 캔들 보기" testId="kis-rest-bypass-row">
             <ToggleSwitch
-              label="REST 우회"
+              label="저장 데이터로 캔들 보기"
               checked={restBypassEnabled}
               onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })}
             />

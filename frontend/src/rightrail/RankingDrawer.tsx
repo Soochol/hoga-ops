@@ -53,9 +53,9 @@ const RANKING_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
 
 const KINDS: { key: RankingKind; label: string }[] = [
   { key: 'change', label: '등락률' },
-  { key: 'surge', label: '량급증' },
+  { key: 'surge', label: '거래량 급증' },
   { key: 'volume', label: '거래량' },
-  { key: 'value', label: '대금' },
+  { key: 'value', label: '거래대금' },
   { key: 'program', label: '프로그램' },
   { key: 'institution', label: '기관' },
   { key: 'foreign', label: '외국인' },
@@ -310,7 +310,7 @@ export function RankingDrawer() {
         }
       />
       <RailDrawerSection className="flex flex-col gap-sm">
-        <SegmentedControl aria-label="순위 종류" className="w-full !grid grid-cols-4">
+        <SegmentedControl aria-label="순위 종류" className="w-full !grid grid-cols-3">
           {KINDS.map((k) => {
             const on = kind === k.key;
             return (

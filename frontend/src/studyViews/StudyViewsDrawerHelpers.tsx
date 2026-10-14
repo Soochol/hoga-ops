@@ -14,6 +14,10 @@ export function formatStudyViewTitle(row: { label: string; code: string; name: s
   const stock = row.label || row.code;
   const name = row.name.trim();
   const suffix = name.slice(stock.length);
+  // Old generated names repeat the code, timeframe and full date range; the
+  // metadata row already displays those. Keep authored study names intact.
+  if (name.startsWith(stock) && suffix.trim().startsWith(row.code)
+    && /^\s*[·-]\s*(?:일봉|주봉|월봉|\d+분봉)\s*[·-]\s*[\d.\-–:~\s]+(?:KST)?$/.test(suffix.trim().slice(row.code.length))) return stock;
   return name.startsWith(stock) && (suffix === '' || /^[\s·:：—–-]/.test(suffix))
     ? name
     : `${stock} · ${name}`;

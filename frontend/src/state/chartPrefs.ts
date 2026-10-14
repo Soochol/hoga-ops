@@ -39,14 +39,14 @@ export const CHART_TOGGLES = [
   {
     key: 'candlePaneCandleOnlyScale',
     label: '캔들 기준 Y축',
-    description: '캔들 pane의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.',
+    description: '캔들 패널의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.',
     default: false,
     group: 'candle',
   },
   {
     key: 'candleAlwaysOnTop',
     label: '캔들이 항상 위',
-    description: '캔들 pane에서 이동평균선 등 같은 pane의 보조 지표보다 캔들을 위에 그립니다.',
+    description: '캔들 패널에서 이동평균선 등 같은 패널의 보조 지표보다 캔들을 위에 그립니다.',
     default: false,
     group: 'candle',
   },

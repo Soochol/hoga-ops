@@ -1,3 +1,4 @@
+import { SegmentedControl } from '../../ui/SegmentedControl';
 /**
  * 일별 투자자 창 — `ka10059` 순매수·총매수·총매도를 주체 13종으로 펼친 표.
  *
@@ -299,14 +300,14 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-2.5 py-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <div className="live-data-controls flex shrink-0 flex-wrap items-center justify-between gap-1 px-2.5 py-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           <SpanChips span={span} onSelect={(value) => {
             setSpan(value);
             setDepth({ scope: `${code}:${unit}:${tradeSide}:${value}`, count: 60 });
             if (scrollRef.current) scrollRef.current.scrollTop = 0;
           }} />
-          {showDetails && <div role="group" aria-label="매매 기준" className="flex shrink-0 items-center gap-1">
+          {showDetails && <div role="group" aria-label="매매 기준" className="ui-segmented">
             {(Object.keys(TRADE_SIDE_LABELS) as InvestorTradeSide[]).map((side) => (
               <button key={side} type="button" aria-pressed={tradeSide === side}
                 title={side === 'net' ? '총매수 − 총매도' : TRADE_SIDE_LABELS[side]}
@@ -316,7 +317,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
               </button>
             ))}
           </div>}
-          {!showDetails && <div role="group" aria-label="표기 방법" className="flex shrink-0 items-center gap-1">
+          {!showDetails && <div role="group" aria-label="표기 방법" className="ui-segmented">
             {(Object.keys(COMPACT_DISPLAY_LABELS) as InvestorDailyCompactDisplay[]).map((display) => (
               <button key={display} type="button" aria-pressed={compactDisplay === display}
                 onClick={() => setCompactDisplay(display)}
@@ -405,7 +406,8 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     key={column.key}
                     className={!showDetails || index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
                   >
-                    {column.label}
+                    <span>{column.label}</span>
+                    {!showDetails && compactDisplay === 'all' && <span className="ml-1 text-xs font-normal text-fg-dim">순·매수·매도</span>}
                   </HeadCell>
                 ))}
               </tr>
@@ -461,7 +463,7 @@ function SpanChips({
   onSelect: (value: InvestorDailySpan) => void;
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-1" role="group" aria-label="표시 기간">
+    <div className="ui-segmented" role="group" aria-label="표시 기간">
       {INVESTOR_DAILY_SPANS.map((value) => {
         const active = value === span;
         return (
@@ -573,33 +575,14 @@ function formatCell(value: number, dataUnit: InvestorNetUnit): string {
 
 /** 단위 칩 — 잠정투자자 카드와 **같은 스토어**를 쓴다(위 도크스트링).
  *  눌림 상태는 스토어를 따르고, 셀 숫자는 응답을 따른다. */
-function UnitChip({
-  unit,
-  onToggle,
-  compact = false,
-}: {
-  unit: InvestorEstimateUnit;
-  onToggle: () => void;
-  compact?: boolean;
+function UnitChip({ unit, onToggle, compact = false }: {
+  unit: InvestorEstimateUnit; onToggle: () => void; compact?: boolean;
 }) {
-  const isAmount = unit === 'amount';
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={isAmount}
-      aria-label={`표시 단위 ${isAmount ? '금액' : '수량'}, 누르면 ${isAmount ? '수량' : '금액'}`}
-      title={isAmount ? '금액(억원) — 누르면 수량(주)' : '수량(주) — 누르면 금액(억원)'}
-      className={`shrink-0 rounded border px-1.5 py-px text-2xs leading-normal transition-colors ${
-        isAmount
-          ? 'border-accent text-accent'
-          : 'border-border text-fg-dim hover:border-border-strong hover:text-fg'
-      }`}
-    >
-      {isAmount ? '금액(억원)' : compact ? '수량(K주)' : '수량(주)'}
-    </button>
-  );
+  return <SegmentedControl label="표시 단위" value={unit}
+    options={[{ value: 'qty', label: compact ? '수량(K주)' : '수량(주)' }, { value: 'amount', label: '금액(억원)' }]}
+    onChange={next => { if (next !== unit) onToggle(); }} />;
 }
+
 
 function getStateText(
   query: ReturnType<typeof useLivePastInvestorNet>,

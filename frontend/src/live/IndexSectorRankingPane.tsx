@@ -1,4 +1,5 @@
 import './IndexSectorRankingPane.css';
+import { formatTradingDate } from '../util/displayDate';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { BasisMode } from './indexSectorRankingState';
@@ -58,7 +59,7 @@ function writeStoredPaneHeight(value: number): void {
 
 function formatDate(date: string | null): string {
   if (!date || date.length !== 8) return '날짜 없음';
-  return `${date.slice(0, 4)}/${date.slice(4, 6)}/${date.slice(6, 8)}`;
+  return formatTradingDate(date);
 }
 
 function formatPct(value: number | null): string {
@@ -72,7 +73,7 @@ function priceColor(value: number | null): string {
 }
 
 function sectorButtonLabel(rank: number, sector: IndexSectorRankingSector): string {
-  return `${rank}위 ${sector.folder_name} ${formatPct(sector.change_pct)}`;
+  return sector.change_pct == null ? `${sector.folder_name} · 등락 데이터 없음` : `${rank}위 ${sector.folder_name} ${formatPct(sector.change_pct)}`;
 }
 
 function stockButtonLabel(stock: IndexSectorRankingStock): string {
@@ -114,7 +115,7 @@ function SectorButton({
       }}
     >
       <span className="font-data text-xs" style={{ color: 'var(--fg-dimmer)' }}>
-        {rank}
+        {sector.change_pct == null ? '—' : rank}
       </span>
       <span className="truncate font-ui text-sm">{sector.folder_name}</span>
       <span className="font-data text-xs text-right" style={{ color: priceColor(sector.change_pct) }}>
@@ -240,6 +241,9 @@ export function IndexSectorRankingPane({
         data-detail={showStocks}
       >
         <div className="sector-ranking-sectors min-h-0 overflow-auto" style={{ borderRight: '1px solid var(--border)' }}>
+          <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs text-fg-dim">
+            {sectors.every(sector => sector.change_pct == null) ? '등락 데이터 없음 · 섹터 목록' : '섹터 · 등락률'}
+          </div>
           {sectors.map((sector, index) => {
             return (
               <SectorButton

@@ -122,7 +122,7 @@ export default function MAStylePicker({
           ref={popoverRef}
           role="dialog"
           aria-label={`${lbl} 스타일 팔레트`}
-          className="p-3 rounded shadow-lg"
+          className="ui-popover p-3"
           style={{
             ...popoverStyle,
             background: 'var(--bg-card)',
@@ -153,6 +153,7 @@ export default function MAStylePicker({
                     <button
                       key={c}
                       type="button"
+                      className="ui-color-swatch"
                       aria-label={`${lbl} 색상 ${c}`}
                       aria-pressed={selected}
                       onClick={() => {

@@ -73,9 +73,9 @@ export function LiveVenuePicker() {
         onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-bg-subtle px-2 py-1 text-xs text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
       >
-        <span className="text-2xs uppercase text-fg-dimmer">거래소</span>
+        <span className="text-xs text-fg-dim">거래소</span>
         <span className="font-data text-accent">{LIVE_VENUE_LABELS[venue]}</span>
-        <span className="font-data text-2xs tabular-nums text-fg-dimmer">
+        <span className="font-data text-xs tabular-nums text-fg-dim">
           {liveVenueSessionWindowLabel(venue)}
         </span>
         <span aria-hidden className="text-2xs">▾</span>
@@ -113,15 +113,18 @@ export function LiveVenuePicker() {
                 }`}
               >
                 <span>{LIVE_VENUE_LABELS[opt]}</span>
-                <span className="font-data text-2xs tabular-nums text-fg-dimmer">
+                <span className="font-data text-xs tabular-nums text-fg-dim">
                   {liveVenueSessionWindowLabel(opt)}
                 </span>
               </button>
             );
           })}
-          <p className="mt-1.5 border-t border-border px-2 pt-1.5 text-2xs leading-relaxed text-fg-dim">
-            {LIVE_VENUE_HELP}
-          </p>
+          <div className="mt-1.5 border-t border-border px-2 pt-1.5 text-xs leading-relaxed text-fg-dim">
+            <p>열린 모든 탭의 시세에 적용 · 주문은 통합(SOR)</p>
+            <details className="mt-1"><summary className="cursor-pointer">거래소별 데이터 안내</summary>
+              <p className="mt-1">{LIVE_VENUE_HELP}</p>
+            </details>
+          </div>
         </div>,
         document.body,
       )}

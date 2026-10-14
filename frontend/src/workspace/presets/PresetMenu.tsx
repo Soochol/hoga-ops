@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useDismissablePopover } from '../../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../../util/useClampedFixedPosition';
@@ -57,6 +57,7 @@ export type PresetMenuProps<P> = {
   labels: PresetMenuLabels;
   /** data-testid 접두사. `/live` 는 기존 'layout-preset' 을 유지한다. */
   testIdPrefix: string;
+  renderPreview?: (payload: P) => ReactNode;
 };
 
 export function PresetMenu<P>({
@@ -72,6 +73,7 @@ export function PresetMenu<P>({
   isConflict,
   labels,
   testIdPrefix,
+  renderPreview,
 }: PresetMenuProps<P>) {
   const [open, setOpen] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -174,14 +176,17 @@ export function PresetMenu<P>({
           <button
             type="button"
             role="menuitem"
+            aria-label={preset.name}
             title={labels.applyTitle}
             data-testid={`${testIdPrefix}-apply-${preset.id}`}
             onClick={() => applyPreset(preset.id)}
-            className={`flex-1 truncate rounded px-2 py-1.5 text-left text-xs hover:bg-bg-input-hover ${
-              preset.id === activePresetId ? 'text-accent' : 'text-fg-dim'
+            className={`flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-bg-input-hover ${
+              preset.id === activePresetId ? 'bg-tint-selection text-fg font-semibold' : 'text-fg'
             }`}
           >
-            {preset.name}
+            {renderPreview?.(preset.payload)}
+            <span className="min-w-0 flex-1 truncate">{preset.name}</span>
+            {preset.id === activePresetId && <span aria-hidden className="text-accent">✓</span>}
           </button>
           {pendingDelete === preset.id ? (
             <button

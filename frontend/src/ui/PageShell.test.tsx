@@ -59,7 +59,7 @@ describe('PageShell primitives', () => {
       </SegmentedControl>,
     );
     // 테두리 없는 세그먼트(2026-07-15) — bg-subtle 트랙.
-    expect(screen.getByRole('group', { name: '정렬' })).toHaveClass('bg-bg-subtle');
+    expect(screen.getByRole('group', { name: '정렬' })).toHaveClass('ui-segmented');
   });
 
   it('renders page states by tone', () => {

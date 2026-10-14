@@ -26,28 +26,27 @@ function routeOf(pathname: string): HelpRoute {
 
 function Kbd({ children }: { children: string }) {
   return (
-    <kbd className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded border border-border-strong bg-bg-input px-1 font-data text-xs text-fg-dim">
+    <kbd className="ui-kbd h-[18px] font-data">
       {children}
     </kbd>
   );
 }
 
 function Row({ keys, desc }: { keys: string[]; desc: string }) {
-  return (
-    <>
-      <span className="flex items-center gap-1 justify-self-start whitespace-nowrap">
-        {keys.map((k) => <Kbd key={k}>{k}</Kbd>)}
-      </span>
-      <span className="text-sm text-fg-dim">{desc}</span>
-    </>
-  );
+  return <div className="grid grid-cols-[1fr_auto] items-center gap-x-4">
+    <span className="text-sm text-fg">{desc}</span>
+    <span className="flex items-center justify-end gap-1 whitespace-nowrap">
+      {keys.map(key => <Kbd key={key}>{key}</Kbd>)}
+    </span>
+  </div>;
 }
+
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-2">
       <h3 className="text-xs font-semibold uppercase text-fg-dim">{title}</h3>
-      <div className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-1.5">
+      <div className="space-y-1.5">
         {children}
       </div>
     </section>

@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './controls.css';
 /* Pretendard loads via <link> in index.html (preconnect + render-blocking
    stylesheet) so the first paint already has the right face. */
 

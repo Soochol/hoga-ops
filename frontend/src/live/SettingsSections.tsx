@@ -75,7 +75,7 @@ const LABEL: Record<NavId, string> = {
   'data-source': '데이터소스',
   alerts: '알림',
   theme: '테마',
-  symbols: 'Symbol Master',
+  symbols: '종목 목록',
   general: '앱 정보',
   roadmap: '로드맵',
 };
@@ -367,13 +367,13 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
       </nav>
       <div className="flex min-h-0 flex-col">
         <header className="flex items-center justify-between px-5 pb-3 pt-4">
-          <h2 className="text-lg font-semibold text-fg">설정</h2>
+          <div><h2 className="text-lg font-semibold text-fg">설정</h2><p className="text-xs text-fg-dim">변경 즉시 반영</p></div>
           {onClose && (
             <button
               type="button"
               aria-label="닫기"
               onClick={onClose}
-              className="-mr-1 px-1 text-lg leading-none text-fg-dim transition-colors hover:text-fg"
+              className="ui-icon-button text-lg leading-none"
             >
               ✕
             </button>

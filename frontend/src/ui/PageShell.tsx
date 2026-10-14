@@ -90,7 +90,7 @@ export function SegmentedControl({
       {...props}
       // 테두리 없는 세그먼트(2026-07-15) — bg-subtle 트랙 pill로 그룹을 정의(다크에서 bg-input=
       // 카드라 보더 없이 안 보임). 활성 세그먼트의 tint-selection이 선택 앵커.
-      className={`inline-flex overflow-hidden rounded-lg bg-bg-subtle ${className}`.trim()}
+      className={`ui-segmented ${className}`.trim()}
     >
       {children}
     </div>

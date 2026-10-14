@@ -18,6 +18,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  Fragment,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useDismissablePopover } from '../../util/useDismissablePopover';
@@ -50,6 +51,15 @@ const ADD_ITEMS: readonly AddItem[] = [
   { kind: 'news', desc: '한국투자 뉴스 제목 · 종목·날짜 조회' },
   { kind: 'sector-ranking', desc: '지수 구성 섹터 등락 순위', indexOnly: true },
 ];
+
+const ADD_SECTIONS = [
+  { label: '차트·시세', kinds: ['chart', 'book', 'trade'] },
+  { label: '수급·분석', kinds: ['broker', 'program', 'investor', 'investor-daily', 'vdist', 'sector-ranking'] },
+  { label: '주문·뉴스', kinds: ['order', 'news'] },
+] as const;
+const GROUPED_ITEMS = ADD_SECTIONS.flatMap(section => section.kinds.map(kind => ({
+  ...ADD_ITEMS.find(item => item.kind === kind)!, section: section.label,
+})));
 
 export function WindowAddMenu() {
   const [open, setOpen] = useState(false);
@@ -89,7 +99,7 @@ export function WindowAddMenu() {
   };
 
   const onItemKeyDown = (e: ReactKeyboardEvent, index: number) => {
-    const last = ADD_ITEMS.length - 1;
+    const last = GROUPED_ITEMS.length - 1;
     const focusAt = (i: number) => {
       e.preventDefault();
       itemRefs.current[i]?.focus();
@@ -107,16 +117,17 @@ export function WindowAddMenu() {
       aria-label="창 추가"
       data-testid="workspace-add-menu"
       onMouseDown={(e) => e.stopPropagation()}
-      className="min-w-[232px] rounded border border-border bg-bg-card py-1 shadow-overlay z-50"
-      style={{ position: 'fixed', left, top }}
+      className="ui-popover min-w-[232px] overflow-y-auto py-1 z-50"
+      style={{ position: 'fixed', left, top, maxHeight: 'calc(100vh - 16px)' }}
     >
-      {ADD_ITEMS.map((item, index) => {
+      {GROUPED_ITEMS.map((item, index) => {
         // 지수 전용 창을 주식 그룹에서 막지는 않는다(창 먼저 만들고 그룹을 지수로
         // 바꾸는 흐름이 정상) — 대신 클릭 전에 제약을 태그로 알린다.
         const inapplicable = item.indexOnly && !isIndexGroup;
         return (
+          <Fragment key={item.kind}>
+          {(index === 0 || item.section !== GROUPED_ITEMS[index - 1].section) && <div role="presentation" className="ui-menu-heading">{item.section}</div>}
           <button
-            key={item.kind}
             ref={(el) => { itemRefs.current[index] = el; }}
             type="button"
             role="menuitem"
@@ -129,16 +140,17 @@ export function WindowAddMenu() {
             <span className="shrink-0 text-fg-dimmer">{WINDOW_KIND_ICON[item.kind]}</span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5">
-                <span className="truncate text-xs">{WINDOW_KIND_LABEL[item.kind]}</span>
+                <span className="truncate text-sm font-medium text-fg">{WINDOW_KIND_LABEL[item.kind]}</span>
                 {inapplicable && (
-                  <span className="shrink-0 rounded-sm bg-bg-input px-1 py-px text-badge text-fg-dimmer">
+                  <span className="shrink-0 rounded-sm bg-bg-input px-1 py-px text-xs text-fg-dim">
                     지수 전용
                   </span>
                 )}
               </span>
-              <span className="block truncate text-2xs text-fg-dim">{item.desc}</span>
+              <span className="block truncate text-xs text-fg-dim">{item.desc}</span>
             </span>
           </button>
+          </Fragment>
         );
       })}
     </div>

@@ -37,6 +37,7 @@ export type WindowListRow = {
   icon?: ReactNode;
   /** 포커스(z-최상단) 창 — 강조 + "포커스" 배지. */
   isFocused: boolean;
+  badges?: readonly string[];
   /** 닫기 가능 여부 — /study 의 유일 차트 창은 불변식상 닫을 수 없다. */
   closable: boolean;
 };
@@ -169,8 +170,9 @@ export function WindowListMenu({
                     {row.icon && <span className="shrink-0 text-fg-dimmer">{row.icon}</span>}
                     <span className="min-w-0 flex-1 truncate text-xs text-fg">
                       {row.label}
-                      {row.sublabel && <span className="text-fg-dimmer"> · {row.sublabel}</span>}
+                      {row.sublabel && <span className="text-fg-dim"> · {row.sublabel}</span>}
                     </span>
+                    {row.badges?.map(badge => <span key={badge} className="shrink-0 rounded border border-border px-1 text-xs text-fg-dim">{badge}</span>)}
                     {row.isFocused && (
                       <span className="shrink-0 rounded-full border border-accent px-1.5 text-badge text-accent">
                         포커스

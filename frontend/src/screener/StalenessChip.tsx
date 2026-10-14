@@ -1,3 +1,4 @@
+import { formatTradingDate } from '../util/displayDate';
 import type { ScreenerStatus } from '../api/screener';
 
 interface Props {
@@ -38,7 +39,7 @@ export function StalenessChip({ status }: Props) {
       }
     >
       <span className="rounded-full" style={{ width: 6, height: 6, background: color }} aria-hidden />
-      EOD 아카이브: {last ?? '—'}
+      일봉 기준 {formatTradingDate(last)}
       {pendingText && ` · ${pendingText}`}
     </span>
   );

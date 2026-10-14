@@ -11,8 +11,9 @@
  * 금지), 앵커 **내부** 클릭은 무시되므로 그룹 선택·토글이 dismiss 와 경합하지 않는다.
  */
 import { useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { GROUP_IDS, type GroupId } from './groupId';
-import { useDismissablePopover } from '../util/useDismissablePopover';
+import { useAnchoredPopover } from '../util/useAnchoredPopover';
 
 export interface GroupBadgeProps {
   group: GroupId;
@@ -23,11 +24,12 @@ export interface GroupBadgeProps {
   /** 뱃지 호버 툴팁. 페이지마다 번호가 가리키는 것이 달라 문구를 열어 둔다. */
   title?: string;
   showLabel?: boolean;
+  descriptions?: Readonly<Record<number, string>>;
 }
 
-export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그룹 변경', showLabel = false }: GroupBadgeProps) {
+export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그룹 변경', showLabel = false, descriptions }: GroupBadgeProps) {
   const anchorRef = useRef<HTMLDivElement>(null);
-  useDismissablePopover(open, anchorRef, onToggle);
+  const { ref, style } = useAnchoredPopover(open, anchorRef, onToggle, descriptions ? 184 : 124);
 
   return (
     <div ref={anchorRef} className="relative shrink-0">
@@ -44,28 +46,38 @@ export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그�
       >
         {showLabel && <span className="live-group-label">연결</span>}{group}
       </button>
-      {open && (
+      {open && createPortal(
         <div
+          ref={ref}
+          style={style}
+          role="dialog"
+          aria-label="연결 그룹 선택"
           // w-max 필수: 앵커(16px 뱃지)가 containing block 이라 shrink-to-fit 이
           // 팔레트를 16px 로 눌러 grid-cols-5 의 minmax(0,1fr) 열이 0 폭으로
           // 붕괴하고 20px 버튼 5개가 겹친다(행마다 마지막 숫자만 보임).
-          className="absolute left-0 top-[20px] z-50 grid w-max grid-cols-5 gap-0.5 rounded-md border border-border bg-bg-subtle p-1 shadow-overlay"
+          className="ui-popover w-max p-1"
           onPointerDown={(e) => e.stopPropagation()}
         >
+          {descriptions && <div className="px-1 pb-1 text-xs text-fg-dim">그룹 {group} · {descriptions[group]}</div>}
+          <div className="grid w-max grid-cols-5 gap-0.5">
           {GROUP_IDS.map((g) => (
             <button
               key={g}
+              type="button"
+              aria-pressed={g === group}
+              title={descriptions ? `그룹 ${g} · ${descriptions[g]}` : `그룹 ${g}`}
               className={`h-[20px] w-[20px] rounded-sm font-data text-2xs font-semibold ${
                 g === group
                   ? 'bg-accent text-accent-fg'
                   : 'bg-bg-input text-fg-dim hover:bg-tint-selection hover:text-accent'
               }`}
-              onClick={() => onPick(g)}
+              onClick={() => { onPick(g); anchorRef.current?.querySelector('button')?.focus(); }}
             >
               {g}
             </button>
           ))}
-        </div>
+          </div>
+        </div>, document.body,
       )}
     </div>
   );

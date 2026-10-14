@@ -26,7 +26,7 @@ export function RailDrawer({
       aria-label={ariaLabel}
       onKeyDown={onKeyDown}
       data-testid={testId}
-      className={`h-full min-w-0 overflow-hidden bg-bg ${className}`.trim()}
+      className={`ui-rail-drawer h-full min-w-0 overflow-hidden bg-bg ${className}`.trim()}
       style={{ width: 'var(--watchlist-panel-w)' }}
     >
       <div className="flex h-full flex-col">{children}</div>
@@ -44,8 +44,8 @@ export function RailDrawerHeader({
   className?: string;
 }) {
   return (
-    <header className={`flex items-center gap-sm px-md py-sm ${className}`.trim()}>
-      <h2 className="text-xs font-semibold uppercase text-fg-dim">{title}</h2>
+    <header className={`ui-rail-header flex items-center gap-sm px-md py-sm ${className}`.trim()}>
+      <h2 className="text-sm font-semibold text-fg">{title}</h2>
       <span className="min-w-0 flex-1" />
       {actions}
     </header>
@@ -54,7 +54,7 @@ export function RailDrawerHeader({
 
 export function RailDrawerSection({ className = '', children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={`p-md ${className}`.trim()}>
+    <div className={`ui-rail-section p-md ${className}`.trim()}>
       {children}
     </div>
   );
@@ -185,7 +185,7 @@ export function RailState({
   const toneClass = tone === 'error' ? 'text-error' : tone === 'warn' ? '' : 'text-fg-dim';
   const style = tone === 'warn' ? { color: 'var(--warn)' } : undefined;
   return (
-    <div className={`p-md text-sm ${toneClass} ${className}`.trim()} style={style}>
+    <div role={tone === 'error' ? 'alert' : 'status'} className={`p-md text-sm ${toneClass} ${className}`.trim()} style={style}>
       {children}
     </div>
   );
