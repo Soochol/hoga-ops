@@ -38,6 +38,18 @@ export function holdingProfitWon(quantity: number | null, price: number | null, 
   return cost ? ceilWon(BigInt(price) * cost.scale * cost.quantity - cost.amount, cost.scale) : null;
 }
 
+/** P/L as a percentage of the exact purchase cost, rounded to two decimals. */
+export function holdingProfitPercent(quantity: number | null, price: number | null, averagePrice: string | null | undefined): number | null {
+  if (price == null || !Number.isSafeInteger(price) || price <= 0) return null;
+  const cost = exactHoldingCost(quantity, averagePrice);
+  if (!cost || cost.amount <= 0n) return null;
+  const profit = BigInt(price) * cost.scale * cost.quantity - cost.amount;
+  const magnitude = profit < 0n ? -profit : profit;
+  const hundredths = (magnitude * 10_000n * 2n + cost.amount) / (cost.amount * 2n);
+  const rounded = Number(profit < 0n ? -hundredths : hundredths);
+  return Number.isSafeInteger(rounded) ? rounded / 100 : null;
+}
+
 export const orderStatusLabel = (status: string) => ({
   PENDING: '체결 대기', PARTIAL_FILLED: '부분 체결', PENDING_CANCEL: '취소 중', PENDING_REPLACE: '정정 중',
   EXPIRED: '기간 만료', FILLED: '체결 완료', CANCELED: '취소 완료', REPLACED: '정정 완료', REJECTED: '주문 거절',
