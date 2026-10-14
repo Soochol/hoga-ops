@@ -13,7 +13,7 @@ import './AccountTradingPanel.css';
 
 export type AccountListTab = 'orders' | 'holdings';
 type Cancellation = { command: TradingCommand; sending: boolean; operationId?: string; error?: string };
-const fmt = (value: string | number | null) => value == null ? '—' : Number(value).toLocaleString('ko-KR', { maximumFractionDigits: 2 });
+const fmt = (value: string | number | null, maximumFractionDigits = 2) => value == null ? '—' : Number(value).toLocaleString('ko-KR', { maximumFractionDigits });
 
 export const AccountTradingPanel = memo(function AccountTradingPanel({ account, accountLabel, tab, anchorRef, onTabChange, onClose, onSelectSymbol }: {
   account: number; accountLabel: string; tab: AccountListTab | null; anchorRef: RefObject<HTMLElement | null>;
@@ -112,7 +112,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
         <thead><tr><th>종목</th><th>보유 · 주</th><th>평단가 · 원</th></tr></thead>
         <tbody>{holdings.data?.holdings.map(holding => <tr key={holding.code}>
           <td><button type="button" className="account-stock-link" disabled={!onSelectSymbol} onClick={() => select(holding.code, holding.name)}>{holding.name}</button><small>{holding.code}</small></td>
-          <td>{fmt(holding.quantity)}</td><td>{fmt(holding.average_purchase_price)}</td>
+          <td>{fmt(holding.quantity)}</td><td>{fmt(holding.average_purchase_price, 0)}</td>
         </tr>)}</tbody>
       </table>}
       {!query.isPending && !query.isError && (tab === 'orders' ? displayedOrders.length === 0 : holdings.data?.holdings.length === 0)
