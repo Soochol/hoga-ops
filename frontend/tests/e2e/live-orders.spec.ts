@@ -638,26 +638,43 @@ test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신
   await window.screenshot({ path: testInfo.outputPath('order-window.png') });
 });
 
-test('평가손익 숫자를 더블클릭하면 금액과 수익률을 전환하고 주문하지 않는다', async ({ page }) => {
-  const { window, commands } = await setup(page);
-  const toggle = window.getByRole('button', { name: '평가손익 표시 전환' });
-  await expect(toggle).toHaveText('120,000');
-  const originalColor = await toggle.locator('.order-field-value').evaluate(el => getComputedStyle(el).color);
-  await toggle.click();
-  await expect(toggle).toHaveText('120,000');
-  await toggle.dblclick();
-  await expect(toggle).toHaveText('1.82%');
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(toggle.locator('.order-field-value')).toHaveCSS('color', originalColor);
-  await toggle.dblclick();
-  await expect(toggle).toHaveText('120,000');
-  await toggle.focus();
-  await page.keyboard.press('Enter');
-  await expect(toggle).toHaveText('1.82%');
-  await page.keyboard.press('Space');
-  await expect(toggle).toHaveText('120,000');
-  expect(commands).toHaveLength(0);
-});
+for (const priceOffset of [0, -2000]) {
+  test(`평가손익 숫자 전환은 주변 항목 위치를 유지한다 (${priceOffset})`, async ({ page }) => {
+    const { window, commands } = await setup(page, false, true, false, priceOffset);
+    const toggle = window.getByRole('button', { name: '평가손익 표시 전환' });
+    const amount = priceOffset === 0 ? '120,000' : '-80,000';
+    const percent = priceOffset === 0 ? '1.82%' : '-1.21%';
+    await expect(toggle).toHaveText(amount);
+    await page.evaluate(() => document.fonts.ready);
+    const originalColor = await toggle.locator('.order-field-value').evaluate(el => getComputedStyle(el).color);
+    await toggle.click();
+    await expect(toggle).toHaveText(amount);
+    const fields = [window.getByLabel('매입수량'), window.getByLabel('매입평단가'), window.getByLabel('보유 종목 평가 수익'), toggle];
+    for (const width of [800, 504, 360]) {
+      await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
+      const before = await Promise.all(fields.map(field => field.boundingBox()));
+      await toggle.dblclick();
+      await expect(toggle).toHaveText(percent);
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      await expect(toggle.locator('.order-field-value')).toHaveCSS('color', originalColor);
+      const after = await Promise.all(fields.map(field => field.boundingBox()));
+      for (let i = 0; i < fields.length; i++) {
+        expect(after[i]!.x).toBeCloseTo(before[i]!.x, 1);
+        expect(after[i]!.y).toBeCloseTo(before[i]!.y, 1);
+        expect(after[i]!.width).toBeCloseTo(before[i]!.width, 1);
+        expect(after[i]!.height).toBeCloseTo(before[i]!.height, 1);
+      }
+      await toggle.dblclick();
+      await expect(toggle).toHaveText(amount);
+    }
+    await toggle.focus();
+    await page.keyboard.press('Enter');
+    await expect(toggle).toHaveText(percent);
+    await page.keyboard.press('Space');
+    await expect(toggle).toHaveText(amount);
+    expect(commands).toHaveLength(0);
+  });
+}
 
 test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
