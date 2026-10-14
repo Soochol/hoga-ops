@@ -100,10 +100,6 @@ export function WatchlistGroupPickerContent({ code, name, selectionRole = 'check
           <span className="truncate" title={displayName}>{displayName}</span>{' '}
           <span className="shrink-0 font-data text-xs font-normal text-fg-dim">{code}</span>
         </div>
-        <div className="mt-1 flex items-center justify-between gap-2 text-xs text-fg-dim">
-          <span>관심 그룹에 추가</span>
-          <span className="font-data">{member.size > 0 ? `${member.size}개 그룹에 등록` : '선택 즉시 반영'}</span>
-        </div>
       </div>
       {folders.length > 6 && <div className="shrink-0 px-3 pb-2">
         <input aria-label="관심 그룹 검색" placeholder="관심 그룹 검색"

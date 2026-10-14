@@ -4,7 +4,6 @@ import { ModalShell } from '../ui/ModalShell';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { PanelContextMenu } from '../ui/PanelContextMenu';
 import { openPanelContextMenuFromKeyboard, panelDragListeners } from '../ui/panelRowInteractions';
-import { RailDestination } from '../rightrail/RailDestination';
 import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -1417,7 +1416,6 @@ export function WatchlistDrawer() {
         {searching && <p role="status" className="text-xs text-fg-dim">검색 결과 {filteredGroups.reduce((n, g) => n + g.count, 0)}개 · {filteredGroups.length}그룹</p>}
       </div>
       <WatchlistTransferToast transfer={transfer} />
-      <RailDestination />
       <RailDrawerBody testId="watchlist-scroll" scrollRef={scrollRef} quoteNav>
         {searching && filteredGroups.length === 0 && <RailState>검색 결과가 없습니다 · 다른 종목명이나 그룹명을 입력하세요</RailState>}
         {isLoading && <RailState>불러오는 중</RailState>}

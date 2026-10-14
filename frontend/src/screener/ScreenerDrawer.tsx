@@ -1,7 +1,6 @@
 import { catalogEntry } from './catalog';
 import { useOccurrenceExclusions } from './useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from './OccurrenceExclusions';
-import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import {
@@ -327,7 +326,6 @@ export function ScreenerDrawer() {
     >
       {/* Header: label + freshness chip */}
       <RailDrawerHeader title="스크리너" actions={<StalenessChip status={status} />} />
-      <RailDestination />
 
       {/* Controls: dropdown + 조회 */}
       <RailDrawerSection className="flex flex-col gap-sm">

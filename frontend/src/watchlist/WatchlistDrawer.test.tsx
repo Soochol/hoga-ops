@@ -563,7 +563,7 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByText('SK하이닉스')).toBeInTheDocument());
     fireEvent.contextMenu(screen.getByTestId('watchlist-row-000660'));
     expect(screen.getByRole('menu', { name: 'SK하이닉스 관심 그룹' })).toBeInTheDocument();
-    expect(screen.getByText('관심 그룹에 추가')).toBeInTheDocument();
+    expect(screen.getByRole('menuitemcheckbox', { name: '스윙' })).toBeInTheDocument();
   });
 
   it('접기 상태가 localStorage에 영속되어 리마운트에도 유지된다', async () => {
