@@ -1,4 +1,3 @@
-vi.mock('../rightrail/RailDestination', () => ({ RailDestination: () => null }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

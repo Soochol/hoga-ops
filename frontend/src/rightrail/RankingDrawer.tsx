@@ -1,4 +1,3 @@
-import { RailDestination } from '../rightrail/RailDestination';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
@@ -336,7 +335,6 @@ export function RankingDrawer() {
         )}
       </RailDrawerSection>
 
-      <RailDestination />
       <RailDrawerBody testId="ranking-scroll" quoteNav>
         {/* 토글은 켰는데 심볼 마스터가 없어 거르지 못한 경우. 배지가 없으면 사용자에겐
             "ETF 제외가 안 먹는" 상태로만 보인다(원인 단서 0). 스크리너 경고와 같은 관용구. */}

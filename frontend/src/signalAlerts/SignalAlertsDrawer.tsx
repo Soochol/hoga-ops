@@ -1,6 +1,5 @@
 import { requestSettingsSection } from '../live/settingsModalControls';
 import { formatHhmm } from '../util/tradingTime';
-import { RailDestination } from '../rightrail/RailDestination';
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -143,7 +142,6 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
           </div>
         </RailDrawerSection>
       )}
-      <RailDestination />
       <RailDrawerBody>
         {isLoading && <RailState>불러오는 중…</RailState>}
         {isError && <RailState tone="error">알림 내역을 불러오지 못했습니다</RailState>}

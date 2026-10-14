@@ -2,7 +2,6 @@ import { usePanelRowSelection } from '../rightrail/usePanelRowSelection';
 import { ModalShell } from '../ui/ModalShell';
 import { PanelContextMenu } from '../ui/PanelContextMenu';
 import { openPanelContextMenuFromKeyboard, panelDragListeners } from '../ui/panelRowInteractions';
-import { RailDestination } from '../rightrail/RailDestination';
 import { resolveDropOnHeatmap } from '../state/heatmapDrop';
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState,
@@ -871,7 +870,6 @@ export function HeatmapDrawer() {
       </div> : null} query={query} onQuery={changeQuery}
         allCollapsed={allCollapsed} onToggleAll={toggleAll} toggleAllDisabled={toggleAllDisabled} />
 
-      <RailDestination />
       <RailDrawerBody testId="heatmap-drawer-scroll" scrollRef={scrollRef} quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">히트맵을 불러올 수 없습니다</RailState>}
