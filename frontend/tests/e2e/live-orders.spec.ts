@@ -9,7 +9,7 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, mode: 'paper' | 'live' = 'live', maximize = true, sameDepth = false) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, mode: 'paper' | 'live' = 'live', maximize = true, sameDepth = false, priceOffset = 0) {
   await page.setViewportSize({ width: 1440, height: 1100 });
   await installLiveMocks(page);
   const ws = mode === 'live' ? await installLiveWs(page) : null;
@@ -17,12 +17,16 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
     symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI' }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: {
-    phase: 'open', quotes: [{ code: '005930', price: 67200, baseline_price: 66000, change_pct: 1.81818, change_won: 1200 }],
+    phase: 'open', quotes: [{ code: '005930', price: 67200 + priceOffset, baseline_price: 66000 + priceOffset, change_pct: 1200 / (66000 + priceOffset) * 100, change_won: 1200 }],
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => mode === 'paper' ? route.continue() : route.fulfill({ json: {
     code: '005930', date: new URL(route.request().url()).searchParams.get('date'), session_open_ms: Date.now(), session_close_ms: null, is_open: true,
-    snapshots: [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
+    snapshots: [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
     trades: [], brokers: [], programs: [], after_hours: [], expected: [], today_ask_peak: null, today_bid_peak: null,
+  } }));
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/stock-limits\?/, route => route.fulfill({ json: {
+    code: '005930', base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 1_578_000, low_250: 1_425_000,
+    high_250_date: null, low_250_date: null, fetched_at_ms: Date.now(), source: 'kiwoom',
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/accounts$/, route => route.fulfill({ json: { configured: true, accounts: [{ account_seq: 1, label: '토스증권 · ****1234' }] } }));
   let orders = Array.isArray(withOrder) ? withOrder : withOrder ? [mkOrder('old')] : [];
@@ -55,7 +59,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   const window = page.getByTestId('order-window');
   if (maximize) await page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '창 최대화', exact: true }).click();
   await window.getByRole('combobox', { name: '주문 모드' }).selectOption(mode);
-  await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeEnabled();
+  await expect(window.getByRole('button', { name: new RegExp(`매수 ${(67200 + priceOffset).toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
   return { window, commands, ws };
 }
 
@@ -73,6 +77,9 @@ test('576px 주문창은 폰트·24px 호가·수량 한 줄을 유지하고 매
   const frame = page.locator('[data-win]').filter({ has: window });
   await expect.poll(async () => (await frame.boundingBox())!.width).toBeCloseTo(576, 0);
   await expect.poll(() => window.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await expect(window).toHaveClass(/order-expanded/);
+  await expect(window.getByRole('button', { name: '종목 상세 정보', exact: true })).toHaveCount(0);
+  await expect(window.getByTestId('book-summary').getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
   const settings = (await window.getByRole('button', { name: '주문 설정', exact: true }).boundingBox())!;
   const buyingPower = window.getByLabel('매수 가능 금액');
   const cash = (await buyingPower.boundingBox())!;
@@ -476,9 +483,9 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
   const controls = window.locator('.order-quantity-controls');
   const originalHeight = (await controls.boundingBox())!.height;
   const baseFont = await window.locator('.order-price > span').first().evaluate(el => getComputedStyle(el).fontSize);
-  for (const width of [800, 696, 695, 584, 583, 576, 504, 503, 360]) {
+  for (const width of [800, 696, 695, 584, 576, 568, 560, 559, 504, 503, 360]) {
     await window.evaluate((el, nextWidth) => { (el as HTMLElement).style.width = `${nextWidth}px`; el.scrollLeft = 0; }, width);
-    if (width < 584) await expect(window).toHaveClass(/order-compact/);
+    if (width < 560) await expect(window).toHaveClass(/order-compact/);
     else await expect(window).not.toHaveClass(/order-compact/);
     await expect(window.locator('.order-depth')).toHaveCount(20);
     expect(await window.locator('.order-row').first().evaluate(el => getComputedStyle(el).gridTemplateColumns.split(' ').length)).toBe(5);
@@ -502,11 +509,17 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
     expect(priceBox.x + priceBox.width / 2).toBeCloseTo(rowBox.x + rowBox.width / 2, 2);
     const info = window.getByRole('button', { name: '종목 상세 정보', exact: true });
     const usableWidth = await window.locator('.order-scroll').evaluate(el => el.clientWidth);
-    if (width >= 696 && usableWidth >= 696) {
+    if (width >= 560 && usableWidth >= 560) {
       await expect(window).toHaveClass(/order-expanded/);
       await expect(info).toHaveCount(0);
       const summary = window.getByTestId('book-summary');
       await expect(summary.getByText('250일', { exact: true })).toBeVisible();
+      await expect(summary.getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
+      expect(await summary.evaluate(el => [...el.querySelectorAll('.book-summary > div:not(.book-summary-extra), .book-summary-extra > div')].every(row => {
+        const spans = [...row.children].map(child => child.getBoundingClientRect());
+        const r = row.getBoundingClientRect();
+        return spans.length === 2 && spans[0].right <= spans[1].left && spans[1].right <= r.right + 0.5;
+      }))).toBe(true);
       const summaryBox = (await summary.boundingBox())!;
       const firstSlot = (await window.locator('.order-summary-slot').first().boundingBox())!;
       const firstRow = (await window.locator('.order-row').first().boundingBox())!;
@@ -647,4 +660,45 @@ test('넓은 창의 상세 정보 위로 드래그해도 해당 호가로 정정
   expect(commands).toHaveLength(1);
   expect(commands[0]).toMatchObject({ price: 67300, quantity: null });
   await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
+});
+
+
+test('기본 576px에서도 7자리 가격·긴 상세 값·폰트를 유지하며 직접 표시한다', async ({ page }, testInfo) => {
+  const { window, commands, ws } = await setup(page, false, 'live', false, true, 1_401_800);
+  await ws!.waitForSubscribe('005930');
+  ws!.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(),
+    day_open: 1_469_100, day_high: 1_470_000, day_low: 1_468_100, trades: [] });
+  for (const [price, marker] of [[1_469_100, '시'], [1_470_000, '고'], [1_468_100, '저']] as const)
+    await expect(window.locator(`[data-order-price="${price}"] [data-price-badges]`)).toHaveText(marker);
+  await page.evaluate(() => document.fonts.ready);
+  await expect(window).toHaveClass(/order-expanded/);
+  await expect(window.getByRole('button', { name: '종목 상세 정보', exact: true })).toHaveCount(0);
+  await expect(window.getByTestId('book-summary').getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
+  const priceFont = await window.locator('.order-price > span').first().evaluate(el => getComputedStyle(el).fontSize);
+  const detailFont = await window.getByTestId('book-summary').getByText('1,578,000/1,425,000', { exact: true }).evaluate(el => getComputedStyle(el).fontSize);
+  expect(await window.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await window.locator('.order-scroll').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  expect(await window.locator('.order-price').evaluateAll(cells => cells.every(cell => {
+    const bounds = cell.getBoundingClientRect();
+    return [...cell.children].every(child => {
+      const r = child.getBoundingClientRect();
+      return r.left >= bounds.left && r.right <= bounds.right;
+    });
+  }))).toBe(true);
+  await window.screenshot({ path: testInfo.outputPath('default-inline-seven-digit-order.png') });
+  await window.evaluate(el => { (el as HTMLElement).style.width = '800px'; });
+  await expect(window).toHaveClass(/order-spacious/);
+  expect(await window.locator('.order-price > span').first().evaluate(el => getComputedStyle(el).fontSize)).toBe(priceFont);
+  expect(await window.getByTestId('book-summary').getByText('1,578,000/1,425,000', { exact: true }).evaluate(el => getComputedStyle(el).fontSize)).toBe(detailFont);
+  await window.evaluate(el => { (el as HTMLElement).style.width = '568px'; });
+  await expect(window).not.toHaveClass(/order-spacious/);
+  await window.getByRole('button', { name: /매수 1,469,000원 주문 추가/ }).dblclick();
+  const order = window.getByRole('button', { name: '매수 1,469,000원 주문', exact: true });
+  await expect(order).toHaveText('10주');
+  await drag(page, order, window.getByRole('button', { name: /매수 1,468,900원 주문 추가/ }));
+  const moved = window.getByRole('button', { name: '매수 1,468,900원 주문', exact: true });
+  await expect(moved).toHaveText('10주');
+  await drag(page, moved, window.getByRole('combobox', { name: '주문 모드' }));
+  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
+  expect(commands).toHaveLength(3);
 });
