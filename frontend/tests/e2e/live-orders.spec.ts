@@ -896,6 +896,39 @@ test('호가 경계 1px 밖 드롭은 즉시 취소하고 Esc로 중단할 수 �
 });
 
 
+test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시되고 빈 호가는 제거된다', async ({ page }, testInfo) => {
+  const { window, ws, commands } = await setup(page);
+  const book = page.locator('.book-panel'); // 기본 배치의 10호가창과 비교
+  await expect(book).toHaveCount(1);
+  await ws.waitForSubscribe('005930');
+  const frame = { kind: 'ob', venue: 'UN', t_ms: Date.now(),
+    asks: [241000, 241500, 242000, 242500].map(price => ({ price, qty: 100 })),
+    bids: [241000, 240500, 240000].map(price => ({ price, qty: 200 })),
+    total_ask_qty: 400, total_bid_qty: 600, expected_price: 241000, expected_qty: 6140 };
+  ws.pushLive('005930', frame);
+  for (const panel of [window, book]) {
+    const banner = panel.getByTestId('book-expected-fill');
+    await expect(banner).toHaveText('예상 체결가241,000원예상 체결량6,140');
+    await expect(banner).toBeVisible();
+  }
+  await expect(window.locator('[data-order-price]')).toHaveCount(7);
+  await expect(window.locator('.order-ask')).toHaveCount(4);
+  await expect(window.locator('.order-bid')).toHaveCount(3);
+  await expect(window.locator('.order-divider')).toHaveAttribute('data-order-price', '241000');
+  await expect(window.locator('[data-order-price="0"]')).toHaveCount(0);
+  for (const width of [640, 360]) {
+    await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; el.scrollLeft = 0; }, width);
+    const banner = window.getByTestId('book-expected-fill');
+    await expect(banner.getByText('241,000원', { exact: true })).toBeInViewport();
+    await expect(banner.getByText('6,140', { exact: true })).toBeInViewport();
+    expect(await banner.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  }
+  await window.screenshot({ path: testInfo.outputPath('order-expected-fill.png') });
+  ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + 1, expected_price: 0, expected_qty: 0 });
+  for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+  expect(commands).toHaveLength(0);
+});
+
 test('호가 주문 가격·잔량·총잔량 폰트는 기존 10호가창과 동일하다', async ({ page }) => {
   const { window } = await setup(page);
   await page.getByTestId('workspace-add-menu-button').click();

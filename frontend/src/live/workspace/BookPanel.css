@@ -1,6 +1,9 @@
 .book-scroll-region { container-type:inline-size; }
 .book-panel-grid { min-width:var(--book-wide-min-w); grid-template-columns:var(--book-wide-cols); }
 .book-compact-info { display:none; justify-content:flex-end; padding:0 8px; height:22px; }
+/* A partial ask ladder cannot fit twelve summary items at their normal size. */
+.book-panel-short .book-inline-summary { display:none; }
+.book-panel-short .book-compact-info { display:flex; }
 .book-compact-info button,.book-info-heading button { font:inherit; color:var(--fg); background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:0 6px; }
 .book-compact-info button { font-size:var(--live-text-meta,var(--text-xs)); }
 .book-compact-info button:hover,.book-info-heading button:hover { background:var(--bg-input-hover); }

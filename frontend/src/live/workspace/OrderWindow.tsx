@@ -30,7 +30,7 @@ import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
 import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
-import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
+import { BookDayMarker, BookQtyDelta, BookSummary, ExpectedFillBanner, TotalQtyStrip } from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
@@ -215,7 +215,10 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
   const ready = account > 0 && !!state.data && !state.isError && !busy;
-  const prices = book ? [...book.ask].reverse().concat(book.bid) : [];
+  const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
+  const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
+  const prices = asks.concat(bids);
+  const showInlineSummary = expanded && asks.length >= 10;
   const onScreen = new Set(prices.map(l => l.price));
   const outside = orders.filter(o => o.price == null || !onScreen.has(Number(o.price)));
   const maxQty = Math.max(1, ...prices.map(l => l.qty));
@@ -444,7 +447,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   }
 
   const recentTrades = useMemo(() => recentBookTrades(live.trade, 9), [live.trade]);
-  const trades = activeSinglePrice !== null ? singlePriceFills : recentTrades;
+  const trades = activeSinglePrice !== null ? singlePriceFills.slice(0, 9) : recentTrades;
   const lastPrice = activeSinglePrice !== null ? (afterHoursBook.data?.cur_price ?? null) : (recentTrades[0]?.price ?? null);
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
@@ -479,7 +482,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       </div>
       <div className="order-settings-group">
       <button type="button" aria-label="주문 설정" disabled={busy || !!lockedBook} onClick={() => { closeAction(); setSettingsDraft(normalizeOrderSettings(preferences)); }}>설정</button>
-      {!expanded && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
+      {!showInlineSummary && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
     </div>
@@ -565,29 +568,36 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />토스 앱·WTS에서 실제 주문·체결 여부를 확인했습니다</label>
       {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
     </div>}
+    <ExpectedFillBanner price={book?.exp_price ?? 0} qty={book?.exp_qty ?? 0} baselinePrice={baseline} />
     <div className="order-scroll" role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}
         onPointerLeave={() => setPreviewPrice(null)}
         onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPreviewPrice(null); }}>
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : prices.map((level, index) => {
-          const key = `${index < 10 ? 'ask' : 'bid'}-${level.price}-${index}`;
+          const isAsk = index < asks.length;
+          const bidIndex = index - asks.length;
+          const firstBid = bidIndex === 0;
+          const key = `${isAsk ? 'ask' : 'bid'}-${level.price}-${index}`;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
-          const trade = index > 10 ? trades[index - 11] : undefined;
+          const trade = bidIndex > 0 ? trades[bidIndex - 1] : undefined;
           const tradePriceColor = trade && baseline != null && baseline > 0 ? priceDirClass(trade.price - baseline) : 'text-fg-dim';
-          return <div className={`order-row ${index === 10 ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}
+          return <div className={`order-row ${firstBid ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}
             onPointerEnter={() => setPreviewPrice(level.price > 0 ? level.price : null)}
             onFocusCapture={() => setPreviewPrice(level.price > 0 ? level.price : null)}>
             {orderCell('SELL', level.price, key)}
-            {index < 10 ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
-              : <div className="order-info"><span className={index === 10 ? 'order-meta' : tradePriceColor}>{index === 10 ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? priceDirClass(trade.side) : undefined}>{index === 10 ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>}
+            {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
+              : <div className="order-info"><span className={firstBid ? 'order-meta' : tradePriceColor}>{firstBid ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? priceDirClass(trade.side) : undefined}>{firstBid ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>}
             <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker price={level.price} summary={summary} />{level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
-            {index < 10 ? <div className="order-summary-slot" />
+            {isAsk ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
             {orderCell('BUY', level.price, key)}
           </div>;
         })}
-        {expanded && <div className="order-summary-layer">{renderSummary(240)}</div>}
+        {trades.slice(Math.max(0, bids.length - 1)).map((trade, index) => <div className="order-row" key={`trade-${index}`}>
+          <div /><div className="order-info"><span className={baseline != null && baseline > 0 ? priceDirClass(trade.price - baseline) : 'text-fg-dim'}>{fmt(trade.price)}</span><span className={priceDirClass(trade.side)}>{fmt(trade.qty)}</span></div>
+        </div>)}
+        {showInlineSummary && <div className="order-summary-layer">{renderSummary(240)}</div>}
       </div>
       {outside.length > 0 && <div className="order-outside">{outside.map(o => <div key={o.orderId} className={o.side === 'BUY' ? 'order-buy' : 'order-sell'}>
         {orderChip(o, `호가 밖 ${orderSideLabel(o.side)} ${fmt(o.price)}원 주문`, `${orderSideLabel(o.side)} ${fmt(o.price)}원 · ${fmt(orderRemainder(o))}`)}

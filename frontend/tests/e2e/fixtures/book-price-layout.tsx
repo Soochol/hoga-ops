@@ -7,9 +7,14 @@ import 'pretendard/dist/web/variable/pretendardvariable.css';
 
 const ask = Array.from({ length: 10 }, (_, i) => ({ price: 1_631_000 + i * 1_000, qty: 8_260_000 }));
 const bid = Array.from({ length: 10 }, (_, i) => ({ price: 1_630_000 - i * 1_000, qty: 8_260_000 }));
+const depth = new URLSearchParams(location.search).get('depth');
+const visibleAsks = depth === 'partial' ? 4 : depth === 'five' ? 5 : 10;
+const visibleBids = depth === 'partial' ? 3 : depth === 'five' ? 5 : 10;
+const paddedAsk = ask.map((level, i) => i < visibleAsks ? level : { price: 0, qty: 0 });
+const paddedBid = bid.map((level, i) => i < visibleBids ? level : { price: 0, qty: 0 });
 createRoot(document.getElementById('fixture')!).render(
   <BookPanel
-    snapshot={{ ts_ms: 1, seq: 0, ask, bid, tot_ask: 8260, tot_bid: 8260 }}
+    snapshot={{ ts_ms: 1, seq: 0, ask: paddedAsk, bid: paddedBid, tot_ask: 8260, tot_bid: 8260 }}
     baselinePrice={1_261_539}
     summary={{ ...EMPTY_TRADE_SUMMARY, dayOpen: 1_631_000, dayHigh: 1_640_000, dayLow: 1_621_000 }}
     trades={[{ price: 1_631_000, qty: 12345, side: 1 }]}

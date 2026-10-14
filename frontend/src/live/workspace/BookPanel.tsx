@@ -6,10 +6,9 @@
  *     [매도 잔량 바 ]  [ 가격+등락률 ]  [ 요약 패널  ]
  *     [체결강도·체결]  [ 가격+등락률 ]  [매수 잔량 바]
  *
- * 중앙 가격축을 좌우 4개 블록이 둘러싼다. **우측 요약 패널의 높이는 정확히 11행
- * (상한가 1 + 매도 10)이어야** 그 아래 매수 잔량 바가 매수 가격 행과 정렬된다 —
- * 요약 12항목은 이 높이 안에 균등 배치한다. 압축형은 같은 높이의 정보 버튼 슬롯으로
- * 바꿔 정렬을 유지한다. SUMMARY_ROWS는 항목 수가 아닌 호가 높이다.
+ * 중앙 가격축을 좌우 4개 블록이 둘러싼다. 우측 요약 슬롯은 상단 여백 1행 +
+ * 실제 매도 호가 수만큼 높이를 잡아 매수 잔량과 가격을 정렬한다. 매도 10단일 때
+ * 요약 12항목을 펼치고, 호가가 적거나 창이 좁으면 정보 버튼으로 상세를 연다.
  *
  * **전체 패널 소비처는 `DataWindow` 하나다.** 총잔량 스트립은 `OrderWindow`도 공유한다. 한때 `/study` 의 BookContent 와 공유하는 단일
  * 표면이었으나 그 페이지는 2026-08-23 에 삭제됐다 — 이 파일 곳곳의 주석이 아직
@@ -80,10 +79,9 @@ type Props = {
    *
    *   '시간외'       15:40–16:00 · WS `0E` 총잔량만(사다리는 15:30 정규장 값)
    *   '시간외 단일가' 16:00–18:00 · REST `ka10087` — **사다리도 시간외 값**이고 5단이라
-   *                  격자 바깥 5행이 빈다
+   *                  유효한 가격만 표시한다
    *
-   * 두 번째 모드에서 라벨이 특히 load-bearing 하다 — 빈 5행이 "데이터 결손"이 아니라
-   * "그 시장에 없는 단계" 임을 말하는 유일한 장치다.
+   * 두 번째 모드의 라벨은 짧은 사다리의 출처가 시간외 시장임을 표시한다.
    */
   afterHoursLabel?: string;
   /**
@@ -125,7 +123,7 @@ const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
 /** 깊이 막대 상하 여백(px). 막대 높이 = ROW_H − 2·BAR_INSET(=16px). 이 여백이
  *  Toss식 행간 "구분선"(흰 띠)을 만든다 — Toss 24/40 비율을 밀도 높은 22px 행에 축소. */
 const BAR_INSET = 3;
-/** 요약 패널 행 수 = 상한가 1 + 매도 10. 매수 바 정렬의 근거라 상수로 못박는다. */
+/** 10단을 모두 받은 경우의 요약 높이. 짧은 사다리는 상세를 팝오버로 표시한다. */
 const SUMMARY_ROWS = 11;
 
 export default function BookPanel({
@@ -223,12 +221,15 @@ export default function BookPanel({
     );
   }
 
-  const asksDesc = [...snapshot.ask].reverse(); // 높은 가격이 위
-  const bids = snapshot.bid;
+  // 벤더의 10칸/시간외 5칸 패딩은 호가가 아니다. 가격이 있는 단계만
+  // 양쪽 열에서 함께 걸러 잔량·가격 정렬을 유지한다. 유효 가격의 잔량 0은 남긴다.
+  const asksDesc = snapshot.ask.filter((l) => Number.isFinite(l.price) && l.price > 0).reverse();
+  const bids = snapshot.bid.filter((l) => Number.isFinite(l.price) && l.price > 0);
+  const summaryRows = asksDesc.length + 1;
   const maxQty = Math.max(
     1,
-    ...snapshot.ask.map((l) => l.qty),
-    ...snapshot.bid.map((l) => l.qty),
+    ...asksDesc.map((l) => l.qty),
+    ...bids.map((l) => l.qty),
   );
 
   return (
@@ -242,10 +243,10 @@ export default function BookPanel({
         dimClass={staleDim}
       />
       {/* 컨테이너 폭으로 요약만 팝오버로 옮긴다. 압축 하한 아래는 가로 스크롤하며
-          가격·등락률·잔량·체결의 폰트와 21행 정렬을 유지한다. */}
+          가격·등락률·잔량·체결의 폰트와 행 정렬을 유지한다. */}
       <BookScrollArea>
         <div
-          className="book-panel-grid grid"
+          className={`book-panel-grid grid${summaryRows < SUMMARY_ROWS ? ' book-panel-short' : ''}`}
           style={{ '--book-wide-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-wide-cols': BOOK_PANEL_GRID_COLS,
             '--book-compact-min-w': `${BOOK_PANEL_COMPACT_MIN_W}px`, '--book-compact-cols': BOOK_PANEL_COMPACT_GRID_COLS,
             '--book-price-w': `${BOOK_PANEL_PRICE_COL_W}px` } as React.CSSProperties}
@@ -255,7 +256,7 @@ export default function BookPanel({
             <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
               <QtyBar
-                key={`a-${snapshot.ask.length - i}`}
+                key={`a-${i}`}
                 qty={l.qty}
                 maxQty={maxQty}
                 side="ask"
@@ -283,10 +284,7 @@ export default function BookPanel({
                   : `${summary.fillStrengthPct.toFixed(2)}%`}
               </span>
             </div>
-            {/* 9행 = 3열 바닥 정렬: 좌측(여백1+매도10+체결강도1+체결9) = 중앙(여백1+
-                매도10+매수10) = 우측(요약11+매수10) = **21행**. 11행이던 시절 좌측만
-                2행 삐져나와 하단이 어긋났다. `중` 행이 21→22 로 밀었던 것을 ADR-0170
-                이 되돌렸다 — **한 열에서만 행을 더하거나 빼면 하단이 어긋난다.** */}
+            {/* 체결은 최신 9건을 유지한다. 매수 호가가 적어도 체결 내역은 자르지 않는다. */}
             {trades.slice(0, 9).map((t, i) => (
               <div key={i} className="book-trade-row flex items-center justify-between gap-1 px-2" style={{ height: ROW_H }}>
                 <span
@@ -313,7 +311,7 @@ export default function BookPanel({
             <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
               <PriceCell
-                key={`pa-${snapshot.ask.length - i}`}
+                key={`pa-${i}`}
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
@@ -332,9 +330,9 @@ export default function BookPanel({
             ))}
           </div>
 
-          {/* 우: 요약 12항목(11호가 높이 고정) → 매수 잔량 바 */}
+          {/* 우: 실제 매도 높이의 요약 슬롯 → 매수 잔량 바 */}
           <div className="flex flex-col">
-            <div className="book-summary-slot" style={{ height: ROW_H * SUMMARY_ROWS }}>
+            <div className="book-summary-slot" style={{ height: ROW_H * summaryRows }}>
               <div className="book-inline-summary">
                 <BookSummary summary={summary} baselinePrice={baselinePrice}
                   limits={limits} krxClose={krxClose} vi={vi} />
@@ -457,7 +455,7 @@ function dirClass(price: number, baselinePrice: number | null): string {
 /** 예상체결가·량(키움 0D FID 23/24) — 호가창 **전폭 상단 배너**, 내용 중앙 정렬.
  *  동시호가(단일가) 구간에만 백엔드가 값을 실어 오므로 둘 다 >0 일 때만 렌더하고,
  *  평시엔 null(높이 0)이라 평상시 호가창에 영향이 없다. 가격은 전일종가 대비 방향색. */
-function ExpectedFillBanner({
+export function ExpectedFillBanner({
   price,
   qty,
   baselinePrice,
@@ -469,11 +467,11 @@ function ExpectedFillBanner({
   /** stale 딤 — `exp_price`/`exp_qty` 는 스냅샷 필드라 사다리와 함께 흐려진다. */
   dimClass?: string;
 }) {
-  if (price <= 0 || qty <= 0) return null;
+  if (!Number.isFinite(price) || !Number.isFinite(qty) || price <= 0 || qty <= 0) return null;
   const color = dirClass(price, baselinePrice);
   return (
     <div
-      className={`flex items-baseline justify-center gap-6 bg-bg-card px-3 py-1.5 ${dimClass}`}
+      className={`book-expected-fill flex shrink-0 flex-wrap items-baseline justify-center gap-x-6 gap-y-1.5 bg-bg-card px-3 py-1.5 ${dimClass}`}
       data-testid="book-expected-fill"
     >
       <span className="flex items-baseline gap-1.5 whitespace-nowrap">

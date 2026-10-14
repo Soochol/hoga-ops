@@ -55,6 +55,66 @@ describe('BookPanel', () => {
     expect(screen.getByText('-3.33%')).toBeInTheDocument(); // 246,500
   });
 
+  it('빈 호가는 제거하고 4단 매도·3단 매수의 가격과 잔량을 함께 정렬한다', () => {
+    const empty = { price: 0, qty: 0 };
+    const snapshot = {
+      ...snap(),
+      ask: [241_000, 241_500, 242_000, 242_500].map((price, i) => ({ price, qty: 512 + i })).concat(Array(6).fill(empty)),
+      bid: [241_000, 240_500, 240_000].map((price, i) => ({ price, qty: 879 + i })).concat(Array(7).fill(empty)),
+    };
+    const trades = Array.from({ length: 9 }, () => ({ price: 241_000, qty: 1, side: -1 }));
+    const { container } = renderPanel({ snapshot, trades, lastPrice: 241_000 });
+    const grid = container.querySelector('.book-panel-grid')!;
+    const [left, center, right] = Array.from(grid.children);
+    expect(grid).toHaveClass('book-panel-short');
+    expect(Array.from(center.children).slice(1).map(row => row.textContent)).toEqual([
+      '242,500-4.90%', '242,000-5.10%', '241,500-5.29%', '241,000-5.49%',
+      '241,000-5.49%', '240,500-5.69%', '240,000-5.88%',
+    ]);
+    expect(left.querySelectorAll('.book-trade-row')).toHaveLength(9);
+    expect(left.children).toHaveLength(15); // 여백1 + 매도4 + 체결강도1 + 체결9
+    expect(center.children).toHaveLength(8); // 여백1 + 매도4 + 매수3
+    expect(right.children).toHaveLength(4); // 요약 슬롯1 + 매수3
+    expect((right.children[0] as HTMLElement).style.height).toBe('110px'); // (1 + 매도4) × 22
+    expect(within(grid as HTMLElement).queryByText('—')).not.toBeInTheDocument();
+    expect(within(grid as HTMLElement).queryByText('0')).not.toBeInTheDocument();
+    expect(grid.querySelectorAll('[data-book-divider]')).toHaveLength(3);
+    expect(screen.getByTestId('book-total-strip')).toHaveTextContent(snapshot.tot_ask.toLocaleString('ko-KR'));
+  });
+
+  it('중간의 무효 가격도 제거하되 잔량 0인 유효 가격 행은 유지한다', () => {
+    const { container } = renderPanel({
+      snapshot: { ...snap(),
+        ask: [{ price: 251_500, qty: 10 }, { price: NaN, qty: 50_000 }, { price: 252_000, qty: 0 }, { price: -1, qty: 0 }],
+        bid: [{ price: 251_000, qty: 20 }, { price: Infinity, qty: 50_000 }, { price: 0, qty: 0 }],
+      },
+      trades: [],
+    });
+    const [left, center, right] = Array.from(container.querySelector('.book-panel-grid')!.children);
+    expect(center.children).toHaveLength(4);
+    expect(left.children[1]).toHaveTextContent('');
+    expect(center.children[1]).toHaveTextContent('252,000');
+    expect(left.children[2]).toHaveTextContent('10');
+    expect(right.children[1]).toHaveTextContent('20');
+    expect((right.children[0] as HTMLElement).style.height).toBe('66px');
+    expect(container.textContent).not.toMatch(/NaN|Infinity/);
+  });
+
+  it('시간외 5단만 표시하고 상세 요약은 정보 버튼으로 열 수 있다', () => {
+    const s = snap();
+    const empty = Array.from({ length: 5 }, () => ({ price: 0, qty: 0 }));
+    const { container } = renderPanel({ snapshot: { ...s, ask: [...s.ask.slice(0, 5), ...empty], bid: [...s.bid.slice(0, 5), ...empty] }, trades: [] });
+    const grid = container.querySelector('.book-panel-grid')!;
+    expect(grid.children[1].children).toHaveLength(11);
+    expect((grid.children[2].children[0] as HTMLElement).style.height).toBe('132px');
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    expect(within(dialog).getByText('거래량')).toBeInTheDocument();
+    expect(within(dialog).getByText('4,668만')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: '상세 정보 닫기' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
   it('요약 패널은 12항목을 11호가 높이에 담는다 — 매수 잔량 바 정렬의 근거', () => {
     // 이 불변식이 깨지면 우측 매수 바가 매수 가격 행과 어긋난다(조용한 시각 결함).
     // 행 수 = 상한가 여백 1 + 매도 10.
