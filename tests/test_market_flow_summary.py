@@ -58,15 +58,17 @@ async def test_summary_serves_latest_and_confirmed_values_with_safe_futures_unit
                "frgnr_netprps": "250", "orgn_netprps": "0"}],
     ))
     deriv = DerivFlowStore(tmp_path)
-    for stamp, net in ((1_000, 5_000), (2_000, 6_000)):
+    # 홀수 계약 수는 억원 환산 뒤 소수가 남는다. 정수형 응답 모델의 500 회귀를 잡는다.
+    for stamp, net in ((1_000, 5_000), (2_000, 6_001)):
         row = {}
         for actor, legs in {"frgn": (60_000, 58_000), "prsn": (30_000, 31_000),
                             "orgn": (40_000, 41_000)}.items():
             for side, qty in zip(("seln", "shnu"), legs, strict=True):
                 row[f"{actor}_{side}_vol"] = str(qty if resolved else qty * 0.001)
                 row[f"{actor}_{side}_tr_pbmn"] = str(qty * 975 * 250_000 / 1e6)
-            row[f"{actor}_ntby_qty"] = str(net)
-            row[f"{actor}_ntby_tr_pbmn"] = str(net * 975 * 250_000 / 1e6)
+            actor_net = -net if actor == "prsn" else net if actor == "frgn" else 0
+            row[f"{actor}_ntby_qty"] = str(actor_net)
+            row[f"{actor}_ntby_tr_pbmn"] = str(actor_net * 975 * 250_000 / 1e6)
         deriv.append_sample(date, DerivSample(
             sampled_at_ms=stamp, product="F001", request={}, row=row,
         ))
@@ -77,7 +79,9 @@ async def test_summary_serves_latest_and_confirmed_values_with_safe_futures_unit
     assert got["stock"]["markets"]["KOSDAQ"]["foreign"] == -5
     point = got["futures"]["markets"]["F001"]
     assert point["t_ms"] == 2_000
-    assert point["foreign"] == (14_625 if resolved else None)
+    assert point["foreign"] == (14_627.4375 if resolved else None)
+    assert point["individual"] == (-14_627.4375 if resolved else None)
+    assert point["institution"] == (0 if resolved else None)
     assert got["futures"]["unit"] == ("amt_eok" if resolved else None)
     assert "foreign_qty" not in point
     assert "last_success_at_ms" in got["futures"]["collection"]["targets"]["F001"]
