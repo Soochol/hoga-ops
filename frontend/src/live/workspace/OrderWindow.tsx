@@ -112,6 +112,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const [compact, setCompact] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [spacious, setSpacious] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const infoId = useId();
   const closeInfo = useCallback(() => {
@@ -128,7 +129,9 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
       if (width <= 0) return;
       setCompact(width < 560);
       const scroll = root.querySelector<HTMLElement>('.order-scroll');
-      setExpanded(Math.min(width, scroll?.clientWidth || width) >= 672);
+      const usableWidth = Math.min(width, scroll?.clientWidth || width);
+      setExpanded(usableWidth >= 560);
+      setSpacious(usableWidth >= 672);
       if (width !== previousWidth) setInfoOpen(false);
       previousWidth = width;
     };
@@ -359,7 +362,7 @@ function OrderWindowContent({ code, name, mode, onModeChange, chosenAccount, onA
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     onScreenPrices={onScreen} limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     vi={vi.data?.vi} height={height} />;
-  return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
+  return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => { if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; } }}
     onKeyDown={e => {
       if (e.key === 'Escape') {

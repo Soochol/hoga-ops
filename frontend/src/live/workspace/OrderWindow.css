@@ -1,6 +1,6 @@
 .order-window { --order-min-w:560px; height:100%; display:flex; flex-direction:column; background:var(--bg-card); color:var(--fg); font-size:var(--live-text-data,var(--text-sm)); overflow:auto; }
 .order-window.order-compact { --order-min-w:480px; }
-.order-window.order-expanded { --order-min-w:672px; }
+.order-window.order-expanded.order-spacious { --order-min-w:672px; }
 .order-window > * { min-width:var(--order-min-w); }
 .order-window button,.order-window select,.order-window input { font:inherit; color:inherit; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm,4px); }
 .order-window button { padding:3px 6px; }
@@ -26,8 +26,12 @@
 .order-scroll { flex:1; min-height:160px; overflow:auto; }
 .order-ladder { --order-columns:72px minmax(128px,1fr) 144px minmax(128px,1fr) 72px; position:relative; min-width:var(--order-min-w); min-height:244px; padding:4px 8px 0; }
 .order-compact .order-ladder { --order-columns:64px minmax(96px,1fr) 144px minmax(96px,1fr) 64px; }
-.order-expanded .order-ladder { --order-columns:72px minmax(184px,1fr) 144px minmax(184px,1fr) 72px; }
-.order-summary-layer { position:absolute; top:4px; right:80px; width:calc((100% - 304px) / 2); height:240px; }
+.order-expanded .order-ladder { --order-columns:56px minmax(152px,1fr) 128px minmax(152px,1fr) 56px; }
+.order-expanded.order-spacious .order-ladder { --order-columns:72px minmax(184px,1fr) 144px minmax(184px,1fr) 72px; }
+.order-summary-layer { position:absolute; top:4px; right:64px; width:calc((100% - 256px) / 2); height:240px; }
+.order-spacious .order-summary-layer { right:80px; width:calc((100% - 304px) / 2); }
+.order-expanded:not(.order-spacious) .order-summary-layer .book-summary > div:not(.book-summary-extra),
+.order-expanded:not(.order-spacious) .order-summary-layer .book-summary-extra > div { padding-inline:2px; column-gap:2px; }
 .order-row { display:grid; grid-template-columns:var(--order-columns); height:24px; align-items:center; }
 .order-divider { border-top:1px solid var(--border); }
 .order-target { background:var(--tint-selection); }
