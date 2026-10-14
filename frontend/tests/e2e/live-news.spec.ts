@@ -61,10 +61,12 @@ test('독립 뉴스 창의 새 기사·날짜 조회·종목 고정과 그룹 �
   await expect(news.getByText(/선택일 기사 없음/)).toBeVisible();
   await news.getByRole('button', { name: '최신', exact: true }).click();
   await expect(news.getByText('삼성전자 새 기사')).toBeVisible();
-  await frame.getByRole('button', { name: /^이 창 종목 고정 —/ }).click();
+  await frame.getByRole('button', { name: '창 옵션', exact: true }).click();
+  await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '종목 고정', exact: true }).click();
   await choose(page, 'SK하이닉스');
   await expect(news.getByText('삼성전자 새 기사')).toBeVisible();
-  await frame.getByRole('button', { name: /^이 창 종목 고정 해제/ }).click();
+  await frame.getByRole('button', { name: '창 옵션', exact: true }).click();
+  await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '종목 고정', exact: true }).click();
   await expect(news.getByText('SK하이닉스 새 기사')).toBeVisible();
   await expect(news.getByText('삼성전자 새 기사')).toHaveCount(0);
   await frame.screenshot({ path: testInfo.outputPath('news-window.png') });
