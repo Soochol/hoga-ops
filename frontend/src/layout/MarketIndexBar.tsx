@@ -1,4 +1,4 @@
-/** 전역 하단 시장지표 바 — 대표지수 현재지수 + 전일대비 스트립.
+/** 전역 한 줄 시장지표 바 — 지수 ↔ 투자자 순매수를 10초마다 전환.
  *
  * App 셸 3번째 grid 행(auto)에 앉는다: 데이터가 없으면(자격증명/용량 부재,
  * 초기 로딩) null 을 반환해 행이 0으로 접힌다 — 고정 높이 행이 빈 띠로
@@ -8,12 +8,67 @@
  * 라벨은 --fg-dim, 값은 mono --fg. 지수 클릭 = 해당 지수를 /live 현재 뷰로 연다
  * (activateLiveInstrument — 단일 뷰 제자리 교체, ADR-0113). */
 import { useNowMs } from '../util/useNowMs';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { useLiveStatus } from '../api/liveStatus';
 import { useMarketIndexQuotes, type MarketIndexQuote } from '../api/marketIndexQuotes';
+import { useMarketInvestorFlowSummary, type InvestorFlowSummaryGroup } from '../api/marketInvestorFlowSummary';
 import { indexInstrument, isLiveIndexId } from '../live/liveInstrument';
 import { activateLiveInstrument } from '../live/liveNavigate';
 import { priceDirClass } from '../ui/priceDir';
+import { flowStatus } from '../market/flowStatus';
+import { fmtSigned } from '../market/marketFormat';
+
+const ROTATE_MS = 10_000;
+const ACTORS = [['individual', '개인'], ['foreign', '외인'], ['institution', '기관']] as const;
+const STATUS_LABELS = {
+  waiting: '수신 대기', receiving: '', delayed: '수신 지연', closed: '수집 종료',
+  unavailable: '수집 설정 없음', unknown: '수신 상태 확인 불가',
+};
+
+function InvestorFlowItem({ group, market, label, receivedAt, nowMs, error }: {
+  group: InvestorFlowSummaryGroup;
+  market: string;
+  label: string;
+  receivedAt: number;
+  nowMs: number;
+  error: boolean;
+}) {
+  const point = group.markets[market];
+  const health = group.collection?.targets[market];
+  const status = group.collection && health
+    ? flowStatus(group.collection, health, Math.max(0, nowMs - receivedAt)) : 'unknown';
+  const unitKnown = group.unit === 'amt_eok';
+  const statusLabel = error ? '연결 지연' : !unitKnown && point ? '단위 확인 중' : STATUS_LABELS[status];
+  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(nowMs).replaceAll('-', '');
+  const dateLabel = group.date !== today ? `${group.date.slice(4, 6)}/${group.date.slice(6, 8)}` : '';
+  const received = health?.last_success_at_ms;
+  const stamp = received != null
+    ? new Date(received).toLocaleTimeString('ko-KR', { timeZone: 'Asia/Seoul', hour12: false }) : '없음';
+  return (
+    <div
+      data-market-bar-content
+      data-testid={`market-flow-${market}`}
+      className="flex shrink-0 items-baseline gap-1.5 px-1.5"
+      title={`${group.date} · 당일 누적 순매수 · ${group.confirmed ? '확정' : '잠정'} · 마지막 정상 수신 ${stamp}${statusLabel ? ` · ${statusLabel}` : ''}`}
+    >
+      <span className="font-ui text-xs text-fg-dim">{label}</span>
+      {dateLabel && <span className="font-data text-xs text-fg-dim">{dateLabel}</span>}
+      {ACTORS.map(([key, actor]) => {
+        const value = unitKnown ? point?.[key] : null;
+        return (
+          <span key={key} className="flex items-baseline gap-1">
+            <span className="font-ui text-xs text-fg-dim">{actor}</span>
+            <span className={`font-data text-xs tabular-nums ${value == null ? 'text-fg-dim' : priceDirClass(value)}`}>
+              {fmtSigned(value)}
+            </span>
+          </span>
+        );
+      })}
+      {statusLabel && <span className={`font-ui text-xs ${error || status === 'delayed' ? 'text-warn' : 'text-fg-dim'}`}>{statusLabel}</span>}
+    </div>
+  );
+}
 
 const VALUE_FORMAT = new Intl.NumberFormat('ko-KR', {
   minimumFractionDigits: 2,
@@ -65,7 +120,7 @@ function CoverageChip({ leadingDivider }: { leadingDivider: boolean }) {
   const total = k.ready_codes?.length ?? k.subscribed_count;
   const degraded = k.connected_accounts < k.accounts_configured || k.registration_incomplete;
   return (
-    <div className="flex shrink-0 items-center gap-1" data-testid="kiwoom-coverage-chip">
+    <div data-market-bar-content className="flex shrink-0 items-center gap-1" data-testid="kiwoom-coverage-chip">
       {leadingDivider && <span aria-hidden className="h-3 w-px bg-border" />}
       <span
         className="flex items-baseline gap-1 px-1.5"
@@ -80,28 +135,75 @@ function CoverageChip({ leadingDivider }: { leadingDivider: boolean }) {
 }
 
 export function MarketIndexBar() {
-  const nowMs = useNowMs(30_000);
+  const nowMs = useNowMs(10_000);
   const { data } = useMarketIndexQuotes();
   const { data: status } = useLiveStatus();
+  const flow = useMarketInvestorFlowSummary();
+  const [page, setPage] = useState({ mode: 'indices' as 'indices' | 'flow', revision: 0 });
   const hasIndices = data != null && data.length > 0;
   const hasKiwoom = status?.kiwoom != null;
-  // 지수·키움 둘 다 없으면 행 접힘(--h-bottom-bar 0 계약 유지).
-  if (!hasIndices && !hasKiwoom) return null;
+  const summary = flow.data;
+  const hasFlow = summary != null && [summary.stock, summary.futures]
+    .some((group) => Object.values(group.markets).some((point) => point != null));
+  const canRotate = hasIndices && hasFlow;
+  const showFlow = hasFlow && (!hasIndices || page.mode === 'flow');
+  // 값이 없는 페이지로 자동 전환하지 않는다. 클릭은 다음 전환까지 10초를 보장한다.
+  useEffect(() => {
+    if (!canRotate) return;
+    const timer = window.setInterval(() => {
+      setPage((previous) => ({ ...previous, mode: previous.mode === 'indices' ? 'flow' : 'indices' }));
+    }, ROTATE_MS);
+    return () => window.clearInterval(timer);
+  }, [canRotate, page.revision]);
+
+  const switchPage = () => {
+    if (!canRotate) return;
+    setPage((previous) => ({
+      mode: previous.mode === 'indices' ? 'flow' : 'indices', revision: previous.revision + 1,
+    }));
+  };
+  if (!hasIndices && !hasKiwoom && !hasFlow) return null;
 
   return (
     <footer
       data-testid="market-index-bar"
       aria-label="시장지표"
-      className="flex h-bottom-bar min-w-0 items-center gap-1 overflow-x-auto bg-bg px-2 [scrollbar-width:none]"
+      data-page={showFlow ? 'flow' : 'indices'}
+      onClick={(event) => {
+        const target = event.target as HTMLElement;
+        if (!target.closest('button, [data-market-bar-content]')) switchPage();
+      }}
+      className="flex h-bottom-bar min-w-0 items-center gap-1 bg-bg px-2"
     >
-      {hasIndices &&
+      <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
+      {showFlow && summary ? (
+        <>
+          <span data-market-bar-content className="shrink-0 font-ui text-xs text-fg-dim">순매수 · 억원</span>
+          <InvestorFlowItem group={summary.stock} market="KOSPI" label="코스피" receivedAt={flow.dataUpdatedAt} nowMs={nowMs} error={flow.isError} />
+          <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+          <InvestorFlowItem group={summary.stock} market="KOSDAQ" label="코스닥" receivedAt={flow.dataUpdatedAt} nowMs={nowMs} error={flow.isError} />
+          <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+          <InvestorFlowItem group={summary.futures} market="F001" label="K200 선물" receivedAt={flow.dataUpdatedAt} nowMs={nowMs} error={flow.isError} />
+        </>
+      ) : hasIndices &&
         data.map((quote, i) => (
           <div key={quote.id} className="flex shrink-0 items-center gap-1">
             {i > 0 && <span aria-hidden className="h-3 w-px bg-border" />}
             <MarketIndexItem quote={quote} nowMs={nowMs} />
           </div>
         ))}
-      <CoverageChip leadingDivider={hasIndices} />
+      {canRotate && (
+        <button
+          type="button"
+          data-testid="market-bar-switch"
+          aria-label={showFlow ? '지수 화면으로 전환' : '투자자 수급 화면으로 전환'}
+          title="빈 영역 클릭으로 전환 · 10초마다 자동 전환"
+          onClick={switchPage}
+          className="h-full min-w-6 flex-1 self-stretch rounded-sm"
+        />
+      )}
+      </div>
+      <CoverageChip leadingDivider={hasIndices || hasFlow} />
     </footer>
   );
 }
