@@ -284,12 +284,21 @@ class DerivFlowResponse(BaseModel):
     products: dict[str, DerivFlowProduct] = Field(default_factory=dict)
 
 
+class InvestorFlowSummaryPoint(BaseModel):
+    """주식·선물 공용 금액 요약. 선물의 억원 환산값은 소수를 보존한다."""
+
+    t_ms: int
+    individual: float | None = None
+    foreign: float | None = None
+    institution: float | None = None
+
+
 class InvestorFlowSummaryGroup(BaseModel):
     date: str
     unit: str | None = None
     confirmed: bool = False
     collection: FlowCollection | None = None
-    markets: dict[str, InvestorFlowPoint | None] = Field(default_factory=dict)
+    markets: dict[str, InvestorFlowSummaryPoint | None] = Field(default_factory=dict)
 
 
 class InvestorFlowSummaryResponse(BaseModel):
