@@ -67,15 +67,15 @@ describe('BookPanel', () => {
     const grid = container.querySelector('.book-panel-grid')!;
     const [left, center, right] = Array.from(grid.children);
     expect(grid).toHaveClass('book-panel-short');
-    expect(Array.from(center.children).slice(1).map(row => row.textContent)).toEqual([
+    expect(Array.from(center.children).map(row => row.textContent)).toEqual([
       '242,500-4.90%', '242,000-5.10%', '241,500-5.29%', '241,000-5.49%',
       '241,000-5.49%', '240,500-5.69%', '240,000-5.88%',
     ]);
     expect(left.querySelectorAll('.book-trade-row')).toHaveLength(9);
-    expect(left.children).toHaveLength(15); // 여백1 + 매도4 + 체결강도1 + 체결9
-    expect(center.children).toHaveLength(8); // 여백1 + 매도4 + 매수3
+    expect(left.children).toHaveLength(14); // 매도4 + 체결강도1 + 체결9
+    expect(center.children).toHaveLength(7); // 매도4 + 매수3
     expect(right.children).toHaveLength(4); // 요약 슬롯1 + 매수3
-    expect((right.children[0] as HTMLElement).style.height).toBe('110px'); // (1 + 매도4) × 22
+    expect((right.children[0] as HTMLElement).style.height).toBe('88px'); // 매도4 × 22
     expect(within(grid as HTMLElement).queryByText('—')).not.toBeInTheDocument();
     expect(within(grid as HTMLElement).queryByText('0')).not.toBeInTheDocument();
     expect(grid.querySelectorAll('[data-book-divider]')).toHaveLength(3);
@@ -91,12 +91,12 @@ describe('BookPanel', () => {
       trades: [],
     });
     const [left, center, right] = Array.from(container.querySelector('.book-panel-grid')!.children);
-    expect(center.children).toHaveLength(4);
-    expect(left.children[1]).toHaveTextContent('');
-    expect(center.children[1]).toHaveTextContent('252,000');
-    expect(left.children[2]).toHaveTextContent('10');
+    expect(center.children).toHaveLength(3);
+    expect(left.children[0]).toHaveTextContent('');
+    expect(center.children[0]).toHaveTextContent('252,000');
+    expect(left.children[1]).toHaveTextContent('10');
     expect(right.children[1]).toHaveTextContent('20');
-    expect((right.children[0] as HTMLElement).style.height).toBe('66px');
+    expect((right.children[0] as HTMLElement).style.height).toBe('44px');
     expect(container.textContent).not.toMatch(/NaN|Infinity/);
   });
 
@@ -105,8 +105,8 @@ describe('BookPanel', () => {
     const empty = Array.from({ length: 5 }, () => ({ price: 0, qty: 0 }));
     const { container } = renderPanel({ snapshot: { ...s, ask: [...s.ask.slice(0, 5), ...empty], bid: [...s.bid.slice(0, 5), ...empty] }, trades: [] });
     const grid = container.querySelector('.book-panel-grid')!;
-    expect(grid.children[1].children).toHaveLength(11);
-    expect((grid.children[2].children[0] as HTMLElement).style.height).toBe('132px');
+    expect(grid.children[1].children).toHaveLength(10);
+    expect((grid.children[2].children[0] as HTMLElement).style.height).toBe('110px');
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
     const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
     expect(within(dialog).getByText('거래량')).toBeInTheDocument();
@@ -115,13 +115,16 @@ describe('BookPanel', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('요약 패널은 12항목을 11호가 높이에 담는다 — 매수 잔량 바 정렬의 근거', () => {
-    // 이 불변식이 깨지면 우측 매수 바가 매수 가격 행과 어긋난다(조용한 시각 결함).
-    // 행 수 = 상한가 여백 1 + 매도 10.
+  it('요약 12항목을 매도 10행의 220px 높이에 담고 상단 빈 행을 두지 않는다', () => {
     const { container } = renderPanel();
-    const summary = container.querySelector('div[style*="242px"]');
-    expect(summary).not.toBeNull();
-    expect(summary!.querySelectorAll('div[style*="22px"]')).toHaveLength(12);
+    const [left, center, right] = Array.from(container.querySelector('.book-panel-grid')!.children);
+    expect(left.children[0]).toHaveTextContent('109');
+    expect(center.children[0]).toHaveTextContent('256,000');
+    const summary = screen.getByTestId('book-summary');
+    expect(summary).toHaveStyle({ height: '220px' });
+    expect(right.children[0]).toHaveStyle({ height: '220px' });
+    expect(summary.querySelectorAll('div[style*="--book-summary-row-height"]')).toHaveLength(12);
+    expect(summary.style.getPropertyValue('--book-summary-row-height')).toBe(`${220 / 12}px`);
   });
 
   it('3열 공통 경계선을 한 줄 × 3열 = 3개 그린다 — 한 줄로 이어져야 한다', () => {
@@ -203,17 +206,17 @@ describe('BookPanel', () => {
     });
   });
 
-  it('3열이 모두 21행이다 — 하단 바닥 정렬 계약', () => {
+  it('3열이 모두 20행이다 — 하단 바닥 정렬 계약', () => {
     // 한 열에서만 행을 더하거나 빼면 하단이 어긋난다(조용한 시각 결함). `중` 행이
     // 21→22 로 밀었던 것을 ADR-0170 이 되돌렸다.
     const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
     const { container } = renderPanel({ trades });
     const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
-    expect(left.children).toHaveLength(21); // 여백1 + 매도10 + 체결강도1 + 체결9
-    expect(center.children).toHaveLength(21); // 여백1 + 매도10 + 매수10
-    // 우측은 요약 11행이 래퍼 하나에 들어 있어 자식 수 = 1 + 매수바10 = 11.
+    expect(left.children).toHaveLength(20); // 매도10 + 체결강도1 + 체결9
+    expect(center.children).toHaveLength(20); // 매도10 + 매수10
+    // 우측은 요약 10행이 래퍼 하나에 들어 있어 자식 수 = 1 + 매수바10 = 11.
     expect(right.children).toHaveLength(11);
-    expect((right.children[0] as HTMLElement).style.height).toBe('242px'); // 11 × 22
+    expect((right.children[0] as HTMLElement).style.height).toBe('220px'); // 10 × 22
   });
 
   it('교차해도 경고·색·문구를 넣지 않는다 (ADR-0140 §7.1) — 값만 바뀐다', () => {
@@ -379,7 +382,7 @@ describe('BookPanel', () => {
     });
   });
 
-  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 21행 = 중앙 21행)', () => {
+  it('체결 리스트는 9행에서 자른다 — 3열 바닥 정렬(좌 20행 = 중앙 20행)', () => {
     const trades = Array.from({ length: 12 }, (_, i) => ({
       price: 251_500, qty: 1_000 + i, side: 1 as const,
     }));
@@ -619,20 +622,20 @@ describe('BookPanel stale 딤', () => {
   it('요약 패널과 체결강도는 흐리지 않는다 — 이미 새 시점 값이다', () => {
     const { container } = renderPanel({ stale: true });
     const grid = container.querySelector('.grid')!;
-    // 우측 열의 첫 자식 = 요약 11행 래퍼.
+    // 우측 열의 첫 자식 = 요약 10행 래퍼.
     expect(dimOf(grid.children[2].children[0])).not.toContain('opacity-50');
     // 체결강도 행은 좌측 열에 있고 자체 딤이 없어야 한다.
     const strength = screen.getByText('체결강도').parentElement!;
     expect(dimOf(strength)).not.toContain('opacity-50');
   });
 
-  it('딤은 21행 정렬 계약을 건드리지 않는다 — 자식 수가 그대로다', () => {
+  it('딤은 20행 정렬 계약을 건드리지 않는다 — 자식 수가 그대로다', () => {
     // 잔량 바를 래퍼로 묶으면 자식 수가 바뀐다. 딤은 **셀에 직접** 얹어야 한다.
     const trades = Array.from({ length: 9 }, () => ({ price: 251_500, qty: 1, side: 1 as const }));
     const { container } = renderPanel({ trades, stale: true });
     const [left, center, right] = Array.from(container.querySelector('.grid')!.children);
-    expect(left.children).toHaveLength(21);
-    expect(center.children).toHaveLength(21);
+    expect(left.children).toHaveLength(20);
+    expect(center.children).toHaveLength(20);
     expect(right.children).toHaveLength(11);
   });
 

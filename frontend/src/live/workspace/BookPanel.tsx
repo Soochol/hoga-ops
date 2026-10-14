@@ -6,8 +6,8 @@
  *     [매도 잔량 바 ]  [ 가격+등락률 ]  [ 요약 패널  ]
  *     [체결강도·체결]  [ 가격+등락률 ]  [매수 잔량 바]
  *
- * 중앙 가격축을 좌우 4개 블록이 둘러싼다. 우측 요약 슬롯은 상단 여백 1행 +
- * 실제 매도 호가 수만큼 높이를 잡아 매수 잔량과 가격을 정렬한다. 매도 10단일 때
+ * 중앙 가격축을 좌우 4개 블록이 둘러싼다. 우측 요약 슬롯은 실제 매도 호가
+ * 수만큼 높이를 잡아 매수 잔량과 가격을 정렬한다. 매도 10단일 때
  * 요약 12항목을 펼치고, 호가가 적거나 창이 좁으면 정보 버튼으로 상세를 연다.
  *
  * **전체 패널 소비처는 `DataWindow` 하나다.** 총잔량 스트립은 `OrderWindow`도 공유한다. 한때 `/study` 의 BookContent 와 공유하는 단일
@@ -124,7 +124,7 @@ const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
  *  Toss식 행간 "구분선"(흰 띠)을 만든다 — Toss 24/40 비율을 밀도 높은 22px 행에 축소. */
 const BAR_INSET = 3;
 /** 10단을 모두 받은 경우의 요약 높이. 짧은 사다리는 상세를 팝오버로 표시한다. */
-const SUMMARY_ROWS = 11;
+const SUMMARY_ROWS = 10;
 
 export default function BookPanel({
   snapshot,
@@ -225,7 +225,8 @@ export default function BookPanel({
   // 양쪽 열에서 함께 걸러 잔량·가격 정렬을 유지한다. 유효 가격의 잔량 0은 남긴다.
   const asksDesc = snapshot.ask.filter((l) => Number.isFinite(l.price) && l.price > 0).reverse();
   const bids = snapshot.bid.filter((l) => Number.isFinite(l.price) && l.price > 0);
-  const summaryRows = asksDesc.length + 1;
+  const summaryRows = asksDesc.length;
+  const summaryHeight = ROW_H * summaryRows;
   const maxQty = Math.max(
     1,
     ...asksDesc.map((l) => l.qty),
@@ -253,7 +254,6 @@ export default function BookPanel({
         >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
           <div className="flex flex-col">
-            <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
               <QtyBar
                 key={`a-${i}`}
@@ -308,7 +308,6 @@ export default function BookPanel({
               방향(가격축 쪽으로 자람)과 정렬이 담당한다(C안).
               열 전체가 스냅샷 파생(가격)이라 열 자체에 딤을 건다. */}
           <div className={`flex flex-col ${staleDim}`}>
-            <div style={{ height: ROW_H }} />
             {asksDesc.map((l, i) => (
               <PriceCell
                 key={`pa-${i}`}
@@ -332,10 +331,10 @@ export default function BookPanel({
 
           {/* 우: 실제 매도 높이의 요약 슬롯 → 매수 잔량 바 */}
           <div className="flex flex-col">
-            <div className="book-summary-slot" style={{ height: ROW_H * summaryRows }}>
+            <div className="book-summary-slot" style={{ height: summaryHeight }}>
               <div className="book-inline-summary">
                 <BookSummary summary={summary} baselinePrice={baselinePrice}
-                  limits={limits} krxClose={krxClose} vi={vi} />
+                  limits={limits} krxClose={krxClose} vi={vi} height={summaryHeight} />
               </div>
               <div className="book-compact-info">
                 <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog"
@@ -439,7 +438,7 @@ export function BookSummary({
         <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
         <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
         {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
-            라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 — 11행 계약. */}
+            라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 표시한다. */}
         <SummaryRow label="250일" value={fmtHighLow(limits)} />
       </div>
     </div>
@@ -611,7 +610,7 @@ function PriceCell({
   if (!topDivider) return cell;
   // 경계선을 셀 **바깥** 래퍼에 그린다 — 현재가가 매수 1호가인 흔한 경우 boxed 의
   // 전체 테두리와 같은 요소를 다투게 되어 박스 윗변만 색이 갈린다. 래퍼(1px) +
-  // 셀(ROW_H-1) = ROW_H 라 3열 21행 정렬 계약은 유지된다.
+  // 셀(ROW_H-1) = ROW_H 라 3열 20행 정렬 계약은 유지된다.
   return <div data-book-divider="" className="border-t border-border">{cell}</div>;
 }
 
@@ -629,7 +628,7 @@ function QtyBar({
   side: 'ask' | 'bid';
   badge: OrderbookDeltaBadge | null;
   /** stale 딤 유틸리티. **래퍼가 아니라 셀에 직접 얹는다** — 잔량 바를 묶는
-   *  래퍼를 하나 두면 3열 21행 정렬 계약을 세는 자리(BookPanel.test.tsx 의
+   *  래퍼를 하나 두면 3열 20행 정렬 계약을 세는 자리(BookPanel.test.tsx 의
    *  자식 수 단언)가 깨진다. 구조를 안 바꾸는 것이 이 prop 의 존재 이유다. */
   dimClass?: string;
   /** 매수 1호가 바에만 true — 매도/매수 경계선(3열 공통 y). 여기선 boxed 같은
@@ -757,7 +756,7 @@ function SummaryRow({
       } ${highlight ? 'bg-bg-subtle' : ''}`}
       style={{ height: 'var(--book-summary-row-height, 22px)' }}
     >
-      {/* nowrap = 행 높이 계약(11행=매수 바 정렬)의 CSS 방어선. 폭이 모자라면
+      {/* nowrap = 상세정보 전체 높이와 매수 바 정렬을 지키는 CSS 방어선. 폭이 모자라면
           개행으로 계약을 뚫는 대신 그리드의 가로 스크롤로 전가한다(min-w 철학). */}
       <span className="whitespace-nowrap text-xs text-fg-dim">{label}</span>
       <span
