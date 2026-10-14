@@ -14,7 +14,7 @@ export const BOOK_PANEL_PRICE_COL_W = 163;
 export const BOOK_PANEL_MIN_W = 184 * 2 + BOOK_PANEL_PRICE_COL_W;
 export const BOOK_PANEL_COMPACT_MIN_W = 112 * 2 + BOOK_PANEL_PRICE_COL_W;
 
-/** 남는 폭은 잔량 열에 배분한다. 요약은 개행 없이 11호가 높이를 유지해야 한다. */
+/** 남는 폭은 잔량 열에 배분한다. 요약은 개행 없이 실제 매도 호가 높이를 유지해야 한다. */
 export const BOOK_PANEL_GRID_COLS = `minmax(184px,1fr) ${BOOK_PANEL_PRICE_COL_W}px minmax(184px,1fr)`;
 export const BOOK_PANEL_COMPACT_GRID_COLS = `minmax(112px,1fr) ${BOOK_PANEL_PRICE_COL_W}px minmax(112px,1fr)`;
 

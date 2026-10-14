@@ -16,5 +16,5 @@
 .book-info-popover { padding:8px; max-height:calc(100vh - 16px); overflow-y:auto; background:var(--bg-card); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-overlay); font-size:var(--live-text-data,var(--text-sm)); }
 .book-info-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 8px 8px; }
 
-/* Twelve summary items fit the same eleven ladder rows; bid bars stay aligned. */
-.book-summary { --book-summary-row-height: calc(242px / 12); }
+/* Twelve summary items fit ten ask rows; bid bars stay aligned. */
+.book-summary { --book-summary-row-height: calc(220px / 12); }
