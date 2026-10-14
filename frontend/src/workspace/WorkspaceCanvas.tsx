@@ -2,8 +2,8 @@
  * WorkspaceCanvas(코어) — 멀티창 워크스페이스 컨테이너의 페이지 중립 코어
  * (ADR-0119/0122/0123).
  *
- * 스냅 엔진(`snapEngine.ts`)에 포인터 좌표를 위임해 창 이동·8방향 리사이즈·
- * 스플리터 승격을 구동하고, props 로 받은 창 목록을 `renderWindow`
+ * 스냅 엔진(`snapEngine.ts`)에 포인터 좌표를 위임해 창 이동·8방향 리사이즈를
+ * 구동하고, props 로 받은 창 목록을 `windowItem`
  * 로 렌더한다. 드래그 중에는 로컬 preview 로만 렌더하고 드롭 시 `setWindowRects`
  * 로 커밋한다(#710: 이동=transform 프리뷰 + 드롭 시 rect 커밋, localStorage
  * 스래싱 회피).
@@ -19,12 +19,10 @@ import { toFrac, toPx, type FracRect } from './rectSpace';
 import {
   computeMove,
   computeResize,
-  detectFollowers,
   type Guides,
   type Rect,
   type RectWin,
   type ResizeMode,
-  type Edge,
   type Canvas,
 } from './snapEngine';
 
@@ -36,14 +34,11 @@ interface DragState {
   px: number;
   py: number;
   origin: Rect;
-  followers: RectWin[]; // 스플리터 승격 대상(원본 rect)
   canvas: Canvas;
   // 커밋은 이 mutable 필드에서 읽는다(React state 플러시 타이밍에 의존하지 않도록).
   // preview state 는 렌더 전용, 이 필드가 진실.
   liveRects: Map<string, Rect> | null;
 }
-
-const PURE_EDGES: readonly Edge[] = ['e', 'w', 'n', 's'];
 
 /** 코어가 창에 요구하는 최소 형태 — 페이지 스토어의 창 타입이 이걸 충족한다. */
 export interface WorkspaceWindowLike {
@@ -184,21 +179,12 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
       // 스토어는 비율을 들고 있다 — 드래그에 들어가는 순간 px 로 편다(ADR-0122).
       const canvas = { w: box.width, h: box.height };
       const originPx = toPx(win.rect, canvas);
-      const others: RectWin[] = windows
-        .filter((w) => w.id !== id)
-        .map((w) => ({ id: w.id, rect: toPx(w.rect, canvas) }));
-      let followers: RectWin[] = [];
-      if ((PURE_EDGES as readonly string[]).includes(mode)) {
-        const ids = new Set(detectFollowers(originPx, mode as Edge, others));
-        followers = others.filter((o) => ids.has(o.id));
-      }
       dragRef.current = {
         mode,
         id,
         px: e.clientX,
         py: e.clientY,
         origin: originPx,
-        followers,
         canvas,
         liveRects: null,
       };
@@ -240,12 +226,12 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
         dx,
         dy,
         others,
-        followers: d.followers,
+        // 이웃은 흡착 후보로만 사용한다. 맞닿은 경계에서도 대상 창만 리사이즈한다.
+        followers: [],
         canvas: d.canvas,
         alt: e.altKey,
       });
       const next = new Map<string, Rect>([[d.id, r.rect]]);
-      for (const f of r.followers) next.set(f.id, f.rect);
       d.liveRects = next;
       setPreview(next);
       setGuides(r.guides);
@@ -351,8 +337,8 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
    * `windowItem` 의 `rect` prop 으로 들어가는데, 항목 컴포넌트는 memo 이고 비교자가
    * 없어 기본 얕은 비교를 쓴다 — rect 하나가 매번 달라지니 **모든 창이 bail 실패**했다.
    *
-   * 그런데 `preview` 는 **드래그 참여 창만** 담는다(move 는 대상 1개, resize 는 대상+
-   * follower). 즉 참여하지 않는 창은 `preview.get()` 이 undefined 라 이 경로로 떨어지고,
+   * 그런데 `preview` 는 **드래그 대상 창 하나만** 담는다(이동·리사이즈 공통).
+   * 즉 참여하지 않는 창은 `preview.get()` 이 undefined 라 이 경로로 떨어지고,
    * pointermove 마다(≈60Hz) 새 rect 를 받아 서브트리 전체가 다시 돈다. `/live` 에서
    * 그 서브트리는 `ChartWindowInner → useLiveChartData → useLiveBundle → LiveChartRoot`
    * (훅 수십 개 + 비-memo 오버레이 다수)이고, 창 수에 그대로 비례한다.
