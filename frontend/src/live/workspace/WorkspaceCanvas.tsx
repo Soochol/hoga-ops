@@ -316,7 +316,7 @@ function LiveWindowItem({
  * pointermove 마다 재렌더되는데, map 안에서 children JSX·콜백을 인라인으로
  * 넘기면 WindowFrame 의 memo 가 매번 bail out 실패해 **모든** 차트 창 서브트리
  * (useLiveChartData+LiveChartRoot)가 60fps 로 재렌더된다. 항목을 memo 컴포넌트로
- * 끊고 원시/안정 참조 props 만 넘기면 드래그 중엔 rect 가 바뀐 창(드래그+follower)만
+ * 끊고 원시/안정 참조 props 만 넘기면 드래그 중엔 rect 가 바뀐 대상 창 하나만
  * 재렌더된다 — win 객체는 스토어 배열 원소라 드래그 중(로컬 프리뷰) 안정.
  */
 const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
