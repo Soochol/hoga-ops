@@ -613,7 +613,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     </div>}
     <ExpectedFillBanner
       price={storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0}
-      qty={storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? 0}
+      qty={storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? null}
       baselinePrice={baseline} />
     <div className="order-scroll" role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}

@@ -101,6 +101,56 @@ it('an executed trade clears the expected quote and blocks its delayed resurrect
   expect(result.current.get(code)?.expected_price).toBe(120);
 });
 
+// 2026-10-15 15:27:03 KST: 0D FID 24=363789, 0H FID 15=1.
+// The legacy backend labels both expected_qty; their meanings are not interchangeable.
+it.each(['KRX', 'UN'] as const)('keeps the book price/quantity pair across interleaved legacy 0H frames: %s', async venue => {
+  const { result } = await setup(venue);
+  act(() => receive({ kind: 'ob', venue, t_ms: now,
+    expected_price: 1240000, expected_qty: 363789 }));
+  await advance(200);
+  for (const offset of [0, 1000]) {
+    act(() => receive({ kind: 'expected', venue, t_ms: now + offset,
+      expected_price: 1241000, expected_qty: 3 }));
+    await advance(200);
+    expect(result.current.get(code)?.expected_price).toBe(1240000);
+    expect(result.current.get(code)?.expected_qty).toBe(363789);
+  }
+  act(() => receive({ kind: 'ob', venue, t_ms: now + 1000,
+    expected_price: 1239000, expected_qty: 1 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBe(1239000);
+  expect(result.current.get(code)?.expected_qty).toBe(1);
+});
+
+it('replaces an earlier price-only 0H with the same-second book pair', async () => {
+  const { result } = await setup();
+  act(() => receive({ kind: 'expected', venue: 'KRX', t_ms: now,
+    expected_price: 1241000, expected_qty: 3 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_qty).toBeNull();
+  act(() => receive({ kind: 'ob', venue: 'KRX', t_ms: now,
+    expected_price: 1240000, expected_qty: 363789 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBe(1240000);
+  expect(result.current.get(code)?.expected_qty).toBe(363789);
+});
+
+it('0H does not refresh the book quantity TTL or attach it to a new price', async () => {
+  const { result } = await setup();
+  await expected(now, 1240000);
+  await advance(20_000);
+  act(() => receive({ kind: 'expected', venue: 'KRX', t_ms: now + 20_000,
+    expected_price: 1241000, expected_qty: 3 }));
+  await advance(200);
+  await advance(EXPECTED_FILL_TTL_MS - 20_000);
+  expect(result.current.get(code)?.expected_qty).toBeUndefined();
+  act(() => receive({ kind: 'expected', venue: 'KRX', t_ms: now + EXPECTED_FILL_TTL_MS,
+    expected_price: 1242000 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBe(1242000);
+  expect(result.current.get(code)?.expected_qty).toBeNull();
+});
+
 it.each(['KRX', 'NXT', 'UN'] as const)('accepts midday 0H for %s, retains it across empty books and clears it on execution', async venue => {
   const midday = Date.UTC(2026, 8, 14, 3, 30);
   vi.setSystemTime(midday);
@@ -109,7 +159,7 @@ it.each(['KRX', 'NXT', 'UN'] as const)('accepts midday 0H for %s, retains it acr
     expected_price: 121100, expected_qty: 5152 }));
   await advance(200);
   expect(result.current.get(code)?.expected_price).toBe(121100);
-  expect(result.current.get(code)?.expected_qty).toBe(5152);
+  expect(result.current.get(code)?.expected_qty).toBeNull();
   expect(result.current.get(code)?.price).toBe(100);
   act(() => receive({ kind: 'ob', venue, t_ms: midday + 1000 }));
   await advance(200);
@@ -129,7 +179,7 @@ it('expires 0H without a new frame and rejects another venue or invalid values',
   for (const frame of [
     { venue: 'NXT', expected_price: 121100, expected_qty: 5152 },
     { venue: 'KRX', expected_price: Infinity, expected_qty: 5152 },
-    { venue: 'KRX', expected_price: 121100, expected_qty: 0 },
+    { venue: 'KRX', expected_price: 0, expected_qty: 0 },
   ]) {
     act(() => receive({ kind: 'expected', t_ms: now, ...frame }));
     await advance(200);
@@ -138,7 +188,7 @@ it('expires 0H without a new frame and rejects another venue or invalid values',
   act(() => receive({ kind: 'expected', venue: 'KRX', t_ms: now,
     expected_price: 121100, expected_qty: 5152 }));
   await advance(200);
-  expect(result.current.get(code)?.expected_qty).toBe(5152);
+  expect(result.current.get(code)?.expected_qty).toBeNull();
   await advance(EXPECTED_FILL_TTL_MS + 200);
   expect(result.current.get(code)?.expected_price).toBeUndefined();
 });

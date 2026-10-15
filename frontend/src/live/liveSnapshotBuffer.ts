@@ -36,7 +36,7 @@ export const MAX_BUFFER_PER_KIND = 60_000;
  *  총잔량 두 개뿐이라 별도 kind 다(백엔드 주석 참조).
  *  `expected` = 주식예상체결(키움 0H) — 역시 사다리가 없다. 0D FID 23/24 의
  *  정규장 예상체결과 **공존**한다: 저쪽은 사다리와 함께 와서 `ob` payload 에 실리고,
- *  이쪽은 0D 가 끊긴 뒤(15:30~)가 존재 이유다. */
+ *  이쪽은 장중 VI도 수신하며 예상가만 사용한다(0H 거래량은 예상체결수량으로 쓰지 않는다). */
 export type SnapshotKind = 'ob' | 'trade' | 'broker' | 'program' | 'ah' | 'expected';
 
 const KINDS: readonly SnapshotKind[] = ['ob', 'trade', 'broker', 'program', 'ah', 'expected'] as const;

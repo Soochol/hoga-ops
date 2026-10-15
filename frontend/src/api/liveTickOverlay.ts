@@ -75,8 +75,9 @@ export interface LiveTickSample {
  *
  *  0D는 백엔드가 예정 시각과 값으로 게이트하고, 0H는 전용 예상체결 메시지다.
  *  장중 VI/거래 재개도 0H로 수신하므로 프론트는 예정 시각으로 다시 제한하지 않는다.
- *  백엔드가 실어 보낸 양수 표본만 사용한다. 필드가 없는 호가 메시지는 기존 표본을
- *  지우지 않고, 체결 재개와 TTL이 종료를 판정한다.
+ *  0D는 예상가·수량 쌍, 0H는 예상가만 사용한다. 0H FID 15의 거래량은 예상체결
+ *  수량으로 검증되지 않았다. 구버전 서버가 보내는 expected_qty도 무시한다.
+ *  필드가 없는 호가 메시지는 기존 표본을 지우지 않고, 체결 재개와 TTL이 종료를 판정한다.
  *
  *  ⚠ **창은 venue 마다 다르다** — KRX 08:50–09:00·15:20–15:30 / NXT 15:30–15:40
  *  (애프터마켓 시가단일가) / 통합 셋 전부. 그래서 "예상체결 = 오전·오후 KRX 창"
@@ -85,8 +86,9 @@ export interface LiveTickSample {
 export interface LiveExpectedSample {
   /** 예상 체결가. */
   price: number;
-  /** 예상 체결량. */
-  qty: number;
+  /** 예상 체결량. 0H는 미검증 수량을 섞지 않고 null로 둔다. */
+  qty: number | null;
+  source: 'ob' | 'expected';
   /** 프레임 자기 시각(거래소 호가시간 유래) — trade 와의 신구 판정용. */
   tMs: number;
   /** 로컬 수신 시각 — TTL 백스톱용(거래정지 등 종료 신호가 안 오는 종목 청소). */
@@ -144,7 +146,7 @@ function tradeSample(entry: LiveSnapshotEntry, venue: LiveVenueOption): LiveTick
 }
 
 /** ob/expected 프레임의 예상체결 신호. 두 갈래:
- *  - 표본: expected_price/qty 둘 다 >0 (백엔드 게이트를 통과해 실려 온 값)
+ *  - 표본: ob는 양수 가격·수량 쌍, expected(0H)는 양수 가격만 소비
  *  - null: venue 불일치·불량 프레임·**예상 필드 부재** — 전부 판단 보류다.
  *  t_ms 부재 시 배제는 tradeSample 과 동일 논리 — venue 판정 불가면 보수적으로 무시.
  *
@@ -179,10 +181,10 @@ function expectedSignal(
   if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue)) return null;
   const e = entry as { expected_price?: unknown; expected_qty?: unknown };
   const price = positiveNumber(e.expected_price);
-  const qty = positiveNumber(e.expected_qty);
+  const qty = entry.kind === 'ob' ? positiveNumber(e.expected_qty) : null;
   // 부재는 **보류**다 — 지우지 않는다(위 docstring 의 실측).
   if (price === undefined || qty === undefined) return null;
-  return { price, qty, tMs, seenAtMs: Date.now() };
+  return { price, qty, source: entry.kind, tMs, seenAtMs: Date.now() };
 }
 
 export interface LiveTickOverlayMaps {
@@ -272,6 +274,11 @@ export function useLiveTickPrices(
           const lastTrade = accumRef.current.get(code)?.tMs;
           if ((lastTrade != null && signal.tMs <= lastTrade)
             || signal.tMs < (latestExpectedTimes.get(code) ?? -Infinity)) return;
+          const current = expectedAccumRef.current.get(code);
+          // 0H는 유효한 0D 가격·수량 쌍을 바꾸거나 수량 TTL을 갱신하지 않는다.
+          // 새 0H 가격에 이전 0D 수량을 붙이지도 않는다. 만료 후에는 가격만 표시한다.
+          if (signal.source === 'expected' && current?.source === 'ob'
+            && Date.now() - current.seenAtMs < EXPECTED_FILL_TTL_MS) return;
           latestExpectedTimes.set(code, signal.tMs);
           // 값이 직전과 같아도 매번 set + flush 한다 — seenAtMs 갱신이 곧 "아직
           // 동시호가 진행 중" 신호라서다. 값 비교로 건너뛰면 예상가가 안 움직이는

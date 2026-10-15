@@ -60,7 +60,7 @@ type Props = {
   lastPrice: number | null;
   /** Live 0D/0H sample with venue, trade-resumption and TTL lifecycle applied.
    * undefined keeps the snapshot source for cursor/stored/single-price displays. */
-  expectedFill?: { price: number; qty: number } | null;
+  expectedFill?: { price: number; qty: number | null } | null;
   /** HTS식 순간 증감 뱃지(#750, 직전 스냅샷 대비). 스팟 커서 중에는 null —
    *  과거 시점 위 "방금 변화"는 거짓 정보다. */
   deltaBadges?: OrderbookDeltaBadges | null;
@@ -249,7 +249,7 @@ export default function BookPanel({
       {/* 실시간 0D/0H 예상 표본 또는 커서·시간외 스냅샷. 없으면 높이를 차지하지 않는다. */}
       <ExpectedFillBanner
         price={expectedFill === undefined ? snapshot.exp_price ?? 0 : expectedFill?.price ?? 0}
-        qty={expectedFill === undefined ? snapshot.exp_qty ?? 0 : expectedFill?.qty ?? 0}
+        qty={expectedFill === undefined ? snapshot.exp_qty ?? 0 : expectedFill?.qty ?? null}
         baselinePrice={baselinePrice}
         dimClass={staleDim}
       />
@@ -471,8 +471,8 @@ function dirClass(price: number, baselinePrice: number | null): string {
 }
 
 /** 예상체결가·량(키움 0D/0H 또는 시간외 조회) — 호가창 전폭 상단 배너, 중앙 정렬.
- *  유효한 예상 표본의 가격·수량이 둘 다 >0 일 때만 렌더하고,
- *  평시엔 null(높이 0)이라 평상시 호가창에 영향이 없다. 가격은 전일종가 대비 방향색. */
+ *  qty=null은 수량 미제공인 가격 전용 표본이다. 0·불량 수량인 쌍은 숨긴다.
+ *  가격은 전일종가 대비 방향색이다. */
 export function ExpectedFillBanner({
   price,
   qty,
@@ -480,12 +480,13 @@ export function ExpectedFillBanner({
   dimClass = '',
 }: {
   price: number;
-  qty: number;
+  qty: number | null;
   baselinePrice: number | null;
   /** stale 딤 — `exp_price`/`exp_qty` 는 스냅샷 필드라 사다리와 함께 흐려진다. */
   dimClass?: string;
 }) {
-  if (!Number.isFinite(price) || !Number.isFinite(qty) || price <= 0 || qty <= 0) return null;
+  if (!Number.isFinite(price) || price <= 0
+    || (qty !== null && (!Number.isFinite(qty) || qty <= 0))) return null;
   const color = dirClass(price, baselinePrice);
   return (
     <div
@@ -498,12 +499,12 @@ export function ExpectedFillBanner({
           {price.toLocaleString('ko-KR')}원
         </span>
       </span>
-      <span className="flex items-baseline gap-1.5 whitespace-nowrap">
+      {qty !== null && <span className="flex items-baseline gap-1.5 whitespace-nowrap">
         <span className="text-xs text-fg-dim">예상 체결량</span>
         <span className="font-data text-sm tabular-nums text-fg">
           {qty.toLocaleString('ko-KR')}
         </span>
-      </span>
+      </span>}
     </div>
   );
 }

@@ -708,6 +708,14 @@ describe('BookPanel', () => {
       trades={[]} maskRatio={false} lastPrice={null} expectedFill={null} />);
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
   });
+
+  it('수량 미제공 표본은 예상가만 표시하고 호가에 남은 수량을 섞지 않는다', () => {
+    renderPanel({ snapshot: { ...snap(), exp_price: 265500, exp_qty: 12345 },
+      expectedFill: { price: 121100, qty: null } });
+    expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원');
+    expect(screen.queryByText('예상 체결량')).not.toBeInTheDocument();
+    expect(screen.queryByText('12,345')).not.toBeInTheDocument();
+  });
 });
 
 /**

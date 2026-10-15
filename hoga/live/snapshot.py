@@ -46,7 +46,8 @@ class SnapshotKind(str, Enum):  # noqa: UP042 — StrEnum 전환은 str() 동작
     # deque** 라, 0H 유량이 `ob` 링버퍼의 venue 축출 경쟁에 합류하지 않는다.
     #
     # 0D FID 23/24(정규장 동시호가 예상체결)와 **공존한다**. 저쪽은 사다리와 함께
-    # 오므로 OB payload 에 실리고, 이쪽은 0D 가 끊긴 뒤(15:30~)가 존재 이유다.
+    # 오므로 OB payload 에 실린다. 0H는 장중 VI에서도 오며 예상가만 전달한다.
+    # FID 15 거래량은 0D 예상체결수량과 같은 의미로 미검증이므로 매핑하지 않는다.
     EXPECTED = "expected"
     # 키움 WS 체결 틱에서 수신 시점에 합성한 1분봉(ADR-0040/0121/0124 개정).
     # trade(10초 집계·매물대용)와 달리 candle은 완성된 OHLCV 봉이며 candles.parquet

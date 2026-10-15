@@ -302,35 +302,20 @@ def _parse_after_hours(
 def _parse_expected(
     code: str, values: dict[str, str], *, date: str, venue: str
 ) -> WsTick | None:
-    """0H 주식예상체결 → SnapshotKind.EXPECTED. 가격·수량 중 하나라도 0이면 None.
+    """0H 예상체결가만 전달한다. FID 15·13은 예상체결수량으로 쓰지 않는다.
 
-    **사다리가 없다** — 예상체결가/량 두 개가 전부다. 키 이름은 0D 의 예상체결
-    (`expected_price`/`expected_qty`)과 **맞춰 둔다**: 소비자가 정규장 동시호가
-    (0D FID 23/24)와 시간외(0H)를 같은 어댑터로 읽어야 화면 코드가 갈리지 않는다.
-
-    **값 게이트를 거는 이유**는 0D 예상체결의 전례 그대로다. NXT 가 접속매매 중에도
-    예상체결값을 흘려 평시에 노출된 적이 있고(2026-07-22 실측), 방어로 값>0 을 걸었다.
-    다만 저쪽이 함께 쓰는 **시계 창(`is_auction_window`)은 여기에 걸지 않는다** —
-    그 표는 venue 별 단일가 시각을 담고 있는데 시간외 단일가(16:00–18:00)를 KRX 창에
-    추가하면 UN(합집합)까지 열려, 그 시각에 실제로 흐르는 `_AL` 스트림의 FID 23/24
-    누수가 화면에 샌다. 표가 존재하는 이유를 정확히 되돌리는 셈이다.
-    대신 **표시 시점의 창 판정은 소비자(프론트)가 프레임 t_ms 로 한다** — 정규장
-    동시호가의 마지막 0H 프레임이 버퍼에 남아 시간외에 실시간처럼 뜨는 것을 막는
-    것이 그 게이트의 목적이고, 그건 수신이 아니라 표시의 문제다.
-
-    ⚠ **16:00–18:00 에 이 타입이 실제로 오는지는 미실측이다**(`kiwoom_fields` 의
-    0H 절). 안 오면 이 파서는 정규장 동시호가에서만 불린다.
+    0D의 23/24 쌍과 달리 0H 수량의 의미는 미검증이다. expected_qty 키를 생략해
+    미제공을 0과 구분하고, 프론트는 가격만 표시한다. 장중 VI도 수신되므로 예정
+    동시호가 시각으로 제한하지 않는다. 종료는 체결 재개·수신 TTL로 판정한다.
     """
     t_ms = _hhmmss_to_unix_ms(date, values[K.EXP_TIME])
     price = _price(values, K.EXP_PRICE)
-    qty = _qty(values, K.EXP_QTY)
-    if price == 0 or qty == 0:
+    if price == 0:
         return None
     payload = {
         "code": code,
         "t_ms": t_ms,
         "expected_price": price,
-        "expected_qty": qty,
     }
     return WsTick(
         code=code, t_ms=t_ms, kind=SnapshotKind.EXPECTED, payload=payload, venue=venue,
