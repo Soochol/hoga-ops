@@ -236,7 +236,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const prices = asks.concat(bids);
   const showInlineSummary = expanded && prices.length > 0;
   const onScreen = new Set(prices.map(l => l.price));
-  const outside = orders.filter(o => o.price == null || !onScreen.has(Number(o.price)));
   const maxQty = Math.max(1, ...prices.map(l => l.qty));
   const displayTotals = afterHoursTotals ?? { ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 };
   const baseline = resolveBookBaseline({ isPastDateLadder: false, ladderBaseline: null,
@@ -442,16 +441,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       quantity: targets.reduce((sum, order) => sum + orderRemainder(order), 0), batch: targets.map(order => ({ order, base: base() })) });
   }
 
-  function orderChip(order: TossOrder, label: string, content?: string) {
-    const blocked = !editableOrder(order) || pending(order);
-    return <button key={order.orderId} className={`order-chip ${order.orderId === draggingOrderId ? 'order-chip-dragging' : ''}`} type="button"
-      aria-label={label} title={`${orderSideLabel(order.side)} ${fmt(order.price)}원 · 잔여 ${fmt(orderRemainder(order))}주`}
-      disabled={!ready || blocked} data-drag-order={!blocked ? order.orderId : undefined}
-      onPointerDown={e => beginDrag(e, [order])} onPointerMove={moveDrag} onPointerUp={endDrag}
-      onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
-      {content ?? fmt(orderRemainder(order))}{blocked ? ' · 처리 중' : ''}
-    </button>;
-  }
   function orderCell(side: TradingSide, price: number, rowKey: string) {
     const group = groups.get(`${side}:${price}`) ?? [];
     const opposite = orders.some(o => o.side !== side);
@@ -641,9 +630,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         })}
         {showInlineSummary && <div className="order-summary-layer">{renderSummary(240)}</div>}
       </div>
-      {outside.length > 0 && <div className="order-outside">{outside.map(o => <div key={o.orderId} className={o.side === 'BUY' ? 'order-buy' : 'order-sell'}>
-        {orderChip(o, `호가 밖 ${orderSideLabel(o.side)} ${fmt(o.price)}원 주문`, `${orderSideLabel(o.side)} ${fmt(o.price)}원 · ${fmt(orderRemainder(o))}`)}
-      </div>)}</div>}
     </div>
     {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={displayTotals} maskRatio={displayTotals.ask + displayTotals.bid === 0}
       afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}

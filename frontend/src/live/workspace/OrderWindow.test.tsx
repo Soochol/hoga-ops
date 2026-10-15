@@ -736,7 +736,10 @@ describe('호가 주문', () => {
     expect(mock.command.mock.calls[0][1]).toMatchObject({ account_seq: 1, code: '005930', side: 'BUY', price: 67200, quantity: 10, confirm_high_value: false });
   });
   it('부분 체결을 제외한 잔량만 표시하고 클릭해도 하단 편집 UI가 열리지 않는다', () => {
-    mock.orders = [order()]; show(); const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
+    mock.orders = [order(), { ...order('outside'), price: '70000' }];
+    const view = show(); const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
+    expect(view.container.querySelector('.order-outside')).toBeNull();
+    expect(screen.queryByRole('button', { name: '호가 밖 매수 70,000원 주문' })).not.toBeInTheDocument();
     expect(chip).toHaveTextContent(/^70$/); fireEvent.click(chip);
     expect(screen.queryByLabelText('정정 수량')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('주문 가격')).not.toBeInTheDocument();
