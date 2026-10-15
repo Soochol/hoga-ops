@@ -107,6 +107,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
   } = props;
 
   const marketWide = kind === 'market-indices';
+  const tradeTape = kind === 'trade' || kind === 'program-trade';
   const title = marketWide ? KIND_LABEL[kind] : symbolLabel ?? `그룹 ${group}`;
 
   return (
@@ -149,9 +150,9 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </span>
             </>
           )}
-          {/* 창 수준 액션은 오른쪽 끝에 모은다. 차트는 종목 행, 나머지는
+          {/* 창 수준 액션은 오른쪽 끝에 모은다. 차트·체결창은 제목, 나머지는
               스페이서 한 곳이 여유를 흡수해 버튼 사이 간격을 일정하게 유지한다. */}
-          <span aria-hidden data-testid="window-header-spacer" className={marketWide || (kind === 'chart' && symbolCode) ? 'hidden' : 'flex-1'} />
+          <span aria-hidden data-testid="window-header-spacer" className={marketWide || tradeTape || (kind === 'chart' && symbolCode) ? 'hidden' : 'flex-1'} />
           {onToggleMaximize && (
             <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
               aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
