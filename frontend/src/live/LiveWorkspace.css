@@ -49,8 +49,7 @@
 .live-data-title { flex: 1; }
 .live-data-title-kind { color: var(--fg-dim); font-weight: 400; }
 .live-window .live-window-actions-menu { display: none; }
-.live-symbol-warning, .live-symbol-backfill { display: inline-flex; align-items: center; gap: var(--space-xs); flex-shrink: 0; }
-.live-symbol-warning > [aria-hidden] { display: inline-flex; width: 1rem; height: 1rem; justify-content: center; align-items: center; border: 1px solid currentColor; border-radius: var(--radius-full); font-weight: 600; }
+.live-symbol-backfill { display: inline-flex; align-items: center; gap: var(--space-xs); flex-shrink: 0; }
 .live-chart-toolbar { padding: 2px var(--space-sm); gap: var(--space-xs); min-height: 2rem; }
 .live-chart-toolbar button { font-size: var(--text-sm); min-height: 1.75rem; }
 .live-chart-toolbar-divider { width: 1px; height: 1rem; background: var(--border); margin-inline: var(--space-xs); }

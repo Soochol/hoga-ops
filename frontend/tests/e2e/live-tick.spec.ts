@@ -33,7 +33,7 @@ async function pinQuotes(page: import('@playwright/test').Page) {
 }
 
 test.describe('/live 실시간 틱', () => {
-  test('혼잡 이력보다 최신값을 먼저 표시하고 누락을 알린다', async ({ page }, testInfo) => {
+  test('혼잡 이력보다 최신값을 먼저 표시하고 헤더의 이력 누락 라벨은 숨긴다', async ({ page }, testInfo) => {
     const ws = await installLiveWs(page);
     await installLiveMocks(page);
     await pinQuotes(page);
@@ -54,7 +54,7 @@ test.describe('/live 실시간 틱', () => {
     const frame = (seq: number, price: number) => ({ ...tradeFrame({ price, prevClose: 30_000 }), seq });
     ws.pushBatch(CODE, [frame(1, 31_000), frame(2, 32_000)], [frame(10, 36_000)], 176);
     await expect(row).toContainText('36,000');
-    await expect(page.getByTestId('titlebar-symbol-row').first()).toContainText('실시간 이력 일부 누락');
+    await expect(page.getByTestId('titlebar-symbol-row').first()).not.toContainText('실시간 이력 일부 누락');
     const latency = await page.evaluate(async () => {
       const modulePath = '/src/api/ws.ts';
       const transport = await import(modulePath);

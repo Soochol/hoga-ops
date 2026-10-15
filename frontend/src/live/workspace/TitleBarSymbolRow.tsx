@@ -11,8 +11,6 @@
  * 현재가는 candles 폴백이 없어(타이틀바 스코프 밖) quote.price 를 직접 쓴다 —
  * 장중 실시간 시세면 채워지고, 없으면(장전·오프라인) 미표시한다.
  */
-import { useSyncExternalStore } from 'react';
-import { historyPartial, subscribeHistoryStatus } from '../../api/ws';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useConnectionLiveness } from '../../api/useConnectionLiveness';
@@ -44,7 +42,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
   const live = useConnectionLiveness(LIVE_STALE_MS);
   const venue = useLiveVenueStore((s) => s.venue);
   const effectiveVenue = useEffectiveVenue(code, venue);
-  const partial = useSyncExternalStore(subscribeHistoryStatus, () => historyPartial(code), () => false);
 
   const symbolLabel = name ? `${name}(${code})` : code;
 
@@ -95,11 +92,6 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
         {name && name !== code && <span className="live-symbol-code font-data">{code}</span>}
         {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
       </span>
-      {!isIndex && partial && (
-        <span role="status" aria-label="실시간 이력 일부 누락" className="live-symbol-warning text-2xs text-warn" title="실시간 이력 일부 누락 — 보존된 데이터는 다시 조회하지만 원본 틱 전체 복구는 보장되지 않습니다">
-          <span aria-hidden>!</span><span className="live-symbol-warning-label">실시간 이력 일부 누락</span>
-        </span>
-      )}
       {currentPrice !== null && (
         <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="live-symbol-price shrink-0 font-data text-fg">
           {formatKoreanInt(currentPrice)}
