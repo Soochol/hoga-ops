@@ -845,22 +845,41 @@ describe('호가 주문', () => {
     expect(mock.command.mock.calls[0][2]).toBe('live');
   });
 
-  it('종목을 바꿔도 선택한 실계좌를 유지하고 이전 확인은 닫는다', async () => {
+  it('종목을 바꾸면 수량을 초기화하고 선택한 실계좌는 유지하며 이전 확인은 닫는다', async () => {
     mock.accountCount = 2; mock.orders = [order()];
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const win: WorkspaceWindow = { id: 'order-context', kind: 'order', group: 1, rect: { x: 0, y: 0, w: 720, h: 720 } };
     const view = render(<QueryClientProvider client={client}><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></QueryClientProvider>);
     await screen.findByRole('combobox', { name: '주문 계좌' });
     fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: '2' } });
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '123' } });
     fireEvent.click(screen.getByLabelText('매수 67,200원 주문', { exact: true }));
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     mock.orders = [];
     view.rerender(<QueryClientProvider client={client}><DataWindow win={win} symbol={{ code: '000660', name: 'SK하이닉스' }} /></QueryClientProvider>);
     expect(screen.getByRole('combobox', { name: '주문 계좌' })).toHaveValue('2');
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(10);
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ account_seq: 2, code: '000660' }), 'live']);
+    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ account_seq: 2, code: '000660', quantity: 10 }), 'live']);
+  });
+
+  it('종목을 다시 방문해도 이전 입력을 복원하지 않고 현재 창의 첫 수량 프리셋을 쓴다', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const settings = { unit: 'quantity' as const, quantityPresets: [25, 75, 125] as [number, number, number],
+      amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, orderReceiptSound: false };
+    const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} settings={settings} /></QueryClientProvider>;
+    const view = render(content('005930'));
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '321' } });
+    view.rerender(content('005930'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(321);
+    view.rerender(content('000660'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(25);
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '432' } });
+    view.rerender(content('005930'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(25);
+    expect(mock.command).not.toHaveBeenCalled();
   });
 
   it('실패는 신규 확인창 없이 알리고 재확인은 같은 요청 ID를 사용한다', async () => {
