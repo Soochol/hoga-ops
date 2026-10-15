@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildTradeTickView } from './tradeTicks';
+import { buildTradeTickView, combineTradeHistory, mergeTradeTicks } from './tradeTicks';
 import type { TradeSnapshot } from './bucketHogaSeries';
 
 /** 키움 0B 경로 재현 — 체결 1건 = 스냅샷 1개(trades 길이 1). */
@@ -18,6 +18,26 @@ function tick(
 }
 
 describe('buildTradeTickView', () => {
+  it('uses cumulative quantity to retain identical same-second executions across buffer eviction', () => {
+    const a = tick(5000, 70000, 10, 1, { cum_volume: 100 });
+    const b = tick(5000, 70000, 10, 1, { cum_volume: 110 });
+    const before = buildTradeTickView([a, b], Infinity).ticks;
+    const after = buildTradeTickView([b], Infinity).ticks;
+    expect(mergeTradeTicks(after, before)).toHaveLength(2);
+    expect(after[0].key).toBe(before[0].key);
+  });
+  it('joins REST and WS by cumulative quantity within the same second', () => {
+    const live = buildTradeTickView([
+      tick(4000, 70000, 10, 1, { cum_volume: 90 }),
+      tick(5000, 70000, 10, 1, { cum_volume: 100 }),
+      tick(5000, 70000, 10, 1, { cum_volume: 110 }),
+      tick(6000, 70000, 10, -1, { cum_volume: 120 }),
+    ], Infinity).ticks;
+    const past = [{ key: 'ka10003:100', tMs: 5000, price: 70000, qty: 10, side: 1, cumVolume: 100 }];
+    expect(combineTradeHistory(live, past, 5000, 100).map(t => t.cumVolume)).toEqual([120, 110, 100]);
+    expect(combineTradeHistory(live, past, 5000, null).map(t => t.cumVolume)).toEqual([120, 100]);
+    expect(combineTradeHistory(live, [], null, null)).toHaveLength(4);
+  });
   it('최신 체결이 맨 위에 온다', () => {
     const view = buildTradeTickView(
       [tick(1000, 70000, 10, 1), tick(2000, 70100, 20, -1)],

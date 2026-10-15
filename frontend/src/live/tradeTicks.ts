@@ -25,6 +25,8 @@ export interface TradeTick {
   side: number;
   /** React key — 값에서 결정론적으로 유도(인덱스 기반이 아니라 새 체결 유입에 불변). */
   key: string;
+  /** Cumulative quantity orders equal-second reports and joins REST/WS precisely. */
+  cumVolume?: number | null;
 }
 
 export interface TradeTickView {
@@ -80,10 +82,30 @@ export function buildTradeTickView(
       const base = `${tMs}-${price}-${qty}-${side}`;
       const seq = dupCount.get(base) ?? 0;
       dupCount.set(base, seq + 1);
-      ticks.push({ tMs, price, qty, side, key: `${base}-${seq}` });
+      const cumVolume = finiteNumber(raw.cum_volume) ?? (trades.length === 1 ? finiteNumber(snap.cum_volume) : null);
+      ticks.push({ tMs, price, qty, side, key: cumVolume !== null && cumVolume > 0
+        ? `ws:${tMs}:${cumVolume}` : `${base}-${seq}`, cumVolume });
       if (ticks.length >= limit) break outer;
     }
   }
 
   return { ticks, prevClose };
+}
+
+export function mergeTradeTicks(...lists: readonly (readonly TradeTick[])[]): TradeTick[] {
+  const byKey = new Map<string, TradeTick>();
+  for (const list of lists) for (const tick of list) if (!byKey.has(tick.key)) byKey.set(tick.key, tick);
+  return [...byKey.values()].sort((a, b) => b.tMs - a.tMs
+    || (a.cumVolume != null && b.cumVolume != null ? b.cumVolume - a.cumVolume : 0));
+}
+
+export function combineTradeHistory(live: readonly TradeTick[], history: readonly TradeTick[], latestAtMs: number | null, latestVolume: number | null): TradeTick[] {
+  if (latestAtMs === null) return mergeTradeTicks(live, history);
+  const tail = live.filter(tick => {
+    if (tick.tMs < latestAtMs) return false;
+    if (latestVolume !== null && tick.cumVolume != null) return tick.cumVolume > latestVolume;
+    // Without a supplier sequence, the completed second belongs to REST.
+    return tick.tMs >= Math.floor(latestAtMs / 1000) * 1000 + 1000;
+  });
+  return mergeTradeTicks(tail, history);
 }

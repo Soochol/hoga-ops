@@ -16,14 +16,23 @@ export interface ProgramTradeTicksResponse {
   next_before: number | null;
 }
 
+export interface ProgramTradeHistoryResponse {
+  code: string;
+  date: string;
+  venue: string;
+  rows: ProgramTradeTickRow[];
+  next_key: string | null;
+  latest_at_ms: number | null;
+}
+
 export function useProgramTradeHistory(code: string, date: string, venue: string) {
   return useInfiniteQuery({
-    queryKey: ['live', 'program-trades', code, date, venue],
-    initialPageParam: null as number | null,
-    queryFn: ({ pageParam, signal }) => apiCall<ProgramTradeTicksResponse>(
-      `/api/live/program-trades?code=${code}&date=${date}&venue=${venue}&limit=200${pageParam === null ? '' : `&before=${pageParam}`}`, { signal },
+    queryKey: ['live', 'program-trade-history', code, date, venue],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) => apiCall<ProgramTradeHistoryResponse>(
+      `/api/live/program-trades/history?code=${code}&date=${date}&venue=${venue}${pageParam === null ? '' : `&next_key=${encodeURIComponent(pageParam)}`}`, { signal },
     ),
-    getNextPageParam: page => page.next_before ?? undefined,
+    getNextPageParam: page => page.next_key ?? undefined,
     retry: false,
     staleTime: 30_000,
     refetchOnWindowFocus: false,

@@ -71,6 +71,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "ProgramTradeTickRow": frozenset({"event_id", "t_ms", "price", "event_delta_qty"}),
     "ProgramTradeTicksResponse": frozenset({"code", "date", "venue", "rows", "next_before"}),
+    "ProgramTradeHistoryResponse": frozenset({"code", "date", "venue", "rows", "next_key", "latest_at_ms"}),
+    "TradeHistoryRow": frozenset({"event_id", "t_ms", "price", "qty", "side", "cum_volume"}),
+    "TradeHistoryResponse": frozenset({"code", "date", "venue", "rows", "next_key",
+                                        "latest_at_ms", "latest_volume", "prev_close"}),
     "StockNewsItem": frozenset({"id", "title", "source", "published_at_ms", "related_codes"}),
     "StockNewsResponse": frozenset({"code", "date", "status", "items", "fetched_at_ms", "limit"}),
     "SecondTradeDatesResponse": frozenset({"dates"}),

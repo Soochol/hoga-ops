@@ -416,6 +416,35 @@ class ProgramTradeTicksResponse(BaseModel):
     next_before: int | None
 
 
+class ProgramTradeHistoryResponse(BaseModel):
+    code: str
+    date: str
+    venue: str
+    rows: list[ProgramTradeTickRow]
+    next_key: str | None
+    latest_at_ms: int | None
+
+
+class TradeHistoryRow(BaseModel):
+    event_id: str
+    t_ms: int
+    price: int
+    qty: int
+    side: int
+    cum_volume: int | None
+
+
+class TradeHistoryResponse(BaseModel):
+    code: str
+    date: str
+    venue: str
+    rows: list[TradeHistoryRow]
+    next_key: str | None
+    latest_at_ms: int | None
+    latest_volume: int | None
+    prev_close: int | None
+
+
 CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",

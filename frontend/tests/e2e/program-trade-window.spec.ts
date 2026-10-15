@@ -4,18 +4,19 @@ import { installLiveWs } from './helpers/liveWs';
 
 const CODE = '098460';
 
-async function setup(page: Page) {
+async function setup(page: Page, { code = CODE, venue = 'KRX', history = 'empty' }: { code?: string; venue?: string; history?: 'empty' | 'provided' | 'real' } = {}) {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.addInitScript(() => {
-    localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'KRX' }));
+  await page.addInitScript(({ code, venue }) => {
+    localStorage.setItem('live.venue.v1', JSON.stringify({ venue }));
     if (!sessionStorage.getItem('live.workspace.v1')) {
       sessionStorage.setItem('live.workspace.v1', JSON.stringify({
         schema_version: 2,
         windows: [{ id: 'trade-only', kind: 'trade', group: 1, rect: { x: 0, y: 0, w: 0.22, h: 0.45 } }],
-        zOrder: ['trade-only'], groupSymbols: { 1: { code: '098460', name: '고영' } },
+        zOrder: ['trade-only'], groupSymbols: { 1: { code, name: code === '222800' ? '심텍' : '고영' } },
       }));
     }
-  });
+  }, { code, venue });
+  if (history === 'empty') await page.route('**/api/live/program-trades/history?**', route => route.fulfill({ json: { code, date: '', venue, rows: [], next_key: null, latest_at_ms: null } }));
   await installLiveMocks(page);
   const ws = await installLiveWs(page);
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => {
@@ -30,7 +31,7 @@ async function setup(page: Page) {
   await page.getByTestId('workspace-add-program-trade').click();
   const window = page.getByTestId('program-trade-window');
   await expect(window).toBeVisible();
-  await ws.waitForSubscribe(CODE);
+  await ws.waitForSubscribe(code);
   return { ws, window };
 }
 
@@ -42,7 +43,7 @@ test('프로그램 체결은 차트 없이 세 열로 수신분 증감을 표시
   ws.pushLive(CODE, { kind: 'program', venue: 'KRX', t_ms: time + 2, price: 125300, event_delta_qty: 0 });
   ws.pushLive(CODE, { kind: 'program', venue: 'NXT', t_ms: time + 3, price: 125200, event_delta_qty: 777 });
   const table = window.getByRole('table', { name: '프로그램 체결 내역' });
-  await expect(table.getByRole('columnheader')).toHaveText(['수신시각', '현재가(원)', '순매수 증감(주)']);
+  await expect(table.getByRole('columnheader')).toHaveText(['시간', '현재가(원)', '순매수 증감(주)']);
   await expect(table.getByRole('row')).toHaveCount(3);
   await expect(table.getByRole('row').nth(1)).toContainText('125,400−300');
   await expect(table.getByText('+1,200')).toHaveClass(/text-price-up/);
@@ -82,17 +83,17 @@ test('프로그램 과거 페이지 조회 중 휠은 중복 요청을 만들지
     price: 125500, event_delta_qty: i });
   const requests: (string | null)[] = [];
   let release: (() => void) | undefined;
-  await page.route(/^https?:\/\/[^/]+\/api\/live\/program-trades\?/, async route => {
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/program-trades\/history\?/, async route => {
     const params = new URL(route.request().url()).searchParams;
-    const before = params.get('before');
+    const before = params.get('next_key');
     requests.push(before);
     if (before === '300') await new Promise<void>(resolve => { release = resolve; });
     const top = before === null ? 500 : before === '300' ? 300 : 100;
     const rows = Array.from({ length: Math.min(top, 200) }, (_, i) => makeRow(top - i));
     await route.fulfill({ json: { code: CODE, date: params.get('date'), venue: params.get('venue'), rows,
-      next_before: top > 200 ? top - 200 : null } });
+      next_key: top > 200 ? String(top - 200) : null, latest_at_ms: base + 500000 } });
   });
-  const { ws, window } = await setup(page);
+  const { ws, window } = await setup(page, { history: 'provided' });
   const table = window.getByRole('table');
   await expect(table.getByRole('row')).toHaveCount(201);
   // An overlapping live report is the same event, not another row.
@@ -121,13 +122,13 @@ test('프로그램 과거 페이지 조회 중 휠은 중복 요청을 만들지
 test('이전 프로그램 조회 실패는 반복 휠로 재요청하지 않고 재시도로 복구한다', async ({ page }) => {
   const base = Date.now() - 100000;
   let attempts = 0;
-  await page.route(/^https?:\/\/[^/]+\/api\/live\/program-trades\?/, route => {
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/program-trades\/history\?/, route => {
     attempts += 1;
     if (attempts === 1) return route.fulfill({ status: 503, json: { detail: 'temporary failure' } });
     return route.fulfill({ json: { code: CODE, date: new URL(route.request().url()).searchParams.get('date'), venue: 'KRX',
-      rows: [{ event_id: 'saved', t_ms: base, price: 125000, event_delta_qty: 900 }], next_before: null } });
+      rows: [{ event_id: 'saved', t_ms: base, price: 125000, event_delta_qty: 900 }], next_key: null, latest_at_ms: base } });
   });
-  const { window } = await setup(page);
+  const { window } = await setup(page, { history: 'provided' });
   const retry = window.getByRole('button', { name: '이전 내역 조회 실패 · 재시도' });
   await expect(retry).toBeVisible();
   await window.hover();
@@ -136,6 +137,71 @@ test('이전 프로그램 조회 실패는 반복 휠로 재요청하지 않고 
   await retry.click();
   await expect(window.getByText('+900', { exact: true })).toBeVisible();
   expect(attempts).toBe(2);
+});
+
+test('스크롤바가 없어도 휠로 과거 페이지를 조회하고 마지막 페이지에서 멈춘다', async ({ page }) => {
+  // Isolate wheel handling from automatic sentinel loading.
+  await page.addInitScript(() => Object.defineProperty(globalThis, 'IntersectionObserver', { value: undefined }));
+  const base = Date.now() - 501000;
+  const requests: (string | null)[] = [];
+  await page.route('**/api/live/program-trades/history?**', route => {
+    const params = new URL(route.request().url()).searchParams;
+    const key = params.get('next_key');
+    requests.push(key);
+    const top = key === null ? 501 : Number(key);
+    const rows = Array.from({ length: Math.min(200, top) }, (_, i) => ({ event_id: `ka90008:verify-${top - i}`,
+      t_ms: base + (top - i) * 1000, price: 125500, event_delta_qty: top - i }));
+    return route.fulfill({ json: { code: CODE, date: params.get('date'), venue: 'KRX', rows,
+      next_key: top > 200 ? String(top - 200) : null, latest_at_ms: base + 501000 } });
+  });
+  const { window } = await setup(page, { history: 'provided' });
+  await page.setViewportSize({ width: 1440, height: 20000 });
+  const table = window.getByRole('table');
+  const scroller = window.getByLabel('프로그램 체결 목록');
+  await expect(table.getByRole('row')).toHaveCount(201);
+  await expect.poll(() => scroller.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true);
+  expect(requests).toEqual([null]);
+  await scroller.hover();
+  await page.mouse.wheel(0, 500);
+  await expect(table.getByRole('row')).toHaveCount(401);
+  await page.mouse.wheel(0, 100000);
+  await expect(table.getByRole('row')).toHaveCount(502);
+  await expect(table.getByText('+1', { exact: true })).toBeVisible();
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 500);
+  expect(requests).toEqual([null, '301', '101']);
+});
+
+// Opt-in: the separate verification server uses the existing token read-only,
+// without keys, token issuance or a second vendor WS connection.
+test('통합 심텍의 실제 ka90008 과거 내역을 스크롤로 연속 조회한다', async ({ page }, testInfo) => {
+  test.skip(process.env.HOGA_VERIFY_KA90008_LIVE !== '1', 'Explicit live-data verification only');
+  const pages: { rows: { t_ms: number; event_id: string }[]; next_key: string | null }[] = [];
+  const errors: string[] = [];
+  page.on('pageerror', error => errors.push(error.message));
+  page.on('response', async response => {
+    if (new URL(response.url()).pathname === '/api/live/program-trades/history' && response.ok()) pages.push(await response.json());
+  });
+  const { window } = await setup(page, { code: '222800', venue: 'UN', history: 'real' });
+  const table = window.getByRole('table');
+  await expect(table).toBeVisible();
+  await expect.poll(() => pages.length).toBeGreaterThanOrEqual(1);
+  await expect(table.getByRole('row')).toHaveCount(pages[0].rows.length + 1);
+  const firstOldest = Math.min(...pages[0].rows.map(row => row.t_ms));
+  for (let i = 0; i < 3 && pages.at(-1)?.next_key; i++) {
+    const count = pages.length;
+    await window.getByLabel('프로그램 체결 목록').hover();
+    await page.mouse.wheel(0, 100000);
+    await expect.poll(() => pages.length).toBeGreaterThan(count);
+  }
+  expect(pages.length).toBeGreaterThanOrEqual(2);
+  const ids = new Set(pages.flatMap(page => page.rows.map(row => row.event_id)));
+  await expect(table.getByRole('row')).toHaveCount(ids.size + 1);
+  const oldest = Math.min(...pages.flatMap(page => page.rows.map(row => row.t_ms)));
+  expect(oldest).toBeLessThan(firstOldest);
+  expect(firstOldest - oldest).toBeGreaterThan(15 * 60_000);
+  expect(errors).toEqual([]);
+  await window.screenshot({ path: testInfo.outputPath('simtech-un-live-history.png') });
+  await testInfo.attach('live-history-pages', { body: JSON.stringify({ pages: pages.map(p => ({ count: p.rows.length, oldest: Math.min(...p.rows.map(r => r.t_ms)), hasMore: !!p.next_key })), totalUniqueRows: ids.size, errors }), contentType: 'application/json' });
 });
 
 test('체결·프로그램 체결 헤더는 좁은 창에서도 창 이름과 종목명을 한 줄로 유지한다', async ({ page }, testInfo) => {

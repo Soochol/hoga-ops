@@ -42,5 +42,12 @@ export function mergeProgramTradeTicks(...lists: readonly (readonly ProgramTrade
   const byKey = new Map<string, ProgramTradeTick>();
   for (const list of lists) for (const tick of list) if (!byKey.has(tick.key)) byKey.set(tick.key, tick);
   return [...byKey.values()].sort((a, b) => b.tMs - a.tMs
-    || (a.eventId && b.eventId ? b.eventId.localeCompare(a.eventId) : 0));
+    || (a.eventId && b.eventId && !a.eventId.startsWith('ka90008:') && !b.eventId.startsWith('ka90008:')
+      ? b.eventId.localeCompare(a.eventId) : 0));
+}
+
+/** History owns completed supplier seconds; WS is only the newer live tail. */
+export function combineProgramTradeHistory(live: readonly ProgramTradeTick[], history: readonly ProgramTradeTick[], latestAtMs: number | null): ProgramTradeTick[] {
+  const boundary = latestAtMs === null ? null : Math.floor(latestAtMs / 1000) * 1000 + 1000;
+  return mergeProgramTradeTicks(boundary === null ? live : live.filter(tick => tick.tMs >= boundary), history);
 }

@@ -22,14 +22,12 @@ import { lazy, Suspense, useMemo } from 'react';
 import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
 import { returnGroupToLatest } from './returnGroupToLatest';
-import { useConnectionLiveness } from '../../api/useConnectionLiveness';
-import { LIVE_STALE_MS } from '../../api/liveness';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
-import TradeTickTable from '../../sidebar/TradeTickTable';
+import { TradeWindow } from './TradeWindow';
 import { ProgramTradeTickWindow } from './ProgramTradeTickWindow';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
 import { SecondVolumeDistributionWindow } from './SecondVolumeDistributionWindow';
@@ -91,7 +89,6 @@ import {
   volumeDistributionClosePointsFromCandles,
 } from '../continuousTradeVolumeDistribution';
 import { previousDayObExpired, realMsToYyyymmdd, subtractDaysKst, regularSessionOpenMs, regularSessionCloseMs } from '../liveDateTime';
-import { buildTradeTickView } from '../tradeTicks';
 import { SectorRankingWindow } from './SectorRankingWindow';
 import { isLiveIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
@@ -598,47 +595,6 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
         venue={effectiveVenue}
       />
       </BrokerScrollArea>
-    </div>
-  );
-}
-
-/** 체결창 표시 상한 — 15분 버퍼에 수천 건이 쌓여도 렌더는 최근 이만큼만.
- *  스크롤로 과거를 훑는 창이 아니라 "지금 흐르는 체결"을 보는 창이다. */
-const TRADE_TICK_LIMIT = 200;
-
-/**
- * 체결창 — LATEST 전용(스팟 모드 없음).
- *
- * book·broker 와 달리 커서 스팟으로 전환하지 않는다. 파케이에 체결 틱 원본이
- * 남지 않아(저장 경로는 10초 (price,side) 집계) 과거 시점의 체결 목록을 복원할
- * 소스가 없고, WS 버퍼(15분)로만 잘라 보여주면 그 밖을 호버할 때 빈 창이 떠
- * 고장처럼 읽힌다. 체결 흐름의 과거 조회가 필요해지면 백엔드에 per-tick 보존
- * 경로를 먼저 만들어야 한다.
- */
-function TradeWindow({ code }: { code: string }) {
-  const connected = useConnectionLiveness(LIVE_STALE_MS);
-  const venue = useLiveVenueStore((s) => s.venue);
-  const live = useLiveSeries(code, venue);
-  // live.trade 는 useLiveSeries 가 선택 venue 로 소스에서 이미 필터한다(강제 경계).
-  // 없으면 KRX 선택에도 NXT 체결이 섞여 보인다(execution-window-datasource-policy).
-  const view = useMemo(() => buildTradeTickView(live.trade, TRADE_TICK_LIMIT), [live.trade]);
-  // 대량 체결 강조(⚙️ 설정 「체결창」, 전역 1벌). 설정은 만원 단위 — 원으로 환산해 전달.
-  const highlightEnabled = useChartPrefsStore((s) => s.tradeHighlightEnabled);
-  const thresholdManwon = useChartPrefsStore((s) => s.tradeHighlightThresholdManwon);
-  const highlightColor = useChartPrefsStore((s) => s.tradeHighlightColor);
-  const highlight = useMemo(
-    () => (highlightEnabled
-      ? { thresholdWon: thresholdManwon * 10_000, color: highlightColor }
-      : null),
-    [highlightEnabled, thresholdManwon, highlightColor],
-  );
-  return (
-    // 배경을 10호가(BookPanel)와 동일한 --bg-card 로 — flat 창 프레임(--bg)이 비쳐
-    // 체결창만 회색(Toss 라이트)으로 갈리던 것을 통일.
-    <div className="flex h-full flex-col bg-bg-card">
-      <div className="min-h-0 flex-1 overflow-auto">
-        <TradeTickTable view={view} highlight={highlight} emptyText={connected ? '최근 수신 체결 없음 · 새 체결 수신 대기' : '실시간 연결 확인 중 · 체결 수신 대기'} />
-      </div>
     </div>
   );
 }

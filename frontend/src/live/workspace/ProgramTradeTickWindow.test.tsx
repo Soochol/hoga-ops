@@ -31,7 +31,7 @@ describe('ProgramTradeTickWindow', () => {
     render(<ProgramTradeTickWindow code="005930" />);
     const table = screen.getByRole('table', { name: '프로그램 체결 내역' });
     expect(within(table).getAllByRole('columnheader').map(el => el.textContent))
-      .toEqual(['수신시각', '현재가(원)', '순매수 증감(주)']);
+      .toEqual(['시간', '현재가(원)', '순매수 증감(주)']);
     expect(within(table).getAllByRole('row')[1]).toHaveTextContent('14:52:53125,400−300');
     expect(screen.getByText('+1,200')).toHaveClass('text-price-up');
     expect(screen.getByText('−300')).toHaveClass('text-price-down');

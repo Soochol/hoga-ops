@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { buildProgramTradeTicks, mergeProgramTradeTicks } from './programTradeTicks';
+import { buildProgramTradeTicks, combineProgramTradeHistory, mergeProgramTradeTicks } from './programTradeTicks';
 
 const T = Date.UTC(2026, 9, 15, 5, 52, 52);
 const date = '20261015';
 const frame = (extra: Record<string, unknown> = {}) => ({ t_ms: T, price: 125500, event_delta_qty: 37, ...extra });
 
 describe('program trade tape', () => {
+  it('uses supplier history for completed seconds and retains only the newer WS tail', () => {
+    const past = buildProgramTradeTicks([frame({ event_id: 'ka90008:z' }), frame({ event_id: 'ka90008:a' })], date);
+    const live = buildProgramTradeTicks([frame({ t_ms: T - 1000 }), frame({ t_ms: T + 999 }), frame({ t_ms: T + 1000 })], date);
+    expect(combineProgramTradeHistory(live, past, T).map(t => t.tMs)).toEqual([T + 1000, T, T]);
+    expect(combineProgramTradeHistory(live, past, T).slice(1).map(t => t.eventId)).toEqual(['ka90008:a', 'ka90008:z']);
+    expect(combineProgramTradeHistory(live, [], null)).toHaveLength(3);
+  });
   it('deduplicates the same durable event across live and history while retaining identical distinct reports', () => {
     const live = buildProgramTradeTicks([frame({ event_id: 'a' }), frame({ event_id: 'b' })], date);
     const saved = buildProgramTradeTicks([frame({ event_id: 'a' }), frame({ event_id: 'b' }), frame({ event_id: 'b' })], date);

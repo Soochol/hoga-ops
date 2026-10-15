@@ -136,6 +136,7 @@ TR: dict[str, TrSpec] = {
                       required=("stk_cd", "mrkt_tp", "amt_qty_tp", "trde_tp")),
     # 종목정보 — ka10001 만 flat 이다
     "ka10001": TrSpec("ka10001", PATH_STKINFO, None, shape="flat", required=("stk_cd",)),
+    "ka10003": TrSpec("ka10003", PATH_STKINFO, "cntr_infr", cursor=True, required=("stk_cd",)),
     "ka10095": TrSpec("ka10095", PATH_STKINFO, "atn_stk_infr", required=("stk_cd",)),
     "ka10059": TrSpec("ka10059", PATH_STKINFO, "stk_invsr_orgn", cursor=True,
                       required=("stk_cd", "dt", "amt_qty_tp", "trde_tp", "unit_tp")),
@@ -158,6 +159,8 @@ TR: dict[str, TrSpec] = {
     # ⚠ 같은 이름의 `kospi200` 이 ka90005 는 ×100 정수, ka90010 은 소수점이다.
     "ka90005": TrSpec("ka90005", PATH_MRKCOND, "prm_trde_trnsn", cursor=True,
                       required=("date", "amt_qty_tp", "mrkt_tp", "min_tic_tp", "stex_tp")),
+    "ka90008": TrSpec("ka90008", PATH_MRKCOND, "stk_tm_prm_trde_trnsn", cursor=True,
+                      required=("stk_cd", "date", "amt_qty_tp")),
     # Official executable ka90013 example uses mrkcond. The web guide lists
     # stkinfo, but that path is rejected by the vendor with URI error 1504.
     "ka90013": TrSpec("ka90013", PATH_MRKCOND, "stk_daly_prm_trde_trnsn", cursor=True,
