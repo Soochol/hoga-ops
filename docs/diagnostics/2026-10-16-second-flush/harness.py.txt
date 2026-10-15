@@ -1,0 +1,85 @@
+import argparse
+import asyncio
+import hashlib
+import importlib.util
+import json
+import statistics
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from hoga.live.second_trade_store import SecondTradeStore, trade_date
+from hoga.live.snapshot import SnapshotKind
+from hoga.live.ticks import WsTick
+
+NOW = 1792105440000
+parser = argparse.ArgumentParser()
+parser.add_argument('--baseline')
+args = parser.parse_args()
+Store = SecondTradeStore
+if args.baseline:
+    spec = importlib.util.spec_from_file_location('hoga.live.second_trade_store_before', args.baseline)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    Store = module.SecondTradeStore
+
+
+def tick(code, at, qty=2):
+    return WsTick(code, at, SnapshotKind.TRADE,
+                  {'trades': [{'t_ms': at, 'price': 100, 'qty': qty, 'side': 1}]}, 'KRX')
+
+
+async def main():
+    with tempfile.TemporaryDirectory(prefix='hoga-indexed-flush-') as directory:
+        store = Store(Path(directory))
+        store._seq = 0
+        store._sealed_before = NOW - 60_000
+        codes = [f'{i:06}' for i in range(281)]
+        ingest_cpu = time.process_time()
+        for code in codes:
+            for second in range(4, 58):
+                store.ingest(tick(code, NOW - second * 1000))
+        ingest_cpu_ms = (time.process_time() - ingest_cpu) * 1000
+        result = []
+
+        async def measure(label, now, callers=1, repeat=1):
+            samples = []
+            for _ in range(repeat):
+                before_cpu, before_wall = time.process_time(), time.perf_counter()
+                await asyncio.gather(*(store.flush(now_ms=now) for _ in range(callers)))
+                samples.append({'wall_ms': (time.perf_counter() - before_wall) * 1000,
+                                'cpu_ms': (time.process_time() - before_cpu) * 1000})
+            result.append({'phase': label, 'retained_bars': len(store._bars),
+                           'calls': callers, 'samples': repeat,
+                           'wall_ms': round(statistics.median(x['wall_ms'] for x in samples), 3),
+                           'cpu_ms': round(statistics.median(x['cpu_ms'] for x in samples), 3),
+                           'rss_mib': round(int(next(line.split()[1] for line in Path('/proc/self/status').read_text().splitlines() if line.startswith('VmRSS:'))) / 1024, 2)})
+
+        await measure('initial_durable_flush', NOW)
+        await measure('idle_one_call', NOW + 100, repeat=7)
+        await measure('idle_four_calls', NOW + 100, callers=4, repeat=7)
+        for code in codes[:3]:
+            store.ingest(tick(code, NOW - 9500, qty=3))
+        await measure('sparse_three_files', NOW + 500)
+        for code in codes:
+            for second in range(-3, 7):
+                store.ingest(tick(code, NOW + second * 1000))
+        await measure('active_ten_seconds_and_expiry', NOW + 10_000, callers=4)
+        journal, checkpoint = hashlib.sha256(), hashlib.sha256()
+        for code in codes:
+            path = store.path(code, 'KRX', trade_date(NOW))
+            rows = sorted(Store._replay(path).values(), key=lambda row: row['t_ms'])
+            journal.update(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode())
+            point = json.loads(path.with_suffix('.recent.json').read_text())
+            point.pop('journal_bytes')
+            point['bars'].sort(key=lambda row: row['t_ms'])
+            checkpoint.update(json.dumps(point, sort_keys=True, separators=(',', ':')).encode())
+        print(json.dumps({'variant': 'baseline' if args.baseline else 'indexed',
+                          'python': sys.version.split()[0], 'fsync_enabled': True,
+                          'codes': 281, 'initial_bars': 15174, 'initial_ingest_cpu_ms': round(ingest_cpu_ms, 3),
+                          'journal_semantic_sha256': journal.hexdigest(),
+                          'checkpoint_semantic_sha256': checkpoint.hexdigest(),
+                          'phases': result}))
+
+asyncio.run(main())
