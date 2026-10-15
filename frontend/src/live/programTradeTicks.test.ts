@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { buildProgramTradeTicks } from './programTradeTicks';
+import { buildProgramTradeTicks, mergeProgramTradeTicks } from './programTradeTicks';
 
 const T = Date.UTC(2026, 9, 15, 5, 52, 52);
 const date = '20261015';
 const frame = (extra: Record<string, unknown> = {}) => ({ t_ms: T, price: 125500, event_delta_qty: 37, ...extra });
 
 describe('program trade tape', () => {
+  it('deduplicates the same durable event across live and history while retaining identical distinct reports', () => {
+    const live = buildProgramTradeTicks([frame({ event_id: 'a' }), frame({ event_id: 'b' })], date);
+    const saved = buildProgramTradeTicks([frame({ event_id: 'a' }), frame({ event_id: 'b' }), frame({ event_id: 'b' })], date);
+    expect(mergeProgramTradeTicks(live, saved).map(t => t.eventId)).toEqual(['b', 'a']);
+  });
   it('uses the supplied event amount, never the cumulative difference or storage delta', () => {
     expect(buildProgramTradeTicks([
       frame({ net_qty: 100 }),

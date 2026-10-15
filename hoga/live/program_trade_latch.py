@@ -2,16 +2,21 @@
 
 0w push 는 종목당 분당 ~8건(F3 실측)인데 사이드카는 per-code-per-day JSON 원자
 쓰기라, 틱마다 merge_response 를 부르면 REST 30초 대비 IO 가 수십 배로 뛴다.
-그래서 틱은 여기 메모리 latch 에 **최신값만** 남기고, 기존 ProgramTradeCollector
+그래서 누적 스냅샷은 여기 메모리 latch 에 **최신값만** 남기고, 기존 ProgramTradeCollector
 루프가 30초 주기로 drain 해 병합한다 — 저장 해상도(30초)·IO 패턴·이상탐지·소비
 경로가 REST 시절과 동일하게 유지된다.
 
-프로그램 수급은 누적 스냅샷이라 최신값만 남기는 게 손실이 아니다(중간 틱은
-다음 스냅샷에 포함된 정보). 단일 워커(ADR-0038) + asyncio 단일 루프라 락 불요.
+누적 스냅샷의 중간 값은 다음 스냅샷에 포함된다. 다만 프로그램 체결 목록의
+수신분 증감(FID 211)은 각 수신이 필요하므로 별도 bounded 큐에 남긴다. collector가
+이 큐를 별도 원본 이력에 일괄 append하며 기존 누적 sidecar와 혼용하지 않는다.
+단일 워커(ADR-0038) + asyncio 단일 루프라 락 불요.
 """
 from __future__ import annotations
 
+import logging
+from collections import deque
 from typing import Any
+from uuid import uuid7
 
 # (code, venue) → 마지막 0w payload (kiwoom_frames._parse_program 이 만든 dict).
 #
@@ -24,11 +29,46 @@ from typing import Any
 # ADR-0140 §2 는 bare-code 키잉 지뢰를 넷으로 셌는데(PR-C 가 처리), 이 latch 는 다섯
 # 번째다 — **다른 가드**가 가리고 있어 그 목록에 안 들어갔다.
 _latest: dict[tuple[str, str], dict[str, Any]] = {}
+_events: deque[tuple[str, str, dict]] = deque()
+MAX_PENDING_EVENTS = 100_000
+event_queue_overflow = False
 
 
-def update(code: str, payload: dict[str, Any], *, venue: str) -> None:
+def update(code: str, payload: dict[str, Any], *, venue: str, record: bool = False) -> dict[str, Any]:
     """stream.on_tick 이 PROGRAM 틱마다 호출 — 최신값 교체(last-wins, venue 별)."""
+    global event_queue_overflow  # noqa: PLW0603
+    qty, stamp = payload.get("event_delta_qty"), payload.get("t_ms")
+    if type(qty) is int and qty != 0 and type(stamp) is int and stamp > 0:
+        payload = {**payload, "event_id": str(uuid7())}
+        if record:
+            price = payload.get("price")
+            row = {"event_id": payload["event_id"], "t_ms": stamp, "event_delta_qty": qty,
+                   "price": price if type(price) is int and price > 0 else None}
+            if len(_events) < MAX_PENDING_EVENTS:
+                _events.append((code, venue, row))
+            elif not event_queue_overflow:
+                event_queue_overflow = True
+                logging.getLogger(__name__).error("program_trade_tape.queue_full")
     _latest[(code, venue)] = payload
+    return payload
+
+
+def take_events() -> list[tuple[str, str, dict]]:
+    out = list(_events)
+    _events.clear()
+    return out
+
+
+def retry_events(events: list[tuple[str, str, dict]]) -> None:
+    # New arrivals stay behind the failed append. IDs make uncertain append
+    # retries harmless to readers (and preserve identical legitimate events).
+    _events.extendleft(reversed(events))
+    if len(_events) > MAX_PENDING_EVENTS:
+        global event_queue_overflow  # noqa: PLW0603
+        event_queue_overflow = True
+        logging.getLogger(__name__).error("program_trade_tape.retry_queue_full")
+        while len(_events) > MAX_PENDING_EVENTS:
+            _events.pop()
 
 
 def drain() -> dict[tuple[str, str], dict[str, Any]]:
@@ -44,4 +84,7 @@ def drain() -> dict[tuple[str, str], dict[str, Any]]:
 
 
 def reset_for_tests() -> None:
+    global event_queue_overflow  # noqa: PLW0603
     _latest.clear()
+    _events.clear()
+    event_queue_overflow = False

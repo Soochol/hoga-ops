@@ -263,16 +263,18 @@ class LiveStream:
             self._seconds.ingest(tick)
         # 프로그램매매(0w)는 두 소비자로 fan-out한다:
         # ① 표시 buffer → /api/live/series + WS push, ② latch →
-        # ProgramTradeCollector 30초 drain → program_trade_store. 일반 ingest
-        # 경로 전에 return하므로 JSONL/downsampler 저장에는 들어가지 않는다.
+        # ProgramTradeCollector 30초 drain → program_trade_store + 별도 수신 원본.
+        # 일반 ingest 경로 전에 return하므로 기존 JSONL/downsampler에는 들어가지 않는다.
         #
         # KRX 전용 가드는 ADR-0140 §2 에서 걷혔다. latch 는 code 로만 키잉되므로
         # **여기서 venue 를 함께 넘긴다** — 안 그러면 세 시장의 프로그램 순매수가 같은
         # 칸에 덮어써서 마지막 도착분만 남는다(값이 틀리는 게 아니라 시장이 섞인다).
         if tick.kind is SnapshotKind.PROGRAM:
-            program_trade_latch.update(tick.code, dict(tick.payload), venue=tick.venue)
+            program_payload = program_trade_latch.update(
+                tick.code, dict(tick.payload), venue=tick.venue, record=tick.venue in self._open_venues,
+            )
             payload = {
-                **tick.payload,
+                **program_payload,
                 "phase": self._phase_fn(),
                 "venue": tick.venue,
             }

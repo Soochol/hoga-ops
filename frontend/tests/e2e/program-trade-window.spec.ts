@@ -58,7 +58,7 @@ test('프로그램 체결은 차트 없이 세 열로 수신분 증감을 표시
   await expect(page.getByTestId('program-trade-window')).toBeVisible();
 });
 
-test('프로그램 체결은 최신 200행만 유지하고 오래된 누적 payload를 증감으로 사용하지 않는다', async ({ page }) => {
+test('프로그램 체결은 처음 200행을 표시하고 하단 휠로 버퍼의 이전 수신을 펼친다', async ({ page }) => {
   const { ws, window } = await setup(page);
   const time = Date.now();
   ws.pushLive(CODE, { kind: 'program', venue: 'KRX', t_ms: time, price: 125500, net_qty: 999999 });
@@ -70,6 +70,72 @@ test('프로그램 체결은 최신 200행만 유지하고 오래된 누적 payl
   await expect(table.getByRole('row').nth(1)).toContainText('+205');
   await expect(table.getByRole('row').last()).toContainText('+6');
   await expect(table.getByText('+5', { exact: true })).toHaveCount(0);
+  await table.getByRole('row').nth(1).hover();
+  await page.mouse.wheel(0, 10000);
+  await expect(table.getByRole('row')).toHaveCount(206);
+  await expect(table.getByText('+1', { exact: true })).toBeVisible();
+});
+
+test('프로그램 과거 페이지 조회 중 휠은 중복 요청을 만들지 않고 새 수신에도 읽던 위치를 유지한다', async ({ page }) => {
+  const base = Date.now() - 3600000;
+  const makeRow = (i: number) => ({ event_id: `event-${String(i).padStart(5, '0')}`, t_ms: base + i * 1000,
+    price: 125500, event_delta_qty: i });
+  const requests: (string | null)[] = [];
+  let release: (() => void) | undefined;
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/program-trades\?/, async route => {
+    const params = new URL(route.request().url()).searchParams;
+    const before = params.get('before');
+    requests.push(before);
+    if (before === '300') await new Promise<void>(resolve => { release = resolve; });
+    const top = before === null ? 500 : before === '300' ? 300 : 100;
+    const rows = Array.from({ length: Math.min(top, 200) }, (_, i) => makeRow(top - i));
+    await route.fulfill({ json: { code: CODE, date: params.get('date'), venue: params.get('venue'), rows,
+      next_before: top > 200 ? top - 200 : null } });
+  });
+  const { ws, window } = await setup(page);
+  const table = window.getByRole('table');
+  await expect(table.getByRole('row')).toHaveCount(201);
+  // An overlapping live report is the same event, not another row.
+  ws.pushLive(CODE, { kind: 'program', venue: 'KRX', ...makeRow(500) });
+  await expect(table.getByRole('row')).toHaveCount(201);
+  await table.getByRole('row').nth(1).hover();
+  await page.mouse.wheel(0, 10000);
+  await expect.poll(() => requests).toEqual([null, '300']);
+  for (let i = 0; i < 5; i++) await page.mouse.wheel(0, 500);
+  expect(requests).toEqual([null, '300']);
+  release!();
+  await expect(table.getByRole('row')).toHaveCount(401);
+  const scroller = window.getByLabel('프로그램 체결 목록');
+  const anchor = table.getByText('+301', { exact: true });
+  const beforeTop = (await anchor.boundingBox())!.y;
+  ws.pushLive(CODE, { kind: 'program', venue: 'KRX', ...makeRow(501) });
+  await expect(table.getByText('+501', { exact: true })).toHaveCount(1);
+  await expect.poll(async () => (await anchor.boundingBox())!.y).toBeCloseTo(beforeTop, 0);
+  await scroller.hover();
+  await page.mouse.wheel(0, 10000);
+  await expect(table.getByText('+1', { exact: true })).toHaveCount(1);
+  await expect(table.getByRole('row')).toHaveCount(502);
+  expect(requests).toEqual([null, '300', '100']);
+});
+
+test('이전 프로그램 조회 실패는 반복 휠로 재요청하지 않고 재시도로 복구한다', async ({ page }) => {
+  const base = Date.now() - 100000;
+  let attempts = 0;
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/program-trades\?/, route => {
+    attempts += 1;
+    if (attempts === 1) return route.fulfill({ status: 503, json: { detail: 'temporary failure' } });
+    return route.fulfill({ json: { code: CODE, date: new URL(route.request().url()).searchParams.get('date'), venue: 'KRX',
+      rows: [{ event_id: 'saved', t_ms: base, price: 125000, event_delta_qty: 900 }], next_before: null } });
+  });
+  const { window } = await setup(page);
+  const retry = window.getByRole('button', { name: '이전 내역 조회 실패 · 재시도' });
+  await expect(retry).toBeVisible();
+  await window.hover();
+  for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 500);
+  expect(attempts).toBe(1);
+  await retry.click();
+  await expect(window.getByText('+900', { exact: true })).toBeVisible();
+  expect(attempts).toBe(2);
 });
 
 test('체결·프로그램 체결 헤더는 좁은 창에서도 창 이름과 종목명을 한 줄로 유지한다', async ({ page }, testInfo) => {

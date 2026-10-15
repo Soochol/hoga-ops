@@ -206,11 +206,12 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
     assert latched[("000660", "NXT")]["net_qty"] == 1
     display_entry = await asyncio.wait_for(display_q.get(), timeout=1.0)
     assert display_entry == {
-        **tick.payload,
+        **latched[("005930", "KRX")],
         "kind": "program",
         "phase": "regular",
         "venue": "KRX",
     }
+    assert isinstance(display_entry["event_id"], str)
     nxt_entry = await asyncio.wait_for(nxt_display_q.get(), timeout=1.0)
     assert nxt_entry["venue"] == "NXT"  # 표시 fan-out 도 열렸다
     assert (await buf.get_series("005930"))["programs"][0]["event_delta_qty"] == -12

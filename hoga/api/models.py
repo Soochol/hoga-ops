@@ -401,6 +401,21 @@ class ProgramTradeSeries(BaseModel):
     source: Literal["kis_program_trade"] = "kis_program_trade"
 
 
+class ProgramTradeTickRow(BaseModel):
+    event_id: str
+    t_ms: int
+    price: int | None
+    event_delta_qty: int
+
+
+class ProgramTradeTicksResponse(BaseModel):
+    code: str
+    date: str
+    venue: str
+    rows: list[ProgramTradeTickRow]
+    next_before: int | None
+
+
 CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",

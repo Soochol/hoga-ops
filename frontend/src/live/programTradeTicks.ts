@@ -5,6 +5,7 @@ export interface ProgramTradeTick {
   tMs: number;
   price: number | null;
   deltaQty: number;
+  eventId?: string;
 }
 
 /** Display Kiwoom FID 211 directly, never a difference of cumulative snapshots
@@ -15,6 +16,7 @@ export function buildProgramTradeTicks(
 ): ProgramTradeTick[] {
   const ticks: ProgramTradeTick[] = [];
   const occurrences = new Map<string, number>();
+  const seen = new Set<string>();
   if (limit <= 0) return ticks;
   for (let i = snapshots.length - 1; i >= 0; i--) {
     const snap = snapshots[i];
@@ -24,11 +26,21 @@ export function buildProgramTradeTicks(
       || realMsToYyyymmdd(tMs) !== date
       || typeof deltaQty !== 'number' || !Number.isSafeInteger(deltaQty) || deltaQty === 0) continue;
     const price = typeof snap.price === 'number' && Number.isSafeInteger(snap.price) && snap.price > 0 ? snap.price : null;
+    const eventId = typeof snap.event_id === 'string' && snap.event_id ? snap.event_id : undefined;
+    if (eventId && seen.has(eventId)) continue;
+    if (eventId) seen.add(eventId);
     const base = `${tMs}-${price}-${deltaQty}`;
     const occurrence = occurrences.get(base) ?? 0;
     occurrences.set(base, occurrence + 1);
-    ticks.push({ key: `${base}-${occurrence}`, tMs, price, deltaQty });
+    ticks.push({ key: eventId ? `event:${eventId}` : `${base}-${occurrence}`, tMs, price, deltaQty, eventId });
     if (ticks.length >= limit) break;
   }
   return ticks;
+}
+
+export function mergeProgramTradeTicks(...lists: readonly (readonly ProgramTradeTick[])[]): ProgramTradeTick[] {
+  const byKey = new Map<string, ProgramTradeTick>();
+  for (const list of lists) for (const tick of list) if (!byKey.has(tick.key)) byKey.set(tick.key, tick);
+  return [...byKey.values()].sort((a, b) => b.tMs - a.tMs
+    || (a.eventId && b.eventId ? b.eventId.localeCompare(a.eventId) : 0));
 }
