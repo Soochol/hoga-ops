@@ -1,6 +1,5 @@
 import { ResponsiveDataControls } from '../ui/ResponsiveDataControls';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { DataContext } from '../live/workspace/DataContext';
 import type { ProgramTradePoint, ProgramTradeSeries } from '../api/types';
 import { realMsToYyyymmdd } from '../live/liveDateTime';
 import { hoverMsFromClientX, valueFromYRatio } from './sparklineHover';
@@ -73,7 +72,7 @@ export default function ProgramTradeSummaryCard({
 }: Props) {
   const points = series?.points ?? [];
   // 스파크라인 위 로컬 호버가 있으면 그걸 커서로 쓰고, 없으면 외부
-  // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 시각·금액·
+  // 크로스헤어(cursorMs)로 복귀한다. effectiveCursor 하나로 상단 금액·
   // 수량(pickProgramTradePoint)까지 함께 호버 위치를 따라간다.
   const [hoverMs, setHoverMs] = useState<number | null>(null);
   const measure = useProgramTradeDisplayStore((state) => state.measure);
@@ -158,8 +157,6 @@ export default function ProgramTradeSummaryCard({
           />
         </div>
       </div>
-      <DataContext mode={effectiveCursor == null ? '최근 누적' : '커서 시점'} time={point?.t}
-        detail={measure === 'amount' ? '금액(억원)' : '수량(주)'} tone={effectiveCursor == null ? 'latest' : 'cursor'} />
     </div>
   );
 }
