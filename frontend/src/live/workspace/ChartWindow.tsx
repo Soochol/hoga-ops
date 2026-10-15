@@ -49,6 +49,7 @@ import {
 } from './groupChartLinkSource';
 import { TimeframeControl } from '../TimeframeControl';
 import { DrawingMenu } from '../DrawingMenu';
+import { ChartCaptureMenu } from '../../chart/ChartCaptureMenu';
 import { IndicatorsButton } from '../LiveToolbar';
 import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import { useChartHeaderFold } from './useChartHeaderCompact';
@@ -584,6 +585,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
   // 저장뷰 캡처용 뷰포트 ref — LiveChartRoot 가 마운트 시 캡처 함수를 공급한다.
   const viewportCaptureRef = useRef<() => TabViewport | null>(() => null);
+  const imageViewportRef = useRef<HTMLDivElement>(null);
   const handleViewportCaptureReady = useCallback((capture: () => TabViewport | null) => {
     viewportCaptureRef.current = capture;
   }, []);
@@ -880,6 +882,9 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">
           <span aria-hidden className="live-chart-toolbar-divider" />
           <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} />
+          <ChartCaptureMenu key={`${d.workareaCode}|${view.timeframe}`} viewportRef={imageViewportRef}
+            code={d.workareaCode} timeframe={view.timeframe}
+            available={!!(d.workareaChartBundle ?? d.workareaBundle)?.candles.length && !d.workareaCandleEmpty} />
           <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} />
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
@@ -915,6 +920,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         <ChartErrorBoundary>
           <ChartDrawingShell>
             <LiveChartRoot
+              imageViewportRef={imageViewportRef}
               hoverLinked={hoverLinked}
               indicatorLegendsVisible={indicatorLegendsVisible}
               code={d.workareaCode}
