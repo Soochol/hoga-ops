@@ -186,7 +186,7 @@ test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하
   expect(commands).toHaveLength(1);
 });
 
-test('고정한 호가 주문 창의 종목 이동은 주문 수량을 초기화하고 다른 연결 창은 유지한다', async ({ page }) => {
+test('고정한 호가 주문 창의 종목 이동은 수량을 비우고 입력 전에는 주문을 막는다', async ({ page }) => {
   const { window, commands } = await setup(page);
   const frame = page.locator('[data-win]').filter({ has: window });
   await frame.getByRole('button', { name: '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다', exact: true }).click();
@@ -195,7 +195,15 @@ test('고정한 호가 주문 창의 종목 이동은 주문 수량을 초기화
   await page.getByRole('dialog', { name: '계좌 목록' }).getByRole('button', { name: 'SK하이닉스', exact: true }).click();
   await expect(page.getByRole('button', { name: 'SK하이닉스 호가 주문 창 닫기', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '삼성전자 10호가 창 닫기', exact: true })).toBeVisible();
-  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('10');
+  const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+  await expect(quantity).toHaveValue('');
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await expect(buy).toBeDisabled();
+  await quantity.fill('7');
+  await expect(buy).toBeEnabled();
+  await quantity.clear();
+  await expect(quantity).toHaveValue('');
+  await expect(buy).toBeDisabled();
   expect(commands).toHaveLength(0);
 });
 

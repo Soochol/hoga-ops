@@ -68,17 +68,17 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   const [selectedAccount, selectAccount] = useState(0);
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
   const preferences = settings ?? localSettings;
-  const [quantity, setQuantity] = useState(() => preferences.quantityPresets[0]);
+  const [quantity, setQuantity] = useState<number | null>(() => preferences.quantityPresets[0]);
   const [quantityCode, setQuantityCode] = useState(code);
   const [amountMillions, setAmountMillions] = useState(() => preferences.amountPresets[0]);
   const [profitAsPercent, setProfitAsPercent] = useState(false);
   // Reset before the new symbol's keyed content commits, never after it becomes clickable.
   if (quantityCode !== code) {
     setQuantityCode(code);
-    setQuantity(preferences.quantityPresets[0]);
+    setQuantity(null);
   }
   function applySettings(next: OrderWindowSettings) {
-    const quantitySlot = preferences.quantityPresets.indexOf(quantity);
+    const quantitySlot = quantity == null ? -1 : preferences.quantityPresets.indexOf(quantity);
     const amountSlot = preferences.amountPresets.indexOf(amountMillions);
     if (quantitySlot >= 0) setQuantity(next.quantityPresets[quantitySlot]);
     if (amountSlot >= 0) setAmountMillions(next.amountPresets[amountSlot]);
@@ -95,7 +95,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   preferences, quantity, onQuantityChange, amountMillions, onAmountChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string;
   chosenAccount: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
-  quantity: number; onQuantityChange: (quantity: number) => void; amountMillions: number; onAmountChange: (millions: number) => void;
+  quantity: number | null; onQuantityChange: (quantity: number | null) => void; amountMillions: number; onAmountChange: (millions: number) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
   profitAsPercent: boolean; onToggleProfitDisplay: () => void;
 }) {
@@ -251,9 +251,9 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const amountMode = preferences.unit === 'amount';
   const inputValue = amountMode ? amountMillions : quantity;
   const presets = amountMode ? preferences.amountPresets : preferences.quantityPresets;
-  const setInputValue = amountMode ? onAmountChange : onQuantityChange;
+  const setInputValue = (value: number | null) => amountMode ? onAmountChange(value ?? 0) : onQuantityChange(value);
   const estimateQuantity = amountMode && estimatePrice != null ? quantityForAmount(amountMillions, estimatePrice) : null;
-  const estimateAmount = estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
+  const estimateAmount = quantity != null && estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const holdingQuantity = state.data?.holding_quantity != null && !state.balancesError ? Number(state.data.holding_quantity) : null;
   const averageMarker = preferences.showAveragePrice
@@ -378,7 +378,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number) {
-    if (!validOrderInput(inputValue, preferences.unit)) { setNotice(amountMode ? '주문 금액은 1백만원 이상의 정수로 설정하세요.' : '주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
+    if (!validOrderInput(inputValue ?? NaN, preferences.unit)) { setNotice(amountMode ? '주문 금액은 1백만원 이상의 정수로 설정하세요.' : '주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
     const qty = amountMode ? quantityForAmount(amountMillions, price) : quantity;
     if (qty === 0) { setNotice('입력한 금액으로 해당 호가에서 1주를 주문할 수 없습니다.'); return; }
     if (qty == null) { setNotice('주문 금액과 호가 가격을 확인하세요.'); return; }
@@ -452,7 +452,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     const opposite = orders.some(o => o.side !== side);
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
     const canCreate = ready && fresh && price > 0 && !opposite && !settingsDraft && !state.data?.unresolved_commands.length
-      && (!amountMode || (quantityForAmount(amountMillions, price) ?? 0) >= 1);
+      && (amountMode ? (quantityForAmount(amountMillions, price) ?? 0) >= 1 : quantity != null);
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
@@ -563,7 +563,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || !!lockedBook}
             onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '수량'}</button>)}
         </div>
-        <label className="order-input-field"><input type="number" aria-label={amountMode ? '신규 주문 금액' : '신규 주문 수량'} min="1" max={amountMode ? MAX_AMOUNT_MILLIONS : MAX_ORDER_QUANTITY} step="1" value={inputValue} onChange={e => setInputValue(Number(e.target.value))} /><span className="order-meta">{amountMode ? '백만원' : '주'}</span></label>
+        <label className="order-input-field"><input type="number" aria-label={amountMode ? '신규 주문 금액' : '신규 주문 수량'} min="1" max={amountMode ? MAX_AMOUNT_MILLIONS : MAX_ORDER_QUANTITY} step="1" value={inputValue ?? ''} onChange={e => setInputValue(e.target.value === '' ? null : Number(e.target.value))} /><span className="order-meta">{amountMode ? '백만원' : '주'}</span></label>
         <div className="order-quantity-presets">
           {presets.map((value, index) => <button type="button" key={index} aria-pressed={inputValue === value} onClick={() => setInputValue(value)}>{fmt(amountMode ? value * 100 : value)}{amountMode ? '만' : '주'}</button>)}
         </div>
