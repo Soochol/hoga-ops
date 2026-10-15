@@ -1,0 +1,76 @@
+{
+  "date": "2026-10-15",
+  "code": "222800",
+  "name": "심텍",
+  "venue": "UN",
+  "api": "ka10003",
+  "verification": "Real browser wheel -> application trade history API -> capacity seam -> Kiwoom REST. History API was not mocked. Other UI feeds used test stubs.",
+  "authentication": "Existing token read-only; no keys copied, no new token or vendor WS",
+  "pages": [
+    {
+      "raw_rows": 30,
+      "display_rows": 30,
+      "newest": "162603",
+      "oldest": "162537",
+      "has_more": true,
+      "constituent_venue_labels": [
+        "KRX",
+        "NXT"
+      ]
+    },
+    {
+      "raw_rows": 30,
+      "display_rows": 30,
+      "newest": "162537",
+      "oldest": "162458",
+      "has_more": true,
+      "constituent_venue_labels": [
+        "KRX",
+        "NXT"
+      ]
+    },
+    {
+      "raw_rows": 30,
+      "display_rows": 30,
+      "newest": "162458",
+      "oldest": "162429",
+      "has_more": true,
+      "constituent_venue_labels": [
+        "KRX",
+        "NXT"
+      ]
+    },
+    {
+      "raw_rows": 30,
+      "display_rows": 30,
+      "newest": "162428",
+      "oldest": "162408",
+      "has_more": true,
+      "constituent_venue_labels": [
+        "KRX",
+        "NXT"
+      ]
+    }
+  ],
+  "unique_display_rows": 120,
+  "newest_time": "16:26:03",
+  "oldest_time": "16:24:08",
+  "browser_errors": 0,
+  "tests": {
+    "backend_and_wire": "58 passed",
+    "frontend_units": "132 passed",
+    "browser_regression": "10 passed",
+    "live_simtech_scroll": "1 passed"
+  },
+  "runtime": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "browser": "system Chrome",
+    "workers": 1,
+    "ports": [
+      20358,
+      21358
+    ]
+  },
+  "source": "https://github.com/Kiwoom-Securities/Kiwoom-REST-API/blob/main/kiwoom/_data/kiwoom_api_spec.json"
+}

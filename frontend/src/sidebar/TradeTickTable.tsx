@@ -54,16 +54,17 @@ export default function TradeTickTable({
     return <SidebarState>{emptyText}</SidebarState>;
   }
   return (
-    <div className="font-data text-sm tabular-nums">
+    <div role="table" aria-label="체결 내역" className="font-data text-sm tabular-nums">
       {/* 헤더는 선이 아니라 톤 밴드로 분리한다(DESIGN.md "구분선 최소화", 2026-07-22).
           bg-bg-card 였을 땐 창 배경과 같은 값이라 밴드가 보이지 않았고, sticky 는
           행이 비쳐 보이는 것만 막고 있었다. */}
       <div
+        role="row"
         className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-2xs text-fg-dim`}
       >
-        <span>시각</span>
-        <span className="text-right">체결가(원)</span>
-        <span className="text-right">체결량(주)</span>
+        <span role="columnheader">시각</span>
+        <span role="columnheader" className="text-right">체결가(원)</span>
+        <span role="columnheader" className="text-right">체결량(주)</span>
       </div>
       {view.ticks.map((t) => (
         <Row key={t.key} tick={t} prevClose={view.prevClose} highlight={highlight} />
@@ -88,10 +89,11 @@ function Row({
     : priceDirClass(side);
   const highlighted = highlight !== null && price * qty >= highlight.thresholdWon;
   return (
-    <div className={`grid ${COLS} gap-2 px-2.5 py-0.5`}>
-      <span className="text-fg-dim">{unixMsToKSTClock(tMs)}</span>
-      <span className={`text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
+    <div role="row" data-tape-event={tick.key} className={`grid ${COLS} gap-2 px-2.5 py-0.5`}>
+      <span role="cell" className="text-fg-dim">{unixMsToKSTClock(tMs)}</span>
+      <span role="cell" className={`text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       <span
+        role="cell"
         data-testid={highlighted ? 'trade-qty-highlighted' : undefined}
         className={`-mx-1 rounded-sm px-1 text-right ${priceDirClass(side)}`}
         style={highlighted ? { background: `${highlight.color}${HIGHLIGHT_ALPHA_HEX}` } : undefined}

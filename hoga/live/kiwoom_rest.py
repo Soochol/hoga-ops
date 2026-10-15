@@ -136,6 +136,7 @@ TR: dict[str, TrSpec] = {
                       required=("stk_cd", "mrkt_tp", "amt_qty_tp", "trde_tp")),
     # 종목정보 — ka10001 만 flat 이다
     "ka10001": TrSpec("ka10001", PATH_STKINFO, None, shape="flat", required=("stk_cd",)),
+    "ka10003": TrSpec("ka10003", PATH_STKINFO, "cntr_infr", cursor=True, required=("stk_cd",)),
     "ka10095": TrSpec("ka10095", PATH_STKINFO, "atn_stk_infr", required=("stk_cd",)),
     "ka10059": TrSpec("ka10059", PATH_STKINFO, "stk_invsr_orgn", cursor=True,
                       required=("stk_cd", "dt", "amt_qty_tp", "trde_tp", "unit_tp")),

@@ -155,6 +155,15 @@ the Cursor falls outside the requested **Stock-Date**.
 _Avoid_: "timestamp" alone (ambiguous with Entity ts_ms and Wire Model
 ts_ms which may differ in encoding), "t param".
 
+**체결 창 (Trade Tape)**:
+선택 종목·거래소·당일의 체결을 `시각 / 체결가 / 체결량`으로 표시하는 독립 창.
+과거는 키움 `ka10003`의 체결정보 연속조회이며 10초 집계 저장분으로 재구성하지 않는다.
+가격색은 전일 종가 대비, 체결량 색은 공급사 체결수량 부호의 매수·매도 방향이다.
+같은 초의 체결은 누적거래량으로 구분하고, 최신 REST 누적거래량 이후 WS 체결만
+이어 붙인다. 누적거래량 미제공 시 완료된 초까지는 REST를 사용한다. 하단 휠·스크롤은
+이전 페이지를 읽고 조회 중 중복 요청을 막으며 읽던 행의 위치를 유지한다.
+`ka10003`에는 날짜 입력이 없어 과거 날짜 요청은 허용하지 않는다.
+
 **프로그램 체결 창 (Program Trade Tape)**:
 키움 `0w`의 수신분 순매수수량 증감(FID 211)과 `ka90008`의 과거 순매수수량 증감을
 `시간 / 현재가 / 순매수 증감(주)`
