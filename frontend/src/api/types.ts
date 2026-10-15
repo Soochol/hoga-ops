@@ -903,6 +903,11 @@ export type DepthHeatmapPointWire = {
   bids_price_max?: [number, number][];
 };
 
+export type LocalCandleHistory = {
+  available_dates: string[];
+  trading_dates: string[];
+};
+
 export type RangeBundle = {
   code: string;
   from_date: string;
@@ -925,6 +930,9 @@ export type RangeBundle = {
    *  계속** 뜨는 상태가 됐다(2026-08-26 신고: 028050 은 26-01-06 부터인데 창이
    *  25-11-17 까지 갔다). 구백엔드는 부재 → optional. */
   earliest_captured_date?: string | null;
+  local_candle_history?: LocalCandleHistory | null;
+  /** Render-only session grid in HogaPlay mode. No synthetic Candle rows. */
+  timeline_sessions?: { date: string; session_open_ms: number; session_close_ms: number }[];
   /** ADR-0020 invariant outcomes surfaced by hoga/api/models.py::RangeBundle. */
   excluded_dates?: RangeExcludedDate[];
   data_warnings?: RangeDateWarning[];

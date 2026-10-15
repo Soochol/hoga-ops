@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { HogaplaySourceChip } from './HogaplaySourceChip';
-import { hogaplayGapFillSentence, hogaplayPeriodLabel, type HogaplayChipGapFill } from './HogaplaySourceChipHelpers';
+import { hogaplayPeriodLabel } from './HogaplaySourceChipHelpers';
 
 describe('hogaplayPeriodLabel', () => {
   it('같은 날은 하루만 적는다', () => {
@@ -25,6 +25,8 @@ describe('HogaplaySourceChip', () => {
     render(<HogaplaySourceChip range={{ fromDate: '20260811', toDate: '20260821' }} onClear={onClear} />);
 
     expect(screen.getByTestId('live-hogaplay-source-chip')).toHaveTextContent('hogaplay 08-11~08-21');
+    expect(screen.getByTestId('live-hogaplay-source-chip').getAttribute('title')).toContain('디스크에 있는 분봉만');
+    expect(screen.getByTestId('live-hogaplay-source-chip').getAttribute('aria-label')).toContain('자동으로 가져오지 않습니다');
     fireEvent.click(screen.getByRole('button', { name: 'hogaplay 저장 데이터 해제' }));
     expect(onClear).toHaveBeenCalledTimes(1);
   });
@@ -35,64 +37,5 @@ describe('HogaplaySourceChip', () => {
     const chip = screen.getByTestId('live-hogaplay-source-chip');
     expect(chip).toHaveTextContent('hogaplay 불러오는 중');
     expect(chip.textContent).not.toContain('undefined');
-  });
-});
-
-/**
- * 키움 보충 요약 문장.
- *
- * **막는 방향**: ① 못 채운 것을 **뭉뚱그리는 것**(사유마다 사용자가 할 수 있는 일이
- * 다르다) ② 아무 일도 없었는데 문장을 붙이는 것 ③ 보충 중인데 완료처럼 말하는 것.
- *
- * **못 보는 것**: 이 문장이 실제로 `title`·`aria-label` 로 나가는지는 아래 컴포넌트
- * 테스트가, 개수가 훅 결과와 맞는지는 `ChartWindow` 배선이 소유한다.
- */
-describe('hogaplayGapFillSentence', () => {
-  const none: HogaplayChipGapFill = {
-    filledCount: 0, unfillableCount: 0, rescaledCount: 0, deferredCount: 0, pending: false,
-  };
-
-  it('보충 요약이 없으면 아무 말도 하지 않는다', () => {
-    expect(hogaplayGapFillSentence(undefined)).toBe('');
-    expect(hogaplayGapFillSentence(none)).toBe('');
-  });
-
-  it('보충 중이면 완료처럼 말하지 않는다', () => {
-    const s = hogaplayGapFillSentence({ ...none, filledCount: 2, pending: true });
-    expect(s).toContain('보충하는 중');
-    expect(s).not.toContain('보충했습니다');
-  });
-
-  it('못 채운 이유를 사유별로 가른다 — 뭉치면 "왜" 가 사라진다', () => {
-    const s = hogaplayGapFillSentence({
-      filledCount: 3, unfillableCount: 2, rescaledCount: 1, deferredCount: 4, pending: false,
-    });
-    expect(s).toContain('3일을 키움 분봉으로 보충');
-    expect(s).toContain('2일은 키움 보유 기간');
-    expect(s).toContain('1일은 수정주가 척도');
-    expect(s).toContain('4일은 이번에 시도하지 않았습니다');
-  });
-});
-
-describe('HogaplaySourceChip — 보충 요약', () => {
-  it('시각 라벨은 늘리지 않고 툴팁에만 싣는다 — 헤더 폭 예산', () => {
-    const gapFill: HogaplayChipGapFill = {
-      filledCount: 3, unfillableCount: 0, rescaledCount: 0, deferredCount: 0, pending: false,
-    };
-    render(
-      <HogaplaySourceChip
-        range={{ fromDate: '20260811', toDate: '20260821' }}
-        gapFill={gapFill}
-        onClear={vi.fn()}
-      />,
-    );
-    const chip = screen.getByTestId('live-hogaplay-source-chip');
-
-    // 보이는 글자는 종전 그대로 — 여기 개수가 새면 접힘 임계 상수를 다시 재야 한다.
-    expect(chip).toHaveTextContent('hogaplay 08-11~08-21');
-    expect(chip.textContent).not.toContain('3일');
-    // 툴팁·스크린리더는 읽는다.
-    expect(chip.getAttribute('title')).toContain('3일을 키움 분봉으로 보충');
-    expect(chip.getAttribute('aria-label')).toContain('3일을 키움 분봉으로 보충');
   });
 });

@@ -5,6 +5,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
 import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import { drawnCandleIndex } from '../../chart/drawnCandleIndex';
+import { maskIntradayLineGaps } from '../../chart/intradayWhitespace';
 import { computeSupertrend, supertrendLineData } from '../../chart/projectors/supertrend';
 import { syncChartSeriesData } from '../../chart/replaceSeriesData';
 import type { SeriesDataSink } from '../../chart/seriesDataDiff';
@@ -33,8 +34,8 @@ function SupertrendOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: 
     return { grid, values: computeSupertrend(grid.drawn, period, multiplier) };
   }, [bundle.candles, axis, enabled, period, multiplier]);
   const data = useMemo(() => projection
-    ? supertrendLineData(projection.values, projection.grid.virtualSeconds, upColor, downColor) : [],
-  [projection, upColor, downColor]);
+    ? maskIntradayLineGaps(supertrendLineData(projection.values, projection.grid.virtualSeconds, upColor, downColor), bundle, axis) : [],
+  [projection, upColor, downColor, bundle, axis]);
 
   useEffect(() => {
     if (!enabled) return;

@@ -959,22 +959,26 @@ describe('useLiveBundle', () => {
     });
   });
 
-  /**
-   * 창별 hogaplay 소스(`hogaplaySourceEnabled`)의 **번들 층 배선**.
-   *
-   * 이 축은 2026-08-22 조사 시점까지 이 파일에서 **한 번도 검증된 적이 없었다** —
-   * 버튼·칩·헤더 폭·워크스페이스 스토어에만 테스트가 있었고, 정작 "디스크로 보내는가"
-   * 와 "보충을 켜는가" 두 배선이 비어 있었다.
-   *
-   * **막는 방향**: ① 토글이 디스크 경로로 안 보내는 것 ② 보충이 안 도는 것
-   * ③ **보충이 전역 우회까지 번지는 것**. ③ 이 특히 중요하다 — 게이트를
-   * `restBypassEnabled`(셋의 OR)로 쓰면 ①②는 초록인 채로 전역 우회 모드가 자동으로
-   * 벤더를 두드리게 되고, 그건 그 모드가 존재하는 이유를 정면으로 무효화한다.
-   *
-   * **못 보는 것**: 창이 실제로 이 옵션을 넘기는지(`ChartWindow` 소유)와 보충 계획의
-   * 내용(`minuteGapFillPlan` 소유). 여기서는 **게이트**만 잰다.
-   */
+  /** HogaPlay 모드는 디스크를 읽으며, 미수집 날짜도 벤더에 자동 요청하지 않는다. */
   describe('창별 hogaplay 소스', () => {
+    it('passes empty sessions to the time axis without filling them with live trades', () => {
+      const disk = { ...fallbackRangeBundle(), earliest_captured_date: '20260519',
+        local_candle_history: { available_dates: ['20260519'], trading_dates: ['20260519', '20260520', '20260521'] } };
+      useRangeCandlesDeltaSpy.mockReturnValue(rangeResult(disk));
+      const live = { ...liveFixture, trade: [{ t_ms: Date.parse('2026-05-20T09:01:00+09:00'),
+        kind: 'trade' as const, venue: 'KRX' as const, trades: [{ price: 99999, qty: 10, side: 1 }] }] };
+      const { result, rerender } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', live, { hogaplaySourceEnabled: true }),
+        { wrapper: createWrapper() },
+      );
+      const chart = result.current.chartBundle!;
+      expect(chart.timeline_sessions?.map(s => s.date)).toContain('20260520');
+      expect(chart.candles.some(c => c.close === 99999)).toBe(false);
+      expect(result.current.hogaBundle?.timeline_sessions).toBe(chart.timeline_sessions);
+      const timeline = chart.timeline_sessions;
+      rerender();
+      expect(result.current.chartBundle?.timeline_sessions).toBe(timeline);
+    });
     /** 미캡처 하루가 있는 디스크 응답. 날짜는 오늘(20260527) 이전 · 보유 기간 안. */
     function diskBundleWithHole() {
       return { ...fallbackRangeBundle(), missing_dates: [{ date: '20260520', reason: 'not_captured' }] };
@@ -1005,22 +1009,35 @@ describe('useLiveBundle', () => {
       expect(closes).not.toContain(70_050);
     });
 
-    it('구멍을 키움 분봉으로 보충한다 — 토글이 보충 게이트를 연다', async () => {
+    it('미저장 날짜가 있어도 분봉을 서버에서 보충하지 않는다', async () => {
+      serveDisk();
+      const apiSpy = vi.spyOn(clientModule, 'apiCall');
+      const { result } = renderHook(
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture, { hogaplaySourceEnabled: true }),
+        { wrapper: createWrapper() },
+      );
+      await waitFor(() => expect(result.current.chartBundle).not.toBeNull());
+      expect(apiSpy).not.toHaveBeenCalled();
+      expect(livePastCandlesSpy).toHaveBeenCalledWith(
+        null, null, null, 'KRX', '20260527', 60_000, false,
+      );
+      expect(result.current.gapFill.filledDates.size).toBe(0);
+      expect(result.current.gapFill.remainingRuns).toBe(0);
+      apiSpy.mockRestore();
+    });
+
+    it('저장뷰의 기존 키움 보충은 별도로 유지한다', async () => {
       serveDisk();
       const apiSpy = vi.spyOn(clientModule, 'apiCall').mockResolvedValue({
         code: '005930', from: '20260520', to: '20260520', venue: 'KRX', bucket_ms: 60_000,
         candles: [], cached_dates: [], fresh_dates: [], data_warnings: {}, adjust_factors: {},
       } as never);
-
       renderHook(
-        () => useLiveBundle('005930', '1m', '20260527', liveFixture, { hogaplaySourceEnabled: true }),
+        () => useLiveBundle('005930', '1m', '20260527', liveFixture, { frozenRangeFrom: '20260519' }),
         { wrapper: createWrapper() },
       );
-
       await waitFor(() => expect(apiSpy).toHaveBeenCalled());
-      const url = apiSpy.mock.calls[0][0] as string;
-      expect(url).toContain('/api/live/past-candles');
-      expect(url).toContain('from=20260520');
+      expect(apiSpy.mock.calls[0][0]).toContain('/api/live/past-candles');
       apiSpy.mockRestore();
     });
 

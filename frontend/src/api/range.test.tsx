@@ -392,6 +392,34 @@ describe('buildRangeBundleRequest', () => {
 });
 
 describe('planCandlesRangeDelta', () => {
+  it('crosses empty months using the disk inventory and bootstraps an empty recent seed', () => {
+    const request: RangeBundleRequestInput = { code: '034020', from: '20260920', to: '20261001',
+      timeframe: '1m', todayKst: '20261001', sourcePref: 'hogaplay', venue: 'KRX', options: { mode: 'candles' } };
+    const identity = planCandlesRangeDelta(request).identity;
+    const empty = { ...fakeBundle, code: '034020', from_date: '20260920', to_date: '20261001',
+      local_candle_history: { available_dates: ['20250324', '20260521'], trading_dates: ['20260921'] } };
+    const bootstrap = planCandlesRangeDelta(request, empty, identity);
+    expect(bootstrap.requestInput.from).toBe('20260521');
+    expect(bootstrap.requestInput.to).toBe('20260919');
+    expect(bootstrap.blocksHistoricalExtension).toBe(true);
+    const extended = { ...empty, from_date: '20260521', candles: [{ ts_ms: 1, open: 1, close: 1, high: 1, low: 1, vol_a: 1, vol_b: 0 }] };
+    const older = planCandlesRangeDelta({ ...request, from: '20250324' }, extended, identity);
+    expect(older.requestInput.from).toBe('20250324');
+    expect(older.requestInput.to).toBe('20260520');
+    const settled = { ...extended, from_date: '20250324' };
+    expect(planCandlesRangeDelta({ ...request, from: '20250324' }, settled, identity).blocksHistoricalExtension).toBe(false);
+  });
+
+  it('retains empty trading sessions and the global inventory when merging empty tiles', () => {
+    const previous = { ...fakeBundle, from_date: '20251001', earliest_captured_date: '20250324',
+      local_candle_history: { available_dates: ['20250324', '20251001'], trading_dates: ['20251001'] } };
+    const empty = { ...fakeBundle, from_date: '20250901', to_date: '20250930', earliest_captured_date: '20250324',
+      local_candle_history: { available_dates: ['20250324', '20251001'], trading_dates: ['20250901', '20250902'] } };
+    const merged = mergeRangeBundles(previous, empty);
+    expect(merged.local_candle_history?.trading_dates).toEqual(['20250901', '20250902', '20251001']);
+    expect(merged.local_candle_history?.available_dates).toEqual(['20250324', '20251001']);
+    expect(merged.earliest_captured_date).toBe('20250324');
+  });
   // hogaplay 저장 데이터 소스 ON 분봉의 캔들 경로(`useLiveBundle` 의 minuteDiskCandles).
   // 2026-08-23 까지 이 mode 는 `LiveRangeDeltaMode` 에 없어 델타를 **원리적으로** 못 탔고,
   // `historicalFromDate` 가 움직일 때마다 창 전체를 통짜로 다시 받았다.

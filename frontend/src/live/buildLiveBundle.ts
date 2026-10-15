@@ -732,6 +732,8 @@ export function createIncrementalHogaSeriesBuilder(): (input: BuildHogaSeriesInp
  * /`fill_strength` are stubbed empty here; the caller overlays the live
  * `buildHogaSeries` output (see buildLiveBundle). */
 export interface BuildChartBundleInput {
+  /** Explicit disk-only view: preserve confirmed trading sessions without bars. */
+  timelineDates?: readonly string[];
   code: string;
   todayDate: string;
   todaySession: { open_ms: number; close_ms: number };
@@ -764,6 +766,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     investorPoints = [],
     sessionBoundsForDate,
     candleSourceByDate,
+    timelineDates,
   } = input;
 
   // Segment derivation follows the DISPLAYED CANDLE SOURCE, not hoga (10호가)
@@ -776,8 +779,9 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
   //
   // This is the "표시 소스 = 캔들 데이터 기준" policy: in KIS mode the KIS candle
   // history is complete so every in-range trading day gets a divider; in
-  // 우회(hogaplay) mode only captured days have candles and thus dividers, which
-  // is the intended "저장된 날짜만 표시, 없는 날짜는 비움" behavior. Hoga coverage
+  // disk mode captured segments still represent actual data. The optional
+  // timeline_sessions below additionally preserves uncaptured trading days,
+  // without claiming they were captured or inventing price bars. Hoga coverage
   // still feeds the overlays (호가비·매도벽 etc.) independently via the
   // pastBundle fields returned below — those render only where hoga data exists,
   // gated by the segment the candle already established.
@@ -832,6 +836,11 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
   // pastSegments are already date-ascending; todaySegments is the single today
   // entry which is strictly the latest.
   const segments = [...pastSegments, ...todaySegments];
+  const timelineSessions = timelineDates ? [...new Set([...timelineDates, ...candleDates])]
+    .sort().map(date => {
+      const bounds = date === todayDate ? todaySession : boundsForDate(date);
+      return { date, session_open_ms: bounds.open_ms, session_close_ms: bounds.close_ms };
+    }) : undefined;
 
   return {
     code,
@@ -839,6 +848,7 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     to_date: todayDate,
     bucket_ms: bucketMs,
     segments,
+    timeline_sessions: timelineSessions,
     candles: kisCandles,
     // Hoga series stubbed empty — buildLiveBundle / useLiveBundle overlays the
     // live buildHogaSeries output. Candle/volume/investor projectors never read

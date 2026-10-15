@@ -5,6 +5,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
 import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import { drawnCandleIndex } from '../../chart/drawnCandleIndex';
+import { maskIntradayLineGaps } from '../../chart/intradayWhitespace';
 import { computeBollingerBands } from '../../chart/projectors/bollingerBands';
 import { selectSource } from '../../chart/projectors/movingAverage';
 import { syncChartSeriesData } from '../../chart/replaceSeriesData';
@@ -38,8 +39,8 @@ function BollingerOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: R
     const values = computeBollingerBands(grid.drawn.map((c) => selectSource(c, source)), period, multiplier);
     return { grid, values, data: BANDS.map((band) => values.map((v, i) => v === null
       ? { time: grid.virtualSeconds[i] as Time }
-      : { time: grid.virtualSeconds[i] as Time, value: v[band] })) };
-  }, [bundle.candles, axis, enabled, period, multiplier, source]);
+      : { time: grid.virtualSeconds[i] as Time, value: v[band] })).map(data => maskIntradayLineGaps(data, bundle, axis)) };
+  }, [bundle, axis, enabled, period, multiplier, source]);
 
   useEffect(() => {
     if (!enabled) return;

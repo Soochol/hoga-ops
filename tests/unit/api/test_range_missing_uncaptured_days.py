@@ -29,6 +29,11 @@ def _captured_day(data_dir: Path, date: str, code: str) -> None:
     d = data_dir / "parquet" / date / code / "hogaplay"
     d.mkdir(parents=True)
     (d / "meta.json").write_text(_META)
+    # Candle-only inventory requires actual nonempty price data, independently
+    # of the existence of an orderbook capture's meta.json.
+    from hoga.tables import candles
+
+    candles.write_parquet([candles.Candle(32_400_000, 100, 101, 102, 99, 1, 2)], d / "candles.parquet")
 
 
 def _sentinel_day(data_dir: Path, date: str, code: str) -> None:

@@ -99,6 +99,7 @@ type Props = {
    *  봉으로 폴백한다(CandleTooltip 과 동일 인덱싱). 둘 다 캔들 경로/segments 참조라
    *  SSE 틱엔 안정 — memo 를 깨지 않는다. 없으면 OHLC 행을 렌더하지 않는다. */
   candles?: readonly Candle[];
+  preserveIntradayGaps?: boolean;
   axis?: VirtualAxis;
   /** 이 창의 종목 — 크로스헤어 동기화의 종목 게이트에 쓴다(`useCursorSyncResolution`). */
   code?: string | null;
@@ -731,6 +732,7 @@ function PaneLegendOverlay({
   paneToggles,
   visibleGroups,
   candles,
+  preserveIntradayGaps = false,
   axis,
   code = null,
 }: Props) {
@@ -1041,10 +1043,10 @@ function PaneLegendOverlay({
   if (drawnCandles.length > 0) {
     const t = typeof paramRef.current?.time === 'number' ? paramRef.current.time : null;
     const syncIdx = syncTimeSec !== null ? vsecToIndex.get(syncTimeSec) : undefined;
-    const idx = (t !== null ? vsecToIndex.get(t) : undefined)
+    const idx = preserveIntradayGaps && t !== null ? vsecToIndex.get(t) : (t !== null ? vsecToIndex.get(t) : undefined)
       ?? syncIdx
       ?? drawnCandles.length - 1;
-    const m = buildCandleTooltip(drawnCandles, idx, timeframe);
+    const m = idx === undefined ? null : buildCandleTooltip(drawnCandles, idx, timeframe);
     if (m) {
       ohlc = {
         open: m.open,

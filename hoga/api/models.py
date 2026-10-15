@@ -1055,6 +1055,13 @@ class DayVolumeDistribution(BaseModel):
     bins: list[VolumeDistributionBin]
 
 
+class LocalCandleHistory(BaseModel):
+    """Disk inventory and confirmed trading days; neither represents price bars."""
+
+    available_dates: list[str]
+    trading_dates: list[str]
+
+
 class RangeBundle(BaseModel):
     """The sole read-path Wire Model for a Stock-Date Range (ADR-0013).
 
@@ -1089,6 +1096,7 @@ class RangeBundle(BaseModel):
     #: `minuteScrollbackFloorDate` 에 물리면 `planFillStep` 의 정지 조건과 벽 도달
     #: 안내가 우회 모드에서도 살아난다.
     earliest_captured_date: str | None = None
+    local_candle_history: LocalCandleHistory | None = None
     excluded_dates: list[ExcludedDate] = []
     data_warnings: list[DateWarning] = []
     # 읽을 데이터가 없어 빠진 거래일 + 사유(#1133). 기본 []라 기존 클라 무영향.

@@ -4,26 +4,30 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
 import duckdb
+import pyarrow.parquet as pq
 
 from hoga.api.disk_state import DiskState, classify_from_meta
 from hoga.api.eligibility import is_terminal_partial
 from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.models import StockDate, StockDateVenue
 from hoga.api.past_indicators_cache import PastIndicatorsCache
-from hoga.api.sources import resolve_source_result
+from hoga.api.sources import resolve_candle_source, resolve_source_result
 from hoga.collector.orchestrator import now_kst
 from hoga.duck import connect_bounded
 from hoga.live.stock_sessions import krx_continuous_windows
 from hoga.live.venue import Venue
-from hoga.tables import snapshots
+from hoga.tables import candles, snapshots
 from hoga.tables.trade_binning import TradeBinningCache
 from hoga.util.timeenc import hhmmssms_to_unix_ms
+
+_CANDLE_INVENTORY_TTL_S = 30
 
 
 def _is_non_trading_day(date_yyyymmdd: str) -> bool:
@@ -231,6 +235,7 @@ class QueryEngine:
         # Per-call mtime-validated cache for list_stock_dates. See
         # _CachedStockDate docstring; keyed by (date, code).
         self._stock_date_cache: dict[tuple[str, str], _CachedStockDate] = {}
+        self._candle_dates_cache: dict[tuple[str, str, Venue], tuple[float, list[str]]] = {}
 
     def close(self) -> None:
         self._conn.close()
@@ -749,6 +754,41 @@ class QueryEngine:
             if resolution.path is not None:
                 out.append(date)
         return out
+
+    def local_candle_dates(
+        self, *, code: str, source_pref: str = "hogaplay", venue: Venue = "KRX",
+    ) -> list[str]:
+        """Usable local candle partitions, independent of orderbook coverage.
+
+        Read only parquet footers, never candle bodies or upstream data. A short
+        TTL amortizes the scan across range tiles and lets newly promoted files
+        appear on the next refresh. Missing, empty and corrupt files are not a
+        scrollback floor.
+        """
+        key = (code, source_pref, venue)
+        cached = self._candle_dates_cache.get(key)
+        if cached is not None and time.monotonic() - cached[0] < _CANDLE_INVENTORY_TTL_S:
+            return list(cached[1])
+        base = self.data_dir / "parquet"
+        dates: list[str] = []
+        for date_dir in sorted(base.iterdir()) if base.is_dir() else []:
+            date = date_dir.name
+            if not date.isdigit() or len(date) != 8 or _is_non_trading_day(date):  # noqa: PLR2004
+                continue
+            if not (date_dir / code).is_dir():
+                continue
+            source = resolve_candle_source(self, date, code, source_pref, venue)
+            if source is None:
+                continue
+            try:
+                path = self.parquet_dir(date, code, source, venue=venue) / "candles.parquet"
+                metadata = pq.read_metadata(path)
+                if metadata.num_rows > 0 and set(candles.PARQUET_SCHEMA.names) <= set(metadata.schema.names):
+                    dates.append(date)
+            except (OSError, ValueError, StockDateNotFound):
+                logging.getLogger(__name__).warning("Unreadable candle footer: %s/%s/%s", date, code, source)
+        self._candle_dates_cache[key] = (time.monotonic(), dates)
+        return list(dates)
 
     def earliest_stock_date(
         self, *, code: str, source_pref: str = "hogaplay", venue: Venue = "KRX",

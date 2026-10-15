@@ -244,7 +244,7 @@ describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
   });
 
   /** 크로스헤어 핸들러를 붙잡는 차트 — 「내 마우스」 경로를 재려면 필요하다. */
-  let crosshairHandler: ((p: { time?: unknown; point?: unknown }) => void) | null = null;
+  let crosshairHandler: ((p: { time?: unknown; point?: unknown; seriesData?: unknown }) => void) | null = null;
   const capturingChart = () => ({
     subscribeCrosshairMove: (h: (p: { time?: unknown; point?: unknown }) => void) => {
       crosshairHandler = h;
@@ -275,6 +275,20 @@ describe('PaneLegendOverlay — 동기화 크로스헤어 연동', () => {
    *  `getByText` 로 숫자를 찾으면 다른 행의 같은 숫자와 섞인다. */
   const openText = (c: HTMLElement) =>
     c.querySelector('.legend-ohlc-open')?.textContent ?? '';
+
+  it('leaves OHLC empty over a disk timeline hole instead of showing the latest candle', async () => {
+    const { container } = render(<PaneLegendOverlay chart={capturingChart()} timeframe="1m"
+      paneToggles={{ foreignNet: false, institutionNet: false, volumeEnabled: false }}
+      candles={CANDLES} axis={axis} preserveIntradayGaps />);
+    expect(openText(container)).toContain('120');
+    act(() => { crosshairHandler?.({ time: DAY2 / 1000 + 60, point: { x: 10, y: 10 }, seriesData: new Map() }); });
+    await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+    expect(openText(container)).not.toContain('120');
+    expect(openText(container)).not.toContain('105');
+    act(() => { crosshairHandler?.({ time: DAY2 / 1000, point: { x: 10, y: 10 }, seriesData: new Map() }); });
+    await act(async () => { await new Promise(resolve => requestAnimationFrame(resolve)); });
+    expect(openText(container)).toContain('105');
+  });
 
   it('레전드를 숨겨도 OHLC는 유지하고 다시 켜면 지표 레전드가 복원된다', () => {
     const chart = makeChart([120, 100]);

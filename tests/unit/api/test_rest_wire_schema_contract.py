@@ -273,6 +273,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     ),
     "RangeBundle": frozenset(
         {
+            "local_candle_history",
             "earliest_captured_date",
             "code",
             "from_date",

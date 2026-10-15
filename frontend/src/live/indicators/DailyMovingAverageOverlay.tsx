@@ -7,6 +7,7 @@ import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
 import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { createDailyMovingAverageProjection } from '../../chart/projectors/maProjection';
+import { maskIntradayLineGaps } from '../../chart/intradayWhitespace';
 import type { SeriesDataSink } from '../../chart/seriesDataDiff';
 import { syncChartSeriesData } from '../../chart/replaceSeriesData';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
@@ -155,7 +156,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
         pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));
         continue;
       }
-      const data = projected.get(cfg.id) ?? [];
+      const data = maskIntradayLineGaps(projected.get(cfg.id) ?? [], bundle, axis);
       pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, data));
     }
     // `chart` dep: /live remounts the chart per (code, timeframe); fresh series

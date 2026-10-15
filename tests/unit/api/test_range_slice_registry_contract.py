@@ -70,6 +70,8 @@ _ROUTES = _REPO_ROOT / "hoga/api/routes.py"
 # **바닥**(그 (code,source,venue) 의 가장 오래된 캡처일)이라 슬라이스 레지스트리의
 # 대상이 아니다 — 배열도 캐시 kind 도 없다.
 _SCALAR_FIELDS = frozenset({
+    # Inventory/calendar metadata, not a timeseries or indicator cache slice.
+    "local_candle_history",
     "code", "from_date", "to_date", "bucket_ms", "earliest_captured_date",
 })
 

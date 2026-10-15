@@ -224,9 +224,6 @@ export function deriveCandleEmptyState({
   // 창별 hogaplay 소스도 얼림과 같은 처방이다(설정으로 못 끈다) — 전역 우회 분기보다
   // **먼저** 놓는 이유가 그것이고, 얼림 분기가 같은 자리에 있는 이유와 같다.
   if (hogaplaySourceEnabled) {
-    if (savedRangeGapFillPending) {
-      return { text: '빈 거래일을 벤더에서 보충하는 중이다', action: null };
-    }
     // 행동 버튼을 주지 않는다. "설정 열기" 는 이 모드와 무관하고(전역 우회가 아니다)
     // "다시 시도" 는 디스크에 없는 것을 다시 없다고 확인할 뿐이다. 실제로 듣는 손잡이는
     // 헤더 칩의 × 하나뿐이라 문구가 그것을 지목한다 — 버튼이 아니라 **문장**인 이유는
