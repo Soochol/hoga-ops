@@ -845,7 +845,7 @@ describe('호가 주문', () => {
     expect(mock.command.mock.calls[0][2]).toBe('live');
   });
 
-  it('종목을 바꾸면 수량을 초기화하고 선택한 실계좌는 유지하며 이전 확인은 닫는다', async () => {
+  it('종목을 바꾸면 수량을 비우고 새 수량을 입력해야 주문할 수 있다', async () => {
     mock.accountCount = 2; mock.orders = [order()];
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const win: WorkspaceWindow = { id: 'order-context', kind: 'order', group: 1, rect: { x: 0, y: 0, w: 720, h: 720 } };
@@ -858,14 +858,21 @@ describe('호가 주문', () => {
     mock.orders = [];
     view.rerender(<QueryClientProvider client={client}><DataWindow win={win} symbol={{ code: '000660', name: 'SK하이닉스' }} /></QueryClientProvider>);
     expect(screen.getByRole('combobox', { name: '주문 계좌' })).toHaveValue('2');
-    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(10);
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('—');
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
-    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    expect(buy).toBeDisabled();
+    fireEvent.doubleClick(buy);
+    expect(mock.command).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '7' } });
+    expect(buy).toBeEnabled();
+    fireEvent.doubleClick(buy);
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
-    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ account_seq: 2, code: '000660', quantity: 10 }), 'live']);
+    expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ account_seq: 2, code: '000660', quantity: 7 }), 'live']);
   });
 
-  it('종목을 다시 방문해도 이전 입력을 복원하지 않고 현재 창의 첫 수량 프리셋을 쓴다', () => {
+  it('종목을 다시 방문해도 수량은 빈칸이고 직접 지워도 0이나 프리셋으로 바뀌지 않는다', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const settings = { unit: 'quantity' as const, quantityPresets: [25, 75, 125] as [number, number, number],
       amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, orderReceiptSound: false };
@@ -875,10 +882,15 @@ describe('호가 주문', () => {
     view.rerender(content('005930'));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(321);
     view.rerender(content('000660'));
-    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(25);
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '432' } });
     view.rerender(content('005930'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
+    fireEvent.click(screen.getByRole('button', { name: '25주' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(25);
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '' } });
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
+    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
     expect(mock.command).not.toHaveBeenCalled();
   });
 
