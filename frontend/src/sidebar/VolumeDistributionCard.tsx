@@ -288,9 +288,6 @@ export function VolumeDistributionCard({
           )}
         </div>
       </div>
-      {pocBin && <div className="shrink-0 truncate text-xs text-fg-dim" title="당일 가격대별 누적 체결량 기준">
-        최대 거래량 가격 <span className="font-data text-fg">{formatPrice((pocBin.price_low + pocBin.price_high) / 2)}원</span>
-      </div>}
     </div>
   );
 }
