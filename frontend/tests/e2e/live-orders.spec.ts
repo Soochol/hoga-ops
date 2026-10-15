@@ -679,6 +679,63 @@ test('평단가 원은 시고저 배지·7자리 가격과 좁은 창에서도 �
   expect(commands).toHaveLength(0);
 });
 
+test('두 호가창의 시고저는 빠진 중간 가격을 최근접 행에 표시하고 원래 호가가 돌아오면 복원한다', async ({ page }) => {
+  const { window, ws, commands } = await setup(page, false, false);
+  const book = page.locator('.book-panel');
+  await ws.waitForSubscribe('005930');
+  const t_ms = Date.now();
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms,
+    day_open: 67400, day_high: 68100, day_low: 66400,
+    trades: [{ price: 67400, qty: 1, side: 1 }],
+  });
+  const frame = { kind: 'ob', venue: 'UN', t_ms: t_ms + 1,
+    asks: [67600, 67900, 68200].map(price => ({ price, qty: 100 })),
+    bids: [67200, 66900, 66300].map(price => ({ price, qty: 200 })),
+    total_ask_qty: 300, total_bid_qty: 600,
+  };
+  ws.pushLive('005930', frame);
+  const labels = [
+    ['고', '고가 68,100원 · 가장 가까운 호가 68,200원', '68200'],
+    ['저', '저가 66,400원 · 가장 가까운 호가 66,300원', '66300'],
+    ['시', '시가 67,400원 · 가장 가까운 호가 67,200원', '67200'],
+  ];
+  for (const panel of [window, book]) {
+    await expect(panel.locator('[data-price-badges]')).toHaveCount(3);
+    for (const [label, name, price] of labels) {
+      const badge = panel.getByRole('img', { name, exact: true });
+      await expect(badge).toHaveText(label);
+      await expect(badge.locator('../..')).toContainText(Number(price).toLocaleString('ko-KR'));
+    }
+  }
+  const approximate = window.getByRole('img', { name: labels[2][1], exact: true });
+  await approximate.hover();
+  await expect(page.getByRole('tooltip')).toHaveText(labels[2][1]);
+  await page.mouse.move(0, 0);
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await approximate.focus();
+  await expect(page.getByRole('tooltip')).toHaveText(labels[2][1]);
+  await approximate.press('Escape');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  ws.pushLive('005930', { ...frame, t_ms: t_ms + 2,
+    asks: [67400, 67600, 67900, 68200].map(price => ({ price, qty: 100 })),
+  });
+  for (const panel of [window, book]) {
+    await expect(panel.getByRole('img', { name: labels[2][1], exact: true })).toHaveCount(0);
+    const exact = panel.getByRole('img', { name: '시가 67,400원', exact: true });
+    await expect(exact).toBeVisible();
+    await expect(exact.locator('../..')).toContainText('67,400');
+  }
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: t_ms + 3,
+    day_open: 67400, day_high: 90000, day_low: 1,
+    trades: [{ price: 67400, qty: 1, side: 1 }],
+  });
+  for (const panel of [window, book]) {
+    await expect(panel.locator('[data-price-badges]')).toHaveCount(1);
+    await expect(panel.locator('[data-price-badges]')).toHaveText('시');
+  }
+  expect(commands).toHaveLength(0);
+});
+
 test('주문창은 실시간 틱 방향색·잔량 증감·가격 왼쪽 시고저를 10호가 규칙으로 표시한다', async ({ page }, testInfo) => {
   const { window, commands, ws } = await setup(page);
   await ws!.waitForSubscribe('005930');

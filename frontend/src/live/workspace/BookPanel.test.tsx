@@ -109,6 +109,31 @@ describe('시고저 가격의 전일 KRX 종가 툴팁', () => {
     fireEvent.mouseEnter(within(row).getByText('−')); reveal();
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
+
+  it('중간 가격의 뱃지는 실제 가격과 근접 호가를 설명하고 원래 호가 복원 시 되돌아간다', () => {
+    const summary = { ...EMPTY_TRADE_SUMMARY, dayOpen: 251250 };
+    const props = { snapshot: snap(), baselinePrice: PREV_CLOSE, summary, trades: [], maskRatio: false, lastPrice: null };
+    const view = render(<BookPanel {...props} />);
+    const badge = screen.getByRole('img', { name: '시가 251,250원 · 가장 가까운 호가 251,000원' });
+    expect(badge.parentElement?.parentElement).toHaveTextContent('251,000');
+    fireEvent.mouseEnter(badge); reveal();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('시가 251,250원 · 가장 가까운 호가 251,000원');
+    fireEvent.mouseLeave(badge);
+    fireEvent.focus(badge); reveal();
+    expect(badge).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+    fireEvent.keyDown(badge, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    const snapshot = snap();
+    snapshot.bid[0] = { price: 251250, qty: 0 };
+    view.rerender(<BookPanel {...props} snapshot={snapshot} />);
+    const exact = screen.getByRole('img', { name: '시가 251,250원' });
+    expect(exact.parentElement?.parentElement).toHaveTextContent('251,250');
+    expect(screen.getAllByText('시')).toHaveLength(1);
+    fireEvent.focus(exact); reveal();
+    view.rerender(<BookPanel {...props} summary={EMPTY_TRADE_SUMMARY} />);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(screen.queryByText('시')).toBeNull();
+  });
 });
 
 describe('BookPanel', () => {
@@ -432,7 +457,9 @@ describe('BookPanel', () => {
       // 251,250 은 매도1(251,500)과 매수1(251,000) 사이라 사다리 20행 어디에도 없다.
       renderPanel({ summary: { ...SUMMARY, dayHigh: 251_250 } });
       expect(summaryRow('최고')).toHaveTextContent('최고251,250');
-      expect(screen.queryByText('고')).toBeNull();
+      expect(within(summaryRow('최고')).queryByText('고')).toBeNull();
+      const badge = screen.getByRole('img', { name: '고가 251,250원 · 가장 가까운 호가 251,000원' });
+      expect(badge.parentElement?.parentElement).toHaveTextContent('251,000');
     });
 
     it('값이 없으면 칩도 없다 — 대시 행에 색딱지가 붙지 않는다', () => {

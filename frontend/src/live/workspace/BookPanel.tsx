@@ -20,6 +20,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { BookScrollArea } from './BookScrollArea';
+import { bookDayMarkers, type BookPriceMarker } from './bookDayMarkers';
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
 import type { LiveViEvent } from '../../api/liveViStatus';
@@ -229,6 +230,7 @@ export default function BookPanel({
   // 양쪽 열에서 함께 걸러 잔량·가격 정렬을 유지한다. 유효 가격의 잔량 0은 남긴다.
   const asksDesc = snapshot.ask.filter((l) => Number.isFinite(l.price) && l.price > 0).reverse();
   const bids = snapshot.bid.filter((l) => Number.isFinite(l.price) && l.price > 0);
+  const dayMarkers = bookDayMarkers([...asksDesc, ...bids].map(level => level.price), summary);
   const summaryRows = asksDesc.length;
   const summaryHeight = ROW_H * summaryRows;
   const maxQty = Math.max(
@@ -318,7 +320,7 @@ export default function BookPanel({
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
-                marker={dayMarker(l.price, summary)}
+                marker={dayMarkers.get(l.price) ?? null}
               />
             ))}
             {bids.map((l, i) => (
@@ -327,7 +329,7 @@ export default function BookPanel({
                 price={l.price}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
-                marker={dayMarker(l.price, summary)}
+                marker={dayMarkers.get(l.price) ?? null}
                 topDivider={i === 0}
               />
             ))}
@@ -500,66 +502,34 @@ export function ExpectedFillBanner({
   );
 }
 
-type PriceMarker = { label: string; bg: string };
-
-/** 시·고·저의 라벨·색·출처를 **한 곳에서** 정의한다. **배열 순서가 곧 우선순위**다
- *  (고 > 저 > 시) — `dayMarker` 가 앞에서부터 처음 맞는 하나만 고른다.
- *  10호가·주문창 모두 호가 가격 왼쪽에만 표시한다. */
-const DAY_MARKERS = [
-  { label: '고', bg: 'bg-price-up', of: (s: LiveTradeSummary) => s.dayHigh },
-  { label: '저', bg: 'bg-price-down', of: (s: LiveTradeSummary) => s.dayLow },
-  { label: '시', bg: 'bg-fg-dim', of: (s: LiveTradeSummary) => s.dayOpen },
-] as const;
-
 /** 호가 가격 왼쪽 뱃지 한 알의 공통 형태. */
 const BADGE_CLS =
   'items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
 
-/**
- * 당일 시가·고가·저가와 일치하는 호가 행에 붙일 칩. 고=빨강·저=파랑(KRX 관습),
- * 시=중립 회색.
- *
- * **한 가격에 칩은 최대 하나다**(사용자 결정 2026-08-24). 시가=고가처럼 값이 겹치면
- * `DAY_MARKERS` 순서대로 **고 > 저 > 시** 중 하나만 남는다. 겹침은 드물지 않다 —
- * 시가=고가는 갭상승 후 하락, 시가=저가는 갭하락 후 상승이다.
- *
- * 칩의 개수는 읽는 비용을 제한한다. 가격 정렬은 모든 행에 같은 칩 여백을
- * 두고 absolute 칩을 그 안에 배치하는 PriceCell이 보장한다.
- *
- * 반환형이 **배열이 아니라 `| null`** 인 것이 이 규칙의 집행 지점이다 — 배열이면
- * "최대 하나" 가 관례로만 남아 조용히 둘로 돌아간다. 타입이 그걸 막는다.
- *
- * 고=저(하루 종일 한 가격에만 체결 — 상한가 직행 등)면 `고` 가 남는다. 둘이 같은
- * 값이라 어느 쪽을 골라도 가격은 같고, 표 순서가 그 선택을 이미 못박고 있다.
- *
- * `price <= 0` 가드는 남긴다 — 시간외 5단은 10칸으로 zero-pad 되어 들어오므로
- * (`liveAfterHoursBook.EMPTY_LEVEL`, 2026-08-14 사용자 결정) 빈 행이 실제로
- * `price === 0` 으로 온다. 그 행에 칩이 붙지 않게 하는 것이 이 가드다.
- */
-function dayMarker(price: number, summary: LiveTradeSummary): PriceMarker | null {
-  if (price <= 0) return null;
-  const hit = DAY_MARKERS.find((m) => {
-    const v = m.of(summary);
-    return v !== null && price === v;
-  });
-  return hit ? { label: hit.label, bg: hit.bg } : null;
-}
-
 /** 가격 span의 상시 왼쪽 여백(24px) 안에 놓는다. ADR-0170의 absolute 배치를
  * 유지하되 칩 폭도 가격 열 예산에 포함한다. 칩 없는 행에도 같은 여백이 있으므로
  * 가격 x 정렬은 변하지 않고, 긴 가격에서도 잔량 열을 침범하지 않는다. */
-function PriceBadges({ marker }: { marker: PriceMarker | null }) {
+function PriceBadges({ marker }: { marker: BookPriceMarker | null }) {
+  const tooltip = useTextTooltip(marker?.tooltip ?? '', 500, 'book-price-tooltip');
   if (marker === null) return null;
   return (
-    <span data-price-badges="" className="absolute left-0 top-1/2 flex w-5 -translate-y-1/2 justify-end">
-      <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`}>{marker.label}</span>
-    </span>
+    <>
+      <span data-price-badges="" className="absolute left-0 top-1/2 flex w-5 -translate-y-1/2 justify-end">
+        <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`} role="img" aria-label={marker.tooltip}
+          tabIndex={0} aria-describedby={tooltip.id}
+          onMouseEnter={event => tooltip.show(event.currentTarget)} onMouseLeave={tooltip.hide}
+          onFocus={event => tooltip.show(event.currentTarget)} onBlur={tooltip.hide}
+          onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); tooltip.hide(); } }}
+        >{marker.label}</span>
+      </span>
+      {tooltip.tooltip}
+    </>
   );
 }
 
 /** 10호가·주문창의 가격 왼쪽 시·고·저 칩과 우선순위를 공유한다. */
-export function BookDayMarker({ price, summary }: { price: number; summary: LiveTradeSummary }) {
-  return <PriceBadges marker={dayMarker(price, summary)} />;
+export function BookDayMarker({ marker }: { marker: BookPriceMarker | null }) {
+  return <PriceBadges marker={marker} />;
 }
 
 /** 같은 가격의 잔량 유입·유출 표시. 10호가와 주문창이 같은 색·부호를 쓴다. */
@@ -579,8 +549,8 @@ function PriceCell({
   price: number;
   baselinePrice: number | null;
   boxed: boolean;
-  /** 당일 시/고/저 칩(dayMarker, 최대 하나). 모든 가격 행의 고정 여백에 놓는다. */
-  marker?: PriceMarker | null;
+  /** 당일 시/고/저 칩(최대 하나). 모든 가격 행의 고정 여백에 놓는다. */
+  marker?: BookPriceMarker | null;
   /** 매수 1호가 행에만 true — 매도/매수 경계선(3열 공통 y). */
   topDivider?: boolean;
 }) {
