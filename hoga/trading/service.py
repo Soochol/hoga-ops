@@ -44,6 +44,7 @@ ACCOUNT_CACHE_SECONDS = 60
 STATE_CACHE_SECONDS = 3
 HOLDINGS_CACHE_SECONDS = 10
 DOMESTIC_CODE_LENGTH = 6
+MAX_CONCURRENT_CANCELS = 10
 
 
 def remaining(order: TossOrder) -> int:
@@ -144,6 +145,8 @@ class TradingService:
         self._accounts_at = 0.0
         self._accounts_lock = asyncio.Lock()
         self._locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._order_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
+        self._cancel_slots = asyncio.Semaphore(MAX_CONCURRENT_CANCELS)
         self._state_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._balance_locks: defaultdict[tuple[int, str], asyncio.Lock] = defaultdict(asyncio.Lock)
         self._snapshots: dict[tuple[int, str], tuple[float, TradingOrderStateResponse]] = {}
@@ -404,6 +407,10 @@ class TradingService:
     async def order(self, account: int, code: str, order_id: str) -> TossOrder:
         data = await self._client().request("GET", f"/api/v1/orders/{quote(order_id, safe='')}", account=account)
         order = TossOrder.model_validate(data)
+        self._validate_order(account, code, order_id, order)
+        return order
+
+    def _validate_order(self, account: int, code: str, order_id: str, order: TossOrder) -> None:
         if order.orderId != order_id or order.symbol != code or order.currency != "KRW":
             raise TradingError(409, "order-context-mismatch", "선택한 종목의 국내 주식 주문만 변경할 수 있습니다.")
         remaining(order)  # Validate decimals before comparing them with event observations.
@@ -413,7 +420,6 @@ class TradingService:
             raise TradingError(
                 409, "order-state-syncing", "최신 체결·취소 내역을 동기화 중입니다. 갱신 후 다시 시도하세요."
             )
-        return order
 
     async def review(self, command: TradingCommand) -> None:
         await self.authorize(command.account_seq)
@@ -447,42 +453,47 @@ class TradingService:
 
     async def _cancel_all(self, command: CancelTradingOrders, saved: dict[str, Any] | None) -> TradingCancelResponse:
         try:
+            # One fresh OPEN response provides the same fields as individual detail reads.
+            # Never reuse the display cache or replay a persisted order snapshot on restart.
+            data = await self._client().request(
+                "GET", "/api/v1/orders", account=command.account_seq,
+                params={"status": "OPEN", "symbol": command.code},
+            )
+            if data.get("hasNext"):
+                raise TradingError(503, "invalid-toss-response", "전체 미체결 주문을 확인할 수 없습니다.")
+            orders = {o.orderId: o for o in map(TossOrder.model_validate, data["orders"])}
             if saved is None:
-                snapshot = await self.order_state(command.account_seq, command.code)
                 saved = {
                     "targets": [
                         {"id": o.orderId, "status": o.status}
-                        for o in snapshot.orders
+                        for o in orders.values()
                         if command.side is None or o.side == command.side
                     ]
                 }
                 self.journal.finish(command.command_id, "batch", saved)  # Freeze targets BEFORE any cancel.
-            results: list[TradingCancelResult] = []
-            for target in saved["targets"]:
+
+            async def cancel_target(target: dict[str, str]) -> TradingCancelResult:
                 if target["status"] not in EDITABLE_STATES:
-                    results.append(
-                        TradingCancelResult(
-                            order_id=target["id"],
-                            accepted=False,
-                            code="order-processing",
-                            message="이미 처리 중입니다.",
-                        )
+                    return TradingCancelResult(
+                        order_id=target["id"], accepted=False, code="order-processing", message="이미 처리 중입니다.",
                     )
-                    continue
                 child = TradingCommand(
                     account_seq=command.account_seq,
                     code=command.code,
                     command_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{command.command_id}:{target['id']}")),
                 )
                 try:
-                    response = await self.execute(child, "cancel", target["id"])
-                    results.append(
-                        TradingCancelResult(order_id=target["id"], accepted=True, operation_id=response.order_id)
-                    )
+                    async with self._cancel_slots:
+                        response = await self._command(
+                            child, "cancel", target["id"], cancel_order=orders.get(target["id"]),
+                        )
+                    return TradingCancelResult(order_id=target["id"], accepted=True, operation_id=response.order_id)
                 except TradingError as exc:
-                    results.append(
-                        TradingCancelResult(order_id=target["id"], accepted=False, code=exc.code, message=exc.message)
+                    return TradingCancelResult(
+                        order_id=target["id"], accepted=False, code=exc.code, message=exc.message,
                     )
+
+            results = await asyncio.gather(*(cancel_target(target) for target in saved["targets"]))
             response = TradingCancelResponse(results=results)
             self.journal.finish(command.command_id, "accepted", response.model_dump())
             return response
@@ -498,6 +509,11 @@ class TradingService:
 
     async def execute(self, command: TradingCommand, action: str, order_id: str = "") -> TradingCommandResponse:
         await self.authorize(command.account_seq)
+        return await self._command(command, action, order_id)
+
+    async def _command(
+        self, command: TradingCommand, action: str, order_id: str, *, cancel_order: TossOrder | None = None,
+    ) -> TradingCommandResponse:
         payload = {**command.model_dump(), "action": action, "order_id": order_id}
         state, result = self.journal.begin(command.command_id, payload)
         if state == "accepted":
@@ -514,14 +530,22 @@ class TradingService:
                 "order-outcome-unknown",
                 "같은 주문을 다시 전송하지 않았습니다. 토스증권 주문 내역에서 결과를 확인하세요.",
             )
-        task = asyncio.create_task(self._execute(command, action, order_id))
+        task = asyncio.create_task(self._execute(command, action, order_id, cancel_order=cancel_order))
         self._commands[command.command_id] = task
         return await asyncio.shield(task)
 
-    async def _execute(self, command: TradingCommand, action: str, order_id: str) -> TradingCommandResponse:
+    async def _execute(
+        self, command: TradingCommand, action: str, order_id: str, *, cancel_order: TossOrder | None = None,
+    ) -> TradingCommandResponse:
         try:
-            async with self._locks[(command.account_seq, command.code)]:
-                response = await self._submit(command, action, order_id)
+            async with contextlib.AsyncExitStack() as stack:
+                # New orders retain symbol serialization. Cancels of different orders
+                # can overlap, but modify/cancel of the SAME order share one lock.
+                if action != "cancel":
+                    await stack.enter_async_context(self._locks[(command.account_seq, command.code)])
+                if action != "create":
+                    await stack.enter_async_context(self._order_locks[(command.account_seq, order_id)])
+                response = await self._submit(command, action, order_id, cancel_order=cancel_order)
                 self.journal.finish(command.command_id, "accepted", response.model_dump())
                 return response
         except TradingError as exc:
@@ -535,7 +559,9 @@ class TradingService:
             self.changed()
             self._commands.pop(command.command_id, None)
 
-    async def _submit(self, command: TradingCommand, action: str, order_id: str) -> TradingCommandResponse:
+    async def _submit(
+        self, command: TradingCommand, action: str, order_id: str, *, cancel_order: TossOrder | None = None,
+    ) -> TradingCommandResponse:
         client = self._client()
         account = command.account_seq
         if action == "create":
@@ -570,7 +596,11 @@ class TradingService:
         else:
             if self.journal.uncertain_operation(command, order_id, set(self._commands)):
                 raise TradingError(409, "unresolved-order-exists", "이 주문의 이전 정정·취소 결과를 먼저 확인하세요.")
-            order = await self.order(account, command.code, order_id)
+            if action == "cancel" and cancel_order is not None:
+                order = cancel_order
+                self._validate_order(account, command.code, order_id, order)
+            else:
+                order = await self.order(account, command.code, order_id)
             if order.status not in EDITABLE_STATES or remaining(order) == 0:
                 raise TradingError(
                     409, "order-not-editable", "이미 처리 중이거나 종료된 주문입니다. 주문 내역을 새로 확인하세요."
