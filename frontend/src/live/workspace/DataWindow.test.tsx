@@ -253,6 +253,11 @@ describe('DataWindow — sector-ranking 라우팅', () => {
 });
 
 describe('DataWindow — 체결창 라우팅', () => {
+  it('프로그램 체결은 차트 링크 없이 독립된 실시간 창을 마운트한다', () => {
+    renderWithQuery(<DataWindow win={dataWin('program-trade')} symbol={{ code: '005930', name: '삼성전자' }} />);
+    expect(screen.getByTestId('program-trade-window')).toBeInTheDocument();
+    expect(screen.queryByText(/연동 대기/)).not.toBeInTheDocument();
+  });
   // 표시 로직(4열·색·정렬)은 TradeTickTable.test 소관 — 여기선 kind 라우팅과
   // 공통 게이트만. 위 mock 이 빈 버퍼를 고정하므로 빈 상태 문구로 마운트를 관측한다.
   it('주식 그룹이면 체결 테이블을 마운트한다', () => {

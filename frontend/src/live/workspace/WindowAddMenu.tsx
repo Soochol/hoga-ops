@@ -44,6 +44,7 @@ const ADD_ITEMS: readonly AddItem[] = [
   { kind: 'trade', desc: '실시간 체결 틱 흐름' },
   { kind: 'broker', desc: '증권사별 매수·매도 상위' },
   { kind: 'program', desc: '프로그램 매매 순매수' },
+  { kind: 'program-trade', desc: '실시간 프로그램 순매수 증감' },
   // 'investor'(ka10064 장중 추정)는 **개인을 주지 않는다** — 설명이 오래도록
   // 개인을 약속했지만 카드에 그 행이 없었다. 약속은 아래 'investor-daily' 가 지킨다.
   { kind: 'investor', desc: '장중 외국인·기관 추정(차수별)' },
@@ -55,7 +56,7 @@ const ADD_ITEMS: readonly AddItem[] = [
 
 const ADD_SECTIONS = [
   { label: '차트·시세', kinds: ['chart', 'market-indices', 'book', 'trade'] },
-  { label: '수급·분석', kinds: ['broker', 'program', 'investor', 'investor-daily', 'vdist', 'sector-ranking'] },
+  { label: '수급·분석', kinds: ['broker', 'program', 'program-trade', 'investor', 'investor-daily', 'vdist', 'sector-ranking'] },
   { label: '주문·뉴스', kinds: ['order', 'news'] },
 ] as const;
 const GROUPED_ITEMS = ADD_SECTIONS.flatMap(section => section.kinds.map(kind => ({

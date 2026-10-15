@@ -330,7 +330,8 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
                 LiveSnapshot(
                     t_ms=t,
                     kind=SnapshotKind.PROGRAM,
-                    payload={"net_qty": 10 + tick, "net_amount": 1_000_000 + tick},
+                    payload={"net_qty": 10 + tick, "net_amount": 1_000_000 + tick,
+                             "event_delta_qty": [None, 0, -300][tick]},
                 ),
             ],
             now_ms=t,
@@ -351,6 +352,7 @@ async def test_get_live_series_returns_buffered_arrays(tmp_path) -> None:
         assert body["snapshots"][0]["total_bid_qty"] == 100
         assert len(body["programs"]) == 3
         assert body["programs"][-1]["net_qty"] == 12
+        assert [row["event_delta_qty"] for row in body["programs"]] == [None, 0, -300]
 
 
 def test_get_live_series_includes_today_ask_peak_from_getter() -> None:

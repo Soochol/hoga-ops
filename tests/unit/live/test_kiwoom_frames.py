@@ -381,6 +381,25 @@ def test_program_parses_t2_golden_frame():
     assert t.payload["net_qty"] == t.payload["buy_qty"] - t.payload["sell_qty"]
     assert t.payload["net_amount"] == int(str(v["212"]).replace("+", "")) * 1_000_000
     assert t.payload["price"] > 0
+    assert t.payload["event_delta_qty"] == 37  # golden FID 211, not cumulative 210
+
+
+@pytest.mark.parametrize("raw, expected", [("-300", -300), ("+1200", 1200), ("0", 0), ("", None), ("bad", None)])
+def test_program_event_quantity_is_signed_optional_and_separate_from_cumulative(raw, expected):
+    frame = next(f for f in _t2_frames("0w") if f["item"] == "000660")
+    frame["values"]["211"] = raw
+    tick = parse_real_row(frame, date="20260720", now_ms=T2_NOW_MS)
+    assert tick is not None
+    assert tick.payload["event_delta_qty"] == expected
+    assert tick.payload["net_qty"] == 210001
+
+
+def test_program_missing_event_quantity_stays_null_without_cumulative_fallback():
+    frame = next(f for f in _t2_frames("0w") if f["item"] == "000660")
+    del frame["values"]["211"]
+    tick = parse_real_row(frame, date="20260720", now_ms=T2_NOW_MS)
+    assert tick is not None
+    assert tick.payload["event_delta_qty"] is None
 
 
 def test_program_all_t2_frames_parse():

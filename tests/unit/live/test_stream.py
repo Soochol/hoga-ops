@@ -193,7 +193,7 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
     tick = WsTick(code="005930", t_ms=now, kind=SnapshotKind.PROGRAM, payload={
         "code": "005930", "t_ms": now, "net_qty": 50, "net_amount": 2_500_000,
         "sell_qty": 100, "sell_amount": 5_000_000, "buy_qty": 150,
-        "buy_amount": 7_500_000, "price": 50_000,
+        "buy_amount": 7_500_000, "price": 50_000, "event_delta_qty": -12,
     })
     await stream.on_tick(tick)
     nxt = WsTick(code="000660", t_ms=now, kind=SnapshotKind.PROGRAM, venue="NXT",
@@ -213,6 +213,7 @@ async def test_program_tick_routes_to_latch_and_display_buffer_not_storage(tmp_p
     }
     nxt_entry = await asyncio.wait_for(nxt_display_q.get(), timeout=1.0)
     assert nxt_entry["venue"] == "NXT"  # 표시 fan-out 도 열렸다
+    assert (await buf.get_series("005930"))["programs"][0]["event_delta_qty"] == -12
     await stream.flush_once(now_ms=now + 10_000)
     assert not (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").exists()  # 저장 미진입
     program_trade_latch.reset_for_tests()

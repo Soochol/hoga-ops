@@ -83,7 +83,7 @@ function isDeepLinkTab(): boolean {
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
  *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D).
  *  'market-indices' 는 시장 전체 창으로 종목·그룹 연동에서 제외한다. */
-export const WINDOW_KINDS = ['chart', 'book', 'order', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking', 'market-indices'] as const;
+export const WINDOW_KINDS = ['chart', 'book', 'order', 'broker', 'trade', 'program-trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking', 'market-indices'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 /**
@@ -685,6 +685,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   // 흐르는 리스트라 "전부 보이는 높이"가 없다 — 시점 상한(12행)까지 보이고 나머지는
   // 스크롤(broker 와 같은 부류). 폭은 4열(시각·체결가·체결량·구분)이라 book 보다 넓다.
   trade: { w: 268, h: 330 },
+  'program-trade': { w: 300, h: 330 },
   vdist: { w: 300, h: 240 },
   // program = 헤더 27 + 카드(py 16 + 타이틀행 ~17 + 금액/수량 그리드 ~51 +
   // 스파크라인 최소 56 + 보간 라벨 ~20) ≈ 187 → 200. 스파크라인이 flex-1 이라

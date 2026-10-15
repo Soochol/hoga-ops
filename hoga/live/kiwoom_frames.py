@@ -445,8 +445,8 @@ def _parse_program(
 
     금액(204/208/212)은 키움이 **백만원** 단위로 준다 — 저장·프론트는 KIS REST 의
     원 단위를 쓰므로 여기서 ×1e6 정규화한다(F3 실측: REST 399,887,415,500원 ↔
-    0w 397,701백만원, 비율 정확히 1e-6). 211/213(증감)은 재전송 취약이라 미소비 —
-    delta 는 collector 가 flush 간 누적 diff 로 파생한다(F3 권고).
+    0w 397,701백만원, 비율 정확히 1e-6). 211은 표시 전용 event_delta_qty 에만
+    전달한다. 저장 delta 는 collector 가 flush 간 누적 diff 로 파생한다(F3 권고).
 
     시각 FID 가 없어 t_ms=now_ms(0F 와 동일 규약). bsop_hour(store 병합 키)는
     collector 가 t_ms 에서 합성한다.
@@ -461,6 +461,7 @@ def _parse_program(
         # 순매수는 부호 유의미(abs 금지) — F3 검산에서 210=206−202 가 205/205
         # 성립했으므로 재계산 대신 수신값을 신뢰한다.
         "net_qty": _signed_opt(values, K.PRG_NET_QTY),
+        "event_delta_qty": _signed_opt(values, K.PRG_EVENT_NET_QTY),
         "net_amount": (
             v * _MILLION if (v := _signed_opt(values, K.PRG_NET_AMT)) is not None else None
         ),

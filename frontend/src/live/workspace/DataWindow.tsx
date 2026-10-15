@@ -30,6 +30,7 @@ import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import TradeTickTable from '../../sidebar/TradeTickTable';
+import { ProgramTradeTickWindow } from './ProgramTradeTickWindow';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
 import { SecondVolumeDistributionWindow } from './SecondVolumeDistributionWindow';
 import { VolumeDistributionCard } from '../../sidebar/VolumeDistributionCard';
@@ -155,6 +156,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       return <BrokerWindow win={win} code={code} />;
     case 'trade':
       return <TradeWindow code={code} />;
+    case 'program-trade':
+      return <ProgramTradeTickWindow key={code} code={code} />;
     case 'investor':
       return <InvestorWindow code={code} />;
     case 'investor-daily':
@@ -636,7 +639,6 @@ function TradeWindow({ code }: { code: string }) {
       <div className="min-h-0 flex-1 overflow-auto">
         <TradeTickTable view={view} highlight={highlight} emptyText={connected ? '최근 수신 체결 없음 · 새 체결 수신 대기' : '실시간 연결 확인 중 · 체결 수신 대기'} />
       </div>
-      <DataContext mode="최근 체결" time={live.trade.at(-1)?.t_ms} detail={`최대 ${TRADE_TICK_LIMIT}건 · 커서와 독립`} />
     </div>
   );
 }
