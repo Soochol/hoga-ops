@@ -49,6 +49,7 @@ export interface LiveQuote {
    *  표시 전용 필드. price/change_pct 등 기존 필드는 건드리지 않는다(pre_open 의
    *  hidden_pre_open 계약 불침범). 창 밖·체결 후엔 키 자체가 없다. */
   expected_price?: number | null;
+  /** 0D 예상체결수량. 0H 가격 전용 표본은 null이며 거래량으로 대체하지 않는다. */
   expected_qty?: number | null;
   expected_change_pct?: number | null;
 }

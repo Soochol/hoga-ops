@@ -4,8 +4,8 @@ import { sameDeltaChain } from '../live/liveVenuePolicy';
 
 /** 10호가 카드의 HTS식 순간 증감 뱃지 상태.
  *
- * 연속된 두 라이브 스냅샷을 **같은 가격끼리** diff 해(차트 증감 지표와 동일 규칙:
- * side 분리·가격 교집합·venue 전환 차단) 각 호가 단 잔량 옆에 "+1,200"/"−800" 을
+ * 연속된 두 라이브 스냅샷을 **같은 가격끼리** diff 해(side 분리·가격 교집합·
+ * venue/국면 전환 차단) 각 호가 단 잔량 옆에 "+1,200"/"−800" 을
  * 잠깐 표시했다가 TTL 만료 시 걷어낸다. 값의 의미는 "직전 수신 스냅샷 대비" — WS push 가
  * 절사되므로 놓친 중간 전환은 담기지 않는다(그건 차트 지표의 버킷 합이 담당).
  */
@@ -24,10 +24,16 @@ export type OrderbookDeltaBadges = ReadonlyMap<string, OrderbookDeltaBadge>;
  *  (예전엔 CSS 페이드 1.5s 와 동기화된 값이었다). */
 export const BADGE_TTL_MS = 1_500;
 
-/** 연속 스냅샷 쌍의 가격별 증감. 차트 지표(foldLevelDiff)와 같은 3규칙:
+function sameBookPhase(prev: ObSnapshot, cur: ObSnapshot): boolean {
+  return sameDeltaChain(prev, cur) && isContinuousBook(prev) === isContinuousBook(cur);
+}
+
+/** 연속 스냅샷 쌍의 가격별 증감:
  *  - side 분리: 매도는 매도끼리, 매수는 매수끼리(현재가 이동으로 단이 넘어간 가격 배제).
  *  - 가격 교집합: 한쪽에만 있는 가격은 관측창 이동이지 주문 변화가 아니다.
- *  - 체인 차단: 동시호가/VI 붕괴책(구조 술어)·venue 전환이면 diff 하지 않는다.
+ *  - 체인 차단: 연속장↔동시호가/VI 또는 venue 전환이면 diff 하지 않는다.
+ *  동시호가 안에서도 실제 호가 잔량은 변하므로 3호가끼리는 비교한다. 차트 지표의
+ *  동시호가 제외 정책(ADR-0062)을 실시간 사다리의 순간 증감 표시에 적용하지 않는다.
  *  카드용이라 09:00 하한(isIndicatorEligibleBook)은 걸지 않는다 — NXT 프리마켓
  *  (08:00~)에서도 호가창은 살아 있어야 한다. */
 export function computeOrderbookDeltas(
@@ -36,8 +42,7 @@ export function computeOrderbookDeltas(
 ): Map<string, number> {
   const out = new Map<string, number>();
   if (!prev.asks || !prev.bids || !cur.asks || !cur.bids) return out;
-  if (!isContinuousBook(prev) || !isContinuousBook(cur)) return out;
-  if (!sameDeltaChain(prev, cur)) return out;
+  if (!sameBookPhase(prev, cur)) return out;
   for (const [tag, prevLvls, curLvls] of [
     ['a', prev.asks, cur.asks],
     ['b', prev.bids, cur.bids],
@@ -111,7 +116,9 @@ export function useOrderbookDeltaBadges(
   const nowMs = Date.now();
   if (cur !== null && prev !== null && cur !== lastCurRef.current) {
     lastCurRef.current = cur;
-    stateRef.current = advanceBadges(stateRef.current, computeOrderbookDeltas(prev, cur), nowMs);
+    // 국면/거래소 전환 직후에는 이전 잔량 옆의 배지도 즉시 걷어낸다.
+    const state = sameBookPhase(prev, cur) ? stateRef.current : EMPTY;
+    stateRef.current = advanceBadges(state, computeOrderbookDeltas(prev, cur), nowMs);
   } else {
     stateRef.current = advanceBadges(stateRef.current, NO_DELTAS, nowMs);
   }

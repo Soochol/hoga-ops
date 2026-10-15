@@ -683,14 +683,25 @@ def test_after_hours_future_tick_dropped() -> None:
 
 # ── 0H 주식예상체결 (2026-08-18) ─────────────────────────────────────────────
 #
-# 0D FID 23/24 는 15:30 에 끊긴다. 시간외 단일가(16:00–18:00)의 10분 주기 단일가에
-# 예상체결 신호를 줄 수 있는 것은 이 타입뿐이다 — REST 는 전부 확인했고 없다
-# (ka10087·ka10004 전체 키에 예상체결 필드 부재, ka10007 의 `exp_cntr_*` 는 정규장
-# 잔상: 16:30·16:40 두 체결 주기에 걸쳐 시간외 누적체결량이 1,173→1,915→2,562 로
-# 늘었는데도 고유값 1 로 미동, 27표본).
+# 장중 VI의 예상가는 유지하되 FID 15·13을 예상체결수량으로 사용하지 않는다.
+# 2026-10-15 종가 동시호가 실측에서 0D와 0H 수량은 서로 달랐다.
 
 
-def test_expected_frame_carries_price_and_qty() -> None:
+@pytest.mark.parametrize("volume", ["3", "-3", "0", "", "invalid", None])
+def test_expected_volume_is_not_mapped_to_auction_quantity(volume: str | None) -> None:
+    values = {"20": "152703", "10": "1240000", "13": "7877367"}
+    if volume is not None:
+        values["15"] = volume
+    tick = parse_real_row(
+        {"type": "0H", "item": "000660", "values": values},
+        date="20261015", now_ms=hhmmssms_to_unix_ms("20261015", 152704000),
+    )
+    assert tick is not None
+    assert tick.payload["expected_price"] == 1_240_000
+    assert "expected_qty" not in tick.payload
+
+
+def test_expected_frame_carries_only_price() -> None:
     tick = parse_real_row(
         {"type": "0H", "item": "005930", "values": {"20": "163000", "10": "-47900", "15": "54701"}},
         date="20260818", now_ms=hhmmssms_to_unix_ms("20260818", 163001000),
@@ -699,20 +710,14 @@ def test_expected_frame_carries_price_and_qty() -> None:
     assert tick is not None
     assert tick.kind is SnapshotKind.EXPECTED
     assert tick.venue == "KRX"
-    # 키 이름은 0D 예상체결과 **맞춰 둔다** — 소비자가 한 어댑터로 읽어야 한다.
     assert tick.payload["expected_price"] == 47_900  # 부호는 등락 방향(abs)
-    assert tick.payload["expected_qty"] == 54_701
+    assert "expected_qty" not in tick.payload
 
 
-def test_expected_frame_is_dropped_when_either_value_is_zero() -> None:
-    """값 게이트 — 0D 예상체결의 전례(NXT 가 접속매매 중에도 값을 흘렸다) 그대로.
-
-    가격만 있고 수량이 0 인 프레임을 통과시키면 소비자가 "예상체결 있음" 으로 읽어
-    배너를 띄우는데, 정작 표시할 수량이 없다.
-    """
+def test_expected_frame_is_dropped_when_price_is_zero() -> None:
+    """예상가가 0이면 배제한다. FID 15 거래량은 표시·유효성 판단에 쓰지 않는다."""
     for values in (
         {"20": "163000", "10": "0", "15": "54701"},
-        {"20": "163000", "10": "-47900", "15": "0"},
         {"20": "163000", "10": "0", "15": "0"},
     ):
         assert parse_real_row(

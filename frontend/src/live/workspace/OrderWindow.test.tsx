@@ -18,7 +18,7 @@ vi.mock('./orderReceiptSound', () => ({
   subscribeOrderReceiptSoundRecovery: vi.fn(),
 }));
 
-const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
@@ -302,11 +302,14 @@ describe('호가 주문', () => {
       <OrderWindow code="005930" name="삼성전자" />
     </QueryClientProvider>;
     try {
-      mock.expectedPrice = 121100; mock.expectedQty = 5152;
+      mock.expectedPrice = 121100; mock.expectedQty = null;
       const view = render(content());
       const banners = screen.getAllByTestId('book-expected-fill');
       expect(banners).toHaveLength(2);
-      banners.forEach(banner => expect(banner).toHaveTextContent('예상 체결가121,100원예상 체결량5,152'));
+      banners.forEach(banner => {
+        expect(banner).toHaveTextContent('예상 체결가121,100원');
+        expect(banner).not.toHaveTextContent('예상 체결량');
+      });
       mock.expectedPrice = 0; mock.expectedQty = 0;
       view.rerender(content());
       expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();

@@ -77,7 +77,8 @@ export interface LiveSeriesResponse {
    *  총잔량 두 개(`total_ask_qty`/`total_bid_qty`)만 들었다. */
   after_hours: Array<Record<string, unknown>>;
   /** 예상체결(키움 0H) — `snapshots` 와 **다른 배열**이다. 사다리가 없고
-   *  `expected_price`/`expected_qty` 두 개만 들었다. */
+   *  `expected_price`만 싣는다. FID 15·13은 예상체결수량으로 매핑하지 않는다.
+   *  구버전 서버의 `expected_qty`는 소비자가 무시한다. */
   expected: Array<Record<string, unknown>>;
   /** 이 venue 의 **마지막 호가 프레임** — `snapshots` 가 그 venue 를 다 잃었을 때의
    *  폴백이다(백엔드 `LiveBuffer._last_ob`). 배열이 아니라 **한 장**인 것이 요점:
