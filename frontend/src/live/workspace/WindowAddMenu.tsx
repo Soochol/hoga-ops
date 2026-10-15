@@ -38,6 +38,7 @@ type AddItem = {
 
 const ADD_ITEMS: readonly AddItem[] = [
   { kind: 'chart', desc: '캔들 + 보조지표 스택' },
+  { kind: 'market-indices', desc: '코스피·코스닥·K200 당일 등락률 비교' },
   { kind: 'book', desc: '매수·매도 호가 잔량' },
   { kind: 'order', desc: '토스증권 지정가 주문 · 드래그 정정·취소' },
   { kind: 'trade', desc: '실시간 체결 틱 흐름' },
@@ -53,7 +54,7 @@ const ADD_ITEMS: readonly AddItem[] = [
 ];
 
 const ADD_SECTIONS = [
-  { label: '차트·시세', kinds: ['chart', 'book', 'trade'] },
+  { label: '차트·시세', kinds: ['chart', 'market-indices', 'book', 'trade'] },
   { label: '수급·분석', kinds: ['broker', 'program', 'investor', 'investor-daily', 'vdist', 'sector-ranking'] },
   { label: '주문·뉴스', kinds: ['order', 'news'] },
 ] as const;

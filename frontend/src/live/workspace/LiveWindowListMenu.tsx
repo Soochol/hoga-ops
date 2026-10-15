@@ -26,14 +26,15 @@ export function LiveWindowListMenu() {
 
   const sections = useMemo<WindowListSection[]>(() => {
     // 그룹 오름차순으로 묶는다 — 창 배열의 추가 순서는 그룹 내에서만 보존한다.
-    const groups = [...new Set(windows.map((w) => w.group))].sort((a, b) => a - b);
-    return groups.map((group) => {
+    const globalWindows = windows.filter(w => w.kind === 'market-indices');
+    const groups = [...new Set(windows.filter(w => w.kind !== 'market-indices').map((w) => w.group))].sort((a, b) => a - b);
+    const grouped = groups.map((group) => {
       const sym = groupSymbols[group as GroupId];
       return {
         key: `group-${group}`,
         heading: sym ? `그룹 ${group} · ${sym.name}` : `그룹 ${group}`,
         rows: windows
-          .filter((w) => w.group === group)
+          .filter((w) => w.group === group && w.kind !== 'market-indices')
           .map((w) => ({
             id: w.id,
             label: WINDOW_KIND_LABEL[w.kind],
@@ -45,9 +46,15 @@ export function LiveWindowListMenu() {
           })),
       };
     });
+    return [...(globalWindows.length ? [{
+      key: 'market', heading: '시장 전체', rows: globalWindows.map(w => ({
+        id: w.id, label: WINDOW_KIND_LABEL[w.kind], icon: WINDOW_KIND_ICON[w.kind],
+        isFocused: w.id === focusedId, badges: w.alwaysOnTop ? ['항상 위'] : [], closable: true,
+      })),
+    }] : []), ...grouped];
   }, [windows, groupSymbols, focusedId]);
 
-  const groupCount = sections.length;
+  const groupCount = sections.filter(s => s.key !== 'market').length;
   const summary = `열린 창 ${windows.length} · 그룹 ${groupCount}`;
 
   return (

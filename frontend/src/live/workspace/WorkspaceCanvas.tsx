@@ -6,7 +6,7 @@
  * 링크 그룹 팔레트 상태, 관심종목/스크리너 행 드래그의 정밀 드롭(entryDrag),
  * 드롭 어포던스 오버레이, 창 콘텐츠(ChartWindow/DataWindow) 렌더.
  */
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { toPx } from '../../workspace/rectSpace';
 import type { Rect, ResizeMode } from '../../workspace/snapEngine';
 import {
@@ -14,7 +14,7 @@ import {
   type WindowItemProps,
   type WorkspaceCanvasApi,
 } from '../../workspace/WorkspaceCanvas';
-import { WindowFrame } from './WindowFrame';
+import { WindowFrame, type WindowFrameProps } from './WindowFrame';
 import { useEntryDragStore } from '../../state/entryDrag';
 import { ChartWindow } from './ChartWindow';
 import { DataWindow } from './DataWindow';
@@ -29,6 +29,7 @@ import {
 
 type Mode = 'move' | ResizeMode;
 type LiveCanvasApi = WorkspaceCanvasApi<WorkspaceWindow>;
+const MajorIndicesWindow = lazy(() => import('./MajorIndicesWindow').then(module => ({ default: module.MajorIndicesWindow })));
 
 /** 창 항목들이 공유하는 /live 컨텍스트 — useMemo 로 안정화해 코어에 주입한다. */
 interface LiveItemCtx {
@@ -200,7 +201,7 @@ export function WorkspaceCanvas() {
               boxShadow: 'var(--shadow-overlay)',
             }}
           >
-            {hoverDropWin.pinned ? '고정된 이 창의 종목 교체' : `그룹 ${hoverDropWin.group} 종목 교체`}
+            {hoverDropWin.kind === 'market-indices' ? '주요 지수 · 종목 연동 없음' : hoverDropWin.pinned ? '고정된 이 창의 종목 교체' : `그룹 ${hoverDropWin.group} 종목 교체`}
           </span>
         </div>
       )}
@@ -343,32 +344,23 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   // 술어**를 UI 에도 세워 "눌렀는데 아무 일도 안 남" 을 만들지 않는다.
   const canPin = win.pinned != null || symbol != null;
   const toggleAlwaysOnTop = useWorkspaceStore((s) => s.toggleAlwaysOnTop);
+  const frameProps: Omit<WindowFrameProps, 'children'> = {
+    id: win.id, kind: win.kind, group: win.group, rect, zIndex, focused, lifting,
+    symbolLabel: symbol?.name ?? null, symbolCode: symbol?.code ?? null,
+    isIndex: symbol?.kind === 'index', paletteOpen, alwaysOnTop: win.alwaysOnTop,
+    onToggleAlwaysOnTop: toggleAlwaysOnTop, maximized, onToggleMaximize,
+    pinned: win.pinned != null, canPin, onHandleDown, onFocus, onClose,
+    onTogglePalette, onPickGroup, onTogglePin,
+  };
+  if (win.kind === 'market-indices') {
+    return <ChartErrorBoundary title="주요 지수 창을 표시하지 못했습니다">
+      <Suspense fallback={<WindowFrame {...frameProps} headerContent={<span>주요 지수</span>}><div className="p-1 text-xs text-fg-dim">불러오는 중…</div></WindowFrame>}>
+        <MajorIndicesWindow frameProps={frameProps} />
+      </Suspense>
+    </ChartErrorBoundary>;
+  }
   return (
-    <WindowFrame
-      id={win.id}
-      kind={win.kind}
-      group={win.group}
-      rect={rect}
-      zIndex={zIndex}
-      focused={focused}
-      lifting={lifting}
-      symbolLabel={symbol?.name ?? null}
-      symbolCode={symbol?.code ?? null}
-      isIndex={symbol?.kind === 'index'}
-      paletteOpen={paletteOpen}
-      alwaysOnTop={win.alwaysOnTop}
-      onToggleAlwaysOnTop={toggleAlwaysOnTop}
-      maximized={maximized}
-      onToggleMaximize={onToggleMaximize}
-      pinned={win.pinned != null}
-      canPin={canPin}
-      onHandleDown={onHandleDown}
-      onFocus={onFocus}
-      onClose={onClose}
-      onTogglePalette={onTogglePalette}
-      onPickGroup={onPickGroup}
-      onTogglePin={onTogglePin}
-    >
+    <WindowFrame {...frameProps}>
       {win.kind === 'chart' ? (
         <ChartWindow win={win} symbol={symbol} />
       ) : (

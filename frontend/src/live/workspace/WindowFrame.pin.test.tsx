@@ -128,8 +128,11 @@ describe('창 헤더 고정(핀) 버튼', () => {
 it.each(WINDOW_KINDS)('%s 최대화 옆 항상 위 버튼은 상태와 토글을 제공하며 드래그를 시작하지 않는다', async (kind) => {
   const onToggleAlwaysOnTop = vi.fn();
   const onHandleDown = vi.fn();
-  renderFrame({ kind, symbolCode: null, alwaysOnTop: true,
-    onToggleAlwaysOnTop, onHandleDown, onToggleMaximize: vi.fn() });
+  render(<WindowFrame id="w1" kind={kind} group={1} rect={{ x: 0, y: 0, w: 660, h: 215 }}
+    zIndex={1} focused={false} symbolLabel={null} symbolCode={null} paletteOpen={false}
+    alwaysOnTop onToggleAlwaysOnTop={onToggleAlwaysOnTop} onHandleDown={onHandleDown}
+    onToggleMaximize={vi.fn()} onFocus={vi.fn()} onClose={vi.fn()}
+    onTogglePalette={vi.fn()} onPickGroup={vi.fn()}><div /></WindowFrame>);
   const button = screen.getByRole('button', { name: '항상 위' });
   expect(button).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getByRole('button', { name: '창 최대화' }).nextElementSibling).toBe(button);

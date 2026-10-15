@@ -20,4 +20,5 @@ export const WINDOW_KIND_LABEL: Record<WindowKind, string> = {
   'investor-daily': '일별 투자자',
   news: '종목 뉴스',
   'sector-ranking': '섹터 랭킹',
+  'market-indices': '주요 지수',
 };
