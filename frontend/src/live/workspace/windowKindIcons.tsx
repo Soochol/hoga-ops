@@ -65,6 +65,7 @@ export const WINDOW_KIND_ICON: Record<IconWindowKind, ReactNode> = {
       <path d="m7 10 2.5 2.5L7 15M13 15h4" />
     </>,
   ),
+  'program-trade': svg(<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 8v8m-2-2 2 2 2-2M16 16V8m-2 2 2-2 2 2" /></>),
   investor: svg(
     <>
       <circle cx="9.5" cy="8" r="3" />

@@ -30,6 +30,7 @@ import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import TradeTickTable from '../../sidebar/TradeTickTable';
+import { ProgramTradeTickWindow } from './ProgramTradeTickWindow';
 import ProgramTradeSummaryCard from '../../sidebar/ProgramTradeSummaryCard';
 import { SecondVolumeDistributionWindow } from './SecondVolumeDistributionWindow';
 import { VolumeDistributionCard } from '../../sidebar/VolumeDistributionCard';
@@ -155,6 +156,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
       return <BrokerWindow win={win} code={code} />;
     case 'trade':
       return <TradeWindow code={code} />;
+    case 'program-trade':
+      return <ProgramTradeTickWindow key={code} code={code} />;
     case 'investor':
       return <InvestorWindow code={code} />;
     case 'investor-daily':

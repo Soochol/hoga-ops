@@ -14,6 +14,7 @@ export const WINDOW_KIND_LABEL: Record<WindowKind, string> = {
   order: '호가 주문',
   broker: '거래원',
   trade: '체결',
+  'program-trade': '프로그램 체결',
   vdist: '매물대',
   program: '프로그램',
   investor: '잠정투자자',
