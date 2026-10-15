@@ -6,9 +6,9 @@
  *     [매도 잔량 바 ]  [ 가격+등락률 ]  [ 요약 패널  ]
  *     [체결강도·체결]  [ 가격+등락률 ]  [매수 잔량 바]
  *
- * 중앙 가격축을 좌우 4개 블록이 둘러싼다. 우측 요약 슬롯은 실제 매도 호가
- * 수만큼 높이를 잡아 매수 잔량과 가격을 정렬한다. 매도 10단일 때
- * 요약 12항목을 펼치고, 호가가 적거나 창이 좁으면 정보 버튼으로 상세를 연다.
+ * 중앙 가격축을 좌우 4개 블록이 둘러싼다. 매도·매수는 각 10행 공간을 확보해
+ * 유효 호가가 줄어도 경계를 중앙에 유지한다. 우측 매도 영역에는 요약 12항목을
+ * 펼치고, 창이 좁으면 정보 버튼으로 상세를 연다.
  *
  * **전체 패널 소비처는 `DataWindow` 하나다.** 총잔량 스트립은 `OrderWindow`도 공유한다. 한때 `/study` 의 BookContent 와 공유하는 단일
  * 표면이었으나 그 페이지는 2026-08-23 에 삭제됐다 — 이 파일 곳곳의 주석이 아직
@@ -127,7 +127,7 @@ const ROW_H = 22; // DESIGN.md — Orderbook table row 22px
 /** 깊이 막대 상하 여백(px). 막대 높이 = ROW_H − 2·BAR_INSET(=16px). 이 여백이
  *  Toss식 행간 "구분선"(흰 띠)을 만든다 — Toss 24/40 비율을 밀도 높은 22px 행에 축소. */
 const BAR_INSET = 3;
-/** 10단을 모두 받은 경우의 요약 높이. 짧은 사다리는 상세를 팝오버로 표시한다. */
+/** 부분 호가에서도 매도·매수 각각 10행의 공간을 유지한다. */
 const SUMMARY_ROWS = 10;
 
 export default function BookPanel({
@@ -231,8 +231,9 @@ export default function BookPanel({
   const asksDesc = snapshot.ask.filter((l) => Number.isFinite(l.price) && l.price > 0).reverse();
   const bids = snapshot.bid.filter((l) => Number.isFinite(l.price) && l.price > 0);
   const dayMarkers = bookDayMarkers([...asksDesc, ...bids].map(level => level.price), summary);
-  const summaryRows = asksDesc.length;
-  const summaryHeight = ROW_H * summaryRows;
+  const summaryHeight = ROW_H * SUMMARY_ROWS;
+  const askPadding = ROW_H * Math.max(0, SUMMARY_ROWS - asksDesc.length);
+  const bidPadding = ROW_H * Math.max(0, SUMMARY_ROWS - bids.length);
   const maxQty = Math.max(
     1,
     ...asksDesc.map((l) => l.qty),
@@ -253,13 +254,13 @@ export default function BookPanel({
           가격·등락률·잔량·체결의 폰트와 행 정렬을 유지한다. */}
       <BookScrollArea>
         <div
-          className={`book-panel-grid grid${summaryRows < SUMMARY_ROWS ? ' book-panel-short' : ''}`}
+          className="book-panel-grid grid"
           style={{ '--book-wide-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-wide-cols': BOOK_PANEL_GRID_COLS,
             '--book-compact-min-w': `${BOOK_PANEL_COMPACT_MIN_W}px`, '--book-compact-cols': BOOK_PANEL_COMPACT_GRID_COLS,
             '--book-price-w': `${BOOK_PANEL_PRICE_COL_W}px` } as React.CSSProperties}
         >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
-          <div className="flex flex-col">
+          <div className="flex flex-col" style={{ paddingTop: askPadding }}>
             {asksDesc.map((l, i) => (
               <QtyBar
                 key={`a-${i}`}
@@ -313,7 +314,7 @@ export default function BookPanel({
           {/* 중앙: 가격축 — 세로 프레임(border-x) 없음. 열 분리는 좌우 잔량 바의
               방향(가격축 쪽으로 자람)과 정렬이 담당한다(C안).
               열 전체가 스냅샷 파생(가격)이라 열 자체에 딤을 건다. */}
-          <div className={`flex flex-col ${staleDim}`}>
+          <div className={`flex flex-col ${staleDim}`} style={{ paddingTop: askPadding, paddingBottom: bids.length > 0 ? bidPadding : 0 }}>
             {asksDesc.map((l, i) => (
               <PriceCell
                 key={`pa-${i}`}
@@ -333,10 +334,11 @@ export default function BookPanel({
                 topDivider={i === 0}
               />
             ))}
+            {bids.length === 0 && <div aria-hidden="true" data-book-divider="" className="border-t border-border" style={{ height: summaryHeight }} />}
           </div>
 
-          {/* 우: 실제 매도 높이의 요약 슬롯 → 매수 잔량 바 */}
-          <div className="flex flex-col">
+          {/* 우: 고정 매도 10행의 요약 슬롯 → 매수 잔량 바 */}
+          <div className="flex flex-col" style={{ paddingBottom: bids.length > 0 ? bidPadding : 0 }}>
             <div className="book-summary-slot" style={{ height: summaryHeight }}>
               <div className="book-inline-summary">
                 <BookSummary summary={summary} baselinePrice={baselinePrice}
@@ -359,6 +361,7 @@ export default function BookPanel({
                 dimClass={staleDim}
               />
             ))}
+            {bids.length === 0 && <div aria-hidden="true" data-book-divider="" className="border-t border-border" style={{ height: summaryHeight }} />}
           </div>
         </div>
       </BookScrollArea>

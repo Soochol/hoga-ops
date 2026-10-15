@@ -8,8 +8,8 @@ import 'pretendard/dist/web/variable/pretendardvariable.css';
 const ask = Array.from({ length: 10 }, (_, i) => ({ price: 1_631_000 + i * 1_000, qty: 8_260_000 }));
 const bid = Array.from({ length: 10 }, (_, i) => ({ price: 1_630_000 - i * 1_000, qty: 8_260_000 }));
 const depth = new URLSearchParams(location.search).get('depth');
-const visibleAsks = depth === 'partial' ? 4 : depth === 'five' ? 5 : 10;
-const visibleBids = depth === 'partial' ? 3 : depth === 'five' ? 5 : 10;
+const visibleAsks = depth === 'bid-only' ? 0 : depth === 'partial' || depth === 'ask-only' ? 4 : depth === 'five' ? 5 : 10;
+const visibleBids = depth === 'ask-only' ? 0 : depth === 'partial' || depth === 'bid-only' ? 3 : depth === 'five' ? 5 : 10;
 const paddedAsk = ask.map((level, i) => i < visibleAsks ? level : { price: 0, qty: 0 });
 const paddedBid = bid.map((level, i) => i < visibleBids ? level : { price: 0, qty: 0 });
 createRoot(document.getElementById('fixture')!).render(
