@@ -502,6 +502,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       <div className="min-h-0 flex-1">
         <BookPanel
           snapshot={snapshot}
+          expectedFill={!isSpot && !storedLadder && activeSinglePrice === null
+            ? { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? 0 } : undefined}
           afterHoursTotals={afterHoursTotals}
           afterHoursLabel={afterHoursLabel}
           sessionControl={sessionControl}

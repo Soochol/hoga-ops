@@ -27,7 +27,7 @@ vi.mock('../../api/trading', () => ({
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
 vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], latestOb: { t_ms: mock.snapshotAt, asks: Array.from({ length: 10 }, (_, i) => i < mock.askCount ? { price: 67300 + mock.priceOffset + i * 100, qty: 100 + i } : { price: 0, qty: 0 }), bids: Array.from({ length: 10 }, (_, i) => i < mock.bidCount ? { price: 67200 + mock.priceOffset - i * 100, qty: 200 + i } : { price: 0, qty: 0 }), total_ask_qty: 1000, total_bid_qty: 2000, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }, trade: [], afterHours: [] })) }));
-vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55 }]])) }));
+vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55, expected_price: mock.expectedPrice, expected_qty: mock.expectedQty }]])) }));
 vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 70000, low_250: 50000 } }) }));
 vi.mock('../../api/liveKrxClose', () => ({ useLiveKrxClose: () => ({ data: { date: '20261013', price: 67100 } }) }));
 vi.mock('../../api/liveKrxPreviousClose', () => ({ useLiveKrxPreviousClose: (code: string | null, asOf: string) => (
@@ -250,6 +250,32 @@ describe('호가 주문', () => {
   it('예상 체결가·체결량을 제공하지 않으면 배너를 표시하지 않는다', () => {
     show();
     expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+  });
+  it('호가에 예상값이 없는 장중에도 0H 오버레이를 두 창에 표시하고 종료 시 지운다', () => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    vi.mocked(useLiveSeries).mockImplementation((...args) => {
+      const live = originalSeries(...args);
+      return { ...live, latestOb: live.latestOb ? { ...live.latestOb, expected_price: 0, expected_qty: 0 } : undefined };
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const win: WorkspaceWindow = { id: 'book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
+    const content = () => <QueryClientProvider client={client}>
+      <DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} />
+      <OrderWindow code="005930" name="삼성전자" />
+    </QueryClientProvider>;
+    try {
+      mock.expectedPrice = 121100; mock.expectedQty = 5152;
+      const view = render(content());
+      const banners = screen.getAllByTestId('book-expected-fill');
+      expect(banners).toHaveLength(2);
+      banners.forEach(banner => expect(banner).toHaveTextContent('예상 체결가121,100원예상 체결량5,152'));
+      mock.expectedPrice = 0; mock.expectedQty = 0;
+      view.rerender(content());
+      expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+    }
   });
   it('부분 호가는 빈 공간을 유지하고 실제 가격에만 주문을 허용한다', () => {
     mock.askCount = 4; mock.bidCount = 3;

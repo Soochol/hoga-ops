@@ -714,7 +714,7 @@ export type RangeMissingDate = {
  *  per-kind wire model (deliberate follow-up). */
 export interface LiveSnapshotEntry {
   t_ms: number;
-  kind: 'ob' | 'trade' | 'broker' | 'program';
+  kind: import('../live/liveSnapshotBuffer').SnapshotKind;
   [field: string]: unknown;
 }
 

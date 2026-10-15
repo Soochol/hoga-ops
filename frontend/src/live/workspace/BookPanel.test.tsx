@@ -699,6 +699,15 @@ describe('BookPanel', () => {
     renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 0 } });
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
   });
+
+  it('실시간 예상 표본의 종료는 호가에 남은 예전 예상값보다 우선한다', () => {
+    const snapshot = { ...snap(), exp_price: 265500, exp_qty: 12345 };
+    const view = renderPanel({ snapshot, expectedFill: { price: 121100, qty: 5152 } });
+    expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원예상 체결량5,152');
+    view.rerender(<BookPanel snapshot={snapshot} baselinePrice={PREV_CLOSE} summary={SUMMARY}
+      trades={[]} maskRatio={false} lastPrice={null} expectedFill={null} />);
+    expect(screen.queryByTestId('book-expected-fill')).toBeNull();
+  });
 });
 
 /**

@@ -6,6 +6,7 @@ import { EXPECTED_FILL_TTL_MS } from './liveTickOverlay';
 import * as client from './client';
 import * as ws from './ws';
 import { seedSymbolMaster } from '../live/seedSymbolMaster';
+import type { LiveVenueOption } from '../state/liveVenue';
 
 const code = '005930';
 const now = Date.UTC(2026, 8, 14, 6, 30);
@@ -23,12 +24,12 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
-async function setup() {
+async function setup(venue: LiveVenueOption = 'KRX') {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   seedSymbolMaster(qc);
   const wrapper = ({ children }: { children: React.ReactNode }) =>
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-  const hook = renderHook(() => useQuoteByCode([code]), { wrapper });
+  const hook = renderHook(() => useQuoteByCode([code], venue), { wrapper });
   await waitFor(() => expect(hook.result.current.get(code)?.price).toBe(100));
   return hook;
 }
@@ -98,4 +99,46 @@ it('an executed trade clears the expected quote and blocks its delayed resurrect
   expect(result.current.get(code)?.expected_price).toBeUndefined();
   await expected(now + 1000);
   expect(result.current.get(code)?.expected_price).toBe(120);
+});
+
+it.each(['KRX', 'NXT', 'UN'] as const)('accepts midday 0H for %s, retains it across empty books and clears it on execution', async venue => {
+  const midday = Date.UTC(2026, 8, 14, 3, 30);
+  vi.setSystemTime(midday);
+  const { result } = await setup(venue);
+  act(() => receive({ kind: 'expected', venue, t_ms: midday,
+    expected_price: 121100, expected_qty: 5152 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBe(121100);
+  expect(result.current.get(code)?.expected_qty).toBe(5152);
+  expect(result.current.get(code)?.price).toBe(100);
+  act(() => receive({ kind: 'ob', venue, t_ms: midday + 1000 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBe(121100);
+  act(() => receive({ kind: 'trade', venue, t_ms: midday + 2000,
+    trades: [{ price: 121000, qty: 1, side: 1 }] }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBeUndefined();
+  act(() => receive({ kind: 'expected', venue, t_ms: midday,
+    expected_price: 121100, expected_qty: 5152 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_price).toBeUndefined();
+});
+
+it('expires 0H without a new frame and rejects another venue or invalid values', async () => {
+  const { result } = await setup();
+  for (const frame of [
+    { venue: 'NXT', expected_price: 121100, expected_qty: 5152 },
+    { venue: 'KRX', expected_price: Infinity, expected_qty: 5152 },
+    { venue: 'KRX', expected_price: 121100, expected_qty: 0 },
+  ]) {
+    act(() => receive({ kind: 'expected', t_ms: now, ...frame }));
+    await advance(200);
+    expect(result.current.get(code)?.expected_price).toBeUndefined();
+  }
+  act(() => receive({ kind: 'expected', venue: 'KRX', t_ms: now,
+    expected_price: 121100, expected_qty: 5152 }));
+  await advance(200);
+  expect(result.current.get(code)?.expected_qty).toBe(5152);
+  await advance(EXPECTED_FILL_TTL_MS + 200);
+  expect(result.current.get(code)?.expected_price).toBeUndefined();
 });

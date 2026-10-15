@@ -58,6 +58,9 @@ type Props = {
   maskRatio: boolean;
   /** 현재가 — 해당 호가 행을 박스로 강조. */
   lastPrice: number | null;
+  /** Live 0D/0H sample with venue, trade-resumption and TTL lifecycle applied.
+   * undefined keeps the snapshot source for cursor/stored/single-price displays. */
+  expectedFill?: { price: number; qty: number } | null;
   /** HTS식 순간 증감 뱃지(#750, 직전 스냅샷 대비). 스팟 커서 중에는 null —
    *  과거 시점 위 "방금 변화"는 거짓 정보다. */
   deltaBadges?: OrderbookDeltaBadges | null;
@@ -137,6 +140,7 @@ export default function BookPanel({
   trades,
   maskRatio,
   lastPrice,
+  expectedFill,
   deltaBadges = null,
   limits = null,
   krxClose = null,
@@ -242,11 +246,10 @@ export default function BookPanel({
 
   return (
     <div className="book-panel flex h-full flex-col bg-bg-card">
-      {/* 예상체결 배너(동시호가에만) — 호가창 전폭 중앙. 평시엔 null 이라 높이 0.
-          `exp_price`/`exp_qty` 가 스냅샷 필드라 사다리와 같이 흐려진다. */}
+      {/* 실시간 0D/0H 예상 표본 또는 커서·시간외 스냅샷. 없으면 높이를 차지하지 않는다. */}
       <ExpectedFillBanner
-        price={snapshot.exp_price ?? 0}
-        qty={snapshot.exp_qty ?? 0}
+        price={expectedFill === undefined ? snapshot.exp_price ?? 0 : expectedFill?.price ?? 0}
+        qty={expectedFill === undefined ? snapshot.exp_qty ?? 0 : expectedFill?.qty ?? 0}
         baselinePrice={baselinePrice}
         dimClass={staleDim}
       />
@@ -467,8 +470,8 @@ function dirClass(price: number, baselinePrice: number | null): string {
   return priceDirClass(price - baselinePrice);
 }
 
-/** 예상체결가·량(키움 0D FID 23/24) — 호가창 **전폭 상단 배너**, 내용 중앙 정렬.
- *  동시호가(단일가) 구간에만 백엔드가 값을 실어 오므로 둘 다 >0 일 때만 렌더하고,
+/** 예상체결가·량(키움 0D/0H 또는 시간외 조회) — 호가창 전폭 상단 배너, 중앙 정렬.
+ *  유효한 예상 표본의 가격·수량이 둘 다 >0 일 때만 렌더하고,
  *  평시엔 null(높이 0)이라 평상시 호가창에 영향이 없다. 가격은 전일종가 대비 방향색. */
 export function ExpectedFillBanner({
   price,

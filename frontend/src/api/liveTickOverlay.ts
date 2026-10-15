@@ -71,16 +71,17 @@ export interface LiveTickSample {
   dayLow?: number;
 }
 
-/** 한 코드의 최신 동시호가 예상체결 표본 (키움 0D FID 23/24).
+/** 한 코드의 최신 단일가 예상체결 표본 (키움 0D FID 23/24 또는 전용 0H).
  *
- *  백엔드가 이미 2중 게이트(is_auction_window(프레임 t_ms, venue) AND 값>0,
- *  kiwoom_frames._parse_orderbook)를 걸어 실을지 말지를 결정하므로, 프론트는 시계를
- *  보지 않는다 — 필드가 실려 오면 동시호가고, 안 실려 오면 아니다. 초 단위로
- *  흔들리는 창 경계를 프론트가 두 번째 시계로 추적하지 않기 위한 설계다.
+ *  0D는 백엔드가 예정 시각과 값으로 게이트하고, 0H는 전용 예상체결 메시지다.
+ *  장중 VI/거래 재개도 0H로 수신하므로 프론트는 예정 시각으로 다시 제한하지 않는다.
+ *  백엔드가 실어 보낸 양수 표본만 사용한다. 필드가 없는 호가 메시지는 기존 표본을
+ *  지우지 않고, 체결 재개와 TTL이 종료를 판정한다.
  *
  *  ⚠ **창은 venue 마다 다르다** — KRX 08:50–09:00·15:20–15:30 / NXT 15:30–15:40
  *  (애프터마켓 시가단일가) / 통합 셋 전부. 그래서 "예상체결 = 오전·오후 KRX 창"
- *  이라는 가정으로 이 값을 다루면 안 된다. 표는 백엔드 `session_gate` 가 소유한다. */
+ *  이라는 가정으로 이 값을 다루면 안 된다. 예정 창 표는 백엔드 `session_gate`가
+ *  소유하고, 장중 불규칙 단일가는 별도 0H로도 전달된다. */
 export interface LiveExpectedSample {
   /** 예상 체결가. */
   price: number;
@@ -102,7 +103,7 @@ export interface LiveExpectedSample {
 export const EXPECTED_FILL_TTL_MS = 30_000;
 
 function positiveNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && value > 0 ? value : undefined;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 /** trade 프레임에서 체결 표본을 꺼낸다. payload 는
@@ -142,7 +143,7 @@ function tradeSample(entry: LiveSnapshotEntry, venue: LiveVenueOption): LiveTick
   };
 }
 
-/** ob 프레임의 예상체결 신호. 두 갈래:
+/** ob/expected 프레임의 예상체결 신호. 두 갈래:
  *  - 표본: expected_price/qty 둘 다 >0 (백엔드 게이트를 통과해 실려 온 값)
  *  - null: venue 불일치·불량 프레임·**예상 필드 부재** — 전부 판단 보류다.
  *  t_ms 부재 시 배제는 tradeSample 과 동일 논리 — venue 판정 불가면 보수적으로 무시.
@@ -172,7 +173,7 @@ function expectedSignal(
   entry: LiveSnapshotEntry,
   venue: LiveVenueOption,
 ): LiveExpectedSample | null {
-  if (entry.kind !== 'ob') return null;
+  if (entry.kind !== 'ob' && entry.kind !== 'expected') return null;
   const tMs = (entry as { t_ms?: unknown }).t_ms;
   const tagVenue = (entry as { venue?: LiveFrameVenue }).venue;
   if (typeof tMs !== 'number' || !liveVenueAcceptsFrame(venue, tagVenue)) return null;
@@ -264,7 +265,7 @@ export function useLiveTickPrices(
     };
     const unsubs = subscribed.map((code) =>
       subscribeLiveLatest(code, (entry: LiveSnapshotEntry) => {
-        if (entry.kind === 'ob') {
+        if (entry.kind === 'ob' || entry.kind === 'expected') {
           const signal = expectedSignal(entry, venueFor(code));
           if (signal === null || !Number.isFinite(signal.tMs)
             || unixMsToKSTDate(signal.tMs) !== day) return;
