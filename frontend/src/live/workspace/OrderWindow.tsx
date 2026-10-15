@@ -23,6 +23,7 @@ import { acceptTradingReplacement, pauseTradingRefresh } from '../../api/trading
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
+import { useLiveKrxPreviousClose } from '../../api/liveKrxPreviousClose';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import type { OrderbookSnapshot } from '../../api/types';
@@ -104,6 +105,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const now = useWallClockSecond();
   const todayKst = realMsToYyyymmdd(now);
   const krxClose = useLiveKrxClose(code, todayKst);
+  const krxPreviousClose = useLiveKrxPreviousClose(code, todayKst);
   const latestSnapshot = useMemo(() => {
     const snap = latestOrderbookSnapshot(live.latestOb ? [live.latestOb] : live.ob);
     return snap !== null && previousDayObExpired(snap.ts_ms, now, venue) ? null : snap;
@@ -482,6 +484,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const lastPrice = activeSinglePrice !== null ? (afterHoursBook.data?.cur_price ?? null) : (recentTrades[0]?.price ?? null);
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
+    krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
     vi={vi.data?.vi} height={height} />;
   return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => {

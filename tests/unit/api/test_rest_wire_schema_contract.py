@@ -60,6 +60,7 @@ from hoga.live.daily_program_trade import DailyProgramTradePoint
 from hoga.live.error_policy import LiveErrorKind
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
 from hoga.live.krx_close import KrxCloseResponse
+from hoga.live.krx_previous_close import KrxPreviousCloseResponse
 from hoga.live.lifecycle import LiveStatus
 from hoga.live.provider_errors import ProviderFailure
 from hoga.live.service_status import ProviderStatus
@@ -320,7 +321,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     trading_models.TradingStateResponse: frozenset({
         "account_seq", "code", "orders", "recent_orders", "buying_power", "sellable_quantity",
         "holding_quantity", "average_purchase_price",
-        "fetched_at_ms", "events_connected", "unresolved_commands",
+        "fetched_at_ms", "events_connected", "unresolved_commands", "revision",
     }),
     trading_models.TossOrder: frozenset({
         "orderId", "symbol", "side", "orderType", "timeInForce", "status", "price", "quantity",
@@ -371,6 +372,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     flow_receipts.CollectionRun: frozenset({"run_id", "started_at_ms", "poll_interval_ms"}),
     flow_receipts.ReceiptGap: frozenset({"start_ms", "end_ms"}),
     KrxCloseResponse: frozenset({"code", "date", "price", "close_at_ms", "fetched_at_ms"}),
+    KrxPreviousCloseResponse: frozenset({"code", "as_of", "session_date", "date", "price", "fetched_at_ms"}),
     RankingRowModel: frozenset({
         "rank", "code", "name", "price", "change_pct", "trade_value_won",
         "program_net_buy_won", "investor_net_buy_won",

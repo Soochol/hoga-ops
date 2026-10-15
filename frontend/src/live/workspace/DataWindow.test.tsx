@@ -21,6 +21,8 @@ import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
 import type { RangeBundle } from '../../api/types';
 import * as cutoffProfile from '../useVolumeDistributionCutoffProfile';
 
+vi.mock('../../api/liveKrxPreviousClose', () => ({ useLiveKrxPreviousClose: () => ({ data: undefined }) }));
+
 /** 훅 반환은 값이 아니라 **값 + 신선도**다(`LiveOrderbookSpotResult`). 이 파일의
  *  단언은 값에만 관심이 있으므로 감싸는 일을 한 곳에 모은다 — stale/error 를
  *  직접 세우는 테스트는 이 헬퍼를 쓰지 않고 객체를 그대로 넘긴다. */

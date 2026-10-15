@@ -24,6 +24,7 @@ import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
 import type { LiveViEvent } from '../../api/liveViStatus';
 import { priceDirClass } from '../../ui/priceDir';
+import { useTextTooltip } from '../../ui/useTextTooltip';
 import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
 import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
@@ -62,6 +63,8 @@ type Props = {
   /** 상하한가·250일 최고/최저. null = 미로드/미제공 → 대시. */
   limits?: BookStockLimits | null;
   krxClose?: number | null;
+  /** Raw close of the previous KRX session, independent of the ladder's baseline. */
+  krxPreviousClose?: number | null;
   /** 종목의 최신 VI 이벤트(키움 1h). null = 오늘 이벤트 없음 → 예상가만 표시. */
   vi?: LiveViEvent | null;
   /**
@@ -136,6 +139,7 @@ export default function BookPanel({
   deltaBadges = null,
   limits = null,
   krxClose = null,
+  krxPreviousClose = null,
   vi = null,
   afterHoursTotals = null,
   afterHoursLabel = '시간외',
@@ -334,7 +338,7 @@ export default function BookPanel({
             <div className="book-summary-slot" style={{ height: summaryHeight }}>
               <div className="book-inline-summary">
                 <BookSummary summary={summary} baselinePrice={baselinePrice}
-                  limits={limits} krxClose={krxClose} vi={vi} height={summaryHeight} />
+                  limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={summaryHeight} />
               </div>
               <div className="book-compact-info">
                 <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog"
@@ -359,7 +363,7 @@ export default function BookPanel({
       {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="book-info-popover font-data" style={infoStyle}>
         <div className="book-info-heading"><span>종목 상세 정보</span><button type="button" aria-label="상세 정보 닫기" onClick={closeInfo}>닫기</button></div>
         <BookSummary summary={summary} baselinePrice={baselinePrice}
-          limits={limits} krxClose={krxClose} vi={vi} height={264} />
+          limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={264} />
       </div>, document.body)}
       {/* 총잔량은 **출처가 둘**이라 딤 조건도 둘이다. 시간외(0E·ka10087) 값이면
           커서 스팟 경로를 타지 않으므로 흐리지 않는다 — 사다리가 낡았다는 말이
@@ -380,13 +384,14 @@ export default function BookPanel({
 
 /** 10호가·주문창이 공유하는 시세 상세 정보. 계좌 잔고는 포함하지 않는다. */
 export function BookSummary({
-  summary, baselinePrice, limits = null, krxClose = null, vi = null,
+  summary, baselinePrice, limits = null, krxClose = null, krxPreviousClose = null, vi = null,
   height = ROW_H * SUMMARY_ROWS,
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
   limits?: BookStockLimits | null;
   krxClose?: number | null;
+  krxPreviousClose?: number | null;
   vi?: LiveViEvent | null;
   height?: number;
 }) {
@@ -395,15 +400,21 @@ export function BookSummary({
       <SummaryRow
         label="시작"
         value={fmtOr(summary.dayOpen)}
+        tooltipPrice={summary.dayOpen}
+        tooltipBaseline={krxPreviousClose}
       />
       <SummaryRow
         label="최고"
         value={fmtOr(summary.dayHigh)}
+        tooltipPrice={summary.dayHigh}
+        tooltipBaseline={krxPreviousClose}
         color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
       />
       <SummaryRow
         label="최저"
         value={fmtOr(summary.dayLow)}
+        tooltipPrice={summary.dayLow}
+        tooltipBaseline={krxPreviousClose}
         color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
       />
       <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
@@ -741,14 +752,25 @@ function SummaryRow({
   color,
   divider,
   highlight,
+  tooltipPrice = null,
+  tooltipBaseline = null,
 }: {
   label: string;
   value: string;
   color?: string;
   divider?: boolean;
   highlight?: boolean;
+  tooltipPrice?: number | null;
+  tooltipBaseline?: number | null;
 }) {
   const empty = value === '−';
+  const pct = tooltipPrice != null && Number.isFinite(tooltipPrice) && tooltipPrice > 0
+    && tooltipBaseline != null && Number.isFinite(tooltipBaseline) && tooltipBaseline > 0
+    ? (tooltipPrice / tooltipBaseline - 1) * 100 : null;
+  // Normalize rounded zero so a tiny negative change cannot display "-0.00%".
+  const roundedPct = pct == null ? null : Number(pct.toFixed(2));
+  const tooltipText = roundedPct == null ? '' : `전일 KRX 종가 대비 ${roundedPct > 0 ? '+' : ''}${roundedPct.toFixed(2)}%`;
+  const tip = useTextTooltip(tooltipText, 500, `book-price-tooltip ${priceDirClass(pct ?? 0)}`);
   return (
     <div
       className={`flex items-center justify-between gap-3 px-2 ${
@@ -760,12 +782,19 @@ function SummaryRow({
           개행으로 계약을 뚫는 대신 그리드의 가로 스크롤로 전가한다(min-w 철학). */}
       <span className="whitespace-nowrap text-xs text-fg-dim">{label}</span>
       <span
+        aria-label={tooltipText ? `${label} 가격 ${value}원` : undefined}
+        aria-describedby={tip.id}
+        tabIndex={tooltipText ? 0 : undefined}
+        onMouseEnter={e => tip.show(e.currentTarget)} onMouseLeave={tip.hide}
+        onFocus={e => tip.show(e.currentTarget)} onBlur={tip.hide}
+        onKeyDown={e => { if (e.key === 'Escape' && tooltipText) { e.stopPropagation(); tip.hide(); } }}
         className={`flex items-center whitespace-nowrap font-data text-sm tabular-nums ${
           color ?? (empty ? 'text-fg-dimmer' : 'text-fg')
         }`}
       >
         {value}
       </span>
+      {tip.tooltip}
     </div>
   );
 }

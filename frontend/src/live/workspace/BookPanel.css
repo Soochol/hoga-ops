@@ -18,3 +18,8 @@
 
 /* Twelve summary items fit ten ask rows; bid bars stay aligned. */
 .book-summary { --book-summary-row-height: calc(220px / 12); }
+/* The detail popover uses z=70; its portaled price tooltip must sit above it. */
+.book-price-tooltip { z-index:80; }
+.book-price-tooltip.text-price-up { color:var(--price-up); }
+.book-price-tooltip.text-price-down { color:var(--price-down); }
+.book-price-tooltip.text-fg-dim { color:var(--fg-dim); }

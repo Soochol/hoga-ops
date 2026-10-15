@@ -26,6 +26,7 @@ from hoga.live import (
     after_hours_store,
     kis_runtime,
     kiwoom_access,
+    kiwoom_daily_candles,
     kiwoom_index_rest,
     kiwoom_investor,
     kiwoom_minute_candles,
@@ -91,6 +92,7 @@ from hoga.live.kiwoom_rankings import (
 from hoga.live.kiwoom_rest import KiwoomRestClient, PageFetch
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoError, KiwoomStockInfoFetcher
 from hoga.live.krx_close import KrxCloseResponse, KrxCloseStore
+from hoga.live.krx_previous_close import KrxPreviousCloseResponse, KrxPreviousCloseStore
 from hoga.live.live_candle_backfill import LiveMinuteCandleBackfill
 from hoga.live.live_daily_candle_backfill import LiveDailyCandleBackfill
 from hoga.live.live_index_investor_net import LiveIndexInvestorNetFetcher
@@ -3096,6 +3098,47 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         return {"code": code, "vi": vi}
 
     krx_close_store = KrxCloseStore(data_dir)
+    krx_previous_close_store = KrxPreviousCloseStore(data_dir)
+
+    @router.get("/krx-previous-close", response_model=KrxPreviousCloseResponse)
+    async def _get_krx_previous_close(
+        code: str = Query(...), as_of: str = Query(..., pattern=r"^\d{8}$"),
+    ) -> KrxPreviousCloseResponse:
+        if not _CODE_RE.match(code):
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "code must be 6 digits"})
+        current = datetime.now(KST)
+        try:
+            reference_date = datetime.strptime(as_of, "%Y%m%d").date()
+        except ValueError as exc:
+            raise HTTPException(422, "as_of must be a valid YYYYMMDD date") from exc
+        if reference_date > current.date():
+            raise HTTPException(422, "as_of must not be in the future")
+
+        async def fetch_previous_daily(previous_date: str):
+            client = kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir else None
+            if client is None or live_settings.rest_bypass_enabled(data_dir):
+                raise HTTPException(503, {
+                    "code": LiveErrorCode.NOT_WIRED, "message": "kiwoom quote source unavailable",
+                })
+            scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+
+            def run_page(fetch_fn, page_idx: int):
+                return kiwoom_access.run_with_capacity(
+                    scheduler, key=("krx-previous-close", code, previous_date, page_idx),
+                    api_id="ka10081", priority="user_visible", fetch_fn=fetch_fn, client=client,
+                )
+
+            return await kiwoom_daily_candles.fetch_daily_candles(
+                client, code, previous_date, previous_date,
+                venue="KRX", adjust=False, adjusted_as_of=None, run_page=run_page,
+            )
+
+        try:
+            return await krx_previous_close_store.get(code, reference_date, current, fetch_previous_daily)
+        except (KiwoomRestError, KiwoomCapacityOverloaded, httpx.HTTPError) as exc:
+            raise HTTPException(502, {
+                "code": LiveErrorCode.KIWOOM_API_ERROR, "message": "Previous KRX closing price temporarily unavailable",
+            }) from exc
 
     @router.get("/krx-close", response_model=KrxCloseResponse)
     async def _get_krx_close(code: str = Query(...)) -> KrxCloseResponse:

@@ -49,6 +49,7 @@ import { useDailyProgramTradeHistory } from '../useDailyProgramTradeHistory';
 import { useProgramTradeDisplayStore } from '../../state/programTradeDisplay';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveKrxClose } from '../../api/liveKrxClose';
+import { useLiveKrxPreviousClose } from '../../api/liveKrxPreviousClose';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import {
@@ -348,6 +349,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 기준가에서 파생된 상하한가와 다르므로 아래에서 비운다.
   const stockLimits = useLiveStockLimits(code);
   const krxClose = useLiveKrxClose(isSpot ? null : code, todayKst);
+  const quoteDate = realMsToYyyymmdd(nowMs);
+  const krxPreviousClose = useLiveKrxPreviousClose(isSpot ? null : code, quoteDate);
   // VI 이벤트 상태(키움 1h) — 예상 발동가의 기준가 갱신 + 발동 중 강조.
   const viStatus = useLiveViStatus(code, effectiveVenue);
   // 동시호가 마스크(PR-D2): 스팟 커서가 종가 동시호가 구간(마감 10분)에 있고 전역
@@ -506,6 +509,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           onSelectSessionMode={selectSessionMode}
           baselinePrice={baselinePrice}
           krxClose={!isSpot && krxClose.data?.date === todayKst ? krxClose.data.price : null}
+          krxPreviousClose={!isSpot && krxPreviousClose.data?.as_of === quoteDate ? krxPreviousClose.data.price : null}
           summary={summary}
           trades={bookTrades}
           maskRatio={maskRatio}
