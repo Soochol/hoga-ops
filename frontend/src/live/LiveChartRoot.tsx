@@ -1,6 +1,6 @@
 import type { SeriesType } from 'lightweight-charts';
 import { barPitchPx } from '../chart/drawing/chartCoordinates';
-import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
 import { createChartEx, TickMarkType, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
@@ -248,6 +248,8 @@ function dailyLogicalRange(
 
 
 interface Props {
+  /** The owning chart toolbar uses this viewport for image export. */
+  imageViewportRef?: RefObject<HTMLDivElement>;
   hoverLinked?: boolean;
   indicatorLegendsVisible?: boolean;
   code: string | null;
@@ -465,6 +467,7 @@ interface Props {
 export function LiveChartRoot({
   hoverLinked = true,
   indicatorLegendsVisible = true,
+  imageViewportRef,
   code,
   timeframe,
   onSearchPattern,
@@ -2748,6 +2751,7 @@ export function LiveChartRoot({
   return (
     <div
       data-testid="live-chart-root"
+      ref={imageViewportRef}
       onContextMenu={(event) => event.preventDefault()}
       style={{ width: '100%', height: '100%', overflowY: 'auto', overflowX: 'hidden' }}
     >
