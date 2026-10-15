@@ -126,7 +126,11 @@ class PersistentCrosshair {
     const overlay = element.ownerDocument.createElement('div');
     overlay.dataset.persistentCrosshair = '';
     overlay.setAttribute('aria-hidden', 'true');
-    Object.assign(overlay.style, { position: 'absolute', inset: '0', pointerEvents: 'none', zIndex: '3' });
+    // Fractional DPR pane rounding can put the copied time-axis canvas just
+    // below the chart. The native widget clips its own canvases, but this
+    // absolute layer can have the outer chart surface as its containing block.
+    // Clip the snapshot itself so it cannot create a temporary scrollbar.
+    Object.assign(overlay.style, { position: 'absolute', inset: '0', overflow: 'hidden', pointerEvents: 'none', zIndex: '3' });
     for (const canvas of canvases) {
       const box = canvas.getBoundingClientRect();
       if (!canvas.width || !canvas.height || !box.width || !box.height) continue;

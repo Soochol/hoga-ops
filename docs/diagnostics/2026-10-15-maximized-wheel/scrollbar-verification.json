@@ -1,0 +1,162 @@
+{
+  "dateKst": "2026-10-15",
+  "base": "c1f2397a4776be2f44b56be89a88dcd7622c2cd2",
+  "node": "v24.13.1",
+  "playwright": "1.60.0",
+  "lightweightCharts": "5.2.0",
+  "chrome": "Google Chrome 155.0.8059.79",
+  "validatedInputDigest": "bc5cda02a264fb8b4ebcaf53610f0f7088db200252edab267d39ab1c27005c40",
+  "inputScope": [
+    "all tracked frontend/src and frontend/tests/e2e files",
+    "frontend package/lock/config/tsconfig files",
+    "frontend/tests/e2e/chart-scrollbar-jitter.spec.ts",
+    "docs/diagnostics/2026-10-15-maximized-wheel/scrollbar.playwright.config.mts"
+  ],
+  "inputCount": 1558,
+  "targetedHashes": {
+    "frontend/src/chart/persistentCrosshair.ts": "adeff97be2004454d4b5cd184a7c970ae68df0e4f3bda1b56894d6535ad529cb",
+    "frontend/src/chart/persistentCrosshair.test.ts": "600a4cab5ee8def7d54368d95b76b4741b553a897ba5bb5fd0a2c318c2a6a46a",
+    "frontend/src/chart/windowedChart.ts": "23c795a9dc6b74fdb8a2fdc8326b22d3e4e522be55d36a9241fba01b3840b553",
+    "frontend/tests/e2e/live-crosshair-persistence.spec.ts": "860c1de8db1836d21fd9a2e95902037ff3eac540a3b9330a2a76ef5af9d57e62",
+    "frontend/tests/e2e/chart-scrollbar-jitter.spec.ts": "8c0e7046243a2abb82af826be6486dbb5facc256112b36591cb9cf76e86982f1",
+    "docs/diagnostics/2026-10-15-maximized-wheel/scrollbar.playwright.config.mts": "6b5d27a919c2eee7bb3c9b80ff99f2f2e30f821bd2f1a6759c28be49eed9b9a0",
+    "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f"
+  },
+  "baseline": {
+    "command": "npm exec playwright -- test -c ../docs/diagnostics/2026-10-15-maximized-wheel/scrollbar.playwright.config.mts chart-scrollbar-jitter.spec.ts",
+    "failed": 2,
+    "note": "Removed only snapshot overflow:hidden for causal comparison; then restored the exact green source SHA-256.",
+    "measurements": [
+      {
+        "before": {
+          "h": 1292,
+          "sh": 1292,
+          "w": 2410,
+          "copies": 0
+        },
+        "during": {
+          "h": 1292,
+          "sh": 1293,
+          "w": 2410,
+          "copies": 5
+        },
+        "after": {
+          "h": 1292,
+          "sh": 1292,
+          "w": 2410,
+          "copies": 0
+        }
+      },
+      {
+        "height": 1486,
+        "samples": [
+          {
+            "h": 1292,
+            "sh": 1292,
+            "w": 2690,
+            "copies": 0
+          },
+          {
+            "h": 1292,
+            "sh": 1293,
+            "w": 2690,
+            "copies": 1
+          },
+          {
+            "h": 1292,
+            "sh": 1292,
+            "w": 2690,
+            "copies": 0
+          }
+        ]
+      }
+    ]
+  },
+  "fixed": {
+    "command": "npm exec playwright -- test -c ../docs/diagnostics/2026-10-15-maximized-wheel/scrollbar.playwright.config.mts",
+    "passed": 7,
+    "measurements": [
+      {
+        "before": {
+          "h": 1292,
+          "sh": 1292,
+          "w": 2410,
+          "copies": 0
+        },
+        "during": {
+          "h": 1292,
+          "sh": 1292,
+          "w": 2410,
+          "copies": 5
+        },
+        "after": {
+          "h": 1292,
+          "sh": 1292,
+          "w": 2410,
+          "copies": 0
+        }
+      },
+      {
+        "height": 1486,
+        "samples": [
+          {
+            "h": 1292,
+            "sh": 1292,
+            "w": 2690,
+            "copies": 0
+          },
+          {
+            "h": 1292,
+            "sh": 1292,
+            "w": 2690,
+            "copies": 1
+          },
+          {
+            "h": 1292,
+            "sh": 1292,
+            "w": 2690,
+            "copies": 0
+          }
+        ]
+      },
+      {
+        "height": 1424,
+        "samples": [
+          {
+            "h": 1230,
+            "sh": 1230,
+            "w": 2690,
+            "copies": 0
+          }
+        ]
+      }
+    ]
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm exec vitest -- run src/chart/persistentCrosshair.test.ts src/chart/windowedChart.test.ts src/live/LiveChartRoot.test.tsx",
+      "exitCode": 0,
+      "passed": 197
+    },
+    {
+      "command": "npm exec eslint -- src/chart/persistentCrosshair.ts tests/e2e/chart-scrollbar-jitter.spec.ts --quiet",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0
+    }
+  ],
+  "limitations": [
+    "Headless overlay scrollbars show overflow without a clientWidth change; both are asserted.",
+    "Existing mocked-screen ResizeObserver loop and large-chunk build warnings remain."
+  ]
+}
