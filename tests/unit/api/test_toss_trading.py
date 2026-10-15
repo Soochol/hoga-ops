@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import uuid
 from pathlib import Path
 
 import httpx
@@ -9,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 
 from hoga.api.trading_routes import build_router
-from hoga.trading.models import CreateTradingOrder, ModifyTradingOrder, TradingCommand
+from hoga.trading.models import CancelTradingOrders, CreateTradingOrder, ModifyTradingOrder, TradingCommand
 from hoga.trading.service import TradingService
 from hoga.trading.toss import TossClient, TradingError
 
@@ -39,6 +40,7 @@ def order(
 
 class Broker:
     def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
         self.posts: list[httpx.Request] = []
         self.open: list[dict] = []
         self.detail = order()
@@ -48,6 +50,7 @@ class Broker:
         self.currency = "KRW"
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
         path = request.url.path
         if path == "/oauth2/token":
             self.tokens += 1
@@ -280,6 +283,199 @@ async def test_bulk_cancel_records_partial_failures_and_never_crosses_side(setup
     assert [r["order_id"] for r in response.json()["results"]] == ["a", "c"]
     assert not any(r["accepted"] for r in response.json()["results"])
     assert len(broker.posts) == 1
+
+
+async def test_twenty_bulk_cancels_overlap_with_one_fresh_list_and_no_detail_reads(setup):
+    broker, service, api = setup
+    broker.open = [order(str(i)) for i in range(20)]
+    # A cached display snapshot must not determine the targets.
+    await service.order_state(1, "005930")
+    broker.open.append(order("latest"))
+    broker.requests.clear()
+    entered, release = asyncio.Event(), asyncio.Event()
+    started: list[str] = []
+    original = broker.handle
+
+    async def delayed(request):
+        if request.method == "POST":
+            started.append(request.url.path)
+            if len(started) == 10:
+                entered.set()
+            await release.wait()
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(delayed))
+    body = {"account_seq": 1, "code": "005930", "command_id": "fast-bulk"}
+    task = asyncio.create_task(api.post("/api/trading/cancel-all", json=body, headers={"X-Hoga-Order": "1"}))
+    concurrent = None
+    try:
+        await asyncio.wait_for(entered.wait(), 3)
+        assert len(started) == 10  # Multiple requests sent before ANY response, bounded in flight.
+        assert not task.done()
+        concurrent = asyncio.create_task(api.post(
+            "/api/trading/cancel-all", json=body, headers={"X-Hoga-Order": "1"},
+        ))
+        await asyncio.sleep(0)
+    finally:
+        release.set()
+        response = await task
+        duplicate = await concurrent if concurrent else None
+    assert response.status_code == 200
+    assert duplicate.json() == response.json()
+    assert [r["order_id"] for r in response.json()["results"]] == [str(i) for i in range(20)] + ["latest"]
+    assert all(r["accepted"] for r in response.json()["results"])
+    reads = [r for r in broker.requests if r.method == "GET"]
+    assert [(r.url.path, dict(r.url.params)) for r in reads] == [
+        ("/api/v1/orders", {"status": "OPEN", "symbol": "005930"}),
+    ]
+    assert len(broker.posts) == len(set(started)) == 21
+    again = await api.post("/api/trading/cancel-all", json=body, headers={"X-Hoga-Order": "1"})
+    assert again.json() == response.json()
+    assert len(broker.posts) == 21
+
+
+@pytest.mark.parametrize("other_action", ["bulk", "cancel", "modify"])
+async def test_overlapping_bulk_and_other_commands_never_send_two_changes_to_one_order(
+    setup, monkeypatch, other_action,
+):
+    broker, service, _ = setup
+    broker.open = [order()]
+    entered, registered, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    original = broker.handle
+    begin = service.journal.begin
+    child_ids: set[str] = set()
+
+    def record_begin(command_id, payload):
+        result = begin(command_id, payload)
+        if payload["order_id"] == "old":
+            child_ids.add(command_id)
+            if len(child_ids) == 2:
+                registered.set()
+        return result
+
+    monkeypatch.setattr(service.journal, "begin", record_begin)
+
+    async def delayed(request):
+        if request.method == "POST" and request.url.path.startswith("/api/v1/orders/"):
+            entered.set()
+            await release.wait()
+        return await original(request)
+
+    await service.client.http.aclose()
+    service.client.http = httpx.AsyncClient(base_url=TossClient.BASE_URL, transport=httpx.MockTransport(delayed))
+    first = asyncio.create_task(service.cancel_all(
+        CancelTradingOrders(account_seq=1, code="005930", command_id="first"),
+    ))
+    second = None
+    try:
+        await asyncio.wait_for(entered.wait(), 3)
+        if other_action == "bulk":
+            operation = service.cancel_all(CancelTradingOrders(account_seq=1, code="005930", command_id="second"))
+        else:
+            command = (
+                ModifyTradingOrder(account_seq=1, code="005930", command_id="second", price=67000)
+                if other_action == "modify" else TradingCommand(account_seq=1, code="005930", command_id="second")
+            )
+            operation = service.execute(command, other_action, "old")
+        second = asyncio.create_task(operation)
+        await asyncio.wait_for(registered.wait(), 3)
+    finally:
+        release.set()
+        first_result = await first
+        second_result = (await asyncio.gather(second, return_exceptions=True))[0] if second else None
+    assert first_result.results[0].accepted
+    if other_action == "bulk":
+        assert second_result.results[0].code == "order-processing"
+    else:
+        assert isinstance(second_result, TradingError)
+        assert second_result.code == "order-processing"
+    assert len(broker.posts) == 1
+
+
+@pytest.mark.parametrize("failure", ["", "timeout"])
+async def test_bulk_cancel_restart_different_request_id_never_repeats_accepted_or_unknown_write(setup, failure):
+    broker, service, _ = setup
+    broker.open = [order()]
+    broker.failure = failure
+    first = await service.cancel_all(CancelTradingOrders(account_seq=1, code="005930", command_id="before-restart"))
+    assert first.results[0].accepted == (not failure)
+    restarted = TradingService(service.journal.path.parents[1], service.client)
+    try:
+        second = await restarted.cancel_all(
+            CancelTradingOrders(account_seq=1, code="005930", command_id="after-restart"),
+        )
+        assert not second.results[0].accepted
+        assert second.results[0].code == ("unresolved-order-exists" if failure else "order-processing")
+    finally:
+        await restarted.close()
+    assert len(broker.posts) == 1
+
+
+async def test_bulk_restart_keeps_frozen_targets_and_uses_fresh_status(setup):
+    broker, service, _ = setup
+    command = CancelTradingOrders(account_seq=1, code="005930", command_id="interrupted-batch")
+    service.journal.begin(command.command_id, {**command.model_dump(), "action": "bulk", "order_id": ""})
+    service.journal.finish(command.command_id, "batch", {"targets": [{"id": "old", "status": "PARTIAL_FILLED"}]})
+    broker.open = [order(status="PENDING_CANCEL"), order("created-later")]
+    result = await service.cancel_all(command)
+    assert [r.order_id for r in result.results] == ["old"]
+    assert result.results[0].code == "order-not-editable"
+    assert not broker.posts
+
+
+async def test_interrupted_bulk_resumes_only_unsent_targets_and_keeps_child_results(setup):
+    broker, service, _ = setup
+    command = CancelTradingOrders(account_seq=1, code="005930", command_id="partial-batch")
+    service.journal.begin(command.command_id, {**command.model_dump(), "action": "bulk", "order_id": ""})
+    service.journal.finish(command.command_id, "batch", {
+        "targets": [{"id": oid, "status": "PARTIAL_FILLED"} for oid in ("accepted", "unknown", "unsent")],
+    })
+    for oid in ("accepted", "unknown"):
+        child = TradingCommand(
+            account_seq=1, code="005930",
+            command_id=str(uuid.uuid5(uuid.NAMESPACE_URL, f"{command.command_id}:{oid}")),
+        )
+        broker.failure = "timeout" if oid == "unknown" else ""
+        try:
+            await service.execute(child, "cancel", oid)
+        except TradingError as error:
+            assert error.code == "order-outcome-unknown"
+    broker.failure = ""
+    broker.open = [order(oid) for oid in ("accepted", "unknown", "unsent", "created-later")]
+    restarted = TradingService(service.journal.path.parents[1], service.client)
+    try:
+        result = await restarted.cancel_all(command)
+        assert [r.order_id for r in result.results] == ["accepted", "unknown", "unsent"]
+        assert [r.accepted for r in result.results] == [True, False, True]
+        assert result.results[1].code == "order-outcome-unknown"
+        assert await restarted.cancel_all(command) == result
+    finally:
+        await restarted.close()
+    assert [r.url.path for r in broker.posts] == [
+        f"/api/v1/orders/{oid}/cancel" for oid in ("accepted", "unknown", "unsent")
+    ]
+
+
+@pytest.mark.parametrize("kind", ["foreign", "terminal-event", "zero-remainder", "duplicate"])
+async def test_bulk_snapshot_preserves_context_and_order_guards(setup, kind):
+    broker, service, _ = setup
+    await service.authorize(1)
+    broker.open = [order()]
+    if kind == "foreign":
+        broker.open = [order(code="000660")]
+    elif kind == "terminal-event":
+        service.order_event({
+            "topic": "personal:order:1", "data": {"accountSeq": "1", "order": order(status="CANCELED")},
+        })
+    elif kind == "zero-remainder":
+        broker.open = [order(filled="100")]
+    else:
+        broker.open *= 2
+    result = await service.cancel_all(CancelTradingOrders(account_seq=1, code="005930", command_id="guarded-bulk"))
+    assert len(result.results) == 1
+    assert result.results[0].accepted == (kind == "duplicate")
+    assert len(broker.posts) == (1 if kind == "duplicate" else 0)
 
 
 async def test_unknown_operation_on_same_order_is_blocked_until_explicit_review(setup):
