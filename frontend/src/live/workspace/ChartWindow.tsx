@@ -49,7 +49,7 @@ import {
 } from './groupChartLinkSource';
 import { TimeframeControl } from '../TimeframeControl';
 import { DrawingMenu } from '../DrawingMenu';
-import { ChartCaptureMenu } from '../../chart/ChartCaptureMenu';
+import { ChartCaptureActions } from '../../chart/ChartCaptureActions';
 import { IndicatorsButton } from '../LiveToolbar';
 import { requestIndicatorDrawer } from './indicatorDrawerControls';
 import { useChartHeaderFold } from './useChartHeaderCompact';
@@ -881,11 +881,11 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         )}
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-1">
           <span aria-hidden className="live-chart-toolbar-divider" />
-          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} />
-          <ChartCaptureMenu key={`${d.workareaCode}|${view.timeframe}`} viewportRef={imageViewportRef}
+          <IndicatorsButton onClick={() => requestIndicatorDrawer(win.id)} showLabel={false} />
+          <ChartCaptureActions key={`${d.workareaCode}|${view.timeframe}`} viewportRef={imageViewportRef}
             code={d.workareaCode} timeframe={view.timeframe}
             available={!!(d.workareaChartBundle ?? d.workareaBundle)?.candles.length && !d.workareaCandleEmpty} />
-          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} />
+          <DrawingMenu code={d.workareaCode} timeframe={view.timeframe} showLabel={false} />
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
             showLabel={false} />}

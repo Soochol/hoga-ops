@@ -3,7 +3,8 @@ import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiPrefix } from './helpers/apiRoutes';
 
-test('chart toolbar menu saves a rendered PNG and copies an image to the clipboard', async ({ page, context }, testInfo) => {
+test('chart toolbar icon buttons save a rendered PNG and copy an image to the clipboard', async ({ page, context }, testInfo) => {
+  await page.setViewportSize({ width: 2000, height: 900 });
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await installLiveMocks(page);
   await page.route(apiPrefix('live/past-daily-candles'), route => route.fulfill({ json: {
@@ -24,19 +25,26 @@ test('chart toolbar menu saves a rendered PNG and copies an image to the clipboa
   const chart = page.getByTestId('live-chart-root');
   await expect(chart.locator('.legend-ohlc-open')).toBeVisible();
   const toolbar = page.getByTestId('chart-window-header');
-  const menuButton = toolbar.getByRole('button', { name: '차트 메뉴', exact: true });
-  await expect(menuButton).toBeVisible();
+  const copyButton = toolbar.getByRole('button', { name: '차트 이미지 복사', exact: true });
+  const saveButton = toolbar.getByRole('button', { name: 'PNG로 저장', exact: true });
+  await expect(copyButton).toBeVisible();
+  await expect(saveButton).toBeVisible();
+  await expect(toolbar.getByRole('button', { name: '차트 메뉴', exact: true })).toHaveCount(0);
+  await expect(toolbar.locator('.live-action-label')).toHaveCount(0);
+  for (const button of [copyButton, saveButton, toolbar.getByRole('button', { name: '보조지표', exact: true })]) {
+    await expect(button).toHaveText('');
+    await expect(button).toHaveAttribute('title', /.+/);
+  }
+  await expect(toolbar.getByRole('button', { name: '그리기', exact: true })).not.toContainText('그리기');
   const indicatorBounds = await toolbar.getByRole('button', { name: '보조지표', exact: true }).boundingBox();
-  const menuBounds = await menuButton.boundingBox();
-  expect(menuBounds!.x).toBeGreaterThan(indicatorBounds!.x);
-  expect(menuBounds!.y).toBe(indicatorBounds!.y);
+  const copyBounds = await copyButton.boundingBox();
+  expect(copyBounds!.x).toBeGreaterThan(indicatorBounds!.x);
+  expect(copyBounds!.y).toBe(indicatorBounds!.y);
   await chart.click({ button: 'right', position: { x: 160, y: 120 } });
   await expect(page.getByRole('menu', { name: '캔들 차트' })).toHaveCount(0);
-  await menuButton.click();
-  await expect(page.getByRole('menu', { name: '캔들 차트' })).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath('chart-toolbar-menu.png') });
+  await page.screenshot({ path: testInfo.outputPath('chart-toolbar-icons.png') });
   const downloadPromise = page.waitForEvent('download');
-  await page.getByRole('menuitem', { name: 'PNG로 저장' }).click();
+  await saveButton.click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^chart_098460_D_\d{8}_\d{6}\.png$/);
   const imagePath = testInfo.outputPath('chart-export.png');
@@ -49,8 +57,7 @@ test('chart toolbar menu saves a rendered PNG and copies an image to the clipboa
   expect(png.length).toBeGreaterThan(5000);
   await expect(page.getByRole('menu', { name: '캔들 차트' })).toHaveCount(0);
 
-  await menuButton.click();
-  await page.getByRole('menuitem', { name: '차트 이미지 복사' }).click();
+  await copyButton.click();
   await expect(page.getByText('차트 이미지를 복사했습니다', { exact: true })).toBeVisible();
   const clipboard = await page.evaluate(async () => {
     const items = await navigator.clipboard.read();

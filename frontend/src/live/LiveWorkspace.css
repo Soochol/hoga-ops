@@ -112,6 +112,3 @@
   .live-chart-toolbar .ui-toolbar-button, .live-chart-toolbar [data-testid='drawing-menu-trigger'] { padding-inline: 4px; }
   .live-chart-toolbar-divider { display: none; }
 }
-@container (min-width: 640px) {
-  .live-chart-toolbar .live-action-label { display: inline; }
-}
