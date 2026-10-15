@@ -1,6 +1,7 @@
 export type OrderInputUnit = 'quantity' | 'amount';
 export type OrderPresets = [number, number, number];
 export interface OrderWindowSettings {
+  /** Selects quick-entry presets only; the order input and payload always use shares. */
   unit: OrderInputUnit;
   quantityPresets: OrderPresets;
   amountPresets: OrderPresets;
@@ -43,7 +44,7 @@ export function normalizeOrderSettings(raw: unknown): OrderWindowSettings {
   };
 }
 
-/** Convert at the clicked limit price, using whole shares and no fee allowance. */
+/** Convert at the current price when a preset is applied, using whole shares. */
 export function quantityForAmount(millions: number, price: number): number | null {
   if (!validOrderInput(millions, 'amount') || !Number.isSafeInteger(price) || price <= 0) return null;
   return Math.floor(millions * MILLION_WON / price);
