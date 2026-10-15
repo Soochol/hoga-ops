@@ -99,13 +99,18 @@ async function drag(page: Page, from: Locator, to: Locator) {
 }
 
 test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
-  // Observe the real Web Audio node without replacing playback or autoplay policy.
+  // Observe the real Web Audio buffer without replacing playback or autoplay policy.
   await page.addInitScript(() => {
-    const observed = globalThis.window as unknown as { __orderSoundStates: string[] };
+    const observed = globalThis.window as unknown as {
+      __orderSoundStates: string[]; __orderSoundDurations: number[]; __orderAudio: AudioContext;
+    };
     observed.__orderSoundStates = [];
-    const start = OscillatorNode.prototype.start;
-    OscillatorNode.prototype.start = function (when?: number) {
+    observed.__orderSoundDurations = [];
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when?: number) {
       observed.__orderSoundStates.push(this.context.state);
+      observed.__orderSoundDurations.push(this.buffer!.duration);
+      observed.__orderAudio = this.context as AudioContext;
       start.call(this, when);
     };
   });
@@ -119,6 +124,7 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   await expect(dialog.getByRole('slider')).toHaveCount(0);
   await dialog.getByRole('button', { name: '소리 들어보기', exact: true }).click();
   await expect.poll(soundStates).toEqual(['running']);
+  expect(await page.evaluate(() => (globalThis.window as unknown as { __orderSoundDurations: number[] }).__orderSoundDurations[0])).toBeCloseTo(0.33, 3);
   expect(commands).toHaveLength(0);
   await checkbox.check();
   await dialog.screenshot({ path: testInfo.outputPath('order-sound-settings.png') });
@@ -146,6 +152,16 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   await expect(receipt).toHaveText('주문 요청 접수됨');
   await expect.poll(soundStates).toEqual(['running']);
 
+  await page.evaluate(async () => {
+    const observed = globalThis.window as unknown as { __orderAudio: AudioContext };
+    await observed.__orderAudio.suspend();
+    globalThis.window.dispatchEvent(new Event('focus'));
+  });
+  await expect.poll(() => page.evaluate(() => (globalThis.window as unknown as { __orderAudio: AudioContext }).__orderAudio.state)).toBe('running');
+  expect(await soundStates()).toEqual(['running']); // Recovery never replays a receipt.
+  await buy.dblclick();
+  await expect.poll(soundStates).toEqual(['running', 'running']);
+
   await settings.click();
   await checkbox.uncheck();
   await dialog.getByRole('button', { name: '적용', exact: true }).click();
@@ -153,7 +169,49 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   await buy.dblclick();
   await response;
   await expect(receipt).toHaveText('주문 요청 접수됨');
-  expect(await soundStates()).toEqual(['running']);
+  expect(await soundStates()).toEqual(['running', 'running']);
+});
+
+test('오디오 재생 거절은 주문 접수를 유지하고 복구 후 다음 주문만 재생한다', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const observed = globalThis.window as unknown as { __soundBlocked: boolean; __soundStarts: number };
+    observed.__soundBlocked = true; observed.__soundStarts = 0;
+    const NativeAudio = globalThis.AudioContext;
+    globalThis.AudioContext = class extends NativeAudio {
+      get state(): AudioContextState { return observed.__soundBlocked ? 'suspended' : super.state; }
+      resume() {
+        return observed.__soundBlocked ? Promise.reject(new DOMException('Playback blocked', 'NotAllowedError')) : super.resume();
+      }
+    };
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when?: number) {
+      observed.__soundStarts++;
+      start.call(this, when);
+    };
+  });
+  const starts = () => page.evaluate(() => (globalThis.window as unknown as { __soundStarts: number }).__soundStarts);
+  const { window, commands } = await setup(page);
+  await window.getByRole('button', { name: '주문 설정', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  await dialog.getByRole('checkbox', { name: '주문접수 소리', exact: true }).check();
+  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await buy.dblclick();
+  const receipt = page.getByRole('status', { name: '주문 접수 알림' });
+  await expect(receipt).toHaveText('주문은 접수됐지만 알림음을 재생하지 못했습니다');
+  await expect(page.getByRole('button', { name: '같은 요청 다시 확인' })).toHaveCount(0);
+  expect(commands).toHaveLength(1);
+  expect(await starts()).toBe(0);
+  await receipt.screenshot({ path: testInfo.outputPath('order-sound-unavailable.png') });
+  await page.evaluate(() => {
+    (globalThis.window as unknown as { __soundBlocked: boolean }).__soundBlocked = false;
+    globalThis.window.dispatchEvent(new Event('focus'));
+  });
+  expect(await starts()).toBe(0);
+  await buy.dblclick();
+  await expect(receipt).toHaveText('주문 요청 접수됨');
+  await expect.poll(starts).toBe(1);
+  expect(commands).toHaveLength(2);
 });
 
 test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하며 보유종목으로 이동한다', async ({ page }, testInfo) => {

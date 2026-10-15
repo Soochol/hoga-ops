@@ -10,11 +10,12 @@ import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
-import { notifyOrderReceiptAccepted, playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
+import { notifyOrderReceiptAccepted, playOrderReceiptSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import type { LiveAfterHoursBookResponse } from '../../api/liveAfterHoursBook';
 
 vi.mock('./orderReceiptSound', () => ({
   notifyOrderReceiptAccepted: vi.fn(), playOrderReceiptSound: vi.fn(), prepareOrderReceiptSound: vi.fn(),
+  subscribeOrderReceiptSoundRecovery: vi.fn(),
 }));
 
 const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
@@ -59,13 +60,50 @@ function enableReceiptSound() {
 }
 beforeEach(() => {
   afterHoursBook.data = undefined;
-  vi.mocked(notifyOrderReceiptAccepted).mockReset();
+  vi.mocked(notifyOrderReceiptAccepted).mockReset().mockResolvedValue(true);
   vi.mocked(prepareOrderReceiptSound).mockReset();
   vi.mocked(playOrderReceiptSound).mockReset().mockResolvedValue(true);
+  vi.mocked(subscribeOrderReceiptSoundRecovery).mockReset().mockReturnValue(() => {});
 });
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('켜진 주문창만 화면 복귀 복구를 구독하고 끄기·닫기에서 해제한다', () => {
+    const cleanup = vi.fn();
+    vi.mocked(subscribeOrderReceiptSoundRecovery).mockReturnValue(cleanup);
+    const view = show();
+    expect(subscribeOrderReceiptSoundRecovery).not.toHaveBeenCalled();
+    enableReceiptSound();
+    expect(subscribeOrderReceiptSoundRecovery).toHaveBeenCalledOnce();
+    enableReceiptSound(); // Toggle off and apply.
+    expect(cleanup).toHaveBeenCalledOnce();
+    enableReceiptSound();
+    view.unmount();
+    expect(cleanup).toHaveBeenCalledTimes(2);
+  });
+  it.each([false, 'reject'])('오디오 실패 %s는 접수 성공을 유지하며 주문 재확인을 만들지 않는다', async result => {
+    if (result === 'reject') vi.mocked(notifyOrderReceiptAccepted).mockRejectedValue(new Error('audio unavailable'));
+    else vi.mocked(notifyOrderReceiptAccepted).mockResolvedValue(false);
+    show(); enableReceiptSound();
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    await screen.findByText('주문은 접수됐지만 알림음을 재생하지 못했습니다');
+    expect(screen.getByRole('status', { name: '주문 접수 알림' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
+    expect(mock.command).toHaveBeenCalledOnce();
+  });
+  it('이전 접수음의 늦은 실패가 다음 주문의 접수 알림을 덮어쓰지 않는다', async () => {
+    let failFirst!: (started: boolean) => void;
+    vi.mocked(notifyOrderReceiptAccepted).mockReturnValueOnce(new Promise(resolve => { failFirst = resolve; }));
+    show(); enableReceiptSound();
+    const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    fireEvent.doubleClick(buy);
+    await screen.findByText('주문 요청 접수됨');
+    fireEvent.doubleClick(buy);
+    await waitFor(() => expect(notifyOrderReceiptAccepted).toHaveBeenCalledTimes(2));
+    await act(async () => failFirst(false));
+    expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 접수됨');
+  });
   it('시간외 단일가에서도 두 창의 툴팁은 당일 종가 대신 직전 KRX 종가를 쓴다', async () => {
     symbolMaster.nxtEnabled = false;
     // A stored single-price ladder exercises the same baseline switch outside trading hours.

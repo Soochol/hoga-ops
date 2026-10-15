@@ -38,7 +38,7 @@ import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
-import { notifyOrderReceiptAccepted, prepareOrderReceiptSound } from './orderReceiptSound';
+import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -69,6 +69,9 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   const [selectedAccount, selectAccount] = useState(0);
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
   const preferences = settings ?? localSettings;
+  useEffect(() => {
+    if (preferences.orderReceiptSound) return subscribeOrderReceiptSoundRecovery();
+  }, [preferences.orderReceiptSound]);
   const [quantity, setQuantity] = useState<number | null>(() => preferences.quantityPresets[0]);
   const [quantityCode, setQuantityCode] = useState(code);
   const [profitAsPercent, setProfitAsPercent] = useState(false);
@@ -140,7 +143,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
   const [notice, setNotice] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<{ text: string; sending: boolean } | null>(null);
+  const [receipt, setReceipt] = useState<{ text: string; sending: boolean; commandId: string } | null>(null);
   useEffect(() => {
     if (!receipt || receipt.sending) return;
     const timer = window.setTimeout(() => setReceipt(null), 4_000);
@@ -306,7 +309,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     busyRef.current = true; setBusy(true); setNotice(null); setFailedRequest(null);
     const resumeRefresh = pauseTradingRefresh(client, mode, account);
     const label = next.type === 'create' ? '주문' : (next.operation ?? next.type) === 'modify' ? '정정' : '취소';
-    setReceipt({ text: `${label} 요청 중`, sending: true });
+    setReceipt({ text: `${label} 요청 중`, sending: true, commandId: next.base.command_id });
     let retryAction = next;
     let accepted = true;
     try {
@@ -340,7 +343,13 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         if (next.type === 'create') {
           const body: CreateTradingOrder = { ...next.base, side: next.side!, price: next.price, quantity: next.quantity!, confirm_high_value: high };
           response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
-          if (preferences.orderReceiptSound) notifyOrderReceiptAccepted(account, next.base.command_id);
+          if (preferences.orderReceiptSound) {
+            const soundFailed = () => setReceipt(current => current?.commandId === next.base.command_id && !current.sending
+              ? { ...current, text: '주문은 접수됐지만 알림음을 재생하지 못했습니다' } : current);
+            void notifyOrderReceiptAccepted(account, next.base.command_id).then(started => {
+              if (!started) soundFailed();
+            }, soundFailed);
+          }
         } else {
           const path = `/orders/${encodeURIComponent(next.order!.orderId)}/${next.type}`;
           if (next.type === 'modify') {
@@ -352,7 +361,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         }
       }
       closeAction();
-      setReceipt(accepted ? { text: `${label} 요청 접수됨`, sending: false } : null);
+      setReceipt(accepted ? { text: `${label} 요청 접수됨`, sending: false, commandId: next.base.command_id } : null);
     } catch (error) {
       setReceipt(null);
       setNotice(error instanceof Error ? error.message : '주문 처리 결과를 확인하세요.');
