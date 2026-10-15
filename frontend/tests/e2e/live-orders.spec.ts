@@ -1517,19 +1517,19 @@ test('가격 칸의 우클릭 목록에서 한 주문을 호가 밖으로 드래
   expect(commands).toHaveLength(1);
 });
 
-test('호가 밖 주문도 드래그로 사다리에 정정하고 밖으로 끌어 즉시 취소한다', async ({ page }) => {
+test('하단의 호가 밖 주문 뱃지는 숨기고 미체결 주문 목록에서 조회·취소한다', async ({ page }) => {
   const { window, commands } = await setup(page, [mkOrder('outside', '70000')]);
-  const outside = window.getByRole('button', { name: '호가 밖 매수 70,000원 주문', exact: true });
-  await outside.click();
-  await expect(window.getByRole('group', { name: '주문 확인' })).toHaveCount(0);
+  await expect(window.locator('.order-outside')).toHaveCount(0);
+  await expect(window.getByRole('button', { name: '호가 밖 매수 70,000원 주문', exact: true })).toHaveCount(0);
+  await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: '계좌 목록' });
+  await expect(panel.getByRole('cell', { name: '70,000', exact: true })).toBeVisible();
+  await expect(panel.getByRole('cell', { name: '70', exact: true })).toBeVisible();
   expect(commands).toHaveLength(0);
-  await drag(page, outside, window.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
-  const moved = window.getByLabel('매수 67,200원 주문', { exact: true });
-  await expect(moved).toHaveText('70');
-  expect(commands[0]).toMatchObject({ price: 67200, quantity: null });
-  await drag(page, moved, window.getByRole('button', { name: '주문 설정', exact: true }));
-  await expect(window.locator('[data-drag-order]')).toHaveCount(0);
-  expect(commands).toHaveLength(2);
+  await panel.getByRole('button', { name: '삼성전자 매수 주문 1 취소', exact: true }).click();
+  await expect(panel.getByRole('status')).toHaveText('삼성전자 취소 요청 접수됨');
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({ account_seq: 1, code: '005930' });
 });
 
 test('고액 실계좌 신규·드래그 정정의 기존 확인은 입력창 없이 팝업에서 유지한다', async ({ page }) => {
