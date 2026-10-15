@@ -33,6 +33,7 @@ import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingBookMarker, hol
 import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, ExpectedFillBanner, TotalQtyStrip } from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
+import { bookDayMarkers } from './bookDayMarkers';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
@@ -240,6 +241,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
   const prices = asks.concat(bids);
+  const dayMarkers = bookDayMarkers(prices.map(level => level.price), summary);
   const showInlineSummary = expanded && prices.length > 0;
   const onScreen = new Set(prices.map(l => l.price));
   const maxQty = Math.max(1, ...prices.map(l => l.qty));
@@ -626,7 +628,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
             {orderCell('SELL', level.price, key)}
             {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
               : info}
-            <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker price={level.price} summary={summary} />
+            <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
               {index === averageMarkerIndex && <span className="order-average-marker" role="img" aria-label={averageMarkerLabel} title={averageMarkerLabel} />}
               {level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {isAsk ? <div className="order-summary-slot" />
