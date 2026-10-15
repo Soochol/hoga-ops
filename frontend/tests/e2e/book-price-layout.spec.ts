@@ -8,12 +8,13 @@ for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as
     await expect(grid.locator('.font-data.text-base')).toHaveCount(askCount + bidCount);
     for (const width of [640, 409]) {
       await page.locator('#fixture').evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
-      await expect(panel.locator('.book-inline-summary')).toBeHidden();
+      if (width >= 531) await expect(panel.locator('.book-inline-summary')).toBeVisible();
+      else await expect(panel.locator('.book-inline-summary')).toBeHidden();
       await expect(async () => {
-        const rows = await grid.evaluate(el => {
+        const rows = await grid.evaluate((el, askCount) => {
           const [left, center, right] = Array.from(el.children);
-          const prices = Array.from(center.children).slice(1);
-          const askBars = Array.from(left.children).slice(1, left.children.length - 2);
+          const prices = Array.from(center.children);
+          const askBars = Array.from(left.children).slice(0, askCount);
           const bidBars = Array.from(right.children).slice(1);
           const bars = [...askBars, ...bidBars];
           return prices.map((price, i) => ({
@@ -22,7 +23,7 @@ for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as
             priceHeight: price.getBoundingClientRect().height,
             barHeight: bars[i].getBoundingClientRect().height,
           }));
-        });
+        }, askCount);
         expect(rows).toHaveLength(askCount + bidCount);
         for (const row of rows) {
           expect(row.text).not.toContain('—');
@@ -32,6 +33,10 @@ for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as
         }
       }).toPass({ timeout: 5000 });
       const info = panel.getByRole('button', { name: '종목 상세 정보' });
+      if (width >= 531) {
+        await expect(info).toBeHidden();
+        continue;
+      }
       await expect(info).toBeVisible();
       await info.click();
       const dialog = page.getByRole('dialog', { name: '종목 상세 정보' });
@@ -43,6 +48,35 @@ for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as
     await panel.screenshot({ path: testInfo.outputPath(`${depth}-book.png`) });
   });
 }
+
+test('10호가는 부분·한쪽 호가에서도 사다리 중앙에 경계를 고정하고 작은 창에서는 스크롤한다', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  for (const depth of ['full', 'partial', 'five', 'ask-only', 'bid-only']) {
+    await page.goto(`/tests/e2e/fixtures/book-price-layout.html?depth=${depth}`);
+    const panel = page.locator('.book-panel');
+    const region = panel.getByRole('region', { name: '10호가 사다리와 요약' });
+    await page.locator('#fixture').evaluate(el => { Object.assign((el as HTMLElement).style, { width: '640px', height: '840px' }); });
+    await expect(panel.locator('.book-inline-summary')).toBeVisible();
+    await expect(async () => {
+      const layout = await panel.evaluate(el => {
+        const region = el.querySelector('.book-scroll-region')!.getBoundingClientRect();
+        const grid = el.querySelector('.book-panel-grid')!.getBoundingClientRect();
+        return { center: region.y + region.height / 2, gridCenter: grid.y + grid.height / 2,
+          dividers: [...el.querySelectorAll('[data-book-divider]')].map(node => node.getBoundingClientRect().y) };
+      });
+      expect(layout.gridCenter).toBeCloseTo(layout.center, 1);
+      expect(layout.dividers).toHaveLength(3);
+      for (const divider of layout.dividers) expect(divider).toBeCloseTo(layout.center, 1);
+    }).toPass();
+    if (depth === 'partial') await panel.screenshot({ path: testInfo.outputPath('ten-level-partial-centered.png') });
+    await page.locator('#fixture').evaluate(el => { (el as HTMLElement).style.height = '240px'; });
+    await expect.poll(() => region.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+    await expect(panel.locator('.book-panel-grid')).toHaveCSS('height', '440px');
+    await region.evaluate(el => { el.scrollTop = el.scrollHeight; });
+    await expect.poll(() => region.evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop))).toBeLessThan(1);
+    if (depth !== 'ask-only') await expect(panel.locator('.book-panel-grid > div').nth(1).locator('.font-data.text-base').last()).toBeInViewport();
+  }
+});
 
 // Real font metrics and container queries are unavailable in jsdom.
 test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 하한 스크롤', async ({ page }) => {

@@ -147,7 +147,7 @@ describe('BookPanel', () => {
     expect(screen.getByText('-3.33%')).toBeInTheDocument(); // 246,500
   });
 
-  it('빈 호가는 제거하고 4단 매도·3단 매수의 가격과 잔량을 함께 정렬한다', () => {
+  it('4단 매도·3단 매수에서도 빈 가격 없이 10행 공간과 잔량 정렬을 유지한다', () => {
     const empty = { price: 0, qty: 0 };
     const snapshot = {
       ...snap(),
@@ -158,7 +158,8 @@ describe('BookPanel', () => {
     const { container } = renderPanel({ snapshot, trades, lastPrice: 241_000 });
     const grid = container.querySelector('.book-panel-grid')!;
     const [left, center, right] = Array.from(grid.children);
-    expect(grid).toHaveClass('book-panel-short');
+    expect(left).toHaveStyle({ paddingTop: '132px' }); // 빈 매도6 × 22
+    expect(center).toHaveStyle({ paddingTop: '132px', paddingBottom: '154px' });
     expect(Array.from(center.children).map(row => row.textContent)).toEqual([
       '242,500-4.90%', '242,000-5.10%', '241,500-5.29%', '241,000-5.49%',
       '241,000-5.49%', '240,500-5.69%', '240,000-5.88%',
@@ -167,7 +168,7 @@ describe('BookPanel', () => {
     expect(left.children).toHaveLength(14); // 매도4 + 체결강도1 + 체결9
     expect(center.children).toHaveLength(7); // 매도4 + 매수3
     expect(right.children).toHaveLength(4); // 요약 슬롯1 + 매수3
-    expect((right.children[0] as HTMLElement).style.height).toBe('88px'); // 매도4 × 22
+    expect((right.children[0] as HTMLElement).style.height).toBe('220px');
     expect(within(grid as HTMLElement).queryByText('—')).not.toBeInTheDocument();
     expect(within(grid as HTMLElement).queryByText('0')).not.toBeInTheDocument();
     expect(grid.querySelectorAll('[data-book-divider]')).toHaveLength(3);
@@ -188,23 +189,36 @@ describe('BookPanel', () => {
     expect(center.children[0]).toHaveTextContent('252,000');
     expect(left.children[1]).toHaveTextContent('10');
     expect(right.children[1]).toHaveTextContent('20');
-    expect((right.children[0] as HTMLElement).style.height).toBe('44px');
+    expect(left).toHaveStyle({ paddingTop: '176px' });
+    expect((right.children[0] as HTMLElement).style.height).toBe('220px');
     expect(container.textContent).not.toMatch(/NaN|Infinity/);
   });
 
-  it('시간외 5단만 표시하고 상세 요약은 정보 버튼으로 열 수 있다', () => {
+  it('시간외 5단만 표시해도 고정 매도 영역에서 상세 요약을 제공한다', () => {
     const s = snap();
     const empty = Array.from({ length: 5 }, () => ({ price: 0, qty: 0 }));
     const { container } = renderPanel({ snapshot: { ...s, ask: [...s.ask.slice(0, 5), ...empty], bid: [...s.bid.slice(0, 5), ...empty] }, trades: [] });
     const grid = container.querySelector('.book-panel-grid')!;
     expect(grid.children[1].children).toHaveLength(10);
-    expect((grid.children[2].children[0] as HTMLElement).style.height).toBe('110px');
+    expect(grid.children[1]).toHaveStyle({ paddingTop: '110px', paddingBottom: '110px' });
+    expect((grid.children[2].children[0] as HTMLElement).style.height).toBe('220px');
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
     const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
     expect(within(dialog).getByText('거래량')).toBeInTheDocument();
     expect(within(dialog).getByText('4,668만')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: '상세 정보 닫기' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it.each([[0, 3], [3, 0], [0, 0]])('매도 %i단·매수 %i단에서도 세 열의 경계와 빈 공간을 유지한다', (askCount, bidCount) => {
+    const snapshot = snap();
+    const { container } = renderPanel({ snapshot: { ...snapshot, ask: snapshot.ask.slice(0, askCount), bid: snapshot.bid.slice(0, bidCount) }, trades: [] });
+    const grid = container.querySelector('.book-panel-grid')!;
+    const [left, center, right] = Array.from(grid.children);
+    expect(left).toHaveStyle({ paddingTop: `${(10 - askCount) * 22}px` });
+    expect(center.querySelectorAll('.font-data.text-base')).toHaveLength(askCount + bidCount);
+    expect(right.children[0]).toHaveStyle({ height: '220px' });
+    expect(grid.querySelectorAll('[data-book-divider]')).toHaveLength(3);
   });
 
   it('요약 12항목을 매도 10행의 220px 높이에 담고 상단 빈 행을 두지 않는다', () => {

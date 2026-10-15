@@ -1267,6 +1267,7 @@ test('시간외종가의 잔량은 정규장 잔량이 0이어도 두 호가창�
 
 test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 빈 슬롯은 주문 대상이 아니다', async ({ page }, testInfo) => {
   const { window, ws, commands } = await setup(page, true);
+  const book = page.locator('.book-panel');
   await ws.waitForSubscribe('005930');
   const ladder = window.locator('.order-ladder');
   const divider = window.locator('.order-divider');
@@ -1288,6 +1289,15 @@ test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 
     await expect(window.locator('.order-row').nth(10)).toContainText('체결강도');
     await expect(window.locator('.order-row').nth(19).locator('.order-info')).toContainText('901');
     await expect(window.getByTestId('book-summary')).toBeVisible();
+    await expect(book.locator('.font-data.text-base')).toHaveCount(askCount + bidCount);
+    await expect(async () => {
+      const centered = await book.evaluate(el => {
+        const region = el.querySelector('.book-scroll-region')!.getBoundingClientRect();
+        const dividers = [...el.querySelectorAll('[data-book-divider]')].map(node => node.getBoundingClientRect().y);
+        return dividers.length === 3 && dividers.every(y => Math.abs(y - (region.y + region.height / 2)) < 1);
+      });
+      expect(centered).toBe(true);
+    }).toPass();
     const bounds = (await ladder.boundingBox())!;
     expect((await divider.boundingBox())!.y).toBeCloseTo(bounds.y + bounds.height / 2, 1);
     if (askCount === 3 && bidCount === 3) {
