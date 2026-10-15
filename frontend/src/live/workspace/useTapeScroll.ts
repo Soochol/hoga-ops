@@ -9,8 +9,11 @@ interface HistoryQuery {
 }
 
 /** Shared bottom-wheel pagination and reading-position preservation for both tapes. */
-export function useTapeScroll<T extends { key: string }>(rows: readonly T[], history: HistoryQuery) {
+export function useTapeScroll<T extends { key: string }>(rows: readonly T[], history: HistoryQuery,
+  { resetKey, autoLoad = true }: { resetKey?: number; autoLoad?: boolean } = {}) {
   const [visible, setVisible] = useState(200);
+  const [previousResetKey, setPreviousResetKey] = useState(resetKey);
+  if (previousResetKey !== resetKey) { setPreviousResetKey(resetKey); setVisible(200); }
   const scroll = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
   const loading = useRef(false);
@@ -18,6 +21,10 @@ export function useTapeScroll<T extends { key: string }>(rows: readonly T[], his
   const hasMore = rows.length > visible || !!history.hasNextPage;
   const failed = history.isError || history.isFetchNextPageError;
   const { hasNextPage, isFetching, fetchNextPage } = history;
+  useLayoutEffect(() => {
+    anchor.current = null;
+    if (scroll.current) scroll.current.scrollTop = 0;
+  }, [resetKey]);
   const loadMore = useCallback(async () => {
     if (rows.length > visible) { setVisible(visible + 200); return; }
     if (!hasNextPage || isFetching || failed || loading.current) return;
@@ -55,12 +62,12 @@ export function useTapeScroll<T extends { key: string }>(rows: readonly T[], his
     if (row) root.scrollTop += row.getBoundingClientRect().top - root.getBoundingClientRect().top - saved.offset;
   }, [rows, visible]);
   useEffect(() => {
-    if (!hasMore || failed || !end.current || !scroll.current || typeof IntersectionObserver === 'undefined') return;
+    if (!autoLoad || !hasMore || failed || !end.current || !scroll.current || typeof IntersectionObserver === 'undefined') return;
     const observer = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) void loadMore();
     }, { root: scroll.current, rootMargin: '0px 0px 80px 0px' });
     observer.observe(end.current);
     return () => observer.disconnect();
-  }, [hasMore, failed, loadMore]);
+  }, [autoLoad, hasMore, failed, loadMore]);
   return { scroll, end, ticks: rows.slice(0, visible), onScroll, onWheel, failed };
 }

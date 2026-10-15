@@ -152,7 +152,8 @@ export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Grou
     case 'broker':
       return <BrokerWindow win={win} code={code} />;
     case 'trade':
-      return <TradeWindow code={code} />;
+      return <TradeWindow code={code} minAmountManwon={win.tradeMinAmountManwon ?? 0}
+        onClearFilter={() => useWorkspaceStore.getState().setTradeMinAmountManwon(win.id, 0)} />;
     case 'program-trade':
       return <ProgramTradeTickWindow key={code} code={code} />;
     case 'investor':

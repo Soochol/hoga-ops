@@ -344,6 +344,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   // 술어**를 UI 에도 세워 "눌렀는데 아무 일도 안 남" 을 만들지 않는다.
   const canPin = win.pinned != null || symbol != null;
   const toggleAlwaysOnTop = useWorkspaceStore((s) => s.toggleAlwaysOnTop);
+  const setTradeMinAmountManwon = useWorkspaceStore(s => s.setTradeMinAmountManwon);
   const frameProps: Omit<WindowFrameProps, 'children'> = {
     id: win.id, kind: win.kind, group: win.group, rect, zIndex, focused, lifting,
     symbolLabel: symbol?.name ?? null, symbolCode: symbol?.code ?? null,
@@ -351,6 +352,8 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
     onToggleAlwaysOnTop: toggleAlwaysOnTop, maximized, onToggleMaximize,
     pinned: win.pinned != null, canPin, onHandleDown, onFocus, onClose,
     onTogglePalette, onPickGroup, onTogglePin,
+    tradeMinAmountManwon: win.tradeMinAmountManwon,
+    onTradeMinAmountChange: win.kind === 'trade' ? amount => setTradeMinAmountManwon(win.id, amount) : undefined,
   };
   if (win.kind === 'market-indices') {
     return <ChartErrorBoundary title="주요 지수 창을 표시하지 못했습니다">

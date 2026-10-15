@@ -71,6 +71,32 @@ describe('useWorkspaceStore 액션', () => {
     expect(win?.group).toBe(3); // 포커스 차트 'a' 의 그룹
     expect(win?.kind).toBe('book');
   });
+  it('체결금액 필터는 창별로 저장하고 프리셋 적용 시 복원한다', () => {
+    const first = useWorkspaceStore.getState().addWindow('trade');
+    const second = useWorkspaceStore.getState().addWindow('trade');
+    useWorkspaceStore.getState().setTradeMinAmountManwon(first, 3000);
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === second)?.tradeMinAmountManwon).toBeUndefined();
+    const persisted = JSON.parse(sessionStorage.getItem(WORKSPACE_STORAGE_KEY)!);
+    expect(persisted.windows.find((w: WorkspaceWindow) => w.id === first).tradeMinAmountManwon).toBe(3000);
+    const snapshot = snapshotWorkspace();
+    useWorkspaceStore.getState().setTradeMinAmountManwon(first, 0);
+    useWorkspaceStore.getState().applyWorkspaceSnapshot(snapshot);
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === first)?.tradeMinAmountManwon).toBe(3000);
+  });
+
+  it('무효 금액과 체결창 외 대상에는 필터를 적용하지 않고 구 저장값은 전체 표시로 읽는다', () => {
+    const id = useWorkspaceStore.getState().addWindow('trade');
+    for (const value of [-1, 1.5, NaN, Infinity, 1_000_001]) {
+      useWorkspaceStore.getState().setTradeMinAmountManwon(id, value);
+    }
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === id)?.tradeMinAmountManwon).toBeUndefined();
+    useWorkspaceStore.getState().setTradeMinAmountManwon('a', 1000);
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === 'a')?.tradeMinAmountManwon).toBeUndefined();
+    const snapshot = snapshotWorkspace();
+    snapshot.windows.find(w => w.id === id)!.tradeMinAmountManwon = -100;
+    useWorkspaceStore.getState().applyWorkspaceSnapshot(snapshot);
+    expect(useWorkspaceStore.getState().windows.find(w => w.id === id)?.tradeMinAmountManwon).toBeUndefined();
+  });
   it('주문 설정은 창별로 영속하고 프리셋 스냅샷과 배열을 공유하지 않는다', () => {
     const first = useWorkspaceStore.getState().addWindow('order');
     const second = useWorkspaceStore.getState().addWindow('order');
