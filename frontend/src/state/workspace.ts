@@ -24,6 +24,7 @@ import { liveDefaultWindows } from './liveDefaultLayout';
 import { isLiveIndexId } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 import { normalizeOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
+import { isTradeMinAmountManwon } from './tradeWindowSettings';
 
 /**
  * `/live` 멀티창 워크스페이스 상태 (ADR-0119, 스펙 #715).
@@ -173,6 +174,8 @@ export interface WorkspaceWindow {
   chart?: ChartWindowConfig;
   /** Order input mode and independently editable presets, scoped to this window. */
   order?: OrderWindowSettings;
+  /** 체결창 단건 최소 금액(만원). 생략 또는 0이면 전체 표시. */
+  tradeMinAmountManwon?: number;
   /** 포커스·종목 고정과 독립적인 표시 순서. */
   alwaysOnTop?: boolean;
   /**
@@ -257,6 +260,7 @@ type Store = Persisted & {
   setWindowRects: (updates: readonly { id: string; rect: WorkspaceRect }[]) => void;
   setWindowGroup: (id: string, group: GroupId) => void;
   setOrderWindowSettings: (id: string, settings: OrderWindowSettings) => void;
+  setTradeMinAmountManwon: (id: string, amount: number) => void;
   setGroupSymbol: (group: GroupId, symbol: GroupSymbol) => void;
   /**
    * 창 종목 고정 토글. 켤 때 지금 그리고 있는 종목을 창 슬롯으로 복사하고, 끌 때
@@ -398,6 +402,9 @@ function readWindow(raw: unknown, legacyPx: boolean, keepPin = true): WorkspaceW
   }
   if (w.alwaysOnTop === true) win.alwaysOnTop = true;
   if (w.kind === 'order' && w.order != null) win.order = normalizeOrderSettings(w.order);
+  if (w.kind === 'trade' && isTradeMinAmountManwon(w.tradeMinAmountManwon)) {
+    win.tradeMinAmountManwon = w.tradeMinAmountManwon;
+  }
   if (w.kind === 'chart') {
     const cfg = (w.chart ?? {}) as Record<string, unknown>;
     // 구 스냅샷의 `cfg.indicators` 는 읽지 않는다 — 전역으로 1회 승격된 뒤
@@ -1035,6 +1042,17 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     set(state => {
       if (!state.windows.some(w => w.id === id && w.kind === 'order')) return {};
       const windows = state.windows.map(w => w.id === id ? { ...w, order: normalizeOrderSettings(settings) } : w);
+      persistFromState({ ...state, windows });
+      return { windows };
+    });
+  },
+
+  setTradeMinAmountManwon: (id, amount) => {
+    if (!isTradeMinAmountManwon(amount)) return;
+    set(state => {
+      const win = state.windows.find(w => w.id === id && w.kind === 'trade');
+      if (!win || (win.tradeMinAmountManwon ?? 0) === amount) return state;
+      const windows = state.windows.map(w => w.id === id ? { ...w, tradeMinAmountManwon: amount } : w);
       persistFromState({ ...state, windows });
       return { windows };
     });

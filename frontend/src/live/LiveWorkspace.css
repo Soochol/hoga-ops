@@ -49,6 +49,7 @@
 .live-data-title { flex: 1; }
 .live-data-title-kind { color: var(--fg-dim); font-weight: 400; }
 .live-window .live-window-actions-menu { display: none; }
+.live-window .live-window-actions-menu[data-has-settings] { display: inline-flex; }
 .live-symbol-backfill { display: inline-flex; align-items: center; gap: var(--space-xs); flex-shrink: 0; }
 .live-chart-toolbar { padding: 2px var(--space-sm); gap: var(--space-xs); min-height: 2rem; }
 .live-chart-toolbar button { font-size: var(--text-sm); min-height: 1.75rem; }

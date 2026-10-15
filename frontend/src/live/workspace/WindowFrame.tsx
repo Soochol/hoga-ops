@@ -15,6 +15,8 @@ import type { GroupId, WindowKind } from '../../state/workspace';
 import { WINDOW_KIND_LABEL as KIND_LABEL } from './windowKindLabels';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
 import { WindowActionsMenu } from './WindowActionsMenu';
+import { TradeWindowSettings } from './TradeWindowSettings';
+import { formatTradeMinAmount } from '../../state/tradeWindowSettings';
 
 export type { WindowRectPx };
 
@@ -51,6 +53,8 @@ export interface WindowFrameProps {
   children: React.ReactNode;
   /** Market-wide windows supply their compact title/legend without a symbol group. */
   headerContent?: React.ReactNode;
+  tradeMinAmountManwon?: number;
+  onTradeMinAmountChange?: (amount: number) => void;
 }
 
 /**
@@ -104,6 +108,8 @@ function WindowFrameImpl(props: WindowFrameProps) {
     onTogglePin,
     children,
     headerContent,
+    tradeMinAmountManwon = 0,
+    onTradeMinAmountChange,
   } = props;
 
   const marketWide = kind === 'market-indices';
@@ -152,6 +158,8 @@ function WindowFrameImpl(props: WindowFrameProps) {
           )}
           {/* 창 수준 액션은 오른쪽 끝에 모은다. 차트·체결창은 제목, 나머지는
               스페이서 한 곳이 여유를 흡수해 버튼 사이 간격을 일정하게 유지한다. */}
+          {kind === 'trade' && tradeMinAmountManwon > 0 && <span className="shrink-0 rounded-sm bg-tint-selection px-1 text-xs text-accent font-data"
+            aria-label={`체결금액 ${formatTradeMinAmount(tradeMinAmountManwon)} 이상 표시`}>{formatTradeMinAmount(tradeMinAmountManwon)} 이상</span>}
           <span aria-hidden data-testid="window-header-spacer" className={marketWide || tradeTape || (kind === 'chart' && symbolCode) ? 'hidden' : 'flex-1'} />
           {onToggleMaximize && (
             <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
@@ -213,7 +221,12 @@ function WindowFrameImpl(props: WindowFrameProps) {
           <WindowActionsMenu maximized={maximized} alwaysOnTop={alwaysOnTop} pinned={pinned} canPin={canPin}
             onMaximize={onToggleMaximize ? () => onToggleMaximize(id) : undefined}
             onAlwaysOnTop={onToggleAlwaysOnTop ? () => onToggleAlwaysOnTop(id) : undefined}
-            onPin={!marketWide && onTogglePin ? () => onTogglePin(id) : undefined} />
+            onPin={!marketWide && onTogglePin ? () => onTogglePin(id) : undefined}
+            settings={kind === 'trade' && onTradeMinAmountChange ? {
+              title: '체결창 설정',
+              render: close => <TradeWindowSettings minAmountManwon={tradeMinAmountManwon}
+                onApply={amount => { onTradeMinAmountChange(amount); close(); }} />,
+            } : undefined} />
         </>
       }
     >

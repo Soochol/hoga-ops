@@ -9,15 +9,15 @@ const baseTime = () => Date.now() - 180000;
 const makeRow = (i: number, base: number) => ({ event_id: `ka10003:row-${i}`, t_ms: base + i * 1000,
   price: 125500 + i, qty: i, side: i % 2 === 0 ? 1 : -1, cum_volume: i * 10 });
 
-async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty') {
+async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty', minAmountManwon = 0) {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.addInitScript(() => {
+  await page.addInitScript((amount: number) => {
     localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'UN' }));
-    sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
-      windows: [{ id: 'trade-only', kind: 'trade', group: 1, rect: { x: 0, y: 0, w: 0.25, h: 0.45 } }],
+    if (!sessionStorage.getItem('live.workspace.v1')) sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
+      windows: [{ id: 'trade-only', kind: 'trade', group: 1, tradeMinAmountManwon: amount, rect: { x: 0, y: 0, w: 0.25, h: 0.45 } }],
       zOrder: ['trade-only'], groupSymbols: { 1: { code: '222800', name: '심텍' } },
     }));
-  });
+  }, minAmountManwon);
   await installLiveMocks(page);
   const ws = await installLiveWs(page);
   await page.route('**/api/live/series?**', route => {
@@ -36,6 +36,90 @@ async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty
   await ws.waitForSubscribe(CODE);
   return { window, ws };
 }
+
+async function openTradeSettings(page: Page) {
+  await page.getByRole('button', { name: '창 옵션', exact: true }).click();
+  await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '설정', exact: true }).click();
+  return page.getByRole('dialog', { name: '체결창 설정', exact: true });
+}
+
+test('헤더 메뉴 설정은 넓은 창에서도 접근하며 금액 경계·실시간·새로고침에 동일하게 적용한다', async ({ page }, testInfo) => {
+  const base = baseTime();
+  await page.route(URL_PATTERN, route => route.fulfill({ json: {
+    code: CODE, date: new URL(route.request().url()).searchParams.get('date'), venue: 'UN',
+    rows: [126, 125, 124].map(i => ({ ...makeRow(i, base - 126000), price: 80000 })), next_key: null,
+    latest_at_ms: base, latest_volume: 1260, prev_close: 79000,
+  } }));
+  const { window, ws } = await setup(page, 'provided');
+  const table = window.getByRole('table');
+  await expect(table.getByRole('row')).toHaveCount(4);
+  await page.getByRole('button', { name: '창 옵션', exact: true }).click();
+  await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '창 최대화' }).click();
+  const settings = await openTradeSettings(page);
+  await expect(settings).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('trade-settings-popover.png') });
+  await settings.getByRole('textbox', { name: '최소 금액 직접 입력' }).fill('2500');
+  await page.keyboard.press('Escape');
+  await expect(settings).toBeHidden();
+  await expect(page.getByRole('button', { name: '원래 크기로 복원', exact: true })).toBeVisible();
+  const reopened = await openTradeSettings(page);
+  await expect(reopened.getByRole('textbox', { name: '최소 금액 직접 입력' })).toHaveValue('1,000');
+  await reopened.getByRole('button', { name: '1천만', exact: true }).click();
+  await expect(settings).toBeHidden();
+  await expect(page.getByLabel('체결금액 1,000만원 이상 표시')).toBeVisible();
+  await expect(table.getByRole('row')).toHaveCount(3);
+  await expect(table.getByRole('cell', { name: '125', exact: true })).toBeVisible();
+  await expect(table.getByRole('cell', { name: '124', exact: true })).toHaveCount(0);
+  ws.pushBatch(CODE, [
+    { kind: 'trade', venue: 'UN', t_ms: base + 1000, cum_volume: 1261, trades: [{ t_ms: base + 1000, price: 80000, qty: 1, side: -1 }] },
+    { kind: 'trade', venue: 'UN', t_ms: base + 2000, cum_volume: 3761, trades: [{ t_ms: base + 2000, price: 80000, qty: 2500, side: 1 }] },
+  ], []);
+  await expect(table.getByRole('cell', { name: '2,500', exact: true })).toBeVisible();
+  await expect(table.getByRole('cell', { name: '1', exact: true })).toHaveCount(0);
+  await expect(table.getByRole('cell', { name: '2,500', exact: true })).toHaveAttribute('data-testid', 'trade-qty-highlighted');
+  await page.reload();
+  await expect(page.getByLabel('체결금액 1,000만원 이상 표시')).toBeVisible();
+  await expect(window.getByRole('table').getByRole('row')).toHaveCount(3);
+  await openTradeSettings(page);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: '체결창 설정' })).toBeHidden();
+  await expect(page.getByRole('button', { name: '창 옵션', exact: true })).toBeFocused();
+});
+
+test('일치 없는 과거 페이지도 휠로 이어 조회하며 빈 결과에서 전체 표시로 복귀한다', async ({ page }) => {
+  const base = baseTime();
+  const requests: (string | null)[] = [];
+  await page.route(URL_PATTERN, route => {
+    const params = new URL(route.request().url()).searchParams;
+    const key = params.get('next_key');
+    requests.push(key);
+    const qty = key === 'oldest' ? 2000 : 1;
+    return route.fulfill({ json: { code: CODE, date: params.get('date'), venue: 'UN',
+      rows: [{ ...makeRow(key === 'oldest' ? 1 : key ? 2 : 3, base), price: 80000, qty }],
+      next_key: key === 'oldest' ? null : key ? 'oldest' : 'older', latest_at_ms: base + 3000, latest_volume: 30, prev_close: 79000,
+    } });
+  });
+  const { window } = await setup(page, 'provided', 10000);
+  await expect(window.getByText('1억원 이상 체결 없음 · 새 체결 수신 대기')).toBeVisible();
+  expect(requests).toEqual([null]);
+  const settings = await openTradeSettings(page);
+  await settings.getByRole('button', { name: '1억', exact: true }).click();
+  const scroller = window.getByLabel('체결 목록', { exact: true });
+  await scroller.hover();
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => requests).toEqual([null, 'older']);
+  await expect(window.getByText('이전 내역 조회 중…')).toBeHidden();
+  await page.mouse.wheel(0, 500);
+  await expect(window.getByRole('cell', { name: '2,000', exact: true })).toBeVisible();
+  await expect(window.getByRole('cell', { name: '1', exact: true })).toHaveCount(0);
+  const highSettings = await openTradeSettings(page);
+  await highSettings.getByRole('textbox', { name: '최소 금액 직접 입력' }).fill('100,000');
+  await highSettings.getByRole('textbox', { name: '최소 금액 직접 입력' }).press('Enter');
+  await expect(window.getByText('10억원 이상 체결 없음 · 새 체결 수신 대기')).toBeVisible();
+  await window.getByRole('button', { name: '전체 체결 보기' }).click();
+  await expect(page.getByLabel('체결금액 10억원 이상 표시')).toHaveCount(0);
+  await expect(window.getByRole('table').getByRole('row')).toHaveCount(4);
+});
 
 test('스크롤바 없는 체결창도 휠로 조회하고 조회 중 반복 휠과 REST/WS 경계 중복을 막는다', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(globalThis, 'IntersectionObserver', { value: undefined }));
