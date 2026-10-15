@@ -668,8 +668,9 @@ export function LiveChartRoot({
   // createVirtualAxis's originMs doc; cross-view collisions are handled by
   // the per-viewKey chart remount below.
   const axis: VirtualAxis = useMemo(() => {
-    if (!cb || cb.segments.length === 0) return EMPTY_AXIS;
-    const rawSegments = cb.segments.map((s) => ({
+    const sessions = cb?.timeline_sessions ?? cb?.segments;
+    if (!sessions?.length) return EMPTY_AXIS;
+    const rawSegments = sessions.map((s) => ({
       date: s.date,
       sessionOpenMs: s.session_open_ms,
       sessionCloseMs: s.session_close_ms,
@@ -679,7 +680,7 @@ export function LiveChartRoot({
       rawSegments[0].sessionOpenMs,
       { mode: isCalendarTimeframe(timeframe) ? 'calendar' : 'intraday' },
     );
-  }, [cb?.segments, timeframe]);
+  }, [cb?.segments, cb?.timeline_sessions, timeframe]);
 
   // 날짜 구분선이 설 자리. **개장 정각이 아니라 그 세션에서 실제로 렌더되는 첫
   // 캔들**의 시각이다 — 이유는 `dayBoundaryTicks` 의 docstring(요약: lwc 의
@@ -2911,6 +2912,7 @@ export function LiveChartRoot({
             visibleGroups={visiblePaneGroups}
             dataEpoch={cb}
             candles={cb?.candles}
+            preserveIntradayGaps={cb?.timeline_sessions !== undefined}
             axis={axis}
             code={code}
           />

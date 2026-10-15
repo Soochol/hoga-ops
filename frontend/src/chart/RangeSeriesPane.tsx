@@ -16,6 +16,7 @@ import {
   BrokerLateEntryMarkersPrimitive,
 } from './BrokerLateEntryMarkersPrimitive';
 import type { BrokerLateEntryMarkerPoint } from './projectors/brokerLateEntryMarkers';
+import { withIntradayWhitespace, maskIntradayLineGaps } from './intradayWhitespace';
 import { SurgeMarkersPrimitive, type SurgeMarkerPoint } from './SurgeMarkersPrimitive';
 // Type-only: keeps chart/ free of a runtime dependency on live/ (the
 // `onLegend*` callbacks below, like `onPrimarySeriesReady`, hand registration
@@ -398,7 +399,11 @@ function RangeSeriesPaneInner<Ctx>({
     const seriesList = seriesRef.current;
     if (seriesList.length !== spec.series.length) return;
     spec.series.forEach((s, i) => {
-      const data = s.data(bundle, axis, ctx);
+      const projected = s.data(bundle, axis, ctx);
+      const data = s.type.type === 'Candlestick'
+        ? withIntradayWhitespace(projected, bundle, axis)
+        : s.type.type === 'Line' || s.type.type === 'Baseline' || s.type.type === 'Area'
+          ? maskIntradayLineGaps(projected, bundle, axis) : projected;
       // The decision (skip / update(tail) / setData(full)), safe full replacement,
       // and cache update all live behind syncChartSeriesData's seam — so the
       // invariant "lastDataRef equals what the series holds" can't drift across

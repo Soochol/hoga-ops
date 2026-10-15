@@ -231,12 +231,13 @@ describe('deriveCandleEmptyState — 창별 hogaplay 소스', () => {
     expect(s?.text).toContain('×');
   });
 
-  it('보충이 도는 중이면 "없다" 고 단언하지 않는다', () => {
+  it('보충 대기 신호가 있어도 디스크의 빈 구간을 표시한다', () => {
     const s = deriveCandleEmptyState({
       ...base, restBypassEnabled: true, hogaplaySourceEnabled: true,
       savedRangeGapFillPending: true,
     });
-    expect(s?.text).toContain('보충하는 중');
+    expect(s?.text).toContain('hogaplay 저장 데이터에 이 구간 캔들이 없다');
+    expect(s?.text).not.toContain('보충하는 중');
   });
 
   it('창별 소스가 우회보다 **먼저** 잡는다 — 순서가 계약이다', () => {

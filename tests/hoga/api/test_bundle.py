@@ -154,6 +154,7 @@ def _engine_with_meta_for_dates(dates):
     from unittest.mock import MagicMock
     eng = MagicMock()
     eng.list_stock_dates_in_range.return_value = dates
+    eng.local_candle_dates.return_value = sorted(dates)
     eng.get_meta.return_value = {
         "regular_session_open_ms": 90_000_000,
         "regular_session_close_ms": 153_000_000,
@@ -2593,9 +2594,6 @@ def test_build_range_bundle_breathes_once_per_date():
             mode="candles",
         )
 
-    # **일자당 정확히 7회** = 루프 상단 1 + 빌더 블록 앞 6 (quote_ratio · peaks ·
-    # poc · broker_late · vdist · heatmap). 지점 하나를 지우면
-    # 여기서 떨어진다 — 오늘 재계산(과거 36ms vs 오늘 1,379ms, 그중 peaks 577ms)이
-    # 한 덩어리로 돌아가는 회귀다. **빌더를 추가하면 그 앞에 지점을 넣고 이 수를
-    # 올릴 것** — mergeRangeBundles 가 필드를 전수 나열하는 것과 같은 규율이다.
-    assert breathe.call_count == 7 * len(dates)
+    # Candle-only queries now have their own inventory loop, with no sidecar
+    # builders in between. They must still yield between partition reads.
+    assert breathe.call_count >= len(dates)

@@ -483,27 +483,16 @@ type UseLiveBundleOptions = {
    * |------|----------|-----------------|-----------|
    * | `frozenRangeFrom` | 저장뷰가 가리키는 과거 구간 | **얼린다**(시작일 고정) | **한다** |
    * | 전역 `rest_bypass_enabled` | 벤더가 실패할 때 주는 처방 | 아니오 | **안 한다** |
-   * | 이 옵션 | 사용자의 **명시적 소스 선택** | **아니오** | **한다** |
+   * | 이 옵션 | 사용자의 **명시적 소스 선택** | **아니오** | **안 한다** |
    *
    * "얼리지 않는다" 가 이 옵션의 존재 이유다. 시작일을 고정하지 않으므로 페치 창은
    * 종전대로 `historicalFromDate` 가 정하고, 좌측 팬이 그것을 넓히면 디스크 요청도
    * 같이 넓어진다(2026-08-22 사용자 요구: "기간 이동해도 디스크에서 읽어서 보여줘야").
    *
-   * ## 키움 보충은 **한다** — 도입 시의 판단이 뒤집혔다
-   *
-   * #1493 은 "사용자가 고른 것은 hogaplay 이므로 구멍을 벤더 분봉으로 메우면 고른 것과
-   * 다른 것을 보여 준다" 를 근거로 보충을 뺐다. 그 논리의 전제는 **구멍이 화면에서
-   * 설명된다**는 것이었는데, 실제로는 아니었다: 가장 흔한 결손 사유 `not_captured` 를
-   * `hogaMissingNotice` 의 `IGNORED_REASONS` 가 걸러내고 그 예외(`includeNotCaptured`)는
-   * `/study` 에서만 켜진다. 즉 `/live` 에서 미캡처일은 **채워지지도 설명되지도 않은 채**
-   * 차트에서 사라지고 있었다(2026-08-22 사용자 결정으로 보충 쪽을 택했다).
-   *
-   * 보충일은 소스가 `kiwoom_gapfill` 로 표기되므로(아래 `sourceByDate`) "고른 것과 다른
-   * 것" 이 조용히 섞이지는 않는다 — 배지가 그 날을 지목한다.
-   *
-   * ⚠ 전역 `rest_bypass_enabled` 는 여전히 보충하지 않는다. 그 모드는 벤더가 실패할 때
-   * 주는 처방이라 자동으로 벤더를 두드리면 목적이 무효가 된다 — 그래서 게이트가
-   * `restBypassEnabled` 가 아니라 **이 옵션과 얼림의 OR** 이다.
+   * **디스크에 있는 분봉만 표시한다**(2026-10-15 사용자 결정).
+   * 미저장 날짜를 HogaPlay 서버나 키움 API에서 자동으로 가져오지 않는다.
+   * 좌측 팬의 하한은 로컬 최초 캡처일이고, 미수집 구간은 빈 상태로 남긴다.
+   * 저장뷰 얼림의 키움 보충은 별도 동작이다.
    *
    * **분봉 전용이다.** 캘린더 봉의 디스크 소스는 스크리너 일봉이지 hogaplay 가
    * 아니므로(`enableScreenerDaily`), 호출부가 봉이 캘린더로 나갈 때 내린다.
@@ -907,23 +896,10 @@ export function useLiveBundle(
     minuteDiskOptions,
   );
 
-  /**
-   * 디스크에 **없는 거래일을 키움 분봉으로 보충**한다 (`useMinuteGapFill`).
-   *
-   * 게이트가 `restBypassEnabled` 가 **아닌** 것이 요점이다. 그 값은 셋의 OR 인데
-   * 전역 `rest_bypass_enabled` 만은 보충하면 안 되기 때문이다 — 그 모드는 벤더가
-   * 실패하고 있을 때 사용자에게 권하는 처방이라(`notifyRestFailure` → 우회 유도),
-   * 그 상태에서 자동으로 벤더를 두드리면 모드가 존재하는 이유를 정면으로 무효화한다.
-   *
-   * 나머지 둘은 **사용자가 이 창을 그렇게 보겠다고 명시한** 상태다(과거 구간을 골랐거나
-   * hogaplay 소스를 골랐거나). 그 창의 구멍을 채우는 것은 곧 요청받은 일이다.
-   * hogaplay 토글이 여기 합류한 경위는 `hogaplaySourceEnabled` 도크스트링에 있다.
-   *
-   * 구멍 목록은 백엔드가 준 `missing_dates` 하나만 쓴다. 프론트가 직접 계산하면
-   * 거래일 달력이 없어 주말·공휴일을 구멍으로 오인한다.
-   */
+  /** 저장뷰의 미수집 거래일만 키움으로 보충한다.
+   * 창별 HogaPlay 모드와 전역 REST 우회는 디스크만 읽으므로 보충하지 않는다. */
   const minuteGapFill = useMinuteGapFill({
-    enabled: frozenRangeFrom !== null || hogaplaySourceEnabled,
+    enabled: frozenRangeFrom !== null && !hogaplaySourceEnabled,
     code,
     venue,
     timeframe: regularSessionOnly ? '1m' : timeframe,
@@ -1168,7 +1144,8 @@ export function useLiveBundle(
     [pastCandlesQuery.data?.effective_sessions],
   );
   const liveCandles = useMemo<Candle[]>(() => {
-    const overlaid = isMinute
+    // Explicit saved-data mode must not fill a disk hole with an SSE trade.
+    const overlaid = hogaplaySourceEnabled ? kisCandles : isMinute
       ? overlayLiveTradesOnCandles(
           kisCandles, live.trade, bucketMs, venue, needsRegularSessionClip(timeframe),
         )
@@ -1183,7 +1160,7 @@ export function useLiveBundle(
       ? collapseClosingAuction(overlaid, effectiveSessionByDate,
           allKrx ? undefined : krxCandleDates)
       : overlaid;
-  }, [isMinute, timeframe, kisCandles, live.trade, bucketMs, venue, candleVenue, restBypassEnabled, effectiveSessionByDate, krxCandleDates]);
+  }, [hogaplaySourceEnabled, isMinute, timeframe, kisCandles, live.trade, bucketMs, venue, candleVenue, restBypassEnabled, effectiveSessionByDate, krxCandleDates]);
 
   const defaultKrxSession = useMemo(
     () =>
@@ -1238,9 +1215,10 @@ export function useLiveBundle(
   // `hasTodayObSignal` boolean, so quote-only SSE ticks do not rebuild this memo.
   // Trade ticks rebuild it only when they actually change or append the live
   // forming candle; stale/venue-filtered ticks keep the candle ref stable.
-  const hasTodayObSignal = isMinute && live.ob.length > 0;
+  const hasTodayObSignal = isMinute && !hogaplaySourceEnabled && live.ob.length > 0;
   // Last content-distinct segments array — see the stabilization block below.
   const prevSegmentsRef = useRef<RangeBundle['segments'] | null>(null);
+  const prevTimelineRef = useRef<RangeBundle['timeline_sessions']>(undefined);
   const filterRegularSession = useMemo(createRegularSessionBundleFilter, []);
   const computedChartBundle = useMemo<RangeBundle | null>(() => {
     if (!code) return null;
@@ -1255,7 +1233,18 @@ export function useLiveBundle(
       hasTodayObSignal,
       investorPoints,
       sessionBoundsForDate,
+      timelineDates: hogaplaySourceEnabled ? minuteDiskCandles.data?.local_candle_history?.trading_dates : undefined,
     });
+    if (hogaplaySourceEnabled) built.local_candle_history = minuteDiskCandles.data?.local_candle_history;
+    const previousTimeline = prevTimelineRef.current;
+    if (previousTimeline && built.timeline_sessions
+      && previousTimeline.length === built.timeline_sessions.length
+      && built.timeline_sessions.every((s, i) => s.date === previousTimeline[i].date
+        && s.session_open_ms === previousTimeline[i].session_open_ms
+        && s.session_close_ms === previousTimeline[i].session_close_ms)) {
+      built.timeline_sessions = previousTimeline;
+    }
+    prevTimelineRef.current = built.timeline_sessions;
     built.dailyProgramPoints = enableDailyProgram ? dailyProgramPoints : undefined;
     built.dailyProgramTradeSide = dailyProgramTradeSide;
     built.dailyProgramStatus = dailyProgramStatus;
@@ -1321,6 +1310,8 @@ export function useLiveBundle(
   }, [
     regularSessionOnly,
     filterRegularSession,
+    hogaplaySourceEnabled,
+    minuteDiskCandles.data?.local_candle_history,
     code,
     todayKstYyyymmdd,
     todayChartSession,
@@ -1564,6 +1555,8 @@ export function useLiveBundle(
       chartBundle?.to_date,
       chartBundle?.bucket_ms,
       chartBundle?.segments,
+      chartBundle?.timeline_sessions,
+      hogaplaySourceEnabled ? chartBundle?.candles : null,
       committedHogaSeries,
       brokerLateEntryEnabled,
       brokerLateEntryEnabled ? chartBundle?.broker_late_entries : null,
@@ -1584,43 +1577,9 @@ export function useLiveBundle(
   const refetchCandles = activeCandlesQuery.refetch;
 
 
-  /**
-   * 좌측 팬의 하한(YYYYMMDD). `null` = 막을 근거가 없다(디스크가 끝날 때까지 팬 가능).
-   *
-   * 축이 **둘로 갈린다**:
-   *  - 벤더 모드: 250일 벽. 넘겨도 `/api/live/past-candles` 가 못 준다 — 진짜 상한이다.
-   *  - 디스크 모드: `null`. 그 벽은 벤더 span 캡이라 `/api/range` 에는 존재하지 않는다
-   *    (위 `minutePastFrom` 주석).
-   *
-   * **디스크 쪽에 "캡처 바닥" 하한을 두려다 걷어냈다 — 판정이 원리적으로 불가능했다.**
-   * 응답만으로 세울 수 있는 증거는 `missing_dates` 에 `segments[0]` 보다 이른 항목이
-   * 있다는 것뿐인데, 그건 **"이 창에서 가장 이른 데이터보다 앞을 물었다"** 이지
-   * "디스크에 더 이른 게 없다" 가 아니다. 요청 시작일이 **중간 구멍**에 떨어지면 그
-   * 구멍이 바닥으로 위장한다(2026-08-22 실측: 005380 이 진짜 바닥 20251014 이 아니라
-   * 20260120 에서 멎었다). 클램프가 틀리면 **사용자를 막으므로** 원래 문제보다 나쁘다.
-   *
-   * 하한 없이 두는 대가는 실측으로 작다: 바닥 아래로 팬해도 캔들 요청은 **1건**이고
-   * (요청이 창 하나라 빈 구간이 응답 크기를 안 늘린다) 지표는 주 단위 청크가 **838B ×
-   * 28건 = 23KB** 였다. 청크는 react-query 가 키별로 캐시해 **새 주만** 나간다.
-   * 예산(`MAX_FILL_STEPS`)이 제스처당 상한을 준다.
-   *
-   * 진짜 바닥이 필요해지면 길은 하나다 — **서버가 알려 주는 것**(코드별 최고(最古)
-   * 캡처일). 응답으로 유도하는 길은 위 이유로 닫혀 있다.
-   *
-   * 판정을 여기 두는 이유: 종전에는 `useViewportBackfill` 안에 세 번 복제돼 있었는데
-   * (`earliestAllowedMinuteDate(todayKstYyyymmdd())`), 하한이 모드에 따라 갈리는 값이
-   * 된 이상 모드를 아는 쪽이 정해야 한다.
-   */
-  // 디스크 모드의 바닥은 **캡처 시작**이다(백엔드 `earliest_captured_date`).
-  //
-  // 종전에는 이 값이 우회 ON 에서 통째로 `null` 이었다 — 그래서 `planFillStep` 의
-  // `earliestAllowedDate` 정지 조건이 절대 안 걸렸고, 사용자가 캡처 시작 이전으로
-  // **무한히 팬**할 수 있었다. 그 구간엔 데이터가 영원히 없으므로 화면은 빈 채로
-  // 남고 「과거 불러오는 중」만 계속 뜬다(2026-08-26 신고: 028050 캡처는 26-01-06
-  // 부터인데 창이 25-11-17 까지 갔다 — 7주 밖).
-  //
-  // 이 한 줄이 서면 기존 경로가 전부 살아난다: `planFillStep` 의 stop · 3b/3e 의
-  // 게이트 · 아래 도달 안내. 그래서 새 정지 기계를 만들지 않았다.
+  /** Scrollback floors come from the active source. The vendor has a retention
+   * limit; disk mode uses the server's global inventory of usable candle files.
+   * An empty range tile is never evidence that older disk data does not exist. */
   const diskEarliestCaptured = restBypassEnabled
     ? (minuteDiskCandles.data?.earliest_captured_date ?? null)
     : null;

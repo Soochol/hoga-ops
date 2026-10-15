@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+import duckdb
 from fastapi import HTTPException
 
 from hoga import perf_debug
@@ -44,6 +45,7 @@ from hoga.api.models import (
     ExcludedDate,
     FillStrength,
     FillStrengthPoint,
+    LocalCandleHistory,
     MissingDate,
     ProgramTradePoint,
     ProgramTradeSeries,
@@ -2156,6 +2158,53 @@ def _prefetch_peak_caches(
     return len(targets)
 
 
+def _build_local_candle_range(
+    engine: QueryEngine, *, code: str, from_date: str, to_date: str,
+    bucket_ms: int, source_pref: str, venue: Venue,
+) -> RangeBundle:
+    """The candle dimension has its own inventory and does not require orderflow."""
+    from hoga.api import queries  # noqa: PLC0415 — local calendar predicate seam
+
+    available = engine.local_candle_dates(code=code, source_pref=source_pref, venue=venue)
+    dates = [d for d in available if from_date <= d <= to_date]
+    result = _empty_range_bundle(
+        code, from_date, to_date, bucket_ms, excluded=[],
+        earliest_captured=available[0] if available else None,
+        missing=uncaptured_trading_days(
+            data_dir=engine.data_dir, code=code, from_date=from_date, to_date=to_date,
+            captured=dates, today=now_kst().strftime("%Y%m%d"),
+        ),
+    )
+    result.local_candle_history = LocalCandleHistory(
+        available_dates=available,
+        trading_dates=[d for d in _dates_between(from_date, to_date)
+                       if queries._is_confirmed_trading_day(d)],
+    )
+    gil_breathe_at = time.monotonic()
+    for date in dates:
+        gil_breathe_at = _gil_breathe(gil_breathe_at)
+        source = resolve_candle_source(engine, date, code, source_pref, venue)
+        if source is None:
+            continue
+        try:
+            meta = engine.get_meta(date, code, source, venue=venue)
+            raw = build_candles_slice(engine, code=code, date=date, source=source, venue=venue)
+        except (StockDateNotFound, ValueError, OSError, duckdb.Error):
+            # A partition can be replaced/removed after the cached inventory scan.
+            result.missing_dates.append(MissingDate(date=date, reason="source_missing"))
+            continue
+        norm_meta, _ = normalize_session_bounds(meta)
+        open_ms, close_ms = indicator_session_bounds(norm_meta)
+        result.segments.append(RangeSegment(
+            date=date, session_open_ms=hhmmssms_to_unix_ms(date, open_ms),
+            session_close_ms=hhmmssms_to_unix_ms(date, close_ms), source=source,
+            gap_ms=_segment_gap_ms(date, meta),
+        ))
+        result.candles.extend(downsample_candles(raw, bucket_ms=bucket_ms, date=date, venue=venue))
+    result.missing_dates.sort(key=lambda item: item.date)
+    return result
+
+
 def build_range_bundle(  # noqa: PLR0912, PLR0915
     engine: QueryEngine,
     *,
@@ -2211,6 +2260,12 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         raise HTTPException(400, f"Invalid YYYYMMDD date: {e}") from e
     if d_to < d_from:
         raise HTTPException(400, "from > to")
+
+    if mode == "candles":
+        return _build_local_candle_range(
+            engine, code=code, from_date=from_date, to_date=to_date, bucket_ms=bucket_ms,
+            source_pref=source_pref, venue=cast("Venue", venue),
+        )
 
     hoga_only = mode == "hoga"
     sidecar_only = mode == "sidecar"

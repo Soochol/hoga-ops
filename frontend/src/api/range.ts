@@ -470,6 +470,19 @@ function planLiveRangeDelta(
   );
 
   if (sameIdentity && previous.from_date <= input.from) {
+    // A recent seed may be entirely empty while the disk still has older bars.
+    // Bootstrap the nearest older partition once; no empty-response stop rule.
+    const older = mode === 'candles' && previous.candles.length === 0
+      ? previous.local_candle_history?.available_dates.filter(d => d < previous.from_date).at(-1)
+      : undefined;
+    if (older) {
+      return {
+        enabled: true, requestInput: { ...input, from: older, to: addDays(previous.from_date, -1) },
+        canReusePrevious: true, servePrevious: true, usePlaceholderData: true,
+        forceRerenderAfterMerge: true, blocksHistoricalExtension: true,
+        scheduleRefreshAtMs: null, identity,
+      };
+    }
     // previous(캐시된 병합본)가 요청 창 [input.from, to]를 완전히 덮는다:
     //  - `=== input.from`: 경계 정확히 일치.
     //  - `<  input.from`: previous 가 더 깊다. 웜 복귀 경로가 여기 걸린다 —
@@ -502,7 +515,13 @@ function planLiveRangeDelta(
     // 좌측 확장 타일 — LIVE_RANGE_CHUNK_DAYS로 캡. 갭이 크면(콜드 시드 직후,
     // 딥 팬) 청크가 랜딩→merge→plan 재계산을 반복하며 input.from까지 워크백.
     const tileTo = addDays(previous.from_date, -1);
-    const tileFrom = maxDate(input.from, addDays(tileTo, -(LIVE_RANGE_CHUNK_DAYS - 1)));
+    let tileFrom = maxDate(input.from, addDays(tileTo, -(LIVE_RANGE_CHUNK_DAYS - 1)));
+    const inventory = mode === 'candles' ? previous.local_candle_history?.available_dates : undefined;
+    if (inventory && !inventory.some(d => tileFrom <= d && d <= tileTo)) {
+      // Widen across empty weeks in one disk query. Candle bodies are read only
+      // on inventoried dates; the calendar still includes every skipped session.
+      tileFrom = maxDate(input.from, inventory.filter(d => d <= tileTo).at(-1) ?? input.from);
+    }
     return {
       enabled: true,
       requestInput: { ...input, from: tileFrom, to: tileTo },
@@ -627,6 +646,10 @@ export function trimRangeBundleBefore(bundle: RangeBundle, retainFrom: string): 
   return {
     ...bundle,
     from_date: retainFrom,
+    local_candle_history: bundle.local_candle_history ? {
+      ...bundle.local_candle_history,
+      trading_dates: bundle.local_candle_history.trading_dates.filter(d => d >= retainFrom),
+    } : bundle.local_candle_history,
     segments,
     candles: afterMs(bundle.candles, (c) => c.ts_ms),
     quote_ratio: { ...bundle.quote_ratio, points: afterMs(bundle.quote_ratio.points, (p) => p.t) },
@@ -655,6 +678,16 @@ export function mergeRangeBundles(previous: RangeBundle, next: RangeBundle): Ran
   const previousProgramTradePoints = (previous.program_trade?.points ?? []).filter((point) => outsideCoveredSegment(point.t, next));
   return {
     ...next,
+    local_candle_history: next.local_candle_history ? {
+      available_dates: next.local_candle_history.available_dates,
+      trading_dates: [...new Set([
+        ...(previous.local_candle_history?.trading_dates ?? []),
+        ...next.local_candle_history.trading_dates,
+      ])].sort(),
+    } : previous.local_candle_history,
+    earliest_captured_date: next.local_candle_history
+      ? next.earliest_captured_date
+      : next.earliest_captured_date ?? previous.earliest_captured_date,
     from_date: previous.from_date < next.from_date ? previous.from_date : next.from_date,
     to_date: previous.to_date > next.to_date ? previous.to_date : next.to_date,
     segments: uniqueBy(

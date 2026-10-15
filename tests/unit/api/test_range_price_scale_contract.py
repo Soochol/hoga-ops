@@ -75,6 +75,7 @@ PRICE_FIELDS: frozenset[str] = frozenset({
 #: 척도와 무관한 필드(수량·시각·식별자·사유). 새 필드가 여기 있으면 환산 불필요라는
 #: **판단을 남긴 것**이다 — 자동 분류가 아니라 사람이 한 번 본 흔적이 남는다.
 NON_PRICE_FIELDS: frozenset[str] = frozenset({
+    "RangeBundle.local_candle_history", "LocalCandleHistory.available_dates", "LocalCandleHistory.trading_dates",
     # 디스크 좌팬의 **바닥**(가장 오래된 캡처일, YYYYMMDD) — 날짜지 가격이 아니다.
     "RangeBundle.earliest_captured_date",
     "RangeBundle.code", "RangeBundle.from_date", "RangeBundle.to_date",

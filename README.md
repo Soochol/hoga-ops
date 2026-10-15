@@ -48,6 +48,12 @@ list tells the attacker's domain apart (ADR-0134).
 
 The backend exposes capture/replay APIs plus `/live` 키움-backed endpoints (KIS 는 파생 전용 — ADR-0136). The Vite frontend is wired for replay, watchlists, screeners, heatmap, and live chart workflows, including the `/live` investor trend estimate sidebar card.
 
+캔들 차트의 **hogaplay 저장 데이터로 보기**는 디스크에 저장된 분봉만 표시한다.
+과거로 이동해도 미저장 날짜를 HogaPlay 서버나 키움 API에서 자동으로 가져오지 않는다.
+탐색 하한은 종목·거래소별 최초 유효 로컬 분봉 날짜다. 중간에 수집되지 않은 달이 있어도
+더 과거의 로컬 분봉까지 계속 탐색한다. 거래일 장중의 빈 분봉은 가격·거래량 없는 시간칸으로
+유지하고, 야간·주말·휴장일은 기존처럼 시간축에서 생략한다.
+
 `/market`의 **투자자 수급**은 현물 08:00–16:30, 파생 09:00–15:45의 거래일 수집 창에서
 기본 10초마다 수집·화면 갱신한다. 마지막 정상 수신 시각과 수신 지연·서버 연결 오류를
 구분하며, **수집 이력**에서 저장 시각과 공백을 확인한다. 값이 같으면 저장을 생략하므로

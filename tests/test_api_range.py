@@ -625,6 +625,14 @@ def test_parser_output_visible_as_hogaplay_source(app_client: TestClient) -> Non
     assert body["segments"][0]["date"] == "20260519"
     assert body["segments"][0]["source"] == "hogaplay"
     assert len(body["candles"]) > 0
+    assert "20260519" in body["local_candle_history"]["available_dates"]
+    empty = app_client.get(
+        "/api/range?code=003490&from=20260520&to=20260520&bucket_ms=60000&venue=KRX&mode=candles"
+    ).json()
+    assert empty["candles"] == []
+    assert "20260519" in empty["local_candle_history"]["available_dates"]
+    assert empty["local_candle_history"]["trading_dates"] == ["20260520"]
+    assert empty["earliest_captured_date"] == "20260519"
 
 
 # --- Unmocked end-to-end value lock for the ADR-0001 extracted slices ---

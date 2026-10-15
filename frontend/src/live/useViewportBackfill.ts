@@ -73,10 +73,8 @@ const EMPTY_VIEWPORT_DATA_RATIO = 0.1;
 
 /** 3e 가 한 클램프 구간에서 자동으로 이어붙일 수 있는 스텝 수 상한.
  *
- * ⚠ **디스크 모드(hogaplay ON)에는 좌측 바닥이 없다** — `minuteScrollbackFloorDate`
- * 가 `restBypassEnabled` 에서 `null` 이라 `planFillStep` 의 `earliestAllowedDate`
- * stop 이 절대 안 걸리고, `extendHistoricalRange` 도 단조 감소 가드만 있지 하한을
- * 모른다. 즉 **종료를 보장하는 것은 이 상수뿐이다.**
+ * 디스크 모드도 `minuteScrollbackFloorDate` 로 최초 유효 로컬 분봉 날짜에서
+ * 멈춘다. 이 예산은 별도로 한 제스처의 자동 복구량을 제한한다.
  *
  * 3 인 근거: 예산 추정(`fillBudgetSteps`)이 빗나가는 정상 사례는 1~2 스텝이면
  * 흡수된다. 그보다 길게 이어져야 하는 구간은 데이터가 원래 없는 곳이므로, 자동으로
@@ -418,6 +416,12 @@ export function useViewportBackfill({
   // already guards `candles.length === 0`; this brings 3a/3b to parity.
   const candleCountRef = useRef(0);
   candleCountRef.current = bundle ? bundle.candles.length : 0;
+  // Only an inventory-backed disk timeline may advance through an empty view.
+  // The finite floor prevents the normal empty-initial-response runaway.
+  const emptyDiskTimelineRef = useRef(false);
+  emptyDiskTimelineRef.current = !!bundle?.timeline_sessions?.length
+    && !!bundle.local_candle_history?.available_dates.length
+    && minuteScrollbackFloorDate !== null;
   // Backpressure mirror: is a historical extension step already in flight. The
   // lazy-fetch trigger (3b) reads this to cap the outstanding step depth at 1 —
   // rapid zoom-out (e.g. 10× at 500ms defeats 3b's 150ms debounce) must NOT
@@ -1167,7 +1171,7 @@ export function useViewportBackfill({
     if (!canTriggerBackfill()) return;
     if (fillKindRef.current === null) return; // 활성 fill 없음 (예: 초기 로드 settle)
     // 초기 캔들 미로드(빈 차트)면 백필 폭주 금지 — candleCountRef 주석 참조.
-    if (candleCountRef.current === 0) return;
+    if (candleCountRef.current === 0 && !emptyDiskTimelineRef.current) return;
     const cur = historicalRange.snapshot().historicalFromDate;
     const settledByFetch = wasExtending && !isExtending;
     // 캐시 settle: fetch 없이 요청 창이 그대로 서빙되고 있다. isExtending 가드는
@@ -1294,7 +1298,7 @@ export function useViewportBackfill({
       // 초기 캔들이 아직 0개면 트리거 금지: 빈 차트도 logical.from<0을 보고하지만
       // 그건 "팬"이 아니라 "데이터 미도착"이다. 가드 없으면 historicalFromDate가
       // 250일 클램프까지 폭주해 거대 uncached fetch가 영구 pending → 빈 차트.
-      if (candleCountRef.current === 0) return;
+      if (candleCountRef.current === 0 && !emptyDiskTimelineRef.current) return;
       // Backpressure + 예산 보호: 진행 중인 스텝이 있거나 활성 fill이 예산을
       // 소진 중이면 새 트리거를 받지 않는다 — 동결된 예산을 덮어쓰면 "fill 도중
       // 인터랙션이 fill을 연장하지 못한다"는 계약이 깨진다. fill이 끝난 뒤의

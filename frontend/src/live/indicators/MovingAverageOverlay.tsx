@@ -5,6 +5,7 @@ import type { VirtualAxis } from '../../util/virtualAxis';
 import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
 import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import { createMovingAverageProjection } from '../../chart/projectors/maProjection';
+import { maskIntradayLineGaps } from '../../chart/intradayWhitespace';
 import type { SeriesDataSink } from '../../chart/seriesDataDiff';
 import { syncChartSeriesData } from '../../chart/replaceSeriesData';
 import { useMaSeriesRegistry } from './maSeriesRegistry';
@@ -112,7 +113,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
         pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));
         continue;
       }
-      const data = projected.get(cfg.id) ?? [];
+      const data = maskIntradayLineGaps(projected.get(cfg.id) ?? [], bundle, axis);
       pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, data));
     }
     // `chart` is a dep because the series-creation effect above re-creates
