@@ -16,6 +16,17 @@ function row(props: Partial<ComponentProps<typeof QuoteRow>> = {}) {
 }
 
 describe('QuoteRow', () => {
+  it('hovered names dismiss on Escape even when the row does not have keyboard focus', () => {
+    row({ code: '005930' });
+    fireEvent.mouseEnter(screen.getByText('삼성전자'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    // A focused popover may consume Escape without bubbling it to document.
+    render(<button onKeyDown={event => event.stopPropagation()}>다른 컨트롤</button>);
+    const other = screen.getByRole('button', { name: '다른 컨트롤' });
+    other.focus();
+    fireEvent.keyDown(other, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
   it.each(['blur', 'visibilitychange'])('dismisses a hovered name on %s without a mouseleave and stays closed on return', (event) => {
     row({ code: '005930' });
     const target = screen.getByTestId('quote-row-005930');

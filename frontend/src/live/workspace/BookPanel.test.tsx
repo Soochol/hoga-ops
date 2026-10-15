@@ -6,6 +6,11 @@ import type { OrderbookSnapshot } from '../../api/types';
 
 const PREV_CLOSE = 255_000;
 
+function mockFocusVisible(element: HTMLElement, visible: boolean) {
+  vi.spyOn(element, 'matches').mockImplementation(selector => selector === ':focus-visible'
+    ? visible : Element.prototype.matches.call(element, selector));
+}
+
 /** 참조 스냅샷(005930 실측 기준가) — 매도 최우선 = 현재가 251,500. */
 function snap(): OrderbookSnapshot {
   const ask = [251_500, 252_000, 252_500, 253_000, 253_500, 254_000, 254_500, 255_000, 255_500, 256_000]
@@ -49,6 +54,31 @@ describe('시고저 가격의 전일 KRX 종가 툴팁', () => {
   afterEach(() => vi.useRealTimers());
   const reveal = () => act(() => { vi.advanceTimersByTime(500); });
 
+  it('가격 요약은 키보드 표시 없는 포커스 복원만으로 툴팁을 열지 않는다', () => {
+    renderPanel({ krxPreviousClose: 255_000 });
+    const value = screen.getByLabelText('최고 가격 257,500원');
+    mockFocusVisible(value, false);
+    fireEvent.focus(value); reveal();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('호가 옆 시고저 칩은 키보드 표시 없는 포커스 복원만으로 툴팁을 열지 않는다', () => {
+    renderPanel({ summary: { ...EMPTY_TRADE_SUMMARY, dayOpen: 251250 } });
+    const badge = screen.getByRole('img', { name: '시가 251,250원 · 가장 가까운 호가 251,000원' });
+    mockFocusVisible(badge, false);
+    fireEvent.focus(badge); reveal();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('다른 곳에 포커스가 있어도 Escape로 호버 툴팁의 표시 예약을 취소한다', () => {
+    renderPanel({ krxPreviousClose: 255_000 });
+    fireEvent.mouseEnter(screen.getByLabelText('최고 가격 257,500원'));
+    act(() => vi.advanceTimersByTime(499));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    reveal();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
   it('사다리 기준가·당일 KRX 종가와 무관하게 세 가격의 전일 KRX 대비를 표시한다', () => {
     renderPanel({ baselinePrice: 230_000, krxClose: 230_000, krxPreviousClose: 220_000,
       summary: { ...SUMMARY, dayOpen: 222_500, dayHigh: 226_500, dayLow: 215_500 } });
@@ -77,6 +107,7 @@ describe('시고저 가격의 전일 KRX 종가 툴팁', () => {
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
     const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
     const value = within(dialog).getByLabelText('최고 가격 257,500원');
+    mockFocusVisible(value, true);
     fireEvent.focus(value); reveal();
     expect(screen.getByRole('tooltip')).toHaveTextContent('+0.98%');
     fireEvent.keyDown(value, { key: 'Escape' });
@@ -119,6 +150,7 @@ describe('시고저 가격의 전일 KRX 종가 툴팁', () => {
     fireEvent.mouseEnter(badge); reveal();
     expect(screen.getByRole('tooltip')).toHaveTextContent('시가 251,250원 · 가장 가까운 호가 251,000원');
     fireEvent.mouseLeave(badge);
+    mockFocusVisible(badge, true);
     fireEvent.focus(badge); reveal();
     expect(badge).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
     fireEvent.keyDown(badge, { key: 'Escape' });
@@ -127,6 +159,7 @@ describe('시고저 가격의 전일 KRX 종가 툴팁', () => {
     snapshot.bid[0] = { price: 251250, qty: 0 };
     view.rerender(<BookPanel {...props} snapshot={snapshot} />);
     const exact = screen.getByRole('img', { name: '시가 251,250원' });
+    mockFocusVisible(exact, true);
     expect(exact.parentElement?.parentElement).toHaveTextContent('251,250');
     expect(screen.getAllByText('시')).toHaveLength(1);
     fireEvent.focus(exact); reveal();

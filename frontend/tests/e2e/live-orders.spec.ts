@@ -695,6 +695,36 @@ test('매입수량·평단가에 500ms 호버하면 매수금액을 표시하고
   expect(commands).toHaveLength(0);
 });
 
+test('보유·평단가의 마우스 없는 포커스 복원에는 매수금액을 표시하지 않고 Tab 이동에는 표시한다', async ({ page }) => {
+  const { window, commands } = await setup(page, false, true, false, 0, 1,
+    { holdingQuantity: '547', sellableQuantity: '547', averagePrice: '123830' });
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.mouse.move(0, 0);
+  const quantity = window.getByLabel('매입수량');
+  const average = window.getByLabel('매입평단가');
+  const tooltip = page.getByRole('tooltip');
+  for (const target of [quantity, average]) {
+    await target.focus();
+    await expect(target).toBeFocused();
+    expect(await target.evaluate(el => el.matches(':focus-visible'))).toBe(false);
+    await page.clock.runFor(600);
+    await expect(tooltip).toHaveCount(0);
+  }
+  // Keyboard users retain the same purchase-amount description.
+  await page.keyboard.press('Shift+Tab');
+  await expect(quantity).toBeFocused();
+  await page.clock.runFor(500);
+  await expect(tooltip).toHaveText('매수금액 67,735,010원');
+  await page.keyboard.press('Tab');
+  await expect(average).toBeFocused();
+  await page.clock.runFor(500);
+  await expect(tooltip).toHaveText('매수금액 67,735,010원');
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toHaveCount(0);
+  expect(commands).toHaveLength(0);
+});
+
 test('평단가 원은 시고저 배지·7자리 가격과 좁은 창에서도 겹치지 않는다', async ({ page }, testInfo) => {
   const { window, commands, ws } = await setup(page, false, false, false, 1_401_800, 1, { averagePrice: '1469040.5' });
   await ws!.waitForSubscribe('005930');
@@ -771,6 +801,10 @@ test('두 호가창의 시고저는 빠진 중간 가격을 최근접 행에 표
   await page.mouse.move(0, 0);
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await approximate.focus();
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(approximate).toBeFocused();
   await expect(page.getByRole('tooltip')).toHaveText(labels[2][1]);
   await approximate.press('Escape');
   await expect(page.getByRole('tooltip')).toHaveCount(0);
@@ -790,6 +824,62 @@ test('두 호가창의 시고저는 빠진 중간 가격을 최근접 행에 표
   for (const panel of [window, book]) {
     await expect(panel.locator('[data-price-badges]')).toHaveCount(1);
     await expect(panel.locator('[data-price-badges]')).toHaveText('시');
+  }
+  expect(commands).toHaveLength(0);
+});
+
+test('두 호가창의 시고저 칩·상세 가격은 일반 포커스로 열리지 않고 키보드와 호버 툴팁을 유지한다', async ({ page }) => {
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/krx-previous-close\?/, route => {
+    const as_of = new URL(route.request().url()).searchParams.get('as_of');
+    return route.fulfill({ json: { code: '005930', as_of, session_date: as_of,
+      date: '20261014', price: 66000, fetched_at_ms: Date.now() } });
+  });
+  const { window, ws, commands } = await setup(page, false, false);
+  const book = page.locator('.book-panel');
+  await ws.waitForSubscribe('005930');
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(),
+    day_open: 67400, day_high: 68100, day_low: 66400,
+    trades: [{ price: 67400, qty: 1, side: 1 }] });
+  await expect(window.getByRole('img', { name: '시가 67,400원', exact: true })).toBeVisible();
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  const tooltip = page.getByRole('tooltip');
+  for (const panel of [window, book]) {
+    const frame = page.locator('[data-win]').filter({ has: panel });
+    await frame.getByRole('button', { name: '창 최대화', exact: true }).click();
+    await page.clock.runFor(200);
+    const targets = [
+      { target: panel.getByRole('img', { name: '시가 67,400원', exact: true }), text: '시가 67,400원' },
+      { target: panel.getByLabel('시작 가격 67,400원'), text: '전일 KRX 종가 대비 +2.12%' },
+    ];
+    for (const { target, text } of targets) {
+      await target.scrollIntoViewIfNeeded();
+      await page.clock.runFor(200);
+      // End pointer interaction, then restore focus without hovering the target.
+      await target.click();
+      await page.mouse.move(0, 0);
+      await target.evaluate(el => (el as HTMLElement).blur());
+      await target.focus();
+      expect(await target.evaluate(el => el.matches(':focus-visible'))).toBe(false);
+      await page.clock.runFor(600);
+      await expect(tooltip).toHaveCount(0);
+      await page.keyboard.press('Tab');
+      await page.keyboard.press('Shift+Tab');
+      await expect(target).toBeFocused();
+      expect(await target.evaluate(el => el.matches(':focus-visible'))).toBe(true);
+      await page.clock.runFor(500);
+      await expect(tooltip).toHaveText(text);
+      await page.keyboard.press('Escape');
+      await expect(tooltip).toHaveCount(0);
+      await target.hover();
+      await page.clock.runFor(499);
+      await expect(tooltip).toHaveCount(0);
+      await page.clock.runFor(1);
+      await expect(tooltip).toHaveText(text);
+      await page.mouse.move(0, 0);
+      await expect(tooltip).toHaveCount(0);
+    }
+    await frame.getByRole('button', { name: '원래 크기로 복원', exact: true }).click();
   }
   expect(commands).toHaveLength(0);
 });
