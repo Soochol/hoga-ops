@@ -23,7 +23,7 @@ export async function mount(windowed: boolean, count = 8000, interval = 60) {
   series.setData(rows); flushWindowedChart(chart);
   const axis = createVirtualAxis([{ date: '20260901', sessionOpenMs: base * 1000,
     sessionCloseMs: Number(rows.at(-1)!.time) * 1000 }], base * 1000);
-  const bundle = { candles: [{ ts_ms: Number(rows.at(-1)!.time) * 1000 }] } as unknown as RangeBundle;
+  const bundle = { candles: rows.map(r => ({ ts_ms: Number(r.time) * 1000 })) } as unknown as RangeBundle;
   const ref = { current: container };
   const changes: { from: number; to: number }[] = [];
   const onChanged = (range: { from: number; to: number }) => changes.push({ ...range });

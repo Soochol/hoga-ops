@@ -2,6 +2,15 @@
 
 **Date**: 2026-06-07
 **Status**: Approved
+
+**2026-10-15 개정 — 과거 구간 픽셀 앵커**: 일반 휠은 과거 구간에서도 오른쪽 실제
+캔들의 중심 픽셀 위치를 고정한다. 기존 `to` 숫자 고정은 봉 간격 변화의 절반만큼
+캔들이 좌우로 이동했으므로 교체한다. 공유 시간축의 지표 전용 칸은 앵커에서 제외하고,
+연속 휠 중에는 같은 캔들을 유지한다. 팬·창 크기·축 또는 외부 화면 위치가 바뀌면
+현재 화면에서 앵커를 다시 고른다. 화면에 실제 캔들이 없을 때는 기존 `to` 고정을
+유지한다. 최신 캔들·Ctrl/Cmd 앵커, Shift 팬, Alt 스크롤과 백필 예산은 보존한다.
+최대·최소 봉 간격 및 데이터 양 끝 한계에서 앵커를 유지한 채 줌을 멈춘다.
+아래 과거 `to` 고정 결정의 이력은 이 개정으로 대체한다.
 **Scope**: `frontend/src/live/useWheelInteractions.ts` (신규), `frontend/src/live/useWheelInteractions.test.tsx` (신규), `frontend/src/live/LiveChartRoot.tsx`, `frontend/src/live/LiveChartRoot.test.tsx` (배선 회귀 추가), `frontend/src/util/wheelInteractions.ts` (무변경 재사용)
 
 ## Problem

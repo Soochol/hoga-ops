@@ -20,15 +20,30 @@ function cursorIndex(range: { from: number; to: number }, x: number, width = 942
 
 describe('computeWheelOutcome', () => {
   for (const deltaY of [-120, 120]) {
-    it(`keeps the historical right logical edge on zoom ${deltaY}`, () => {
+    it(`keeps the historical candle centre on zoom ${deltaY}`, () => {
       const spy = vi.fn(() => 50);
-      const input = baseInput({deltaY, lastBarIndex: 300, coordinateToLogical: spy});
+      const input = baseInput({deltaY, lastBarIndex: 300, visibleCandleIndex: 100, coordinateToLogical: spy});
       const out = computeWheelOutcome(input)!;
-      expect(out.to).toBe(input.range.to);
+      expect(pixelX(out, 100)).toBeCloseTo(pixelX(input.range, 100), 9);
       expect(out.to - out.from + 1).toBeCloseTo(101 * Math.exp(deltaY * .001), 10);
       expect(spy).not.toHaveBeenCalled();
     });
   }
+
+  for (const to of [100, 100.25, 100.75]) {
+    it(`preserves a sparse historical candle at a fractional edge ${to}`, () => {
+      const range = { from: to - 10, to };
+      const out = computeWheelOutcome(baseInput({ range, lastBarIndex: 300,
+        visibleCandleIndex: 98, firstBarIndex: 0, deltaY: -120 }))!;
+      expect(pixelX(out, 98)).toBeCloseTo(pixelX(range, 98), 9);
+    });
+  }
+
+  it('stops at the oldest-data exposure limit without moving the anchor', () => {
+    const range = { from: -9, to: 1 };
+    expect(computeWheelOutcome(baseInput({ range, lastBarIndex: 300,
+      firstBarIndex: 0, visibleCandleIndex: 1, deltaY: -120, minSpan: 1 }))).toEqual(range);
+  });
 
   it('keeps the right edge when the latest candle is unavailable, ignoring the Shift wall', () => {
     expect(computeWheelOutcome(baseInput({maxTo: 50}))!.to).toBe(100);

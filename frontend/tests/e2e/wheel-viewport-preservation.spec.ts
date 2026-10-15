@@ -10,7 +10,7 @@ for (const windowed of [false, true]) for (const count of [4000, 8000]) for (con
       h.chart.timeScale().setVisibleLogicalRange({ from: 1800, to: 1900 }); await h.frame();
       const ts = h.chart.timeScale();
       const anchorTime = h.rows[Math.round(ts.coordinateToLogical(450)!)].time;
-      const snapshot = () => ({ ...h.snap(), anchorX: ts.timeToCoordinate(anchorTime) });
+      const snapshot = () => ({ ...h.snap(), anchorX: ts.timeToCoordinate(anchorTime), rightX: ts.timeToCoordinate(h.rows[1900].time) });
       const samples = [{ tag: 'before', ...snapshot() }];
       for (let i = 0; i < 16; i++) {
         for (let n = 0; n < burst; n++) {
@@ -24,7 +24,7 @@ for (const windowed of [false, true]) for (const count of [4000, 8000]) for (con
     const drawn = result.filter(s => s.tag === 'before' || s.tag.endsWith('-drawn'));
     const initialAnchor = drawn[0].mouseIndex!;
     const drift = mode === 'ctrl' ? Math.max(...drawn.map(s => Math.abs(s.mouseIndex! - initialAnchor)))
-      : mode === 'plain' ? Math.max(...drawn.map(s => Math.abs(s.range!.to - 1900))) : null;
+      : mode === 'plain' ? Math.max(...drawn.map(s => Math.abs(s.rightX! - drawn[0].rightX!))) : null;
     if (mode === 'shift') expect(drawn.at(-1)!.range!.to).toBeCloseTo(1900 + 160 * (windowed ? burst : 1), 5);
     if (mode === 'plain') expect(drift).toBeLessThan(.01);
     if (mode === 'ctrl') {
@@ -100,7 +100,7 @@ for (const windowed of [true]) for (const mode of ['plain', 'ctrl']) for (const 
       h.chart.timeScale().setVisibleLogicalRange({ from: 1800, to: 2100 }); await h.frame();
       const ts = h.chart.timeScale();
       const cursorIndex = Math.round(ts.coordinateToLogical(450)!);
-      const anchorTime = h.rows[cursorIndex].time;
+      const anchorTime = h.rows[mode === 'plain' ? 2100 : cursorIndex].time;
       const before = h.snap(); const beforeX = ts.timeToCoordinate(anchorTime)!;
       h.wheel(120, mode === 'ctrl');
       // A resolved history response commits between wheel events, without a
@@ -112,8 +112,7 @@ for (const windowed of [true]) for (const mode of ['plain', 'ctrl']) for (const 
       if (followup !== 'none') h.wheel(120, mode === 'ctrl');
       await h.frame();
       const after = h.snap();
-      const drift = mode === 'plain' ? after.range!.to - before.range!.to - 1000
-        : ts.timeToCoordinate(anchorTime)! - beforeX;
+      const drift = ts.timeToCoordinate(anchorTime)! - beforeX;
       return { before, after, beforeX, afterX: ts.timeToCoordinate(anchorTime), drift,
         rightTimeBefore: h.rows[Math.floor(before.range!.to)].time,
         rightTimeAfter: h.series.dataByIndex(Math.floor(after.range!.to), -1)?.time };

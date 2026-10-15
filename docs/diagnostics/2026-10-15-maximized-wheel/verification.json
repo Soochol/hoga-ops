@@ -1,0 +1,144 @@
+{
+  "dateKst": "2026-10-15",
+  "base": "289d46c7893e150a0e7791d47d28ee0e4d52689b",
+  "node": "v24.13.1",
+  "chrome": "Google Chrome 155.0.8059.79",
+  "playwright": "1.60.0",
+  "productCodeChanged": false,
+  "diagnostic": {
+    "command": "npm exec playwright -- test -c ../docs/diagnostics/2026-10-15-maximized-wheel/playwright.config.mts",
+    "passed": 4
+  },
+  "baseline": {
+    "command": "npm exec playwright -- test -c ../docs/diagnostics/2026-10-14-wheel-axis/playwright.config.mts wheel-pixel-anchor.spec.ts",
+    "passed": 18
+  },
+  "inputHashes": {
+    "frontend/src/util/wheelInteractions.ts": "0afe0b00c8114411b7e862cc5bcabd276d10bbd573dabd1d04ee1f6dd99f4f1b",
+    "frontend/src/live/useWheelInteractions.ts": "043cd911e651e49e2bbb246be75f64eddfbda1c1fec277d305e9f31e4d06aa83",
+    "frontend/src/live/LiveChartRoot.tsx": "4d2f5c716b399f93c703e7f8a6783f56332a8281e25b516b23fc9b3b2ca4e478",
+    "frontend/src/chart/windowedChart.ts": "23c795a9dc6b74fdb8a2fdc8326b22d3e4e522be55d36a9241fba01b3840b553",
+    "frontend/src/live/workspace/WorkspaceCanvas.tsx": "830e6221974e01343c2b24102caa4886e939eac510128ea981b2d83d3ac37404",
+    "frontend/tests/e2e/wheel-pixel-anchor.spec.ts": "faca1914417edc75f046d8241dda1d1e190517106febcee072a7745efe893842",
+    "frontend/tests/e2e/helpers/wheelViewportHarness.tsx": "a8e95229dd686ab4342c3f0e3f613bcfd70032fe3e8c1a7af2ba953029d63853",
+    "frontend/package.json": "20c82c1b5bcd1caf12bd988786df6fa156b27609a8e79c3ebcdbe635b3d3719a",
+    "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f",
+    "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493",
+    "frontend/tests/e2e/helpers/liveMocks.ts": "8ffa69f8411218bb09f4072e08c7ac4e4f4bced418e9dd4e058a5c3b1bb89851",
+    "frontend/tests/e2e/helpers/apiRoutes.ts": "34708ce997d1723604e76e424ffacde3f10318f089e4e70d8cdb951c3a54b549",
+    "frontend/tests/e2e/worktreeEnv.ts": "8e63a68d925dccb4358177556b03fd58c5e997b793eb236fb7188e75d343eaa2",
+    "docs/diagnostics/2026-10-15-maximized-wheel/034020-3m.json": "3c99af3c320b716b8f8236d39ddd7f7b4a79de3484579acec0030dbb365e2438",
+    "docs/diagnostics/2026-10-15-maximized-wheel/investigate.spec.mts": "392dd3565b654f6eaf15776b87d8d6a0c62992f0663c2f305714ff0c1cd2ec3c",
+    "docs/diagnostics/2026-10-15-maximized-wheel/playwright.config.mts": "b67fda6f9a69c20e1be568acb55ca244e7084631aa400e2e299c7fc2d73ec532"
+  },
+  "measurements": [
+    {
+      "file": "measurement-1400-dpr1.json",
+      "latestMaxDrift": 6.59383658785373e-12,
+      "referenceMaxDrift": 1.000444171950221e-11,
+      "maximizedHistorical": [
+        {
+          "span": 420,
+          "drift": 0.19139669880792098,
+          "width": 1264
+        },
+        {
+          "span": 100,
+          "drift": 0.797802081169948,
+          "width": 1264
+        },
+        {
+          "span": 10,
+          "drift": 7.325273654378634,
+          "width": 1264
+        },
+        {
+          "span": 3,
+          "drift": 20.144502549540448,
+          "width": 1264
+        }
+      ]
+    },
+    {
+      "file": "measurement-1400-dpr135.json",
+      "latestMaxDrift": 6.59383658785373e-12,
+      "referenceMaxDrift": 1.000444171950221e-11,
+      "maximizedHistorical": [
+        {
+          "span": 420,
+          "drift": 0.19139669880792098,
+          "width": 1264
+        },
+        {
+          "span": 100,
+          "drift": 0.797802081169948,
+          "width": 1264
+        },
+        {
+          "span": 10,
+          "drift": 7.325273654378634,
+          "width": 1264
+        },
+        {
+          "span": 3,
+          "drift": 20.144502549540448,
+          "width": 1264
+        }
+      ]
+    },
+    {
+      "file": "measurement-2766-dpr1.json",
+      "latestMaxDrift": 1.3642420526593924e-11,
+      "referenceMaxDrift": 2.091837814077735e-11,
+      "maximizedHistorical": [
+        {
+          "span": 420,
+          "drift": 0.3982383843867865,
+          "width": 2630
+        },
+        {
+          "span": 100,
+          "drift": 1.6599837606622714,
+          "width": 2630
+        },
+        {
+          "span": 10,
+          "drift": 15.241669075171103,
+          "width": 2630
+        },
+        {
+          "span": 3,
+          "drift": 41.91458995671792,
+          "width": 2630
+        }
+      ]
+    },
+    {
+      "file": "measurement-2766-dpr135.json",
+      "latestMaxDrift": 1.3642420526593924e-11,
+      "referenceMaxDrift": 2.091837814077735e-11,
+      "maximizedHistorical": [
+        {
+          "span": 420,
+          "drift": 0.3982383843867865,
+          "width": 2630
+        },
+        {
+          "span": 100,
+          "drift": 1.6599837606622714,
+          "width": 2630
+        },
+        {
+          "span": 10,
+          "drift": 15.241669075171103,
+          "width": 2630
+        },
+        {
+          "span": 3,
+          "drift": 41.91458995671792,
+          "width": 2630
+        }
+      ]
+    }
+  ]
+}
