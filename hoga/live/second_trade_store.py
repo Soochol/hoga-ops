@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import fcntl
+import heapq
 import json
 import logging
 import os
@@ -16,6 +17,7 @@ import re
 import shutil
 import time
 import uuid
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from threading import RLock
@@ -32,6 +34,7 @@ MAX_CELLS = 200_000
 CACHE_LIMIT = 4
 _FLUSH_SLICE = 128
 _FLUSH_WARN_MS = 250.0
+_SETTLE_MS = 3000
 
 _BarKey = tuple[str, str, int]
 _FileKey = tuple[str, str, str]
@@ -60,6 +63,20 @@ class SecondTradeStore:
         # Strings also avoid a second retained graph of price-cell containers.
         # Entries are bounded by _bars/max_cells and removed with their bars.
         self._flush_records: dict[_BarKey, tuple[int, str]] = {}
+        # The current encoded revision may be newer than the durable one.
+        # Checkpoints must retain the latter until a replacement is fsynced.
+        self._durable_records: dict[_BarKey, str] = {}
+        # Linked iteration stays O(dirty bars) even after a large batch leaves
+        # only one pending key; ordinary dict tombstones can retain scan cost.
+        self._dirty: OrderedDict[_BarKey, None] = OrderedDict()
+        self._file_bars: dict[_FileKey, dict[_BarKey, None]] = {}
+        # One expiry entry per retained bar, never one entry per execution.
+        self._expiry: list[tuple[int, _BarKey]] = []
+        self._expired_pending: set[_BarKey] = set()
+        self._next_ready_ms: int | None = None
+        # A failed/cancelled append may have reached disk without an ACK. Do not
+        # move a checkpoint past that journal until these revisions are retried.
+        self._uncertain_files: dict[_FileKey, set[_BarKey]] = {}
         self._late: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
         self._seq = time.time_ns()
         self._cells = 0
@@ -108,7 +125,9 @@ class SecondTradeStore:
                         self._failed_recovery.add((code, venue, date))
                         break
                     self._bars[key] = bar
+                    self._index_bar(key)
                     self._saved[key] = bar.revision
+                    self._durable_records[key] = _record_json(row)
                     self._cells += len(bar.prices)
                     self._seq = max(self._seq, bar.last[1], bar.first[1], bar.applied_late_seq)
             self._prepared.add((code, date))
@@ -155,9 +174,19 @@ class SecondTradeStore:
                 continue
             if bar is None:
                 bar = self._bars.setdefault(key, SecondTradeBar(t_ms=t))
+                self._index_bar(key)
             if new_cell:
                 self._cells += 1
             bar.ingest(seq=self._seq, **trade)
+            if key not in self._dirty:
+                self._dirty[key] = None
+                ready = t + _SETTLE_MS
+                if self._next_ready_ms is None or ready < self._next_ready_ms:
+                    self._next_ready_ms = ready
+
+    def _index_bar(self, key: _BarKey) -> None:
+        self._file_bars.setdefault((key[0], key[1], trade_date(key[2])), {})[key] = None
+        heapq.heappush(self._expiry, (key[2], key))
 
     def _flush_record(self, key: _BarKey, bar: SecondTradeBar) -> str:
         cached = self._flush_records.get(key)
@@ -172,48 +201,57 @@ class SecondTradeStore:
 
     async def _prepare_flush(self, now_ms: int, force: bool) -> tuple[
         dict[_FileKey, list[_Record]],
-        dict[_FileKey, list[tuple[_BarKey, int]]],
+        dict[_FileKey, list[tuple[_BarKey, int, str]]],
         dict[_FileKey, list[_Record]],
         dict[_FileKey, list[dict[str, Any]]],
     ]:
         batches: dict[_FileKey, list[_Record]] = {}
-        revisions: dict[_FileKey, list[tuple[_BarKey, int]]] = {}
+        revisions: dict[_FileKey, list[tuple[_BarKey, int, str]]] = {}
         recent: dict[_FileKey, list[_Record]] = {}
         late = {key: list(rows) for key, rows in self._late.items() if rows}
-        dirty_files = set(late)
-        keys = tuple(self._bars)
-        # Ingest may add keys while we yield. New bars and late rows not in this
-        # pass's snapshots remain pending for the next flush; no dict iterator
-        # is held across an await. A changed revision is acknowledged only after
-        # its own immutable record has been appended and fsynced.
+        # Young changed bars stay pending until their own deadline. A late
+        # correction still needs a checkpoint even when no bar is eligible.
+        if not force and self._next_ready_ms is not None and now_ms < self._next_ready_ms:
+            keys: tuple[_BarKey, ...] = ()
+        else:
+            keys = tuple(self._dirty)
+        snapshot_seq = self._seq
+        next_ready = None
+        frozen: dict[_BarKey, str] = {}
         for start in range(0, len(keys), _FLUSH_SLICE):
             await asyncio.sleep(0)
             for key in keys[start:start + _FLUSH_SLICE]:
                 bar = self._bars[key]
-                if (force or bar.t_ms + 3000 <= now_ms) and self._saved.get(key, 0) < bar.revision:
-                    dirty_files.add((key[0], key[1], trade_date(key[2])))
-        for start in range(0, len(keys), _FLUSH_SLICE):
-            await asyncio.sleep(0)
-            for key in keys[start:start + _FLUSH_SLICE]:
-                bar = self._bars[key]
-                eligible = force or bar.t_ms + 3000 <= now_ms
-                saved = self._saved.get(key, 0)
-                code, venue, t = key
-                file_key = (code, venue, trade_date(t))
-                if file_key not in dirty_files:
+                ready = bar.t_ms + _SETTLE_MS
+                next_ready = ready if next_ready is None else min(next_ready, ready)
+                if not force and ready > now_ms:
                     continue
-                row = None
-                if bar.t_ms >= now_ms - RETAIN_MS and (eligible or saved == bar.revision):
-                    row = self._flush_record(key, bar)
-                    recent.setdefault(file_key, []).append(row)
-                if not eligible or saved >= bar.revision:
-                    continue
-                row = row or self._flush_record(key, bar)
+                file_key = (key[0], key[1], trade_date(key[2]))
+                row = self._flush_record(key, bar)
+                frozen[key] = row
                 record = '{"kind":"bar","schema_version":1,"bar":' + row + '}'
                 batches.setdefault(file_key, []).append(record)
-                revisions.setdefault(file_key, []).append((key, bar.revision))
+                revisions.setdefault(file_key, []).append((key, bar.revision, row))
+        # Ingest across a yield may have introduced an earlier deadline. Never
+        # overwrite it with a deadline computed from an older key snapshot.
+        if keys and self._seq == snapshot_seq:
+            self._next_ready_ms = next_ready
         for key, rows in late.items():
             batches.setdefault(key, []).extend(rows)
+        # Checkpoints contain ALL durable recent seconds of affected files,
+        # plus exactly the immutable revisions in this append. Other files and
+        # unwritten new bars are never visited/advertised by this preparation.
+        visited = 0
+        for file_key in batches:
+            for key in tuple(self._file_bars.get(file_key, ())):
+                if visited % _FLUSH_SLICE == 0:
+                    await asyncio.sleep(0)
+                visited += 1
+                if key[2] < now_ms - RETAIN_MS:
+                    continue
+                row = frozen.get(key, self._durable_records.get(key))
+                if row is not None:
+                    recent.setdefault(file_key, []).append(row)
         return batches, revisions, recent, late
 
     async def flush(self, *, now_ms: int, force: bool = False) -> None:
@@ -226,22 +264,26 @@ class SecondTradeStore:
                              elapsed_ms, len(self._bars), len(batches),
                              sum(len(rows) for rows in batches.values()))
             for (code, venue, date), records in batches.items():
+                file_key = (code, venue, date)
                 try:
-                    await asyncio.to_thread(self._append, self.path(code, venue, date), records)
+                    await self._join_io(self._append, self.path(code, venue, date), records)
+                except asyncio.CancelledError:
+                    self._mark_uncertain(file_key, revision_batches)
+                    raise
                 except OSError:
+                    self._mark_uncertain(file_key, revision_batches)
                     self.storage_error = "second_trade_storage_error"
                     _log.exception("second_trade.append_failed code=%s venue=%s", code, venue)
                     continue
-                file_key = (code, venue, date)
-                for key, rev in revision_batches.get(file_key, []):
-                    self._saved[key] = rev
+                self._acknowledge(file_key, revision_batches.get(file_key, []))
                 path = self.path(code, venue, date)
                 recent = recent_by_file.get(file_key, [])
                 # No await between snapshot and offset: append is serialized by
                 # this lock. Young, unflushed buckets are never checkpointed.
                 offset = path.stat().st_size
                 try:
-                    await asyncio.to_thread(self._checkpoint, path, recent, offset, self._seq)
+                    if file_key not in self._uncertain_files:
+                        await self._join_io(self._checkpoint, path, recent, offset, self._seq)
                 except OSError:
                     _log.warning("second_trade.checkpoint_failed", exc_info=True)
                 pending = self._late.get((code, venue, date))
@@ -252,16 +294,73 @@ class SecondTradeStore:
                     if not pending:
                         self._late.pop((code, venue, date), None)
             self._sealed_before = now_ms - RETAIN_MS
-            keys = tuple(self._bars)
-            for start in range(0, len(keys), _FLUSH_SLICE):
+            await self._prune_expired()
+
+    def _acknowledge(self, file_key: _FileKey, revisions: list[tuple[_BarKey, int, str]]) -> None:
+        uncertain = self._uncertain_files.get(file_key)
+        for key, rev, row in revisions:
+            self._saved[key] = rev
+            self._durable_records[key] = row
+            if uncertain is not None:
+                uncertain.discard(key)
+            if self._bars[key].revision == rev:
+                self._dirty.pop(key, None)
+                if key in self._expired_pending:
+                    self._expired_pending.remove(key)
+                    heapq.heappush(self._expiry, (key[2], key))
+        if not self._dirty:
+            self._next_ready_ms = None
+        if uncertain is not None and not uncertain:
+            del self._uncertain_files[file_key]
+
+    def _mark_uncertain(self, file_key: _FileKey, revisions: dict[_FileKey, list[tuple[_BarKey, int, str]]]) -> None:
+        self._uncertain_files.setdefault(file_key, set()).update(key for key, _, _ in revisions.get(file_key, []))
+
+    @staticmethod
+    async def _join_io(fn, *args) -> None:
+        task = asyncio.create_task(asyncio.to_thread(fn, *args))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            try:
+                await task
+            except Exception:  # noqa: BLE001 — join native writer, preserve cancellation
+                _log.exception("second_trade.cancelled_io_failed")
+            raise
+
+    async def finish_flush(self, *, now_ms: int, force: bool = False) -> None:
+        """Join native disk work before a scheduler/connection releases ownership."""
+        task = asyncio.create_task(self.flush(now_ms=now_ms, force=force))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            try:
+                await task
+            except Exception:  # noqa: BLE001 — report storage failure, preserve cancellation
+                _log.exception("second_trade.shutdown_flush_failed")
+            raise
+
+    async def _prune_expired(self) -> None:
+        visited = 0
+        while self._expiry and self._expiry[0][0] < self._sealed_before:
+            if visited % _FLUSH_SLICE == 0:
                 await asyncio.sleep(0)
-                for key in keys[start:start + _FLUSH_SLICE]:
-                    bar = self._bars[key]
-                    if bar.t_ms < self._sealed_before and self._saved.get(key) == bar.revision:
-                        self._cells -= len(bar.prices)
-                        del self._bars[key]
-                        del self._saved[key]
-                        self._flush_records.pop(key, None)
+            visited += 1
+            _, key = heapq.heappop(self._expiry)
+            bar = self._bars[key]
+            if self._saved.get(key) != bar.revision:
+                self._expired_pending.add(key)
+                continue  # Kept until its own revision has reached fsync.
+            self._cells -= len(bar.prices)
+            del self._bars[key]
+            del self._saved[key]
+            self._flush_records.pop(key, None)
+            self._durable_records.pop(key, None)
+            file_key = (key[0], key[1], trade_date(key[2]))
+            members = self._file_bars[file_key]
+            del members[key]
+            if not members:
+                del self._file_bars[file_key]
 
     @staticmethod
     def _sync_directory(path: Path) -> None:

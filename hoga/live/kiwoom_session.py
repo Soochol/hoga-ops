@@ -17,6 +17,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from hoga.util.timeenc import KST
 
@@ -39,6 +40,9 @@ from .snapshot import LiveSnapshot
 from .ticks import WsTick
 
 _log = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from .second_trade_store import SecondTradeStore
 
 
 def _nxt_map() -> dict[str, bool | None] | None:
@@ -183,6 +187,8 @@ class KiwoomSessionManager:
         self._pending_subscriptions: dict[int, tuple[list[str], bool]] = {}
         self._kick_cooldowns: dict[int, int] = {}
         self._reconnect_history: dict[int, dict[str, int]] = {}
+        self._seconds: SecondTradeStore | None = None
+        self._seconds_task: asyncio.Task | None = None
 
     async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         """kiwoom_targets를 계정에 분배하고 conn 멤버십을 정합화. n_accounts=0 또는 빈
@@ -288,6 +294,8 @@ class KiwoomSessionManager:
                 await self._reconcile(conn)
             if self._connection_allowed:
                 await self._resubscribe_missing_locked()
+            if self._seconds is not None and self._conns:
+                self._ensure_seconds_flusher(self._seconds)
             self._check_registration_locked()
         await asyncio.sleep(0)
         self._report_registration()
@@ -802,6 +810,18 @@ class KiwoomSessionManager:
     async def _stop_locked(self) -> None:
         for account_id in list(self._conns):
             await self._teardown(account_id)
+        if self._seconds_task is not None:
+            task, self._seconds_task = self._seconds_task, None
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    raise
+        if self._seconds is not None:
+            await self._seconds.finish_flush(now_ms=self._now_fn(), force=True)
+            self._seconds = None
         # 전체 휴면 — 라우팅·표시 장부도 비운다(재활성 시 재파생).
         self._storage_members.clear()
         self._storage_registration_keys.clear()
@@ -842,6 +862,25 @@ class KiwoomSessionManager:
                     _log.warning("live.kiwoom.teardown_task_err account=%d", account_id,
                                  exc_info=True)
 
+    def _ensure_seconds_flusher(self, seconds: SecondTradeStore) -> None:
+        """One normal flush clock for the shared store, independent of account 0."""
+        self._seconds = seconds
+        if self._seconds_task is None or self._seconds_task.done():
+            if self._seconds_task is not None and not self._seconds_task.cancelled():
+                self._seconds_task.exception()  # Observe a failed previous owner.
+            self._seconds_task = asyncio.create_task(self._run_seconds_flusher(seconds), name="kiwoom-seconds-flush")
+
+    async def _run_seconds_flusher(self, seconds: SecondTradeStore) -> None:
+        from .stream import FLUSH_INTERVAL_S, _next_window_delay_s  # noqa: PLC0415
+
+        while True:
+            try:
+                await seconds.finish_flush(now_ms=self._now_fn())
+            except Exception:  # noqa: BLE001 — retain pending revisions and retry on the next boundary
+                seconds.storage_error = "second_trade_storage_error"
+                _log.exception("second_trade.flush_failed")
+            await asyncio.sleep(_next_window_delay_s(time.time(), FLUSH_INTERVAL_S))
+
     def _default_build_conn(self, account_id: int, codes: list[str]) -> _KiwoomConn | None:
         from .second_trade_store import second_trade_store  # noqa: PLC0415
         from .stream import LiveStream  # noqa: PLC0415 — 순환 import 회피
@@ -857,6 +896,7 @@ class KiwoomSessionManager:
             buffer=self._buffer,
             writer=LiveWriter(self._data_dir / "live_kiwoom"),
             seconds=seconds,
+            owns_seconds_flush=False,
             date_fn=self._date_fn,
             **self._stream_options,
         )
@@ -897,8 +937,9 @@ class KiwoomSessionManager:
             try:
                 await client.run(wire)
             finally:
-                await seconds.flush(now_ms=int(time.time() * 1000), force=True)
+                await seconds.finish_flush(now_ms=int(time.time() * 1000), force=True)
 
+        self._ensure_seconds_flusher(seconds)
         return _KiwoomConn(
             account_id=account_id,
             stream=stream,

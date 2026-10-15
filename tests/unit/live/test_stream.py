@@ -55,6 +55,22 @@ async def test_on_tick_publishes_immediately_and_flush_writes_jsonl(tmp_path):
     assert '"price": 100' in jsonl
 
 
+async def test_shared_seconds_normal_clock_does_not_remove_venue_close_drain(tmp_path):
+    from unittest.mock import AsyncMock
+
+    from hoga.live.second_trade_store import SecondTradeStore
+
+    seconds = SecondTradeStore(tmp_path / "seconds")
+    seconds.flush = AsyncMock()
+    stream = LiveStream(buffer=LiveBuffer(), writer=LiveWriter(tmp_path / "live"),
+                        date_fn=lambda: "20260616", phase_fn=lambda: "regular",
+                        seconds=seconds, owns_seconds_flush=False)
+    await stream.flush_once(now_ms=_kst_ms(10))
+    seconds.flush.assert_not_awaited()
+    await stream.flush_once(now_ms=_kst_ms(15, 30), seal_candle_venues=frozenset({"KRX"}))
+    seconds.flush.assert_awaited_once_with(now_ms=_kst_ms(15, 30), force=True)
+
+
 async def test_prev_close_reaches_display_but_not_storage(tmp_path):
     """키움 additive 확장(prev_close)은 표시 스냅샷까지 살아 가되 저장 스키마는 안 건드린다.
 
