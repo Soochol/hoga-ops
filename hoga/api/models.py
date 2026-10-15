@@ -416,6 +416,15 @@ class ProgramTradeTicksResponse(BaseModel):
     next_before: int | None
 
 
+class ProgramTradeHistoryResponse(BaseModel):
+    code: str
+    date: str
+    venue: str
+    rows: list[ProgramTradeTickRow]
+    next_key: str | None
+    latest_at_ms: int | None
+
+
 CapturePhase = Literal[
     "queued", "deciding", "capturing", "parsing",
     "done", "failed", "cancelled", "skipped",

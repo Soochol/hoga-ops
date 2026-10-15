@@ -7,7 +7,7 @@ import { useLiveVenueStore } from '../../state/liveVenue';
 import { priceDirClass } from '../../ui/priceDir';
 import { unixMsToKSTClock } from '../../util/time';
 import { useKstDay } from '../../util/useKstDay';
-import { buildProgramTradeTicks, mergeProgramTradeTicks } from '../programTradeTicks';
+import { buildProgramTradeTicks, combineProgramTradeHistory, mergeProgramTradeTicks } from '../programTradeTicks';
 import { useProgramTradeHistory } from '../../api/programTradeTicks';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import type { LiveVenueOption } from '../../state/liveVenue';
@@ -35,7 +35,8 @@ function ProgramTradeTickContent({ code, venue, date }: { code: string; venue: L
   const archive = useMemo(() => buildProgramTradeTicks(
     (history.data?.pages.flatMap(page => page.rows.map(row => ({ ...row }))) ?? []).slice().reverse(), date, Infinity,
   ), [history.data, date]);
-  const all = useMemo(() => mergeProgramTradeTicks(observed, archive), [observed, archive]);
+  const latestAtMs = history.data?.pages[0]?.latest_at_ms ?? null;
+  const all = useMemo(() => combineProgramTradeHistory(observed, archive, latestAtMs), [observed, archive, latestAtMs]);
   const [visible, setVisible] = useState(200);
   const ticks = all.slice(0, visible);
   const scroll = useRef<HTMLDivElement>(null);
@@ -89,7 +90,7 @@ function ProgramTradeTickContent({ code, venue, date }: { code: string; venue: L
         {connected ? '최근 수신 프로그램 증감 없음 · 새 수신 대기' : '실시간 연결 확인 중 · 프로그램 수신 대기'}
       </SidebarState> : <div role="table" aria-label="프로그램 체결 내역">
         <div role="row" className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-2xs text-fg-dim`}>
-          <span role="columnheader">수신시각</span>
+          <span role="columnheader" title="과거 내역은 키움 제공 시각, 실시간 내역은 수신 시각">시간</span>
           <span role="columnheader" className="text-right">현재가(원)</span>
           <span role="columnheader" className="text-right">순매수 증감(주)</span>
         </div>
