@@ -1,0 +1,62 @@
+{
+  "date": "2026-10-15",
+  "code": "222800",
+  "name": "심텍",
+  "venue": "UN",
+  "api": "ka90008",
+  "verification": "Browser wheel -> application history API -> shared capacity seam -> live Kiwoom REST; history API was not mocked",
+  "authentication": "Existing token read-only; no credentials copied, no tokens issued, no extra vendor WS",
+  "pages": [
+    {
+      "raw_rows": 200,
+      "display_rows": 51,
+      "newest_raw_time": "161048",
+      "oldest_raw_time": "160022",
+      "has_more": true
+    },
+    {
+      "raw_rows": 200,
+      "display_rows": 37,
+      "newest_raw_time": "160020",
+      "oldest_raw_time": "154955",
+      "has_more": true
+    },
+    {
+      "raw_rows": 200,
+      "display_rows": 48,
+      "newest_raw_time": "154948",
+      "oldest_raw_time": "151816",
+      "has_more": true
+    },
+    {
+      "raw_rows": 200,
+      "display_rows": 147,
+      "newest_raw_time": "151808",
+      "oldest_raw_time": "150754",
+      "has_more": true
+    }
+  ],
+  "total_unique_display_rows": 283,
+  "newest_display_time": "16:10:24",
+  "oldest_display_time": "15:07:54",
+  "browser_errors": 0,
+  "tests": {
+    "backend_and_wire": "171 passed",
+    "frontend_units": "103 passed",
+    "browser_regression": "6 passed",
+    "live_simtech_scroll": "1 passed on final base; also passed before base update",
+    "typecheck": "passed app/unit/E2E",
+    "ruff": "passed",
+    "eslint": "passed",
+    "vite_build": "passed during regression startup"
+  },
+  "runtime": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "browser": "system Chrome",
+    "workers": 1,
+    "backend_port": 20358,
+    "frontend_port": 21358
+  },
+  "source": "https://github.com/Kiwoom-Securities/Kiwoom-REST-API/blob/main/kiwoom/_data/kiwoom_api_spec.json"
+}
