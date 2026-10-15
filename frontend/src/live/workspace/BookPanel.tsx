@@ -525,7 +525,7 @@ function PriceBadges({ marker }: { marker: BookPriceMarker | null }) {
         <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`} role="img" aria-label={marker.tooltip}
           tabIndex={0} aria-describedby={tooltip.id}
           onMouseEnter={event => tooltip.show(event.currentTarget)} onMouseLeave={tooltip.hide}
-          onFocus={event => tooltip.show(event.currentTarget)} onBlur={tooltip.hide}
+          onFocus={event => tooltip.showOnFocus(event.currentTarget)} onBlur={tooltip.hide}
           onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); tooltip.hide(); } }}
         >{marker.label}</span>
       </span>
@@ -763,7 +763,7 @@ function SummaryRow({
         aria-describedby={tip.id}
         tabIndex={tooltipText ? 0 : undefined}
         onMouseEnter={e => tip.show(e.currentTarget)} onMouseLeave={tip.hide}
-        onFocus={e => tip.show(e.currentTarget)} onBlur={tip.hide}
+        onFocus={e => tip.showOnFocus(e.currentTarget)} onBlur={tip.hide}
         onKeyDown={e => { if (e.key === 'Escape' && tooltipText) { e.stopPropagation(); tip.hide(); } }}
         className={`flex items-center whitespace-nowrap font-data text-sm tabular-nums ${
           color ?? (empty ? 'text-fg-dimmer' : 'text-fg')

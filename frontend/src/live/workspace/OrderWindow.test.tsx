@@ -515,6 +515,9 @@ describe('호가 주문', () => {
       fireEvent.scroll(window);
       act(() => vi.advanceTimersByTime(500));
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      // jsdom does not track keyboard input modality for :focus-visible.
+      vi.spyOn(average, 'matches').mockImplementation(selector => selector === ':focus-visible'
+        || Element.prototype.matches.call(average, selector));
       fireEvent.focus(average);
       act(() => vi.advanceTimersByTime(500));
       expect(screen.getByRole('tooltip')).toHaveTextContent('매수금액 4,466,997원');
@@ -523,6 +526,20 @@ describe('호가 주문', () => {
       fireEvent.mouseEnter(quantity);
       view.unmount();
       act(() => vi.advanceTimersByTime(500));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+  it.each(['매입수량', '매입평단가'])('%s에 마우스·포커스 표시 없이 포커스만 복원돼도 매수금액을 열지 않는다', label => {
+    vi.useFakeTimers();
+    try {
+      mock.holdingQuantity = '547'; mock.averagePrice = '123830';
+      show();
+      const target = screen.getByLabelText(label);
+      vi.spyOn(target, 'matches').mockImplementation(selector => selector !== ':focus-visible'
+        && Element.prototype.matches.call(target, selector));
+      fireEvent.focus(target);
+      act(() => vi.advanceTimersByTime(600));
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
       expect(mock.command).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }

@@ -22,31 +22,42 @@ export function useTextTooltip(text: string, delayMs = 0, className = '') {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') dismiss();
     };
+    // Hover does not move keyboard focus to the anchor. Escape still dismisses it.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') dismiss();
+    };
     window.addEventListener('scroll', dismiss, true);
     window.addEventListener('resize', dismiss);
     window.addEventListener('blur', dismiss);
     document.addEventListener('visibilitychange', onVisibilityChange);
+    document.addEventListener('keydown', onKeyDown, true);
     return () => {
       window.removeEventListener('scroll', dismiss, true);
       window.removeEventListener('resize', dismiss);
       window.removeEventListener('blur', dismiss);
       document.removeEventListener('visibilitychange', onVisibilityChange);
+      document.removeEventListener('keydown', onKeyDown, true);
     };
   }, [active, hide]);
+  const show = (element: HTMLElement) => {
+    if (!text) return;
+    if (timer.current != null) clearTimeout(timer.current);
+    setActive(true);
+    const reveal = () => {
+      timer.current = null;
+      if (!element.isConnected) { hide(); return; }
+      const rect = element.getBoundingClientRect();
+      setAnchor({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 72)) });
+    };
+    if (delayMs > 0) timer.current = setTimeout(reveal, delayMs);
+    else reveal();
+  };
   return {
     id: anchor ? id : undefined,
-    show: (element: HTMLElement) => {
-      if (!text) return;
-      if (timer.current != null) clearTimeout(timer.current);
-      setActive(true);
-      const reveal = () => {
-        timer.current = null;
-        if (!element.isConnected) { hide(); return; }
-        const rect = element.getBoundingClientRect();
-        setAnchor({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 72)) });
-      };
-      if (delayMs > 0) timer.current = setTimeout(reveal, delayMs);
-      else reveal();
+    show,
+    // Programmatic/pointer focus alone is not a hover. Keep keyboard access explicit.
+    showOnFocus: (element: HTMLElement) => {
+      if (element.matches(':focus-visible')) show(element);
     },
     hide,
     tooltip: anchor ? createPortal(<div id={id} role="tooltip"
