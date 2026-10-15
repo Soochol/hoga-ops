@@ -8,6 +8,9 @@ const mock = vi.hoisted(() => ({
   useLiveSeries: vi.fn(), connected: true,
 }));
 vi.mock('../../api/liveSeries', () => ({ useLiveSeries: mock.useLiveSeries }));
+vi.mock('../useEffectiveVenue', () => ({ useEffectiveVenue: (_code: string, venue: string) => venue }));
+vi.mock('../../api/programTradeTicks', () => ({ useProgramTradeHistory: () => ({ data: undefined,
+  hasNextPage: false, isFetching: false, isError: false, isFetchNextPageError: false }) }));
 vi.mock('../../api/useConnectionLiveness', () => ({ useConnectionLiveness: () => mock.connected }));
 vi.mock('../../util/useKstDay', () => ({ useKstDay: () => '20261015' }));
 const T = Date.UTC(2026, 9, 15, 5, 52, 52);

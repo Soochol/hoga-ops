@@ -30,6 +30,7 @@ from hoga.util.timeenc import KST
 from . import program_trade_latch
 from .error_policy import classify_live_error, format_live_error
 from .program_trade_store import ProgramTradeByStockRow, ProgramTradeStore
+from .program_trade_tape import ProgramTradeTapeStore
 from .session_gate import venue_capture_windows_async
 
 log = logging.getLogger(__name__)
@@ -64,6 +65,7 @@ class ProgramTradeCollector:
     ) -> None:
         self.data_dir = data_dir
         self.store = ProgramTradeStore(data_dir, poll_interval_ms=int(poll_interval_s * 1000))
+        self.tape = ProgramTradeTapeStore(data_dir)
         self._date_fn = date_fn
         self._now_ms_fn = now_ms_fn
         self._open_venues_fn = open_venues_fn
@@ -147,6 +149,18 @@ class ProgramTradeCollector:
             # 새 거래일 — 전일 누적 대비 delta 를 만들면 첫 행이 음수 폭주한다.
             self._last_net = {}
             self._last_date = date
+        # Flush accepted events even after the market gate has just closed.
+        # Their capture-time gate, date and venue are already fixed in the queue.
+        events = program_trade_latch.take_events()
+        if events:
+            try:
+                await asyncio.to_thread(self.tape.append, events)
+            except OSError as exc:  # preserve pending history for the next cycle
+                program_trade_latch.retry_events(events)
+                self._record_cycle_error(exc)
+        if program_trade_latch.event_queue_overflow:
+            self.status.last_error = "program_trade_tape_queue_full"
+            self.status.last_error_count += 1
         open_venues = await self._open_venues_fn(observed_at_ms)
         if not open_venues:
             self.status.last_cycle_ms = observed_at_ms
