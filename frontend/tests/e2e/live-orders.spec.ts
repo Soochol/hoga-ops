@@ -905,28 +905,37 @@ test('보유 63주 클릭은 미체결 매도 20주를 제외한 43주를 입력
   await window.getByRole('button', { name: '금액', exact: true }).click();
   await holding.click();
   await expect(window.getByLabel('신규 주문 수량')).toHaveValue('43');
+  await expect(window.getByRole('button', { name: '금액', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(window.getByRole('button', { name: '100만', exact: true })).toBeVisible();
   await expect(holding).toContainText('63');
   expect(commands).toHaveLength(0);
 });
 
-test('압축형 바로 전환은 입력값을 보존하고 금액 프리셋은 클릭 호가로 환산한다', async ({ page }, testInfo) => {
-  const { window, commands } = await setup(page, false, false);
-  const mode = window.getByRole('group', { name: '주문 입력 방식' });
+test('압축형 주·금액 전환은 수량 한 칸을 유지하고 금액 버튼은 현재가로 한 번 환산한다', async ({ page }, testInfo) => {
+  const { window, commands, ws } = await setup(page, false, false);
+  await ws.waitForSubscribe('005930');
+  const mode = window.getByRole('group', { name: '빠른 입력 방식' });
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('37');
   await mode.getByRole('button', { name: '금액', exact: true }).click();
-  await window.getByRole('button', { name: '500만', exact: true }).click();
-  await mode.getByRole('button', { name: '수량', exact: true }).click();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('37');
+  await window.getByRole('button', { name: '100만', exact: true }).click();
+  await mode.getByRole('button', { name: '주', exact: true }).click();
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('14');
   await mode.getByRole('button', { name: '금액', exact: true }).click();
-  await expect(window.getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('5');
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('14');
+  await expect(window.getByRole('spinbutton')).toHaveCount(1);
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(), prev_close: 66000,
+    trades: [{ price: 75000, qty: 1, side: 1 }] });
+  await expect(window.getByRole('button', { name: '100만', exact: true })).toHaveAttribute('title', '현재가 75,000원 기준으로 수량 환산');
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('14');
   expect(commands).toHaveLength(0);
   const buy = window.getByRole('button', { name: /매수 68,200원 주문 추가/ });
   await buy.hover();
-  await expect(window.getByLabel('예상 주문 수량').locator('.order-field-value')).toHaveText('73주');
+  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('954,800원');
   await window.screenshot({ path: testInfo.outputPath('compact-amount-controls.png') });
   await buy.dblclick();
   expect(commands).toHaveLength(1);
-  expect(commands[0]).toMatchObject({ price: 68200, quantity: 73 });
+  expect(commands[0]).toMatchObject({ price: 68200, quantity: 14 });
 });
 
 test('압축형 팝오버는 다크 테마에서도 표시하고 키보드 탭 이동·닫기 포커스를 유지한다', async ({ page }, testInfo) => {
@@ -1019,7 +1028,7 @@ test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고
   expect(commands).toHaveLength(0);
 });
 
-test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정수 수량으로 환산', async ({ page }, testInfo) => {
+test('주문 설정 적용·취소와 금액 프리셋의 현재가 환산 수량으로 주문한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const settings = window.getByRole('button', { name: '주문 설정', exact: true });
   const frame = page.locator('[data-win]').filter({ has: window });
@@ -1046,22 +1055,22 @@ test('주문 설정 적용·취소와 백만원 금액을 클릭 호가의 정�
   await dialog.getByRole('button', { name: '적용', exact: true }).click();
   await expect(settings).toBeFocused();
   await window.getByRole('button', { name: '금액', exact: true }).click();
-  await expect(window.getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('2');
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
   await window.getByRole('button', { name: '600만', exact: true }).click();
-  await expect(window.getByLabel('예상 주문 수량').locator('.order-field-value')).toHaveText('89주');
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('89');
   const buy = window.getByRole('button', { name: /매수 68,200원 주문 추가/ });
   await buy.hover();
-  await expect(window.getByLabel('예상 주문 수량').locator('.order-field-value')).toHaveText('87주');
+  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('6,069,800원');
   await buy.dblclick();
-  await expect(window.getByLabel('매수 68,200원 주문', { exact: true })).toHaveText('87');
-  expect(commands[0]).toMatchObject({ side: 'BUY', price: 68200, quantity: 87 });
+  await expect(window.getByLabel('매수 68,200원 주문', { exact: true })).toHaveText('89');
+  expect(commands[0]).toMatchObject({ side: 'BUY', price: 68200, quantity: 89 });
   await settings.click();
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('30');
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0);
   await expect(frame.getByRole('button', { name: '원래 크기로 복원', exact: true })).toBeVisible();
   expect(await frame.boundingBox()).toEqual(bounds);
-  await expect(window.getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('6');
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('89');
   await window.screenshot({ path: testInfo.outputPath('order-amount-controls.png') });
 });
 
@@ -1111,7 +1120,7 @@ test('평단가 표시 체크박스는 적용 후 저장하며 다른 주문 창
   expect(commands).toHaveLength(0);
 });
 
-test('주문 방식·프리셋은 새로고침 후 유지하고 다른 주문창과 독립적이다', async ({ page }) => {
+test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 주문창과 독립적이다', async ({ page }) => {
   const { window } = await setup(page);
   await window.getByRole('button', { name: '금액', exact: true }).click();
   await window.getByRole('button', { name: '주문 설정', exact: true }).click();
@@ -1120,8 +1129,10 @@ test('주문 방식·프리셋은 새로고침 후 유지하고 다른 주문창
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
   await dialog.getByRole('button', { name: '적용', exact: true }).click();
   await page.reload();
-  await expect(window.getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('2');
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
   await expect(window.getByRole('button', { name: '200만', exact: true })).toBeVisible();
+  await window.getByRole('button', { name: '200만', exact: true }).click();
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('29');
   await window.getByRole('button', { name: '주문 설정', exact: true }).click();
   await expect(dialog.getByRole('radio')).toHaveCount(0);
   await expect(window.getByRole('button', { name: '금액', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -1133,7 +1144,7 @@ test('주문 방식·프리셋은 새로고침 후 유지하고 다른 주문창
   await page.getByTestId('workspace-add-order').click();
   const second = page.getByTestId('order-window').nth(1);
   await expect(second.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('10');
-  await expect(page.getByTestId('order-window').first().getByRole('spinbutton', { name: '신규 주문 금액' })).toHaveValue('2');
+  await expect(page.getByTestId('order-window').first().getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('29');
   await second.getByRole('button', { name: '주문 설정', exact: true }).click();
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('30');
   await dialog.getByRole('button', { name: '적용', exact: true }).click();

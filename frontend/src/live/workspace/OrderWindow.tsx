@@ -10,7 +10,7 @@ import { useTextTooltip } from '../../ui/useTextTooltip';
 import { priceDirClass } from '../../ui/priceDir';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
-import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, normalizeOrderSettings,
+import { MAX_ORDER_QUANTITY, normalizeOrderSettings,
   quantityForAmount, validOrderInput, type OrderWindowSettings } from '../../state/orderWindowSettings';
 import {
   tradingCommand, useTradingAccounts, useTradingState,
@@ -71,7 +71,6 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   const preferences = settings ?? localSettings;
   const [quantity, setQuantity] = useState<number | null>(() => preferences.quantityPresets[0]);
   const [quantityCode, setQuantityCode] = useState(code);
-  const [amountMillions, setAmountMillions] = useState(() => preferences.amountPresets[0]);
   const [profitAsPercent, setProfitAsPercent] = useState(false);
   // Reset before the new symbol's keyed content commits, never after it becomes clickable.
   if (quantityCode !== code) {
@@ -80,23 +79,20 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   }
   function applySettings(next: OrderWindowSettings) {
     const quantitySlot = quantity == null ? -1 : preferences.quantityPresets.indexOf(quantity);
-    const amountSlot = preferences.amountPresets.indexOf(amountMillions);
     if (quantitySlot >= 0) setQuantity(next.quantityPresets[quantitySlot]);
-    if (amountSlot >= 0) setAmountMillions(next.amountPresets[amountSlot]);
     setLocalSettings(next); onSettingsChange?.(next);
   }
   return <OrderWindowContent key={code} code={code}
-    preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} amountMillions={amountMillions}
-    onAmountChange={setAmountMillions} onApplySettings={applySettings}
+    preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} onApplySettings={applySettings}
     profitAsPercent={profitAsPercent} onToggleProfitDisplay={() => setProfitAsPercent(value => !value)}
     chosenAccount={selectedAccount} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} />;
 }
 
 function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymbol,
-  preferences, quantity, onQuantityChange, amountMillions, onAmountChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
+  preferences, quantity, onQuantityChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string;
   chosenAccount: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
-  quantity: number | null; onQuantityChange: (quantity: number | null) => void; amountMillions: number; onAmountChange: (millions: number) => void;
+  quantity: number | null; onQuantityChange: (quantity: number | null) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
   profitAsPercent: boolean; onToggleProfitDisplay: () => void;
 }) {
@@ -250,11 +246,19 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
   const estimatePrice = previewPrice ?? quote?.price ?? null;
-  const amountMode = preferences.unit === 'amount';
-  const inputValue = amountMode ? amountMillions : quantity;
-  const presets = amountMode ? preferences.amountPresets : preferences.quantityPresets;
-  const setInputValue = (value: number | null) => amountMode ? onAmountChange(value ?? 0) : onQuantityChange(value);
-  const estimateQuantity = amountMode && estimatePrice != null ? quantityForAmount(amountMillions, estimatePrice) : null;
+  const amountPresets = preferences.unit === 'amount';
+  const presets = amountPresets ? preferences.amountPresets : preferences.quantityPresets;
+  const currentPrice = quote?.price ?? null;
+  const canConvertAmount = currentPrice != null && Number.isSafeInteger(currentPrice) && currentPrice > 0;
+  function applyPreset(value: number) {
+    if (!amountPresets) { onQuantityChange(value); setNotice(null); return; }
+    const converted = canConvertAmount ? quantityForAmount(value, currentPrice) : null;
+    if (converted == null || converted > MAX_ORDER_QUANTITY) {
+      setNotice('현재가와 금액을 확인한 후 수량을 환산하세요.'); return;
+    }
+    onQuantityChange(converted);
+    setNotice(converted === 0 ? '입력한 금액으로 현재가에서 1주를 주문할 수 없습니다.' : null);
+  }
   const estimateAmount = quantity != null && estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
   const holdingQuantity = state.data?.holding_quantity != null && !state.balancesError ? Number(state.data.holding_quantity) : null;
@@ -380,13 +384,9 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number) {
-    if (!validOrderInput(inputValue ?? NaN, preferences.unit)) { setNotice(amountMode ? '주문 금액은 1백만원 이상의 정수로 설정하세요.' : '주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
-    const qty = amountMode ? quantityForAmount(amountMillions, price) : quantity;
-    if (qty === 0) { setNotice('입력한 금액으로 해당 호가에서 1주를 주문할 수 없습니다.'); return; }
-    if (qty == null) { setNotice('주문 금액과 호가 가격을 확인하세요.'); return; }
-    if (!Number.isSafeInteger(qty) || qty < 1 || qty > 1_000_000_000) { setNotice('주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
+    if (quantity == null || !validOrderInput(quantity, 'quantity')) { setNotice('주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
     if (orders.some(o => o.side !== side)) { setNotice('반대 방향 미체결 주문을 먼저 취소하거나 체결 후 주문하세요.'); return; }
-    request({ type: 'create', base: base(), side, price, quantity: qty });
+    request({ type: 'create', base: base(), side, price, quantity });
   }
 
   function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false) {
@@ -454,7 +454,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     const opposite = orders.some(o => o.side !== side);
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
     const canCreate = ready && fresh && price > 0 && !opposite && !settingsDraft && !state.data?.unresolved_commands.length
-      && (amountMode ? (quantityForAmount(amountMillions, price) ?? 0) >= 1 : quantity != null);
+      && quantity != null && quantity > 0;
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
@@ -498,7 +498,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         endDrag(undefined, true); closeAction(); return;
       }
       if (!e.ctrlKey || e.repeat || busy || (e.target instanceof HTMLElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName))) return;
-      if (['1', '2', '3'].includes(e.key)) { e.preventDefault(); setInputValue(presets[Number(e.key) - 1]); }
+      if (['1', '2', '3'].includes(e.key)) { e.preventDefault(); applyPreset(presets[Number(e.key) - 1]); }
     }}>
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
@@ -529,8 +529,8 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
           disabled={!canFillHoldingQuantity} onClick={() => {
             if (!canFillHoldingQuantity || sellableQuantity == null) return;
-            if (amountMode) onApplySettings({ ...preferences, unit: 'quantity' });
             onQuantityChange(sellableQuantity);
+            setNotice(null);
             quantityTip.hide();
           }}
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
@@ -561,17 +561,20 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
-        <div className="order-input-mode order-surface-segment" role="group" aria-label="주문 입력 방식">
+        <div className="order-input-mode order-surface-segment" role="group" aria-label="빠른 입력 방식">
           {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || !!lockedBook}
-            onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '수량'}</button>)}
+            onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
         </div>
-        <label className="order-input-field"><input type="number" aria-label={amountMode ? '신규 주문 금액' : '신규 주문 수량'} min="1" max={amountMode ? MAX_AMOUNT_MILLIONS : MAX_ORDER_QUANTITY} step="1" value={inputValue ?? ''} onChange={e => setInputValue(e.target.value === '' ? null : Number(e.target.value))} /><span className="order-meta">{amountMode ? '백만원' : '주'}</span></label>
+        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="1" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
         <div className="order-quantity-presets">
-          {presets.map((value, index) => <button type="button" key={index} aria-pressed={inputValue === value} onClick={() => setInputValue(value)}>{fmt(amountMode ? value * 100 : value)}{amountMode ? '만' : '주'}</button>)}
+          {presets.map((value, index) => <button type="button" key={index} aria-pressed={amountPresets ? undefined : quantity === value}
+            disabled={amountPresets && !canConvertAmount}
+            title={amountPresets ? canConvertAmount ? `현재가 ${fmt(currentPrice)}원 기준으로 수량 환산` : '현재가 확인 후 수량 환산 가능' : undefined}
+            onClick={() => applyPreset(value)}>{fmt(amountPresets ? value * 100 : value)}{amountPresets ? '만' : '주'}</button>)}
         </div>
-        <span className="order-field order-estimate" aria-label={amountMode ? '예상 주문 수량' : '예상 주문 금액'} title={estimatePrice != null ? `${fmt(estimatePrice)}원 기준` : undefined}>
-          <span className="order-meta" aria-hidden="true">{amountMode ? '예상' : '금액'}</span>
-          <span className="order-field-value">{amountMode ? estimateQuantity == null ? '—' : `${fmt(estimateQuantity)}주` : estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
+        <span className="order-field order-estimate" aria-label="예상 주문 금액" title={estimatePrice != null ? `${fmt(estimatePrice)}원 기준` : undefined}>
+          <span className="order-meta" aria-hidden="true">금액</span>
+          <span className="order-field-value">{estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
           </span>
         </span>
       </div>

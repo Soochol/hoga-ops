@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { normalizeOrderSettings, quantityForAmount, validOrderSettings } from './orderWindowSettings';
 
 describe('주문 금액 변환과 설정 복구', () => {
-  it('백만원을 클릭 호가의 정수 주수로 변환하고 한 주 미만·잘못된 금액을 구분한다', () => {
+  it('백만원을 적용 시점 현재가의 정수 주수로 변환하고 한 주 미만·잘못된 금액을 구분한다', () => {
+    expect(quantityForAmount(1, 67300)).toBe(14);
     expect(quantityForAmount(5, 67200)).toBe(74);
     expect(quantityForAmount(5, 68000)).toBe(73);
     expect(quantityForAmount(1, 1469000)).toBe(0);
