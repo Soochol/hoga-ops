@@ -1,6 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { installLiveMocks } from './helpers/liveMocks';
 import { installLiveWs } from './helpers/liveWs';
+import { DATA_DIR } from './worktreeEnv';
 
 const CODE = '098460';
 
@@ -136,6 +139,53 @@ test('이전 프로그램 조회 실패는 반복 휠로 재요청하지 않고 
   await retry.click();
   await expect(window.getByText('+900', { exact: true })).toBeVisible();
   expect(attempts).toBe(2);
+});
+
+test('스크롤바가 없어도 휠로 실제 저장 API를 조회하고 마지막 페이지에서 멈춘다', async ({ page }, testInfo) => {
+  // Disable automatic sentinel loading to verify the wheel handler independently.
+  await page.addInitScript(() => Object.defineProperty(globalThis, 'IntersectionObserver', { value: undefined }));
+  const now = Date.now();
+  const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul' }).format(now).replaceAll('-', '');
+  const dir = join(DATA_DIR, 'program_trade_ticks', date, 'KRX');
+  const path = join(dir, `${CODE}.jsonl`);
+  await mkdir(dir, { recursive: true });
+  const rows = Array.from({ length: 501 }, (_, i) => ({
+    event_id: `verify-${String(i + 1).padStart(5, '0')}`, t_ms: now - 501000 + i * 1000,
+    price: 125500, event_delta_qty: i + 1,
+  }));
+  await writeFile(path, rows.map(row => JSON.stringify(row)).join('\n') + '\n');
+  const requests: (string | null)[] = [];
+  const errors: string[] = [];
+  page.on('request', request => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/live/program-trades') requests.push(url.searchParams.get('before'));
+  });
+  page.on('pageerror', error => errors.push(error.message));
+  try {
+    const { window } = await setup(page);
+    await page.setViewportSize({ width: 1440, height: 20000 });
+    const table = window.getByRole('table');
+    const scroller = window.getByLabel('프로그램 체결 목록');
+    await expect(table.getByRole('row')).toHaveCount(201);
+    await expect.poll(() => scroller.evaluate(el => el.scrollHeight <= el.clientHeight)).toBe(true);
+    expect(requests).toEqual([null]);
+    await scroller.hover();
+    await page.mouse.wheel(0, 500);
+    await expect(table.getByRole('row')).toHaveCount(401);
+    expect(requests).toHaveLength(2);
+    expect(Number(requests[1])).toBeGreaterThan(0);
+    await page.mouse.wheel(0, 100000);
+    await expect(table.getByRole('row')).toHaveCount(502);
+    await expect(table.getByText('+1', { exact: true })).toBeVisible();
+    expect(requests).toHaveLength(3);
+    expect(Number(requests[2])).toBeLessThan(Number(requests[1]));
+    for (let i = 0; i < 3; i++) await page.mouse.wheel(0, 500);
+    expect(requests).toHaveLength(3);
+    expect(errors).toEqual([]);
+    await testInfo.attach('real-api-pagination', { body: JSON.stringify({ requests, rows: 501, errors }), contentType: 'application/json' });
+  } finally {
+    await rm(path, { force: true });
+  }
 });
 
 test('체결·프로그램 체결 헤더는 좁은 창에서도 창 이름과 종목명을 한 줄로 유지한다', async ({ page }, testInfo) => {
