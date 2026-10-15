@@ -40,6 +40,7 @@ function makeAxis(hasSegments: boolean): VirtualAxis {
   return {
     segments: hasSegments ? [{}] : [],
     toVirtual: (ms: number) => ms,
+    classifyAndProject: (ms: number) => ({ contained: hasSegments, virtual: ms }),
   } as unknown as VirtualAxis;
 }
 
@@ -133,6 +134,56 @@ const pixelX = (range: { from: number; to: number }, anchor: number, width = 100
   width - 1 - (range.to - anchor + .5) * width / (range.to - range.from + 1);
 
 describe('useWheelInteractions', () => {
+  it('retains the historical anchor when native burst inputs still read the previous draw', () => {
+    const BASE = 1_780_000_000_000;
+    let drawn = { from: 90, to: 100 };
+    let pending = drawn;
+    const ts = makeTs({ getVisibleLogicalRange: vi.fn(() => drawn),
+      timeToIndex: vi.fn((vt: number) => Math.round((vt * 1000 - BASE) / 60_000)),
+      setVisibleLogicalRange: vi.fn((next: typeof drawn) => { pending = next; }),
+    });
+    const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={makeBundle(1000)} axis={makeAxis(true)} />);
+    const beforeX = pixelX(drawn, 100);
+    for (let i = 0; i < 12; i++) {
+      wheel(getByTestId('wheel-host'), { deltaY: 120 });
+      wheel(getByTestId('wheel-host'), { deltaY: 120 });
+      drawn = pending;
+      expect(pixelX(drawn, 100)).toBeCloseTo(beforeX, 9);
+    }
+  });
+
+  it('historical wheel selects an actual candle across indicator-only grid points and reversals', () => {
+    const BASE = 1_780_000_000_000;
+    let range = { from: 91, to: 101.25 };
+    const ts = makeTs({
+      getVisibleLogicalRange: vi.fn(() => range),
+      timeToIndex: vi.fn((vt: number) => Math.round((vt * 1000 - BASE) / 60_000) * 3),
+      setVisibleLogicalRange: vi.fn((next: typeof range) => { range = next; }),
+    });
+    const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={makeBundle(100)} axis={makeAxis(true)} />);
+    // Shared grid 100/101 are indicator-only: candle 33 occupies index 99.
+    const beforeX = pixelX(range, 99);
+    for (const deltaY of [-120, 120, -120, 120]) {
+      wheel(getByTestId('wheel-host'), { deltaY });
+      expect(pixelX(range, 99)).toBeCloseTo(beforeX, 9);
+    }
+  });
+
+  it('keeps the same right-edge candle after its logical centre passes numeric to', () => {
+    const BASE = 1_780_000_000_000;
+    let range = { from: 90, to: 100 };
+    const ts = makeTs({ getVisibleLogicalRange: vi.fn(() => range),
+      timeToIndex: vi.fn((vt: number) => Math.round((vt * 1000 - BASE) / 60_000)),
+      setVisibleLogicalRange: vi.fn((next: typeof range) => { range = next; }),
+    });
+    const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={makeBundle(300)} axis={makeAxis(true)} />);
+    const beforeX = pixelX(range, 100);
+    for (const deltaY of [-120, -120, 120, 120]) {
+      wheel(getByTestId('wheel-host'), { deltaY });
+      expect(pixelX(range, 100)).toBeCloseTo(beforeX, 9);
+    }
+  });
+
   it('plain wheel: 오른쪽 끝 고정 줌 — to 유지, from만 왼쪽으로 (bundle 없음)', () => {
     const ts = makeTs();
     const { getByTestId } = render(<Harness chart={makeChart(ts)} bundle={null} />);

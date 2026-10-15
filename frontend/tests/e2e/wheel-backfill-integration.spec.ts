@@ -103,14 +103,6 @@ for (const ctrl of [false, true]) {
     const after = (await readEvidence())!;
     await info.attach('backfill-anchor', { body: JSON.stringify({ ctrl, before, after }), contentType: 'application/json' });
     expect(after.count).toBeGreaterThan(before.count);
-    if (ctrl) expect(Math.abs(after.x - before.x)).toBeLessThan(1);
-    else {
-      const rightClose = await page.evaluate(id => {
-        const c = (window as unknown as ChartsWindow).__liveCharts.get(id)!;
-        const s = c.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
-        return (s.dataByIndex(Math.floor(c.timeScale().getVisibleLogicalRange()!.to), -1) as { close: number }).close;
-      }, id);
-      expect(rightClose).toBe(before.anchorClose);
-    }
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1);
   });
 }

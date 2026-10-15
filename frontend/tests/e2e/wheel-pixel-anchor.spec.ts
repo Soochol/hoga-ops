@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import type { UTCTimestamp } from 'lightweight-charts';
 
 test.beforeEach(async ({ page }) => {
   await page.route(url => url.pathname === '/', route => route.fulfill({
@@ -9,6 +10,62 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const windowed of [false, true]) {
+  test(`historical anchor skips indicator-only time points: windowed=${windowed}`, async ({ page }) => {
+    const drift = await page.evaluate(async windowed => {
+      const path = '/tests/e2e/helpers/wheelViewportHarness.tsx';
+      const { mount } = await import(path);
+      const libraryPath = '/node_modules/lightweight-charts/dist/lightweight-charts.development.mjs';
+      const { LineSeries } = await import(libraryPath);
+      const adapterPath = '/src/chart/windowedChart.ts';
+      const { flushWindowedChart } = await import(adapterPath);
+      const h = await mount(windowed, 8000, 180);
+      h.chart.addSeries(LineSeries).setData(h.rows.map((r: { time: UTCTimestamp }) => ({ time: (Number(r.time) + 90) as UTCTimestamp, value: 100 })));
+      flushWindowedChart(h.chart);
+      const ts = h.chart.timeScale();
+      const anchor = ts.timeToIndex(h.rows[1900].time)!;
+      ts.setVisibleLogicalRange({ from: anchor - 10, to: anchor + .75 }); await h.frame();
+      const before = ts.timeToCoordinate(h.rows[1900].time)!;
+      const positions = [before];
+      for (const delta of [-120, -120, 120, 120]) {
+        h.wheel(delta, false); await h.frame(); positions.push(ts.timeToCoordinate(h.rows[1900].time)!);
+      }
+      return Math.max(...positions.map(x => Math.abs(x - before)));
+    }, windowed);
+    expect(drift).toBeLessThan(.01);
+  });
+
+  for (const fraction of [0, .75]) {
+    test(`historical candle stays fixed through resize, bursts and limits: windowed=${windowed} fraction=${fraction}`, async ({ page }, info) => {
+      const result = await page.evaluate(async ({ windowed, fraction }) => {
+        const path = '/tests/e2e/helpers/wheelViewportHarness.tsx';
+        const { mount } = await import(path);
+        const h = await mount(windowed, 8000, 180);
+        const ts = h.chart.timeScale();
+        const traces = [];
+        for (const width of [1000, 2700, 1000]) {
+          h.chart.resize(width, 500); await h.frame();
+          for (const span of [420, 10, 3, 1]) {
+            const to = 3900 + fraction;
+            ts.setVisibleLogicalRange({ from: to - span, to }); await h.frame();
+            const anchor = Math.floor(to + .5);
+            const time = h.rows[anchor].time;
+            const beforeX = ts.timeToCoordinate(time)!;
+            const samples = [beforeX];
+            for (const delta of [-2400, -2400, 120, 2400, 2400, 2400, -120, 120]) {
+              h.wheel(delta, false); h.wheel(delta, false);
+              await h.frame(); samples.push(ts.timeToCoordinate(time)!);
+            }
+            traces.push({ width, span, beforeX, samples,
+              drift: Math.max(...samples.map(x => Math.abs(x - beforeX))) });
+          }
+        }
+        return traces;
+      }, { windowed, fraction });
+      await info.attach('historical-pixel-anchor', { body: JSON.stringify(result), contentType: 'application/json' });
+      expect(Math.max(...result.map(r => r.drift))).toBeLessThan(.01);
+    });
+  }
+
   for (const ctrl of [false, true]) {
     for (const span of [420, 10, 3, 1]) {
       test(`blank-area wheel keeps pixel anchor: windowed=${windowed} ctrl=${ctrl} span=${span}`, async ({ page }, info) => {

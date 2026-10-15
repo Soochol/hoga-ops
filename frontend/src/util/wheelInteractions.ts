@@ -6,8 +6,7 @@
  *  - `shiftKey` → pan: translate the range, span unchanged.
  *  - `ctrlOrMetaKey` → zoom anchored at the mouse coordinate.
  *  - default → zoom anchored at the latest candle (`lastBarIndex`) when it is
- *    at/inside the right edge, else at `range.to` (the viewport right edge,
- *    when scrolled into history).
+ *    at/inside the right edge, else at the rightmost visible candle.
  *
  * Right wall: only the shift branch clamps when rightward motion would
  * push `to` past `maxTo` (typically the last candle's logical index).
@@ -52,11 +51,14 @@ export interface WheelInput {
    * `rightOffset` padding) let the candle drift left on zoom-in as the
    * padding's pixel share grew. Source: `ts.timeToIndex(latestCandleTime)` in
    * the hook (same union-index reason as `maxTo` — `candles.length - 1` is
-   * skewed). When omitted, or when the view is scrolled into history
-   * (`range.to < lastBarIndex`), the anchor falls back to `range.to`
-   * (right-edge-fixed, per design decision #1).
+   * skewed). Historical views use `visibleCandleIndex` instead.
    */
   lastBarIndex?: number;
+  /** Rightmost actual candle whose centre is inside the historical viewport.
+   * Uses the shared time-grid index, not the candle-array index. */
+  visibleCandleIndex?: number;
+  /** First actual candle index, for the native minimum-data exposure limit. */
+  firstBarIndex?: number;
   /**
    * Upper bound for the result's span (visible bar count). Typically
    * `timeScale.width() / minBarSpacing - 1` — the inclusive-range zoom floor.
@@ -100,7 +102,7 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     ? width != null && Number.isFinite(width) && width > 0
       ? to + 0.5 - (width - 1 - i.mouseX) * count / width
       : i.coordinateToLogical(i.mouseX)
-    : i.lastBarIndex != null && i.lastBarIndex <= to ? i.lastBarIndex : null;
+    : i.lastBarIndex != null && i.lastBarIndex <= to ? i.lastBarIndex : i.visibleCandleIndex ?? null;
   let minSpan = Math.max(0, i.minSpan ?? 0);
   if (anchor != null && i.lastBarIndex != null) {
     // Native rightOffset is bounded by count - min(2, data points). In the
@@ -112,6 +114,16 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     const minVisible = Math.min(2, i.lastBarIndex + 1);
     if (visibleRatio > 0) {
       minSpan = Math.max(minSpan, (anchor - i.lastBarIndex + minVisible - .5) / visibleRatio - 1);
+    }
+    if (i.firstBarIndex != null) {
+      // At the oldest data edge lwc also requires at least two exposed grid
+      // points. Stop before that clamp can move the historical candle.
+      const rightRatio = (to - anchor + .5) / count;
+      const minExposed = Math.min(2, i.lastBarIndex - i.firstBarIndex + 1);
+      if (rightRatio > 0) {
+        minSpan = Math.max(minSpan,
+          (i.firstBarIndex + minExposed - 1 - anchor + .5) / rightRatio - 1);
+      }
     }
   }
   const maxSpan = i.maxSpan != null && i.maxSpan > 0 ? Math.max(minSpan, i.maxSpan) : Infinity;
@@ -129,11 +141,8 @@ export function computeWheelOutcome(i: WheelInput): WheelOutcome {
     return zoomRange(to, nextSpan, ratio, anchor);
   }
 
-  // Default: anchor at the latest candle when it's at/inside the right edge
-  // (live-edge zoom keeps the last candle pixel-fixed on zoom in AND out),
-  // else at `to` (scrolled into history → pin the viewport right edge, per
-  // decision #1). Keeping historical `to` is a range policy, while fixing a
-  // candle requires the half-bar centre correction in zoomRange.
+  // Historical candles need the same half-bar centre correction as the latest
+  // candle. Keeping only the numeric `to` moved them by half the spacing change.
   return zoomRange(to, nextSpan, ratio, anchor);
 }
 

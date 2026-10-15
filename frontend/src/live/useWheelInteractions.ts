@@ -5,11 +5,12 @@ import type { VirtualAxis } from '../util/virtualAxis';
 import { computeWheelOutcome } from '../util/wheelInteractions';
 import { CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import { readChartInteractionViewport } from '../chart/windowedChart';
+import { drawnCandleIndex } from '../chart/drawnCandleIndex';
 
 /**
  * /live 차트의 modifier-aware 휠 인터랙션 배선.
  *
- *  - 휠: 마지막 캔들 고정 줌 (라이브 엣지) / 뷰포트 오른쪽 끝 고정 (과거 스크롤)
+ *  - 휠: 마지막 캔들 고정 줌 (라이브 엣지) / 오른쪽 실제 캔들 고정 (과거 스크롤)
  *  - shift+휠: 스팬 유지 팬 (오른쪽 벽 = 마지막 캔들 + rightOffset에서 클램프)
  *  - ctrl/cmd+휠: 커서 고정 줌 (클램프 없음 — 앵커 불변식 보존)
  *
@@ -47,9 +48,11 @@ export function useWheelInteractions(
   // 인덱스(trueLast)로 변환한다. ref로 두는 이유: bundle/axis를 리스너 effect
   // deps에 넣으면 SSE 푸시마다 리스너가 재부착되어 churn이 생긴다(기존 설계).
   const lastMsRef = useRef<number | undefined>(undefined);
+  const candlesRef = useRef<RangeBundle['candles']>([]);
   const axisRef = useRef<VirtualAxis>(axis);
   const getRightOffsetBarsRef = useRef<typeof getRightOffsetBars>(getRightOffsetBars);
   useEffect(() => {
+    candlesRef.current = bundle?.candles ?? [];
     lastMsRef.current =
       bundle != null && bundle.candles.length > 0
         ? bundle.candles[bundle.candles.length - 1].ts_ms
@@ -69,6 +72,8 @@ export function useWheelInteractions(
     const container = containerRef.current;
     if (!chart || !container) return;
     const ts = chart.timeScale();
+    let historicalAnchor: { time: Time; range: { from: number; to: number };
+      inputRange: { from: number; to: number }; width: number; axis: VirtualAxis } | null = null;
 
     const onWheel = (e: WheelEvent) => {
       // Alt+wheel is reserved by LiveWorkarea for scrolling the full detail
@@ -124,6 +129,37 @@ export function useWheelInteractions(
           const idx = ts.timeToIndex(vt as Time, true);
           if (typeof idx === 'number' && Number.isFinite(idx)) lastBarIndex = idx;
         }
+        let visibleCandleIndex: number | undefined;
+        let firstBarIndex: number | undefined;
+        let historicalTime: Time | undefined;
+        if (!e.shiftKey && !e.ctrlKey && !e.metaKey && lastBarIndex != null && lastBarIndex > range.to) {
+          const times = drawnCandleIndex(candlesRef.current, ax).virtualSeconds;
+          // Search actual projected candles; the shared grid can also contain
+          // indicator-only points. Include the half-bar at the right boundary
+          // so reversing a wheel does not select the preceding candle.
+          const sameRange = (other: { from: number; to: number }) =>
+            Math.abs(other.from - range.from) < 1e-6 && Math.abs(other.to - range.to) < 1e-6;
+          if (historicalAnchor?.axis === ax && historicalAnchor.width === plotWidth
+            && (sameRange(historicalAnchor.range) || sameRange(historicalAnchor.inputRange))) {
+            historicalTime = historicalAnchor.time;
+          } else {
+            let lo = 0, hi = times.length;
+            while (lo < hi) {
+              const mid = (lo + hi) >>> 1;
+              const idx = ts.timeToIndex(times[mid] as Time);
+              if (idx == null) { lo = 0; break; }
+              if (idx <= range.to + .5) lo = mid + 1;
+              else hi = mid;
+            }
+            if (lo > 0) historicalTime = times[lo - 1] as Time;
+          }
+          const idx = historicalTime != null ? ts.timeToIndex(historicalTime) : null;
+          if (typeof idx === 'number' && idx >= range.from - .5 && idx <= range.to + .5) {
+            visibleCandleIndex = idx;
+            const first = ts.timeToIndex(times[0] as Time);
+            if (typeof first === 'number') firstBarIndex = first;
+          }
+        }
         const rightOffsetBars =
           getRightOffsetBarsRef.current?.(Math.max(1, range.to - range.from), plotWidth) ??
           (CHART_TIMESCALE_OPTIONS.rightOffset ?? 0);
@@ -141,9 +177,16 @@ export function useWheelInteractions(
           coordinateToLogical: viewport.coordinateToLogical,
           maxTo,
           lastBarIndex,
+          visibleCandleIndex,
+          firstBarIndex,
           maxSpan,
           minSpan,
         });
+        // Keep the chosen candle through a wheel sequence even when zoom-out
+        // reveals another candle in its small right gutter. Pan, resize, axis
+        // replacement or another viewport owner invalidates the saved range.
+        historicalAnchor = historicalTime != null && visibleCandleIndex != null && outcome
+          ? { time: historicalTime, range: outcome, inputRange: range, width: plotWidth, axis: ax } : null;
         if (outcome && (outcome.from !== range.from || outcome.to !== range.to)) {
           ts.setVisibleLogicalRange(outcome);
           onViewportChanged?.(outcome);
