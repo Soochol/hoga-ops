@@ -81,8 +81,9 @@ function isDeepLinkTab(): boolean {
 }
 
 /** 창 종류. 'chart' 만 캔들+지표 스택, 나머지는 데이터 창(#708).
- *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D). */
-export const WINDOW_KINDS = ['chart', 'book', 'order', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking'] as const;
+ *  'sector-ranking' 은 지수 그룹 전용 데이터 창(ADR-0119 PR-D).
+ *  'market-indices' 는 시장 전체 창으로 종목·그룹 연동에서 제외한다. */
+export const WINDOW_KINDS = ['chart', 'book', 'order', 'broker', 'trade', 'vdist', 'program', 'investor', 'investor-daily', 'news', 'sector-ranking', 'market-indices'] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
 /**
@@ -582,11 +583,13 @@ export function groupTargetChartWindow(
   return null;
 }
 
-/** 포커스 창(zOrder 마지막)의 그룹 = 활성 그룹(#711). 창이 없으면 그룹 1. */
+/** 포커스 종목 창의 그룹 = 활성 그룹(#711). 시장 전체 창은 건너뛰고, 없으면 그룹 1. */
 export function activeGroupOf(state: Pick<Persisted, 'windows' | 'zOrder'>): GroupId {
-  const focusedId = state.zOrder[state.zOrder.length - 1];
-  const focused = state.windows.find((w) => w.id === focusedId);
-  return focused?.group ?? 1;
+  for (let i = state.zOrder.length - 1; i >= 0; i--) {
+    const win = state.windows.find(w => w.id === state.zOrder[i]);
+    if (win && win.kind !== 'market-indices') return win.group;
+  }
+  return 1;
 }
 
 /**
@@ -600,24 +603,28 @@ export function windowSymbolOf(
   state: Pick<Persisted, 'groupSymbols'>,
   win: WorkspaceWindow | null | undefined,
 ): GroupSymbol | null {
-  if (!win) return null;
+  if (!win || win.kind === 'market-indices') return null;
   return win.pinned ?? state.groupSymbols[win.group] ?? null;
 }
 
-/** 포커스 창이 그리는 종목 — 레거시 미러(`activeCode`)·문서 제목의 원천.
+/** 포커스 종목 창이 그리는 종목 — 시장 전체 창은 기존 종목 포커스를 유지한다.
+ *  레거시 미러(`activeCode`)·문서 제목의 원천.
  *
  *  `groupSymbols[activeGroupOf(s)]` 가 **아니다**: 포커스 창이 핀이면 그룹 종목과
  *  화면이 갈리므로, 그 식은 관심종목 하트·검색 하이라이트·탭 제목을 "지금 보고 있지
  *  않은 종목" 에 걸어 놓는다. */
 export function focusedWindowSymbol(state: Pick<Persisted, 'windows' | 'zOrder' | 'groupSymbols'>): GroupSymbol | null {
-  const focusedId = state.zOrder[state.zOrder.length - 1];
-  return windowSymbolOf(state, state.windows.find((w) => w.id === focusedId));
+  for (let i = state.zOrder.length - 1; i >= 0; i--) {
+    const win = state.windows.find(w => w.id === state.zOrder[i]);
+    if (win && win.kind !== 'market-indices') return windowSymbolOf(state, win);
+  }
+  return null;
 }
 
 /**
  * 클릭 계열(관심종목·히트맵·스크리너·검색·지수바) 종목 교체의 **목적지 창**.
  *
- * z순서 위에서부터 훑어 **핀이 걸리지 않은** 첫 창. 핀 창은 클릭으로 안 바뀌는 것이
+ * z순서 위에서부터 훑어 **핀이 걸리지 않은 종목 창**. 시장 전체 창도 건너뛴다. 핀 창은 클릭으로 안 바뀌는 것이
  * 핀의 정의이므로 목적지 후보에서 빠지고, 클릭은 그 아래 살아 있는 창으로 넘어간다
  * (사용자 결정 2026-08-21 — 무반응보다 착지가 낫다).
  *
@@ -637,10 +644,10 @@ export type ActivationTarget =
   | { kind: 'blocked' };
 
 export function activationTarget(state: Pick<Persisted, 'windows' | 'zOrder'>): ActivationTarget {
-  if (state.windows.length === 0) return { kind: 'empty', group: 1 };
+  if (state.windows.every(w => w.kind === 'market-indices')) return { kind: 'empty', group: 1 };
   for (let i = state.zOrder.length - 1; i >= 0; i--) {
     const w = state.windows.find((win) => win.id === state.zOrder[i]);
-    if (w && !w.pinned) return { kind: 'window', window: w };
+    if (w && w.kind !== 'market-indices' && !w.pinned) return { kind: 'window', window: w };
   }
   return { kind: 'blocked' };
 }
@@ -689,6 +696,7 @@ const DEFAULT_SIZE: Record<WindowKind, { w: number; h: number }> = {
   'investor-daily': { w: 560, h: 420 },
   news: { w: 420, h: 480 },
   'sector-ranking': { w: 560, h: 360 },
+  'market-indices': { w: 660, h: 215 },
 };
 
 const hydrated = readStorage();
@@ -930,7 +938,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 
   setWindowSymbol: (id, symbol) => {
     const win = get().windows.find((w) => w.id === id);
-    if (!win) return;
+    if (!win || win.kind === 'market-indices') return;
     if (!win.pinned) {
       get().setGroupSymbol(win.group, symbol);
       return;

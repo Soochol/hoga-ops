@@ -49,6 +49,8 @@ export interface WindowFrameProps {
   onPickGroup: (id: string, group: GroupId) => void;
   onTogglePin?: (id: string) => void;
   children: React.ReactNode;
+  /** Market-wide windows supply their compact title/legend without a symbol group. */
+  headerContent?: React.ReactNode;
 }
 
 /**
@@ -101,9 +103,11 @@ function WindowFrameImpl(props: WindowFrameProps) {
     onPickGroup,
     onTogglePin,
     children,
+    headerContent,
   } = props;
 
-  const title = symbolLabel ?? `그룹 ${group}`;
+  const marketWide = kind === 'market-indices';
+  const title = marketWide ? KIND_LABEL[kind] : symbolLabel ?? `그룹 ${group}`;
 
   return (
     <WindowFrameCore
@@ -121,21 +125,21 @@ function WindowFrameImpl(props: WindowFrameProps) {
       resizable={!maximized}
       onFocus={onFocus}
       onClose={onClose}
-      closeLabel={`${title} ${KIND_LABEL[kind]} 창 닫기`}
+      closeLabel={marketWide ? `${title} 창 닫기` : `${title} ${KIND_LABEL[kind]} 창 닫기`}
       header={
         <>
           {/* 뱃지·팔레트 마크업은 `/study` 와 공유한다(`workspace/GroupBadge`) —
               번호가 가리키는 것만 페이지가 정하고 제스처는 하나다. */}
-          <LiveGroupBadge
+          {!marketWide && <LiveGroupBadge
             showLabel
             group={group}
             open={paletteOpen}
             onToggle={() => onTogglePalette(id)}
             onPick={(g) => onPickGroup(id, g)}
-          />
+          />}
           {/* 차트 창은 종목 식별 행(종목명·현재가·등락률·히트맵·경고)을 타이틀바에
               그린다(#869 캔버스 레전드에서 이관). 데이터 창·종목 없는 창은 기존 제목. */}
-          {kind === 'chart' && symbolCode ? (
+          {marketWide ? headerContent ?? <span className="flex-1 text-xs">주요 지수</span> : kind === 'chart' && symbolCode ? (
             <TitleBarSymbolRow name={symbolLabel} code={symbolCode} isIndex={isIndex} windowId={id} />
           ) : (
             <>
@@ -147,7 +151,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
           )}
           {/* 창 수준 액션은 오른쪽 끝에 모은다. 차트는 종목 행, 나머지는
               스페이서 한 곳이 여유를 흡수해 버튼 사이 간격을 일정하게 유지한다. */}
-          <span aria-hidden data-testid="window-header-spacer" className={kind === 'chart' && symbolCode ? 'hidden' : 'flex-1'} />
+          <span aria-hidden data-testid="window-header-spacer" className={marketWide || (kind === 'chart' && symbolCode) ? 'hidden' : 'flex-1'} />
           {onToggleMaximize && (
             <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
               aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
@@ -176,7 +180,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </svg>
             </button>
           )}
-          {onTogglePin && (
+          {!marketWide && onTogglePin && (
             <>
               <button
                 type="button"
@@ -208,7 +212,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
           <WindowActionsMenu maximized={maximized} alwaysOnTop={alwaysOnTop} pinned={pinned} canPin={canPin}
             onMaximize={onToggleMaximize ? () => onToggleMaximize(id) : undefined}
             onAlwaysOnTop={onToggleAlwaysOnTop ? () => onToggleAlwaysOnTop(id) : undefined}
-            onPin={onTogglePin ? () => onTogglePin(id) : undefined} />
+            onPin={!marketWide && onTogglePin ? () => onTogglePin(id) : undefined} />
         </>
       }
     >
