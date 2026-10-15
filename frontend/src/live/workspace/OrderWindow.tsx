@@ -69,8 +69,14 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
   const preferences = settings ?? localSettings;
   const [quantity, setQuantity] = useState(() => preferences.quantityPresets[0]);
+  const [quantityCode, setQuantityCode] = useState(code);
   const [amountMillions, setAmountMillions] = useState(() => preferences.amountPresets[0]);
   const [profitAsPercent, setProfitAsPercent] = useState(false);
+  // Reset before the new symbol's keyed content commits, never after it becomes clickable.
+  if (quantityCode !== code) {
+    setQuantityCode(code);
+    setQuantity(preferences.quantityPresets[0]);
+  }
   function applySettings(next: OrderWindowSettings) {
     const quantitySlot = preferences.quantityPresets.indexOf(quantity);
     const amountSlot = preferences.amountPresets.indexOf(amountMillions);

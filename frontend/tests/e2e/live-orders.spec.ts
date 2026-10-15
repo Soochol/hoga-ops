@@ -186,14 +186,16 @@ test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하
   expect(commands).toHaveLength(1);
 });
 
-test('고정한 호가 주문 창의 보유종목 이동은 다른 연결 창의 종목을 바꾸지 않는다', async ({ page }) => {
+test('고정한 호가 주문 창의 종목 이동은 주문 수량을 초기화하고 다른 연결 창은 유지한다', async ({ page }) => {
   const { window, commands } = await setup(page);
   const frame = page.locator('[data-win]').filter({ has: window });
   await frame.getByRole('button', { name: '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다', exact: true }).click();
+  await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('123');
   await window.getByRole('button', { name: '보유종목', exact: true }).click();
   await page.getByRole('dialog', { name: '계좌 목록' }).getByRole('button', { name: 'SK하이닉스', exact: true }).click();
   await expect(page.getByRole('button', { name: 'SK하이닉스 호가 주문 창 닫기', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '삼성전자 10호가 창 닫기', exact: true })).toBeVisible();
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('10');
   expect(commands).toHaveLength(0);
 });
 
