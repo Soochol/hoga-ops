@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import BookPanel from './BookPanel';
 import { EMPTY_TRADE_SUMMARY } from '../liveSidebarAdapters';
 import type { OrderbookSnapshot } from '../../api/types';
@@ -43,6 +43,73 @@ function renderPanel(over: Partial<Parameters<typeof BookPanel>[0]> = {}) {
     />,
   );
 }
+
+describe('시고저 가격의 전일 KRX 종가 툴팁', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  const reveal = () => act(() => { vi.advanceTimersByTime(500); });
+
+  it('사다리 기준가·당일 KRX 종가와 무관하게 세 가격의 전일 KRX 대비를 표시한다', () => {
+    renderPanel({ baselinePrice: 230_000, krxClose: 230_000, krxPreviousClose: 220_000,
+      summary: { ...SUMMARY, dayOpen: 222_500, dayHigh: 226_500, dayLow: 215_500 } });
+    for (const [label, price, pct, color] of [
+      ['시작', '222,500', '+1.14%', 'text-price-up'],
+      ['최고', '226,500', '+2.95%', 'text-price-up'],
+      ['최저', '215,500', '-2.05%', 'text-price-down'],
+    ]) {
+      const value = screen.getByLabelText(`${label} 가격 ${price}원`);
+      fireEvent.mouseEnter(value);
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      reveal();
+      expect(screen.getByRole('tooltip')).toHaveTextContent(`전일 KRX 종가 대비 ${pct}`);
+      expect(screen.getByRole('tooltip')).toHaveClass(color, 'book-price-tooltip');
+      expect(value).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+      fireEvent.mouseLeave(value);
+      expect(screen.queryByRole('tooltip')).toBeNull();
+    }
+    fireEvent.mouseEnter(screen.getByText('KRX종가'));
+    reveal();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('정보 팝오버에서도 포커스로 열고 Esc로 툴팁만 닫는다', () => {
+    renderPanel({ krxPreviousClose: 255_000 });
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    const value = within(dialog).getByLabelText('최고 가격 257,500원');
+    fireEvent.focus(value); reveal();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('+0.98%');
+    fireEvent.keyDown(value, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(dialog).toBeInTheDocument();
+    fireEvent.focus(value); reveal(); fireEvent.blur(value);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('보합을 0.00%로 표시하고 기준가 소실 시 열린 툴팁을 제거한다', () => {
+    const props = { snapshot: snap(), baselinePrice: PREV_CLOSE, summary: { ...SUMMARY, dayOpen: 220_000 },
+      trades: [], maskRatio: false, lastPrice: null, krxPreviousClose: 220_000 };
+    const view = render(<BookPanel {...props} />);
+    fireEvent.mouseEnter(screen.getByLabelText('시작 가격 220,000원')); reveal();
+    expect(screen.getByRole('tooltip')).toHaveTextContent('전일 KRX 종가 대비 0.00%');
+    expect(screen.getByRole('tooltip')).toHaveClass('text-fg-dim');
+    view.rerender(<BookPanel {...props} krxPreviousClose={null} />);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it.each([null, 0, -1, NaN, Infinity])('전일 종가 %s는 계산하지 않는다', baseline => {
+    renderPanel({ krxPreviousClose: baseline });
+    fireEvent.mouseEnter(screen.getByText('245,500')); reveal();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('시고저 가격이 없으면 툴팁을 표시하지 않는다', () => {
+    renderPanel({ krxPreviousClose: 220_000, summary: EMPTY_TRADE_SUMMARY });
+    const row = screen.getByText('시작').parentElement!;
+    fireEvent.mouseEnter(within(row).getByText('−')); reveal();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});
 
 describe('BookPanel', () => {
   it('매도·매수 20단계 가격과 등락률을 모두 그린다', () => {

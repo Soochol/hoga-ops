@@ -11,6 +11,7 @@ import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { notifyOrderReceiptAccepted, playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
+import type { LiveAfterHoursBookResponse } from '../../api/liveAfterHoursBook';
 
 vi.mock('./orderReceiptSound', () => ({
   notifyOrderReceiptAccepted: vi.fn(), playOrderReceiptSound: vi.fn(), prepareOrderReceiptSound: vi.fn(),
@@ -29,13 +30,17 @@ vi.mock('../../api/liveSeries', () => ({ useLiveSeries: vi.fn(() => ({ ob: [], l
 vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: vi.fn(() => new Map([['005930', { price: mock.quotePrice, baseline_price: 66000, open: 68000, high: 69000, low: 67000, volume: 8336637, trade_value: 12290807000000, vs_prev_volume_pct: 184.55 }]])) }));
 vi.mock('../../api/liveStockLimits', () => ({ useLiveStockLimits: () => ({ data: { base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 70000, low_250: 50000 } }) }));
 vi.mock('../../api/liveKrxClose', () => ({ useLiveKrxClose: () => ({ data: { date: '20261013', price: 67100 } }) }));
+vi.mock('../../api/liveKrxPreviousClose', () => ({ useLiveKrxPreviousClose: (code: string | null, asOf: string) => (
+  { data: code ? { code, as_of: asOf, session_date: asOf, date: '20261012', price: 65000 } : undefined }
+) }));
 vi.mock('../../api/liveViStatus', () => ({ useLiveViStatus: vi.fn(() => ({ data: { vi: null } })) }));
 vi.mock('../../util/useWallClockSecond', () => ({ useWallClockSecond: () => mock.now }));
 vi.mock('../useMinuteClock', () => ({ useMinuteClock: () => mock.now }));
 const symbolMaster = vi.hoisted(() => ({ nxtEnabled: true as boolean | null }));
+const afterHoursBook = vi.hoisted(() => ({ data: undefined as LiveAfterHoursBookResponse | undefined }));
 vi.mock('../../capture/useSymbols', () => ({ useSymbols: () => ({ data: { symbols: [{ code: '005930', nxt_enabled: symbolMaster.nxtEnabled }] } }) }));
 vi.mock('../../api/liveAfterHoursBook', async importOriginal => ({
-  ...await importOriginal<typeof import('../../api/liveAfterHoursBook')>(), useAfterHoursBook: () => ({ data: undefined }),
+  ...await importOriginal<typeof import('../../api/liveAfterHoursBook')>(), useAfterHoursBook: () => afterHoursBook,
 }));
 vi.mock('../../api/useLiveCursor', () => ({ useLiveOrderbookAtCursor: () => ({ spot: undefined, stale: false, error: null }) }));
 vi.mock('../../api/screenerDailyCandles', async importOriginal => ({
@@ -53,6 +58,7 @@ function enableReceiptSound() {
   fireEvent.click(screen.getByRole('button', { name: '적용' }));
 }
 beforeEach(() => {
+  afterHoursBook.data = undefined;
   vi.mocked(notifyOrderReceiptAccepted).mockReset();
   vi.mocked(prepareOrderReceiptSound).mockReset();
   vi.mocked(playOrderReceiptSound).mockReset().mockResolvedValue(true);
@@ -60,6 +66,44 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('시간외 단일가에서도 두 창의 툴팁은 당일 종가 대신 직전 KRX 종가를 쓴다', async () => {
+    symbolMaster.nxtEnabled = false;
+    // A stored single-price ladder exercises the same baseline switch outside trading hours.
+    afterHoursBook.data = { code: '005930', active: true, base_tm: '170000',
+      ask: [{ price: 67300, qty: 100 }], bid: [{ price: 67200, qty: 200 }],
+      total_ask_qty: 100, total_bid_qty: 200, cur_price: 67200, change_pct: 0,
+      acc_volume: 1, close_price: 68000, exp_price: null, exp_qty: null, fills: [],
+      fetched_at_ms: mock.now, source: 'stored' };
+    const win: WorkspaceWindow = { id: 'book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <div data-testid="compare-book"><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></div>
+      <OrderWindow code="005930" name="삼성전자" />
+    </QueryClientProvider>);
+    const bookButton = within(screen.getByTestId('compare-book')).getByRole('button', { name: '종목 상세 정보' });
+    fireEvent.click(bookButton);
+    let dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    let value = within(dialog).getByLabelText('시작 가격 68,000원');
+    fireEvent.mouseEnter(value);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('전일 KRX 종가 대비 +4.62%');
+    fireEvent.mouseLeave(value);
+    fireEvent.click(within(dialog).getByRole('button', { name: '상세 정보 닫기' }));
+    fireEvent.click(within(screen.getByTestId('order-window')).getByRole('button', { name: '종목 상세 정보' }));
+    dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    value = within(dialog).getByLabelText('시작 가격 68,000원');
+    fireEvent.mouseEnter(value);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('전일 KRX 종가 대비 +4.62%');
+    fireEvent.mouseLeave(value);
+  });
+  it('상세정보의 시고저 툴팁은 시세 기준가 대신 전일 KRX 종가를 쓴다', async () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    const dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
+    const value = within(dialog).getByLabelText('시작 가격 68,000원');
+    fireEvent.mouseEnter(value);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('전일 KRX 종가 대비 +4.62%');
+    fireEvent.mouseLeave(value);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
   it('소리 들어보기는 끄기 상태에서도 재생하고 설정 적용이나 주문은 하지 않는다', async () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
