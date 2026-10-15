@@ -1320,6 +1320,39 @@ test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 
   expect(commands).toHaveLength(0);
 });
 
+for (const venue of ['KRX', 'NXT', 'UN'] as const) {
+  test(`${venue} 장중 0H 예상체결을 두 호가창에 표시하고 빈 호가 수신에도 유지한 뒤 체결 재개 시 지운다`, async ({ page }) => {
+    const { window, ws, commands } = await setup(page, false, false, false, 0, 1, { venue });
+    const book = page.locator('.book-panel');
+    await ws.waitForSubscribe('005930');
+    const t_ms = Date.now();
+    const expected = { kind: 'expected', venue, t_ms, expected_price: 121100, expected_qty: 5152 };
+    ws.pushLive('005930', expected);
+    for (const panel of [window, book]) {
+      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가121,100원예상 체결량5,152');
+    }
+    ws.pushLive('005930', { kind: 'ob', venue, t_ms: t_ms + 1,
+      asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
+      total_ask_qty: 100, total_bid_qty: 200,
+    });
+    for (const panel of [window, book]) {
+      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가121,100원예상 체결량5,152');
+    }
+    ws.pushLive('005930', { ...expected, venue: venue === 'KRX' ? 'NXT' : 'KRX', t_ms: t_ms + 2,
+      expected_price: 999999, expected_qty: 999 });
+    ws.pushLive('005930', { ...expected, t_ms: t_ms + 3, expected_qty: 6000 });
+    for (const panel of [window, book]) {
+      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가121,100원예상 체결량6,000');
+    }
+    ws.pushLive('005930', { kind: 'trade', venue, t_ms: t_ms + 4,
+      trades: [{ price: 121100, qty: 1, side: 1 }] });
+    for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+    ws.pushLive('005930', expected);
+    for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+    expect(commands).toHaveLength(0);
+  });
+}
+
 test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시되고 빈 호가는 제거된다', async ({ page }, testInfo) => {
   const { window, ws, commands } = await setup(page);
   const book = page.locator('.book-panel'); // 기본 배치의 10호가창과 비교
@@ -1349,6 +1382,9 @@ test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시�
   }
   await window.screenshot({ path: testInfo.outputPath('order-expected-fill.png') });
   ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + 1, expected_price: 0, expected_qty: 0 });
+  for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toBeVisible();
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: frame.t_ms + 2,
+    trades: [{ price: 241000, qty: 1, side: 1 }] });
   for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
   expect(commands).toHaveLength(0);
 });

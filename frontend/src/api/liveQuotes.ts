@@ -45,7 +45,7 @@ export interface LiveQuote {
   warnings?: string[];
   stale?: boolean;
   stale_reason?: string | null;
-  /** 동시호가 예상체결가/량/등락률 — WS ob 프레임(키움 0D FID 23/24)에서만 채워지는
+  /** 단일가 예상체결가/량/등락률 — WS ob(키움 0D) 또는 expected(0H)에서 채워지는
    *  표시 전용 필드. price/change_pct 등 기존 필드는 건드리지 않는다(pre_open 의
    *  hidden_pre_open 계약 불침범). 창 밖·체결 후엔 키 자체가 없다. */
   expected_price?: number | null;

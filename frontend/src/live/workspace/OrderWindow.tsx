@@ -599,7 +599,10 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />토스 앱·WTS에서 실제 주문·체결 여부를 확인했습니다</label>
       {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
     </div>}
-    <ExpectedFillBanner price={book?.exp_price ?? 0} qty={book?.exp_qty ?? 0} baselinePrice={baseline} />
+    <ExpectedFillBanner
+      price={storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0}
+      qty={storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? 0}
+      baselinePrice={baseline} />
     <div className="order-scroll" role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}
