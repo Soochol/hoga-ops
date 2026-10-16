@@ -9,7 +9,7 @@
  *  - 경고칩(과거 로딩)만 windowWarnings 채널을 `windowId` 로 구독한다.
  *
  * 현재가는 candles 폴백이 없어(타이틀바 스코프 밖) quote.price 를 직접 쓴다 —
- * 장중 실시간 시세면 채워지고, 없으면(장전·오프라인) 미표시한다.
+ * 장중 실시간 시세면 채워지고, 없으면(장전·오프라인) 예약된 칸에 — 를 표시한다.
  */
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useLiveVenueStore } from '../../state/liveVenue';
@@ -81,6 +81,10 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
   });
 
   const { backfillEarliestDate } = useWindowWarnings(windowId);
+  const backfillDate = backfillEarliestDate
+    ? `${backfillEarliestDate.slice(4, 6)}/${backfillEarliestDate.slice(6, 8)}`
+    : null;
+  const backfillPill = captureHealthPillColor('ok');
 
   return (
     <span
@@ -92,40 +96,37 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
         {name && name !== code && <span className="live-symbol-code font-data">{code}</span>}
         {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
       </span>
-      {currentPrice !== null && (
+      {!isIndex && (
         <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="live-symbol-price shrink-0 font-data text-fg">
-          {formatKoreanInt(currentPrice)}
+          {currentPrice !== null ? formatKoreanInt(currentPrice) : '—'}
         </span>
       )}
-      {quote && (
+      {!isIndex && (
         <span data-testid="titlebar-change" className="live-symbol-change shrink-0 font-data">
           {/* 등락률(%)만 — 현재가가 옆에 있어 등락액 생략(레전드·상태바와 동일). */}
-          <QuoteChange won={null} pct={quote.change_pct} />
+          <QuoteChange won={null} pct={quote?.change_pct ?? null} />
         </span>
       )}
-      {showHeatmapChip && (
+      {!isIndex && (
         <span
           data-testid="titlebar-heatmap-group"
           className="live-symbol-sector truncate"
+          style={{ visibility: showHeatmapChip ? undefined : 'hidden' }}
           title={heatmapGroupName ? `히트맵 그룹: ${heatmapGroupName}` : '히트맵 그룹 없음'}
         >
           {heatmapGroupName ?? '히트맵 그룹 없음'}
         </span>
       )}
-      {backfillEarliestDate && (() => {
-        const pill = captureHealthPillColor('ok');
-        const md = `${Number(backfillEarliestDate.slice(4, 6))}/${Number(backfillEarliestDate.slice(6, 8))}`;
-        return (
-          <span
-            data-testid="past-backfill-progress-chip"
-            title={`과거 데이터 불러오는 중 — ${md}까지 로드됨`}
-            className="live-symbol-backfill font-data whitespace-nowrap rounded px-1.5 text-2xs"
-            style={{ background: pill.bg, border: pill.border, color: pill.fg }}
-          >
-            <span aria-hidden>↻</span><span className="live-symbol-warning-label">과거 불러오는 중 · {md}까지</span>
-          </span>
-        );
-      })()}
+      {/* 숨겨도 칸은 유지한다 — 로딩 시작/종료와 날짜 자릿수가 헤더를 밀지 않는다. */}
+      <span
+        data-testid="past-backfill-progress-chip"
+        title={backfillDate ? `과거 데이터 불러오는 중 — ${backfillDate}까지 로드됨` : undefined}
+        className="live-symbol-backfill font-data whitespace-nowrap rounded text-2xs"
+        style={{ visibility: backfillDate ? undefined : 'hidden',
+          background: backfillPill.bg, border: backfillPill.border, color: backfillPill.fg }}
+      >
+        <span aria-hidden>↻</span><span className="live-symbol-warning-label">{backfillDate}</span>
+      </span>
     </span>
   );
 }

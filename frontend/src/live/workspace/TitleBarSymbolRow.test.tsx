@@ -72,9 +72,10 @@ describe('TitleBarSymbolRow', () => {
     expect(screen.getByTestId('titlebar-current-price').textContent).toContain('72,000');
   });
 
-  it('omits price when there is no quote', () => {
+  it('reserves price and change slots when there is no quote', () => {
     renderRow({ code: '005930' });
-    expect(screen.queryByTestId('titlebar-current-price')).toBeNull();
+    expect(screen.getByTestId('titlebar-current-price')).toHaveTextContent('—');
+    expect(screen.getByTestId('titlebar-change')).toHaveTextContent('—');
   });
 
   it('shows 등락률(%) only, no 등락액', () => {
@@ -121,6 +122,11 @@ describe('TitleBarSymbolRow', () => {
     act(() => {
       publishWindowWarnings('w1', { backfillEarliestDate: '20260527' });
     });
-    expect(screen.getByTestId('past-backfill-progress-chip').textContent).toContain('5/27까지');
+    const progress = screen.getByTestId('past-backfill-progress-chip');
+    expect(progress).toHaveTextContent('↻05/27');
+    expect(progress).toHaveAttribute('title', '과거 데이터 불러오는 중 — 05/27까지 로드됨');
+    act(() => clearWindowWarnings('w1'));
+    expect(screen.getByTestId('past-backfill-progress-chip')).toBe(progress);
+    expect(progress).not.toBeVisible();
   });
 });
