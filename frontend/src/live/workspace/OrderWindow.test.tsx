@@ -460,7 +460,7 @@ describe('호가 주문', () => {
     mock.orders = [sell];
     show();
     fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
-    expect(screen.getByLabelText('매입수량')).toHaveTextContent('보유63');
+    expect(screen.getByLabelText('매입수량')).toHaveTextContent('63');
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(43);
     expect(mock.command).not.toHaveBeenCalled();
     const sellButton = screen.getByRole('button', { name: /매도 67,200원 주문 추가/ });
@@ -670,7 +670,7 @@ describe('호가 주문', () => {
     const field = screen.getByLabelText('보유 종목 평가 수익');
     expect(field.querySelector('.order-field-value')).toHaveClass(color);
     expect(field.querySelector('.order-field-value')?.textContent).toBe(value);
-    expect(field.querySelector('.order-meta')).toHaveTextContent('평가손익');
+    expect(field.querySelector('.order-meta')).not.toBeInTheDocument();
     if (price === null) expect(within(field).getByRole('button')).not.toHaveAttribute('title');
   });
   it('주·금액은 버튼만 바꾸고 금액 버튼으로 환산한 수량을 한 칸에서 유지한다', async () => {
@@ -694,10 +694,10 @@ describe('호가 주문', () => {
   });
   it('미보유는 보유 0과 평단가·평가손익 없음으로 표시하며 보유 수량을 적용하지 않는다', () => {
     mock.holdingQuantity = '0'; show();
-    expect(screen.getByLabelText('매입수량')).toHaveTextContent('보유0');
+    expect(screen.getByLabelText('매입수량')).toHaveTextContent('0');
     expect(screen.getByLabelText('매입수량')).toBeDisabled();
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('평단가—');
-    expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('평가손익—');
+    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('—');
+    expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('—');
     expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).not.toHaveAttribute('title');
     expect(mock.command).not.toHaveBeenCalled();
@@ -869,7 +869,7 @@ describe('호가 주문', () => {
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매입수량')).toBeInTheDocument();
     expect(screen.getByLabelText('매수 가능 금액').closest('.order-overview-controls')).toBeInTheDocument();
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).queryByLabelText('매수 가능 금액')).not.toBeInTheDocument();
-    for (const label of ['보유', '평단가', '평가손익']) expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
+    for (const label of ['보유', '평단가', '평가손익']) expect(screen.queryByText(label, { exact: true })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
     const summary = within(screen.getByRole('dialog', { name: '종목 상세 정보' })).getByTestId('book-summary');
     const summaryContent = within(summary);
