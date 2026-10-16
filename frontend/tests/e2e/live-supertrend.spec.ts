@@ -59,7 +59,8 @@ for (const timeframe of ['1m', 'D'] as const) {
   }, timeframe);
   await page.getByTestId('live-indicators-button').click();
   await page.getByTestId('indicator-panel-mode-toggle').click();
-  await page.getByRole('button', { name: '슈퍼트렌드 추가', exact: true }).click();
+  await page.getByRole('button', { name: '슈퍼트렌드', exact: true }).click();
+  await page.getByRole('button', { name: '설정대로 추가', exact: true }).click();
   const period = page.getByRole('spinbutton', { name: '슈퍼트렌드 기간' });
   await expect(period).toHaveValue('10');
   await period.fill('2');

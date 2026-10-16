@@ -29,6 +29,7 @@
  * **이 배열의 chart 카테고리 구간은 등록 순서 = 화면 순서다** (`IndicatorPrefRows`
  * 의 기존 계약). 같은 group 의 엔트리를 이웃하게 유지할 것.
  */
+import { IndicatorEditorDraftContext } from './indicatorEditorDraftContext';
 import {
   PEAK_WALL_FAMILY_NUMERICS,
   PEAK_WALL_FAMILY_TOGGLES,
@@ -1025,17 +1026,19 @@ function useWindowPrefsScope(): IndicatorScope {
  * Provider 밖에서는 종전대로 ambient 투영을 읽는다(`/study` 무변경 계약).
  */
 export function useActivePrefs<T>(selector: (prefs: ChartViewPrefs) => T): T {
+  const draft = useContext(IndicatorEditorDraftContext);
   const tf = useWindowPrefsTimeframe();
   const scope = useWindowPrefsScope();
-  return useChartPrefsStore((s) => selector(tf ? prefsForScope(s, scope, tf) : s));
+  return useChartPrefsStore((s) => selector(draft?.prefs ?? (tf ? prefsForScope(s, scope, tf) : s)));
 }
 
 /** 창 스코프로 resolve 된 prefs 전체 — 드로어의 설정 행처럼 여러 키를 한꺼번에
  *  읽는 UI 용(`useActivePrefs` 와 같은 봉 규칙). */
 export function useScopedChartPrefs(): ChartViewPrefs {
+  const draft = useContext(IndicatorEditorDraftContext);
   const tf = useWindowPrefsTimeframe();
   const scope = useWindowPrefsScope();
-  return useChartPrefsStore((s) => (tf ? prefsForScope(s, scope, tf) : s));
+  return useChartPrefsStore((s) => draft?.prefs ?? (tf ? prefsForScope(s, scope, tf) : s));
 }
 
 /** 창 스코프 편집 표면 — 대상 창의 봉 버킷에 기록한다(`useIndicatorActions` 의
@@ -1051,6 +1054,8 @@ export function useChartPrefActions(): {
   // 대상 봉만 다르므로, useMemo 없이도 의미가 흔들리지 않는다. 다만 봉이 바뀌면
   // 새 클로저가 새 버킷을 향해야 하므로 클로저 캡처는 tf 로 유지한다.
   const store = useChartPrefsStore;
+  const draft = useContext(IndicatorEditorDraftContext);
+  if (draft) return { setToggle: draft.setPref, setNumericPref: draft.setPref, resetIndicatorModalBucket: draft.resetPrefs };
   return {
     setToggle: (key, value) =>
       tf

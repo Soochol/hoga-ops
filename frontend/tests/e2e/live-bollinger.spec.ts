@@ -54,7 +54,8 @@ test('Bollinger bands draw three lines, retain parameters on reload, and support
   });
   await page.getByTestId('live-indicators-button').click();
   await page.getByTestId('indicator-panel-mode-toggle').click();
-  await page.getByRole('button', { name: '볼린저 밴드 추가', exact: true }).click();
+  await page.getByRole('button', { name: '볼린저 밴드', exact: true }).click();
+  await page.getByRole('button', { name: '설정대로 추가', exact: true }).click();
   const period = page.getByRole('spinbutton', { name: '볼린저 기간' });
   await expect(period).toHaveValue('20');
   await period.fill('3');

@@ -24,19 +24,19 @@ export default function BollingerConfig() {
   const inputClass = 'w-24 text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums';
   return (
     <div className="space-y-3">
-      <label className="flex items-center justify-between gap-2 text-sm text-fg">
+      <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         기간 (봉 개수)
         <input aria-label="볼린저 기간" type="number" min={MA_PERIOD_MIN} max={MA_PERIOD_MAX} step={1}
           value={period} onChange={(e) => setPeriodDraft({ base: settings.bollingerPeriod, text: e.target.value })} onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} className={inputClass} />
       </label>
-      <label className="flex items-center justify-between gap-2 text-sm text-fg">
+      <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         표준편차 배수
         <input aria-label="볼린저 표준편차 배수" type="number" min={0.1} max={10} step={0.1}
           value={multiplier} onChange={(e) => setMultiplierDraft({ base: settings.bollingerMultiplier, text: e.target.value })} onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} className={inputClass} />
       </label>
-      <label className="flex items-center justify-between gap-2 text-sm text-fg">
+      <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         기준가
         <MASourceSelect aria-label="볼린저 기준가" value={settings.bollingerSource}
           onChange={(source) => setBollingerSettings({ bollingerSource: source })} />

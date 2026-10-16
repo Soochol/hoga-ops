@@ -65,7 +65,8 @@ for (const timeframe of ['D', 'W', 'M'] as const) {
       await expect.poll(() => turnoverBars(page, id)).toEqual([volumes]);
       await page.getByTestId('live-indicators-button').click();
       await page.getByTestId('indicator-panel-mode-toggle').click();
-      await page.getByRole('button', { name: '거래대금 추가', exact: true }).click();
+      await page.getByRole('button', { name: '거래대금', exact: true }).click();
+      await page.getByRole('button', { name: '설정대로 추가', exact: true }).click();
       await page.keyboard.press('Escape');
       await expect.poll(() => turnoverBars(page, id)).toEqual([volumes, expected]);
       await expect(page.getByTestId('pane-legend-rows-trade-value')).toBeVisible();
@@ -112,7 +113,8 @@ for (const timeframe of ['D', 'W', 'M'] as const) {
     await expect.poll(async () => (await turnoverBars(page, id))?.length).toBe(1); // existing volume
     await page.getByTestId('live-indicators-button').click();
     await page.getByTestId('indicator-panel-mode-toggle').click();
-    await page.getByRole('button', { name: '거래대금 추가', exact: true }).click();
+    await page.getByRole('button', { name: '거래대금', exact: true }).click();
+    await page.getByRole('button', { name: '설정대로 추가', exact: true }).click();
     await page.keyboard.press('Escape');
     await expect.poll(() => turnoverBars(page, id)).toEqual([[999999, 999999, 999999], expected]);
     await expect(page.getByTestId('pane-legend-rows-trade-value')).toContainText('90.72조');

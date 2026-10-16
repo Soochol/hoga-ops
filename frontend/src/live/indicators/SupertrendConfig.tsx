@@ -22,13 +22,13 @@ export default function SupertrendConfig() {
   const inputClass = 'w-24 text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums';
   return (
     <div className="space-y-3">
-      <label className="flex items-center justify-between gap-2 text-sm text-fg">
+      <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         ATR 기간 (봉 개수)
         <input aria-label="슈퍼트렌드 기간" type="number" min={1} max={400} step={1}
           value={period} onChange={(e) => setPeriodDraft({ base: settings.supertrendPeriod, text: e.target.value })} onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} className={inputClass} />
       </label>
-      <label className="flex items-center justify-between gap-2 text-sm text-fg">
+      <label className="indicator-parameter-row flex items-center justify-between gap-2 text-sm text-fg">
         ATR 배수
         <input aria-label="슈퍼트렌드 ATR 배수" type="number" min={0.1} max={10} step={0.1}
           value={multiplier} onChange={(e) => setMultiplierDraft({ base: settings.supertrendMultiplier, text: e.target.value })} onBlur={commit}
