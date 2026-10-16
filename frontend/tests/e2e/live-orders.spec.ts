@@ -2136,7 +2136,7 @@ test('기본 576px에서도 7자리 가격·긴 상세 값·폰트를 유지하�
   expect(commands).toHaveLength(3);
 });
 
-test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치를 유지한다', async ({ page }, testInfo) => {
+test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상단과 호가 위치를 유지한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, false, true, false, 57600, 1,
     { holdingQuantity: '267', averagePrice: '124901.64' });
   await page.mouse.move(0, 0);
@@ -2160,6 +2160,8 @@ test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치�
   ];
   const anchors = [
     '.order-price-value', '.order-price small', '.order-depth', '.order-lane',
+    '.order-overview-controls', '.order-holding-quantity', '[aria-label="매입평단가"]',
+    '.order-profit-toggle', '.order-buying-power', '.order-buying-power .order-meta', '.order-buying-power .order-field-value',
   ];
   const measure = () => window.evaluate((el, selectors) => {
     const origin = el.querySelector('.order-row')!.getBoundingClientRect();
@@ -2185,7 +2187,7 @@ test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치�
     }, { values, long });
   };
   const results = [];
-  for (const width of [800, 504, 360]) {
+  for (const width of [800, 576, 504, 360, 320]) {
     await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
     await expect(window).toHaveClass(width < 560 ? /order-compact/ : /order-expanded/);
     await setDigits(false);
@@ -2194,16 +2196,20 @@ test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치�
       const cash = el.querySelector('.order-buying-power')!.getBoundingClientRect();
       const summary = el.querySelector('.order-holdings-summary')!.getBoundingClientRect();
       const fields = [...el.querySelectorAll('.order-holdings-summary > .order-field')].map(field => field.getBoundingClientRect());
-      return { cash: cash.left - summary.right, items: fields.slice(1).map((field, i) => field.left - fields[i].right) };
+      const overview = el.querySelector('.order-overview-controls')!;
+      const style = getComputedStyle(overview);
+      return { cashGap: cash.left - summary.right, cashBelow: cash.top >= summary.bottom + 7,
+        cashRight: cash.right, contentRight: overview.getBoundingClientRect().right - parseFloat(style.paddingRight),
+        items: fields.slice(1).map((field, i) => field.left - fields[i].right) };
     });
-    expect(gaps.cash).toBeCloseTo(24, 1);
-    for (const gap of gaps.items) expect(gap).toBeCloseTo(10, 1);
+    expect(gaps.cashRight).toBeCloseTo(gaps.contentRight, 1);
+    expect(gaps.cashBelow).toBe(width < 510);
+    if (width >= 510) expect(gaps.cashGap).toBeGreaterThanOrEqual(8);
+    for (const gap of gaps.items) expect(gap).toBeCloseTo(8, 1);
     const labelGaps = await window.evaluate(el => [...el.querySelectorAll('.order-buying-power, .order-estimate')].map(field => {
       const label = field.querySelector('.order-meta')!.getBoundingClientRect();
       const value = field.querySelector('.order-field-value')!;
-      const range = document.createRange();
-      range.selectNodeContents(value);
-      const text = range.getBoundingClientRect();
+      const text = value.getBoundingClientRect();
       const inline = Math.abs((label.top + label.bottom) / 2 - (text.top + text.bottom) / 2) < 4;
       return { inline, gap: inline ? text.left - label.right : text.left - label.left };
     }));
@@ -2212,6 +2218,11 @@ test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치�
       else expect(Math.abs(gap)).toBeLessThanOrEqual(1);
     }
     const before = await measure();
+    const profitToggle = window.getByRole('button', { name: '평가손익 표시 전환', exact: true });
+    await profitToggle.dblclick();
+    expect(await measure()).toEqual(before);
+    await profitToggle.dblclick();
+    expect(await measure()).toEqual(before);
     await setDigits(true);
     const after = await measure();
     for (const selector of Object.keys(before)) {
@@ -2219,8 +2230,16 @@ test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치�
         expect(after[selector][coordinate], `${width}px ${selector} ${coordinate}`).toBeCloseTo(before[selector][coordinate], 1);
       }
     }
-    expect(await window.evaluate((el, values) => values.every(([selector]) => [...el.querySelectorAll(selector)]
-      .every(node => node.scrollWidth <= node.clientWidth + 1)), values), `${width}px full numeric values fit`).toBe(true);
+    expect(await window.evaluate((el, values) => values.every(([selector]) => [...el.querySelectorAll<HTMLElement>(selector)]
+      .every(node => {
+        if (!node.closest('.order-holdings-summary, .order-buying-power')) return node.scrollWidth <= node.clientWidth + 1;
+        const style = getComputedStyle(node);
+        const maxScroll = node.scrollWidth - node.clientWidth;
+        node.scrollLeft = maxScroll;
+        const reachable = maxScroll <= 1 || node.scrollLeft > 0;
+        node.scrollLeft = 0;
+        return style.textAlign === 'right' && style.overflowX === 'auto' && reachable;
+      })), values), `${width}px full numeric values remain reachable`).toBe(true);
     await window.screenshot({ path: testInfo.outputPath(`stable-numbers-${width}.png`) });
     await setDigits(false);
     expect(await measure()).toEqual(before);
