@@ -270,6 +270,8 @@ interface Props {
   /** 그 구간의 봉 수와 허용 범위 — 속성 패널이 버튼을 누르기 전에 되는지 말한다. */
   patternBarCount?: (fromRealMs: number, toRealMs: number) => { bars: number; min: number; max: number };
   venue?: LiveVenueOption;
+  /** Candle query venue can differ from the effective live-frame venue. */
+  candleVenue?: LiveVenueOption;
   /** Optional view-level identity for same-code/timeframe restores (for example `/study?view=...`). */
   viewIdentity?: string;
   /** Full bundle = chart side + live hoga overlay (new ref each SSE tick).
@@ -480,6 +482,7 @@ export function LiveChartRoot({
   onSearchPattern,
   patternBarCount,
   venue = 'KRX',
+  candleVenue = venue,
   viewIdentity,
   bundle,
   chartBundle,
@@ -2061,8 +2064,8 @@ export function LiveChartRoot({
     ],
   );
   const candlePaneContext = useMemo<CandlePaneContext>(
-    () => ({ muteAuctionCandles: venue === 'KRX' }),
-    [venue],
+    () => ({ muteAuctionCandles: candleVenue === 'KRX' }),
+    [candleVenue],
   );
   const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
 

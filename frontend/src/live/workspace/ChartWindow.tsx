@@ -900,6 +900,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               onSearchPattern={onSearchPattern}
               patternBarCount={patternBarCount}
               venue={venue}
+              candleVenue={candleVenue}
               viewIdentity={viewIdentity}
               savedRangeBand={savedRangeBand}
               restoreViewport={savedRangeViewport}
