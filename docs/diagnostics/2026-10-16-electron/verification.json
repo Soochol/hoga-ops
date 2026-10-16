@@ -320,6 +320,41 @@
         "Frontend branding changes are in this worktree; the running local main Vite/API servers were not modified or restarted.",
         "Linux .deb was extracted and tested without a system-wide sudo installation."
       ]
+    },
+    {
+      "date": "2026-10-16T21:18:03.726387+09:00",
+      "change": "Rebase full Ticklane implementation onto latest main, preserving the new settings editor while adding settings transfer. Validate final PR integration.",
+      "pull_request": "https://github.com/Soochol/hoga-ops/pull/2065",
+      "source_commit": "a8aeebf0f3d4f33db07a71c567e91973437b26fd",
+      "rebase_base_commit": "efaeac28ddc170ed2c31e24955c345f223ac32b3",
+      "checks": {
+        "frontend_relevant_tests": 100,
+        "frontend_typecheck": "passed",
+        "frontend_changed_files_lint": "passed",
+        "frontend_build": "passed",
+        "frontend_landing_e2e": 1,
+        "desktop_unit_tests": 8,
+        "desktop_typecheck": "passed",
+        "desktop_lint": "passed",
+        "source_electron_e2e": 4,
+        "linux_make": "passed",
+        "extracted_deb_e2e": 4,
+        "git_diff_check": "passed"
+      },
+      "artifacts": [
+        {
+          "path": "desktop/out/make/deb/x64/ticklane_0.16.6-rev.0_amd64.deb",
+          "sha256": "f9fa8e23ba0f5f6d335ec0bf1e9636f188e95af4e2276f7439c3bf34bfe67ea9"
+        },
+        {
+          "path": "desktop/out/make/zip/linux/x64/Ticklane-linux-x64-0.16.6-rev.0.zip",
+          "sha256": "4c0843db75c24000d85505bd08ad3df05f8451394527e64d89c99f7b27173fef"
+        }
+      ],
+      "limits": [
+        "No GitHub CI checks are configured/reported for this PR.",
+        "System-wide sudo deb installation/removal was not performed."
+      ]
     }
   ]
 }
