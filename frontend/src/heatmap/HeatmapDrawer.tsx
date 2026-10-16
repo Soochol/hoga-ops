@@ -917,6 +917,7 @@ export function HeatmapDrawer() {
                           return (
                             <QuoteRow
                               name={entry.name} code={entry.code}
+                              nameTooltip=""
                               price={q?.price ?? null}
                               pct={q?.change_pct ?? null}
                               changeWon={q?.change_won ?? null}

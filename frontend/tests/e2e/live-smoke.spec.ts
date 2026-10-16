@@ -43,14 +43,14 @@ test.describe('/live smoke', () => {
     await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
     await page.getByTestId('watchlist-row-098460').click();
 
-    // Verify the selected chart, independently of the watchlist's hover tooltip.
+    // Verify the selected chart; stock-name hover in the watchlist stays quiet.
     await expect(page.getByRole('button', { name: '고영 차트 창 닫기', exact: true })).toBeVisible();
     const stockRow = page.getByTestId('watchlist-row-098460');
     await page.mouse.move(0, 0);
     await stockRow.focus();
     await expect(page.getByRole('tooltip')).toHaveCount(0);
     await stockRow.getByText('고영', { exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('098460');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
     await page.mouse.move(0, 0);
     await expect(page.getByRole('tooltip')).toHaveCount(0);
     // **소스 배지 단언을 걷어냈다.** 배지를 얹던 상태바가 #865

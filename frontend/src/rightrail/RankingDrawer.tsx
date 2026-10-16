@@ -144,6 +144,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
   return (
     <QuoteRow
       name={row.name} code={row.code}
+      nameTooltip=""
       price={row.price}
       pct={row.change_pct}
       changeWon={null}
@@ -178,6 +179,7 @@ function RankingDragGhost({ ghost }: { ghost: ChartDropGhost }) {
   return (
     <QuoteRow
       name={ghost.name}
+      nameTooltip=""
       price={ghost.price}
       pct={ghost.pct}
       changeWon={null}
