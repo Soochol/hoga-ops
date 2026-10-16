@@ -490,6 +490,15 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
     vi={vi.data?.vi} height={height} />;
+  function saveSettingsEdits(next: OrderWindowSettings) {
+    if (busy) return;
+    setSettingsDraft(next);
+    // An incomplete preset must not block saving other fields or replace its last valid value.
+    onApplySettings({ ...next,
+      quantityPresets: next.quantityPresets.map((value, index) => validOrderInput(value, 'quantity') ? value : preferences.quantityPresets[index]) as OrderWindowSettings['quantityPresets'],
+      amountPresets: next.amountPresets.map((value, index) => validOrderInput(value, 'amount') ? value : preferences.amountPresets[index]) as OrderWindowSettings['amountPresets'],
+    });
+  }
   return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => {
       if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; }
@@ -603,8 +612,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
     }}>
       <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings} scope="이 호가 주문창에 적용">주문 설정</OrderSurfaceHeading>
-      <OrderSettingsForm draft={settingsDraft} onChange={setSettingsDraft} busy={busy} onCancel={closeSettings}
-        onApply={next => { onApplySettings(next); closeSettings(); }} />
+      <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
     </div>, document.body)}
     {!accounts.data?.configured && !accounts.isLoading && <p className="order-notice">토스증권 Open API의 CLIENT_ID·CLIENT_SECRET을 서버에 설정하면 계좌가 연결됩니다.</p>}
     {(accounts.error || state.error) && <p role="alert" className="order-notice text-error">{String((accounts.error ?? state.error) instanceof Error ? (accounts.error ?? state.error as Error)?.message : '계좌 조회 실패')}</p>}

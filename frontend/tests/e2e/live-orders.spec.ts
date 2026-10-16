@@ -128,12 +128,12 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   expect(commands).toHaveLength(0);
   await checkbox.check();
   await dialog.screenshot({ path: testInfo.outputPath('order-sound-settings.png') });
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
 
   await page.reload();
   await settings.click();
   await expect(checkbox).toBeChecked();
-  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   expect(await soundStates()).toEqual([]);
 
   let accept!: () => void;
@@ -164,7 +164,7 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
 
   await settings.click();
   await checkbox.uncheck();
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/trading/orders');
   await buy.dblclick();
   await response;
@@ -194,7 +194,7 @@ test('오디오 재생 거절은 주문 접수를 유지하고 복구 후 다음
   await window.getByRole('button', { name: '주문 설정', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   await dialog.getByRole('checkbox', { name: '주문접수 소리', exact: true }).check();
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await buy.dblclick();
   const receipt = page.getByRole('status', { name: '주문 접수 알림' });
@@ -244,7 +244,7 @@ test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하
   expect(commands).toHaveLength(1);
 });
 
-test('종목별 주문수량 기억은 적용 후 계좌별로 복원하고 새로고침에는 설정만 남긴다', async ({ page }, testInfo) => {
+test('종목별 주문수량 기억은 즉시 저장하고 계좌별로 복원하고 새로고침에는 설정만 남긴다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, false, true, false, 0, 2);
   const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
   const account = window.getByRole('combobox', { name: '주문 계좌' });
@@ -261,12 +261,12 @@ test('종목별 주문수량 기억은 적용 후 계좌별로 복원하고 새�
   const remember = dialog.getByRole('checkbox', { name: '종목별 주문수량 기억', exact: true });
   await expect(remember).not.toBeChecked();
   await remember.check();
-  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await settings.click();
-  await expect(remember).not.toBeChecked();
+  await expect(remember).toBeChecked();
   await remember.check();
   await dialog.screenshot({ path: testInfo.outputPath('remember-quantity-settings.png') });
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await quantity.fill('30');
   await account.selectOption('2');
   await expect(quantity).toHaveValue('');
@@ -1223,7 +1223,7 @@ test('압축형 팝오버는 다크 테마에서도 표시하고 키보드 탭 �
   expect(commands).toHaveLength(0);
 });
 
-test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고 바깥 클릭·재클릭으로 편집을 버린다', async ({ page }, testInfo) => {
+test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클릭·Escape로 닫는다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const settings = window.getByRole('button', { name: '주문 설정', exact: true });
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
@@ -1253,7 +1253,7 @@ test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고
     const navigation = dialog.getByRole('navigation', { name: '주문 설정 목차' });
     await navigation.getByRole('button', { name: '주문 알림', exact: true }).click();
     await expect(dialog.getByRole('button', { name: '소리 들어보기' })).toBeInViewport();
-    await expect(dialog.getByRole('button', { name: '적용', exact: true })).toBeInViewport();
+    await expect(dialog.getByRole('button', { name: '닫기', exact: true })).toBeInViewport();
     await navigation.getByRole('button', { name: '주문 입력', exact: true }).click();
     await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toBeInViewport();
     await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('29');
@@ -1261,12 +1261,12 @@ test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고
     await expect(dialog).toHaveCount(0);
     await expect(settings).toHaveAttribute('aria-expanded', 'false');
     await settings.click();
-    await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('10');
+    await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('29');
     await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('31');
     await window.getByLabel('매수 가능 금액').click();
     await expect(dialog).toHaveCount(0);
     await settings.click();
-    await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('10');
+    await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('31');
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
     await expect(settings).toBeFocused();
@@ -1288,8 +1288,7 @@ test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고
   expect(layout).toEqual(Array(6).fill(true));
   await page.screenshot({ path: testInfo.outputPath('order-settings-anchored-narrow.png') });
   await page.setViewportSize({ width: 320, height: 360 });
-  await expect(dialog.getByRole('button', { name: '적용', exact: true })).toBeInViewport();
-  await expect(dialog.getByRole('button', { name: '취소', exact: true })).toBeInViewport();
+  await expect(dialog.getByRole('button', { name: '닫기', exact: true })).toBeInViewport();
   await expect.poll(() => dialog.locator('.order-settings-body').evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
   await dialog.screenshot({ path: testInfo.outputPath('order-settings-short-viewport.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
@@ -1333,7 +1332,7 @@ test('계좌 편집기 탐색·목록·푸터는 테마와 화면 폭에 맞춰 
   expect(commands).toHaveLength(0);
 });
 
-test('주문 설정 적용·취소와 금액 프리셋의 현재가 환산 수량으로 주문한다', async ({ page }, testInfo) => {
+test('주문 설정은 즉시 저장하고 잘못된 입력은 제외하며 금액 프리셋으로 주문한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const settings = window.getByRole('button', { name: '주문 설정', exact: true });
   const frame = page.locator('[data-win]').filter({ has: window });
@@ -1347,17 +1346,18 @@ test('주문 설정 적용·취소와 금액 프리셋의 현재가 환산 수�
   await expect(dialog.getByText('주', { exact: true })).toHaveCount(3);
   await expect(dialog.getByText('백만원', { exact: true })).toHaveCount(3);
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('25');
-  await dialog.getByRole('button', { name: '취소', exact: true }).click();
-  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('10');
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
   await settings.click();
-  await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('10');
+  await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('25');
   for (const [index, value] of [25, 75, 250].entries()) await dialog.getByRole('spinbutton', { name: `수량 프리셋 ${index + 1}`, exact: true }).fill(String(value));
   for (const [index, value] of [2, 6, 12].entries()) await dialog.getByRole('spinbutton', { name: `금액 프리셋 ${index + 1}`, exact: true }).fill(String(value));
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('1.5');
-  await expect(dialog.getByRole('button', { name: '적용', exact: true })).toBeDisabled();
+  await expect(dialog.getByRole('alert')).toContainText('양의 정수만 저장');
+  await expect(dialog.getByRole('button', { name: '닫기', exact: true })).toBeEnabled();
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
   await page.screenshot({ path: testInfo.outputPath('order-settings-dialog.png') });
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await expect(settings).toBeFocused();
   await window.getByRole('button', { name: '금액', exact: true }).click();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
@@ -1379,7 +1379,7 @@ test('주문 설정 적용·취소와 금액 프리셋의 현재가 환산 수�
   await window.screenshot({ path: testInfo.outputPath('order-amount-controls.png') });
 });
 
-test('평단가 표시 체크박스는 적용 후 저장하며 다른 주문 창에는 영향을 주지 않는다', async ({ page }, testInfo) => {
+test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에는 영향을 주지 않는다', async ({ page }, testInfo) => {
   const { commands } = await setup(page, false, false, false, 0, 1, { averagePrice: '67000.1' });
   const first = page.getByTestId('order-window').first();
   const settings = first.getByRole('button', { name: '주문 설정', exact: true });
@@ -1395,12 +1395,12 @@ test('평단가 표시 체크박스는 적용 후 저장하며 다른 주문 창
   await checkbox.focus();
   await page.keyboard.press('Space');
   await expect(checkbox).not.toBeChecked();
-  await expect(first.locator('.order-average-marker')).toHaveCount(1);
-  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await expect(first.locator('.order-average-marker')).toHaveCount(0);
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await settings.click();
-  await expect(checkbox).toBeChecked();
+  await expect(checkbox).not.toBeChecked();
   await checkbox.uncheck();
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
   await expect(first.getByLabel('매입평단가')).toContainText('67,001');
   await page.reload();
@@ -1408,19 +1408,19 @@ test('평단가 표시 체크박스는 적용 후 저장하며 다른 주문 창
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
   await settings.click();
   await expect(checkbox).not.toBeChecked();
-  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
   const second = page.getByTestId('order-window').nth(1);
   await expect(second.locator('.order-average-marker')).toHaveCount(1);
   await second.getByRole('button', { name: '주문 설정', exact: true }).click();
   await expect(checkbox).toBeChecked();
-  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await page.locator('[data-win]').filter({ has: page.getByTestId('order-window') }).nth(1)
     .getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
   await settings.click();
   await checkbox.check();
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await expect(first.locator('.order-average-marker')).toHaveCount(1);
   expect(commands).toHaveLength(0);
 });
@@ -1432,7 +1432,7 @@ test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 �
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('25');
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await page.reload();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
   await expect(window.getByRole('button', { name: '200만', exact: true })).toBeVisible();
@@ -1442,7 +1442,7 @@ test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 �
   await expect(dialog.getByRole('radio')).toHaveCount(0);
   await expect(window.getByRole('button', { name: '금액', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('25');
-  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   const restore = page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '원래 크기로 복원', exact: true });
   if (await restore.count()) await restore.click();
   await page.getByTestId('workspace-add-menu-button').click();
@@ -1452,7 +1452,7 @@ test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 �
   await expect(page.getByTestId('order-window').first().getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('29');
   await second.getByRole('button', { name: '주문 설정', exact: true }).click();
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('30');
-  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   await expect(second.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('30');
   await expect(page.getByTestId('order-window').first().getByRole('button', { name: '200만', exact: true })).toBeVisible();
 });
