@@ -572,15 +572,8 @@ class TradingService:
                 raise TradingError(
                     409, "unresolved-order-exists", "결과가 불명확한 주문이 있습니다. 토스증권 주문 내역을 확인하세요."
                 )
-            data = await client.request(
-                "GET", "/api/v1/orders", account=account, params={"status": "OPEN", "symbol": command.code}
-            )
-            if any(o["side"] != command.side for o in data["orders"]):
-                raise TradingError(
-                    409,
-                    "opposite-pending-order-exists",
-                    "같은 종목의 반대 방향 미체결 주문을 먼저 취소하거나 체결 후 주문하세요.",
-                )
+            # Let Toss decide whether opposite-side orders are allowed for this
+            # request; an OPEN snapshot cannot establish the broker's rules.
             self._check_amount(command.price, command.quantity, command.confirm_high_value)
             path = "/api/v1/orders"
             body = {

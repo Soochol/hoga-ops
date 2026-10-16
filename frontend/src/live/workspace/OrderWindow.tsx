@@ -398,7 +398,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   }
   function create(side: TradingSide, price: number) {
     if (quantity == null || !validOrderInput(quantity, 'quantity')) { setNotice('주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
-    if (orders.some(o => o.side !== side)) { setNotice('반대 방향 미체결 주문을 먼저 취소하거나 체결 후 주문하세요.'); return; }
     request({ type: 'create', base: base(), side, price, quantity });
   }
 
@@ -464,9 +463,8 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
 
   function orderCell(side: TradingSide, price: number, rowKey: string) {
     const group = groups.get(`${side}:${price}`) ?? [];
-    const opposite = orders.some(o => o.side !== side);
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
-    const canCreate = ready && fresh && price > 0 && !opposite && !settingsDraft && !state.data?.unresolved_commands.length
+    const canCreate = ready && fresh && price > 0 && !settingsDraft && !state.data?.unresolved_commands.length
       && quantity != null && quantity > 0;
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}

@@ -68,6 +68,27 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it.each(['BUY', 'SELL'] as const)('반대 방향 미체결이 있어도 %s 주문을 전송한다', async side => {
+    mock.orders = [{ ...order(), side: side === 'BUY' ? 'SELL' : 'BUY' }];
+    show();
+    const label = side === 'BUY' ? /매수 67,200원 주문 추가/ : /매도 67,300원 주문 추가/;
+    const lane = screen.getByRole('button', { name: label });
+    expect(lane).toBeEnabled();
+    fireEvent.doubleClick(lane);
+    await screen.findByText('주문 요청 접수됨');
+    expect(mock.command).toHaveBeenCalledExactlyOnceWith('/orders', expect.objectContaining({
+      side, price: side === 'BUY' ? 67200 : 67300, quantity: 10,
+    }), expect.any(String));
+  });
+  it('반대 방향 주문을 전송한 후 서버 거절 메시지를 표시한다', async () => {
+    mock.orders = [{ ...order(), side: 'SELL' }];
+    mock.command.mockRejectedValueOnce(new Error('동일 종목에 반대 방향의 체결 대기 주문이 있습니다.'));
+    show();
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    await screen.findByText('동일 종목에 반대 방향의 체결 대기 주문이 있습니다.');
+    expect(mock.command).toHaveBeenCalledOnce();
+    expect(screen.queryByText('주문 요청 접수됨')).not.toBeInTheDocument();
+  });
   it('켜진 주문창만 화면 복귀 복구를 구독하고 끄기·닫기에서 해제한다', () => {
     const cleanup = vi.fn();
     vi.mocked(subscribeOrderReceiptSoundRecovery).mockReturnValue(cleanup);
@@ -910,8 +931,8 @@ describe('호가 주문', () => {
     expect(screen.queryByRole('button', { name: '이 주문 취소' })).not.toBeInTheDocument();
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it('반대 주문이 있으면 신규 매도 영역을 비활성화한다', () => {
-    mock.orders = [order()]; show(); expect(screen.getByRole('button', { name: /매도 67,200원 주문 추가/ })).toBeDisabled();
+  it('매수 미체결과 같은 가격에서도 신규 매수·매도 영역을 활성화한다', () => {
+    mock.orders = [order()]; show(); expect(screen.getByRole('button', { name: /매도 67,200원 주문 추가/ })).toBeEnabled();
     expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeEnabled();
   });
   it.each(['BUY', 'SELL'] as const)('%s 주문 수량과 칸 전체의 더블클릭은 같은 가격에 현재 수량으로 추가 주문한다', async side => {
