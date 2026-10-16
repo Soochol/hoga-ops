@@ -355,6 +355,33 @@
         "No GitHub CI checks are configured/reported for this PR.",
         "System-wide sudo deb installation/removal was not performed."
       ]
+    },
+    {
+      "date": "2026-10-16T21:26:43.121169+09:00",
+      "change": "Fix generic running-window icon on Linux by matching Electron desktop ID, desktop entry filename and StartupWMClass to ticklane. Restart the local client on latest main plus the icon fix.",
+      "base_commit": "22bd99ec521b02b6c4cce6564cf4148516e36f05",
+      "inputs": {
+        "desktop/src/main.ts": "acac572e2b98b1f3a803bd5e21c43337bf7bb3955ba0638c00dda090eb2467be",
+        "desktop/scripts/install-shortcut.mjs": "82588587bae20783d4295294a520b0fc1fadd49ad277fcb90acf21d74e909bee"
+      },
+      "checks": {
+        "desktop_typecheck": "passed",
+        "desktop_lint": "passed",
+        "source_electron_e2e": 4,
+        "wayland_protocol_set_app_id": "ticklane",
+        "desktop_entry": "ticklane.desktop",
+        "startup_wm_class": "ticklane",
+        "installed_icon_matches_F": true,
+        "desktop_file_validate": "passed",
+        "local_client_restarted": true,
+        "local_workspace_renderer_started": true,
+        "ui_origin": "http://localhost:5173",
+        "api_origin": "http://localhost:8000"
+      },
+      "limits": [
+        "Native desktop visual inspection unavailable: orca-ide: command not found. Icon association was verified through the real Wayland client protocol and installed entry, not a dock screenshot.",
+        "Icon fix is in the current worktree and has not been merged to main."
+      ]
     }
   ]
 }
