@@ -340,11 +340,6 @@ class PaperTradingService:
                 doc = copy.deepcopy(doc)
             if action == "create":
                 assert isinstance(command, CreateTradingOrder)
-                if any(
-                    o["symbol"] == command.code and o["side"] != command.side and o["status"] in OPEN
-                    for o in doc["orders"]
-                ):
-                    raise TradingError(409, "opposite-pending-order-exists", "반대 방향 미체결 주문을 먼저 취소하세요.")
                 TradingService._check_amount(command.price, command.quantity, command.confirm_high_value)
                 self._reserve(doc, command.code, command.side, command.price, command.quantity)
                 order = self._new(doc, command.code, command.side, command.price, command.quantity)
