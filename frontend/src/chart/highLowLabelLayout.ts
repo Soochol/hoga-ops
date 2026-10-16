@@ -49,8 +49,7 @@ export const LEADER_OPACITY = 0.45;
 /**
  * 극값 **가격선**(pane 전폭 수평 점선)의 획 스타일. 리더선(0.45 / [3,3])보다 옅고
  * 성글다 — 리더선은 극값점↔칩 사이 수십 px 이지만 이 선은 pane 을 가로지르므로 같은
- * 무게를 주면 캔들보다 선이 먼저 읽힌다. VI/상하한가 선(실선 + 사용자 지정 색·두께)
- * 과 점선/실선으로 갈려 두 레이어가 겹쳐도 구분된다.
+ * 무게를 주면 캔들보다 선이 먼저 읽힌다.
  */
 export const LEVEL_LINE_OPACITY = 0.28;
 export const LEVEL_LINE_DASH: readonly number[] = [4, 4];

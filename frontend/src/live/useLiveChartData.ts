@@ -217,8 +217,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   /** 캔들 경로 그릇 — 안정 참조인 `chartBundle` 우선, 없으면 병합 번들.
    *
    *  **여기서 읽어도 되는 것은 `todaySource` 가 `'bundle'` 이 아닌 슬라이스뿐이다**
-   *  (`frontend/src/api/rangeSlices.ts`). 그 축이 `'bundle'` 인 넷(quote_ratio ·
-   *  fill_strength · price_level_hits · depth_heatmap)을 이 값에서 뽑으면 에러 없이
+   *  (`frontend/src/api/rangeSlices.ts`). 그 축이 `'bundle'` 인 셋(quote_ratio ·
+   *  fill_strength · depth_heatmap)을 이 값에서 뽑으면 에러 없이
    *  조용히 과거분만 얻는다(#719). 아래 소비처들이 뽑는 것은 씨앗·캔들·세그먼트라 안전하다.
    *
    *  `??` 는 새 객체를 만들지 않으므로 두 그릇 중 하나의 참조를 그대로 갖는다 — SSE 틱에

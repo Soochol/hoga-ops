@@ -82,10 +82,13 @@ depth 가 준다. 어느 축이 진짜 접히는지는 소비처를 옮겨 보�
 - **`wall_surge`** — 빌더는 `wall_surge_enabled` 를 받는데 `routes.py` 가 전달하지 않아
   HTTP 로 도달 불가이고, 그래서 프론트에도 요청 옵션·캐시 키 축이 없다. 차트 번들 조립
   목록에도 없어 `useLiveBundle` 이 사후 대입한다. **토글을 살릴지 지울지가 미결이다.**
-- **`price_level_hits`·`volume_profile_range`·`volume_profile_by_day`** — 백엔드가 상시 빈
+- **`volume_profile_range`·`volume_profile_by_day`** — 백엔드가 상시 빈
   값을 넣는다(`mode=full` 퇴역의 잔재). 지울 dead 인지 살릴 미완성인지 미결.
 - **`excluded_dates`·`data_warnings`** — 델타 병합 규칙은 있는데 차트 경로 번들에는 없다.
 - **`program_trade`** — 옵션 슬라이스 중 유일하게 과거일 캐시 kind 가 없다.
 
 이 목록이 곧 다음 작업의 후보다. 지금 고치지 않은 이유는 각각이 별도 판단을 요구하기
 때문이고, **기록되지 않은 상태로 두지 않는 것**이 이 ADR 의 요점이다.
+
+2026-10-16 사용자 요청으로 VI/상하한가 선 기능과 설정을 제거했다.
+`price_level_hits`도 생산·소비 경로, wire 모델, 슬라이스 등록에서 함께 제거했다.

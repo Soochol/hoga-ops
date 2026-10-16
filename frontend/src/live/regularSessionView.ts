@@ -101,7 +101,7 @@ export function createRegularSessionFilter() {
 
 const TIMED_BUNDLE_FIELDS = [
   'candles', 'investorPoints', 'institutionInvestorPoints', 'dailyProgramPoints',
-  'broker_late_entries', 'trade_volume_pocs', 'depth_heatmap', 'price_level_hits',
+  'broker_late_entries', 'trade_volume_pocs', 'depth_heatmap',
 ] as const satisfies readonly (keyof RangeBundle)[];
 
 const PEAK_CANDIDATE_FIELDS = [

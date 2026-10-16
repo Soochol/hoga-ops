@@ -55,8 +55,6 @@ PRICE_FIELDS: frozenset[str] = frozenset({
     # 미도달 벽 — cont 단일 계열이라 rank-1 스칼라 하나(close/max 구분 없음).
     "AskPeak.unreached_price", "BidPeak.unreached_price",
     "AskPeakCandidate.price",
-    # VI·상하한 히트
-    "PriceLevelHit.price",
     # 거래량 POC
     "TradeVolumePoc.center_price", "TradeVolumePoc.low_price", "TradeVolumePoc.high_price",
     # 호가 잔량 히트맵 — **이름 없는 위치 가격**([price, qty] 튜플의 첫 원소).
@@ -85,7 +83,7 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "RangeBundle.excluded_dates", "RangeBundle.data_warnings", "RangeBundle.missing_dates",
     "RangeBundle.ask_peaks", "RangeBundle.bid_peaks", "RangeBundle.depth_heatmap",
     "RangeBundle.broker_late_entries",
-    "RangeBundle.price_level_hits", "RangeBundle.trade_volume_pocs",
+    "RangeBundle.trade_volume_pocs",
     "RangeBundle.volume_distributions", "RangeBundle.program_trade",
     "RangeSegment.date", "RangeSegment.session_open_ms", "RangeSegment.session_close_ms",
     "RangeSegment.source", "RangeSegment.gap_ms",
@@ -145,8 +143,6 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "BidPeak.all_peaks", "BidPeak.all_max_peaks",
     "BidPeak.unreached_peaks", "BidPeak.unreached_qty", "BidPeak.unreached_t_ms",
     "AskPeakCandidate.qty", "AskPeakCandidate.t_ms",
-    "PriceLevelHit.date", "PriceLevelHit.t_ms", "PriceLevelHit.kind",
-    "PriceLevelHit.direction", "PriceLevelHit.pct",
     "TradeVolumePoc.date", "TradeVolumePoc.qty", "TradeVolumePoc.t_ms",
     "TradeVolumePoc.band_pct",
     "DepthHeatmapPoint.t_ms",

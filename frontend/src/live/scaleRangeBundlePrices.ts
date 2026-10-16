@@ -46,7 +46,6 @@ import type {
   Candle,
   DayVolumeDistribution,
   DepthHeatmapPointWire,
-  PriceLevelHit,
   RangeBundle,
   TradeVolumePocWire,
   VolumeProfile,
@@ -160,10 +159,6 @@ function scalePoc(poc: TradeVolumePocWire, factor: number): TradeVolumePocWire {
   };
 }
 
-function scaleHit(hit: PriceLevelHit, factor: number): PriceLevelHit {
-  return { ...hit, price: scalePrice(hit.price, factor) };
-}
-
 function scaleHeatmapPoint(
   point: DepthHeatmapPointWire,
   factor: number,
@@ -273,9 +268,6 @@ export function scaleRangeBundlePrices(
     volume_distributions: byDate(bundle.volume_distributions, scaleDistribution),
     ask_peaks: byDate(bundle.ask_peaks, scalePeak),
     bid_peaks: bundle.bid_peaks ? byDate(bundle.bid_peaks, scalePeak) : bundle.bid_peaks,
-    price_level_hits: bundle.price_level_hits
-      ? byDate(bundle.price_level_hits, scaleHit)
-      : bundle.price_level_hits,
     trade_volume_pocs: bundle.trade_volume_pocs
       ? byDate(bundle.trade_volume_pocs, scalePoc)
       : bundle.trade_volume_pocs,

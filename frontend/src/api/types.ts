@@ -55,15 +55,6 @@ export type StockDate = {
 
 export type Candle = { ts_ms: number; open: number; close: number; high: number; low: number; vol_a: number; vol_b: number; trade_value_won?: number | null };
 
-export type PriceLevelHit = {
-  date: string;
-  t_ms: number;
-  price: number;
-  kind: 'vi' | 'limit';
-  direction: 'upper' | 'lower';
-  pct: 10 | 20 | 30;
-};
-
 export type QuoteRatioPoint = {
   t: number;
   bid_total: number;
@@ -967,9 +958,6 @@ export type RangeBundle = {
    *  D·W·M/무데이터 → []. */
   ask_peaks: AskPeak[];
   bid_peaks?: BidPeak[];
-  /** 캔들 고저가 VI 가격대(1차: 당일 open 기준 ±10%, 2차: VI 재개봉 open 기준 ±10%)
-   *  또는 상하한가(전일 close 기준 ±30%)에 닿은 최초 시점. */
-  price_level_hits?: PriceLevelHit[];
   /** 거래일별 정규장 체결량 최다 가격대(연속체결 매물대 분포의 max bar와 동일한 bin). */
   trade_volume_pocs?: TradeVolumePocWire[];
   /** 버킷별 10호가 잔량 스냅샷(호가 잔량 히트맵). 각 포인트는 t_ms 버킷 하나의

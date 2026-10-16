@@ -58,7 +58,6 @@ describe('buildLiveBundle', () => {
       ask_peaks: [],
       bid_peaks: [],
       broker_late_entries: [],
-      price_level_hits: [],
       trade_volume_pocs: [{
         date: '20260527',
         center_price: 72_300,

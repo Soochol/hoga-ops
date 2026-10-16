@@ -596,11 +596,6 @@ export const INDICATOR_OPS = {
     askPeakUnreachedColor: patch.color ?? cur.askPeakUnreachedColor,
     askPeakUnreachedLineWidth: patch.lineWidth ?? cur.askPeakUnreachedLineWidth,
   }),
-  setViLimitPriceLineStyle: (cur: IndicatorSettings, patch: { color?: string; lineWidth?: 1 | 2 | 3 | 4 }): Patch => ({
-    viLimitPriceLineColor: patch.color ?? cur.viLimitPriceLineColor,
-    viLimitPriceLineWidth: patch.lineWidth ?? cur.viLimitPriceLineWidth,
-  }),
-
   setBidPeakEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     (enabled ? { bidPeakEnabled: true, bidPeakHidden: false } : { bidPeakEnabled: false }),
   setBidPeakHidden: (_cur: IndicatorSettings, hidden: boolean): Patch =>

@@ -612,7 +612,6 @@ def test_build_range_bundle_hoga_mode_skips_full_sidecars_and_inventory_scan(tmp
     assert rb.ask_peaks == []
     assert rb.bid_peaks == []
     assert rb.broker_late_entries == []
-    assert rb.price_level_hits == []
     assert rb.trade_volume_pocs == []
     assert rb.volume_distributions == []
     assert rb.program_trade.points == []

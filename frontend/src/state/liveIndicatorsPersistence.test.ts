@@ -59,8 +59,6 @@ describe('mergeLiveIndicatorPrefs', () => {
       askPeakUnreachedLineEnabled: false,
       askPeakUnreachedColor: '#1E3A8A',
       askPeakUnreachedLineWidth: 2,
-      viLimitPriceLineColor: '#EAB308',
-      viLimitPriceLineWidth: 3,
       bidPeakEnabled: false,
       bidPeakHidden: false,
       bidPeakColor: '#DC2626',
@@ -584,27 +582,6 @@ describe('mergeLiveIndicatorPrefs — askPeak', () => {
     expect(fallback.askPeakUnreachedLineEnabled).toBe(false);
     expect(fallback.askPeakUnreachedColor).toBe('#1E3A8A');
     expect(fallback.askPeakUnreachedLineWidth).toBe(2);
-  });
-  it('VI/상하한가 선 스타일 기본값은 #EAB308/3', () => {
-    const m = mergeLiveIndicatorPrefs(undefined);
-    expect(m.viLimitPriceLineColor).toBe('#EAB308');
-    expect(m.viLimitPriceLineWidth).toBe(3);
-  });
-  it('VI/상하한가 선 스타일 유효값 보존', () => {
-    const m = mergeLiveIndicatorPrefs({
-      viLimitPriceLineColor: '#A855F7',
-      viLimitPriceLineWidth: 4,
-    });
-    expect(m.viLimitPriceLineColor).toBe('#A855F7');
-    expect(m.viLimitPriceLineWidth).toBe(4);
-  });
-  it('VI/상하한가 선 스타일 이상값 폴백', () => {
-    const m = mergeLiveIndicatorPrefs({
-      viLimitPriceLineColor: 'gold',
-      viLimitPriceLineWidth: 9,
-    });
-    expect(m.viLimitPriceLineColor).toBe('#EAB308');
-    expect(m.viLimitPriceLineWidth).toBe(3);
   });
   it('이상값 폴백', () => {
     const m = mergeLiveIndicatorPrefs({

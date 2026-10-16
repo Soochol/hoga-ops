@@ -47,7 +47,6 @@ function bundleWith(depthHeatmap: unknown[]): RangeBundle {
     ask_peaks: [],
     bid_peaks: [],
     broker_late_entries: [],
-    price_level_hits: [],
     trade_volume_pocs: [],
     program_trade: { points: [] },
     depth_heatmap: depthHeatmap,

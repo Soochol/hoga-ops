@@ -68,7 +68,6 @@ import {
   liveVenueAcceptsFrame,
   liveVenueSessionBoundsMs,
 } from './liveVenuePolicy';
-import { buildLivePriceLevelHits, mergePriceLevelHits } from './priceLevelHits';
 import { mergeDepthHeatmapToday } from './depthHeatmapWire';
 import { mergeProgramTradeSeriesWithLiveTail } from './programTradeLiveTail';
 import { useLiveSidecars } from './useLiveSidecars';
@@ -1362,11 +1361,6 @@ export function useLiveBundle(
       depthHeatmapEnabled,
     ],
   );
-  const livePriceLevelHits = useMemo(
-    () => (isMinute ? buildLivePriceLevelHits(liveCandles, todayKstYyyymmdd) : []),
-    [isMinute, liveCandles, todayKstYyyymmdd],
-  );
-
   // Atomize the historical-prepend across the two independent past sources.
   // A leftward pan changes `historicalFromDate`, which re-keys BOTH past
   // queries (candles via /api/live/past-candles, hoga via /api/range). They
@@ -1527,11 +1521,10 @@ export function useLiveBundle(
             ...chartBundle,
             quote_ratio: committedHogaSeries.quote_ratio,
             fill_strength: committedHogaSeries.fill_strength,
-            price_level_hits: mergePriceLevelHits(chartBundle.price_level_hits, livePriceLevelHits),
             depth_heatmap: mergeDepthHeatmapToday(chartBundle.depth_heatmap, committedHogaSeries.depth_heatmap_today),
           }
         : null,
-    [chartBundle, committedHogaSeries, livePriceLevelHits],
+    [chartBundle, committedHogaSeries],
   );
   const hogaBundle = useMemo<RangeBundle | null>(
     () =>
