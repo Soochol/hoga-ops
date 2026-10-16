@@ -71,3 +71,23 @@ async def test_cancelled_call_keeps_running_worker_slot_and_drops_waiting_call(m
         await finished.wait()
         assert await last == "latest"
     assert ran == ["running", "latest"]
+
+
+async def test_aclose_waits_for_cleanup_without_blocking_event_loop(monkeypatch):
+    executor = ComputeExecutor("process")
+    loop = asyncio.get_running_loop()
+    entered = asyncio.Event()
+    release = threading.Event()
+
+    def shutdown():
+        loop.call_soon_threadsafe(entered.set)
+        assert release.wait(5), "event loop did not run during pool cleanup"
+
+    monkeypatch.setattr(executor, "shutdown", shutdown)
+    closing = asyncio.create_task(executor.aclose())
+    try:
+        await entered.wait()
+        assert not closing.done()
+    finally:
+        release.set()
+        await closing

@@ -2,6 +2,12 @@
 
 **Status:** accepted (2026-09-02)
 
+**2026-10-16 종료 정리:** 정상 종료·reload 에서는 실행 중인 계산과 워커·큐 정리가
+끝날 때까지 기다린다(`ComputeExecutor.aclose`, 대기는 이벤트 루프 밖에서 수행).
+`shutdown(wait=False)` 는 lifespan 뒤 uvicorn 이 SIGTERM 을 다시 보낼 때 큐의
+named semaphore 를 반환하지 못해 reload 마다 자원이 누적됐다. Today Promoter 도
+같은 종료 경로를 쓴다. 긴 계산 중에는 종료가 그 계산 완료까지 늦어질 수 있다.
+
 **2026-10-02 보완:** 실행 worker slot과 대기 중 요청 예산을 구분한다. wide/narrow 풀
 각각 기본 128개 outstanding 사용자 요청을 허용하며 `HOGA_COMPUTE_MAX_PENDING_REQUESTS`로
 조절한다. `/api/range`는 기존 모드 gate에 줄을 서기 전에 예산을 차지하므로 gate

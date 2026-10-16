@@ -21,6 +21,7 @@ candles 3 = 7)은 **GIL 하나**를 나누는 스레드 수였다. 프로세스�
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import Mapping
@@ -83,6 +84,9 @@ class ComputePools:
     def shutdown(self) -> None:
         self.wide.shutdown()
         self.narrow.shutdown()
+
+    async def aclose(self) -> None:
+        await asyncio.gather(self.wide.aclose(), self.narrow.aclose())
 
 
 # ── 모듈 기본 풀 ────────────────────────────────────────────────────────────────
