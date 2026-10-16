@@ -52,8 +52,14 @@
 .live-window .live-window-actions-menu[data-has-settings] { display: inline-flex; }
 /* Always reserve the progress slot, including while idle. Date text is MM/DD. */
 .live-symbol-backfill { display: inline-flex; flex: 0 0 8ch; width: 8ch; align-items: center; justify-content: center; gap: var(--space-xs); }
-.live-chart-toolbar { padding: 2px var(--space-sm); gap: var(--space-xs); min-height: 2rem; }
+.live-chart-toolbar { --live-chart-control-height: 1.5rem; padding: 2px var(--space-sm); gap: var(--space-xs); min-height: 2rem; }
 .live-chart-toolbar button { font-size: var(--text-sm); min-height: 1.75rem; }
+/* Match chip outlines to the timeframe group, excluding dismiss buttons from
+   the larger minimum height reserved for toolbar actions. */
+.live-chart-toolbar .ui-segmented { height: var(--live-chart-control-height); }
+.live-window .live-chart-toolbar .ui-choice { display: inline-flex; align-items: center; justify-content: center; height: calc(var(--live-chart-control-height) - 4px); min-height: 0; line-height: 1; }
+.live-chart-toolbar .live-chart-state-chip { height: var(--live-chart-control-height); padding-block: 0; white-space: nowrap; }
+.live-chart-toolbar .live-chart-chip-dismiss { display: inline-flex; align-items: center; justify-content: center; height: 100%; min-height: 0; }
 .live-chart-toolbar-divider { width: 1px; height: 1rem; background: var(--border); margin-inline: var(--space-xs); }
 .live-data-context { min-height: 1.5rem; padding: var(--space-xs) var(--space-sm); gap: var(--space-sm); font-size: var(--live-text-meta); }
 .live-data-mode { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--fg); font-weight: 500; }

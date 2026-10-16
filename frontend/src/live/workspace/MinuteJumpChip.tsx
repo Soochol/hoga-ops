@@ -73,7 +73,7 @@ export function MinuteJumpChip({
       data-testid="live-minute-jump-chip"
       title={detail}
       aria-label={detail}
-      className="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
+      className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
       style={{ background: 'var(--tint-selection)', color: tone }}
     >
       <span
@@ -85,7 +85,7 @@ export function MinuteJumpChip({
         type="button"
         aria-label="기간 점프 해제"
         onClick={onClear}
-        className="shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
+        className="live-chart-chip-dismiss shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
         style={{ color: 'var(--fg-muted)' }}
       >
         ×
