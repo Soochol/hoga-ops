@@ -15,6 +15,8 @@ if (override && !isAbsolute(override)) throw new Error('HOGA_DESKTOP_USER_DATA m
 // Preserve profiles and Chromium partitions created before the Ticklane rename.
 app.setPath('userData', override || join(app.getPath('appData'), 'Hoga Ops'));
 app.setName('Ticklane');
+// Wayland resolves the running window's icon through this installed desktop ID.
+if (process.platform === 'linux') app.setDesktopName('ticklane.desktop');
 let launcher: BrowserWindow | undefined;
 let settings: Settings = emptySettings();
 let warning = '';

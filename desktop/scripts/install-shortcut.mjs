@@ -48,8 +48,9 @@ Terminal=false
 Categories=Office;Finance;
 Keywords=ticklane;틱레인;hoga;주식;차트;로컬;
 StartupNotify=true
+StartupWMClass=ticklane
 `;
-const application = join(applications, 'ticklane-local.desktop');
+const application = join(applications, 'ticklane.desktop');
 await writeFile(application, entry);
 execFileSync('desktop-file-validate', [application], { stdio: 'inherit' });
 try { execFileSync('update-desktop-database', [applications], { stdio: 'pipe' }); } catch { /* desktops can discover the file directly */ }
@@ -63,20 +64,24 @@ try {
   }
 } catch { /* XDG fallback */ }
 await mkdir(desktopDirectory, { recursive: true });
-const desktopEntry = join(desktopDirectory, 'ticklane-local.desktop');
+const desktopEntry = join(desktopDirectory, 'ticklane.desktop');
 await writeFile(desktopEntry, entry, { mode: 0o755 });
 await chmod(desktopEntry, 0o755);
 try { execFileSync('gio', ['set', desktopEntry, 'metadata::trusted', 'true'], { stdio: 'pipe' }); } catch { /* app-menu entry still works; desktop may require Allow Launching */ }
 // Remove only entries produced by the old installer, avoiding duplicate icons.
 for (const folder of [applications, desktopDirectory]) {
-  const legacy = join(folder, 'hoga-ops-local.desktop');
-  let previous;
-  try { previous = await readFile(legacy, 'utf8'); } catch (error) {
-    if (error.code === 'ENOENT') continue;
-    throw error;
+  for (const name of ['hoga-ops-local.desktop', 'ticklane-local.desktop']) {
+    const legacy = join(folder, name);
+    let previous;
+    try { previous = await readFile(legacy, 'utf8'); } catch (error) {
+      if (error.code === 'ENOENT') continue;
+      throw error;
+    }
+    if ((previous.includes('\nName=Hoga Ops 로컬\n')
+      && previous.includes(`\nExec=${desktopQuote(join(home, '.local/bin/hoga-ops-local'))}\n`))
+      || (previous.includes('\nName=Ticklane\n')
+      && previous.includes(`\nExec=${desktopQuote(launcher)}\n`))) await rm(legacy);
   }
-  if (previous.includes('\nName=Hoga Ops 로컬\n')
-    && previous.includes(`\nExec=${desktopQuote(join(home, '.local/bin/hoga-ops-local'))}\n`)) await rm(legacy);
 }
 try { execFileSync('update-desktop-database', [applications], { stdio: 'pipe' }); } catch { /* optional cache refresh */ }
 console.log(`앱 목록: Ticklane\n바탕화면: ${desktopEntry}\n터미널 명령: ticklane`);

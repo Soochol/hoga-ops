@@ -15,6 +15,8 @@ npm run install:shortcut
 
 이름 변경 전의 `hoga-ops-local` 명령도 `ticklane`으로 연결한다. 바로가기 재등록 시 기존 Hoga Ops 바로가기를 정리한다. 기본 Electron 저장 경로는 기존 `~/.config/Hoga Ops`를 유지하며, 로컬 바로가기는 계속 `~/.config/hoga-ops-local-dev`를 사용한다. 서버 환경변수와 설정 파일 형식도 유지한다.
 
+Linux 실행 창은 `ticklane.desktop` 앱 ID로 바로가기의 아이콘과 연결한다. 앱 목록·바탕화면 등록도 같은 파일명을 사용하며, 이전 `ticklane-local.desktop` 바로가기는 재등록 시 정리한다. 실행 후 기본 톱니바퀴 아이콘이 보이면 `npm run install:shortcut` 후 앱을 완전히 종료하고 다시 실행한다.
+
 저장소의 Node 24 환경에서 실행한다.
 
 ```sh
