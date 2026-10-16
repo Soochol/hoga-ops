@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { LiveMAConfig } from '../../state/livePage';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
 import MAStylePicker from './MAStylePicker';
@@ -16,6 +16,7 @@ type Props = {
    *  aria-label 도 이 값을 따른다 — 설정 패널과 팝오버가 동시에 열려 있을 때 라벨이
    *  같으면 `getByRole('spinbutton', { name })` 이 둘을 잡아 테스트가 모호해진다. */
   periodLabel?: string;
+  editorLayout?: boolean;
 };
 
 /** 인스턴스 행의 열 트랙 — 라벨 / 색·선 / 기준가 / 기간 / 삭제.
@@ -36,11 +37,11 @@ type Props = {
 export const MA_ROW_GRID = 'grid grid-cols-[56px_60px_1fr_72px_24px] items-center gap-2';
 
 export default function MovingAverageRow({
-  index, config, canRemove, onChange, onRemove, periodLabel,
+  index, config, canRemove, onChange, onRemove, periodLabel, editorLayout = false,
 }: Props) {
   const label = periodLabel ?? `기간${index + 1}`;
-  const [draft, setDraft] = useState<string>(String(config.period));
-  useEffect(() => { setDraft(String(config.period)); }, [config.period]);
+  const [edit, setEdit] = useState<{ base: number; text: string } | null>(null);
+  const draft = edit?.base === config.period ? edit.text : String(config.period);
 
   const commit = () => {
     const t = draft.trim();
@@ -50,50 +51,21 @@ export default function MovingAverageRow({
       && n >= MA_PERIOD_MIN && n <= MA_PERIOD_MAX && n !== config.period
     ) {
       onChange({ period: n });
-    } else {
-      setDraft(String(config.period));
     }
+    setEdit(null);
   };
 
-  return (
-    // The per-slot enable toggle was removed in favour of the master
-    // category checkbox in IndicatorPanel — see useLivePageStore.movingAverageEnabled.
-    // Slot visibility is now controlled by add/remove, not per-slot toggle.
-    <div className={`${MA_ROW_GRID} py-1.5`}>
-      <div className="text-sm text-fg tabular-nums">{label}</div>
-      <div className="flex items-center">
-        <MAStylePicker
-          color={config.color}
-          lineWidth={config.lineWidth}
-          onChange={(patch) => onChange(patch)}
-        />
-      </div>
-      <MASourceSelect value={config.source} onChange={(s) => onChange({ source: s })} />
-      <input
-        type="number"
-        role="spinbutton"
-        min={MA_PERIOD_MIN}
-        max={MA_PERIOD_MAX}
-        step={1}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
-        aria-label={`${label} 길이`}
-        className="w-[72px] text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums"
-      />
-      {canRemove ? (
-        <button
-          type="button"
-          aria-label="슬롯 삭제"
-          onClick={onRemove}
-          className="text-fg-dim hover:text-fg text-base leading-none"
-        >
-          ✕
-        </button>
-      ) : (
-        <span aria-hidden="true" />
-      )}
-    </div>
-  );
+  const style = <div className={editorLayout ? 'ma-config-style' : undefined}><MAStylePicker
+    color={config.color} lineWidth={config.lineWidth} onChange={onChange} />
+  </div>;
+  const source = <div className={editorLayout ? 'ma-config-source' : undefined}><MASourceSelect value={config.source} onChange={source => onChange({ source })} /></div>;
+  const period = <input type="number" min={MA_PERIOD_MIN} max={MA_PERIOD_MAX} step={1} value={draft}
+    onChange={e => setEdit({ base: config.period, text: e.target.value })} onBlur={commit}
+    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }}
+    aria-label={`${label} 길이`}
+    className={`${editorLayout ? 'ma-config-period' : 'w-[72px]'} text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums`} />;
+  const remove = canRemove ? <button type="button" aria-label="슬롯 삭제" onClick={onRemove}
+    className={`${editorLayout ? 'ma-config-remove' : ''} text-fg-dim hover:text-fg text-base leading-none`}>✕</button> : <span aria-hidden="true" />;
+  return editorLayout ? <div className="ma-config-grid ma-config-row">{period}{source}{style}{remove}</div>
+    : <div className={`${MA_ROW_GRID} py-1.5`}><div className="text-sm text-fg tabular-nums">{label}</div>{style}{source}{period}{remove}</div>;
 }

@@ -35,7 +35,12 @@ export default function ColorSwatchPicker({ color, onChange, label, extraColors 
   );
 
   return (
-    <div ref={containerRef} className="relative inline-block">
+    <div ref={containerRef} className="relative inline-block" onKeyDown={event => {
+      if (open && event.key === 'Escape') {
+        event.stopPropagation(); close();
+        containerRef.current?.querySelector('button')?.focus();
+      }
+    }}>
       <button
         type="button"
         aria-label={`${label} 선택`}

@@ -1,8 +1,11 @@
 import { useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRecordSettingsUndo } from '../live/settings/settingsUndoContext';
 import {
   usePatchSignalAlertSettings,
   useSignalAlertSettings,
   type SignalAlertSettings,
+  SIGNAL_ALERT_SETTINGS_KEY,
 } from '../api/signalAlerts';
 import { SettingsRow, ToggleSwitch } from '../live/settings/SettingsRow';
 import { formatHhmm, parseTradingTimeInput } from '../util/tradingTime';
@@ -31,13 +34,22 @@ export default function SignalAlertSettingsSection() {
 
 function SignalAlertSettingsEditor({ serverRule }: { serverRule: SignalAlertRule }) {
   const patch = usePatchSignalAlertSettings();
+  const queryClient = useQueryClient();
+  const recordUndo = useRecordSettingsUndo();
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [draftRule, setDraftRule] = useState(serverRule);
   const [startTime, setStartTime] = useState(() => formatHhmm(serverRule.start_hhmm));
   const [threshold, setThreshold] = useState(() => String(serverRule.threshold_pct));
 
   const update = (next: typeof draftRule) => {
     setDraftRule(next);
-    patch.mutate({ sell_total_renewal: next });
+    setSaveError(null);
+    void patch.mutateAsync({ sell_total_renewal: next }).then(settings => {
+      recordUndo({
+        isCurrent: () => JSON.stringify(queryClient.getQueryData<SignalAlertSettings>(SIGNAL_ALERT_SETTINGS_KEY)?.sell_total_renewal) === JSON.stringify(settings.sell_total_renewal),
+        undo: () => patch.mutateAsync({ sell_total_renewal: draftRule }),
+      });
+    }).catch(error => { setDraftRule(serverRule); setSaveError(error instanceof Error ? error.message : '알림 설정을 저장하지 못했습니다'); });
   };
 
   const commitStartTime = () => {
@@ -63,6 +75,8 @@ function SignalAlertSettingsEditor({ serverRule }: { serverRule: SignalAlertRule
 
   return (
     <section>
+      {saveError && <p role="alert" className="text-xs text-error">{saveError}</p>}
+      <fieldset disabled={patch.isPending}>
       <SettingsRow label="알림 사용">
         <ToggleSwitch
           label="알림 사용"
@@ -114,6 +128,7 @@ function SignalAlertSettingsEditor({ serverRule }: { serverRule: SignalAlertRule
           onClick={() => update({ ...draftRule, use_intra_minute_max: !draftRule.use_intra_minute_max })}
         />
       </SettingsRow>
+      </fieldset>
     </section>
   );
 }

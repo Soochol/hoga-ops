@@ -12,7 +12,7 @@ describe('SettingsRow primitives', () => {
 
     expect(screen.getByText('날짜 구분선 스타일')).toHaveClass('text-fg');
     expect(screen.getByText('거래일 경계를 표시합니다.')).toHaveClass('text-fg-dim');
-    expect(screen.getByText('선택').parentElement).toHaveClass('justify-between');
+    expect(screen.getByText('선택').closest('.settings-row')).toHaveClass('justify-between');
   });
 
   it('dims the whole row when disabled', () => {

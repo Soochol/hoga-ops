@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import IndicatorPanel from './IndicatorPanel';
 import { useLivePageStore } from '../../state/livePage';
@@ -144,6 +144,40 @@ describe('IndicatorPanel', () => {
     expect(useLivePageStore.getState().volumeEnabled).toBe(true);
   });
 
+  it('기간 편집과 스타일 미리보기를 함께 갱신하고 직전 변경을 되돌린다', async () => {
+    renderPanel(); openDetail('이동평균선');
+    const previous = useLivePageStore.getState().movingAverages[0].period;
+    const line = screen.getByTestId('indicator-style-preview').querySelector('path[data-preview-line]')!;
+    const path = line.getAttribute('d');
+    const input = screen.getByRole('spinbutton', { name: '기간1 길이' });
+    fireEvent.change(input, { target: { value: String(previous + 7) } }); fireEvent.blur(input);
+    expect(line.getAttribute('d')).not.toBe(path);
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toBeEnabled());
+    fireEvent.click(undo);
+    await waitFor(() => expect(input).toHaveValue(previous));
+    expect(line.getAttribute('d')).toBe(path);
+  });
+  it('스타일 팔레트의 포털 편집도 되돌리기에 포함한다', async () => {
+    renderPanel(); openDetail('이동평균선');
+    const previous = useLivePageStore.getState().movingAverages[0].lineWidth;
+    const next = previous === 4 ? 3 : 4;
+    fireEvent.click(screen.getAllByRole('button', { name: 'MA 스타일 선택' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: `MA 굵기 ${next}px` }));
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toBeEnabled());
+    fireEvent.click(undo);
+    await waitFor(() => expect(useLivePageStore.getState().movingAverages[0].lineWidth).toBe(previous));
+  });
+  it('봉이 바뀌면 이전 봉의 되돌리기 상태를 넘기지 않는다', async () => {
+    const view = renderPanel(); openDetail('이동평균선');
+    fireEvent.click(screen.getByRole('button', { name: /기간 추가/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    act(() => useLivePageStore.getState().setIndicatorTimeframe('D'));
+    view.rerender(<IndicatorPanel onClose={() => {}} timeframe="D" />);
+    expect(screen.getByRole('button', { name: '되돌리기' })).toBeDisabled();
+  });
+
   it('turnover is absent from minute index catalogs', () => {
     renderPanel({ timeframe: '3m',
       capabilities: { hogaPanes: false, investorNet: 'market', studySave: false, tradeValue: true } });
@@ -205,7 +239,7 @@ describe('IndicatorPanel', () => {
     // 생성 — 공장값 그대로(따로 설정할 것이 없다).
     expect(useLivePageStore.getState().ratioEnabled).toBe(true);
     // 상세 이동 — "추가했는데 어디 갔지" 가 되지 않게.
-    expect(screen.getByRole('heading', { name: '호가비', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '호가비', level: 3 })).toBeTruthy();
     // 목록 복귀 — 카탈로그에 남아 있으면 방금 추가한 것을 확인하러 한 번 더 눌러야 한다.
     expect(screen.getByRole('navigation', { name: '내 지표' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '호가비 삭제' })).toBeTruthy();
@@ -232,7 +266,7 @@ describe('IndicatorPanel', () => {
 
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     // 상세는 보이고, 그 행은 여전히 ＋ 다(누를지 결정할 수 있게).
-    expect(screen.getByRole('heading', { name: '당일 최대벽', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '당일 최대벽', level: 3 })).toBeTruthy();
     expect(screen.getByRole('button', { name: '당일 최대벽 추가' })).toBeTruthy();
   });
 
@@ -256,7 +290,7 @@ describe('IndicatorPanel', () => {
 
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
     // 선택은 그대로 — 추가했다고 다른 지표로 튀지 않는다.
-    expect(screen.getByRole('heading', { name: '당일 최대벽', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '당일 최대벽', level: 3 })).toBeTruthy();
     expect(screen.queryByTestId('indicator-preview-card')).toBeNull();
     expect(screen.getByTestId('settings-toggle-askPeakIntraMax')).toBeTruthy();
   });
@@ -267,7 +301,7 @@ describe('IndicatorPanel', () => {
     renderPanel();
     // 기본 선택은 이동평균선. 그것을 지우면 거래량만 남는다.
     togglePresence('이동평균선');
-    expect(screen.getByRole('heading', { name: '거래량', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '거래량', level: 3 })).toBeTruthy();
   });
 
   it('내 지표가 비면 안내를 띄운다', () => {
@@ -364,7 +398,7 @@ describe('IndicatorPanel', () => {
       fireEvent.keyDown(search(), { key: 'ArrowDown' });  // → 당일 최대 매물대
       fireEvent.keyDown(search(), { key: 'Enter' });
 
-      expect(screen.getByRole('heading', { name: '당일 최대 매물대', level: 2 })).toBeTruthy();
+      expect(screen.getByRole('heading', { name: '당일 최대 매물대', level: 3 })).toBeTruthy();
       // 선택까지만 — 보기 전에 차트가 바뀌면 안 된다는 어휘 규약이 키보드에도 적용된다.
       expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
       expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
@@ -375,10 +409,10 @@ describe('IndicatorPanel', () => {
     it('조합 중(IME) Enter 는 선택으로 새지 않는다', () => {
       renderPanel();
       fireEvent.change(search(), { target: { value: '매물' } });
-      const before = screen.getByRole('heading', { level: 2 }).textContent;
+      const before = screen.getByRole('heading', { level: 3 }).textContent;
 
       fireEvent.keyDown(search(), { key: 'Enter', isComposing: true });
-      expect(screen.getByRole('heading', { level: 2 }).textContent).toBe(before);
+      expect(screen.getByRole('heading', { level: 3 }).textContent).toBe(before);
     });
 
     // Escape 사다리 — 검색어가 있으면 검색만 지우고, 없으면 패널을 닫는다.
@@ -464,10 +498,10 @@ describe('IndicatorPanel', () => {
     const nav = screen.getByRole('navigation', { name: '내 지표' });
     // 좌측 컬럼(nav + 리셋 푸터)을 감싼 래퍼가 border-r 대신 bg-subtle 톤 스텝으로
     // 분리(2026-07-15 borderless 통일). 래퍼의 부모가 2-컬럼 그리드.
-    const navColumn = nav.parentElement!;
-    expect(navColumn).toHaveClass('bg-bg-subtle');
+    const navColumn = nav.closest('.settings-editor-sidebar')!;
+    expect(navColumn).toBeTruthy();
     expect(nav).not.toHaveClass('border-r');
-    expect(navColumn.parentElement).toHaveClass('grid-cols-[240px_minmax(0,1fr)]');
+    expect(navColumn.parentElement).toHaveClass('settings-editor-body');
     // 그룹 헤더는 카탈로그 쪽에만 있다(「내 지표」는 평리스트).
     openCatalog();
     expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
@@ -506,7 +540,7 @@ describe('IndicatorPanel', () => {
     renderPanel();
     openCatalog();
     // 네비 라벨 버튼은 CATEGORIES 순서대로 렌더된다(체크박스는 role=checkbox라 제외).
-    const labels = screen.getAllByRole('button').map((b) => b.textContent);
+    const labels = screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent);
     const peakWalls = labels.indexOf('당일 최대벽');
     const poc = labels.indexOf('당일 최대 매물대');
     const distribution = labels.indexOf('연속체결 매물대 분포');
@@ -523,7 +557,7 @@ describe('IndicatorPanel', () => {
   it('프로그램 순매수는 거래원 지표 뒤에 위치', () => {
     renderPanel();
     openCatalog();
-    const labels = screen.getAllByRole('button').map((b) => b.textContent);
+    const labels = screen.getAllByRole('button').map(b => b.getAttribute('aria-label') ?? b.textContent);
     const peakWalls = labels.indexOf('당일 최대벽');
     const program = labels.indexOf('프로그램 순매수');
     const foreign = labels.indexOf('외국인 순매수량');
@@ -771,7 +805,7 @@ describe('IndicatorPanel', () => {
   // 존재(추가·삭제)만 다룬다. 헤더에 남는 것은 지표명과 봉 배지다.
   it('상세 헤더에 지표명을 표시하고 표시/숨김 스위치는 두지 않는다', () => {
     renderPanel();
-    expect(screen.getByRole('heading', { name: '이동평균선', level: 2 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: '이동평균선', level: 3 })).toBeTruthy();
     expect(screen.queryByRole('switch', { name: '이동평균선 표시' })).toBeNull();
   });
 

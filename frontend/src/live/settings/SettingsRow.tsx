@@ -19,17 +19,17 @@ export function SettingsRow({
   return (
     <div
       data-testid={testId}
-      className={`flex items-start justify-between gap-4 border-b border-border py-2 last:border-b-0 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
+      className={`settings-row flex items-start justify-between gap-4 border-b border-border py-2 last:border-b-0 ${disabled ? 'opacity-50' : ''} ${className}`.trim()}
     >
       <div className="min-w-0 flex-1">
         <div className="text-fg text-sm">{label}</div>
         {description !== undefined && (
           typeof description === 'string' && description.length > 110
             ? <details className="mt-0.5 text-xs text-fg-dim"><summary className="cursor-pointer leading-relaxed">{description.slice(0, 76)}…</summary><p className="mt-1 leading-relaxed">{description}</p></details>
-            : <div className="text-fg-dim text-xs mt-0.5">{description}</div>
+            : <div className="settings-row-description text-fg-dim text-xs mt-0.5">{description}</div>
         )}
       </div>
-      {children}
+      <div className="settings-row-control">{children}</div>
     </div>
   );
 }

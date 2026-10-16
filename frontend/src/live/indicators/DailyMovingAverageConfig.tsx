@@ -28,8 +28,9 @@ export default function DailyMovingAverageConfig() {
         />
       </div>
       <div>
+        {configs.length > 0 && <div className="ma-config-grid ma-config-heading"><span>기간</span><span>기준가</span><span>색상 · 두께</span><span /></div>}
         {configs.map((cfg, i) => (
-          <MovingAverageRow
+          <MovingAverageRow editorLayout
             key={cfg.id}
             index={i}
             config={cfg}
@@ -43,7 +44,7 @@ export default function DailyMovingAverageConfig() {
         type="button"
         onClick={addMA}
         disabled={atLimit}
-        className="mt-3 px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded disabled:opacity-50 disabled:cursor-not-allowed"
+        className="ma-config-add mt-3 px-3 py-1.5 text-sm bg-bg-input hover:bg-bg-input-hover text-fg rounded disabled:opacity-50 disabled:cursor-not-allowed"
       >
         ⊕ 기간 추가
       </button>

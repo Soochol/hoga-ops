@@ -195,7 +195,7 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         >
           {/* title 없음 — 섹션 제목·닫기 X는 SettingsSections 콘텐츠 헤더가 담당.
-              `/live` 툴바 ⚙ 와 **같은 크롬**(중앙 모달 760px + nav 240px)이다:
+              `/live` 툴바 ⚙ 와 **같은 크롬**(중앙 모달 + 공통 설정 편집기)이다:
               진입점이 달라도 폭·앵커·nav 가 같아야 「설정은 하나」가 화면에서도 참이다.
               크롬은 `live/workspacePanel.ts` 상수 하나로 강제한다(하드코딩 금지). */}
           <Suspense fallback={null}>
