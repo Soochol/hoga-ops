@@ -2917,6 +2917,7 @@ export function LiveChartRoot({
           />
           <DrawingPropertyPanel
             scope={drawingScope}
+            positionKey={winCtxWindowId ?? undefined}
             resolveVisibleRightRealMs={resolveVisibleRightRealMs}
             resolveAlignCoords={resolveAlignCoords}
             onSearchPattern={onSearchPattern}
