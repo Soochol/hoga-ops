@@ -89,6 +89,7 @@ export function ShortcutHelpModal({ route, onClose }: { route: HelpRoute; onClos
               {(drawTools ?? []).map((t) => (
                 <Row key={t.key} keys={[t.key]} desc={t.label} />
               ))}
+              <Row keys={['⇧R']} desc="마우스 날짜의 고점봉 몸통 상단 수평선 (분봉)" />
               <Row keys={['⇧클릭']} desc="선택에 더하기/빼기" />
               <Row keys={['⇧드래그']} desc="범위로 여러 개 선택" />
               <Row keys={['↑', '↓', '←', '→']} desc="선택 미세 이동 (⇧ 크게)" />

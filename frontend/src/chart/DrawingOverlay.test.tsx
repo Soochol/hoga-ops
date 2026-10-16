@@ -1519,3 +1519,146 @@ describe('day extreme placement', () => {
     input.remove();
   });
 });
+
+describe('Shift+R — highest candle body at the mouse date', () => {
+  const scope = '005930|minute';
+  const open = Date.UTC(2026, 8, 14, 0);
+  const nextOpen = open + 86_400_000;
+  const bars = [
+    { ts_ms: open, open: 140, close: 142, high: 145, low: 90 },
+    { ts_ms: open + 180_000, open: 110, close: 130, high: 150, low: 80 },
+    { ts_ms: nextOpen, open: 900, close: 910, high: 999, low: 890 },
+  ];
+  beforeEach(() => useDrawingsStore.getState().__resetForTests());
+
+  function mount(ready = true, bucketMs: number | undefined = 180_000) {
+    const pane = { paneIndex: () => 0, getHeight: () => 400 };
+    const series = { getPane: () => pane, priceToCoordinate: (p: number) => p, coordinateToPrice: (p: number) => p };
+    const axis = createVirtualAxis([
+      { date: '20260914', sessionOpenMs: open, sessionCloseMs: open + 23_400_000 },
+      { date: '20260915', sessionOpenMs: nextOpen, sessionCloseMs: nextOpen + 23_400_000 },
+    ], open);
+    const chart = {
+      timeScale: () => ({
+        width: () => 760, height: () => 24,
+        subscribeVisibleLogicalRangeChange: vi.fn(), unsubscribeVisibleLogicalRangeChange: vi.fn(),
+        coordinateToTime: (x: number) => x < 200 ? axis.toVirtual(open + x * 1000)! / 1000
+          : x < 400 ? axis.toVirtual(nextOpen + (x - 200) * 1000)! / 1000 : null,
+        timeToCoordinate: (x: number) => x,
+        coordinateToLogical: (x: number) => x, logicalToCoordinate: (x: number) => x,
+      }),
+      panes: () => [{ getHeight: () => 400, getSeries: () => [] }],
+    };
+    const props = { chart: chart as never, axis, scope,
+      paneSeries: new Map([['candle', series]]) as never, candles: bars, bucketMs, dayExtremesReady: ready };
+    const view = render(<DrawingOverlay {...props} />);
+    const overlay = view.container.querySelector('[data-drawing-overlay]')!;
+    vi.spyOn(overlay, 'getBoundingClientRect').mockReturnValue({
+      left: 40, top: 30, width: 800, height: 424,
+    } as DOMRect);
+    return { ...view, props, overlay };
+  }
+
+  function hover(x = 10, y = 300) {
+    fireEvent.mouseMove(window, { clientX: x + 40, clientY: y + 30 });
+  }
+  function pressR(extra = {}) {
+    fireEvent.keyDown(window, { key: 'R', code: 'KeyR', shiftKey: true, ...extra });
+  }
+  const drawings = () => useDrawingsStore.getState().drawingsFor(scope);
+
+  it('immediately creates a fixed candle-pane hline and supports undo/redo and delete', () => {
+    const { rerender, props } = mount();
+    hover();
+    pressR();
+    expect(drawings()).toEqual([expect.objectContaining({
+      kind: 'hline', paneId: 'candle', price: 130, dayExtreme: { date: '20260914', side: 'high-body' },
+    })]);
+    expect(useDrawingsStore.getState().activeTool).toBe('select');
+    expect(useDrawingsStore.getState().selectedFor(scope)).toEqual([drawings()[0].id]);
+    rerender(<DrawingOverlay {...props} candles={[...bars, {
+      ts_ms: open + 360_000, high: 200, low: 80, open: 180, close: 190,
+    }]} />);
+    expect(drawings()[0]).toMatchObject({ price: 130 });
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(drawings()).toHaveLength(0);
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true, shiftKey: true });
+    expect(drawings()[0]).toMatchObject({ price: 130 });
+    act(() => useDrawingsStore.getState().setSelected(scope, drawings()[0].id));
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(drawings()).toHaveLength(0);
+  });
+
+  it('uses the hovered date, not the latest date or the cursor price', () => {
+    mount();
+    hover(210, 50);
+    pressR();
+    expect(drawings()[0]).toMatchObject({ price: 910, dayExtreme: { date: '20260915' } });
+    hover(10, 390);
+    pressR();
+    expect(drawings()[1]).toMatchObject({ price: 130, dayExtreme: { date: '20260914' } });
+  });
+
+  it('reads new candles and the current scope after rerender', () => {
+    const { props, rerender } = mount();
+    hover();
+    rerender(<DrawingOverlay {...props} scope="000660|minute" candles={[
+      { ...bars[0], open: 150, close: 160, high: 170 },
+    ]} />);
+    pressR();
+    expect(drawings()).toHaveLength(0);
+    expect(useDrawingsStore.getState().drawingsFor('000660|minute')[0]).toMatchObject({ price: 160 });
+  });
+
+  it.each([86_400_000, 604_800_000, 1000, 0])('does nothing for unsupported bucket %s', bucketMs => {
+    mount(true, bucketMs);
+    hover();
+    pressR();
+    expect(drawings()).toHaveLength(0);
+  });
+
+  it('waits for data to be ready', () => {
+    const { props, rerender } = mount(false);
+    hover();
+    pressR();
+    expect(drawings()).toHaveLength(0);
+    rerender(<DrawingOverlay {...props} dayExtremesReady />);
+    pressR();
+    expect(drawings()).toHaveLength(1);
+  });
+
+  it('requires a mouse position inside the plot with a real date', () => {
+    mount();
+    pressR();
+    for (const [x, y] of [[-1, 10], [10, -1], [500, 10], [770, 10], [10, 410], [900, 10]]) {
+      hover(x, y);
+      pressR();
+    }
+    expect(drawings()).toHaveLength(0);
+  });
+
+  it('accepts the physical R key on a Korean keyboard and ignores repeats/modifier combinations', () => {
+    mount();
+    hover();
+    for (const extra of [{ repeat: true }, { ctrlKey: true }, { metaKey: true }, { altKey: true }, { isComposing: true }]) {
+      pressR(extra);
+    }
+    expect(drawings()).toHaveLength(0);
+    pressR({ key: 'ㄲ' });
+    expect(drawings()[0]).toMatchObject({ price: 130 });
+  });
+
+  it('does not intercept typing or run behind a clear confirmation', () => {
+    mount();
+    hover();
+    const input = document.createElement('input');
+    document.body.append(input);
+    fireEvent.keyDown(input, { key: 'R', code: 'KeyR', shiftKey: true });
+    input.remove();
+    expect(drawings()).toHaveLength(0);
+    pressR();
+    act(() => useDrawingsStore.getState().requestClearAll(scope));
+    pressR();
+    expect(drawings()).toHaveLength(1);
+  });
+});

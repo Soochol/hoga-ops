@@ -5,6 +5,7 @@ import type { SnapCandle } from './snap';
 export function indexDayExtremes(candles: readonly SnapCandle[]) {
   const days = new Map<string, {
     high: number; low: number; open: number; close: number; openTs: number; closeTs: number;
+    highTs: number; highBodyTop: number;
   }>();
   const invalid = new Set<string>();
   for (const candle of candles) {
@@ -18,13 +19,19 @@ export function indexDayExtremes(candles: readonly SnapCandle[]) {
     const prev = days.get(date);
     const isEarliest = prev == null || candle.ts_ms < prev.openTs;
     const isLatest = prev == null || candle.ts_ms > prev.closeTs;
+    // Equal highs belong to the first candle that reached them, even if the
+    // input arrives out of order. Choose by wick high BEFORE reading its body.
+    const isHigh = prev == null || candle.high > prev.high
+      || (candle.high === prev.high && candle.ts_ms < prev.highTs);
     days.set(date, { high: Math.max(prev?.high ?? -Infinity, candle.high),
       low: Math.min(prev?.low ?? Infinity, candle.low),
       open: isEarliest ? candle.open : prev.open,
       close: isLatest ? candle.close : prev.close,
+      highTs: isHigh ? candle.ts_ms : prev.highTs,
+      highBodyTop: isHigh ? Math.max(candle.open, candle.close) : prev.highBodyTop,
       openTs: isEarliest ? candle.ts_ms : prev.openTs,
       closeTs: isLatest ? candle.ts_ms : prev.closeTs });
   }
   for (const date of invalid) days.delete(date);
-  return new Map([...days].map(([date, { high, low, open, close }]) => [date, { high, low, open, close }]));
+  return new Map([...days].map(([date, { high, low, open, close, highBodyTop }]) => [date, { high, low, open, close, highBodyTop }]));
 }
