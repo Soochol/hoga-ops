@@ -507,11 +507,13 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText('10호가 지표')).toHaveClass('uppercase');
   });
 
-  it('keeps long category labels on one line in the side nav', () => {
+  it('keeps the full category name available without forcing a clipped single line', () => {
     renderPanel();
 
     openCatalog();
-    expect(screen.getByRole('button', { name: '연속체결 매물대 분포' })).toHaveClass('whitespace-nowrap');
+    const button = screen.getByRole('button', { name: '연속체결 매물대 분포' });
+    expect(button).not.toHaveClass('whitespace-nowrap');
+    expect(within(button).getByTitle('연속체결 매물대 분포')).not.toHaveClass('truncate');
   });
 
   it('index capabilities hide every hoga and program indicator category', () => {

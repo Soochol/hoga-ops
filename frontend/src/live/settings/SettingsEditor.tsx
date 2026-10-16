@@ -4,12 +4,12 @@ import { SettingsUndoContext } from './settingsUndoContext';
 import type { SettingsUndo } from './useSettingsUndo';
 import './SettingsEditor.css';
 
-export function SettingsEditor({ title, scope, onClose, actions, sidebar, children, undo, testId, footer }: {
+export function SettingsEditor({ title, scope, onClose, actions, sidebar, children, undo, testId, footer, className = '' }: {
   title: string; scope: ReactNode; onClose?: () => void; actions?: ReactNode;
-  sidebar: ReactNode; children: ReactNode; undo: SettingsUndo; testId: string; footer: string;
+  sidebar: ReactNode; children: ReactNode; undo: SettingsUndo; testId: string; footer: string; className?: string;
 }) {
   return <SettingsUndoContext.Provider value={undo.record}>
-    <div className={WORKSPACE_PANEL_SHELL_CLASS} data-testid={testId} {...undo.captureProps}>
+    <div className={`${WORKSPACE_PANEL_SHELL_CLASS} ${className}`.trim()} data-testid={testId} {...undo.captureProps}>
       <header className="settings-editor-heading">
         <h2>{title}</h2>
         <div className="settings-editor-heading-actions"><span className="settings-editor-scope">{scope}</span>{actions}
