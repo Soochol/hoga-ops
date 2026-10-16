@@ -455,6 +455,8 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
       // 빠지면 라우트가 422 라 호버 내내 "호가 데이터 없음" 이 뜬다.
       venue: 'KRX',
     });
+    expect(screen.queryByTestId('data-window-context')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '실시간으로 복귀' })).not.toBeInTheDocument();
   });
 
   it.each(['1s', '5s', '10s', '30s'] as const)('같은 그룹 %s 커서 → 최근 저장 호가 조회', (timeframe) => {

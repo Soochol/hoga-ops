@@ -21,7 +21,6 @@
 import { lazy, Suspense, useMemo } from 'react';
 import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
-import { returnGroupToLatest } from './returnGroupToLatest';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
@@ -453,6 +452,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 시간외 단일가 사다리는 스팟 경로가 아니다 — 그쪽이 사다리를 통째로 대체하고
   // 있으면 스팟 조회의 신선도는 화면에 그려진 것과 무관하다.
   const bookStale = !useSinglePrice && spotOrderbookStale;
+  const bookContextMode = bookStale
+    ? '커서 조회 중 · 이전 호가'
+    : scope.kind === 'second-cursor' ? '저장 호가' : null;
   // 스팟 조회 실패는 **패널을 대체한다**(칩으로 얹지 않는다). `useSpot` 이 실패분을
   // 비우므로 사다리는 `undefined` 로 떨어져 "커서 위치 불러오는 중…" 을 그리는데,
   // 그 위에 실패 칩을 얹으면 한 화면이 "실패했다" 와 "불러오는 중" 을 동시에
@@ -468,15 +470,16 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           호가 불러오기 실패
         </span>
         <span className="text-2xs text-fg-dim">커서를 다시 움직이면 재시도합니다</span>
-        <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>
       </div>
     );
   }
   return (
     <div className="flex h-full flex-col">
-      {isSpot && <DataContext mode={bookStale ? '커서 조회 중 · 이전 호가' : scope.kind === 'second-cursor' ? '저장 호가' : '커서 시점'} time={snapshot?.ts_ms}
-        tone="cursor">
-        {/* 안내를 기준시각 행에 둬 커서 이동으로 사다리 높이가 변하지 않게 한다. */}
+      {isSpot && (bookContextMode !== null || showAvailableHint || showFormingHint) && <DataContext
+        mode={bookContextMode ?? ''}
+        time={bookContextMode !== null ? snapshot?.ts_ms : undefined}
+        tone={bookContextMode !== null ? 'cursor' : undefined}>
+        {/* 일반 커서 라벨 대신 데이터 공백·형성 중 상태만 안내한다. */}
         {showAvailableHint && (
           <span
             data-testid="orderbook-available-hint"
@@ -498,7 +501,6 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
             형성 중 · 실시간
           </span>
         )}
-        <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>
       </DataContext>}
       <div className="min-h-0 flex-1">
         <BookPanel
