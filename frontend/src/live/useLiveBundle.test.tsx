@@ -978,6 +978,39 @@ describe('useLiveBundle', () => {
       rerender();
       expect(result.current.chartBundle?.timeline_sessions).toBe(timeline);
     });
+    it.each(['KRX', 'NXT', 'UN'] as const)('retains stored evening candles and ignores stale REST bounds for %s across badge toggles', async venue => {
+      const { WindowViewContext } = await import('./workspace/windowViewContext');
+      const at = (clock: string) => Date.parse(`2026-05-27T${clock}:00+09:00`);
+      const disk = { ...fallbackRangeBundle(), segments: [{ date: '20260527',
+        session_open_ms: at('09:00'), session_close_ms: at('19:59'), source: 'hogaplay' }],
+        candles: [
+          { ...fallbackRangeBundle().candles[0], ts_ms: at('10:00'), close: 100 },
+          { ...fallbackRangeBundle().candles[0], ts_ms: at('19:59'), close: 200 },
+        ] };
+      candlesMock.effectiveSessions = [{ date: '20260527', venue,
+        open_ms: at('09:00'), close_ms: at('15:30') }];
+      useRangeCandlesDeltaSpy.mockReturnValue(rangeResult(disk));
+      const QueryWrapper = createWrapper();
+      let regular = false;
+      const { result, rerender } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture,
+        { venue, hogaplaySourceEnabled: true }), { wrapper: ({ children }) => (
+          <WindowViewContext.Provider value={{ windowId: null, group: null, code: '005930',
+            timeframe: '1m', historicalFromDate: null, regularSessionOnly: regular }}>
+            <QueryWrapper>{children}</QueryWrapper>
+          </WindowViewContext.Provider>
+        ) });
+      for (const badge of [false, true, false]) {
+        regular = badge;
+        rerender();
+        expect(result.current.chartBundle?.candles.map(c => c.close)).toEqual(badge ? [100] : [100, 200]);
+        expect(result.current.chartBundle?.segments[0].session_close_ms).toBe(at(badge ? '15:30' : '19:59'));
+        expect(useRangeCandlesDeltaSpy.mock.calls.at(-1)?.[6]).toEqual(expect.objectContaining({ regularSessionOnly: badge }));
+      }
+      expect(disk.candles).toHaveLength(2);
+      expect(disk.segments[0].session_close_ms).toBe(at('19:59'));
+      expect(liveFixture.initial?.session_close_ms).toBe(at('15:30'));
+    });
+
     /** 미캡처 하루가 있는 디스크 응답. 날짜는 오늘(20260527) 이전 · 보유 기간 안. */
     function diskBundleWithHole() {
       return { ...fallbackRangeBundle(), missing_dates: [{ date: '20260520', reason: 'not_captured' }] };
@@ -2905,7 +2938,7 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
     expect(lastMinuteCall[3]).toBe('UN');
   });
 
-  it('bypass ON minute keeps the KRX regular session even for UN venue (disk candles are KRX-only)', () => {
+  it('bypass ON respects the actual disk session bounds even for UN venue', () => {
     const result = renderUseLiveBundle({
       timeframe: '1m',
       venue: 'UN',
@@ -2915,9 +2948,8 @@ describe('useLiveBundle daily/minute branching (ADR-0048)', () => {
       ],
     });
     const seg = result.chartBundle!.segments[0];
-    // 우회 ON 디스크(hogaplay=KRX 전용, ADR-0003)라 UN 이어도 확장창(08:00~20:00)이
-    // 아니라 KRX 정규창(09:00~15:30)을 써야 KRX 캔들에 빈 확장 구간이 붙지 않는다.
-    // 대조: 바로 위 우회 OFF UN 테스트는 08:00(1779836400000)으로 확장된다.
+    // This fixture contains only a regular KRX disk session. Prefer its bounds
+    // over the selected UN venue's fallback clock.
     expect(seg.session_open_ms).toBe(1779840000000);  // 09:00
     expect(seg.session_close_ms).toBe(1779863400000); // 15:30
   });

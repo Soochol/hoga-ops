@@ -873,13 +873,14 @@ export function useLiveBundle(
   const minuteDiskOptions = useMemo(
     () => ({
       mode: 'candles' as const,
+      regularSessionOnly,
       brokerLateEntriesEnabled: false,
       brokerLateEntryStartHHMM: null,
       volumeDistributionBins: null,
       tradeVolumePocBins: null,
       volumeDistributionPriceRange: null,
     }),
-    [],
+    [regularSessionOnly],
   );
   //
   // **델타 훅이어야 한다(2026-08-23).** 종전엔 `useRange`(델타 없음)라 요청 창의 `from`
@@ -1172,46 +1173,25 @@ export function useLiveBundle(
         : { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) },
     [live.initial, todayKstYyyymmdd],
   );
-  // Chart session follows the selected venue for minute candles — **호가 지표도
-  // 같은 세션을 쓴다**(아래 hogaSeries).
-  //
-  // 종전 주석은 "HOGA/WS side remains KRX-only, so buildHogaSeries keeps the default
-  // KRX bounds" 였다. 그 전제는 venue 축이 호가·WS 로 확장되면서 죽었는데 결정만 남아,
-  // NXT/통합에서 총잔량·호가비·히트맵·증감이 정규장 밖(프리 08:00–08:50 · 애프터
-  // 15:40–20:00)에서 통째로 0-센티넬이 됐다. 캔들 축은 확장창이라 **캔들만 있고 라인은
-  // 없는** 화면이 나왔고, 10호가 창과 pane 레전드에는 값이 찍혀서 데이터 결손으로
-  // 오진하기 쉬웠다.
-  //
-  // 예외: 우회 ON(kis_rest_bypass) 분봉은 디스크(hogaplay/range) 소스라 KRX 전용
-  // (ADR-0003 "Hogaplay is a KRX-only product" · ADR-0078 venue=KIS 실시간 전용).
-  // 그래서 venue=UN 이어도 확장창(08:00~20:00)이 아니라 KRX 정규창을 써야 한다 —
-  // 안 그러면 KRX 캔들에 데이터 없는 확장 구간이 붙어 축이 비대칭해진다.
-  const useExtendedWindow = !restBypassEnabled;
-  const todayChartSession = useMemo(
-    () => {
-      if (regularSessionOnly) return { open_ms: regularSessionOpenMs(todayKstYyyymmdd), close_ms: regularSessionCloseMs(todayKstYyyymmdd) };
-      if (!isMinute) return defaultKrxSession;
-      const effective = effectiveSessionByDate.get(todayKstYyyymmdd);
-      if (effective) return effective;
-      return useExtendedWindow
-        ? liveVenueSessionBoundsMs(todayKstYyyymmdd, candleVenue)
-        : defaultKrxSession;
-    },
-    [defaultKrxSession, effectiveSessionByDate, isMinute, todayKstYyyymmdd, candleVenue, useExtendedWindow, regularSessionOnly],
-  );
+  // Disk source selection does not imply a regular-only display. Preserve the
+  // source's actual bounds (including stored post-close prices); only
+  // the regular-session badge may clip the visible clock.
+  const diskSessionByDate = useMemo(() => new Map(
+    (minuteDiskCandles.data?.segments ?? []).map(s => [s.date, {
+      open_ms: s.session_open_ms, close_ms: s.session_close_ms,
+    }]),
+  ), [minuteDiskCandles.data?.segments]);
   const sessionBoundsForDate = useMemo(
-    () =>
-      isMinute
-        ? (yyyymmdd: string) =>
-            (regularSessionOnly ? { open_ms: regularSessionOpenMs(yyyymmdd), close_ms: regularSessionCloseMs(yyyymmdd) } : effectiveSessionByDate.get(yyyymmdd)) ??
-            (useExtendedWindow
-              ? liveVenueSessionBoundsMs(yyyymmdd, candleVenue)
-              : {
-                  open_ms: regularSessionOpenMs(yyyymmdd),
-                  close_ms: regularSessionCloseMs(yyyymmdd),
-                })
-        : undefined,
-    [effectiveSessionByDate, isMinute, candleVenue, useExtendedWindow, regularSessionOnly],
+    () => isMinute ? (date: string) => {
+      if (regularSessionOnly) return { open_ms: regularSessionOpenMs(date), close_ms: regularSessionCloseMs(date) };
+      return (restBypassEnabled ? diskSessionByDate : effectiveSessionByDate).get(date)
+        ?? liveVenueSessionBoundsMs(date, restBypassEnabled ? venue : candleVenue);
+    } : undefined,
+    [isMinute, regularSessionOnly, restBypassEnabled, diskSessionByDate, effectiveSessionByDate, venue, candleVenue],
+  );
+  const todayChartSession = useMemo(
+    () => sessionBoundsForDate?.(todayKstYyyymmdd) ?? defaultKrxSession,
+    [sessionBoundsForDate, todayKstYyyymmdd, defaultKrxSession],
   );
 
   // CHART side (candles + segments + investor). The ob path only contributes the

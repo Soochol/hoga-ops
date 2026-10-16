@@ -265,11 +265,15 @@ def _query_fill_rows(
 
 def downsample_candles(
     candles: list[ApiCandle], *, bucket_ms: int, date: str, venue: Venue = "KRX",
+    preserve_observed: bool = False,
 ) -> list[ApiCandle]:
     """Re-aggregate 1-minute OHLCV candles into the requested Timeframe bucket.
 
     Aggregation per bucket: open = first.open, close = last.close,
     high = max(high), low = min(low), vol_a/vol_b = sum.
+
+    ``preserve_observed`` keeps historical disk candles beyond the venue clock.
+    The disk caller applies the optional regular-only filter before aggregation.
 
     Input must be sorted by ts_ms ascending (this function does NOT sort).
     `bucket_ms == 60_000` returns the input verbatim (identity case).
@@ -296,7 +300,7 @@ def downsample_candles(
     )
 
     validate_bucket_ms(bucket_ms)
-    if bucket_ms in CLIPPED_TIMEFRAME_MS and venue == "KRX":
+    if not preserve_observed and bucket_ms in CLIPPED_TIMEFRAME_MS and venue == "KRX":
         open_ms = hhmmssms_to_unix_ms(date, _REGULAR_OPEN_HHMMSSMS)
         close_ms = hhmmssms_to_unix_ms(date, _REGULAR_CLOSE_HHMMSSMS)
         candles = [c for c in candles if open_ms <= c.ts_ms <= close_ms or (
@@ -2267,12 +2271,20 @@ def _build_local_candle_range(
             open_ms, close_ms = norm_meta["regular_session_open_ms"], norm_meta["regular_session_close_ms"]
             lo, hi = (hhmmssms_to_unix_ms(date, edge) for edge in (open_ms, close_ms))
             raw = [c for c in raw if lo <= c.ts_ms <= hi]
+        session_close = hhmmssms_to_unix_ms(date, close_ms)
+        if not regular_session_only:
+            # Old partitions can contain post-close candles even when their
+            # metadata predates the extended-session policy. Display observed
+            # prices without changing the official regular-session boundary.
+            session_close = max(session_close, max((c.ts_ms for c in raw), default=session_close))
         result.segments.append(RangeSegment(
             date=date, session_open_ms=hhmmssms_to_unix_ms(date, open_ms),
-            session_close_ms=hhmmssms_to_unix_ms(date, close_ms), source=source,
+            session_close_ms=session_close, source=source,
             gap_ms=_segment_gap_ms(date, meta),
         ))
-        result.candles.extend(downsample_candles(raw, bucket_ms=bucket_ms, date=date, venue=venue))
+        result.candles.extend(downsample_candles(
+            raw, bucket_ms=bucket_ms, date=date, venue=venue, preserve_observed=True,
+        ))
     result.missing_dates.sort(key=lambda item: item.date)
     return result
 

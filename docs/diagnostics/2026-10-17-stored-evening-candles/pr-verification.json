@@ -1,0 +1,33 @@
+{
+  "base_commit": "ef8cd6fc8f5f328d1310a2ed18726a1ab02563ec",
+  "checks": {
+    "backend_passed": 202,
+    "frontend_passed": 308,
+    "e2e_passed": 12,
+    "typecheck": "passed",
+    "vite_build": "passed",
+    "ruff": "passed",
+    "diff_check": "passed"
+  },
+  "commands": [
+    "uv run --extra dev pytest -q tests/unit/api/test_local_candle_history.py tests/hoga/api/test_bundle.py tests/unit/api/test_range_indicator_sessions.py tests/test_api_range.py tests/unit/live/test_session_gate.py tests/unit/live/test_kiwoom_session.py tests/unit/api/test_all_indicator_session_scope.py tests/unit/api/test_range_price_scale_contract.py",
+    "uv run --extra dev ruff check hoga/api/bundle.py tests/unit/api/test_local_candle_history.py tests/hoga/api/test_bundle.py",
+    "cd frontend && npm run typecheck",
+    "cd frontend && npx vitest run src/live/useLiveBundle.test.tsx src/live/workspace/HogaplaySourceChip.test.tsx src/live/stockSessions.test.ts src/live/sessionCandles.test.ts src/live/regularSessionView.test.ts src/api/range.test.tsx src/live/workspace/TitleBarSymbolRow.test.tsx",
+    "cd frontend && npx playwright test tests/e2e/stored-evening-candles.spec.ts tests/e2e/hogaplay-disk-only.spec.ts tests/e2e/evening-aggregate-sessions.spec.ts tests/e2e/titlebar-layout.spec.ts --reporter=line"
+  ],
+  "inputs_sha256": "25e8b5f2a4d895c6d1f5c1081734ab93314cc6dd049fa37199afede5d249a977",
+  "input_files": 2343,
+  "environment": {
+    "python": "3.14.7",
+    "node": "v24.13.1"
+  },
+  "overlap_review": {
+    "pr": 1927,
+    "file": "hoga/api/bundle.py",
+    "result": "Prewarm telemetry changes other functions; current edits affect downsample and local candle range only."
+  },
+  "runtime_application": "Requested by user; verify merged commit and queue recovery after pull.",
+  "additional_capture_jobs_enqueued_by_task": 0,
+  "data_backfill_run": false
+}
