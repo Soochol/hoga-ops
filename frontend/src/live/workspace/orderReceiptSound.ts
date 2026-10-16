@@ -31,7 +31,7 @@ async function readyContext(deadline: number): Promise<AudioContext | null> {
       try {
         // Invoke resume on every gesture, even if a previous, blocked resume is pending.
         await Promise.race([audio.resume(), new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(new Error('resume-timeout')), Math.max(0, Math.min(RESUME_TIMEOUT_MS, deadline - Date.now())));
+          timer = setTimeout(() => reject(new Error('resume-timeout')), Math.max(0, deadline - Date.now()));
         })]);
       } finally { clearTimeout(timer); }
     }
@@ -49,7 +49,7 @@ export function prepareOrderReceiptSound(): void {
   void readyContext(Date.now() + RESUME_TIMEOUT_MS);
 }
 
-/** Share focus/visibility listeners across enabled windows; recovery never replays old receipts. */
+/** Prepare on user interaction as well as focus/visibility recovery. Never replay old receipts. */
 let recoverySubscribers = 0;
 function recover() {
   if (document.visibilityState !== 'hidden') prepareOrderReceiptSound();
@@ -58,11 +58,17 @@ export function subscribeOrderReceiptSoundRecovery(): () => void {
   if (recoverySubscribers++ === 0) {
     window.addEventListener('focus', recover);
     document.addEventListener('visibilitychange', recover);
+    // Capture runs before order handlers, including children that stop propagation.
+    // Keep listening after the first gesture so idle/interrupted audio can recover.
+    window.addEventListener('pointerdown', recover, true);
+    window.addEventListener('keydown', recover, true);
   }
   return () => {
     if (--recoverySubscribers === 0) {
       window.removeEventListener('focus', recover);
       document.removeEventListener('visibilitychange', recover);
+      window.removeEventListener('pointerdown', recover, true);
+      window.removeEventListener('keydown', recover, true);
     }
   };
 }
@@ -88,7 +94,10 @@ function chimeBuffer(audio: AudioContext): AudioBuffer {
 export async function playOrderReceiptSound(): Promise<boolean> {
   const deadline = Date.now() + MAX_START_DELAY_MS;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const audio = await readyContext(deadline);
+    // Allow a fresh resume attempt after 250ms, but let the final attempt use
+    // the remaining budget. Two fixed 250ms waits used to abandon slow startup
+    // at 580ms, even when audio became ready within the 800ms receipt window.
+    const audio = await readyContext(attempt === 0 ? Math.min(deadline, Date.now() + RESUME_TIMEOUT_MS) : deadline);
     if (audio && Date.now() < deadline) {
       let source: AudioBufferSourceNode | undefined;
       try {
