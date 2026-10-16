@@ -624,10 +624,11 @@ function ProgramTradeSparkline({
       {/* 시간축 — 축 도메인의 시작·중간·끝(KST). 매물대 카드의 시간축과 같은
           위계(border-t 로 플롯과 분리, dim 라벨)라 두 창을 위아래로 놓으면 같은
           높이에서 같은 방식으로 읽힌다. 축 도메인은 순매수·가격 통합 범위이므로
-          왼쪽 라벨이 순매수 첫 관측보다 이를 수 있다(가격 오버레이가 더 이른 경우). */}
+          왼쪽 라벨이 순매수 첫 관측보다 이를 수 있다(가격 오버레이가 더 이른 경우).
+          1rem 줄 높이 밖에 테두리 1px을 더해 상시 세로 overflow를 막는다. */}
       <div
         data-testid="program-sparkline-time-axis"
-        className="relative h-4 border-t border-border/70 font-data text-badge leading-4 text-fg-dimmer tabular-nums"
+        className="relative box-content h-4 border-t border-border/70 font-data text-badge leading-4 text-fg-dimmer tabular-nums"
       >
         <span className="absolute left-0 top-0">{timeTicks[0]}</span>
         <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
