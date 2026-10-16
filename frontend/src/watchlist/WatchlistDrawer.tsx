@@ -483,6 +483,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   return (
     <QuoteRow
       name={entry.name} code={entry.code}
+      nameTooltip=""
       price={props.price}
       pct={props.pct}
       changeWon={props.changeWon}
@@ -631,6 +632,7 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
   return (
     <QuoteRow
       name={ghost.name}
+      nameTooltip=""
       price={ghost.price}
       pct={ghost.pct}
       changeWon={null}
