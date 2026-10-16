@@ -588,11 +588,12 @@ describe('호가 주문', () => {
     expect(toggle).toHaveTextContent('-310,499');
     fireEvent.doubleClick(toggle);
     expect(toggle).toHaveTextContent('-4.42%');
-    expect(toggle).toHaveAttribute('title', '-4.42%');
+    expect(toggle).toHaveAttribute('title', '-310,499원');
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(toggle.querySelector('.order-field-value')).toHaveClass('text-price-down');
     fireEvent.doubleClick(toggle);
     expect(toggle).toHaveTextContent('-310,499');
+    expect(toggle).toHaveAttribute('title', '-4.42%');
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('수익률 표시는 시세 갱신을 따르고 종목 변경 후에도 유지한다', () => {
@@ -601,12 +602,14 @@ describe('호가 주문', () => {
     expect(toggle()).toHaveAttribute('title', '1.82%');
     fireEvent.keyDown(toggle(), { key: 'Enter' });
     expect(toggle()).toHaveTextContent('1.82%');
+    expect(toggle()).toHaveAttribute('title', '120,000원');
     mock.quotePrice = 65700;
     view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
     expect(toggle()).toHaveTextContent('-0.45%');
-    expect(toggle()).toHaveAttribute('title', '-0.45%');
+    expect(toggle()).toHaveAttribute('title', '-30,000원');
     fireEvent.keyDown(toggle(), { key: ' ' });
     expect(toggle()).toHaveTextContent('-30,000');
+    expect(toggle()).toHaveAttribute('title', '-0.45%');
     fireEvent.keyDown(toggle(), { key: 'Enter' });
     view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="000660" name="SK하이닉스" /></QueryClientProvider>);
     expect(toggle()).toHaveAttribute('aria-pressed', 'true');
