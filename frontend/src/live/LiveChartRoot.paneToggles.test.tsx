@@ -324,10 +324,16 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     expect(keyOf('program-trade')).toBe('candle|volume|ratio|quote-totals|fill-strength');
   });
 
-  it('passes the venue-specific candle auction style context from props', () => {
-    renderAt('1m', { venue: 'UN' });
+  it.each([
+    { venue: 'UN', mute: false },
+    { venue: 'KRX', mute: true },
+    { venue: 'KRX', candleVenue: 'UN', mute: false },
+    { venue: 'KRX', candleVenue: 'NXT', mute: false },
+    { venue: 'UN', candleVenue: 'KRX', mute: true },
+  ] as const)('uses candle query venue for auction colors: %j', ({ mute, ...props }) => {
+    renderAt('1m', props);
     expect(paneContexts.find((pane) => pane.name === 'candle')?.contextOverride).toEqual({
-      muteAuctionCandles: false,
+      muteAuctionCandles: mute,
     });
   });
 
