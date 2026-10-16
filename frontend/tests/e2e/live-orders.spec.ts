@@ -98,6 +98,67 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
+for (const theme of ['obsidian', 'ledger']) {
+  test(`주문 불가 사유와 공통 알림은 좁은 주문창에서 안내하고 전송을 차단한다 (${theme})`, async ({ page }, testInfo) => {
+    // All requests stay in these HTTP/WS mocks; no broker or backend is contacted.
+    await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
+    await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
+    const { window, commands } = await setup(page);
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    // Keep the real mounted order window, at its supported compact width.
+    await window.evaluate(el => { el.style.width = '504px'; });
+    const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+    await quantity.fill('0');
+    const inline = window.getByRole('status', { name: '신규 주문 상태' });
+    await expect(inline).toContainText('주문 수량');
+    const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    await expect(buy).toBeDisabled();
+    // aria-disabled intentionally remains hit-testable to explain a blocked attempt.
+    const box = (await buy.boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+    const toast = page.getByRole('alert', { name: '주문 알림', exact: true });
+    await expect(toast).toContainText('정수');
+    expect(commands).toHaveLength(0);
+    await buy.focus();
+    await page.keyboard.press('Enter');
+    await expect(toast).toHaveCount(1);
+    expect(commands).toHaveLength(0);
+    await toast.hover();
+    await expect(toast.locator('.toast-progress')).toHaveCSS('animation-play-state', 'paused');
+    await toast.getByRole('button', { name: '주문 알림 닫기' }).focus();
+    await page.mouse.move(1, 1);
+    await expect(toast.locator('.toast-progress')).toHaveCSS('animation-play-state', 'paused');
+    expect(await inline.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`order-unavailable-${theme}.png`) });
+    await quantity.fill('5');
+    await expect(inline).toBeHidden();
+    await expect(buy).toBeEnabled();
+    await buy.dblclick();
+    await expect.poll(() => commands.length).toBe(1);
+    expect(commands[0]).toMatchObject({ side: 'BUY', quantity: 5 });
+  });
+}
+
+test('주문 API의 거래시간 거절은 공통 경고에 사유를 표시하고 재확인 주문을 만들지 않는다', async ({ page }, testInfo) => {
+  await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
+  await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
+  const { window } = await setup(page);
+  let attempts = 0;
+  await page.route(/^https?:\/\/[^/]+\/api\/trading\/orders$/, route => {
+    attempts++;
+    return route.fulfill({ status: 422, json: { detail: { code: 'order-hours-closed', message: '현재 해당 주문을 접수할 수 없는 시간입니다.' } } });
+  });
+  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+  const toast = page.getByRole('alert', { name: '주문 알림', exact: true });
+  await expect(toast.getByText('주문 접수 불가', { exact: true })).toBeVisible();
+  await expect(toast).toContainText('현재 해당 주문을 접수할 수 없는 시간입니다.');
+  await expect(toast.getByRole('button', { name: '같은 요청 다시 확인' })).toHaveCount(0);
+  await expect(window.getByRole('status', { name: '신규 주문 상태' })).toContainText('직전 주문 접수 불가');
+  expect(attempts).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath('order-hours-closed.png') });
+});
+
 test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
   // Observe the real Web Audio buffer without replacing playback or autoplay policy.
   await page.addInitScript(() => {
@@ -1951,26 +2012,38 @@ test('묶음 정정은 합산 금액의 고액 확인을 거쳐 모든 주문에
   expect(commands.every(body => body.price === 67100 && body.confirm_high_value === true)).toBe(true);
 });
 
-test('묶음 취소 일부 실패는 성공한 주문을 다시 보내지 않고 실패 요청만 같은 ID로 재시도한다', async ({ page }) => {
-  const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two')]);
-  const failures: Record<string, unknown>[] = [];
-  await page.route(/\/api\/trading\/orders\/two\/cancel$/, async route => {
-    if (failures.length) { await route.fallback(); return; }
-    failures.push(route.request().postDataJSON());
-    await route.fulfill({ status: 409, json: { detail: { code: 'cancel-rejected', message: '취소 거절' } } });
+for (const uncertain of [false, true]) {
+  test(`묶음 취소 일부 실패 uncertain=${uncertain}는 확정 거절과 결과 불명확의 재확인을 구분한다`, async ({ page }) => {
+    await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
+    await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
+    const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two')]);
+    const failures: Record<string, unknown>[] = [];
+    await page.route(/\/api\/trading\/orders\/two\/cancel$/, async route => {
+      if (failures.length) { await route.fallback(); return; }
+      failures.push(route.request().postDataJSON());
+      await route.fulfill({ status: uncertain ? 503 : 409, json: { detail: {
+        code: uncertain ? 'order-outcome-unknown' : 'cancel-rejected', message: uncertain ? '취소 결과 확인 필요' : '취소 거절',
+      } } });
+    });
+    const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    await drag(page, cell, window.getByRole('button', { name: '주문 설정', exact: true }));
+    await expect(cell).toHaveText('70');
+    await expect(page.getByRole('alert', { name: '주문 알림' })).toContainText('취소 미접수 1건');
+    expect(commands).toHaveLength(1);
+    const retry = page.getByRole('button', { name: '같은 요청 다시 확인' });
+    if (uncertain) {
+      await expect(retry).toBeEnabled();
+      await retry.click();
+    } else {
+      await expect(retry).toHaveCount(0);
+      await drag(page, cell, window.getByRole('button', { name: '주문 설정', exact: true }));
+    }
+    await expect(cell).toBeEmpty();
+    expect(commands).toHaveLength(2);
+    if (uncertain) expect(commands[1].command_id).toBe(failures[0].command_id);
+    else expect(commands[1].command_id).not.toBe(failures[0].command_id);
   });
-  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
-  await drag(page, cell, window.getByRole('button', { name: '주문 설정', exact: true }));
-  await expect(cell).toHaveText('70');
-  await expect(page.getByRole('alert', { name: '주문 알림' })).toContainText('취소 미접수 1건');
-  expect(commands).toHaveLength(1);
-  const retry = page.getByRole('button', { name: '같은 요청 다시 확인' });
-  await expect(retry).toBeEnabled();
-  await retry.click();
-  await expect(cell).toBeEmpty();
-  expect(commands).toHaveLength(2);
-  expect(commands[1].command_id).toBe(failures[0].command_id);
-});
+}
 
 for (const side of ['BUY', 'SELL'] as const) {
   test(`${side} 우클릭 목록의 개별 주문은 다른 호가로 드래그하면 그 가격으로 정정한다`, async ({ page }) => {
