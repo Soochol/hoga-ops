@@ -64,6 +64,9 @@ and badges use `--text-xs` (10.5px). These roles are scoped to `.live-window`,
 including shared sidebar cards mounted there. Preserve weight/color hierarchy,
 the single-line candle header, and the same sizes in narrow windows. Existing
 fixed canvas axis/primitive sizes remain governed by the canvas exceptions above.
+2026-10-16 사용자 승인: 창 헤더의 연결 그룹 배지는 `연결` 문구 없이 번호(1~10)만
+표시한다. 기존 글자 크기·높이·색상·모서리를 유지하고, 두 자리 숫자가 들어가는
+고정 폭을 사용한다. 그룹 변경 툴팁·접근성 이름과 번호 선택 메뉴는 유지한다.
 The calendar-chart “분봉으로” action sits directly after “그리기” in the toolbar,
 with its label folded at narrow widths, rather than inside the More popup.
 

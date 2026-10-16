@@ -83,7 +83,6 @@
 }
 @container (max-width: 420px) {
   .live-window-titlebar { padding-inline: var(--space-xs) !important; }
-  .live-group-label { display: none; }
   .live-window [data-window-secondary-action] { display: none; }
   .live-window .live-window-actions-menu { display: inline-flex; }
 }
