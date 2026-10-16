@@ -129,13 +129,33 @@ describe('useThemePrefsStore', () => {
     });
   });
 
-  it('exposes exactly the four options', () => {
+  it('exposes the existing themes and both trading palettes', () => {
     expect([...THEME_PREFERENCE_OPTIONS]).toEqual([
       'obsidian',
       'ledger',
       'toss-light',
       'toss-dark',
+      'obsidian-pro',
+      'ledger-studio',
     ]);
+  });
+
+  it.each(['obsidian-pro', 'ledger-studio'] as const)('persists, restores and bootstraps %s', (theme) => {
+    useThemePrefsStore.getState().setThemePreference(theme);
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({ themePreference: theme });
+    useThemePrefsStore.setState({ themePreference: 'ledger' });
+    useThemePrefsStore.getState().hydrateFromStorage();
+    expect(useThemePrefsStore.getState().themePreference).toBe(theme);
+
+    const bootstrap = INDEX_HTML.match(/<script>([\s\S]*?)<\/script>/)![1];
+    const previous = document.documentElement.getAttribute('data-theme');
+    try {
+      new Function(bootstrap)();
+      expect(document.documentElement.getAttribute('data-theme')).toBe(theme);
+    } finally {
+      if (previous === null) document.documentElement.removeAttribute('data-theme');
+      else document.documentElement.setAttribute('data-theme', previous);
+    }
   });
 });
 

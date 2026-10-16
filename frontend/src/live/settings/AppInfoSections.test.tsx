@@ -163,4 +163,18 @@ describe('AppInfoSections — 테마', () => {
     });
     expect(ledger).toHaveAttribute('aria-pressed', 'true');
   });
+
+  it.each([
+    ['Obsidian Pro', 'obsidian-pro', '흑연색 배경과 앰버 강조색 · 장중 모니터링'],
+    ['Ledger Studio', 'ledger-studio', '아이보리 배경과 포레스트 그린 · 장후 복기와 리서치'],
+  ] as const)('selects %s and persists its preference', (label, theme, hint) => {
+    renderWithQuery(<ThemeSection />);
+    const option = screen.getByRole('button', { name: label });
+    fireEvent.click(option);
+    expect(option).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Toss Dark' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText(hint)).toBeInTheDocument();
+    expect(useThemePrefsStore.getState().themePreference).toBe(theme);
+    expect(JSON.parse(localStorage.getItem('ui.themePreference.v1')!)).toEqual({ themePreference: theme });
+  });
 });

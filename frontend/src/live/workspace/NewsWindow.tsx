@@ -1,7 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react';
 import { DataControlPopover, ResponsiveDataControls } from '../../ui/ResponsiveDataControls';
 import { useStockNews, type StockNewsItem, type StockNewsResponse } from '../../api/stockNews';
-import { useThemePrefsStore } from '../../state/themePrefs';
 
 const timeFormat = new Intl.DateTimeFormat('ko-KR', {
   timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false,
@@ -15,11 +14,10 @@ function relation(item: StockNewsItem, code: string, name: string) {
 
 export function NewsWindow({ code, name }: { code: string; name: string }) {
   const [date, setDate] = useState('');
-  const dark = useThemePrefsStore((state) => state.themePreference === 'toss-dark' || state.themePreference === 'obsidian');
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
   return (
     <div className="flex h-full min-h-0 flex-col bg-bg-card text-fg" data-testid="stock-news-window"
-      style={{ colorScheme: dark ? 'dark' : 'light' }}>
+      style={{ colorScheme: 'var(--color-scheme)' }}>
       <NewsList key={`${code}:${date}`} code={code} name={name} date={date.replaceAll('-', '') || null}
         dateControls={<>
         <button type="button" aria-pressed={!date} onClick={() => setDate('')}

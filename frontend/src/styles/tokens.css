@@ -1,11 +1,12 @@
 /**
  * Design tokens — hoga-ops
  * Source of truth: DESIGN.md at the repo root.
- * v1 is dark-mode only; tokens live on :root.
+ * Six selectable palettes; shared typography and density live on :root.
  */
 :root,
 [data-theme='dark'],
 [data-theme='obsidian'] {
+  --color-scheme: dark;
   /* ───── Scale dial (single source for default density) ─────
      :root font-size is the ONE dial. 16px = 1.0× default (was 18px = 1.125×).
      MUST mirror RENDERED_ROOT_PX in design-tokens.ts (generator comments +
@@ -201,7 +202,9 @@
    overrides nothing but color, so density + typography are theme-independent.
    Sits OUTSIDE the base block so `npm run gen:tokens` (which rewrites only the
    AUTO-GENERATED span inside the base block) never touches it. */
-[data-theme='ledger'] {
+[data-theme='ledger'],
+[data-theme='ledger-studio'] {
+  --color-scheme: light;
   /* ───── Surfaces (ivory paper) ─────
      --bg 를 --bg-card 와 동일 톤(#fdfcf8)으로 통일 — 다크(#636)와 대칭인 "배경 통일".
      Ledger 는 feature-route 카드가 border(--border)를 유지하므로 톤 스텝 0에서도
@@ -306,6 +309,7 @@
    It is NOT perfect on the highest-density surfaces (a blue crosshair over a blue
    down-candle can still read close); accepted trade-off for this theme. */
 [data-theme='toss-light'] {
+  --color-scheme: light;
   /* ───── Surfaces (grey floor + white cards — layer step revived) ───── */
   --bg: #f6f7f9;          /* backgroundScreen — the floor */
   --bg-card: #ffffff;     /* background — cards float white on the floor */
@@ -412,6 +416,7 @@
    txt-primary is rgba(242,246,255,0.9), i.e. it deliberately avoids #ffffff to
    cut glare on the dark surface. */
 [data-theme='toss-dark'] {
+  --color-scheme: dark;
   /* ───── Surfaces (near-black floor + lighter cards — layer step revived) ───── */
   --bg: #101013;          /* backgroundScreen / greyBackground — the floor */
   --bg-card: #17171c;     /* background — cards sit LIGHTER than the floor */
@@ -488,6 +493,91 @@
   --bar-bid: rgba(245, 68, 90, 0.28);    /* f5445a @ 28% */
 }
 
+/* Obsidian Pro — approved graphite/amber trading palette (2026-10-17).
+   Color only: existing workspace layout, typography and density stay shared.
+   Moving-average colors inherit the dark base. */
+[data-theme='obsidian-pro'] {
+  --color-scheme: dark;
+  --bg: #101216;
+  --bg-card: #171a20;
+  --bg-subtle: #101216;
+  --bg-input: #20242c;
+  --bg-input-hover: #2b3039;
+  --border: #2b3039;
+  --border-strong: #414956;
+  --chart-pane-divider: #353d49;
+  --chart-day-boundary: #7c8798;
+  --fg: #e5e9ef;
+  --fg-dim: #a0a9b7;
+  --fg-dimmer: #7c8798;
+  --accent: #e9b44c;
+  --accent-fg: #211a0e;
+  --accent-shade: #c49535;
+  --success: #55c58a;
+  --error: #f58aa6;
+  --warn: #f4c36a;
+  --price-up: #ff747f;
+  --price-down: #7aafff;
+  --grid: #242a33;
+  --heat-lo: #1b1a17;
+  --heat-hi: #e9b44c;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-panel: 0 2px 8px rgba(0, 0, 0, 0.20);
+  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.40);
+  --tint-selection: rgba(233, 180, 76, 0.12);
+  --tint-success: rgba(85, 197, 138, 0.12);
+  --tint-error: rgba(245, 138, 166, 0.12);
+  --tint-warn: rgba(244, 195, 106, 0.12);
+  --tint-neutral: rgba(160, 169, 183, 0.12);
+  --tint-success-border: rgba(85, 197, 138, 0.32);
+  --tint-error-border: rgba(245, 138, 166, 0.32);
+  --tint-price-up: rgba(255, 116, 127, 0.10);
+  --tint-price-down: rgba(122, 175, 255, 0.10);
+  --bar-ask: rgba(122, 175, 255, 0.28);
+  --bar-bid: rgba(255, 116, 127, 0.28);
+}
+
+/* Ledger Studio — approved ivory/forest-green research palette (2026-10-17).
+   Shares Ledger's light moving averages and paper elevation, then specializes
+   surfaces, ink, price colors and their tints. */
+[data-theme='ledger-studio'] {
+  --bg: #f5f3ed;
+  --bg-card: #fffefa;
+  --bg-subtle: #eeeee6;
+  --bg-input: #fffefa;
+  --bg-input-hover: #e9ede5;
+  --border: #d7d9d0;
+  --border-strong: #b6c0b5;
+  --chart-pane-divider: #c3c9be;
+  --chart-day-boundary: #7b857d;
+  --fg: #202e29;
+  --fg-dim: #616f66;
+  --fg-dimmer: #7b857d;
+  --accent: #28664d;
+  --accent-fg: #ffffff;
+  --accent-shade: #1d4f3b;
+  --success: #237846;
+  --error: #ad3654;
+  --warn: #946013;
+  --price-up: #ba3a47;
+  --price-down: #285eb3;
+  --grid: #e6e8df;
+  --heat-lo: #e9ede5;
+  --heat-hi: #28664d;
+  --tint-selection: rgba(40, 102, 77, 0.09);
+  --tint-success: rgba(35, 120, 70, 0.10);
+  --tint-error: rgba(173, 54, 84, 0.10);
+  --tint-warn: rgba(148, 96, 19, 0.10);
+  --tint-neutral: rgba(97, 111, 102, 0.10);
+  --tint-success-border: rgba(35, 120, 70, 0.30);
+  --tint-error-border: rgba(173, 54, 84, 0.30);
+  --tint-price-up: rgba(186, 58, 71, 0.09);
+  --tint-price-down: rgba(40, 94, 179, 0.09);
+  --bar-ask: rgba(40, 94, 179, 0.30);
+  --bar-bid: rgba(186, 58, 71, 0.30);
+}
+
 /* Live window chrome: aliases resolve against the current theme. */
 :root,
 [data-theme] {
@@ -495,6 +585,7 @@
   --window-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
 }
 [data-theme='ledger'],
+[data-theme='ledger-studio'],
 [data-theme='toss-light'] {
   --window-shadow: 0 2px 8px rgba(30, 39, 50, 0.12);
 }

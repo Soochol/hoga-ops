@@ -106,20 +106,22 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 ## Color
 
-- **Approach:** Restrained. Single UI accent per theme. Three mutually-exclusive color categories for UI state, status semantic, and price direction. Two commercial themes share one token contract (see below) — components never branch on theme, they only read tokens.
-- **Themes (four, selectable):** the app ships four full palettes behind `<html data-theme>`:
-  - **Obsidian** (dark, default) — warm graphite surfaces + brass accent. The trading-terminal / live surfaces.
+- **Approach:** Restrained. Single UI accent per theme. Three mutually-exclusive color categories for UI state, status semantic, and price direction. All palettes share one token contract (see below) — components never branch on theme, they only read tokens.
+- **Themes (six, selectable):** the app ships six full palettes behind `<html data-theme>`:
+  - **Obsidian** (dark) — warm graphite surfaces + brass accent. The trading-terminal / live surfaces.
   - **Ledger** (light) — ivory paper surfaces + banker's-green accent. The review/research surfaces.
   - **Toss Light** (light, `toss-light`) — white cards on a grey floor + toss-blue accent. Benchmarked from tossinvest.com's live tokens (2026-07-22). **The default preference** (2026-08-07 사용자 결정 — `DEFAULT_THEME_PREFERENCE` in `state/themePrefs.ts`, mirrored in `index.html`). See the Toss Light/Dark note below the token table for the accent-vs-price collision it carries, which is now the *default* experience rather than opt-in.
   - **Toss Dark** (dark, `toss-dark`) — lighter cards on a near-black floor + toss-blue accent. The dark counterpart of Toss Light, benchmarked from tossinvest.com's live dark tokens (2026-07-22). **Manual-select only.**
-  - The **preference** (`obsidian` / `ledger` / `toss-light` / `toss-dark`) lives in `state/themePrefs.ts` (localStorage `ui.themePreference.v1`). **The preference IS the theme** — there is no resolution step and the route is not an input (the `auto` preference that made it one was removed 2026-08-30; see the History table). `subscribeThemeToDom` writes it to `data-theme` **synchronously inside the store's `set()`** — not from an effect, because React runs child effects before parent ones and the chart would otherwise read the old CSS variables (#1656); `index.html` sets it inline before first paint (FOUC + wrong-theme chart cache guard).
+  - **Obsidian Pro** (dark, `obsidian-pro`, user-approved 2026-10-17) — cool graphite floor `#101216`, raised panels `#171a20`, amber UI accent `#e9b44c`, coral up `#ff747f` and blue down `#7aafff`. Live monitoring palette; dark moving-average defaults inherited from the base.
+  - **Ledger Studio** (light, `ledger-studio`, user-approved 2026-10-17) — ivory floor `#f5f3ed`, paper panels `#fffefa`, forest-green UI accent `#28664d`, red up `#ba3a47` and blue down `#285eb3`. Review/research palette; light moving averages and paper elevation shared with Ledger.
+  - The **preference** (`obsidian` / `ledger` / `toss-light` / `toss-dark` / `obsidian-pro` / `ledger-studio`) lives in `state/themePrefs.ts` (localStorage `ui.themePreference.v1`). **The preference IS the theme** — there is no resolution step and the route is not an input (the `auto` preference that made it one was removed 2026-08-30; see the History table). `subscribeThemeToDom` writes it to `data-theme` **synchronously inside the store's `set()`** — not from an effect, because React runs child effects before parent ones and the chart would otherwise read the old CSS variables (#1656); `index.html` sets it inline before first paint (FOUC + wrong-theme chart cache guard).
   - **Scope: the user's open browser tabs, not just one.** `subscribeToThemePreferenceStorage` (App.tsx, one subscription for every route since App is the layout route) mirrors another tab's change through the `storage` event, so a tab opened *before* the change follows without a reload — `/live` deep links open in new tabs, so stale tabs were the normal case. What travels between tabs is the **preference**, which since 2026-08-30 is the theme itself — every tab lands on the same value regardless of its route.
-  - **Selectors:** `:root, [data-theme='dark'], [data-theme='obsidian']` carry the Obsidian palette + the scale dial + font + all size/spacing/layout tokens; `[data-theme='ledger']`, `[data-theme='toss-light']`, and `[data-theme='toss-dark']` each override **colors only** (density and typography are theme-independent). All three override blocks sit *outside* the base block so `npm run gen:tokens` never touches them.
+  - **Selectors:** `:root, [data-theme='dark'], [data-theme='obsidian']` carry the Obsidian palette + the scale dial + font + all size/spacing/layout tokens. Other themes override **colors only** outside the generated base span (density, typography and workspace layout stay theme-independent). Ledger Studio also matches the shared Ledger light-palette block before its own overrides. The `--color-scheme` token supplies `dark`/`light` for native controls such as the news date field, without component branches on theme names. Theme choices wrap inside narrow settings editors.
 
   > Table below shows the two primary themes (Obsidian/Ledger). **Toss Light** and
-  > **Toss Dark** are extra palettes; rather than widen every row, their values live
-  > only in `tokens.css` (`[data-theme='toss-light']` / `[data-theme='toss-dark']`)
-  > and the summary notes directly under the table.
+  > **Toss Dark**, **Obsidian Pro**, and **Ledger Studio** are extra palettes;
+  > rather than widen every row, their values live in `tokens.css` and the
+  > palette summaries in this section.
 
   | Token | Obsidian (dark) | Ledger (light) | Use |
   |---|---|---|---|
@@ -263,7 +265,7 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 - **Known limitation — MA / peak / drawing default colors:** the moving-average palette (`liveIndicatorsPersistence.ts`), peak-wall defaults, and drawing-tool colors are **user-selectable and persisted as hex in localStorage**, not theme tokens — so they do NOT change with the theme. As of 2026-09-08, the stock default MA-120 and new-slot palette use gray (`#6B7280`) instead of white for readability on light and dark surfaces. Persisted user colors stay unchanged. The style picker outlines its swatch and, when the selected hex color has less than 3:1 contrast against the current card background, offers an explicit gray replacement. `--ma-5` remains separate for token consumers.
 
-- **No OS/system mode:** there is no "system/OS" auto-follow mode. `data-theme` is exactly `obsidian`, `ledger`, `toss-light`, or `toss-dark` at runtime (the legacy `dark` alias maps to Obsidian). There is no route-based mode either: the `auto` preference (dark on `/live`·`/heatmap`·`/market`, else Ledger) was removed 2026-08-30, so the four palettes are all manual-select. (History: this was "both themes only, no third theme" until 2026-07-22, when Toss Light then Toss Dark were added as explicitly manual palettes.)
+- **No OS/system mode:** there is no "system/OS" auto-follow mode. `data-theme` is one of `obsidian`, `ledger`, `toss-light`, `toss-dark`, `obsidian-pro`, or `ledger-studio` at runtime (the legacy `dark` alias maps to Obsidian). There is no route-based mode either: the `auto` preference was removed 2026-08-30. All six palettes are manual-select; Toss Light remains the default. (History: this was "both themes only, no third theme" until 2026-07-22.)
 
 ## Spacing
 

@@ -72,7 +72,7 @@ test('독립 뉴스 창의 새 기사·날짜 조회·종목 고정과 그룹 �
   await frame.screenshot({ path: testInfo.outputPath('news-window.png') });
 });
 
-for (const theme of ['toss-light', 'toss-dark']) {
+for (const theme of ['toss-light', 'toss-dark', 'obsidian-pro', 'ledger-studio']) {
   test(`${theme}: 좁은 뉴스 창에서도 제목과 조회 제어가 잘리지 않는다`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 480, height: 720 });
     await page.addInitScript((theme) => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
@@ -90,6 +90,7 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await page.getByTestId('workspace-add-menu-button').click();
     await page.getByTestId('workspace-add-news').click();
     const news = page.getByTestId('stock-news-window');
+    await expect(news).toHaveCSS('color-scheme', ['toss-dark', 'obsidian-pro'].includes(theme) ? 'dark' : 'light');
     await expect(news.getByText(/삼성전자 테스트 기사:/)).toBeVisible();
     await expect(news.getByLabel('뉴스 날짜')).toBeVisible();
     const settings = news.getByRole('button', { name: '뉴스 설정', exact: true });
