@@ -146,6 +146,52 @@ async def test_sync_partitions_across_accounts():
     await mgr.stop()
 
 
+async def test_default_accounts_share_one_seconds_clock_and_stop_drains_it(tmp_path, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    from hoga.live import kiwoom_session as session
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.second_trade_store import second_trade_store
+    from hoga.live.stream import LiveStream
+
+    async def idle(*_args):
+        await asyncio.Event().wait()
+
+    class Client(_FakeClient):
+        def __init__(self, **_kwargs):
+            super().__init__()
+
+        run = staticmethod(idle)
+
+    monkeypatch.setattr(session, "KiwoomWsClient", Client)
+    monkeypatch.setattr(LiveStream, "run_flush_loop", idle)
+    manager = KiwoomSessionManager(
+        buffer=LiveBuffer(), data_dir=tmp_path, date_fn=lambda: "20260527", now_fn=lambda: _KRX_MS,
+        token_getter=AsyncMock(return_value="fake-token"), token_invalidator=lambda _: None,
+    )
+    seconds = second_trade_store(tmp_path)
+    seconds.prepare = AsyncMock()
+    seconds.finish_flush = AsyncMock()
+    try:
+        for account in range(4):
+            manager._conns[account] = manager._default_build_conn(account, [f"{account:06}"])
+        clock = manager._seconds_task
+        for _ in range(10):
+            await asyncio.sleep(0)
+        assert not clock.done()
+        assert seconds.finish_flush.await_count == 1
+        assert all(conn.stream._seconds is seconds and not conn.stream._owns_seconds_flush
+                   for conn in manager._conns.values())
+        # Retiring account 0 must not stop the shared clock for the other three.
+        await manager._teardown(0)
+        assert manager._seconds_task is clock and not clock.done()
+        assert seconds.finish_flush.call_args.kwargs["force"] is True
+    finally:
+        await manager.stop()
+    assert clock.done() and manager._seconds_task is None
+    assert seconds.finish_flush.call_args.kwargs == {"now_ms": _KRX_MS, "force": True}
+
+
 async def test_slow_account_recovery_does_not_block_other_view_subscriptions():
     mgr, _ = _fake_manager()
     await mgr.sync(("A",), n_accounts=2)

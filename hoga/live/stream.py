@@ -112,6 +112,7 @@ class LiveStream:
         date_fn: Callable[[], str],
         phase_fn: Callable[[], str] | None = None,
         seconds: SecondTradeStore | None = None,
+        owns_seconds_flush: bool = True,
         signal_monitor_fn: Callable | None = None,
         open_venues_fn: Callable | None = None,
     ) -> None:
@@ -119,6 +120,7 @@ class LiveStream:
         self._open_venues_fn = open_venues_fn or venue_capture_windows_async
         self.storage_error: str | None = None
         self._seconds = seconds
+        self._owns_seconds_flush = owns_seconds_flush
         self._buffer = buffer
         self._writer = writer
         self._date_fn = date_fn
@@ -373,7 +375,7 @@ class LiveStream:
     ) -> None:
         now_ms = now_ms if now_ms is not None else _now_ms()
         self.storage_error = None
-        if self._seconds is not None:
+        if self._seconds is not None and (self._owns_seconds_flush or seal_candle_venues):
             await self._seconds.flush(now_ms=now_ms, force=bool(seal_candle_venues))
         # date/phase는 flush 호출 시점의 샘플 — 윈도 내 틱들이 아니라 마감 순간의
         # 날짜·위상으로 귀속된다(M2). 게이트 닫힘 전환 drain은 15:30:0x 수 초 내라
