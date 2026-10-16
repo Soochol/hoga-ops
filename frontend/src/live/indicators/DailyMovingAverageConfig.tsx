@@ -7,10 +7,9 @@ import { useWindowIndicator, useIndicatorActions } from '../workspace/windowView
  *  슬라이스를 쓴다. MovingAverageRow(prop-driven)를 그대로 재사용. ADR-0073. */
 export default function DailyMovingAverageConfig() {
   const configs = useWindowIndicator((s) => s.dailyMovingAverages);
-  // 마스터 토글과 타입 눈이 슬롯의 `enabled` 로 접혔다(ADR) — "표시" 는 이제
-  // 켜진 슬롯의 존재이고, 토글은 전 슬롯을 함께 켜고 끈다.
-  const enabled = configs.some((c) => c.enabled);
-  const setAllEnabled = useIndicatorActions().setAllDailyMovingAveragesEnabled;
+  // 전체 눈과 개별 행은 같은 hidden 상태를 공유한다.
+  const enabled = configs.some((c) => c.enabled && !c.hidden);
+  const setAllEnabled = useIndicatorActions().setAllDailyMovingAveragesVisible;
   const setMA = useIndicatorActions().setDailyMovingAverage;
   const addMA = useIndicatorActions().addDailyMovingAverage;
   const removeMA = useIndicatorActions().removeDailyMovingAverage;
@@ -28,7 +27,7 @@ export default function DailyMovingAverageConfig() {
         />
       </div>
       <div>
-        {configs.length > 0 && <div className="ma-config-grid ma-config-heading"><span>기간</span><span>기준가</span><span>색상 · 두께</span><span /></div>}
+        {configs.length > 0 && <div className="ma-config-grid ma-config-heading"><span>표시</span><span>기간</span><span>기준가</span><span>색상 · 두께</span><span /></div>}
         {configs.map((cfg, i) => (
           <MovingAverageRow editorLayout
             key={cfg.id}

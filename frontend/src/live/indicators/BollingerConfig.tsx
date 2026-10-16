@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import LineVisibilityRow from './LineVisibilityRow';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
 import MAStylePicker from './MAStylePicker';
@@ -41,18 +42,17 @@ export default function BollingerConfig() {
           onChange={(source) => setBollingerSettings({ bollingerSource: source })} />
       </label>
       {([
-        ['상단선', 'bollingerUpperColor'],
-        ['중심선', 'bollingerMiddleColor'],
-        ['하단선', 'bollingerLowerColor'],
-      ] as const).map(([label, key]) => (
-        <div key={key} className="flex items-center justify-between gap-2 text-sm text-fg">
-          <span>{label}</span>
+        ['상단선', 'bollingerUpperColor', 'bollingerUpper'],
+        ['중심선', 'bollingerMiddleColor', 'bollingerMiddle'],
+        ['하단선', 'bollingerLowerColor', 'bollingerLower'],
+      ] as const).map(([label, key, lineKey]) => (
+        <LineVisibilityRow key={key} lineKey={lineKey} label={label} toggleLabel={`볼린저 ${label} 표시`}>
           <MAStylePicker label={`볼린저 ${label}`} color={settings[key]} lineWidth={settings.bollingerLineWidth}
             onChange={(patch) => setBollingerSettings({
               ...(patch.color ? { [key]: patch.color } : {}),
               ...(patch.lineWidth ? { bollingerLineWidth: patch.lineWidth } : {}),
             })} />
-        </div>
+        </LineVisibilityRow>
       ))}
       <p className="text-xs text-fg-dim">중심선은 단순이동평균입니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</p>
     </div>

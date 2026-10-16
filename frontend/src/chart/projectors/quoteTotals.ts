@@ -1,9 +1,12 @@
+import { useMemo } from 'react';
 import {
   LineSeries,
   type LineData,
   type UTCTimestamp,
   type Time,
 } from 'lightweight-charts';
+import { lineVisible, type IndicatorLineVisibility } from '../../state/indicatorLineVisibility';
+import { useWindowIndicator } from '../../live/workspace/windowView';
 import { useShallow } from 'zustand/react/shallow';
 import type { RangeBundle, QuoteRatioPoint } from '../../api/types';
 import { type VirtualAxis } from '../../util/virtualAxis';
@@ -128,6 +131,7 @@ export function projectAskPoints(
 }
 
 export type QuoteTotalsCtx = {
+  visibility?: IndicatorLineVisibility;
   auctionMask: boolean;
   intraMax: boolean;
   surgeEnabled: boolean;
@@ -154,8 +158,9 @@ const hhmmToMinute = (hhmm: number): number => Math.floor(hhmm / 100) * 60 + (hh
 // useShallow: object literal reference stays stable when the fields don't change
 // → makePastCachedProjector's ctx-identity cache key (via bidCachedData's
 // ctx.auctionMask) and React.memo both hold. Same pattern as ratio.ts / fillStrength.ts.
-const useQuoteTotalsContext = (): QuoteTotalsCtx =>
-  useActivePrefs(
+const useQuoteTotalsContext = (): QuoteTotalsCtx => {
+  const visibility = useWindowIndicator(s => s.indicatorLineVisibility);
+  const prefs = useActivePrefs(
     useShallow((p) => ({
       auctionMask: p.auctionWindowMask,
       intraMax: p.quoteTotalsIntraMax,
@@ -167,6 +172,8 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
       surgeTickConfirmPct: p.surgeTickConfirmPct,
     })),
   );
+  return useMemo(() => ({ ...prefs, visibility }), [prefs, visibility]);
+};
 
 /** 한 side의 급증 마커 프로젝터(per-side, 거래일 self-reset이라 점-청크에만 의존). detectSurgeSide로
  *  근접(95%)+히스테리시스(85%) 발사 지점을 산출 후 보이는 구간만 SurgeMarkerPoint로 투영(라인과 동일한
@@ -177,7 +184,7 @@ const useQuoteTotalsContext = (): QuoteTotalsCtx =>
 function surgeMarkerPoints(side: 'ask' | 'bid') {
   const maxField = side === 'ask' ? 'ask_max' : 'bid_max';
   return (points: readonly QuoteRatioPoint[], axis: VirtualAxis, ctx: QuoteTotalsCtx): SurgeMarkerPoint[] => {
-    if (!ctx.surgeEnabled) return [];
+    if (!ctx.surgeEnabled || !lineVisible(ctx.visibility, side === 'bid' ? 'quoteTotalsBid' : 'quoteTotalsAsk')) return [];
     // Resolve per call so surge dots follow the live theme (via the chart
     // remount on a theme swap). bid=매수=빨강, ask=매도=파랑.
     const t = resolveTokensThemed(TOKEN_SPEC);
@@ -216,9 +223,9 @@ const NO_SURGE_MARKERS: SurgeMarkerPoint[] = [];
 // 래퍼가 이미 slice·expand 를 지불한 뒤라, 꺼 놔도 틱당 비용이 0 이 아니었다
 // (90일 실측 0.158ms/틱, 양쪽 합). 안쪽 가드는 직접 호출자를 위해 남겨 둔다.
 export const askSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
-  (c.surgeEnabled ? askSurgeCached(b, a, c) : NO_SURGE_MARKERS);
+  (c.surgeEnabled && lineVisible(c.visibility, 'quoteTotalsAsk') ? askSurgeCached(b, a, c) : NO_SURGE_MARKERS);
 export const bidSurgeMarkers = (b: RangeBundle, a: VirtualAxis, c: QuoteTotalsCtx) =>
-  (c.surgeEnabled ? bidSurgeCached(b, a, c) : NO_SURGE_MARKERS);
+  (c.surgeEnabled && lineVisible(c.visibility, 'quoteTotalsBid') ? bidSurgeCached(b, a, c) : NO_SURGE_MARKERS);
 
 // crosshairMarkerBackgroundColor pins the hover marker to a solid series color
 // so it survives the Auction Mask connector-break. maskOutgoingConnector
@@ -276,6 +283,9 @@ export const QUOTE_TOTALS_SPEC = {
           lastValueVisible: false, crosshairMarkerBackgroundColor: bid,
         };
       },
+      // Hide only the trace: native current/max guides use this primary handle.
+      renderOptions: ctx => ({ lineVisible: lineVisible(ctx.visibility, 'quoteTotalsBid'),
+        crosshairMarkerVisible: lineVisible(ctx.visibility, 'quoteTotalsBid') }),
       data: bidCachedData,
       markers: bidSurgeMarkers,
       legend: { label: '매수', color: () => resolveTokensThemed(TOKEN_SPEC).bid },
@@ -289,6 +299,8 @@ export const QUOTE_TOTALS_SPEC = {
           lastValueVisible: false, crosshairMarkerBackgroundColor: ask,
         };
       },
+      renderOptions: ctx => ({ lineVisible: lineVisible(ctx.visibility, 'quoteTotalsAsk'),
+        crosshairMarkerVisible: lineVisible(ctx.visibility, 'quoteTotalsAsk') }),
       data: askCachedData,
       markers: askSurgeMarkers,
       legend: { label: '매도', color: () => resolveTokensThemed(TOKEN_SPEC).ask },

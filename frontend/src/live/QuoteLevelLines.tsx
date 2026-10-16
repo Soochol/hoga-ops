@@ -1,3 +1,4 @@
+import { lineVisible } from '../state/indicatorLineVisibility';
 import { memo } from 'react';
 import type { RangeBundle } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
@@ -41,6 +42,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
   const quoteTotalsSeries = paneSeries.get('quote-totals' as PaneId);
   const ratioSeries = paneSeries.get('ratio' as PaneId);
 
+  const visibility = useWindowIndicator(s => s.indicatorLineVisibility);
   const qtEnabled = useWindowIndicator((s) => s.quoteTotalsLevelLineEnabled);
   const qtBidColor = useWindowIndicator((s) => s.quoteTotalsBidLevelColor);
   const qtBidWidth = useWindowIndicator((s) => s.quoteTotalsBidLevelWidth);
@@ -108,7 +110,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
         color={qtBidColor}
         lineWidth={qtBidWidth}
         lineStyle={qtBidStyle}
-        enabled={qtEnabled}
+        enabled={qtEnabled && lineVisible(visibility, 'quoteTotalsBidLevel')}
       />
       <SeriesLevelLine
         series={quoteTotalsSeries}
@@ -116,7 +118,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
         color={qtAskColor}
         lineWidth={qtAskWidth}
         lineStyle={qtAskStyle}
-        enabled={qtEnabled}
+        enabled={qtEnabled && lineVisible(visibility, 'quoteTotalsAskLevel')}
       />
       <SeriesLevelLine
         series={quoteTotalsSeries}
@@ -124,7 +126,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
         color={dayMaxBidColor}
         lineWidth={dayMaxBidWidth}
         lineStyle={dayMaxBidStyle}
-        enabled={dayMaxOn}
+        enabled={dayMaxOn && lineVisible(visibility, 'quoteTotalsDayMaxBid')}
         title={dayMaxTitle}
       />
       <SeriesLevelLine
@@ -133,7 +135,7 @@ function QuoteLevelLines({ paneSeries, bundle, axis }: Props) {
         color={dayMaxAskColor}
         lineWidth={dayMaxAskWidth}
         lineStyle={dayMaxAskStyle}
-        enabled={dayMaxOn}
+        enabled={dayMaxOn && lineVisible(visibility, 'quoteTotalsDayMaxAsk')}
         title={dayMaxTitle}
       />
       <SeriesLevelLine

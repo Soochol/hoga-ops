@@ -1,3 +1,4 @@
+import { normalizeLineVisibility, type IndicatorLineVisibility } from './indicatorLineVisibility';
 import type { MASource } from '../chart/projectors/movingAverage';
 import { LINE_STYLES, type LineStyle, type PaneId } from '../chart/drawing/types';
 import { normalizePaneOrder, normalizePaneStretch, type PaneStretchMap } from '../chart/paneOrder';
@@ -27,6 +28,8 @@ import {
 export type LiveMAConfig = {
   id: string;
   enabled: boolean;
+  /** Display only; hiding does not remove the slot from the indicator set. */
+  hidden?: boolean;
   period: number;
   color: string;
   lineWidth: 1 | 2 | 3 | 4;
@@ -159,6 +162,7 @@ export const QUOTE_LEVEL_LINE_DEFAULT_STYLE: LineStyle = 'dashed';
 export const QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE: LineStyle = 'dotted';
 
 export type PersistedIndicators = {
+  indicatorLineVisibility: IndicatorLineVisibility;
   supertrendEnabled: boolean;
   supertrendHidden: boolean;
   supertrendPeriod: number;
@@ -447,7 +451,10 @@ function normalizeSlotArray<T>(
 }
 
 function normalizeMaSlots(raw: unknown, factory: readonly LiveMAConfig[]): LiveMAConfig[] {
-  return normalizeSlotArray(raw, factory, isValidEntry, MA_SLOT_LIMIT);
+  return normalizeSlotArray(raw, factory, isValidEntry, MA_SLOT_LIMIT).map(m => {
+    const { hidden, ...slot } = m;
+    return hidden === true ? { ...slot, hidden: true } : slot;
+  });
 }
 
 /** 거래원 등장 인스턴스 하나의 검증기 — MA 의 `isValidEntry` 와 같은 역할. */
@@ -683,6 +690,7 @@ export function mergeLiveIndicatorPrefs(
     vol: boolean, hidden: boolean,
     qt: boolean, ratio: boolean, fill: boolean, programTrade: boolean, tradeVolumePoc: boolean,
   ): PersistedIndicators => ({
+    indicatorLineVisibility: normalizeLineVisibility(obj?.indicatorLineVisibility),
     supertrendEnabled: obj?.supertrendEnabled === true,
     supertrendHidden: obj?.supertrendHidden === true,
     supertrendPeriod: typeof obj?.supertrendPeriod === 'number' && Number.isFinite(obj.supertrendPeriod)

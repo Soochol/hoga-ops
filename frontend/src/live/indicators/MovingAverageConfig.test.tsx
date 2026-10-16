@@ -10,9 +10,9 @@ describe('MovingAverageConfig', () => {
 
   it('renders one row per slot', () => {
     render(<MovingAverageConfig />);
-    // Per-slot toggle was removed; count rows by the period spinbutton
-    // which is exactly-one-per-slot.
+    // Each slot has one display switch and one period input.
     expect(screen.getAllByRole('spinbutton')).toHaveLength(DEFAULT_LIVE_MAS.length);
+    expect(screen.getAllByRole('switch')).toHaveLength(DEFAULT_LIVE_MAS.length);
   });
 
   // 열 헤더는 슬롯이 있을 때만 뜬다 — 빈 표의 머리만 남으면 설명이 아니라 잔해다.

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ToggleSwitch } from '../settings/SettingsRow';
 import type { LiveMAConfig } from '../../state/livePage';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
 import MAStylePicker from './MAStylePicker';
@@ -66,6 +67,10 @@ export default function MovingAverageRow({
     className={`${editorLayout ? 'ma-config-period' : 'w-[72px]'} text-right text-sm bg-bg-input border border-border rounded-md px-2 py-1 tabular-nums`} />;
   const remove = canRemove ? <button type="button" aria-label="슬롯 삭제" onClick={onRemove}
     className={`${editorLayout ? 'ma-config-remove' : ''} text-fg-dim hover:text-fg text-base leading-none`}>✕</button> : <span aria-hidden="true" />;
-  return editorLayout ? <div className="ma-config-grid ma-config-row">{period}{source}{style}{remove}</div>
+  return editorLayout ? <div className="ma-config-grid ma-config-row">
+      <ToggleSwitch className="ma-config-visibility" size="sm" label={`${label} 표시`}
+        checked={config.enabled && !config.hidden}
+        onClick={() => onChange({ enabled: true, hidden: config.enabled && !config.hidden })} />
+      {period}{source}{style}{remove}</div>
     : <div className={`${MA_ROW_GRID} py-1.5`}><div className="text-sm text-fg tabular-nums">{label}</div>{style}{source}{period}{remove}</div>;
 }

@@ -38,7 +38,7 @@ import { formatKoreanInt } from '../util/koreanNumber';
 
 /** One moving-average slot's legend chip: swatch color + period + value.
  *
- *  `enabled` 는 **인스턴스의 가시성**이다(종전 타입 마스터·타입 눈이 여기로 접혔다).
+ *  `enabled` 는 원본 슬롯의 enabled && !hidden 으로 계산한 가시성이다.
  *  꺼진 슬롯도 행에서 빠지지 않고 dim 칩으로 남는다 — 칩이 사라지면 다시 켤 표면이
  *  없어지기 때문이고, 이게 flag 행을 값 없이도 유지하는 규칙과 같은 계약이다. */
 export type LegendMAValue = {
@@ -184,8 +184,8 @@ function toLegendMaValues(
     id: m.id,
     color: m.color,
     period: m.period,
-    value: m.enabled ? values?.get(m.id) ?? null : null,
-    enabled: m.enabled,
+    value: m.enabled && !m.hidden ? values?.get(m.id) ?? null : null,
+    enabled: m.enabled && !m.hidden,
   }));
 }
 

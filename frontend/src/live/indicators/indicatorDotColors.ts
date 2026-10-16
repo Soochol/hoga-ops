@@ -1,3 +1,4 @@
+import { lineVisible } from '../../state/indicatorLineVisibility';
 import type { IndicatorSettings } from '../../state/indicatorSettingsV2';
 import type { CategoryId } from './IndicatorPanelHelpers';
 
@@ -28,13 +29,13 @@ export function dotColorsFor(id: CategoryId, ind: IndicatorSettings): string[] {
 
   switch (id) {
     case 'supertrend':
-      return [ind.supertrendUpColor, ind.supertrendDownColor];
+      return [ind.supertrendUpColor, ind.supertrendDownColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, i ? 'supertrendDown' : 'supertrendUp'));
     case 'bollinger':
-      return [ind.bollingerUpperColor, ind.bollingerMiddleColor, ind.bollingerLowerColor];
+      return [ind.bollingerUpperColor, ind.bollingerMiddleColor, ind.bollingerLowerColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, (['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const)[i]));
     case 'moving-average':
-      return capped(ind.movingAverages.filter((m) => m.enabled).map((m) => m.color));
+      return capped(ind.movingAverages.filter((m) => m.enabled && !m.hidden).map((m) => m.color));
     case 'daily-moving-average':
-      return capped(ind.dailyMovingAverages.filter((m) => m.enabled).map((m) => m.color));
+      return capped(ind.dailyMovingAverages.filter((m) => m.enabled && !m.hidden).map((m) => m.color));
 
     // 방향 마스터가 꺼져 있으면 그 방향의 계열은 아무것도 안 그려진다 — 켜진 계열의
     // 색만 모은다. 순서는 매도(체결·미도달·전체) → 매수 로 매트릭스 읽는 순서와 같다.

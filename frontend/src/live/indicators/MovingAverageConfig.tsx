@@ -17,7 +17,7 @@ export default function MovingAverageConfig() {
           없었다. 슬롯이 하나도 없으면 헤더도 뜨지 않는다 — 빈 표의 머리만 남는
           것은 설명이 아니라 잔해다. */}
       {configs.length > 0 && (
-        <div className="ma-config-grid ma-config-heading"><span>기간</span><span>기준가</span><span>색상 · 두께</span><span /></div>
+        <div className="ma-config-grid ma-config-heading"><span>표시</span><span>기간</span><span>기준가</span><span>색상 · 두께</span><span /></div>
       )}
       <div>
         {configs.map((cfg, i) => (
