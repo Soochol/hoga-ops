@@ -30,7 +30,7 @@ export function ViewedDateChip({
       data-testid="live-viewed-date-chip"
       title={detail}
       aria-label={detail}
-      className="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
+      className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
       style={{ background: 'var(--tint-selection)', color: 'var(--fg-muted)' }}
     >
       <span className="truncate">과거 {jumpDateLabel(date, todayKstYyyymmdd())}</span>
@@ -38,7 +38,7 @@ export function ViewedDateChip({
         type="button"
         aria-label="최근 시각으로 돌아가기"
         onClick={onReturn}
-        className="shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
+        className="live-chart-chip-dismiss shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
         style={{ color: 'var(--fg-muted)' }}
       >
         ×

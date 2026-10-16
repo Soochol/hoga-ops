@@ -586,9 +586,6 @@ function BrokerWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   });
   return (
     <div className="flex h-full flex-col bg-bg-card">
-      {scope.kind === 'minute-cursor' && <DataContext mode="커서 시점" time={card.cursorMs} tone="cursor">
-        <button type="button" className="live-data-return" onClick={() => returnGroupToLatest(win.group)}>실시간으로 복귀</button>
-      </DataContext>}
       <BrokerScrollArea>
       <BrokerTrajectoryTable
         series={card.series}

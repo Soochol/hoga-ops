@@ -67,7 +67,7 @@ export function SavedRangeChip({
       aria-label={detail}
       // 헤더 안에 산다 — 차트 위에 뜨는 `/study` 판과 달리 `shadow-panel` 도
       // `pointer-events-auto` 도 필요 없다(오버레이 스택이 아니라 일반 흐름이다).
-      className="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
+      className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
       style={{ background: 'var(--tint-selection)', color: tone }}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: tone }} />
@@ -81,7 +81,7 @@ export function SavedRangeChip({
         type="button"
         aria-label="저장뷰 기간 표시 해제"
         onClick={onClear}
-        className="shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
+        className="live-chart-chip-dismiss shrink-0 rounded px-1 leading-none hover:bg-tint-hover"
         style={{ color: 'var(--fg-muted)' }}
       >
         ×
