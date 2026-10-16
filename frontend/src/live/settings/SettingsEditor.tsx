@@ -4,9 +4,9 @@ import { SettingsUndoContext } from './settingsUndoContext';
 import type { SettingsUndo } from './useSettingsUndo';
 import './SettingsEditor.css';
 
-export function SettingsEditor({ title, scope, onClose, actions, sidebar, children, undo, testId, footer, className = '' }: {
+export function SettingsEditor({ title, scope, onClose, actions, sidebar, children, undo, testId, footer, footerAction, statusIcon, className = '' }: {
   title: string; scope: ReactNode; onClose?: () => void; actions?: ReactNode;
-  sidebar: ReactNode; children: ReactNode; undo: SettingsUndo; testId: string; footer: string; className?: string;
+  sidebar: ReactNode; children: ReactNode; undo: SettingsUndo; testId: string; footer: string; footerAction?: ReactNode; statusIcon?: ReactNode; className?: string;
 }) {
   return <SettingsUndoContext.Provider value={undo.record}>
     <div className={`${WORKSPACE_PANEL_SHELL_CLASS} ${className}`.trim()} data-testid={testId} {...undo.captureProps}>
@@ -21,8 +21,8 @@ export function SettingsEditor({ title, scope, onClose, actions, sidebar, childr
         <div className="settings-editor-main">{children}</div>
       </div>
       <footer className="settings-editor-footer">
-        <span role="status" aria-live="polite"><span aria-hidden="true" className="settings-editor-saved">✓</span> {undo.message ?? footer}</span>
-        <button type="button" data-settings-undo disabled={!undo.canUndo} onClick={() => void undo.undo()}>{undo.busy ? '되돌리는 중…' : '되돌리기'}</button>
+        <span role="status" aria-live="polite">{statusIcon === undefined ? <span aria-hidden="true" className="settings-editor-saved">✓</span> : statusIcon} {undo.message ?? footer}</span>
+        <div className="settings-editor-footer-actions"><button type="button" data-settings-undo disabled={!undo.canUndo} onClick={() => void undo.undo()}>{undo.busy ? '되돌리는 중…' : '되돌리기'}</button>{footerAction}</div>
       </footer>
     </div>
   </SettingsUndoContext.Provider>;

@@ -1,29 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useContext, Fragment, type ReactNode } from 'react';
-import { useChartPrefActions } from '../../state/chartPrefs';
+import { useStore } from 'zustand';
+import { useChartPrefActions, useScopedChartPrefs } from '../../state/chartPrefs';
 import { useIndicatorActions, useWindowIndicators, useWindowIndicatorScope, WindowViewContext } from '../workspace/windowView';
-import MovingAverageConfig from './MovingAverageConfig';
-import BollingerConfig from './BollingerConfig';
-import SupertrendConfig from './SupertrendConfig';
-import DailyMovingAverageConfig from './DailyMovingAverageConfig';
-import VolumeConfig from './VolumeConfig';
-import TradeValueConfig from './TradeValueConfig';
-import InvestorNetConfig from './InvestorNetConfig';
-import PeakWallsConfig from './PeakWallsConfig';
-import TradeVolumePocConfig from './TradeVolumePocConfig';
-import DepthHeatmapConfig from './DepthHeatmapConfig';
-import QuoteTotalsConfig from './QuoteTotalsConfig';
-import RatioConfig from './RatioConfig';
-import FillStrengthConfig from './FillStrengthConfig';
-import ColorSwatchPicker from './ColorSwatchPicker';
-import DailyProgramTradeConfig from './DailyProgramTradeConfig';
-import ProgramTradeConfig from './ProgramTradeConfig';
-import BrokerLateEntryConfig from './BrokerLateEntryConfig';
-import { pickPanePrefs, type PanePrefKey, type PanePrefsIndicatorSource } from './indicatorPaneProfiles';
 import { dotColorsFor } from './indicatorDotColors';
 import { INDICATOR_GLYPH } from './indicatorGlyphs';
-import IndicatorPreviewCard from './IndicatorPreviewCard';
+import { CatalogDraftProvider } from './CatalogDraftProvider';
+import IndicatorConfigContent from './IndicatorConfigContent';
+import { createCatalogDraft, catalogDraftPatch, indicatorIsPresent, PANE_CATEGORY_TO_KEY, type CatalogDraft } from './indicatorCatalogDraft';
 import IndicatorPanelMenu from './IndicatorPanelMenu';
-import ToggleRow from '../settings/ToggleRow';
 import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInstrumentCapabilities';
 import { ListRow } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
@@ -33,7 +17,6 @@ import { isCalendarTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { SettingsEditor } from '../settings/SettingsEditor';
 import { useSettingsUndo } from '../settings/useSettingsUndo';
 import { readIndicatorEditor, restoreIndicatorEditor, subscribeIndicatorEditor } from '../settings/editorSnapshots';
-import IndicatorStylePreview from './IndicatorStylePreview';
 import { type CategoryId, type GroupId, type Placement, CATEGORIES } from './IndicatorPanelHelpers';
 
 const GROUP_LABEL: Record<GroupId, string> = {
@@ -80,32 +63,8 @@ function timeframeLabel(tf: LiveTimeframe): string {
 }
 
 
-const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
-  volume: 'volumeEnabled',
-  'trade-value': 'tradeValueEnabled',
-  'quote-totals': 'quoteTotalsEnabled',
-  ratio: 'ratioEnabled',
-  'fill-strength': 'fillStrengthEnabled',
-  'program-trade': 'programTradeEnabled',
-  'program-daily': 'dailyProgramEnabled',
-  'foreign-net': 'foreignNetEnabled',
-  'institution-net': 'institutionNetEnabled',
-};
-
-
-/**
- * nav 행 하나 — 목록이 하나뿐이므로 **한 형태가 두 상태를 진다**.
- *
- * 어휘가 **추가/삭제 둘뿐**인 것이 이 패널의 계약이다. 종전의 체크박스(켜기/끄기)는
- * 레전드의 눈(숨김)과 뜻이 겹쳤다 — 같은 지표를 두 표면이 서로 다른 말로 조작하면
- * 사용자는 어느 쪽이 무엇을 하는지 매번 다시 배워야 한다. 지금은 **패널이 존재를,
- * 레전드가 가시성을** 맡는다.
- *
- * 두 축이 독립이라는 것이 요점이다: `added` 는 "차트에 있는가"(잉크 농도 + ＋/✕),
- * `selected` 는 "지금 보고 있는가"(tint 배경). 아직 추가하지 않은 지표를 골라
- * 미리 보는 중이면 tint 는 켜지고 잉크는 흐린 채다. 선택은 배경 tint 만으로 말한다 —
- * 좌측 accent 바는 리스트 행 규약에서 금지다(DESIGN.md).
- */
+/** Labels select a form. Only My Indicators has an inline delete action;
+ * catalog additions are committed by the footer after configuration. */
 function IndicatorNavRow({
   label, glyph, added, selected, kbdFocused, query, dotColors, kbdIndex, onSelect, action, summary,
 }: {
@@ -123,7 +82,7 @@ function IndicatorNavRow({
   dotColors: readonly string[];
   kbdIndex: number;
   onSelect: () => void;
-  action: { kind: 'add' | 'remove'; label: string; onClick: () => void };
+  action?: { label: string; onClick: () => void };
 }) {
   return (
     <ListRow
@@ -164,7 +123,8 @@ function IndicatorNavRow({
           ))}
         </span>
       )}
-      <button
+      {added && !action && <span className="ml-2 shrink-0 text-xs text-fg-dim">추가됨</span>}
+      {action && <button
         type="button"
         aria-label={action.label}
         title={action.label}
@@ -173,8 +133,8 @@ function IndicatorNavRow({
         // 길어진다(실측 45px/행 → 목록 827px). 밀도는 이 패널의 성격이다.
         className="ml-2 flex size-[22px] shrink-0 cursor-pointer items-center justify-center rounded-md text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg"
       >
-        {action.kind === 'add' ? '＋' : '✕'}
-      </button>
+        ✕
+      </button>}
     </ListRow>
   );
 }
@@ -204,43 +164,19 @@ export default function IndicatorPanel({
   const restore = useCallback((patch: Parameters<typeof restoreIndicatorEditor>[2]) => restoreIndicatorEditor({ windowKey, instrumentKind }, timeframe, patch), [windowKey, instrumentKind, timeframe]);
   const undo = useSettingsUndo({ scopeKey: `${windowKey ?? 'ambient'}:${timeframe}`, read, restore, subscribe: subscribeIndicatorEditor });
   const actions = useIndicatorActions();
+  const prefs = useScopedChartPrefs();
   // MA 계열의 마스터 토글은 슬롯의 `enabled` 로 접혔다(ADR) — 카테고리 체크박스는
   // "켜진 슬롯이 하나라도 있는가" 의 파생이고, 누르면 전 슬롯을 함께 켜고 끈다.
-  const maEnabled = ind.movingAverages.some((m) => m.enabled);
   const setMaEnabled = actions.setAllMovingAveragesEnabled;
-  const dailyMaEnabled = ind.dailyMovingAverages.some((m) => m.enabled);
   const setDailyMaEnabled = actions.setAllDailyMovingAveragesEnabled;
   const askPeakEnabled = ind.askPeakEnabled;
   const setAskPeakEnabled = actions.setAskPeakEnabled;
   const bidPeakEnabled = ind.bidPeakEnabled;
   const setBidPeakEnabled = actions.setBidPeakEnabled;
-  const tradeVolumePocEnabled = ind.tradeVolumePocEnabled;
   const setTradeVolumePocEnabled = actions.setTradeVolumePocEnabled;
-  const volumeDistributionEnabled = ind.volumeDistributionEnabled;
   const setVolumeDistributionEnabled = actions.setVolumeDistributionEnabled;
-  const volumeDistributionHoverCutoffEnabled = ind.volumeDistributionHoverCutoffEnabled;
-  const setVolumeDistributionHoverCutoffEnabled = actions.setVolumeDistributionHoverCutoffEnabled;
-  const volumeDistributionRangeCount = ind.volumeDistributionRangeCount;
-  const volumeDistributionColor = ind.volumeDistributionColor;
-  const volumeDistributionMaxColor = ind.volumeDistributionMaxColor;
-  const setVolumeDistributionRangeCount = actions.setVolumeDistributionRangeCount;
-  const setVolumeDistributionStyle = actions.setVolumeDistributionStyle;
-  const brokerLateEntryEnabled = ind.brokerLateEntries.some((e) => e.enabled);
   const setBrokerLateEntryEnabled = actions.setAllBrokerLateEntriesEnabled;
-  const depthHeatmapEnabled = ind.depthHeatmapEnabled;
   const setDepthHeatmapEnabled = actions.setDepthHeatmapEnabled;
-  const paneIndicators: PanePrefsIndicatorSource = {
-    volumeEnabled: ind.volumeEnabled,
-    tradeValueEnabled: ind.tradeValueEnabled,
-    quoteTotalsEnabled: ind.quoteTotalsEnabled,
-    ratioEnabled: ind.ratioEnabled,
-    fillStrengthEnabled: ind.fillStrengthEnabled,
-    programTradeEnabled: ind.programTradeEnabled,
-    dailyProgramEnabled: ind.dailyProgramEnabled,
-    foreignNetEnabled: ind.foreignNetEnabled,
-    institutionNetEnabled: ind.institutionNetEnabled,
-    peakWallPaneEnabled: ind.peakWallPaneEnabled,
-  };
   const setPanePrefForTimeframe = actions.setPanePrefForTimeframe;
 
   const resetIndicators = actions.resetIndicators;
@@ -259,6 +195,7 @@ export default function IndicatorPanel({
   // 것」이 **섞이지 않는 것**이 중요하다는 판단이다 — 매일 여는 목록은 대개 전자만
   // 보려고 여는 것이고, 후자는 가끔 찾으러 들어가는 곳이다.
   const [mode, setMode] = useState<'mine' | 'catalog'>('mine');
+  const [justAdded, setJustAdded] = useState<CategoryId | null>(null);
   // 검색어와 ↑↓ 커서. 창을 바꾸면 패널이 재마운트되므로(`key={windowId}`) 둘 다
   // 초기화된다 — 이전 창에서 치던 검색어가 따라오지 않는 것이 맞다.
   const [query, setQuery] = useState('');
@@ -268,12 +205,28 @@ export default function IndicatorPanel({
   // 헤더 ⋯ 메뉴. **열림 상태를 패널이 쥔다** — Escape 를 가로채려면 지금 메뉴가
   // 떠 있는지를 알아야 하기 때문이다(아래 `handleEscape`).
   const [menuOpen, setMenuOpen] = useState(false);
+  const draftScopeKey = `${windowKey ?? 'ambient'}:${instrumentKind ?? 'stock'}:${timeframe}`;
+  const [cache, setCache] = useState<{ scope: string; drafts: Partial<Record<CategoryId, CatalogDraft>> }>(() => ({ scope: draftScopeKey, drafts: {} }));
+  const drafts = cache.scope === draftScopeKey ? cache.drafts : {};
+  if (cache.scope !== draftScopeKey) {
+    setCache({ scope: draftScopeKey, drafts: {} });
+    setJustAdded(null);
+  }
+  const getDraft = (id: CategoryId) => {
+    const existing = drafts[id];
+    if (existing) return existing;
+    const draft = createCatalogDraft(id, ind, prefs);
+    setCache({ scope: draftScopeKey, drafts: { ...drafts, [id]: draft } });
+    return draft;
+  };
+
 
   // "현재 봉 초기화"(PR-C #699): 지표 버킷과 indicator-modal chartPrefs 버킷을
   // 현재 봉만 비운다. 차트 전반 flat(⚙️ 설정 항목)은 패널 밖이라 건드리지 않는다.
   const handleReset = () => {
     resetIndicators();
     resetChartPrefsBucket();
+    setCache({ scope: draftScopeKey, drafts: {} });
   };
 
   /** Escape 사다리의 두 번째 칸 — 메뉴가 떠 있으면 **메뉴만** 닫는다.
@@ -296,29 +249,11 @@ export default function IndicatorPanel({
     }
     return true;
   });
-  // store 최상위 필드가 이미 현재 봉으로 resolve 된 투영(PR-A #699) — pick만 한다.
-  const selectedPanePrefs = pickPanePrefs(paneIndicators);
 
   // Each category maps to a master on/off toggle. Investor bars have an
   // informational detail pane (legend + daily note) but no per-slot config,
   // so the left checkbox is the whole control for them.
-  const checkedFor = (id: CategoryId): boolean => {
-    const paneKey = PANE_CATEGORY_TO_KEY[id];
-    if (paneKey) return selectedPanePrefs[paneKey] === true;
-    switch (id) {
-      case 'supertrend': return ind.supertrendEnabled;
-      case 'bollinger': return ind.bollingerEnabled;
-      case 'moving-average': return maEnabled;
-      case 'daily-moving-average': return dailyMaEnabled;
-      // 병합 카테고리: 어느 한쪽이라도 켜져 있으면 checked. 마스터 토글은 둘을 함께 켠다.
-      case 'peak-walls': return askPeakEnabled || bidPeakEnabled;
-      case 'trade-volume-poc': return tradeVolumePocEnabled;
-      case 'volume-distribution': return volumeDistributionEnabled;
-      case 'depth-heatmap': return depthHeatmapEnabled;
-      case 'broker-late-entry': return brokerLateEntryEnabled;
-      default: return false;
-    }
-  };
+  const checkedFor = (id: CategoryId) => indicatorIsPresent(id, ind);
   /** 존재 토글 — 추가와 삭제가 **같은 슬롯의 반대 방향**이라 한 함수로 둔다.
    *  `null` 은 조작할 수 없는 카테고리(현재 없음 — 남겨 두는 것은 총계 방어). */
   const setPresenceFor = (id: CategoryId, present: boolean): (() => void) | null => {
@@ -338,15 +273,21 @@ export default function IndicatorPanel({
       default: return null;
     }
   };
-  const removeFor = (id: CategoryId) => setPresenceFor(id, false);
+  const removeFor = (id: CategoryId) => () => {
+    const remaining = { ...drafts };
+    delete remaining[id];
+    setCache({ scope: draftScopeKey, drafts: remaining });
+    setJustAdded(null);
+    setPresenceFor(id, false)?.();
+  };
 
-  /** 카탈로그에서 추가 — 켜고, 그 지표의 상세로 이동하고, 목록으로 돌아간다.
-   *  세 동작이 한 클릭인 이유: 추가의 목적은 "생겼다" 를 보는 것이고, 카탈로그에
-   *  남아 있으면 방금 추가한 것이 어디 갔는지 확인하러 한 번 더 눌러야 한다. */
+  // Add the prepared category in one captured editor event. Keep the catalog open.
   const addFor = (id: CategoryId) => {
-    setPresenceFor(id, true)?.();
+    const draft = getDraft(id);
+    if (!indicatorIsPresent(id, draft.store.getState().settings)) return;
+    restore(catalogDraftPatch(draft, read()));
     setSelected(id);
-    setMode('mine');
+    setJustAdded(id);
   };
 
   // "내 지표" = 지금 존재하는 것, 카탈로그 = 나머지. 두 목록의 합집합이 `categories`
@@ -359,7 +300,7 @@ export default function IndicatorPanel({
   const trimmedQuery = query.trim();
   const matches = (label: string) => trimmedQuery === '' || label.includes(trimmedQuery);
   const active = categories.filter((c) => checkedFor(c.id) && matches(c.label));
-  const catalog = categories.filter((c) => !checkedFor(c.id) && matches(c.label));
+  const catalog = categories.filter((c) => (!checkedFor(c.id) || (c.id === justAdded && c.id === selected)) && matches(c.label));
   /** ↑↓ 가 짚는 대상 — 지금 모드의 보이는 행들. */
   const visible = mode === 'mine' ? active : catalog;
 
@@ -378,8 +319,7 @@ export default function IndicatorPanel({
       setKbdIndex((i) => Math.max(0, i - 1));
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      // **선택까지만.** 추가는 ＋ 나 미리보기 CTA 로만 — 보기 전에 차트가 바뀌면
-      // 안 된다는 어휘 규약(라벨=미리보기)이 키보드에도 그대로 적용된다.
+      // Enter selects the form; only the footer CTA adds the prepared indicator.
       if (kbdTarget) setSelected(kbdTarget.id);
     } else if (event.key === 'Escape' && query !== '') {
       // 검색어가 있으면 Escape 는 **검색만** 지운다. 전파를 끊지 않으면 ModalShell 의
@@ -401,7 +341,7 @@ export default function IndicatorPanel({
   // 모드에서는 선택이 삭제됐을 때 남은 첫 항목으로 넘긴다 — 그 모드의 목록에서 방금
   // 지운 행이 사라지므로, 선택을 그대로 두면 목록에 없는 것의 설정을 보게 된다.
   const selectedCategory = mode === 'catalog'
-    ? categories.find((category) => category.id === selected) ?? categories[0]
+    ? catalog.find((category) => category.id === selected) ?? catalog[0] ?? categories[0]
     : categories.find((category) => category.id === selected && checkedFor(category.id))
       ?? categories.find((category) => checkedFor(category.id))
       ?? categories[0];
@@ -411,6 +351,8 @@ export default function IndicatorPanel({
   const selectedId = selectedCategory.id;
   const selectedAdded = checkedFor(selectedId);
   const currentTimeframeLabel = timeframeLabel(timeframe);
+  const emptyCatalog = mode === 'catalog' && catalog.length === 0;
+  const draft = mode === 'catalog' && !selectedAdded && catalog.length > 0 ? getDraft(selectedId) : null;
 
   return (
     // App settings and indicators share the same header, scope, navigation and undo shell.
@@ -424,7 +366,11 @@ export default function IndicatorPanel({
         scope={<span data-testid="indicator-panel-scope-badge">{targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}</span>}
         actions={<IndicatorPanelMenu open={menuOpen} onOpenChange={setMenuOpen}
           resetLabel={`${currentTimeframeLabel} 지표 초기화`} confirmLabel={`${currentTimeframeLabel} 초기화?`} onReset={handleReset} />}
-        footer="변경 즉시 반영 · 현재 차트에 저장"
+        footer={draft ? '설정한 값은 추가할 때 적용돼요.' : '변경 즉시 반영 · 현재 차트에 저장'}
+        statusIcon={draft ? null : undefined}
+        footerAction={mode === 'catalog' && !emptyCatalog && (draft || selectedAdded) ? (draft
+          ? <CatalogAddButton draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
+          : <button type="button" className="indicator-catalog-add" disabled>추가됨</button>) : undefined}
         sidebar={
       <div className="flex min-h-0 flex-1 flex-col">
 
@@ -484,9 +430,7 @@ export default function IndicatorPanel({
                       {GROUP_LABEL[c.group]}
                     </div>
                   )}
-                  {/* 라벨은 **미리보기**, ＋ 만 추가다. 라벨 클릭이 곧 추가면 "뭘 하는
-                      지표인지 보고 나서 결정" 이 불가능해진다 — 일단 켜서 그려 보고
-                      마음에 안 들면 지우는 흐름이 되는데, 그건 차트를 어지럽힌다. */}
+                  {/* Catalog rows only select the draft form. The footer commits it. */}
                   <IndicatorNavRow
                     label={c.label}
                     summary={c.id === 'moving-average' || c.id === 'daily-moving-average'
@@ -494,15 +438,15 @@ export default function IndicatorPanel({
                       : c.id === 'peak-walls' ? [askPeakEnabled ? '매도' : '', bidPeakEnabled ? '매수' : ''].filter(Boolean).join(' · ') : undefined}
                     glyph={INDICATOR_GLYPH[c.id]}
                     added={added}
-                    selected={selected === c.id}
+                    selected={selectedId === c.id}
                     kbdFocused={kbdIndex === i}
                     kbdIndex={i}
                     query={trimmedQuery}
                     dotColors={added ? dotColorsFor(c.id, ind) : EMPTY_DOT_COLORS}
-                    onSelect={() => setSelected(c.id)}
-                    action={added
-                      ? { kind: 'remove', label: `${c.label} 삭제`, onClick: () => removeFor(c.id)?.() }
-                      : { kind: 'add', label: `${c.label} 추가`, onClick: () => addFor(c.id) }}
+                    onSelect={() => { setSelected(c.id); if (c.id !== selected) setJustAdded(null); }}
+                    action={mode === 'mine' && added
+                      ? { label: `${c.label} 삭제`, onClick: () => removeFor(c.id)() }
+                      : undefined}
                   />
                 </Fragment>
               );
@@ -521,96 +465,25 @@ export default function IndicatorPanel({
               <div className="text-xs text-fg-dim">{GROUP_LABEL[selectedCategory.group]} · {PLACEMENT_LABEL[selectedCategory.placement]}</div>
               <span className="text-xs text-fg-dim">{selectedAdded ? '차트에 추가됨' : '추가 전'}</span>
             </div>
-            <h3>{selectedCategory.label}</h3>
-            <p className="settings-editor-description mt-1">{selectedCategory.description}</p>
+            <h3>{emptyCatalog ? '지표 추가' : selectedCategory.label}</h3>
+            <p className="settings-editor-description mt-1">{emptyCatalog ? '' : selectedCategory.description}</p>
           </div>
           <section
             aria-label={selectedCategory.label}
             className="settings-editor-content indicator-config space-y-4"
           >
-              {/* 설명은 카테고리 표가 소유한다 — Config 안에 두면 아직 추가하지
-                  않은 지표(Config 를 렌더하지 않는다)에서는 읽을 수가 없다. */}
-              {selectedAdded && <IndicatorStylePreview category={selectedId} settings={ind} />}
-              {/* 없으면 미리보기, 있으면 설정. 종전엔 아직 존재하지 않는 지표에도
-                  **편집 가능한** 설정 폼이 떠서, 저 스위치를 만지면 무슨 일이 나는지가
-                  화면에 없었다. 추가하면 이 자리가 그대로 폼이 된다(선택 불변). */}
-              {!selectedAdded && (
-                <IndicatorPreviewCard
-                  glyph={INDICATOR_GLYPH[selectedId]}
-                  placementLabel={PLACEMENT_LABEL[selectedCategory.placement]}
-                  onAdd={() => addFor(selectedCategory.id)}
-                />
-              )}
-              {selectedAdded && selectedId === 'supertrend' && <SupertrendConfig />}
-              {selectedAdded && selectedId === 'bollinger' && <BollingerConfig />}
-              {selectedAdded && selectedId === 'moving-average' && <MovingAverageConfig />}
-              {selectedAdded && selectedId === 'daily-moving-average' && <DailyMovingAverageConfig />}
-              {selectedAdded && selectedId === 'volume' && <VolumeConfig />}
-              {selectedAdded && selectedId === 'trade-value' && <TradeValueConfig />}
-              {selectedAdded && (selectedId === 'foreign-net' || selectedId === 'institution-net') && <InvestorNetConfig which={selectedId === 'foreign-net' ? 'foreign' : 'institution'} grossSupported={capabilities.investorNet === 'stock'} />}
-              {selectedAdded && selectedId === 'broker-late-entry' && <BrokerLateEntryConfig />}
-              {selectedAdded && selectedId === 'peak-walls' && <PeakWallsConfig />}
-              {selectedAdded && selectedId === 'trade-volume-poc' && <TradeVolumePocConfig />}
-              {selectedAdded && selectedId === 'depth-heatmap' && <DepthHeatmapConfig />}
-              {selectedAdded && selectedId === 'volume-distribution' && (
-                <div>
-                  <div className="mb-3">
-                    <label className="flex items-center justify-between gap-3 text-sm text-fg">
-                      <span>구간 수</span>
-                      <input
-                        type="number"
-                        min={5}
-                        max={30}
-                        step={1}
-                        aria-label="연속체결 매물대 분포 구간 수"
-                        className="w-[84px] rounded-md border border-border-strong bg-bg-input px-2 py-1 text-right text-sm tabular-nums text-fg focus:border-accent focus:outline-none"
-                        value={volumeDistributionRangeCount}
-                        onChange={(event) => setVolumeDistributionRangeCount(Number(event.currentTarget.value))}
-                      />
-                    </label>
-                  </div>
-                  <div className="mb-3">
-                    <ToggleRow
-                      label="호버 시점 누적"
-                      description="마우스를 올린 시점까지의 연속체결량만 누적합니다."
-                      checked={volumeDistributionHoverCutoffEnabled}
-                      onToggle={() => setVolumeDistributionHoverCutoffEnabled(!volumeDistributionHoverCutoffEnabled)}
-                      testId="settings-toggle-volumeDistributionHoverCutoff"
-                    />
-                  </div>
-                  <div className="mb-3">
-                    <div className="mb-1.5 text-xs text-fg-dim">색상</div>
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="w-20 text-sm text-fg">기본 구간</span>
-                        <ColorSwatchPicker
-                          label="연속체결 매물대 분포 색상"
-                          color={volumeDistributionColor}
-                          onChange={(color) => setVolumeDistributionStyle({ color })}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="w-20 text-sm text-fg">최대 구간</span>
-                        <ColorSwatchPicker
-                          label="연속체결 매물대 분포 최대 구간 색상"
-                          color={volumeDistributionMaxColor}
-                          onChange={(maxColor) => setVolumeDistributionStyle({ maxColor })}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-xs leading-5 text-fg-dim">
-                    거래일 내 체결량이 가장 많은 구간을 별도 색상으로 강조합니다.
-                  </div>
-                </div>
-              )}
-              {selectedAdded && selectedId === 'quote-totals' && <QuoteTotalsConfig />}
-              {selectedAdded && selectedId === 'ratio' && <RatioConfig />}
-              {selectedAdded && selectedId === 'fill-strength' && <FillStrengthConfig />}
-              {selected === 'program-daily' && <DailyProgramTradeConfig />}
-              {selected === 'program-trade' && <ProgramTradeConfig />}
+              {emptyCatalog ? <p className="text-sm text-fg-dim">모든 지표를 사용 중이에요.</p> : draft ? <CatalogDraftProvider key={selectedId} draft={draft}>
+                <IndicatorConfigContent category={selectedId} capabilities={capabilities} />
+              </CatalogDraftProvider> : selectedAdded ? <IndicatorConfigContent key={selectedId} category={selectedId} capabilities={capabilities} />
+                : <p className="text-sm text-fg-dim">{mode === 'mine' ? '지표 추가에서 원하는 지표를 골라 주세요.' : '추가할 수 있는 지표를 전부 쓰고 있습니다.'}</p>}
           </section>
       </SettingsEditor>
     </ModalShell>
   );
+}
+
+/** The footer follows the same draft store as the form, including zero-slot validation. */
+function CatalogAddButton({ draft, category, onAdd }: { draft: CatalogDraft; category: CategoryId; onAdd: () => void }) {
+  const canAdd = useStore(draft.store, s => indicatorIsPresent(category, s.settings));
+  return <button type="button" className="indicator-catalog-add" onClick={onAdd} disabled={!canAdd}>설정대로 추가</button>;
 }

@@ -30,6 +30,7 @@
  * PR-C]에서 `<WindowViewContext.Provider>` 로 감싼다. react-refresh 규약상 훅·컨텍스트
  * 와 컴포넌트를 한 파일에 섞지 않는다.)
  */
+import { IndicatorEditorDraftContext } from '../../state/indicatorEditorDraftContext';
 import { useContext, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useLivePageStore, type LiveTimeframe, type MinuteTimeframe } from '../../state/livePage';
@@ -232,6 +233,7 @@ export function useSeedWindowIndicatorScope(
  * 필드 비교.
  */
 export function useWindowIndicators(): IndicatorSettings {
+  const draft = useContext(IndicatorEditorDraftContext);
   const timeframe = useWindowIndicatorTimeframe();
   const scope = useWindowIndicatorScope();
   const ambient = useLivePageStore(
@@ -252,7 +254,7 @@ export function useWindowIndicators(): IndicatorSettings {
       )
       : undefined),
   );
-  return (inWindow ?? ambient) as IndicatorSettings;
+  return draft?.settings ?? (inWindow ?? ambient) as IndicatorSettings;
 }
 
 /**
@@ -261,15 +263,16 @@ export function useWindowIndicators(): IndicatorSettings {
  * (선택한 값이 그대로면 다른 지표를 바꿔도 재렌더 없음).
  */
 export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
+  const draft = useContext(IndicatorEditorDraftContext);
   const timeframe = useWindowIndicatorTimeframe();
   const scope = useWindowIndicatorScope();
   return useLivePageStore((s) => select(
-    timeframe
+    draft?.settings ?? (timeframe
       ? resolveIndicatorSettings(
         bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scope),
         timeframe,
       )
-      : (s as unknown as IndicatorSettings),
+      : (s as unknown as IndicatorSettings)),
   ));
 }
 
@@ -534,13 +537,19 @@ function buildWindowIndicatorActions(windowId: string, instrumentKind: 'stock' |
 
 /** 지표 편집 액션 — Provider 안=이 창의 봉 버킷, 밖=전역 ambient 경로. */
 export function useIndicatorActions(): IndicatorActions {
+  const draftActions = useContext(IndicatorEditorDraftContext)?.actions;
   const ctx = useContext(WindowViewContext);
   const windowId = ctx?.windowId ?? null;
   const instrumentKind = ctx?.instrumentKind ?? 'stock';
-  return useMemo(
-    () => (windowId ? buildWindowIndicatorActions(windowId, instrumentKind) : buildGlobalIndicatorActions()),
-    [windowId, instrumentKind],
-  );
+  return useMemo(() => {
+    const live = windowId ? buildWindowIndicatorActions(windowId, instrumentKind) : buildGlobalIndicatorActions();
+    if (!draftActions) return live;
+    return { ...live, ...draftActions,
+      // The matrix's destructive live shortcut must also remain inside the draft.
+      setPeakSideEnabledWithUndo: (side: 'ask' | 'bid', enabled: boolean) =>
+        side === 'ask' ? draftActions.setAskPeakEnabled(enabled) : draftActions.setBidPeakEnabled(enabled),
+    };
+  }, [windowId, instrumentKind, draftActions]);
 }
 
 /**

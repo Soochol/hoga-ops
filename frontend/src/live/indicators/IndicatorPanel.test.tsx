@@ -43,7 +43,9 @@ function openMine(): void {
 /** 카탈로그에서 추가 — 추가는 그 지표의 상세로 이동하고 목록으로 돌아온다. */
 function addIndicator(name: string): void {
   openCatalog();
-  fireEvent.click(screen.getByRole('button', { name: `${name} 추가` }));
+  fireEvent.click(screen.getByRole('button', { name }));
+  fireEvent.click(screen.getByRole('button', { name: '설정대로 추가' }));
+  openMine();
 }
 
 /** 그 지표의 상세를 연다. 없으면 먼저 추가한다 — 대부분의 테스트가 원하는 것은
@@ -212,7 +214,7 @@ describe('IndicatorPanel', () => {
       .map((l) => l.slice(0, -suffix.length));
     const mine = labelsEndingWith(' 삭제');
     openCatalog();
-    const addable = labelsEndingWith(' 추가');
+    const addable = within(screen.getByRole('navigation')).getAllByRole('button').filter(b => b.parentElement?.classList.contains('indicator-nav-row') && b.parentElement.firstElementChild === b).map(b => b.getAttribute('aria-label'));
 
     expect(new Set([...mine, ...addable]).size).toBe(17);
     // 켜 둔 것은 전부 "내 지표" 쪽이다.
@@ -265,20 +267,21 @@ describe('IndicatorPanel', () => {
     previewDetail('당일 최대벽');
 
     expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
-    // 상세는 보이고, 그 행은 여전히 ＋ 다(누를지 결정할 수 있게).
+    // Selecting a row opens its draft; there is no bypass add action.
     expect(screen.getByRole('heading', { name: '당일 최대벽', level: 3 })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '당일 최대벽 추가' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '설정대로 추가' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: '당일 최대벽 추가' })).toBeNull();
   });
 
-  // 미리보기의 **정의가 바뀌었다**: 종전엔 아직 존재하지 않는 지표의 편집 가능한
-  // 설정 폼이 떴다(어휘는 미리보기인데 화면은 편집기). 이제는 카드다.
-  it('미추가 지표의 상세는 설정 폼이 아니라 미리보기 카드다', () => {
+  // The form edits an isolated draft until the footer adds it.
+  it('미추가 지표는 임시 설정 폼을 보여 주고 차트 설정은 바꾸지 않는다', () => {
     renderPanel();
     previewDetail('당일 최대벽');
 
-    expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
-    // 그 지표의 설정 컨트롤은 하나도 없다 — 만질 수 없는 것을 보여 주지 않는다.
-    expect(screen.queryByTestId('settings-toggle-askPeakIntraMax')).toBeNull();
+    expect(screen.getByTestId('indicator-style-preview')).toBeTruthy();
+    // Controls are available without enabling the live indicator.
+    expect(screen.getByTestId('settings-toggle-askPeakIntraMax')).toBeTruthy();
+    expect(useLivePageStore.getState().askPeakEnabled).toBe(false);
     // 설명은 카드 안팎 어디에 있든 계속 읽힌다(카테고리 표가 소유).
     expect(screen.getByText(/거래일별 10호가의 최대 매수·매도벽/)).toBeTruthy();
   });
@@ -286,7 +289,7 @@ describe('IndicatorPanel', () => {
   it('미리보기의 CTA 로 추가하면 그 자리가 설정 폼이 된다', () => {
     renderPanel();
     previewDetail('당일 최대벽');
-    fireEvent.click(screen.getByRole('button', { name: '＋ 차트에 추가' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정대로 추가' }));
 
     expect(useLivePageStore.getState().askPeakEnabled).toBe(true);
     // 선택은 그대로 — 추가했다고 다른 지표로 튀지 않는다.
@@ -401,7 +404,7 @@ describe('IndicatorPanel', () => {
       expect(screen.getByRole('heading', { name: '당일 최대 매물대', level: 3 })).toBeTruthy();
       // 선택까지만 — 보기 전에 차트가 바뀌면 안 된다는 어휘 규약이 키보드에도 적용된다.
       expect(useLivePageStore.getState().tradeVolumePocEnabled).toBe(false);
-      expect(screen.getByTestId('indicator-preview-card')).toBeTruthy();
+      expect(screen.getByTestId('indicator-style-preview')).toBeTruthy();
     });
 
     // 한글 조합 중의 Enter 는 **글자 확정**이지 명령이 아니다. 이 가드가 없으면
@@ -526,8 +529,8 @@ describe('IndicatorPanel', () => {
       expect(screen.queryByRole('button', { name })).toBeNull();
       expect(screen.queryByRole('button', { name: `${name} 추가` })).toBeNull();
     }
-    expect(screen.getByRole('button', { name: '외국인 순매수량 추가' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: '기관 순매수량 추가' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '외국인 순매수량' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '기관 순매수량' })).toBeTruthy();
   });
 
   it('indices without investor support hide investor net categories too', () => {
@@ -716,7 +719,7 @@ describe('IndicatorPanel', () => {
     // 꺼진 봉에서는 "내 지표" 가 아니라 카탈로그에 있다(존재 = 켜짐).
     expect(screen.queryByRole('button', { name: '거래량 삭제' })).toBeNull();
     openCatalog();
-    expect(screen.getByRole('button', { name: '거래량 추가' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '거래량' })).toBeTruthy();
 
     useLivePageStore.getState().setIndicatorTimeframe('W');
     view.rerender(<IndicatorPanel onClose={() => {}} timeframe="W" />);

@@ -60,6 +60,7 @@ test('daily program pane switches all three modes without fetching and restores 
   await panel.getByRole('button', { name: '프로그램 순매수량 삭제', exact: true }).click();
   await expect(first.getByTestId('pane-chip-program-daily')).toHaveCount(0);
   await panel.getByTestId('indicator-panel-mode-toggle').click();
-  await panel.getByRole('button', { name: '프로그램 순매수량 추가', exact: true }).click();
+  await panel.getByRole('button', { name: '프로그램 순매수량', exact: true }).click();
+  await panel.getByRole('button', { name: '설정대로 추가', exact: true }).click();
   await expect(first.getByTestId('pane-chip-program-daily')).toHaveText('프로그램 총매도량');
 });

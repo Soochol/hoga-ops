@@ -138,7 +138,8 @@ test('stock and index indicators remain independent when switching and reloading
   };
   await page.getByTestId('live-indicators-button').click();
   await page.getByTestId('indicator-panel-mode-toggle').click();
-  await page.getByRole('button', { name: '거래대금 추가', exact: true }).click();
+  await page.getByRole('button', { name: '거래대금', exact: true }).click();
+  await page.getByRole('button', { name: '설정대로 추가', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('pane-legend-rows-trade-value')).toBeVisible();
   await switchKind('index');
