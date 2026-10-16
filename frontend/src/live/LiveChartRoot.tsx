@@ -1,3 +1,11 @@
+import { peakWallInstancePoints } from './indicators/peakWallInstancePoints';
+import { ScopedIndicatorPane } from './indicators/IndicatorInstancePane';
+import { IndicatorDistributionInstance } from './indicators/IndicatorDistributionInstance';
+import { IndicatorInstanceProvider } from './indicators/IndicatorInstanceProvider';
+import { IndicatorInstanceOverlays } from './indicators/IndicatorInstanceOverlays';
+import { indicatorInstancePanes, instancePaneGroup, filterPrimaryPaneGroups, indicatorInstanceApplicable } from './indicators/indicatorInstancePanes';
+import { useWindowIndicators } from './workspace/windowView';
+import { basePaneId } from '../chart/paneOrder';
 import type { SeriesType } from 'lightweight-charts';
 import { barPitchPx } from '../chart/drawing/chartCoordinates';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
@@ -7,7 +15,7 @@ import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
 import { useThemeChangeRerender } from '../state/themePrefs';
 import { chartCrosshairOptions, CHART_LAYOUT_OPTIONS, CHART_TIMESCALE_OPTIONS } from '../util/chartScale';
 import { createVirtualAxis, type VirtualAxis } from '../util/virtualAxis';
-import RangeSeriesPane, { type PaneBundleKind, type SeriesLegendMeta } from '../chart/RangeSeriesPane';
+import { type PaneBundleKind, type SeriesLegendMeta } from '../chart/RangeSeriesPane';
 import { usePaneLegendRegistry } from './indicators/paneLegendRegistry';
 import { paneGroupIds, paneGroupSpecsForTimeframe, paneGroupStretch, type PaneSpecGroup } from './paneGroupSpecs';
 import { paneGroupKey, resolveAxisMode, type PaneGroupStretchMap } from '../chart/paneGroups';
@@ -30,7 +38,7 @@ import { canPublishSyncCursor, isSyncConsumerTimeframe } from '../chart/cursorSy
 import { canPublishRangeSync, isRangeSyncFollower } from '../chart/rangeSync';
 import { useRangeSyncPublish, useRangeSyncFollow } from './useRangeSync';
 import { canPublishTimeframeJump } from '../chart/timeframeJump';
-import type { AskPeakCandidate, Candle, RangeSegment } from '../api/types';
+import type { Candle, RangeSegment } from '../api/types';
 import { hasBlockingWarnings } from '../api/livePastCandles';
 import StudySavedRangeBandHost from '../studyViews/StudySavedRangeBandHost';
 import { savedRangeAnchorTs } from './savedRangeAnchor';
@@ -63,9 +71,7 @@ import type { TradeSnapshot } from './bucketHogaSeries';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
-import { buildBarModePanePoints, type PeakWallStepBuilder } from './peakWallPanePoints';
-import { buildPeakWallStepPoints, buildUnreachedStepPoints, type PeakWallStepPoint } from '../chart/peakWallSteps';
-import { usePeakWallStepsPublisher, type PeakWallStepKey } from './indicators/peakWallStepsRegistry';
+import { usePeakWallStepsPublisher } from './indicators/peakWallStepsRegistry';
 import { usePeakWallCountsPublisher } from './indicators/peakWallCountsRegistry';
 import { PEAK_WALL_LEGEND_RANK_LIMIT } from './peakWallVisibleRanking';
 import { candleExtremesByVirtualSec, peakWallRankArrowsFromSegments } from './peakWallRankArrows';
@@ -336,6 +342,7 @@ interface Props {
    *  복원한다. optional + 기본 null이라 기존 단일-번들 호출부/테스트는 무변경으로 동작. */
   restoreViewport?: TabViewport | null;
   /** LivePage의 useDayAskPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
+  adjustFactors?: import('./scaleRangeBundlePrices').AdjustFactors;
   dayAskPeaks?: readonly AskPeak[];
   /** LivePage의 useDayBidPeaks 결과(거래일별) — 최대벽 렌더 훅에 전달. */
   dayBidPeaks?: readonly BidPeak[];
@@ -495,6 +502,7 @@ export function LiveChartRoot({
   settledFromDate = null,
   pastDataWarnings,
   restoreViewport = null,
+  adjustFactors,
   dayAskPeaks = EMPTY_ASK_PEAKS,
   dayBidPeaks = EMPTY_BID_PEAKS,
   liveTradeSnapshots = EMPTY_TRADE_SNAPSHOTS,
@@ -568,8 +576,8 @@ export function LiveChartRoot({
     spec: { name: string; bundleKind?: PaneBundleKind },
     candlePath: RangeBundle,
   ): RangeBundle =>
-    spec.name === 'volume'
-      ? (volumeFillStrengthCumulative ? (liveBundle ?? candlePath) : candlePath)
+    basePaneId(spec.name as PaneId) === 'volume'
+      ? ((volumeFillStrengthCumulative || instanceBase.indicatorInstances?.some(row => row.category === 'volume' && row.prefs.volumeFillStrengthCumulative)) ? (liveBundle ?? candlePath) : candlePath)
       : spec.bundleKind === 'ratio'
         ? (paneRatioBundle ?? candlePath)
         : spec.bundleKind === 'hoga'
@@ -2066,7 +2074,12 @@ export function LiveChartRoot({
   // 사용자가 켠 pane 은 창 크기와 무관하게 전부 마운트한다. 공간 부족은 아래 렌더의
   // chart surface 최소 높이 + viewport 세로 스크롤이 처리한다. 지표를 임의로 빼면
   // 설정의 "켜짐"과 실제 화면이 달라지고 separator 저장 인덱스도 흔들린다.
-  const visiblePaneGroups = gatedPaneGroups;
+  const instanceBase = useWindowIndicators();
+  const extraPaneGroups = useMemo(() => (instanceBase.indicatorInstances ?? []).flatMap(row =>
+    indicatorInstancePanes(instanceBase, row, timeframe, paneTogglesOverride?.hogaPanes !== false).map(instancePaneGroup)),
+  [instanceBase, timeframe, paneTogglesOverride?.hogaPanes]);
+  const primaryVisibleGroups = useMemo(() => filterPrimaryPaneGroups(gatedPaneGroups, instanceBase.indicatorPrimaryHidden), [gatedPaneGroups, instanceBase.indicatorPrimaryHidden]);
+  const visiblePaneGroups = useMemo(() => [...primaryVisibleGroups, ...extraPaneGroups], [primaryVisibleGroups, extraPaneGroups]);
 
   // 각 pane(그룹) 앞에 놓인 그룹 **구성** 시퀀스. `RangeSeriesPane` 의 lifecycle dep
   // 으로 들어가 "밑에서 pane 인덱스가 밀리는" pane 들을 재생성에 참여시킨다 — 왜
@@ -2277,48 +2290,10 @@ export function LiveChartRoot({
   // ⚠ 미도달만 **다른 빌더**를 쓴다. 그 계열은 극값 전진이 구성원을 빼앗아 단조가
   // 아니므로 running max 를 태우면 이미 깨진 벽이 계단에 영원히 남는다
   // (`buildUnreachedStepPoints` docstring).
-  const peakWallStepPoints = useMemo(() => {
-    const candlesForSteps = cb?.candles ?? EMPTY_CANDLES;
-    // 체결·전체 두 계열이 모드를 탄다(미도달만 늘 계단) — 사유와 폴백 없음 규칙은
-    // `buildBarModePanePoints` 가 소유한다. 여기서 인라인으로 두면 테스트가 닿지
-    // 않는다는 것이 red-check 으로 확인됐다(그 모듈 머리말).
-    const byMode = (
-      barCands: readonly AskPeakCandidate[],
-      segs: readonly PeakWallSegment[],
-      color: string,
-      stepBuilder: PeakWallStepBuilder = buildPeakWallStepPoints,
-    ) => buildBarModePanePoints({
-      mode: prefPeakWallPaneMode,
-      paneEnabled: prefPeakWallPaneEnabled,
-      barCandidates: barCands,
-      stepSegments: segs,
-      stepBuilder,
-      candles: candlesForSteps,
-      axis,
-      color,
-    });
-    // 미도달만 비단조 빌더다 — side 를 클로저로 감싸 공통 시그니처에 맞춘다.
-    const unreachedStep = (side: 'ask' | 'bid'): PeakWallStepBuilder =>
-      (segs, c, a, color) => buildUnreachedStepPoints(segs, c, a, color, side);
-    return {
-      'ask-traded': byMode(askWall.barCandidates, askWall.stepSegments, askWall.color),
-      'ask-all': byMode(
-        askWall.allWallBarCandidates, askWall.allWallStepSegments, askWall.allWallColor,
-      ),
-      'ask-unreached': byMode(
-        askWall.unreachedBarCandidates, askWall.unreachedStepSegments,
-        askWall.unreachedColor, unreachedStep('ask'),
-      ),
-      'bid-traded': byMode(bidWall.barCandidates, bidWall.stepSegments, bidWall.color),
-      'bid-all': byMode(
-        bidWall.allWallBarCandidates, bidWall.allWallStepSegments, bidWall.allWallColor,
-      ),
-      'bid-unreached': byMode(
-        bidWall.unreachedBarCandidates, bidWall.unreachedStepSegments,
-        bidWall.unreachedColor, unreachedStep('bid'),
-      ),
-    } satisfies Record<PeakWallStepKey, readonly PeakWallStepPoint[]>;
-  }, [prefPeakWallPaneEnabled, prefPeakWallPaneMode, cb?.candles, axis, askWall, bidWall]);
+  const peakWallStepPoints = useMemo(() => peakWallInstancePoints({
+    askWall, bidWall, candles: cb?.candles ?? EMPTY_CANDLES, axis,
+    mode: prefPeakWallPaneMode, enabled: prefPeakWallPaneEnabled,
+  }), [prefPeakWallPaneEnabled, prefPeakWallPaneMode, cb?.candles, axis, askWall, bidWall]);
 
   // 발행은 훅이 쥔다 — **쓰기 조건**(점 배열이 그대로면 쓰지 않는다)이 이 기능의
   // 위험 전부라, 그 조건을 테스트가 잡을 수 있는 자리에 둔다. 종전에 여기서 매 커밋
@@ -2797,6 +2772,13 @@ export function LiveChartRoot({
         <>
           {candleAlwaysOnTop && (
             <>
+              {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false)).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
+                <IndicatorInstanceOverlays category={row.category} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
+                  paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
+                  dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}
+                  dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate}
+                  depthHeatmapPoints={depthHeatmapPoints} />
+              </IndicatorInstanceProvider>)}
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />
@@ -2808,8 +2790,7 @@ export function LiveChartRoot({
             // 자기 bundleKind 그릇을 그대로 받으므로 데이터 라우팅·SSE memo 경계가
             // 병합 전과 동일하다. key 는 spec.name — 그룹 간 이동에도 안정.
             group.map((spec) => (
-              <RangeSeriesPane
-                key={spec.name}
+              <ScopedIndicatorPane code={code} key={spec.name}
                 chart={chart}
                 bundle={bundleForPane(spec, cb)}
                 axis={axis}
@@ -2829,6 +2810,13 @@ export function LiveChartRoot({
             )))}
           {!candleAlwaysOnTop && (
             <>
+              {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false)).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
+                <IndicatorInstanceOverlays category={row.category} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
+                  paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
+                  dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}
+                  dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate}
+                  depthHeatmapPoints={depthHeatmapPoints} />
+              </IndicatorInstanceProvider>)}
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />
@@ -3119,6 +3107,18 @@ export function LiveChartRoot({
         </div>
       )}
       </div>
+      {chart && cb && isMinuteTimeframe(timeframe) && <div className="indicator-distribution-instances">
+        {instanceBase.volumeDistributionEnabled && !instanceBase.indicatorPrimaryHidden?.includes('volume-distribution') && <IndicatorDistributionInstance category="volume-distribution" adjustFactors={adjustFactors} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
+            paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
+            dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}
+            dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} depthHeatmapPoints={depthHeatmapPoints} />}
+        {(instanceBase.indicatorInstances ?? []).filter(row => row.category === 'volume-distribution' && !row.hidden).map(row => <IndicatorInstanceProvider key={row.id} id={row.id}>
+          <IndicatorDistributionInstance id={row.id} category="volume-distribution" adjustFactors={adjustFactors} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
+            paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
+            dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}
+            dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} depthHeatmapPoints={depthHeatmapPoints} />
+        </IndicatorInstanceProvider>)}
+      </div>}
     </div>
   );
 }

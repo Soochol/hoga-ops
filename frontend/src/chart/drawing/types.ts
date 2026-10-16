@@ -54,7 +54,9 @@ export function isDrawingKind(tool: DrawingTool): tool is DrawingKind {
 /** Stable identifier for a chart pane. Mirrors `PaneSpec.name`. Renaming
  *  any literal here is a breaking change — strands every user's saved
  *  drawings bound to that name. See ADR-0028. */
-export type PaneId =
+export type PaneId = BasePaneId | `indicator:${string}:${BasePaneId}`;
+
+export type BasePaneId =
   | 'candle'
   | 'volume'
   | 'trade-value'

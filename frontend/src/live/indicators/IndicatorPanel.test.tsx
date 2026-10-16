@@ -314,7 +314,7 @@ describe('IndicatorPanel', () => {
     expect(screen.getByText('추가한 지표가 없습니다.')).toBeTruthy();
   });
 
-  it('카탈로그를 전부 쓰고 있으면 그쪽 안내를 띄운다', () => {
+  it('이미 쓰는 지표도 카탈로그에서 다시 추가할 수 있다', () => {
     // 지수 창(호가·프로그램 없음, 투자자 순매수 없음)에 남는 것은 상단 지표 3종 +
     // 신규 거래원 등장이다 — `investorNet: 'none'` 은 투자자 **둘만** 가리고
     // 거래원 등장은 안 가린다. 넷을 다 켜야 카탈로그가 빈다.
@@ -324,7 +324,9 @@ describe('IndicatorPanel', () => {
     useLivePageStore.getState().setAllBrokerLateEntriesEnabled(true);
     renderPanel({ capabilities: { hogaPanes: false, investorNet: 'none', studySave: false } });
     openCatalog();
-    expect(screen.getByText('추가할 수 있는 지표를 전부 쓰고 있습니다.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '볼린저 밴드' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '볼린저 밴드' }));
+    expect(screen.getByRole('button', { name: '설정대로 추가' })).toBeEnabled();
   });
 
   describe('검색', () => {

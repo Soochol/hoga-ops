@@ -29,7 +29,7 @@ import {
   useSeedWindowIndicatorScope,
   WindowViewContext,
   useWindowView,
-  useWindowIndicators,
+  useWindowIndicatorDemand,
   type WindowViewValue,
 } from './windowView';
 import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
@@ -166,7 +166,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
 
 function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const view = useWindowView(); // 창의 값(Provider 안)
-  const ind = useWindowIndicators();
+  const ind = useWindowIndicatorDemand();
   const selectedVenue = useLiveVenueStore((s) => s.venue);
   // 차트 계통의 venue 해석은 **여기 한 곳**이다. 아래 `useLiveChartData` 와
   // `<LiveChartRoot venue=…>` 가 이 값을 그대로 물려받아, 캔들 오버레이 게이트
@@ -891,6 +891,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         <ChartErrorBoundary>
           <ChartDrawingShell>
             <LiveChartRoot
+              adjustFactors={d.adjustFactors}
               imageViewportRef={imageViewportRef}
               hoverLinked={hoverLinked}
               indicatorLegendsVisible={indicatorLegendsVisible}

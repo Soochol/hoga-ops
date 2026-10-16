@@ -10,6 +10,8 @@ import { DEFAULT_LIVE_MAS } from './livePage';
 describe('mergeLiveIndicatorPrefs', () => {
   it('returns defaults for undefined input', () => {
     expect(mergeLiveIndicatorPrefs(undefined)).toEqual({
+      indicatorInstances: [],
+      indicatorPrimaryHidden: [],
       indicatorLineVisibility: {},
       supertrendEnabled: false,
       supertrendHidden: false,

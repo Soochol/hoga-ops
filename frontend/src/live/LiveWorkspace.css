@@ -111,3 +111,21 @@
   .live-chart-toolbar .ui-toolbar-button, .live-chart-toolbar [data-testid='drawing-menu-trigger'] { padding-inline: 4px; }
   .live-chart-toolbar-divider { display: none; }
 }
+
+.indicator-instance-children { margin: 0 0 var(--space-xs) var(--space-sm); }
+.indicator-instance-row { display: flex; align-items: center; gap: var(--space-xs); }
+.indicator-instance-row button { color: var(--fg-dim); padding: var(--space-xs); border-radius: var(--radius-sm); }
+.indicator-instance-row > button:first-child { flex: 1; min-width: 0; text-align: left; display: flex; gap: var(--space-sm); }
+.indicator-instance-row > button:first-child span:last-child { overflow-wrap: anywhere; }
+.indicator-instance-row button:hover, .indicator-instance-row button.is-selected { background: var(--tint-selection); color: var(--fg); }
+.indicator-instance-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm); margin-top: var(--space-sm); font-size: var(--text-sm); color: var(--fg-dim); }
+.indicator-instance-actions button { padding: var(--space-xs) var(--space-sm); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--fg); }
+.indicator-instance-legend { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); pointer-events: auto; font-size: var(--text-xs); color: var(--fg); background: var(--bg-card); border-radius: var(--radius-sm); padding: var(--space-2xs) var(--space-xs); }
+.indicator-instance-legend button { display: flex; align-items: center; color: var(--fg-dim); padding: var(--space-2xs); }
+.indicator-instance-legend button:hover { color: var(--fg); background: var(--bg-input-hover); }
+.indicator-distribution-instances { display: flex; flex-direction: column; gap: var(--space-sm); }
+.indicator-distribution-instance { height: 280px; overflow: auto; padding: var(--space-sm); border-top: 1px solid var(--border); }
+@media (max-width: 460px) {
+  .indicator-instance-row > button:not(:first-child) { display: none; }
+  .indicator-instance-row > button:first-child { width: 100%; }
+}

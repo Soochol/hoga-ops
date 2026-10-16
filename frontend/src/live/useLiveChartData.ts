@@ -40,7 +40,7 @@ import { buildIndexBundle } from './buildIndexBundle';
 import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import { quantizeDailyMaFloorDate } from './indicators/dailyMaProjection';
-import { useWindowIndicators } from './workspace/windowView';
+import { useWindowIndicatorDemand } from './workspace/windowView';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 peaks 훅의 메모 deps 를 churn 하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
@@ -301,7 +301,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
    * `hidden` 은 게이트에 넣지 않는다 — fetch 게이트가 `enabled` 만 보므로 같은 축을 유지한다
    * (넣으면 숨김 토글이 저장 뷰의 내용을 조용히 바꾼다).
    */
-  const { askPeakEnabled, bidPeakEnabled, tradeVolumePocEnabled } = useWindowIndicators();
+  const { askPeakEnabled, bidPeakEnabled, tradeVolumePocEnabled } = useWindowIndicatorDemand();
   const isMinute = isMinuteTimeframe(timeframe);
   const askPeaksOn = isMinute && askPeakEnabled;
   const bidPeaksOn = isMinute && bidPeakEnabled;

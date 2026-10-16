@@ -5,6 +5,9 @@ import { useIndicatorActions, useWindowIndicators, useWindowIndicatorScope, Wind
 import { dotColorsFor } from './indicatorDotColors';
 import { INDICATOR_GLYPH } from './indicatorGlyphs';
 import { CatalogDraftProvider } from './CatalogDraftProvider';
+import EyeGlyph from '../EyeGlyph';
+import { IndicatorInstanceProvider } from './IndicatorInstanceProvider';
+import { makeIndicatorInstance, instanceSettings, indicatorInstanceSummary, PRIMARY_INDICATOR_ID, indicatorGroupHidden, clearIndicatorGroupHidden, ownsIndicatorKey, MAX_INDICATOR_INSTANCES } from '../../state/indicatorInstances';
 import IndicatorConfigContent from './IndicatorConfigContent';
 import { createCatalogDraft, catalogDraftPatch, indicatorIsPresent, PANE_CATEGORY_TO_KEY, type CatalogDraft } from './indicatorCatalogDraft';
 import IndicatorPanelMenu from './IndicatorPanelMenu';
@@ -123,7 +126,6 @@ function IndicatorNavRow({
           ))}
         </span>
       )}
-      {added && !action && <span className="ml-2 shrink-0 text-xs text-fg-dim">추가됨</span>}
       {action && <button
         type="button"
         aria-label={action.label}
@@ -169,9 +171,7 @@ export default function IndicatorPanel({
   // "켜진 슬롯이 하나라도 있는가" 의 파생이고, 누르면 전 슬롯을 함께 켜고 끈다.
   const setMaEnabled = actions.setAllMovingAveragesEnabled;
   const setDailyMaEnabled = actions.setAllDailyMovingAveragesEnabled;
-  const askPeakEnabled = ind.askPeakEnabled;
   const setAskPeakEnabled = actions.setAskPeakEnabled;
-  const bidPeakEnabled = ind.bidPeakEnabled;
   const setBidPeakEnabled = actions.setBidPeakEnabled;
   const setTradeVolumePocEnabled = actions.setTradeVolumePocEnabled;
   const setVolumeDistributionEnabled = actions.setVolumeDistributionEnabled;
@@ -195,7 +195,8 @@ export default function IndicatorPanel({
   // 것」이 **섞이지 않는 것**이 중요하다는 판단이다 — 매일 여는 목록은 대개 전자만
   // 보려고 여는 것이고, 후자는 가끔 찾으러 들어가는 곳이다.
   const [mode, setMode] = useState<'mine' | 'catalog'>('mine');
-  const [justAdded, setJustAdded] = useState<CategoryId | null>(null);
+  const [selectedInstance, setSelectedInstance] = useState(PRIMARY_INDICATOR_ID);
+  const [lastAdded, setLastAdded] = useState<CategoryId | null>(null);
   // 검색어와 ↑↓ 커서. 창을 바꾸면 패널이 재마운트되므로(`key={windowId}`) 둘 다
   // 초기화된다 — 이전 창에서 치던 검색어가 따라오지 않는 것이 맞다.
   const [query, setQuery] = useState('');
@@ -210,7 +211,8 @@ export default function IndicatorPanel({
   const drafts = cache.scope === draftScopeKey ? cache.drafts : {};
   if (cache.scope !== draftScopeKey) {
     setCache({ scope: draftScopeKey, drafts: {} });
-    setJustAdded(null);
+    setSelectedInstance(PRIMARY_INDICATOR_ID);
+    setLastAdded(null);
   }
   const getDraft = (id: CategoryId) => {
     const existing = drafts[id];
@@ -225,6 +227,7 @@ export default function IndicatorPanel({
   // 현재 봉만 비운다. 차트 전반 flat(⚙️ 설정 항목)은 패널 밖이라 건드리지 않는다.
   const handleReset = () => {
     resetIndicators();
+    setLastAdded(null);
     resetChartPrefsBucket();
     setCache({ scope: draftScopeKey, drafts: {} });
   };
@@ -253,7 +256,12 @@ export default function IndicatorPanel({
   // Each category maps to a master on/off toggle. Investor bars have an
   // informational detail pane (legend + daily note) but no per-slot config,
   // so the left checkbox is the whole control for them.
-  const checkedFor = (id: CategoryId) => indicatorIsPresent(id, ind);
+  const instancesFor = (id: CategoryId) => [
+    ...(indicatorIsPresent(id, ind) ? [{ id: PRIMARY_INDICATOR_ID, category: id, settings: ind, hidden: indicatorGroupHidden(id, ind) }] : []),
+    ...(ind.indicatorInstances ?? []).filter(row => row.category === id).map(row => ({ ...row, hidden: row.hidden || indicatorGroupHidden(id, instanceSettings(ind, row)), settings: instanceSettings(ind, row) })),
+  ];
+  const checkedFor = (id: CategoryId) => instancesFor(id).length > 0;
+  const patchInstances = (rows: typeof ind.indicatorInstances) => restore({ 'indicator:indicatorInstances': rows });
   /** 존재 토글 — 추가와 삭제가 **같은 슬롯의 반대 방향**이라 한 함수로 둔다.
    *  `null` 은 조작할 수 없는 카테고리(현재 없음 — 남겨 두는 것은 총계 방어). */
   const setPresenceFor = (id: CategoryId, present: boolean): (() => void) | null => {
@@ -273,25 +281,51 @@ export default function IndicatorPanel({
       default: return null;
     }
   };
-  const removeFor = (id: CategoryId) => () => {
-    const remaining = { ...drafts };
-    delete remaining[id];
+  const removeFor = (category: CategoryId, id: string) => {
+    setLastAdded(null);
+    const remaining = { ...drafts }; delete remaining[category];
     setCache({ scope: draftScopeKey, drafts: remaining });
-    setJustAdded(null);
-    setPresenceFor(id, false)?.();
+    if (id === PRIMARY_INDICATOR_ID) setPresenceFor(category, false)?.();
+    else patchInstances((ind.indicatorInstances ?? []).filter(row => row.id !== id));
   };
-
-  // Add the prepared category in one captured editor event. Keep the catalog open.
+  const toggleInstance = (category: CategoryId, id: string) => {
+    if (id === PRIMARY_INDICATOR_ID) {
+      const hidden = ind.indicatorPrimaryHidden ?? [];
+      const isHidden = indicatorGroupHidden(category, ind);
+      const visibility = isHidden ? clearIndicatorGroupHidden(category, ind) : {};
+      const patch = Object.fromEntries(Object.entries(visibility).filter(([key]) => key.endsWith('Hidden') && ownsIndicatorKey(category, key)).map(([key, value]) => [`indicator:${key}`, value]));
+      restore({ ...patch, 'indicator:indicatorPrimaryHidden': isHidden ? hidden.filter(c => c !== category) : [...hidden, category] });
+    } else patchInstances((ind.indicatorInstances ?? []).map(row => row.id === id ? { ...row, hidden: !(row.hidden || indicatorGroupHidden(category, instanceSettings(ind, row))), settings: clearIndicatorGroupHidden(category, row.settings) } : row));
+  };
+  const copyInstance = () => {
+    const row = instancesFor(selectedId).find(row => row.id === selectedInstance) ?? instancesFor(selectedId)[0];
+    if (!row) return;
+    const source = ind.indicatorInstances?.find(item => item.id === row.id);
+    const draft = createCatalogDraft(selectedId, row.settings, { ...prefs, ...source?.prefs });
+    setCache({ scope: draftScopeKey, drafts: { ...drafts, [selectedId]: draft } });
+    setSelected(selectedId);
+    setMode('catalog');
+    setLastAdded(null);
+    setQuery('');
+  };
+  // A populated category always gets a new stable instance. Never overwrite its siblings.
   const addFor = (id: CategoryId) => {
     const draft = getDraft(id);
-    if (!indicatorIsPresent(id, draft.store.getState().settings)) return;
-    restore(catalogDraftPatch(draft, read()));
+    const prepared = draft.store.getState();
+    if (!indicatorIsPresent(id, prepared.settings) || (ind.indicatorInstances?.length ?? 0) >= MAX_INDICATOR_INSTANCES) return;
+    if (instancesFor(id).length === 0) {
+      restore({ ...catalogDraftPatch(draft, read()), 'indicator:indicatorPrimaryHidden': (ind.indicatorPrimaryHidden ?? []).filter(c => c !== id) });
+      setSelectedInstance(PRIMARY_INDICATOR_ID);
+    } else {
+      const row = makeIndicatorInstance(id, prepared.settings, prepared.prefs);
+      patchInstances([...(ind.indicatorInstances ?? []), row]);
+      setSelectedInstance(row.id);
+    }
     setSelected(id);
-    setJustAdded(id);
+    setLastAdded(id);
   };
 
-  // "내 지표" = 지금 존재하는 것, 카탈로그 = 나머지. 두 목록의 합집합이 `categories`
-  // 라, 어느 쪽에도 안 나타나는 지표는 원리적으로 없다.
+  // 내 지표는 종류별 항목을 묶고, 카탈로그는 이미 쓰는 종류도 계속 제공한다.
   //
   // 검색은 `categories` **다음** 단계다 — capability 게이트를 통과한 것만 검색된다.
   // 순서를 바꾸면 이 종목에 없는 지표가 검색으로 되살아난다. 그리고 검색은 **지금
@@ -300,7 +334,7 @@ export default function IndicatorPanel({
   const trimmedQuery = query.trim();
   const matches = (label: string) => trimmedQuery === '' || label.includes(trimmedQuery);
   const active = categories.filter((c) => checkedFor(c.id) && matches(c.label));
-  const catalog = categories.filter((c) => (!checkedFor(c.id) || (c.id === justAdded && c.id === selected)) && matches(c.label));
+  const catalog = categories.filter((c) => matches(c.label));
   /** ↑↓ 가 짚는 대상 — 지금 모드의 보이는 행들. */
   const visible = mode === 'mine' ? active : catalog;
 
@@ -320,7 +354,7 @@ export default function IndicatorPanel({
     } else if (event.key === 'Enter') {
       event.preventDefault();
       // Enter selects the form; only the footer CTA adds the prepared indicator.
-      if (kbdTarget) setSelected(kbdTarget.id);
+      if (kbdTarget) { setLastAdded(null); setSelected(kbdTarget.id); setSelectedInstance(PRIMARY_INDICATOR_ID); }
     } else if (event.key === 'Escape' && query !== '') {
       // 검색어가 있으면 Escape 는 **검색만** 지운다. 전파를 끊지 않으면 ModalShell 의
       // document 리스너가 이어받아 패널까지 닫힌다.
@@ -352,7 +386,10 @@ export default function IndicatorPanel({
   const selectedAdded = checkedFor(selectedId);
   const currentTimeframeLabel = timeframeLabel(timeframe);
   const emptyCatalog = mode === 'catalog' && catalog.length === 0;
-  const draft = mode === 'catalog' && !selectedAdded && catalog.length > 0 ? getDraft(selectedId) : null;
+  const draft = mode === 'catalog' && catalog.length > 0 && !(lastAdded === selectedId && selectedAdded) ? getDraft(selectedId) : null;
+  const currentInstances = instancesFor(selectedId);
+  const currentInstance = currentInstances.find(row => row.id === selectedInstance) ?? currentInstances[0];
+  const currentId = currentInstance?.id ?? PRIMARY_INDICATOR_ID;
 
   return (
     // App settings and indicators share the same header, scope, navigation and undo shell.
@@ -369,8 +406,8 @@ export default function IndicatorPanel({
         footer={draft ? '설정한 값은 추가할 때 적용돼요.' : '변경 즉시 반영 · 현재 차트에 저장'}
         statusIcon={draft ? null : undefined}
         footerAction={mode === 'catalog' && !emptyCatalog && (draft || selectedAdded) ? (draft
-          ? <CatalogAddButton draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
-          : <button type="button" className="indicator-catalog-add" disabled>추가됨</button>) : undefined}
+          ? <CatalogAddButton count={ind.indicatorInstances?.length ?? 0} draft={draft} category={selectedId} onAdd={() => addFor(selectedId)} />
+          : <><button type="button" onClick={copyInstance} className="indicator-catalog-add">하나 더 추가</button><button type="button" className="indicator-catalog-add" disabled>추가됨</button></>) : undefined}
         sidebar={
       <div className="flex min-h-0 flex-1 flex-col">
 
@@ -384,7 +421,7 @@ export default function IndicatorPanel({
                 { value: 'mine', label: '내 지표', testId: mode === 'catalog' ? 'indicator-panel-mode-toggle' : undefined },
                 { value: 'catalog', label: '지표 추가', testId: mode === 'mine' ? 'indicator-panel-mode-toggle' : undefined },
               ]}
-              onChange={next => { setMode(next); setQuery(''); setKbdIndex(-1); }} />
+              onChange={next => { setMode(next); setLastAdded(null); setQuery(''); setKbdIndex(-1); }} />
             <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
               <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-fg-dim">
                 <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.5" />
@@ -433,9 +470,7 @@ export default function IndicatorPanel({
                   {/* Catalog rows only select the draft form. The footer commits it. */}
                   <IndicatorNavRow
                     label={c.label}
-                    summary={c.id === 'moving-average' || c.id === 'daily-moving-average'
-                      ? (c.id === 'moving-average' ? ind.movingAverages : ind.dailyMovingAverages).filter(m => m.enabled).map(m => m.period).join(' · ')
-                      : c.id === 'peak-walls' ? [askPeakEnabled ? '매도' : '', bidPeakEnabled ? '매수' : ''].filter(Boolean).join(' · ') : undefined}
+                    summary={added ? `${instancesFor(c.id).length}개` : undefined}
                     glyph={INDICATOR_GLYPH[c.id]}
                     added={added}
                     selected={selectedId === c.id}
@@ -443,11 +478,22 @@ export default function IndicatorPanel({
                     kbdIndex={i}
                     query={trimmedQuery}
                     dotColors={added ? dotColorsFor(c.id, ind) : EMPTY_DOT_COLORS}
-                    onSelect={() => { setSelected(c.id); if (c.id !== selected) setJustAdded(null); }}
-                    action={mode === 'mine' && added
-                      ? { label: `${c.label} 삭제`, onClick: () => removeFor(c.id)() }
+                    onSelect={() => { setSelected(c.id); setLastAdded(null); setSelectedInstance(instancesFor(c.id)[0]?.id ?? PRIMARY_INDICATOR_ID); }}
+                    action={mode === 'mine' && added && instancesFor(c.id).length === 1
+                      ? { label: `${c.label} 삭제`, onClick: () => removeFor(c.id, instancesFor(c.id)[0].id) }
                       : undefined}
                   />
+                  {mode === 'mine' && instancesFor(c.id).length > 1 && <div className="indicator-instance-children">
+                    {instancesFor(c.id).map((row, ri) => <div className="indicator-instance-row" key={row.id}>
+                      <button type="button" className={selectedId === c.id && currentId === row.id ? 'is-selected' : ''}
+                        aria-label={`${c.label} ${ri + 1} 설정`} aria-current={selectedId === c.id && currentId === row.id ? 'true' : undefined}
+                        onClick={() => { setSelected(c.id); setSelectedInstance(row.id); }}>
+                        <span className="font-data">{ri + 1}</span><span>{indicatorInstanceSummary(c.id, row.settings)}</span>
+                      </button>
+                      <button type="button" aria-label={`${c.label} ${ri + 1} ${row.hidden ? '표시' : '숨기기'}`} onClick={() => toggleInstance(c.id, row.id)}><EyeGlyph hidden={row.hidden === true} /></button>
+                      <button type="button" aria-label={`${c.label} ${ri + 1} 삭제`} onClick={() => removeFor(c.id, row.id)}>✕</button>
+                    </div>)}
+                  </div>}
                 </Fragment>
               );
             })}
@@ -463,9 +509,15 @@ export default function IndicatorPanel({
           <div className="settings-editor-detail-heading">
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs text-fg-dim">{GROUP_LABEL[selectedCategory.group]} · {PLACEMENT_LABEL[selectedCategory.placement]}</div>
-              <span className="text-xs text-fg-dim">{selectedAdded ? '차트에 추가됨' : '추가 전'}</span>
+              <span className="text-xs text-fg-dim">{draft ? '추가 전' : selectedAdded ? '차트에 추가됨' : ''}</span>
             </div>
             <h3>{emptyCatalog ? '지표 추가' : selectedCategory.label}</h3>
+            {!draft && currentInstance && <div className="indicator-instance-actions">
+              <span>{indicatorInstanceSummary(selectedId, currentInstance.settings)}</span>
+              <button type="button" onClick={() => toggleInstance(selectedId, currentId)}>{currentInstance.hidden ? '표시' : '숨기기'}</button>
+              <button type="button" onClick={() => removeFor(selectedId, currentId)}>삭제</button>
+              <button type="button" onClick={copyInstance}>설정 복사해서 추가</button>
+            </div>}
             <p className="settings-editor-description mt-1">{emptyCatalog ? '' : selectedCategory.description}</p>
           </div>
           <section
@@ -474,7 +526,9 @@ export default function IndicatorPanel({
           >
               {emptyCatalog ? <p className="text-sm text-fg-dim">모든 지표를 사용 중이에요.</p> : draft ? <CatalogDraftProvider key={selectedId} draft={draft}>
                 <IndicatorConfigContent category={selectedId} capabilities={capabilities} />
-              </CatalogDraftProvider> : selectedAdded ? <IndicatorConfigContent key={selectedId} category={selectedId} capabilities={capabilities} />
+              </CatalogDraftProvider> : selectedAdded ? currentId === PRIMARY_INDICATOR_ID
+                ? <IndicatorConfigContent key={selectedId} category={selectedId} capabilities={capabilities} />
+                : <IndicatorInstanceProvider key={currentId} id={currentId}><IndicatorConfigContent category={selectedId} capabilities={capabilities} /></IndicatorInstanceProvider>
                 : <p className="text-sm text-fg-dim">{mode === 'mine' ? '지표 추가에서 원하는 지표를 골라 주세요.' : '추가할 수 있는 지표를 전부 쓰고 있습니다.'}</p>}
           </section>
       </SettingsEditor>
@@ -483,7 +537,7 @@ export default function IndicatorPanel({
 }
 
 /** The footer follows the same draft store as the form, including zero-slot validation. */
-function CatalogAddButton({ draft, category, onAdd }: { draft: CatalogDraft; category: CategoryId; onAdd: () => void }) {
+function CatalogAddButton({ draft, category, onAdd, count }: { count: number; draft: CatalogDraft; category: CategoryId; onAdd: () => void }) {
   const canAdd = useStore(draft.store, s => indicatorIsPresent(category, s.settings));
-  return <button type="button" className="indicator-catalog-add" onClick={onAdd} disabled={!canAdd}>설정대로 추가</button>;
+  return <button type="button" className="indicator-catalog-add" onClick={onAdd} disabled={!canAdd || count >= MAX_INDICATOR_INSTANCES} title={count >= MAX_INDICATOR_INSTANCES ? '추가한 지표가 128개입니다' : undefined}>설정대로 추가</button>;
 }

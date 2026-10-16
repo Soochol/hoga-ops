@@ -31,3 +31,15 @@ blast radius가 매우 크다: 두 persistence 포맷(`live.indicators.v1`·`hog
 **Positive:** 두 관심사가 독립적으로 진화. persistence 포맷 안정. chartPrefs는 레지스트리 파생을 유지, livePage는 자기 형태를 유지.
 
 **Negative / watch:** 한 지표의 "전체 설정"을 다루는 코드(리셋·export·일관성 검증)는 두 store를 읽어야 한다. **재검토 트리거**: (1) `livePage` 지표가 chartPrefs와 동형의 선언적 레지스트리(`INDICATOR_TOGGLES`)로 마이그레이션되어 두 레지스트리가 같은 모양이 될 때 — 그때 "지표 → 그 지표의 모든 키" 인덱스나 통합이 저비용이 된다. 그 전에는 분리가 옳다.
+
+## 2026-10-16 — 동일 지표의 반복 추가
+
+사용자 승인에 따라 모든 보조지표는 여러 항목으로 추가할 수 있다. 기존 첫 항목은
+종전 두 store의 필드를 그대로 사용한다. 추가 항목은 `live.indicators.v2`의 해당 창·봉
+버킷 안 `indicatorInstances`에 안정된 id, 종류, 해당 종류의 설정 및 지표 전용 prefs
+값을 함께 저장한다. 기존 두 store를 통합하지 않으며 차트 전반 옵션은 복제하지 않는다.
+
+이는 추가 항목의 prefs에 한해 기존 소유권을 확장한 결정이다. 종류당 한 값이던
+chartPrefs 버킷을 그대로 공유하면 한 항목의 누적선·필터 변경이 형제 항목에도 적용되므로,
+항목이 자신의 값을 소유한다. 기존 설정 폼과 projector는 인스턴스 Provider를 통해
+같은 읽기·쓰기 훅을 재사용하고, 카탈로그 초안은 추가할 때만 새 항목으로 반영한다.
