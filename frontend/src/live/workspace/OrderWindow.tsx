@@ -556,7 +556,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span>
           <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
             data-profit-amount={profitAmountText} data-profit-percent={profitPercentText}
-            title="수익률%" disabled={!canToggleProfit}
+            title={canToggleProfit ? profitPercentText : undefined} disabled={!canToggleProfit}
             onDoubleClick={onToggleProfitDisplay} onKeyDown={event => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();

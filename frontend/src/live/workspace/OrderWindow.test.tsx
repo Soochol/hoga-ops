@@ -583,10 +583,12 @@ describe('호가 주문', () => {
     show();
     const toggle = screen.getByRole('button', { name: '평가손익 표시 전환' });
     expect(toggle).toHaveTextContent('-310,499');
+    expect(toggle).toHaveAttribute('title', '-4.42%');
     fireEvent.click(toggle);
     expect(toggle).toHaveTextContent('-310,499');
     fireEvent.doubleClick(toggle);
     expect(toggle).toHaveTextContent('-4.42%');
+    expect(toggle).toHaveAttribute('title', '-4.42%');
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(toggle.querySelector('.order-field-value')).toHaveClass('text-price-down');
     fireEvent.doubleClick(toggle);
@@ -596,11 +598,13 @@ describe('호가 주문', () => {
   it('수익률 표시는 시세 갱신을 따르고 종목 변경 후에도 유지한다', () => {
     const view = show();
     const toggle = () => screen.getByRole('button', { name: '평가손익 표시 전환' });
+    expect(toggle()).toHaveAttribute('title', '1.82%');
     fireEvent.keyDown(toggle(), { key: 'Enter' });
     expect(toggle()).toHaveTextContent('1.82%');
     mock.quotePrice = 65700;
     view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
     expect(toggle()).toHaveTextContent('-0.45%');
+    expect(toggle()).toHaveAttribute('title', '-0.45%');
     fireEvent.keyDown(toggle(), { key: ' ' });
     expect(toggle()).toHaveTextContent('-30,000');
     fireEvent.keyDown(toggle(), { key: 'Enter' });
@@ -620,6 +624,7 @@ describe('호가 주문', () => {
     expect(field.querySelector('.order-field-value')).toHaveClass(color);
     expect(field.querySelector('.order-field-value')?.textContent).toBe(value);
     expect(field.querySelector('.order-meta')).toHaveTextContent('평가손익');
+    if (price === null) expect(within(field).getByRole('button')).not.toHaveAttribute('title');
   });
   it('주·금액은 버튼만 바꾸고 금액 버튼으로 환산한 수량을 한 칸에서 유지한다', async () => {
     show();
@@ -647,6 +652,7 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('평단가—');
     expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('평가손익—');
     expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).not.toHaveAttribute('title');
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('평단가 표시 설정은 적용할 때만 바뀌고 취소·Escape는 편집을 버린다', () => {
