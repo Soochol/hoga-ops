@@ -929,6 +929,43 @@ test('주문창은 실시간 틱 방향색·잔량 증감·가격 왼쪽 시고�
   expect(commands).toHaveLength(0);
 });
 
+test('하단 양쪽 주문 취소는 주문 열에 정렬되고 해당 방향만 취소한다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, [mkOrder('buy'), { ...mkOrder('sell', '67300'), side: 'SELL' }]);
+  const row = window.getByRole('group', { name: '방향별 주문 취소' });
+  await expect(row.getByRole('button')).toHaveCount(2);
+  await expect(row.getByRole('button', { name: /전체/ })).toHaveCount(0);
+  const sell = row.getByRole('button', { name: '매도 주문 취소', exact: true });
+  const buy = row.getByRole('button', { name: '매수 주문 취소', exact: true });
+  for (const width of [820, 640, 540]) {
+    await window.evaluate((el, width) => { el.style.width = `${width}px`; }, width);
+    await expect(window).toHaveClass(width >= 696 ? /order-spacious/ : width >= 560 ? /order-expanded/ : /order-compact/);
+    await expect(sell).toBeEnabled(); await expect(buy).toBeEnabled();
+    for (const [cancel, label] of [[sell, '매도'], [buy, '매수']] as const) {
+      const lane = window.getByRole('button', { name: new RegExp(`${label} 66,300원 주문 추가`) });
+      await expect.poll(async () => {
+        const a = (await cancel.boundingBox())!, b = (await lane.boundingBox())!;
+        return Math.abs((a.x + a.width / 2) - (b.x + b.width / 2));
+      }).toBeLessThan(1);
+      const a = (await cancel.boundingBox())!, b = (await lane.boundingBox())!;
+      expect(a.y).toBeGreaterThanOrEqual(b.y + b.height);
+      expect(await cancel.evaluate(el => {
+        const range = document.createRange(); range.selectNodeContents(el);
+        return range.getBoundingClientRect().width <= el.clientWidth;
+      })).toBe(true);
+    }
+    await window.screenshot({ path: testInfo.outputPath(`order-side-cancel-${width}.png`) });
+  }
+  await sell.click();
+  await expect(sell).toBeDisabled();
+  await expect(buy).toBeEnabled();
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({ account_seq: 1, code: '005930', side: 'SELL' });
+  await buy.click();
+  await expect(buy).toBeDisabled();
+  expect(commands).toHaveLength(2);
+  expect(commands[1]).toMatchObject({ account_seq: 1, code: '005930', side: 'BUY' });
+});
+
 test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신규 확인창 없음', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
   const add = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
