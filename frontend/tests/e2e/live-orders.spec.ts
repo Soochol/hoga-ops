@@ -1299,6 +1299,10 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
 
 test('계좌 편집기 탐색·목록·푸터는 테마와 화면 폭에 맞춰 표시된다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, [mkOrder('old')]);
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: {
+    phase: 'open', quotes: (new URL(route.request().url()).searchParams.get('codes') ?? '').split(',')
+      .map(code => ({ code, price: code === '000660' ? 185000 : 67200 })),
+  } }));
   for (const theme of ['toss-light', 'toss-dark']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
     for (const width of [1440, 390]) {
@@ -1316,6 +1320,14 @@ test('계좌 편집기 탐색·목록·푸터는 테마와 화면 폭에 맞춰 
       await panel.getByRole('tab', { name: '보유종목', exact: true }).click();
       await expect(panel.getByRole('heading', { name: '보유종목 1종목' })).toBeVisible();
       await expect(panel.getByRole('button', { name: 'SK하이닉스', exact: true })).toBeVisible();
+      await expect(panel.getByRole('columnheader', { name: '수익', exact: true })).toBeVisible();
+      const profit = panel.getByRole('row').filter({ hasText: 'SK하이닉스' }).getByRole('cell').nth(4);
+      await expect(profit).toHaveText('+110,000원+2.78%');
+      await expect(profit).toHaveClass(/text-price-up/);
+      expect(await profit.locator('span').evaluateAll(values => {
+        const amount = values[0].getBoundingClientRect(), percent = values[1].getBoundingClientRect();
+        return percent.top >= amount.bottom && values.every(value => value.scrollWidth <= value.clientWidth);
+      })).toBe(true);
       const bounds = (await panel.boundingBox())!;
       expect(bounds.x).toBeGreaterThanOrEqual(0);
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);

@@ -10,7 +10,7 @@ import { useSymbols } from '../../capture/useSymbols';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { RefreshIcon } from '../../ui/RefreshIcon';
 import { OrderSurfaceHeading } from './OrderSurface';
-import { editableOrder, holdingProfitPercent, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
+import { editableOrder, holdingProfitPercent, holdingProfitWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
 import './AccountTradingPanel.css';
 
 export type AccountListTab = 'orders' | 'holdings';
@@ -30,16 +30,19 @@ function HoldingsTable({ holdings, onSelect }: { holdings: TradingHolding[]; onS
   const quotes = useQuoteByCode(codes, venue);
   return <table className="account-holdings-table">
     <colgroup><col /><col /><col /><col /><col /></colgroup>
-    <thead><tr><th>종목</th><th>보유 · 주</th><th>평단가 · 원</th><th>평가금액 · 원</th><th>수익률 · %</th></tr></thead>
+    <thead><tr><th>종목</th><th>보유 · 주</th><th>평단가 · 원</th><th>평가금액 · 원</th><th>수익</th></tr></thead>
     <tbody>{holdings.map(holding => {
       const price = quotes.get(holding.code)?.price;
+      const profitAmount = holdingProfitWon(Number(holding.quantity), price ?? null, holding.average_purchase_price);
       const profitPercent = holdingProfitPercent(Number(holding.quantity), price ?? null, holding.average_purchase_price);
+      const profitDirection = profitAmount || profitPercent || 0;
       return <tr key={holding.code}>
         <td><button type="button" className="account-stock-link" disabled={!onSelect} onClick={() => onSelect?.(holding.code, holding.name)}>{holding.name}</button></td>
         <td>{fmt(holding.quantity)}</td><td>{fmt(holding.average_purchase_price, 0)}</td>
         <td>{fmt(holdingValue(holding.quantity, price), 0)}</td>
-        <td className={profitPercent != null && profitPercent > 0 ? 'text-price-up' : profitPercent != null && profitPercent < 0 ? 'text-price-down' : undefined}>
-          {profitPercent == null ? '—' : `${profitPercent > 0 ? '+' : ''}${profitPercent.toFixed(2)}%`}
+        <td className={`account-holding-profit ${profitDirection > 0 ? 'text-price-up' : profitDirection < 0 ? 'text-price-down' : ''}`}>
+          <span>{profitAmount == null ? '—' : `${profitAmount > 0 ? '+' : ''}${fmt(profitAmount, 0)}원`}</span>
+          <span className="account-holding-profit-percent">{profitPercent == null ? '—' : `${profitPercent > 0 ? '+' : ''}${profitPercent.toFixed(2)}%`}</span>
         </td>
       </tr>;
     })}</tbody>
