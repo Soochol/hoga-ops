@@ -109,10 +109,10 @@ it.each([120, 240])('aligns %i-minute live quote, fill and heatmap buckets with 
   expect(batch.fill_strength.points.reduce((sum,p)=>sum+p.buy_qty,0)).toBe(15);
 });
 
-it('includes afternoon POC in batch, incremental and candle fallback while preserving UN', () => {
+it('includes afternoon POC in batch, incremental and candle fallback for KRX and UN', () => {
   const segment: RangeSegment = { date:'20260914',session_open_ms:at(14,9),session_close_ms:at(14,20),source:'kiwoom_live' };
   expect(regularSessionBinningSegment(segment,'KRX').session_close_ms).toBe(at(14,20));
-  expect(regularSessionBinningSegment(segment,'UN').session_close_ms).toBe(at(14,15,30));
+  expect(regularSessionBinningSegment(segment,'UN').session_close_ms).toBe(at(14,20));
   const candles = [{ts_ms:at(14,17),open:100,high:110,low:90,close:100,vol_a:10,vol_b:0}];
   const trades = [{t_ms:at(14,17),trades:[{price:100,qty:10,side:1}]}];
   const batch = computeTradeVolumePoc(trades,{date:segment.date,segment,candles,rangeCount:2});
@@ -121,7 +121,7 @@ it('includes afternoon POC in batch, incremental and candle fallback while prese
     rangeMin:90,rangeMax:110,rangeCount:2,sessionOpenMs:at(14,9),sessionCloseMs:at(14,20),continuousBeforeMs:null});
   expect(incremental).toEqual(batch);
   expect(computeCandleVolumePocs(candles,[segment],{rangeCount:2})).toHaveLength(1);
-  expect(computeTradeVolumePoc(trades,{date:segment.date,venue:'UN'})).toBeNull();
+  expect(computeTradeVolumePoc(trades,{date:segment.date,venue:'UN'})?.qty).toBe(10);
   const deep = Array.from({length:10},()=>({price:100,qty:10}));
   const books = [{t_ms:at(14,15),total_ask_qty:100,total_bid_qty:100,asks:deep,bids:deep},
     {t_ms:at(14,15,25),total_ask_qty:100,total_bid_qty:100,asks:deep.slice(0,3),bids:deep.slice(0,3)}];

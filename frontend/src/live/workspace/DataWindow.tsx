@@ -696,7 +696,7 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
   );
   const todaySegment = useMemo(() => {
     const raw = bundle?.segments.find((segment) => segment.date === todayKst) ?? null;
-    return raw ? regularSessionBinningSegment(raw, effectiveVenue) : null;
+    return raw ? { ...regularSessionBinningSegment(raw, effectiveVenue), venue: effectiveVenue } : null;
   }, [bundle, todayKst, effectiveVenue]);
   const persistedToday = useMemo(
     () => (todayKst
@@ -747,11 +747,12 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
     if (!activeSegment) return null;
     return regularOnly
       ? { ...activeSegment, session_open_ms: regularSessionOpenMs(activeSegment.date), session_close_ms: regularSessionCloseMs(activeSegment.date) }
-      : regularSessionBinningSegment(activeSegment, effectiveVenue);
+      : { ...regularSessionBinningSegment(activeSegment, effectiveVenue), venue: effectiveVenue };
   }, [activeSegment, regularOnly, effectiveVenue]);
   const cutoffProfile = useVolumeDistributionCutoffProfile({
     enabled: linked && ((vdistSettings.hoverCutoffEnabled && isSpot) || regularOnly),
     exactCutoffMs: regularCutoffMs,
+    regularSessionOnly: regularOnly,
     code,
     timeframe: regularOnly && timeframe !== null && isMinuteTimeframe(timeframe) ? timeframe : spotTimeframe,
     date: activeDate,

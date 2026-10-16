@@ -133,7 +133,9 @@ def _cache_for_session(
     """
     try:
         meta, _ = normalize_session_bounds(engine.get_meta(date, code, source, venue=venue))
-        canonical = indicator_session_bounds(meta)
+        regular_cache = cache is not None and getattr(cache, "regular_session_only", False) is True
+        canonical = ((meta["regular_session_open_ms"], meta["regular_session_close_ms"])
+                     if regular_cache else indicator_session_bounds(meta))
         if not all(isinstance(value, int) for value in canonical):
             return None, session_open_ms, session_close_ms
     except (FileNotFoundError, StockDateNotFound, OSError, ValueError, KeyError):
@@ -147,6 +149,20 @@ def _resolve_today_kst(today_kst: object) -> str | None:
     if today_kst is _RESOLVE:
         return _today_kst_yyyymmdd()
     return today_kst  # type: ignore[return-value]
+
+
+def _indicator_session_break(
+    engine: QueryEngine, code: str, date: str, source: str, venue: Venue,
+) -> tuple[int, int] | None:
+    from hoga.live.stock_sessions import stock_indicator_break  # noqa: PLC0415 — shared market policy
+
+    if stock_indicator_break(date, venue) is None:
+        return None
+    try:
+        meta = engine.get_meta(date, code, source, venue=venue)
+    except (FileNotFoundError, StockDateNotFound, OSError, ValueError):
+        meta = {}
+    return stock_indicator_break(date, venue, regular_close_ms=meta.get("regular_session_close_ms", 153000000))
 
 
 def _empty_volume_profile() -> VolumeProfile:
@@ -231,17 +247,20 @@ def _indicator_cacheable(
     )
 
 
-def _query_fill_rows(engine: QueryEngine, code_dir, bucket_ms: int) -> list[FillStrengthRow] | None:
+def _query_fill_rows(
+    engine: QueryEngine, code_dir, bucket_ms: int, *, clock_filter: str | None = None,
+) -> list[FillStrengthRow] | None:
     """fills.parquet (10s 구간합) preferred, else trades.parquet fallback (그릴링
     Q4). Returns None when NEITHER source exists (ADR-0043 empty cycle) so the
     caller can emit an empty slice without caching a non-result."""
+    scope = {"clock_filter": clock_filter} if clock_filter is not None else {}
     fills_path = code_dir / "fills.parquet"
     if fills_path.exists():
-        return fills_tbl.query_fill_strength(engine.conn, path=fills_path, bucket_ms=bucket_ms)
+        return fills_tbl.query_fill_strength(engine.conn, path=fills_path, bucket_ms=bucket_ms, **scope)
     trades_path = code_dir / "trades.parquet"
     if not trades_path.exists():
         return None
-    return trades_tbl.query_fill_strength(engine.conn, path=trades_path, bucket_ms=bucket_ms)
+    return trades_tbl.query_fill_strength(engine.conn, path=trades_path, bucket_ms=bucket_ms, **scope)
 
 
 def downsample_candles(
@@ -277,7 +296,7 @@ def downsample_candles(
     )
 
     validate_bucket_ms(bucket_ms)
-    if bucket_ms in CLIPPED_TIMEFRAME_MS:
+    if bucket_ms in CLIPPED_TIMEFRAME_MS and venue == "KRX":
         open_ms = hhmmssms_to_unix_ms(date, _REGULAR_OPEN_HHMMSSMS)
         close_ms = hhmmssms_to_unix_ms(date, _REGULAR_CLOSE_HHMMSSMS)
         candles = [c for c in candles if open_ms <= c.ts_ms <= close_ms or (
@@ -448,6 +467,7 @@ def build_quote_ratio_slice(
                     engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
                     session_open_ms=session_open_ms,
                     session_close_ms=session_close_ms,
+                    session_break=_indicator_session_break(engine, code, date, source, venue),
                 ),
             )
             cache.store_ratio(code, date, source, rows_1m, venue=venue)  # type: ignore[union-attr]
@@ -471,6 +491,7 @@ def build_quote_ratio_slice(
             rows_1m = snapshots_tbl.query_bucketed_ratio(
                 engine.conn, path=path_obj, bucket_ms=_ONE_MINUTE_MS,
                 session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+                session_break=_indicator_session_break(engine, code, date, source, venue),
             )
             TODAY_TTL.put(ttl_key, rows_1m)
         rows = reaggregate_ratio(rows_1m, bucket_ms)
@@ -479,6 +500,7 @@ def build_quote_ratio_slice(
         rows = snapshots_tbl.query_bucketed_ratio(
             engine.conn, path=path_obj, bucket_ms=bucket_ms,
             session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=_indicator_session_break(engine, code, date, source, venue),
         )
     if requested_bucket_ms != bucket_ms:
         rows = reaggregate_ratio(rows, requested_bucket_ms, date=date, venue=venue)
@@ -530,6 +552,20 @@ def _expand_distribution_bins(
         high = price_max if i == range_count - 1 else int(price_min + (i + 1) * bin_width)
         rows.append(VolumeDistributionBin(price_low=low, price_high=high, qty=qty))
     return rows
+
+
+def _set_distribution_first_trade_times(
+    result: DayVolumeDistribution, binning: trades_tbl.VolumeProfileBinning,
+) -> None:
+    """Keep exact POC timestamps when the live tail changes the winning bin."""
+    first_times: dict[int, int] = {}
+    for raw_idx, first in binning.first_intra_ms_by_bin:
+        if raw_idx < 0:
+            continue
+        idx = min(raw_idx, result.range_count - 1)
+        first_times[idx] = min(first, first_times.get(idx, first))
+    for idx, first in first_times.items():
+        result.bins[idx].first_trade_ms = ms_from_midnight_to_unix_ms(result.date, first)
 
 
 def build_volume_distribution_slice(
@@ -595,7 +631,8 @@ def build_volume_distribution_slice(
     # 오늘자 & cutoff 없는 요청만 short-TTL(ADR-0090) — cutoff variant는 과거일과
     # 동일하게 캐시 제외(카디널리티). 키=coalescer 키로 정합 보장.
     is_today = today_kst is not None and date == today_kst and cutoff_ms is None
-    vdist_key = ("vdist", code, date, source, venue, range_count, price_min, price_max, cutoff_ms)
+    vdist_key = ("vdist", code, date, source, venue, range_count, price_min, price_max, cutoff_ms,
+                 session_open_ms, session_close_ms, continuous_before_ms)
     if is_today:
         hit, cached = TODAY_TTL.lookup(vdist_key)
         if hit:
@@ -637,6 +674,7 @@ def build_volume_distribution_slice(
             session_close_ms=session_close_ms,
             **dist_kwargs,
             continuous_before_ms=continuous_before_ms,
+            **({"session_break": gap} if (gap := _indicator_session_break(engine, code, date, source, venue)) else {}),
             **({"binning_cache": engine.trade_binning_cache}
                if isinstance(engine, QueryEngine) and cache is not None
                and today_kst is not None and date < today_kst else {}),
@@ -662,6 +700,7 @@ def build_volume_distribution_slice(
             range_count,
         ),
     )
+    _set_distribution_first_trade_times(result, binning)
     if cacheable:
         cache.store_volume_distribution(  # type: ignore[union-attr]
             code, date, source, range_count, price_min, price_max, result, venue=venue,
@@ -679,6 +718,8 @@ def build_fill_strength_slice(
     bucket_ms: int = 60_000,
     source: str = "hogaplay",
     venue: Venue = "KRX",
+    session_open_ms: int | None = None,
+    session_close_ms: int | None = None,
     cache: PastIndicatorsCache | None = _RESOLVE,  # type: ignore[assignment]
     today_kst: str | None = _RESOLVE,  # type: ignore[assignment]
 ) -> FillStrength:
@@ -687,6 +728,19 @@ def build_fill_strength_slice(
         bucket_ms = _ONE_MINUTE_MS
     cache = _resolve_cache(engine, cache)
     today_kst = _resolve_today_kst(today_kst)
+    # Filter raw fills/trades before bucketing; timestamp-clipping a coarse
+    # result can retain the 15:45 tick inside its regular-looking 15:00 bucket.
+    scope: dict[str, str] = {}
+    if session_open_ms is not None or session_close_ms is not None:
+        cache, session_open_ms, session_close_ms = _cache_for_session(
+            engine, cache, code=code, date=date, source=source, venue=venue,
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        )
+        scope["clock_filter"] = snapshots_tbl._indicator_clock_sql(
+            hhmmssms_to_intra_ms_sql("ts_ms"),
+            session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=_indicator_session_break(engine, code, date, source, venue),
+        )
     # ADR-0001: the bucketing SQL + schema knowledge now lives in the table
     # modules. bundle stays the coordinator: it owns the path layout + the
     # no-data guard, and re-bases the native ms-from-midnight bucket into
@@ -701,8 +755,8 @@ def build_fill_strength_slice(
         rows_1m = cache.get_fill(code, date, source, venue=venue)  # type: ignore[union-attr]
         if rows_1m is None:
             rows_1m = SLICE_COALESCER.run(
-                ("fill", code, date, source, venue),
-                lambda: _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS),
+                ("fill", code, date, source, venue, session_open_ms, session_close_ms),
+                lambda: _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS, **scope),
             )
             if rows_1m is None:
                 return FillStrength(bucket_ms=requested_bucket_ms, points=[])
@@ -719,10 +773,10 @@ def build_fill_strength_slice(
         # 키에 `bucket_ms` 가 **없다**: 스캔이 1분 고정이라 봉이 키일 이유가 없고,
         # 있으면 봉 전환마다 미스가 난다. 실측(2026-08-29): 종전 1분 18.0ms → 5분
         # 16.0ms → 15분 15.7ms 로 봉마다 재스캔이었고, 과거일은 0.2ms/0.1ms 였다.
-        ttl_key = ("fill_1m", code, date, source, venue)
+        ttl_key = ("fill_1m", code, date, source, venue) + ((session_open_ms, session_close_ms) if scope else ())
         hit, rows_1m = TODAY_TTL.lookup(ttl_key)
         if not hit:
-            rows_1m = _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS)
+            rows_1m = _query_fill_rows(engine, code_dir, _ONE_MINUTE_MS, **scope)
             if rows_1m is None:
                 # ADR-0043: fills·trades 둘 다 없음 = 유효한 "체결 없음".
                 # **None 은 캐시하지 않는다** — 시가 직후 파일이 늦게 생길 수 있고
@@ -737,7 +791,7 @@ def build_fill_strength_slice(
         rows = reaggregate_fill(rows_1m, bucket_ms)
     else:
         # 여기 남는 것: 분 미만 봉(재집계할 1분 행이 없다) · 캐시 없는 과거일(테스트).
-        direct = _query_fill_rows(engine, code_dir, bucket_ms)
+        direct = _query_fill_rows(engine, code_dir, bucket_ms, **scope)
         if direct is None:
             # ADR-0043: neither fills nor trades parquet — valid "no trades" state.
             return FillStrength(bucket_ms=requested_bucket_ms, points=[])
@@ -912,6 +966,7 @@ def _compute_ask_peak(
         row = snapshots_tbl.query_day_ask_peak_dual(
             engine.conn, path=path_obj, trades_path=trades_path, bucket_ms=bucket_ms,
             session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=_indicator_session_break(engine, code, date, source, venue),
         )
         if row is None:
             return None
@@ -919,6 +974,7 @@ def _compute_ask_peak(
     row = snapshots_tbl.query_day_ask_peak(
         engine.conn, path=path_obj, bucket_ms=bucket_ms, date=date, venue=venue,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        session_break=_indicator_session_break(engine, code, date, source, venue),
     )
     if row is None:
         return None
@@ -981,6 +1037,7 @@ def _compute_bid_peak(
         row = snapshots_tbl.query_day_bid_peak_dual(
             engine.conn, path=path_obj, trades_path=trades_path, bucket_ms=bucket_ms,
             session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=_indicator_session_break(engine, code, date, source, venue),
         )
         if row is None:
             return None
@@ -988,6 +1045,7 @@ def _compute_bid_peak(
     row = snapshots_tbl.query_day_bid_peak(
         engine.conn, path=path_obj, bucket_ms=bucket_ms, date=date, venue=venue,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        session_break=_indicator_session_break(engine, code, date, source, venue),
     )
     if row is None:
         return None
@@ -1175,6 +1233,7 @@ def _peak_slices_from_1m_cache(
                 bucket_ms=one,
                 session_open_ms=session_open_ms,
                 session_close_ms=session_close_ms,
+                session_break=_indicator_session_break(engine, code, date, source, venue),
             ),
         )
         base_ask = _ask_peak_from_dual_row(date, ask_row) if ask_row is not None else None
@@ -1249,6 +1308,7 @@ def _today_peak_slices(
                 bucket_ms=one,
                 session_open_ms=session_open_ms,
                 session_close_ms=session_close_ms,
+                session_break=_indicator_session_break(engine, code, date, source, venue),
             ),
         )
         TODAY_TTL.put(key, (ask_row, bid_row, rep_rows))
@@ -1364,6 +1424,7 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
         ask_row, bid_row, rep_rows = snapshots_tbl.query_day_ask_bid_peak_dual_with_rep(
             engine.conn, path=path_obj, trades_path=trades_path, bucket_ms=_ONE_MINUTE_MS,
             session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=_indicator_session_break(engine, code, date, source, venue),
         )
         return _derive_coarse_from_rep(
             _ask_peak_from_dual_row(date, ask_row) if ask_row is not None else None,
@@ -1399,6 +1460,7 @@ def build_ask_bid_peak_slices(  # noqa: PLR0912 — ADR 이 지정한 단일 조
                 bucket_ms=bucket_ms,
                 session_open_ms=session_open_ms,
                 session_close_ms=session_close_ms,
+                session_break=_indicator_session_break(engine, code, date, source, venue),
             ),
         )
         if is_today:
@@ -1462,7 +1524,8 @@ def build_trade_volume_poc_slice(
             return cached  # type: ignore[return-value]
     # 오늘자: short-TTL 프로세스 캐시(ADR-0090). None 결과도 유효 캐시값.
     is_today = today_kst is not None and date == today_kst
-    poc_key = ("poc", code, date, source, venue, range_count, price_min, price_max)
+    poc_key = ("poc", code, date, source, venue, range_count, price_min, price_max,
+               session_open_ms, session_close_ms, continuous_before_ms)
     if is_today:
         hit, cached = TODAY_TTL.lookup(poc_key)
         if hit:
@@ -1478,6 +1541,7 @@ def build_trade_volume_poc_slice(
             session_open_ms=session_open_ms,
             session_close_ms=session_close_ms,
             continuous_before_ms=continuous_before_ms,
+            **({"session_break": gap} if (gap := _indicator_session_break(engine, code, date, source, venue)) else {}),
             **({"binning_cache": engine.trade_binning_cache}
                if isinstance(engine, QueryEngine) and cache is not None
                and today_kst is not None and date < today_kst else {}),
@@ -1584,6 +1648,7 @@ def build_depth_heatmap_slice(
             bucket_ms=bucket_ms,
             session_open_ms=session_open_ms,
             session_close_ms=session_close_ms,
+            session_break=_indicator_session_break(engine, code, date, source, venue),
         ),
     )
     out: list[DepthHeatmapPoint] = []
@@ -1861,6 +1926,7 @@ def build_program_trade_series(
     venue: str,
     bucket_ms: int = 0,
     session_open_by_date: Mapping[str, int] | None = None,
+    session_close_by_date: Mapping[str, int] | None = None,
     today_kst: str | None = None,
 ) -> ProgramTradeSeries:
     """선택 venue 의 프로그램 순매수 시계열.
@@ -1928,6 +1994,9 @@ def build_program_trade_series(
                 )
             )
         open_ms = opens.get(date)
+        close_ms = (session_close_by_date or {}).get(date)
+        if close_ms is not None:
+            day_points = [p for p in day_points if (open_ms is None or p.t >= open_ms) and p.t <= close_ms]
         # 접는 조건 세 가지가 **모두** 참일 때만 접는다. 세션 오픈을 모르면 격자 원점이
         # 없어 프론트와 어긋나므로 원해상도로 둔다 — 추측해서 접지 않는다.
         if bucket_ms > 0 and open_ms is not None and (today_kst is None or date < today_kst):
@@ -2159,7 +2228,7 @@ def _prefetch_peak_caches(
 
 def _build_local_candle_range(
     engine: QueryEngine, *, code: str, from_date: str, to_date: str,
-    bucket_ms: int, source_pref: str, venue: Venue,
+    bucket_ms: int, source_pref: str, venue: Venue, regular_session_only: bool = False,
 ) -> RangeBundle:
     """The candle dimension has its own inventory and does not require orderflow."""
     from hoga.api import queries  # noqa: PLC0415 — local calendar predicate seam
@@ -2194,6 +2263,10 @@ def _build_local_candle_range(
             continue
         norm_meta, _ = normalize_session_bounds(meta)
         open_ms, close_ms = indicator_session_bounds(norm_meta)
+        if regular_session_only:
+            open_ms, close_ms = norm_meta["regular_session_open_ms"], norm_meta["regular_session_close_ms"]
+            lo, hi = (hhmmssms_to_unix_ms(date, edge) for edge in (open_ms, close_ms))
+            raw = [c for c in raw if lo <= c.ts_ms <= hi]
         result.segments.append(RangeSegment(
             date=date, session_open_ms=hhmmssms_to_unix_ms(date, open_ms),
             session_close_ms=hhmmssms_to_unix_ms(date, close_ms), source=source,
@@ -2217,6 +2290,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     # 의 `Query(...)`) — 프론트가 빠뜨리면 실시간 꼬리와 다른 시장이 한 차트에 섞인다.
     # 여기는 우리 코드만 부르므로 기본값을 둔다(경계 설명은 sources.resolve_source_result).
     venue: str = "KRX",
+    regular_session_only: bool = False,
     broker_late_entries_enabled: bool = True,
     broker_late_entry_start_hhmm: int = 930,
     volume_distribution_bins: int | None = None,
@@ -2264,6 +2338,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         return _build_local_candle_range(
             engine, code=code, from_date=from_date, to_date=to_date, bucket_ms=bucket_ms,
             source_pref=source_pref, venue=cast("Venue", venue),
+            regular_session_only=regular_session_only,
         )
 
     hoga_only = mode == "hoga"
@@ -2466,6 +2541,14 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             if needs_raw_candles and candle_source is not None
             else []
         )
+        norm_meta, _ = normalize_session_bounds(meta)
+        ind_open_ms, ind_close_ms = indicator_session_bounds(norm_meta)
+        if regular_session_only:
+            ind_open_ms = norm_meta["regular_session_open_ms"]
+            ind_close_ms = norm_meta["regular_session_close_ms"]
+            start = hhmmssms_to_unix_ms(d, ind_open_ms)
+            end = hhmmssms_to_unix_ms(d, ind_close_ms)
+            raw_candles = [c for c in raw_candles if start <= c.ts_ms <= end]
         if hoga_only:
             price_range = None
             trade_indicator_source = source
@@ -2475,8 +2558,14 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             trade_indicator_source = source
             candles_d = downsample_candles(raw_candles, bucket_ms=bucket_ms, date=d, venue=venue)
         else:
-            raw_lows = [c.low for c in raw_candles]
-            raw_highs = [c.high for c in raw_candles]
+            lower = hhmmssms_to_unix_ms(d, ind_open_ms)
+            upper = hhmmssms_to_unix_ms(d, ind_close_ms)
+            gap = _indicator_session_break(engine, code, d, source, venue)
+            gap_bounds = tuple(hhmmssms_to_unix_ms(d, v) for v in gap) if gap else None
+            trade_candles = [c for c in raw_candles if lower <= c.ts_ms <= upper
+                             and not (gap_bounds and gap_bounds[0] < c.ts_ms < gap_bounds[1])]
+            raw_lows = [c.low for c in trade_candles]
+            raw_highs = [c.high for c in trade_candles]
             candle_price_range = (
                 (min(raw_lows), max(raw_highs))
                 if raw_lows and raw_highs
@@ -2508,7 +2597,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         # (ADR-0140). NXT·UN 은 08:00–20:00 이고, 이걸 정규장(09:00–15:30)으로
         # 읽던 것이 "포인트는 전 구간 오는데 값만 0" 결함이었다. 구형 meta·hogaplay
         # 는 새 키가 없어 정규장 값으로 떨어지므로 KRX 경로는 무변경이다.
-        ind_open_ms, ind_close_ms = indicator_session_bounds(norm_meta)
+        scoped_cache = {"cache": engine.regular_indicators_cache} if regular_session_only else {}
         gil_breathe_at = _gil_breathe(gil_breathe_at)
         qr_d = (
             QuoteRatio(bucket_ms=bucket_ms, points=[])
@@ -2517,6 +2606,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
                 session_open_ms=ind_open_ms,
                 session_close_ms=ind_close_ms,
+                **scoped_cache,
             )
         )
         fs_d = (
@@ -2524,6 +2614,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             if sidecar_only or candles_only
             else build_fill_strength_slice(
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
+                session_open_ms=ind_open_ms, session_close_ms=ind_close_ms, **scoped_cache,
             )
         )
         continuous_before_needed = (
@@ -2552,6 +2643,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 engine, code=code, date=d, bucket_ms=bucket_ms, source=source, venue=venue,
                 session_open_ms=ind_open_ms,
                 session_close_ms=ind_close_ms,
+                **scoped_cache,
             )
             if not include_ask_peaks:
                 ap_d = None
@@ -2566,6 +2658,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 engine, code=code, date=d, source=trade_indicator_source, venue=venue,
                 session_open_ms=ind_open_ms,
                 session_close_ms=ind_close_ms,
+                **scoped_cache,
                 range_count=trade_volume_poc_bins or DEFAULT_TRADE_VOLUME_POC_BINS,
                 price_range=price_range,
                 continuous_before_ms=continuous_before_ms,
@@ -2595,13 +2688,15 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
             and broker_late_entries_enabled
         ):
             broker_late_entries.extend(
-                build_broker_late_entries_slice(
+                event for event in build_broker_late_entries_slice(
                     engine,
                     code=code,
                     date=d,
                     source=source,
                     venue=venue,
                     start_hhmm=broker_late_entry_start_hhmm,
+                ) if not regular_session_only or (
+                    hhmmssms_to_unix_ms(d, ind_open_ms) <= event.t_ms <= hhmmssms_to_unix_ms(d, ind_close_ms)
                 )
             )
         candles.extend(candles_d)
@@ -2611,6 +2706,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         if (
             not hoga_only and not candles_only
             and volume_distribution_bins is not None
+            and (not regular_session_only or price_range is not None)
         ):
             profile = build_volume_distribution_slice(
                 engine,
@@ -2620,6 +2716,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 venue=venue,
                 session_open_ms=ind_open_ms,
                 session_close_ms=ind_close_ms,
+                **scoped_cache,
                 range_count=volume_distribution_bins,
                 price_min=price_range[0] if price_range is not None else None,
                 price_max=price_range[1] if price_range is not None else None,
@@ -2652,6 +2749,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                     venue=venue,
                     session_open_ms=ind_open_ms,
                     session_close_ms=ind_close_ms,
+                **scoped_cache,
                 )
             )
         if perf_debug.enabled():
@@ -2720,6 +2818,8 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
                 venue=venue,
                 bucket_ms=bucket_ms,
                 session_open_by_date={s.date: s.session_open_ms for s in segments},
+                **({"session_close_by_date": {s.date: s.session_close_ms for s in segments}}
+                   if regular_session_only else {}),
                 today_kst=_today_kst_yyyymmdd(),
             )
             if include_program_trade

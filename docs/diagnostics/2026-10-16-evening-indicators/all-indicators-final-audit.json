@@ -1,0 +1,778 @@
+{
+  "recorded_at_kst": "2026-10-16T22:37:12.951718+09:00",
+  "base_sha": "06cadbf9474f3f1d729a0e6ecd63b371c4b6539c",
+  "input_sha256": "3d9b24b01f4f4297f4e33cefd4670ae63bdfad3ca4a3cd409467dbeba48ff46e",
+  "input_file_count": 2545,
+  "catalog_count": 18,
+  "catalog_evidence": "frontend/src/live/indicators/IndicatorPanelHelpers.tsx",
+  "indicators": [
+    {
+      "id": "moving-average",
+      "label": "이동평균선",
+      "kind": "candle",
+      "policy": "Visible minute candles; preserves selected venue and regular filter.",
+      "evidence": "frontend/src/live/indicators/MovingAverageOverlay.tsx"
+    },
+    {
+      "id": "supertrend",
+      "label": "슈퍼트렌드",
+      "kind": "candle",
+      "policy": "Visible minute candles feed ATR and bands.",
+      "evidence": "frontend/src/live/indicators/SupertrendOverlay.tsx"
+    },
+    {
+      "id": "bollinger",
+      "label": "볼린저 밴드",
+      "kind": "candle",
+      "policy": "Visible minute candles feed mean and deviation.",
+      "evidence": "frontend/src/live/indicators/BollingerOverlay.tsx"
+    },
+    {
+      "id": "daily-moving-average",
+      "label": "일봉 이동평균선",
+      "kind": "daily_and_minute",
+      "policy": "Selected-venue daily reference plus current displayed candles as the current-day close proxy; historical daily closes remain official daily values.",
+      "evidence": "frontend/src/live/indicators/DailyMovingAverageOverlay.tsx"
+    },
+    {
+      "id": "volume",
+      "label": "거래량",
+      "kind": "candle",
+      "policy": "Visible minute candle volumes; regular filter applied before candle aggregation.",
+      "evidence": "frontend/src/live/useLiveBundle.ts"
+    },
+    {
+      "id": "trade-value",
+      "label": "거래대금",
+      "kind": "reported_calendar",
+      "policy": "D/W/M only: uses reported candle trade_value_won; does not synthesize turnover from WS ticks or price times volume. KRX official calendar close remains regular.",
+      "evidence": "frontend/src/chart/projectors/tradeValue.ts"
+    },
+    {
+      "id": "quote-totals",
+      "label": "총잔량",
+      "kind": "intraday_raw",
+      "policy": "Venue book window through 20:00; regular raw window when ON.",
+      "evidence": "hoga/api/bundle.py"
+    },
+    {
+      "id": "ratio",
+      "label": "호가비",
+      "kind": "intraday_raw",
+      "policy": "Shares scoped quote-ratio book series with totals; KRX break and structural auctions excluded.",
+      "evidence": "hoga/api/bundle.py"
+    },
+    {
+      "id": "fill-strength",
+      "label": "체결강도",
+      "kind": "intraday_raw",
+      "policy": "Raw fills preferred, signed trades fallback; filter clock and KRX break before SUM; cache version 7, regular namespace/TTL isolated.",
+      "evidence": "hoga/api/bundle.py"
+    },
+    {
+      "id": "volume-distribution",
+      "label": "연속체결 매물대 분포",
+      "kind": "intraday_raw",
+      "policy": "Raw continuous trades and scoped candle grid; cutoff and standalone/extra-instance paths carry the same scope.",
+      "evidence": "frontend/src/live/useVolumeDistributionCutoffProfile.ts"
+    },
+    {
+      "id": "trade-volume-poc",
+      "label": "당일 최대 매물대",
+      "kind": "intraday_raw",
+      "policy": "Saved scoped distribution plus newer WS tail; no off-hours price-grid or retained-peak contamination.",
+      "evidence": "frontend/src/live/useTradeVolumePoc.ts"
+    },
+    {
+      "id": "peak-walls",
+      "label": "당일 최대벽",
+      "kind": "intraday_raw",
+      "policy": "Ask/bid; representative/continuous; touched/all/unreached; record and per-bar variants share the raw scope and reset scope-dependent retained state.",
+      "evidence": "frontend/src/live/useDayAskPeaks.ts"
+    },
+    {
+      "id": "depth-heatmap",
+      "label": "호가 잔량 히트맵",
+      "kind": "intraday_raw",
+      "policy": "Close/max/per-price-max book representatives use the same scoped book window.",
+      "evidence": "hoga/api/bundle.py"
+    },
+    {
+      "id": "foreign-net",
+      "label": "외국인 순매수량",
+      "kind": "reported_daily",
+      "policy": "Daily investor provider endpoint has code/date/axis/trade_side, no venue axis. Not a WS-derived venue evening indicator.",
+      "evidence": "frontend/src/live/useInvestorDailyHistory.ts"
+    },
+    {
+      "id": "institution-net",
+      "label": "기관 순매수량",
+      "kind": "reported_daily",
+      "policy": "Same daily investor provider contract; cannot reconstruct independent venue evening investor flow from book/trade ticks.",
+      "evidence": "frontend/src/live/useInvestorDailyHistory.ts"
+    },
+    {
+      "id": "broker-late-entry",
+      "label": "신규 거래원 등장",
+      "kind": "intraday_raw",
+      "policy": "Per-venue saved broker events through 20:00; regular display clips event timestamps while preserving whole-day first-appearance semantics.",
+      "evidence": "hoga/api/bundle.py"
+    },
+    {
+      "id": "program-daily",
+      "label": "프로그램 순매수량",
+      "kind": "reported_daily",
+      "policy": "Daily program provider response; endpoint does not accept venue. Not a WS-derived intraday cumulative series.",
+      "evidence": "frontend/src/live/useDailyProgramTradeHistory.ts"
+    },
+    {
+      "id": "program-trade",
+      "label": "프로그램 순매수",
+      "kind": "intraday_raw",
+      "policy": "Per-venue WS program store through 20:00; filter raw samples before coarse aggregation on regular view. Vendor cumulative amounts retain their reported meaning.",
+      "evidence": "hoga/api/bundle.py"
+    }
+  ],
+  "conclusion": "All 18 catalog items audited. Minute candle/book/trade/broker/program calculations respect available venue evening data and per-window regular display. Reported calendar/daily indicators retain their separate source definitions; no claim that every daily field is a venue-specific 20:00 WS aggregate.",
+  "policies": {
+    "KRX": "20260914 onward: 09:00–15:30 and 16:00–20:00, date/product eligibility respected.",
+    "NXT_UN": "08:00–20:00 for supported instruments.",
+    "regular_badge": "Per-window display only; collect/store independently. Intraday raw aggregation is scoped before ranking/binning/coarse aggregation.",
+    "calendar": "Badge disabled on D/W/M. Official KRX daily close is preserved."
+  },
+  "fixes": [
+    "Fill strength: raw clock filter for both fills and trades, separate regular cache/TTL key, fill kind version 7.",
+    "Program trade: raw samples clipped before coarse regular-session bucketing.",
+    "Candle-only range: regular option honored before aggregation and in segment bounds.",
+    "Broker events: regular display timestamps clipped; day first-seen semantics and storage unchanged."
+  ],
+  "checks": [
+    {
+      "command": "pytest -q -m not-wallclock (API and collector/session/program/stream suites)",
+      "passed": 1317,
+      "deselected": 2,
+      "log": "/tmp/hoga-final-indicator-backend.log",
+      "note": "Includes API suites; known pre-existing rest wire mirror failure deselected, plus existing wallclock marker exclusion."
+    },
+    {
+      "command": "pytest fills/trades/snapshots/timeenc/trade-binning suites",
+      "passed": 161,
+      "log": "/tmp/hoga-final-indicator-tables.log"
+    },
+    {
+      "command": "pytest test_all_indicator_session_scope.py test_local_candle_history.py",
+      "passed": 21,
+      "log": "/tmp/hoga-final-indicator-newcases.log",
+      "note": "18 scope cases plus three existing local-candle cases; 1m/60m/120m/240m, all venues, raw fills and trade fallback, archive/current TTL, depth and broker."
+    },
+    {
+      "command": "vitest affected live hooks, regular filter, real shared WS subscription",
+      "files": 5,
+      "passed": 203,
+      "log": "/tmp/hoga-final-indicator-frontend.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed app/unit/E2E projects",
+      "log": "/tmp/hoga-final-indicator-typecheck.log"
+    },
+    {
+      "command": "vite build",
+      "result": "passed; existing chunk advisory",
+      "log": "/tmp/hoga-final-indicator-build.log"
+    },
+    {
+      "command": "playwright three evening/session specs",
+      "passed": 7,
+      "log": "/tmp/hoga-final-indicator-e2e-exact.log",
+      "isolated_ports": [
+        20113,
+        21113
+      ]
+    },
+    {
+      "command": "ruff check .; git diff --check",
+      "result": "passed"
+    }
+  ],
+  "ws_independence": {
+    "source_evidence": [
+      "frontend/src/state/workspace.ts:setChartRegularSessionOnly",
+      "frontend/src/api/liveSeries.ts:useLiveSeries",
+      "frontend/src/live/useRegularSessionLiveSeries.ts",
+      "hoga/live/session_gate.py:venue_capture_windows_for_day",
+      "hoga/live/stream.py"
+    ],
+    "test": "frontend/src/api/liveSeries.regularSession.test.tsx: KRX/NXT/UN each keep exactly one unchanged subscribe frame, receive 19:59 frames while ON, restore them when OFF, and do not refetch initial series or pass badge params to WS/series.",
+    "runtime": "Collector PID/epoch/readiness preserved across OFF/ON/OFF range queries; no control POSTs sent."
+  },
+  "quote_ratio_placeholders": "The API may retain zero-valued book timeline placeholders outside the requested regular window. No outside-window book quantities survive; the chart regular filter removes placeholder timestamps before plotting.",
+  "runtime": {
+    "at_kst": "2026-10-16T22:35:49.779495+09:00",
+    "code": "005930",
+    "date": "20261015",
+    "checks": [
+      {
+        "venue": "KRX",
+        "sequence": [
+          {
+            "regular": false,
+            "series": {
+              "quote_ratio": {
+                "count": 465,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 21
+              },
+              "fill_strength": {
+                "count": 486,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 443,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 465,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 3,
+                "first_kst": "2026-10-15T10:03:10.001000+09:00",
+                "last_kst": "2026-10-15T10:36:50+09:00"
+              },
+              "program_trade": {
+                "count": 458,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              }
+            },
+            "fill_qty": 28996074,
+            "ask_peaks": {
+              "max_qty": 207017
+            },
+            "bid_peaks": {
+              "max_qty": 309409
+            },
+            "distribution_qty": 28996074,
+            "distribution_last_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 7952676
+          },
+          {
+            "regular": true,
+            "series": {
+              "quote_ratio": {
+                "count": 354,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:19:00+09:00",
+                "empty_placeholders": 132
+              },
+              "fill_strength": {
+                "count": 374,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:29:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 334,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:19:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 354,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:19:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 3,
+                "first_kst": "2026-10-15T10:03:10.001000+09:00",
+                "last_kst": "2026-10-15T10:36:50+09:00"
+              },
+              "program_trade": {
+                "count": 364,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:29:00+09:00"
+              }
+            },
+            "fill_qty": 27637667,
+            "ask_peaks": {
+              "max_qty": 207017
+            },
+            "bid_peaks": {
+              "max_qty": 309409
+            },
+            "distribution_qty": 27637667,
+            "distribution_last_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 7865969
+          },
+          {
+            "regular": false,
+            "series": {
+              "quote_ratio": {
+                "count": 465,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 21
+              },
+              "fill_strength": {
+                "count": 486,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 443,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 465,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 3,
+                "first_kst": "2026-10-15T10:03:10.001000+09:00",
+                "last_kst": "2026-10-15T10:36:50+09:00"
+              },
+              "program_trade": {
+                "count": 458,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              }
+            },
+            "fill_qty": 28996074,
+            "ask_peaks": {
+              "max_qty": 207017
+            },
+            "bid_peaks": {
+              "max_qty": 309409
+            },
+            "distribution_qty": 28996074,
+            "distribution_last_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 7952676
+          }
+        ]
+      },
+      {
+        "venue": "NXT",
+        "sequence": [
+          {
+            "regular": false,
+            "series": {
+              "quote_ratio": {
+                "count": 565,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 10
+              },
+              "fill_strength": {
+                "count": 576,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 513,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 565,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 0,
+                "first_kst": null,
+                "last_kst": null
+              },
+              "program_trade": {
+                "count": 503,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              }
+            },
+            "fill_qty": 21683493,
+            "ask_peaks": {
+              "max_qty": 77979
+            },
+            "bid_peaks": {
+              "max_qty": 281068
+            },
+            "distribution_qty": 21683493,
+            "distribution_last_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 4755731
+          },
+          {
+            "regular": true,
+            "series": {
+              "quote_ratio": {
+                "count": 373,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:29:00+09:00",
+                "empty_placeholders": 202
+              },
+              "fill_strength": {
+                "count": 374,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:29:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 334,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:19:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 373,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:29:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 0,
+                "first_kst": null,
+                "last_kst": null
+              },
+              "program_trade": {
+                "count": 326,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:20:00+09:00"
+              }
+            },
+            "fill_qty": 13245176,
+            "ask_peaks": {
+              "max_qty": 52443
+            },
+            "bid_peaks": {
+              "max_qty": 281068
+            },
+            "distribution_qty": 13245176,
+            "distribution_last_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 3642367
+          },
+          {
+            "regular": false,
+            "series": {
+              "quote_ratio": {
+                "count": 565,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 10
+              },
+              "fill_strength": {
+                "count": 576,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 513,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 565,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 0,
+                "first_kst": null,
+                "last_kst": null
+              },
+              "program_trade": {
+                "count": 503,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              }
+            },
+            "fill_qty": 21683493,
+            "ask_peaks": {
+              "max_qty": 77979
+            },
+            "bid_peaks": {
+              "max_qty": 281068
+            },
+            "distribution_qty": 21683493,
+            "distribution_last_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 4755731
+          }
+        ]
+      },
+      {
+        "venue": "UN",
+        "sequence": [
+          {
+            "regular": false,
+            "series": {
+              "quote_ratio": {
+                "count": 536,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 39
+              },
+              "fill_strength": {
+                "count": 576,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 514,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 536,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 3,
+                "first_kst": "2026-10-15T11:03:50.005000+09:00",
+                "last_kst": "2026-10-15T16:14:00.001000+09:00"
+              },
+              "program_trade": {
+                "count": 550,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              }
+            },
+            "fill_qty": 53034567,
+            "ask_peaks": {
+              "max_qty": 255345
+            },
+            "bid_peaks": {
+              "max_qty": 582259
+            },
+            "distribution_qty": 53034567,
+            "distribution_last_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 14450336
+          },
+          {
+            "regular": true,
+            "series": {
+              "quote_ratio": {
+                "count": 354,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:19:00+09:00",
+                "empty_placeholders": 221
+              },
+              "fill_strength": {
+                "count": 374,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:29:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 335,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:30:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 354,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:19:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 1,
+                "first_kst": "2026-10-15T11:03:50.005000+09:00",
+                "last_kst": "2026-10-15T11:03:50.005000+09:00"
+              },
+              "program_trade": {
+                "count": 364,
+                "first_kst": "2026-10-15T09:00:00+09:00",
+                "last_kst": "2026-10-15T15:29:00+09:00"
+              }
+            },
+            "fill_qty": 40857675,
+            "ask_peaks": {
+              "max_qty": 255345
+            },
+            "bid_peaks": {
+              "max_qty": 582259
+            },
+            "distribution_qty": 40857675,
+            "distribution_last_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 11509028
+          },
+          {
+            "regular": false,
+            "series": {
+              "quote_ratio": {
+                "count": 536,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 39
+              },
+              "fill_strength": {
+                "count": 576,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00",
+                "empty_placeholders": 0
+              },
+              "candles": {
+                "count": 514,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "depth_heatmap": {
+                "count": 536,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              },
+              "broker_late_entries": {
+                "count": 3,
+                "first_kst": "2026-10-15T11:03:50.005000+09:00",
+                "last_kst": "2026-10-15T16:14:00.001000+09:00"
+              },
+              "program_trade": {
+                "count": 550,
+                "first_kst": "2026-10-15T08:00:00+09:00",
+                "last_kst": "2026-10-15T19:59:00+09:00"
+              }
+            },
+            "fill_qty": 53034567,
+            "ask_peaks": {
+              "max_qty": 255345
+            },
+            "bid_peaks": {
+              "max_qty": 582259
+            },
+            "distribution_qty": 53034567,
+            "distribution_last_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 14450336
+          }
+        ]
+      }
+    ],
+    "health": {
+      "status": "ok",
+      "version": "0.16.6.0",
+      "commit": "06cadbf94",
+      "dead_tasks": []
+    },
+    "collector_before": {
+      "epoch": "0efd5ddbb6d9427dbcabbfb262551b6f",
+      "pid": 3051470,
+      "ready": true,
+      "desired_version": 3,
+      "acked_version": 3,
+      "error": null,
+      "storage_errors": []
+    },
+    "collector_after": {
+      "epoch": "0efd5ddbb6d9427dbcabbfb262551b6f",
+      "pid": 3051470,
+      "ready": true,
+      "desired_version": 3,
+      "acked_version": 3,
+      "error": null,
+      "storage_errors": []
+    }
+  },
+  "fill_recalculation": {
+    "targets": 28465,
+    "completed": 28465,
+    "errors": [],
+    "by_venue": {
+      "NXT": 8501,
+      "UN": 8553,
+      "KRX": 11411
+    },
+    "raw_files_verified": 136384,
+    "changed_raw_files": [],
+    "cache_files_backed_up": 6894,
+    "fill_version": 7,
+    "seconds": 92.7,
+    "backup": "/home/dev/.local/share/hoga-ops/backups/20261016-final-indicator-audit-qoxzb6xt",
+    "samples": [
+      {
+        "target": [
+          "20261015",
+          "005930",
+          "kiwoom_live",
+          "KRX"
+        ],
+        "modes": {
+          "full": {
+            "points": 486,
+            "qty": 28996074,
+            "last_ms": 1792061940000
+          },
+          "regular": {
+            "points": 374,
+            "qty": 27637667,
+            "last_ms": 1792045740000
+          }
+        }
+      },
+      {
+        "target": [
+          "20261015",
+          "005930",
+          "kiwoom_live",
+          "NXT"
+        ],
+        "modes": {
+          "full": {
+            "points": 576,
+            "qty": 21683493,
+            "last_ms": 1792061940000
+          },
+          "regular": {
+            "points": 374,
+            "qty": 13245176,
+            "last_ms": 1792045740000
+          }
+        }
+      },
+      {
+        "target": [
+          "20261015",
+          "005930",
+          "kiwoom_live",
+          "UN"
+        ],
+        "modes": {
+          "full": {
+            "points": 576,
+            "qty": 53034567,
+            "last_ms": 1792061940000
+          },
+          "regular": {
+            "points": 374,
+            "qty": 40857675,
+            "last_ms": 1792045740000
+          }
+        }
+      }
+    ]
+  },
+  "prior_full_recalculation": "session-scope-recalculation.json",
+  "prior_checks": "session-scope-verification.json",
+  "prior_activation": "session-scope-activation.json",
+  "activation": {
+    "status": "applied to existing running local service via uvicorn reload/Vite HMR",
+    "runtime_checkout": "/home/dev/code/hoga-ops",
+    "backup": "/home/dev/.local/share/hoga-ops/backups/20261016-final-indicator-audit-qoxzb6xt",
+    "all_changed_file_hashes_match": true,
+    "user_claude_preserved": true,
+    "health": {
+      "status": "ok",
+      "version": "0.16.6.0",
+      "commit": "06cadbf94",
+      "dead_tasks": []
+    },
+    "collector_ready": true
+  },
+  "limitations": [
+    "Checked after market hours: future live tick delivery through 20:00 was not observed; pure clock/capture tests and current collector readiness were verified.",
+    "Only available supported-venue/provider data can be displayed. Daily investor/program endpoints have no venue axis, and D/W/M turnover is reported candle data."
+  ]
+}

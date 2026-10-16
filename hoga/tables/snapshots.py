@@ -683,6 +683,7 @@ def _book_indicator_eligible_sql(
     *,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> str:
     """호가 파생 지표(호가비·총잔량·히트맵·매도/매수 최대벽) 공용 '유효 스냅샷' 술어 (ADR-0062 v3).
 
@@ -720,12 +721,27 @@ def _book_indicator_eligible_sql(
         수학적 동치 — {deep 행 중 close 이하} = {deep 행 중 last_continuous 이하} — 이므로
         v3에서 간접층을 제거하고 매도벽과 같은 직접 close 상한으로 통일했다.
     """
-    parts = [_DEEP_BOOK_SQL]
+    clock = _indicator_clock_sql(
+        intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        session_break=session_break,
+    )
+    return _DEEP_BOOK_SQL if clock == "TRUE" else f"{_DEEP_BOOK_SQL} AND {clock}"
+
+
+def _indicator_clock_sql(
+    intra_ms_expr: str, *, session_open_ms: int | None, session_close_ms: int | None,
+    session_break: tuple[int, int] | None,
+) -> str:
+    """Books and the trades used to classify their walls share one window."""
+    parts: list[str] = []
+    if session_break is not None:
+        lo, hi = (hhmmssms_to_intra_ms_sql(str(edge)) for edge in session_break)
+        parts.append(f"({intra_ms_expr} <= {lo} OR {intra_ms_expr} >= {hi})")
     if session_open_ms is not None:
         parts.append(f"{intra_ms_expr} >= {hhmmssms_to_intra_ms_sql(str(int(session_open_ms)))}")
     if session_close_ms is not None:
         parts.append(f"{intra_ms_expr} <= {hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))}")
-    return " AND ".join(parts)
+    return " AND ".join(parts) or "TRUE"
 
 
 _ASK_DEEP_Q_INDEXES: tuple[int, ...] = tuple(
@@ -1030,6 +1046,7 @@ def query_bucketed_ratio(
     bucket_ms: int,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> list[QuoteRatioRow]:
     """Bucket snapshots and emit the depth totals of the representative snapshot per bucket.
 
@@ -1125,6 +1142,7 @@ def query_bucketed_ratio(
         # 분기에서 `<= session_close`는 종전 `<= last_continuous`와 수학적 동치다.
         pre_auction_pred = _book_indicator_eligible_sql(
             intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=session_break,
         )
     rows = con.execute(
         f"""
@@ -1195,6 +1213,7 @@ def query_daily_depth_peak(
     path: Path,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> DailyDepthPeak | None:
     """유효 스냅샷의 10단계 매도/매수 총잔량 당일 최댓값을 스칼라로 반환.
 
@@ -1220,6 +1239,7 @@ def query_daily_depth_peak(
     else:
         pre_auction_pred = _book_indicator_eligible_sql(
             intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=session_break,
         )
     row = con.execute(
         f"""
@@ -1244,6 +1264,7 @@ def query_daily_depth_peaks(
     paths: Sequence[Path],
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> dict[str, DailyDepthPeak]:
     """여러 파일의 당일 peak 을 **쿼리 1회**로. :func:`query_daily_depth_peak` 와 동치.
 
@@ -1293,6 +1314,7 @@ def query_daily_depth_peaks(
         intra_ms_expr,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        session_break=session_break,
     )
     close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
     # `_last_continuous_intra_ms is not None` 과 같은 술어.
@@ -1358,6 +1380,7 @@ def query_daily_depth_split_peaks(
     split_ms: int,
     session_open_ms: int,
     session_close_ms: int,
+    session_break: tuple[int, int] | None = None,
 ) -> dict[str, DepthSplitPeak]:
     """여러 파일의 기준시각 분할 peak 을 **쿼리 1회**로.
 
@@ -1384,6 +1407,7 @@ def query_daily_depth_split_peaks(
         intra_ms_expr,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        session_break=session_break,
     )
     close_intra_sql = hhmmssms_to_intra_ms_sql(str(int(session_close_ms)))
     split_intra_sql = hhmmssms_to_intra_ms_sql(str(int(split_ms)))
@@ -1487,6 +1511,7 @@ def query_bucketed_depth_heatmap(
     bucket_ms: int,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> list[DepthHeatmapRow]:
     """버킷별 대표 스냅샷의 10단계 가격·잔량을 방출한다.
 
@@ -1525,6 +1550,7 @@ def query_bucketed_depth_heatmap(
         # ADR-0062 v3 (동시호가 배제 통일): 호가비·매도벽과 글자 그대로 같은 공용 술어.
         where_pred = _book_indicator_eligible_sql(
             intra_ms_expr, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+            session_break=session_break,
         )
 
     # depth cache v9: ties have a canonical representative so 1m → coarse
@@ -1750,6 +1776,7 @@ def query_day_ask_peak(
     venue: str = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> AskPeakRow | None:
     """당일 단일 매도 호가단계 최대 qty와 그 가격 — **총잔량 지표와 동일한 표현 위에서** 집계.
 
@@ -1769,6 +1796,7 @@ def query_day_ask_peak(
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
     where = _book_indicator_eligible_sql(
         intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        session_break=session_break,
     )
     # 버킷별 대표 = 마지막 연속거래 스냅샷(rn=1 by ts_ms DESC). 연속거래행으로 사전 필터한 뒤
     # 버킷팅하므로 완전-동시호가 버킷은 행이 없어 자연 탈락(총잔량의 (0,0) 센티넬 불필요).
@@ -1819,6 +1847,7 @@ def query_day_ask_peak_dual(
     bucket_ms: int,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> AskPeakDualRow | None:
     """Past-day ask peak — 동일분 터치 벽과 전체 벽(ADR-0156)."""
     ask_row, _bid_row = query_day_ask_bid_peak_dual(
@@ -1828,6 +1857,7 @@ def query_day_ask_peak_dual(
         bucket_ms=bucket_ms,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        session_break=session_break,
     )
     return ask_row
 
@@ -1841,11 +1871,13 @@ def query_day_bid_peak(
     venue: str = "KRX",
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> BidPeakRow | None:
     """Past-day bid peak over continuous-trading representative snapshots."""
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
     where = _book_indicator_eligible_sql(
         intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        session_break=session_break,
     )
 
     def level_union(src: str) -> str:
@@ -1895,6 +1927,7 @@ def query_day_bid_peak_dual(
     bucket_ms: int,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> BidPeakDualRow | None:
     """Past-day bid peak — 동일분 터치 벽과 전체 벽(ADR-0156)."""
     _ask_row, bid_row = query_day_ask_bid_peak_dual(
@@ -1904,6 +1937,7 @@ def query_day_bid_peak_dual(
         bucket_ms=bucket_ms,
         session_open_ms=session_open_ms,
         session_close_ms=session_close_ms,
+        session_break=session_break,
     )
     return bid_row
 
@@ -1915,6 +1949,7 @@ def _read_peak_wall_frames(
     trades_path: Path,
     bucket_ms: int,
     where: str,
+    trade_where: str,
     intra: str,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Linear SQL scans → polars frames for the minute-scoped classifier.
@@ -1959,7 +1994,7 @@ def _read_peak_wall_frames(
         f"""
         SELECT ({intra} // {ONE_MINUTE_MS}) AS minute_id, price
         FROM read_parquet(?)
-        WHERE side IN (1, -1) AND price > 0
+        WHERE side IN (1, -1) AND price > 0 AND {trade_where}
         """,
         [str(trades_path)],
     ).pl()
@@ -2302,6 +2337,7 @@ def query_day_ask_bid_peak_dual_with_rep(
     bucket_ms: int,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None, list[PeakRepRow]]:
     """Return ask and bid peak rows for the same day using shared scans.
 
@@ -2318,11 +2354,14 @@ def query_day_ask_bid_peak_dual_with_rep(
     intra = hhmmssms_to_intra_ms_sql("ts_ms")
     where = _book_indicator_eligible_sql(
         intra, session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        session_break=session_break,
     )
 
     events, touches = _read_peak_wall_frames(
         con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,
         where=where, intra=intra,
+        trade_where=_indicator_clock_sql(intra, session_open_ms=session_open_ms,
+                                         session_close_ms=session_close_ms, session_break=session_break),
     )
 
     rep_rows_out: list[PeakRepRow] = []
@@ -2444,10 +2483,12 @@ def query_day_ask_bid_peak_dual(
     bucket_ms: int,
     session_open_ms: int | None = None,
     session_close_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
 ) -> tuple[AskPeakDualRow | None, BidPeakDualRow | None]:
     """`query_day_ask_bid_peak_dual_with_rep` 의 rep 행 없는 판(기존 시그니처)."""
     ask_row, bid_row, _ = query_day_ask_bid_peak_dual_with_rep(
         con, path=path, trades_path=trades_path, bucket_ms=bucket_ms,
         session_open_ms=session_open_ms, session_close_ms=session_close_ms,
+        session_break=session_break,
     )
     return ask_row, bid_row

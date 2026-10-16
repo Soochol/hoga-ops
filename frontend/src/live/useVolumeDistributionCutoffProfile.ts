@@ -26,6 +26,7 @@ export function useVolumeDistributionCutoffProfile(args: {
   enabled: boolean;
   /** Explicit session boundary must not be rounded to the display timeframe. */
   exactCutoffMs?: number;
+  regularSessionOnly?: boolean;
   code: string | null;
   timeframe: Timeframe | null;
   date: string | null;
@@ -66,6 +67,7 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.date ?? '',
     args.rangeCount,
     args.exactCutoffMs === undefined ? 'bar' : 'session',
+    args.regularSessionOnly === true,
     args.priceRange?.min ?? '',
     args.priceRange?.max ?? '',
     // 계수가 늦게 도착하면 같은 스코프로 **환산 전 프로파일이 재사용된다** — 척도를
@@ -93,6 +95,7 @@ export function useVolumeDistributionCutoffProfile(args: {
     args.todayKst,
     {
       mode: 'sidecar',
+      ...(args.regularSessionOnly ? { regularSessionOnly: true } : {}),
       volumeDistributionBins: args.rangeCount,
       volumeDistributionCutoffMs: queryEnabled ? alignedCursorMs : null,
       volumeDistributionPriceRange: requestPriceRange,
@@ -142,7 +145,7 @@ export function useVolumeDistributionCutoffProfile(args: {
     const sidecarProfile = scaledQueryData?.volume_distributions.find((profile) => profile.date === date) ?? null;
 
     if (sidecarProfile) {
-      const profile = mergeVolumeDistributionTail(sidecarProfile, liveTrades, args.cursorMs);
+      const profile = mergeVolumeDistributionTail(sidecarProfile, liveTrades, args.cursorMs, null, args.segment?.venue);
       lastCutoffProfileRef.current = { scope, profile };
       return profile;
     }

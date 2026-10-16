@@ -48,6 +48,7 @@ from hoga.api.models import (
     DepthHeatmapPoint,
     TradeVolumePoc,
 )
+from hoga.live.stock_sessions import krx_aftermarket_introduced
 from hoga.live.venue import Venue
 from hoga.tables.snapshots import PeakRepRow, QuoteRatioRow
 from hoga.tables.trades import FillStrengthRow
@@ -101,7 +102,7 @@ KIND_VERSIONS: dict[str, int] = {
     # 칸이 늘 때마다 **범프가 필수다**. 안 올리면 옛 캐시가 되살아나 IndexError 로 죽는다.
     # peak 계열(콜드 비용의 95%)과 달리 ratio 재계산은 싸므로 범프 비용이 낮다.
     "ratio": 9,
-    "fill": 6,
+    "fill": 7,  # Raw venue/regular clock filtering before SUM, including KRX reopening gap.
     # 8 (ADR-0156): 터치 판정이 "이벤트 이후 아무 때나" → "벽이 관측된 그 1분 안" 으로
     # 바뀌었고 `untraded_*`(사후미터치) 계열이 사라졌다. **범프가 필수다** — `_is_stale`
     # 은 capture meta 의 파일 세대만 보므로 "계산 규칙이 바뀌었나" 를 모른다. 아래 문단이
@@ -131,8 +132,9 @@ KIND_VERSIONS: dict[str, int] = {
     #     사유(구 캐시엔 필드가 없고 pydantic 이 빈 리스트로 조용히 채운다).
     # 16: all_record_peaks/all_record_max_peaks 추가 — 전체 최대벽 누적 계단의 오전
     #     이력을 복원한다. 구 캐시는 빈 리스트로 채워져 최종 top-3 시각부터 시작한다.
-    "ask_peak": 16,
-    "bid_peak": 16,
+    # 17: classify touched/unreached walls with trades from the same requested window.
+    "ask_peak": 17,
+    "bid_peak": 17,
     "poc": 7,
     # 8: asks_price_max/bids_price_max(가격대마다 따로 잰 최댓값) 추가. 구 캐시엔 그
     #    필드가 없고 pydantic 이 **빈 리스트로 조용히 채우므로** 범프하지 않으면 새
@@ -148,7 +150,7 @@ KIND_VERSIONS: dict[str, int] = {
     # 항목을 무효화하지 않는다**(위 문단의 "전량 재계산 수십 분" 을 피하는 조건).
     # 2 (ADR-0156): `touched` 의 의미가 바뀌었다. 값 자체는 이제 **분 스코프**라 표시 봉과
     # 무관하고, 그래서 아래 "1분 고정" 계약과 굵은 봉 파생이 그대로 성립한다.
-    "peak_rep": 2,
+    "peak_rep": 3,
 }
 
 Kind = Literal["ratio", "fill", "peak_rep"]
@@ -170,10 +172,13 @@ class PastIndicatorsCache:
         self,
         data_dir: Path,
         *,
+        regular_session_only: bool = False,
         mem_max_entries: int = DEFAULT_MEM_MAX_ENTRIES,
         mem_max_depth_entries: int = DEFAULT_DEPTH_MEM_MAX_ENTRIES,
     ):
         self._data_dir = data_dir
+        self.regular_session_only = regular_session_only
+        self._cache_root = data_dir / ("kis-past-indicators-regular" if regular_session_only else "kis-past-indicators")
         # `/api/range` 는 **sync 라우트**(routes.py 의 `def api_range`)라 Starlette
         # 이 anyio 스레드풀에서 돌린다 — 즉 이 캐시의 OrderedDict 들이 여러 스레드에서
         # 동시에 변이된다. 락이 없던 동안 두 창을 재캡처 중에 팬하면
@@ -335,11 +340,15 @@ class PastIndicatorsCache:
             st = meta.stat()
         except OSError:
             return None
-        return f"{st.st_dev}:{st.st_ino}:{st.st_size}:{st.st_mtime_ns}:{st.st_ctime_ns}"
+        generation = f"{st.st_dev}:{st.st_ino}:{st.st_size}:{st.st_mtime_ns}:{st.st_ctime_ns}"
+        # Only affected KRX dates need new semantics; preserve older peak caches.
+        if venue in ("NXT", "UN"):
+            return generation + ":extended-grid-v3"
+        return generation + (":evening-v3" if krx_aftermarket_introduced(date) else "")
 
     def _generation_for_path(self, path: Path) -> str | None:
         try:
-            rel = path.relative_to(self._data_dir / "kis-past-indicators")
+            rel = path.relative_to(self._cache_root)
             code, source = rel.parts[0], rel.parts[1]
             venue = cast("Venue", rel.parts[2]) if len(rel.parts) > 3 else "KRX"  # noqa: PLR2004
             date = path.name.split(".", 1)[0]
@@ -390,7 +399,7 @@ class PastIndicatorsCache:
         """
         from hoga.api.sources import source_venue_dir  # noqa: PLC0415 — 순환 절단
 
-        return source_venue_dir(self._data_dir / "kis-past-indicators" / code, source, venue)
+        return source_venue_dir(self._cache_root / code, source, venue)
 
     def _path(self, code: str, date: str, source: str, kind: Kind, *, venue: Venue = "KRX") -> Path:
         return self._store_dir(code, source, venue=venue) / f"{date}.{kind}.json"

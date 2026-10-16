@@ -214,7 +214,8 @@ def test_excluded_product_effective_session_stays_at_regular_close(monkeypatch):
 
 
 @pytest.mark.parametrize("minutes", [120, 240])
-def test_parquet_indicators_and_candles_share_the_reopening_grid(tmp_path, minutes):
+@pytest.mark.parametrize("venue", ["KRX", "NXT", "UN"])
+def test_parquet_indicators_and_candles_share_the_reopening_grid(tmp_path, minutes, venue):
     import polars as pl
 
     from hoga.api.bundle import (
@@ -230,7 +231,7 @@ def test_parquet_indicators_and_candles_share_the_reopening_grid(tmp_path, minut
     from hoga.tables.candles import ApiCandle
 
     day, code, source = "20260914", "005930", "kiwoom_live"
-    folder = source_venue_dir(tmp_path / "parquet" / day / code, source, "KRX")
+    folder = source_venue_dir(tmp_path / "parquet" / day / code, source, venue)
     folder.mkdir(parents=True)
     folder.joinpath("meta.json").write_text(json.dumps({"source":source,"code":code,"date":day,
         "regular_session_open_ms":90000000,"regular_session_close_ms":153000000,
@@ -248,10 +249,10 @@ def test_parquet_indicators_and_candles_share_the_reopening_grid(tmp_path, minut
     pl.DataFrame(books).write_parquet(folder / "snapshots.parquet")
     pl.DataFrame(trades).write_parquet(folder / "trades.parquet")
     engine = QueryEngine(tmp_path)
-    common = {"code":code,"date":day,"source":source,"venue":"KRX"}
+    common = {"code":code,"date":day,"source":source,"venue":venue}
     bounds = {"session_open_ms":90000000,"session_close_ms":200000000}
     bucket_ms = minutes * 60_000
-    expected = [c.ts_ms for c in downsample_candles(candles,bucket_ms=bucket_ms,date=day)]
+    expected = [c.ts_ms for c in downsample_candles(candles,bucket_ms=bucket_ms,date=day,venue=venue)]
     for cache, today in [(None, None),(engine.indicators_cache,"20260915")]:
         options = {**common,"bucket_ms":bucket_ms,"cache":cache,"today_kst":today}
         ratio = build_quote_ratio_slice(engine,**options,**bounds)
@@ -460,3 +461,62 @@ def test_early_close_backfill_and_series_guard_agree(tmp_path):
     assert saved["is_partial"] is False
     assert saved["indicator_continuous_windows"] == [[90000000, 122000000]]
     assert not _series_snapshots_no_gaps(StockDateArtifacts(saved, snapshot_ts_ms=values))
+
+
+@pytest.mark.parametrize('venue', ['NXT', 'UN'])
+@pytest.mark.parametrize(('day', 'hour', 'minute'), [
+    (11, 8, 30), (11, 15, 45), (14, 8, 30), (14, 15, 45), (14, 19, 59),
+])
+def test_extended_venue_live_peak_uses_its_own_clock(venue, day, hour, minute):
+    from hoga.live.stock_sessions import stock_indicator_window
+
+    assert stock_indicator_window(at(day, hour, minute), venue)
+    assert not stock_indicator_window(at(day, 20), venue)
+
+
+def test_hogaplay_evening_repair_preserves_source_and_rebuilds_cached_indicators(tmp_path):
+    import polars as pl
+
+    from hoga.api.bundle import build_depth_heatmap_slice, build_quote_ratio_slice
+    from hoga.api.queries import QueryEngine
+    from hoga.live.meta_backfill import backfill_indicator_session_bounds
+
+    date, code = '20260914', '005930'
+    folder = tmp_path / 'parquet' / date / code / 'hogaplay'
+    folder.mkdir(parents=True)
+    meta_path = folder / 'meta.json'
+    meta = dict(code=code, regular_session_open_ms=90000000, regular_session_close_ms=153000000,
+                collection_complete=True, is_partial=False, full_capture_count=7)
+    meta_path.write_text(json.dumps(meta))
+    before = meta_path.read_bytes()
+    rows = []
+    for timestamp, qty in [(100000000, 10), (153014000, 9999), (155900000, 9999), (160000000, 20), (195900000, 30)]:
+        row = {'ts_ms': timestamp}
+        for level in range(1, 11):
+            row.update({f'ask_p{level}':100+level, f'bid_p{level}':100-level,
+                        f'ask_q{level}':qty, f'bid_q{level}':qty})
+        rows.append(row)
+    pl.DataFrame(rows).write_parquet(folder / 'snapshots.parquet')
+    parquet_before = (folder / 'snapshots.parquet').read_bytes()
+    engine = QueryEngine(tmp_path)
+    options = dict(code=code, date=date, source='hogaplay', venue='KRX', bucket_ms=60000)
+    old = build_quote_ratio_slice(engine, **options)
+    assert old.points[-1].ask_total == 0
+    assert backfill_indicator_session_bounds(tmp_path, dry_run=True).updated == 1
+    assert meta_path.read_bytes() == before
+    backup = tmp_path / 'backup'
+    assert backfill_indicator_session_bounds(tmp_path, backup_dir=backup).updated == 1
+    assert (backup / meta_path.relative_to(tmp_path)).read_bytes() == before
+    assert (folder / 'snapshots.parquet').read_bytes() == parquet_before
+    repaired = json.loads(meta_path.read_text())
+    assert repaired['regular_session_close_ms'] == 153000000
+    assert repaired['indicator_session_close_ms'] == 200000000
+    assert repaired['full_capture_count'] == 7
+    assert repaired['collection_complete'] is True
+    assert backfill_indicator_session_bounds(tmp_path).updated == 0
+    fresh = build_quote_ratio_slice(engine, **options)
+    assert fresh.points[-1].ask_total == 300
+    assert max(p.ask_total for p in fresh.points) == 300  # break residuals cannot win
+    heatmap = build_depth_heatmap_slice(engine, **options)
+    assert max(p.t_ms for p in heatmap) == at(14, 19, 59)
+    assert len(heatmap) == 3

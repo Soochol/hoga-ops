@@ -1,4 +1,5 @@
-import { indicatorBucketStartMs } from '../util/stockSessions';
+import { indicatorBucketStartMs, isStockIndicatorBreak } from '../util/stockSessions';
+import { unixMsToKSTHhmm } from '../util/time';
 import type { QuoteRatioPoint, FillStrengthPoint, OrderbookLevel } from '../api/types';
 import { quoteImbalance } from '../util/imbalance';
 import { krxTick } from '../chart/surge/krxTick';
@@ -104,8 +105,11 @@ function hasDepthBeyondLevel3(lv: OrderbookLevel[] | undefined): boolean {
  *
  * 백엔드 술어는 처음부터 `session_open_ms`/`session_close_ms` 를 **인자로** 받았다.
  * 비대칭은 이쪽에 있었고, 필수 인자로 바꾼 지금이 두 정의가 실제로 같아진 상태다. */
-export function isIndicatorEligibleBook(s: ObSnapshot, sessionOpenMs: number): boolean {
-  return isContinuousBook(s) && s.t_ms >= sessionOpenMs;
+export function isIndicatorEligibleBook(
+  s: ObSnapshot, sessionOpenMs: number,
+  venue: string = s.venue ?? (unixMsToKSTHhmm(sessionOpenMs) === 800 ? 'UN' : 'KRX'),
+): boolean {
+  return isContinuousBook(s) && s.t_ms >= sessionOpenMs && !isStockIndicatorBreak(s.t_ms, venue);
 }
 
 /** 10호가 사다리가 덮는 가격 폭을 중간가 대비 %로 — `QuoteRatioPoint.band_pct` 의 라이브 산출.
@@ -206,7 +210,7 @@ export function bucketHogaSeries(
   const seenPre = new Set<number>();
   for (const s of obSorted) {
     const t = indicatorBucketStartMs(s.t_ms, bucketMs, venue);
-    if (s.t_ms <= lastContinuousMs && isIndicatorEligibleBook(s, sessionOpenMs)) {
+    if (s.t_ms <= lastContinuousMs && isIndicatorEligibleBook(s, sessionOpenMs, venue)) {
       // pre-auction: last continuous wins (close = bid_total/ask_total). Intra-Bar
       // Max fields accumulate over the SAME continuous-snapshot set (s.t_ms <=
       // lastContinuousMs) so 동시호가 is excluded identically and bid_max ≥ bid_total

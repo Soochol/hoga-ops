@@ -45,7 +45,7 @@ def write_fills_parquet(rows: list[Fill], path: Path) -> None:
 
 
 def query_fill_strength(
-    con: duckdb.DuckDBPyConnection, *, path: Path, bucket_ms: int
+    con: duckdb.DuckDBPyConnection, *, path: Path, bucket_ms: int, clock_filter: str = "TRUE",
 ) -> list[FillStrengthRow]:
     """trades.query_fill_strength 와 동일 반환형 — bundle이 분기 없이 재사용."""
     intra_ms_expr = hhmmssms_to_intra_ms_sql("ts_ms")
@@ -55,6 +55,7 @@ def query_fill_strength(
                SUM(buy_qty) AS buy_qty,
                SUM(sell_qty) AS sell_qty
         FROM read_parquet(?)
+        WHERE {clock_filter}
         GROUP BY 1 ORDER BY 1
         """,
         [str(path)],

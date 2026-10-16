@@ -1,15 +1,14 @@
 import { krxAftermarketIntroduced } from '../util/stockSessions';
 import type { Candle, DayVolumeDistribution, RangeSegment } from '../api/types';
 import { realMsToYyyymmdd, regularSessionCloseMs, regularSessionOpenMs } from './liveDateTime';
+import { isStockIndicatorBreak } from '../util/stockSessions';
 import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
 
 /**
  * 매물대 집계 창의 segment 사본. 시행 이후 KRX는 오후 거래까지 포함한다.
  *
- * venue=UN 은 분봉 표시창이 08:00~20:00 확장창이라(liveVenuePolicy) segment 의
- * 세션 경계도 확장창이 된다. 그 경계를 그대로 집계에 쓰면 NXT 프리·애프터 체결이
- * 매물대에 섞이고, **오늘은 확장창 · 과거일(백엔드 산출)은 정규장** 이라는 비대칭이
- * 생겨 같은 창에서 날짜를 옮길 때마다 기준이 조용히 바뀐다.
+ * NXT·통합은 저장 데이터와 같은 08:00~20:00 범위를 유지한다. KRX만 시행 전후의
+ * 지표 정책을 적용하고 공식 정규장 종가와 저녁 지표의 경계를 구분한다.
  *
  * 축(x)은 좁히지 않는다 — 종가 라인은 NXT 시간대까지 이어져야 하고, 그 분리는
  * `VolumeDistributionCard` 의 `axisStartMs` 가 맡는다.
@@ -17,6 +16,8 @@ import { isContinuousBook, type ObSnapshot } from './bucketHogaSeries';
  * 백엔드 실측 세션(effective_sessions)이 정규장보다 좁으면 그쪽을 존중한다(교집합).
  */
 export function regularSessionBinningSegment(segment: RangeSegment, venue: string = "KRX"): RangeSegment {
+  // NXT and integrated indicators use the same full window as their stored data.
+  if (venue !== 'KRX') return segment;
   const openMs = Math.max(segment.session_open_ms, regularSessionOpenMs(segment.date));
   const after = venue === 'KRX' && krxAftermarketIntroduced(segment.date);
   const closeMs = after ? segment.session_close_ms : Math.min(segment.session_close_ms, regularSessionCloseMs(segment.date));
@@ -53,6 +54,7 @@ export function mergeVolumeDistributionTail(
   trades: readonly ContinuousTradeLike[],
   cursorMs: number | null,
   continuousBeforeMs?: number | null,
+  venue = ((profile.session_open_ms + 9 * 3600_000) % 86400_000 < 9 * 3600_000 ? 'UN' : 'KRX'),
 ): DayVolumeDistribution {
   if (profile.last_trade_ms == null || profile.bins.length === 0) return profile;
   const rangeCount = profile.bins.length;
@@ -66,6 +68,7 @@ export function mergeVolumeDistributionTail(
     if (trade.t_ms <= profile.last_trade_ms) continue;
     if (cursorMs != null && trade.t_ms > cursorMs) continue;
     if (trade.t_ms < profile.session_open_ms || trade.t_ms >= upperBoundMs) continue;
+    if (isStockIndicatorBreak(trade.t_ms, venue)) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
@@ -75,7 +78,9 @@ export function mergeVolumeDistributionTail(
       0,
       Math.min(rangeCount - 1, Math.floor((trade.price - profile.price_min) / binWidth)),
     );
-    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty };
+    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty,
+      ...('first_trade_ms' in bins[idx]
+        ? { first_trade_ms: Math.min(bins[idx].first_trade_ms ?? trade.t_ms, trade.t_ms) } : {}) };
     lastTradeMs = Math.max(lastTradeMs, trade.t_ms);
   }
 
@@ -104,12 +109,14 @@ export function foldTradesIntoVolumeDistribution(
   const rangeCount = profile.bins.length;
   const rawBinWidth = (profile.price_max - profile.price_min) / rangeCount;
   const binWidth = rawBinWidth > 0 ? rawBinWidth : 1;
+  const venue = ((profile.session_open_ms + 9 * 3600_000) % 86400_000 < 9 * 3600_000 ? 'UN' : 'KRX');
   const upperBoundMs = continuousBeforeMs ?? profile.session_close_ms;
 
-  let bins: { price_low: number; price_high: number; qty: number }[] | null = null;
+  let bins: DayVolumeDistribution['bins'] | null = null;
   let lastTradeMs = profile.last_trade_ms;
   for (const trade of trades) {
     if (baselineMs != null && trade.t_ms <= baselineMs) continue;
+    if (isStockIndicatorBreak(trade.t_ms, venue)) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
@@ -120,7 +127,9 @@ export function foldTradesIntoVolumeDistribution(
       0,
       Math.min(rangeCount - 1, Math.floor((trade.price - profile.price_min) / binWidth)),
     );
-    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty };
+    bins[idx] = { ...bins[idx], qty: bins[idx].qty + trade.qty,
+      ...('first_trade_ms' in bins[idx]
+        ? { first_trade_ms: Math.min(bins[idx].first_trade_ms ?? trade.t_ms, trade.t_ms) } : {}) };
     lastTradeMs = lastTradeMs == null ? trade.t_ms : Math.max(lastTradeMs, trade.t_ms);
   }
   if (bins === null) return profile;
@@ -235,11 +244,13 @@ export function computeContinuousTradeVolumeDistribution(args: {
   continuousBeforeMs?: number | null;
 }): DayVolumeDistribution | null {
   const { date, candles, trades, rangeCount, segment, cutoffMs } = args;
+  const venue = segment.venue ?? ((segment.session_open_ms + 9 * 3600_000) % 86400_000 < 9 * 3600_000 ? 'UN' : 'KRX');
   if (!Number.isInteger(rangeCount) || rangeCount <= 0) return null;
 
   let priceMin = Infinity;
   let priceMax = -Infinity;
   for (const candle of candles) {
+    if (isStockIndicatorBreak(candle.ts_ms, venue)) continue;
     if (Number.isFinite(candle.low)) priceMin = Math.min(priceMin, candle.low);
     if (Number.isFinite(candle.high)) priceMax = Math.max(priceMax, candle.high);
   }
@@ -253,6 +264,7 @@ export function computeContinuousTradeVolumeDistribution(args: {
 
   for (const trade of trades) {
     if (cutoffMs != null && trade.t_ms > cutoffMs) continue;
+    if (isStockIndicatorBreak(trade.t_ms, venue)) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;
@@ -260,7 +272,8 @@ export function computeContinuousTradeVolumeDistribution(args: {
     if (trade.price < priceMin || trade.price > priceMax) continue;
 
     const idx = Math.floor((trade.price - priceMin) / binWidth);
-    qtyByBin[Math.max(0, Math.min(rangeCount - 1, idx))] += trade.qty;
+    const bin = Math.max(0, Math.min(rangeCount - 1, idx));
+    qtyByBin[bin] += trade.qty;
     lastTradeMs = lastTradeMs == null ? trade.t_ms : Math.max(lastTradeMs, trade.t_ms);
   }
 
@@ -305,11 +318,13 @@ export function buildContinuousTradeVolumeDistributionIndex(args: {
   continuousBeforeMs?: number | null;
 }): ContinuousTradeVolumeDistributionIndex | null {
   const { date, candles, trades, rangeCount, segment } = args;
+  const venue = segment.venue ?? ((segment.session_open_ms + 9 * 3600_000) % 86400_000 < 9 * 3600_000 ? 'UN' : 'KRX');
   if (!Number.isInteger(rangeCount) || rangeCount <= 0) return null;
 
   let priceMin = Infinity;
   let priceMax = -Infinity;
   for (const candle of candles) {
+    if (isStockIndicatorBreak(candle.ts_ms, venue)) continue;
     if (Number.isFinite(candle.low)) priceMin = Math.min(priceMin, candle.low);
     if (Number.isFinite(candle.high)) priceMax = Math.max(priceMax, candle.high);
   }
@@ -322,6 +337,7 @@ export function buildContinuousTradeVolumeDistributionIndex(args: {
   const includedTimes: number[] = [];
 
   for (const trade of trades) {
+    if (isStockIndicatorBreak(trade.t_ms, venue)) continue;
     if (trade.side !== 1 && trade.side !== -1) continue;
     if (!Number.isFinite(trade.price) || trade.price <= 0) continue;
     if (!Number.isFinite(trade.qty) || trade.qty <= 0) continue;

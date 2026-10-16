@@ -1040,6 +1040,7 @@ class VolumeDistributionBin(BaseModel):
     price_low: int
     price_high: int
     qty: int
+    first_trade_ms: int | None = None
 
 
 class DayVolumeDistribution(BaseModel):

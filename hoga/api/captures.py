@@ -67,7 +67,6 @@ from hoga.api.models import (
 from hoga.api.params import CODE_PATTERN
 from hoga.collector.client import CookieExpiredError, HogaplayHTTPError
 from hoga.collector.orchestrator import (
-    CHART_FINAL_TIME_MS,
     DATA_WINDOW_START_MS,
     DEFAULT_PAGE_STEP_MS,
     DEFAULT_RATE_LIMIT_S,
@@ -76,7 +75,9 @@ from hoga.collector.orchestrator import (
     ProgressEvent,
     TodayTooEarlyRefused,
     UpstreamNoDataError,
+    chart_final_time,
     collect_stock_date,
+    today_capture_cutoff,
 )
 from hoga.collector.timing import CaptureTimingCollector, NullTimingCollector
 from hoga.collector.timing_writer import write_timing_report
@@ -817,7 +818,7 @@ def _apply_progress(state: QueueItemState, evt: ProgressEvent) -> None:
     state.elapsed_ms = int(time.time() * 1000) - (state.started_at_ms or 0)
     # Estimate: % of Data Window covered. HogaMs arithmetic returns int
     # (NewType subtraction is identity), so span/offset are plain ints.
-    span = CHART_FINAL_TIME_MS - DATA_WINDOW_START_MS
+    span = chart_final_time(state.date) - DATA_WINDOW_START_MS
     offset = max(0, evt.frontier - DATA_WINDOW_START_MS)
     state.estimate_pct = min(98, max(0, int(100 * offset / span)))
     progress = state.to_progress()
@@ -1915,7 +1916,7 @@ async def enqueue_items_core(  # noqa: PLR0912, PLR0915
         raise HTTPException(status_code=400, detail={
             "code": CaptureErrorCode.TODAY_TOO_EARLY,
             "message": (
-                f"Dates {too_early} are today (KST) and now={now:%H:%M} < 16:30."
+                f"Dates {too_early} are today (KST) and now={now:%H:%M} < {today_capture_cutoff(too_early[0]):%H:%M}."
             ),
             "dates": too_early,
         })

@@ -785,6 +785,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # 차트다 — 이 한 라우트가 매물대·최대벽·프로그램·depth 히트맵·잔량 증감·
         # 거래원 늦은 진입 **지표 6~7개**의 과거 시계열을 실어 나른다.
         venue: str = Query(...),
+        regular_session_only: bool = Query(False),
         broker_late_entries_enabled: bool = Query(True),
         broker_late_entry_start_hhmm: int = Query(930),
         volume_distribution_bins: int | None = Query(None, ge=5, le=30),
@@ -902,6 +903,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 "bucket_ms": bucket_ms,
                 "source_pref": source_pref,
                 "venue": venue,
+                **({"regular_session_only": True} if regular_session_only else {}),
                 "broker_late_entries_enabled": broker_late_entries_enabled,
                 "broker_late_entry_start_hhmm": broker_late_entry_start_hhmm,
                 "volume_distribution_bins": volume_distribution_bins,

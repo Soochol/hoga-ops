@@ -381,11 +381,14 @@ def _hhmmssms_to_intra_ms(value: int) -> int:
 
 
 def _session_bound_to_intra_ms(value: int) -> int:
-    return _hhmmssms_to_intra_ms(value) if value > 86_400_000 else value  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
+    # Stock windows start at 08:00. Native 08:00 (80_000_000) is smaller
+    # than a linear day, but already exceeds the latest stock close in linear
+    # milliseconds (20:00 = 72_000_000). Preserve legacy linear callers.
+    return _hhmmssms_to_intra_ms(value) if value >= 80_000_000 else value  # noqa: PLR2004
 
 
 def query_fill_strength(
-    con: duckdb.DuckDBPyConnection, *, path: Path, bucket_ms: int
+    con: duckdb.DuckDBPyConnection, *, path: Path, bucket_ms: int, clock_filter: str = "TRUE",
 ) -> list[FillStrengthRow]:
     """Aggregate continuous trades into per-bucket buy/sell quantities.
 
@@ -408,7 +411,7 @@ def query_fill_strength(
                SUM(CASE WHEN side = 1 THEN qty ELSE 0 END) AS buy_qty,
                SUM(CASE WHEN side = -1 THEN qty ELSE 0 END) AS sell_qty
         FROM read_parquet(?)
-        WHERE side != 0
+        WHERE side != 0 AND ({clock_filter})
         GROUP BY 1 ORDER BY 1
         """,
         [str(path)],
@@ -429,6 +432,7 @@ def query_trade_volume_poc(
     session_open_ms: int,
     session_close_ms: int,
     continuous_before_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
     binning_cache: TradeBinningCache | None = None,
 ) -> TradeVolumePocRow | None:
     """Return the strongest regular-session distribution bin for a day.
@@ -441,7 +445,8 @@ def query_trade_volume_poc(
     upper = _session_bound_to_intra_ms(
         continuous_before_ms if continuous_before_ms is not None else session_close_ms,
     )
-    spec = BinningSpec(price_lo, price_hi, bins, _session_bound_to_intra_ms(session_open_ms), upper)
+    spec = BinningSpec(price_lo, price_hi, bins, _session_bound_to_intra_ms(session_open_ms), upper,
+                       tuple(_session_bound_to_intra_ms(v) for v in session_break) if session_break else None)
     statistics = (binning_cache.read(con, path, spec) if binning_cache is not None
                   else query_statistics(con, path, spec))
     # Distribution retains the raw top-edge bin; POC combines it with the last
@@ -508,6 +513,7 @@ class VolumeProfileBinning:
     bin_width: float
     bins: list[tuple[int, int]]
     max_intra_ms: int | None = None
+    first_intra_ms_by_bin: tuple[tuple[int, int], ...] = ()
 
 
 def query_continuous_trade_volume_distribution(
@@ -521,6 +527,7 @@ def query_continuous_trade_volume_distribution(
     session_close_ms: int,
     upper_bound_ms: int | None = None,
     continuous_before_ms: int | None = None,
+    session_break: tuple[int, int] | None = None,
     binning_cache: TradeBinningCache | None = None,
 ) -> VolumeProfileBinning:
     """Bin continuous-trading qty into a caller-supplied candle price range.
@@ -533,16 +540,19 @@ def query_continuous_trade_volume_distribution(
     upper = min(_session_bound_to_intra_ms(session_close_ms),
                 _session_bound_to_intra_ms(continuous_before_ms) if continuous_before_ms is not None
                 else _session_bound_to_intra_ms(session_close_ms))
-    spec = BinningSpec(price_lo, price_hi, bins, lower, upper)
+    spec = BinningSpec(price_lo, price_hi, bins, lower, upper,
+                       tuple(_session_bound_to_intra_ms(v) for v in session_break) if session_break else None)
     if binning_cache is not None:
         rows = binning_cache.read(con, path, spec, cutoff=upper_bound_ms)
     else:
         direct = BinningSpec(
             price_lo, price_hi, bins, lower, min(upper, upper_bound_ms) if upper_bound_ms is not None else upper,
+            spec.session_break,
         )
         rows = query_statistics(con, path, direct)
     return VolumeProfileBinning(
         price_min=price_lo, price_max=price_hi, bin_width=spec.width,
         bins=[(idx, qty) for idx, qty, _first, _last in rows],
         max_intra_ms=max((last for _idx, _qty, _first, last in rows), default=None),
+        first_intra_ms_by_bin=tuple((idx, first) for idx, _qty, first, _last in rows),
     )

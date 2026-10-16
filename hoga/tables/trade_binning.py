@@ -33,6 +33,7 @@ class BinningSpec:
     bins: int
     lower: int
     upper: int
+    session_break: tuple[int, int] | None = None
 
     @property
     def width(self) -> float:
@@ -51,6 +52,8 @@ def _query(
     group = "bin_idx, intra_ms" if timeline else "bin_idx"
     fields = "intra_ms, SUM(qty)" if timeline else "SUM(qty), MIN(intra_ms), MAX(intra_ms)"
     limit = f"LIMIT {MAX_INDEX_ROWS + 1}" if timeline else ""
+    break_sql = " AND NOT (intra_ms > ? AND intra_ms < ?)" if spec.session_break else ""
+    break_params = list(spec.session_break) if spec.session_break else []
     return con.execute(
         f"""WITH filtered AS (
           SELECT FLOOR((price - ?) / ?)::BIGINT AS bin_idx,
@@ -60,10 +63,10 @@ def _query(
             AND price BETWEEN ? AND ?
         )
         SELECT bin_idx, {fields} FROM filtered
-        WHERE intra_ms >= ? AND intra_ms < ?
+        WHERE intra_ms >= ? AND intra_ms < ? {break_sql}
         GROUP BY {group} ORDER BY {group} {limit}
         """,
-        [spec.price_lo, spec.width, str(path), spec.price_lo, spec.price_hi, spec.lower, spec.upper],
+        [spec.price_lo, spec.width, str(path), spec.price_lo, spec.price_hi, spec.lower, spec.upper, *break_params],
     )
 
 

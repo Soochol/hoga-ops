@@ -352,3 +352,16 @@ describe('isContinuousBook — 깊이 술어 경계', () => {
     expect(isContinuousBook(book(undefined, lvls([1, 1, 1, 5])))).toBe(false);
   });
 });
+
+describe('venue evening quote totals', () => {
+  it('excludes KRX break residuals and resumes at 16:00, without closing NXT', () => {
+    const at = (clock: string) => Date.parse(`2026-10-15T${clock}:00+09:00`);
+    const books = [cont(at('15:45'), 9999, 9999), cont(at('16:00'), 100, 200), cont(at('19:59'), 300, 400)];
+    const krx = bucketHogaSeries(books, [], 60_000, at('20:00'), at('09:00'), 'KRX').quoteRatioPoints;
+    expect(krx.map(p => p.ask_total)).toEqual([0, 100, 300]);
+    for (const venue of ['NXT', 'UN']) {
+      const extended = bucketHogaSeries(books, [], 60_000, at('20:00'), at('08:00'), venue).quoteRatioPoints;
+      expect(extended.map(p => p.ask_total)).toEqual([9999, 100, 300]);
+    }
+  });
+});

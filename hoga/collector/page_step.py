@@ -103,11 +103,15 @@ class PageStepController:
         stagnant calls, force should_stop=True regardless of branch.
         """
         # Update stagnation counter (must run BEFORE cap-hit branch which may not return early changes)
-        if max_event_time == self._last_max_event_time and new_seqs == 0:
+        # A genuinely empty page is a quiet interval, not a frozen response.
+        # Evening captures must cross long empty stretches before the close.
+        if max_event_time is not None and max_event_time == self._last_max_event_time and new_seqs == 0:
             self._stagnant_pages += 1
         else:
             self._stagnant_pages = 0
         self._last_max_event_time = max_event_time
+        if max_event_time is None:
+            self._step_ms = self._initial_step_ms
 
         target = self._t + self._step_ms
         cap_hit = (

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from hoga.api.disk_state import analyze_gaps
 from hoga.live.promote_executor import PromoteExecutor, run_promote_job
-from hoga.live.stock_sessions import krx_aftermarket_introduced, krx_continuous_windows
+from hoga.live.stock_sessions import krx_aftermarket_introduced, krx_continuous_windows, stock_indicator_bounds
 from hoga.tables.brokers import BrokerRow, write_parquet as write_brokers_parquet
 from hoga.tables.candles import (
     Candle,
@@ -82,9 +82,8 @@ def indicator_session_for_date(
     date: str, venue: str, *, aftermarket_eligible: bool | None = None,
 ) -> tuple[HogaMs, HogaMs]:
     """Historical records retain their schedule; official close stays 15:30."""
-    if venue == "KRX" and krx_aftermarket_introduced(date) and aftermarket_eligible is not False:
-        return HogaMs(90000000), HogaMs(200000000)
-    return _VENUE_INDICATOR_SESSION_MS.get(venue, _VENUE_INDICATOR_SESSION_MS["KRX"])
+    opening, closing = stock_indicator_bounds(date, venue, aftermarket_eligible=aftermarket_eligible)
+    return HogaMs(opening), HogaMs(closing)
 
 _log = logging.getLogger(__name__)
 
@@ -499,6 +498,7 @@ def _build_meta(
         # **프리·애프터마켓 호가 스냅샷이 통째로 집계에서 배제**됐다(8/7 실측 49.1%).
         "indicator_session_open_ms": int(indicator_open),
         "indicator_session_close_ms": int(indicator_close),
+        "indicator_policy_version": 1,
         # Completeness routed through the SAME classifier hogaplay uses. Orderbook
         # .ts_ms is already HHMMSSmmm (entity native); cast to HogaMs at this seam.
         # 갭 분석도 **같은 venue 구간**을 쓴다(ADR-0140) — 여기를 안 넘기면 NXT·UN 의

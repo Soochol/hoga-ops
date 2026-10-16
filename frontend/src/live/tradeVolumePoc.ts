@@ -1,4 +1,4 @@
-import { isKrxAftermarketWindow } from '../util/stockSessions';
+import { isKrxAftermarketWindow, isStockIndicatorBreak } from '../util/stockSessions';
 import type { TradeSnapshot } from './bucketHogaSeries';
 import type { Candle, RangeSegment } from '../api/types';
 import { createSessionCandleLookup } from './sessionCandles';
@@ -136,6 +136,12 @@ function isTradeTimeEligible(
   tMs: number,
   options: { openMinute: number; continuousBeforeMs?: number | null; venue?: string },
 ): boolean {
+  if (options.venue === 'NXT' || options.venue === 'UN') {
+    const minute = kstMinuteOfDay(tMs);
+    return minute >= 8 * 60 && minute < 20 * 60
+      && (options.continuousBeforeMs == null || tMs < options.continuousBeforeMs);
+  }
+  if (isStockIndicatorBreak(tMs, 'KRX')) return false;
   if (options.continuousBeforeMs != null) {
     return kstMinuteOfDay(tMs) >= options.openMinute && tMs < options.continuousBeforeMs;
   }

@@ -87,7 +87,7 @@ describe('scaleRangeBundlePrices', () => {
       volume_distributions: [{
         date: '20260612', range_count: 5, price_min: 36750, price_max: 38800,
         session_open_ms: T_0612, session_close_ms: T_0612,
-        bins: [{ price_low: 36750, price_high: 37160, qty: 100 }],
+        bins: [{ price_low: 36750, price_high: 37160, qty: 100, first_trade_ms: T_0612 }],
       }],
       volume_profile_by_day: [
         { bin_count: 1, price_min: 36750, price_max: 38800, bin_width: 2050, bins: [{ price_low: 36750, qty: 100 }] },
@@ -98,7 +98,7 @@ describe('scaleRangeBundlePrices', () => {
     const out = scaleRangeBundlePrices(b, FACTORS);
 
     expect(out.volume_distributions[0].price_min).toBe(18375);
-    expect(out.volume_distributions[0].bins[0]).toEqual({ price_low: 18375, price_high: 18580, qty: 100 });
+    expect(out.volume_distributions[0].bins[0]).toEqual({ price_low: 18375, price_high: 18580, qty: 100, first_trade_ms: T_0612 });
     // by_day 는 `date` 가 없어 **segments 와 같은 순서**로 짝지어진다 — 두 번째 날은
     // 계수 1.0 이라 값이 그대로여야 인덱스 짝짓기가 맞다는 뜻이다.
     expect(out.volume_profile_by_day[0].bin_width).toBe(1025);

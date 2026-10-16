@@ -31,6 +31,10 @@ export function keepRegularSessionCandles<T extends { t_ms: number }>(candles: r
 }
 
 export function isMinuteSessionMs(tMs: number, venue: LiveVenueOption): boolean {
+  if (venue !== 'KRX') {
+    const intra = ((tMs + 9 * 3600_000) % 86400_000 + 86400_000) % 86400_000;
+    return intra >= 8 * 3600_000 && intra <= 20 * 3600_000;
+  }
   return isRegularSessionMs(tMs) || (venue === 'KRX' && isKrxAftermarketWindow(tMs));
 }
 

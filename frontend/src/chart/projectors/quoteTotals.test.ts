@@ -360,3 +360,15 @@ describe('hoga data gaps', () => {
     ]);
   });
 });
+
+it.each(['KRX', 'NXT', 'UN'])('shows the final evening totals with auction masking enabled for %s', venue => {
+  const at = (clock: string) => Date.parse(`2026-10-15T${clock}:00+09:00`);
+  const opening = at(venue === 'KRX' ? '09:00' : '08:00');
+  const extended = createVirtualAxis([{ date: '20261015', sessionOpenMs: opening, sessionCloseMs: at('20:00') }]);
+  const bundle = rangeBundleFixture({ quote_ratio: { points: [
+    { t: at('19:55'), bid_total: 400, ask_total: 300 },
+    { t: at('19:59'), bid_total: 600, ask_total: 500 },
+  ] } });
+  expect(projectBid(bundle, extended, true).map(p => p.value)).toEqual([400, 600]);
+  expect(projectAsk(bundle, extended, true).map(p => p.value)).toEqual([300, 500]);
+});

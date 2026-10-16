@@ -119,3 +119,13 @@ def test_prune_leaves_unparseable_and_unknown_files(tmp_path: Path) -> None:
 def test_prune_on_missing_root_is_a_noop(tmp_path: Path) -> None:
     res = prune(tmp_path, dry_run=False)
     assert (res.scanned, res.stale, res.deleted) == (0, 0, 0)
+
+
+def test_prune_covers_regular_only_namespace_without_canonical_root(tmp_path):
+    path = tmp_path / "kis-past-indicators-regular" / "005930" / "kiwoom_live" / "NXT" / "20260914.ask_peak.60000.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"version": KIND_VERSIONS["ask_peak"] - 1}))
+    assert prune(tmp_path).stale == 1
+    assert path.exists()
+    assert prune(tmp_path, dry_run=False).deleted == 1
+    assert not path.exists()

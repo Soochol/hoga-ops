@@ -506,6 +506,7 @@ export type LiveRangeRequestPlan = {
   timeframe: Timeframe | null;
   todayKst: string | null;
   options: {
+    regularSessionOnly?: boolean;
     askPeaksEnabled: boolean;
     bidPeaksEnabled: boolean;
     brokerLateEntriesEnabled: boolean;
@@ -532,6 +533,7 @@ export function planLiveRangeRequest(args: {
   tradeVolumePocEnabled: boolean;
   depthHeatmapEnabled: boolean;
   /** 최대벽 pane 이 **봉별 모드**인가 — 그때만 `traded_bar_*` 를 요청한다(옵트인). */
+  regularSessionOnly?: boolean;
   peakWallBarMode: boolean;
   /** 전체 계열도 봉별인가 — **따로** 게이트한다(그 배열이 더 크다). */
   peakWallAllBarMode: boolean;
@@ -587,6 +589,7 @@ export function planLiveRangeRequest(args: {
     timeframe: enableMinute ? (args.timeframe as Timeframe) : null,
     todayKst: enableMinute ? args.todayKstYyyymmdd : null,
     options: {
+      ...(args.regularSessionOnly ? { regularSessionOnly: true } : {}),
       askPeaksEnabled: enableMinute && args.askPeakEnabled,
       bidPeaksEnabled: enableMinute && args.bidPeakEnabled,
       brokerLateEntriesEnabled: args.brokerLateEntryEnabled,
@@ -604,7 +607,8 @@ export function planLiveRangeRequest(args: {
       barPeaksEnabled: enableMinute && args.peakWallBarMode,
       allBarPeaksEnabled: enableMinute && args.peakWallAllBarMode,
       unreachedBarPeaksEnabled: enableMinute && args.peakWallUnreachedBarMode,
-      volumeDistributionBins: args.volumeDistributionEnabled ? args.volumeDistributionRangeCount : null,
+      volumeDistributionBins: args.volumeDistributionEnabled || args.tradeVolumePocEnabled
+        ? args.volumeDistributionRangeCount : null,
       tradeVolumePocBins: args.tradeVolumePocEnabled ? args.volumeDistributionRangeCount : null,
       volumeDistributionPriceRange: args.volumeDistributionEnabled ? args.volumeDistributionPriceRange : null,
     },
@@ -984,8 +988,9 @@ export function useLiveBundle(
       : (pastCandlesQuery.isLoading || pastCandlesQuery.isFetching))
   );
   const rangePlan = planLiveRangeRequest({
+    regularSessionOnly,
     code,
-    timeframe: regularSessionOnly ? '1m' : timeframe,
+    timeframe,
     todayKstYyyymmdd,
     historicalFromDate,
     askPeakEnabled,
@@ -1008,14 +1013,14 @@ export function useLiveBundle(
     diskSource: restBypassEnabled,
   });
   const hogaRangeOptions = useMemo(
-    () => ({ mode: 'hoga' as const }),
-    [],
+    () => ({ mode: 'hoga' as const, ...(regularSessionOnly ? { regularSessionOnly: true } : {}) }),
+    [regularSessionOnly],
   );
   const pastHoga = useRangeHogaDelta(
     rangePlan.code,
     rangePlan.from,
     rangePlan.to,
-    rangePlan.timeframe,
+    regularSessionOnly ? '1m' : rangePlan.timeframe,
     undefined,
     rangePlan.todayKst,
     hogaRangeOptions,
@@ -1456,6 +1461,7 @@ export function useLiveBundle(
   // follows via the spread below; its points don't drive the viewport, so
   // letting them settle a beat later than the held chart is harmless.
   const lastSettledChartRef = useRef<RangeBundle | null>(null);
+  const settledSessionRef = useRef(regularSessionOnly);
   // 소스 토글 원자화(2026-08-25 사용자 실측). hogaplay 토글은 **세 번째 재키 종류**다 —
   // 같은 (code, tf) 에서 캔들 소스 축만 갈린다. 위 `extending` 홀드는
   // `historicalFromDate != null`(팬 전용) 게이트라 팬한 적 없는 창에서 토글하면 안
@@ -1485,10 +1491,14 @@ export function useLiveBundle(
   // 빠지고 진행 신호에는 남는다」 주석 참조. `extending` 을 쓰면 5초짜리 sidecar 가
   // 캔들을 다시 붙잡아 빈 화면이 그대로 돌아온다.
   const holdChart = chartHoldPending || sourceSwapHold;
-  const chartBundle = holdChart && settledChart ? settledChart : computedChartBundle;
+  const chartBundle = holdChart && settledChart && settledSessionRef.current === regularSessionOnly
+    ? settledChart : computedChartBundle;
   useEffect(() => {
-    if (!holdChart) lastSettledChartRef.current = computedChartBundle;
-  }, [holdChart, computedChartBundle]);
+    if (!holdChart) {
+      lastSettledChartRef.current = computedChartBundle;
+      settledSessionRef.current = regularSessionOnly;
+    }
+  }, [holdChart, computedChartBundle, regularSessionOnly]);
 
   // 콜드 분봉 로드 원자화(2026-07-08 venue=UN 간헐 크래시): 콜드 로드에선 mode=hoga가
   // past-candles보다 먼저 settle해 호가 pane 시리즈(2천+점)가 먼저 커밋되는데, 그 뒤

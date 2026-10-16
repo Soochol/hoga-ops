@@ -1,0 +1,214 @@
+{
+  "recorded_at_kst": "2026-10-16T22:18:18.837430+09:00",
+  "base_sha": "06cadbf9474f3f1d729a0e6ecd63b371c4b6539c",
+  "input_sha256": "22bf23ca10436c3bfe3ffd2d9d0a3d3f1e58d0e0915eedf3f441c53af3a4d427",
+  "input_file_count": 2543,
+  "python": "3.14.7",
+  "node": "v24.13.1",
+  "collection_display_contract": {
+    "collection": "WS collection/storage is independent of the per-window regular-session badge and continues through venue capture windows ending at 20:00.",
+    "display": "ON: regular candles and indicators from regular raw data. OFF: all supported venue sessions. Shared WS buffers are unchanged by the view filter."
+  },
+  "completed_unique_source_venue_date_units": 28465,
+  "completed_modes_per_unit": 2,
+  "by_venue": {
+    "KRX": 11411,
+    "NXT": 8501,
+    "UN": 8553
+  },
+  "raw_files_verified_unique": 136384,
+  "changed_raw_files": [],
+  "raw_verification": "Compare inode, size and mtime_ns before batch and after completion; no source Parquet writes are performed.",
+  "recalculation": "Actual build_range_bundle requests populate full and regular caches for max walls, trade-volume POC and volume distribution (10 bins, 1 minute); other bin counts/timeframes use the new scoped cache keys when requested.",
+  "source_scope": "Snapshot-bearing evening captures before 20261016. Includes KRX/NXT/UN from 20260914 and prior NXT/UN captures. Current capture day excluded to avoid concurrent raw writes.",
+  "missing_or_invalid": "15 pre-existing invalid Hogaplay captures were preserved and excluded. Prior NXT/UN metadata without snapshots are not recalculable and were not counted among completed units.",
+  "regular_empty_reconciliation": "Workers started before the final empty-regular-grid guard. Rechecked all zero-quantity profiles with a price grid using final code: absent regular candles now return no profile; genuine regular candles with no trades retain an empty profile. No positive-quantity result changed.",
+  "jobs": [
+    {
+      "backup": "/home/dev/.local/share/hoga-ops/backups/20261016-session-indicators-cv15ga3g",
+      "targets": 18371,
+      "completed": 18371,
+      "errors": [],
+      "invalid": [
+        "20260914/368600/hogaplay",
+        "20260914/069500/hogaplay",
+        "20260914/011500/hogaplay",
+        "20260914/014990/hogaplay",
+        "20260914/051160/hogaplay",
+        "20260914/229200/hogaplay",
+        "20260914/171090/hogaplay",
+        "20260914/126730/hogaplay",
+        "20260914/022100/hogaplay",
+        "20260914/475960/hogaplay",
+        "20260914/950200/hogaplay",
+        "20260914/025980/hogaplay",
+        "20260914/267250/hogaplay",
+        "20260914/000370/hogaplay",
+        "20260914/045390/hogaplay"
+      ],
+      "raw_files_verified": 85938,
+      "changed_raw_files": [],
+      "seconds": 2389.7,
+      "by_venue": {
+        "KRX": 11411,
+        "NXT": 3471,
+        "UN": 3489
+      },
+      "cache_backup_json_files_present": 100208,
+      "raw_manifest_files_reverified_at_final": 85938,
+      "regular_empty_reconciliation": {
+        "candidates": 764,
+        "empty_regular_profiles": 762,
+        "zero_trade_profiles_with_regular_grid": 2
+      },
+      "regular_empty_reconciliation_report": "/home/dev/.local/share/hoga-ops/backups/20261016-session-indicators-cv15ga3g/regular-empty-reconciliation.json",
+      "result_detail": "/home/dev/.local/share/hoga-ops/backups/20261016-session-indicators-cv15ga3g/results.json",
+      "full_regular_different_distribution_qty": 18279,
+      "all_modes_excluded_or_missing_count": 0
+    },
+    {
+      "backup": "/home/dev/.local/share/hoga-ops/backups/20261016-prior-extended-evhp9p9r",
+      "targets": 10094,
+      "completed": 10094,
+      "errors": [],
+      "invalid": [],
+      "raw_files_verified": 50446,
+      "changed_raw_files": [],
+      "seconds": 2463.5,
+      "by_venue": {
+        "NXT": 5030,
+        "UN": 5064
+      },
+      "cache_backup_json_files_present": 11909,
+      "raw_manifest_files_reverified_at_final": 50446,
+      "regular_empty_reconciliation": {
+        "candidates": 366,
+        "empty_regular_profiles": 365,
+        "zero_trade_profiles_with_regular_grid": 1
+      },
+      "regular_empty_reconciliation_report": "/home/dev/.local/share/hoga-ops/backups/20261016-prior-extended-evhp9p9r/regular-empty-reconciliation.json",
+      "result_detail": "/home/dev/.local/share/hoga-ops/backups/20261016-prior-extended-evhp9p9r/results.json",
+      "full_regular_different_distribution_qty": 10080,
+      "all_modes_excluded_or_missing_count": 0
+    }
+  ],
+  "samples": [
+    {
+      "target": [
+        "20261015",
+        "005930",
+        "kiwoom_live",
+        "KRX"
+      ],
+      "modes": {
+        "full": {
+          "ask_max": 207017,
+          "bid_max": 309409,
+          "poc_qty": 7952676,
+          "distribution_qty": 28996074,
+          "last_trade_ms": 1792061990002,
+          "price_range": [
+            204500,
+            221500
+          ],
+          "excluded_dates": 0,
+          "missing_dates": 0,
+          "last_trade_kst": "2026-10-15T19:59:50.002000+09:00"
+        },
+        "regular": {
+          "ask_max": 207017,
+          "bid_max": 309409,
+          "poc_qty": 7865969,
+          "distribution_qty": 27637667,
+          "last_trade_ms": 1792045190002,
+          "price_range": [
+            204500,
+            221500
+          ],
+          "excluded_dates": 0,
+          "missing_dates": 0,
+          "last_trade_kst": "2026-10-15T15:19:50.002000+09:00"
+        }
+      }
+    },
+    {
+      "target": [
+        "20261015",
+        "005930",
+        "kiwoom_live",
+        "NXT"
+      ],
+      "modes": {
+        "full": {
+          "ask_max": 77979,
+          "bid_max": 281068,
+          "poc_qty": 4755731,
+          "distribution_qty": 21683493,
+          "last_trade_ms": 1792061990002,
+          "price_range": [
+            204500,
+            221500
+          ],
+          "excluded_dates": 0,
+          "missing_dates": 0,
+          "last_trade_kst": "2026-10-15T19:59:50.002000+09:00"
+        },
+        "regular": {
+          "ask_max": 52443,
+          "bid_max": 281068,
+          "poc_qty": 3642367,
+          "distribution_qty": 13245176,
+          "last_trade_ms": 1792045190002,
+          "price_range": [
+            204500,
+            221500
+          ],
+          "excluded_dates": 0,
+          "missing_dates": 0,
+          "last_trade_kst": "2026-10-15T15:19:50.002000+09:00"
+        }
+      }
+    },
+    {
+      "target": [
+        "20261015",
+        "005930",
+        "kiwoom_live",
+        "UN"
+      ],
+      "modes": {
+        "full": {
+          "ask_max": 255345,
+          "bid_max": 582259,
+          "poc_qty": 14450336,
+          "distribution_qty": 53034567,
+          "last_trade_ms": 1792061990002,
+          "price_range": [
+            204500,
+            221500
+          ],
+          "excluded_dates": 0,
+          "missing_dates": 0,
+          "last_trade_kst": "2026-10-15T19:59:50.002000+09:00"
+        },
+        "regular": {
+          "ask_max": 255345,
+          "bid_max": 582259,
+          "poc_qty": 11509028,
+          "distribution_qty": 40857675,
+          "last_trade_ms": 1792045190002,
+          "price_range": [
+            204500,
+            221500
+          ],
+          "excluded_dates": 0,
+          "missing_dates": 0,
+          "last_trade_kst": "2026-10-15T15:19:50.002000+09:00"
+        }
+      }
+    }
+  ],
+  "prior_metadata_and_ratio_repair": "data-repair.json",
+  "test_report": "session-scope-verification.json",
+  "deployment": "User servers on 5173/8000 were not restarted; this worktree must be applied to activate the new code."
+}

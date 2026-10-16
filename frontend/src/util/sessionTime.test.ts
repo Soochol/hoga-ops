@@ -285,3 +285,16 @@ it('invalidates cached auction boundaries when a segment is edited in place', ()
   seg.sessionOpenMs = DAY1_OPEN + 30 * 60_000;
   expect(classifyWithinSegment(seg, seg.sessionOpenMs - 1)).toBe('pre-open');
 });
+
+describe('extended venue close', () => {
+  it('keeps NXT/integrated 19:50–20:00 visible, while preserving the KRX auction', () => {
+    const at = (clock: string) => Date.parse(`2026-10-15T${clock}:00+09:00`);
+    const extended = { sessionOpenMs: at('08:00'), sessionCloseMs: at('20:00') };
+    const krx = { sessionOpenMs: at('09:00'), sessionCloseMs: at('20:00') };
+    for (const clock of ['19:50', '19:55', '20:00']) {
+      expect(classifyWithinSegment(extended, at(clock))).toBe('regular');
+      expect(classifyWithinSegment(krx, at(clock))).toBe('regular');
+    }
+    expect(classifyWithinSegment(krx, at('15:25'))).toBe('auction');
+  });
+});

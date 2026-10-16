@@ -16,7 +16,7 @@ KRX_AFTERMARKET_CLOSE_MIN = 20 * 60
 
 
 def krx_aftermarket_introduced(date: str) -> bool:
-    return date >= KRX_AFTERMARKET_START_DATE
+    return len(date) == 8 and date.isdigit() and date >= KRX_AFTERMARKET_START_DATE  # noqa: PLR2004 — YYYYMMDD
 
 
 def krx_aftermarket_window(t_ms: int) -> bool:
@@ -31,12 +31,38 @@ def krx_aftermarket_window(t_ms: int) -> bool:
 
 
 def stock_indicator_window(t_ms: int, venue: str) -> bool:
-    """Preserve historical regular-session indicators; add the new KRX window."""
+    """Use the venue's capture clock for live peaks and alerts as well."""
     kst = datetime.fromtimestamp(t_ms / 1000, tz=KST)
+    if kst.weekday() >= 5:  # noqa: PLR2004 — weekends
+        return False
     minute = kst.hour * 60 + kst.minute
-    return 9 * 60 <= minute < 15 * 60 + 30 or (
-        venue in ("KRX", "NXT", "UN") and krx_aftermarket_window(t_ms)
-    )
+    if venue in ("NXT", "UN"):
+        return 8 * 60 <= minute < 20 * 60
+    return venue == "KRX" and (9 * 60 <= minute < 15 * 60 + 30 or krx_aftermarket_window(t_ms))
+
+
+def stock_indicator_bounds(
+    date: str, venue: str, *, regular_open_ms: int = 90000000,
+    regular_close_ms: int = 153000000, aftermarket_eligible: bool | None = None,
+) -> tuple[int, int]:
+    """Indicator extent, independently of the official regular-session close."""
+    if venue in ("NXT", "UN"):
+        return 80000000, 200000000
+    closing = 200000000 if krx_aftermarket_introduced(date) and aftermarket_eligible is not False else regular_close_ms
+    return regular_open_ms or 90000000, closing
+
+
+def stock_indicator_break(
+    date: str, venue: str, *, regular_close_ms: int = 153000000,
+) -> tuple[int, int] | None:
+    """Exclude the KRX break and residual regular books from evening indicators.
+
+    Endpoints remain eligible: the closing auction is excluded structurally and
+    an actual 16:00 opening book must be admitted. Other venues have no KRX break.
+    """
+    if venue == "KRX" and krx_aftermarket_introduced(date):
+        return regular_close_ms, 160000000
+    return None
 
 
 def krx_capture_partition(t_ms: int) -> tuple[str, bool]:
@@ -56,7 +82,10 @@ def minute_bucket_start(t_ms: int, bucket_ms: int, venue: str) -> int:
 
 
 def has_aftermarket_buckets(date: str, venue: str, bucket_ms: int) -> bool:
-    return venue == "KRX" and krx_aftermarket_introduced(date) and bucket_ms >= 2 * 3_600_000
+    """Extended 120/240m indicators must share the candle's UTC grid."""
+    return bucket_ms >= 2 * 3_600_000 and (
+        venue in ("NXT", "UN") or (venue == "KRX" and krx_aftermarket_introduced(date))
+    )
 
 
 def indicator_bucket_intra(intra_ms: int, bucket_ms: int, *, date: str, venue: str) -> int:
@@ -66,7 +95,7 @@ def indicator_bucket_intra(intra_ms: int, bucket_ms: int, *, date: str, venue: s
     # Supported coarse buckets (120/240m) divide a UTC day. Convert the
     # KST-native row to the same UTC grid without datetime work per row.
     opening = KRX_AFTERMARKET_OPEN_MIN * 60_000
-    if opening <= intra_ms < KRX_AFTERMARKET_CLOSE_MIN * 60_000:
+    if venue == "KRX" and opening <= intra_ms < KRX_AFTERMARKET_CLOSE_MIN * 60_000:
         return opening + (intra_ms - opening) // bucket_ms * bucket_ms
     utc_offset_ms = 9 * 3_600_000
     return (intra_ms - utc_offset_ms) // bucket_ms * bucket_ms + utc_offset_ms
@@ -79,10 +108,13 @@ def indicator_bucket_sql(intra: str, bucket_ms: int, *, date: str, venue: str) -
     opening = KRX_AFTERMARKET_OPEN_MIN * 60_000
     closing = KRX_AFTERMARKET_CLOSE_MIN * 60_000
     offset = 9 * 3_600_000
+    regular_grid = f"{offset} + CAST(floor(({intra} - {offset}) / {int(bucket_ms)}) AS BIGINT) * {int(bucket_ms)}"
+    if venue != "KRX":
+        return regular_grid
     return (
         f"CASE WHEN {intra} >= {opening} AND {intra} < {closing} "
         f"THEN {opening} + (({intra} - {opening}) // {int(bucket_ms)}) * {int(bucket_ms)} "
-        f"ELSE {offset} + CAST(floor(({intra} - {offset}) / {int(bucket_ms)}) AS BIGINT) * {int(bucket_ms)} END"
+        f"ELSE {regular_grid} END"
     )
 
 
