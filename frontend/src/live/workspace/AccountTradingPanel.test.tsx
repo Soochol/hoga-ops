@@ -71,9 +71,9 @@ it('shows holding names without codes and values the full holding at the selecte
   show('holdings');
   const table = screen.getByRole('table');
   expect(within(table).getAllByRole('columnheader').map(header => header.textContent))
-    .toEqual(['종목', '보유 · 주', '평단가 · 원', '평가금액 · 원', '수익률 · %']);
+    .toEqual(['종목', '보유 · 주', '평단가 · 원', '평가금액 · 원', '수익']);
   const cells = within(within(table).getAllByRole('row')[1]).getAllByRole('cell');
-  expect(cells.map(cell => cell.textContent)).toEqual(['SK하이닉스', '22', '180,000', '4,070,000', '+2.78%']);
+  expect(cells.map(cell => cell.textContent)).toEqual(['SK하이닉스', '22', '180,000', '4,070,000', '+110,000원+2.78%']);
   expect(cells[4]).toHaveClass('text-price-up');
   expect(within(table).queryByText('000660')).not.toBeInTheDocument();
   expect(mock.quoteSubscription).toHaveBeenLastCalledWith(['000660'], 'UN');
@@ -84,18 +84,19 @@ it.each([undefined, 0, NaN, Infinity])('shows an unavailable valuation for an un
   show('holdings');
   const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell');
   expect(cells[3]).toHaveTextContent('—');
-  expect(cells[4]).toHaveTextContent('—');
+  expect([...cells[4].querySelectorAll('span')].map(value => value.textContent)).toEqual(['—', '—']);
   expect(cells[1]).toHaveTextContent('22');
   expect(cells[2]).toHaveTextContent('180,000');
 });
 it.each([
-  { price: 175000, percent: '-2.78%', color: 'text-price-down' },
-  { price: 180000, percent: '0.00%', color: null },
-])('shows holding return $percent with the matching sign and color', ({ price, percent, color }) => {
+  { price: 175000, amount: '-110,000원', percent: '-2.78%', color: 'text-price-down' },
+  { price: 180000, amount: '0원', percent: '0.00%', color: null },
+  { price: 180001, amount: '+22원', percent: '0.00%', color: 'text-price-up' },
+])('shows holding profit $amount and return $percent with the matching sign and color', ({ price, amount, percent, color }) => {
   mock.quotes = new Map([['000660', { price }]]);
   show('holdings');
   const cell = within(screen.getAllByRole('row')[1]).getAllByRole('cell')[4];
-  expect(cell).toHaveTextContent(percent);
+  expect([...cell.querySelectorAll('span')].map(value => value.textContent)).toEqual([amount, percent]);
   if (color) expect(cell).toHaveClass(color);
   else expect(cell).not.toHaveClass('text-price-up', 'text-price-down');
 });

@@ -9,9 +9,11 @@
 /* Column widths depend on the panel, never on a changing quote or balance.
  * Narrow screens scroll the complete numbers rather than truncating money. */
 .account-trading-panel .account-holdings-table { min-width:36rem; }
-.account-holdings-table col:nth-child(1) { width:28%; }
-.account-holdings-table col:nth-child(2),.account-holdings-table col:nth-child(3),.account-holdings-table col:nth-child(5) { width:16%; }
-.account-holdings-table col:nth-child(4) { width:24%; }
+.account-holdings-table col:nth-child(1) { width:20%; }
+.account-holdings-table col:nth-child(2),.account-holdings-table col:nth-child(3) { width:16%; }
+.account-holdings-table col:nth-child(4),.account-holdings-table col:nth-child(5) { width:24%; }
+.account-holding-profit > span { display:block; }
+.account-holding-profit-percent { margin-top:0.125rem; font-size:var(--live-text-meta,var(--text-xs)); }
 .account-trading-panel .account-orders-table { min-width:34rem; }
 .account-orders-table col:nth-child(1) { width:28%; }
 .account-orders-table col:nth-child(2) { width:9%; }
