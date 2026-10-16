@@ -911,7 +911,7 @@ describe('호가 주문', () => {
     expect(screen.getByRole('checkbox', { name: '내 평단가 표시' })).not.toBeChecked();
     fireEvent.change(screen.getByLabelText('금액 프리셋 1'), { target: { value: '2' } });
     fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
-    fireEvent.keyDown(view.getByTestId('order-window'), { key: '2', ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '75주' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(75);
     expect(screen.getByRole('button', { name: '250주' })).toBeInTheDocument();
     expect(mock.command).not.toHaveBeenCalled();
@@ -968,24 +968,24 @@ describe('호가 주문', () => {
   });
   it.each([null, 0, -1, NaN, Infinity])('현재가 %s는 금액 환산을 막고 입력 수량을 유지한다', price => {
     mock.quotePrice = price;
-    const view = show();
+    show();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '37' } });
     fireEvent.click(screen.getByRole('button', { name: '금액' }));
     expect(screen.getByRole('button', { name: '100만' })).toBeDisabled();
-    fireEvent.keyDown(view.getByTestId('order-window'), { key: '1', ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '100만' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(37);
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it('금액 단축키도 현재가로 한 번만 환산하고 버튼 전환은 빈 수량을 채우지 않는다', () => {
-    const view = show();
+  it('금액 프리셋은 현재가로 한 번만 환산하고 버튼 전환은 빈 수량을 채우지 않는다', () => {
+    show();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '' } });
     fireEvent.click(screen.getByRole('button', { name: '금액' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
-    fireEvent.keyDown(view.getByTestId('order-window'), { key: '1', ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '100만' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(14);
     fireEvent.click(screen.getByRole('button', { name: '주' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(14);
-    fireEvent.keyDown(view.getByTestId('order-window'), { key: '2', ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: '50주' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(50);
   });
   it('공통 수량을 양방향 주문에 사용하고 호버·포커스와 관계없이 현재가로 예상 금액을 표시한다', async () => {
@@ -1162,7 +1162,7 @@ describe('호가 주문', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it('키보드 단축키는 주문을 전송하지 않고 수량 프리셋 선택만 유지한다', () => {
+  it('키보드 단축키는 주문을 전송하거나 수량·금액 프리셋을 선택하지 않는다', () => {
     mock.orders = [order()]; show();
     const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
     fireEvent.click(chip);
@@ -1170,7 +1170,15 @@ describe('호가 주문', () => {
     fireEvent.keyDown(chip, { key: 'Backspace', ctrlKey: true, shiftKey: true });
     expect(mock.command).not.toHaveBeenCalled();
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
-    fireEvent.keyDown(chip, { key: '2', ctrlKey: true }); expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(50);
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '37' } });
+    for (const mode of ['주', '금액']) {
+      fireEvent.click(screen.getByRole('button', { name: mode }));
+      for (const key of ['1', '2', '3']) {
+        fireEvent.keyDown(chip, { key, ctrlKey: true });
+        expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(37);
+      }
+    }
+    expect(mock.command).not.toHaveBeenCalled();
   });
   it('모의투자 UI 없이 항상 실계좌로 즉시 주문한다', async () => {
     show();

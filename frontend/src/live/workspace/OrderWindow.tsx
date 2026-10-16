@@ -545,8 +545,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         if (drag.current || action || contextMenu) { e.preventDefault(); e.stopPropagation(); }
         endDrag(undefined, true); closeAction(); return;
       }
-      if (!e.ctrlKey || e.repeat || busy || (e.target instanceof HTMLElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName))) return;
-      if (['1', '2', '3'].includes(e.key)) { e.preventDefault(); applyPreset(presets[Number(e.key) - 1]); }
     }}>
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
