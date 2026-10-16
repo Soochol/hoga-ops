@@ -1,0 +1,189 @@
+{
+  "stock_dates": 8000,
+  "results": [
+    {
+      "variant": "current",
+      "phases": {
+        "factory_s": 1.5048436079523526,
+        "observer_start_s": 1.079014966962859,
+        "symbol_load_s": 15.853411804011557,
+        "lifespan_ready_s": 17.30597425700398,
+        "counts_ready_s": 17.798749820969533
+      },
+      "pending_at_ready": false,
+      "health_p95_ms": 4.261587979272008,
+      "health_max_ms": 4.727928026113659,
+      "health_samples": 20,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {
+        "opened": 8000,
+        "closed_no_write": 8000
+      },
+      "repeat": 1
+    },
+    {
+      "variant": "filter",
+      "phases": {
+        "factory_s": 1.3830613540485501,
+        "observer_start_s": 1.0583937389892526,
+        "symbol_load_s": 3.1184278759756126,
+        "lifespan_ready_s": 4.241733837989159,
+        "counts_ready_s": 4.7361905929865316
+      },
+      "pending_at_ready": false,
+      "health_p95_ms": 4.595799022354186,
+      "health_max_ms": 4.854246973991394,
+      "health_samples": 20,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {},
+      "repeat": 1
+    },
+    {
+      "variant": "filter_thread",
+      "phases": {
+        "factory_s": 1.5013759290450253,
+        "observer_start_s": 1.0660086930147372,
+        "symbol_load_s": 0.097157396026887,
+        "lifespan_ready_s": 1.2190903290174901,
+        "background_scan_s": 3.956189571006689,
+        "counts_ready_s": 5.202061097021215
+      },
+      "pending_at_ready": true,
+      "health_p95_ms": 5.1828460418619215,
+      "health_max_ms": 10.078831983264536,
+      "health_samples": 159,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {},
+      "repeat": 1
+    },
+    {
+      "variant": "filter_process",
+      "phases": {
+        "factory_s": 1.831780044012703,
+        "observer_start_s": 1.221039035008289,
+        "symbol_load_s": 0.10237886500544846,
+        "lifespan_ready_s": 1.3934323680005036,
+        "background_scan_s": 5.973336289986037,
+        "counts_ready_s": 7.398883095011115
+      },
+      "pending_at_ready": true,
+      "health_p95_ms": 4.821244976483285,
+      "health_max_ms": 6.029933982063085,
+      "health_samples": 245,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {},
+      "repeat": 1
+    },
+    {
+      "variant": "filter_process",
+      "phases": {
+        "factory_s": 1.517987523053307,
+        "observer_start_s": 1.1406935709528625,
+        "symbol_load_s": 0.09748874098295346,
+        "lifespan_ready_s": 1.299615231982898,
+        "background_scan_s": 5.957534814020619,
+        "counts_ready_s": 7.288087302003987
+      },
+      "pending_at_ready": true,
+      "health_p95_ms": 4.670308961067349,
+      "health_max_ms": 10.242149990517646,
+      "health_samples": 245,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {},
+      "repeat": 2
+    },
+    {
+      "variant": "filter_thread",
+      "phases": {
+        "factory_s": 1.5880704700248316,
+        "observer_start_s": 1.0946984500042163,
+        "symbol_load_s": 0.10099632799392566,
+        "lifespan_ready_s": 1.2575202180305496,
+        "background_scan_s": 4.2567892470397055,
+        "counts_ready_s": 5.539072696003132
+      },
+      "pending_at_ready": true,
+      "health_p95_ms": 5.713567021302879,
+      "health_max_ms": 7.175345032010227,
+      "health_samples": 169,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {},
+      "repeat": 2
+    },
+    {
+      "variant": "filter",
+      "phases": {
+        "factory_s": 1.684231607010588,
+        "observer_start_s": 1.03213514899835,
+        "symbol_load_s": 2.8509544960106723,
+        "lifespan_ready_s": 3.9464896750287153,
+        "counts_ready_s": 4.435014560993295
+      },
+      "pending_at_ready": false,
+      "health_p95_ms": 4.3666670098900795,
+      "health_max_ms": 4.696147982031107,
+      "health_samples": 20,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {},
+      "repeat": 2
+    },
+    {
+      "variant": "current",
+      "phases": {
+        "factory_s": 1.726330486999359,
+        "observer_start_s": 1.18573456996819,
+        "symbol_load_s": 15.106785295996815,
+        "lifespan_ready_s": 16.699012145982124,
+        "counts_ready_s": 17.181605343008414
+      },
+      "pending_at_ready": false,
+      "health_p95_ms": 3.6935870302841067,
+      "health_max_ms": 3.894697001669556,
+      "health_samples": 20,
+      "final_counts_sha256": "90d5ea6712e0c43f367dcb09f69a27fb597d7cd116ea0ac85771a99e423f231c",
+      "event_counts": {
+        "opened": 8000,
+        "closed_no_write": 8000
+      },
+      "repeat": 2
+    }
+  ],
+  "base_sha": "abd7c77c272c3513abebd13f64ace8d8db8b151b",
+  "probe_sha256": "55518f6028d94ce90ec6999adb05cb81356ac65c2c69798563529e25c6e6a766",
+  "method": "Actual create_app + router.lifespan_context + in-process HTTPX ASGI health and symbol search; isolated synthetic 8000 Stock-Dates with mixed capture states and Kiwoom venue directories; real catalog copied read-only; no vendor credentials or external network; fresh subprocess per variant; reverse order on repeat two.",
+  "limitations": [
+    "All variants include prior source-restriction patch.",
+    "Times exclude Python imports and real vendor/collector startup.",
+    "Deferred variants are measurement prototypes: production pending-count wire/UI state, shutdown cancellation, failure handling and live-load validation remain to implement/test.",
+    "No live quotes or production-size retained buffers during this experiment.",
+    "Baseline and filter-only health samples occur after synchronous counts complete; deferred variants sample during the count computation.",
+    "Temporary fixture was removed after completion."
+  ],
+  "identical_final_counts": true,
+  "summary": {
+    "current": {
+      "factory_plus_lifespan_s_median": 18.61808024896891,
+      "factory_plus_counts_ready_s_median": 19.10576462946483,
+      "health_p95_ms_median": 3.9775875047780573,
+      "health_max_ms_worst": 4.727928026113659
+    },
+    "filter": {
+      "factory_plus_lifespan_s_median": 5.627758237038506,
+      "factory_plus_counts_ready_s_median": 6.1192490575194824,
+      "health_p95_ms_median": 4.4812330161221325,
+      "health_max_ms_worst": 4.854246973991394
+    },
+    "filter_thread": {
+      "factory_plus_lifespan_s_median": 2.7830284730589483,
+      "factory_plus_counts_ready_s_median": 6.9152900960471015,
+      "health_p95_ms_median": 5.4482065315824,
+      "health_max_ms_worst": 10.078831983264536
+    },
+    "filter_process": {
+      "factory_plus_lifespan_s_median": 3.021407583524706,
+      "factory_plus_counts_ready_s_median": 9.018368982040556,
+      "health_p95_ms_median": 4.745776968775317,
+      "health_max_ms_worst": 10.242149990517646
+    }
+  }
+}

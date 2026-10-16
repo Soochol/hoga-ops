@@ -6,7 +6,16 @@ import logging
 from pathlib import Path
 from typing import Literal
 
-from watchdog.events import FileSystemEventHandler
+from watchdog.events import (
+    DirCreatedEvent,
+    DirDeletedEvent,
+    DirMovedEvent,
+    FileCreatedEvent,
+    FileDeletedEvent,
+    FileModifiedEvent,
+    FileMovedEvent,
+    FileSystemEventHandler,
+)
 from watchdog.observers import Observer
 from watchdog.observers.api import BaseObserver
 
@@ -54,10 +63,13 @@ def classify_inventory_event(
         date, code = parts
         return {"type": "inventory_removed", "code": code, "date": date}
 
-    if kind in ("created", "modified") and not is_directory and len(parts) == 3:  # noqa: PLR2004 — 국소 비교 상수 — 이름을 붙여도 의미가 늘지 않는 자리
-        date, code, fname = parts
-        if fname == "meta.json":
-            return {"type": "inventory_added", "code": code, "date": date}
+    metadata_layout = (
+        len(parts) == 3  # noqa: PLR2004 — legacy flat metadata
+        or (len(parts) == 4 and parts[2] in {"hogaplay", "kiwoom_live"})  # noqa: PLR2004 — source metadata
+        or (len(parts) == 5 and parts[2] == "kiwoom_live" and parts[3] in {"KRX", "NXT", "UN"})  # noqa: PLR2004 — venue metadata
+    )
+    if kind in ("created", "modified") and not is_directory and metadata_layout and parts[-1] == "meta.json":
+        return {"type": "inventory_added", "code": parts[1], "date": parts[0]}
 
     return None
 
@@ -128,6 +140,12 @@ class _InventoryHandler(FileSystemEventHandler):
             str(event.src_path), is_directory=event.is_directory, kind="deleted",
         )
 
+    def on_moved(self, event):
+        # atomic_write_json publishes metadata through os.replace. Preserve that
+        # change signal as well as ordinary in-place modifications.
+        self._dispatch(str(event.src_path), is_directory=event.is_directory, kind="deleted")
+        self._dispatch(str(event.dest_path), is_directory=event.is_directory, kind="created")
+
 
 def build_event_bus(parquet_root: Path) -> tuple[EventBus, BaseObserver, _InventoryHandler]:
     """Create the inventory event bus + watchdog observer (no HTTP route).
@@ -141,5 +159,10 @@ def build_event_bus(parquet_root: Path) -> tuple[EventBus, BaseObserver, _Invent
     handler = _InventoryHandler(bus, parquet_root, loop=None)
     observer = Observer()
     parquet_root.mkdir(parents=True, exist_ok=True)
-    observer.schedule(handler, str(parquet_root), recursive=True)
+    # Exclude open/close-without-write at the emitter: inventory scans otherwise
+    # generate two Python events per metadata read and compete with API work.
+    observer.schedule(handler, str(parquet_root), recursive=True, event_filter=[
+        DirCreatedEvent, DirDeletedEvent, DirMovedEvent,
+        FileCreatedEvent, FileDeletedEvent, FileModifiedEvent, FileMovedEvent,
+    ])
     return bus, observer, handler

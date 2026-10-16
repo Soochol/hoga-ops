@@ -101,6 +101,7 @@ describe('useEventStream disconnect handler', () => {
     const calls = spy.mock.calls.map((c) => c[0]);
     expect(calls.some((c) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'stock-dates')).toBe(true);
     expect(calls.some((c) => Array.isArray(c?.queryKey) && c.queryKey.join(',') === 'capture,queue')).toBe(true);
+    expect(calls.some((c) => Array.isArray(c?.queryKey) && c.queryKey.join(',') === 'symbols,all')).toBe(true);
     expect(calls.some((c) => typeof c?.predicate === 'function')).toBe(true);
   });
 });

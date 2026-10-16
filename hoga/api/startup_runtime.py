@@ -93,6 +93,8 @@ class StartupRuntimeDeps:
     # 인벤토리 watchdog 옵서버(스레드). asyncio 태스크가 아니라 별도 판정이 필요하다.
     # 미주입이면 목록에서 생략.
     get_inventory_observer: Callable[[], object | None] | None = None
+    start_symbol_capture_counts: Callable[[Path], asyncio.Task] | None = None
+    close_symbol_capture_counts: Callable[[], Awaitable[None]] | None = None
 
 
 # 한 번 일하고 끝나는 것이 **계약**인 감독 태스크들. 이 이름들만 정상 반환을
@@ -230,6 +232,8 @@ class AppStartupRuntime:
 
     async def stop(self) -> None:
         """Stop runtime-owned background work in shutdown order."""
+        if self.deps.close_symbol_capture_counts is not None:
+            await self.deps.close_symbol_capture_counts()
         await self.deps.stop_today_promoter(self.today_promoter_task)
         # 태스크가 멎은 **뒤에** 풀을 내린다 — 순서가 반대면 마지막 종목의 승격이
         # BrokenProcessPool 로 끝나 종료 로그에 가짜 실패가 남는다.
@@ -307,6 +311,8 @@ async def start_app_runtime(
         # 없으면 커밋된 시드로 부팅하므로 자격증명 없이도 캐시가 찬다.
         symbol_master_path = deps.resolve_symbol_master_path()
         deps.load_symbol_disk_state(path=symbol_master_path, data_dir=data_dir)
+        if deps.start_symbol_capture_counts is not None:
+            deps.start_symbol_capture_counts(data_dir)
 
         if live_startup_enabled_from_env(deps.env):
             await deps.start_live_stream(data_dir=data_dir)

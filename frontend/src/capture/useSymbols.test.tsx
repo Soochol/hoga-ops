@@ -71,6 +71,30 @@ describe('filterSymbols', () => {
 });
 
 describe('useSymbols', () => {
+  it('polls lightweight count status and reloads the catalog when counts finish', async () => {
+    let catalogCalls = 0;
+    let statusCalls = 0;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      if (String(url).endsWith('/config.json')) {
+        return { ok: true, status: 200, json: async () => ({ api_url: 'http://127.0.0.1:8000' }) } as Response;
+      }
+      if (String(url).endsWith('/capture-counts')) {
+        statusCalls += 1;
+        return { ok: true, status: 200,
+          json: async () => ({ status: statusCalls === 1 ? 'pending' : 'ready' }) } as Response;
+      }
+      catalogCalls += 1;
+      const status = catalogCalls === 1 ? 'pending' : 'ready';
+      return { ok: true, status: 200, json: async () => ({ symbols: HITS, status: 'fresh', fetched_at_ms: 1,
+        capture_counts_status: status }) } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useSymbols(), { wrapper: wrap(qc) });
+    await waitFor(() => expect(result.current.data?.capture_counts_status).toBe('ready'), { timeout: 6000 });
+    expect(catalogCalls).toBe(2);
+    expect(statusCalls).toBe(2);
+  });
+
   it('fires one fetch and exposes the envelope on data', async () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockResolvedValue({
       ok: true, status: 200,

@@ -1,17 +1,30 @@
 import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { getAllSymbols } from '../api/symbols';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getAllSymbols, getCaptureCountsInfo } from '../api/symbols';
 import type { SymbolHit, SymbolsAllResponse } from '../api/types';
+import { SYMBOLS_QUERY_KEY } from './symbolKeys';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
-export const SYMBOLS_QUERY_KEY = ['symbols', 'all'] as const;
+export { SYMBOLS_QUERY_KEY } from './symbolKeys';
 
 export function useSymbols() {
+  const client = useQueryClient();
   return useQuery<SymbolsAllResponse>({
     queryKey: SYMBOLS_QUERY_KEY,
-    queryFn: getAllSymbols,
+    queryFn: async () => {
+      const previous = client.getQueryData<SymbolsAllResponse>(SYMBOLS_QUERY_KEY);
+      // Poll a tiny status payload; fetch the full catalog only on completion,
+      // failure, or explicit invalidation. All consumers share this query.
+      if (previous?.capture_counts_status === 'pending'
+        && !client.getQueryState(SYMBOLS_QUERY_KEY)?.isInvalidated) {
+        const info = await getCaptureCountsInfo();
+        if (info.status === 'pending') return previous;
+      }
+      return getAllSymbols();
+    },
     staleTime: ONE_DAY_MS,
+    refetchInterval: (query) => query.state.data?.capture_counts_status === 'pending' ? 1000 : false,
   });
 }
 

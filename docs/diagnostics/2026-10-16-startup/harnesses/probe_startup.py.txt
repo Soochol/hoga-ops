@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+import gc
+import json
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import time
+import types
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT))
+from hoga.api import disk_state, symbols
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--data-dir', type=Path, default=Path.home() / '.local/share/hoga-ops/data')
+parser.add_argument('mode', choices=['catalog', 'current', 'old-cache', 'tuned', 'observer'])
+args = parser.parse_args()
+data = args.data_dir
+
+def git_source(ref, path):
+    return subprocess.run(['git', 'show', f'{ref}:{path}'], cwd=REPO_ROOT, capture_output=True, text=True, check=True).stdout
+
+counts = Counter()
+durations = Counter()
+started = {}
+def gc_callback(phase, info):
+    generation = info['generation']
+    if phase == 'start':
+        started[generation] = time.perf_counter()
+    else:
+        counts[generation] += 1
+        durations[generation] += time.perf_counter() - started[generation]
+
+if args.mode == 'catalog':
+    symbols._build_all_captured_breakdowns = lambda _: {}
+    start = time.perf_counter()
+    symbols.load_disk_state(path=data.parent / 'symbol-master.json', data_dir=data)
+    print(json.dumps({'mode': args.mode, 'seconds': time.perf_counter()-start,
+                      'listed_codes': len(symbols._cache), 'state': symbols.current_status()}))
+elif args.mode in {'current', 'old-cache', 'tuned'}:
+    if args.mode == 'old-cache':
+        module = types.ModuleType('old_mtime_cache')
+        exec(compile(git_source('3217c0fc1^', 'hoga/util/mtime_cache.py'), '<old-cache>', 'exec'), module.__dict__)
+        disk_state._META_CLASSIFY_CACHE = module.MtimeLruCache(max_entries=4096)
+        disk_state._EXPECTED_VENUES_CACHE = module.MtimeLruCache(max_entries=4096)
+    if args.mode == 'tuned':
+        gc.set_threshold(50_000, 50, 50)
+    thresholds = gc.get_threshold()
+    gc.callbacks.append(gc_callback)
+    start = time.perf_counter()
+    result = symbols._build_all_captured_breakdowns(data)
+    elapsed = time.perf_counter()-start
+    gc.callbacks.remove(gc_callback)
+    print(json.dumps({'mode': args.mode, 'seconds': elapsed, 'codes': len(result),
+                      'thresholds': thresholds, 'gc_counts': counts, 'gc_seconds': durations}))
+else:
+    from watchdog.events import FileCreatedEvent, FileModifiedEvent, DirDeletedEvent, FileSystemEventHandler
+    from watchdog.observers import Observer
+
+    with tempfile.TemporaryDirectory(prefix='hoga-startup-observer-') as temp:
+        root = Path(temp)
+        meta = json.dumps({'collection_complete': True, 'is_partial': False,
+                           'regular_session_open_ms': 90_000_000, 'regular_session_close_ms': 153_000_000})
+        for index in range(2000):
+            target = root / 'parquet' / f'202609{index//100+1:02d}' / f'{index%100:06d}' / 'hogaplay'
+            target.mkdir(parents=True)
+            (target / 'meta.json').write_text(meta)
+        for mode in ('off', 'unfiltered', 'filtered'):
+            events = Counter()
+            class CountingHandler(FileSystemEventHandler):
+                def on_any_event(self, event):
+                    events[event.event_type] += 1
+            observer = None
+            setup = time.perf_counter()
+            if mode != 'off':
+                observer = Observer()
+                options = {} if mode == 'unfiltered' else {'event_filter': [FileCreatedEvent, FileModifiedEvent, DirDeletedEvent]}
+                observer.schedule(CountingHandler(), str(root/'parquet'), recursive=True, **options)
+                observer.start()
+            setup = time.perf_counter()-setup
+            time.sleep(.1)
+            events.clear()
+            disk_state.reset_classify_cache_for_tests()
+            start = time.perf_counter()
+            result = symbols._build_all_captured_breakdowns(root)
+            elapsed = time.perf_counter()-start
+            time.sleep(.2)
+            if observer:
+                observer.stop()
+                observer.join()
+            print(json.dumps({'mode': mode, 'fixture_stock_dates': 2000, 'observer_setup_s': setup,
+                              'scan_s': elapsed, 'events': events}), flush=True)

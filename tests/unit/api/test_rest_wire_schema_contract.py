@@ -69,6 +69,10 @@ from hoga.trading import models as trading_models
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
+    "CaptureCountsInfo": frozenset({"status"}),
+    "SymbolHit": frozenset({"code", "name", "market", "security_type", "nxt_enabled", "captured_count",
+                             "captured_breakdown", "capture_counts_status"}),
+    "SymbolsAllResponse": frozenset({"symbols", "status", "fetched_at_ms", "reason", "capture_counts_status"}),
     "ProgramTradeTickRow": frozenset({"event_id", "t_ms", "price", "event_delta_qty"}),
     "ProgramTradeTicksResponse": frozenset({"code", "date", "venue", "rows", "next_before"}),
     "ProgramTradeHistoryResponse": frozenset({"code", "date", "venue", "rows", "next_key", "latest_at_ms"}),
@@ -461,6 +465,7 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "CaptureCountsStatus": (frozenset(get_args(m.CaptureCountsStatus)), "frontend/src/api/types.ts"),
     "TradingSide": (frozenset(get_args(trading_models.TradingSide)), "frontend/src/api/trading.ts"),
     "StockNewsStatus": (frozenset(get_args(m.StockNewsStatus)), "frontend/src/api/stockNews.ts"),
     "ComputeErrorCode": (

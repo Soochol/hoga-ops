@@ -1,5 +1,13 @@
 import { apiCall } from './client';
-import type { SymbolHit, SymbolMasterInfo, SymbolsAllResponse } from './types';
+import type { CaptureCountsInfo, SymbolHit, SymbolMasterInfo, SymbolsAllResponse } from './types';
+
+export function getCaptureCountsInfo(): Promise<CaptureCountsInfo> {
+  return apiCall<CaptureCountsInfo>('/api/symbols/capture-counts');
+}
+
+export function refreshCaptureCounts(): Promise<CaptureCountsInfo> {
+  return apiCall<CaptureCountsInfo>('/api/symbols/capture-counts/refresh', { method: 'POST' });
+}
 
 export function getAllSymbols(): Promise<SymbolsAllResponse> {
   return apiCall<SymbolsAllResponse>('/api/symbols/all');

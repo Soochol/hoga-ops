@@ -1,0 +1,109 @@
+{
+  "date_kst": "2026-10-16",
+  "base_sha": "abd7c77c272c3513abebd13f64ace8d8db8b151b",
+  "source_sha256": {
+    "hoga/api/disk_state.py": "7d9dc1d9a41b2a79ac4e47bb68ffafd067ea4dbf04e0d7175e11339dee2f4cd3",
+    "hoga/api/symbols.py": "b9b288ee80387f1061c75bbb7e0c4de29774b64dfbd72e2a1d135095aad076e4",
+    "hoga/api/events.py": "dd5efc55b987677afe83d952faebcc028984b492418c40b76198a3a9e63e2b34",
+    "hoga/api/startup_runtime.py": "e3293c088b2247ee19e434d456422291a47e0a29fe578f0318cbdb504701cde8",
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "uv.lock": "b6704bb6abd785df4c1898f776d837a9e5defd547a99d2c8dede66d758ed3893"
+  },
+  "runtime": "CPython 3.14.7; dependencies from uv.lock",
+  "scope": "Read-only component measurements on the shared data store; observer experiments use temporary synthetic data; no production restarts or vendor calls.",
+  "working_tree_change": "Prior-turn source restriction patch in disk_state.py; 253 related tests passed in the prior turn.",
+  "production_log_durations_s": {
+    "waiting_to_queue_ready": 8.911,
+    "queue_ready_to_storage_targets": 150.95,
+    "storage_targets_to_collector_ack": 9.422,
+    "collector_ack_to_startup_complete": 0.547,
+    "waiting_to_startup_complete": 169.83
+  },
+  "catalog_only": {
+    "seconds": 0.10045125597389415,
+    "listed_codes": 4282,
+    "state": "fresh",
+    "method": "Stub only captured-breakdown calculation; retain real master JSON loading and validation."
+  },
+  "real_data_scan": [
+    {
+      "mode": "current_cache_default_gc",
+      "seconds": 28.753559743985534,
+      "codes": 493,
+      "gc_thresholds": [
+        2000,
+        10,
+        10
+      ],
+      "gc_counts": {
+        "0": 13,
+        "1": 1
+      },
+      "gc_seconds_total": 0.04422013013390824
+    },
+    {
+      "mode": "pre_1807_cache_default_gc",
+      "seconds": 26.518772003008053,
+      "codes": 493,
+      "gc_thresholds": [
+        2000,
+        10,
+        10
+      ],
+      "gc_counts": {
+        "0": 11,
+        "1": 1
+      },
+      "gc_seconds_total": 0.04625584598397836
+    },
+    {
+      "mode": "current_cache_tuned_gc",
+      "seconds": 28.834894440020435,
+      "codes": 493,
+      "gc_thresholds": [
+        50000,
+        50,
+        50
+      ],
+      "gc_counts": {},
+      "gc_seconds_total": 0
+    }
+  ],
+  "observer_fixture": {
+    "stock_dates": 2000,
+    "meta_layout": "parquet/date/code/hogaplay/meta.json",
+    "runs": [
+      {
+        "off_s": 0.9683670229860581,
+        "unfiltered_s": 4.171942824032158,
+        "filtered_s": 0.6164240860380232,
+        "opened": 2000,
+        "closed_no_write": 2000,
+        "filtered_events": 0
+      },
+      {
+        "off_s": 0.7644138089963235,
+        "unfiltered_s": 4.023529611004051,
+        "filtered_s": 0.7567397829843685,
+        "opened": 2000,
+        "closed_no_write": 2000,
+        "filtered_events": 0
+      }
+    ]
+  },
+  "startup_helpers_identical_between_1910_and_HEAD": {
+    "hoga/api/symbols.py:_build_all_captured_breakdowns": true,
+    "hoga/api/symbols.py:load_disk_state": true,
+    "hoga/api/events.py:build_event_bus": true,
+    "hoga/api/disk_state.py:check_disk_state": true,
+    "hoga/api/disk_state.py:classify_stock_date": true
+  },
+  "limitations": [
+    "Sequential warm filesystem runs under changing host load; single-pass cache and GC comparisons are not precise PR-wide effect estimates.",
+    "All real-data scan modes include the prior-turn source restriction patch.",
+    "Observer amplification is reproduced on an isolated 2000-stock-date fixture, not measured by attaching to the production process.",
+    "Production log gap covers symbol loading and storage target planning; it has no direct phase timer for the symbol scan.",
+    "Python 3.14.4 was not benchmarked; negligible current GC time does not establish historical version equivalence.",
+    "Recent PRs were reviewed through local diffs and GitHub PR bodies; no historical complete server replay was performed."
+  ]
+}

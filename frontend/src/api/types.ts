@@ -439,6 +439,12 @@ export interface CaptureTimingEvent {
 }
 
 /** Mirrors hoga/api/models.py::SymbolHit. */
+export type CaptureCountsStatus = 'pending' | 'ready' | 'failed';
+
+export interface CaptureCountsInfo {
+  status: CaptureCountsStatus;
+}
+
 export interface SymbolHit {
   code: string;
   name: string;
@@ -450,6 +456,7 @@ export interface SymbolHit {
    *  통합(UN) 선택을 KRX 로 해석해 실시간 표면이 비지 않게 한다. */
   nxt_enabled?: boolean | null;
   captured_count: number;                              // complete-only headline
+  capture_counts_status?: CaptureCountsStatus;
   captured_breakdown: {
     complete: number;
     source_partial: number;
@@ -474,6 +481,7 @@ export interface SymbolsAllResponse {
   status: SymbolsCacheStatus;
   fetched_at_ms: number | null;
   reason?: UpstreamCode | null;
+  capture_counts_status?: CaptureCountsStatus;
 }
 
 export type CalendarStatus =

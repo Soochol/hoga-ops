@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSymbols, useSymbolSearch, SYMBOLS_QUERY_KEY } from './useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { symbolSearchHints } from '../api/upstream-hints';
-import { refreshSymbols } from '../api/symbols';
+import { refreshCaptureCounts, refreshSymbols } from '../api/symbols';
 import { requestSettingsModal } from '../live/settingsModalControls';
 import type { SymbolHit, SymbolsCacheStatus } from '../api/types';
 
@@ -58,6 +58,22 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   const isStaleByAge =
     fetchedAtMs !== null && Date.now() - fetchedAtMs > STALE_NUDGE_THRESHOLD_MS;
   const showRefresh = cacheStatus === 'unavailable' || cacheStatus === 'stale';
+  const countsStatus = data?.capture_counts_status ?? 'ready';
+  const [retryingCounts, setRetryingCounts] = useState(false);
+  const [retryCountsFailed, setRetryCountsFailed] = useState(false);
+
+  const retryCounts = async () => {
+    setRetryingCounts(true);
+    setRetryCountsFailed(false);
+    try {
+      await refreshCaptureCounts();
+      await queryClient.invalidateQueries({ queryKey: SYMBOLS_QUERY_KEY });
+    } catch {
+      setRetryCountsFailed(true);
+    } finally {
+      setRetryingCounts(false);
+    }
+  };
 
   const hint = (reason && symbolSearchHints[reason])
     ? symbolSearchHints[reason]
@@ -160,6 +176,16 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
           </span>
         )}
       </div>
+      {countsStatus === 'failed' && (
+        <div className="mt-1.5 text-xs text-fg-dim" role="status">
+          캡처 건수 집계에 실패했습니다.{' '}
+          <button type="button" onClick={retryCounts} disabled={retryingCounts}
+            className="underline disabled:opacity-50">
+            집계 재시도
+          </button>
+          {retryCountsFailed && <span> 재시도 요청에 실패했습니다.</span>}
+        </div>
+      )}
       {/* `showRefresh` 는 `stale` 도 포함하는데 이 블록이 `unavailable` 일 때만 렌더돼서
           **stale 에서 그 조건이 죽어 있었다** — "오래됨" 뱃지를 본 사용자에게 갱신 경로가
           없었다(검색 결과가 0건일 때 뜨는 "설정에서 갱신" 이 유일한 우회로였다).
@@ -213,8 +239,13 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
 }
 
 function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted: boolean; onClick: () => void }) {
-  const breakdown = `완결 ${hit.captured_breakdown.complete} · 부분 ${hit.captured_breakdown.source_partial} · 미완결 ${hit.captured_breakdown.client_incomplete} · 손상 ${hit.captured_breakdown.invalid}`;
-  const countText = hit.captured_count > 0 ? `완결 ${hit.captured_count}일` : '완결 없음';
+  const countsReady = (hit.capture_counts_status ?? 'ready') === 'ready';
+  const breakdown = countsReady
+    ? `완결 ${hit.captured_breakdown.complete} · 부분 ${hit.captured_breakdown.source_partial} · 미완결 ${hit.captured_breakdown.client_incomplete} · 손상 ${hit.captured_breakdown.invalid}`
+    : '캡처 건수는 아직 확인되지 않았습니다. 종목 선택은 가능합니다.';
+  const countText = !countsReady
+    ? (hit.capture_counts_status === 'failed' ? '집계 실패' : '집계 중')
+    : (hit.captured_count > 0 ? `완결 ${hit.captured_count}일` : '완결 없음');
   return (
     <div
       role="option"
@@ -236,7 +267,7 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
       <span className="border border-border-strong rounded-md px-xs font-semibold text-badge text-fg-dim">{hit.market}</span>
       <span
         title={breakdown}
-        style={{ color: hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dim)' }}
+        style={{ color: countsReady && hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dim)' }}
         className="font-medium text-xs font-data tabular-nums"
       >
         {countText}

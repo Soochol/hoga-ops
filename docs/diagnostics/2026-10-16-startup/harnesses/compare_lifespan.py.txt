@@ -1,0 +1,211 @@
+"""Offline A/B prototype: real app lifespan, ASGI requests, isolated metadata.
+
+Run with Python from the repository virtualenv. No user servers or vendor APIs.
+The deferred-count variants are measurement prototypes, not production patches.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
+import hashlib
+import json
+import multiprocessing
+import os
+from pathlib import Path
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT))
+
+
+def scan_worker(data_dir):
+    from hoga.api.symbols import _build_all_captured_breakdowns
+    return _build_all_captured_breakdowns(Path(data_dir))
+
+
+def digest(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
+
+
+async def measure(root, variant):
+    for name in list(os.environ):
+        if name.startswith(('KIS_', 'KIWOOM_', 'HOGA_')):
+            os.environ.pop(name)
+    os.environ.update(HOGA_LIVE_STARTUP_ENABLED='false', HOGA_LIVE_TODAY_PROMOTE_ENABLED='false',
+                      HOGA_STARTUP_CATCHUP_ENABLED='false')
+    import hoga.env
+    hoga.env._discovered = None
+    # Fail closed if any unexpected path attempts a network connection.
+    original_connect = socket.socket.connect
+    def local_connect(sock, address):
+        if sock.family in (socket.AF_INET, socket.AF_INET6):
+            raise AssertionError('network access forbidden in offline experiment')
+        return original_connect(sock, address)
+    socket.socket.connect = local_connect
+
+    import logging
+    logging.getLogger('hoga').setLevel(logging.CRITICAL)
+    import httpx
+    from watchdog.events import (DirCreatedEvent, DirDeletedEvent, DirMovedEvent,
+                                 FileCreatedEvent, FileDeletedEvent, FileModifiedEvent, FileMovedEvent)
+    from watchdog.observers import Observer
+    from hoga.api import app as app_mod, symbols, events
+
+    class FilteredObserver(Observer):
+        def schedule(self, handler, path, **kwargs):
+            kwargs['event_filter'] = [DirCreatedEvent, DirDeletedEvent, DirMovedEvent,
+                                     FileCreatedEvent, FileDeletedEvent, FileModifiedEvent, FileMovedEvent]
+            return super().schedule(handler, path, **kwargs)
+
+    phases = {}
+    event_counts = Counter()
+    if variant != 'current':
+        events.Observer = FilteredObserver
+    original_builder = app_mod.build_event_bus
+    def build_bus(path):
+        bus, observer, handler = original_builder(path)
+        original_start = observer.start
+        def start():
+            stamp = time.perf_counter()
+            original_start()
+            phases['observer_start_s'] = time.perf_counter()-stamp
+        observer.start = start
+        handler.on_any_event = lambda event: event_counts.update([event.event_type])
+        return bus, observer, handler
+    app_mod.build_event_bus = build_bus
+    app_mod.resolve_symbol_master_path = lambda: root / 'symbol-master.json'
+    symbols.needs_boot_refresh = lambda: False
+
+    original_loader = symbols.load_disk_state
+    original_scan = symbols._build_all_captured_breakdowns
+    task = None
+    pool = None
+    result = None
+    if variant == 'filter_process':
+        pool = ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context('spawn'))
+
+    async def deferred_scan(data_dir):
+        nonlocal result
+        stamp = time.perf_counter()
+        if pool:
+            result = await asyncio.get_running_loop().run_in_executor(pool, scan_worker, str(data_dir))
+        else:
+            result = await asyncio.to_thread(original_scan, data_dir)
+        phases['background_scan_s'] = time.perf_counter()-stamp
+        # Publish only complete results; production needs an explicit pending state.
+        empty = dict(complete=0, source_partial=0, client_incomplete=0, invalid=0)
+        for hit in symbols._cache:
+            hit.captured_breakdown = result.get(hit.code, empty)
+            hit.captured_count = hit.captured_breakdown['complete']
+
+    def load(*, path, data_dir):
+        nonlocal task
+        stamp = time.perf_counter()
+        if variant in {'filter_thread', 'filter_process'}:
+            symbols._build_all_captured_breakdowns = lambda _: {}
+            try:
+                original_loader(path=path, data_dir=data_dir)
+            finally:
+                symbols._build_all_captured_breakdowns = original_scan
+            task = asyncio.create_task(deferred_scan(data_dir))
+        else:
+            original_loader(path=path, data_dir=data_dir)
+        phases['symbol_load_s'] = time.perf_counter()-stamp
+    symbols.load_disk_state = load
+    stamp = time.perf_counter()
+    app = app_mod.create_app(root / 'data')
+    phases['factory_s'] = time.perf_counter()-stamp
+    start = time.perf_counter()
+    latencies = []
+    async with app.router.lifespan_context(app):
+        phases['lifespan_ready_s'] = time.perf_counter()-start
+        pending_at_ready = task is not None and not task.done()
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url='http://offline') as client:
+            deep = await client.get('/health?deep=true')
+            assert deep.status_code == 200, deep.text
+            sample = await client.get('/api/symbols', params={'q':'삼성','limit':20})
+            assert sample.status_code == 200 and sample.json(), sample.text
+            # Sample real ASGI requests throughout the background calculation.
+            for index in range(1000):
+                request_start = time.perf_counter()
+                response = await client.get('/health')
+                assert response.status_code == 200
+                latencies.append(time.perf_counter()-request_start)
+                if (task is None or task.done()) and index >= 19:
+                    break
+                await asyncio.sleep(.02)
+            if task:
+                await task
+        phases['counts_ready_s'] = time.perf_counter()-start
+        final = {hit.code: hit.captured_breakdown for hit in symbols._cache}
+        final_digest = digest(final)
+    if pool:
+        pool.shutdown()
+    ordered = sorted(latencies)
+    return dict(variant=variant, phases=phases, pending_at_ready=pending_at_ready,
+                health_p95_ms=ordered[int((len(ordered)-1)*.95)]*1000,
+                health_max_ms=max(ordered)*1000, health_samples=len(ordered),
+                final_counts_sha256=final_digest, event_counts=event_counts)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--root', type=Path)
+    parser.add_argument('--variant', choices=['current','filter','filter_thread','filter_process'])
+    parser.add_argument('--output', type=Path, default=Path('/tmp/hoga-lifespan-comparison.json'))
+    parser.add_argument('--stock-dates', type=int, default=8000)
+    args = parser.parse_args()
+    if args.variant:
+        print(json.dumps(asyncio.run(measure(args.root, args.variant))), flush=True)
+        return
+    with tempfile.TemporaryDirectory(prefix='hoga-lifespan-comparison-') as temporary:
+        root = Path(temporary)
+        source = Path.home()/'.local/share/hoga-ops/symbol-master.json'
+        shutil.copyfile(source, root/'symbol-master.json')
+        rows = json.loads(source.read_text())['entries']
+        codes = [row['code'] for row in rows[:200]]
+        meta = dict(collection_complete=True, is_partial=False,
+                    regular_session_open_ms=90_000_000, regular_session_close_ms=153_000_000)
+        from datetime import date, timedelta
+        for index in range(args.stock_dates):
+            day = (date(2025,1,1)+timedelta(days=index//len(codes))).strftime('%Y%m%d')
+            target = root/'data/parquet'/day/codes[index%len(codes)]
+            path = target/'hogaplay/meta.json'
+            path.parent.mkdir(parents=True)
+            payload = {**meta, 'is_partial':index%8 == 1, 'collection_complete':index%8 != 2}
+            if index%8 == 3:
+                payload['regular_session_close_ms'] = 0
+            path.write_text(json.dumps(payload))
+            if index%4 == 0:
+                for venue in ('KRX','NXT','UN'):
+                    path = target/'kiwoom_live'/venue/'meta.json'
+                    path.parent.mkdir(parents=True)
+                    path.write_text(json.dumps(meta))
+        (root/'data/.layout_v2').touch()
+        results = []
+        # Reverse order on round two to reduce systematic filesystem warming bias.
+        orders = [('current','filter','filter_thread','filter_process'),
+                  ('filter_process','filter_thread','filter','current')]
+        for repeat, variants in enumerate(orders, 1):
+            for variant in variants:
+                done = subprocess.run([sys.executable,str(Path(__file__).resolve()),'--root',str(root),
+                                       '--variant',variant], cwd=REPO_ROOT, capture_output=True,text=True,
+                                      check=True, timeout=180)
+                record = json.loads(done.stdout.strip().splitlines()[-1])
+                record['repeat'] = repeat
+                results.append(record)
+                args.output.write_text(json.dumps({'stock_dates':args.stock_dates,'results':results},indent=2)+'\n')
+                print(json.dumps(record), flush=True)
+        assert len({row['final_counts_sha256'] for row in results}) == 1, 'capture counts differ'
+        print(f'Identical final counts across all variants. Evidence: {args.output}', flush=True)
+
+
+if __name__ == '__main__':
+    main()

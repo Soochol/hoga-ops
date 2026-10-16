@@ -288,9 +288,7 @@ def check_disk_state(
     # parquet/{date}/{code}/{source}/meta.json. We aggregate across sources
     # via the same priority used by aggregate_disk_state — unless a single
     # ``source`` was requested, in which case only that Source is considered.
-    per_source = classify_stock_date(parquet_dir)
-    if source is not None:
-        per_source = {source: per_source[source]} if source in per_source else {}
+    per_source = classify_stock_date(parquet_dir, source=source)
     if per_source:
         aggregated = aggregate_disk_state({src: c.state for src, c in per_source.items()})
         # classify_stock_date already parsed every source's meta and kept the
@@ -363,7 +361,9 @@ def _classify_meta_file(meta_path: Path) -> Classification:
     return classify_from_meta(meta)
 
 
-def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
+def classify_stock_date(
+    stock_date_dir: Path, *, source: str | None = None,
+) -> dict[str, Classification]:
     """Return per-source :class:`Classification` for a Stock-Date directory.
 
     Walks `<stock_date_dir>/*/meta.json` — each immediate subdirectory is a
@@ -382,11 +382,16 @@ def classify_stock_date(stock_date_dir: Path) -> dict[str, Classification]:
 
     Returns empty dict if `stock_date_dir` doesn't exist or has no source
     subdirs.
+
+    A restricted lookup skips unrelated sources before reading their metadata.
+    Boot-time hogaplay counts must not parse every kiwoom venue's history.
     """
     out: dict[str, Classification] = {}
     if not stock_date_dir.is_dir():
         return out
     for src_dir in stock_date_dir.iterdir():
+        if source is not None and src_dir.name != source:
+            continue
         if not src_dir.is_dir():
             continue
         meta_path = source_meta_path(src_dir)

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SymbolSearch } from './SymbolSearch';
 import type { ReactNode } from 'react';
@@ -30,6 +30,58 @@ function setup(envelope: SymbolsAllResponse = DEFAULT_ENVELOPE) {
 beforeEach(() => { vi.restoreAllMocks(); });
 
 describe('SymbolSearch', () => {
+  it('집계 중에도 선택할 수 있고 미확인 건수를 완결 없음으로 표시하지 않는다', async () => {
+    const qc = setup({ ...DEFAULT_ENVELOPE, capture_counts_status: 'pending',
+      symbols: [{ ...DEFAULT_ENVELOPE.symbols[1], capture_counts_status: 'pending' }] });
+    const onChange = vi.fn();
+    render(<SymbolSearch value={null} onChange={onChange} />,
+      { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    expect(await screen.findByText('집계 중')).toBeTruthy();
+    expect(screen.queryByText('완결 없음')).toBeNull();
+    fireEvent.click(screen.getByText('삼성전자우'));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ code: '005935' }));
+  });
+
+  it('집계 실패는 종목 목록 갱신 없이 건수만 재시도한다', async () => {
+    const failed: SymbolsAllResponse = { ...DEFAULT_ENVELOPE, capture_counts_status: 'failed',
+      symbols: [{ ...DEFAULT_ENVELOPE.symbols[1], capture_counts_status: 'failed' }] };
+    let retried = false;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (url) => {
+      const path = String(url);
+      if (path.endsWith('/capture-counts/refresh')) {
+        retried = true;
+        return { ok: true, status: 200, json: async () => ({ status: 'pending' }) } as Response;
+      }
+      return { ok: true, status: 200, json: async () => retried
+        ? { ...failed, capture_counts_status: 'pending',
+          symbols: failed.symbols.map((hit) => ({ ...hit, capture_counts_status: 'pending' })) }
+        : failed } as Response;
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<SymbolSearch value={null} onChange={() => {}} />,
+      { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    fireEvent.change(screen.getByPlaceholderText(/종목/i), { target: { value: '삼성' } });
+    expect(await screen.findByText('집계 실패')).toBeTruthy();
+    expect(screen.queryByText('완결 없음')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '집계 재시도' }));
+    expect(await screen.findByText('집계 중')).toBeTruthy();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/capture-counts/refresh')))
+      .toBe(true));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/symbols/refresh'))).toBe(false);
+  });
+
+  it('집계 재시도 요청의 네트워크 실패를 표시하고 검색을 유지한다', async () => {
+    const qc = setup({ ...DEFAULT_ENVELOPE, capture_counts_status: 'failed' });
+    render(<SymbolSearch value={null} onChange={() => {}} />,
+      { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    const retry = await screen.findByRole('button', { name: '집계 재시도' });
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('offline'));
+    fireEvent.click(retry);
+    expect(await screen.findByText('재시도 요청에 실패했습니다.')).toBeTruthy();
+    expect(screen.getByPlaceholderText(/종목/i)).toBeEnabled();
+  });
+
   it('renders the input with placeholder', () => {
     const qc = setup();
     render(<SymbolSearch value={null} onChange={() => {}} />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });

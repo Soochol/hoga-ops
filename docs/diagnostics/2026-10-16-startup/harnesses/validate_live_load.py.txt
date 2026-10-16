@@ -1,0 +1,222 @@
+"""Read-only production history + synthetic live traffic against an isolated app.
+
+All application writes stay in TemporaryDirectory. The optional real watch tree
+and the count scanner only read the selected data directory. Vendor networking
+is disabled. This measures API/display behavior, not a real vendor connection.
+"""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import gc
+import hashlib
+import json
+import logging
+import os
+from pathlib import Path
+import socket
+import sys
+import tempfile
+import time
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+sys.path.insert(0, str(REPO_ROOT))
+
+
+def rss():
+    return int(Path('/proc/self/statm').read_text().split()[1])*os.sysconf('SC_PAGE_SIZE')
+
+
+def percentiles(values):
+    values = sorted(values)
+    return {f'p{p}': values[int((len(values)-1)*p/100)]*1000 for p in (50,95,99)} | {'max':max(values)*1000}
+
+
+async def run(args):
+    for name in list(os.environ):
+        if name.startswith(('KIS_', 'KIWOOM_', 'HOGA_')):
+            os.environ.pop(name)
+    os.environ.update(HOGA_LIVE_STARTUP_ENABLED='false', HOGA_LIVE_TODAY_PROMOTE_ENABLED='false',
+                      HOGA_STARTUP_CATCHUP_ENABLED='false')
+    import hoga.env
+    hoga.env._discovered = None
+    connect = socket.socket.connect
+    def no_network(sock, address):
+        if sock.family in (socket.AF_INET, socket.AF_INET6):
+            raise AssertionError('external networking disabled')
+        return connect(sock,address)
+    socket.socket.connect = no_network
+    logging.getLogger('hoga').setLevel(logging.CRITICAL)
+    import httpx
+    from hoga.api import app as app_mod, symbols
+    from hoga.live import lifecycle
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+    from tools.bench_live_buffer import orderbook_payload
+
+    master = args.data_dir.parent/'symbol-master.json'
+    symbols.load_disk_state(path=master, data_dir=args.data_dir, defer_counts=True)
+    codes = [h.code for h in symbols._cache[:330]]
+    assert len(codes) == 330
+    gc.set_threshold(50_000,50,50)
+    buffer = LiveBuffer()
+    lifecycle._buffer = buffer
+    # 100k packed OB + 100k trade + 50k fill entries, distributed over 330
+    # Codes. Every stream remains below the normal 360-entry cap.
+    print('seeding 250000 retained entries', flush=True)
+    tick = int(time.time()*1000)-100_000
+    for index in range(250_000):
+        code = codes[index%330]
+        kind = (SnapshotKind.OB, SnapshotKind.TRADE, SnapshotKind.FILL,
+                SnapshotKind.OB, SnapshotKind.TRADE)[(index//330)%5]
+        payload = (orderbook_payload(code,index,10) if kind is SnapshotKind.OB else
+                   {'trades':[{'price':70_000,'qty':1,'side':1}]} if kind is SnapshotKind.TRADE else
+                   {'buy_qty':1,'sell_qty':1,'phase':'regular'})
+        await buffer.publish(code,[LiveSnapshot(tick,kind,payload)], now_ms=tick)
+    warm_stats = await buffer.stats_snapshot()
+    assert warm_stats['total_entries'] == 250_000, warm_stats
+    print(json.dumps({'warm_entries':warm_stats['total_entries'],'rss_mib':rss()/1024**2}),flush=True)
+    original_scan = symbols._build_all_captured_breakdowns
+    original_check = symbols.check_disk_state
+    checked = 0
+    def check(*args, **kwargs):
+        nonlocal checked
+        checked += 1
+        return original_check(*args, **kwargs)
+    symbols.check_disk_state = check
+    scan_seconds = None
+    scan_result = None
+    def scan(_temporary, *, cancelled):
+        nonlocal scan_seconds, scan_result
+        start = time.perf_counter()
+        scan_result = original_scan(args.data_dir, cancelled=cancelled)
+        scan_seconds = time.perf_counter()-start
+        return scan_result
+    symbols._build_all_captured_breakdowns = scan
+    app_mod.resolve_symbol_master_path = lambda: master
+    symbols.needs_boot_refresh = lambda: False
+    if args.mode == 'baseline':
+        def no_scan(_):
+            symbols._capture_counts.status = 'ready'
+            symbols._capture_counts.publish()
+            return asyncio.create_task(asyncio.sleep(0))
+        symbols.start_capture_counts = no_scan
+    original_bus = app_mod.build_event_bus
+    observer_s = None
+    def watch(_):
+        bus, observer, handler = original_bus(args.data_dir/'parquet')
+        original_start = observer.start
+        def start():
+            nonlocal observer_s
+            stamp = time.perf_counter()
+            original_start()
+            observer_s = time.perf_counter()-stamp
+        observer.start = start
+        return bus, observer, handler
+    app_mod.build_event_bus = watch
+    with tempfile.TemporaryDirectory(prefix='hoga-live-counts-validation-') as temp:
+        stamp = time.perf_counter()
+        app = app_mod.create_app(Path(temp))
+        factory_s = time.perf_counter()-stamp
+        boot = time.perf_counter()
+        async with app.router.lifespan_context(app):
+            ready_s = time.perf_counter()-boot
+            pending_at_ready = symbols._capture_counts.status
+            queues = [buffer.subscribe(code) for code in codes]
+            stop = asyncio.Event()
+            published = consumed = 0
+            lag = []
+            health = []
+            snapshot_latency = []
+            rss_samples = [rss()]
+            start = time.perf_counter()
+            last_progress = 0
+
+            async def producer():
+                nonlocal published
+                deadline = time.perf_counter()
+                while not stop.is_set():
+                    for _ in range(33):
+                        code = codes[published%330]
+                        stamp = int(time.time()*1000)
+                        await buffer.publish(code,[LiveSnapshot(stamp,SnapshotKind.OB,
+                                             orderbook_payload(code,published,10))],now_ms=stamp)
+                        published += 1
+                    deadline += 33/args.rate
+                    await asyncio.sleep(max(0,deadline-time.perf_counter()))
+
+            async def consumer():
+                nonlocal consumed
+                while not stop.is_set() or any(not q.empty() for q in queues):
+                    for queue in queues:
+                        while not queue.empty():
+                            json.dumps(queue.get_nowait())  # actual wire serialization cost
+                            consumed += 1
+                    await asyncio.sleep(.005)
+
+            async def heartbeat():
+                while not stop.is_set():
+                    stamp = time.perf_counter()
+                    await asyncio.sleep(.02)
+                    lag.append(max(0,time.perf_counter()-stamp-.02))
+
+            workers = [asyncio.create_task(coro) for coro in (producer(), consumer(), heartbeat())]
+            try:
+                async with httpx.AsyncClient(transport=httpx.ASGITransport(app),base_url='http://offline') as client:
+                    while (time.perf_counter()-start < args.seconds or
+                           (args.mode == 'scan' and symbols._capture_counts.status == 'pending')):
+                        if time.perf_counter()-start > 180:
+                            raise AssertionError('scan did not complete under load within 180s')
+                        stamp = time.perf_counter()
+                        response = await client.get('/health?deep=true')
+                        assert response.status_code == 200, response.text
+                        health.append(time.perf_counter()-stamp)
+                        stamp = time.perf_counter()
+                        response = await client.get(f'/api/live/snapshot?code={codes[0]}')
+                        assert response.status_code == 200, response.text
+                        snapshot_latency.append(time.perf_counter()-stamp)
+                        rss_samples.append(rss())
+                        if time.perf_counter()-start-last_progress > 10:
+                            last_progress = time.perf_counter()-start
+                            print(json.dumps({'elapsed_s':last_progress,'counts':symbols._capture_counts.status,
+                                              'stock_dates_checked':checked,'messages':published,
+                                              'messages_per_s':published/last_progress}),flush=True)
+                        await asyncio.sleep(.05)
+                elapsed = time.perf_counter()-start
+            finally:
+                stop.set()
+                await asyncio.gather(*workers)
+            if args.mode == 'scan':
+                assert symbols._capture_counts.status == 'ready'
+                body = await symbols.get_all(data_dir=Path(temp))
+                assert all(hit.capture_counts_status == 'ready' and
+                           hit.captured_count == scan_result.get(hit.code,{}).get('complete',0)
+                           for hit in body.symbols)
+            stats = await buffer.stats_snapshot()
+            assert stats['subscriber_drops'] == 0
+            assert published == consumed
+            scan_task = symbols._capture_counts.task
+            result = dict(mode=args.mode, factory_s=factory_s, lifespan_ready_s=ready_s,
+                          observer_start_s=observer_s, counts_at_ready=pending_at_ready,
+                          history_scan_s=scan_seconds, scan_codes=len(scan_result) if scan_result else None,
+                          stock_dates_checked=checked,
+                          counts_sha256=hashlib.sha256(json.dumps(scan_result,sort_keys=True).encode()).hexdigest(),
+                          duration_s=elapsed, nominal_messages_per_s=args.rate, published=published, consumed=consumed,
+                          actual_messages_per_s=published/elapsed, health_ms=percentiles(health),
+                          snapshot_ms=percentiles(snapshot_latency), loop_lag_ms=percentiles(lag),
+                          rss_start_mib=rss_samples[0]/1024**2, rss_peak_mib=max(rss_samples)/1024**2,
+                          retained_at_start=warm_stats, retained_at_end=stats)
+        assert scan_task is None or scan_task.done()
+        result['scan_task_drained_at_shutdown'] = True
+        args.output.write_text(json.dumps(result,indent=2)+'\n')
+        print(json.dumps(result),flush=True)
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data-dir',type=Path,default=Path.home()/'.local/share/hoga-ops/data')
+    parser.add_argument('--mode',choices=['baseline','scan'],required=True)
+    parser.add_argument('--seconds',type=float,default=45)
+    parser.add_argument('--rate',type=int,default=3300)
+    parser.add_argument('--output',type=Path,required=True)
+    asyncio.run(run(parser.parse_args()))

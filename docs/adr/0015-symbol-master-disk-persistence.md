@@ -27,6 +27,28 @@ The structural decisions this ADR records:
 
 7. **`captured_breakdown` is refreshed only at boot and successful refresh.** No SSE-driven update, no per-event hook into `captures.py`/`sse.py`. The dropdown badge can therefore lag the live capture state; authoritative live state remains on the Inventory and CaptureQueue pages (both of which invalidate on `capture_finished` via `STOCK_DATES_QUERY_KEY`).
 
+### Amendment — nonblocking capture counts (2026-10-16)
+
+The catalog still loads before Live Capture (PR #1118), but production boot no
+longer waits for `captured_breakdown`. A single read-only thread computes counts
+after catalog loading. The event loop publishes a complete snapshot onto the
+current catalog; an older scan cannot overwrite refreshed catalog membership.
+The GET endpoints remain pure reads. A lightweight count-status GET permits
+polling without repeatedly downloading the catalog, and a count-only POST retries
+failed scans without calling the vendor.
+
+Counts explicitly report `pending`, `ready`, or `failed` on both the envelope and
+each hit. Pending/failed numbers must not be presented as "no captures". Catalog
+availability and capture-count failure are independent. Counts are auxiliary and
+do not make deep health unhealthy. Shutdown requests cooperative cancellation
+between Stock-Dates and joins the thread; a cancelled coroutine alone cannot stop
+`to_thread`. Inventory watchers exclude file-open/read-close events at the emitter
+while preserving change events. This replaces synchronous boot counting in rule 7;
+it does not introduce capture-event-driven count refresh.
+Transport reconnection invalidates the catalog query once so a running browser
+observes a restarted backend's pending counts rather than retaining yesterday's
+ready snapshot for its one-day stale window.
+
 ## Context
 
 The predecessor spec (`2026-05-22-krx-env-symbol-design.md`) added `.env` discovery and reason-aware recovery UX but kept pykrx as a boot dependency: `ensure_cache_warm` ran at startup, and `get_all()` lazily fetched when the cache was empty or stale. T15 happy-path validation surfaced a pykrx 1.2.8 column drift (`get_market_cap` no longer returns `종목명`), but the deeper structural issue is that *any* pykrx fragility (login rejection, KRX rate-limit, schema change, transient network failure) cascades into broken first-time UX for every user, every boot.
