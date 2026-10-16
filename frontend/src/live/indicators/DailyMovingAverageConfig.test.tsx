@@ -33,8 +33,7 @@ describe('DailyMovingAverageConfig', () => {
   // 표시됩니다」도 이제 카테고리 표의 description 이고, 패널 헤더가 그린다.
   // 그 자리의 가드는 `IndicatorPanel.test.tsx` 의 설명 텍스트 단언이다.
 
-  // 마스터 토글과 타입 눈이 슬롯의 `enabled` 로 접혔다 — 토글 하나가 전 슬롯을
-  // 함께 켜고 끄고, 체크 상태는 "켜진 슬롯이 있는가" 의 파생이다.
+  // 전체 표시도 개별 행과 같은 hidden 상태를 쓰고 지표의 존재는 유지한다.
   it('상세 pane에서 일봉 MA 표시를 켜면 전 슬롯이 함께 켜진다', () => {
     render(<DailyMovingAverageConfig />);
     const toggle = screen.getByRole('switch', { name: '일봉 MA 표시' });
@@ -53,6 +52,6 @@ describe('DailyMovingAverageConfig', () => {
 
     fireEvent.click(toggle);
 
-    expect(useLivePageStore.getState().dailyMovingAverages.some((m) => m.enabled)).toBe(false);
+    expect(useLivePageStore.getState().dailyMovingAverages.some((m) => m.enabled && !m.hidden)).toBe(false);
   });
 });

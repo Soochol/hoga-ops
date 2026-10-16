@@ -1,3 +1,4 @@
+import { INDICATOR_LINE_KEYS, type IndicatorLineKey } from './indicatorLineVisibility';
 import type { InvestorTradeSide } from '../api/types';
 import type { LineStyle } from '../chart/drawing/types';
 import {
@@ -391,6 +392,19 @@ export function brokerLateEntryRemovalUndo(
 }
 
 export const INDICATOR_OPS = {
+  setIndicatorLineVisible: (cur: IndicatorSettings, key: IndicatorLineKey, visible: boolean): Patch => {
+    if (!INDICATOR_LINE_KEYS.includes(key)) return null;
+    const indicatorLineVisibility = { ...cur.indicatorLineVisibility };
+    if (visible) delete indicatorLineVisibility[key];
+    else indicatorLineVisibility[key] = false;
+    return { indicatorLineVisibility };
+  },
+  setAllMovingAveragesVisible: (cur: IndicatorSettings, visible: boolean): Patch => ({
+    movingAverages: cur.movingAverages.map(m => ({ ...m, ...(visible ? { enabled: true } : {}), hidden: !visible })),
+  }),
+  setAllDailyMovingAveragesVisible: (cur: IndicatorSettings, visible: boolean): Patch => ({
+    dailyMovingAverages: cur.dailyMovingAverages.map(m => ({ ...m, ...(visible ? { enabled: true } : {}), hidden: !visible })),
+  }),
   setSupertrendEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     enabled ? { supertrendEnabled: true, supertrendHidden: false } : { supertrendEnabled: false },
   setSupertrendHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ supertrendHidden: hidden }),
@@ -453,7 +467,7 @@ export const INDICATOR_OPS = {
   setAllMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
     (cur.movingAverages.length === 0
       ? null
-      : { movingAverages: cur.movingAverages.map((m) => ({ ...m, enabled })) }),
+      : { movingAverages: cur.movingAverages.map((m) => ({ ...m, enabled, ...(enabled && m.hidden ? { hidden: false } : {}) })) }),
 
   setDailyMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {
     const next = patchMaSlot(cur.dailyMovingAverages, id, patch);
@@ -471,7 +485,7 @@ export const INDICATOR_OPS = {
   setAllDailyMovingAveragesEnabled: (cur: IndicatorSettings, enabled: boolean): Patch =>
     (cur.dailyMovingAverages.length === 0
       ? null
-      : { dailyMovingAverages: cur.dailyMovingAverages.map((m) => ({ ...m, enabled })) }),
+      : { dailyMovingAverages: cur.dailyMovingAverages.map((m) => ({ ...m, enabled, ...(enabled && m.hidden ? { hidden: false } : {}) })) }),
 
   setVolumeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
     ({ volumeEnabled: enabled }),

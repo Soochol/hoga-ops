@@ -107,7 +107,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       // 종전엔 타입 마스터 × 타입 눈 × 슬롯의 삼중이었고, 눈만 data 를 남겨 레전드가
       // 숨긴 선의 값을 읽을 수 있었다. 이제 꺼진 인스턴스는 레전드에서도 dim 칩으로
       // 값 없이 표시되므로 판독할 값이 필요 없다 — data 를 비워 계산도 아낀다.
-      const drawn = cfg.enabled;
+      const drawn = cfg.enabled && !cfg.hidden;
       s.applyOptions({ visible: drawn });
       if (!drawn) {
         pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));

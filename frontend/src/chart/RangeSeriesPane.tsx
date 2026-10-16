@@ -68,6 +68,8 @@ export type SeriesSpec<Ctx = void> = {
   options:
     | SeriesPartialOptionsMap[SeriesType]
     | (() => SeriesPartialOptionsMap[SeriesType]);
+  /** Live display options applied to held handles when settings context changes. */
+  renderOptions?: (ctx: Ctx) => SeriesPartialOptionsMap[SeriesType];
   data: (bundle: RangeBundle, axis: VirtualAxis, ctx: Ctx) => SeriesDataItemTypeMap[SeriesType][];
   /** Optional: markers to overlay on this series, recomputed in the data effect
    *  (same cadence as `data`). Rendered by `SurgeMarkersPrimitive` (a custom
@@ -376,6 +378,13 @@ function RangeSeriesPaneInner<Ctx>({
     // callback re-creation.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chart, paneIndex, precedingPaneKey, spec, candleAlwaysOnTop, groupPaneIds, groupAxisMode]);
+
+  // Visibility/style updates follow the stable settings context, not bundle ticks.
+  useEffect(() => {
+    spec.series.forEach((s, i) => {
+      if (s.renderOptions) seriesRef.current[i]?.applyOptions(s.renderOptions(ctx));
+    });
+  }, [chart, ctx, spec, paneIndex, precedingPaneKey, candleAlwaysOnTop, groupPaneIds, groupAxisMode]);
 
   // Data effect: push new projected data into existing series whenever
   // bundle/axis/ctx changes. Cheap (setData on a held handle), so it's

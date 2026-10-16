@@ -62,3 +62,16 @@ describe('supertrendLineData', () => {
     ]);
   });
 });
+
+it('masks hidden trend segments without changing values or connecting across direction flips', () => {
+  const up = { value: 10, direction: 'up' as const, atr: 2 };
+  const down = { value: 20, direction: 'down' as const, atr: 2 };
+  const points = [up, up, down, down, up, up];
+  const times = [1, 2, 3, 4, 5, 6];
+  const data = supertrendLineData(points, times, 'red', 'blue', { up: true, down: false });
+  expect(data).toEqual([
+    { time: 1, value: 10, color: 'red' }, { time: 2, value: 10, color: 'transparent' },
+    { time: 3, value: 20, color: 'transparent' }, { time: 4, value: 20, color: 'transparent' },
+    { time: 5, value: 10, color: 'red' }, { time: 6, value: 10, color: 'red' },
+  ]);
+});

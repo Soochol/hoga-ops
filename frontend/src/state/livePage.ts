@@ -380,6 +380,9 @@ type Store = Persisted & IndicatorSettings & {
   contractHistoricalRange: (date: string) => void;
   resetHistoricalRange: () => void;
   hydrateFromStorage: () => void;
+  setIndicatorLineVisible: import('./indicatorOps').BoundIndicatorOps['setIndicatorLineVisible'];
+  setAllMovingAveragesVisible: (visible: boolean) => void;
+  setAllDailyMovingAveragesVisible: (visible: boolean) => void;
   setSupertrendEnabled: (enabled: boolean) => void;
   setSupertrendHidden: (hidden: boolean) => void;
   setSupertrendSettings: import('./indicatorOps').BoundIndicatorOps['setSupertrendSettings'];

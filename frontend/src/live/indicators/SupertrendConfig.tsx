@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import LineVisibilityRow from './LineVisibilityRow';
 import { useWindowIndicators, useIndicatorActions } from '../workspace/windowView';
 import MAStylePicker from './MAStylePicker';
 
@@ -34,17 +35,16 @@ export default function SupertrendConfig() {
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} className={inputClass} />
       </label>
       {([
-        ['상승 추세', 'supertrendUpColor'],
-        ['하락 추세', 'supertrendDownColor'],
-      ] as const).map(([label, key]) => (
-        <div key={key} className="flex items-center justify-between gap-2 text-sm text-fg">
-          <span>{label}</span>
+        ['상승 추세', 'supertrendUpColor', 'supertrendUp'],
+        ['하락 추세', 'supertrendDownColor', 'supertrendDown'],
+      ] as const).map(([label, key, lineKey]) => (
+        <LineVisibilityRow key={key} lineKey={lineKey} label={label} toggleLabel={`슈퍼트렌드 ${label} 표시`}>
           <MAStylePicker label={`슈퍼트렌드 ${label}`} color={settings[key]} lineWidth={settings.supertrendLineWidth}
             onChange={(patch) => setSupertrendSettings({
               ...(patch.color ? { [key]: patch.color } : {}),
               ...(patch.lineWidth ? { supertrendLineWidth: patch.lineWidth } : {}),
             })} />
-        </div>
+        </LineVisibilityRow>
       ))}
       <p className="text-xs text-fg-dim">설정한 봉 수가 쌓이면 표시됩니다. 진행 중인 봉의 추세는 바뀔 수 있으며, 두 선의 두께는 함께 적용됩니다.</p>
     </div>

@@ -72,6 +72,7 @@ import {
   type PaneCellInput,
 } from './legendRows';
 import { readFlagLegendValues } from './indicators/flagLegendValueRegistry';
+import { lineVisible, type IndicatorLineKey } from '../state/indicatorLineVisibility';
 import { FLAG_INDICATOR_TYPES, type MaSliceKey } from '../state/indicatorOps';
 import MaInstancePopover from './indicators/MaInstancePopover';
 import type { LiveMAConfig } from '../state/livePage';
@@ -538,10 +539,8 @@ function MaChip({
 /**
  * MA 계열 행 — 현재봉·일봉이 라벨과 액션만 다르고 구조가 같다.
  *
- * 눈은 **전 인스턴스 일괄 토글**이다. 종전의 타입 마스터(✕)와 타입 눈이 슬롯의
- * `enabled` 로 접히면서 둘이 한 조작으로 합쳐졌다 — 같은 효과를 내는 버튼 둘을
- * 나란히 두는 대신 눈 하나만 남긴다. 인스턴스 개별 삭제(칩 ✕)는 후속 PR 이고,
- * 그때까지 슬롯 추가·삭제는 지표 패널이 담당한다.
+ * 눈과 개별 칩은 슬롯의 hidden 을 바꾼다. 모든 선을 숨겨도 enabled 와 슬롯 설정은
+ * 유지되어 내 지표에서 다시 켤 수 있다. 칩 ✕ 만 인스턴스를 삭제한다.
  */
 function MaSlotLegendRow(
   { row, slice, label, configs, onToggleAll, onToggleOne, onRemoveOne, onPatchOne }: {
@@ -608,8 +607,8 @@ function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
       slice="movingAverages"
       label="이동평균선"
       configs={configs}
-      onToggleAll={actions.setAllMovingAveragesEnabled}
-      onToggleOne={(id, enabled) => actions.setMovingAverage(id, { enabled })}
+      onToggleAll={actions.setAllMovingAveragesVisible}
+      onToggleOne={(id, enabled) => actions.setMovingAverage(id, { enabled: true, hidden: !enabled })}
       onRemoveOne={actions.removeMovingAverageWithUndo}
       onPatchOne={actions.setMovingAverage}
     />
@@ -625,8 +624,8 @@ function DailyMaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'daily-ma' 
       slice="dailyMovingAverages"
       label="일봉 이동평균선"
       configs={configs}
-      onToggleAll={actions.setAllDailyMovingAveragesEnabled}
-      onToggleOne={(id, enabled) => actions.setDailyMovingAverage(id, { enabled })}
+      onToggleAll={actions.setAllDailyMovingAveragesVisible}
+      onToggleOne={(id, enabled) => actions.setDailyMovingAverage(id, { enabled: true, hidden: !enabled })}
       onRemoveOne={actions.removeDailyMovingAverageWithUndo}
       onPatchOne={actions.setDailyMovingAverage}
     />
@@ -892,6 +891,7 @@ function PaneLegendOverlay({
   const windowId = useWindowScopeId();
   // 가시성이 슬롯 안(`enabled`)으로 접혀 배열 하나만 구독하면 된다 — 칩 토글이
   // 새 배열을 만들므로 재렌더 입도는 그대로다.
+  const lineVisibility = useWindowIndicator(s => s.indicatorLineVisibility);
   const supertrendEnabled = useWindowIndicator((s) => s.supertrendEnabled);
   const supertrendHidden = useWindowIndicator((s) => s.supertrendHidden);
   const supertrendPeriod = useWindowIndicator((s) => s.supertrendPeriod);
@@ -1068,6 +1068,10 @@ function PaneLegendOverlay({
   // Daily MA lines are drawn, but their legend row is always filtered out.
   const dailyMaValues = new Map<string, number>();
   const paneCells: PaneCellInput[] = [];
+  const lineKeysByPane: Partial<Record<PaneId, readonly IndicatorLineKey[]>> = {
+    'quote-totals': ['quoteTotalsBid', 'quoteTotalsAsk'],
+    'fill-strength': ['fillStrengthBuy', 'fillStrengthSell'],
+  };
   // Peak-wall series can end on a previous day when today's walls are filtered
   // out. Read the hovered/synchronized/latest candle exactly, without borrowing
   // the last point of that sparse series as today's value.
@@ -1088,7 +1092,8 @@ function PaneLegendOverlay({
         key: `${paneId}:${i}`,
         label: paneId === 'investor-foreign' || paneId === 'investor-institution' ? paneDisplayName(paneId) : entry.meta.label,
         color: entry.meta.color?.(),
-        value: paneId === 'peak-wall'
+        value: lineKeysByPane[paneId]?.[i] && !lineVisible(lineVisibility, lineKeysByPane[paneId]![i]) ? null
+          : paneId === 'peak-wall'
           ? readSeriesValueAtTime(entry.series, peakTimeSec, peakLogicalIndex)
           : readSeriesValue(entry.series, seriesData, syncValueTimeSec, syncLogicalIndex),
         format: entry.meta.format,
@@ -1113,7 +1118,7 @@ function PaneLegendOverlay({
       type: 'supertrend', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
       label: `슈퍼트렌드 (${supertrendPeriod}, ${supertrendMultiplier})`,
       enabled: supertrendEnabled, hidden: supertrendHidden, applicable: true,
-      swatches: [supertrendUpColor, supertrendDownColor],
+      swatches: [supertrendUpColor, supertrendDownColor].filter((_, i) => lineVisible(lineVisibility, i ? 'supertrendDown' : 'supertrendUp')),
       cells: indicatorLegendsVisible && supertrendEnabled
         ? readFlagLegendValues(windowId, 'supertrend', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
     },
@@ -1121,7 +1126,7 @@ function PaneLegendOverlay({
       type: 'bollinger', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
       label: `볼린저 밴드 (${bollingerPeriod}, ${bollingerMultiplier})`,
       enabled: bollingerEnabled, hidden: bollingerHidden, applicable: true,
-      swatches: [bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor],
+      swatches: [bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor].filter((_, i) => lineVisible(lineVisibility, (['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const)[i])),
       cells: indicatorLegendsVisible && bollingerEnabled
         ? readFlagLegendValues(windowId, 'bollinger', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
     },

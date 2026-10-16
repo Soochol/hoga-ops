@@ -1,3 +1,4 @@
+import { lineVisible } from '../../state/indicatorLineVisibility';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
@@ -13,6 +14,7 @@ import type { SeriesDataSink } from '../../chart/seriesDataDiff';
 import { useWindowIndicator, useWindowScopeId } from '../workspace/windowView';
 import { registerFlagLegendValues, unregisterFlagLegendValues, type FlagLegendValueProvider } from './flagLegendValueRegistry';
 
+const LINE_KEYS = ['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const;
 const BANDS = ['upper', 'middle', 'lower'] as const;
 const LABELS = { upper: '상단', middle: '중심', lower: '하단' };
 const excludeFromAutoscale: AutoscaleInfoProvider = () => null;
@@ -20,6 +22,7 @@ const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
 
 function BollingerOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: RangeBundle; axis: VirtualAxis }) {
   const enabled = useWindowIndicator((s) => s.bollingerEnabled);
+  const visibility = useWindowIndicator(s => s.indicatorLineVisibility);
   const hidden = useWindowIndicator((s) => s.bollingerHidden);
   const period = useWindowIndicator((s) => s.bollingerPeriod);
   const multiplier = useWindowIndicator((s) => s.bollingerMultiplier);
@@ -59,13 +62,13 @@ function BollingerOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: R
     const colors = { upper, middle, lower };
     for (let i = 0; i < seriesRef.current.length; i++) {
       const s = seriesRef.current[i];
-      s.applyOptions({ color: colors[BANDS[i]], lineWidth, visible: !hidden,
+      s.applyOptions({ color: colors[BANDS[i]], lineWidth, visible: !hidden && lineVisible(visibility, LINE_KEYS[i]),
         autoscaleInfoProvider: candleOnlyScale ? excludeFromAutoscale : includeInAutoscale });
       pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink,
         pushedRef.current.get(s) ?? null, projection?.data[i] ?? []));
     }
     if (enabled && candleAlwaysOnTop) keepCandlesOnTop(chart);
-  }, [chart, enabled, projection, hidden, upper, middle, lower, lineWidth, candleOnlyScale, candleAlwaysOnTop]);
+  }, [chart, enabled, projection, hidden, visibility, upper, middle, lower, lineWidth, candleOnlyScale, candleAlwaysOnTop]);
 
   useEffect(() => {
     if (!projection) return;
@@ -73,13 +76,13 @@ function BollingerOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: R
     const provider: FlagLegendValueProvider = (time) => {
       const index = time === null ? projection.values.length - 1 : projection.grid.vsecToIndex.get(time);
       const value = index === undefined ? null : projection.values[index];
-      return value == null ? [] : BANDS.map((band) => ({
+      return value == null ? [] : BANDS.filter((_, i) => lineVisible(visibility, LINE_KEYS[i])).map((band) => ({
         key: band, label: LABELS[band], color: colors[band], value: Math.round(value[band]).toLocaleString('ko-KR'),
       }));
     };
     registerFlagLegendValues(scope, 'bollinger', 'main', provider);
     return () => unregisterFlagLegendValues(scope, 'bollinger', 'main', provider);
-  }, [scope, projection, upper, middle, lower]);
+  }, [scope, projection, upper, middle, lower, visibility]);
   return null;
 }
 

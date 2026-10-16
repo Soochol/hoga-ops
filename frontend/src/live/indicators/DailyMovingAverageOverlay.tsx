@@ -150,7 +150,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
     for (const cfg of configs) {
       const s = map.get(cfg.id);
       if (!s) continue;
-      const drawn = enabled && cfg.enabled;
+      const drawn = enabled && cfg.enabled && !cfg.hidden;
       s.applyOptions({ visible: drawn });
       if (!drawn) {
         pushedRef.current.set(s, syncChartSeriesData(chart, s as unknown as SeriesDataSink, pushedRef.current.get(s) ?? null, []));

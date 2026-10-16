@@ -598,10 +598,10 @@ describe('PaneLegendOverlay — candle MA row', () => {
     useMaSeriesRegistry.getState().register(null, 'ma-1', seriesWithValue(100));
     renderOverlay();
     fireEvent.click(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' }));
-    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled)).toBe(false);
+    expect(useLivePageStore.getState().movingAverages.some((m) => m.enabled && !m.hidden)).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: '이동평균선 선 숨김/표시' }));
-    expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled)).toBe(true);
+    expect(useLivePageStore.getState().movingAverages.every((m) => m.enabled && !m.hidden)).toBe(true);
   });
 
   // 칩 = 인스턴스. 클릭은 그 인스턴스만 숨기고(비파괴), ✕ 는 그 인스턴스만 지운다.
@@ -619,7 +619,7 @@ describe('PaneLegendOverlay — candle MA row', () => {
     fireEvent.click(screen.getByRole('button', { name: `이동평균선 ${target.period} 숨김` }));
 
     const after = useLivePageStore.getState().movingAverages;
-    expect(after.find((m) => m.id === target.id)?.enabled).toBe(false);
+    expect(after.find((m) => m.id === target.id)).toMatchObject({ enabled: true, hidden: true });
     expect(after.filter((m) => m.id !== target.id).every((m) => m.enabled)).toBe(true);
     // 숨겼다고 칩이 사라지면 다시 켤 표면이 없다.
     expect(screen.getByTestId(`legend-ma-chip-${target.id}`)).toBeInTheDocument();

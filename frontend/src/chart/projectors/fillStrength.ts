@@ -1,3 +1,6 @@
+import { useMemo } from 'react';
+import { lineVisible, type IndicatorLineVisibility } from '../../state/indicatorLineVisibility';
+import { useWindowIndicator } from '../../live/workspace/windowView';
 import {
   HistogramSeries,
   LineSeries,
@@ -386,6 +389,7 @@ export function makeCumulativeCachedProjector(): (
 }
 
 export type FillStrengthPaneContext = {
+  visibility?: IndicatorLineVisibility;
   cumulativeEnabled: boolean;
   auctionWindowMask: boolean;
 };
@@ -395,13 +399,16 @@ export type FillStrengthPaneContext = {
 // creates a new {cumulativeEnabled: ...} object, which the RangeSeriesPane
 // data effect treats as a context change and re-projects (cheap but wasteful).
 // Same pattern as useRatioContext in ratio.ts.
-const useFillStrengthContext = (): FillStrengthPaneContext =>
-  useActivePrefs(
+const useFillStrengthContext = (): FillStrengthPaneContext => {
+  const visibility = useWindowIndicator(s => s.indicatorLineVisibility);
+  const prefs = useActivePrefs(
     useShallow((p): FillStrengthPaneContext => ({
       cumulativeEnabled: p.fillStrengthCumulative,
       auctionWindowMask: p.auctionWindowMask,
     })),
   );
+  return useMemo(() => ({ ...prefs, visibility }), [prefs, visibility]);
+};
 
 // P0 과거/당일 분리 캐시 (매수/매도 히스토그램만 — per-point라 분리 안전). 캐시 키는
 // auctionWindowMask boolean(cumulativeEnabled는 이 시리즈에 영향 없음). 누적 라인은
@@ -421,12 +428,14 @@ export const FILL_STRENGTH_SPEC = {
     {
       type: HistogramSeries,
       options: () => ({ color: resolveTokensThemed(TOKEN_SPEC).buy, ...histOpts }),
+      renderOptions: ctx => ({ visible: lineVisible(ctx.visibility, 'fillStrengthBuy') }),
       data: (bundle, axis, ctx) => buyCachedData(bundle, axis, ctx.auctionWindowMask),
       legend: { label: '매수', color: () => resolveTokensThemed(TOKEN_SPEC).buy },
     },
     {
       type: HistogramSeries,
       options: () => ({ color: resolveTokensThemed(TOKEN_SPEC).sell, ...histOpts }),
+      renderOptions: ctx => ({ visible: lineVisible(ctx.visibility, 'fillStrengthSell') }),
       data: (bundle, axis, ctx) => sellCachedData(bundle, axis, ctx.auctionWindowMask),
       legend: { label: '매도', color: () => resolveTokensThemed(TOKEN_SPEC).sell },
     },

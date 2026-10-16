@@ -1,3 +1,4 @@
+import { lineVisible } from '../../state/indicatorLineVisibility';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
@@ -17,6 +18,8 @@ const includeInAutoscale: AutoscaleInfoProvider = (original) => original();
 
 function SupertrendOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: RangeBundle; axis: VirtualAxis }) {
   const enabled = useWindowIndicator((s) => s.supertrendEnabled);
+  const upVisible = useWindowIndicator(s => lineVisible(s.indicatorLineVisibility, 'supertrendUp'));
+  const downVisible = useWindowIndicator(s => lineVisible(s.indicatorLineVisibility, 'supertrendDown'));
   const hidden = useWindowIndicator((s) => s.supertrendHidden);
   const period = useWindowIndicator((s) => s.supertrendPeriod);
   const multiplier = useWindowIndicator((s) => s.supertrendMultiplier);
@@ -34,8 +37,8 @@ function SupertrendOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: 
     return { grid, values: computeSupertrend(grid.drawn, period, multiplier) };
   }, [bundle.candles, axis, enabled, period, multiplier]);
   const data = useMemo(() => projection
-    ? maskIntradayLineGaps(supertrendLineData(projection.values, projection.grid.virtualSeconds, upColor, downColor), bundle, axis) : [],
-  [projection, upColor, downColor, bundle, axis]);
+    ? maskIntradayLineGaps(supertrendLineData(projection.values, projection.grid.virtualSeconds, upColor, downColor, { up: upVisible, down: downVisible }), bundle, axis) : [],
+  [projection, upColor, downColor, upVisible, downVisible, bundle, axis]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -55,18 +58,18 @@ function SupertrendOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: 
   useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
-    series.applyOptions({ color: upColor, lineWidth, visible: !hidden,
+    series.applyOptions({ color: upColor, lineWidth, visible: !hidden && (upVisible || downVisible),
       autoscaleInfoProvider: candleOnlyScale ? excludeFromAutoscale : includeInAutoscale });
     pushedRef.current = syncChartSeriesData(chart, series as unknown as SeriesDataSink, pushedRef.current, data);
     if (candleAlwaysOnTop) keepCandlesOnTop(chart);
-  }, [chart, enabled, data, hidden, upColor, lineWidth, candleOnlyScale, candleAlwaysOnTop]);
+  }, [chart, enabled, data, hidden, upVisible, downVisible, upColor, lineWidth, candleOnlyScale, candleAlwaysOnTop]);
 
   useEffect(() => {
     if (!projection) return;
     const provider: FlagLegendValueProvider = (time) => {
       const index = time === null ? projection.values.length - 1 : projection.grid.vsecToIndex.get(time);
       const point = index === undefined ? null : projection.values[index];
-      return point == null ? [] : [{
+      return point == null || !(point.direction === 'up' ? upVisible : downVisible) ? [] : [{
         key: 'trend', label: point.direction === 'up' ? '상승' : '하락',
         color: point.direction === 'up' ? upColor : downColor,
         value: Math.round(point.value).toLocaleString('ko-KR'),
@@ -74,7 +77,7 @@ function SupertrendOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: 
     };
     registerFlagLegendValues(scope, 'supertrend', 'main', provider);
     return () => unregisterFlagLegendValues(scope, 'supertrend', 'main', provider);
-  }, [scope, projection, upColor, downColor]);
+  }, [scope, projection, upColor, downColor, upVisible, downVisible]);
   return null;
 }
 

@@ -57,12 +57,13 @@ export function computeSupertrend(
  */
 export function supertrendLineData(
   values: readonly (SupertrendPoint | null)[], times: readonly number[], upColor: string, downColor: string,
+  visibility: Readonly<{ up: boolean; down: boolean }> = { up: true, down: true },
 ): (LineData<Time> | WhitespaceData<Time>)[] {
   return values.map((point, i) => {
     const time = times[i] as Time;
     if (!point) return { time };
     const next = values[i + 1];
-    const broken = i < values.length - 1 && (!next || next.direction !== point.direction);
+    const broken = !visibility[point.direction] || (i < values.length - 1 && (!next || next.direction !== point.direction));
     return { time, value: point.value, color: broken ? 'transparent' : point.direction === 'up' ? upColor : downColor };
   });
 }

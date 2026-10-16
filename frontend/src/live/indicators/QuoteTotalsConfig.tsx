@@ -1,4 +1,5 @@
 import SignColorLegend from './SignColorLegend';
+import LineVisibilityRow from './LineVisibilityRow';
 import IndicatorPrefRows from '../settings/IndicatorPrefRows';
 import ToggleRow from '../settings/ToggleRow';
 import MAStylePicker from './MAStylePicker';
@@ -30,6 +31,8 @@ export default function QuoteTotalsConfig() {
   return (
     <div>
       <SignColorLegend up="매수 총잔량" down="매도 총잔량" />
+      <LineVisibilityRow lineKey="quoteTotalsBid" label="매수 총잔량" />
+      <LineVisibilityRow lineKey="quoteTotalsAsk" label="매도 총잔량" />
       <div className="border-b border-border my-3" />
       <ToggleRow
         label="현재값 수평선"
@@ -40,8 +43,7 @@ export default function QuoteTotalsConfig() {
       />
       {levelEnabled && (
         <div className="space-y-2 mt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-fg">매수 수평선</span>
+          <LineVisibilityRow lineKey="quoteTotalsBidLevel" label="매수 수평선">
             <MAStylePicker
               color={bidColor}
               lineWidth={bidWidth}
@@ -50,9 +52,8 @@ export default function QuoteTotalsConfig() {
               onLineStyleChange={(lineStyle) => setBidStyle({ lineStyle })}
               label="매수 수평선"
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-fg">매도 수평선</span>
+          </LineVisibilityRow>
+          <LineVisibilityRow lineKey="quoteTotalsAskLevel" label="매도 수평선">
             <MAStylePicker
               color={askColor}
               lineWidth={askWidth}
@@ -61,7 +62,7 @@ export default function QuoteTotalsConfig() {
               onLineStyleChange={(lineStyle) => setAskStyle({ lineStyle })}
               label="매도 수평선"
             />
-          </div>
+          </LineVisibilityRow>
         </div>
       )}
       <div className="border-b border-border my-3" />
@@ -74,8 +75,7 @@ export default function QuoteTotalsConfig() {
       />
       {dayMaxEnabled && (
         <div className="space-y-2 mt-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-fg">매수 최고선</span>
+          <LineVisibilityRow lineKey="quoteTotalsDayMaxBid" label="매수 최고선">
             <MAStylePicker
               color={dayMaxBidColor}
               lineWidth={dayMaxBidWidth}
@@ -84,9 +84,8 @@ export default function QuoteTotalsConfig() {
               onLineStyleChange={(lineStyle) => setDayMaxBidStyle({ lineStyle })}
               label="매수 최고선"
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-fg">매도 최고선</span>
+          </LineVisibilityRow>
+          <LineVisibilityRow lineKey="quoteTotalsDayMaxAsk" label="매도 최고선">
             <MAStylePicker
               color={dayMaxAskColor}
               lineWidth={dayMaxAskWidth}
@@ -95,7 +94,7 @@ export default function QuoteTotalsConfig() {
               onLineStyleChange={(lineStyle) => setDayMaxAskStyle({ lineStyle })}
               label="매도 최고선"
             />
-          </div>
+          </LineVisibilityRow>
         </div>
       )}      <div className="border-b border-border my-3" />
       {/* 호가단위 보정은 급증 마커의 하위 설정이라(enabledBy: surgeMarkerEnabled)
