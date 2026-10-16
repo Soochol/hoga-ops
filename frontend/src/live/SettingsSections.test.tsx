@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import SettingsSections from './SettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
@@ -10,6 +10,7 @@ import {
   groupOf,
   useChartPrefsStore,
 } from '../state/chartPrefs';
+import * as apiClientApi from '../api/client';
 import * as liveSettingsApi from '../api/liveSettings';
 import * as signalAlertsApi from '../api/signalAlerts';
 
@@ -31,9 +32,10 @@ vi.mock('../config', async (importOriginal) => ({
 
 function renderSettings(props: Parameters<typeof SettingsSections>[0] = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<SettingsSections {...props} />, {
+  const view = render(<SettingsSections {...props} />, {
     wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
   });
+  return { ...view, queryClient: qc };
 }
 
 describe('SettingsSections (단일 스크롤 + 목차)', () => {
@@ -60,6 +62,71 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     localStorage.clear();
     useLiveVenueStore.setState({ venue: 'KRX' });
     useChartPrefsStore.getState().resetToDefaults();
+  });
+
+  it('실제로 변경한 전역 설정만 되돌리고 다른 설정은 보존한다', async () => {
+    renderSettings();
+    const row = screen.getByTestId('settings-toggle-candleAlwaysOnTop');
+    const old = useChartPrefsStore.getState().candleAlwaysOnTop;
+    fireEvent.click(row.querySelector('button')!);
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toBeEnabled());
+    act(() => useLiveVenueStore.getState().setVenue('UN'));
+    fireEvent.click(undo);
+    await waitFor(() => expect(useChartPrefsStore.getState().candleAlwaysOnTop).toBe(old));
+    expect(useLiveVenueStore.getState().venue).toBe('UN');
+    expect(undo).toBeDisabled();
+  });
+  it('외부에서 같은 설정이 변경되면 오래된 되돌리기를 비활성화한다', async () => {
+    renderSettings();
+    const old = useChartPrefsStore.getState().candleAlwaysOnTop;
+    fireEvent.click(screen.getByTestId('settings-toggle-candleAlwaysOnTop').querySelector('button')!);
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toBeEnabled());
+    act(() => useChartPrefsStore.getState().setToggle('candleAlwaysOnTop', old));
+    expect(undo).toBeDisabled();
+  });
+  it('서버 설정 저장 성공 후 되돌리기는 바뀐 필드만 다시 PATCH한다', async () => {
+    const initial = { schema_version: 1, rest_bypass_enabled: false, screener_depth_autocollect: false, krx_prefer_hogaplay: false };
+    const patches: unknown[] = [];
+    let server = initial;
+    vi.mocked(apiClientApi.apiCall).mockImplementation(async (url, options) => {
+      if (url === '/api/live/settings') {
+        if (options?.method === 'PATCH') { const patch = JSON.parse(String(options.body)); patches.push(patch); server = { ...server, ...patch }; }
+        return server as never;
+      }
+      return {} as never;
+    });
+    const { queryClient } = renderSettings();
+    await waitFor(() => expect(queryClient.getQueryData(liveSettingsApi.LIVE_SETTINGS_KEY)).toEqual(initial));
+    fireEvent.click(screen.getByRole('switch', { name: '저장 데이터로 캔들 보기' }));
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toBeEnabled());
+    fireEvent.click(undo);
+    await waitFor(() => expect(patches.at(-1)).toEqual({ rest_bypass_enabled: false }));
+    await waitFor(() => expect(undo).toBeDisabled());
+    expect(patches[0]).toEqual({ rest_bypass_enabled: true });
+    expect(queryClient.getQueryData(liveSettingsApi.LIVE_SETTINGS_KEY)).toEqual(initial);
+  });
+  it('서버 알림 설정도 저장 이후 이전 규칙으로 되돌린다', async () => {
+    const rule = { enabled: true, start_hhmm: 1100, threshold_pct: 100, use_intra_minute_max: true };
+    const patches: unknown[] = [];
+    let server = { schema_version: 1, sell_total_renewal: rule };
+    vi.mocked(apiClientApi.apiCall).mockImplementation(async (url, options) => {
+      if (url === '/api/signal-alerts/settings') {
+        if (options?.method === 'PATCH') { const patch = JSON.parse(String(options.body)); patches.push(patch); server = { ...server, ...patch }; }
+        return server as never;
+      }
+      return {} as never;
+    });
+    const { queryClient } = renderSettings();
+    await waitFor(() => expect(queryClient.getQueryData(signalAlertsApi.SIGNAL_ALERT_SETTINGS_KEY)).toEqual({ schema_version: 1, sell_total_renewal: rule }));
+    fireEvent.click(screen.getByRole('switch', { name: '알림 사용' }));
+    const undo = screen.getByRole('button', { name: '되돌리기' });
+    await waitFor(() => expect(undo).toBeEnabled());
+    fireEvent.click(undo);
+    await waitFor(() => expect(patches.at(-1)).toEqual({ sell_total_renewal: rule }));
+    await waitFor(() => expect(undo).toBeDisabled());
   });
 
   it('통합 목차 8개를 렌더한다 — 차트·체결창·알림 + 앱 스코프 5개', () => {
@@ -148,7 +215,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     renderSettings();
 
     // nav는 border-r 대신 bg-subtle 톤 스텝으로 분리(2026-07-15 borderless 통일).
-    expect(screen.getByRole('navigation', { name: '설정 카테고리' })).toHaveClass('bg-bg-subtle');
+    expect(screen.getByRole('navigation', { name: '설정 카테고리' }).closest('.settings-editor-sidebar')).toBeTruthy();
     expect(screen.getByRole('navigation', { name: '설정 카테고리' })).not.toHaveClass('border-r');
     expect(screen.getByRole('region', { name: '차트' })).not.toHaveClass('bg-bg-card');
   });
@@ -303,10 +370,10 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
   // 데이터소스 상세 콘텐츠 테스트는 DataSourceDetail.test.tsx로 이관(추출·재사용).
 
   it('알림 섹션에서 시그널 알림 설정을 수정한다', async () => {
-    const mutate = vi.fn();
+    const mutate = vi.fn().mockResolvedValue({ schema_version: 1, sell_total_renewal: { enabled: true, start_hhmm: 1100, threshold_pct: 100, use_intra_minute_max: true } });
     vi.spyOn(signalAlertsApi, 'usePatchSignalAlertSettings').mockReturnValue({
       mutate,
-      mutateAsync: vi.fn(),
+      mutateAsync: mutate,
       reset: vi.fn(),
       status: 'idle',
       isIdle: true,
@@ -348,10 +415,10 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
   });
 
   it('알림 기준 시각은 네 자리 HHMM 입력을 HH:MM으로 해석해 저장한다', async () => {
-    const mutate = vi.fn();
+    const mutate = vi.fn().mockResolvedValue({ schema_version: 1, sell_total_renewal: { enabled: true, start_hhmm: 1100, threshold_pct: 100, use_intra_minute_max: true } });
     vi.spyOn(signalAlertsApi, 'usePatchSignalAlertSettings').mockReturnValue({
       mutate,
-      mutateAsync: vi.fn(),
+      mutateAsync: mutate,
       reset: vi.fn(),
       status: 'idle',
       isIdle: true,

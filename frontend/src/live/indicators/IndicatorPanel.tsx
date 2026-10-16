@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback, Fragment, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useContext, Fragment, type ReactNode } from 'react';
 import { useChartPrefActions } from '../../state/chartPrefs';
-import { useIndicatorActions, useWindowIndicators } from '../workspace/windowView';
+import { useIndicatorActions, useWindowIndicators, useWindowIndicatorScope, WindowViewContext } from '../workspace/windowView';
 import MovingAverageConfig from './MovingAverageConfig';
 import BollingerConfig from './BollingerConfig';
 import SupertrendConfig from './SupertrendConfig';
@@ -28,8 +28,12 @@ import { STOCK_CAPABILITIES, type LiveInstrumentCapabilities } from '../liveInst
 import { ListRow } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
 import { SegmentedControl } from '../../ui/SegmentedControl';
-import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS, WORKSPACE_PANEL_SHELL_CLASS } from '../workspacePanel';
+import { WORKSPACE_PANEL_WIDTH_CLASS, WORKSPACE_PANEL_HEIGHT_CLASS } from '../workspacePanel';
 import { isCalendarTimeframe, type LiveTimeframe } from '../../state/livePage';
+import { SettingsEditor } from '../settings/SettingsEditor';
+import { useSettingsUndo } from '../settings/useSettingsUndo';
+import { readIndicatorEditor, restoreIndicatorEditor, subscribeIndicatorEditor } from '../settings/editorSnapshots';
+import IndicatorStylePreview from './IndicatorStylePreview';
 import { type CategoryId, type GroupId, type Placement, CATEGORIES } from './IndicatorPanelHelpers';
 
 const GROUP_LABEL: Record<GroupId, string> = {
@@ -103,9 +107,10 @@ const PANE_CATEGORY_TO_KEY: Partial<Record<CategoryId, PanePrefKey>> = {
  * 좌측 accent 바는 리스트 행 규약에서 금지다(DESIGN.md).
  */
 function IndicatorNavRow({
-  label, glyph, added, selected, kbdFocused, query, dotColors, kbdIndex, onSelect, action,
+  label, glyph, added, selected, kbdFocused, query, dotColors, kbdIndex, onSelect, action, summary,
 }: {
   label: string;
+  summary: string;
   /** 무엇을 그리는 지표이고 어디에 그려지는가 — `indicatorGlyphs`. */
   glyph: ReactNode;
   added: boolean;
@@ -123,7 +128,7 @@ function IndicatorNavRow({
   return (
     <ListRow
       data-kbd-index={kbdIndex}
-      className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
+      className={`indicator-nav-row flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
         selected ? 'bg-tint-selection' : 'hover:bg-bg-input-hover'
       } ${added ? 'font-medium text-fg' : 'text-fg-dim hover:text-fg'} ${
         kbdFocused ? 'outline outline-2 -outline-offset-2 outline-accent' : ''
@@ -132,6 +137,7 @@ function IndicatorNavRow({
       <button
         type="button"
         onClick={onSelect}
+        aria-label={label}
         aria-current={selected ? 'true' : undefined}
         className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 whitespace-nowrap text-left text-inherit"
       >
@@ -140,6 +146,7 @@ function IndicatorNavRow({
         <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>
         <span className="min-w-0 truncate">
           <HighlightedLabel label={label} query={query} />
+          <span className="indicator-nav-summary" title={summary} aria-hidden="true">{summary}</span>
         </span>
       </button>
       {dotColors.length > 0 && (
@@ -147,7 +154,7 @@ function IndicatorNavRow({
         // 이 행이 무엇인지는 라벨이 이미 말한다. 밝은 사용자 색이 밝은 배경에
         // 잠기지 않도록 상시 헤어라인을 두른다(테마 무관하게 옅은 검정 → 다크에서도
         // 흰 점의 윤곽이 남는다).
-        <span aria-hidden="true" className="ml-2 flex shrink-0 items-center gap-[3px]">
+        <span aria-hidden="true" className="indicator-nav-colors ml-2 flex shrink-0 items-center gap-[3px]">
           {dotColors.map((color, i) => (
             <i
               key={i}
@@ -191,6 +198,11 @@ export default function IndicatorPanel({
   // 창-스코프 절단(ADR-0119 C2c-2a): 읽기=대상 창의 resolve 된 설정, 쓰기=창 봉
   // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
   const ind = useWindowIndicators();
+  const { windowKey, instrumentKind } = useWindowIndicatorScope();
+  const ambient = useContext(WindowViewContext) === null;
+  const read = useCallback(() => readIndicatorEditor({ windowKey, instrumentKind }, timeframe, ambient), [windowKey, instrumentKind, timeframe, ambient]);
+  const restore = useCallback((patch: Parameters<typeof restoreIndicatorEditor>[2]) => restoreIndicatorEditor({ windowKey, instrumentKind }, timeframe, patch), [windowKey, instrumentKind, timeframe]);
+  const undo = useSettingsUndo({ scopeKey: `${windowKey ?? 'ambient'}:${timeframe}`, read, restore, subscribe: subscribeIndicatorEditor });
   const actions = useIndicatorActions();
   // MA 계열의 마스터 토글은 슬롯의 `enabled` 로 접혔다(ADR) — 카테고리 체크박스는
   // "켜진 슬롯이 하나라도 있는가" 의 파생이고, 누르면 전 슬롯을 함께 켜고 끈다.
@@ -401,26 +413,21 @@ export default function IndicatorPanel({
   const currentTimeframeLabel = timeframeLabel(timeframe);
 
   return (
-    // 중앙 모달(2026-08-21 사용자 결정 — 그전에는 우측 드로어). 마스터-디테일
-    // (240 nav + 디테일)과 760px 폭은 드로어 시절 그대로 승계하고, 높이만 중앙 카드가
-    // 스스로 정한다(상수 docstring 에 근거). 설정 패널과 폭·높이·nav 를 공유한다.
+    // App settings and indicators share the same header, scope, navigation and undo shell.
     <ModalShell
       ariaLabel="지표"
       width={WORKSPACE_PANEL_WIDTH_CLASS}
       height={WORKSPACE_PANEL_HEIGHT_CLASS}
       onClose={handleEscape}
     >
-      <div
-        data-testid="indicator-panel-shell"
-        className={WORKSPACE_PANEL_SHELL_CLASS}
-      >
-        {/* nav↔콘텐츠 분리는 border-r가 아니라 bg-subtle↔bg-card 톤 스텝이 담당(2026-07-15
-            borderless 규칙). 선택은 좌측 accent 보더 대신 둥근 pill. 리셋 푸터는
-            스크롤과 무관하게 하단 고정 — nav는 flex-1로 스크롤. */}
-      <div className="flex min-h-0 flex-col bg-bg-subtle">
-        {/* 검색은 **nav 안**이다 — 밖에 래퍼를 하나 더 두면 "nav 의 부모가 톤 면,
-            그 부모가 2열 그리드" 라는 레이아웃 앵커(가드가 재고 있다)가 한 겹
-            어긋난다. */}
+      <SettingsEditor title="보조지표" onClose={onClose} undo={undo} testId="indicator-panel-shell"
+        scope={<span data-testid="indicator-panel-scope-badge">{targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}</span>}
+        actions={<IndicatorPanelMenu open={menuOpen} onOpenChange={setMenuOpen}
+          resetLabel={`${currentTimeframeLabel} 지표 초기화`} confirmLabel={`${currentTimeframeLabel} 초기화?`} onReset={handleReset} />}
+        footer="변경 즉시 반영 · 현재 차트에 저장"
+        sidebar={
+      <div className="flex min-h-0 flex-1 flex-col">
+
         <nav
           className="flex min-h-0 flex-1 flex-col"
           aria-label={mode === 'mine' ? '내 지표' : '지표 추가'}
@@ -482,6 +489,9 @@ export default function IndicatorPanel({
                       마음에 안 들면 지우는 흐름이 되는데, 그건 차트를 어지럽힌다. */}
                   <IndicatorNavRow
                     label={c.label}
+                    summary={c.id === 'moving-average' || c.id === 'daily-moving-average'
+                      ? (c.id === 'moving-average' ? ind.movingAverages : ind.dailyMovingAverages).filter(m => m.enabled).map(m => m.period).join(' · ')
+                      : c.id === 'peak-walls' ? [askPeakEnabled ? '매도' : '', bidPeakEnabled ? '매수' : ''].filter(Boolean).join(' · ') : PLACEMENT_LABEL[c.placement]}
                     glyph={INDICATOR_GLYPH[c.id]}
                     added={added}
                     selected={selected === c.id}
@@ -504,60 +514,23 @@ export default function IndicatorPanel({
             보려고 여는 것이고, 「추가할 수 있는 것」은 가끔 찾으러 들어가는 곳이다.
             전환할 때 검색어는 지운다 — 한쪽에서 친 검색어가 다른 목록에 그대로
             걸려 있으면 "왜 비어 있지" 가 된다. */}
-      </div>
-        <div className="flex min-h-0 flex-col">
-          {/* 헤더는 그룹명이 아니라 '지금 편집 중인 지표'를 보여준다(그룹은 eyebrow).
-              마스터 토글을 우측에 상주시켜 스크롤과 무관하게 켜짐/꺼짐을 읽고 바꾼다. */}
-          <header className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
-            <div className="min-w-0">
-              {/* eyebrow 는 그룹 + **어디에 그려지는가**. 후자가 없으면 "추가하면 캔들
-                  위에 겹치나, 아래 pane 을 새로 먹나" 를 켜 보고 알게 된다. 두 조각
-                  모두 `--fg-dim` — 소형 텍스트에 `--fg-dimmer` 는 대비 미달이라
-                  쓰지 않는다(DESIGN.md 텍스트 대비 규칙). */}
-              <div className="text-xs font-medium uppercase text-fg-dim">
-                {GROUP_LABEL[selectedCategory.group]} · {PLACEMENT_LABEL[selectedCategory.placement]}
-              </div>
-              <h2 className="truncate text-lg font-semibold text-fg">{selectedCategory.label}</h2>
+      </div>}
+      >
+          <div className="settings-editor-detail-heading">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs text-fg-dim">{GROUP_LABEL[selectedCategory.group]} · {PLACEMENT_LABEL[selectedCategory.placement]}</div>
+              <span className="text-xs text-fg-dim">{selectedAdded ? '차트에 추가됨' : '추가 전'}</span>
             </div>
-            <div className="flex shrink-0 items-center gap-3">
-              {/* 모든 지표 설정은 현재 보는 봉 버킷에 저장된다(#699). 읽기전용 배지
-                  하나로 스코프를 알린다 — 봉 전환 시 timeframe prop 으로 자동 갱신. */}
-              <span
-                title={targetLabel
-                  ? '이 드로어는 포커스된 차트 창의 지표 설정을 편집합니다. 지표 설정은 창×봉마다 따로 저장됩니다'
-                  : '지표 설정은 현재 보는 봉(분·일·주·월)마다 따로 저장됩니다'}
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-fg-dim"
-                data-testid="indicator-panel-scope-badge"
-              >
-                {targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}
-              </span>
-              {/* 종전에 여기 있던 표시/숨김 스위치는 사라졌다 — 가시성은 레전드 눈이
-                  전담하고 이 패널은 존재(추가·삭제)만 다룬다. 한 지표를 두 표면이 서로
-                  다른 말로 조작하던 상태를 끝낸 것이 이 PR 의 요점이다. */}
-              <IndicatorPanelMenu
-                open={menuOpen}
-                onOpenChange={setMenuOpen}
-                resetLabel={`${currentTimeframeLabel} 지표 초기화`}
-                confirmLabel={`${currentTimeframeLabel} 초기화?`}
-                onReset={handleReset}
-              />
-              <button
-                type="button"
-                aria-label="닫기"
-                onClick={onClose}
-                className="ui-icon-button text-lg leading-none"
-              >
-                ✕
-              </button>
-            </div>
-          </header>
+            <h3>{selectedCategory.label}</h3>
+            <p className="settings-editor-description mt-1">{selectedCategory.description}</p>
+          </div>
           <section
             aria-label={selectedCategory.label}
-            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 pb-5"
+            className="settings-editor-content indicator-config space-y-4"
           >
               {/* 설명은 카테고리 표가 소유한다 — Config 안에 두면 아직 추가하지
                   않은 지표(Config 를 렌더하지 않는다)에서는 읽을 수가 없다. */}
-              <p className="text-xs text-fg-dim">{selectedCategory.description}</p>
+              {selectedAdded && <IndicatorStylePreview category={selectedId} settings={ind} />}
               {/* 없으면 미리보기, 있으면 설정. 종전엔 아직 존재하지 않는 지표에도
                   **편집 가능한** 설정 폼이 떠서, 저 스위치를 만지면 무슨 일이 나는지가
                   화면에 없었다. 추가하면 이 자리가 그대로 폼이 된다(선택 불변). */}
@@ -639,8 +612,7 @@ export default function IndicatorPanel({
               {selected === 'program-daily' && <DailyProgramTradeConfig />}
               {selected === 'program-trade' && <ProgramTradeConfig />}
           </section>
-        </div>
-      </div>
+      </SettingsEditor>
     </ModalShell>
   );
 }

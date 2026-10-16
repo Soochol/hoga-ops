@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   LIVE_VENUE_HELP,
   LIVE_VENUE_LABELS,
@@ -6,7 +6,9 @@ import {
   useLiveVenueStore,
   type LiveVenueOption,
 } from '../../state/liveVenue';
-import { useLiveSettings, usePatchLiveSettings } from '../../api/liveSettings';
+import { useLiveSettings, usePatchLiveSettings, LIVE_SETTINGS_KEY, type LiveSettings, type LiveSettingsPatch } from '../../api/liveSettings';
+import { useQueryClient } from '@tanstack/react-query';
+import { useRecordSettingsUndo } from './settingsUndoContext';
 import { useLiveStatus } from '../../api/liveStatus';
 import { SettingsRow, ToggleSwitch } from './SettingsRow';
 
@@ -71,6 +73,20 @@ function ScopeNote({ testId, children }: { testId: string; children: ReactNode }
 export function DataSourceDetail() {
   const { data, isLoading, isError } = useLiveSettings();
   const patch = usePatchLiveSettings();
+  const queryClient = useQueryClient();
+  const recordUndo = useRecordSettingsUndo();
+  const [saveError, setSaveError] = useState<string | null>(null);
+  function change(key: keyof LiveSettingsPatch, value: boolean) {
+    const previous = queryClient.getQueryData<LiveSettings>(LIVE_SETTINGS_KEY)?.[key];
+    setSaveError(null);
+    void patch.mutateAsync({ [key]: value }).then(settings => {
+      if (previous == null || previous === settings[key]) return;
+      recordUndo({
+        isCurrent: () => queryClient.getQueryData<LiveSettings>(LIVE_SETTINGS_KEY)?.[key] === settings[key],
+        undo: () => patch.mutateAsync({ [key]: previous }),
+      });
+    }).catch(error => setSaveError(error instanceof Error ? error.message : '설정을 저장하지 못했습니다'));
+  }
   const restBypassEnabled = data?.rest_bypass_enabled ?? false;
   const krxPreferHogaplay = data?.krx_prefer_hogaplay ?? false;
   // 기본 False: 스캔은 탐색적 반복 실행이라 묵시적 큐 증가를 막는다(명시적 버튼이 1차 UX).
@@ -79,6 +95,7 @@ export function DataSourceDetail() {
 
   return (
     <>
+      {saveError && <p role="alert" className="text-xs text-error">{saveError}</p>}
       {/* GET 실패는 이 패널의 **모든** 토글에 걸리는 사실이라 상단에 한 번만 알린다.
           PATCH 는 partial 이라 현재값을 몰라도 조작 자체는 안전하므로 토글을 잠그지
           않는다 — 아래 hogaplay 힌트와 같은 규율("회색은 고장으로 읽힌다"). */}
@@ -97,7 +114,8 @@ export function DataSourceDetail() {
             <ToggleSwitch
               label="저장 데이터로 캔들 보기"
               checked={restBypassEnabled}
-              onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })}
+              disabled={patch.isPending}
+              onClick={() => change('rest_bypass_enabled', !restBypassEnabled)}
             />
           </SettingsRow>
           <ScopeNote testId="study-candle-source-note">
@@ -135,7 +153,8 @@ export function DataSourceDetail() {
             <ToggleSwitch
               label="KRX에서 hogaplay 우선"
               checked={krxPreferHogaplay}
-              onClick={() => patch.mutate({ krx_prefer_hogaplay: !krxPreferHogaplay })}
+              disabled={patch.isPending}
+              onClick={() => change('krx_prefer_hogaplay', !krxPreferHogaplay)}
             />
           </SettingsRow>
           {/* 비활성화하지 **않는다** — 설정은 지속되는 값이고 거래소는 자주 바뀌므로,
@@ -194,7 +213,7 @@ export function DataSourceDetail() {
               label="스크리너 총잔량 결측 자동 수집"
               checked={autoCollect}
               disabled={isLoading || patch.isPending}
-              onClick={() => patch.mutate({ screener_depth_autocollect: !autoCollect })}
+              onClick={() => change('screener_depth_autocollect', !autoCollect)}
             />
           </SettingsRow>
         </RoleSourceGroup>

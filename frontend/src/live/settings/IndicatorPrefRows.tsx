@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useContext, type ReactNode } from 'react';
 import {
   useScopedChartPrefs,
   useChartPrefActions,
@@ -11,6 +11,14 @@ import {
 import ToggleRow from './ToggleRow';
 import NumericPrefRow from './NumericPrefRow';
 import LineStyleRow from './LineStyleRow';
+import { SettingsUndoContext } from './settingsUndoContext';
+
+function DependentRows({ inEditor, expanded, label, children }: { inEditor: boolean; expanded: boolean; label: string; children: ReactNode }) {
+  if (!inEditor) return <div className="ml-4">{children}</div>;
+  return <details className="settings-dependent" open={expanded || undefined}>
+    <summary aria-label={`${label} 세부 설정`}>세부 설정</summary>{children}
+  </details>;
+}
 
 /**
  * 주어진 토글 키 목록을 `ToggleRow` + (enabledBy로 묶인) 하위 `ToggleRow`·
@@ -38,6 +46,7 @@ export default function IndicatorPrefRows({
   highlight?: string;
 }) {
   // 읽기·쓰기 모두 이 서브트리의 창 봉 버킷을 향한다(Provider 밖=ambient 폴백).
+  const inEditor = useContext(SettingsUndoContext) !== null;
   const prefs = useScopedChartPrefs();
   const { setToggle } = useChartPrefActions();
   const numericsGatedBy = (key: ChartToggleKey) => CHART_NUMERIC_PREFS.filter((p) => (
@@ -68,7 +77,7 @@ export default function IndicatorPrefRows({
               highlight={highlight}
             />
             {(gatedToggles.length > 0 || gatedNumerics.length > 0 || gatedLines.length > 0) && (
-              <div className="ml-4">
+              <DependentRows inEditor={inEditor} expanded={!!highlight} label={toggle.label}>
                 {gatedToggles.map((def) => (
                   <Fragment key={def.key}>
                     <ToggleRow
@@ -102,7 +111,7 @@ export default function IndicatorPrefRows({
                 {gatedNumerics.map((def) => (
                   <NumericPrefRow key={def.key} def={def} />
                 ))}
-              </div>
+              </DependentRows>
             )}
             {idx < toggles.length - 1 && <div className="my-1" />}
           </Fragment>

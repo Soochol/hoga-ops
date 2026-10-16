@@ -26,10 +26,12 @@ import {
   ThemeSection,
 } from './settings/AppInfoSections';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
-import { WORKSPACE_PANEL_SHELL_CLASS } from './workspacePanel';
+import { SettingsEditor } from './settings/SettingsEditor';
+import { useSettingsUndo } from './settings/useSettingsUndo';
+import { readAppSettings, restoreAppSettings, subscribeAppSettings } from './settings/editorSnapshots';
 
 /**
- * 앱의 **유일한** 설정 본체 — 좌측 목차 240px + 우측 단일 스크롤 문서(지표 드로어와
+ * 앱의 **유일한** 설정 본체 — 좌측 목차 184px + 우측 단일 스크롤 문서(지표 드로어와
  * 동일 폭·셸 상수라 툴바에서 보조지표↔설정을 오가도 nav가 흔들리지 않는다).
  *
  * ## 단일 스크롤 + 스크롤 스파이 목차 (2026-08-26 리디자인 · 프로토타입 C 채택)
@@ -126,7 +128,7 @@ function buildFilterUnits(): FilterUnit[] {
 
 function GroupHead({ label }: { label: string }) {
   return (
-    <div className="mb-0.5 mt-4 text-xs font-semibold uppercase text-fg-dim">{label}</div>
+    <h4 className="text-sm font-medium text-fg">{label}</h4>
   );
 }
 
@@ -192,7 +194,7 @@ function SectionHeading({ id, label }: { id: NavId; label: string }) {
   return (
     <h3
       data-settings-section={id}
-      className="border-b border-border-strong pb-1 text-md font-semibold text-fg"
+      className="mb-3 text-xl font-medium text-fg"
     >
       {label}
     </h3>
@@ -238,6 +240,7 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
     && CHART_TOGGLES.some((t) => categoryOf(t) === c));
   const navIds: NavId[] = [...registryIds, ...INFO_ORDER];
 
+  const undo = useSettingsUndo({ scopeKey: 'app', read: readAppSettings, restore: restoreAppSettings, subscribe: subscribeAppSettings });
   const [query, setQuery] = useState('');
   const [active, setActive] = useState<NavId>(initialSection ?? navIds[0]);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -248,7 +251,7 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
     if (initialSection) bodyRef.current?.querySelector(`[data-settings-section="${initialSection}"]`)?.scrollIntoView?.({ block: 'start' });
   }, [initialSection]);
 
-  const units = useMemo(buildFilterUnits, []);
+  const units = useMemo(() => buildFilterUnits(), []);
   const trimmed = query.trim();
   const filtering = trimmed !== '';
 
@@ -302,15 +305,11 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
     setActive(current);
   };
 
-  // 지표 패널과 동일한 크롬(중앙 모달, 2026-08-21): 전폭 헤더 바·푸터 없이 nav+콘텐츠가
-  // 카드를 edge-to-edge로 채우고, 제목과 닫기 X는 콘텐츠 헤더가 담당.
-  // nav↔콘텐츠 분리는 bg-subtle↔bg-card 톤 스텝. rounded-lg는 ModalShell 반경에 맞춰 클립.
   return (
-    <div
-      data-testid="settings-shell"
-      className={WORKSPACE_PANEL_SHELL_CLASS}
-    >
-      <nav className="flex min-h-0 flex-col bg-bg-subtle" aria-label="설정 카테고리">
+    <SettingsEditor title="설정" scope="앱 전체에 적용" onClose={onClose} undo={undo}
+      testId="settings-shell" footer="변경 즉시 반영 · 자동 저장"
+      sidebar={
+      <nav className="flex min-h-0 flex-1 flex-col" aria-label="설정 카테고리">
         <div className="p-2 pb-1">
           <div className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-bg-input px-2 focus-within:border-accent">
             <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" className="shrink-0 text-fg-dim">
@@ -347,7 +346,9 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
           </div>
         </div>
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2 pt-1">
-          {navIds.map((id) => (
+          {navIds.map((id, index) => (
+            <Fragment key={id}>
+            {(index === 0 || id === 'data-source' || id === 'symbols') && <div className="settings-editor-nav-group">{index === 0 ? '화면' : id === 'data-source' ? '환경' : '관리'}</div>}
             <button
               key={id}
               type="button"
@@ -362,30 +363,18 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
             >
               {LABEL[id]}
             </button>
+            </Fragment>
           ))}
         </div>
-      </nav>
-      <div className="flex min-h-0 flex-col">
-        <header className="flex items-center justify-between px-5 pb-3 pt-4">
-          <div><h2 className="text-lg font-semibold text-fg">설정</h2><p className="text-xs text-fg-dim">변경 즉시 반영</p></div>
-          {onClose && (
-            <button
-              type="button"
-              aria-label="닫기"
-              onClick={onClose}
-              className="ui-icon-button text-lg leading-none"
-            >
-              ✕
-            </button>
-          )}
-        </header>
-        <div ref={bodyRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+      </nav>}
+      >
+        <div ref={bodyRef} onScroll={onScroll} className={`settings-editor-content ${filtering ? 'settings-filtered' : ''}`}>
           {sections.map((section) => (
             (!filtering || section.groups.length > 0) && (
               <section key={section.id} aria-label={LABEL[section.id]} className="mt-6 first:mt-0">
                 <SectionHeading id={section.id} label={LABEL[section.id]} />
                 {section.groups.map((group) => (
-                  <Fragment key={group.id}>
+                  <div className="settings-editor-group" key={group.id}>
                     {!filtering && <GroupHead label={group.label} />}
                     {group.units.map((unit) => (
                       <Fragment key={unit.key}>
@@ -394,7 +383,7 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
                         {unit.key === 'tradeHighlightEnabled' && <TradeHighlightColorRow highlight={filtering ? trimmed : undefined} />}
                       </Fragment>
                     ))}
-                  </Fragment>
+                  </div>
                 ))}
               </section>
             )
@@ -411,7 +400,6 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
             </InfoSection>
           ))}
         </div>
-      </div>
-    </div>
+    </SettingsEditor>
   );
 }

@@ -70,7 +70,12 @@ export default function MAStylePicker({
   );
 
   return (
-    <div ref={containerRef} className="relative inline-block">
+    <div ref={containerRef} className="relative inline-block" onKeyDown={event => {
+      if (open && event.key === 'Escape') {
+        event.stopPropagation(); close();
+        containerRef.current?.querySelector('button')?.focus();
+      }
+    }}>
       {/* Trigger 자체로 color + lineWidth 가 한눈에 보이도록: 컴팩트한
          가로 셀에 (1) 색상 dot 과 (2) 현재 굵기 굵기로 그어진 짧은 가로선
          을 나란히. trigger만 봐도 line 두께를 알 수 있어 popover를 열지
