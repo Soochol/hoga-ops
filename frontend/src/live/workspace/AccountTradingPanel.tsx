@@ -28,7 +28,8 @@ function HoldingsTable({ holdings, onSelect }: { holdings: TradingHolding[]; onS
   const venue = useLiveVenueStore(s => s.venue);
   const codes = useMemo(() => holdings.map(holding => holding.code), [holdings]);
   const quotes = useQuoteByCode(codes, venue);
-  return <table>
+  return <table className="account-holdings-table">
+    <colgroup><col /><col /><col /><col /><col /></colgroup>
     <thead><tr><th>종목</th><th>보유 · 주</th><th>평단가 · 원</th><th>평가금액 · 원</th><th>수익률 · %</th></tr></thead>
     <tbody>{holdings.map(holding => {
       const price = quotes.get(holding.code)?.price;
@@ -68,7 +69,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
     onClose();
     anchorRef.current?.querySelector<HTMLElement>('[aria-expanded="true"]')?.focus({ preventScroll: true });
   }, [onClose, anchorRef]);
-  const { ref, style } = useAnchoredPopover<HTMLDivElement>(tab !== null, anchorRef, dismiss, 540);
+  const { ref, style } = useAnchoredPopover<HTMLDivElement>(tab !== null, anchorRef, dismiss, tab === 'holdings' ? 680 : 620);
 
   async function cancel(order: TossOrder, retry: boolean) {
     if (inFlight.current.has(order.orderId) || paused) return;
@@ -121,7 +122,8 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
     {query.isPending && <p role="status" className="account-trading-message">목록 불러오는 중…</p>}
     {notice && <p role="status" className="account-trading-message">{notice}</p>}
     <div role="tabpanel" id={`${panelId}-content`} aria-labelledby={`${panelId}-${tab}`} aria-label={tab === 'orders' ? '미체결 주문 목록' : '보유종목 목록'} className="account-trading-scroll">
-      {tab === 'orders' ? <table>
+      {tab === 'orders' ? <table className="account-orders-table">
+        <colgroup><col /><col /><col /><col /><col /></colgroup>
         <thead><tr><th>종목</th><th>구분</th><th>가격 · 원</th><th>잔여 · 주</th><th>취소</th></tr></thead>
         <tbody>{displayedOrders.map((order, index) => {
           const record = cancellations[order.orderId];

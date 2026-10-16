@@ -8,11 +8,22 @@
 .account-trading-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; padding:0.5rem 0.75rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
 .account-trading-toolbar > span { overflow-wrap:anywhere; }
 .account-trading-scroll { min-height:0; overflow:auto; }
-.account-trading-panel table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+.account-trading-panel table { table-layout:fixed; width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+/* Column widths depend on the panel, never on a changing quote or balance.
+ * Narrow screens scroll the complete numbers rather than truncating money. */
+.account-trading-panel .account-holdings-table { min-width:40rem; }
+.account-holdings-table col:nth-child(1) { width:28%; }
+.account-holdings-table col:nth-child(2),.account-holdings-table col:nth-child(3),.account-holdings-table col:nth-child(5) { width:16%; }
+.account-holdings-table col:nth-child(4) { width:24%; }
+.account-trading-panel .account-orders-table { min-width:36rem; }
+.account-orders-table col:nth-child(1) { width:28%; }
+.account-orders-table col:nth-child(2) { width:9%; }
+.account-orders-table col:nth-child(3) { width:22%; }
+.account-orders-table col:nth-child(4) { width:23%; }
+.account-orders-table col:nth-child(5) { width:18%; }
 .account-trading-panel th { position:sticky; top:0; z-index:1; background:var(--bg-input-hover); color:var(--fg-dim); font-weight:400; font-size:var(--live-text-meta,var(--text-xs)); }
 .account-trading-panel th,.account-trading-panel td { padding:0.5rem 0.75rem; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border); }
 .account-trading-panel th:first-child,.account-trading-panel td:first-child { text-align:left; white-space:normal; }
-.account-trading-panel td:first-child { min-width:7rem; }
 .account-trading-panel tr:last-child td { border-bottom:0; }
 .account-trading-panel tbody tr:hover { background:var(--bg-input); }
 .account-trading-panel .account-stock-link { text-align:left; padding:0; border:0; background:transparent; }
@@ -27,5 +38,4 @@
 .account-trading-message.text-error { color:var(--error); }
 @media(max-width:35rem) {
   .account-trading-panel th,.account-trading-panel td { padding:0.5rem 0.375rem; }
-  .account-trading-panel td:first-child { min-width:6rem; }
 }
