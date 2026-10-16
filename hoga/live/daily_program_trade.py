@@ -1,15 +1,17 @@
-"""Stock daily program quantities (ka90013), separate from intraday 0w sidecars.
+"""Stock daily program quantities and amounts (ka90013).
 
 Official contract: https://openapi.kiwoom.com/m/guide/apiguide/01/ka90013
-The three quantity columns are shares; missing values stay null. One page carries
-all trade sides, so changing the chart's display mode needs no vendor request.
+Quantities are shares; vendor amounts in million KRW are normalized to KRW,
+matching intraday program points. All sides and measures share one cached page.
+Missing values stay null.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from hoga.live import kiwoom_access, kiwoom_rest_runtime
 from hoga.live.candle_models import daily_anchor_ms
@@ -24,6 +26,9 @@ class DailyProgramTradePoint(BaseModel):
     net_qty: int | None
     buy_qty: int | None
     sell_qty: int | None
+    net_amount: int | None = Field(default=None, description="프로그램 순매수금액 (원)")
+    buy_amount: int | None = Field(default=None, description="프로그램 총매수금액 (원)")
+    sell_amount: int | None = Field(default=None, description="프로그램 총매도금액 (원)")
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,19 @@ def _quantity(raw: object, *, gross: bool = False) -> int | None:
     except ValueError:
         return None
     return abs(value) if gross else value
+
+
+def _amount_won(raw: object, *, gross: bool = False) -> int | None:
+    if not isinstance(raw, (str, int)) or isinstance(raw, bool):
+        return None
+    try:
+        value = Decimal(str(raw).strip().replace(",", "")) * 1_000_000
+        if not value.is_finite() or value != value.to_integral_value():
+            return None
+        won = int(value)
+    except InvalidOperation:
+        return None
+    return abs(won) if gross else won
 
 
 async def fetch_daily_program_trade(client, code: str, from_s: str, to_s: str, *, run_page):
@@ -77,12 +95,20 @@ async def fetch_daily_program_trade(client, code: str, from_s: str, to_s: str, *
         # never substitute zero or infer a missing gross quantity.
         if net_qty is None and buy_qty is not None and sell_qty is not None:
             net_qty = buy_qty - sell_qty
+        buy_amount = _amount_won(row.get("prm_buy_amt"), gross=True)
+        sell_amount = _amount_won(row.get("prm_sell_amt"), gross=True)
+        net_amount = _amount_won(row.get("prm_netprps_amt"))
+        if net_amount is None and buy_amount is not None and sell_amount is not None:
+            net_amount = buy_amount - sell_amount
         point = DailyProgramTradePoint(
             t_ms=daily_anchor_ms(day), net_qty=net_qty,
             buy_qty=buy_qty, sell_qty=sell_qty,
+            net_amount=net_amount, buy_amount=buy_amount, sell_amount=sell_amount,
         )
         if any(value is None for value in (point.net_qty, point.buy_qty, point.sell_qty)):
             violations.append(ProgramTradeViolation(day, "malformed_row", "missing program quantity"))
+        if any(value is None for value in (point.net_amount, point.buy_amount, point.sell_amount)):
+            violations.append(ProgramTradeViolation(day, "malformed_row", "missing program amount"))
         points[day] = point.model_dump()
     return [points[day] for day in sorted(points)], violations, None
 

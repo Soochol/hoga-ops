@@ -8,6 +8,10 @@ export type DailyProgramTradePoint = {
   net_qty: number | null;
   buy_qty: number | null;
   sell_qty: number | null;
+  /** KRW, matching intraday program amounts. Optional for older backends. */
+  net_amount?: number | null;
+  buy_amount?: number | null;
+  sell_amount?: number | null;
 };
 
 export interface LiveDailyProgramTradeResponse {

@@ -1,5 +1,5 @@
 import * as summaryFormatting from '../live/investorDailySummary';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import ProgramTradeSummaryCard, { PROGRAM_SPARK_GAP_THRESHOLD_MS } from './ProgramTradeSummaryCard';
@@ -193,6 +193,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
   });
 
   it('switches to the daily list with investor-style controls and three quantities', () => {
+    useProgramTradeDisplayStore.setState({ measure: 'qty' });
     render(<ProgramTradeSummaryCard series={seriesOf([point(T0, 1)])} dailyPoints={[{
       t_ms: T0, net_qty: -8_393, buy_qty: 28_697, sell_qty: 37_090,
     }]} />);
@@ -233,7 +234,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
   });
 
   it('uses the daily-investor row format and highlights the linked cursor date', () => {
-    useProgramTradeDisplayStore.setState({ view: 'daily' });
+    useProgramTradeDisplayStore.setState({ view: 'daily', measure: 'qty' });
     render(<ProgramTradeSummaryCard series={null} cursorDate="20260721" dailyPoints={[{
       t_ms: T0, net_qty: 9_000, buy_qty: 203_000, sell_qty: 194_000,
     }]} />);
@@ -267,6 +268,75 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('button', { name: '총매수70' })).not.toBeInTheDocument();
     expect(screen.getByText('+10')).toBeInTheDocument();
+  });
+
+  it('shares the measure across views and updates daily sides, totals and quantity units', () => {
+    const dailyPoints = [
+      { t_ms: T0, net_qty: -1000, buy_qty: 2000, sell_qty: 3000,
+        net_amount: -100_000_000, buy_amount: 200_000_000, sell_amount: 300_000_000 },
+      { t_ms: T0 - DAY_MS, net_qty: 2000, buy_qty: 3000, sell_qty: 1000,
+        net_amount: 200_000_000, buy_amount: 300_000_000, sell_amount: 100_000_000 },
+    ];
+    render(<ProgramTradeSummaryCard dailyPoints={dailyPoints} />);
+    // The shared controls are present even without intraday observations.
+    fireEvent.click(screen.getByRole('button', { name: '일별' }));
+    expect(screen.getByRole('button', { name: '금액' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('button', { name: 'K 단위' })).not.toBeInTheDocument();
+    const row = screen.getByTestId('program-daily-row-20260721');
+    expect(row).toHaveTextContent('-1억·2억·3억');
+    expect(screen.getByRole('columnheader', { name: /프로그램.*억원/ })).toBeInTheDocument();
+    const foot = screen.getByRole('rowheader', { name: '누적 2일' }).closest('tr')!;
+    expect(foot).toHaveTextContent('+1억·5억·4억');
+
+    for (const [label, value, total] of [['순매수', '-1억', '+1억'], ['총매수', '2억', '5억'], ['총매도', '3억', '4억']]) {
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      expect(within(row).getByRole('cell')).toHaveTextContent(value);
+      expect(within(foot).getByRole('cell')).toHaveTextContent(total);
+    }
+    fireEvent.click(screen.getByRole('button', { name: '모두' }));
+    fireEvent.click(screen.getByRole('button', { name: '수량' }));
+    expect(row).toHaveTextContent('−1K·2K·3K');
+    expect(foot).toHaveTextContent('+1K·5K·4K');
+    fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
+    expect(row).toHaveTextContent('-1,000·2,000·3,000');
+    expect(screen.getByRole('columnheader', { name: /프로그램.*\(주\)/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '당일 누적' }));
+    expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '일별' }));
+    expect(screen.getByTestId('program-daily-row-20260721')).toHaveTextContent('-1,000·2,000·3,000');
+    expect(localStorage.getItem('live.programTradeDisplay.v1')).toContain('"measure":"qty"');
+  });
+
+  it('keeps missing amounts and incomplete totals empty while quantities remain available', () => {
+    useProgramTradeDisplayStore.setState({ view: 'daily' });
+    render(<ProgramTradeSummaryCard dailyPoints={[
+      { t_ms: T0, net_qty: 1000, buy_qty: 2000, sell_qty: 1000 },
+      { t_ms: T0 - DAY_MS, net_qty: 0, buy_qty: 0, sell_qty: 0,
+        net_amount: 0, buy_amount: 0, sell_amount: 0 },
+    ]} />);
+    const row = screen.getByTestId('program-daily-row-20260721');
+    expect(within(row).getAllByText('—')).toHaveLength(3);
+    expect(screen.getByTestId('program-daily-row-20260720')).toHaveTextContent('0·0·0');
+    const foot = screen.getByRole('rowheader', { name: '누적 2일' }).closest('tr')!;
+    expect(within(foot).getAllByText('—')).toHaveLength(3);
+    fireEvent.click(screen.getByRole('button', { name: '수량' }));
+    expect(row).toHaveTextContent('+1K·2K·1K');
+    expect(foot).toHaveTextContent('+1K·2K·1K');
+  });
+
+  it('keeps both controls available while daily data loads, fails or is empty', () => {
+    useProgramTradeDisplayStore.setState({ view: 'daily' });
+    const { rerender } = render(<ProgramTradeSummaryCard dailyLoading />);
+    expect(screen.getByText('일별 프로그램 조회 중')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '수량' }));
+    rerender(<ProgramTradeSummaryCard dailyError />);
+    expect(screen.getByText('일별 프로그램 조회 실패')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '금액' }));
+    rerender(<ProgramTradeSummaryCard />);
+    expect(screen.getByText('일별 프로그램 데이터 없음')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '금액' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '당일 누적' }));
+    expect(screen.getByRole('button', { name: '금액' })).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('shows empty state in latest mode when the series has no today point', () => {
@@ -689,7 +759,7 @@ it('daily follow completes during same-date minute updates without reformatting 
   vi.useFakeTimers();
   const format = vi.spyOn(summaryFormatting, 'formatInvestorK');
   try {
-    useProgramTradeDisplayStore.setState({ view: 'daily' });
+    useProgramTradeDisplayStore.setState({ view: 'daily', measure: 'qty' });
     const dailyPoints = [{ t_ms: T0, net_qty: 123000, buy_qty: 200000, sell_qty: 77000 }];
     const { rerender } = render(<ProgramTradeSummaryCard dailyPoints={dailyPoints} cursorDate="20260721" cursorMs={T0} />);
     const row = screen.getByTestId('program-daily-row-20260721');
