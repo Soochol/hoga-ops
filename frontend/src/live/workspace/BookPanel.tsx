@@ -20,6 +20,7 @@ import { useCallback, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { BookScrollArea } from './BookScrollArea';
+import { BookPriceAmount } from './BookPriceAmount';
 import { bookDayMarkers, type BookPriceMarker } from './bookDayMarkers';
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
@@ -322,6 +323,7 @@ export default function BookPanel({
               <PriceCell
                 key={`pa-${i}`}
                 price={l.price}
+                qty={l.qty}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
                 marker={dayMarkers.get(l.price) ?? null}
@@ -331,6 +333,7 @@ export default function BookPanel({
               <PriceCell
                 key={`pb-${i}`}
                 price={l.price}
+                qty={l.qty}
                 baselinePrice={baselinePrice}
                 boxed={lastPrice !== null && l.price === lastPrice}
                 marker={dayMarkers.get(l.price) ?? null}
@@ -548,12 +551,14 @@ export function BookQtyDelta({ badge }: { badge: OrderbookDeltaBadge | null }) {
 
 function PriceCell({
   price,
+  qty,
   baselinePrice,
   boxed,
   marker = null,
   topDivider = false,
 }: {
   price: number;
+  qty: number;
   baselinePrice: number | null;
   boxed: boolean;
   /** 당일 시/고/저 칩(최대 하나). 모든 가격 행의 고정 여백에 놓는다. */
@@ -580,7 +585,7 @@ function PriceCell({
     >
       <span className={`relative shrink-0 whitespace-nowrap pl-6 font-data text-base tabular-nums ${color}`}>
         <PriceBadges marker={marker} />
-        {price > 0 ? price.toLocaleString('ko-KR') : ''}
+        <BookPriceAmount price={price} qty={qty} />
       </span>
       {pct !== null && price > 0 && (
         <span

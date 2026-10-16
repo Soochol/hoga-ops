@@ -49,6 +49,57 @@ function renderPanel(over: Partial<Parameters<typeof BookPanel>[0]> = {}) {
   );
 }
 
+describe('호가 잔량 금액 툴팁', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it.each([
+    ['256,000', '0.28억'],
+    ['246,500', '0.52억'],
+  ])('가격 %s에 해당 방향의 잔량 금액을 표시하고 이탈·Escape로 닫는다', (price, text) => {
+    renderPanel();
+    const value = screen.getByText(price, { selector: '.book-price-amount' });
+    vi.spyOn(value, 'matches').mockImplementation(selector => selector === ':hover');
+    fireEvent.mouseEnter(value);
+    act(() => vi.advanceTimersByTime(499));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(text);
+    expect(screen.getByRole('tooltip')).toHaveClass('order-tooltip');
+    expect(value).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+    fireEvent.mouseLeave(value);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.mouseEnter(value);
+    act(() => vi.advanceTimersByTime(500));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(text);
+    fireEvent.keyDown(value, { key: 'Escape' });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('호버 중 잔량 갱신을 반영하고 유효 가격의 잔량 0을 0원으로 표시한다', () => {
+    const snapshot = snap();
+    const view = renderPanel({ snapshot });
+    const price = screen.getByText('256,000', { selector: '.book-price-amount' });
+    vi.spyOn(price, 'matches').mockImplementation(selector => selector === ':hover');
+    fireEvent.mouseEnter(price);
+    act(() => vi.advanceTimersByTime(500));
+    const next = { ...snapshot, ask: snapshot.ask.map(level => ({ ...level, qty: 0 })) };
+    view.rerender(<BookPanel snapshot={next} baselinePrice={PREV_CLOSE} summary={SUMMARY} trades={[]} maskRatio={false} lastPrice={null} />);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('0억');
+    view.unmount();
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('창 배치가 바뀌어 마우스가 떠난 가격에는 예약된 툴팁을 열지 않는다', () => {
+    renderPanel();
+    const price = screen.getByText('256,000', { selector: '.book-price-amount' });
+    vi.spyOn(price, 'matches').mockReturnValue(false);
+    fireEvent.mouseEnter(price);
+    act(() => vi.advanceTimersByTime(500));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});
+
 describe('시고저 가격의 전일 KRX 종가 툴팁', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());

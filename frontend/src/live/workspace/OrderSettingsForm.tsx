@@ -84,6 +84,9 @@ export function OrderSettingsForm({ draft, onChange, onApply, onCancel, busy }: 
           onChange={quantityPresets => onChange({ ...draft, quantityPresets })} />
         <PresetInputs label="금액 프리셋" suffix="백만원" max={MAX_AMOUNT_MILLIONS} values={draft.amountPresets}
           onChange={amountPresets => onChange({ ...draft, amountPresets })} />
+        <OrderSettingsCheckboxRow label="종목별 주문수량 기억"
+          description="다른 종목을 봤다가 돌아오면 마지막 입력한 수량을 불러옵니다. 같은 창·계좌에서 창을 열어둔 동안만 기억합니다."
+          checked={draft.rememberQuantity} onChange={rememberQuantity => onChange({ ...draft, rememberQuantity })} />
       </OrderSettingsSection>
       <OrderSettingsSection id={`${navigationId}-display`} title="호가 표시" description="호가창에 표시할 정보를 선택합니다.">
         <OrderSettingsCheckboxRow label="내 평단가 표시" description="평단가에 빨간 점을 표시합니다."
