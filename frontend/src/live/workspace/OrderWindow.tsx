@@ -657,14 +657,14 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           </div>;
         })}
         {showInlineSummary && <div className="order-summary-layer">{renderSummary(240)}</div>}
-      </div>
-      <div className="order-cancel-row" role="group" aria-label="방향별 주문 취소">
-        {(['SELL', 'BUY'] as const).map(side => <button key={side} type="button"
-          className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'}`}
-          aria-label={`${orderSideLabel(side)} 주문 취소`}
-          title={`현재 종목의 ${orderSideLabel(side)} 미체결 주문 모두 취소`}
-          disabled={!ready || !!lockedBook || !!settingsDraft || !!action || !orders.some(order => order.side === side && editableOrder(order) && !pending(order) && orderRemainder(order) > 0)}
-          onClick={() => request({ type: 'bulk', base: base(), side, price: 0, quantity: null })}>주문 취소</button>)}
+        <div className="order-cancel-row" role="group" aria-label="방향별 주문 취소">
+          {(['SELL', 'BUY'] as const).map(side => <button key={side} type="button"
+            className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'}`}
+            aria-label={`${orderSideLabel(side)} 주문 취소`}
+            title={`현재 종목의 ${orderSideLabel(side)} 미체결 주문 모두 취소`}
+            disabled={!ready || !!lockedBook || !!settingsDraft || !!action || !orders.some(order => order.side === side && editableOrder(order) && !pending(order) && orderRemainder(order) > 0)}
+            onClick={() => request({ type: 'bulk', base: base(), side, price: 0, quantity: null })}>주문 취소</button>)}
+        </div>
       </div>
     </div>
     {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={displayTotals} maskRatio={displayTotals.ask + displayTotals.bid === 0}

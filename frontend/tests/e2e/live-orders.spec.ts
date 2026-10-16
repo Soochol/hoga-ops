@@ -948,6 +948,7 @@ test('하단 양쪽 주문 취소는 주문 열에 정렬되고 해당 방향만
       }).toBeLessThan(1);
       const a = (await cancel.boundingBox())!, b = (await lane.boundingBox())!;
       expect(a.y).toBeGreaterThanOrEqual(b.y + b.height);
+      expect(a.y - (b.y + b.height)).toBeLessThanOrEqual(3);
       expect(await cancel.evaluate(el => {
         const range = document.createRange(); range.selectNodeContents(el);
         return range.getBoundingClientRect().width <= el.clientWidth;
