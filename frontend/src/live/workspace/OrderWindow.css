@@ -48,15 +48,18 @@
 .order-window > .book-expected-fill > span > .font-data { display:inline-block; width:12ch; text-align:left; }
 .order-window > .book-expected-fill > span:nth-child(2) > .font-data { width:14ch; }
 .order-controls label,.order-editor label { display:flex; align-items:center; gap:0.25rem; }
-.order-scroll { display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
-.order-ladder { --order-columns:72px minmax(128px,1fr) 144px minmax(128px,1fr) 72px; position:relative; flex:1 0 auto; min-width:var(--order-min-w); min-height:244px; padding:4px 8px 0; }
+.order-scroll { --order-columns:72px minmax(128px,1fr) 144px minmax(128px,1fr) 72px; display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
+.order-ladder { position:relative; flex:1 0 auto; min-width:var(--order-min-w); min-height:244px; padding:4px 8px 0; }
 /* Twenty fixed slots; equal flexible margins keep the spread at the center.
  * Small windows scroll the full ladder instead of shrinking its order targets. */
 .order-ladder-centered { display:flex; flex-direction:column; min-height:488px; padding-block:0; }
 .order-ladder-centered::before,.order-ladder-centered::after { content:""; flex:1 0 4px; }
-.order-compact .order-ladder { --order-columns:64px minmax(96px,1fr) 168px minmax(96px,1fr) 64px; }
-.order-expanded .order-ladder { --order-columns:48px minmax(152px,1fr) 144px minmax(152px,1fr) 48px; }
-.order-expanded.order-spacious .order-ladder { --order-columns:72px minmax(184px,1fr) 168px minmax(184px,1fr) 72px; }
+.order-compact .order-scroll { --order-columns:64px minmax(96px,1fr) 168px minmax(96px,1fr) 64px; }
+.order-expanded .order-scroll { --order-columns:48px minmax(152px,1fr) 144px minmax(152px,1fr) 48px; }
+.order-expanded.order-spacious .order-scroll { --order-columns:72px minmax(184px,1fr) 168px minmax(184px,1fr) 72px; }
+.order-cancel-row { display:grid; grid-template-columns:var(--order-columns); flex-shrink:0; min-width:var(--order-min-w); padding:4px 8px 6px; border-top:1px solid var(--border); }
+.order-window .order-cancel-row .order-lane { height:27px; margin:0; padding:0; border:1px solid color-mix(in srgb,var(--order-side) 35%,var(--border)); background:var(--order-tint); font-size:var(--live-text-meta,var(--text-xs)); white-space:nowrap; }
+.order-cancel-row .order-buy { grid-column:5; }
 .order-summary-layer { position:absolute; top:max(4px,calc((100% - 480px) / 2)); right:56px; width:calc((100% - 256px) / 2); height:240px; }
 .order-spacious .order-summary-layer { right:80px; width:calc((100% - 328px) / 2); }
 .order-expanded:not(.order-spacious) .order-summary-layer .book-summary > div:not(.book-summary-extra),
