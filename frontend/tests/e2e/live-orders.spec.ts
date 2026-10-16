@@ -2014,6 +2014,19 @@ test('호가주문 숫자 자릿수 변경 배치 고정', async ({ page }, test
     await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
     await expect(window).toHaveClass(width < 560 ? /order-compact/ : /order-expanded/);
     await setDigits(false);
+    const labelGaps = await window.evaluate(el => [...el.querySelectorAll('.order-buying-power, .order-holdings-summary > .order-field, .order-estimate')].map(field => {
+      const label = field.querySelector('.order-meta')!.getBoundingClientRect();
+      const value = field.querySelector('.order-field-value')!;
+      const range = document.createRange();
+      range.selectNodeContents(value);
+      const text = range.getBoundingClientRect();
+      const inline = Math.abs((label.top + label.bottom) / 2 - (text.top + text.bottom) / 2) < 4;
+      return { inline, gap: inline ? text.left - label.right : text.left - label.left };
+    }));
+    for (const { inline, gap } of labelGaps) {
+      if (inline) { expect(gap).toBeGreaterThanOrEqual(0); expect(gap).toBeLessThanOrEqual(6); }
+      else expect(Math.abs(gap)).toBeLessThanOrEqual(1);
+    }
     const before = await measure();
     await setDigits(true);
     const after = await measure();
