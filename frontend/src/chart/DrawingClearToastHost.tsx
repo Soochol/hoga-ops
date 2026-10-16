@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ToastCard } from '../ui/toast/ToastCard';
+import { useToastTimer } from '../ui/toast/useToastTimer';
 import { useDrawingsStore } from '../state/drawings';
 
 const AUTO_DISMISS_MS = 6000;
@@ -24,18 +25,11 @@ export default function DrawingClearToastHost() {
   // Latch the payload so the card keeps its label/handler through the exit
   // animation after the store slot is cleared to null.
   const [shown, setShown] = useState<typeof clearToast>(null);
-  const paused = useRef(false);
 
-  useEffect(() => {
-    if (clearToast == null) return;
-    setShown(clearToast);
-    const timer = setTimeout(() => {
-      if (!paused.current) dismissClearToast();
-    }, AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [clearToast, dismissClearToast]);
+  if (clearToast != null && clearToast !== shown) setShown(clearToast);
 
   const visible = clearToast != null;
+  const timer = useToastTimer({ visible, resetKey: clearToast, durationMs: AUTO_DISMISS_MS, onExpire: dismissClearToast });
   const payload = shown;
 
   return (
@@ -43,14 +37,14 @@ export default function DrawingClearToastHost() {
       visible={visible}
       variant="neutral"
       role="status"
-      progress={visible ? { durationMs: AUTO_DISMISS_MS, paused: false } : null}
-      onMouseEnter={() => (paused.current = true)}
-      onMouseLeave={() => (paused.current = false)}
+      progress={timer.progress}
+      {...timer.interactionProps}
+      onDismiss={dismissClearToast}
       onExited={() => setShown(null)}
       action={
         payload
           ? {
-              label: '실행취소',
+              label: '실행 취소',
               onClick: () => {
                 restore(payload.scope, payload.snapshot);
                 dismissClearToast();

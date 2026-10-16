@@ -1,3 +1,4 @@
+import { StatusChip } from '../ui/StatusChip';
 import { formatTradingDate } from '../util/displayDate';
 import type { ScreenerStatus } from '../api/screener';
 
@@ -13,34 +14,13 @@ export function StalenessChip({ status }: Props) {
   const last = status.last_raw_date;
   const daysBehind = status.days_behind;
   const behind = typeof daysBehind === 'number' && daysBehind >= 1;
-  const color = behind ? 'var(--warn)' : 'var(--fg-dim)';
   const pendingText = behind
     ? daysBehind === 1
       ? '오늘 확정분 대기'
       : `${daysBehind}거래일 확정분 대기`
     : null;
-  // behind 는 사용자 주의가 필요한 상태(오늘 확정분이 아직 아카이브에 없음)라
-  // warn 틴트 pill 로 강조한다. 최신(정상)은 조용한 dim 텍스트로 둔다.
-  return (
-    <span
-      data-testid="staleness-chip"
-      title={behind ? '확정 일봉 아카이브가 최신 거래일 확정분을 기다리는 중' : '확정 일봉 아카이브 최신'}
-      className={`inline-flex items-center gap-1.5 font-data text-xs tabular-nums${
-        behind ? ' rounded-md px-1.5 py-0.5 font-medium' : ''
-      }`}
-      style={
-        behind
-          ? {
-              color,
-              background: 'color-mix(in srgb, var(--warn) 14%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--warn) 38%, transparent)',
-            }
-          : { color }
-      }
-    >
-      <span className="rounded-full" style={{ width: 6, height: 6, background: color }} aria-hidden />
-      일봉 기준 {formatTradingDate(last)}
-      {pendingText && ` · ${pendingText}`}
-    </span>
-  );
+  const label = <>일봉 기준 {formatTradingDate(last)}{pendingText && ` · ${pendingText}`}</>;
+  if (behind) return <StatusChip tone="warn" data-testid="staleness-chip"
+    title="확정 일봉 아카이브가 최신 거래일 확정분을 기다리는 중">{label}</StatusChip>;
+  return <span data-testid="staleness-chip" title="확정 일봉 아카이브 최신" className="font-data text-xs tabular-nums text-fg-dim" style={{ color: 'var(--fg-dim)' }}>{label}</span>;
 }

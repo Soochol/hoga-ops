@@ -1,37 +1,31 @@
-import { useEffect, useState } from 'react';
-import { ToastCard } from '../ui/toast/ToastCard';
+import { useState } from 'react';
+import { ToastAction, ToastCard } from '../ui/toast/ToastCard';
+import { useToastTimer } from '../ui/toast/useToastTimer';
 import { useRightRailStore } from '../state/rightRail';
 import { useStudyViewReveal } from './studyViewReveal';
 import { useStudySaveNotice } from './StudyViewSaveToastHostHelpers';
 
-const AUTO_DISMISS_MS = 6000;
-
-
 export function StudyViewSaveToastHost() {
   const notice = useStudySaveNotice((s) => s.notice);
   const [shown, setShown] = useState(notice);
-  useEffect(() => {
-    if (!notice) return;
-    setShown(notice);
-    if (notice.retryCapture) return;
-    const timer = setTimeout(() => {
-      if (useStudySaveNotice.getState().notice === notice) {
-        useStudySaveNotice.setState({ notice: null });
-      }
-    }, AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [notice]);
+  if (notice != null && notice !== shown) setShown(notice);
+  const dismiss = () => useStudySaveNotice.setState({ notice: null });
+  const timer = useToastTimer({ visible: notice != null, resetKey: notice, durationMs: notice?.retryCapture ? null : 6000,
+    onExpire: () => { if (useStudySaveNotice.getState().notice === notice) dismiss(); } });
   const payload = notice ?? shown;
   if (!payload) return null;
-  return <ToastCard key={payload.id} visible={notice !== null}
-    onExited={() => setShown(null)}
-    progress={notice && !notice.retryCapture ? { durationMs: AUTO_DISMISS_MS, paused: false } : null} role="status" ariaLabel="저장뷰 저장 안내" action={{ label: '목록에서 보기', onClick: () => {
-    useStudyViewReveal.setState({ target: { id: payload.id, groupId: payload.groupId } });
-    useRightRailStore.getState().setActivePanel('savedViews');
-    if (!payload.retryCapture) useStudySaveNotice.setState({ notice: null });
-  } }}>
-    <p className="text-sm text-fg">{payload.label}에 저장했습니다</p>
-    {payload.retryCapture && <p className="text-xs text-error">빠진 기간 수집 요청에 실패했습니다 <button className="text-accent" onClick={payload.retryCapture}>수집 다시 시도</button></p>}
-    <button className="mt-1 text-xs text-fg-dim" onClick={() => useStudySaveNotice.setState({ notice: null })}>닫기</button>
+  return <ToastCard visible={notice !== null} onExited={() => setShown(null)}
+    variant={payload.retryCapture ? 'warn' : 'neutral'}
+    title={payload.retryCapture ? '저장은 완료했지만 수집 요청에 실패했습니다' : `${payload.label}에 저장했습니다`}
+    role="status" ariaLabel="저장뷰 저장 안내" onDismiss={dismiss} progress={timer.progress} {...timer.interactionProps}
+    actions={<>
+      {payload.retryCapture && <ToastAction emphasis="accent" onClick={payload.retryCapture}>수집 다시 시도</ToastAction>}
+      <ToastAction onClick={() => {
+        useStudyViewReveal.setState({ target: { id: payload.id, groupId: payload.groupId } });
+        useRightRailStore.getState().setActivePanel('savedViews');
+        if (!payload.retryCapture) dismiss();
+      }}>목록에서 보기</ToastAction>
+    </>}>
+    {payload.retryCapture ? <p>{payload.label}에 저장했습니다 · 빠진 기간 수집 요청에 실패했습니다</p> : null}
   </ToastCard>;
 }

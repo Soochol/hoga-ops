@@ -1,6 +1,6 @@
 import { useServiceStatusPanel } from '../serviceStatus/controls';
 import { useState } from 'react';
-import { ToastCard } from '../ui/toast/ToastCard';
+import { ToastAction, ToastCard } from '../ui/toast/ToastCard';
 import { deadSupervisedTasks, useLiveStatus } from '../api/liveStatus';
 
 /** 토스트에 나열할 태스크 이름 수 — 넘치면 "외 N개"로 접는다. */
@@ -28,34 +28,16 @@ export default function SupervisedTaskFailureToastHost() {
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
 
   // 죽은 태스크 집합이 바뀌면(새로 죽음) 닫았던 토스트를 다시 띄운다.
-  const key = dead.join(',');
+  const key = [...dead].sort().join(',');
+  if (status?.supervised_tasks != null && dead.length === 0 && dismissedKey !== null) setDismissedKey(null);
   const visible = dead.length > 0 && dismissedKey !== key;
 
   const shown = dead.slice(0, VISIBLE_NAMES).join(', ');
   const overflow = dead.length - VISIBLE_NAMES;
 
-  return (
-    <ToastCard visible={visible} variant="error" role="status">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-medium text-fg">백그라운드 작업이 중단됐습니다</div>
-        <button
-          type="button"
-          aria-label="닫기"
-          onClick={() => setDismissedKey(key)}
-          className="-mr-1 -mt-0.5 shrink-0 text-base leading-none text-fg-dim hover:text-fg"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="mt-1 text-xs text-fg-dim">
-        {shown}
-        {overflow > 0 ? ` 외 ${overflow}개` : ''}
-        가 정지했습니다. 자동 복구되지 않으므로 서버를 재시작해야 합니다.
-      </div>
-      <button type="button" onClick={() => useServiceStatusPanel.getState().show()}
-        className="mt-2 text-xs text-fg-dim underline hover:text-fg">
-        서비스 상태 보기
-      </button>
-    </ToastCard>
-  );
+  return <ToastCard visible={visible} variant="error" role="status" title="백그라운드 작업이 중단됐습니다"
+    onDismiss={() => setDismissedKey(key)}
+    actions={<ToastAction onClick={() => useServiceStatusPanel.getState().show()}>서비스 상태 보기</ToastAction>}>
+    {shown}{overflow > 0 ? ` 외 ${overflow}개` : ''}가 정지했습니다. 자동 복구되지 않으므로 서버를 재시작해야 합니다.
+  </ToastCard>;
 }

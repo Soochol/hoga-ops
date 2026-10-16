@@ -5,6 +5,7 @@ import type {
   HTMLAttributes,
   ReactNode,
 } from 'react';
+import { StateMessage } from './StateMessage';
 
 type PanelCardProps = {
   as?: 'div' | 'section' | 'article';
@@ -106,13 +107,7 @@ export function PageState({
   className?: string;
   children: ReactNode;
 }) {
-  const toneClass = tone === 'error' ? 'text-error' : tone === 'warn' ? '' : 'text-fg-dim';
-  const style = tone === 'warn' ? { color: 'var(--warn)' } : undefined;
-  return (
-    <div className={`p-md text-sm ${toneClass} ${className}`.trim()} style={style}>
-      {children}
-    </div>
-  );
+  return <StateMessage tone={tone} className={className}>{children}</StateMessage>;
 }
 
 export function DefinitionRow({

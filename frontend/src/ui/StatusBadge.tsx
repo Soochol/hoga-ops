@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { StatusChip } from './StatusChip';
 
 /**
  * Bordered status pill — the shared primitive for the project's micro-badges
@@ -39,6 +40,7 @@ export function StatusBadge({
   className?: string;
   children: ReactNode;
 }) {
+  if (tone === 'warn' || tone === 'error') return <StatusChip tone={tone} size="compact" title={title} aria-label={ariaLabel} className={className}>{children}</StatusChip>;
   return (
     <span
       title={title}

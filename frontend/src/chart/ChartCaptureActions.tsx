@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { IconToolbarButton } from '../ui/WorkspaceShell';
+import { DEFAULT_TOAST_DURATION_MS, useToastTimer } from '../ui/toast/useToastTimer';
 import { ToastCard } from '../ui/toast/ToastCard';
 import { ToastViewport } from '../ui/toast/ToastViewport';
 import { captureChartImage, chartImageFilename, downloadChartImage } from './chartImage';
@@ -20,11 +21,8 @@ export function ChartCaptureActions({ viewportRef, code, timeframe, available }:
   const [toastHost] = useState(() => document.getElementById('toast-viewport'));
   const canCopy = typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function';
 
-  useEffect(() => {
-    if (!notice || busy) return;
-    const timer = window.setTimeout(() => setNotice(null), notice.error ? 10000 : 3500);
-    return () => window.clearTimeout(timer);
-  }, [notice, busy]);
+  const timer = useToastTimer({ visible: notice != null, resetKey: notice,
+    durationMs: busy ? null : notice?.error ? 10000 : DEFAULT_TOAST_DURATION_MS, onExpire: () => setNotice(null) });
 
   async function exportImage(action: 'copy' | 'save') {
     const viewport = viewportRef.current;
@@ -58,16 +56,13 @@ export function ChartCaptureActions({ viewportRef, code, timeframe, available }:
 
   const toast = notice && (
     <ToastCard visible role={notice.error ? 'alert' : 'status'} variant={notice.error ? 'error' : 'neutral'}
+      title={notice.message} onDismiss={busy ? undefined : () => setNotice(null)} dismissLabel="차트 캡처 알림 닫기"
+      progress={timer.progress} {...timer.interactionProps}
       action={notice.fallback ? { label: 'PNG로 저장', onClick: () => {
         const fallback = notice.fallback!;
         downloadChartImage(fallback.blob, fallback.filename);
         setNotice({ message: '차트 PNG를 저장했습니다' });
-      } } : undefined}>
-      <div className="flex items-start justify-between gap-3 text-sm text-fg">
-        <span>{notice.message}</span>
-        {!busy && <button type="button" aria-label="차트 캡처 알림 닫기" onClick={() => setNotice(null)} className="text-fg-dim hover:text-fg">✕</button>}
-      </div>
-    </ToastCard>
+      } } : undefined} />
   );
   const captureHint = !available ? '차트를 불러온 후 캡처할 수 있습니다' : busy ? '차트 이미지를 만드는 중…'
     : '현재 보이는 차트와 보조지표를 캡처합니다';

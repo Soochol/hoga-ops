@@ -1,6 +1,6 @@
 import { useServiceStatusPanel } from '../serviceStatus/controls';
 import { useState } from 'react';
-import { ToastCard } from '../ui/toast/ToastCard';
+import { ToastAction, ToastCard } from '../ui/toast/ToastCard';
 import { useLiveStatus } from '../api/liveStatus';
 
 /** 이 아래로는 경고가 아니라 위험이다 — 만수까지의 시간이 하루 단위로 줄어든다. */
@@ -27,34 +27,15 @@ export default function DiskHeadroomToastHost() {
   const { data: status } = useLiveStatus();
   const disk = status?.disk;
   const [dismissedKey, setDismissedKey] = useState<string | null>(null);
+  if (disk && !disk.low && dismissedKey !== null) setDismissedKey(null);
 
   const critical = disk != null && disk.free_pct < CRITICAL_FREE_PCT;
   const key = critical ? 'critical' : 'low';
   const visible = disk != null && disk.low && dismissedKey !== key;
 
-  return (
-    <ToastCard visible={visible} variant={critical ? 'error' : 'warn'} role="status">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-medium text-fg">
-          {critical ? '디스크가 거의 찼습니다' : '디스크 여유가 부족합니다'}
-        </div>
-        <button
-          type="button"
-          aria-label="닫기"
-          onClick={() => setDismissedKey(key)}
-          className="-mr-1 -mt-0.5 shrink-0 text-base leading-none text-fg-dim hover:text-fg"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="mt-1 text-xs text-fg-dim">
-        남은 공간 {disk?.free_pct}% ({disk?.free_gib}GiB). 가득 차면 캡처와 실시간
-        기록이 조용히 실패합니다 — `hoga prune` 으로 회수량을 확인하세요
-      </div>
-      <button type="button" onClick={() => useServiceStatusPanel.getState().show()}
-        className="mt-2 text-xs text-fg-dim underline hover:text-fg">
-        서비스 상태 보기
-      </button>
-    </ToastCard>
-  );
+  return <ToastCard visible={visible} variant={critical ? 'error' : 'warn'} role="status"
+    title={critical ? '디스크가 거의 찼습니다' : '디스크 여유가 부족합니다'} onDismiss={() => setDismissedKey(key)}
+    actions={<ToastAction onClick={() => useServiceStatusPanel.getState().show()}>서비스 상태 보기</ToastAction>}>
+    남은 공간 {disk?.free_pct}% ({disk?.free_gib}GiB). 가득 차면 캡처와 실시간 기록이 조용히 실패합니다 — `hoga prune` 으로 회수량을 확인하세요
+  </ToastCard>;
 }

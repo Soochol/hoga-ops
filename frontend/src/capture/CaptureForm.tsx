@@ -201,7 +201,7 @@ export function CaptureForm({
       </button>
 
       {error !== null && (
-        <InlineState role="alert" tone="error" className="border-0 bg-transparent p-0 text-xs">{error}</InlineState>
+        <p role="alert" className="text-xs text-error">{error}</p>
       )}
 
       {enqueueWarning !== null && (

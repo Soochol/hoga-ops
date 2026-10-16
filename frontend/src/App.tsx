@@ -17,6 +17,7 @@ import RestUnavailableToastHost from './live/RestUnavailableToastHost';
 import KiwoomFullHouseToastHost from './live/KiwoomFullHouseToastHost';
 import SupervisedTaskFailureToastHost from './live/SupervisedTaskFailureToastHost';
 import DiskHeadroomToastHost from './live/DiskHeadroomToastHost';
+import LiveOperationalToastHost from './live/LiveOperationalToastHost';
 import StudyViewDeleteToastHost from './studyViews/StudyViewDeleteToastHost';
 import DrawingClearToastHost from './chart/DrawingClearToastHost';
 import IndicatorRemoveUndoToastHost from './live/IndicatorRemoveUndoToastHost';
@@ -171,6 +172,7 @@ export default function App() {
             같은 부류다: 가득 차면 캡처가 조용히 실패하는데 health 는 200 이다. */}
         <SupervisedTaskFailureToastHost />
         <DiskHeadroomToastHost />
+        <LiveOperationalToastHost />
         <DrawingClearToastHost />
         <StudyViewDeleteToastHost />
         <StudyViewSaveToastHost />

@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ToastCard } from '../ui/toast/ToastCard';
+import { useToastTimer } from '../ui/toast/useToastTimer';
 import { useWorkspaceStore } from '../state/workspace';
 
 const AUTO_DISMISS_MS = 6000;
@@ -27,31 +28,24 @@ export default function PinnedActivationToastHost() {
   // 스토어 슬롯이 null 로 비워진 뒤에도 exit 애니메이션 동안 문구가 남아야 하므로
   // 페이로드를 걸어 둔다(DrawingClearToastHost 와 같은 규율).
   const [shown, setShown] = useState<typeof blocked>(null);
-  const paused = useRef(false);
 
-  useEffect(() => {
-    if (blocked == null) return undefined;
-    setShown(blocked);
-    const timer = setTimeout(() => {
-      if (!paused.current) dismiss();
-    }, AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [blocked, dismiss]);
+  if (blocked != null && blocked !== shown) setShown(blocked);
 
   const visible = blocked != null;
+  const timer = useToastTimer({ visible, resetKey: blocked, durationMs: AUTO_DISMISS_MS, onExpire: dismiss });
 
   return (
     <ToastCard
       visible={visible}
       variant="warn"
       role="status"
-      progress={visible ? { durationMs: AUTO_DISMISS_MS, paused: false } : null}
-      onMouseEnter={() => (paused.current = true)}
-      onMouseLeave={() => (paused.current = false)}
+      title="모든 창이 고정돼 있습니다"
+      progress={timer.progress}
+      {...timer.interactionProps}
+      onDismiss={dismiss}
       onExited={() => setShown(null)}
       action={{ label: '전체 고정 해제', onClick: () => unpinAll() }}
     >
-      <div className="text-sm font-medium text-fg">모든 창이 고정돼 있습니다</div>
       {/* 종목명 뒤에 조사를 붙이지 않는다 — 받침 유무로 은/는·을/를 이 갈려 "을(를)" 같은
           폴백 표기가 나온다(도그푸딩에서 확인). 이름을 가운뎃점으로 떼면 조사가 필요 없다. */}
       <div className="text-xs text-fg-dim">

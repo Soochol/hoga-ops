@@ -1,3 +1,4 @@
+import { InlineState } from '../ui/DataSurface';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   DndContext,
@@ -405,9 +406,9 @@ export function RankingDrawer() {
         {/* 토글은 켰는데 심볼 마스터가 없어 거르지 못한 경우. 배지가 없으면 사용자에겐
             "ETF 제외가 안 먹는" 상태로만 보인다(원인 단서 0). 스크리너 경고와 같은 관용구. */}
         {data?.etfFilterUnavailable && (
-          <div className="mx-md mt-sm rounded-lg border px-3 py-2 text-sm" style={{ color: 'var(--warn)' }}>
+          <InlineState tone="warn" className="mx-md mt-sm">
             종목 마스터를 불러오지 못해 ETF 를 거르지 못했습니다
-          </div>
+          </InlineState>
         )}
         {isError && !data ? (
           <RailState tone="error">

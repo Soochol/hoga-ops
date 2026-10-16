@@ -1,3 +1,4 @@
+import { noticeStyle } from '../../ui/noticeTone';
 /**
  * `/live` 차트 창의 **저장뷰 기간 칩** — 지금 무엇이 걸려 있는지, 그리고 푸는 문.
  *
@@ -67,10 +68,9 @@ export function SavedRangeChip({
       aria-label={detail}
       // 헤더 안에 산다 — 차트 위에 뜨는 `/study` 판과 달리 `shadow-panel` 도
       // `pointer-events-auto` 도 필요 없다(오버레이 스택이 아니라 일반 흐름이다).
-      className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
-      style={{ background: 'var(--tint-selection)', color: tone }}
+      className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded border px-1.5 py-0.5 text-2xs"
+      style={{ ...noticeStyle(notice ? 'warn' : 'neutral'), ...(notice ? {} : { color: tone }) }}
     >
-      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: tone }} />
       <span className="truncate">
         {notice ? notice.text : `저장뷰 ${period}`}
       </span>

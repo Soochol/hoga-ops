@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { SignalAlertEvent } from '../api/signalAlerts';
 import type { PushEvent } from '../api/types';
 import { subscribeEvents } from '../api/ws';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { ToastCard } from '../ui/toast/ToastCard';
+import { DEFAULT_TOAST_DURATION_MS, useToastTimer } from '../ui/toast/useToastTimer';
 
 const TOAST_LIMIT = 3;
-const TOAST_TTL_MS = 5000;
+const TOAST_TTL_MS = DEFAULT_TOAST_DURATION_MS;
 
 function isSignalAlert(event: PushEvent): event is SignalAlertEvent {
   return event.type === 'signal_alert';
@@ -67,48 +68,23 @@ type SignalToastItemProps = {
  */
 function SignalToastItem({ event, onExited, onJump }: SignalToastItemProps) {
   const [visible, setVisible] = useState(true);
-  const [paused, setPaused] = useState(false);
-  const remainingRef = useRef(TOAST_TTL_MS);
-  const startedAtRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof window.setTimeout>>();
-
-  const startTimer = useCallback(() => {
-    startedAtRef.current = Date.now();
-    timerRef.current = window.setTimeout(() => setVisible(false), remainingRef.current);
-  }, []);
-
-  useEffect(() => {
-    startTimer();
-    return () => window.clearTimeout(timerRef.current);
-  }, [startTimer]);
-
-  const pause = () => {
-    window.clearTimeout(timerRef.current);
-    remainingRef.current = Math.max(0, remainingRef.current - (Date.now() - startedAtRef.current));
-    setPaused(true);
-  };
-  const resume = () => {
-    setPaused(false);
-    startTimer();
-  };
+  const timer = useToastTimer({ visible, resetKey: event.id, durationMs: TOAST_TTL_MS, onExpire: () => setVisible(false) });
 
   return (
     <ToastCard
       visible={visible}
       onExited={onExited}
       variant="neutral"
+      title={event.name}
       ariaLabel={`${event.name} ${event.code} 알림 열기`}
-      progress={{ durationMs: TOAST_TTL_MS, paused }}
-      onMouseEnter={pause}
-      onMouseLeave={resume}
+      progress={timer.progress}
+      {...timer.interactionProps}
       onClick={() => {
-        window.clearTimeout(timerRef.current);
         onJump();
         setVisible(false);
       }}
     >
-      <div className="truncate text-sm font-medium text-fg">{event.name}</div>
-      <div className="mt-1 text-xs text-fg-dim">{formatSignalSummary(event)}</div>
+      {formatSignalSummary(event)}
     </ToastCard>
   );
 }

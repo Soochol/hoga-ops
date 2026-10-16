@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import { StateMessage } from './StateMessage';
 
 /** 우측 레일 드로어 셸. 배경은 페이지 필드와 같은 --bg (2026-07-29, 배경 통일 완결).
  *  이전엔 크롬 표면이라 bg-subtle 로 한 단계 가라앉혔으나, #636/#637 이후 --bg==--bg-card
@@ -182,11 +183,5 @@ export function RailState({
   className?: string;
   children: ReactNode;
 }) {
-  const toneClass = tone === 'error' ? 'text-error' : tone === 'warn' ? '' : 'text-fg-dim';
-  const style = tone === 'warn' ? { color: 'var(--warn)' } : undefined;
-  return (
-    <div role={tone === 'error' ? 'alert' : 'status'} className={`p-md text-sm ${toneClass} ${className}`.trim()} style={style}>
-      {children}
-    </div>
-  );
+  return <StateMessage tone={tone} className={className}>{children}</StateMessage>;
 }

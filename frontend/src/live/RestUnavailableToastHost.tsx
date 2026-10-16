@@ -2,7 +2,7 @@ import { useServiceStatusPanel } from '../serviceStatus/controls';
 import { useEffect, useRef } from 'react';
 import { useLiveSettings, usePatchLiveSettings } from '../api/liveSettings';
 import { ToggleSwitch } from './settings/SettingsRow';
-import { ToastCard } from '../ui/toast/ToastCard';
+import { ToastAction, ToastCard } from '../ui/toast/ToastCard';
 import { WARNING_CAUSE } from '../api/warningCopy';
 import {
   markLegacyRestBypassMigrated,
@@ -71,34 +71,13 @@ export default function RestUnavailableToastHost() {
   // 읽는 쪽이 그 반대보다 덜 위험하다(사용자가 우회를 켜면 그만이다).
   const copy = COPY[lastKind ?? 'transport'];
 
-  return (
-    <ToastCard visible={visible} variant="warn" role="status">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-medium text-fg">{copy.title}</div>
-        <button
-          type="button"
-          aria-label="닫기"
-          onClick={dismissToast}
-          className="-mr-1 -mt-0.5 shrink-0 text-base leading-none text-fg-dim hover:text-fg"
-        >
-          ✕
-        </button>
-      </div>
-      <div className="mt-1 text-xs text-fg-dim">{copy.body}</div>
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <div className="text-xs text-fg-dim">
-          {restBypassEnabled ? 'REST 우회 중' : copy.status}
-        </div>
-        <ToggleSwitch
-          label="REST 우회"
-          checked={restBypassEnabled}
-          onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })}
-        />
-      </div>
-      <button type="button" onClick={() => useServiceStatusPanel.getState().show()}
-        className="mt-2 text-xs text-fg-dim underline hover:text-fg">
-        서비스 상태 보기
-      </button>
-    </ToastCard>
-  );
+  return <ToastCard visible={visible} variant="warn" role="status" title={copy.title} onDismiss={dismissToast}
+    actions={<ToastAction onClick={() => useServiceStatusPanel.getState().show()}>서비스 상태 보기</ToastAction>}>
+    <p>{copy.body}</p>
+    <div className="mt-3 flex items-center justify-between gap-3">
+      <span>{restBypassEnabled ? 'REST 우회 중' : copy.status}</span>
+      <ToggleSwitch label="REST 우회" checked={restBypassEnabled}
+        onClick={() => patch.mutate({ rest_bypass_enabled: !restBypassEnabled })} />
+    </div>
+  </ToastCard>;
 }

@@ -10,18 +10,10 @@ function SubscriptionToast({ codes, dismissed, dismiss, title, message }: {
 }) {
   const shown = codes.slice(0, VISIBLE_CODES).join(', ');
   const overflow = codes.length - VISIBLE_CODES;
-  return (
-    <ToastCard visible={codes.length > 0 && !dismissed} variant="warn" role="status" ariaLabel={title}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-medium text-fg">{title}</div>
-        <button type="button" aria-label="닫기" onClick={dismiss}
-          className="-mr-1 -mt-0.5 shrink-0 text-base leading-none text-fg-dim hover:text-fg">✕</button>
-      </div>
-      <div className="mt-1 text-xs text-fg-dim">
-        {shown}{overflow > 0 ? ` 외 ${overflow}개` : ''}: {message}
-      </div>
-    </ToastCard>
-  );
+  return <ToastCard visible={codes.length > 0 && !dismissed} variant="warn" role="status" ariaLabel={title}
+    title={title} onDismiss={dismiss}>
+    {shown}{overflow > 0 ? ` 외 ${overflow}개` : ''}: {message}
+  </ToastCard>;
 }
 
 /** Vendor slot exhaustion and application reference limits have different recovery paths. */

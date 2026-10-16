@@ -15,7 +15,7 @@ describe('ToastCard', () => {
       </ToastCard>,
     );
     const btn = screen.getByRole('button', { name: '열기' });
-    expect(btn).toHaveClass('toast-card', 'border-border');
+    expect(btn).toHaveClass('toast-card', 'shadow-overlay');
     act(() => btn.click());
     expect(clicked).toBe(1);
   });
@@ -28,7 +28,7 @@ describe('ToastCard', () => {
     );
     const card = screen.getByRole('status');
     expect(card.tagName).toBe('DIV');
-    expect(card).toHaveClass('border-warn');
+    expect(card.style.borderColor).toBe('color-mix(in srgb, var(--warn) 30%, transparent)');
   });
 
   it('unmounts and calls onExited when visible flips false (reduced motion → instant)', () => {

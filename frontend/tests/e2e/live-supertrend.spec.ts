@@ -96,7 +96,7 @@ for (const timeframe of ['1m', 'D'] as const) {
   await page.getByRole('button', { name: '슈퍼트렌드 (2, 1) 삭제', exact: true }).click();
   await expect.poll(() => trend(page, id)).toBeNull();
   await expect(legend).not.toContainText('슈퍼트렌드');
-  await page.getByRole('button', { name: '실행취소', exact: true }).click();
+  await page.getByRole('button', { name: '실행 취소', exact: true }).click();
   await expect.poll(() => trend(page, id)).toEqual(expected);
   });
 }
