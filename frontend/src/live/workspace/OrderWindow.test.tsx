@@ -19,12 +19,12 @@ vi.mock('./orderReceiptSound', () => ({
   subscribeOrderReceiptSoundRecovery: vi.fn(),
 }));
 
-const mock = vi.hoisted(() => ({ configured: true, balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
+const mock = vi.hoisted(() => ({ configured: true, accountsLoading: false, accountError: null as Error | null, stateError: null as Error | null, unresolved: [] as string[], balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
 afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
-  useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: false }),
-  useTradingState: () => ({ balancesError: mock.balancesError, data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: mock.sellableQuantity, holding_quantity: mock.holdingQuantity, average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: [] } : undefined }),
+  useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: mock.accountsLoading, error: mock.accountError }),
+  useTradingState: () => ({ isError: !!mock.stateError, error: mock.stateError, balancesError: mock.balancesError, data: mock.configured ? { account_seq: 1, code: '005930', orders: mock.orders, recent_orders: [], buying_power: mock.buyingPower, sellable_quantity: mock.sellableQuantity, holding_quantity: mock.holdingQuantity, average_purchase_price: mock.averagePrice, fetched_at_ms: mock.now, events_connected: true, unresolved_commands: mock.unresolved } : undefined }),
   useTradingAccountList: () => ({ orders: { data: undefined }, holdings: { data: undefined }, paused: false }),
   tradingCommand: (...args: unknown[]) => mock.command(...args),
 }));
@@ -61,6 +61,7 @@ function enableReceiptSound() {
 }
 beforeEach(() => {
   afterHoursBook.data = undefined;
+  mock.accountsLoading = false; mock.accountError = null; mock.stateError = null; mock.unresolved = [];
   vi.mocked(notifyOrderReceiptAccepted).mockReset().mockResolvedValue(true);
   vi.mocked(prepareOrderReceiptSound).mockReset();
   vi.mocked(playOrderReceiptSound).mockReset().mockResolvedValue(true);
@@ -69,6 +70,135 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it('호가 지연 사유를 계속 표시하고 주문 시도는 같은 토스트로 안내하며 API를 호출하지 않는다', () => {
+    mock.snapshotAt = mock.now - 60_000;
+    show();
+    const inline = screen.getByLabelText('신규 주문 상태');
+    expect(inline).toHaveTextContent('최신 호가를 기다리고 있습니다');
+    expect(inline).not.toHaveTextContent('거래시간');
+    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
+    const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    expect(buy).toHaveAttribute('aria-describedby', inline.id);
+    fireEvent.doubleClick(buy);
+    fireEvent.doubleClick(buy);
+    expect(screen.getAllByRole('alert', { name: '주문 알림' })).toHaveLength(1);
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('최신 호가를 기다리고 있습니다');
+    expect(mock.command).not.toHaveBeenCalled();
+    mock.snapshotAt = mock.now;
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+    expect(buy).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it.each(['', '0', '1.5', '1000000001'])('잘못된 수량 %s는 마우스·키보드 시도를 설명하고 전송하지 않는다', value => {
+    show();
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value } });
+    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('주문 수량');
+    const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+    fireEvent.doubleClick(buy);
+    fireEvent.keyDown(buy, { key: 'Enter' });
+    fireEvent.keyDown(buy, { key: ' ' });
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('정수');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
+  it.each(['loading', 'unconfigured', 'account-error', 'state-error', 'unknown-result'] as const)('%s에서 신규 주문 불가 사유를 먼저 표시한다', reason => {
+    mock.accountsLoading = reason === 'loading';
+    mock.configured = reason !== 'unconfigured';
+    mock.accountError = reason === 'account-error' ? new Error('계좌 인증에 실패했습니다') : null;
+    mock.stateError = reason === 'state-error' ? new Error('주문 내역을 조회할 수 없습니다') : null;
+    mock.unresolved = reason === 'unknown-result' ? ['unknown-command'] : [];
+    show();
+    const text = { loading: '계좌 확인 중', unconfigured: '계좌 연결 필요', 'account-error': '계좌 인증에 실패했습니다',
+      'state-error': '주문 내역을 조회할 수 없습니다', 'unknown-result': '주문 결과 확인 필요' }[reason]!;
+    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent(text);
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent(text);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['order-hours-closed', '현재 해당 주문을 접수할 수 없는 시간입니다.'],
+    ['insufficient-buying-power', '주문 가능 금액이 부족합니다.'],
+  ])('API 확정 거절 %s는 제목·사유를 나누고 같은 요청 재확인 버튼을 만들지 않는다', async (code, message) => {
+    mock.command.mockRejectedValueOnce(Object.assign(new Error(message), { code, status: 422 }));
+    show();
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    const toast = await screen.findByRole('alert', { name: '주문 알림' });
+    expect(within(toast).getByText('주문 접수 불가')).toBeInTheDocument();
+    expect(within(toast).getByText(message)).toBeInTheDocument();
+    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent(`직전 주문 접수 불가${message}`);
+    expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
+    expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '주문 알림 닫기' }));
+    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent(message);
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+  });
+
+  it('고액 확인창이 열린 뒤 호가가 오래돼도 전송 직전에 같은 사유로 차단한다', () => {
+    show();
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2000' } });
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    mock.snapshotAt = mock.now - 60_000;
+    fireEvent.click(screen.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }));
+    fireEvent.click(screen.getByRole('button', { name: '확인 후 주문' }));
+    expect(mock.command).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('최신 호가');
+  });
+
+  it('계좌를 바꾸면 이전 계좌의 확정 거절 사유와 토스트를 해제한다', async () => {
+    mock.accountCount = 2;
+    mock.command.mockRejectedValueOnce(Object.assign(new Error('주문 접수 시간이 아닙니다'), { code: 'order-hours-closed', status: 422 }));
+    show();
+    fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+    await screen.findByRole('alert', { name: '주문 알림' });
+    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('직전 주문 접수 불가');
+    fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: '2' } });
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
+    expect(mock.command).toHaveBeenCalledOnce();
+  });
+
+  it.each(['cancel-rejected', 'order-outcome-unknown'])('일괄 취소의 부분 실패 %s도 사유를 안내하며 성공한 요청을 재전송하지 않는다', async code => {
+    mock.orders = [order()];
+    mock.command.mockResolvedValueOnce({ results: [{ order_id: 'a', accepted: false, code, message: '취소 결과를 확인하세요' }] });
+    const view = show();
+    fireEvent.contextMenu(view.container.querySelector('.order-ladder')!);
+    fireEvent.click(screen.getByRole('menuitem', { name: '전체 주문 취소' }));
+    const toast = await screen.findByRole('alert', { name: '주문 알림' });
+    expect(toast).toHaveTextContent(code === 'order-outcome-unknown' ? '취소 결과 확인 필요' : '취소 접수 불가');
+    expect(toast).toHaveTextContent('취소 미접수 1건');
+    expect(toast.querySelector('.toast-progress') != null).toBe(code !== 'order-outcome-unknown');
+    expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
+    expect(mock.command).toHaveBeenCalledOnce();
+  });
+
+  it('결과 불명확 알림은 자동으로 닫지 않고 자신의 요청 ID로만 다시 확인한다', async () => {
+    vi.useFakeTimers();
+    try {
+      mock.command.mockRejectedValueOnce(Object.assign(new Error('실제 접수 여부를 확인하세요'), { code: 'order-outcome-unknown', status: 503 }));
+      const client = new QueryClient();
+      const content = () => <QueryClientProvider client={client}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>;
+      const view = render(content());
+      fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+      await act(async () => {});
+      const commandId = mock.command.mock.calls[0][1].command_id;
+      mock.unresolved = [commandId];
+      view.rerender(content());
+      act(() => vi.advanceTimersByTime(60_000));
+      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('주문 결과 확인 필요');
+      expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('주문 결과 확인 필요');
+      fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
+      expect(mock.command).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
+      await act(async () => {});
+      expect(mock.command).toHaveBeenCalledTimes(2);
+      expect(mock.command.mock.calls[1]).toEqual(mock.command.mock.calls[0]);
+      expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 접수됨');
+    } finally { vi.useRealTimers(); }
+  });
+
   it.each([
     ['67,300', '0.07억'],
     ['67,200', '0.13억'],
@@ -812,7 +942,7 @@ describe('호가 주문', () => {
     fireEvent.click(screen.getByRole('button', { name: '100만' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(0);
     expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('1주를 주문할 수 없습니다');
-    expect(screen.getByRole('button', { name: /매수 1,467,200원 주문 추가/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /매수 1,467,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
     expect(mock.command).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '매입수량' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(80);
@@ -987,12 +1117,12 @@ describe('호가 주문', () => {
     expect(cell).toBeEnabled();
     fireEvent.doubleClick(cell);
     expect(mock.command).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
     const chip = screen.getByLabelText('매수 67,200원 주문', { exact: true });
     expect(chip.closest('button')).toBeEnabled(); expect(chip).toHaveAttribute('data-drag-order', 'a');
     fireEvent.click(chip);
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
-    view.unmount(); mock.configured = false; show(); expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
+    view.unmount(); mock.configured = false; show(); expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
   });
   it('실계좌 고액 주문은 금액 확인 전에는 전송하지 않는다', async () => {
     show(); fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2000' } });
@@ -1071,7 +1201,7 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('—');
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
-    expect(buy).toBeDisabled();
+    expect(buy).toHaveAttribute('aria-disabled', 'true');
     fireEvent.doubleClick(buy);
     expect(mock.command).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '7' } });
@@ -1129,7 +1259,7 @@ describe('호가 주문', () => {
     fireEvent.change(input(), { target: { value: '' } });
     view.rerender(content('005930')); expect(input()).toHaveValue(9);
     view.rerender(content('000660')); expect(input()).toHaveValue(null);
-    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
     expect(mock.command).not.toHaveBeenCalled();
   });
 
@@ -1167,7 +1297,7 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(25);
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '' } });
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
-    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'true');
     expect(mock.command).not.toHaveBeenCalled();
   });
 
@@ -1278,7 +1408,8 @@ describe('호가 주문', () => {
       }
       expect(api).toHaveBeenCalledTimes(1);
       expect(new URL(api.mock.calls[0][0], 'http://test').searchParams.get('t')).toBe(String(Date.UTC(2026, 9, 14, 6, 20) - 1));
-      expect(frozenBuy).toBeDisabled();
+      expect(frozenBuy).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('저장된 호가는 조회만 가능합니다');
       afterHours = [{ t_ms: mock.now + 1000, total_ask_qty: 0, total_bid_qty: 1640 }];
       view.rerender(content());
       for (const id of ['close-book', 'close-order']) {
@@ -1289,7 +1420,7 @@ describe('호가 주문', () => {
         expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '0fr 1640fr' });
       }
       expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBe(frozenBuy);
-      expect(frozenBuy).toBeDisabled();
+      expect(frozenBuy).toHaveAttribute('aria-disabled', 'true');
       mock.now = Date.UTC(2026, 9, 14, 6, 59, 50);
       vi.mocked(useLiveSeries).mockImplementation(() => originalSeries('005930', 'KRX'));
       mock.snapshotAt = mock.now;

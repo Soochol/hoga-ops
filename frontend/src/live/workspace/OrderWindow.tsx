@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
 import { createPortal } from 'react-dom';
-import { ToastAction, ToastCard } from '../../ui/toast/ToastCard';
-import { ToastViewport } from '../../ui/toast/ToastViewport';
+import { InlineState } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { useTextTooltip } from '../../ui/useTextTooltip';
@@ -40,6 +39,8 @@ import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel'
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
 import { useOrderQuantity } from './useOrderQuantity';
+import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
+import { OrderNoticeToast, type OrderReceipt } from './OrderNoticeToast';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import './OrderWindow.css';
 
@@ -58,12 +59,6 @@ type Action = {
 };
 const changesPrice = (action: Action) => action.type === 'create' || action.type === 'modify' || (action.type === 'group' && action.operation === 'modify');
 type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
-
-function OrderToastPortal({ children }: { children: ReactNode }) {
-  const [host] = useState(() => document.getElementById('toast-viewport'));
-  const content = <div className="order-toast">{children}</div>;
-  return createPortal(host ? content : <ToastViewport>{content}</ToastViewport>, host ?? document.body);
-}
 
 export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
@@ -137,19 +132,17 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const [reviewedUnknown, reviewUnknown] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [receipt, setReceipt] = useState<{ text: string; sending: boolean; commandId: string } | null>(null);
-  useEffect(() => {
-    if (!receipt || receipt.sending) return;
-    const timer = window.setTimeout(() => setReceipt(null), 4_000);
-    return () => window.clearTimeout(timer);
-  }, [receipt]);
+  const [noticeState, setNoticeState] = useState<(OrderNotice & { account: number }) | null>(null);
+  const notice = noticeState?.account === account ? noticeState : null;
+  const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
+  const [lastRejection, setLastRejection] = useState<{ account: number; notice: OrderNotice } | null>(null);
+  function setNotice(value: string | OrderNotice | null) {
+    if (value) setReceipt(null);
+    setNoticeState(value == null ? null : {
+      ...(typeof value === 'string' ? { title: '주문 확인 필요', message: value, tone: 'warn' as const } : value), account,
+    });
+  }
   const [failedRequest, setFailedRequest] = useState<{ action: Action; high: boolean } | null>(null);
-  useEffect(() => {
-    if (!notice) return;
-    const timer = window.setTimeout(() => setNotice(null), 8_000);
-    return () => window.clearTimeout(timer);
-  }, [notice]);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [pendingIds, setPending] = useState<Record<string, string>>({});
@@ -232,6 +225,18 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
   const ready = account > 0 && !!state.data && !state.isError && !busy;
+  const availability = {
+    accountsLoading: accounts.isLoading, configured: accounts.data?.configured === true, account,
+    accountError: accounts.error, stateReady: !!state.data && !state.isError, stateError: state.error,
+    busy, unresolved: !!state.data?.unresolved_commands.length, settingsOpen: !!settingsDraft,
+    locked: !!lockedBook, stored: storedLadder, singlePrice: activeSinglePrice !== null,
+    hasBook: !!snapshot, fresh, quantity,
+  };
+  const creationIssue = newOrderIssue(availability);
+  const issueId = useId();
+  const inlineIssue = creationIssue ?? (lastRejection?.account === account ? {
+    ...lastRejection.notice, title: '직전 주문 접수 불가',
+  } : null);
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
   const prices = asks.concat(bids);
@@ -249,6 +254,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const currentPrice = quote?.price ?? null;
   const canConvertAmount = currentPrice != null && Number.isSafeInteger(currentPrice) && currentPrice > 0;
   function applyPreset(value: number) {
+    setLastRejection(null);
     if (!amountPresets) { onQuantityChange(value); setNotice(null); return; }
     const converted = canConvertAmount ? quantityForAmount(value, currentPrice) : null;
     if (converted == null || converted > MAX_ORDER_QUANTITY) {
@@ -303,17 +309,22 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   async function submit(next: Action, high = false) {
     if (busyRef.current) return;
     if (!account || next.base.account_seq !== account || next.base.code !== code) { setNotice('계좌·종목이 변경되었습니다. 다시 선택하세요.'); return; }
-    if (changesPrice(next) && !fresh) { setNotice('실시간 호가가 오래되었습니다. 갱신 후 주문하세요.'); return; }
+    const issue = next.type === 'create' ? newOrderIssue({ ...availability, quantity: next.quantity,
+      unresolved: !!state.data?.unresolved_commands.some(id => id !== next.base.command_id) })
+      : changesPrice(next) && !fresh ? newOrderIssue({ ...availability, busy: false, settingsOpen: false, locked: false }) : null;
+    if (issue) { setNotice(issue); return; }
     if (next.type === 'create' && preferences.orderReceiptSound) prepareOrderReceiptSound();
     busyRef.current = true; setBusy(true); setNotice(null); setFailedRequest(null);
     const resumeRefresh = pauseTradingRefresh(client, mode, account);
     const label = next.type === 'create' ? '주문' : (next.operation ?? next.type) === 'modify' ? '정정' : '취소';
     setReceipt({ text: `${label} 요청 중`, sending: true, commandId: next.base.command_id });
     let retryAction = next;
+    let groupFailure: OrderNotice | null = null;
     let accepted = true;
     try {
       if (next.type === 'group') {
         const failed: NonNullable<Action['batch']> = [];
+        let uncertain = false;
         const messages: string[] = [];
         for (const item of next.batch ?? []) {
           try {
@@ -322,20 +333,29 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
             if (next.operation === 'modify') acceptTradingReplacement(client, mode, account, code, item.order.orderId, response.order_id);
             setPending(prev => ({ ...prev, [item.order.orderId]: response.order_id }));
           } catch (error) {
-            failed.push(item);
+            const failure = orderFailure(error, label);
+            if (failure.retry) failed.push(item);
+            uncertain ||= !!failure.persistent;
             messages.push(error instanceof Error ? error.message : '처리 결과 확인 필요');
           }
         }
-        if (failed.length) {
+        if (messages.length) {
           retryAction = { ...next, batch: failed };
-          throw new Error(`${next.operation === 'cancel' ? '취소' : '정정'} 미접수 ${failed.length}건 · ${messages.join(' · ')}`);
+          groupFailure = { title: `${label} ${uncertain ? '결과 확인 필요' : '접수 불가'}`,
+            message: `${label} 미접수 ${messages.length}건 · ${messages.join(' · ')}`, tone: uncertain ? 'error' : 'warn',
+            persistent: uncertain, retry: failed.length > 0 };
+          throw new Error(groupFailure.message);
         }
       } else if (next.type === 'bulk') {
         const body: CancelTradingOrders = { ...next.base, side: next.side };
         const result = await tradingCommand<TradingCancelResponse>('/cancel-all', body, mode);
         const rejected = result.results.filter(r => !r.accepted);
         accepted = rejected.length === 0;
-        if (rejected.length) setNotice(`취소 미접수 ${rejected.length}건${rejected.map(r => ` · ${r.message}`).join('')}`);
+        if (rejected.length) {
+          const uncertain = rejected.some(r => r.code === 'order-outcome-unknown' || r.code === 'unresolved-order-exists');
+          setNotice({ title: uncertain ? '취소 결과 확인 필요' : '취소 접수 불가', tone: uncertain ? 'error' : 'warn',
+            persistent: uncertain, message: `취소 미접수 ${rejected.length}건${rejected.map(r => ` · ${r.message}`).join('')}` });
+        }
         setPending(prev => ({ ...prev, ...Object.fromEntries(result.results.filter(r => r.accepted).map(r => [r.order_id, r.operation_id ?? r.order_id])) }));
       } else {
         let response: TradingCommandResponse;
@@ -344,7 +364,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
           response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
           if (preferences.orderReceiptSound) {
             const soundFailed = () => setReceipt(current => current?.commandId === next.base.command_id && !current.sending
-              ? { ...current, text: '주문은 접수됐지만 알림음을 재생하지 못했습니다' } : current);
+              ? { ...current, text: '주문은 접수됐지만 알림음을 재생하지 못했습니다', soundFailed: true } : current);
             void notifyOrderReceiptAccepted(account, next.base.command_id).then(started => {
               if (!started) soundFailed();
             }, soundFailed);
@@ -363,10 +383,12 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       setReceipt(accepted ? { text: `${label} 요청 접수됨`, sending: false, commandId: next.base.command_id } : null);
     } catch (error) {
       setReceipt(null);
-      setNotice(error instanceof Error ? error.message : '주문 처리 결과를 확인하세요.');
+      const failure = groupFailure ?? orderFailure(error, label);
+      setNotice(failure);
+      if (next.type === 'create' && !failure.retry) setLastRejection({ account, notice: failure });
       if (next.type === 'group') closeAction();
       // A failure never opens the removed new-order editor. Retry retains its ID.
-      setFailedRequest({ action: retryAction, high });
+      setFailedRequest(failure.retry ? { action: retryAction, high } : null);
     } finally {
       busyRef.current = false; setBusy(false);
       resumeRefresh();
@@ -378,6 +400,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     const qty = next.quantity ?? (next.order ? orderRemainder(next.order) : 0);
     const high = changesPrice(next) && next.price * qty >= HIGH_VALUE_WON;
     setFailedRequest(null); setNotice(null);
+    setLastRejection(null);
     if (high) setAction(next);
     else { closeAction(); void submit(next); }
   }
@@ -392,7 +415,12 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number) {
-    if (quantity == null || !validOrderInput(quantity, 'quantity')) { setNotice('주문 수량은 1주 이상의 정수로 설정하세요.'); return; }
+    if (creationIssue) {
+      // A blocked new order must not hide the outstanding request's reconciliation action.
+      if (!(creationIssue.persistent && notice?.retry && failedRequest)) setNotice(creationIssue);
+      return;
+    }
+    if (!Number.isSafeInteger(price) || price <= 0) { setNotice('유효한 주문 가격을 확인하세요.'); return; }
     request({ type: 'create', base: base(), side, price, quantity });
   }
 
@@ -459,13 +487,18 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   function orderCell(side: TradingSide, price: number, rowKey: string) {
     const group = groups.get(`${side}:${price}`) ?? [];
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
-    const canCreate = ready && fresh && price > 0 && !settingsDraft && !state.data?.unresolved_commands.length
-      && quantity != null && quantity > 0;
+    const canCreate = !creationIssue && price > 0;
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
-      disabled={!canCreate && !canDrag}
-      onDoubleClick={() => { if (canCreate && !suppressClick.current) create(side, price); }}
+      aria-disabled={!canCreate && !canDrag}
+      aria-describedby={creationIssue ? issueId : undefined}
+      onDoubleClick={() => { if (!suppressClick.current) create(side, price); }}
+      onKeyDown={event => {
+        if (creationIssue && !event.repeat && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault(); create(side, price);
+        }
+      }}
       onPointerDown={e => beginDrag(e, group)}
       onContextMenu={e => {
         if (!group.length) return;
@@ -518,7 +551,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
       {accounts.data && accounts.data.accounts.length > 1 ? <select aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
-        onChange={e => { onAccountChange(Number(e.target.value)); closeAction(); setPending({}); setFailedRequest(null); setNotice(null); }}>
+        onChange={e => { onAccountChange(Number(e.target.value)); closeAction(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); setLastRejection(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
       </select> : <span className="order-account-label text-fg-dim" title={accounts.data?.accounts[0]?.label}>{accounts.data?.accounts[0]?.label ?? '계좌 연결 대기'}</span>}
       {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
@@ -545,6 +578,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
             if (!canFillHoldingQuantity || sellableQuantity == null) return;
             onQuantityChange(sellableQuantity);
             setNotice(null);
+            setLastRejection(null);
             quantityTip.hide();
           }}
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
@@ -582,7 +616,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
           {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || !!lockedBook}
             onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
         </div>
-        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="1" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
+        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="1" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); setLastRejection(null); }} /><span className="order-meta">주</span></label>
         <div className="order-quantity-presets">
           {presets.map((value, index) => <button type="button" key={index} aria-pressed={amountPresets ? undefined : quantity === value}
             disabled={amountPresets && !canConvertAmount}
@@ -596,6 +630,9 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         </span>
       </div>
     </div>
+    {inlineIssue && <InlineState id={issueId} aria-label="신규 주문 상태" tone={inlineIssue.tone} className="order-availability">
+      <strong>{inlineIssue.title}</strong><span>{inlineIssue.message}</span>
+    </InlineState>}
     {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="order-info-popover order-surface font-data" style={infoStyle}>
       <OrderSurfaceHeading closeLabel="종목 정보 닫기" onClose={closeInfo}>종목 정보</OrderSurfaceHeading>
       <div className="order-info-body">{renderSummary(264)}</div>
@@ -613,8 +650,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings} scope="이 호가 주문창에 적용">주문 설정</OrderSurfaceHeading>
       <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
     </div>, document.body)}
-    {!accounts.data?.configured && !accounts.isLoading && <p className="order-notice">토스증권 Open API의 CLIENT_ID·CLIENT_SECRET을 서버에 설정하면 계좌가 연결됩니다.</p>}
-    {(accounts.error || state.error) && <p role="alert" className="order-notice text-error">{String((accounts.error ?? state.error) instanceof Error ? (accounts.error ?? state.error as Error)?.message : '계좌 조회 실패')}</p>}
     {!!state.data?.unresolved_commands.length && <div className="order-editor"><span role="alert" className="text-error">결과가 불명확한 요청이 있습니다.</span>
       <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />토스 앱·WTS에서 실제 주문·체결 여부를 확인했습니다</label>
       {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
@@ -708,9 +743,8 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       </div>
       </div>
     </ModalShell></div>, document.body)}
-    {(notice || receipt) && <OrderToastPortal>{notice ? <ToastCard visible variant="error" role="alert" ariaLabel="주문 알림"
-        title={notice} onDismiss={() => setNotice(null)} dismissLabel="주문 알림 닫기"
-        actions={failedRequest && <ToastAction disabled={busy} onClick={() => void submit(failedRequest.action, failedRequest.high)}>같은 요청 다시 확인</ToastAction>} />
-      : <ToastCard visible variant={receipt?.sending ? 'neutral' : 'success'} role="status" ariaLabel="주문 접수 알림" title={receipt?.text} />}</OrderToastPortal>}
+    <OrderNoticeToast key={`order-notice:${account}`} notice={notice} receipt={receipt} busy={busy}
+      onDismiss={() => setNotice(null)} onExpireReceipt={() => setReceipt(null)}
+      onRetry={() => { if (failedRequest) void submit(failedRequest.action, failedRequest.high); }} />
   </div>;
 }
