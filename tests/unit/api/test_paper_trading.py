@@ -192,6 +192,22 @@ async def test_sell_partial_updates_holdings_and_prevents_overselling(setup):
     assert (await snapshot(service)).sellable_quantity == "30"
 
 
+@pytest.mark.parametrize("sides", [("BUY", "SELL"), ("SELL", "BUY")])
+async def test_opposite_pending_orders_reserve_cash_and_holdings_independently(setup, sides):
+    service, _, api = setup
+    await reset(service, qty=50)
+    for side in sides:
+        request = CreateTradingOrder(**command(side), side=side, price=99 if side == "BUY" else 101, quantity=10)
+        response = await api.post("/api/paper-trading/orders", json=request.model_dump())
+        assert response.status_code == 200
+    state = await snapshot(service)
+    assert {o.side for o in state.orders} == {"BUY", "SELL"}
+    assert all(o.status == "PENDING" for o in state.orders)
+    assert state.buying_power == "9010"
+    assert state.sellable_quantity == "40"
+    assert state.holding_quantity == "50"
+
+
 async def test_shared_liquidity_price_time_priority_and_multiple_levels(setup):
     service, feed, _ = setup
     # Resting orders then a new, marketable book: better limit first, FIFO on ties.

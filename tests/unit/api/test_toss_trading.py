@@ -76,8 +76,12 @@ class Broker:
             self.posts.append(request)
             if self.failure == "timeout":
                 raise httpx.ReadTimeout("test only", request=request)
-            if self.failure == "rejected":
-                return httpx.Response(409, json={"error": {"code": "already-filled", "message": "이미 체결됨"}})
+            if self.failure in {"rejected", "opposite"}:
+                error = {
+                    "code": "opposite-pending-order-exists",
+                    "message": "동일 종목에 반대 방향의 체결 대기 주문이 있습니다.",
+                } if self.failure == "opposite" else {"code": "already-filled", "message": "이미 체결됨"}
+                return httpx.Response(409, json={"error": error})
             return httpx.Response(200, json={"result": {"orderId": "successor"}})
         if path == "/api/v1/orders":
             return httpx.Response(
@@ -189,7 +193,46 @@ async def test_unknown_write_never_replays_or_turns_into_new_order(setup):
     assert len(broker.posts) == 1
 
 
-async def test_foreign_account_symbol_opposite_and_high_value_block_before_write(setup):
+@pytest.mark.parametrize("side,pending_side", [("BUY", "SELL"), ("SELL", "BUY")])
+@pytest.mark.parametrize("price", [67100, 67200, 67300])
+async def test_opposite_pending_order_is_submitted_to_broker(setup, side, pending_side, price):
+    broker, _, api = setup
+    broker.open = [order(side=pending_side)]
+    body = {
+        "account_seq": 1, "code": "005930", "command_id": "opposite",
+        "price": price, "quantity": 10, "side": side,
+    }
+    response = await api.post("/api/trading/orders", json=body, headers={"X-Hoga-Order": "1"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "accepted"
+    assert len(broker.posts) == 1
+    assert broker.posts[0].url.path == "/api/v1/orders"
+    payload = json.loads(broker.posts[0].content)
+    assert payload["side"] == side and payload["price"] == str(price)
+    # No preflight OPEN lookup or implicit cancellation of the existing order.
+    assert not any(r.method == "GET" and r.url.path == "/api/v1/orders" for r in broker.requests)
+
+
+async def test_broker_opposite_rejection_is_preserved_and_not_replayed(setup):
+    broker, service, api = setup
+    broker.open = [order(side="SELL")]
+    broker.failure = "opposite"
+    body = {
+        "account_seq": 1, "code": "005930", "command_id": "opposite-rejected",
+        "price": 67200, "quantity": 10, "side": "BUY",
+    }
+    for _ in range(2):
+        response = await api.post("/api/trading/orders", json=body, headers={"X-Hoga-Order": "1"})
+        assert response.status_code == 409
+        assert response.json()["detail"] == {
+            "code": "opposite-pending-order-exists",
+            "message": "동일 종목에 반대 방향의 체결 대기 주문이 있습니다.",
+        }
+    assert len(broker.posts) == 1
+    assert service.journal.unresolved(1, "005930") == []
+
+
+async def test_foreign_account_symbol_and_high_value_block_before_write(setup):
     broker, service, api = setup
     broker.detail = order(code="000660")
     with pytest.raises(TradingError):
@@ -209,16 +252,6 @@ async def test_foreign_account_symbol_opposite_and_high_value_block_before_write
         headers={"X-Hoga-Order": "1"},
     )
     assert response.status_code == 403
-    broker.open = [order(side="SELL")]
-    with pytest.raises(TradingError) as opposite:
-        await service.execute(
-            CreateTradingOrder(
-                account_seq=1, code="005930", command_id="opposite", price=67200, quantity=10, side="BUY"
-            ),
-            "create",
-        )
-    assert opposite.value.code == "opposite-pending-order-exists"
-    broker.open = []
     with pytest.raises(TradingError) as high:
         await service.execute(
             CreateTradingOrder(
