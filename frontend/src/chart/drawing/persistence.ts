@@ -151,7 +151,7 @@ export function normalizeItems(raw: unknown): Drawing[] {
         const meta = normalized.dayExtreme;
         if (typeof meta.date !== 'string' || !/^\d{8}$/.test(meta.date)
           || (meta.side !== 'high' && meta.side !== 'low'
-            && meta.side !== 'open' && meta.side !== 'close')) delete normalized.dayExtreme;
+            && meta.side !== 'open' && meta.side !== 'close' && meta.side !== 'high-body')) delete normalized.dayExtreme;
       }
       if (normalized.kind === 'pencil') {
         const subX = normalizeSubX(normalized.subX);

@@ -194,6 +194,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   /** 방향키 미세 이동 — (dx, dy) 는 -1/0/1, `big` 은 Shift(열 배). 복제와 같은
    *  이유로 ref 경유다: 키다운 effect 가 `[]` deps 라 좌표 클로저가 stale 이 된다. */
   const nudgeSelectedRef = useRef<(dx: number, dy: number, big: boolean) => void>(() => {});
+  const drawHighBodyAtCursorRef = useRef<() => void>(() => {});
   // 같은 이유로 언마운트 정리가 최신 되돌리기 상태를 걷게 하는 통로.
   const cancelForwardRef = useRef<() => void>(() => {});
 
@@ -400,6 +401,15 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         return;
       }
 
+      // An immediate command, rather than a tool waiting for a click. Use code
+      // as well as key so the shortcut also works with the Korean keyboard.
+      if (e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
+        && (e.code === 'KeyR' || e.key.toLowerCase() === 'r')) {
+        if (!e.repeat && !e.isComposing) drawHighBodyAtCursorRef.current();
+        e.preventDefault();
+        return;
+      }
+
       const shortcutKind = matchShortcut(e);
       if (shortcutKind) {
         useDrawingsStore.getState().setActiveTool(shortcutKind);
@@ -475,6 +485,35 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
 
   const priceBoundsForPane = (paneId: PaneId) =>
     projPriceBoundsForPane(chart, paneSeries, paneId);
+
+  // Read current candles/axis/scope at keydown, including after a symbol or
+  // timeframe switch. Index on demand so live updates do no extra day scan.
+  drawHighBodyAtCursorRef.current = () => {
+    if (!dayExtremesReady || bucketMs == null || bucketMs < 60_000 || bucketMs >= 86_400_000
+      || scope == null || !paneSeries.has('candle')) return;
+    const cursor = lastMouseRef.current;
+    const container = containerRef.current;
+    if (!cursor || !container) return;
+    const rect = container.getBoundingClientRect();
+    const px = cursor.clientX - rect.left;
+    const py = cursor.clientY - rect.top;
+    const ts = chart.timeScale();
+    if (px < 0 || py < 0 || px >= ts.width() || py >= rect.height - ts.height()) return;
+    const realMs = projCanvasXToRealMs(chart, axis, px);
+    if (realMs == null) return;
+    const date = unixMsToKSTDate(realMs);
+    const extreme = indexDayExtremes((bundleCandles ?? []).filter(c => axis.contains(c.ts_ms))).get(date);
+    if (!extreme) return;
+    const style = useDrawingsStore.getState().defaults.styleByKind.hline;
+    const id = nanoid(8);
+    useDrawingsStore.getState().add(scope, {
+      id, kind: 'hline', paneId: 'candle', price: extreme.highBodyTop,
+      color: style.color, width: style.width, lineStyle: style.lineStyle,
+      ...(style.labelHidden === true ? { labelHidden: true } : {}),
+      dayExtreme: { date, side: 'high-body' },
+    });
+    revertToSelectMode(id);
+  };
 
   // Screen-uniform bar-ordinal domain for body-drag translation (see
   // DragBarDomain). `candles` is what makes one ordinal exactly one on-screen
