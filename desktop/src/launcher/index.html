@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<title>Ticklane 서버 연결</title><link rel="stylesheet" href="launcher.css"></head>
+<body><main><h1>Ticklane</h1><p>사용할 서버를 선택하세요. 수집과 주문 처리는 연결한 서버에서 실행됩니다.</p>
+<form id="connection"><label>저장된 서버<select id="profiles"><option value="">새 서버</option></select></label>
+<label>이름<input id="name" value="로컬" maxlength="80" required></label>
+<label>화면 주소<input id="origin" type="url" value="http://localhost:8000" required spellcheck="false"></label>
+<label>연결 모드<select id="mode"><option value="server">운영 서버</option><option value="development">개발 Vite</option></select></label>
+<label id="api-field" hidden>개발 API 주소<input id="api-origin" type="url" value="http://localhost:8000" spellcheck="false"></label>
+<p class="hint">로컬은 실행 중인 서버 주소, 원격은 신뢰하는 Tailscale 서버 주소를 입력하세요. 운영 서버는 프론트 화면도 제공해야 합니다.</p>
+<p id="switch-hint" class="hint" hidden>연결하면 기존 작업 창을 닫습니다. 이미 접수된 주문과 서버 수집은 계속됩니다.</p>
+<div class="actions"><button type="submit" id="connect">연결</button><button type="button" id="cancel" hidden>연결 취소</button><button type="button" id="remove">프로필 삭제</button></div>
+</form><p id="status" role="status" aria-live="polite"></p><footer id="version"></footer></main><script src="launcher.js"></script></body></html>

@@ -8,7 +8,7 @@ test('home opens the workspace and the brand returns home', async ({ page }) => 
   await page.screenshot({ path: '/tmp/hoga-landing-desktop.png', fullPage: true });
   await page.getByRole('link', { name: /라이브 시작하기/ }).click();
   await expect(page).toHaveURL(/\/live$/);
-  await page.getByRole('link', { name: 'hoga-ops 홈' }).click();
+  await page.getByRole('link', { name: 'Ticklane 홈' }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();

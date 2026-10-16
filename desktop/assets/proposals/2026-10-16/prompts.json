@@ -1,0 +1,24 @@
+{
+  "tool": "Built-in image_gen",
+  "status": "Design proposals",
+  "designs": [
+    {
+      "id": "A",
+      "title": "A · 호가 사다리",
+      "prompt": "Use-case: logo-brand. Create exactly ONE premium desktop app icon for Hoga Ops, a professional Korean stock orderbook/chart terminal. Square PNG. A centered deep graphite (#121216) rounded-square tile occupies 90% of the canvas, with truly transparent corners outside it. Inside use a SINGLE flat warm amber accent (#F0B429). Minimal professional identity, crisp bold geometry, distinctive silhouette readable at 32px, plenty of optical breathing room. Flat solid color artwork. No gradients, bevels, gloss, shadows, texture, 3D, mockup, scene, lettering, numbers, watermark, thin grid, border decorations or extraneous symbols. Do NOT use the letter H. Design an original ORDERBOOK DEPTH mark: three thick horizontal bid bars aligned toward a narrow vertical center gap face three thick horizontal ask bars on the other side, each stack stepped with different lengths like a market-depth ladder. Both sides use the same amber. Make a compact balanced abstract emblem of two opposing liquidity stacks with clean negative space. The six bars are the entire symbol. It should feel precise, dense and unmistakably like an orderbook rather than a generic building or a letter.",
+      "file": "a-orderbook.png"
+    },
+    {
+      "id": "B",
+      "title": "B · 캔들 심볼",
+      "prompt": "Use-case: logo-brand. Create exactly ONE premium desktop app icon for Hoga Ops, a professional Korean stock orderbook/chart terminal. Square PNG. A centered deep graphite (#121216) rounded-square tile occupies 90% of the canvas, with truly transparent corners outside it. Inside use a SINGLE flat warm amber accent (#F0B429). Minimal professional identity, crisp bold geometry, distinctive silhouette readable at 32px, plenty of optical breathing room. Flat solid color artwork. No gradients, bevels, gloss, shadows, texture, 3D, mockup, scene, lettering, numbers, watermark, thin grid, border decorations or extraneous symbols. Do NOT use the letter H. Design an iconic THREE CANDLESTICK symbol. Use three substantial geometric candle bodies at distinct vertical levels, each with a short thick vertical wick that remains legible at small sizes. Stagger them to imply a measured rising market rhythm, without an arrow or connecting chart line. Make the composition compact and beautifully balanced, with uniform width and disciplined spacing. The mark should feel like a modern professional charting instrument, stronger and cleaner than a conventional finance clip-art icon.",
+      "file": "b-candles.png"
+    },
+    {
+      "id": "C",
+      "title": "C · 가격 흐름",
+      "prompt": "Use-case: logo-brand. Create exactly ONE premium desktop app icon for Hoga Ops, a professional Korean stock orderbook/chart terminal. Square PNG. A centered deep graphite (#121216) rounded-square tile occupies 90% of the canvas, with truly transparent corners outside it. Inside use a SINGLE flat warm amber accent (#F0B429). Minimal professional identity, crisp bold geometry, distinctive silhouette readable at 32px, plenty of optical breathing room. Flat solid color artwork. No gradients, bevels, gloss, shadows, texture, 3D, mockup, scene, lettering, numbers, watermark, thin grid, border decorations or extraneous symbols. Do NOT use the letter H. Design an abstract PRICE FLOW RIBBON mark: a single continuous thick angular path with confident smoothly rounded corners, two deliberate upward steps and one short controlled pullback. Form a compact, sculptural lightning-like market waveform from one flat amber ribbon with precise negative space. No arrowhead, no axes, no candles and no letters. Emphasize a memorable standalone brand glyph rather than a literal chart screenshot. The silhouette should feel fast, calm, modern and highly recognizable.",
+      "file": "c-price-flow.png"
+    }
+  ]
+}

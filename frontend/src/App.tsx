@@ -73,7 +73,7 @@ const SettingsSections = lazy(() => import('./live/SettingsSections'));
 // `/settings` 는 빠졌다 — 라우트가 아니라 드로어라 탭 제목을 가질 페이지가 없다.
 // `/live` 도 빠진다 — **페이지가 제목을 소유한다**(종목명 + 시세). 표에서 빼는 것만
 // 으로는 부족하고 아래 `staticTitle` 의 삼항에서도 같이 빼야 한다: 표를 못 찾으면
-// `?? 'hoga-ops'` 로 떨어져 App 이 페이지와 **경쟁하는 두 번째 writer** 가 된다.
+// `?? 'Ticklane'` 로 떨어져 App 이 페이지와 **경쟁하는 두 번째 writer** 가 된다.
 const PAGE_OWNED_TITLE_ROUTES: ReadonlySet<string> = new Set(['/live']);
 const STATIC_ROUTE_TITLES: ReadonlyMap<string, string> = new Map(
   WORKSPACE_NAV_ITEMS
@@ -110,7 +110,7 @@ export default function App() {
   const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
   const staticTitle = PAGE_OWNED_TITLE_ROUTES.has(pathname)
     ? null
-    : STATIC_ROUTE_TITLES.get(pathname) ?? 'hoga-ops';
+    : STATIC_ROUTE_TITLES.get(pathname) ?? 'Ticklane';
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTarget, setSettingsTarget] = useState<SettingsTarget>();
   // 설정 드로어의 **유일한 소유자**다. 트리거는 앱 곳곳에 흩어져 있지만(전 라우트

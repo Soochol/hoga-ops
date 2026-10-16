@@ -1,0 +1,36 @@
+{
+  "name": "ticklane",
+  "productName": "Ticklane",
+  "version": "0.16.6-rev.0",
+  "description": "Ticklane desktop client for local and Tailscale servers",
+  "author": "Hoga Ops contributors",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "setup:sandbox": "node scripts/setup-sandbox.mjs",
+    "install:shortcut": "npm run build && node scripts/install-shortcut.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests scripts *.cjs",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "test:e2e": "npm run build && playwright test",
+    "verify:deb": "node scripts/verify-deb.mjs",
+    "package": "npm run build && electron-forge package --platform=linux --arch=x64",
+    "make": "npm run build && electron-forge make --platform=linux --arch=x64"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-deb": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.12.4",
+    "electron": "44.8.0",
+    "eslint": "10.3.0",
+    "globals": "17.6.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.59.2"
+  }
+}

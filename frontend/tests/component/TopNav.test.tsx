@@ -37,7 +37,7 @@ function W({ children }: { children: ReactNode }) {
 it('renders the approved minimal top menu items', () => {
   render(<TopNav onOpenSettings={() => {}} />, { wrapper: W });
 
-  expect(screen.getByText('hoga-ops')).toBeInTheDocument();
+  expect(screen.getByText('Ticklane')).toBeInTheDocument();
   expect(screen.getByText('라이브')).toBeInTheDocument();
   expect(screen.getByText('보관함')).toBeInTheDocument();
   expect(screen.getByText('캡처')).toBeInTheDocument();

@@ -1,3 +1,5 @@
+import type {} from './desktop';
+
 export type AppConfig = Readonly<{ api_url: string }>;
 // 폴백은 백엔드 실제 기본 포트(8000)와 일치해야 한다 — 8080 이던 시절에는
 // config.json 로드 실패가 "아무도 안 듣는 포트로의 전면 무응답" 으로 위장됐다.
@@ -68,8 +70,17 @@ export async function loadConfig(): Promise<AppConfig> {
     const data = await r.json();
     const apiUrl = readApiUrl(data);
     if (apiUrl === null) throw new Error('invalid config shape');
+    if (typeof window !== 'undefined' && window.hogaDesktop?.strictConfig) {
+      const target = apiUrl === '' ? window.location.origin : new URL(apiUrl).origin;
+      if (target !== window.hogaDesktop.apiOrigin || (apiUrl !== '' && new URL(apiUrl).origin !== apiUrl)) {
+        throw new Error('설정의 API 주소가 선택한 서버와 다릅니다.');
+      }
+    }
     return { api_url: apiUrl };
   } catch (e) {
+    if (typeof window !== 'undefined' && window.hogaDesktop?.strictConfig) {
+      throw new Error('서버 연결 설정을 읽지 못했습니다. 서버의 config.json을 확인한 뒤 다시 시도하세요.', { cause: e });
+    }
     console.warn('[config] using DEFAULT_CONFIG:', e);
     return DEFAULT_CONFIG;
   }

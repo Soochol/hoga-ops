@@ -1282,7 +1282,7 @@ export function snapshotWorkspace(): WorkspaceSnapshot {
  *  오면 배치를 바꾸려고 누른 프리셋이 창들의 종목까지 갈아 끼운다. 저장 쪽
  *  (`snapshotWorkspace`)과 **양쪽 다** 막아야 한다: 서버에 이미 핀이 실린 옛 프리셋이
  *  남아 있을 수 있으므로 읽기 차단이 최종 방어선이다. */
-function normalizeWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot {
+export function normalizeWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot {
   const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const rawWindows = Array.isArray(obj.windows) ? obj.windows : [];
   // 프리셋 payload 는 v2(비율)만 인정한다 — 스키마 v3 로 저장된 구 px 페이로드는

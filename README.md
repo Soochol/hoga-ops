@@ -1,4 +1,7 @@
-# hoga-ops
+# Ticklane
+
+Linux용 Electron 앱 **Ticklane**은 [desktop 실행·배포 안내](./desktop/README.md)를 참고하세요.
+같은 앱에서 로컬 서버와 별도 PC의 Tailscale 서버를 선택하며, 백엔드는 기존 방식으로 실행합니다.
 
 Personal local-first tool to capture, store, and replay Korean stock orderbook + trade data from hogaplay.com and 키움 (Kiwoom).
 

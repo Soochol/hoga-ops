@@ -7,7 +7,12 @@ let _configPromise: Promise<AppConfig> | null = null;
  *  `/config.json` 을 다시 받지 않는다 — 메모이제이션이 config.ts 가 아니라
  *  여기 있어서, 표시용으로 `loadConfig()` 를 직접 부르면 중복 요청이 된다. */
 export async function getConfig(): Promise<AppConfig> {
-  if (!_configPromise) _configPromise = loadConfig();
+  if (!_configPromise) {
+    const pending = loadConfig();
+    _configPromise = pending;
+    // Failed bootstraps must be retryable; successful config remains shared.
+    void pending.catch(() => { if (_configPromise === pending) _configPromise = null; });
+  }
   return _configPromise;
 }
 

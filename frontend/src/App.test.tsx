@@ -116,9 +116,9 @@ describe('App document title', () => {
   // `PAGE_OWNED_TITLE_ROUTES` 의 거주자는 `/live` 하나가 됐다. 아래 「표에 없는
   // 라우트」케이스가 이제 옛 `/study` 북마크의 착지 전 상태까지 덮는다.
 
-  it('uses hoga-ops for routes without a side menu item', () => {
+  it('uses Ticklane for routes without a side menu item', () => {
     wrap(<div>unused</div>, '/ad-hoc');
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
   });
 });
 
