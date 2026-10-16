@@ -60,6 +60,14 @@ const auctionWindows = new WeakMap<SessionSegment, { open: number; close: number
 function auctionWindow(seg: SessionSegment) {
   const cached = auctionWindows.get(seg);
   if (cached?.open === seg.sessionOpenMs && cached.close === seg.sessionCloseMs) return cached;
+  // 08:00 is the NXT/integrated extended window. Its 20:00 close is
+  // continuous trading, so a KRX-style trailing auction must not hide it.
+  if (unixMsToKSTHhmm(seg.sessionOpenMs) === 800) {
+    const window = { open: seg.sessionOpenMs, close: seg.sessionCloseMs,
+      start: Number.POSITIVE_INFINITY, end: seg.sessionCloseMs };
+    auctionWindows.set(seg, window);
+    return window;
+  }
   const end = unixMsToKSTHhmm(seg.sessionOpenMs) === 900
     ? krxRegularCloseFromWindow(unixMsToKSTDate(seg.sessionOpenMs), seg.sessionCloseMs)
     : seg.sessionCloseMs;

@@ -652,7 +652,7 @@ describe('overlayLiveTradesOnCandles', () => {
     expect(krxTag).toBe(untouched);
   });
 
-  it('클립 ON(120·240): 정규장 밖 실시간 체결은 tail 에 얹히지 않는다', () => {
+  it('KRX 기존 날짜의 120·240분봉은 정규장 밖 체결을 제외한다', () => {
     // 과거봉만 클립하고 tail 을 안 클립하면 그 비대칭이 **장중에만** 나타난다 —
     // 마감 후에는 과거봉 경로로 넘어가 증상이 사라져서 재현이 어렵다.
     const openMs = 1779840000000;                       // 2026-05-27 09:00 KST
@@ -663,7 +663,7 @@ describe('overlayLiveTradesOnCandles', () => {
       vol_a: 1000, vol_b: 0,
     };
     const tradeAt = (tMs: number) => ({
-      t_ms: tMs, kind: 'trade' as const, venue: 'UN' as const,
+      t_ms: tMs, kind: 'trade' as const, venue: 'KRX' as const,
       trades: [{ t_ms: tMs, price: 99000, qty: 7, side: 1 }],
     });
 
@@ -671,16 +671,16 @@ describe('overlayLiveTradesOnCandles', () => {
     // (참조 동일성 — bundle.candles identity 가 흔들리면 크로스헤어·오버레이
     // 캐시가 무효화된다).
     const input = [last];
-    const clipped = overlayLiveTradesOnCandles(input, [tradeAt(at(16, 0))], 14_400_000, 'UN', true);
+    const clipped = overlayLiveTradesOnCandles(input, [tradeAt(at(16, 0))], 14_400_000, 'KRX', true);
     expect(clipped).toBe(input);
 
     // 클립 OFF 면 같은 체결이 정규장 봉을 오염시킨다 — 대조가 있어야 위 단언이
     // "클립이 한 일" 임이 증명된다.
-    const unclipped = overlayLiveTradesOnCandles([last], [tradeAt(at(16, 0))], 14_400_000, 'UN', false);
+    const unclipped = overlayLiveTradesOnCandles([last], [tradeAt(at(16, 0))], 14_400_000, 'KRX', false);
     expect(unclipped[0].close).toBe(99000);
 
     // 정규장 안(14:00) 체결은 클립 ON 에서도 정상적으로 얹힌다.
-    const inSession = overlayLiveTradesOnCandles([last], [tradeAt(at(14, 0))], 14_400_000, 'UN', true);
+    const inSession = overlayLiveTradesOnCandles([last], [tradeAt(at(14, 0))], 14_400_000, 'KRX', true);
     expect(inSession[0]).toMatchObject({ close: 99000, vol_a: 1007 });
   });
 });
@@ -2329,7 +2329,7 @@ describe('useLiveBundle', () => {
     }
   });
 
-  it('requests POC bins without volume distributions when only trade POC is enabled', () => {
+  it('requests day distribution bins as the live POC baseline when only trade POC is enabled', () => {
     useLivePageStore.setState({
       historicalFromDate: '20260501',
       volumeDistributionEnabled: false,
@@ -2348,7 +2348,7 @@ describe('useLiveBundle', () => {
       '20260527',
       expect.objectContaining({
         mode: 'sidecar',
-        volumeDistributionBins: null,
+        volumeDistributionBins: 12,
         tradeVolumePocBins: 12,
         volumeDistributionPriceRange: null,
       }),
@@ -2617,6 +2617,24 @@ describe('useLiveBundle', () => {
     candlesMock.warnings = [{ date: '20260609', reason: 'rate_limit_upstream', kind: 'rate_limit', msg: 'minute path' }];
     const { result } = renderHook(() => useLiveBundle('005930', 'D', '20260527', liveFixture), { wrapper });
     expect(result.current.pastDataWarnings).toEqual([]); // daily spy의 data_warnings=[]
+  });
+
+
+  it('requests regular-only wall/depth sidecars on the display grid while hoga clips from 1m data', async () => {
+    const { WindowViewContext } = await import('./workspace/windowViewContext');
+    const QueryWrapper = createWrapper();
+    useLivePageStore.getState().patchIndicatorsScoped({ windowKey: null }, '60m', {
+      askPeakEnabled: true, bidPeakEnabled: true, depthHeatmapEnabled: true,
+    });
+    renderHook(() => useLiveBundle('005930', '60m', '20260527', liveFixture, { venue: 'NXT' }), {
+      wrapper: ({ children }) => <WindowViewContext.Provider value={{ windowId: null, group: null,
+        code: '005930', timeframe: '60m', historicalFromDate: null, regularSessionOnly: true }}>
+        <QueryWrapper>{children}</QueryWrapper></WindowViewContext.Provider>,
+    });
+    expect(useRangeHogaDeltaSpy).toHaveBeenCalledWith('005930', expect.any(String), expect.any(String),
+      '1m', undefined, '20260527', expect.objectContaining({ regularSessionOnly: true }));
+    expect(useRangeSidecarDeltaSpy).toHaveBeenCalledWith('005930', expect.any(String), expect.any(String),
+      '60m', undefined, '20260527', expect.objectContaining({ regularSessionOnly: true }));
   });
 
 });

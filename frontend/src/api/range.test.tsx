@@ -188,6 +188,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       null,
       null,
+      false,
     ]);
   });
 
@@ -209,7 +210,7 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey[14]).toBe('hoga');
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
     // [… depthHeatmapEnabled, venue, bar, allBar, unreachedBar] 다.
-    expect(request.queryKey.at(-5)).toBe(null);
+    expect(request.queryKey[20]).toBe(null);
   });
 
   it('adds mode=sidecar for overlay sidecar requests', () => {
@@ -230,7 +231,7 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey[14]).toBe('sidecar');
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
     // [… depthHeatmapEnabled, venue, bar, allBar, unreachedBar] 다.
-    expect(request.queryKey.at(-5)).toBe(null);
+    expect(request.queryKey[20]).toBe(null);
   });
 
   it('threads sidecar indicator gates into the URL params and query key', () => {
@@ -268,9 +269,9 @@ describe('buildRangeBundleRequest', () => {
     expect(request.url).toContain('&unreached_bar_peaks_enabled=true');
     // ⚠ 키 뒤쪽은 덧붙이기 전용이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
     // [다섯 게이트, venue, barPeaksEnabled] 다.
-    expect(request.queryKey.slice(-9, -4)).toEqual([false, false, false, false, false]);
+    expect(request.queryKey.slice(16, 21)).toEqual([false, false, false, false, false]);
     // 꼬리 = [venue, bar, allBar, unreachedBar] (덧붙이기 전용). 세 게이트가 독립이다.
-    expect(request.queryKey.slice(-3)).toEqual([true, false, true]);
+    expect(request.queryKey.slice(22, 25)).toEqual([true, false, true]);
   });
 
   it('adds mode=candles for lightweight candle requests', () => {
@@ -292,7 +293,7 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey[14]).toBe('candles');
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
     // [… depthHeatmapEnabled, venue, bar, allBar, unreachedBar] 다.
-    expect(request.queryKey.at(-5)).toBe(null);
+    expect(request.queryKey[20]).toBe(null);
   });
 
   it('includes volumeDistributionCutoffMs in the range query key', () => {
@@ -366,6 +367,7 @@ describe('buildRangeBundleRequest', () => {
       null,
       null,
       null,
+      false,
     ]);
   });
 
@@ -387,7 +389,7 @@ describe('buildRangeBundleRequest', () => {
     expect(request.queryKey[14]).toBe(null);
     // ⚠ 키 뒤쪽은 **덧붙이기 전용**이라 음수 인덱스가 추가 때마다 밀린다. 지금 꼬리는
     // [… depthHeatmapEnabled, venue, bar, allBar, unreachedBar] 다.
-    expect(request.queryKey.at(-5)).toBe(null);
+    expect(request.queryKey[20]).toBe(null);
   });
 });
 
@@ -1127,6 +1129,7 @@ describe('rangeBundleQueryOptions', () => {
       null,
       null,
       null,
+      false,
     ]);
 
     const signal = new AbortController().signal;
@@ -2043,6 +2046,7 @@ describe('rangePlaceholderData', () => {
     null,
     null,
     null,
+      false,
   ];
 
   it('keeps previous same-code data for date extension when option-sensitive fields are unchanged', () => {
@@ -2072,6 +2076,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      false,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBe(fakeBundle);
@@ -2104,6 +2109,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      false,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -2136,6 +2142,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      false,
     ];
     const currentKey: Parameters<typeof rangePlaceholderData>[1] = [
       'range',
@@ -2163,6 +2170,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      false,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, previousKey)).toBeUndefined();
@@ -2198,6 +2206,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      false,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -2235,6 +2244,7 @@ describe('rangePlaceholderData', () => {
       null,
       null,
       null,
+      false,
     ];
 
     expect(rangePlaceholderData(fakeBundle, currentKey, baseKey)).toBeUndefined();
@@ -2605,4 +2615,19 @@ describe('range history during interaction', () => {
     unmount(); qc.clear();
   });
 
+});
+
+
+it('separates regular-session requests, placeholders and delta identities', () => {
+  const input: RangeBundleRequestInput = { code: '005930', from: '20260914', to: '20260914',
+    timeframe: '1m', todayKst: '20260915', venue: 'NXT', sourcePref: 'kiwoom_live',
+    options: { mode: 'sidecar', volumeDistributionBins: 10 } };
+  const full = buildRangeBundleRequest(input);
+  const regularInput = { ...input, options: { ...input.options, regularSessionOnly: true } };
+  const regular = buildRangeBundleRequest(regularInput);
+  expect(regular.url).toContain('regular_session_only=true');
+  expect(full.url).not.toContain('regular_session_only');
+  expect(regular.queryKey).not.toEqual(full.queryKey);
+  expect(rangePlaceholderData(fakeBundle, regular.queryKey, full.queryKey)).toBeUndefined();
+  expect(planSidecarRangeDelta(regularInput).identity).not.toEqual(planSidecarRangeDelta(input).identity);
 });

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,7 +26,7 @@ import polars as pl
 from hoga.api.invariants import normalize_session_bounds
 from hoga.api.sources import source_venue_dir
 from hoga.live.promote import _completeness_fields
-from hoga.live.stock_sessions import krx_continuous_windows
+from hoga.live.stock_sessions import krx_aftermarket_introduced, krx_continuous_windows, stock_indicator_bounds
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST, HogaMs
 
@@ -261,26 +262,76 @@ def backfill_hogaplay_meta(
 
 
 def _repair_indicator_bounds(meta: dict, date: str, venue: str) -> tuple[int, int]:
-    from hoga.live.promote import indicator_session_for_date  # noqa: PLC0415 — session policy
-
-    defaults = indicator_session_for_date(date, venue, aftermarket_eligible=meta.get("krx_aftermarket_eligible"))
     current = (meta.get("indicator_session_open_ms"), meta.get("indicator_session_close_ms"))
     regular = (meta.get("regular_session_open_ms", 90000000), meta.get("regular_session_close_ms", 153000000))
+    defaults = stock_indicator_bounds(
+        date, venue, regular_open_ms=regular[0], regular_close_ms=regular[1],
+        aftermarket_eligible=meta.get("krx_aftermarket_eligible"),
+    )
     legacy = (90000000, 153000000)
     if None not in current and current != legacy:
         return current
-    if venue == "KRX" and regular != legacy:
-        return regular
     if current == legacy:
         return defaults
     return tuple(value if value is not None else default for value, default in zip(current, defaults, strict=True))
 
 
+def _backfill_indicator_meta(
+    meta_path: Path, *, date: str, venue: str, data_dir: Path,
+    dry_run: bool, backup_dir: Path | None,
+) -> str:
+    meta = _load_meta(meta_path)
+    if meta is None:
+        return "invalid"
+    open_ms, close_ms = _repair_indicator_bounds(meta, date, venue)
+    if open_ms >= close_ms:
+        _log.warning("meta_backfill.invalid path=%s reason=inferred open must precede close", meta_path)
+        return "invalid"
+    policy_current = (
+        venue != "KRX" or not krx_aftermarket_introduced(date)
+        or meta.get("krx_aftermarket_eligible") is False
+        or meta.get("indicator_policy_version") == 1
+    )
+    if (policy_current and
+        meta.get("indicator_session_open_ms") == int(open_ms)
+        and meta.get("indicator_session_close_ms") == int(close_ms)
+    ):
+        return "skipped"
+    if dry_run:
+        return "updated"
+    if backup_dir is not None:
+        backup = backup_dir / meta_path.relative_to(data_dir)
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        if not backup.exists():
+            shutil.copy2(meta_path, backup)
+    meta.setdefault("date", date)
+    meta["indicator_session_open_ms"] = int(open_ms)
+    meta["indicator_session_close_ms"] = int(close_ms)
+    if venue == "KRX" and krx_aftermarket_introduced(date):
+        meta["indicator_policy_version"] = 1
+    meta.update(_recompute_fields(
+        meta_path.parent / "snapshots.parquet",
+        session_open_ms=HogaMs(open_ms), session_close_ms=HogaMs(close_ms),
+        collection_complete=bool(meta.get("collection_complete", True)),
+        continuous_windows=krx_continuous_windows(
+            date, venue, open_ms, close_ms,
+            regular_close_ms=meta.get("regular_session_close_ms"),
+        ),
+    ))
+    atomic_write_json(meta_path, meta, indent=2)
+    return "updated"
+
+
 def backfill_indicator_session_bounds(
-    data_dir: Path, *, dry_run: bool = False,
+    data_dir: Path, *, dry_run: bool = False, backup_dir: Path | None = None,
+    from_date: str | None = None,
 ) -> BackfillResult:
-    """venue 별 지표 구간(``indicator_session_open/close_ms``)을 이미 승격된
-    ``kiwoom_live/{venue}/meta.json`` 에 소급으로 실어 준다.
+    """Repair indicator windows in WS and post-launch hogaplay metadata.
+
+    ``backup_dir`` preserves each original meta before its first replacement;
+    parquet files and capture-history counters are never rewritten. New KRX
+    dates also receive a policy marker so existing 20:00 metadata invalidates
+    stale derived results exactly once.
 
     이 키가 생기기 전 승격본은 정규장 경계(09:00–15:30)만 실었고, 조회 경로가 그걸
     지표 경계로 읽어 **NXT·UN 의 프리·애프터마켓 호가 스냅샷이 통째로 집계에서
@@ -314,49 +365,26 @@ def backfill_indicator_session_bounds(
     for date_dir in sorted(parquet_root.iterdir()):
         if not date_dir.is_dir() or not _is_yyyymmdd(date_dir.name):
             continue
-        if date_dir.name >= today:
+        if date_dir.name >= today or (from_date is not None and date_dir.name < from_date):
             continue
         for code_dir in sorted(date_dir.iterdir()):
             if not code_dir.is_dir():
                 continue
-            for venue in _VENUE_INDICATOR_SESSION_MS:
-                meta_path = code_dir / "kiwoom_live" / venue / "meta.json"
+            targets = [("kiwoom_live", venue) for venue in _VENUE_INDICATOR_SESSION_MS]
+            if krx_aftermarket_introduced(date_dir.name):
+                targets.append(("hogaplay", "KRX"))
+            for source, venue in targets:
+                meta_path = source_venue_dir(code_dir, source, venue) / "meta.json"
                 if not meta_path.exists():
                     continue
                 scanned += 1
-                meta = _load_meta(meta_path)
-                if meta is None:
-                    skipped += 1
-                    invalid += 1
-                    continue
-                open_ms, close_ms = _repair_indicator_bounds(meta, date_dir.name, venue)
-                if open_ms >= close_ms:
-                    _log.warning("meta_backfill.invalid path=%s reason=inferred open must precede close", meta_path)
-                    skipped += 1
-                    invalid += 1
-                    continue
-                if (
-                    meta.get("indicator_session_open_ms") == int(open_ms)
-                    and meta.get("indicator_session_close_ms") == int(close_ms)
-                ):
-                    skipped += 1
-                    continue
-                if dry_run:
-                    updated += 1
-                    continue
-                meta["indicator_session_open_ms"] = int(open_ms)
-                meta["indicator_session_close_ms"] = int(close_ms)
-                meta.update(_recompute_fields(
-                    meta_path.parent / "snapshots.parquet",
-                    session_open_ms=HogaMs(open_ms), session_close_ms=HogaMs(close_ms),
-                    collection_complete=bool(meta.get("collection_complete", True)),
-                    continuous_windows=krx_continuous_windows(
-                        date_dir.name, venue, open_ms, close_ms,
-                        regular_close_ms=meta.get("regular_session_close_ms"),
-                    ),
-                ))
-                atomic_write_json(meta_path, meta, indent=2)
-                updated += 1
+                outcome = _backfill_indicator_meta(
+                    meta_path, date=date_dir.name, venue=venue, data_dir=data_dir,
+                    dry_run=dry_run, backup_dir=backup_dir,
+                )
+                updated += outcome == "updated"
+                skipped += outcome != "updated"
+                invalid += outcome == "invalid"
     return BackfillResult(scanned=scanned, updated=updated, skipped=skipped, invalid=invalid)
 
 

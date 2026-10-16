@@ -11,6 +11,7 @@ from typing import assert_never
 
 from hoga.api.disk_state import analyze_gaps
 from hoga.collector.orchestrator import raw_pages
+from hoga.live.stock_sessions import krx_continuous_windows, stock_indicator_bounds
 from hoga.tables import brokers, candles, snapshots, trades
 from hoga.tables.brokers import BrokerRow
 from hoga.tables.candles import Candle
@@ -383,6 +384,17 @@ def _build_meta(
     raw_dir: Path,
     snapshot_ts_ms: list[int],
 ) -> dict[str, object]:
+    from hoga.api.symbols import krx_aftermarket_eligibility  # noqa: PLC0415 — metadata boundary
+
+    date = raw_dir.parent.name
+    eligibility = krx_aftermarket_eligibility(info.code)
+    indicator_open, indicator_close = stock_indicator_bounds(
+        date, "KRX", regular_open_ms=info.regular_session_open_ms,
+        regular_close_ms=info.regular_session_close_ms, aftermarket_eligible=eligibility,
+    )
+    continuous_windows = krx_continuous_windows(
+        date, "KRX", indicator_open, indicator_close, regular_close_ms=info.regular_session_close_ms,
+    )
     pages = raw_pages(raw_dir)
     progress_path = raw_dir / "_progress.json"
     collection_complete = False
@@ -408,8 +420,9 @@ def _build_meta(
     # venue 축을 타지 않는 유일한 소비자라 값을 여기서 명시한다.
     gaps = analyze_gaps(
         [HogaMs(ts) for ts in snapshot_ts_ms],
-        session_open_ms=HogaMs(info.regular_session_open_ms),
-        session_close_ms=HogaMs(info.regular_session_close_ms),
+        session_open_ms=HogaMs(indicator_open),
+        session_close_ms=HogaMs(indicator_close),
+        continuous_windows=continuous_windows,
         anchor_edges=True,
     )
     is_partial = gaps.is_partial
@@ -420,9 +433,16 @@ def _build_meta(
 
     return {
         "code": info.code,
+        "date": date,
         "name": info.name,
         "regular_session_open_ms": info.regular_session_open_ms,
         "regular_session_close_ms": info.regular_session_close_ms,
+        "indicator_session_open_ms": indicator_open,
+        "indicator_session_close_ms": indicator_close,
+        "krx_aftermarket_eligible": eligibility,
+        "indicator_policy_version": 1,
+        **({"indicator_continuous_windows": [list(w) for w in continuous_windows]}
+           if continuous_windows is not None else {}),
         "prev_close": info.prev_close,
         "upper_limit": info.upper_limit,
         "lower_limit": info.lower_limit,

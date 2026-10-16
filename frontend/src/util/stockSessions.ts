@@ -2,11 +2,19 @@ import { unixMsToKSTDate, unixMsToKSTHhmm } from './time';
 
 /** Mirror of hoga/live/stock_sessions.py. Market hours do not imply eligibility. */
 export const KRX_AFTERMARKET_START_DATE = '20260914';
+const KRX_AFTERMARKET_START_MS = Date.parse('2026-09-14T00:00:00+09:00');
 /** Shared footer wording for the regular close book in both book windows. */
 export const KRX_AFTER_HOURS_CLOSE_LABEL = '시간외종가';
 
 export function krxAftermarketIntroduced(date: string): boolean {
   return date >= KRX_AFTERMARKET_START_DATE;
+}
+
+/** Match the backend's indicator break without allocating dates per WS tick. */
+export function isStockIndicatorBreak(tMs: number, venue: string): boolean {
+  if (venue !== 'KRX' || tMs < KRX_AFTERMARKET_START_MS) return false;
+  const intra = ((tMs + 9 * 3600_000) % 86400_000 + 86400_000) % 86400_000;
+  return intra > (15 * 60 + 30) * 60_000 && intra < 16 * 3600_000;
 }
 
 /** The display window can end at 20:00; the official auction still ends at 15:30. */

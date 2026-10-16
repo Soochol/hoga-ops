@@ -40,7 +40,8 @@ import { buildIndexBundle } from './buildIndexBundle';
 import { capabilitiesForInstrument } from './liveInstrumentCapabilities';
 import { useDailyMaRevealGate } from './indicators/useDailyMaRevealGate';
 import { quantizeDailyMaFloorDate } from './indicators/dailyMaProjection';
-import { useWindowIndicatorDemand } from './workspace/windowView';
+import { useWindowIndicatorDemand, useWindowView } from './workspace/windowView';
+import { useRegularSessionLiveSeries } from './useRegularSessionLiveSeries';
 
 /** 안정 빈 배열 — 매 렌더 새 [] 가 peaks 훅의 메모 deps 를 churn 하지 않게. */
 const EMPTY_ASK_PEAKS: readonly AskPeak[] = [];
@@ -173,7 +174,10 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   // **기준일이 선 창도 같이 끊는다.** 안 끊으면 오늘 체결이 과거 축의 오른쪽 끝에
   // 얹혀, 목적지와 오늘 사이가 통째로 빈 채로 축만 오늘까지 늘어난다 — 점프가
   // 없애려던 그 구간이 whitespace 로 되살아난다.
-  const live = useLiveSeries(freeze || asOf ? '' : (activeCode ?? ''), venue);
+  const rawLive = useLiveSeries(freeze || asOf ? '' : (activeCode ?? ''), venue);
+  const sessionView = useWindowView();
+  const regularOnly = isMinuteTimeframe(timeframe) && sessionView.regularSessionOnly === true;
+  const live = useRegularSessionLiveSeries(rawLive, regularOnly);
   const {
     bundle,
     chartBundle,
@@ -317,9 +321,11 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     today,
     peakSessionOpenMs,
     activeCode,
-    liveInitial?.ask_peak_today ?? null,
+    regularOnly ? null : liveInitial?.ask_peak_today ?? null,
     askPeakCandles,
     venue,
+    regularOnly,
+    freeze !== null || asOf !== null,
   );
   const bidPeakOb = bidPeaksOn ? live.ob : EMPTY_OB_SNAPSHOTS;
   const bidPeakTrade = bidPeaksOn ? live.trade : EMPTY_TRADE_SNAPSHOTS;
@@ -332,9 +338,11 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     today,
     peakSessionOpenMs,
     activeCode,
-    liveInitial?.bid_peak_today ?? null,
+    regularOnly ? null : liveInitial?.bid_peak_today ?? null,
     bidPeakCandles,
     venue,
+    regularOnly,
+    freeze !== null || asOf !== null,
   );
   // 라이브 인자(trade·ob)만 토글로 끊는다 — candles·segments 는 봉 게이트만 따른다.
   // `orderbooks` 는 `firstTrailingSinglePriceBookMs` 로 들어가는데, 그 함수가 창을 조기
@@ -349,6 +357,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     isMinute ? (candlePathBundle?.segments ?? []) : [],
     tradeVolumePocOn ? live.ob : EMPTY_OB_SNAPSHOTS,
     pocVenue,
+    candlePathBundle?.volume_distributions,
   );
   const liveSaveBundle = useMemo<RangeBundle | null>(() => {
     // `candlePathBundle` 은 `stockChartBundle ?? stockBundle` 이라 `stockBundle` 이 있으면

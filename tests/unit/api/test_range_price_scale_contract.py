@@ -112,6 +112,7 @@ NON_PRICE_FIELDS: frozenset[str] = frozenset({
     "DayVolumeDistribution.session_open_ms", "DayVolumeDistribution.session_close_ms",
     "DayVolumeDistribution.last_trade_ms", "DayVolumeDistribution.bins",
     "VolumeDistributionBin.qty",
+    "VolumeDistributionBin.first_trade_ms",  # Unix time stays unchanged by price adjustment.
     "ExcludedDate.date", "ExcludedDate.violations",
     "DateWarning.date", "DateWarning.warnings",
     "MissingDate.date", "MissingDate.reason",

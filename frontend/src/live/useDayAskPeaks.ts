@@ -1,3 +1,4 @@
+import { regularSessionPeakSeed } from './regularSessionPeakSeed';
 import { useMemo, useRef } from 'react';
 import type { AskPeak, AskPeakCandidate, Candle } from '../api/types';
 import type { LiveTodayAskPeak } from '../api/liveSeries';
@@ -268,6 +269,8 @@ export function useDayAskPeaks(
   todayAskPeak: LiveTodayAskPeak | null = null,
   todayCandles: readonly Candle[] = EMPTY_CANDLES,
   venue = 'KRX',
+  regularSessionOnly = false,
+  streamFrozen = false,
 ): AskPeak[] {
   void todayCandles;
   const sourceRef = useRef<IncrementalPeakWallSource | null>(null);
@@ -278,17 +281,25 @@ export function useDayAskPeaks(
   if (recordsRef.current === null) recordsRef.current = new PeakRecordAccumulator();
   const maximaRef = useRef<SessionPeakWallMaxima | null>(null);
   if (maximaRef.current === null) maximaRef.current = new SessionPeakWallMaxima();
-  const scopeKey = `${code}|${venue}|${todayKst}|${sessionOpenMs}`;
+  const scopeKey = `${code}|${venue}|${todayKst}|${sessionOpenMs}|${regularSessionOnly}`;
+  const scopedPeak = useMemo(() => regularSessionOnly
+    ? regularSessionPeakSeed(todaySeedRow(seeds, todayKst), todayCandles, todayKst, 'ask')
+    : todayAskPeak, [regularSessionOnly, seeds, todayKst, todayCandles, todayAskPeak]);
   return useMemo(
-    () => withSessionRecords(
-      maximaRef.current!.update(
-        deriveDayAskPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak),
-        todayKst, scopeKey,
-      ),
-      recordsRef.current!,
-      todayKst,
-      scopeKey,
-    ),
-    [ob, trade, seeds, todayKst, sessionOpenMs, todayAskPeak, scopeKey],
+    () => {
+      // Saved/as-of views have no live ratchet. Keep the independently
+      // aggregated last day, including its distinct rep/continuous maxima.
+      if (streamFrozen) return seeds.slice();
+      return withSessionRecords(
+        maximaRef.current!.update(
+          deriveDayAskPeaksIncremental(sourceRef.current!, ob, trade, seeds, todayKst, sessionOpenMs, scopedPeak),
+          todayKst, scopeKey,
+        ),
+        recordsRef.current!,
+        todayKst,
+        scopeKey,
+      );
+    },
+    [ob, trade, seeds, todayKst, sessionOpenMs, scopedPeak, scopeKey, streamFrozen],
   );
 }

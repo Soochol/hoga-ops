@@ -6,6 +6,7 @@ import type { SourcePreference } from '../state/sourcePreference';
 export type RangeMode = 'hoga' | 'sidecar' | 'candles';
 
 export type RangeRequestOptions = {
+  regularSessionOnly?: boolean;
   askPeaksEnabled?: boolean | null;
   bidPeaksEnabled?: boolean | null;
   brokerLateEntriesEnabled?: boolean | null;
@@ -78,6 +79,7 @@ export type RangeQueryKey = readonly [
   boolean | null,
   // unreachedBarPeaksEnabled — 셋째.
   boolean | null,
+  boolean, // regularSessionOnly
 ];
 
 export const RANGE_QUERY_KEY_FROM_DATE_INDEX = 2;
@@ -105,7 +107,7 @@ export type RangeBundleRequest = {
  *  "RangeQueryKey 튜플·queryKey 배열·이 목록에 추가" 라고 세 곳을 커밋 메시지에
  *  적어 뒀지만, 그 규칙이 코드에 없어 다음 두 축이 그대로 샜다. */
 const PLACEHOLDER_COMPATIBLE_KEY_INDICES = [
-  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+  4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
 ] as const;
 
 function addParam(params: URLSearchParams, key: string, value: number | string | null | undefined): void {
@@ -168,6 +170,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
     barPeaksEnabled,
     allBarPeaksEnabled,
     unreachedBarPeaksEnabled,
+    options.regularSessionOnly === true,
   ];
 
   const params = new URLSearchParams();
@@ -197,6 +200,7 @@ export function buildRangeBundleRequest(input: RangeBundleRequestInput): RangeBu
   // venue 는 **마지막**에 붙인다 — 기대 URL 문자열이 뒤에 이어 붙이는 형태라
   // 순서를 바꾸면 계약 테스트가 위치만으로 깨진다(쿼리스트링 순서는 의미 없음).
   addParam(params, 'venue', input.venue);
+  if (options.regularSessionOnly) addBoolParam(params, 'regular_session_only', true);
 
   return {
     enabled,

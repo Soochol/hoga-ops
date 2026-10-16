@@ -317,3 +317,21 @@ describe('regularSessionBinningSegment', () => {
     expect(regularSessionBinningSegment(withSource).source).toBe('kiwoom_live');
   });
 });
+
+it.each(['NXT', 'UN'])('keeps the full %s session for volume distributions', venue => {
+  const segment = { date: '20261015', session_open_ms: Date.parse('2026-10-15T08:00:00+09:00'),
+    session_close_ms: Date.parse('2026-10-15T20:00:00+09:00') };
+  expect(regularSessionBinningSegment(segment, venue)).toBe(segment);
+});
+
+
+it.each(['KRX', 'NXT', 'UN'] as const)('uses %s-eligible candles for the distribution price grid', venue => {
+  const at = (clock: string) => Date.parse(`2026-09-14T${clock}:00+09:00`);
+  const candles = [{ ts_ms: at('10:00'), open: 100, close: 100, high: 110, low: 90, vol_a: 1, vol_b: 0 },
+    { ts_ms: at('15:45'), open: 100, close: 100, high: 9999, low: 1, vol_a: 1, vol_b: 0 }];
+  const profile = computeContinuousTradeVolumeDistribution({ date: '20260914', candles,
+    trades: [{ t_ms: at('10:00'), price: 100, qty: 5, side: 1 }], rangeCount: 10,
+    segment: { date: '20260914', venue, session_open_ms: at('09:00'), session_close_ms: at('20:00') } });
+  expect(profile?.price_min).toBe(venue === 'KRX' ? 90 : 1);
+  expect(profile?.price_max).toBe(venue === 'KRX' ? 110 : 9999);
+});

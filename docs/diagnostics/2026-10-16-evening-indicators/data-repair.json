@@ -1,0 +1,109 @@
+{
+  "metadata_repair": {
+    "backup": "/home/dev/.local/share/hoga-ops/backups/20261016-evening-indicators-4r3kgilq",
+    "scanned": 19386,
+    "updated": 11978,
+    "skipped": 7408,
+    "invalid": 15,
+    "parquet_files_checked": 90902,
+    "changed_parquet": []
+  },
+  "ratio_recalculation": {
+    "target_count": 5955,
+    "recalculated": 5955,
+    "errors": [],
+    "samples": [
+      {
+        "date": "20261015",
+        "code": "005930",
+        "source": "hogaplay",
+        "venue": "KRX",
+        "evening_buckets": 1,
+        "nonzero_evening_buckets": 1
+      },
+      {
+        "date": "20261015",
+        "code": "005930",
+        "source": "kiwoom_live",
+        "venue": "KRX",
+        "evening_buckets": 112,
+        "nonzero_evening_buckets": 111
+      },
+      {
+        "date": "20261015",
+        "code": "005930",
+        "source": "kiwoom_live",
+        "venue": "NXT",
+        "evening_buckets": 112,
+        "nonzero_evening_buckets": 111
+      },
+      {
+        "date": "20261015",
+        "code": "005930",
+        "source": "kiwoom_live",
+        "venue": "UN",
+        "evening_buckets": 112,
+        "nonzero_evening_buckets": 111
+      },
+      {
+        "date": "20261015",
+        "code": "053080",
+        "source": "hogaplay",
+        "venue": "KRX",
+        "evening_buckets": 117,
+        "nonzero_evening_buckets": 114
+      },
+      {
+        "date": "20261015",
+        "code": "053080",
+        "source": "kiwoom_live",
+        "venue": "KRX",
+        "evening_buckets": 107,
+        "nonzero_evening_buckets": 103
+      },
+      {
+        "date": "20261015",
+        "code": "475960",
+        "source": "hogaplay",
+        "venue": "KRX",
+        "evening_buckets": 102,
+        "nonzero_evening_buckets": 98
+      },
+      {
+        "date": "20261015",
+        "code": "475960",
+        "source": "kiwoom_live",
+        "venue": "KRX",
+        "evening_buckets": 104,
+        "nonzero_evening_buckets": 99
+      },
+      {
+        "date": "20261015",
+        "code": "475960",
+        "source": "kiwoom_live",
+        "venue": "NXT",
+        "evening_buckets": 107,
+        "nonzero_evening_buckets": 106
+      },
+      {
+        "date": "20261015",
+        "code": "475960",
+        "source": "kiwoom_live",
+        "venue": "UN",
+        "evening_buckets": 109,
+        "nonzero_evening_buckets": 108
+      }
+    ],
+    "seconds": 212.4
+  },
+  "idempotency": {
+    "scanned": 19386,
+    "updated": 0,
+    "invalid_preserved": 15
+  },
+  "range": {
+    "from_date": "20260914",
+    "to_date": "20261015"
+  },
+  "other_indicator_caches": "Invalidated by source metadata generation and session-policy tokens; rebuilt on query."
+}

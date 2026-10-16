@@ -87,6 +87,7 @@ export type VolumeDistributionBin = {
   price_low: number;
   price_high: number;
   qty: number;
+  first_trade_ms?: number | null;
 };
 
 export type DayVolumeDistribution = {
@@ -625,6 +626,7 @@ export interface QueueSnapshot {
 // === RangeBundle (ADR-0013) ===
 
 export type RangeSegment = {
+  venue?: 'KRX' | 'NXT' | 'UN';
   date: string;            // YYYYMMDD KST
   session_open_ms: number; // Unix ms
   session_close_ms: number;

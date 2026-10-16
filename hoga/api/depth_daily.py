@@ -44,6 +44,7 @@ import polars as pl
 from hoga.api.invariants import indicator_session_bounds, normalize_session_bounds
 from hoga.api.queries import resolve_source_dir
 from hoga.duck import connect_bounded
+from hoga.live.stock_sessions import stock_indicator_break
 from hoga.tables import snapshots as snapshots_tbl
 from hoga.util.atomic_write import atomic_write_parquet_df
 
@@ -129,6 +130,9 @@ def compute_stock_date_peak(
         path=snap_path,
         session_open_ms=open_ms if isinstance(open_ms, int) else None,
         session_close_ms=close_ms if isinstance(close_ms, int) else None,
+        session_break=stock_indicator_break(
+            code_dir.parent.name, "KRX", regular_close_ms=norm_meta.get("regular_session_close_ms", 153000000),
+        ),
     )
 
 

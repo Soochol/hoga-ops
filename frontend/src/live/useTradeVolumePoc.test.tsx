@@ -146,3 +146,27 @@ it('retains an unseeded past fallback through a live trade update, then replaces
   rerender({ trades, seeds });
   expect(result.current.find(p => p.date === '20260624')?.qty).toBe(10);
 });
+
+it('merges saved day bins with only newer live trades instead of replacing the day with the WS tail', () => {
+  useLivePageStore.setState({ volumeDistributionRangeCount: 2 });
+  const open = atKst(9, 0), close = atKst(20, 0), first = atKst(10, 0);
+  const distribution = { date: '20260625', range_count: 2, price_min: 100, price_max: 120,
+    session_open_ms: open, session_close_ms: close, last_trade_ms: atKst(18, 0), bins: [
+      { price_low: 100, price_high: 110, qty: 1000, first_trade_ms: first },
+      { price_low: 110, price_high: 120, qty: 10, first_trade_ms: atKst(17, 0) },
+    ] };
+  const trades = [{ t_ms: atKst(19, 0), trades: [
+    { t_ms: atKst(17, 0), price: 105, qty: 1000, side: 1 }, // already on disk
+    { t_ms: atKst(19, 0), price: 115, qty: 20, side: 1 },
+  ] }];
+  const { result, rerender } = renderHook(({ distributions }) => useTradeVolumePocs(
+    trades, [], '20260625', '005930', [],
+    [{ date: '20260625', session_open_ms: open, session_close_ms: close }], [], 'NXT', distributions,
+  ), { initialProps: { distributions: [distribution] } });
+  expect(result.current[0]).toMatchObject({ qty: 1000, lowPrice: 100, t_ms: first });
+  // A newly promoted baseline includes that same live tail exactly once.
+  rerender({ distributions: [{ ...distribution, last_trade_ms: atKst(19, 0), bins: [
+    distribution.bins[0], { ...distribution.bins[1], qty: 1030 },
+  ] }] });
+  expect(result.current[0]).toMatchObject({ qty: 1030, lowPrice: 110, t_ms: atKst(17, 0) });
+});

@@ -569,6 +569,10 @@ def prune_derived(
     by_tree["kis-past-indicators"] = _prune_indicator_cache(
         data_dir / "kis-past-indicators", cutoff=cutoff, execute=execute,
     )
+    if (data_dir / "kis-past-indicators-regular").exists():
+        by_tree["kis-past-indicators-regular"] = _prune_indicator_cache(
+            data_dir / "kis-past-indicators-regular", cutoff=cutoff, execute=execute,
+        )
     by_tree["timing"] = _prune_dated_dirs(
         data_dir / "timing", cutoff=cutoff, execute=execute,
     )

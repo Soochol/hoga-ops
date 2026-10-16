@@ -590,3 +590,37 @@ describe('useDayAskPeaks — 기록 갱신 시퀀스(최대벽 강도 pane 계�
     expect(today.traded_record_max_peaks).toEqual([]);
   });
 });
+
+
+it('resets retained maxima and records when the regular-session badge changes', () => {
+  const morning = { price: 23900, qty: 10, t_ms: atKst(10) };
+  const evening = { price: 23900, qty: 9999, t_ms: atKst(18) };
+  const seed = (p: typeof morning): AskPeak => ({ date: '20260613', ...p,
+    max_price: p.price, max_qty: p.qty, max_t_ms: p.t_ms,
+    traded_peaks: [p], all_peaks: [p], traded_record_peaks: [p] });
+  const { result, rerender } = renderHook(({ regular }) => useDayAskPeaks(
+    [], [], [seed(morning)], '20260613', OPEN_MS, '005930',
+    { date: '20260613', coverage: 'partial', traded_price: evening.price, traded_qty: evening.qty,
+      traded_t_ms: evening.t_ms, all_price: evening.price, all_qty: evening.qty, all_t_ms: evening.t_ms,
+      traded_peaks: [evening], all_peaks: [evening] }, [], 'KRX', regular,
+  ), { initialProps: { regular: false } });
+  expect(result.current[0].all_peaks?.[0].qty).toBe(9999);
+  rerender({ regular: true });
+  expect(result.current[0].all_peaks?.[0].qty).toBe(10);
+  expect(result.current[0].traded_record_peaks?.every(p => p.t_ms === morning.t_ms)).toBe(true);
+  rerender({ regular: false });
+  expect(result.current[0].all_peaks?.[0].qty).toBe(9999);
+});
+
+
+it('keeps the final saved day when its live stream is explicitly frozen', () => {
+  const peak: AskPeak = { date: '20260613', price: 23900, qty: 10, t_ms: atKst(10),
+    max_price: 23900, max_qty: 99, max_t_ms: atKst(19),
+    traded_peaks: [{ price: 23900, qty: 10, t_ms: atKst(10) }],
+    traded_max_peaks: [{ price: 23900, qty: 99, t_ms: atKst(19) }],
+    all_peaks: [{ price: 23900, qty: 10, t_ms: atKst(10) }],
+    all_max_peaks: [{ price: 23900, qty: 99, t_ms: atKst(19) }],
+  };
+  const { result } = renderHook(() => useDayAskPeaks([], [], [peak], '20260613', OPEN_MS, '005930', null, [], 'KRX', false, true));
+  expect(result.current).toEqual([peak]);
+});

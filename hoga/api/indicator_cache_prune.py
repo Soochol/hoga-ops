@@ -25,6 +25,7 @@ import contextlib
 import json
 import logging
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
 
 from hoga.api.past_indicators_cache import KIND_VERSIONS
@@ -77,10 +78,10 @@ def kind_of(filename: str) -> str | None:
 
 def prune(data_dir: Path, *, dry_run: bool = True) -> PruneResult:
     """죽은 버전 캐시 파일을 센다(그리고 `dry_run=False` 면 지운다). 멱등."""
-    root = data_dir / "kis-past-indicators"
+    roots = [data_dir / name for name in ("kis-past-indicators", "kis-past-indicators-regular")]
     scanned = stale = retired = deleted = unreadable = unknown = 0
     freed = 0
-    if not root.exists():
+    if not any(root.exists() for root in roots):
         return PruneResult(0, 0, 0, 0, 0, 0, 0)
 
     def _drop(path: Path) -> None:
@@ -98,7 +99,7 @@ def prune(data_dir: Path, *, dry_run: bool = True) -> PruneResult:
             return
         deleted += 1
 
-    for path in root.rglob("*.json"):
+    for path in chain.from_iterable(root.rglob("*.json") for root in roots):
         scanned += 1
         kind = kind_of(path.name)
         if kind is None:

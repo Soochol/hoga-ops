@@ -311,6 +311,7 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
     const view = renderWithQuery(<DataWindow win={dataWin('vdist')} symbol={symbol} />);
     try {
       const initial = hook.mock.calls.at(-1)![0];
+      expect(initial.regularSessionOnly).toBe(true);
       expect(initial.liveTrades).toEqual([{ t_ms: open + 1000, price: 110, qty: 5, side: 1 }]);
       for (let i = 1; i <= 10; i++) act(() => {
         useLiveCursorStore.getState().setSidebarCursor(open + i * 60_000, {

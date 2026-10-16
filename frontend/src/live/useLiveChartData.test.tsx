@@ -13,6 +13,7 @@ import { renderHook } from '@testing-library/react';
 import type { RangeBundle } from '../api/types';
 import type { LiveSeriesData } from '../api/liveSeries';
 
+const consumerSpies = vi.hoisted(() => ({ ask: vi.fn(() => []), bid: vi.fn(() => []), poc: vi.fn(() => []) }));
 const liveFixture: LiveSeriesData = {
   initial: undefined,
   isLoading: false,
@@ -84,14 +85,14 @@ vi.mock('../api/liveSeries', () => ({
   useLiveSeries: (...args: unknown[]) => (liveSeriesSpy as (...a: unknown[]) => unknown)(...args),
 }));
 vi.mock('./useDayAskPeaks', () => ({
-  useDayAskPeaks: () => [],
+  useDayAskPeaks: consumerSpies.ask,
   useTodayAllPriceAskPeak: () => null,
 }));
 vi.mock('./useDayBidPeaks', () => ({
-  useDayBidPeaks: () => [],
+  useDayBidPeaks: consumerSpies.bid,
   useTodayAllPriceBidPeak: () => null,
 }));
-vi.mock('./useTradeVolumePoc', () => ({ useTradeVolumePocs: () => [] }));
+vi.mock('./useTradeVolumePoc', () => ({ useTradeVolumePocs: consumerSpies.poc }));
 vi.mock('../api/liveIndices', () => ({
   useLiveIndexCandles: () => ({ data: undefined, isLoading: false, isFetching: false }),
   useLiveIndexInvestorNet: () => ({ data: undefined }),
@@ -292,4 +293,44 @@ describe('useLiveChartData — asOfDate (기간 점프 기준일)', () => {
     renderForStock({ asOfDate: '20260601' });
     expect(optionsArg().hogaplaySourceEnabled).toBe(false);
   });
+});
+
+
+it('gives every live wall/POC consumer only regular raw snapshots when the badge is on', async () => {
+  const { WindowViewContext } = await import('./workspace/windowViewContext');
+  const { useLivePageStore } = await import('../state/livePage');
+  useLivePageStore.getState().patchIndicatorsScoped({ windowKey: null }, '1m',
+    { askPeakEnabled: true, bidPeakEnabled: true, tradeVolumePocEnabled: true });
+  const at = (clock: string) => Date.parse(`2026-10-16T${clock}:00+09:00`);
+  const ob = ['08:30', '10:00', '18:00'].map(clock => ({ t_ms: at(clock), asks: [], bids: [] }));
+  const trade = ['08:30', '10:00', '18:00'].map(clock => ({ t_ms: at(clock),
+    trades: [{ t_ms: at(clock), price: 100, qty: 1, side: 1 }] }));
+  liveSeriesSpy.mockReturnValue({ ...liveFixture, ob, trade } as unknown as LiveSeriesData);
+  renderHook(() => useLiveChartData({ activeCode: '005930', activeInstrument: null,
+    timeframe: '1m', historicalFromDate: null, venue: 'NXT', investorNetEnabled: false }), {
+    wrapper: ({ children }) => <WindowViewContext.Provider value={{ windowId: null, group: null,
+      code: '005930', timeframe: '1m', historicalFromDate: null, regularSessionOnly: true }}>
+      {children}</WindowViewContext.Provider>,
+  });
+  const ask = consumerSpies.ask.mock.calls.at(-1) as unknown as unknown[];
+  const bid = consumerSpies.bid.mock.calls.at(-1) as unknown as unknown[];
+  const poc = consumerSpies.poc.mock.calls.at(-1) as unknown as unknown[];
+  expect(ask[0]).toEqual([ob[1]]);
+  expect(ask[1]).toEqual([trade[1]]);
+  expect(ask[6]).toBeNull();
+  expect(bid[0]).toEqual([ob[1]]);
+  expect(bid[1]).toEqual([trade[1]]);
+  expect(bid[6]).toBeNull();
+  expect(poc[0]).toEqual([trade[1]]);
+});
+
+it.each([
+  { savedRangeFreeze: { fromDate: '20260914', toDate: '20260914' } },
+  { asOfDate: '20260914' },
+])('marks saved/as-of wall streams frozen so the final archived day is retained', over => {
+  renderForStock(over);
+  const ask = consumerSpies.ask.mock.calls.at(-1) as unknown as unknown[];
+  const bid = consumerSpies.bid.mock.calls.at(-1) as unknown as unknown[];
+  expect(ask[10]).toBe(true);
+  expect(bid[10]).toBe(true);
 });

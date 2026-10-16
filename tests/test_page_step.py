@@ -28,6 +28,13 @@ def test_initial_state() -> None:
     assert c.step_ms == 20
 
 
+def test_quiet_interval_does_not_abort_before_evening_data() -> None:
+    c = PageStepController(initial_t=160000000, data_window_end_ms=200000000, max_stagnant_pages=3)
+    for _ in range(400):
+        assert not c.observe(max_event_time=None, new_seqs=0).should_stop
+    assert not c.observe(max_event_time=199000000, new_seqs=1).should_stop
+
+
 def test_normal_advance_with_new_seqs() -> None:
     c = _make()
     # max_t >= target (100+20=120), with new data: advance by step, empty stays 0.

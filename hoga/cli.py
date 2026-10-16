@@ -478,8 +478,10 @@ def backfill_hogaplay_meta_cmd(
 @app.command(name="backfill-indicator-session")
 def backfill_indicator_session_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="갱신 대상만 세고 쓰지 않음"),
+    backup_dir: Path | None = typer.Option(None, "--backup-dir", help="변경 전 meta.json 보존 폴더"),
+    from_date: str | None = typer.Option(None, "--from-date", help="YYYYMMDD 이후만 보정"),
 ) -> None:
-    """ADR-0140: 승격된 kiwoom_live/{venue}/meta.json 에 venue 별 지표 구간을 소급 기록.
+    """ADR-0140: WS·호가플레이 저장본의 지표 경계를 보정(원본 parquet 보존).
 
     이 키가 생기기 전 승격본은 정규장 경계(09:00–15:30)만 실었고, 조회 경로가 그걸
     지표 경계로 읽어 NXT·UN 의 프리·애프터마켓 호가가 지표 집계에서 통째로 빠졌다.
@@ -493,7 +495,7 @@ def backfill_indicator_session_cmd(
 
     data_dir = resolve_data_dir()
     try:
-        res = backfill_indicator_session_bounds(data_dir, dry_run=dry_run)
+        res = backfill_indicator_session_bounds(data_dir, dry_run=dry_run, backup_dir=backup_dir, from_date=from_date)
     except Exception as e:
         console.print(f"[red]backfill-indicator-session failed: {e}[/red]")
         raise typer.Exit(code=1) from e

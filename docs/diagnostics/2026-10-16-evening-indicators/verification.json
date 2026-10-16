@@ -1,0 +1,81 @@
+{
+  "recorded_at_kst": "2026-10-16T21:07:39.163030+09:00",
+  "base_sha": "2c5fee9aa8985b892659780ff7675459f02c8f34",
+  "worktree": "uncommitted changes on the recorded base",
+  "input_sha256": "fe15c5ab913796e459539982f4a87381ef6246afa070dd25ec0dab722a38915d",
+  "input_file_count": 2510,
+  "runtime": {
+    "python": "3.14.7",
+    "node": "24.13.1"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "initial_result": {
+        "passed": 5923,
+        "failed": 5
+      },
+      "note": "The changed query keyword expectation was corrected. The remaining four failures reproduce on pristine base."
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock' --deselect=tests/api/test_live_error_shape.py::test_every_live_error_detail_is_a_structured_dict --deselect=tests/unit/api/test_rest_wire_schema_contract.py::test_live_wire_models_match_frontend_mirror_snapshot --deselect=tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_use_policy[rankings] --deselect=tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_respect_injection[rankings]",
+      "result": {
+        "passed": 5928,
+        "skipped": 2,
+        "deselected": 17
+      },
+      "baseline_failures_excluded": [
+        "tests/api/test_live_error_shape.py::test_every_live_error_detail_is_a_structured_dict",
+        "tests/unit/api/test_rest_wire_schema_contract.py::test_live_wire_models_match_frontend_mirror_snapshot",
+        "tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_use_policy[rankings]",
+        "tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_respect_injection[rankings]"
+      ]
+    },
+    {
+      "command": "npx vitest run",
+      "cwd": "frontend",
+      "result": {
+        "files_passed": 640,
+        "tests_passed": 8336
+      }
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed (app, unit and E2E projects)"
+    },
+    {
+      "command": "npx vite build",
+      "cwd": "frontend",
+      "result": "passed; existing chunk-size advisory"
+    },
+    {
+      "command": "npx playwright test evening-indicators.spec.ts --repeat-each=5 --reporter=list",
+      "cwd": "frontend",
+      "result": {
+        "passed": 15
+      }
+    },
+    {
+      "command": "npx playwright test chart-minute-venue.spec.ts regular-session.spec.ts hogaplay-disk-only.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": {
+        "passed": 5
+      }
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_krx_aftermarket.py tests/unit/api/test_indicator_reaggregate.py tests/unit/api/test_past_indicators_cache.py tests/test_tables_snapshots.py -m 'not wallclock'",
+      "result": {
+        "passed": 272,
+        "deselected": 1
+      }
+    }
+  ],
+  "baseline_failure_verification": "The four excluded tests also fail on a git archive of the untouched recorded base (4 failed).",
+  "operational_result": "data-repair.json",
+  "deployment": "The running user servers were not restarted or deployed. Apply the code changes to use the new collection and frontend behavior."
+}

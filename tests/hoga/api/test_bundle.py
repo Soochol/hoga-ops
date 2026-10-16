@@ -369,8 +369,8 @@ def test_build_range_bundle_builds_trade_volume_poc_by_default_from_candle_range
 
     mock_engine = _engine_with_meta_for_dates(["20260512"])
     raw_candles = [
-        ApiCandle(ts_ms=1, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
-        ApiCandle(ts_ms=2, open=70_100, close=70_300, high=70_400, low=70_000, vol_a=1, vol_b=0),
+        ApiCandle(ts_ms=1778547600000, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
+        ApiCandle(ts_ms=1778547660000, open=70_100, close=70_300, high=70_400, low=70_000, vol_a=1, vol_b=0),
     ]
     poc = TradeVolumePoc(
         date="20260512",
@@ -629,7 +629,7 @@ def test_build_range_bundle_sidecar_mode_builds_overlay_sidecars_only(tmp_path):
     mock_engine = _engine_with_meta_for_dates(["20260512"])
     mock_engine.data_dir = tmp_path
     raw_candles = [
-        ApiCandle(ts_ms=1, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
+        ApiCandle(ts_ms=1778547600000, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
     ]
     ask = AskPeak(date="20260512", price=70_200, qty=5000, t_ms=1, max_price=70_200, max_qty=5000, max_t_ms=1)
     bid = BidPeak(date="20260512", price=69_900, qty=4000, t_ms=1, max_price=69_900, max_qty=4000, max_t_ms=1)
@@ -733,7 +733,8 @@ def test_build_range_bundle_cutoff_sidecar_skips_unneeded_overlay_sidecars(tmp_p
                 bundle_mod,
                 "build_candles_slice",
                 return_value=[
-                    ApiCandle(ts_ms=1, open=70_000, close=70_100, high=70_200, low=69_900, vol_a=1, vol_b=0),
+                    ApiCandle(ts_ms=1778547600000, open=70_000, close=70_100,
+                              high=70_200, low=69_900, vol_a=1, vol_b=0),
                 ],
             )
         )
@@ -1044,7 +1045,7 @@ def test_range_volume_distribution_uses_first_single_price_book_cutoff(tmp_path)
         ),
     ], source_dir / "snapshots.parquet")
     candles_write_parquet([
-        Candle(ts_ms=90_000_000, open_=110, close_=110, high=120, low=100, vol_a=1, vol_b=1),
+        Candle(ts_ms=32_400_000, open_=110, close_=110, high=120, low=100, vol_a=1, vol_b=1),
     ], source_dir / "candles.parquet")
     trades_write_parquet([
         Trade(ts_ms=151_959_000, seq=1, price=110, change_pct=0, qty=20, side=1,
@@ -1128,7 +1129,7 @@ def test_range_volume_distribution_ignores_false_early_single_price_cutoff(tmp_p
         ),
     ], source_dir / "snapshots.parquet")
     candles_write_parquet([
-        Candle(ts_ms=90_000_000, open_=110, close_=110, high=120, low=100, vol_a=1, vol_b=1),
+        Candle(ts_ms=32_400_000, open_=110, close_=110, high=120, low=100, vol_a=1, vol_b=1),
     ], source_dir / "candles.parquet")
     trades_write_parquet([
         Trade(ts_ms=110_500_000, seq=1, price=100, change_pct=0, qty=10, side=1,
@@ -2316,6 +2317,7 @@ def test_build_depth_heatmap_slice_converts_rows_to_points(tmp_path):
         bucket_ms=60_000,
         session_open_ms=90_000_000,
         session_close_ms=153_000_000,
+        session_break=None,
     )
     assert len(points) == 1
     assert points[0].asks[0] == [1000, 500]

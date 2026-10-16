@@ -1,0 +1,178 @@
+{
+  "applied_at_kst": "2026-10-16T22:24:00.060848+09:00",
+  "status": "applied and verified on running local development service",
+  "source_worktree": "/home/dev/.codex/worktrees/ae53/hoga-ops",
+  "runtime_checkout": "/home/dev/code/hoga-ops",
+  "base_sha": "06cadbf9474f3f1d729a0e6ecd63b371c4b6539c",
+  "input_sha256": "22bf23ca10436c3bfe3ffd2d9d0a3d3f1e58d0e0915eedf3f441c53af3a4d427",
+  "working_tree_state": "Validated uncommitted changes copied to the runtime checkout; no merge or commit was created.",
+  "backup": "/home/dev/.local/share/hoga-ops/backups/20261016-runtime-apply-b63fr8oz",
+  "backup_manifest": "/home/dev/.local/share/hoga-ops/backups/20261016-runtime-apply-b63fr8oz/manifest.json",
+  "files_applied": 65,
+  "all_applied_file_hashes_match": true,
+  "existing_user_claude_preserved": true,
+  "activation": "Existing uvicorn reload supervisor automatically reloaded the application; existing Vite HMR serves the updated modules. No separate credentialed instance or systemd service was started.",
+  "endpoints": {
+    "api": "http://127.0.0.1:8000",
+    "frontend": "http://127.0.0.1:5173"
+  },
+  "health_before": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "efaeac28d"
+  },
+  "health_after": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "06cadbf94",
+    "dead_tasks": []
+  },
+  "collector_ready": true,
+  "openapi_regular_session_only_present": true,
+  "served_frontend_modules_verified": [
+    "/src/live/useLiveChartData.ts",
+    "/src/live/regularSessionPeakSeed.ts",
+    "/src/api/rangeRequest.ts",
+    "/src/live/useRegularSessionLiveSeries.ts"
+  ],
+  "actual_api_checks": {
+    "checked_at_kst": "2026-10-16T22:23:25.723308+09:00",
+    "endpoint": "http://127.0.0.1:8000",
+    "code": "005930",
+    "date": "20261015",
+    "checks": [
+      {
+        "venue": "KRX",
+        "sequence": [
+          {
+            "regular": true,
+            "ask_max": 207017,
+            "bid_max": 309409,
+            "distribution_qty": 27637667,
+            "last_trade_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 7865969
+          },
+          {
+            "regular": false,
+            "ask_max": 207017,
+            "bid_max": 309409,
+            "distribution_qty": 28996074,
+            "last_trade_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 7952676
+          },
+          {
+            "regular": true,
+            "ask_max": 207017,
+            "bid_max": 309409,
+            "distribution_qty": 27637667,
+            "last_trade_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 7865969
+          }
+        ]
+      },
+      {
+        "venue": "NXT",
+        "sequence": [
+          {
+            "regular": true,
+            "ask_max": 52443,
+            "bid_max": 281068,
+            "distribution_qty": 13245176,
+            "last_trade_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 3642367
+          },
+          {
+            "regular": false,
+            "ask_max": 77979,
+            "bid_max": 281068,
+            "distribution_qty": 21683493,
+            "last_trade_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 4755731
+          },
+          {
+            "regular": true,
+            "ask_max": 52443,
+            "bid_max": 281068,
+            "distribution_qty": 13245176,
+            "last_trade_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 3642367
+          }
+        ]
+      },
+      {
+        "venue": "UN",
+        "sequence": [
+          {
+            "regular": true,
+            "ask_max": 255345,
+            "bid_max": 582259,
+            "distribution_qty": 40857675,
+            "last_trade_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 11509028
+          },
+          {
+            "regular": false,
+            "ask_max": 255345,
+            "bid_max": 582259,
+            "distribution_qty": 53034567,
+            "last_trade_kst": "2026-10-15T19:59:50.002000+09:00",
+            "poc_qty": 14450336
+          },
+          {
+            "regular": true,
+            "ask_max": 255345,
+            "bid_max": 582259,
+            "distribution_qty": 40857675,
+            "last_trade_kst": "2026-10-15T15:19:50.002000+09:00",
+            "poc_qty": 11509028
+          }
+        ]
+      }
+    ],
+    "deep_health_status": "ok",
+    "collector_before": {
+      "epoch": "e42c333ebb0c4f3293c49372e9f43ac7",
+      "pid": 2985642,
+      "ready": true,
+      "desired_version": 3,
+      "acked_version": 3,
+      "error": null,
+      "storage_errors": []
+    },
+    "collector_after": {
+      "epoch": "e42c333ebb0c4f3293c49372e9f43ac7",
+      "pid": 2985642,
+      "ready": true,
+      "desired_version": 3,
+      "acked_version": 3,
+      "error": null,
+      "storage_errors": []
+    },
+    "collection_process_identity_and_readiness_preserved": true
+  },
+  "clock_policy_check": {
+    "date": "20261016",
+    "timezone": "Asia/Seoul",
+    "samples": {
+      "15:29:00": [
+        "KRX",
+        "NXT",
+        "UN"
+      ],
+      "15:45:00": [
+        "NXT",
+        "UN"
+      ],
+      "19:59:59": [
+        "KRX",
+        "NXT",
+        "UN"
+      ],
+      "20:00:01": []
+    },
+    "method": "Call venue_capture_windows_for_day with the calendar verdict True using the applied runtime checkout.",
+    "limitation": "Applied after market hours: future live tick reception through 20:00 was not observed during this check. Capture clock policy and current collector readiness were verified."
+  },
+  "previous_checks": "session-scope-verification.json",
+  "data_recalculation": "session-scope-recalculation.json"
+}

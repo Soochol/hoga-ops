@@ -265,6 +265,14 @@ class QueryEngine:
             self._indicators_cache = cache
         return cache
 
+    @property
+    def regular_indicators_cache(self) -> PastIndicatorsCache:
+        cache = getattr(self, "_regular_indicators_cache", None)
+        if cache is None:
+            cache = PastIndicatorsCache(self.data_dir, regular_session_only=True)
+            self._regular_indicators_cache = cache
+        return cache
+
     def parquet_dir(self, date: str, code: str, source: str = "hogaplay", *, venue: Venue) -> Path:
         """이 (Stock-Date, source, venue) 의 파케이 디렉터리.
 

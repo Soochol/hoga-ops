@@ -24,6 +24,7 @@ from hoga.collector.page_step import (
     StopReason,
 )
 from hoga.collector.timing import CaptureTimingCollector
+from hoga.live.stock_sessions import krx_aftermarket_introduced
 from hoga.util.atomic_write import atomic_write_json, atomic_write_text
 from hoga.util.timeenc import HogaMs
 
@@ -34,6 +35,10 @@ log = logging.getLogger(__name__)
 # Unix-ms mixups (the relevant footgun once Plan B adds worker pools).
 DATA_WINDOW_START_MS: HogaMs = HogaMs(84000000)   # 08:40:00.000
 CHART_FINAL_TIME_MS: HogaMs = HogaMs(153100000)   # 15:31:00.000
+
+
+def chart_final_time(date: str) -> HogaMs:
+    return HogaMs(200100000) if krx_aftermarket_introduced(date) else CHART_FINAL_TIME_MS
 
 # Field index constants for TSV row parsing.
 _IDX_GLOBAL_SEQ = 3
@@ -303,6 +308,11 @@ _now_kst = now_kst
 _TODAY_TOO_EARLY_CUTOFF = dt.time(16, 30)
 
 
+def today_capture_cutoff(date: str) -> dt.time:
+    """Allow the upstream's aggregation buffer after the final market window."""
+    return dt.time(20, 30) if krx_aftermarket_introduced(date) else _TODAY_TOO_EARLY_CUTOFF
+
+
 def is_today_too_early(date: str, now: dt.datetime) -> bool:
     try:
         d = dt.date(int(date[:4]), int(date[4:6]), int(date[6:8]))
@@ -310,7 +320,7 @@ def is_today_too_early(date: str, now: dt.datetime) -> bool:
         return False
     if d != now.date():
         return False
-    return now.time() < _TODAY_TOO_EARLY_CUTOFF
+    return now.time() < today_capture_cutoff(date)
 
 
 def _max_event_time(page_body: str) -> int | None:
@@ -455,7 +465,10 @@ def _page_step_loop(  # noqa: PLR0912, PLR0915
     matrix experiments). Defaults to DEFAULT_PAGE_STEP_MS for production.
     """
     progress_path = raw_dir / "_progress.json"
-    controller = PageStepController(initial_t=t, initial_step_ms=initial_step_ms)
+    controller = PageStepController(
+        initial_t=t, initial_step_ms=initial_step_ms,
+        data_window_end_ms=200000000 if krx_aftermarket_introduced(date) else DATA_WINDOW_END_MS,
+    )
     profile_enabled = os.environ.get("HOGA_PROFILE") == "1"
     profile_path = raw_dir / "_profile.jsonl" if profile_enabled else None
 
@@ -619,7 +632,7 @@ def collect_stock_date(  # noqa: PLR0912, PLR0915
     if is_today_too_early(date, now):
         raise TodayTooEarlyRefused(
             f"date={date} is today (KST) and now={now:%H:%M} < "
-            f"{_TODAY_TOO_EARLY_CUTOFF:%H:%M}. Wait until 16:30 KST."
+            f"{today_capture_cutoff(date):%H:%M}. Wait until {today_capture_cutoff(date):%H:%M} KST."
         )
 
     raw_dir = data_dir / "raw" / date / code
@@ -681,9 +694,9 @@ def collect_stock_date(  # noqa: PLR0912, PLR0915
         raise CaptureCancelled("capture cancelled before chart fetch")
     if collector is not None:
         with collector.phase("http_fetch"):
-            chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
+            chart_body = client.fetch_chart(code, date, chart_final_time(date))
     else:
-        chart_body = client.fetch_chart(code, date, CHART_FINAL_TIME_MS)
+        chart_body = client.fetch_chart(code, date, chart_final_time(date))
     if collector is not None:
         with collector.phase("disk_write"):
             atomic_write_text(raw_dir / "chart.tsv", chart_body)

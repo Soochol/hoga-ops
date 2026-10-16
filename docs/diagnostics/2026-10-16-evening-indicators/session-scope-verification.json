@@ -1,0 +1,109 @@
+{
+  "recorded_at_kst": "2026-10-16T22:10:33.471966+09:00",
+  "base_sha": "06cadbf9474f3f1d729a0e6ecd63b371c4b6539c",
+  "input_sha256": "22bf23ca10436c3bfe3ffd2d9d0a3d3f1e58d0e0915eedf3f441c53af3a4d427",
+  "input_file_count": 2543,
+  "python": "3.14.7",
+  "node": "v24.13.1",
+  "worktree_state": "uncommitted changes on the recorded base",
+  "scope": {
+    "KRX": "date-effective 09:00–15:30 and 16:00–20:00; official regular close preserved",
+    "NXT_UN": "08:00–20:00",
+    "regular_badge": "Only the requesting chart uses regular-session candles and indicators calculated from regular raw data; the immutable view filter leaves shared WS buffers unchanged.",
+    "cache_namespaces": [
+      "kis-past-indicators",
+      "kis-past-indicators-regular"
+    ],
+    "peak_kind_versions": {
+      "ask_peak": 17,
+      "bid_peak": 17,
+      "peak_rep": 3
+    },
+    "collection_badge_independence": "The regular-session badge is a per-window display option. It is not passed to the shared WS subscription, collector, or capture-time gate. Raw collection/storage continues for each venue capture window regardless of ON/OFF."
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock' (four confirmed baseline failures deselected)",
+      "passed": 5938,
+      "skipped": 2,
+      "deselected": 17,
+      "log": "/tmp/hoga-session-pytest-complete.log",
+      "note": "Backend production sources are final. Additional coarse-request assertions in the existing nine scope cases were rerun afterward."
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_range_indicator_sessions.py",
+      "passed": 9,
+      "log": "/tmp/hoga-session-coarse-backend.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E projects",
+      "log": "/tmp/hoga-session-typecheck-final-frozen.log"
+    },
+    {
+      "command": "npx vitest run --maxWorkers=4",
+      "files_passed": 640,
+      "passed": 8332,
+      "log": "/tmp/hoga-session-vitest-final-frozen.log"
+    },
+    {
+      "command": "npx vite build",
+      "result": "passed; existing chunk-size advisory",
+      "log": "/tmp/hoga-session-build-final-frozen.log"
+    },
+    {
+      "command": "npx playwright test evening-aggregate-sessions.spec.ts evening-indicators.spec.ts regular-session.spec.ts --reporter=list",
+      "passed": 7,
+      "log": "/tmp/hoga-session-e2e-last-source.log",
+      "coverage": [
+        "real Parquet-backed KRX/NXT/UN aggregates",
+        "ON/OFF/ON and reload persistence",
+        "saved evening totals through 19:59 with auction mask on",
+        "seconds/regular boundary and calendar badge behavior"
+      ],
+      "isolated_ports": {
+        "backend": 20113,
+        "frontend": 21113
+      },
+      "isolated_data": "/tmp/hoga-e2e-data-113"
+    },
+    {
+      "command": "same three Playwright specs --repeat-each=3",
+      "passed": 21,
+      "log": "/tmp/hoga-session-e2e-final-current.log",
+      "note": "Earlier repeat evidence; final frozen-view/coarse changes subsequently received the final seven-case run and targeted hook tests."
+    },
+    {
+      "command": "targeted final hooks and stream retention tests",
+      "passed": 217,
+      "log": "/tmp/hoga-session-last-hooks.log"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed",
+      "log": "/tmp/hoga-session-ruff-latest.log"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "log": "/tmp/hoga-session-diff-latest.log"
+    }
+  ],
+  "baseline_failures": {
+    "tests": [
+      "tests/api/test_live_error_shape.py::test_every_live_error_detail_is_a_structured_dict",
+      "tests/unit/api/test_rest_wire_schema_contract.py::test_live_wire_models_match_frontend_mirror_snapshot",
+      "tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_use_policy[rankings]",
+      "tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_respect_injection[rankings]"
+    ],
+    "reproduced_on_pristine_base": "06cadbf9474f3f1d729a0e6ecd63b371c4b6539c",
+    "result": "four failures reproduce unchanged in 0.53 seconds",
+    "log": "/tmp/hoga-session-baseline-current.log"
+  },
+  "validation_history": {
+    "default_worker_full_frontend_run": "one unrelated catalog UI test exceeded its unchanged 5-second timeout under concurrent batch load; isolated eight-case rerun passed, then the final full four-worker run passed all 8,332",
+    "browser_console": "Known ResizeObserver-loop noise is ignored by the UI fixture; functional page errors are asserted absent."
+  },
+  "deployment": "Running user servers on 5173/8000 were not restarted or modified; this worktree code must be applied to activate the new behavior.",
+  "data_recalculation_report": "session-scope-recalculation.json"
+}

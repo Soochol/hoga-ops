@@ -655,3 +655,23 @@ def test_resume_capture_still_keeps_previous_pages(tmp_path: Path) -> None:
     bodies = [p.read_text(encoding="utf-8") for p in raw_pages(raw_dir)]
     assert any("prior-page-1" in b for b in bodies)
     assert any("prior-page-2" in b for b in bodies)
+
+
+def test_aftermarket_capture_traverses_quiet_evening_and_fetches_final_candles(tmp_path, monkeypatch):
+    day = '20261015'
+    monkeypatch.setattr(orch, '_now_kst', lambda: dt.datetime(2026, 10, 16, 12, tzinfo=orch.KST))
+    late = 199980000  # on the collector cursor grid, beyond a long empty interval
+    fake = FakeClient(info_body='1\t005930\t테스트\t0\t90000000\t153000000\n',
+                      first_pages={late: _row(3, 1, 1, 1, late)}, chart_body='')
+    collect_stock_date(client=fake, code='005930', date=day, data_dir=tmp_path, rate_limit_s=0)
+    assert any(c.endpoint == 'first' and c.time_ms >= 200000000 for c in fake.calls)
+    assert next(c.time_ms for c in fake.calls if c.endpoint == 'chart') == 200100000
+    progress = json.loads((tmp_path / 'raw' / day / '005930' / '_progress.json').read_text())
+    assert progress['finished'] is True
+    assert progress['global_seqs_seen'] == 1
+
+
+@pytest.mark.parametrize(('hour', 'minute', 'too_early'), [(16, 30, True), (20, 29, True), (20, 30, False)])
+def test_aftermarket_capture_waits_for_the_final_window(hour, minute, too_early):
+    now = dt.datetime(2026, 10, 15, hour, minute, tzinfo=orch.KST)
+    assert orch.is_today_too_early('20261015', now) is too_early
