@@ -132,7 +132,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     settingsButtonRef.current?.focus({ preventScroll: true });
   }, []);
   const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 640);
-  const [previewPrice, setPreviewPrice] = useState<number | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
@@ -223,7 +222,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     if (previousDisplayKey.current === displayKey) return;
     previousDisplayKey.current = displayKey;
     resetDrag(); suppressClick.current = false;
-    setPreviewPrice(null); setAction(null); confirmHigh(false); closeMenu();
+    setAction(null); confirmHigh(false); closeMenu();
   }, [displayKey, resetDrag, closeMenu]);
   const orders = state.data?.orders ?? EMPTY_ORDERS;
   const draggedOrder = draggingOrders[0] ?? null;
@@ -244,7 +243,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const baseline = resolveBookBaseline({ isPastDateLadder: false, ladderBaseline: null,
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
-  const estimatePrice = previewPrice ?? quote?.price ?? null;
+  const estimatePrice = quote?.price ?? null;
   const amountPresets = preferences.unit === 'amount';
   const presets = amountPresets ? preferences.amountPresets : preferences.quantityPresets;
   const currentPrice = quote?.price ?? null;
@@ -626,9 +625,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       baselinePrice={baseline} />
     <div className="order-scroll" role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
-        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}
-        onPointerLeave={() => setPreviewPrice(null)}
-        onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPreviewPrice(null); }}>
+        onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : Array.from({ length: 20 }, (_, slot) => {
           const isAsk = slot < 10;
           const index = slot - (10 - asks.length);
@@ -642,13 +639,11 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
           // Empty slots preserve the center without becoming order/drag targets.
           // Recent fills still occupy their fixed slots beside the bid ladder.
           if (!level) return <div className={`order-row order-empty ${firstBid ? 'order-divider' : ''}`} key={key}
-            aria-hidden={isAsk || (!firstBid && !trade) ? true : undefined} onPointerEnter={() => setPreviewPrice(null)}>
+            aria-hidden={isAsk || (!firstBid && !trade) ? true : undefined}>
             <div />{!isAsk && (firstBid || trade) ? info : <div />}<div /><div className={isAsk ? 'order-summary-slot' : undefined} /><div />
           </div>;
           const pct = baseline && level.price > 0 ? (level.price / baseline - 1) * 100 : null;
-          return <div className={`order-row ${firstBid ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}
-            onPointerEnter={() => setPreviewPrice(level.price > 0 ? level.price : null)}
-            onFocusCapture={() => setPreviewPrice(level.price > 0 ? level.price : null)}>
+          return <div className={`order-row ${firstBid ? 'order-divider' : ''} ${dragTarget === level.price ? 'order-target' : ''}`} data-order-price={level.price} key={key}>
             {orderCell('SELL', level.price, key)}
             {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
               : info}

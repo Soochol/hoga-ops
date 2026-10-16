@@ -410,7 +410,7 @@ describe('호가 주문', () => {
     expect(screen.queryByLabelText('시세·주문 기준')).not.toBeInTheDocument();
     expect(useLiveViStatus).toHaveBeenLastCalledWith('005930', 'KRX');
   });
-  it('venue 전환은 가격 미리보기와 고액 확인을 닫고 주문 수량·계좌 주문을 유지한다', () => {
+  it('venue 전환은 고액 확인을 닫고 주문 수량·계좌 주문을 유지한다', () => {
     mock.orders = [order()];
     show();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '2000' } });
@@ -826,12 +826,14 @@ describe('호가 주문', () => {
     fireEvent.pointerEnter(screen.getByRole('button', { name: /매수 68,200원 주문 추가/ }).closest('[data-order-price]')!);
     fireEvent.click(screen.getByRole('button', { name: '100만' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(14);
-    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('954,800원');
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('942,200원');
     mock.quotePrice = 75000;
     view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(14);
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('1,050,000원');
     fireEvent.click(screen.getByRole('button', { name: '100만' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(13);
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('975,000원');
     expect(mock.command).not.toHaveBeenCalled();
   });
   it.each([null, 0, -1, NaN, Infinity])('현재가 %s는 금액 환산을 막고 입력 수량을 유지한다', price => {
@@ -856,7 +858,7 @@ describe('호가 주문', () => {
     fireEvent.keyDown(view.getByTestId('order-window'), { key: '2', ctrlKey: true });
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(50);
   });
-  it('공통 수량을 양방향 주문에 사용하고 현재가·선택 호가의 예상 금액을 표시한다', async () => {
+  it('공통 수량을 양방향 주문에 사용하고 호버·포커스와 관계없이 현재가로 예상 금액을 표시한다', async () => {
     const view = show();
     expect(screen.queryByLabelText('수량 방향')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('주문 기준 금액')).not.toBeInTheDocument();
@@ -867,7 +869,9 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,360,000원');
     const buy = screen.getByRole('button', { name: /매수 67,300원 주문 추가/ });
     fireEvent.pointerEnter(buy.closest('.order-row')!);
-    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,365,000원');
+    fireEvent.focus(buy);
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,360,000원');
+    expect(screen.getByLabelText('예상 주문 금액')).toHaveAttribute('title', '67,200원 기준');
     fireEvent.doubleClick(buy);
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0][1]).toMatchObject({ side: 'BUY', quantity: 50, price: 67300 });
