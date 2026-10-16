@@ -139,12 +139,12 @@ function IndicatorNavRow({
         onClick={onSelect}
         aria-label={label}
         aria-current={selected ? 'true' : undefined}
-        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 whitespace-nowrap text-left text-inherit"
+        className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-inherit"
       >
         {/* 글리프는 잉크를 행과 공유한다 — 미추가 행에서 함께 흐려져야 "아직 없다"
             가 한 덩어리로 읽힌다. `aria-hidden` 이라 접근성 이름은 라벨 그대로다. */}
         <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>
-        <span className="min-w-0 truncate">
+        <span className="indicator-nav-label min-w-0" title={label}>
           <HighlightedLabel label={label} query={query} />
           {summary && <span className="indicator-nav-summary" title={summary} aria-hidden="true">{summary}</span>}
         </span>
@@ -420,7 +420,7 @@ export default function IndicatorPanel({
       height={WORKSPACE_PANEL_HEIGHT_CLASS}
       onClose={handleEscape}
     >
-      <SettingsEditor title="보조지표" onClose={onClose} undo={undo} testId="indicator-panel-shell"
+      <SettingsEditor title="보조지표" onClose={onClose} undo={undo} testId="indicator-panel-shell" className="indicator-editor"
         scope={<span data-testid="indicator-panel-scope-badge">{targetLabel ? `${targetLabel} · ${currentTimeframeLabel}` : `현재: ${currentTimeframeLabel}`}</span>}
         actions={<IndicatorPanelMenu open={menuOpen} onOpenChange={setMenuOpen}
           resetLabel={`${currentTimeframeLabel} 지표 초기화`} confirmLabel={`${currentTimeframeLabel} 초기화?`} onReset={handleReset} />}

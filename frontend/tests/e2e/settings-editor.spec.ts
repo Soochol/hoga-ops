@@ -107,4 +107,25 @@ test('보조지표 스타일·기간 편집과 되돌리기, 반응형 배치, �
   await opener.click();
   await expect(editor.getByRole('spinbutton', { name: '기간1 길이', exact: true })).toHaveValue(String(period + 3));
   await expect(editor.getByRole('button', { name: '되돌리기', exact: true })).toBeDisabled();
+  await editor.getByRole('button', { name: '지표 추가', exact: true }).click();
+  const navigation = editor.getByRole('navigation', { name: '지표 추가', exact: true });
+  for (const width of [1440, 1024, 640, 390, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await navigation.getByRole('button', { name: '연속체결 매물대 분포', exact: true }).scrollIntoViewIfNeeded();
+    const labels = await navigation.locator('.indicator-nav-label').evaluateAll(elements => elements.map(element => {
+      const row = element.closest('.indicator-nav-row')!;
+      const action = row.querySelector('button:last-child')!;
+      const labelBounds = element.getBoundingClientRect();
+      return {
+        name: element.textContent,
+        unclipped: element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1,
+        beforeAction: labelBounds.right <= action.getBoundingClientRect().left,
+        rowFits: row.scrollWidth <= row.clientWidth + 1,
+      };
+    }));
+    expect(labels.length).toBeGreaterThan(5);
+    expect(labels.filter(label => !label.unclipped || !label.beforeAction || !label.rowFits)).toEqual([]);
+    expect(await editor.locator('.settings-editor-main').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await editor.screenshot({ path: testInfo.outputPath(`indicator-list-readable-${width}.png`) });
+  }
 });
