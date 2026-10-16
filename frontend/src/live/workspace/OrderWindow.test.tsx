@@ -530,7 +530,7 @@ describe('호가 주문', () => {
       expect(mock.command).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
   });
-  it.each(['매입수량', '매입평단가'])('%s에 마우스·포커스 표시 없이 포커스만 복원돼도 매수금액을 열지 않는다', label => {
+  it.each(['매입수량', '매입평단가', '평가손익 표시 전환'])('%s에 마우스·포커스 표시 없이 포커스만 복원돼도 툴팁을 열지 않는다', label => {
     vi.useFakeTimers();
     try {
       mock.holdingQuantity = '547'; mock.averagePrice = '123830';
@@ -579,41 +579,64 @@ describe('호가 주문', () => {
     expect(holdingProfitPercent(100, 67200, '0')).toBeNull();
   });
   it('평가손익 숫자는 더블클릭으로 금액과 %를 전환하며 주문하지 않는다', () => {
-    mock.averagePrice = '70304.99999';
-    show();
-    const toggle = screen.getByRole('button', { name: '평가손익 표시 전환' });
-    expect(toggle).toHaveTextContent('-310,499');
-    expect(toggle).toHaveAttribute('title', '-4.42%');
-    fireEvent.click(toggle);
-    expect(toggle).toHaveTextContent('-310,499');
-    fireEvent.doubleClick(toggle);
-    expect(toggle).toHaveTextContent('-4.42%');
-    expect(toggle).toHaveAttribute('title', '-310,499원');
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
-    expect(toggle.querySelector('.order-field-value')).toHaveClass('text-price-down');
-    fireEvent.doubleClick(toggle);
-    expect(toggle).toHaveTextContent('-310,499');
-    expect(toggle).toHaveAttribute('title', '-4.42%');
-    expect(mock.command).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    try {
+      mock.averagePrice = '70304.99999';
+      show();
+      const toggle = screen.getByRole('button', { name: '평가손익 표시 전환' });
+      expect(toggle).toHaveTextContent('-310,499');
+      expect(toggle).not.toHaveAttribute('title');
+      fireEvent.mouseEnter(toggle);
+      act(() => vi.advanceTimersByTime(499));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('-4.42%');
+      expect(screen.getByRole('tooltip')).toHaveClass('order-tooltip');
+      expect(toggle).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+      fireEvent.click(toggle);
+      expect(toggle).toHaveTextContent('-310,499');
+      fireEvent.doubleClick(toggle);
+      expect(toggle).toHaveTextContent('-4.42%');
+      expect(screen.getByRole('tooltip')).toHaveTextContent('-310,499원');
+      expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      expect(toggle.querySelector('.order-field-value')).toHaveClass('text-price-down');
+      fireEvent.doubleClick(toggle);
+      expect(toggle).toHaveTextContent('-310,499');
+      expect(screen.getByRole('tooltip')).toHaveTextContent('-4.42%');
+      fireEvent.mouseLeave(toggle);
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
   it('수익률 표시는 시세 갱신을 따르고 종목 변경 후에도 유지한다', () => {
-    const view = show();
-    const toggle = () => screen.getByRole('button', { name: '평가손익 표시 전환' });
-    expect(toggle()).toHaveAttribute('title', '1.82%');
-    fireEvent.keyDown(toggle(), { key: 'Enter' });
-    expect(toggle()).toHaveTextContent('1.82%');
-    expect(toggle()).toHaveAttribute('title', '120,000원');
-    mock.quotePrice = 65700;
-    view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
-    expect(toggle()).toHaveTextContent('-0.45%');
-    expect(toggle()).toHaveAttribute('title', '-30,000원');
-    fireEvent.keyDown(toggle(), { key: ' ' });
-    expect(toggle()).toHaveTextContent('-30,000');
-    expect(toggle()).toHaveAttribute('title', '-0.45%');
-    fireEvent.keyDown(toggle(), { key: 'Enter' });
-    view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="000660" name="SK하이닉스" /></QueryClientProvider>);
-    expect(toggle()).toHaveAttribute('aria-pressed', 'true');
-    expect(mock.command).not.toHaveBeenCalled();
+    vi.useFakeTimers();
+    try {
+      const view = show();
+      const toggle = () => screen.getByRole('button', { name: '평가손익 표시 전환' });
+      // Use the same keyboard-accessible tooltip UI as the holding quantity and average.
+      const profitButton = toggle();
+      vi.spyOn(profitButton, 'matches').mockImplementation(selector => selector === ':focus-visible'
+        || Element.prototype.matches.call(profitButton, selector));
+      fireEvent.focus(toggle());
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('1.82%');
+      fireEvent.keyDown(toggle(), { key: 'Enter' });
+      expect(toggle()).toHaveTextContent('1.82%');
+      expect(screen.getByRole('tooltip')).toHaveTextContent('120,000원');
+      mock.quotePrice = 65700;
+      view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
+      expect(toggle()).toHaveTextContent('-0.45%');
+      expect(screen.getByRole('tooltip')).toHaveTextContent('-30,000원');
+      fireEvent.keyDown(toggle(), { key: ' ' });
+      expect(toggle()).toHaveTextContent('-30,000');
+      expect(screen.getByRole('tooltip')).toHaveTextContent('-0.45%');
+      fireEvent.keyDown(toggle(), { key: 'Escape' });
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      fireEvent.keyDown(toggle(), { key: 'Enter' });
+      view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="000660" name="SK하이닉스" /></QueryClientProvider>);
+      expect(toggle()).toHaveAttribute('aria-pressed', 'true');
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
   });
   it.each([
     [67200, 'text-price-up', '120,000'],

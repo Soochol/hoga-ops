@@ -287,9 +287,13 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
   const purchaseText = purchaseAmount == null ? '' : `매수금액 ${fmt(purchaseAmount)}원`;
   const quantityTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
   const averageTip = useTextTooltip(purchaseText, 500, 'order-tooltip');
+  const profitTip = useTextTooltip(canToggleProfit ? profitAsPercent ? `${profitAmountText}원` : profitPercentText : '', 500, 'order-tooltip');
+  const { hide: hideQuantityTip } = quantityTip;
+  const { hide: hideAverageTip } = averageTip;
+  const { hide: hideProfitTip } = profitTip;
   useEffect(() => {
-    quantityTip.hide(); averageTip.hide();
-  }, [account, quantityTip.hide, averageTip.hide]);
+    hideQuantityTip(); hideAverageTip(); hideProfitTip();
+  }, [account, hideQuantityTip, hideAverageTip, hideProfitTip]);
   const currentOrder = action?.order ? orders.find(o => o.orderId === action.order?.orderId) ?? action.order : null;
   const actionQty = action?.quantity ?? (currentOrder ? orderRemainder(currentOrder) : 0);
   const highValue = !!action && changesPrice(action) && action.price * actionQty >= HIGH_VALUE_WON;
@@ -556,8 +560,11 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
         <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span>
           <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
             data-profit-amount={profitAmountText} data-profit-percent={profitPercentText}
-            title={canToggleProfit ? profitAsPercent ? `${profitAmountText}원` : profitPercentText : undefined} disabled={!canToggleProfit}
+            aria-describedby={profitTip.id} disabled={!canToggleProfit}
+            onMouseEnter={e => profitTip.show(e.currentTarget)} onMouseLeave={profitTip.hide}
+            onFocus={e => profitTip.showOnFocus(e.currentTarget)} onBlur={profitTip.hide}
             onDoubleClick={onToggleProfitDisplay} onKeyDown={event => {
+              if (event.key === 'Escape') profitTip.hide();
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 if (!event.repeat && canToggleProfit) onToggleProfitDisplay();
@@ -594,6 +601,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     </div>, document.body)}
     {quantityTip.tooltip}
     {averageTip.tooltip}
+    {profitTip.tooltip}
     {draggedOrder && createPortal(<div ref={dragPreview} role="status" aria-label="주문 드래그 미리보기"
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
       {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}
