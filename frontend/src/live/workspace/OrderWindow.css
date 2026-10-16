@@ -27,7 +27,7 @@
 .order-holdings-summary > .order-field { min-width:0; text-align:left; }
 .order-holdings-summary .order-field-value { justify-content:flex-start; }
 .order-window .order-holding-quantity { padding:0; border:0; background:transparent; cursor:pointer; border-radius:var(--radius-md); }
-.order-window .order-holding-quantity:hover:not(:disabled) { background:var(--bg-input-hover); }
+.order-window .order-holdings-summary button:hover { background:transparent; }
 .order-window .order-profit-toggle { display:block; min-width:0; padding:0; border:0; background:transparent; cursor:pointer; }
 .order-profit-toggle > .order-field-value { display:flex; justify-content:flex-start; }
 .order-window .order-profit-toggle:disabled { opacity:1; cursor:default; }
