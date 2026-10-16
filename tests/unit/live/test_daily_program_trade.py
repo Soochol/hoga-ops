@@ -39,9 +39,12 @@ def response(rows, *, more=False):
                           headers={"cont-yn": "Y" if more else "N", "next-key": "next" if more else ""})
 
 
-def row(day, *, net="-30", buy="100", sell="130"):
+def row(day, *, net="-30", buy="100", sell="130", net_amount="-300", buy_amount="1000", sell_amount="1300"):
     return {"dt": day, "prm_netprps_qty": net, "prm_buy_qty": buy, "prm_sell_qty": sell,
-            "prm_buy_amt": "999999"}
+            "prm_buy_amt": buy_amount, "prm_sell_amt": sell_amount, "prm_netprps_amt": net_amount}
+
+
+AMOUNTS = {"net_amount": -300_000_000, "buy_amount": 1_000_000_000, "sell_amount": 1_300_000_000}
 
 
 async def test_cursor_pages_go_through_scheduler_and_cache_all_sides(tmp_path, monkeypatch):
@@ -67,8 +70,8 @@ async def test_cursor_pages_go_through_scheduler_and_cache_all_sides(tmp_path, m
     first = await backfill.collect(**args)
     second = await backfill.collect(**args)
     assert first["points"] == second["points"] == [
-        {"t_ms": daily_anchor_ms("20260105"), "net_qty": 20, "buy_qty": 150, "sell_qty": 130},
-        {"t_ms": daily_anchor_ms("20260106"), "net_qty": -30, "buy_qty": 100, "sell_qty": 130},
+        {"t_ms": daily_anchor_ms("20260105"), "net_qty": 20, "buy_qty": 150, "sell_qty": 130, **AMOUNTS},
+        {"t_ms": daily_anchor_ms("20260106"), "net_qty": -30, "buy_qty": 100, "sell_qty": 130, **AMOUNTS},
     ]
     assert len(scheduler.calls) == len(requests) == 2
     assert scheduler.calls[0][1] != scheduler.calls[1][1]
@@ -82,7 +85,7 @@ async def test_null_is_not_zero_and_invalid_dates_are_reported():
     async def run_page(fetch, _idx):
         return await fetch(client)
     points, warnings, _ = await fetch_daily_program_trade(client, "005930", "20260101", "20260301", run_page=run_page)
-    assert points == [{"t_ms": daily_anchor_ms("20260105"), "net_qty": 0, "buy_qty": None, "sell_qty": 130}]
+    assert points == [{"t_ms": daily_anchor_ms("20260105"), "net_qty": 0, "buy_qty": None, "sell_qty": 130, **AMOUNTS}]
     assert len(warnings) == 2
 
 
@@ -107,10 +110,16 @@ def test_http_wire_cache_and_validation(tmp_path, monkeypatch):
         assert body["from"] == body["to"] == "20260105"
         assert body["points"][0] == {
             "t_ms": daily_anchor_ms("20260105"), "net_qty": -30, "buy_qty": None, "sell_qty": 130,
+            **AMOUNTS,
         }
         assert body["data_warnings"]
         warm = http.get(url).json()
         assert warm["cached_batches"] and warm["data_warnings"]
+        assert warm["points"] == body["points"]
+        monkeypatch.setattr("hoga.live.api.live_settings.rest_bypass_enabled", lambda _: True)
+        cache_only = http.get(url).json()
+        assert cache_only["points"] == body["points"]
+        assert cache_only["cached_batches"] and not cache_only["fresh_batches"]
         assert http.get(url.replace("005930", "bad")).status_code == 422
         assert http.get(url.replace("to=20260105", "to=20260101")).status_code == 422
 
@@ -136,3 +145,37 @@ async def test_missing_or_unparseable_net_is_recovered_from_complete_gross_quant
     )
     assert points[0]["net_qty"] == -617383
     assert not warnings
+
+
+@pytest.mark.parametrize("raw_net", [None, "", "--30"])
+async def test_amounts_normalize_million_won_and_recover_net_from_gross(raw_net):
+    client = vendor_client(lambda _: response([
+        row("20260105", net_amount=raw_net, buy_amount="1,234.56", sell_amount="-1,240.06"),
+    ]))
+    async def run_page(fetch, _idx):
+        return await fetch(client)
+    points, warnings, _ = await fetch_daily_program_trade(
+        client, "005930", "20260105", "20260105", run_page=run_page,
+    )
+    assert points[0] == {
+        "t_ms": daily_anchor_ms("20260105"), "net_qty": -30, "buy_qty": 100, "sell_qty": 130,
+        "net_amount": -5_500_000, "buy_amount": 1_234_560_000, "sell_amount": 1_240_060_000,
+    }
+    assert not warnings
+
+
+@pytest.mark.parametrize("missing", [None, "", "NaN", "Infinity", True, "--10"])
+async def test_missing_amount_is_not_zero_or_inferred_from_quantity(missing):
+    client = vendor_client(lambda _: response([
+        row("20260105", net_amount=missing, buy_amount=missing, sell_amount="0"),
+    ]))
+    async def run_page(fetch, _idx):
+        return await fetch(client)
+    points, warnings, _ = await fetch_daily_program_trade(
+        client, "005930", "20260105", "20260105", run_page=run_page,
+    )
+    assert points[0]["buy_amount"] is None
+    assert points[0]["net_amount"] is None
+    assert points[0]["sell_amount"] == 0
+    assert points[0]["buy_qty"] == 100
+    assert len(warnings) == 1 and warnings[0].detail == "missing program amount"
