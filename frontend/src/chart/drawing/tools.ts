@@ -828,7 +828,7 @@ export const hlineTool: DrawingToolSpec = {
   label: '수평선',
   glyph: '━',
   cursor: 'crosshair',
-  shortcut: { alt: true, key: 'h' },
+  shortcut: { shift: true, key: 'e' },
   onPointerDown(ctx) {
     const paneId = ctx.paneIdAtY(ctx.py);
     // hline is price-only, so resolve the level off the Y axis alone via

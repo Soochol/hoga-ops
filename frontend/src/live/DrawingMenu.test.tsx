@@ -28,6 +28,16 @@ describe('DrawingMenu', () => {
     expect(within(menu).getByTestId('drawing-menu-clear')).toBeInTheDocument();
   });
 
+  it('shows Shift+E for horizontal lines and Alt+E for eraser', async () => {
+    render(<DrawingMenu code={CODE} timeframe={TF} />);
+    await openMenu();
+    const hline = screen.getByRole('menuitemradio', { name: /^수평선/ });
+    expect(hline).toHaveTextContent('⇧E');
+    expect(hline).toHaveAttribute('aria-keyshortcuts', 'Shift+E');
+    expect(screen.getByRole('menuitemradio', { name: /지우개/ })).toHaveAttribute('aria-keyshortcuts', 'Alt+E');
+    expect(screen.queryByText('⌥H')).not.toBeInTheDocument();
+  });
+
   // 레일이 사라지며 "눌린 버튼" 활성 표시도 사라졌다 — 트리거가 그 역할을 대신
   // 하지 않으면 연필을 켜둔 걸 잊고 차트를 클릭하는 사고가 난다(#760 결정 4).
   it('turns the trigger into a status indicator while a tool is active', async () => {
