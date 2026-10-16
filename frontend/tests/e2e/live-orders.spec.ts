@@ -621,7 +621,7 @@ test('다른 탭의 venue 전환은 드래그를 중단하고 입력 수량과 �
   await sibling.close();
 });
 
-test('576px 압축형은 라벨 있는 보유 정보와 주문 입력을 분리하고 호가 밀도를 유지한다', async ({ page }, testInfo) => {
+test('576px 압축형은 숫자만 있는 보유 정보와 주문 입력을 분리하고 호가 밀도를 유지한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, false, false);
   const frame = page.locator('[data-win]').filter({ has: window });
   await expect.poll(async () => (await frame.boundingBox())!.width).toBeCloseTo(576, 0);
@@ -634,7 +634,7 @@ test('576px 압축형은 라벨 있는 보유 정보와 주문 입력을 분리�
   const cash = (await buyingPower.boundingBox())!;
   expect(cash.y).toBeGreaterThan(settings.y + settings.height);
   expect(await buyingPower.evaluate(el => getComputedStyle(el).whiteSpace)).toBe('nowrap');
-  for (const label of ['보유', '평단가', '평가손익']) await expect(window.getByText(label, { exact: true })).toBeVisible();
+  for (const label of ['보유', '평단가', '평가손익']) await expect(window.getByText(label, { exact: true })).toHaveCount(0);
   const holdings = (await window.getByRole('group', { name: '보유 종목 정보' }).boundingBox())!;
   const inputs = (await window.getByRole('group', { name: '공통 주문 수량' }).boundingBox())!;
   expect(inputs.y).toBeGreaterThan(holdings.y + holdings.height);
@@ -954,7 +954,7 @@ test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신
 });
 
 for (const priceOffset of [0, -2000]) {
-  test(`평가손익 숫자 전환은 주변 항목 위치를 유지한다 (${priceOffset})`, async ({ page }) => {
+  test(`평가손익 숫자 전환은 앞선 보유 항목 위치를 유지한다 (${priceOffset})`, async ({ page }) => {
     const { window, commands } = await setup(page, false, true, false, priceOffset);
     const toggle = window.getByRole('button', { name: '평가손익 표시 전환' });
     const amount = priceOffset === 0 ? '120,000' : '-80,000';
@@ -976,7 +976,7 @@ for (const priceOffset of [0, -2000]) {
       for (let i = 0; i < fields.length; i++) {
         expect(after[i]!.x).toBeCloseTo(before[i]!.x, 1);
         expect(after[i]!.y).toBeCloseTo(before[i]!.y, 1);
-        expect(after[i]!.width).toBeCloseTo(before[i]!.width, 1);
+        if (i < 2) expect(after[i]!.width).toBeCloseTo(before[i]!.width, 1);
         expect(after[i]!.height).toBeCloseTo(before[i]!.height, 1);
       }
       await toggle.dblclick();
@@ -1006,7 +1006,7 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   const profitColor = await window.evaluate(el => getComputedStyle(el).getPropertyValue('--price-up').trim());
   const rgb = profitColor.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i)!;
   await expect(valuation.locator('.order-field-value')).toHaveCSS('color', `rgb(${rgb.slice(1).map(hex => parseInt(hex, 16)).join(', ')})`);
-  await expect(valuation.locator('.order-meta')).toHaveText('평가손익');
+  await expect(valuation.locator('.order-meta')).toHaveCount(0);
   const averageBox = (await window.getByLabel('매입평단가').boundingBox())!;
   const valuationBox = (await valuation.boundingBox())!;
   expect(valuationBox.x).toBeGreaterThan(averageBox.x + averageBox.width);
@@ -1967,10 +1967,16 @@ test('기본 576px에서도 7자리 가격·긴 상세 값·폰트를 유지하�
   expect(commands).toHaveLength(3);
 });
 
-test('호가주문 숫자 자릿수 변경 배치 고정', async ({ page }, testInfo) => {
-  const { window, commands } = await setup(page);
+test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치를 유지한다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, false, true, false, 57600, 1,
+    { holdingQuantity: '267', averagePrice: '124901.64' });
   await page.mouse.move(0, 0);
   await page.evaluate(() => document.fonts.ready);
+  await window.evaluate(el => { (el as HTMLElement).style.width = '576px'; });
+  const bounds = (await window.boundingBox())!;
+  const controls = (await window.locator('.order-quantity-controls').boundingBox())!;
+  await page.screenshot({ path: testInfo.outputPath('compact-summary.png'),
+    clip: { x: bounds.x, y: bounds.y, width: bounds.width, height: controls.y + controls.height - bounds.y } });
   const values = [
     ['.order-buying-power .order-field-value', '1원', '999,999,999,999원'],
     ['.order-holding-quantity .order-field-value', '1', '999,999,999'],
@@ -1984,18 +1990,17 @@ test('호가주문 숫자 자릿수 변경 배치 고정', async ({ page }, test
     ['[data-testid="book-total-strip"] [aria-label^="매수총잔량"]', '1', '99'],
   ];
   const anchors = [
-    '.order-buying-power', '.order-buying-power .order-meta', '.order-holdings-summary',
-    '.order-holding-quantity', '[aria-label="매입평단가"]', '[aria-label="보유 종목 평가 수익"]',
-    '.order-profit-toggle', '.order-input-field', '.order-quantity-presets', '.order-estimate', '.order-estimate .order-meta',
     '.order-price-value', '.order-price small', '.order-depth', '.order-lane',
-    '[data-testid="book-session-label"]', '[data-testid="book-session-toggle"]',
   ];
-  const measure = () => window.evaluate((el, selectors) => Object.fromEntries(selectors.flatMap(selector => {
-    const node = el.querySelector(selector);
-    if (!node) return [];
-    const { x, y, width, height } = node.getBoundingClientRect();
-    return [[selector, { x, y, width, height }]];
-  })), anchors);
+  const measure = () => window.evaluate((el, selectors) => {
+    const origin = el.querySelector('.order-row')!.getBoundingClientRect();
+    return Object.fromEntries(selectors.flatMap(selector => {
+      const node = el.querySelector(selector);
+      if (!node) return [];
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return [[selector, { x: x - origin.x, y: y - origin.y, width, height }]];
+    }));
+  }, anchors);
   const setDigits = async (long: boolean) => {
     await window.evaluate((el, { values, long }) => {
       // Stress only formatted text to isolate layout from polling, venues and order state.
@@ -2014,7 +2019,16 @@ test('호가주문 숫자 자릿수 변경 배치 고정', async ({ page }, test
     await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
     await expect(window).toHaveClass(width < 560 ? /order-compact/ : /order-expanded/);
     await setDigits(false);
-    const labelGaps = await window.evaluate(el => [...el.querySelectorAll('.order-buying-power, .order-holdings-summary > .order-field, .order-estimate')].map(field => {
+    await expect(window.locator('.order-holdings-summary .order-meta')).toHaveCount(0);
+    const gaps = await window.evaluate(el => {
+      const cash = el.querySelector('.order-buying-power')!.getBoundingClientRect();
+      const summary = el.querySelector('.order-holdings-summary')!.getBoundingClientRect();
+      const fields = [...el.querySelectorAll('.order-holdings-summary > .order-field')].map(field => field.getBoundingClientRect());
+      return { cash: summary.left - cash.right, items: fields.slice(1).map((field, i) => field.left - fields[i].right) };
+    });
+    expect(gaps.cash).toBeCloseTo(24, 1);
+    for (const gap of gaps.items) expect(gap).toBeCloseTo(10, 1);
+    const labelGaps = await window.evaluate(el => [...el.querySelectorAll('.order-buying-power, .order-estimate')].map(field => {
       const label = field.querySelector('.order-meta')!.getBoundingClientRect();
       const value = field.querySelector('.order-field-value')!;
       const range = document.createRange();

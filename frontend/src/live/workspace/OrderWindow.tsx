@@ -547,15 +547,15 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
           onFocus={e => quantityTip.showOnFocus(e.currentTarget)} onBlur={quantityTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') quantityTip.hide(); }}>
-          <span className="order-meta" aria-hidden="true">보유</span><span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
+          <span className="order-field-value">{holdingQuantity != null && Number.isSafeInteger(holdingQuantity) && holdingQuantity >= 0 ? fmt(holdingQuantity) : '—'}</span>
         </button>
         <span className="order-field" aria-label="매입평단가" aria-describedby={averageTip.id} tabIndex={purchaseAmount == null ? undefined : 0}
           onMouseEnter={e => averageTip.show(e.currentTarget)} onMouseLeave={averageTip.hide}
           onFocus={e => averageTip.showOnFocus(e.currentTarget)} onBlur={averageTip.hide}
           onKeyDown={e => { if (e.key === 'Escape') averageTip.hide(); }}>
-          <span className="order-meta" aria-hidden="true">평단가</span><span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
+          <span className="order-field-value">{holdingQuantity != null && holdingQuantity > 0 && state.data?.average_purchase_price != null ? fmt(Math.ceil(Number(state.data.average_purchase_price))) : '—'}</span>
         </span>
-        <span className="order-field" aria-label="보유 종목 평가 수익"><span className="order-meta" aria-hidden="true">평가손익</span>
+        <span className="order-field" aria-label="보유 종목 평가 수익">
           <button type="button" className="order-profit-toggle" aria-label="평가손익 표시 전환" aria-pressed={profitAsPercent}
             aria-describedby={profitTip.id} disabled={!canToggleProfit}
             onMouseEnter={e => profitTip.show(e.currentTarget)} onMouseLeave={profitTip.hide}
