@@ -3,8 +3,14 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { AccountTradingPanel } from './AccountTradingPanel';
 import type { TossOrder } from '../../api/trading';
+import { useLiveVenueStore } from '../../state/liveVenue';
 
-const mock = vi.hoisted(() => ({ command: vi.fn(), paused: false }));
+const mock = vi.hoisted(() => ({ command: vi.fn(), paused: false,
+  quotes: new Map<string, { price: number }>(), quoteSubscription: vi.fn() }));
+vi.mock('../../api/liveQuotes', () => ({ useQuoteByCode: (codes: string[], venue: string) => {
+  mock.quoteSubscription(codes, venue);
+  return mock.quotes;
+} }));
 const orders: TossOrder[] = [
   { orderId: 'buy', symbol: '005930', side: 'BUY', orderType: 'LIMIT', timeInForce: 'DAY', status: 'PARTIAL_FILLED', price: '67200', quantity: '100', currency: 'KRW', orderedAt: '', canceledAt: null, orderAmount: null,
     execution: { filledQuantity: '78', filledAt: null, averageFilledPrice: null, filledAmount: null, commission: null, tax: null, settlementDate: null } },
@@ -17,7 +23,11 @@ vi.mock('../../api/trading', () => ({
     holdings: { data: { holdings: [{ code: '000660', name: 'SK하이닉스', quantity: '22', average_purchase_price: '180000' }] }, isPending: false, isError: false, isFetching: false }, paused: mock.paused }),
 }));
 vi.mock('../../capture/useSymbols', () => ({ useSymbols: () => ({ data: { symbols: [{ code: '005930', name: '삼성전자' }, { code: '000660', name: 'SK하이닉스' }] } }) }));
-beforeEach(() => { mock.paused = false; mock.command.mockReset().mockResolvedValue({ order_id: 'cancel-op', status: 'accepted' }); });
+beforeEach(() => {
+  mock.paused = false; mock.command.mockReset().mockResolvedValue({ order_id: 'cancel-op', status: 'accepted' });
+  mock.quotes = new Map([['000660', { price: 185000 }]]); mock.quoteSubscription.mockClear();
+  useLiveVenueStore.setState({ venue: 'KRX' });
+});
 function show(tab: 'orders' | 'holdings' = 'orders') {
   const onClose = vi.fn(), onSelectSymbol = vi.fn(), onTabChange = vi.fn();
   const client = new QueryClient();
@@ -55,6 +65,43 @@ it('a holding selects its symbol without placing an order and closes the panel',
   fireEvent.click(screen.getByRole('button', { name: 'SK하이닉스' }));
   expect(onSelectSymbol).toHaveBeenCalledWith('000660', 'SK하이닉스');
   expect(onClose).toHaveBeenCalledOnce(); expect(mock.command).not.toHaveBeenCalled();
+});
+it('shows holding names without codes and values the full holding at the selected venue’s current price', () => {
+  useLiveVenueStore.setState({ venue: 'UN' });
+  show('holdings');
+  const table = screen.getByRole('table');
+  expect(within(table).getAllByRole('columnheader').map(header => header.textContent))
+    .toEqual(['종목', '보유 · 주', '평단가 · 원', '평가금액 · 원', '수익률 · %']);
+  const cells = within(within(table).getAllByRole('row')[1]).getAllByRole('cell');
+  expect(cells.map(cell => cell.textContent)).toEqual(['SK하이닉스', '22', '180,000', '4,070,000', '+2.78%']);
+  expect(cells[4]).toHaveClass('text-price-up');
+  expect(within(table).queryByText('000660')).not.toBeInTheDocument();
+  expect(mock.quoteSubscription).toHaveBeenLastCalledWith(['000660'], 'UN');
+  expect(mock.command).not.toHaveBeenCalled();
+});
+it.each([undefined, 0, NaN, Infinity])('shows an unavailable valuation for an unavailable or invalid price %s', price => {
+  mock.quotes = price === undefined ? new Map() : new Map([['000660', { price }]]);
+  show('holdings');
+  const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell');
+  expect(cells[3]).toHaveTextContent('—');
+  expect(cells[4]).toHaveTextContent('—');
+  expect(cells[1]).toHaveTextContent('22');
+  expect(cells[2]).toHaveTextContent('180,000');
+});
+it.each([
+  { price: 175000, percent: '-2.78%', color: 'text-price-down' },
+  { price: 180000, percent: '0.00%', color: null },
+])('shows holding return $percent with the matching sign and color', ({ price, percent, color }) => {
+  mock.quotes = new Map([['000660', { price }]]);
+  show('holdings');
+  const cell = within(screen.getAllByRole('row')[1]).getAllByRole('cell')[4];
+  expect(cell).toHaveTextContent(percent);
+  if (color) expect(cell).toHaveClass(color);
+  else expect(cell).not.toHaveClass('text-price-up', 'text-price-down');
+});
+it('does not subscribe to holding quotes while viewing orders', () => {
+  show();
+  expect(mock.quoteSubscription).not.toHaveBeenCalled();
 });
 it('moves between account tabs with the keyboard without sending a trading command', () => {
   const { onTabChange } = show();

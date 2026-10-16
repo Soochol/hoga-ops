@@ -2,18 +2,48 @@ import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type Re
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
-import { tradingCommand, useTradingAccountList, type TossOrder, type TradingCommand, type TradingCommandResponse, type TradingSide } from '../../api/trading';
+import { tradingCommand, useTradingAccountList, type TossOrder, type TradingCommand, type TradingCommandResponse, type TradingHolding, type TradingSide } from '../../api/trading';
 import { pauseTradingRefresh } from '../../api/tradingRefresh';
+import { useQuoteByCode } from '../../api/liveQuotes';
+import { useLiveVenueStore } from '../../state/liveVenue';
 import { useSymbols } from '../../capture/useSymbols';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { RefreshIcon } from '../../ui/RefreshIcon';
 import { OrderSurfaceHeading } from './OrderSurface';
-import { editableOrder, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
+import { editableOrder, holdingProfitPercent, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
 import './AccountTradingPanel.css';
 
 export type AccountListTab = 'orders' | 'holdings';
 type Cancellation = { command: TradingCommand; sending: boolean; operationId?: string; error?: string };
 const fmt = (value: string | number | null, maximumFractionDigits = 2) => value == null ? '—' : Number(value).toLocaleString('ko-KR', { maximumFractionDigits });
+
+function holdingValue(quantity: string, price: number | undefined): number | null {
+  const shares = Number(quantity);
+  if (!Number.isSafeInteger(shares) || shares < 0 || price == null || !Number.isSafeInteger(price) || price <= 0) return null;
+  const value = shares * price;
+  return Number.isSafeInteger(value) ? value : null;
+}
+
+function HoldingsTable({ holdings, onSelect }: { holdings: TradingHolding[]; onSelect?: (code: string, name: string) => void }) {
+  const venue = useLiveVenueStore(s => s.venue);
+  const codes = useMemo(() => holdings.map(holding => holding.code), [holdings]);
+  const quotes = useQuoteByCode(codes, venue);
+  return <table>
+    <thead><tr><th>종목</th><th>보유 · 주</th><th>평단가 · 원</th><th>평가금액 · 원</th><th>수익률 · %</th></tr></thead>
+    <tbody>{holdings.map(holding => {
+      const price = quotes.get(holding.code)?.price;
+      const profitPercent = holdingProfitPercent(Number(holding.quantity), price ?? null, holding.average_purchase_price);
+      return <tr key={holding.code}>
+        <td><button type="button" className="account-stock-link" disabled={!onSelect} onClick={() => onSelect?.(holding.code, holding.name)}>{holding.name}</button></td>
+        <td>{fmt(holding.quantity)}</td><td>{fmt(holding.average_purchase_price, 0)}</td>
+        <td>{fmt(holdingValue(holding.quantity, price), 0)}</td>
+        <td className={profitPercent != null && profitPercent > 0 ? 'text-price-up' : profitPercent != null && profitPercent < 0 ? 'text-price-down' : undefined}>
+          {profitPercent == null ? '—' : `${profitPercent > 0 ? '+' : ''}${profitPercent.toFixed(2)}%`}
+        </td>
+      </tr>;
+    })}</tbody>
+  </table>;
+}
 
 export const AccountTradingPanel = memo(function AccountTradingPanel({ account, accountLabel, tab, anchorRef, onTabChange, onClose, onSelectSymbol }: {
   account: number; accountLabel: string; tab: AccountListTab | null; anchorRef: RefObject<HTMLElement | null>;
@@ -108,13 +138,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
             <td><button type="button" className="account-cancel" aria-label={`${name} ${orderSideLabel(order.side)} 주문 ${index + 1} ${label}`} disabled={disabled} onClick={() => void cancel(order, !!record?.error)}>{label}</button></td>
           </tr>;
         })}</tbody>
-      </table> : <table>
-        <thead><tr><th>종목</th><th>보유 · 주</th><th>평단가 · 원</th></tr></thead>
-        <tbody>{holdings.data?.holdings.map(holding => <tr key={holding.code}>
-          <td><button type="button" className="account-stock-link" disabled={!onSelectSymbol} onClick={() => select(holding.code, holding.name)}>{holding.name}</button><small>{holding.code}</small></td>
-          <td>{fmt(holding.quantity)}</td><td>{fmt(holding.average_purchase_price, 0)}</td>
-        </tr>)}</tbody>
-      </table>}
+      </table> : <HoldingsTable holdings={holdings.data?.holdings ?? []} onSelect={onSelectSymbol ? select : undefined} />}
       {!query.isPending && !query.isError && (tab === 'orders' ? displayedOrders.length === 0 : holdings.data?.holdings.length === 0)
         && <p className="account-trading-message">{tab === 'orders' ? '미체결 주문 없음' : '보유종목 없음'}</p>}
     </div>
