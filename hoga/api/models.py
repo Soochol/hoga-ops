@@ -780,6 +780,13 @@ class RetryResponse(BaseModel):
 # --- Sibling-endpoint wire models (Tasks 16–17) -----------------------------
 
 
+CaptureCountsStatus = Literal["pending", "ready", "failed"]
+
+
+class CaptureCountsInfo(BaseModel):
+    status: CaptureCountsStatus
+
+
 class SymbolHit(BaseModel):
     code: str
     name: str
@@ -791,6 +798,7 @@ class SymbolHit(BaseModel):
     nxt_enabled: bool | None = None
     captured_count: int                 # complete only — headline number (spec §11 Q18)
     captured_breakdown: dict[str, int]  # {"complete": N, "source_partial": M, "client_incomplete": K, "invalid": J}
+    capture_counts_status: CaptureCountsStatus = "ready"
 
 
 class SymbolsAllResponse(BaseModel):
@@ -798,6 +806,7 @@ class SymbolsAllResponse(BaseModel):
     status: Literal["fresh", "loading", "stale", "unavailable"]
     fetched_at_ms: int | None
     reason: UpstreamCode | None = None
+    capture_counts_status: CaptureCountsStatus = "ready"
 
 
 class SymbolMasterInfo(BaseModel):

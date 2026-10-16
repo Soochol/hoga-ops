@@ -6,6 +6,8 @@ picks the best state across sources.
 import json
 from pathlib import Path
 
+import pytest
+
 from hoga.api.disk_state import (
     DiskState,
     aggregate_disk_state,
@@ -84,6 +86,27 @@ def test_check_disk_state_source_hogaplay_sees_hogaplay(tmp_path: Path) -> None:
     assert check_disk_state(
         tmp_path, "005930", "20260527", source="hogaplay",
     ).state == DiskState.COMPLETE
+
+
+@pytest.mark.parametrize("has_hogaplay", [False, True])
+def test_restricted_lookup_does_not_read_other_source_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, has_hogaplay: bool,
+) -> None:
+    sd_dir = tmp_path / "parquet" / "20260527" / "005930"
+    # Multiple venues exercise source_meta_path's worst-venue classification too.
+    for venue in ("KRX", "NXT", "UN"):
+        _write_meta(sd_dir / "kiwoom_live" / venue / "meta.json", _COMPLETE_META("kiwoom_live"))
+    if has_hogaplay:
+        _write_meta(sd_dir / "hogaplay" / "meta.json", _COMPLETE_META("hogaplay"))
+    original_read = Path.read_text
+
+    def guarded_read(path, *args, **kwargs):
+        assert "kiwoom_live" not in path.parts, "restricted lookup read unrelated history"
+        return original_read(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", guarded_read)
+    result = check_disk_state(tmp_path, "005930", "20260527", source="hogaplay")
+    assert result.state == (DiskState.COMPLETE if has_hogaplay else DiskState.NONE)
 
 
 def test_classify_stock_date_handles_only_one_source(tmp_path: Path) -> None:

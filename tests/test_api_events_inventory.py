@@ -12,9 +12,64 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from watchdog.events import FileCreatedEvent
+from watchdog.events import FileCreatedEvent, FileMovedEvent
 
 from hoga.api.events import EventBus, WatchdogKind, _InventoryHandler, classify_inventory_event
+
+
+def test_inventory_observer_does_not_register_read_events(tmp_path):
+    from watchdog.events import FileClosedNoWriteEvent, FileOpenedEvent
+    from watchdog.observers.inotify import InotifyEmitter
+    from watchdog.observers.inotify_c import InotifyConstants
+
+    from hoga.api.events import build_event_bus
+    _, observer, _ = build_event_bus(tmp_path / "parquet")
+    emitter = next(iter(observer.emitters))
+    assert FileOpenedEvent not in emitter._event_filter
+    assert FileClosedNoWriteEvent not in emitter._event_filter
+    if isinstance(emitter, InotifyEmitter):
+        mask = emitter.get_event_mask_from_filter()
+        assert not mask & (InotifyConstants.IN_OPEN | InotifyConstants.IN_CLOSE_NOWRITE)
+        assert mask & InotifyConstants.IN_MODIFY
+        assert mask & InotifyConstants.IN_CREATE
+        assert mask & InotifyConstants.IN_MOVE
+        assert mask & InotifyConstants.IN_DELETE
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("relative", ["20260524/003490/hogaplay/meta.json",
+                                      "20260524/003490/kiwoom_live/KRX/meta.json"])
+async def test_atomic_metadata_replacement_still_invalidates_inventory(tmp_path, relative):
+    bus = EventBus()
+    queue = bus.subscribe()
+    handler = _InventoryHandler(bus, tmp_path, loop=asyncio.get_running_loop())
+    destination = tmp_path / relative
+    handler.on_moved(FileMovedEvent(str(destination.with_suffix(".tmp")), str(destination)))
+    await asyncio.sleep(0)
+    assert queue.get_nowait() == {"type": "inventory_added", "code": "003490", "date": "20260524"}
+
+
+@pytest.mark.asyncio
+async def test_filtered_observer_delivers_real_atomic_replace(tmp_path):
+    from hoga.api.events import build_event_bus
+
+    root = tmp_path / "parquet"
+    metadata = root / "20260524" / "003490" / "hogaplay" / "meta.json"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text("{}")
+    bus, observer, handler = build_event_bus(root)
+    handler.loop = asyncio.get_running_loop()
+    queue = bus.subscribe()
+    observer.start()
+    try:
+        temporary = metadata.with_suffix(".tmp")
+        temporary.write_text('{"collection_complete": true}')
+        temporary.replace(metadata)
+        event = await asyncio.wait_for(queue.get(), 3)
+        assert event == {"type": "inventory_added", "code": "003490", "date": "20260524"}
+    finally:
+        observer.stop()
+        await asyncio.to_thread(observer.join)
 
 
 @pytest.fixture

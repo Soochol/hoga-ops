@@ -1,0 +1,98 @@
+{
+  "date_kst": "2026-10-16",
+  "base_sha": "abd7c77c272c3513abebd13f64ace8d8db8b151b",
+  "source_and_validation_inputs_sha256": {
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "CHANGELOG.md": "3f2311f8a7f718e94eb9634adee9f77df1e5c710ca6757d667f913f236a5f357",
+    "docs/adr/0015-symbol-master-disk-persistence.md": "43abcb797aa586c6697ecc3d021ddf29c4223005f37d94ec4a82368c80d072ba",
+    "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f",
+    "frontend/package.json": "20c82c1b5bcd1caf12bd988786df6fa156b27609a8e79c3ebcdbe635b3d3719a",
+    "frontend/src/api/eventStream.test.ts": "b194c61987ef2d7fe099a990f685547a842c5a5d03d38f19a5ff747a2842d16f",
+    "frontend/src/api/eventStream.ts": "dea64c158767c2f8e21007507f3f73d5d085ec99df492a5b9d7ea56826b4e205",
+    "frontend/src/api/symbols.ts": "da5fcb89abfdbe28d3e8ead095c6770ecfc2a274a4db57e7a5f1488ae1bcdab8",
+    "frontend/src/api/types.ts": "165a0ee14635382026764bd20e11ec99f5ebc8bd25880730ba8cfd5f8bfff762",
+    "frontend/src/capture/SymbolSearch.test.tsx": "74cc9e8b198290c31aa6df1ba2eb3e3ab9e1dc729cb2a746ca2d10f1f142205c",
+    "frontend/src/capture/SymbolSearch.tsx": "a75e7477eb6627b36d565e87d03b57e07ef31bbe2ed591586dbaf1aaa45f7af5",
+    "frontend/src/capture/symbolKeys.ts": "1d1ac127ffeb3e041c170e8414537b99e1b5127eb4b81a54b39f48207852c67c",
+    "frontend/src/capture/useSymbols.test.tsx": "bd44fc9a0c96b310b3bcb37f5ce3b31248fc4c26a455a91445991ffedff73772",
+    "frontend/src/capture/useSymbols.ts": "5f146a6c6c897ce38cfd69a00e62eab60c7e4430502fb1d8ff91fd547df5f157",
+    "frontend/tests/e2e/symbol-capture-counts.spec.ts": "eb8224e26ad8a09f8d06645321ea16a050fa4063a0a0fa083d31d486f80db8fe",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.json": "770b4140bbb581e2dfd9ea9946ffc9c75a1d86ba7d2db5f77c83e37cbdf9d808",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493",
+    "hoga/api/app.py": "56f06823b0b91d6f3579e6f4a6244c84d8963fd7bb6b9393fd73e022658a7506",
+    "hoga/api/disk_state.py": "7d9dc1d9a41b2a79ac4e47bb68ffafd067ea4dbf04e0d7175e11339dee2f4cd3",
+    "hoga/api/events.py": "46953129e51d3d5c5be46a00b5987d9f28d4d53a9fbdecb5109d73c975feb23f",
+    "hoga/api/models.py": "4100ddbddf1566f75415e419b3b64293ed91501ed80f52278b537f3795d6aec1",
+    "hoga/api/startup_runtime.py": "6c41bc83e45cd80484a1ba260ca4067c0c42157ca8bdcca50f8a76fd0eacc1e1",
+    "hoga/api/symbols.py": "1f4aabe4ef7e6f74a6cbb7fbc7dc035996bd4e241a9570d7c70baa1f996afbe7",
+    "pyproject.toml": "9ebb8f119bb60eca2cb968c978802b6c8ad3238d13827dd0929e697660c24dd2",
+    "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07",
+    "tests/api/test_symbol_capture_counts_runtime.py": "310a7817a819709ff139be6c23bf98f640888c99f0b30016d70f73490bcf0685",
+    "tests/test_api_events_inventory.py": "e98ac59d5dd9d8cce4e21e4b3c6e258b9c558a6e18e8acc1f49cdd3adf8f5f44",
+    "tests/unit/api/test_disk_state_source.py": "6afc52471385c539fe97505f35bf9a3be347ec293197681ada09f22f9ceffddc",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "d1d22bf01a5f1370b0fa760c4004ed855816cebee81d816ea4b289a1a5fdc3e6",
+    "uv.lock": "b6704bb6abd785df4c1898f776d837a9e5defd547a99d2c8dede66d758ed3893"
+  },
+  "python": "3.14.7 (main, Sep 29 2026, 15:01:40) [Clang 22.1.3 ]",
+  "node": "v24.13.1",
+  "checks": [
+    {
+      "command": "uv run --frozen ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --frozen pytest -q -m \"not wallclock\"",
+      "result": "5875 passed, 4 failed, 2 skipped, 13 deselected",
+      "failures": [
+        "tests/api/test_live_error_shape.py::test_every_live_error_detail_is_a_structured_dict",
+        "tests/unit/live/test_kiwoom_capacity.py::test_pool_spreads_calls_across_accounts",
+        "tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_use_policy[rankings]",
+        "tests/unit/live/test_kiwoom_http.py::test_sync_fetchers_respect_injection[rankings]"
+      ],
+      "baseline_comparison": "The static live-error-shape and both rankings failures reproduce on untouched HEAD in an isolated git archive. Capacity test passes both there and on isolated current-code recheck (0.25s)."
+    },
+    {
+      "command": "uv run --frozen pytest -q tests/api/test_symbol_capture_counts_runtime.py tests/api/test_app_startup_scheduler.py tests/api/test_startup_runtime.py tests/integration/live/test_migrate_lifespan.py tests/test_api_events_inventory.py tests/unit/api/test_rest_wire_schema_contract.py -m \"not wallclock\"",
+      "result": "56 passed, 1 deselected on final shutdown ordering"
+    },
+    {
+      "command": "npx vitest run --maxWorkers=2",
+      "result": "634 files / 8208 tests passed",
+      "scope_note": "Final reconnect-key changes separately checked by the following targeted run; initial unbounded parallel run was stopped after timeout failures under concurrent validation load."
+    },
+    {
+      "command": "npx vitest run src/api/eventStream.test.ts src/capture/useSymbols.test.tsx src/capture/SymbolSearch.test.tsx --maxWorkers=2",
+      "result": "51 passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed (application, unit tests, E2E)"
+    },
+    {
+      "command": "npx vite build",
+      "result": "passed; existing chunk-size warnings"
+    },
+    {
+      "command": "npx playwright test symbol-capture-counts.spec.ts --reporter=line",
+      "result": "2 passed; isolated ports 20496/21496"
+    },
+    {
+      "command": "npx eslint [changed frontend files]",
+      "result": "0 errors, 2 pre-existing SymbolSearch purity/effect warnings"
+    },
+    {
+      "command": "wire enum negative check in memory",
+      "result": "intentional CaptureCountsStatus drift fails; restored expectations pass"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "measurement": "production-scale-load.json",
+  "lifecycle_note": "After load measurements, shutdown was reordered to cancel master refresh and stop/join counts before trading/compute teardown. The 56-test focused run verifies the final code, including active-reader app teardown; startup, scanning and publication behavior did not change.",
+  "production_application": "Not deployed or restarted; original production processes and provider sessions retained."
+}

@@ -9,6 +9,7 @@ import { LIVE_LAYOUT_PRESETS_QUERY } from '../live/presets/liveLayoutPresetKeys'
 import { subscribeEvents, lastHeartbeat } from './ws';
 import type { PushEvent } from './types';
 import { markPromotion } from '../state/livePromotion';
+import { SYMBOLS_QUERY_KEY } from '../capture/symbolKeys';
 
 export { lastHeartbeat };
 
@@ -133,6 +134,9 @@ export function useEventStream(): void {
         // also handles initial reads with no cached data (invalidate alone doesn't).
         refreshAfterReconnect({ queryKey: STOCK_DATES_QUERY_KEY });
         refreshAfterReconnect({ queryKey: ['capture', 'queue'] });
+        // A backend restart starts a fresh auxiliary count job. Do not retain
+        // the previous ready catalog for the query's one-day stale window.
+        refreshAfterReconnect({ queryKey: SYMBOLS_QUERY_KEY });
         refreshAfterReconnect({
           predicate: (q) => ['calendar', 'range'].includes(String(q.queryKey[0])),
         });

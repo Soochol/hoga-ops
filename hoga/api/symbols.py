@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -34,7 +35,7 @@ from hoga.api.kiwoom_master import (
     fetch_symbol_master as kiwoom_fetch_symbol_master,
     load_seed as _load_master_seed,
 )
-from hoga.api.models import SymbolHit, SymbolMasterInfo, SymbolsAllResponse
+from hoga.api.models import CaptureCountsInfo, CaptureCountsStatus, SymbolHit, SymbolMasterInfo, SymbolsAllResponse
 from hoga.util.atomic_write import atomic_write_json
 
 logger = logging.getLogger(__name__)
@@ -237,6 +238,105 @@ _loaded_schema_version: int | None = None
 _data_dir_for_fetch: Path | None = None
 
 
+class _CountsStopped(Exception):
+    """Cooperative stop between Stock-Dates; the worker never publishes state."""
+
+
+class _CaptureCountsRuntime:
+    """One read-only scan at a time, with event-loop-only atomic publication."""
+
+    def __init__(self) -> None:
+        self.status: CaptureCountsStatus = "pending"
+        self.snapshot: dict[str, dict[str, int]] | None = None
+        self.task: asyncio.Task | None = None
+        self.stop = threading.Event()
+        self.generation = 0
+
+    def reset(self) -> None:
+        self.stop.set()
+        if self.task is not None and not self.task.done():
+            self.task.cancel()
+        self.generation += 1
+        self.task = None
+        self.snapshot = None
+        self.status = "pending"
+
+    def publish(self) -> None:
+        global _cache  # noqa: PLW0603 — event-loop-only atomic catalog snapshot
+        empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
+        snapshot = self.snapshot or {}
+        _cache = [hit.model_copy(update={
+            "captured_count": snapshot.get(hit.code, empty)["complete"],
+            "captured_breakdown": dict(snapshot.get(hit.code, empty)),
+            "capture_counts_status": self.status,
+        }) for hit in _cache]
+
+    def start(self, data_dir: Path) -> asyncio.Task:
+        if self.task is not None and not self.task.done():
+            return self.task
+        self.stop = threading.Event()
+        self.status = "pending"
+        self.publish()
+        self.task = asyncio.create_task(
+            self._run(data_dir, self.stop, self.generation), name="symbols-capture-counts",
+        )
+        return self.task
+
+    async def _run(self, data_dir: Path, stop: threading.Event, generation: int) -> None:
+        worker = asyncio.create_task(asyncio.to_thread(
+            _build_all_captured_breakdowns, data_dir, cancelled=stop.is_set,
+        ))
+        started = time.perf_counter()
+        try:
+            snapshot = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            stop.set()
+            # Cancelling to_thread's awaiter cannot stop its OS thread. Join it
+            # after cooperative cancellation so teardown cannot leave readers.
+            with contextlib.suppress(_CountsStopped, Exception):
+                await worker
+            raise
+        except _CountsStopped:
+            return
+        except Exception:
+            logger.exception("symbols.capture_counts.failed")
+            if generation == self.generation and not stop.is_set():
+                self.status = "failed"
+                self.publish()
+        else:
+            if generation == self.generation and not stop.is_set():
+                self.snapshot = snapshot
+                self.status = "ready"
+                self.publish()
+                logger.info("symbols.capture_counts.ready duration_ms=%.1f", (time.perf_counter()-started)*1000)
+
+    async def close(self) -> None:
+        self.stop.set()
+        task = self.task
+        if task is not None and not task.cancelled():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                if task.cancelled():
+                    return
+                # Also drain on cancellation of the lifespan's teardown itself.
+                with contextlib.suppress(asyncio.CancelledError):
+                    await task
+                raise
+
+
+_capture_counts = _CaptureCountsRuntime()
+
+
+def start_capture_counts(data_dir: Path) -> asyncio.Task:
+    """Lifespan-owned boot/retry job; completion is auxiliary to readiness."""
+    return _capture_counts.start(data_dir)
+
+
+async def aclose_capture_counts() -> None:
+    await _capture_counts.close()
+
+
 def _symbols_data_dir() -> Path | None:
     return _data_dir_for_fetch
 
@@ -250,6 +350,7 @@ def reset_state_for_tests() -> None:
     )
     _loaded_schema_version = None
     _refresh_coordinator.reset()
+    _capture_counts.reset()
 
 
 def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int, int] | None:
@@ -395,22 +496,28 @@ async def _fetch_symbol_master() -> list[SymbolHit]:
     return _rows_to_hits(rows)
 
 
-def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다
+def _build_all_captured_breakdowns(  # noqa: PLR0912 — one pass over parquet and raw
+    data_dir: Path, *, cancelled: Callable[[], bool] = lambda: False,
+) -> dict[str, dict[str, int]]:
     """Walk ``data/parquet/*`` and ``data/raw/*`` ONCE, building ``{code: breakdown}``.
 
     A per-symbol bucketing pass called from :func:`_do_refresh`
     would be ``O(symbols × parquet_dates)`` — 6000 ×
     100 = 600,000 stat calls per cache rebuild. This single-pass walk is
-    ``O(total_stock_date_dirs)`` — orders of magnitude fewer disk ops when the
-    typical user has <200 captured Stock-Dates across all symbols.
+    ``O(total_stock_date_dirs)``. Retained history can exceed 48,000 Stock-Dates;
+    production boot runs this off the event loop and does not wait for it.
     """
     breakdowns: dict[str, dict[str, int]] = {}
     parquet_root = data_dir / "parquet"
     if parquet_root.exists():
         for date_dir in parquet_root.iterdir():
+            if cancelled():
+                raise _CountsStopped
             if not date_dir.is_dir():
                 continue
             for code_dir in date_dir.iterdir():
+                if cancelled():
+                    raise _CountsStopped
                 if not code_dir.is_dir():
                     continue
                 # source="hogaplay": the breakdown buckets mirror the capture
@@ -436,9 +543,13 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
     raw_root = data_dir / "raw"
     if raw_root.exists():
         for date_dir in raw_root.iterdir():
+            if cancelled():
+                raise _CountsStopped
             if not date_dir.is_dir():
                 continue
             for code_dir in date_dir.iterdir():
+                if cancelled():
+                    raise _CountsStopped
                 if not code_dir.is_dir():
                     continue
                 # Skip if parquet covered this (code, date) — already counted.
@@ -454,20 +565,22 @@ def _build_all_captured_breakdowns(data_dir: Path) -> dict[str, dict[str, int]]:
     return breakdowns
 
 
-def load_disk_state(*, path: Path, data_dir: Path) -> None:
-    """Boot-time entry: populate in-memory state from disk + data_dir walk.
+def load_disk_state(*, path: Path, data_dir: Path, defer_counts: bool = False) -> None:
+    """Load the catalog; production boot defers the separate history scan.
 
     No network — pure disk read. Called once from lifespan startup
     (see hoga/api/app.py — wired in T11). Replaces the deleted ensure_cache_warm.
 
-    On success the in-memory cache is fresh with the disk file's contents and
-    captured_breakdown filled from a single data_dir walk. On any disk-load
+    ``defer_counts`` marks counts pending without walking history. The lifespan
+    starts and owns that scan. Synchronous callers retain immediate counts.
+    On any disk-load
     failure (file absent, corrupt, schema mismatch, malformed entries) the
     cache is empty and _state surfaces SYMBOL_MASTER_NOT_INITIALIZED so the
     UI prompts the user to click Update.
     """
     global _cache, _fetched_at_ms, _state, _loaded_schema_version, _data_dir_for_fetch  # noqa: PLW0603 — 문서화된 프로세스 싱글턴 재바인딩
     _data_dir_for_fetch = data_dir
+    _capture_counts.reset()
     result = _load_from_disk(path)
     if result is None:
         # **시드 스냅샷으로 부팅한다**(PR-I·#1045). `.mst` 는 무인증이라 첫 부팅에서
@@ -476,12 +589,15 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
         seed = _load_master_seed()
         if seed:
             entries = _rows_to_hits(seed)
-            breakdowns = _build_all_captured_breakdowns(data_dir)
+            breakdowns = {} if defer_counts else _build_all_captured_breakdowns(data_dir)
+            _capture_counts.snapshot = None if defer_counts else breakdowns
+            _capture_counts.status = "pending" if defer_counts else "ready"
             empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
             for h in entries:
                 breakdown = breakdowns.get(h.code, empty)
                 h.captured_count = breakdown["complete"]
                 h.captured_breakdown = breakdown
+                h.capture_counts_status = _capture_counts.status
             _cache = entries
             _fetched_at_ms = None
             # 시드는 "낡았을 수 있는 진짜 카탈로그" 다 — fresh 가 아니라 stale.
@@ -494,12 +610,15 @@ def load_disk_state(*, path: Path, data_dir: Path) -> None:
         _loaded_schema_version = None
         return
     entries, fetched_at_ms, schema_version = result
-    breakdowns = _build_all_captured_breakdowns(data_dir)
+    breakdowns = {} if defer_counts else _build_all_captured_breakdowns(data_dir)
+    _capture_counts.snapshot = None if defer_counts else breakdowns
+    _capture_counts.status = "pending" if defer_counts else "ready"
     empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
     for h in entries:
         breakdown = breakdowns.get(h.code, empty)
         h.captured_count = breakdown["complete"]
         h.captured_breakdown = breakdown
+        h.capture_counts_status = _capture_counts.status
     _cache = entries
     _fetched_at_ms = fetched_at_ms
     _state = SymbolCacheState.fresh()
@@ -534,12 +653,7 @@ async def get_all(*, data_dir: Path) -> SymbolsAllResponse:
     route wiring; it is unused on the read path.
     """
     del data_dir  # unused — kept for route-handler signature compatibility
-    return SymbolsAllResponse(
-        symbols=list(_cache),
-        status=_state.status,
-        fetched_at_ms=_fetched_at_ms,
-        reason=_state.reason,
-    )
+    return _build_response()
 
 
 async def refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
@@ -596,6 +710,7 @@ def _build_response() -> SymbolsAllResponse:
         status=_state.status,
         fetched_at_ms=_fetched_at_ms,
         reason=_state.reason,
+        capture_counts_status=_capture_counts.status,
     )
 
 
@@ -631,18 +746,13 @@ async def _do_refresh(*, path: Path, data_dir: Path) -> SymbolsAllResponse:
             )
             _set_stale_or_unavailable(UpstreamCode.DISK_WRITE_FAILED)
             return _build_response()
-        loop = asyncio.get_running_loop()
-        breakdowns = await loop.run_in_executor(
-            None, _build_all_captured_breakdowns, data_dir
-        )
-        empty = {"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0}
-        for h in entries:
-            breakdown = breakdowns.get(h.code, empty)
-            h.captured_count = breakdown["complete"]
-            h.captured_breakdown = breakdown
         _cache = entries
         _fetched_at_ms = now_ms
         _state = SymbolCacheState.fresh()
+        _capture_counts.publish()
+        # Reuse an in-flight boot scan. Its publication uses the current catalog,
+        # so a slow old scan cannot replace newly fetched names or membership.
+        await asyncio.shield(start_capture_counts(data_dir))
         return _build_response()
     except Exception:  # safety net so _state never sticks at loading()
         logger.exception("Symbol refresh failed unexpectedly")
@@ -790,6 +900,15 @@ def build_router(*, path: Path, data_dir: Path) -> APIRouter:
     @router.post("/refresh")
     async def refresh_route() -> SymbolsAllResponse:
         return await refresh(path=path, data_dir=data_dir)
+
+    @router.get("/capture-counts")
+    async def capture_counts_route() -> CaptureCountsInfo:
+        return CaptureCountsInfo(status=_capture_counts.status)
+
+    @router.post("/capture-counts/refresh")
+    async def retry_capture_counts_route() -> CaptureCountsInfo:
+        start_capture_counts(data_dir)
+        return CaptureCountsInfo(status=_capture_counts.status)
 
     @router.get("/info")
     async def info_route() -> SymbolMasterInfo:

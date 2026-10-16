@@ -407,7 +407,9 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
                 get_capture_worker_tasks=lambda: _captures_module._workers,
                 get_program_trade_task=get_program_trade_task,
                 get_inventory_observer=lambda: observer,
-                load_symbol_disk_state=_symbols_module.load_disk_state,
+                load_symbol_disk_state=functools.partial(_symbols_module.load_disk_state, defer_counts=True),
+                start_symbol_capture_counts=_symbols_module.start_capture_counts,
+                close_symbol_capture_counts=_symbols_module.aclose_capture_counts,
                 needs_symbol_boot_refresh=_symbols_module.needs_boot_refresh,
                 refresh_symbols=_symbols_module.refresh,
                 resolve_symbol_master_path=resolve_symbol_master_path,
@@ -448,6 +450,10 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         try:
             yield
         finally:
+            # Stop catalog refresh before joining its shared count reader, so a
+            # finishing refresh cannot start a new scan during resource teardown.
+            await _symbols_module.aclose_refresh()
+            await _symbols_module.aclose_capture_counts()
             await _app.state.trading_service.close()
             await _app.state.paper_trading_service.close()
             _captures_module.begin_capture_shutdown()
@@ -475,10 +481,6 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.
             await screener_history_jobs.shutdown_jobs(data_dir)
             await _screener_module.shutdown_update_job()
-            # 심볼 .mst 리프레시 워커는 코디네이터-소유(호출자와 분리)라
-            # symbols-boot-refresh 태스크 취소만으론 멈추지 않는다. KIS/스케줄러
-            # teardown 전에 명시적으로 cancel+await(worker-owned lifecycle).
-            await _symbols_module.aclose_refresh()
             await quote_fetcher.aclose()
             await startup_runtime.stop()
             # Stop the worker pool first so in-flight items observe cancellation

@@ -1,0 +1,254 @@
+{
+  "base_sha": "abd7c77c272c3513abebd13f64ace8d8db8b151b",
+  "data_access": "Actual retained metadata and catalog read-only; application writes confined to TemporaryDirectory; no vendor credentials, external connections, production restarts or orders.",
+  "workload": "330 Codes, 250000 retained LiveBuffer entries (100k OB, 100k trade, 50k fill), 330 subscriber queues, real serialization of synthetic ten-level orderbooks; actual app factory/lifespan and ASGI health/snapshot requests.",
+  "stable_rate_control": {
+    "mode": "baseline",
+    "factory_s": 1.3738655819906853,
+    "lifespan_ready_s": 9.25285199197242,
+    "observer_start_s": 9.064176247979049,
+    "counts_at_ready": "ready",
+    "history_scan_s": null,
+    "scan_codes": null,
+    "stock_dates_checked": 0,
+    "counts_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "duration_s": 25.033352375030518,
+    "nominal_messages_per_s": 1500,
+    "published": 37554,
+    "consumed": 37554,
+    "actual_messages_per_s": 1500.1586458495342,
+    "health_ms": {
+      "p50": 5.635172012262046,
+      "p95": 75.50829695537686,
+      "p99": 100.83251702599227,
+      "max": 109.51450699940324
+    },
+    "snapshot_ms": {
+      "p50": 3.464294015429914,
+      "p95": 4.327950999140739,
+      "p99": 4.717222996987402,
+      "max": 21.480702969711274
+    },
+    "loop_lag_ms": {
+      "p50": 2.361511015333235,
+      "p95": 45.34592894604429,
+      "p99": 57.624302008189254,
+      "max": 83.658409032505
+    },
+    "rss_start_mib": 544.65234375,
+    "rss_peak_mib": 584.8125,
+    "retained_at_start": {
+      "total_entries": 250000,
+      "published_total": 250000,
+      "subscriber_drops": 0,
+      "ws_delivery": [],
+      "high_water_entries": 250000,
+      "per_kind": {
+        "fill": 50020,
+        "ob": 99990,
+        "trade": 99990
+      },
+      "codes": 330,
+      "subscribers": 0,
+      "retention_ms": 900000,
+      "max_entries_per_deque": 360,
+      "max_total_entries": 250000,
+      "max_estimated_bytes": 536870912,
+      "estimated_bytes": 410573190,
+      "budget_evictions": 0,
+      "last_ob_entries": 330
+    },
+    "retained_at_end": {
+      "total_entries": 250000,
+      "published_total": 287554,
+      "subscriber_drops": 0,
+      "ws_delivery": [],
+      "high_water_entries": 250000,
+      "per_kind": {
+        "fill": 31210,
+        "trade": 99990,
+        "ob": 118800
+      },
+      "codes": 330,
+      "subscribers": 330,
+      "retention_ms": 900000,
+      "max_entries_per_deque": 360,
+      "max_total_entries": 250000,
+      "max_estimated_bytes": 536870912,
+      "estimated_bytes": 455961720,
+      "budget_evictions": 18810,
+      "last_ob_entries": 330
+    },
+    "scan_task_drained_at_shutdown": true
+  },
+  "stable_rate_with_history_scan": {
+    "mode": "scan",
+    "factory_s": 1.2625366669963114,
+    "lifespan_ready_s": 10.140482796996366,
+    "observer_start_s": 9.949680808989797,
+    "counts_at_ready": "pending",
+    "history_scan_s": 158.50386231194716,
+    "scan_codes": 493,
+    "stock_dates_checked": 48720,
+    "counts_sha256": "0509cc6053ee809f63a3e5cc3661909791e71e5fbaf50e349503e3a5e931d399",
+    "duration_s": 158.5932723399601,
+    "nominal_messages_per_s": 1500,
+    "published": 237831,
+    "consumed": 237831,
+    "actual_messages_per_s": 1499.6285560599704,
+    "health_ms": {
+      "p50": 6.259588000830263,
+      "p95": 21.266599011141807,
+      "p99": 83.16680899588391,
+      "max": 495.33329100813717
+    },
+    "snapshot_ms": {
+      "p50": 3.7410950171761215,
+      "p95": 5.475901998579502,
+      "p99": 7.572530012112111,
+      "max": 10.615692008286715
+    },
+    "loop_lag_ms": {
+      "p50": 1.5595900081098075,
+      "p95": 10.1029400434345,
+      "p99": 45.3451380203478,
+      "max": 433.8905560038984
+    },
+    "rss_start_mib": 544.8046875,
+    "rss_peak_mib": 600.81640625,
+    "retained_at_start": {
+      "total_entries": 250000,
+      "published_total": 250000,
+      "subscriber_drops": 0,
+      "ws_delivery": [],
+      "high_water_entries": 250000,
+      "per_kind": {
+        "fill": 50020,
+        "ob": 99990,
+        "trade": 99990
+      },
+      "codes": 330,
+      "subscribers": 0,
+      "retention_ms": 900000,
+      "max_entries_per_deque": 360,
+      "max_total_entries": 250000,
+      "max_estimated_bytes": 536870912,
+      "estimated_bytes": 410573190,
+      "budget_evictions": 0,
+      "last_ob_entries": 330
+    },
+    "retained_at_end": {
+      "total_entries": 250000,
+      "published_total": 487831,
+      "subscriber_drops": 0,
+      "ws_delivery": [],
+      "high_water_entries": 250000,
+      "per_kind": {
+        "fill": 31210,
+        "trade": 99990,
+        "ob": 118800
+      },
+      "codes": 330,
+      "subscribers": 330,
+      "retention_ms": 900000,
+      "max_entries_per_deque": 360,
+      "max_total_entries": 250000,
+      "max_estimated_bytes": 536870912,
+      "estimated_bytes": 455961720,
+      "budget_evictions": 18810,
+      "last_ob_entries": 330
+    },
+    "scan_task_drained_at_shutdown": true
+  },
+  "overload_control": {
+    "mode": "baseline",
+    "factory_s": 1.5121042109676637,
+    "lifespan_ready_s": 9.943997852969915,
+    "observer_start_s": 9.7377706199768,
+    "counts_at_ready": "ready",
+    "history_scan_s": null,
+    "scan_codes": null,
+    "counts_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+    "duration_s": 45.11081334599294,
+    "nominal_messages_per_s": 3300,
+    "published": 121671,
+    "consumed": 121671,
+    "actual_messages_per_s": 2697.1581972331624,
+    "health_ms": {
+      "p50": 54.25623501650989,
+      "p95": 106.46055301185697,
+      "p99": 126.10654201125726,
+      "max": 140.12406597612426
+    },
+    "snapshot_ms": {
+      "p50": 3.650538041256368,
+      "p95": 4.841743037104607,
+      "p99": 7.62005802243948,
+      "max": 10.728655965067446
+    },
+    "loop_lag_ms": {
+      "p50": 25.970853010658175,
+      "p95": 58.602549969218664,
+      "p99": 70.5279719736427,
+      "max": 95.82770402310416
+    },
+    "rss_start_mib": 545.0390625,
+    "rss_peak_mib": 588.484375,
+    "retained_at_start": {
+      "total_entries": 250000,
+      "published_total": 250000,
+      "subscriber_drops": 0,
+      "ws_delivery": [],
+      "high_water_entries": 250000,
+      "per_kind": {
+        "fill": 50020,
+        "ob": 99990,
+        "trade": 99990
+      },
+      "codes": 330,
+      "subscribers": 0,
+      "retention_ms": 900000,
+      "max_entries_per_deque": 360,
+      "max_total_entries": 250000,
+      "max_estimated_bytes": 536870912,
+      "estimated_bytes": 410573190,
+      "budget_evictions": 0,
+      "last_ob_entries": 330
+    },
+    "retained_at_end": {
+      "total_entries": 250000,
+      "published_total": 371671,
+      "subscriber_drops": 0,
+      "ws_delivery": [],
+      "high_water_entries": 250000,
+      "per_kind": {
+        "fill": 31210,
+        "trade": 99990,
+        "ob": 118800
+      },
+      "codes": 330,
+      "subscribers": 330,
+      "retention_ms": 900000,
+      "max_entries_per_deque": 360,
+      "max_total_entries": 250000,
+      "max_estimated_bytes": 536870912,
+      "estimated_bytes": 455961720,
+      "budget_evictions": 18810,
+      "last_ob_entries": 330
+    },
+    "scan_task_drained_at_shutdown": true
+  },
+  "overload_with_history_scan": {
+    "status": "incomplete at 180-second validation deadline",
+    "target_messages_per_s": 3300,
+    "exception": "AssertionError: scan did not complete under load within 180s"
+  },
+  "limitations": [
+    "Single-run sequential comparisons under variable host load; control lasted 25s and scan lasted 159s, so maxima and RSS differences cannot be attributed solely to the scan.",
+    "API readiness excludes Python import and a real vendor/collector connection; production-size recursive watch registration remains about 10s.",
+    "This is synthetic display/reception/serialization load, not vendor WS, durable capture/Parquet writing, a large range request, or order execution.",
+    "No message loss here means no drops between publish and synthetic subscriber consumers; it does not establish vendor transport losslessness.",
+    "At 3300/s the control was already overloaded; the scan did not complete within 180s. No claim of zero latency/CPU/memory overhead or sustained 3300/s capacity is made."
+  ],
+  "harness_sha256": "6bf9f0eae063f5b241be1f68cc4ddcd336cd27be8ec0c3100896a5a381a9bb6d"
+}
