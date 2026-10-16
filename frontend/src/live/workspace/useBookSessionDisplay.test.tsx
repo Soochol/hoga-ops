@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { OrderbookSnapshot } from '../../api/types';
 import * as client from '../../api/client';
@@ -23,19 +23,24 @@ const book = (time: number, price = 33350): OrderbookSnapshot => ({
 const empty = { ...book(at(15, 40)), ask: [{ price: 0, qty: 0 }], bid: [{ price: 0, qty: 0 }] };
 const saved = book(at(15, 19, 50));
 
-function setup(venue: 'KRX' | 'NXT' | 'UN' = 'KRX', isSpot = false) {
+const ah = (time = at(15, 41), ask = 999, bid = 888, venue = 'KRX') =>
+  ({ t_ms: time, total_ask_qty: ask, total_bid_qty: bid, venue });
+
+function setup(venue: 'KRX' | 'NXT' | 'UN' = 'KRX', isSpot = false,
+  afterHours: Record<string, unknown>[] = []) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
   const props = { nowMs: at(15, 40), latest: empty, retained: null as OrderbookSnapshot | null,
-    preAuction: null as OrderbookSnapshot | null };
-  const hook = renderHook(({ nowMs, latest, retained, preAuction }) => useBookSessionDisplay({
+    preAuction: null as OrderbookSnapshot | null, afterHours };
+  const hook = renderHook(({ nowMs, latest, retained, preAuction, afterHours }) => useBookSessionDisplay({
     code: '036930', venue, nowMs, todayKst: '20261014', isSpot,
     latestSnapshot: latest, regularSnapshot: latest, lastValidSnapshot: retained, preAuctionSnapshot: preAuction,
-    afterHours: [{ t_ms: at(15, 41), total_ask_qty: 999, total_bid_qty: 888, venue: 'KRX' }],
+    afterHours,
   }), { wrapper, initialProps: props });
   return { ...hook, props, queryClient };
 }
 
+beforeEach(() => { vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: null }); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 it('recovers pre-auction data after an empty reset and replaces it at 15:59:50 without a clock gate', async () => {
@@ -90,19 +95,76 @@ it('keeps same-day usable data across empty frames outside KRX, including before
 
 it('does not substitute live or saved fallback data into a historical cursor', () => {
   const api = vi.spyOn(client, 'apiCall');
-  const { result } = setup('KRX', true);
+  const { result } = setup('KRX', true, [ah()]);
   expect(result.current.snapshot).toEqual(empty);
   expect(result.current.storedLadder).toBe(false);
+  expect(result.current.afterHoursTotals).toBeNull();
+  expect(result.current.sessionControl).toEqual({ kind: 'none' });
   expect(api).not.toHaveBeenCalled();
 });
 
 it.each([at(15, 25), at(15, 19) - 86_400_000])('rejects an auction or another day from recovery (%s)', async timestamp => {
   vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: book(timestamp) });
-  const { result, queryClient } = setup();
+  const { result, queryClient } = setup('KRX', false, [ah()]);
   await waitFor(() => expect(queryClient.getQueryData(['live', 'pre-auction-book', '036930', '20261014', 'KRX'])).toBeNull());
   expect(result.current.snapshot).toBeNull();
   expect(result.current.afterHoursTotals).toEqual({ ask: 999, bid: 888 });
-  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가' });
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가 · 15:41:00' });
+});
+
+it('keeps the received ladder while after-hours quantities and their timestamp update across a 0D reset', () => {
+  const { result, rerender, props } = setup();
+  const retained = { ...book(at(15, 30, 13)), tot_ask: 21663, tot_bid: 32039 };
+  rerender({ ...props, nowMs: at(15, 46, 38), retained, afterHours: [ah(at(15, 46, 38), 0, 1640)] });
+  expect(result.current.snapshot).toEqual(retained);
+  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.afterHoursTotals).toEqual({ ask: 0, bid: 1640 });
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가 · 15:46:38' });
+  rerender({ ...props, nowMs: at(15, 46, 38), retained, afterHours: [ah(at(15, 46, 39), 12, 1600)] });
+  expect(result.current.snapshot).toEqual(retained);
+  expect(result.current.afterHoursTotals).toEqual({ ask: 12, bid: 1600 });
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가 · 15:46:39' });
+  rerender({ ...props, nowMs: at(15, 46, 38), retained, afterHours: [ah(at(15, 46, 40), 12, 1600)] });
+  expect(result.current.snapshot).toEqual(retained);
+  expect(result.current.afterHoursTotals).toEqual({ ask: 12, bid: 1600 });
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가 · 15:46:40' });
+});
+
+it('also updates totals over a recovered ladder, then returns to the arriving live ladder', async () => {
+  vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: saved });
+  const { result, rerender, props } = setup('UN', false, [ah()]);
+  await waitFor(() => expect(result.current.snapshot).toEqual(saved));
+  expect(result.current.afterHoursTotals).toEqual({ ask: 999, bid: 888 });
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가 · 15:41:00' });
+  const live = book(at(16));
+  rerender({ ...props, nowMs: at(16), latest: live, retained: live });
+  expect(result.current.snapshot).toEqual(live);
+  expect(result.current.afterHoursTotals).toBeNull();
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '애프터마켓 · 16:00:00' });
+});
+
+it.each([
+  ah(at(15, 41) - 86_400_000),
+  ah(at(15, 41), 999, 888, 'NXT'),
+  ah(at(15, 41), 0, 0),
+  ah(0),
+  ah(Number.NaN),
+])('keeps unrelated or unusable after-hours data out of the footer (%j)', afterHours => {
+  const { result, rerender, props } = setup('KRX', false, [afterHours]);
+  const retained = book(at(15, 30, 13));
+  rerender({ ...props, retained });
+  expect(result.current.snapshot).toEqual(retained);
+  expect(result.current.afterHoursTotals).toBeNull();
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '마지막 수신 · 15:30:13' });
+});
+
+it('does not let a new empty 0D frame suppress the only after-hours sample', () => {
+  const { result, rerender, props } = setup();
+  const retained = book(at(15, 30, 13));
+  rerender({ ...props, nowMs: at(15, 40, 1), retained, afterHours: [ah(at(15, 40, 1), 0, 2000)] });
+  expect(result.current.snapshot).toEqual(retained);
+  expect(result.current.afterHoursTotals).toEqual({ ask: 0, bid: 2000 });
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '시간외종가 · 15:40:01' });
 });
 
 it('does not replace a newer received pre-auction frame with an older disk snapshot', async () => {
