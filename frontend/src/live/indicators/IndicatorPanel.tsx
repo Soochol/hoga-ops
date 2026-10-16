@@ -107,8 +107,8 @@ function IndicatorNavRow({
             가 한 덩어리로 읽힌다. `aria-hidden` 이라 접근성 이름은 라벨 그대로다. */}
         <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>
         <span className="indicator-nav-label min-w-0" title={label}>
-          <HighlightedLabel label={label} query={query} />
-          {summary && <span className="indicator-nav-summary" title={summary} aria-hidden="true">{summary}</span>}
+          <span className="indicator-nav-name"><HighlightedLabel label={label} query={query} /></span>
+          {summary && <> <span className="indicator-nav-summary" title={summary} aria-hidden="true">{summary}</span></>}
         </span>
       </button>
       {dotColors.length > 0 && (
@@ -470,7 +470,7 @@ export default function IndicatorPanel({
                   {/* Catalog rows only select the draft form. The footer commits it. */}
                   <IndicatorNavRow
                     label={c.label}
-                    summary={added ? `${instancesFor(c.id).length}개` : undefined}
+                    summary={added ? `#${instancesFor(c.id).length}` : undefined}
                     glyph={INDICATOR_GLYPH[c.id]}
                     added={added}
                     selected={selectedId === c.id}

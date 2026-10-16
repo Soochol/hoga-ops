@@ -97,6 +97,16 @@ test('catalog forms never mutate the chart while browsing and the add footer fit
   }
   for (const width of [1440, 640, 390, 320]) {
     await page.setViewportSize({ width, height: 900 });
+    const maLabel = editor.getByRole('button', { name: '이동평균선', exact: true }).locator('.indicator-nav-label');
+    await expect(maLabel).toHaveText('이동평균선 #1');
+    const maGeometry = await maLabel.evaluate(el => {
+      const name = el.querySelector('.indicator-nav-name')!, count = el.querySelector('.indicator-nav-summary')!;
+      const nameRect = name.getBoundingClientRect(), countRect = count.getBoundingClientRect();
+      return { nameHeight: nameRect.height, lineHeight: parseFloat(getComputedStyle(name).lineHeight), topDifference: Math.abs(nameRect.top - countRect.top), countRight: countRect.right, labelRight: el.getBoundingClientRect().right };
+    });
+    expect(maGeometry.nameHeight).toBeLessThanOrEqual(maGeometry.lineHeight + 1);
+    expect(maGeometry.topDifference).toBeLessThan(4);
+    expect(maGeometry.countRight).toBeLessThanOrEqual(maGeometry.labelRight + 1);
     await editor.getByRole('button', { name: '볼린저 밴드', exact: true }).click();
     await expect(editor.getByRole('spinbutton', { name: '볼린저 기간' })).toBeVisible();
     await expect(editor.getByRole('button', { name: '설정대로 추가', exact: true })).toBeVisible();

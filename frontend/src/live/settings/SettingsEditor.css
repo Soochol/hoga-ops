@@ -28,11 +28,12 @@
 .settings-editor .settings-dependent > summary { color:var(--fg-dim); font-size:var(--text-xs); padding:0.375rem 0; cursor:pointer; }
 .settings-editor .settings-dependent .settings-row { min-height:2.75rem; }
 .settings-editor .indicator-config > div > h3 { font-size:var(--text-sm); font-weight:500; }
-.settings-editor .indicator-nav-summary { display:block; margin-top:0.25rem; color:var(--fg-dim); font-size:var(--text-xs); font-weight:400; }
+.settings-editor .indicator-nav-summary { flex-shrink:0; white-space:nowrap; color:var(--fg-dim); font-size:var(--text-xs); font-weight:400; }
 .settings-editor .indicator-nav-row { padding:0.375rem 0.5rem; }
 .settings-editor .indicator-nav-colors { display:none; }
 .settings-editor .indicator-nav-row button:first-child { gap:0.375rem; }
-.settings-editor .indicator-nav-label { white-space:normal; word-break:keep-all; overflow-wrap:anywhere; line-height:1.55; }
+.settings-editor .indicator-nav-label { display:inline-flex; align-items:baseline; gap:var(--space-xs); white-space:normal; word-break:keep-all; overflow-wrap:anywhere; line-height:1.55; }
+.settings-editor .indicator-nav-name { min-width:0; }
 .settings-editor .indicator-config { container-type:inline-size; padding-top:0.75rem; }
 .settings-editor .ma-config-row { min-height:3.25rem; border-top:1px solid var(--border); }
 .settings-editor .ma-config-heading { font-size:var(--text-xs); padding-bottom:0.625rem; color:var(--fg-dim); }
@@ -63,6 +64,7 @@
   .settings-editor-scope { max-width:12rem; }
   .settings-editor .indicator-nav-row { padding-inline:0.25rem; }
   .settings-editor .indicator-nav-row button:first-child > span:first-child { display:none; }
+  .settings-editor .indicator-nav-row > button:nth-child(2) { display:none; }
   .settings-editor .ma-config-grid { grid-template-columns:26px 44px minmax(46px,1fr) 20px; gap:0.375rem; }
   .settings-editor .ma-config-style { grid-column:2 / 4; grid-row:2; padding-bottom:0.375rem; }
   .settings-editor .ma-config-remove { grid-column:4; }
