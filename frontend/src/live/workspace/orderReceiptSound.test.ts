@@ -43,7 +43,61 @@ async function initialized() {
   return created[0];
 }
 
+function delayedResume(audio: { state: string }, milliseconds: number): () => Promise<void> {
+  // AudioContext resolves all pending resume calls when the same context starts.
+  const ready = new Promise<void>(resolve => setTimeout(() => {
+    audio.state = 'running'; resolve();
+  }, milliseconds));
+  return () => ready;
+}
+
 describe('주문접수 딩동과 복구', () => {
+  it.each(['cold', 'suspended', 'interrupted'])('%s 오디오가 650ms에 준비돼도 첫 접수음을 한 번 재생한다', async state => {
+    if (state === 'cold') {
+      vi.stubGlobal('AudioContext', class extends FakeAudioContext {
+        resume = vi.fn(delayedResume(this, 650));
+      });
+    } else {
+      const audio = await initialized();
+      audio.state = state;
+      audio.resume.mockImplementation(delayedResume(audio, 650));
+    }
+    sound.prepareOrderReceiptSound();
+    await vi.advanceTimersByTimeAsync(20); // A fast order response overlaps initial preparation.
+    const playback = sound.notifyOrderReceiptAccepted(1, 'first-order');
+    expect(sound.notifyOrderReceiptAccepted(1, 'first-order')).toBe(playback);
+    await vi.advanceTimersByTimeAsync(629);
+    expect(created[0].sources).toHaveLength(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await playback).toBe(true);
+    expect(created[0].sources).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(created[0].sources).toHaveLength(1);
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('800ms 제한 직전에 준비되면 재생한다', async () => {
+    const audio = await initialized();
+    audio.state = 'suspended';
+    audio.resume.mockImplementation(delayedResume(audio, 799));
+    const playback = sound.playOrderReceiptSound();
+    await vi.advanceTimersByTimeAsync(799);
+    expect(await playback).toBe(true);
+    expect(audio.sources).toHaveLength(1);
+  });
+
+  it.each([800, 900])('%ims에 준비되면 지난 접수음을 버리고 다음 주문만 재생한다', async milliseconds => {
+    const audio = await initialized();
+    audio.state = 'suspended';
+    audio.resume.mockImplementation(delayedResume(audio, milliseconds));
+    const playback = sound.notifyOrderReceiptAccepted(1, 'expired-first-order');
+    await vi.advanceTimersByTimeAsync(milliseconds);
+    expect(await playback).toBe(false);
+    expect(audio.sources).toHaveLength(0);
+    expect(await sound.notifyOrderReceiptAccepted(1, 'second-order')).toBe(true);
+    expect(audio.sources).toHaveLength(1);
+  });
+
   it.each([44100, 48000])('%iHz에서 더 큰 330ms 2음을 캐시하고 한 소스로 재생한다', async sampleRate => {
     const audio = await initialized();
     audio.sampleRate = sampleRate;
@@ -111,7 +165,11 @@ describe('주문접수 딩동과 복구', () => {
     let resume!: () => void;
     audio.resume.mockImplementation(() => new Promise<void>(resolve => { resume = resolve; }));
     const playback = sound.notifyOrderReceiptAccepted(1, 'stale-command');
-    await vi.advanceTimersByTimeAsync(600);
+    let settled = false;
+    void playback.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(799);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
     expect(await playback).toBe(false);
     expect(audio.resume).toHaveBeenCalledTimes(3); // Initial preparation and two playback attempts.
     audio.state = 'running'; resume();
@@ -166,5 +224,36 @@ describe('주문접수 딩동과 복구', () => {
     window.dispatchEvent(new Event('focus'));
     expect(audio.resume).toHaveBeenCalledTimes(2);
     expect(audio.sources).toHaveLength(0);
+  });
+
+  it('첫 사용자 동작에서 미리 준비하고 창을 모두 닫으면 사용자 동작에도 준비하지 않는다', async () => {
+    const first = sound.subscribeOrderReceiptSoundRecovery();
+    const second = sound.subscribeOrderReceiptSoundRecovery();
+    expect(created).toHaveLength(0);
+    // Capture must warm up even when a child stops propagation, before its action.
+    const button = document.createElement('button');
+    document.body.append(button);
+    button.addEventListener('pointerdown', event => event.stopPropagation());
+    try {
+      button.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      expect(created).toHaveLength(1);
+      const audio = created[0];
+      await vi.advanceTimersByTimeAsync(0);
+      expect(audio.resume).toHaveBeenCalledOnce();
+      expect(audio.sources).toHaveLength(0);
+      first();
+      audio.state = 'interrupted';
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(audio.resume).toHaveBeenCalledTimes(2);
+      expect(audio.sources).toHaveLength(0);
+      second();
+      audio.state = 'suspended';
+      button.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '1' }));
+      expect(audio.resume).toHaveBeenCalledTimes(2);
+    } finally {
+      button.remove();
+    }
   });
 });
