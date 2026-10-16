@@ -7,6 +7,7 @@ import { useEffectiveVenue, useKrxAftermarketExcluded, useNxtEnabledResolver } f
 import { bookSessionControl, bookSessionEpoch, hasBookSessionToggle, resolveBookSessionMode,
   type BookSessionMode, type BookSessionOverride } from '../bookSessionMode';
 import { latestAfterHoursTotals } from '../liveSidebarAdapters';
+import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../liveVenuePolicy';
 import { isKstWeekend, previousDayObExpired, realMsToYyyymmdd, regularSessionCloseMs } from '../liveDateTime';
 import { isKrxAftermarketWindow, krxAftermarketIntroduced } from '../../util/stockSessions';
 import { unixMsToKSTClock } from '../../util/time';
@@ -63,19 +64,31 @@ export function useBookSessionDisplay({ code, venue, nowMs, todayKst, isSpot, re
     : useRegularFallback ? frozenRegular : latestUsable;
   const storedLadder = !isSpot && !modeGated && activeSinglePrice === null
     && (useRegularFallback || (!hasBookPrices(regularSnapshot) && snapshot != null));
-  const afterHoursTotals = useMemo(() => {
-    if (isSpot || (storedLadder && snapshot != null)) return null;
-    if (activeSinglePrice !== null) return { ask: activeSinglePrice.tot_ask, bid: activeSinglePrice.tot_bid };
-    const totals = latestAfterHoursTotals(afterHours, latestSnapshot?.ts_ms ?? null);
-    if (totals === null || showAfterHours || snapshot == null) return totals;
-    // A frozen regular ladder must not receive another day's after-hours totals.
-    return realMsToYyyymmdd(snapshot.ts_ms) === todayKst ? totals : null;
-  }, [isSpot, storedLadder, activeSinglePrice, afterHours, latestSnapshot, showAfterHours, snapshot, todayKst]);
+  const afterHoursSample = useMemo(() => {
+    if (isSpot || activeSinglePrice !== null) return null;
+    const latest = afterHours.at(-1);
+    const receivedAtMs = latest?.t_ms;
+    if (typeof receivedAtMs !== 'number' || !Number.isFinite(receivedAtMs) || receivedAtMs <= 0
+      || realMsToYyyymmdd(receivedAtMs) !== date
+      || !liveVenueAcceptsFrame(effectiveVenue, latest?.venue as LiveFrameVenue | undefined)) return null;
+    if (snapshot != null && realMsToYyyymmdd(snapshot.ts_ms) !== todayKst) return null;
+    // A 0D reset has no ladder. Compare 0E with the last usable ladder instead,
+    // and keep its totals and timestamp together while the saved ladder stays put.
+    const liveBook = hasBookPrices(latestSnapshot) ? latestSnapshot : latestUsable;
+    const totals = latestAfterHoursTotals(afterHours, liveBook?.ts_ms ?? null);
+    return totals === null ? null : { totals, receivedAtMs };
+  }, [isSpot, activeSinglePrice, afterHours, date, effectiveVenue, snapshot, todayKst, latestSnapshot, latestUsable]);
+  const afterHoursTotals = isSpot ? null : activeSinglePrice !== null
+    ? { ask: activeSinglePrice.tot_ask, bid: activeSinglePrice.tot_bid }
+    : afterHoursSample?.totals ?? null;
   const earlyLive = !isSpot && activeSinglePrice === null && krxAftermarketIntroduced(date)
     && effectiveVenue === 'KRX' && snapshot != null
     && realMsToYyyymmdd(snapshot.ts_ms) === date
     && snapshot.ts_ms > regularClose && snapshot.ts_ms < regularClose + 30 * 60_000;
-  const sessionControl = storedLadder && (snapshot != null || afterHoursTotals === null)
+  const sessionControl = afterHoursSample !== null && !modeGated
+    ? { kind: 'label' as const,
+      label: `${afterHoursSample.receivedAtMs >= regularClose ? '시간외종가' : '시간외'} · ${unixMsToKSTClock(afterHoursSample.receivedAtMs)}` }
+    : storedLadder && (snapshot != null || afterHoursTotals === null)
     ? { kind: 'label' as const, label: snapshot
       ? `${useRegularFallback ? '정규장 마지막' : '마지막 수신'} · ${unixMsToKSTClock(snapshot.ts_ms)}${useRegularFallback && isKrxAftermarketWindow(nowMs) && !aftermarketExcluded ? ' · 수신 대기' : ''}`
       : '정규장 마지막 호가 없음' }

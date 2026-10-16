@@ -1152,15 +1152,16 @@ describe('호가 주문', () => {
     expect(strip).not.toHaveTextContent('매도 잔량'); expect(strip).not.toHaveTextContent('매수 잔량');
   });
 
-  it.each([true, false])('정규장 사다리 존재=%s여도 두 창은 저장 호가를 공유하고 15:59:50 수신 즉시 전환한다', async hasBook => {
+  it.each([true, false])('정규장 사다리 존재=%s여도 두 창은 저장 사다리를 유지하며 시간외 잔량·시각을 갱신한다', async hasBook => {
     const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
     const api = vi.spyOn(await import('../../api/client'), 'apiCall');
     const previousNow = mock.now;
     mock.now = Date.UTC(2026, 9, 14, 6, 47); // 15:47 KST
+    let afterHours = [{ t_ms: mock.now, total_ask_qty: 879, total_bid_qty: 538 }];
     vi.mocked(useLiveSeries).mockImplementation(() => ({ ...originalSeries('005930', 'KRX'),
       latestOb: hasBook ? { t_ms: Date.UTC(2026, 9, 14, 6, 30), asks: [{ price: 241500, qty: 0 }],
         bids: [{ price: 241000, qty: 0 }], total_ask_qty: 0, total_bid_qty: 0 } : undefined,
-      afterHours: [{ t_ms: mock.now, total_ask_qty: 879, total_bid_qty: 538 }],
+      afterHours,
     }));
     try {
       const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1175,15 +1176,26 @@ describe('호가 주문', () => {
         <div data-testid="close-order"><OrderWindow code="005930" name="삼성전자" /></div>
       </QueryClientProvider>;
       const view = render(content());
-      await waitFor(() => expect(screen.getAllByText(/정규장 마지막 · 15:19:50/)).toHaveLength(2));
+      const frozenBuy = await screen.findByRole('button', { name: /매수 67,200원 주문 추가/ });
+      expect(screen.getAllByText('시간외종가 · 15:47:00')).toHaveLength(2);
       for (const id of ['close-book', 'close-order']) {
         const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
-        expect(strip).toHaveTextContent('1,000정규장 마지막 · 15:19:502,000');
-        expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '1000fr 2000fr' });
+        expect(strip).toHaveTextContent('879시간외종가 · 15:47:00538');
+        expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '879fr 538fr' });
       }
       expect(api).toHaveBeenCalledTimes(1);
       expect(new URL(api.mock.calls[0][0], 'http://test').searchParams.get('t')).toBe(String(Date.UTC(2026, 9, 14, 6, 20) - 1));
-      const frozenBuy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+      expect(frozenBuy).toBeDisabled();
+      afterHours = [{ t_ms: mock.now + 1000, total_ask_qty: 0, total_bid_qty: 1640 }];
+      view.rerender(content());
+      for (const id of ['close-book', 'close-order']) {
+        const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
+        expect(within(strip).getByLabelText('시간외 매도총잔량 0')).toHaveTextContent('0');
+        expect(within(strip).getByLabelText('시간외 매수총잔량 1,640')).toHaveTextContent('1,640');
+        expect(strip).toHaveTextContent('시간외종가 · 15:47:01');
+        expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '0fr 1640fr' });
+      }
+      expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBe(frozenBuy);
       expect(frozenBuy).toBeDisabled();
       mock.now = Date.UTC(2026, 9, 14, 6, 59, 50);
       vi.mocked(useLiveSeries).mockImplementation(() => originalSeries('005930', 'KRX'));
@@ -1216,7 +1228,7 @@ describe('호가 주문', () => {
       await waitFor(() => expect(api).toHaveBeenCalledOnce());
       for (const id of ['no-book', 'no-book-order']) {
         const strip = within(screen.getByTestId(id)).getByTestId('book-total-strip');
-        expect(strip).toHaveTextContent('879시간외종가538');
+        expect(strip).toHaveTextContent('879시간외종가 · 15:47:00538');
         expect(within(strip).getByTestId('book-total-fill')).toHaveStyle({ gridTemplateColumns: '879fr 538fr' });
       }
     } finally {
