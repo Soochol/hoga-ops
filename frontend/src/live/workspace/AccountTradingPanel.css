@@ -1,31 +1,28 @@
-.account-trading-panel { display:flex; flex-direction:column; max-height:min(27.5rem,calc(100vh - 1rem)); overflow:hidden; }
 .account-trading-panel button { padding:0.25rem 0.5rem; font:inherit; color:inherit; background:transparent; border:0; border-radius:var(--radius-md); }
 .account-trading-panel button:hover:not(:disabled) { background:var(--bg-input-hover); }
 .account-trading-panel button:disabled { opacity:.5; cursor:default; }
-.account-trading-panel [role=tablist] { display:flex; gap:1rem; }
-.account-trading-panel [role=tab] { padding:0.3125rem 0; border-bottom:2px solid transparent; border-radius:0; color:var(--fg-dim); font-weight:400; }
-.account-trading-panel [role=tab][aria-selected=true] { border-color:var(--accent); color:var(--fg); font-weight:500; }
-.account-trading-toolbar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.5rem; padding:0.5rem 0.75rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
-.account-trading-toolbar > span { overflow-wrap:anywhere; }
-.account-trading-scroll { min-height:0; overflow:auto; }
+.account-trading-count { margin-left:0.375rem; font-size:var(--text-xs); font-weight:400; color:var(--fg-dim); }
+.account-trading-scroll { flex:1; min-height:0; overflow:auto; padding:0 1.375rem 1rem; }
+.account-trading-footer { color:var(--fg-dim); }
+.account-trading-footer > span:last-child { flex-shrink:0; }
 .account-trading-panel table { table-layout:fixed; width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
 /* Column widths depend on the panel, never on a changing quote or balance.
  * Narrow screens scroll the complete numbers rather than truncating money. */
-.account-trading-panel .account-holdings-table { min-width:40rem; }
+.account-trading-panel .account-holdings-table { min-width:36rem; }
 .account-holdings-table col:nth-child(1) { width:28%; }
 .account-holdings-table col:nth-child(2),.account-holdings-table col:nth-child(3),.account-holdings-table col:nth-child(5) { width:16%; }
 .account-holdings-table col:nth-child(4) { width:24%; }
-.account-trading-panel .account-orders-table { min-width:36rem; }
+.account-trading-panel .account-orders-table { min-width:34rem; }
 .account-orders-table col:nth-child(1) { width:28%; }
 .account-orders-table col:nth-child(2) { width:9%; }
 .account-orders-table col:nth-child(3) { width:22%; }
 .account-orders-table col:nth-child(4) { width:23%; }
 .account-orders-table col:nth-child(5) { width:18%; }
-.account-trading-panel th { position:sticky; top:0; z-index:1; background:var(--bg-input-hover); color:var(--fg-dim); font-weight:400; font-size:var(--live-text-meta,var(--text-xs)); }
-.account-trading-panel th,.account-trading-panel td { padding:0.5rem 0.75rem; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border); }
+.account-trading-panel th { position:sticky; top:0; z-index:1; background:var(--bg-card); color:var(--fg-dim); font-weight:400; font-size:var(--text-xs); }
+.account-trading-panel th,.account-trading-panel td { padding:0.75rem 0.5rem; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border); }
 .account-trading-panel th:first-child,.account-trading-panel td:first-child { text-align:left; white-space:normal; }
 .account-trading-panel tr:last-child td { border-bottom:0; }
-.account-trading-panel tbody tr:hover { background:var(--bg-input); }
+.account-trading-panel tbody tr:hover { background:var(--bg-input-hover); }
 .account-trading-panel .account-stock-link { text-align:left; padding:0; border:0; background:transparent; }
 .account-trading-panel .account-stock-link:hover { text-decoration:underline; }
 .account-trading-panel small { display:block; margin-top:0.125rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
@@ -33,9 +30,11 @@
 .account-order-sell td:nth-child(2) { color:var(--price-down); }
 .account-trading-panel .account-cancel { border:1px solid var(--border); padding:0.25rem 0.5rem; }
 .account-trading-panel .account-cancel:hover:not(:disabled) { color:var(--error); border-color:var(--error); }
-.account-trading-message { padding:0.5rem 0.75rem; color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); }
+.account-trading-message { margin:0; padding:0.75rem 1.375rem; color:var(--fg-dim); font-size:var(--text-xs); }
 .account-row-error { display:block; max-width:15rem; color:var(--error); overflow-wrap:anywhere; font-size:var(--live-text-meta,var(--text-xs)); }
 .account-trading-message.text-error { color:var(--error); }
 @media(max-width:35rem) {
+  .account-trading-scroll { padding-inline:1rem; }
+  .account-trading-message { padding-inline:1rem; }
   .account-trading-panel th,.account-trading-panel td { padding:0.5rem 0.375rem; }
 }

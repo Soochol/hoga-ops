@@ -50,7 +50,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedHorizontalLineEnabled',
     label: '수평선 표시',
-    description: '「체결된 벽」을 그날 구간에 걸친 수평선으로 그립니다. 끄면 발생 시점 화살표와 라벨만 남습니다.',
+    description: '체결된 벽을 수평선으로 표시합니다. 화살표·라벨은 따로 설정합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -60,7 +60,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedHorizontalLineRightOnlyEnabled',
     label: '우측으로만 확장',
-    description: '「체결된 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    description: '벽이 걸린 시점부터 선을 그립니다. 끄면 그날 장 시작부터 표시합니다.',
     default: false,
     category: 'indicator-modal',
     side: 'ask',
@@ -71,7 +71,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedTimeMarkerEnabled',
     label: '발생 시점 화살표',
-    description: '「체결된 벽」이 걸린 시점에 화살표를 찍습니다(↓ 위에서 아래로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
+    description: '벽이 걸린 시점·가격에 아래쪽 화살표를 표시합니다. 순위 화살표와는 별개입니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -81,7 +81,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '「체결된 벽」 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '벽이 걸린 분봉 위에 라벨을 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -91,7 +91,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedLegendCellEnabled',
     label: '레전드 순위 셀',
-    description: '「체결된 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    description: '체결된 벽을 레전드 순위에 포함합니다. 끄더라도 레전드 행은 유지합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -101,7 +101,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedRankArrowEnabled',
     label: '상위벽 순위 화살표',
-    description: '「체결된 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 고가 위에 ↓ 와 순위를 찍습니다.',
+    description: '분봉 고가 위에 아래쪽 화살표와 순위를 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -111,7 +111,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedAboveMaEnabled',
     label: '이동평균선 위 벽만',
-    description: '「체결된 벽」 중 벽이 걸린 분봉의 이동평균선보다 높은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
+    description: '해당 분봉의 이동평균선 위에 있는 벽만 표시합니다. 걸러진 벽은 다른 후보로 대체하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -121,7 +121,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakTradedAboveDailyMaEnabled',
     label: '일봉 이동평균선 위 벽만',
-    description: '「체결된 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 높은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    description: '해당일의 일봉 이동평균선 위에 있는 벽만 표시합니다. 일봉이 없으면 판정하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -132,7 +132,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedHorizontalLineEnabled',
     label: '수평선 표시',
-    description: '「미도달 벽」을 그날 구간에 걸친 수평선으로 그립니다. 끄면 발생 시점 화살표와 라벨만 남습니다.',
+    description: '미도달 벽을 수평선으로 표시합니다. 화살표·라벨은 따로 설정합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -142,7 +142,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedHorizontalLineRightOnlyEnabled',
     label: '우측으로만 확장',
-    description: '「미도달 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    description: '벽이 걸린 시점부터 선을 그립니다. 끄면 그날 장 시작부터 표시합니다.',
     default: false,
     category: 'indicator-modal',
     side: 'ask',
@@ -153,7 +153,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedTimeMarkerEnabled',
     label: '발생 시점 화살표',
-    description: '「미도달 벽」이 걸린 시점에 화살표를 찍습니다(↓ 위에서 아래로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
+    description: '벽이 걸린 시점·가격에 아래쪽 화살표를 표시합니다. 순위 화살표와는 별개입니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -163,7 +163,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '「미도달 벽」 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '벽이 걸린 분봉 위에 라벨을 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -173,7 +173,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedLegendCellEnabled',
     label: '레전드 순위 셀',
-    description: '「미도달 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    description: '미도달 벽을 레전드 순위에 포함합니다. 끄더라도 레전드 행은 유지합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -183,7 +183,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedRankArrowEnabled',
     label: '상위벽 순위 화살표',
-    description: '「미도달 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 고가 위에 ↓ 와 순위를 찍습니다.',
+    description: '분봉 고가 위에 아래쪽 화살표와 순위를 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -193,7 +193,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedAboveMaEnabled',
     label: '이동평균선 위 벽만',
-    description: '「미도달 벽」 중 벽이 걸린 분봉의 이동평균선보다 높은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
+    description: '해당 분봉의 이동평균선 위에 있는 벽만 표시합니다. 걸러진 벽은 다른 후보로 대체하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -203,7 +203,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakUnreachedAboveDailyMaEnabled',
     label: '일봉 이동평균선 위 벽만',
-    description: '「미도달 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 높은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    description: '해당일의 일봉 이동평균선 위에 있는 벽만 표시합니다. 일봉이 없으면 판정하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -214,7 +214,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallHorizontalLineEnabled',
     label: '수평선 표시',
-    description: '「전체 최대벽」을 그날 구간에 걸친 수평선으로 그립니다. 끄면 발생 시점 화살표와 라벨만 남습니다.',
+    description: '전체 최대벽을 수평선으로 표시합니다. 화살표·라벨은 따로 설정합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -224,7 +224,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallHorizontalLineRightOnlyEnabled',
     label: '우측으로만 확장',
-    description: '「전체 최대벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    description: '벽이 걸린 시점부터 선을 그립니다. 끄면 그날 장 시작부터 표시합니다.',
     default: false,
     category: 'indicator-modal',
     side: 'ask',
@@ -235,7 +235,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallTimeMarkerEnabled',
     label: '발생 시점 화살표',
-    description: '「전체 최대벽」이 걸린 시점에 화살표를 찍습니다(↓ 위에서 아래로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
+    description: '벽이 걸린 시점·가격에 아래쪽 화살표를 표시합니다. 순위 화살표와는 별개입니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -245,7 +245,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '「전체 최대벽」 라벨을 그 벽이 걸린 분봉 위에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '벽이 걸린 분봉 위에 라벨을 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -255,7 +255,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallLegendCellEnabled',
     label: '레전드 순위 셀',
-    description: '「전체 최대벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    description: '전체 최대벽을 레전드 순위에 포함합니다. 끄더라도 레전드 행은 유지합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -265,7 +265,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallRankArrowEnabled',
     label: '상위벽 순위 화살표',
-    description: '「전체 최대벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 고가 위에 ↓ 와 순위를 찍습니다.',
+    description: '분봉 고가 위에 아래쪽 화살표와 순위를 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -275,7 +275,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallAboveMaEnabled',
     label: '이동평균선 위 벽만',
-    description: '「전체 최대벽」 중 벽이 걸린 분봉의 이동평균선보다 높은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 아래쪽 벽이 대신 올라오지는 않습니다.',
+    description: '해당 분봉의 이동평균선 위에 있는 벽만 표시합니다. 걸러진 벽은 다른 후보로 대체하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -285,7 +285,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'askPeakAllWallAboveDailyMaEnabled',
     label: '일봉 이동평균선 위 벽만',
-    description: '「전체 최대벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 높은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    description: '해당일의 일봉 이동평균선 위에 있는 벽만 표시합니다. 일봉이 없으면 판정하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'ask',
@@ -296,7 +296,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedHorizontalLineEnabled',
     label: '수평선 표시',
-    description: '「체결된 벽」을 그날 구간에 걸친 수평선으로 그립니다. 끄면 발생 시점 화살표와 라벨만 남습니다.',
+    description: '체결된 벽을 수평선으로 표시합니다. 화살표·라벨은 따로 설정합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -306,7 +306,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedHorizontalLineRightOnlyEnabled',
     label: '우측으로만 확장',
-    description: '「체결된 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    description: '벽이 걸린 시점부터 선을 그립니다. 끄면 그날 장 시작부터 표시합니다.',
     default: false,
     category: 'indicator-modal',
     side: 'bid',
@@ -317,7 +317,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedTimeMarkerEnabled',
     label: '발생 시점 화살표',
-    description: '「체결된 벽」이 걸린 시점에 화살표를 찍습니다(↑ 아래에서 위로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
+    description: '벽이 걸린 시점·가격에 위쪽 화살표를 표시합니다. 순위 화살표와는 별개입니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -327,7 +327,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '「체결된 벽」 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '벽이 걸린 분봉 아래에 라벨을 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -337,7 +337,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedLegendCellEnabled',
     label: '레전드 순위 셀',
-    description: '「체결된 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    description: '체결된 벽을 레전드 순위에 포함합니다. 끄더라도 레전드 행은 유지합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -347,7 +347,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedRankArrowEnabled',
     label: '상위벽 순위 화살표',
-    description: '「체결된 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 저가 아래에 ↑ 와 순위를 찍습니다.',
+    description: '분봉 저가 아래에 위쪽 화살표와 순위를 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -357,7 +357,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedBelowMaEnabled',
     label: '이동평균선 아래 벽만',
-    description: '「체결된 벽」 중 벽이 걸린 분봉의 이동평균선보다 낮은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    description: '해당 분봉의 이동평균선 아래에 있는 벽만 표시합니다. 걸러진 벽은 다른 후보로 대체하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -367,7 +367,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakTradedBelowDailyMaEnabled',
     label: '일봉 이동평균선 아래 벽만',
-    description: '「체결된 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 낮은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    description: '해당일의 일봉 이동평균선 아래에 있는 벽만 표시합니다. 일봉이 없으면 판정하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -378,7 +378,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedHorizontalLineEnabled',
     label: '수평선 표시',
-    description: '「미도달 벽」을 그날 구간에 걸친 수평선으로 그립니다. 끄면 발생 시점 화살표와 라벨만 남습니다.',
+    description: '미도달 벽을 수평선으로 표시합니다. 화살표·라벨은 따로 설정합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -388,7 +388,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedHorizontalLineRightOnlyEnabled',
     label: '우측으로만 확장',
-    description: '「미도달 벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    description: '벽이 걸린 시점부터 선을 그립니다. 끄면 그날 장 시작부터 표시합니다.',
     default: false,
     category: 'indicator-modal',
     side: 'bid',
@@ -399,7 +399,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedTimeMarkerEnabled',
     label: '발생 시점 화살표',
-    description: '「미도달 벽」이 걸린 시점에 화살표를 찍습니다(↑ 아래에서 위로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
+    description: '벽이 걸린 시점·가격에 위쪽 화살표를 표시합니다. 순위 화살표와는 별개입니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -409,7 +409,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '「미도달 벽」 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '벽이 걸린 분봉 아래에 라벨을 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -419,7 +419,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedLegendCellEnabled',
     label: '레전드 순위 셀',
-    description: '「미도달 벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    description: '미도달 벽을 레전드 순위에 포함합니다. 끄더라도 레전드 행은 유지합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -429,7 +429,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedRankArrowEnabled',
     label: '상위벽 순위 화살표',
-    description: '「미도달 벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 저가 아래에 ↑ 와 순위를 찍습니다.',
+    description: '분봉 저가 아래에 위쪽 화살표와 순위를 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -439,7 +439,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedBelowMaEnabled',
     label: '이동평균선 아래 벽만',
-    description: '「미도달 벽」 중 벽이 걸린 분봉의 이동평균선보다 낮은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    description: '해당 분봉의 이동평균선 아래에 있는 벽만 표시합니다. 걸러진 벽은 다른 후보로 대체하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -449,7 +449,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakUnreachedBelowDailyMaEnabled',
     label: '일봉 이동평균선 아래 벽만',
-    description: '「미도달 벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 낮은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    description: '해당일의 일봉 이동평균선 아래에 있는 벽만 표시합니다. 일봉이 없으면 판정하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -460,7 +460,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallHorizontalLineEnabled',
     label: '수평선 표시',
-    description: '「전체 최대벽」을 그날 구간에 걸친 수평선으로 그립니다. 끄면 발생 시점 화살표와 라벨만 남습니다.',
+    description: '전체 최대벽을 수평선으로 표시합니다. 화살표·라벨은 따로 설정합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -470,7 +470,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallHorizontalLineRightOnlyEnabled',
     label: '우측으로만 확장',
-    description: '「전체 최대벽」 수평선을 그 벽이 걸린 시점부터 오른쪽으로만 긋습니다. 끄면 지금처럼 그날 장 시작부터 좌우로 걸칩니다. 오른쪽 끝은 어느 쪽이든 같습니다 — 과거일은 그날 장 마감, 오늘은 마지막 캔들.',
+    description: '벽이 걸린 시점부터 선을 그립니다. 끄면 그날 장 시작부터 표시합니다.',
     default: false,
     category: 'indicator-modal',
     side: 'bid',
@@ -481,7 +481,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallTimeMarkerEnabled',
     label: '발생 시점 화살표',
-    description: '「전체 최대벽」이 걸린 시점에 화살표를 찍습니다(↑ 아래에서 위로, 끝이 그 벽의 가격에 닿습니다). 순위 숫자가 붙는 「상위벽 순위 화살표」와는 다른 마커입니다.',
+    description: '벽이 걸린 시점·가격에 위쪽 화살표를 표시합니다. 순위 화살표와는 별개입니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -491,7 +491,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallLabelEnabled',
     label: '최대벽 라벨 표시',
-    description: '「전체 최대벽」 라벨을 그 벽이 걸린 분봉 아래에 표시합니다. 끄면 수평선은 그대로 두고 라벨만 숨깁니다.',
+    description: '벽이 걸린 분봉 아래에 라벨을 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -501,7 +501,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallLegendCellEnabled',
     label: '레전드 순위 셀',
-    description: '「전체 최대벽」을 레전드 순위 셀의 후보에 넣습니다. 꺼도 레전드 행과 눈 아이콘은 남습니다.',
+    description: '전체 최대벽을 레전드 순위에 포함합니다. 끄더라도 레전드 행은 유지합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -511,7 +511,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallRankArrowEnabled',
     label: '상위벽 순위 화살표',
-    description: '「전체 최대벽」을 순위 화살표의 후보에 넣습니다. 화살표는 벽이 걸린 분봉의 저가 아래에 ↑ 와 순위를 찍습니다.',
+    description: '분봉 저가 아래에 위쪽 화살표와 순위를 표시합니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -521,7 +521,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallBelowMaEnabled',
     label: '이동평균선 아래 벽만',
-    description: '「전체 최대벽」 중 벽이 걸린 분봉의 이동평균선보다 낮은 것만 표시합니다. 그날 최대벽을 먼저 뽑고 거르므로 위쪽 벽이 대신 올라오지는 않습니다.',
+    description: '해당 분봉의 이동평균선 아래에 있는 벽만 표시합니다. 걸러진 벽은 다른 후보로 대체하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -531,7 +531,7 @@ export const PEAK_WALL_FAMILY_TOGGLES = [
   {
     key: 'bidPeakAllWallBelowDailyMaEnabled',
     label: '일봉 이동평균선 아래 벽만',
-    description: '「전체 최대벽」 중 벽이 걸린 거래일의 일봉 이동평균선보다 낮은 것만 표시합니다. 일봉이 없는 날은 판정하지 않습니다.',
+    description: '해당일의 일봉 이동평균선 아래에 있는 벽만 표시합니다. 일봉이 없으면 판정하지 않습니다.',
     default: true,
     category: 'indicator-modal',
     side: 'bid',
@@ -547,7 +547,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'askPeakTradedAboveMaPeriod',
     label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    description: '종가 기준 이동평균선의 봉 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -556,7 +556,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'askPeakTradedAboveDailyMaPeriod',
     label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    description: '종가 기준 일봉 이동평균선의 거래일 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -565,7 +565,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'askPeakUnreachedAboveMaPeriod',
     label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    description: '종가 기준 이동평균선의 봉 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -574,7 +574,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'askPeakUnreachedAboveDailyMaPeriod',
     label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    description: '종가 기준 일봉 이동평균선의 거래일 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -583,7 +583,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'askPeakAllWallAboveMaPeriod',
     label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    description: '종가 기준 이동평균선의 봉 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -592,7 +592,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'askPeakAllWallAboveDailyMaPeriod',
     label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    description: '종가 기준 일봉 이동평균선의 거래일 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -601,7 +601,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'bidPeakTradedBelowMaPeriod',
     label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    description: '종가 기준 이동평균선의 봉 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -610,7 +610,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'bidPeakTradedBelowDailyMaPeriod',
     label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    description: '종가 기준 일봉 이동평균선의 거래일 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -619,7 +619,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'bidPeakUnreachedBelowMaPeriod',
     label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    description: '종가 기준 이동평균선의 봉 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -628,7 +628,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'bidPeakUnreachedBelowDailyMaPeriod',
     label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    description: '종가 기준 일봉 이동평균선의 거래일 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -637,7 +637,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'bidPeakAllWallBelowMaPeriod',
     label: '기준 이동평균 기간',
-    description: '비교할 이동평균선의 기간(봉 개수)입니다. 종가 기준.',
+    description: '종가 기준 이동평균선의 봉 수입니다.',
     default: 20,
     min: 2,
     max: 400,
@@ -646,7 +646,7 @@ export const PEAK_WALL_FAMILY_NUMERICS = [
   {
     key: 'bidPeakAllWallBelowDailyMaPeriod',
     label: '기준 일봉 이동평균 기간',
-    description: '비교할 일봉 이동평균선의 기간(거래일)입니다. 종가 기준.',
+    description: '종가 기준 일봉 이동평균선의 거래일 수입니다.',
     default: 20,
     min: 2,
     max: 400,

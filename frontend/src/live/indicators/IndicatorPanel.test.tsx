@@ -280,7 +280,7 @@ describe('IndicatorPanel', () => {
     // 그 지표의 설정 컨트롤은 하나도 없다 — 만질 수 없는 것을 보여 주지 않는다.
     expect(screen.queryByTestId('settings-toggle-askPeakIntraMax')).toBeNull();
     // 설명은 카드 안팎 어디에 있든 계속 읽힌다(카테고리 표가 소유).
-    expect(screen.getByText(/그 날 10호가 중 한 단계에 가장 크게 걸렸던/)).toBeTruthy();
+    expect(screen.getByText(/거래일별 10호가의 최대 매수·매도벽/)).toBeTruthy();
   });
 
   it('미리보기의 CTA 로 추가하면 그 자리가 설정 폼이 된다', () => {
@@ -761,19 +761,19 @@ describe('IndicatorPanel', () => {
 
   it('renders MovingAverageConfig in the right pane', () => {
     renderPanel();
-    expect(screen.getByText('지난 n일 동안 주가 평균값을 이은 선')).toBeTruthy();
+    expect(screen.getByText('설정한 봉 수의 평균 가격을 선으로 표시합니다.')).toBeTruthy();
   });
 
   it('clicking a category label navigates the right pane to that indicator detail', () => {
     renderPanel();
     // Default detail is 이동평균선.
-    expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
+    expect(screen.getByText(/설정한 봉 수의 평균 가격/)).toBeTruthy();
 
     // 거래량 → 거래량 detail (MA detail gone). The label is a button; the
     // on/off control is the separate role=checkbox icon.
     openDetail('거래량');
     expect(screen.getByText(/거래량을 막대로/)).toBeTruthy();
-    expect(screen.queryByText(/지난 n일 동안/)).toBeNull();
+    expect(screen.queryByText(/설정한 봉 수의 평균 가격/)).toBeNull();
 
     // 외국인 순매수량 → its detail.
     openDetail('외국인 순매수량');
@@ -869,9 +869,9 @@ describe('IndicatorPanel', () => {
   it('체크박스 클릭은 상세 pane을 전환하지 않는다', () => {
     renderPanel();
     // 기본 상세는 이동평균선. 다른 카테고리 체크박스를 눌러도 이동평균선 상세가 유지된다.
-    expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
+    expect(screen.getByText(/설정한 봉 수의 평균 가격/)).toBeTruthy();
     togglePresence('거래량');
-    expect(screen.getByText(/지난 n일 동안/)).toBeTruthy();
+    expect(screen.getByText(/설정한 봉 수의 평균 가격/)).toBeTruthy();
     expect(screen.queryByText(/거래량을 막대로/)).toBeNull();
   });
 
@@ -1073,13 +1073,13 @@ describe('IndicatorPanel', () => {
     useLivePageStore.setState({ volumeDistributionRangeCount: 18 });
     renderPanel();
     openDetail('당일 최대 매물대');
-    expect(screen.getAllByText(/연속체결 매물대 분포와 동일한 18개 가격 구간/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/매물대 분포와 같은 18개 구간/).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: '±0.25%' })).toBeNull();
     expect(screen.queryByRole('button', { name: '±0.5%' })).toBeNull();
     expect(screen.queryByRole('button', { name: '±1%' })).toBeNull();
     expect(screen.getByRole('button', { name: '당일 최대 매물대 색상 선택' })).toBeTruthy();
     expect(screen.getByRole('slider', { name: '당일 최대 매물대 투명도' })).toBeTruthy();
-    expect(screen.getByText(/동시호가 제외/)).toBeTruthy();
+    expect(screen.getByText(/동시호가는 제외/)).toBeTruthy();
   });
 
   it('당일 최대 매물대 색상과 투명도를 저장한다', () => {
@@ -1138,7 +1138,7 @@ describe('IndicatorPanel', () => {
   it('일봉 이동평균선 라벨 클릭 → DailyMovingAverageConfig 노출', () => {
     renderPanel();
     openDetail('일봉 이동평균선');
-    expect(screen.getByText(/일봉 종가 기준 이평선을 분봉 차트에 투영/)).toBeTruthy();
+    expect(screen.getByText(/일봉 종가의 이동평균선을 분봉 차트에 표시/)).toBeTruthy();
   });
 
   it('호가 잔량 히트맵 카테고리가 10호가 그룹에 렌더된다', () => {

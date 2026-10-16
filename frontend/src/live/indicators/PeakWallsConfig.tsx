@@ -66,7 +66,7 @@ export default function PeakWallsConfig() {
 
   return (
     <div>
-      <Stage n={1} title="방향" hint="두 방향은 완전한 미러입니다">
+      <Stage n={1} title="방향" hint="매도·매수를 각각 설정합니다">
         <div className="flex gap-2">
           {SIDES.map((s) => (
             <SideCard key={s.id} side={s.id} active={side === s.id} onPick={() => setSide(s.id)} />
@@ -74,7 +74,7 @@ export default function PeakWallsConfig() {
         </div>
       </Stage>
 
-      <Stage n={2} title="계열" hint="앞 둘은 배타 · 전체는 상위집합">
+      <Stage n={2} title="계열" hint="전체 최대벽은 두 계열을 모두 포함합니다">
         <FamilySchema side={side} />
         <div className="mt-1">
           <FamilyHeader />
@@ -255,9 +255,9 @@ const PANE_SLOT_KEY = {
  *  종전엔 ⑤ 매트릭스의 행 설명이었고, 슬롯이 계열 행으로 이사하면서 그 토글의
  *  `title` 이 됐다. 설명을 버리지 않되 행 높이를 두 배로 만들지도 않는 자리다. */
 const PANE_FAMILY_HINT: Record<PeakWallFamilyId, string> = {
-  Traded: '그 시점까지 체결된 벽 중 최대. 기록 갱신 시퀀스라 계단이 내려가지 않습니다.',
-  Unreached: '아직 안 닿은 벽 중 최대. 고가가 벽을 넘으면 계단이 내려갑니다(단조 아님).',
-  AllWall: '터치 무관 그날 최대. 벽이 빠져나가지 않아 계단이 내려가지 않습니다.',
+  Traded: '체결된 벽의 누적 최댓값입니다.',
+  Unreached: '미도달 벽 중 최댓값입니다. 가격이 닿으면 낮아질 수 있습니다.',
+  AllWall: '체결 여부와 관계없는 누적 최댓값입니다.',
 };
 
 /**
@@ -544,7 +544,7 @@ function FilterStage({ side, family }: { side: Side; family: PeakWallFamilyId })
       {/* 두 필터가 순차 적용이라 교집합이라는 사실이 화면에 없으면, 하나만 풀고서
           "왜 아직도 안 보이지" 가 된다. */}
       <p className="py-1.5 text-2xs text-fg-dim">
-        두 기준은 교집합으로 걸립니다 — 둘 다 통과한 벽만 그려집니다.
+        두 필터를 모두 통과한 벽만 표시합니다.
       </p>
 
       {/* 방향 공용 — 계열이 아니라 **방향**의 것이다. 배지가 그 스코프를 말한다
@@ -559,7 +559,7 @@ function FilterStage({ side, family }: { side: Side; family: PeakWallFamilyId })
             </span>
           </span>
         )}
-        description="과거 거래일에만 효과 · 「미도달 벽」에는 무효(양 carrier 가 같은 값)"
+        description="과거 거래일에만 적용됩니다. 미도달 벽에는 영향이 없습니다."
       >
         <ToggleSwitch
           label={`${SIDE_LABEL[side]} 분봉 내 최댓값 기준`}
@@ -665,10 +665,8 @@ function PaneStage() {
       )}
     >
       <p className="text-2xs leading-relaxed text-fg-dim">
-        ② 계열의 「pane」 스위치가 계단을 넣습니다. 칸이 하나라도 켜져 있으면 차트 아래
-        별도 pane 하나가 생기고,{' '}
-        <b className="font-semibold text-fg">여섯 칸이 모두 꺼지면 사라집니다</b>.
-        매도·매수가 그 pane 을 공유합니다.
+        ② 계열의 pane 스위치로 하단 패널을 켭니다. 매도·매수가 함께 사용하며,{' '}
+        <b className="font-semibold text-fg">모두 끄면 패널을 숨깁니다</b>.
       </p>
       <PaneSlotSummary />
       <PaneModeRow />
@@ -726,18 +724,13 @@ function PaneModeRow() {
       <p className="py-1.5 text-2xs leading-relaxed text-fg-dim">
         {mode === 'bar' ? (
           <>
-            매 봉에서 <b className="font-semibold text-fg">가장 큰 벽</b> 의 잔량을
-            그립니다 — 체결은 그 봉에서 체결된 것 중, 전체는 체결 여부를 묻지 않고,
-            미도달은 그 봉 시점에 아직 안 닿았던 것 중. 해당하는 벽이 없는 봉은 0 입니다.
-            {' '}이 모드는{' '}
-            <b className="font-semibold text-fg">이동평균선 필터를 거치지 않습니다</b>.
-            {' '}⚠ 미도달은{' '}
-            <b className="font-semibold text-fg">캔들 선과 판정 시점이 다릅니다</b> —
-            캔들 선은 「지금도 미도달인 벽」, 이 pane 은 「그 봉 시점에 미도달이던 벽」
-            입니다(그래야 과거 봉의 값이 장중에 바뀌지 않습니다).
+            봉별로 각 계열의 최대 잔량을 표시하며, 없으면 0입니다.{' '}
+            <b className="font-semibold text-fg">이동평균선 필터는 적용하지 않습니다</b>.
+            {' '}미도달 여부는 캔들 선의 현재 시점과 달리,{' '}
+            <b className="font-semibold text-fg">각 봉 시점</b>으로 판정합니다.
           </>
         ) : (
-          <>그 시점까지 체결된 벽 중 최대를 누적 계단으로 그립니다 — 한 번 오른 높이는 그날 안에서 내려가지 않습니다.</>
+          <>시점별 최대벽을 계단으로 표시합니다. 체결·전체는 누적 최고값, 미도달은 남은 벽 기준입니다.</>
         )}
       </p>
     </>

@@ -39,28 +39,28 @@ export const CHART_TOGGLES = [
   {
     key: 'candlePaneCandleOnlyScale',
     label: '캔들 기준 Y축',
-    description: '캔들 패널의 가격축을 캔들 고가·저가 기준으로만 맞춥니다. 이동평균선 등 상단 지표는 축 범위를 넓히지 않습니다.',
+    description: '캔들 고가·저가에 맞춰 가격축을 조절합니다. 보조지표는 제외합니다.',
     default: false,
     group: 'candle',
   },
   {
     key: 'candleAlwaysOnTop',
     label: '캔들이 항상 위',
-    description: '캔들 패널에서 이동평균선 등 같은 패널의 보조 지표보다 캔들을 위에 그립니다.',
+    description: '이동평균선 등 보조지표 위에 캔들을 그립니다.',
     default: false,
     group: 'candle',
   },
   {
     key: 'auctionWindowMask',
     label: '동시호가 구간 지표 숨김',
-    description: '15:20–15:30 KST 동시호가 구간에서 호가비·호가총합·체결강도를 표시하지 않습니다. (캔들/거래량 제외)',
+    description: '마감 동시호가 구간의 호가비·총잔량·체결강도를 숨깁니다. 캔들·거래량은 유지합니다.',
     default: true,
     group: 'candle',
   },
   {
     key: 'candleTooltipEnabled',
     label: '캔들 정보 툴팁',
-    description: '캔들에 마우스를 올리면 시·고·저·종·직전대비·거래량·거래량비를 툴팁으로 표시합니다.',
+    description: '캔들에 마우스를 올리면 가격·등락·거래량 정보를 표시합니다.',
     default: false,
     group: 'candle',
   },
@@ -68,38 +68,35 @@ export const CHART_TOGGLES = [
   {
     key: 'horizontalGridLinesEnabled',
     label: '가로 구분선',
-    description: '차트 배경의 가격축 방향 가로 격자선을 표시합니다.',
+    description: '가격을 따라 가로 격자선을 표시합니다.',
     default: true,
     group: 'grid',
   },
   {
     key: 'verticalGridLinesEnabled',
     label: '세로 구분선',
-    description: '차트 배경의 시간축 방향 세로 격자선을 표시합니다.',
+    description: '시간을 따라 세로 격자선을 표시합니다.',
     default: true,
     group: 'grid',
   },
   {
     key: 'ratioOutlierFilterEnabled',
     label: '호가비 극단값 필터',
-    description:
-      '한쪽 호가가 임계 배수를 넘으면 그 시점의 호가비를 0 으로 마스킹합니다. (오토스케일을 잡아먹는 스파이크 제거)',
+    description: '한쪽 잔량이 다른 쪽의 설정 배수 이상이면 호가비를 0으로 처리합니다.',
     default: true,
     category: 'indicator-modal',
   },
   {
     key: 'fillStrengthCumulative',
     label: '체결강도 — 당일 누적',
-    description:
-      '체결강도 pane에 당일 누적 매수−매도 라인(체결강도 누적)을 표시합니다. 거래일마다 0에서 다시 시작.',
+    description: '당일 누적 매수−매도를 선으로 표시합니다. 거래일마다 0에서 시작합니다.',
     default: true,
     category: 'indicator-modal',
   },
   {
     key: 'volumeFillStrengthCumulative',
     label: '거래량 — 체결강도 누적',
-    description:
-      '거래량 판에서 체결강도 누적(매수−매도)을 상대값으로 표시합니다. 거래량 y축 기준으로 스케일링됩니다.',
+    description: '누적 매수−매도를 거래량 축에 맞춘 상대값으로 표시합니다.',
     default: false,
     category: 'indicator-modal',
   },
@@ -108,24 +105,14 @@ export const CHART_TOGGLES = [
     key: 'cursorSyncCrossSymbol',
     label: '크로스헤어 동기화 — 다른 종목까지',
     // 설명문은 평문으로 렌더된다(SettingsRow) — 마크다운 강조를 쓰면 별표가 그대로 뜬다.
-    description:
-      '한 창에 마우스를 올린 위치를 다른 창의 크로스헤어로 표시합니다 '
-      + '(분봉·일봉 창끼리 네 방향 모두). 모든 동기화는 창 헤더의 번호가 같은 창끼리만 '
-      + '동작하며, 이 설정은 그 안에서 종목 축을 정합니다 — 켜면 종목이 달라도 '
-      + '표시하고(지수 창 포함), 끄면 같은 종목을 보는 창끼리만 표시합니다. '
-      + '그 날이 상대 창에 없으면 가장자리에 방향과 날짜만 표시합니다.',
+    description: '같은 창 번호끼리 마우스 위치를 공유합니다. 켜면 다른 종목·지수도, 끄면 같은 종목만 연결합니다.',
     default: true,
     group: 'sync',
   },
   {
     key: 'rangeSyncEnabled',
     label: '같은 봉 창끼리 기간 동기화',
-    description:
-      '일봉끼리(주봉·월봉도 같은 봉끼리) 보이는 구간을 위치·배율 모두 똑같이 '
-      + '맞춥니다. 캔들 오른쪽 여백까지 같이 옮깁니다. 분봉 창은 이 동기화에 '
-      + '참여하지 않습니다 — 분봉을 밀어도 일봉은 움직이지 않습니다. 직접 밀거나 '
-      + '휠로 움직일 때만 따라가며 새 캔들만으로는 움직이지 않습니다. 창 번호가 같은 '
-      + '창끼리만 동작하고 종목 범위는 위 설정을 따릅니다.',
+    description: '같은 창 번호·봉 종류끼리 이동·배율을 맞춥니다. 분봉은 제외하며, 종목 범위는 위 설정을 따릅니다. 직접 이동할 때만 동기화합니다.',
     default: true,
     group: 'sync',
   },
@@ -133,67 +120,56 @@ export const CHART_TOGGLES = [
   {
     key: 'highLowLabelsEnabled',
     label: '고저 극값 라벨',
-    description:
-      '현재 보이는 범위의 최고가·최저가와 우측 끝 봉 종가의 극값 대비율을 표시합니다. 공간이 부족하면 가격 또는 작은 표시로 줄이며, 마우스를 올리면 가격·%·시각을 확인할 수 있습니다. (고가=빨강, 저가=파랑)',
+    description: '보이는 구간의 최고·최저가와 마지막 봉 종가의 대비율을 표시합니다. 자세한 값은 마우스를 올려 확인합니다.',
     default: true,
     group: 'price',
   },
   {
     key: 'highLowHighLineEnabled',
     label: '고가 가격선',
-    description:
-      '고저 극값 라벨의 최고가 가격에 차트 전폭을 가로지르는 수평 점선을 그립니다. (빨강)',
+    description: '보이는 구간의 최고가에 수평 점선을 표시합니다.',
     default: false,
     enabledBy: 'highLowLabelsEnabled',
   },
   {
     key: 'highLowLowLineEnabled',
     label: '저가 가격선',
-    description:
-      '고저 극값 라벨의 최저가 가격에 차트 전폭을 가로지르는 수평 점선을 그립니다. (파랑)',
+    description: '보이는 구간의 최저가에 수평 점선을 표시합니다.',
     default: false,
     enabledBy: 'highLowLabelsEnabled',
   },
   {
     key: 'highLowPriorHighLineEnabled',
     label: '이전일 고가선',
-    description:
-      '보이는 범위에서 **마지막 캔들이 속한 거래일을 빼고** 남은 이전 날들의 최고가에 수평 점선을 그립니다. 그 날 아직 넘지 못한 고점을 저항선으로 봅니다. (긴 점선)',
+    description: '보이는 구간에서 마지막 거래일을 뺀 이전 날들의 최고가를 표시합니다.',
     default: false,
     enabledBy: 'highLowLabelsEnabled',
   },
   {
     key: 'highLowPriorLowLineEnabled',
     label: '이전일 저가선',
-    description:
-      '보이는 범위에서 **마지막 캔들이 속한 거래일을 빼고** 남은 이전 날들의 최저가에 수평 점선을 그립니다. 그 날 아직 깨지 않은 저점을 지지선으로 봅니다. (긴 점선)',
+    description: '보이는 구간에서 마지막 거래일을 뺀 이전 날들의 최저가를 표시합니다.',
     default: false,
     enabledBy: 'highLowLabelsEnabled',
   },
   {
     key: 'viLimitPriceDotsEnabled',
     label: 'VI/상하한가 선',
-    description: '가격이 VI 가격대 또는 상하한가에 닿은 경우 캔들 차트에 가격선으로 표시합니다.',
+    description: '가격이 닿은 VI·상한가·하한가에 선을 표시합니다.',
     default: true,
     group: 'price',
   },
   {
     key: 'surgeMarkerEnabled',
     label: '총잔량 급증 마커',
-    description: '매도/매수총잔량이 당일 직전 고가에 다시 근접(기본 95%)하는 순간 총잔량 라인에 마커를 표시합니다. 한 번 표시 후 직전 고가의 85% 아래로 빠져야 재표시(히스테리시스).',
+    description: '총잔량이 당일 직전 최고치에 다시 근접하면 표시합니다. 일정 비율 아래로 내려간 뒤 다시 표시합니다.',
     default: true,
     category: 'indicator-modal',
   },
   {
     key: 'quoteTotalsTickNormalize',
     label: '호가단위 변화 보정',
-    description:
-      '총잔량은 "가격 폭"이 아니라 "호가 10단계"로 잰 값이라, 주가가 호가단위 경계' +
-      '(2,000·5,000·20,000·50,000·200,000·500,000원)를 지나면 물량이 늘지 않아도 ' +
-      '총잔량이 2~5배 뜁니다. 켜면 급증 마커가 "오늘 최고치"를 새 호가단위로 환산해 ' +
-      '비교합니다 — 표시되는 총잔량 값 자체는 바뀌지 않습니다. ' +
-      '실측: 경계 통과 직후 오발률이 평소의 2.9배 → 1.7배. 경계와 무관한 날에는 호가단위가 ' +
-      '바뀌지 않으므로 마커가 하나도 달라지지 않습니다(100% 유지).',
+    description: '호가단위가 바뀌면 급증 비교 기준을 보정합니다. 표시되는 총잔량은 그대로입니다.',
     default: false,
     category: 'indicator-modal',
     enabledBy: 'surgeMarkerEnabled',
@@ -201,39 +177,35 @@ export const CHART_TOGGLES = [
   {
     key: 'quoteTotalsIntraMax',
     label: '분봉 내 최댓값 기준',
-    description: '그 분의 마지막값(종가) 대신 분봉 내 최대 총잔량을 표시합니다. (캔들 고가와 같은 직관)',
+    description: '분봉 마지막 값 대신 분봉 내 최대 총잔량을 표시합니다.',
     default: false,
     category: 'indicator-modal',
   },
   {
     key: 'ratioIntraMax',
     label: '분봉 내 최댓값 기준',
-    description:
-      '그 분 중 |호가비|가 가장 컸던 순간값을 표시합니다(부호 유지). 극단값 필터가 켜져 있으면 스파이크는 0으로 가려질 수 있습니다 — 날것을 보려면 필터를 끄세요.',
+    description: '분봉 내 절댓값이 가장 큰 호가비를 부호와 함께 표시합니다. 극단값 필터도 적용됩니다.',
     default: false,
     category: 'indicator-modal',
   },
   {
     key: 'askPeakIntraMax',
     label: '분봉 내 최댓값 기준',
-    description:
-      '분봉 종가 호가창 대신 분봉 내 순간 최대 매도벽까지 포함해 당일 최대벽을 찾습니다(과거 거래일에만 효과 — 오늘은 항상 실시간 최댓값).',
+    description: '과거일의 분봉 내 최대 매도벽도 포함합니다. 오늘은 항상 실시간 최댓값을 씁니다.',
     default: false,
     category: 'indicator-modal',
   },
   {
     key: 'bidPeakIntraMax',
     label: '분봉 내 최댓값 기준',
-    description:
-      '분봉 종가 호가창 대신 분봉 내 순간 최대 매수벽까지 포함해 당일 최대벽을 찾습니다(과거 거래일에만 효과 — 오늘은 항상 실시간 최댓값).',
+    description: '과거일의 분봉 내 최대 매수벽도 포함합니다. 오늘은 항상 실시간 최댓값을 씁니다.',
     default: false,
     category: 'indicator-modal',
   },
   {
     key: 'depthHeatmapIntraMax',
     label: '분봉 내 최댓값 기준',
-    description:
-      '분봉 종가 호가창 대신 그 분봉 내 총잔량이 가장 컸던 순간의 10호가를 히트맵 소스로 사용합니다. 강도 정규화도 같은 최댓값 소스를 기준으로 맞춥니다.',
+    description: '분봉 내 총잔량이 가장 컸던 순간의 10호가를 표시합니다.',
     default: false,
     category: 'indicator-modal',
   },
@@ -250,8 +222,7 @@ export const CHART_TOGGLES = [
     // (3-way select 가 뜻에는 더 맞지만 chartPrefs 는 토글·숫자 두 종류뿐이다.)
     key: 'depthHeatmapPerPriceMax',
     label: '가격대마다 따로 최댓값',
-    description:
-      '각 가격대가 그 분봉에서 가장 컸던 잔량을 씁니다. 「당일 최대벽」과 같은 기준이라 두 값이 일치합니다. 다만 한 세로줄은 여러 순간의 값을 모은 것이라 실제로 동시에 존재한 호가창은 아닙니다. 강도 정규화도 같은 소스를 따릅니다.',
+    description: '가격대별 최대 잔량을 모아 표시합니다. 당일 최대벽과 같은 기준이며, 한 시점의 호가창은 아닙니다.',
     default: false,
     category: 'indicator-modal',
     enabledBy: 'depthHeatmapIntraMax',
@@ -262,16 +233,14 @@ export const CHART_TOGGLES = [
     // 소스를 고른 뒤 그 안에서 자른다.
     key: 'depthHeatmapTopLevelsOnly',
     label: '최대 잔량 가격대만',
-    description:
-      '각 분봉에서 잔량이 가장 컸던 가격대만 남깁니다(매수·매도 각각). 강도 기준은 그대로 화면 최대 잔량이라 남은 벽끼리의 굵기 비교는 유지됩니다.',
+    description: '매수·매도별 잔량 상위 가격대만 표시합니다. 색상 강도 기준은 유지합니다.',
     default: false,
     category: 'indicator-modal',
   },
   {
     key: 'tradeHighlightEnabled',
     label: '대량 체결 강조',
-    description:
-      '체결가 × 체결량이 기준 금액 이상인 체결의 체결량 칸을 배경색으로 강조합니다.',
+    description: '기준 금액 이상인 체결의 수량 칸을 강조합니다.',
     default: true,
     category: 'trade-window',
     group: 'trade',
@@ -385,8 +354,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'ratioOutlierThreshold',
     label: '호가비 극단값 임계 배수',
-    description:
-      '한쪽 호가가 다른 쪽의 이 배수 이상이면 그 시점의 호가비를 0 으로 마스킹합니다. (차트 Y축 라벨 단위)',
+    description: '한쪽 잔량이 다른 쪽의 이 배수 이상이면 호가비를 0으로 처리합니다.',
     default: 100,
     // Threshold is expressed in chart-label units (i.e. max(ask/bid, bid/ask)):
     // 2 is the smallest value that admits any data (ratio < 2x is "balanced
@@ -399,7 +367,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'surgeApproachPct',
     label: '급증 근접 문턱 — 직전 고가 대비(%)',
-    description: '총잔량이 당일 직전 고가의 이 비율(%)까지 다시 차오르면 급증 마커를 1회 표시합니다. 기본 95%. 낮출수록 더 일찍·자주 잡습니다.',
+    description: '직전 최고치의 이 비율에 도달하면 표시합니다. 낮출수록 더 일찍 표시합니다.',
     default: 95,
     min: 80,
     max: 100,
@@ -408,11 +376,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'surgeTickConfirmPct',
     label: '호가단위 보정 — 확인 문턱(%)',
-    description:
-      '호가단위가 바뀐 시점에 10호가가 덮는 가격 폭이 이 비율(%) 이상 실제로 움직였을 때만 ' +
-      '오늘 최고치를 환산합니다. 기본 10%. 이 값은 환산을 **거부**하는 조건이지 일으키는 ' +
-      '조건이 아닙니다 — ETF 처럼 호가단위표를 따르지 않는 종목(5원 고정)에서 헛환산을 막습니다. ' +
-      '올리면 실제 호가단위 변화도 놓치기 시작합니다(실측 20%: 교정력 1.7배 → 2.4배).',
+    description: '10호가의 가격 폭이 이 비율 이상 바뀌어야 보정합니다. 높일수록 보정 조건이 까다로워집니다.',
     default: 10,
     min: 0,
     max: 50,
@@ -421,7 +385,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'surgeRearmPct',
     label: '급증 재무장 문턱 — 직전 고가 대비(%)',
-    description: '한 번 표시한 뒤, 총잔량이 직전 고가의 이 비율(%) 아래로 빠져야 다시 표시 가능(히스테리시스 — 고점 근처 출렁임 도배 방지). 기본 85%. 근접 문턱보다 낮게.',
+    description: '이 비율 아래로 내려가야 다시 표시할 수 있습니다. 근접 문턱보다 낮게 설정하세요.',
     default: 85,
     min: 50,
     max: 95,
@@ -430,7 +394,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'surgeStartHHMM',
     label: '급증 마커 시작 시각',
-    description: '이 시각 이후에 발생한 급증만 마커로 표시합니다. 기본 09:00(장 시작, 전체 표시). 직전 고가 추적·재무장은 장 시작부터 계속되며, 가려지는 건 표시뿐입니다(장 초반 변동성 마커 숨김용).',
+    description: '이 시각 이후의 급증만 표시합니다. 최고치 추적은 장 시작부터 유지합니다.',
     default: 900,
     // HHMM 정수. 900(09:00, 정규장 시작)~1959(19:59, 애프터마켓 마감 전).
     // 분 자리(00–59)를 벗어난 값(예 960)은 hhmmToMinute에서 10:00으로 자연 환산되어 무해.
@@ -449,7 +413,7 @@ export const CHART_NUMERIC_PREFS = [
     //    이 키만 이름에 계열이 안 들어 있다(위 문단의 역사).
     key: 'askPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
-    description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    description: '수량이 큰 체결된 벽부터 표시할 개수입니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -458,7 +422,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'askPeakAllWallRankLimit',
     label: '전체 최대벽 표시 개수',
-    description: '전체 최대벽(터치 무관) 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    description: '체결 여부와 관계없이 수량이 큰 벽부터 표시할 개수입니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -467,7 +431,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'askPeakUnreachedRankLimit',
     label: '미도달 벽 표시 개수',
-    description: '미도달 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    description: '수량이 큰 미도달 벽부터 표시할 개수입니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -483,7 +447,7 @@ export const CHART_NUMERIC_PREFS = [
     //    이 키만 이름에 계열이 안 들어 있다(위 문단의 역사).
     key: 'bidPeakAllPriceRankLimit',
     label: '체결된 벽 표시 개수',
-    description: '체결된 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    description: '수량이 큰 체결된 벽부터 표시할 개수입니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -492,7 +456,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'bidPeakAllWallRankLimit',
     label: '전체 최대벽 표시 개수',
-    description: '전체 최대벽(터치 무관) 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    description: '체결 여부와 관계없이 수량이 큰 벽부터 표시할 개수입니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -501,7 +465,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'bidPeakUnreachedRankLimit',
     label: '미도달 벽 표시 개수',
-    description: '미도달 벽 후보를 수량순으로 몇 등까지 차트에 표시할지 선택합니다.',
+    description: '수량이 큰 미도달 벽부터 표시할 개수입니다.',
     default: 1,
     min: 1,
     max: 3,
@@ -510,8 +474,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'depthHeatmapTopLevelCount',
     label: '표시할 가격대 수',
-    description:
-      '매수·매도 **각각** 잔량 상위 몇 등까지 그릴지. 올릴수록 원래 10호가에 가까워집니다.',
+    description: '매수·매도 각각 잔량 상위 몇 개를 표시할지 정합니다.',
     default: 1,
     // 1(가장 두꺼운 벽 하나)~5(10호가의 절반 — 그 위는 사실상 필터가 무의미).
     min: 1,
@@ -521,8 +484,7 @@ export const CHART_NUMERIC_PREFS = [
   {
     key: 'tradeHighlightThresholdManwon',
     label: '기준 금액 (만원)',
-    description:
-      '체결가 × 체결량이 이 금액(만원) 이상이면 대량 체결로 강조합니다. 기본 5,000만원.',
+    description: '체결가 × 수량이 이 금액 이상이면 강조합니다.',
     default: 5000,
     // 100만원(소형주 대량 기준)~100억(사실상 비활성 상한). 만원 단위 정수.
     min: 100,
@@ -604,7 +566,7 @@ export type ChartLineStyleKey = (typeof CHART_LINE_STYLES)[number]['key'];
  *  압축하고 있어 0**); 남긴 이유는 문장 하나를 고칠 때 네 군데를 고치지 않는 것이다. */
 export function lineStyleDescription(def: LineStylePrefDef): string {
   const dir = def.direction === 'up' ? '상승색' : '하락색';
-  return `${def.label}의 색과 두께입니다. 색을 고르지 않으면 테마의 ${dir}을 따릅니다.`;
+  return `선 색상·두께를 정합니다. 기본 색상은 테마의 ${dir}을 따릅니다.`;
 }
 
 export type ViLimitPriceLineWidth = 1 | 2 | 3 | 4;

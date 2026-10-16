@@ -1172,6 +1172,12 @@ test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고
     expect(panel.y).toBeCloseTo(anchor.y + anchor.height + 4, 0);
     expect(panel.x + panel.width).toBeCloseTo(anchor.x + anchor.width, 0);
     await dialog.screenshot({ path: testInfo.outputPath(`order-settings-${theme}.png`) });
+    const navigation = dialog.getByRole('navigation', { name: '주문 설정 목차' });
+    await navigation.getByRole('button', { name: '주문 알림', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: '소리 들어보기' })).toBeInViewport();
+    await expect(dialog.getByRole('button', { name: '적용', exact: true })).toBeInViewport();
+    await navigation.getByRole('button', { name: '주문 입력', exact: true }).click();
+    await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toBeInViewport();
     await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('29');
     await settings.click();
     await expect(dialog).toHaveCount(0);
@@ -1211,6 +1217,41 @@ test('주문 설정은 계좌 목록과 같은 버튼 앵커 팝오버로 열고
   await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(settings).toBeFocused();
+  expect(commands).toHaveLength(0);
+});
+
+test('계좌 편집기 탐색·목록·푸터는 테마와 화면 폭에 맞춰 표시된다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, [mkOrder('old')]);
+  for (const theme of ['toss-light', 'toss-dark']) {
+    await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 800 });
+      const trigger = window.getByRole('button', { name: '미체결 주문', exact: true });
+      await trigger.scrollIntoViewIfNeeded();
+      await trigger.click();
+      const panel = page.getByRole('dialog', { name: '계좌 목록' });
+      await expect(panel.getByRole('heading', { name: '계좌 목록', exact: true })).toBeVisible();
+      await expect(panel.getByRole('heading', { name: '미체결 주문 1건' })).toBeVisible();
+      await expect(panel.getByText('취소 요청은 즉시 전송됩니다.', { exact: true })).toBeInViewport();
+      const tabs = panel.getByRole('tablist', { name: '계좌 목록 종류' });
+      await expect(tabs).toHaveAttribute('aria-orientation', width < 560 ? 'horizontal' : 'vertical');
+      await panel.screenshot({ path: testInfo.outputPath(`order-editor-orders-${theme}-${width}.png`) });
+      await panel.getByRole('tab', { name: '보유종목', exact: true }).click();
+      await expect(panel.getByRole('heading', { name: '보유종목 1종목' })).toBeVisible();
+      await expect(panel.getByRole('button', { name: 'SK하이닉스', exact: true })).toBeVisible();
+      const bounds = (await panel.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(800);
+      if (width === 390) {
+        expect(await panel.getByRole('tabpanel').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+      }
+      await panel.screenshot({ path: testInfo.outputPath(`order-editor-holdings-${theme}-${width}.png`) });
+      await page.keyboard.press('Escape');
+      await expect(panel).toHaveCount(0);
+      await expect(window.getByRole('button', { name: '보유종목', exact: true })).toBeFocused();
+    }
+  }
   expect(commands).toHaveLength(0);
 });
 

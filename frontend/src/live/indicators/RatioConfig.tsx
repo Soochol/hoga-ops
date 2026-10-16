@@ -19,7 +19,7 @@ export default function RatioConfig() {
       <div className="border-b border-border my-3" />
       <ToggleRow
         label="현재값 수평선"
-        description="현재 호가비 값에 수평 기준선을 그립니다."
+        description="현재 호가비에 수평선을 표시합니다."
         checked={levelEnabled}
         onToggle={() => setLevelEnabled(!levelEnabled)}
         testId="settings-toggle-ratioLevelLineEnabled"

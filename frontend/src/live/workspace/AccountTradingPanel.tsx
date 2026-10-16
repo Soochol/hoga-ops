@@ -60,6 +60,16 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
   const [cancellations, setCancellations] = useState<Record<string, Cancellation>>({});
   const inFlight = useRef(new Set<string>());
   const [notice, setNotice] = useState<string | null>(null);
+  const open = tab !== null;
+  const [verticalNavigation, setVerticalNavigation] = useState(true);
+  useEffect(() => {
+    if (!open || typeof window.matchMedia !== 'function') return;
+    const narrow = window.matchMedia('(max-width:35rem)');
+    const update = () => setVerticalNavigation(!narrow.matches);
+    update();
+    narrow.addEventListener('change', update);
+    return () => narrow.removeEventListener('change', update);
+  }, [open]);
   useEffect(() => {
     if (!notice) return;
     const timer = window.setTimeout(() => setNotice(null), 4_000);
@@ -69,7 +79,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
     onClose();
     anchorRef.current?.querySelector<HTMLElement>('[aria-expanded="true"]')?.focus({ preventScroll: true });
   }, [onClose, anchorRef]);
-  const { ref, style } = useAnchoredPopover<HTMLDivElement>(tab !== null, anchorRef, dismiss, tab === 'holdings' ? 680 : 620);
+  const { ref, style } = useAnchoredPopover<HTMLDivElement>(open, anchorRef, dismiss, 800);
 
   async function cancel(order: TossOrder, retry: boolean) {
     if (inFlight.current.has(order.orderId) || paused) return;
@@ -95,24 +105,37 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
   if (tab === null) return null;
   const query = tab === 'orders' ? orders : holdings;
   const displayedOrders = orders.data?.orders.filter(order => side === null || order.side === side) ?? [];
-  return createPortal(<div ref={ref} style={style} role="dialog" aria-label="계좌 목록" className="account-trading-panel order-surface font-data">
-    <OrderSurfaceHeading closeLabel="계좌 목록 닫기" onClose={dismiss} actions={
+  const title = tab === 'orders' ? '미체결 주문' : '보유종목';
+  const count = tab === 'orders' ? (orders.data ? displayedOrders.length : undefined) : holdings.data?.holdings.length;
+  return createPortal(<div ref={ref} style={style} role="dialog" aria-label="계좌 목록" className="account-trading-panel order-surface order-editor-surface font-data">
+    <OrderSurfaceHeading closeLabel="계좌 목록 닫기" onClose={dismiss} scope={accountLabel} actions={
       <button type="button" className="order-surface-icon" aria-label="새로고침" disabled={paused || query.isFetching} onClick={() => void query.refetch()}>
         <RefreshIcon className={query.isFetching ? 'w-[1em] h-[1em] motion-safe:animate-spin' : 'w-[1em] h-[1em]'} />
       </button>
     }>
-      <div role="tablist" aria-label="계좌 목록 종류">
+      계좌 목록
+    </OrderSurfaceHeading>
+    <div className="order-surface-body">
+      <div role="tablist" aria-label="계좌 목록 종류" aria-orientation={verticalNavigation ? 'vertical' : 'horizontal'} className="order-surface-nav">
+        <span className="order-surface-nav-label">계좌</span>
         {(['orders', 'holdings'] as const).map(value => <button key={value} type="button" role="tab" id={`${panelId}-${value}`}
+          aria-label={value === 'orders' ? '미체결 주문' : '보유종목'} className="order-surface-nav-item"
           aria-controls={`${panelId}-content`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1}
           onKeyDown={event => {
-            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
             event.preventDefault();
             const next = event.key === 'Home' ? 'orders' : event.key === 'End' ? 'holdings' : value === 'orders' ? 'holdings' : 'orders';
             onTabChange(next); event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role=tab]')[next === 'orders' ? 0 : 1]?.focus();
-          }} onClick={() => onTabChange(value)}>{value === 'orders' ? '미체결 주문' : '보유종목'}</button>)}
+          }} onClick={() => onTabChange(value)}>
+            <span>{value === 'orders' ? '미체결 주문' : '보유종목'}</span>
+            <span aria-hidden="true" className="order-surface-nav-count">{value === 'orders' ? orders.data?.orders.length ?? '—' : holdings.data?.holdings.length ?? '—'}</span>
+          </button>)}
       </div>
-    </OrderSurfaceHeading>
-    <div className="account-trading-toolbar"><span>{accountLabel}</span>
+      <div className="order-surface-main">
+    <div className="order-surface-detail-heading">
+      <div><h3>{title} <span className="account-trading-count">{count == null ? '—' : `${count}${tab === 'orders' ? '건' : '종목'}`}</span></h3>
+        <p className="order-surface-description">{tab === 'orders' ? '계좌 전체의 남은 주문을 확인합니다.' : '보유 수량과 현재 평가를 확인합니다.'}</p>
+      </div>
     {tab === 'orders' && <div role="group" aria-label="주문 방향 필터" className="account-trading-filters order-surface-segment">
       {([null, 'BUY', 'SELL'] as const).map(value => <button key={value ?? 'all'} type="button" aria-pressed={side === value}
         onClick={() => setSide(value)}>{value === null ? '전체' : orderSideLabel(value)}</button>)}
@@ -144,5 +167,11 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
       {!query.isPending && !query.isError && (tab === 'orders' ? displayedOrders.length === 0 : holdings.data?.holdings.length === 0)
         && <p className="account-trading-message">{tab === 'orders' ? '미체결 주문 없음' : '보유종목 없음'}</p>}
     </div>
+      </div>
+    </div>
+    <footer className="order-surface-footer account-trading-footer">
+      <span className="order-surface-footer-note">{tab === 'orders' ? '취소 요청은 즉시 전송됩니다.' : '종목을 누르면 호가 주문창에 표시합니다.'}</span>
+      <span>{paused ? '조회 일시 중지' : query.isError ? '조회 실패' : query.isFetching ? '갱신 중…' : '자동 갱신'}</span>
+    </footer>
   </div>, document.body);
 });

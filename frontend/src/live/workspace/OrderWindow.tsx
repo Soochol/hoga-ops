@@ -135,7 +135,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     setSettingsDraft(null);
     settingsButtonRef.current?.focus({ preventScroll: true });
   }, []);
-  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 360);
+  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 640);
   const [previewPrice, setPreviewPrice] = useState<number | null>(null);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
@@ -603,10 +603,10 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
       {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}
     </div>, document.body)}
-    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover order-surface font-data" onKeyDown={e => {
+    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover order-surface order-editor-surface font-data" onKeyDown={e => {
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
     }}>
-      <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings}>주문 설정</OrderSurfaceHeading>
+      <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings} scope="이 호가 주문창에 적용">주문 설정</OrderSurfaceHeading>
       <OrderSettingsForm draft={settingsDraft} onChange={setSettingsDraft} busy={busy} onCancel={closeSettings}
         onApply={next => { onApplySettings(next); closeSettings(); }} />
     </div>, document.body)}
