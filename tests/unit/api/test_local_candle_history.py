@@ -87,3 +87,32 @@ def test_inventory_reads_only_footers_not_prices(tmp_path: Path, monkeypatch: py
         assert pq.read_metadata(tmp_path / "parquet/20251001/034020/hogaplay/candles.parquet").num_rows == 1
     finally:
         engine.close()
+
+
+@pytest.mark.parametrize("date,clock", [("20250324", 57540000), ("20260914", 71940000), ("20260914", 72000000)])
+@pytest.mark.parametrize("bucket_ms", [60000, 3600000, 7200000, 14400000])
+def test_disk_evening_bounds_and_badge_filter_preserve_storage(tmp_path, date, clock, bucket_ms):
+    from hoga.util.timeenc import hhmmssms_to_unix_ms
+
+    folder = _partition(tmp_path, date)
+    candles.write_parquet([
+        candles.Candle(36000000, 100, 101, 102, 99, 10, 20),
+        candles.Candle(clock, 200, 201, 202, 199, 100, 200),
+    ], folder / "candles.parquet")
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    engine = QueryEngine(tmp_path)
+    try:
+        for regular in [False, True, False]:
+            result = build_range_bundle(engine, code="034020", from_date=date, to_date=date,
+                bucket_ms=bucket_ms, mode="candles", regular_session_only=regular)
+            assert sum(c.vol_a + c.vol_b for c in result.candles) == (30 if regular else 330)
+            midnight = hhmmssms_to_unix_ms(date, 0)
+            if regular:
+                assert max(c.high for c in result.candles) == 102
+                assert result.segments[0].session_close_ms == midnight + 55800000
+            else:
+                assert max(c.high for c in result.candles) == 202
+                assert result.segments[0].session_close_ms >= midnight + clock
+        assert {p.name: p.read_bytes() for p in folder.iterdir()} == before
+    finally:
+        engine.close()

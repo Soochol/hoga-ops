@@ -1,0 +1,281 @@
+{
+  "summary": {
+    "partitions": 47254,
+    "codes": 489,
+    "dates": 513,
+    "first": "20240827",
+    "last": "20261016",
+    "counts": {
+      "missing_evening": 40258,
+      "no_observed_gap": 6723,
+      "empty_partition": 273
+    },
+    "missing_minutes": 369850,
+    "seconds": 27,
+    "read_only": true,
+    "data_mutations_by_this_task": 0,
+    "additional_downloads_after_scope_change": 0
+  },
+  "method": "Positive-price, positive-quantity stored trades after regular close through 20:00, floored to minute, minus actual stored candle minutes; no vendor requests.",
+  "missing_by_year": {
+    "2024": 291,
+    "2025": 7764,
+    "2026": 32203
+  },
+  "samples": [
+    {
+      "date": "20240827",
+      "code": "009540",
+      "status": "missing_evening",
+      "rows": 384,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56580000,
+        56880000,
+        56940000,
+        57180000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240827",
+      "code": "010140",
+      "status": "missing_evening",
+      "rows": 388,
+      "missing_minutes": [
+        56400000,
+        56580000,
+        56640000,
+        56700000,
+        56760000,
+        56820000,
+        56880000,
+        56940000,
+        57000000,
+        57180000,
+        57300000,
+        57360000,
+        57420000,
+        57480000,
+        57540000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240828",
+      "code": "009540",
+      "status": "missing_evening",
+      "rows": 382,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56520000,
+        56640000,
+        56880000,
+        57180000,
+        57420000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240828",
+      "code": "010140",
+      "status": "missing_evening",
+      "rows": 385,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56520000,
+        56580000,
+        56640000,
+        56700000,
+        56760000,
+        56820000,
+        56880000,
+        56940000,
+        57000000,
+        57180000,
+        57240000,
+        57420000,
+        57480000,
+        57540000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240829",
+      "code": "009540",
+      "status": "missing_evening",
+      "rows": 385,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56580000,
+        56640000,
+        56760000,
+        56820000,
+        57000000,
+        57180000,
+        57300000,
+        57360000,
+        57420000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240829",
+      "code": "010140",
+      "status": "missing_evening",
+      "rows": 387,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56520000,
+        56580000,
+        56640000,
+        56700000,
+        56760000,
+        56820000,
+        56880000,
+        57180000,
+        57240000,
+        57360000,
+        57420000,
+        57480000,
+        57540000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240830",
+      "code": "009540",
+      "status": "missing_evening",
+      "rows": 380,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56520000,
+        56580000,
+        56640000,
+        56700000,
+        56760000,
+        56820000,
+        56880000,
+        56940000,
+        57000000,
+        57060000,
+        57120000,
+        57180000,
+        57300000,
+        57420000,
+        57480000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240830",
+      "code": "010140",
+      "status": "missing_evening",
+      "rows": 386,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56520000,
+        56580000,
+        56640000,
+        56700000,
+        56820000,
+        56880000,
+        56940000,
+        57000000,
+        57060000,
+        57120000,
+        57180000,
+        57240000,
+        57300000,
+        57360000,
+        57540000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240902",
+      "code": "009540",
+      "status": "missing_evening",
+      "rows": 382,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56520000,
+        56580000,
+        56640000,
+        56700000,
+        56760000,
+        56820000,
+        57060000,
+        57300000,
+        57360000,
+        57540000
+      ],
+      "last_ms": 55800000
+    },
+    {
+      "date": "20240902",
+      "code": "010140",
+      "status": "missing_evening",
+      "rows": 389,
+      "missing_minutes": [
+        56400000,
+        56460000,
+        56520000,
+        56580000,
+        56640000,
+        56700000,
+        56820000,
+        56940000,
+        57000000,
+        57060000,
+        57120000,
+        57180000,
+        57300000,
+        57360000,
+        57480000,
+        57540000
+      ],
+      "last_ms": 55800000
+    }
+  ],
+  "empty_partition_samples": [
+    {
+      "date": "20260528",
+      "code": "022100",
+      "status": "error",
+      "error": "FileNotFoundError"
+    },
+    {
+      "date": "20260528",
+      "code": "046120",
+      "status": "error",
+      "error": "FileNotFoundError"
+    },
+    {
+      "date": "20260611",
+      "code": "000100",
+      "status": "error",
+      "error": "FileNotFoundError"
+    },
+    {
+      "date": "20260611",
+      "code": "003530",
+      "status": "error",
+      "error": "FileNotFoundError"
+    },
+    {
+      "date": "20260611",
+      "code": "003540",
+      "status": "error",
+      "error": "FileNotFoundError"
+    }
+  ]
+}

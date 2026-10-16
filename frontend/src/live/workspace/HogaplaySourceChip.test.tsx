@@ -26,6 +26,8 @@ describe('HogaplaySourceChip', () => {
 
     expect(screen.getByTestId('live-hogaplay-source-chip')).toHaveTextContent('hogaplay 08-11~08-21');
     expect(screen.getByTestId('live-hogaplay-source-chip').getAttribute('title')).toContain('디스크에 있는 분봉만');
+    expect(screen.getByTestId('live-hogaplay-source-chip').getAttribute('title')).toContain('보유 중인 저녁 분봉도 표시');
+    expect(screen.getByTestId('live-hogaplay-source-chip').getAttribute('title')).toContain('미저장 구간은 빈 구간');
     expect(screen.getByTestId('live-hogaplay-source-chip').getAttribute('aria-label')).toContain('자동으로 가져오지 않습니다');
     fireEvent.click(screen.getByRole('button', { name: 'hogaplay 저장 데이터 해제' }));
     expect(onClear).toHaveBeenCalledTimes(1);

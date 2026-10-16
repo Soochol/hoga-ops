@@ -340,7 +340,9 @@ def test_build_range_bundle_candles_mode_skips_hoga_and_sidecar_builders():
     candles.assert_called_once()
     # `date` 는 정규장 클립의 기준이라 **날짜별 루프의 그 날짜**여야 한다 — 여기서
     # 값을 못박지 않으면 엉뚱한 날짜가 넘어가도 통과한다(클립 tf 에서만 증상).
-    downsample.assert_called_once_with(raw_candles, bucket_ms=60_000, date="20260625", venue="KRX")
+    downsample.assert_called_once_with(
+        raw_candles, bucket_ms=60_000, date="20260625", venue="KRX", preserve_observed=True,
+    )
     quote_ratio.assert_not_called()
     fill_strength.assert_not_called()
     distribution.assert_not_called()

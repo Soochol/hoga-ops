@@ -1,0 +1,47 @@
+{
+  "base_commit": "998237c3585880ea93e05e98a2f84e87d734278b",
+  "scope": "Display existing stored candles only; no additional fetch or data repair after the scope change.",
+  "checks": {
+    "backend_passed": 202,
+    "frontend_passed": 298,
+    "e2e_passed": 8,
+    "typecheck": "passed",
+    "vite_build": "passed in isolated Playwright startup",
+    "ruff": "passed",
+    "eslint_errors": 0,
+    "eslint_existing_warnings": 70,
+    "diff_check": "passed"
+  },
+  "known_unrelated_failure": {
+    "test": "tests/unit/api/test_rest_wire_schema_contract.py::test_live_wire_models_match_frontend_mirror_snapshot",
+    "reason": "DailyProgramTradePoint buy_amount/net_amount/sell_amount absent from existing snapshot",
+    "main_unchanged_model_and_test_reproduced": true,
+    "log": "/tmp/hoga-stored-evening-wire-baseline.log"
+  },
+  "data": {
+    "read_only_audit_full": "/home/dev/.local/share/hoga-ops/backups/20261016-hogaplay-evening-candles-lb3nu_kc/readonly-audit.json.gz",
+    "additional_fetch_after_scope_change": 0,
+    "application_data_writes_by_task": 0
+  },
+  "runtime": {
+    "main_frontend_pid": 3107577,
+    "main_backend_pid": 3149635,
+    "main_backend_supervisor_pid": 3109006,
+    "restarted": false,
+    "code_applied_to_user_server": false,
+    "e2e_ports_closed": [
+      20113,
+      21113
+    ]
+  },
+  "source_sha256": {
+    "frontend/src/live/useLiveBundle.test.tsx": "f74bdbd37e8472c3128cabd10f6e2447e41e72ec013733c2dd21ea1f27e33965",
+    "frontend/src/live/useLiveBundle.ts": "7df84b6eb46d8fa887e04b2927ac414b31c87cd1ca705eb98663e06ff8d1c02a",
+    "frontend/src/live/workspace/HogaplaySourceChip.test.tsx": "81f3fc06204e3dc4290b3b0d6caedd095b4d8e6f8af1cfc7d3fd2dc602eacd69",
+    "frontend/src/live/workspace/HogaplaySourceChip.tsx": "ef6878b3df78915370417afa3a08dd574b112f8781c3ab2365ba16c8ea4ec786",
+    "hoga/api/bundle.py": "dc5d7a3ae4327c1e958fbaa7a899ee388d7c2dfa32172c6d445e45e153e72a6a",
+    "tests/hoga/api/test_bundle.py": "7373ce3e7ea3cecf7bf693dcb50461dde71ffda31b40abdd2a2595ad45c78953",
+    "tests/unit/api/test_local_candle_history.py": "994df2a2b99b1b81cc29c640dabbd703405ab1332a892012e33b4c758b5addf3",
+    "frontend/tests/e2e/stored-evening-candles.spec.ts": "9027bb0feb0cc295c83369bac9846ea92bc61bf8b030b308eb30d06801d3f3aa"
+  }
+}
