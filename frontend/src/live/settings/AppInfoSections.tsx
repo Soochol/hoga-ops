@@ -73,10 +73,10 @@ const THEME_LABEL: Record<ThemePreference, string> = {
 };
 
 const THEME_HINT: Record<ThemePreference, string> = {
-  obsidian: '어두운 트레이딩 터미널 테마',
-  ledger: '밝은 종이·리서치 테마',
-  'toss-light': '밝은 토스증권 벤치마크 테마 (화이트·토스블루)',
-  'toss-dark': '어두운 토스증권 벤치마크 테마 (near-black·토스블루)',
+  obsidian: '차분한 다크 테마',
+  ledger: '종이 느낌의 라이트 테마',
+  'toss-light': '흰 배경과 파란 강조색',
+  'toss-dark': '어두운 배경과 파란 강조색',
 };
 
 export function ThemeSection() {

@@ -54,7 +54,7 @@ export default function BollingerConfig() {
             })} />
         </div>
       ))}
-      <p className="text-xs text-fg-dim">중심선은 단순이동평균입니다. 설정한 기간만큼 봉이 쌓이면 표시됩니다. 선 두께는 세 선에 함께 적용됩니다.</p>
+      <p className="text-xs text-fg-dim">중심선은 단순이동평균입니다. 설정한 봉 수가 쌓이면 표시되며, 세 선의 두께는 함께 적용됩니다.</p>
     </div>
   );
 }

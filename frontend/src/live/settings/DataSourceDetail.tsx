@@ -108,7 +108,7 @@ export function DataSourceDetail() {
         {/* 캔들 소스는 'REST 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기). */}
         <RoleSourceGroup
           title="캔들 데이터 기준"
-          description="기본은 시세 서버(분봉 REST+WS · 일/주/월봉 일봉)입니다 '저장 데이터로 캔들 보기'를 켜면 분봉은 캡처(hogaplay), 일·주·월봉은 스크리너 일봉으로 표시합니다 — 저장된 날짜만 나오고 없는 날짜는 비워지며, 오늘 실시간(WS)은 계속 표시됩니다"
+          description="기본은 시세 서버입니다. 켜면 저장된 분봉·스크리너 일봉을 사용하며, 저장되지 않은 날짜는 비워둡니다. 오늘 실시간 시세는 계속 표시합니다."
         >
           <SettingsRow label="저장 데이터로 캔들 보기" testId="kis-rest-bypass-row">
             <ToggleSwitch
@@ -119,7 +119,7 @@ export function DataSourceDetail() {
             />
           </SettingsRow>
           <ScopeNote testId="study-candle-source-note">
-            복기뷰 캔들은 이 설정과 무관하게 항상 저장 데이터(캡처 분봉 + 스크리너 일봉)를 사용합니다.
+            복기뷰는 항상 저장된 분봉·스크리너 일봉을 사용합니다.
           </ScopeNote>
         </RoleSourceGroup>
         {/* 거래소 라디오는 `/live` 전용 컨트롤이 **아니다** — `/heatmap`·`/screener`·
@@ -137,7 +137,7 @@ export function DataSourceDetail() {
               여기서 반복하지 않고 **이유**만 잇는다(실물 확인에서 잡은 중복). 이유가
               없으면 고정이 임의 제약으로 읽힌다. */}
           <ScopeNote testId="study-venue-fixed-note">
-            복기뷰가 KRX 고정인 이유 — 복기 데이터의 상당 부분인 hogaplay 캡처가 KRX 전용이라, NXT·통합으로는 비는 날이 많습니다.
+            hogaplay 캡처가 KRX 전용이므로 복기뷰는 KRX로 고정됩니다.
           </ScopeNote>
         </RoleSourceGroup>
         {/* 「호가·체결 데이터 기준」 라디오 3종은 폐지됐다(2026-08-07 오전) — 셋 중 둘이
@@ -147,7 +147,7 @@ export function DataSourceDetail() {
             가능성이고, 해상도는 사용자가 명시적으로 고르는 것이다. */}
         <RoleSourceGroup
           title="호가·체결 데이터 기준"
-          description="KRX에서 캡처 아카이브(hogaplay)를 우선 사용합니다 같은 시간대를 훨씬 촘촘하게(실측 최대 145배) 볼 수 있지만, NXT·통합은 키움으로 계산되므로 시장 간 지표 비교가 어긋납니다 적용된 날짜는 차트에 소스 배지로 표시됩니다"
+          description="KRX 호가·체결에 더 촘촘한 hogaplay 저장 데이터를 우선 사용합니다. NXT·통합과 데이터 기준이 달라 지표를 직접 비교하기 어렵습니다."
         >
           <SettingsRow label="KRX에서 hogaplay 우선" testId="krx-prefer-hogaplay-row">
             <ToggleSwitch
@@ -167,16 +167,16 @@ export function DataSourceDetail() {
               적는다**. 이제 어느 라우트에서 열어도 참이다. */}
           {krxPreferHogaplay && venue !== 'KRX' && (
             <div className="mt-1 text-xs text-fg-dim" data-testid="krx-prefer-hogaplay-inactive">
-              실시간 화면의 현재 거래소({LIVE_VENUE_LABELS[venue]})에는 적용되지 않습니다 — hogaplay는 KRX 전용입니다. 복기뷰는 KRX 고정이라 항상 적용됩니다.
+              현재 실시간 거래소({LIVE_VENUE_LABELS[venue]})에는 적용되지 않습니다. KRX 전용이며, 복기뷰에는 항상 적용됩니다.
             </div>
           )}
         </RoleSourceGroup>
         <RoleSourceGroup
           title="스크리너 일봉 데이터"
-          description="스크리너 갱신으로 저장되는 KIS 일봉 parquet입니다. 조건검색과 섹터 랭킹의 기준 데이터로 사용됩니다"
+          description="조건검색·섹터 랭킹에 사용하는 KIS 일봉입니다."
         >
           <div className="text-sm text-fg-dim">
-            갱신은 스크리너 화면의 데이터 갱신 버튼에서 실행합니다.
+            스크리너의 데이터 갱신 버튼으로 업데이트합니다.
           </div>
         </RoleSourceGroup>
       </div>
@@ -191,13 +191,13 @@ export function DataSourceDetail() {
             쿼터를 아끼려던 잔재였고, 꺼두면 데이터가 조용히 유실됐다. */}
         <RoleSourceGroup
           title="프로그램 순매수 저장"
-          description="캡처 활성 관심그룹 종목의 프로그램 순매수 시계열을 항상 저장합니다. 거래원과 함께 키움 WebSocket으로 수신하며, 별도 켜기가 필요 없습니다"
+          description="캡처가 켜진 관심그룹의 프로그램 순매수를 자동 저장합니다."
         >
           <div className="text-sm text-fg-dim">항시 저장 중입니다</div>
         </RoleSourceGroup>
         <RoleSourceGroup
           title="키움 실시간 수집"
-          description="관심종목·히트맵의 실시간(호가·체결)을 키움 WebSocket으로 수집합니다(앱키당 200종목). 실시간의 유일한 소스이며, .env에 KIWOOM_APP_KEY가 설정되면 자동 활성화됩니다(별도 켜기 불필요)."
+          description="관심종목·히트맵의 호가·체결을 실시간 수집합니다. 키움 앱키 설정 시 자동 시작하며, 앱키당 최대 200종목을 수집합니다."
         >
           <KiwoomStatusLine />
         </RoleSourceGroup>
@@ -206,7 +206,7 @@ export function DataSourceDetail() {
             토글만 `disabled` 를 쓰는 비대칭은 이전 동작 그대로 보존한 것이다. */}
         <RoleSourceGroup
           title="스크리너 총잔량 결측 자동 수집"
-          description="스크리너 총잔량 신고 조건에서 hogaplay 과거 데이터가 없는 종목을 발견하면 지난 N일치를 자동으로 수집 큐에 적재합니다. 끄면(기본) 결과 배너의 [수집 요청] 버튼으로만 수집합니다"
+          description="총잔량 신고 검색에 필요한 과거 데이터가 없으면 자동 수집합니다. 끄면 결과의 수집 요청 버튼으로 수집합니다."
         >
           <SettingsRow label="자동 수집" testId="settings-depth-autocollect-row">
             <ToggleSwitch
@@ -220,7 +220,7 @@ export function DataSourceDetail() {
       </div>
 
       <div className="text-xs text-fg-dim">
-        차트 상단 칩은 실제 렌더링에 사용된 source를 표시합니다.
+        차트 상단 배지에서 실제 데이터 출처를 확인할 수 있습니다.
       </div>
     </>
   );

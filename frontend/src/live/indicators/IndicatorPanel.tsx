@@ -110,7 +110,7 @@ function IndicatorNavRow({
   label, glyph, added, selected, kbdFocused, query, dotColors, kbdIndex, onSelect, action, summary,
 }: {
   label: string;
-  summary: string;
+  summary?: string;
   /** 무엇을 그리는 지표이고 어디에 그려지는가 — `indicatorGlyphs`. */
   glyph: ReactNode;
   added: boolean;
@@ -146,7 +146,7 @@ function IndicatorNavRow({
         <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>
         <span className="min-w-0 truncate">
           <HighlightedLabel label={label} query={query} />
-          <span className="indicator-nav-summary" title={summary} aria-hidden="true">{summary}</span>
+          {summary && <span className="indicator-nav-summary" title={summary} aria-hidden="true">{summary}</span>}
         </span>
       </button>
       {dotColors.length > 0 && (
@@ -491,7 +491,7 @@ export default function IndicatorPanel({
                     label={c.label}
                     summary={c.id === 'moving-average' || c.id === 'daily-moving-average'
                       ? (c.id === 'moving-average' ? ind.movingAverages : ind.dailyMovingAverages).filter(m => m.enabled).map(m => m.period).join(' · ')
-                      : c.id === 'peak-walls' ? [askPeakEnabled ? '매도' : '', bidPeakEnabled ? '매수' : ''].filter(Boolean).join(' · ') : PLACEMENT_LABEL[c.placement]}
+                      : c.id === 'peak-walls' ? [askPeakEnabled ? '매도' : '', bidPeakEnabled ? '매수' : ''].filter(Boolean).join(' · ') : undefined}
                     glyph={INDICATOR_GLYPH[c.id]}
                     added={added}
                     selected={selected === c.id}
@@ -572,7 +572,7 @@ export default function IndicatorPanel({
                   <div className="mb-3">
                     <ToggleRow
                       label="호버 시점 누적"
-                      description="캔들 hover 시점까지의 연속체결만 누적해 매물대 bar를 표시합니다."
+                      description="마우스를 올린 시점까지의 연속체결량만 누적합니다."
                       checked={volumeDistributionHoverCutoffEnabled}
                       onToggle={() => setVolumeDistributionHoverCutoffEnabled(!volumeDistributionHoverCutoffEnabled)}
                       testId="settings-toggle-volumeDistributionHoverCutoff"
@@ -600,9 +600,7 @@ export default function IndicatorPanel({
                     </div>
                   </div>
                   <div className="text-xs leading-5 text-fg-dim">
-                    <div>대상: 연속매매 체결만 집계, 동시호가 제외</div>
-                    <div>단위: 거래일별 가격대 분포</div>
-                    <div>강조: 거래일 내 최대 체결량 구간</div>
+                    거래일 내 체결량이 가장 많은 구간을 별도 색상으로 강조합니다.
                   </div>
                 </div>
               )}

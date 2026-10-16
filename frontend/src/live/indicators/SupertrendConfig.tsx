@@ -46,7 +46,7 @@ export default function SupertrendConfig() {
             })} />
         </div>
       ))}
-      <p className="text-xs text-fg-dim">ATR은 Wilder 방식, 기준가는 고가·저가의 평균입니다. 설정한 기간만큼 봉이 쌓이면 표시되며, 진행 중인 봉의 추세는 가격에 따라 바뀔 수 있습니다. 선 두께는 두 추세에 함께 적용됩니다.</p>
+      <p className="text-xs text-fg-dim">설정한 봉 수가 쌓이면 표시됩니다. 진행 중인 봉의 추세는 바뀔 수 있으며, 두 선의 두께는 함께 적용됩니다.</p>
     </div>
   );
 }

@@ -21,7 +21,7 @@ export default function DailyMovingAverageConfig() {
       <div className="mb-3">
         <ToggleRow
           label="일봉 MA 표시"
-          description="분봉 차트 위에 일봉 종가 기준 이평선을 표시합니다."
+          description="일봉 종가의 이동평균선을 분봉에 표시합니다."
           checked={enabled}
           onToggle={() => setAllEnabled(!enabled)}
           testId="settings-toggle-dailyMovingAverage"

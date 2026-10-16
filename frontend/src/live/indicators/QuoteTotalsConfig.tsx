@@ -33,7 +33,7 @@ export default function QuoteTotalsConfig() {
       <div className="border-b border-border my-3" />
       <ToggleRow
         label="현재값 수평선"
-        description="현재 매수·매도 총잔량 값에 수평 기준선을 그립니다."
+        description="현재 매수·매도 총잔량에 수평선을 표시합니다."
         checked={levelEnabled}
         onToggle={() => setLevelEnabled(!levelEnabled)}
         testId="settings-toggle-quoteTotalsLevelLineEnabled"
@@ -67,7 +67,7 @@ export default function QuoteTotalsConfig() {
       <div className="border-b border-border my-3" />
       <ToggleRow
         label="당일 최고 수평선"
-        description="마지막 거래일에 매수·매도 총잔량이 최고였던 값에 수평 기준선을 그립니다. 장중에는 당일 기준이고, 장 마감 후·주말에는 직전 거래일 기준선이 날짜와 함께 남습니다. 마감 동시호가 구간은 제외합니다."
+        description="최근 거래일의 매수·매도 최대 총잔량에 선을 표시합니다. 마감 동시호가는 제외하며, 장 마감 후에도 날짜와 함께 유지합니다."
         checked={dayMaxEnabled}
         onToggle={() => setDayMaxEnabled(!dayMaxEnabled)}
         testId="settings-toggle-quoteTotalsDayMaxLineEnabled"

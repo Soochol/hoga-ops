@@ -86,11 +86,11 @@ const LABEL: Record<NavId, string> = {
  *  렌더와 검색 코퍼스가 **같은 문자열**을 읽는다(각자 적으면 검색만 낡는다). */
 const VI_LINE_STYLE_ROW = {
   label: 'VI/상하한가 선 스타일',
-  description: 'VI 가격대와 상한가·하한가 가격선을 표시하는 색상과 두께입니다',
+  description: 'VI·상하한가 선의 색상·두께를 정합니다.',
 } as const;
 const TRADE_HIGHLIGHT_COLOR_ROW = {
   label: '강조 배경색',
-  description: '대량 체결의 체결량 칸에 칠할 배경색입니다',
+  description: '대량 체결 수량 칸의 배경색을 정합니다.',
 } as const;
 const CUSTOM_ROW_TEXT: Partial<Record<ChartToggleKey, string>> = {
   viLimitPriceDotsEnabled: `${VI_LINE_STYLE_ROW.label} ${VI_LINE_STYLE_ROW.description}`,

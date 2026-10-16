@@ -53,9 +53,8 @@ export default function TradeVolumePocConfig() {
         />
       </div>
       <div className="text-xs text-fg-dim leading-5">
-        <div>범위: 연속체결 매물대 분포와 동일한 {rangeCount}개 가격 구간</div>
-        <div>선택: 체결량이 가장 큰 max bar 구간</div>
-        <div>표시: 가격대 범위 밴드</div>
+        <div>매물대 분포와 같은 {rangeCount}개 구간 중</div>
+        <div>체결량이 가장 많은 가격대를 밴드로 표시합니다.</div>
       </div>
     </div>
   );

@@ -32,7 +32,7 @@ export default function IndicatorPreviewCard({
       <p className="flex items-center gap-2.5 rounded-lg bg-bg-subtle px-4 py-3 text-xs text-fg-dim">
         <span className="flex size-4 shrink-0 items-center justify-center text-fg-dim">{glyph}</span>
         <span>
-          아직 이 차트에 추가하지 않은 지표입니다. 추가하면{' '}
+          추가하면{' '}
           <b className="font-medium text-fg">{placementLabel}</b>에 그려집니다.
         </span>
       </p>
@@ -47,7 +47,7 @@ export default function IndicatorPreviewCard({
           ＋ 차트에 추가
         </button>
         <span className="text-xs text-fg-dim">
-          추가하면 차트에 바로 그려지고, 세부 설정이 이 자리에서 이어집니다.
+          추가 후 이곳에서 설정할 수 있습니다.
         </span>
       </div>
     </div>

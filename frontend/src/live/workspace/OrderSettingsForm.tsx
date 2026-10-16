@@ -1,23 +1,30 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
   type OrderPresets, type OrderWindowSettings } from '../../state/orderWindowSettings';
 import { playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
 import './OrderSettingsForm.css';
 
-export function OrderSettingsSection({ title, children }: { title: string; children: ReactNode }) {
-  const id = useId();
-  return <section className="order-settings-section" aria-labelledby={id}>
-    <h3 id={id} className="order-settings-section-title">{title}</h3>
+const SECTIONS = [
+  { id: 'input', label: '주문 입력' },
+  { id: 'display', label: '호가 표시' },
+  { id: 'sound', label: '주문 알림' },
+] as const;
+
+export function OrderSettingsSection({ id, title, description, children }: { id: string; title: string; description: string; children: ReactNode }) {
+  return <section id={id} className="order-settings-section" aria-labelledby={`${id}-heading`}>
+    <h3 id={`${id}-heading`} className="order-settings-section-title">{title}</h3>
+    <p className="order-surface-description">{description}</p>
     <div className="order-settings-section-fields">{children}</div>
   </section>;
 }
 
-export function OrderSettingsCheckboxRow({ label, icon, checked, onChange }: {
-  label: string; icon?: ReactNode; checked: boolean; onChange: (checked: boolean) => void;
+export function OrderSettingsCheckboxRow({ label, description, icon, checked, onChange }: {
+  label: string; description?: string; icon?: ReactNode; checked: boolean; onChange: (checked: boolean) => void;
 }) {
   return <label className="order-settings-option">
-    <span className="order-settings-option-name">{icon}{label}</span>
-    <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} />
+    <span><span className="order-settings-option-name">{icon}{label}</span>
+      {description && <span className="order-settings-option-description">{description}</span>}</span>
+    <input type="checkbox" aria-label={label} checked={checked} onChange={e => onChange(e.target.checked)} />
   </label>;
 }
 
@@ -40,6 +47,9 @@ export function OrderSettingsForm({ draft, onChange, onApply, onCancel, busy }: 
 }) {
   const valid = validOrderSettings(draft);
   const [previewFailed, setPreviewFailed] = useState(false);
+  const navigationId = useId();
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const [activeSection, setActiveSection] = useState<string>('input');
   return <form className="order-settings-form" onSubmit={e => {
     e.preventDefault();
     if (!busy && valid) {
@@ -47,20 +57,40 @@ export function OrderSettingsForm({ draft, onChange, onApply, onCancel, busy }: 
       onApply(draft);
     }
   }}>
-    <div className="order-settings-body">
-      <OrderSettingsSection title="주문 입력">
-        <p className="mb-2 text-xs text-fg-dim">변경한 값은 적용 후 반영됩니다.</p>
+    <div className="order-surface-body">
+      <nav aria-label="주문 설정 목차" className="order-surface-nav">
+        <span className="order-surface-nav-label">설정</span>
+        {SECTIONS.map(section => <button key={section.id} type="button" className="order-surface-nav-item"
+          aria-current={activeSection === section.id ? 'true' : undefined} aria-controls={`${navigationId}-${section.id}`}
+          onClick={() => {
+            setActiveSection(section.id);
+            document.getElementById(`${navigationId}-${section.id}`)?.scrollIntoView({ block: 'start' });
+          }}>{section.label}</button>)}
+      </nav>
+      <div className="order-settings-body" ref={bodyRef} onScroll={() => {
+        const body = bodyRef.current;
+        if (!body) return;
+        const top = body.getBoundingClientRect().top;
+        let next: string = 'input';
+        for (const section of SECTIONS) {
+          const element = document.getElementById(`${navigationId}-${section.id}`);
+          if (element && element.getBoundingClientRect().top <= top + 32) next = section.id;
+        }
+        if (body.scrollHeight - body.scrollTop - body.clientHeight < 2) next = 'sound';
+        setActiveSection(current => current === next ? current : next);
+      }}>
+      <OrderSettingsSection id={`${navigationId}-input`} title="주문 입력" description="자주 쓰는 수량과 금액을 미리 정합니다.">
         <PresetInputs label="수량 프리셋" suffix="주" max={MAX_ORDER_QUANTITY} values={draft.quantityPresets}
           onChange={quantityPresets => onChange({ ...draft, quantityPresets })} />
         <PresetInputs label="금액 프리셋" suffix="백만원" max={MAX_AMOUNT_MILLIONS} values={draft.amountPresets}
           onChange={amountPresets => onChange({ ...draft, amountPresets })} />
       </OrderSettingsSection>
-      <OrderSettingsSection title="호가 표시">
-        <OrderSettingsCheckboxRow label="내 평단가 표시"
+      <OrderSettingsSection id={`${navigationId}-display`} title="호가 표시" description="호가창에 표시할 정보를 선택합니다.">
+        <OrderSettingsCheckboxRow label="내 평단가 표시" description="평단가에 빨간 점을 표시합니다."
           icon={<span className="order-settings-average-dot" aria-hidden="true" />}
           checked={draft.showAveragePrice} onChange={showAveragePrice => onChange({ ...draft, showAveragePrice })} />
       </OrderSettingsSection>
-      <OrderSettingsSection title="주문 알림">
+      <OrderSettingsSection id={`${navigationId}-sound`} title="주문 알림" description="매수·매도 주문접수를 소리로 알립니다.">
         <OrderSettingsCheckboxRow label="주문접수 소리" checked={draft.orderReceiptSound}
           onChange={orderReceiptSound => {
             if (orderReceiptSound) prepareOrderReceiptSound();
@@ -71,13 +101,14 @@ export function OrderSettingsForm({ draft, onChange, onApply, onCancel, busy }: 
             setPreviewFailed(false);
             setPreviewFailed(!await playOrderReceiptSound());
           }}>소리 들어보기</button>
-          <span className="text-xs text-fg-dim">매수·매도 주문접수 시 재생</span>
         </div>
         {previewFailed && <p role="status" className="text-xs text-fg-dim">소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.</p>}
       </OrderSettingsSection>
-      {!valid && <p role="alert" className="text-error">프리셋은 허용 범위의 양의 정수로 입력하세요</p>}
+      </div>
     </div>
     <div className="order-surface-footer">
+      {valid ? <span className="order-surface-footer-note">적용을 눌러 저장합니다.</span>
+        : <span role="alert" className="order-settings-error">프리셋은 허용 범위의 양의 정수로 입력하세요</span>}
       <button type="button" onClick={onCancel}>취소</button>
       <button type="submit" className="order-primary" disabled={busy || !valid}>적용</button>
     </div>

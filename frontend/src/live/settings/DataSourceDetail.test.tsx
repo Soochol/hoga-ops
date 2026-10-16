@@ -73,7 +73,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     for (const name of ['hogaplay 우선', '실시간 WS 우선', '완결성 우선', 'KIS API 우선']) {
       expect(screen.queryByRole('radio', { name })).toBeNull();
     }
-    expect(screen.getByText(/'저장 데이터로 캔들 보기'를 켜면 분봉은 캡처\(hogaplay\)/)).toBeInTheDocument();
+    expect(screen.getByText(/켜면 저장된 분봉·스크리너 일봉을 사용/)).toBeInTheDocument();
   });
 
   it('복기뷰 캔들 안내는 REST 우회 토글을 숨기지 않고 동반 문구로 붙는다', async () => {
@@ -85,7 +85,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     expect(await screen.findByRole('switch', { name: '저장 데이터로 캔들 보기' })).toBeInTheDocument();
-    expect(screen.getByTestId('study-candle-source-note')).toHaveTextContent(/항상 저장 데이터/);
+    expect(screen.getByTestId('study-candle-source-note')).toHaveTextContent(/항상 저장된 분봉·스크리너 일봉/);
   });
 
   it('거래소 라디오는 상시 표시되고 복기뷰 고정은 동반 문구로 알린다 (ADR-0144는 유효)', async () => {
@@ -104,7 +104,7 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     // 그룹 설명(`LIVE_VENUE_HELP`)이 이미 말하므로 여기서 반복하지 않는다. 이유가
     // 없으면 고정이 임의 제약으로 읽힌다.
     const note = await screen.findByTestId('study-venue-fixed-note');
-    expect(note).toHaveTextContent(/복기뷰가 KRX 고정인 이유/);
+    expect(note).toHaveTextContent(/복기뷰는 KRX로 고정/);
     expect(note).toHaveTextContent(/hogaplay 캡처가 KRX 전용/);
   });
 
@@ -162,8 +162,8 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     const hint = await screen.findByTestId('krx-prefer-hogaplay-inactive');
-    expect(hint).toHaveTextContent(/실시간 화면의 현재 거래소/);
-    expect(hint).toHaveTextContent(/복기뷰는 KRX 고정이라 항상 적용됩니다/);
+    expect(hint).toHaveTextContent(/현재 실시간 거래소/);
+    expect(hint).toHaveTextContent(/복기뷰에는 항상 적용됩니다/);
     // 토글 자체는 살아 있다 — 끌 수 있어야 한다.
     expect(screen.getByRole('switch', { name: 'KRX에서 hogaplay 우선' })).not.toBeDisabled();
   });
