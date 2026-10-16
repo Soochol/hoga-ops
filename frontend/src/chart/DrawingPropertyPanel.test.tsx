@@ -204,7 +204,7 @@ describe('DrawingPropertyPanel — delete', () => {
   });
 });
 
-describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
+describe('DrawingPropertyPanel — default top-center position', () => {
   const HLINE2: Drawing = {
     id: 'h2', kind: 'hline', price: 2000,
     color: '#14B8A6', width: 2, lineStyle: 'solid', paneId: 'candle',
@@ -253,11 +253,11 @@ describe('DrawingPropertyPanel — top-center dock (fixed toolbar)', () => {
     expect(panel.style.left).toBe('50%');
   });
 
-  it('no drag grip (the toolbar is fixed, not draggable)', () => {
+  it('provides a separate move grip without changing drawing controls', () => {
     useDrawingsStore.getState().add('005930|minute', HLINE);
     useDrawingsStore.getState().setSelected('005930|minute', 'h1');
     render(<DrawingPropertyPanel scope="005930|minute" />);
-    expect(screen.queryByTestId('drawing-panel-grip')).toBeNull();
+    expect(screen.getByTestId('drawing-panel-grip')).toHaveAccessibleName('그리기 옵션 이동');
   });
 });
 

@@ -5,6 +5,18 @@
 > referenced as "v2/v3" throughout `frontend/src/live/`.
 
 **Status:** accepted (2026-06-03)
+
+**2026-10-17 user-approved update:** The current chart-top-center default (8px
+from the top) remains the initial/reset position. Single- and multi-selection
+toolbars can move using a dedicated grip. Remember the position per chart
+window, independently of Code, timeframe and selected drawings, until page
+reload. Page memory survives chart-component remounts; neither localStorage nor
+sessionStorage stores it. Remember chart-relative coordinates and clamp the
+visible toolbar after a resize without overwriting the remembered position.
+Double-clicking the grip or pressing Home restores the default; arrow keys move
+the focused grip and Escape cancels an active drag. This replaces the older
+global/component-local position and per-selection default described below;
+the no-persistence decision is preserved.
 **Supersedes (in part):** ADR-0032 — only its "Why session-only panel position" *per-selection re-anchor* clause; the *no-persistence* (session-scoped) decision is preserved.
 
 ## Decision

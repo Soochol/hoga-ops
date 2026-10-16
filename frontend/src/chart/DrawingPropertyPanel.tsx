@@ -1,10 +1,11 @@
 import { extendRectToTime } from './drawing/rectCoordinates';
-import { useCallback, useMemo, useState, useRef, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useId, useMemo, useState, useRef, type MouseEvent as ReactMouseEvent } from 'react';
 import { EMPTY_SELECTION, useDrawingsStore } from '../state/drawings';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { eligibleFor, planAlign, planDistribute, type AlignCoords, type AlignEdge, type DistributeAxis } from './drawing/translate';
 import { COLOR_PALETTE, STROKE_WIDTHS, LINE_STYLES, RECT_FILL_OPACITIES, TEXT_FONT_SIZES, isLocked, isExtendedRight, type DrawingKind, type LineStyle, type Drawing } from './drawing/types';
 import { type PatternSpan, patternButtonState } from './DrawingPropertyPanelHelpers';
+import { DrawingPanelFrame, DrawingPanelPopover } from './DrawingPanelFrame';
 
 
 export type DrawingAnchor = { x: number; y: number };
@@ -12,9 +13,9 @@ export type DrawingAnchor = { x: number; y: number };
 export type ComputeAnchorFn = (d: Drawing) => DrawingAnchor | null;
 
 
-// The panel now docks to the chart's top-center (see the re-dock effect) rather
-// than anchoring to each drawing, so it takes no positioning props.
 type Props = {
+  /** Chart-window identity; position is remembered only until page reload. */
+  positionKey?: string;
   /** 이 패널이 붙은 차트의 (종목, 봉 슬롯) scope — 선택 드로잉 조회·변이의
    *  귀속 대상(C2c-2b). */
   scope: string | null;
@@ -65,10 +66,6 @@ type OpenPopover = 'color' | 'thickness' | 'lineStyle' | 'fill' | 'fontSize' | '
 
 /** 참조 안정 빈 목록 — 셀렉터 fallback (EMPTY_SELECTION 과 같은 이유). */
 const EMPTY_DRAWINGS: readonly Drawing[] = [];
-
-
-/** Top-center dock offset from the chart's top edge (candle pane top). */
-const TOP_DOCK_Y = 8;
 
 
 /** 다중 선택에서 일괄 편집할 수 있는 스타일 속성. */
@@ -135,10 +132,10 @@ function PopoverShell({
   popoverRef, wide, children,
 }: { popoverRef: PopoverRef; wide?: boolean; children: React.ReactNode }) {
   return (
-    <div
-      ref={popoverRef}
+    <DrawingPanelPopover
+      popoverRef={popoverRef}
       className={
-        'absolute top-full left-0 mt-1 bg-bg-card border border-border rounded-md shadow-xl ' +
+        'absolute top-full left-0 bg-bg-card border border-border rounded-md shadow-xl ' +
         // min-w-max: containing block 인 툴바가 좁아지면 shrink-to-fit 으로 눌려
         // grid-cols-4 의 minmax(0,1fr) 열이 붕괴하고 스와치가 겹친다(형제 메뉴들의
         // min-w-[7rem] 과 달리 색 격자는 고정폭 자식이라 max-content 가 기준).
@@ -146,7 +143,7 @@ function PopoverShell({
       }
     >
       {children}
-    </div>
+    </DrawingPanelPopover>
   );
 }
 
@@ -434,9 +431,10 @@ function ZOrderButtons({
  * 판단을 한다: 눌리는데 아무 일도 안 나는 버튼이 고장으로 읽힌다.
  */
 function MultiSelectionToolbar({
-  scope, ids, resolveAlignCoords, resolveVisibleRightRealMs,
+  scope, ids, positionKey, resolveAlignCoords, resolveVisibleRightRealMs,
 }: {
   scope: string;
+  positionKey: string;
   ids: readonly string[];
   resolveAlignCoords?: () => AlignCoords | null;
   resolveVisibleRightRealMs?: () => number | null;
@@ -515,12 +513,7 @@ function MultiSelectionToolbar({
   const MIXED_BAR = 'repeating-linear-gradient(45deg, var(--fg-dim) 0 2px, transparent 2px 4px)';
 
   return (
-    <div
-      data-drawing-property-panel
-      data-testid="drawing-multi-selection-panel"
-      className="absolute z-30 inline-flex items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 pl-2.5 shadow-lg"
-      style={{ top: TOP_DOCK_Y, left: '50%', transform: 'translateX(-50%)' }}
-    >
+    <DrawingPanelFrame key={positionKey} positionKey={positionKey} testId="drawing-multi-selection-panel" onMove={closePopover}>
       <span data-testid="drawing-multi-count" className="mr-1 text-xs text-fg-dim tabular-nums">
         {ids.length}개 선택{lockedCount > 0 && ` · ${lockedCount} 잠김`}
       </span>
@@ -771,14 +764,16 @@ function MultiSelectionToolbar({
       >
         🗑
       </button>
-    </div>
+    </DrawingPanelFrame>
   );
 }
 
 
 export default function DrawingPropertyPanel({
-  scope, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern, patternBarCount,
+  scope, positionKey: windowPositionKey, resolveVisibleRightRealMs, resolveAlignCoords, onSearchPattern, patternBarCount,
 }: Props) {
+  const fallbackPositionKey = useId();
+  const positionKey = windowPositionKey ?? fallbackPositionKey;
   const activeTool = useDrawingsStore((s) => s.activeTool);
   const selectedIds = useDrawingsStore((s) =>
     scope ? s.selectedByScope.get(scope) ?? EMPTY_SELECTION : EMPTY_SELECTION,
@@ -796,11 +791,6 @@ export default function DrawingPropertyPanel({
   const [openPopover, setOpenPopover] = useState<OpenPopover>(null);
   const activeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
-
-  // The panel is a fixed toolbar docked to the chart's top-center (candle pane
-  // top) — CSS `left:50%` + translateX(-50%), so it reads as a toolbar rather
-  // than a panel chasing each shape. Positioning is pure CSS (no drag/measure),
-  // superseding the draggable/sticky model of ADR-0108/ADR-0032.
 
   const closePopover = useCallback(() => setOpenPopover(null), []);
   useDismissablePopover(openPopover != null, activeTriggerRef, closePopover, popoverRef);
@@ -821,6 +811,7 @@ export default function DrawingPropertyPanel({
       <MultiSelectionToolbar
         scope={scope}
         ids={selectedIds}
+        positionKey={positionKey}
         resolveAlignCoords={resolveAlignCoords}
         resolveVisibleRightRealMs={resolveVisibleRightRealMs}
       />
@@ -893,17 +884,7 @@ export default function DrawingPropertyPanel({
     : drawing.kind === 'hline' && drawing.labelHidden !== true;
 
   return (
-    <div
-      data-drawing-property-panel
-      data-testid="drawing-property-panel"
-      className="absolute z-30 inline-flex items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 shadow-lg"
-      style={{
-        // Fixed toolbar, docked to the top-center of the chart (candle pane top).
-        top: TOP_DOCK_Y,
-        left: '50%',
-        transform: 'translateX(-50%)',
-      }}
-    >
+    <DrawingPanelFrame key={positionKey} positionKey={positionKey} testId="drawing-property-panel" onMove={closePopover}>
       <button
         type="button"
         data-testid="drawing-color-trigger"
@@ -1131,6 +1112,6 @@ export default function DrawingPropertyPanel({
       >
         🗑
       </button>
-    </div>
+    </DrawingPanelFrame>
   );
 }
