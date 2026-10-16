@@ -1,4 +1,4 @@
-import type { PaneId } from './drawing/types';
+import type { PaneId, BasePaneId } from './drawing/types';
 import { normalizeKeyOrder } from '../state/keyOrder';
 
 /**
@@ -30,7 +30,7 @@ export const CANONICAL_PANE_ORDER = [
 ] as const satisfies readonly PaneId[];
 
 // PaneId 유니온이 늘어나면 이 할당이 실패한다(위 배열에 새 pane 추가를 강제).
-type _CanonicalCoversAllPaneIds = PaneId extends (typeof CANONICAL_PANE_ORDER)[number]
+type _CanonicalCoversAllPaneIds = BasePaneId extends (typeof CANONICAL_PANE_ORDER)[number]
   ? true
   : never;
 const _exhaustive: _CanonicalCoversAllPaneIds = true;
@@ -39,7 +39,7 @@ void _exhaustive;
 const CANONICAL_SET = new Set<string>(CANONICAL_PANE_ORDER);
 
 function isPaneId(value: string): value is PaneId {
-  return CANONICAL_SET.has(value);
+  return CANONICAL_SET.has(value) || /^indicator:[a-zA-Z0-9_-]{1,80}:/.test(value) && CANONICAL_SET.has(value.split(':')[2]);
 }
 
 /**
@@ -113,7 +113,7 @@ export function movePaneBeside(
  * 이름을 쓴다 — 같은 pane 을 두 화면이 다르게 부르면 안 되므로 그 파일의
  * 드리프트 테스트가 두 표를 대조한다. 캔들은 패널에 항목이 없다(끌 수 없는 고정 pane).
  */
-export const PANE_DISPLAY_NAME: Record<PaneId, string> = {
+export const PANE_DISPLAY_NAME: Record<BasePaneId, string> = {
   'program-daily': '프로그램 순매수량',
   candle: '캔들',
   volume: '거래량',
@@ -126,3 +126,6 @@ export const PANE_DISPLAY_NAME: Record<PaneId, string> = {
   'investor-institution': '기관 순매수량',
   'peak-wall': '최대벽',
 };
+
+export function basePaneId(id: PaneId): BasePaneId { return (id.startsWith('indicator:') ? id.split(':')[2] : id) as BasePaneId; }
+export function paneDisplayName(id: PaneId): string { return PANE_DISPLAY_NAME[basePaneId(id)]; }

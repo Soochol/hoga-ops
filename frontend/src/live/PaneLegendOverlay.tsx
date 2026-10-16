@@ -1,3 +1,7 @@
+import { IndicatorInstanceLegend } from './indicators/IndicatorInstanceLegend';
+import { EMPTY_INDICATOR_INSTANCES } from '../state/indicatorInstances';
+import { CATEGORY_PANE, indicatorInstanceApplicable } from './indicators/indicatorInstancePanes';
+import { basePaneId } from '../chart/paneOrder';
 import { drawnCandleIndex, EMPTY_DRAWN_CANDLE_INDEX } from '../chart/drawnCandleIndex';
 import { useServiceStatusPanel } from '../serviceStatus/controls';
 // Pane Legend — a TradingView-style legend pinned to each chart pane's
@@ -703,7 +707,7 @@ function CellsLegendRow({
           style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}
         >
           {c.color && <span aria-hidden="true" style={{ ...swatchStyle, background: c.color }} />}
-          {(!nameControl || c.label !== (nameLabel ?? PANE_DISPLAY_NAME[row.paneId])) && (
+          {(!nameControl || c.label !== (nameLabel ?? PANE_DISPLAY_NAME[basePaneId(row.paneId)])) && (
             <span style={{ color: 'var(--fg-dim)' }}>{c.label}</span>
           )}
           <span style={valueCellStyle}>{c.formatted}</span>
@@ -736,12 +740,13 @@ function PaneLegendOverlay({
   code = null,
 }: Props) {
   const paneDisplayName = (paneId: PaneId) => {
+    if (paneId.startsWith('indicator:')) return PANE_DISPLAY_NAME[basePaneId(paneId)];
     if (paneId === 'program-daily') {
       const measure = { net: '순매수량', buy: '총매수량', sell: '총매도량' }[dailyProgramTradeSide];
       const status = dailyProgramStatus ? { loading: '조회 중', error: '조회 실패', partial: '일부 데이터 미제공', empty: '데이터 없음' }[dailyProgramStatus] : '';
       return `프로그램 ${measure}${status ? ` · ${status}` : ''}`;
     }
-    if (paneId !== 'investor-foreign' && paneId !== 'investor-institution') return PANE_DISPLAY_NAME[paneId];
+    if (paneId !== 'investor-foreign' && paneId !== 'investor-institution') return PANE_DISPLAY_NAME[basePaneId(paneId)];
     const subject = paneId === 'investor-foreign' ? '외국인' : '기관';
     const side = paneId === 'investor-institution' ? institutionInvestorTradeSide ?? investorTradeSide : investorTradeSide;
     const loading = paneId === 'investor-institution' && institutionInvestorTradeSide !== undefined ? institutionInvestorStatus : investorStatus;
@@ -889,6 +894,7 @@ function PaneLegendOverlay({
   // 플래그 값 provider 의 창 스코프 — 등록(각 오버레이)과 **같은 키**로 읽어야 한다.
   // 한쪽만 스코프하면 값이 통째로 사라지거나 옆 창 값을 그대로 보게 된다.
   const windowId = useWindowScopeId();
+  const extraInstances = useWindowIndicator(s => s.indicatorInstances ?? EMPTY_INDICATOR_INSTANCES);
   // 가시성이 슬롯 안(`enabled`)으로 접혀 배열 하나만 구독하면 된다 — 칩 토글이
   // 새 배열을 만들므로 재렌더 입도는 그대로다.
   const lineVisibility = useWindowIndicator(s => s.indicatorLineVisibility);
@@ -1244,7 +1250,10 @@ function PaneLegendOverlay({
   // 폐기된 concurrent 렌더의 값이 남지 않게.)
 
   useEffect(() => {
-    geometryRef.current = { paneTops, paneHeights, groups };
+    // Additional instance panes have their own controls and append after the shared layout.
+    // Keep them out of the original panes' merge/reorder drop targets.
+    const layoutGroups = groups.filter(group => !group[0].name.startsWith('indicator:'));
+    geometryRef.current = { paneTops: paneTops.slice(0, layoutGroups.length), paneHeights: paneHeights.slice(0, layoutGroups.length), groups: layoutGroups };
   });
 
   // pane 플롯 폭 = 우측 가격축 거터를 **뺀** 폭. 이 오버레이 컨테이너는 거터까지
@@ -1366,6 +1375,7 @@ function PaneLegendOverlay({
               >
                 {paneRows.map((row) => {
                   const member = group.find((s) => s.name === row.paneId)!;
+                  if (row.paneId.startsWith('indicator:')) return <IndicatorInstanceLegend key={row.paneId} id={row.paneId.split(':')[1]} cursorTimeSec={cursorTimeSec} seriesData={seriesData ?? undefined} />;
                   const nameControl = idx > 0 && row.kind === 'cells' ? (
                     <PaneChip
                       paneId={member.name}
@@ -1424,6 +1434,9 @@ function PaneLegendOverlay({
                     </div>
                   );
                 })}
+                {idx === 0 && indicatorLegendsVisible && extraInstances.filter(row => indicatorInstanceApplicable(row.category, timeframe, paneToggles.hogaPanes !== false)).filter(row => !CATEGORY_PANE[row.category]
+                  || row.category === 'peak-walls' || row.category === 'daily-moving-average').filter(row => row.category !== 'volume-distribution').map(row =>
+                  <IndicatorInstanceLegend key={row.id} id={row.id} cursorTimeSec={cursorTimeSec} seriesData={seriesData ?? undefined} />)}
               </div>
             )}
           </div>
@@ -1550,7 +1563,7 @@ function PaneLegendOverlay({
         const secondName = groups[gi].length > 1 ? paneDisplayName(groups[gi][1].name) : null;
         // 위 이웃이 candle(그룹 0)이면 병합 불가 — candle 은 타겟이 아니다.
         const upGroup = gi - 1 >= 1 ? groups[gi - 1] : null;
-        const downGroup = gi + 1 < Math.min(groups.length, paneTops.length) ? groups[gi + 1] : null;
+        const downGroup = gi + 1 < Math.min(groups.length, paneTops.length) && !groups[gi + 1][0].name.startsWith('indicator:') ? groups[gi + 1] : null;
         const commit = (next: PaneGroups): void => {
           indicatorActions.setPaneGroups(next);
           setChipMenu(null);
@@ -1611,7 +1624,7 @@ function PaneLegendOverlay({
                   onMouseEnter={hoverOn}
                   onMouseLeave={hoverOff}
                   onClick={() => {
-                    if (neighbor) commit(movePaneGroupBeside(
+                    if (neighbor && !neighbor[0].name.startsWith('indicator:')) commit(movePaneGroupBeside(
                       paneGroups, chipMenu.pane, neighbor[0].name, direction === 'up' ? 'before' : 'after',
                     ));
                   }}

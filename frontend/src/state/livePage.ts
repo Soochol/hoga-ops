@@ -39,6 +39,7 @@ import {
   persistIndicatorsV2,
   readIndicatorsV2Storage,
   resolveIndicatorSettings,
+  bucketsForScope,
   INDICATOR_WINDOW_SCOPE_LIMIT,
   type IndicatorScope,
   type IndicatorSettings,
@@ -295,6 +296,8 @@ export type IndicatorUndoToast = {
   timeframe: LiveTimeframe;
   /** 삭제 직전 값(배열 전체 스냅샷). */
   patch: Partial<IndicatorSettings>;
+  /** Restore one instance by id without rolling back subsequent sibling edits. */
+  removedInstance?: { row: import('./indicatorInstances').IndicatorInstance; index: number };
 };
 
 type Store = Persisted & IndicatorSettings & {
@@ -758,7 +761,14 @@ export const useLivePageStore = create<Store>((set, get) => {
       const payload = get().indicatorUndoToast;
       if (!payload) return;
       // 캡처된 스코프·봉으로 되돌린다 — 지금 보고 있는 창/봉이 아니다.
-      patchIndicatorsScoped(payload.scope, payload.timeframe, payload.patch);
+      if (payload.removedInstance) {
+        const current = resolveIndicatorSettings(bucketsForScope(get().indicatorsByTimeframe, get().indicatorsByWindow, payload.scope), payload.timeframe);
+        const rows = [...(current.indicatorInstances ?? [])];
+        if (!rows.some(row => row.id === payload.removedInstance!.row.id)) {
+          rows.splice(Math.min(payload.removedInstance.index, rows.length), 0, payload.removedInstance.row);
+          patchIndicatorsScoped(payload.scope, payload.timeframe, { indicatorInstances: rows });
+        }
+      } else patchIndicatorsScoped(payload.scope, payload.timeframe, payload.patch);
       set({ indicatorUndoToast: null });
     },
     lastMinuteHistoricalFromDate: null,

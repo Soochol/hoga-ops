@@ -1,3 +1,4 @@
+import { displayIndicatorSettings, indicatorDemandSettings } from '../../state/indicatorInstances';
 /**
  * WindowView — 멀티창 워크스페이스의 창-스코프 뷰 컨텍스트 (ADR-0119, PR-B).
  *
@@ -161,7 +162,9 @@ export function useWindowView(): WindowView {
  * 오버레이를 재렌더시킨다(`/study`·단일 차트에서 순손해).
  */
 export function useWindowScopeId(): string | null {
-  return useContext(WindowViewContext)?.windowId ?? null;
+  const instanceId = useContext(IndicatorEditorDraftContext)?.instanceId;
+  const windowId = useContext(WindowViewContext)?.windowId ?? null;
+  return instanceId ? `${windowId ?? 'ambient'}:indicator:${instanceId}` : windowId;
 }
 
 /**
@@ -176,7 +179,7 @@ export function useWindowScopeId(): string | null {
  * (`livePage` 지표 슬라이스 주석), 여기서 버킷 resolve 로 바꾸면 투영만 세팅하는
  * 기존 소비자·픽스처가 조용히 공장값을 보게 된다.
  */
-function useWindowIndicatorTimeframe(): LiveTimeframe | null {
+export function useWindowIndicatorTimeframe(): LiveTimeframe | null {
   return useContext(WindowViewContext)?.timeframe ?? null;
 }
 
@@ -267,7 +270,7 @@ export function useWindowIndicator<T>(select: (s: IndicatorSettings) => T): T {
   const timeframe = useWindowIndicatorTimeframe();
   const scope = useWindowIndicatorScope();
   return useLivePageStore((s) => select(
-    draft?.settings ?? (timeframe
+    draft?.settings ?? displayIndicatorSettings(timeframe
       ? resolveIndicatorSettings(
         bucketsForScope(s.indicatorsByTimeframe, s.indicatorsByWindow, scope),
         timeframe,
@@ -638,4 +641,9 @@ export function useHistoricalRangeActions(): HistoricalRangeActions {
       }),
     };
   }, [windowId]);
+}
+
+/** Data owners share fetch/aggregation across all instances. */
+export function useWindowIndicatorDemand(): IndicatorSettings {
+  return indicatorDemandSettings(useWindowIndicators());
 }

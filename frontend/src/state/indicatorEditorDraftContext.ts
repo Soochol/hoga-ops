@@ -5,6 +5,7 @@ import type { ChartViewPrefs, IndicatorModalPrefKey } from './chartPrefs';
 
 /** Only the catalog form is wrapped. Charts and the rest of the editor keep reading live state. */
 export const IndicatorEditorDraftContext = createContext<{
+  instanceId?: string;
   settings: IndicatorSettings;
   prefs: ChartViewPrefs;
   actions: BoundIndicatorOps;

@@ -1,5 +1,5 @@
 import type { PaneId } from '../chart/drawing/types';
-import { PANE_DISPLAY_NAME } from '../chart/paneOrder';
+import { paneDisplayName } from '../chart/paneOrder';
 import { isSharedAxisGroup, paneGroupIndexOf, type PaneGroups } from '../chart/paneGroups';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import type { PaneSpecGroup } from './paneGroupSpecs';
@@ -131,7 +131,7 @@ export function mergeDropHint(
   draggedPane: PaneId,
   targetGroupIds: readonly PaneId[],
 ): MergeDropHint {
-  const name = PANE_DISPLAY_NAME[draggedPane];
+  const name = paneDisplayName(draggedPane);
   const title = `『${name}』${eulReul(name)} 이 pane 에 합치기`;
   if (targetGroupIds.some((id) => !panesCanCoDisplay(draggedPane, id))) {
     return {

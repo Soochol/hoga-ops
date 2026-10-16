@@ -1,3 +1,4 @@
+import { normalizeIndicatorInstances, INDICATOR_CATEGORIES, type IndicatorInstance } from './indicatorInstances';
 import { normalizeLineVisibility, type IndicatorLineVisibility } from './indicatorLineVisibility';
 import type { MASource } from '../chart/projectors/movingAverage';
 import { LINE_STYLES, type LineStyle, type PaneId } from '../chart/drawing/types';
@@ -162,6 +163,8 @@ export const QUOTE_LEVEL_LINE_DEFAULT_STYLE: LineStyle = 'dashed';
 export const QUOTE_TOTALS_DAY_MAX_DEFAULT_STYLE: LineStyle = 'dotted';
 
 export type PersistedIndicators = {
+  indicatorInstances?: IndicatorInstance[];
+  indicatorPrimaryHidden?: import('../live/indicators/IndicatorPanelHelpers').CategoryId[];
   indicatorLineVisibility: IndicatorLineVisibility;
   supertrendEnabled: boolean;
   supertrendHidden: boolean;
@@ -690,6 +693,8 @@ export function mergeLiveIndicatorPrefs(
     vol: boolean, hidden: boolean,
     qt: boolean, ratio: boolean, fill: boolean, programTrade: boolean, tradeVolumePoc: boolean,
   ): PersistedIndicators => ({
+    indicatorInstances: normalizeIndicatorInstances(obj?.indicatorInstances, value => mergeLiveIndicatorPrefs(value)),
+    indicatorPrimaryHidden: Array.isArray(obj?.indicatorPrimaryHidden) ? [...new Set(obj.indicatorPrimaryHidden.filter(c => INDICATOR_CATEGORIES.includes(c)))] : [],
     indicatorLineVisibility: normalizeLineVisibility(obj?.indicatorLineVisibility),
     supertrendEnabled: obj?.supertrendEnabled === true,
     supertrendHidden: obj?.supertrendHidden === true,

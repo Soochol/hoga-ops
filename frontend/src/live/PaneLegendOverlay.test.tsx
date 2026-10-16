@@ -20,7 +20,7 @@ import {
   type LegendSeriesEntry,
 } from './indicators/paneLegendRegistry';
 import type { PaneId } from '../chart/drawing/types';
-import { CANONICAL_PANE_ORDER, PANE_DISPLAY_NAME } from '../chart/paneOrder';
+import { CANONICAL_PANE_ORDER, PANE_DISPLAY_NAME, basePaneId } from '../chart/paneOrder';
 import { paneSpecsForTimeframe, type PaneToggles } from './paneSpecsForTimeframe';
 import { formatKoreanWonEok } from '../util/koreanNumber';
 import {
@@ -1072,11 +1072,11 @@ describe('PaneLegendOverlay — 모든 pane 지표의 제거 버튼', () => {
 
   describe.each([false, true])('값 데이터 있음: %s', (hasData) => {
     it.each(indicators)('$name 레전드의 ×로 해당 지표만 제거한다', (spec) => {
-      if (hasData) registerLegend(spec.name, [{ label: PANE_DISPLAY_NAME[spec.name], value: 100 }]);
+      if (hasData) registerLegend(spec.name, [{ label: PANE_DISPLAY_NAME[basePaneId(spec.name)], value: 100 }]);
       render(<PaneLegendOverlay chart={makeChart(specs.map(() => 100))} timeframe="D" paneToggles={toggles} />);
       const row = within(screen.getByTestId(`pane-legend-rows-${spec.name}`));
       const remove = row.getByRole('button', { name: /지표 끄기$/ });
-      expect(remove).toHaveAttribute('title', `${PANE_DISPLAY_NAME[spec.name]} 지표 끄기`);
+      expect(remove).toHaveAttribute('title', `${PANE_DISPLAY_NAME[basePaneId(spec.name)]} 지표 끄기`);
       fireEvent.click(remove);
       expect(spec.legendToggleKey).toBeDefined();
       for (const indicator of indicators) {

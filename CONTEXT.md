@@ -55,6 +55,7 @@ _Avoid_: "snapshot", "fixed view", "captured chart"; saying it restores saved in
 
 **공용 지표 셋업 (Shared Indicator Setup)**:
 The current analysis indicator setup. It is **not owned by a saved study view**: opening a 복기뷰 reloads the saved period and re-analyzes it with whatever this setup currently is. Since #699 (PR-A/PR-B) the **entire** setup — every drawer-visible toggle, parameter, and color — is profiled per **LiveTimeframe** group (분봉 / 일봉 / 주봉 / 월봉, 4 sparse buckets over factory defaults), and since ADR-0152 each chart window carries its own set. Storage is split across two blobs: indicator fields in `live.indicators.v2`, and drawer-visible chartPrefs sub-options (indicator-modal keys) in `hoga.chart.prefs.v1` under `indicatorModalByTimeframe`; chart-wide chartPrefs stay flat/global. The chart's current timeframe is the lookup key. The **page axis** (`IndicatorPageScope`) still exists in those blobs but has only one inhabitant since ADR-0157 — the `study` buckets are legacy data no surface writes to.
+같은 종류를 여러 개 추가한 항목은 `indicatorInstances`에서 각자의 설정·표시 상태·지표 전용 prefs를 소유한다. 기존 flat 필드는 첫 항목이며, 원본 시세 수요는 활성 항목들의 합집합이다.
 _Avoid_: saying a **복기뷰** restores or stores indicator state; treating the `study` bucket of `IndicatorPageScope` as a live axis.
 
 **Pane 크기 가중치 (Pane Stretch)**:

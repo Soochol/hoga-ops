@@ -19,7 +19,7 @@ import {
 } from '../state/livePage';
 import { createRegularSessionBundleFilter, regularSessionHogaForDisplay } from './regularSessionView';
 import { useRegularSessionLiveSeries } from './useRegularSessionLiveSeries';
-import { useWindowView, useWindowIndicators, useWindowIndicator } from './workspace/windowView';
+import { useWindowView, useWindowIndicatorDemand } from './workspace/windowView';
 import { peakWallBarFamilyActive } from '../state/indicatorOps';
 import type { LiveVenueOption } from '../state/liveVenue';
 import {
@@ -632,6 +632,7 @@ export function useLiveBundle(
   const { historicalFromDate, regularSessionOnly: sessionPreference } = useWindowView();
   const regularSessionOnly = isMinuteTimeframe(timeframe) && sessionPreference === true;
   const live = useRegularSessionLiveSeries(rawLive, regularSessionOnly);
+  const demandSettings = useWindowIndicatorDemand();
   const {
     askPeakEnabled,
     bidPeakEnabled,
@@ -641,15 +642,13 @@ export function useLiveBundle(
     programTradeEnabled,
     volumeDistributionEnabled,
     volumeDistributionRangeCount,
-  } = useWindowIndicators();
+  } = demandSettings;
   // 최대벽 봉별 배열은 **옵트인**이라 실제로 그릴 창만 요청한다 — 모드가 `bar` 인
   // 것만으로는 부족하다(pane 이 닫혀 있으면 그릴 대상이 없는데 페이로드만 커진다).
   // `depthHeatmapEnabled` 가 소비처 게이트와 요청을 같은 조건으로 묶는 것과 같은 축.
-  const peakWallBarMode = useWindowIndicator((s) => peakWallBarFamilyActive(s, 'Traded'));
-  const peakWallAllBarMode = useWindowIndicator((s) => peakWallBarFamilyActive(s, 'AllWall'));
-  const peakWallUnreachedBarMode = useWindowIndicator(
-    (s) => peakWallBarFamilyActive(s, 'Unreached'),
-  );
+  const peakWallBarMode = peakWallBarFamilyActive(demandSettings, 'Traded');
+  const peakWallAllBarMode = peakWallBarFamilyActive(demandSettings, 'AllWall');
+  const peakWallUnreachedBarMode = peakWallBarFamilyActive(demandSettings, 'Unreached');
   // 인스턴스가 하나라도 켜져 있으면 조회한다 — 임계는 클라이언트 필터라 요청은
   // 인스턴스 수와 무관하게 **하나**다(#1595).
   const brokerLateEntryEnabled = brokerLateEntries.some((e) => e.enabled);
