@@ -1093,9 +1093,24 @@ describe('matchShortcut', () => {
     } as KeyboardEvent;
   }
 
-  it('matches Alt+H → hline', () => {
-    expect(matchShortcut(key({ key: 'h', altKey: true }))).toBe('hline');
+  it.each([
+    { key: 'E', code: 'KeyE' },
+    { key: 'e', code: 'KeyE' },
+    { key: 'ㄸ', code: 'KeyE' },
+  ])('matches Shift+E → hline with key $key', (event) => {
+    expect(matchShortcut(key({ ...event, altKey: false, shiftKey: true }))).toBe('hline');
   });
+
+  it.each([false, true])('removes Alt+H even with incidental Shift=%s', (shiftKey) => {
+    expect(matchShortcut(key({ key: 'h', altKey: true, shiftKey }))).toBeNull();
+  });
+
+  it.each([{ shiftKey: false }, { ctrlKey: true }, { metaKey: true }])(
+    'does not activate hline for plain E or Ctrl/Meta combinations: %o',
+    (extra) => {
+      expect(matchShortcut(key({ key: 'E', code: 'KeyE', altKey: false, shiftKey: true, ...extra }))).toBeNull();
+    },
+  );
 
   it('matches Alt+J → trendline', () => {
     expect(matchShortcut(key({ key: 'j', altKey: true }))).toBe('trendline');
@@ -1113,20 +1128,20 @@ describe('matchShortcut', () => {
     expect(matchShortcut(key({ key: 'v', altKey: true }))).toBe('select');
   });
 
-  it('is case-insensitive (Alt+Shift+H still matches)', () => {
-    expect(matchShortcut(key({ key: 'H', altKey: true, shiftKey: true }))).toBe('hline');
+  it('keeps Alt+Shift+E assigned to eraser', () => {
+    expect(matchShortcut(key({ key: 'E', altKey: true, shiftKey: true }))).toBe('eraser');
   });
 
   it('returns null without Alt modifier', () => {
-    expect(matchShortcut(key({ key: 'h', altKey: false }))).toBeNull();
+    expect(matchShortcut(key({ key: 'j', altKey: false }))).toBeNull();
   });
 
   it('returns null with Ctrl modifier (avoid clobbering browser shortcuts)', () => {
-    expect(matchShortcut(key({ key: 'h', altKey: true, ctrlKey: true }))).toBeNull();
+    expect(matchShortcut(key({ key: 'j', altKey: true, ctrlKey: true }))).toBeNull();
   });
 
   it('returns null with Meta modifier', () => {
-    expect(matchShortcut(key({ key: 'h', altKey: true, metaKey: true }))).toBeNull();
+    expect(matchShortcut(key({ key: 'j', altKey: true, metaKey: true }))).toBeNull();
   });
 
   it('returns null for unbound keys', () => {
@@ -1588,12 +1603,12 @@ describe('day price horizontal lines', () => {
     expect(ctx.add).not.toHaveBeenCalled();
     expect(ctx.revertToSelectMode).not.toHaveBeenCalled();
   });
-  it('matches Shift+H/L/O/C without stealing Alt+H or Ctrl combinations', () => {
+  it('matches Shift+H/L/O/C while ignoring the removed Alt+H and Ctrl combinations', () => {
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'H', shiftKey: true }))).toBe('day-high');
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'L', shiftKey: true }))).toBe('day-low');
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'O', shiftKey: true }))).toBe('day-open');
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'C', shiftKey: true }))).toBe('day-close');
-    expect(matchShortcut(new KeyboardEvent('keydown', { key: 'h', altKey: true }))).toBe('hline');
+    expect(matchShortcut(new KeyboardEvent('keydown', { key: 'h', altKey: true }))).toBeNull();
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'H', shiftKey: true, ctrlKey: true }))).toBeNull();
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'l' }))).toBeNull();
     expect(matchShortcut(new KeyboardEvent('keydown', { key: 'ㅗ', code: 'KeyH', shiftKey: true }))).toBe('day-high');

@@ -23,6 +23,8 @@ describe('ShortcutHelpHost', () => {
     expect(screen.getByText('관심종목 다음/이전 종목')).toBeInTheDocument();
     // 그리기 섹션은 tools.ts 를 지연 로드해 채운다(수평선 등 spec 라벨).
     expect(await screen.findByText('수평선')).toBeInTheDocument();
+    expect(screen.getByText('⇧E')).toBeInTheDocument();
+    expect(screen.queryByText('⌥H')).not.toBeInTheDocument();
     expect(screen.getByText('마우스 날짜의 고점봉 몸통 상단 수평선 (분봉)')).toBeInTheDocument();
     // 다시 '?' → 토글 닫힘.
     fireEvent.keyDown(window, { key: '?', shiftKey: true });

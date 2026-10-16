@@ -1471,7 +1471,7 @@ describe('DrawingOverlay — 빈 밴드 앵커는 축이 담는 마지막 봉이
   });
 });
 
-describe('day extreme placement', () => {
+describe('horizontal line placement', () => {
   beforeEach(() => useDrawingsStore.getState().__resetForTests());
   const open = Date.UTC(2026, 8, 14, 0);
   const bars = [
@@ -1495,6 +1495,48 @@ describe('day extreme placement', () => {
       scope="005930|minute" paneSeries={new Map([['candle', series]]) as never}
       candles={bars} bucketMs={bucketMs} dayExtremesReady={ready} />);
   }
+  it.each([
+    { key: 'E', code: 'KeyE' },
+    { key: 'ㄸ', code: 'KeyE' },
+  ])('Shift+E with key $key keeps drawing at the clicked price until Escape', (event) => {
+    const { container } = mount();
+    const scope = '005930|minute';
+    fireEvent.keyDown(window, { ...event, shiftKey: true });
+    expect(useDrawingsStore.getState().activeTool).toBe('hline');
+    expect(useDrawingsStore.getState().drawingsFor(scope)).toHaveLength(0);
+
+    const overlay = container.querySelector('[data-drawing-overlay]')!;
+    for (const price of [200, 300]) {
+      fireEvent.pointerDown(overlay, { button: 0, clientX: 10, clientY: price, pointerId: 1 });
+      fireEvent.pointerUp(overlay, { button: 0, clientX: 10, clientY: price, pointerId: 1 });
+      expect(useDrawingsStore.getState().activeTool).toBe('hline');
+    }
+    expect(useDrawingsStore.getState().drawingsFor(scope)).toEqual([
+      expect.objectContaining({ kind: 'hline', price: 200, paneId: 'candle' }),
+      expect.objectContaining({ kind: 'hline', price: 300, paneId: 'candle' }),
+    ]);
+    expect(useDrawingsStore.getState().selectedFor(scope)).toEqual([]);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useDrawingsStore.getState().activeTool).toBe('select');
+    expect(useDrawingsStore.getState().drawingsFor(scope)).toHaveLength(2);
+  });
+
+  it('ignores the removed Alt+H and keeps Alt+E assigned to eraser', () => {
+    mount();
+    expect(fireEvent.keyDown(window, { key: 'h', code: 'KeyH', altKey: true })).toBe(true);
+    expect(useDrawingsStore.getState().activeTool).toBe('select');
+    fireEvent.keyDown(window, { key: 'e', code: 'KeyE', altKey: true });
+    expect(useDrawingsStore.getState().activeTool).toBe('eraser');
+  });
+
+  it('does not activate Shift+E while typing in an input', () => {
+    const { container } = mount();
+    const input = document.createElement('input');
+    container.append(input);
+    expect(fireEvent.keyDown(input, { key: 'E', code: 'KeyE', shiftKey: true })).toBe(true);
+    expect(useDrawingsStore.getState().activeTool).toBe('select');
+  });
+
   it.each([['H', 150], ['L', 80]] as const)('Shift+%s creates the day price regardless of cursor Y, then supports undo', (key, price) => {
     const { container } = mount();
     fireEvent.keyDown(window, { key, shiftKey: true });
