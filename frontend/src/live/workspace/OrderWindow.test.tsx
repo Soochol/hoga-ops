@@ -57,7 +57,7 @@ function show() { return render(<QueryClientProvider client={new QueryClient({ d
 function enableReceiptSound() {
   fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
   fireEvent.click(screen.getByRole('checkbox', { name: '주문접수 소리' }));
-  fireEvent.click(screen.getByRole('button', { name: '적용' }));
+  fireEvent.click(screen.getByRole('button', { name: '닫기' }));
 }
 beforeEach(() => {
   afterHoursBook.data = undefined;
@@ -184,7 +184,7 @@ describe('호가 주문', () => {
     fireEvent.mouseLeave(value);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
-  it('소리 들어보기는 끄기 상태에서도 재생하고 설정 적용이나 주문은 하지 않는다', async () => {
+  it('소리 들어보기는 설정을 바꾸지 않고 소리 토글은 즉시 저장한다', async () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
     const checkbox = screen.getByRole('checkbox', { name: '주문접수 소리' });
@@ -195,9 +195,9 @@ describe('호가 주문', () => {
     expect(checkbox).not.toBeChecked();
     expect(mock.command).not.toHaveBeenCalled();
     fireEvent.click(checkbox);
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    expect(screen.getByRole('checkbox', { name: '주문접수 소리' })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: '주문접수 소리' })).toBeChecked();
   });
   it('미리듣기 차단을 설정 안에서 안내한다', async () => {
     vi.mocked(playOrderReceiptSound).mockResolvedValue(false);
@@ -723,66 +723,64 @@ describe('호가 주문', () => {
     expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).not.toHaveAttribute('title');
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it('평단가 표시 설정은 적용할 때만 바뀌고 취소·Escape는 편집을 버린다', () => {
+  it('평단가 표시는 즉시 저장되고 닫기·Escape로 되돌아가지 않는다', () => {
     mock.averagePrice = '67000.1';
     const { container } = show();
     const settings = screen.getByRole('button', { name: '주문 설정' });
     const marker = () => container.querySelector('.order-average-marker');
     fireEvent.click(settings);
-    const checkbox = screen.getByRole('checkbox', { name: '내 평단가 표시' });
-    expect(checkbox).toBeChecked();
-    fireEvent.click(checkbox);
-    expect(marker()).not.toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    expect(marker()).not.toBeNull();
-    fireEvent.click(settings);
-    expect(screen.getByRole('checkbox', { name: '내 평단가 표시' })).toBeChecked();
+    expect(screen.queryByRole('button', { name: '적용' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox', { name: '내 평단가 표시' }));
-    fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
-    fireEvent.click(settings);
-    expect(screen.getByRole('checkbox', { name: '내 평단가 표시' })).toBeChecked();
-    fireEvent.click(screen.getByRole('checkbox', { name: '내 평단가 표시' }));
-    fireEvent.click(screen.getByRole('button', { name: '적용' }));
     expect(marker()).toBeNull();
-    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('67,001');
-    expect(container.querySelector('[data-order-price="67000"] [data-price-badges]')).toHaveTextContent('저');
-    fireEvent.click(screen.getByRole('button', { name: '금액' }));
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     fireEvent.click(settings);
     expect(screen.getByRole('checkbox', { name: '내 평단가 표시' })).not.toBeChecked();
     fireEvent.click(screen.getByRole('checkbox', { name: '내 평단가 표시' }));
-    fireEvent.click(screen.getByRole('button', { name: '적용' }));
     expect(marker()).not.toBeNull();
+    fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
+    fireEvent.click(settings);
+    expect(screen.getByRole('checkbox', { name: '내 평단가 표시' })).toBeChecked();
+    fireEvent.click(settings);
+    expect(screen.getByLabelText('매입평단가')).toHaveTextContent('67,001');
     expect(mock.command).not.toHaveBeenCalled();
   });
+
   it('평단가 표시 설정과 관계없이 범위 밖 안내 없이 상단 숫자를 유지한다', () => {
     show();
     expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
     fireEvent.click(screen.getByRole('checkbox', { name: '내 평단가 표시' }));
-    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('66,000');
   });
-  it('설정 취소는 프리셋을 바꾸지 않고 적용된 프리셋·단축키로 즉시 주문한다', async () => {
+  it('프리셋은 즉시 저장하고 빈칸·범위 밖 값은 이전 값을 유지하며 다른 항목은 저장한다', async () => {
     const view = show();
-    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    const edit = () => fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    edit();
     const dialog = screen.getByRole('dialog', { name: '주문 설정' });
-    expect(within(dialog).queryByText('주문 방식')).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('region', { name: '주문 입력' }).querySelectorAll('input')).toHaveLength(7);
-    expect(within(within(dialog).getByRole('region', { name: '호가 표시' })).getByRole('checkbox', { name: '내 평단가 표시' })).toBeChecked();
-    expect(within(dialog).queryAllByRole('radio')).toHaveLength(0);
     expect(within(dialog).getAllByRole('spinbutton')).toHaveLength(6);
-    fireEvent.change(screen.getByLabelText('수량 프리셋 1'), { target: { value: '25' } });
-    fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(10);
-    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    expect(screen.getByLabelText('수량 프리셋 1')).toHaveValue(10);
+    expect(within(dialog).getByText('변경 사항이 자동 저장됩니다.')).toBeInTheDocument();
+    const amount = screen.getByLabelText('금액 프리셋 1');
+    fireEvent.change(amount, { target: { value: '' } });
+    expect(amount).toHaveValue(null);
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('양의 정수만 저장');
+    for (const value of ['0', '-1', '1.5', '1000001']) {
+      fireEvent.change(amount, { target: { value } });
+      expect(within(dialog).getByRole('alert')).toBeInTheDocument();
+    }
     for (const [i, value] of [25, 75, 250].entries()) fireEvent.change(screen.getByLabelText(`수량 프리셋 ${i + 1}`), { target: { value: String(value) } });
-    fireEvent.change(screen.getByLabelText('금액 프리셋 1'), { target: { value: '1.5' } });
-    expect(screen.getByRole('button', { name: '적용' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('금액 프리셋 1'), { target: { value: '2' } });
-    fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '내 평단가 표시' }));
+    expect(view.container.querySelector('.order-average-marker')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(25);
+    edit();
+    expect(screen.getByLabelText('금액 프리셋 1')).toHaveValue(1);
+    expect(screen.getByLabelText('수량 프리셋 2')).toHaveValue(75);
+    expect(screen.getByRole('checkbox', { name: '내 평단가 표시' })).not.toBeChecked();
+    fireEvent.change(screen.getByLabelText('금액 프리셋 1'), { target: { value: '2' } });
+    fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
     fireEvent.keyDown(view.getByTestId('order-window'), { key: '2', ctrlKey: true });
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(75);
     expect(screen.getByRole('button', { name: '250주' })).toBeInTheDocument();
@@ -791,6 +789,7 @@ describe('호가 주문', () => {
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0][1]).toMatchObject({ quantity: 75 });
   });
+
   it('금액 버튼은 현재가로 한 번 환산하고 서로 다른 매수·매도 호가에도 같은 수량을 전송한다', async () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '금액' }));
@@ -1078,7 +1077,7 @@ describe('호가 주문', () => {
     expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ account_seq: 2, code: '000660', quantity: 7 }), 'live']);
   });
 
-  it('수량 기억은 적용 후에만 동작하고 취소·Escape·끄기는 기록을 복원하지 않는다', () => {
+  it('수량 기억은 즉시 저장되며 끄면 현재 입력만 유지하고 기록은 비운다', () => {
     const client = new QueryClient();
     const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} /></QueryClientProvider>;
     const view = render(content('005930'));
@@ -1086,24 +1085,22 @@ describe('호가 주문', () => {
     const toggle = () => fireEvent.click(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' }));
     edit();
     expect(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' })).not.toBeChecked();
-    toggle(); fireEvent.click(screen.getByRole('button', { name: '취소' }));
-    edit(); expect(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' })).not.toBeChecked();
-    toggle(); fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
-    edit(); expect(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' })).not.toBeChecked();
-    toggle(); fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    toggle();
+    fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
+    edit(); expect(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' })).toBeChecked();
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '30' } });
     view.rerender(content('000660'));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
     view.rerender(content('005930'));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(30);
-    edit(); toggle(); fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    edit(); toggle();
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(30);
-    view.rerender(content('000660'));
-    view.rerender(content('005930'));
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    view.rerender(content('000660')); view.rerender(content('005930'));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
-    edit(); toggle(); fireEvent.click(screen.getByRole('button', { name: '적용' }));
-    view.rerender(content('000660'));
-    view.rerender(content('005930'));
+    edit(); toggle(); fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    view.rerender(content('000660')); view.rerender(content('005930'));
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
     expect(mock.command).not.toHaveBeenCalled();
   });
