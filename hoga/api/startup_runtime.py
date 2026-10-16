@@ -238,7 +238,7 @@ class AppStartupRuntime:
         # 태스크가 멎은 **뒤에** 풀을 내린다 — 순서가 반대면 마지막 종목의 승격이
         # BrokenProcessPool 로 끝나 종료 로그에 가짜 실패가 남는다.
         if self.today_promoter_executor is not None:
-            self.today_promoter_executor.shutdown()
+            await self.today_promoter_executor.aclose()
             install_default_promote_executor(None)
             self.today_promoter_executor = None
         await self.deps.stop_today_promoter(self.kiwoom_watchdog_task)

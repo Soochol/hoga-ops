@@ -471,11 +471,11 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # 을 기다리는 중에 풀을 내리면 그 future 가 BrokenProcessPool 로 끝나
             # `run()` 이 풀을 버리며 경고를 남긴다(정상 종료·TestClient teardown 마다
             # 가짜 경고). 취소는 CancelledError 라 prewarm 의 `except Exception` 을
-            # 지나쳐 조용히 끝난다. 그다음 동기 shutdown — 진행 중 작업은 기다리지
-            # 않는다(요청은 어차피 서버와 함께 끊긴다).
+            # 지나쳐 조용히 끝난다. 그다음 워커·큐 정리를 off-loop 로 기다린다 —
+            # lifespan 뒤 uvicorn 이 SIGTERM 을 다시 보내기 전에 세마포어를 반환한다.
             await _cancel_tasks(_app.state.compute_prewarm)
             install_default_compute_pools(None)
-            pools.shutdown()
+            await pools.aclose()
             _app.state.startup_runtime = None
             # 스크리너 갱신 job 은 KIS capacity scheduler/client 를 쓰므로
             # startup_runtime.stop()(KIS teardown 포함)보다 먼저 cancel+await.

@@ -290,9 +290,16 @@ class ComputeExecutor:
         return [p.pid for p in procs.values() if p.pid is not None]
 
     def shutdown(self) -> None:
-        """풀을 내린다. 진행 중인 작업은 기다리지 않는다 — 종료 경로는 이미 취소
-        상태일 수 있고, 워커 쪽 쓰기는 원자적이라 중간에 끊겨도 반쪽 파일이 안 남는다."""
+        """워커와 큐 정리가 끝날 때까지 기다린다. 비동기 종료는 `aclose()` 를 쓴다.
+
+        uvicorn 은 lifespan 종료 뒤 SIGTERM 을 다시 보내므로 인터프리터 종료 시점의
+        정리에 맡길 수 없다. wait=False 면 큐의 named semaphore 가 reload 마다 샌다.
+        """
         with self._lock:
             pool, self._pool = self._pool, None
         if pool is not None:
-            pool.shutdown(wait=False, cancel_futures=True)
+            pool.shutdown(wait=True, cancel_futures=True)
+
+    async def aclose(self) -> None:
+        """진행 중 계산과 자원 정리를 기다리되 이벤트 루프는 계속 돌린다."""
+        await asyncio.to_thread(self.shutdown)
