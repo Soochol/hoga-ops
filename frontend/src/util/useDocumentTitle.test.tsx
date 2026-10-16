@@ -58,16 +58,16 @@ afterEach(() => {
 });
 
 describe('useDocumentTitle', () => {
-  it('sets document.title to "hoga-ops" when code is null', () => {
+  it('sets document.title to "Ticklane" when code is null', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     renderHook(() => useDocumentTitle(null), { wrapper: wrap(qc) });
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
   });
 
-  it('sets document.title to "hoga-ops" for whitespace-only code', () => {
+  it('sets document.title to "Ticklane" for whitespace-only code', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     renderHook(() => useDocumentTitle('   '), { wrapper: wrap(qc) });
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
   });
 
   it('resolves a known code to its Symbol Master name', () => {
@@ -137,7 +137,7 @@ describe('useDocumentTitle', () => {
       ({ code }: { code: string | null }) => useDocumentTitle(code),
       { wrapper: wrap(qc), initialProps: { code: null } as { code: string | null } },
     );
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
     rerender({ code: '005930' });
     expect(document.title).toBe('삼성전자');
   });
@@ -191,12 +191,12 @@ describe('useDocumentTitle', () => {
     expect(document.title).toBe('+4.56% 12,345 999999');
   });
 
-  it('restores "hoga-ops" on unmount', () => {
+  it('restores "Ticklane" on unmount', () => {
     const qc = makeQc({ symbols: HITS, status: 'fresh', fetched_at_ms: 1 });
     const { unmount } = renderHook(() => useDocumentTitle('005930'), { wrapper: wrap(qc) });
     expect(document.title).toBe('삼성전자');
     unmount();
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
   });
 });
 
@@ -295,13 +295,13 @@ describe('useDocumentTitle quote throttle', () => {
     });
     flushQueryNotify(); // 대기 쓰기 타이머가 실제로 걸린 상태에서 unmount 해야 의미가 있다
     unmount();
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
 
     // 대기 중이던 쓰기가 unmount 뒤에 발화해 제목을 덮으면 안 된다.
     act(() => {
       vi.advanceTimersByTime(2_000);
     });
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
   });
 });
 
@@ -311,15 +311,15 @@ describe('useStaticDocumentTitle', () => {
     expect(document.title).toBe('Heatmap');
   });
 
-  it('sets document.title to "hoga-ops" when title is null', () => {
+  it('sets document.title to "Ticklane" when title is null', () => {
     renderHook(() => useStaticDocumentTitle(null));
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
   });
 
-  it('restores "hoga-ops" on unmount', () => {
+  it('restores "Ticklane" on unmount', () => {
     const { unmount } = renderHook(() => useStaticDocumentTitle('Capture'));
     expect(document.title).toBe('Capture');
     unmount();
-    expect(document.title).toBe('hoga-ops');
+    expect(document.title).toBe('Ticklane');
   });
 });

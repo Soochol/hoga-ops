@@ -44,16 +44,16 @@ describe('TopNav', () => {
     const labels = screen.getAllByRole('link').map((link) => link.textContent);
 
     expect(labels).toEqual([
-      'Hhoga-ops', '라이브', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처',
+      'TTicklane', '라이브', '히트맵', '시장 종합', '스크리너', '옵션심리', '보관함', '캡처',
     ]);
     expect(screen.getByRole('button', { name: '설정' })).toBeInTheDocument();
     expect(screen.queryByText('Watchlist')).not.toBeInTheDocument();
   });
 
-  it('renders only the hoga-ops brand text, without the old subtitle', () => {
+  it('renders only the Ticklane brand text, without the old subtitle', () => {
     render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
 
-    expect(screen.getByText('hoga-ops')).toBeInTheDocument();
+    expect(screen.getByText('Ticklane')).toBeInTheDocument();
     expect(screen.queryByText(/orderbook replay/i)).not.toBeInTheDocument();
   });
 
@@ -153,5 +153,5 @@ describe('TopNav', () => {
 
 it('links the brand to the project home', () => {
   render(<TopNav onOpenSettings={vi.fn()} />, { wrapper: W });
-  expect(screen.getByRole('link', { name: 'hoga-ops 홈' })).toHaveAttribute('href', '/');
+  expect(screen.getByRole('link', { name: 'Ticklane 홈' })).toHaveAttribute('href', '/');
 });

@@ -7,6 +7,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from './App';
 import { LivePage } from './live/LivePage';
 import AppErrorBoundary from './ui/AppErrorBoundary';
+import DesktopConfigGate from './ui/DesktopConfigGate';
 import { LandingPage, Heatmap, Inventory, Screener, Capture, Sentiment, Market, StudyBookmarkRedirect } from './mainRoutes';
 
 // `/settings` **페이지는 없다** — 설정은 앱 전역 드로어 하나이고(`App` 소유), 트리거는
@@ -59,6 +60,7 @@ if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
 
 createRoot(document.getElementById('root')!).render(
   <AppErrorBoundary>
+    <DesktopConfigGate>
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
@@ -88,5 +90,6 @@ createRoot(document.getElementById('root')!).render(
         </Routes>
       </BrowserRouter>
     </QueryClientProvider>
+    </DesktopConfigGate>
   </AppErrorBoundary>,
 );

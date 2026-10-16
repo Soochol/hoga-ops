@@ -28,6 +28,7 @@ import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSecti
 import { SettingsEditor } from './settings/SettingsEditor';
 import { useSettingsUndo } from './settings/useSettingsUndo';
 import { readAppSettings, restoreAppSettings, subscribeAppSettings } from './settings/editorSnapshots';
+import SettingsTransferSection from './settings/SettingsTransferSection';
 
 /**
  * 앱의 **유일한** 설정 본체 — 좌측 목차 184px + 우측 단일 스크롤 문서(지표 드로어와
@@ -189,7 +190,7 @@ function InfoSectionBody({ id }: { id: (typeof INFO_ORDER)[number] }) {
     case 'symbols':
       return <SymbolMasterSection />;
     case 'general':
-      return <GeneralSection />;
+      return <><GeneralSection /><SettingsTransferSection /></>;
     case 'roadmap':
       return <RoadmapSection />;
   }

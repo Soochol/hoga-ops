@@ -1,0 +1,360 @@
+{
+  "date": "2026-10-16",
+  "timezone": "Asia/Seoul",
+  "recorded_at": "2026-10-16T14:49:53.562022+09:00",
+  "base_commit": "c6d80a5c952cbcc37a9aba776b25acbd059ce13d",
+  "state": "uncommitted implementation on current worktree",
+  "environment": {
+    "os": "Ubuntu 26.04.1 LTS",
+    "architecture": "x86_64",
+    "node": "v24.13.1",
+    "python": "Python 3.14.7",
+    "electron": "44.8.0",
+    "forge": "8.0.1",
+    "desktop_playwright": "1.64.1",
+    "frontend_playwright": "1.60.0",
+    "sandbox": true
+  },
+  "inputs": {
+    "desktop": {
+      "algorithm": "sha256(sorted relative path + NUL + sha256(file bytes))",
+      "files": 23,
+      "sha256": "aa8fd63c33d6cae40bcbd873c3f08255bb3018d3c608bb10bed2fcd43e552179"
+    },
+    "frontend": {
+      "algorithm": "sha256(sorted relative path + NUL + sha256(file bytes))",
+      "files": 1583,
+      "sha256": "31eaf332d7681d8a2ca32bd6f3cff4aaf4b040fc69e8fbf7ee838090cab6b09a"
+    },
+    "backend_and_fixtures": {
+      "algorithm": "sha256(sorted relative path + NUL + sha256(file bytes))",
+      "files": 296,
+      "sha256": "9e63ea73802aa37d98c1f9f3376487c6b357b8266e236751867c989398a35e09"
+    }
+  },
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run lint -- --quiet",
+      "result": "passed"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run build",
+      "result": "passed",
+      "note": "Existing 700KB chunk warning remains; maximum live-workspace chunk about 894KB."
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm exec vitest -- run src/state/settingsTransfer.test.ts src/ui/DesktopConfigGate.test.tsx tests/unit/config.test.ts src/live/settings/AppInfoSections.test.tsx src/api/client.test.ts src/state/workspace.tabScope.test.ts src/state/workspaceTransfer.test.ts src/state/persistencePolicy.test.ts",
+      "result": "passed",
+      "files": 8,
+      "tests": 69
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm exec vitest -- run src/live/SettingsSections.test.tsx src/state/indicatorSettingsV2.test.ts src/state/workspace.test.ts",
+      "result": "passed",
+      "files": 3,
+      "tests": 97
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm exec playwright -- test tests/e2e/live-smoke.spec.ts tests/e2e/dist-smoke.spec.ts --reporter=list",
+      "result": "passed",
+      "tests": 5,
+      "ports": [
+        20092,
+        21092
+      ],
+      "credentials": "empty vendor keys"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run typecheck && npm run lint && npm test",
+      "result": "passed",
+      "unit_tests": 7
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run test:e2e",
+      "result": "passed",
+      "tests": 3
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_EXECUTABLE=<packaged binary> npm run test:e2e -- --repeat-each=5",
+      "result": "passed",
+      "tests": 15,
+      "note": "Before final connection validation tightening; final extracted-deb E2E rechecks final runtime."
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=wayland npm run verify:deb",
+      "result": "passed",
+      "tests": 3,
+      "note": "Explicit Wayland; before final connection validation tightening."
+    },
+    {
+      "cwd": "desktop",
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npm run verify:deb",
+      "result": "passed",
+      "tests": 3,
+      "note": "Explicit X11; before final connection validation tightening."
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run lint && npm run make && npm run verify:deb",
+      "result": "passed",
+      "tests": 3,
+      "note": "Final allowlisted package; real React/FastAPI, settings migration, fixture chart, native windows, sandbox and request guard verified from extracted .deb."
+    },
+    {
+      "command": "ASAR allowlist inspection",
+      "result": "passed",
+      "note": "Only dist, assets, package.json and README.md; no credentials, source, test files or node_modules."
+    }
+  ],
+  "limits": [
+    "System .deb install/upgrade/menu registration/removal requires administrator authentication; sudo -n unavailable.",
+    "Physical remote Tailscale server, multi-monitor/DPI change, IME composition, OS suspend/resume and long intraday stability remain manual checks.",
+    "Full backend suite not rerun: backend implementation unchanged; real isolated FastAPI integration passed."
+  ],
+  "safety": {
+    "user_servers_5173_8000": "not restarted or stopped",
+    "production_credentials": "not used",
+    "live_orders": "not sent",
+    "data": "per-run temporary isolated directories",
+    "package_contents": "allowlisted dist/assets/package.json/README.md"
+  },
+  "artifacts": [
+    {
+      "path": "desktop/out/make/deb/x64/hoga-ops-desktop_0.16.6-rev.0_amd64.deb",
+      "bytes": 91374236,
+      "sha256": "c70c039cd14952a052186d96000e51c50307fb19f445d59646b8f4a86d3796ef"
+    },
+    {
+      "path": "desktop/out/make/zip/linux/x64/Hoga Ops-linux-x64-0.16.6-rev.0.zip",
+      "bytes": 123364061,
+      "sha256": "88dda38e8a40328f850f185bb886655a881b3ea178b4c7f0fc65bbe1c0de1e69"
+    }
+  ],
+  "followups": [
+    {
+      "date": "2026-10-16T15:13:42.873746+09:00",
+      "change": "Hide native menu row on launcher and content windows; retain menu shortcuts and add server selection context menu/Ctrl+Alt+S. Restarted the local-vite desktop process only.",
+      "inputs": {
+        "desktop/src/main.ts": "2853dccde87cd148ca2e7ab5f2f4ee286e3beda6d5774f7ac576808a96dbf8c8",
+        "desktop/tests/e2e/desktop.spec.cjs": "0a6b40bd4b769c381d686c1a5d1a12a38ec6d0724eef8232addc4998a0d4541c",
+        "desktop/README.md": "123acff7427b3ff6a2fab4a4c0f1f173513aff1606dd9e5d58ec0b8b0b959f25",
+        "frontend/src/ui/DesktopConfigGate.tsx": "fddf9561a8096aba3b0dfddcec81be618cce8a99587086a8ed55c044c556edc8"
+      },
+      "checks": {
+        "desktop_typecheck": "passed",
+        "desktop_lint": "passed",
+        "desktop_e2e": {
+          "passed": 2
+        },
+        "frontend_config_gate_tests": {
+          "passed": 2
+        },
+        "linux_make": "passed",
+        "local_server_renderer": "running"
+      },
+      "artifacts": [
+        {
+          "path": "desktop/out/make/deb/x64/hoga-ops-desktop_0.16.6-rev.0_amd64.deb",
+          "sha256": "66e39c3aa63ba152a5ecff584e631977b9ef2b6c81b7579fd3fbe9adad382a19"
+        },
+        {
+          "path": "desktop/out/make/zip/linux/x64/Hoga Ops-linux-x64-0.16.6-rev.0.zip",
+          "sha256": "290482d4fc91fbb864b41fd7d4505ed25b569bdf595d47444a626f0d338c692f"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-16T15:58:55.867306+09:00",
+      "change": "Add setup:sandbox for a narrowly attached AppArmor userns profile after ordinary-terminal launch failed.",
+      "inputs": {
+        "desktop/scripts/sandbox-profile.mjs": "f607ff01292e201dbce8866f811abc73db4acd7850f72b1b8d498180fc05e493",
+        "desktop/scripts/setup-sandbox.mjs": "201469be665743b8536393a8679917ecc812f7d12305a36100fe926f8ae46470",
+        "desktop/package.json": "775922a88dba6be48e3359e1ff84e3c83643ebd9a4817427a49ce18ac6e32925",
+        "desktop/tests/core.test.cjs": "6e5a68d1cd19784a2db6c9e57482eb2f06c99758ec4df92f83c35f602d5880b8",
+        "desktop/README.md": "42bfc297c3bf97abade5e7bfa1d4c301333676de9c28ab8cfa29a29d0a4c376e"
+      },
+      "checks": {
+        "desktop_lint": "passed",
+        "desktop_unit_tests": 8,
+        "apparmor_parser_skip_kernel_load": "passed"
+      },
+      "environment_findings": {
+        "agent_apparmor_label": "chatgpt (unconfined)",
+        "agent_profile_userns_permission": true,
+        "kernel.apparmor_restrict_unprivileged_userns": 1,
+        "source_chrome_sandbox_owner": "dev",
+        "source_chrome_sandbox_mode": "0755"
+      },
+      "limits": [
+        "Prior Electron tests ran under the Codex AppArmor profile and did not establish launch compatibility from an ordinary user terminal.",
+        "Installing/loading the generated per-executable profile requires sudo authentication and has not been performed."
+      ]
+    },
+    {
+      "date": "2026-10-16T20:57:52.614119+09:00",
+      "change": "Install per-user Hoga Ops local launcher, application entry and trusted desktop shortcut; preserve existing local-vite profile.",
+      "inputs": {
+        "desktop/scripts/install-shortcut.mjs": "b1ff8bf3249ffb343ed2a75a5e49100c0380601cb803a66a088f3b5168a3be9b",
+        "desktop/package.json": "c656eb0573892c312cc9f5539d641072f477770a961120f8a658f658f06b96a5",
+        "desktop/README.md": "0dd6a73d6d17c8d229484d801ae342846df4c9b9b9fe54e057236257e02addbf"
+      },
+      "checks": {
+        "desktop_lint": "passed",
+        "desktop_build": "passed",
+        "shell_syntax": "passed",
+        "desktop_file_validate": "passed",
+        "desktop_trusted_metadata": true,
+        "gio_launch": "passed"
+      },
+      "installed_paths": [
+        "/home/dev/.local/bin/hoga-ops-local",
+        "/home/dev/.local/share/applications/hoga-ops-local.desktop",
+        "/home/dev/Desktop/hoga-ops-local.desktop"
+      ]
+    },
+    {
+      "date": "2026-10-16T21:01:25.343542+09:00",
+      "change": "Replace the desktop icon with an ImageGen H/candlestick mark in graphite and amber. Refresh versioned local launcher icons and Linux distribution artifacts.",
+      "inputs": {
+        "desktop/assets/icon.png": "02005d141016824a52c0c49802f254e62695873e547c3ee6cf12587100c7f8d4",
+        "desktop/assets/README.md": "bd3580d126dbbadb6656cff20908c1ef49d35343ffaec3227bd80aa532bc8ff4",
+        "desktop/scripts/install-shortcut.mjs": "9a2cc6dd19e43c9229ed4601e91c96fd0bdabf72ffe6b799ffe698df02e60f6b"
+      },
+      "checks": {
+        "desktop_lint": "passed",
+        "desktop_build": "passed",
+        "shortcut_install": "passed",
+        "desktop_file_validate": "passed",
+        "installed_icon_bytes_match": true,
+        "png_size": [
+          1254,
+          1254
+        ],
+        "alpha_range": [
+          0,
+          255
+        ],
+        "linux_make": "passed"
+      },
+      "artifacts": [
+        {
+          "path": "desktop/out/make/deb/x64/hoga-ops-desktop_0.16.6-rev.0_amd64.deb",
+          "sha256": "8e8b1795578c09de12c17bcbabcd64900245a801d35e2b94db570041bc03267f"
+        },
+        {
+          "path": "desktop/out/make/zip/linux/x64/Hoga Ops-linux-x64-0.16.6-rev.0.zip",
+          "sha256": "506f0382d515e23b2fed28aad45ae08c5cf7c86292f1ec15658d8999500fa036"
+        }
+      ]
+    },
+    {
+      "date": "2026-10-16T21:14:22.992344+09:00",
+      "change": "Rename app and frontend branding to Ticklane; retain selected F icon and legacy userData/partition keys; install Ticklane shortcut and preserve hoga-ops-local command alias.",
+      "inputs": {
+        "desktop/src/main.ts": "0cc8e0d111c8199d64d2886dc1d9058bfc77119ce7e6bce519cb5ae9f0d211e8",
+        "desktop/src/launcher/index.html": "50837c08c2ebde36de129e000049937c4f1e49482426705ae78284b8ee16da89",
+        "desktop/package.json": "de6b20b637d1c359a2776c0cfc6793ef8d67483e27ae962d422b00a573a30210",
+        "desktop/package-lock.json": "913027885f935c6077429db3bf2cabdc39c5dbc0577bf786344ded7ef73e0609",
+        "desktop/forge.config.cjs": "926ab05d0d4a6c9c9a15f22d1559753c68cffa9d254e49e9262ccaa7ed63244c",
+        "desktop/scripts/install-shortcut.mjs": "6e604550589bdcd6677de6dc831c522f1d5e888aa889b9255132bf3d796b5561",
+        "desktop/scripts/verify-deb.mjs": "0961e72249bbdd2c66444d7d194aaa974bff6c498512090e3d15fe5185da4548",
+        "desktop/assets/icon.png": "96d8ecda854b1d4d20ebde6ab13ab472fb4ef06806d50bb07cb3cb926c2ae6a6",
+        "frontend/index.html": "52a63536d5f36d2cae76050943f09c4d2db3c697da64393ed2416dae121c0346",
+        "frontend/src/App.tsx": "6cc3ac03d6b9e0a4f851b720b5de0dc07bda6556a109d2ec17b26d9313171a0a",
+        "frontend/src/nav/TopNav.tsx": "9b84a13f654eadbe93e6f88b82c9ee99ded277813df35646bc7d1f344a771b42",
+        "frontend/src/home/LandingPage.tsx": "aba7276c437e083811df6bff9a7d12ff7dec06cda45540b336fd2bf08a5cf928",
+        "frontend/src/util/useDocumentTitle.ts": "5e860692b4fc258496325d223675d3c19e88402f92ecc797e1c3e44803fe2b3a"
+      },
+      "checks": {
+        "desktop_typecheck": "passed",
+        "desktop_lint": "passed",
+        "desktop_unit_tests": 8,
+        "desktop_source_e2e": 4,
+        "legacy_default_profile_recovery_repeat": 5,
+        "frontend_brand_unit_tests": 54,
+        "frontend_changed_files_lint": "passed",
+        "frontend_build": "passed",
+        "frontend_landing_navigation_e2e": 1,
+        "linux_make": "passed",
+        "extracted_deb_e2e": 4,
+        "desktop_file_validate": "passed",
+        "legacy_shortcuts_removed": true,
+        "desktop_shortcut_trusted": true,
+        "installed_F_icon_matches_source": true
+      },
+      "preserved_paths": [
+        "~/.config/hoga-ops-local-dev",
+        "~/.config/Hoga Ops"
+      ],
+      "installed_paths": [
+        "/home/dev/.local/bin/ticklane",
+        "/home/dev/.local/share/applications/ticklane-local.desktop",
+        "/home/dev/Desktop/ticklane-local.desktop"
+      ],
+      "artifacts": [
+        {
+          "path": "desktop/out/make/deb/x64/ticklane_0.16.6-rev.0_amd64.deb",
+          "sha256": "8430b8d457ba4a928a2496b15aa433de65ee58231c1e9e41554d36405df80ceb"
+        },
+        {
+          "path": "desktop/out/make/zip/linux/x64/Ticklane-linux-x64-0.16.6-rev.0.zip",
+          "sha256": "fe7c6ba54dd5c62fb0b96800be667645d6ab90e6d284f58c1003c1a3f243a338"
+        }
+      ],
+      "limits": [
+        "Existing user Electron windows were not restarted.",
+        "Frontend branding changes are in this worktree; the running local main Vite/API servers were not modified or restarted.",
+        "Linux .deb was extracted and tested without a system-wide sudo installation."
+      ]
+    },
+    {
+      "date": "2026-10-16T21:18:03.726387+09:00",
+      "change": "Rebase full Ticklane implementation onto latest main, preserving the new settings editor while adding settings transfer. Validate final PR integration.",
+      "pull_request": "https://github.com/Soochol/hoga-ops/pull/2065",
+      "source_commit": "a8aeebf0f3d4f33db07a71c567e91973437b26fd",
+      "rebase_base_commit": "efaeac28ddc170ed2c31e24955c345f223ac32b3",
+      "checks": {
+        "frontend_relevant_tests": 100,
+        "frontend_typecheck": "passed",
+        "frontend_changed_files_lint": "passed",
+        "frontend_build": "passed",
+        "frontend_landing_e2e": 1,
+        "desktop_unit_tests": 8,
+        "desktop_typecheck": "passed",
+        "desktop_lint": "passed",
+        "source_electron_e2e": 4,
+        "linux_make": "passed",
+        "extracted_deb_e2e": 4,
+        "git_diff_check": "passed"
+      },
+      "artifacts": [
+        {
+          "path": "desktop/out/make/deb/x64/ticklane_0.16.6-rev.0_amd64.deb",
+          "sha256": "f9fa8e23ba0f5f6d335ec0bf1e9636f188e95af4e2276f7439c3bf34bfe67ea9"
+        },
+        {
+          "path": "desktop/out/make/zip/linux/x64/Ticklane-linux-x64-0.16.6-rev.0.zip",
+          "sha256": "4c0843db75c24000d85505bd08ad3df05f8451394527e64d89c99f7b27173fef"
+        }
+      ],
+      "limits": [
+        "No GitHub CI checks are configured/reported for this PR.",
+        "System-wide sudo deb installation/removal was not performed."
+      ]
+    }
+  ]
+}

@@ -39,6 +39,7 @@ function formatRelative(ms: number | null | undefined): string {
 
 export function GeneralSection() {
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [configError, setConfigError] = useState('');
   const healthQuery = useQuery({
     queryKey: HEALTH_QUERY_KEY,
     queryFn: () => apiCall<HealthInfo>('/health'),
@@ -51,6 +52,8 @@ export function GeneralSection() {
     let cancelled = false;
     loadConfig().then((c) => {
       if (!cancelled) setConfig(c);
+    }).catch(() => {
+      if (!cancelled) setConfigError('연결 설정을 읽지 못했습니다.');
     });
     return () => {
       cancelled = true;
@@ -60,6 +63,7 @@ export function GeneralSection() {
   return (
     <>
       <DefinitionRow label="API URL" value={config?.api_url ?? '…'} />
+      {configError && <p role="status" className="text-xs text-error">{configError}</p>}
       <DefinitionRow label="Version" value={versionText} />
     </>
   );

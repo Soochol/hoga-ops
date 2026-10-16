@@ -3,7 +3,7 @@ import { useSymbols } from '../capture/useSymbols';
 import { useQuoteByCode, type LiveQuote } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
 
-const DEFAULT_TITLE = 'hoga-ops';
+const DEFAULT_TITLE = 'Ticklane';
 
 function formatTitlePrice(price: number): string {
   return price.toLocaleString('ko-KR');
@@ -37,7 +37,7 @@ const TITLE_QUOTE_THROTTLE_MS = 2_000;
 
 /**
  * Sole writer to `document.title`. Resolves a Code to its Symbol Master name;
- * falls back to the Code itself, then to `'hoga-ops'`. When the live quote cache
+ * falls back to the Code itself, then to `'Ticklane'`. When the live quote cache
  * has the active code, displays change percent, current price, then name.
  * Price-to-price updates are coalesced to TITLE_QUOTE_THROTTLE_MS (trailing,
  * latest value wins); base/first-quote transitions write immediately.

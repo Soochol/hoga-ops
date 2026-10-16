@@ -1,0 +1,24 @@
+{
+  "tool": "Built-in image_gen",
+  "status": "Design proposals",
+  "designs": [
+    {
+      "id": "D",
+      "title": "D · 체결 펄스",
+      "file": "d-trade-pulse.png",
+      "prompt": "Use case: logo-brand. Asset: one premium Linux desktop app icon for Hoga Ops, a professional Korean stock orderbook and chart terminal. Square composition. Deep graphite (#121216) rounded-square tile occupying 90% of canvas with genuinely transparent outside corners. One solid warm amber (#F0B429) emblem centered on the tile. Quiet industrial financial terminal identity. Flat vector-like precision, bold strokes, balanced negative space, recognizable at 32 pixels. No text or letters, no numbers, no candles, no upward chart line, no gradients, textures, shadows, glow, bevels, 3D, mockup, watermark, tiny details or decorative border. Subject: a distinctive TRADE PULSE emblem. Two bold horizontal pill-shaped bars approach a single central solid diamond, one from the left at upper-middle height and one from the right at lower-middle height. The diamond is the executed trade and the offset bars suggest two incoming orders meeting. There are exactly three disconnected amber shapes, composed compactly as one memorable mark with generous gaps. Convey speed, precision and matching without arrows, electrical bolts, graph axes or a literal heartbeat. Optically balance the asymmetric mark."
+    },
+    {
+      "id": "E",
+      "title": "E · 호가 다이얼",
+      "file": "e-market-dial.png",
+      "prompt": "Use case: logo-brand. Asset: one premium Linux desktop app icon for Hoga Ops, a professional Korean stock orderbook and chart terminal. Square composition. Deep graphite (#121216) rounded-square tile occupying 90% of canvas with genuinely transparent outside corners. One solid warm amber (#F0B429) emblem centered on the tile. Quiet industrial financial terminal identity. Flat vector-like precision, bold strokes, balanced negative space, recognizable at 32 pixels. No text or letters, no numbers, no candles, no upward chart line, no gradients, textures, shadows, glow, bevels, 3D, mockup, watermark, tiny details or decorative border. Subject: a confident MARKET DIAL emblem. A thick open circular ring, with an intentional gap at the lower right, surrounds one short bold diagonal needle leaning toward upper right. The needle begins at a single compact circular hub at the center. Ring and needle are amber. Design the ring with only two crisp inward rectangular notches suggesting price ticks; no tiny scale marks. Make a compact unmistakable symbol of focused real-time market monitoring. Sophisticated geometry, very few parts. Not a clock face, speedometer illustration or chart."
+    },
+    {
+      "id": "F",
+      "title": "F · 겹쳐진 틱",
+      "file": "f-price-ticks.png",
+      "prompt": "Use case: logo-brand. Asset: one premium Linux desktop app icon for Hoga Ops, a professional Korean stock orderbook and chart terminal. Square composition. Deep graphite (#121216) rounded-square tile occupying 90% of canvas with genuinely transparent outside corners. One solid warm amber (#F0B429) emblem centered on the tile. Quiet industrial financial terminal identity. Flat vector-like precision, bold strokes, balanced negative space, recognizable at 32 pixels. No text or letters, no numbers, no candles, no upward chart line, no gradients, textures, shadows, glow, bevels, 3D, mockup, watermark, tiny details or decorative border. Subject: a distinctive PRICE TICKS emblem. Exactly three thick diagonal rounded parallelogram bars arranged in a tight ascending offset sequence, slanting forward about 25 degrees. The left bar is short, middle bar is longest, right bar is medium length. Create a unified dynamic emblem with even dark slits between bars, strong optical balance and sculptural negative space. The mark suggests rapid quotation updates and a precise professional trading tool. No connecting line, no candle wicks, no arrowheads. Confident minimal brand identity."
+    }
+  ]
+}

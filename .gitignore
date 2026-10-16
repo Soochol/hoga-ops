@@ -28,3 +28,7 @@ node_modules/
 .env.*
 !.env.example
 prompt.txt
+desktop/dist/
+desktop/out/
+desktop/test-results/
+desktop/playwright-report/

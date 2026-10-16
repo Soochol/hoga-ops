@@ -1,0 +1,8 @@
+/* Obsidian tokens from frontend/src/styles/tokens.css. Native window frame remains OS-owned. */
+:root { color-scheme: dark; font: 16px system-ui, sans-serif; --bg: #121216; --fg: #ececf1; --muted: #9a9aa8; --border: #232329; }
+* { box-sizing: border-box; } body { margin: 0; background: var(--bg); color: var(--fg); } main { padding: 24px; max-width: 620px; margin: auto; }
+h1 { font-size: 24px; margin: 0 0 16px; } p { line-height: 1.6; font-size: 14px; color: var(--muted); }
+label { display: block; margin-top: 16px; font-size: 14px; } input, select, button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 8px; }
+input, select { display: block; width: 100%; margin-top: 4px; } button { cursor: pointer; } button:disabled { opacity: .5; cursor: wait; }
+.actions { display: flex; gap: 8px; margin-top: 16px; } .hint, footer { font-size: 12px; color: var(--muted); } [hidden] { display: none !important; }
+#status { min-height: 48px; white-space: pre-wrap; } :focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
