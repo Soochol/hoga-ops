@@ -13,7 +13,6 @@ import {
   type ChartToggleGroupId,
   type ChartToggleKey,
 } from '../state/chartPrefs';
-import MAStylePicker from './indicators/MAStylePicker';
 import ColorSwatchPicker from './indicators/ColorSwatchPicker';
 import IndicatorPrefRows from './settings/IndicatorPrefRows';
 import { SettingsRow } from './settings/SettingsRow';
@@ -82,18 +81,13 @@ const LABEL: Record<NavId, string> = {
   roadmap: '로드맵',
 };
 
-/** 레지스트리 밖의 손 스타일 행(아래 세 컴포넌트) — 라벨·설명을 여기 상수로 두고
+/** 레지스트리 밖의 손 스타일 행 — 라벨·설명을 여기 상수로 두고
  *  렌더와 검색 코퍼스가 **같은 문자열**을 읽는다(각자 적으면 검색만 낡는다). */
-const VI_LINE_STYLE_ROW = {
-  label: 'VI/상하한가 선 스타일',
-  description: 'VI·상하한가 선의 색상·두께를 정합니다.',
-} as const;
 const TRADE_HIGHLIGHT_COLOR_ROW = {
   label: '강조 배경색',
   description: '대량 체결 수량 칸의 배경색을 정합니다.',
 } as const;
 const CUSTOM_ROW_TEXT: Partial<Record<ChartToggleKey, string>> = {
-  viLimitPriceDotsEnabled: `${VI_LINE_STYLE_ROW.label} ${VI_LINE_STYLE_ROW.description}`,
   tradeHighlightEnabled: `${TRADE_HIGHLIGHT_COLOR_ROW.label} ${TRADE_HIGHLIGHT_COLOR_ROW.description}`,
 };
 
@@ -133,9 +127,7 @@ function GroupHead({ label }: { label: string }) {
 }
 
 /** 종속 스타일 행의 공용 게이트 래퍼 — 들여쓰기 + 부모 OFF 시 dim(값은 보존).
- *  `IndicatorPrefRows` 가 하위 토글에 쓰는 것과 같은 문법이다. 종전엔 날짜
- *  구분선·VI 스타일 행이 게이트 없이 최상위에 서 있어서, 부모를 꺼도 스타일
- *  피커가 살아 있는 죽은 컨트롤이었다(2026-08-26 조사). */
+ *  `IndicatorPrefRows` 가 하위 토글에 쓰는 것과 같은 문법이다. */
 function GatedStyleRow({ enabled, children }: { enabled: boolean; children: ReactNode }) {
   return (
     <div className={`ml-4 ${enabled ? '' : 'pointer-events-none opacity-40'}`}>{children}</div>
@@ -158,32 +150,6 @@ function TradeHighlightColorRow({ highlight }: { highlight?: string }) {
           color={color}
           onChange={setColor}
           extraColors={[TRADE_HIGHLIGHT_COLOR_DEFAULT]}
-        />
-      </SettingsRow>
-    </GatedStyleRow>
-  );
-}
-
-function ViLimitPriceLineStyleRow({ highlight }: { highlight?: string }) {
-  // 자기 토글(viLimitPriceDotsEnabled)과 같은 전역 스토어 — 원래는 스타일만
-  // 지표 버킷(창×봉)에 있어 한 기능이 두 저장소로 쪼개져 있었다(#759 구현 중
-  // 발견). 이 행이 전역이 되면서 설정 모달에 창 소유 필드가 하나도 남지 않는다.
-  const enabled = useChartPrefsStore((s) => s.viLimitPriceDotsEnabled);
-  const color = useChartPrefsStore((s) => s.viLimitPriceLineColor);
-  const lineWidth = useChartPrefsStore((s) => s.viLimitPriceLineWidth);
-  const setStyle = useChartPrefsStore((s) => s.setViLimitPriceLineStyle);
-
-  return (
-    <GatedStyleRow enabled={enabled}>
-      <SettingsRow
-        label={highlightLabel(VI_LINE_STYLE_ROW.label, highlight)}
-        description={VI_LINE_STYLE_ROW.description}
-      >
-        <MAStylePicker
-          color={color}
-          lineWidth={lineWidth}
-          onChange={setStyle}
-          label="VI/상하한가 선"
         />
       </SettingsRow>
     </GatedStyleRow>
@@ -379,7 +345,6 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
                     {group.units.map((unit) => (
                       <Fragment key={unit.key}>
                         <IndicatorPrefRows toggleKeys={[unit.key]} highlight={filtering ? trimmed : undefined} />
-                        {unit.key === 'viLimitPriceDotsEnabled' && <ViLimitPriceLineStyleRow highlight={filtering ? trimmed : undefined} />}
                         {unit.key === 'tradeHighlightEnabled' && <TradeHighlightColorRow highlight={filtering ? trimmed : undefined} />}
                       </Fragment>
                     ))}

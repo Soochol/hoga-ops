@@ -866,7 +866,6 @@ export function buildChartBundle(input: BuildChartBundleInput): RangeBundle {
     ask_peaks: pastBundle?.ask_peaks ?? [],
     bid_peaks: pastBundle?.bid_peaks ?? [],
     broker_late_entries: pastBundle?.broker_late_entries ?? [],
-    price_level_hits: pastBundle?.price_level_hits ?? [],
     trade_volume_pocs: pastBundle?.trade_volume_pocs ?? [],
     depth_heatmap: pastBundle?.depth_heatmap ?? [],
     // 결손 사유는 **캔들 경로로도** 통과시킨다. 그날이 왜 없는지는 곧 캔들이 빈

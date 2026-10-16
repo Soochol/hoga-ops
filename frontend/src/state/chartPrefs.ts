@@ -154,13 +154,6 @@ export const CHART_TOGGLES = [
     enabledBy: 'highLowLabelsEnabled',
   },
   {
-    key: 'viLimitPriceDotsEnabled',
-    label: 'VI/상하한가 선',
-    description: '가격이 닿은 VI·상한가·하한가에 선을 표시합니다.',
-    default: true,
-    group: 'price',
-  },
-  {
     key: 'surgeMarkerEnabled',
     label: '총잔량 급증 마커',
     description: '총잔량이 당일 직전 최고치에 다시 근접하면 표시합니다. 일정 비율 아래로 내려간 뒤 다시 표시합니다.',
@@ -507,9 +500,7 @@ export type ChartLineWidth = 1 | 2 | 3 | 4;
  * one entry here yields two `ChartViewPrefs` fields (`<key>Color` / `<key>Width`),
  * their defaults, `mergePrefs` validation, and the `MAStylePicker` row rendered
  * (indented, dimmed while the gate is off) under `enabledBy` — no per-line code
- * in any of those modules. That derivation is the point: the hand-written
- * `viLimitPriceLine*` pair predates it and is **not** validated in `mergePrefs`,
- * so it silently resets on reload. Add lines here, not by hand.
+ * in any of those modules. Add lines here, not by hand.
  *
  * **색 기본값은 `''`(빈 문자열) = 방향색 토큰**이지 hex 가 아니다. 렌더가
  * `pref || tokens[direction]` 으로 지연 해석하므로 고르지 않은 선은 테마
@@ -570,10 +561,6 @@ export function lineStyleDescription(def: LineStylePrefDef): string {
   return `선 색상·두께를 정합니다. 기본 색상은 테마의 ${dir}을 따릅니다.`;
 }
 
-export type ViLimitPriceLineWidth = 1 | 2 | 3 | 4;
-export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
-export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: ViLimitPriceLineWidth = 3;
-
 /** 체결창 대량 체결 강조 배경색 기본값 — 매물대 당일 최대(maxColor)와 같은 노랑 계열
  *  ("눈에 띄는 물량" 시맨틱 공유). 렌더 시 알파를 얹으므로 6자리 hex 로 저장한다. */
 export const TRADE_HIGHLIGHT_COLOR_DEFAULT = '#EAB308';
@@ -591,12 +578,6 @@ export type ChartViewPrefs =
   & { [K in ChartLineStyleKey as `${K}Width`]: ChartLineWidth }
   & {
     tradeHighlightColor: string;
-    // VI/상하한가 선 스타일 — 원래 지표 버킷(창×봉)에 있었는데, 정작 자기
-    // 토글(`viLimitPriceDotsEnabled`)은 여기 전역이라 한 기능이 두 저장소로
-    // 쪼개져 있었다. 형제 스타일(날짜 구분선·체결 강조)도 전부 전역이라
-    // VI 만 예외였다 — 토글 옆으로 합친다(#759 구현 중 발견).
-    viLimitPriceLineColor: string;
-    viLimitPriceLineWidth: ViLimitPriceLineWidth;
   };
 
 const TOGGLE_DEFAULTS = Object.fromEntries(
@@ -620,8 +601,6 @@ export const DEFAULT_PREFS: ChartViewPrefs = {
   ...NUMERIC_DEFAULTS,
   ...LINE_STYLE_DEFAULTS,
   tradeHighlightColor: TRADE_HIGHLIGHT_COLOR_DEFAULT,
-  viLimitPriceLineColor: VI_LIMIT_PRICE_LINE_DEFAULT_COLOR,
-  viLimitPriceLineWidth: VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH,
 };
 
 /**
@@ -728,7 +707,6 @@ type ChartPrefsStore = ChartViewPrefs & {
    *  창 스코프에서는 **엔트리를 남기고** 그 봉 버킷만 비운다(livePage 와 같은 규약). */
   resetIndicatorModalBucketScoped: (scope: IndicatorScope, tf: LiveTimeframe) => void;
   setTradeHighlightColor: (color: string) => void;
-  setViLimitPriceLineStyle: (patch: { color?: string; lineWidth?: ViLimitPriceLineWidth }) => void;
   /** `CHART_LINE_STYLES` 한 엔트리의 색·두께를 patch 한다. 색 `''` 는 "고르지 않음"
    *  (= 방향 토큰 추종)이라 유효한 값이다 — 빈 문자열을 falsy 로 걸러 내지 말 것. */
   setLineStyle: (key: ChartLineStyleKey, patch: { color?: string; lineWidth?: ChartLineWidth }) => void;
@@ -818,12 +796,6 @@ export const useChartPrefsStore = create<ChartPrefsStore>((set, get) => {
 
 
     setTradeHighlightColor: (color) => set({ tradeHighlightColor: color }),
-
-    setViLimitPriceLineStyle: (patch) =>
-      set((s) => ({
-        viLimitPriceLineColor: patch.color ?? s.viLimitPriceLineColor,
-        viLimitPriceLineWidth: patch.lineWidth ?? s.viLimitPriceLineWidth,
-      })),
 
     setLineStyle: (key, patch) =>
       set((_s) => {

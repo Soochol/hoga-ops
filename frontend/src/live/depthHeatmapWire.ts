@@ -118,7 +118,7 @@ export function depthPointToWire(p: DepthHeatmapPoint): DepthHeatmapPointWire {
 /** Overlay today's live-ratcheted depth buckets on top of the sidecar's
  * PAST+today-so-far wire array. Dedup by `t_ms`, ascending; today (live) wins
  * per overlapping bucket — mirrors `api/range.ts`'s depth_heatmap uniqueBy
- * latest-wins and the `mergePriceLevelHits` overlay. Past wire points pass
+ * latest-wins. Past wire points pass
  * through untouched (same reference); today domain points convert to wire. */
 export function mergeDepthHeatmapToday(
   past: readonly DepthHeatmapPointWire[] | undefined,

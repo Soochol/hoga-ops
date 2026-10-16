@@ -296,7 +296,6 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
             "bid_peaks",
             "depth_heatmap",
             "broker_late_entries",
-            "price_level_hits",
             "trade_volume_pocs",
             "volume_distributions",
             "program_trade",

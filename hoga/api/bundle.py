@@ -1786,7 +1786,6 @@ def _empty_range_bundle(
         ask_peaks=[],
         bid_peaks=[],
         broker_late_entries=[],
-        price_level_hits=[],
         depth_heatmap=[],
         volume_distributions=[],
         program_trade=ProgramTradeSeries(points=[]),
@@ -2245,7 +2244,7 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
     ``quote_ratio.points`` and ``fill_strength.points`` ARE concatenated
     because they are flat ``(t, value)`` arrays.
 
-    ``volume_profile_range`` / ``volume_profile_by_day`` / ``price_level_hits``
+    ``volume_profile_range`` / ``volume_profile_by_day``
     는 와이어 shape 유지를 위해 항상-빈 값으로 남는다 — 이 필드들을 채우던
     ``mode=full`` 은 프론트엔드 미사용 dead path 로 2026-07-08 제거됐다.
     """
@@ -2710,7 +2709,6 @@ def build_range_bundle(  # noqa: PLR0912, PLR0915
         ask_peaks=ask_peaks,
         bid_peaks=bid_peaks,
         broker_late_entries=broker_late_entries,
-        price_level_hits=[],
         trade_volume_pocs=trade_volume_pocs,
         depth_heatmap=depth_heatmap,
         volume_distributions=volume_distributions,

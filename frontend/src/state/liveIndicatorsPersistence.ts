@@ -83,8 +83,6 @@ export const PEAK_ALL_WALL_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 1;
 export const ASK_PEAK_UNREACHED_DEFAULT_COLOR = '#1E3A8A';
 export const BID_PEAK_UNREACHED_DEFAULT_COLOR = '#7F1D1D';
 export const PEAK_UNREACHED_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
-export const VI_LIMIT_PRICE_LINE_DEFAULT_COLOR = '#EAB308';
-export const VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 3;
 export const BID_PEAK_DEFAULT_COLOR = '#DC2626';
 export const BID_PEAK_DEFAULT_WIDTH: 1 | 2 | 3 | 4 = 2;
 export const TRADE_VOLUME_POC_DEFAULT_BAND_PCT = 0.005;
@@ -267,10 +265,6 @@ export type PersistedIndicators = {
   askPeakUnreachedColor: string;
   /** 매도 미도달 벽 선 두께. 기본 2. */
   askPeakUnreachedLineWidth: 1 | 2 | 3 | 4;
-  /** VI/상하한가 가격선 색(hex). 기본 #EAB308(노랑). */
-  viLimitPriceLineColor: string;
-  /** VI/상하한가 가격선 두께. 기본 3. */
-  viLimitPriceLineWidth: 1 | 2 | 3 | 4;
   /** 당일 매수 최대벽 토글. opt-in(기본 false). */
   bidPeakEnabled: boolean;
   /** 매수 최대벽 눈(숨김) — 그리기만 끄고 레전드 데이터는 유지. 기본 false. */
@@ -591,11 +585,6 @@ export function mergeLiveIndicatorPrefs(
   const bpUnreachedEnabled = obj?.bidPeakUnreachedLineEnabled === true;
   const bpUnreachedColor = normalizeHexColor(obj?.bidPeakUnreachedColor, BID_PEAK_UNREACHED_DEFAULT_COLOR);
   const bpUnreachedWidth = normalizeLineWidth(obj?.bidPeakUnreachedLineWidth, PEAK_UNREACHED_DEFAULT_WIDTH);
-  const viLimitPriceLineColor = typeof obj?.viLimitPriceLineColor === 'string'
-    && HEX_COLOR.test(obj.viLimitPriceLineColor as string)
-    ? (obj.viLimitPriceLineColor as string) : VI_LIMIT_PRICE_LINE_DEFAULT_COLOR;
-  const viLimitPriceLineWidth = VALID_LINE_WIDTHS.has(obj?.viLimitPriceLineWidth as number)
-    ? (obj!.viLimitPriceLineWidth as 1 | 2 | 3 | 4) : VI_LIMIT_PRICE_LINE_DEFAULT_WIDTH;
   // bidPeak fields — opt-in (default false/BID_PEAK_DEFAULT_COLOR/BID_PEAK_DEFAULT_WIDTH).
   const bpEnabled = obj?.bidPeakEnabled === true;
   const bpHidden = obj?.bidPeakHidden === true;
@@ -752,8 +741,6 @@ export function mergeLiveIndicatorPrefs(
     askPeakUnreachedLineEnabled: apUnreachedEnabled,
     askPeakUnreachedColor: apUnreachedColor,
     askPeakUnreachedLineWidth: apUnreachedWidth,
-    viLimitPriceLineColor,
-    viLimitPriceLineWidth,
     bidPeakEnabled: bpEnabled,
     bidPeakHidden: bpHidden,
     bidPeakColor: bpColor,

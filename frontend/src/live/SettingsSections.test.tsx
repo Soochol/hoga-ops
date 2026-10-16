@@ -249,27 +249,6 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(true);
   });
 
-  it('차트 설정에 VI/상하한가 선 스타일 선택이 보인다', () => {
-    renderSettings();
-    expect(screen.getByText('VI/상하한가 선 스타일')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'VI/상하한가 선 스타일 선택' })).toBeTruthy();
-  });
-
-  // ── 종속 스타일 행 게이트 — 죽은 컨트롤 결함의 재발 방지 ──────────────────
-  // 종전엔 날짜 구분선·VI 스타일 행이 게이트 없이 서 있어서 부모를 꺼도 피커가
-  // 살아 있었다. 게이트 문법은 하위 토글과 동일: 들여쓰기 + dim + 클릭 차단.
-
-  it('VI/상하한가 선을 끄면 스타일 행이 dim 된다', () => {
-    renderSettings();
-    const styleButton = () => screen.getByRole('button', { name: 'VI/상하한가 선 스타일 선택' });
-    expect(styleButton().closest('.pointer-events-none')).toBeNull();
-
-    const row = screen.getByTestId('settings-toggle-viLimitPriceDotsEnabled');
-    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
-
-    expect(styleButton().closest('.pointer-events-none')).not.toBeNull();
-  });
-
   // ── 목차(스크롤 스파이) ───────────────────────────────────────────────
   // 스파이의 스크롤 추적 절반은 jsdom 에서 잴 수 없다(모든 rect 가 0) — 여기서는
   // 클릭 경로의 동기 절반(aria-current + scrollIntoView 호출)만 못 박고, 실제

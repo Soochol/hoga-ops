@@ -86,7 +86,6 @@ import DrawingPropertyPanel from '../chart/DrawingPropertyPanel';
 import PaneLegendOverlay from './PaneLegendOverlay';
 import CandleTooltip from './CandleTooltip';
 import HighLowLabelsHost from './HighLowLabelsHost';
-import PriceLevelDotsOverlay from './PriceLevelDotsOverlay';
 import type { CandlePaneContext } from '../chart/projectors/candle';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneStretchMap } from '../chart/paneOrder';
@@ -555,13 +554,9 @@ export function LiveChartRoot({
   const cb = chartBundle ?? bundle;
   // 라이브 성분이 얹힌 그릇. `bundle` 이 없는 pre-split 호출자·테스트에서만 캔들 그릇으로
   // 떨어진다. **`todaySource: 'bundle'` 인 슬라이스**(quote_ratio · fill_strength ·
-  // price_level_hits · depth_heatmap)는 반드시 이 계열에서 읽는다 — 캔들 그릇으로 읽으면
+  // depth_heatmap)는 반드시 이 계열에서 읽는다 — 캔들 그릇으로 읽으면
   // 에러 없이 조용히 과거분만 얻는다(#719). 축은 `frontend/src/api/rangeSlices.ts` 에
   // 선언돼 있고 `tests/unit/api/test_range_slice_registry_contract.py` 가 그걸 강제한다.
-  //
-  // 종전 이름은 `hogaBundle` 이었는데 훅이 반환하는 `hogaBundle`(호가 pane 전용, 아래
-  // `hogaPaneBundle` prop 으로 들어온다)과 **같은 이름 다른 것**이었다. 실제로 이 값은
-  // 호가와 무관한 PriceLevelDotsOverlay 도 쓴다.
   const liveBundle = bundle ?? cb;
   // 호가 pane 전용 그릇 — 훅이 sidecar 착지에 re-key 되지 않도록 따로 memo 한 것이다.
   const paneHogaBundle = hogaPaneBundle ?? liveBundle;
@@ -2920,9 +2915,6 @@ export function LiveChartRoot({
             avoidRankArrows={highLowAvoidRankArrows}
             avoidRankArrowLimit={PEAK_WALL_LEGEND_RANK_LIMIT}
           />
-          {isMinuteTimeframe(timeframe) && liveBundle && (
-            <PriceLevelDotsOverlay chart={chart} bundle={liveBundle} axis={axis} paneSeries={paneSeries} />
-          )}
           <DrawingPropertyPanel
             scope={drawingScope}
             resolveVisibleRightRealMs={resolveVisibleRightRealMs}

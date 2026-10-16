@@ -990,17 +990,6 @@ class MissingDate(BaseModel):
     reason: MissingDateReason
 
 
-class PriceLevelHit(BaseModel):
-    """One exact trade at a calculated VI or limit-up/down price level."""
-
-    date: str
-    t_ms: int
-    price: int
-    kind: Literal["vi", "limit"]
-    direction: Literal["upper", "lower"]
-    pct: Literal[10, 20, 30]
-
-
 class TradeVolumePoc(BaseModel):
     """One trading day's most-traded regular-session price area.
 
@@ -1118,7 +1107,6 @@ class RangeBundle(BaseModel):
     # 분봉 버킷별 대표 스냅샷 10호가 잔량 분포(호가 잔량 히트맵). 기본 []라 기존 클라 무영향.
     depth_heatmap: list[DepthHeatmapPoint] = Field(default_factory=list)
     broker_late_entries: list[BrokerLateEntryEvent] = Field(default_factory=list)
-    price_level_hits: list[PriceLevelHit] = Field(default_factory=list)
     trade_volume_pocs: list[TradeVolumePoc] = Field(default_factory=list)
     volume_distributions: list[DayVolumeDistribution] = Field(default_factory=list)
     program_trade: ProgramTradeSeries = Field(default_factory=ProgramTradeSeries)

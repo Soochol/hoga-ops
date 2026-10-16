@@ -236,7 +236,6 @@ function fallbackRangeBundle(close = 71_234) {
     ask_peaks: [],
     bid_peaks: [],
     broker_late_entries: [],
-    price_level_hits: [],
     trade_volume_pocs: [],
     program_trade: { points: [] },
   };
@@ -1869,7 +1868,6 @@ describe('useLiveBundle', () => {
       ask_peaks: [],
       bid_peaks: [],
       broker_late_entries: [{ t_ms: 1_779_840_000_000, broker: 'NH투자증권', side: 'buy', net: 42 }],
-      price_level_hits: [],
       trade_volume_pocs: [],
       program_trade: { points: [] },
     };
@@ -1906,7 +1904,6 @@ describe('useLiveBundle', () => {
       ask_peaks: [],
       bid_peaks: [],
       broker_late_entries: [],
-      price_level_hits: [],
       trade_volume_pocs: [],
       program_trade: { points: [] },
     };
@@ -1967,7 +1964,6 @@ describe('useLiveBundle', () => {
       ask_peaks: [],
       bid_peaks: [],
       broker_late_entries: [],
-      price_level_hits: [],
       trade_volume_pocs: [],
       depth_heatmap: [depthPoint],
       program_trade: { points: [] },
@@ -2004,7 +2000,6 @@ describe('useLiveBundle', () => {
       ask_peaks: [],
       bid_peaks: [],
       broker_late_entries: [],
-      price_level_hits: [],
       trade_volume_pocs: [],
       depth_heatmap: [pastOnly, overlapStale],
       program_trade: { points: [] },
@@ -2086,11 +2081,10 @@ describe('useLiveBundle', () => {
    * **이 테스트가 깨졌다면** = 라이브 오버레이 필드가 늘거나 줄었다는 뜻이다.
    * 목록만 고치지 말고 그 필드의 **소비처가 `bundle` 쪽을 읽는지** 반드시 확인할 것.
    * 현재 배선(2026-08-04 감사): quote_ratio·fill_strength 는 hoga pane 계열이
-   * `paneHogaBundle`/`paneRatioBundle` 로, price_level_hits 는 `PriceLevelDotsOverlay`
-   * 가 `hogaBundle`(= `bundle ?? cb`)로, depth_heatmap 은 `ChartWindow` 가
+   * `paneHogaBundle`/`paneRatioBundle` 로, depth_heatmap 은 `ChartWindow` 가
    * `useLiveChartData.workareaDepthHeatmap` 으로 받는다.
    */
-  it('chartBundle 과 bundle 이 갈라지는 필드는 정확히 이 4개다', () => {
+  it('chartBundle 과 bundle 이 갈라지는 필드는 정확히 이 3개다', () => {
     const { result } = renderHook(() => useLiveBundle('005930', '1m', '20260527', liveFixture), { wrapper });
 
     const chart = result.current.chartBundle as unknown as Record<string, unknown>;
@@ -2104,7 +2098,6 @@ describe('useLiveBundle', () => {
     expect(diverging).toEqual([
       'depth_heatmap',
       'fill_strength',
-      'price_level_hits',
       'quote_ratio',
     ]);
 
@@ -2117,7 +2110,6 @@ describe('useLiveBundle', () => {
     // (b) 과거분 보존: 오배선해도 그럴듯하게 그려지면서 **낡는다**(조용한 실패).
     //     히트맵이 여기 속해서 2주를 버텼다. 이쪽에 필드를 추가할 때는 소비처
     //     배선을 테스트로 함께 봉인할 것(useLiveChartData.test.tsx 선례).
-    expect(Array.isArray(result.current.chartBundle?.price_level_hits)).toBe(true);
     expect(Array.isArray(result.current.chartBundle?.depth_heatmap)).toBe(true);
   });
 
@@ -2146,7 +2138,6 @@ describe('useLiveBundle', () => {
       ask_peaks: [],
       bid_peaks: [],
       broker_late_entries: [],
-      price_level_hits: [],
       trade_volume_pocs: [],
       program_trade: { points: [programPoint], source: 'kis_program_trade' as const },
     };

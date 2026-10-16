@@ -124,7 +124,7 @@ describe('schema-aware regular-session bundle filter', () => {
     Object.assign(source, {
       candles: times.map(time => ({ ts_ms: at(time), open: 100, high: 100, low: 100, close: 100, vol_a: 1, vol_b: 0 })),
       investorPoints: timed, institutionInvestorPoints: timed, dailyProgramPoints: timed,
-      broker_late_entries: timed, trade_volume_pocs: timed, depth_heatmap: timed, price_level_hits: timed,
+      broker_late_entries: timed, trade_volume_pocs: timed, depth_heatmap: timed,
       program_trade: { points: times.map(time => ({ t: at(time), net_qty: 1 })) },
       volume_distributions: [{ date: '20261001', bins: [{ price_low: 100, qty: 1 }] }],
     });
