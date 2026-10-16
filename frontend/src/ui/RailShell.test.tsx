@@ -60,7 +60,7 @@ describe('RailShell primitives', () => {
       </>,
     );
     expect(screen.getByText('empty')).toHaveClass('text-fg-dim');
-    expect(screen.getByText('failed')).toHaveClass('text-error');
+    expect(screen.getByText('failed')).toHaveStyle({ color: 'var(--error)' });
     expect(screen.getByText('warning')).toHaveStyle({ color: 'var(--warn)' });
   });
 

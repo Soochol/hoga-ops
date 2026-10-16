@@ -18,7 +18,7 @@ test('text drawing supports Shift+Enter, multiline re-editing and reload persist
       zOrder: [chart.id], maximizedId: null });
     store.getState().setWindowSymbol(chart.id, { code: '098460', name: '고영', kind: 'stock' });
   });
-  await expect(page.getByTestId('live-state-banner')).toBeVisible();
+  await expect(page.getByTestId('workspace-live-toolbar')).toBeVisible();
   const overlay = page.locator('[data-drawing-overlay]').first();
   await expect(overlay).toBeAttached();
   await expect(page.locator('.legend-ohlc-open').first()).toContainText('35');

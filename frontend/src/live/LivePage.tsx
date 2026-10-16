@@ -5,9 +5,8 @@ import { useSearchParams } from 'react-router';
 import { useDrawingToolContextMenuReset } from '../chart/drawing/contextMenuReset';
 import { useLivePageStore } from '../state/livePage';
 import { focusedWindowSymbol, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
-import { authFailingKiwoomKeys, useLiveStatus } from '../api/liveStatus';
+import { useLiveStatus } from '../api/liveStatus';
 import { useLiveStatusProjection } from './liveStatusProjection';
-import { LiveStateBanner } from './LiveStateBanner';
 import { activateLiveCode, activateLiveInstrument, mirrorActiveGroupToLivePage } from './liveNavigate';
 import { useLiveKeyboard } from './useLiveKeyboard';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
@@ -31,7 +30,7 @@ import './LiveWorkspace.css';
  * /live page — 멀티창 워크스페이스 셸 (ADR-0119 C2c-2d 플립).
  *
  * Three-row grid (symbol search lives in the global TopNav header line):
- *   1. LiveStateBanner (auto)                  — empty/error state matrix
+ *   1. Reserved status slot (auto)             — operational issues live in service status
  *   2. WorkspaceLiveToolbar (auto)             — 창 추가·프리셋·캡처헬스
  *   3. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
  *
@@ -100,10 +99,6 @@ export function LivePage() {
 
   const { data: status } = useLiveStatus();
   const liveStatus = useLiveStatusProjection(status);
-  const banner = liveStatus.banner;
-  // 배너 문구에는 계정 번호가 아니라 **env 변수명**이 붙는다(off-by-one 함정 —
-  // account 5 는 `KIWOOM_APP_KEY_6` 이다). 이름은 백엔드가 실어 보낸다.
-  const authFailingKeys = authFailingKiwoomKeys(status);
 
   // 포커스 창이 **그리는** 종목 + 포커스 차트 창 tf — 미러·수집·타이틀의 원천.
   // `groupSymbols[activeGroupOf(s)]` 가 아니다: 포커스 창이 고정(핀)이면 그룹 종목과
@@ -218,15 +213,7 @@ export function LivePage() {
         gridTemplateColumns: 'minmax(0, 1fr)',
       }}
     >
-      <LiveStateBanner
-        primary={activeSymbol && banner.primary === 'watchlist_empty' ? null : banner.primary}
-        stack={banner.stack}
-        details={
-          authFailingKeys.length > 0
-            ? { kiwoom_auth_failing: authFailingKeys.join(', ') }
-            : undefined
-        }
-      />
+      <div data-testid="live-state-banner-empty" />
       <WorkspaceLiveToolbar
         captureHealth={liveStatus.captureHealth}
       />

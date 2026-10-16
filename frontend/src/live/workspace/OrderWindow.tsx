@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
 import { createPortal } from 'react-dom';
-import { ToastCard } from '../../ui/toast/ToastCard';
+import { ToastAction, ToastCard } from '../../ui/toast/ToastCard';
 import { ToastViewport } from '../../ui/toast/ToastViewport';
 import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
@@ -708,12 +708,9 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       </div>
       </div>
     </ModalShell></div>, document.body)}
-    {(notice || receipt) && <OrderToastPortal>{notice ? <ToastCard visible variant="error" role="alert" ariaLabel="주문 알림">
-        <div className="flex items-start justify-between gap-2"><span>{notice}</span>
-          <button type="button" aria-label="주문 알림 닫기" onClick={() => setNotice(null)}>닫기</button></div>
-        {failedRequest && <button type="button" disabled={busy} onClick={() => void submit(failedRequest.action, failedRequest.high)}>같은 요청 다시 확인</button>}
-      </ToastCard> : <ToastCard visible variant={receipt?.sending ? 'neutral' : 'success'} role="status" ariaLabel="주문 접수 알림">
-        {receipt?.text}
-      </ToastCard>}</OrderToastPortal>}
+    {(notice || receipt) && <OrderToastPortal>{notice ? <ToastCard visible variant="error" role="alert" ariaLabel="주문 알림"
+        title={notice} onDismiss={() => setNotice(null)} dismissLabel="주문 알림 닫기"
+        actions={failedRequest && <ToastAction disabled={busy} onClick={() => void submit(failedRequest.action, failedRequest.high)}>같은 요청 다시 확인</ToastAction>} />
+      : <ToastCard visible variant={receipt?.sending ? 'neutral' : 'success'} role="status" ariaLabel="주문 접수 알림" title={receipt?.text} />}</OrderToastPortal>}
   </div>;
 }

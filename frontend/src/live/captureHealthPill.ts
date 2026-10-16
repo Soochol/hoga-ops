@@ -3,6 +3,7 @@ import {
   captureHealthSeverity,
   type CaptureHealthSeverity,
 } from './liveStatusProjection';
+import { noticeColors } from '../ui/noticeTone';
 
 export { captureHealthLabel, captureHealthSeverity };
 
@@ -14,9 +15,10 @@ export function captureHealthPillColor(severity: CaptureHealthSeverity): {
   //
   switch (severity) {
     case 'warn':
-      return { bg: 'var(--tint-warn)', border: '1px solid var(--warn)', fg: 'var(--warn)' };
-    case 'error':
-      return { bg: 'var(--tint-error)', border: '1px solid var(--error)', fg: 'var(--error)' };
+    case 'error': {
+      const colors = noticeColors(severity);
+      return { bg: colors.background, border: `1px solid ${colors.border}`, fg: colors.foreground };
+    }
     case 'ok':
       return { bg: 'transparent', border: 'none', fg: 'var(--fg-dim)' };
   }

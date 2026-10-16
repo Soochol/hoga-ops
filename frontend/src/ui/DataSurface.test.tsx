@@ -171,7 +171,7 @@ describe('DataSurface primitives', () => {
 
     expect(screen.getByText('비어 있음')).toHaveClass('text-fg');
     expect(screen.getByText('Symbol')).toHaveClass('uppercase');
-    expect(screen.getByText('실패')).toHaveClass('text-error');
+    expect(screen.getByText('실패')).toHaveStyle({ color: 'var(--error)' });
     expect(screen.getByText('주의')).toHaveStyle({ color: 'var(--warn)' });
     expect(screen.getByText('완료')).toHaveStyle({ color: 'var(--accent)' });
     expect(screen.getByText('완료')).toHaveStyle({ background: 'var(--tint-selection)' });

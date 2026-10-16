@@ -1,3 +1,4 @@
+import { StatusChip } from '../ui/StatusChip';
 import { useOccurrenceExclusions } from '../screener/useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from '../screener/OccurrenceExclusions';
 import { HistoryCollection } from '../screener/HistoryCollection';
@@ -386,11 +387,9 @@ export function Screener() {
               )}
             </span>
             {chipFlags.map((f) => (
-              <span key={f.key} title={f.text}
-                className="max-w-[16rem] truncate rounded-md bg-bg-subtle px-1.5 py-0.5 text-2xs"
-                style={{ color: 'var(--warn)' }}>
+              <StatusChip key={f.key} tone="warn" size="compact" title={f.text} className="max-w-[16rem] truncate">
                 {f.text}
-              </span>
+              </StatusChip>
             ))}
             <span className="min-w-0 flex-1" />
             {lastScan?.basis === 'intraday' && (

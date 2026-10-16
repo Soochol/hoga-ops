@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { ToastCard } from '../ui/toast/ToastCard';
+import { useToastTimer } from '../ui/toast/useToastTimer';
 import { useLivePageStore } from '../state/livePage';
 
 const AUTO_DISMISS_MS = 6000;
@@ -24,29 +25,22 @@ export default function IndicatorRemoveUndoToastHost() {
 
   // 스토어 슬롯이 null 로 비워진 뒤에도 퇴장 애니메이션 동안 문구·핸들러를 붙잡는다.
   const [shown, setShown] = useState<typeof undoToast>(null);
-  const paused = useRef(false);
 
-  useEffect(() => {
-    if (undoToast == null) return;
-    setShown(undoToast);
-    const timer = setTimeout(() => {
-      if (!paused.current) dismiss();
-    }, AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [undoToast, dismiss]);
+  if (undoToast != null && undoToast !== shown) setShown(undoToast);
 
   const visible = undoToast != null;
+  const timer = useToastTimer({ visible, resetKey: undoToast, durationMs: AUTO_DISMISS_MS, onExpire: dismiss });
 
   return (
     <ToastCard
       visible={visible}
       variant="neutral"
       role="status"
-      progress={visible ? { durationMs: AUTO_DISMISS_MS, paused: false } : null}
-      onMouseEnter={() => (paused.current = true)}
-      onMouseLeave={() => (paused.current = false)}
+      progress={timer.progress}
+      {...timer.interactionProps}
+      onDismiss={dismiss}
       onExited={() => setShown(null)}
-      action={{ label: '실행취소', onClick: restore }}
+      action={{ label: '실행 취소', onClick: restore }}
     >
       <div className="text-sm font-medium text-fg">{shown?.label ?? ''}</div>
     </ToastCard>

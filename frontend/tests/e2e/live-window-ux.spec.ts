@@ -6,10 +6,9 @@ test('창 최대화·Escape 복원은 원래 배치를 보존한다', async ({ p
   await page.goto('/live');
   const win = page.locator('[data-win]').first();
   await expect(win).toBeVisible();
-  // The credential-free fixture displays a 42px stream-unavailable banner.
-  // Wait for both it and the canvas ResizeObserver before taking the baseline;
-  // otherwise the initial window can still use the pre-banner canvas height.
-  await expect(page.getByTestId('live-state-banner')).toBeVisible();
+  // Wait for toolbar mounting and the canvas ResizeObserver before measuring.
+  // Operational failures now use the service status panel instead of a banner.
+  await expect(page.getByTestId('workspace-live-toolbar')).toBeVisible();
   await expect.poll(() => win.evaluate((el) => Math.abs(
     el.getBoundingClientRect().height - el.parentElement!.getBoundingClientRect().height,
   ))).toBeLessThan(1);

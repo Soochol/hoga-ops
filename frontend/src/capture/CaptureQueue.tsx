@@ -100,7 +100,7 @@ export function CaptureQueue({ onPickSymbol }: CaptureQueueProps = {}) {
         </InlineState>
       );
     }
-    return <InlineState className="border-0 bg-transparent p-3">불러오는 중…</InlineState>;
+    return <div role="status" className="p-3 text-sm text-fg-dim">불러오는 중…</div>;
   }
 
   // ADR-0094: a read-only (non-owner) instance can't mutate the queue. Surface

@@ -35,11 +35,11 @@ it('패널 밖 공용 토스트 영역에 표시하고 실행취소 및 자동 �
   setup();
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: '이동' })); });
   const toast = screen.getByRole('status', { name: '종목 이동 안내' });
-  expect(toast.parentElement).toBe(screen.getByText('그림 1개 삭제됨').parentElement);
+  expect(toast.parentElement).toBe(screen.getByText('그림 1개 삭제됨').closest('.toast-card')?.parentElement);
   expect(within(screen.getByTestId('panel')).queryByRole('status')).toBeNull();
   expect(toast).toHaveClass('toast-card');
   expect(toast.querySelector('.toast-progress')).toHaveStyle({ animationDuration: '5000ms' });
-  await act(async () => { fireEvent.click(within(toast).getByRole('button', { name: '실행취소' })); });
+  await act(async () => { fireEvent.click(within(toast).getByRole('button', { name: '실행 취소' })); });
   expect(transactWatchlistItems).toHaveBeenLastCalledWith({ changes: [{
     folder_id: 'folder', before: [], after: changes[0].before,
   }] });

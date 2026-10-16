@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { transactWatchlistItems, type WatchlistResponse, type WatchlistFolderItemsChange } from '../api/watchlist';
 import { WATCHLIST_KEY } from './watchlistKeys';
+import { DEFAULT_TOAST_DURATION_MS, useToastTimer } from '../ui/toast/useToastTimer';
 import { applyTransfer, inverseTransfer } from './transferItems';
 
-export const WATCHLIST_TRANSFER_NOTICE_MS = 5000;
+export const WATCHLIST_TRANSFER_NOTICE_MS = DEFAULT_TOAST_DURATION_MS;
 
 export function useWatchlistTransfer() {
   const qc = useQueryClient();
@@ -13,14 +14,9 @@ export function useWatchlistTransfer() {
   const [message, setMessage] = useState('');
   const [succeeded, setSucceeded] = useState(false);
   const [undo, setUndo] = useState<{ changes: WatchlistFolderItemsChange[]; label: string } | null>(null);
-  useEffect(() => {
-    if (busy || !succeeded || !message) return;
-    const timer = setTimeout(() => {
-      setMessage('');
-      setUndo(null);
-    }, WATCHLIST_TRANSFER_NOTICE_MS);
-    return () => clearTimeout(timer);
-  }, [busy, succeeded, message, undo]);
+  const dismiss = () => { setMessage(''); setUndo(null); };
+  const timer = useToastTimer({ visible: !!message, resetKey: message,
+    durationMs: !busy && succeeded && message ? WATCHLIST_TRANSFER_NOTICE_MS : null, onExpire: dismiss });
 
   const run = async (changes: WatchlistFolderItemsChange[], label: string, undoing = false) => {
     if (!changes.length || busyRef.current) return false;
@@ -46,8 +42,8 @@ export function useWatchlistTransfer() {
       void qc.invalidateQueries({ queryKey: WATCHLIST_KEY });
     }
   };
-  return { busy, message, succeeded, canUndo: !!undo && !busy, run,
+  return { busy, message, succeeded, timer, canUndo: !!undo && !busy, run,
     undo: () => undo ? run(undo.changes, undo.label, true) : Promise.resolve(false),
-    dismiss: () => { setMessage(''); setUndo(null); },
+    dismiss,
   };
 }

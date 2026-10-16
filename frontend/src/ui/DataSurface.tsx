@@ -1,6 +1,5 @@
 import type {
   Ref,
-  CSSProperties,
   ElementType,
   HTMLAttributes,
   LabelHTMLAttributes,
@@ -8,6 +7,7 @@ import type {
 } from 'react';
 import { useId } from 'react';
 import { ChevronIcon } from './ChevronIcon';
+import { noticeStyle, type NoticeTone } from './noticeTone';
 
 /**
  * 데이터 섹션 — 단일 표면 안의 divider 기반 카드(중첩 카드 크롬 금지, DESIGN.md).
@@ -272,18 +272,6 @@ export function FormField({
   );
 }
 
-const INLINE_TONE = {
-  neutral: 'border-border bg-bg-input text-fg-dim',
-  error: 'border-error bg-tint-error text-error',
-  accent: 'border-[--accent]',
-  warn: 'border-[--warn]',
-} as const;
-
-const INLINE_STYLE: Partial<Record<keyof typeof INLINE_TONE, CSSProperties>> = {
-  accent: { background: 'var(--tint-selection)', color: 'var(--accent)' },
-  warn: { background: 'rgba(245,158,11,0.10)', color: 'var(--warn)' },
-};
-
 export function InlineState({
   tone = 'neutral',
   className = '',
@@ -291,13 +279,14 @@ export function InlineState({
   style,
   ...props
 }: HTMLAttributes<HTMLDivElement> & {
-  tone?: keyof typeof INLINE_TONE;
+  tone?: NoticeTone;
 }) {
   return (
     <div
+      role={tone === 'error' ? 'alert' : 'status'}
       {...props}
-      style={{ ...INLINE_STYLE[tone], ...style }}
-      className={`rounded-md border px-3 py-2 text-sm ${INLINE_TONE[tone]} ${className}`.trim()}
+      style={{ ...noticeStyle(tone), ...style }}
+      className={`rounded-md border px-3 py-2 text-sm ${className}`.trim()}
     >
       {children}
     </div>

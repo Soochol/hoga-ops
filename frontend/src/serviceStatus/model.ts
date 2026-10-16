@@ -1,8 +1,9 @@
-import type { CollectorStateReason, LiveStatus, ProviderStatus } from '../api/liveStatus';
+import { authFailingKiwoomKeys, type CollectorStateReason, type LiveStatus, type ProviderStatus } from '../api/liveStatus';
 
 export type ServiceIssue = {
   id: string;
-  source: 'provider' | 'disk' | 'task' | 'collector';
+  source: 'provider' | 'disk' | 'task' | 'collector' | 'capture' | 'auth';
+  kind?: NonNullable<ProviderStatus['failures']>[number]['kind'];
   collectorDetails?: string;
   title: string;
   cause: string;
@@ -57,7 +58,7 @@ export function serviceIssues(status: LiveStatus | undefined): ServiceIssue[] {
       id: `provider:${failure.channel}:${failure.operation}:${failure.kind}` +
         (failure.account_id != null ? `:account:${failure.account_id}` : '') +
         (failure.phase ? `:phase:${failure.phase}` : ''),
-      source: 'provider', title: failure.channel === 'ws' ? '키움 실시간 연결 실패'
+      source: 'provider', kind: failure.kind, title: failure.channel === 'ws' ? '키움 실시간 연결 실패'
         : `${OPERATIONS[failure.operation] ?? failure.operation} 조회 실패`,
       cause: failure.code === '1504' ? 'API 요청 경로가 올바르지 않습니다.'
         : dataFailure ? '서버 내부 실시간 데이터 처리 지연 또는 실패' : cause,
@@ -87,6 +88,25 @@ export function serviceIssues(status: LiveStatus | undefined): ServiceIssue[] {
       collectorDetails: `수집 사유: ${collector.state_reason ?? '정보 없음'} · 저장 오류: ${collector.storage_errors.join(', ') || '없음'}\n수집 PID: ${collector.pid} · epoch: ${collector.epoch}\n설정 버전: ${collector.desired_version} · ACK: ${collector.acked_version} · 상태 버전: ${collector.state_version ?? '정보 없음'}\n상태 나이: ${collector.state_age_ms ?? '정보 없음'}ms · 동기화 단계: ${collector.sync_phase ?? '없음'} · 경과: ${collector.sync_age_ms ?? '없음'}ms`,
     });
   }
+  // Preserve legacy observations when replacing the page banner, without
+  // duplicating the equivalent modern provider/collector issue.
+  const authKeys = authFailingKiwoomKeys(status);
+  if (authKeys.length) {
+    const auth = issues.find(issue => issue.source === 'provider' && issue.kind === 'auth' && issue.channel === 'rest');
+    if (auth) auth.cause += ` · ${authKeys.join(', ')}`;
+    else issues.push({ id: 'kiwoom:auth', source: 'auth', title: '키움 앱키 인증 실패 — 과거 데이터 조회가 막힙니다',
+      cause: authKeys.join(', '), action: '표시된 앱키의 인증 설정을 확인하세요.', tone: 'error' });
+  }
+  const reason = status?.capture_reason;
+  if ((reason === 'collector_unavailable' || reason === 'storage_error') && !issues.some(issue => issue.id === 'collector')) {
+    issues.push({ id: 'collector', source: 'capture', title: reason === 'storage_error' ? '실시간 데이터 저장 오류' : '실시간 수집 상태를 확인할 수 없습니다',
+      cause: reason === 'storage_error' ? COLLECTOR_COPY.storage_error : '자동 복구를 기다리는 중입니다.',
+      action: '서비스 상태와 서버 기록을 확인하세요.', tone: 'error' });
+  }
+  if (reason === 'offline' && (status?.watchlist_count ?? 0) > 0 && !issues.some(issue => issue.channel === 'ws' || issue.id === 'provider:connection' || issue.id === 'collector')) {
+    issues.push({ id: 'provider:connection', source: 'capture', title: '실시간 미가동 — 호가·체결 스트림이 연결되지 않았습니다',
+      cause: '관심종목이 있지만 실시간 수집이 가동되지 않았습니다.', action: '실시간 수집 설정을 확인하세요.', tone: 'warn' });
+  }
   if (provider?.notice_config_error) issues.push({ id: 'provider:notice-config', source: 'provider',
     title: '키움 점검 공지 설정 확인 필요', cause: '공지 설정을 읽지 못했습니다.', action: '서버의 공지 설정을 확인하세요.', tone: 'warn' });
   if (status?.disk?.low) issues.push({ id: 'disk', source: 'disk', title: status.disk.free_pct < 5 ? '디스크가 거의 찼습니다' : '디스크 여유 부족',
@@ -105,6 +125,8 @@ export function clearedIssues(previous: ServiceIssue[], next: ServiceIssue[], st
     const known = issue.source === 'provider' ? status.provider_status?.failures !== undefined
       && ((issue.channel !== 'ws' && issue.id !== 'provider:connection') || status.kiwoom?.collector?.ready !== false)
       : issue.source === 'collector' ? status.kiwoom?.collector?.ready === true
+      : issue.source === 'capture' ? typeof status.capture_reason === 'string'
+      : issue.source === 'auth' ? status.rest_capacity_scheduler != null
       : issue.source === 'disk' ? status.disk != null : status.supervised_tasks !== undefined;
     return known && !next.some((current) => current.id === issue.id);
   }).map((issue) => ({ ...issue, clearedAt: at }));

@@ -1,3 +1,4 @@
+import { noticeStyle } from '../../ui/noticeTone';
 /**
  * 분봉 창 헤더의 **점프 칩** — 이 창이 지금 어느 날에 잡혀 있는지, 그리고 푸는 문.
  *
@@ -73,13 +74,9 @@ export function MinuteJumpChip({
       data-testid="live-minute-jump-chip"
       title={detail}
       aria-label={detail}
-      className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"
-      style={{ background: 'var(--tint-selection)', color: tone }}
+      className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded border px-1.5 py-0.5 text-2xs"
+      style={{ ...noticeStyle(warn ? 'warn' : 'neutral'), ...(warn ? {} : { color: tone }) }}
     >
-      <span
-        className={`h-1.5 w-1.5 shrink-0 rounded-full${state.status === 'seeking' ? ' animate-pulse' : ''}`}
-        style={{ background: tone }}
-      />
       <span className="truncate">{text}</span>
       <button
         type="button"

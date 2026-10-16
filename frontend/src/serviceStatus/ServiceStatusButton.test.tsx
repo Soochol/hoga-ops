@@ -6,7 +6,7 @@ import { useServiceStatusPanel } from './controls';
 import { clearedIssues, serviceIssues } from './model';
 
 const query = vi.hoisted(() => ({ data: undefined as LiveStatus | undefined, isError: false, dataUpdatedAt: 1789306680000 }));
-vi.mock('../api/liveStatus', () => ({ useLiveStatus: () => query }));
+vi.mock('../api/liveStatus', async importOriginal => ({ ...await importOriginal<typeof import('../api/liveStatus')>(), useLiveStatus: () => query }));
 const provider: ProviderStatus = {
   observed_at_ms: 1789306680000, connection: 'paused', connected_accounts: 0, configured_accounts: 5,
   last_received_at_ms: null, notice: null, notice_phase: null, notice_config_error: false, failures: [],

@@ -37,7 +37,7 @@ describe('StudyViewSaveToastHost', () => {
     act(() => vi.advanceTimersByTime(10000));
     fireEvent.click(screen.getByText('수집 다시 시도'));
     expect(retryCapture).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByText('닫기'));
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
     expect(screen.queryByRole('status')).toBeNull();
   });
 });
