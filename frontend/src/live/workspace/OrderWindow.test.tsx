@@ -12,6 +12,7 @@ import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { notifyOrderReceiptAccepted, playOrderReceiptSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import type { LiveAfterHoursBookResponse } from '../../api/liveAfterHoursBook';
+import { normalizeOrderSettings } from '../../state/orderWindowSettings';
 
 vi.mock('./orderReceiptSound', () => ({
   notifyOrderReceiptAccepted: vi.fn(), playOrderReceiptSound: vi.fn(), prepareOrderReceiptSound: vi.fn(),
@@ -68,6 +69,26 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  it.each([
+    ['67,300', '0.07억'],
+    ['67,200', '0.13억'],
+  ])('주문창 가격 %s의 툴팁은 공통 주문수량 대신 시장 잔량 금액을 표시한다', (price, text) => {
+    vi.useFakeTimers();
+    try {
+      show();
+      fireEvent.change(screen.getByRole('spinbutton', { name: '신규 주문 수량' }), { target: { value: '3' } });
+      const value = screen.getByText(price, { selector: '.order-price .book-price-amount' });
+      vi.spyOn(value, 'matches').mockImplementation(selector => selector === ':hover');
+      fireEvent.mouseEnter(value);
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.getByRole('tooltip')).toHaveTextContent(text);
+      expect(screen.getByRole('tooltip')).toHaveClass('order-tooltip');
+      fireEvent.mouseLeave(value);
+      expect(screen.queryByRole('tooltip')).toBeNull();
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+  });
+
   it.each(['BUY', 'SELL'] as const)('반대 방향 미체결이 있어도 %s 주문을 전송한다', async side => {
     mock.orders = [{ ...order(), side: side === 'BUY' ? 'SELL' : 'BUY' }];
     show();
@@ -747,7 +768,7 @@ describe('호가 주문', () => {
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
     const dialog = screen.getByRole('dialog', { name: '주문 설정' });
     expect(within(dialog).queryByText('주문 방식')).not.toBeInTheDocument();
-    expect(within(dialog).getByRole('region', { name: '주문 입력' }).querySelectorAll('input')).toHaveLength(6);
+    expect(within(dialog).getByRole('region', { name: '주문 입력' }).querySelectorAll('input')).toHaveLength(7);
     expect(within(within(dialog).getByRole('region', { name: '호가 표시' })).getByRole('checkbox', { name: '내 평단가 표시' })).toBeChecked();
     expect(within(dialog).queryAllByRole('radio')).toHaveLength(0);
     expect(within(dialog).getAllByRole('spinbutton')).toHaveLength(6);
@@ -868,6 +889,7 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('보유 종목 평가 수익').querySelector('.order-field-value')?.textContent).toBe('2,253,004');
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).getByLabelText('매입수량')).toBeInTheDocument();
     expect(screen.getByLabelText('매수 가능 금액').closest('.order-overview-controls')).toBeInTheDocument();
+    expect(screen.getByLabelText('매수 가능 금액').previousElementSibling).toBe(screen.getByRole('group', { name: '보유 종목 정보' }));
     expect(within(screen.getByRole('group', { name: '보유 종목 정보' })).queryByLabelText('매수 가능 금액')).not.toBeInTheDocument();
     for (const label of ['보유', '평단가', '평가손익']) expect(screen.queryByText(label, { exact: true })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
@@ -1056,10 +1078,80 @@ describe('호가 주문', () => {
     expect(mock.command.mock.calls[0]).toEqual(['/orders', expect.objectContaining({ account_seq: 2, code: '000660', quantity: 7 }), 'live']);
   });
 
+  it('수량 기억은 적용 후에만 동작하고 취소·Escape·끄기는 기록을 복원하지 않는다', () => {
+    const client = new QueryClient();
+    const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} /></QueryClientProvider>;
+    const view = render(content('005930'));
+    const edit = () => fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    const toggle = () => fireEvent.click(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' }));
+    edit();
+    expect(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' })).not.toBeChecked();
+    toggle(); fireEvent.click(screen.getByRole('button', { name: '취소' }));
+    edit(); expect(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' })).not.toBeChecked();
+    toggle(); fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
+    edit(); expect(screen.getByRole('checkbox', { name: '종목별 주문수량 기억' })).not.toBeChecked();
+    toggle(); fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '30' } });
+    view.rerender(content('000660'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
+    view.rerender(content('005930'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(30);
+    edit(); toggle(); fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(30);
+    view.rerender(content('000660'));
+    view.rerender(content('005930'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
+    edit(); toggle(); fireEvent.click(screen.getByRole('button', { name: '적용' }));
+    view.rerender(content('000660'));
+    view.rerender(content('005930'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(null);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
+  it('수량 기억은 기본 계좌를 포함해 계좌·종목별로 복원하며 직접 지운 빈칸도 기억한다', () => {
+    mock.accountCount = 2;
+    const client = new QueryClient();
+    const settings = normalizeOrderSettings({ rememberQuantity: true });
+    const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} settings={settings} /></QueryClientProvider>;
+    const view = render(content('005930'));
+    const input = () => screen.getByLabelText('신규 주문 수량');
+    const select = (account: string) => fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: account } });
+    fireEvent.change(input(), { target: { value: '30' } });
+    select('2'); expect(input()).toHaveValue(null);
+    fireEvent.change(input(), { target: { value: '9' } });
+    view.rerender(content('000660')); expect(input()).toHaveValue(null);
+    fireEvent.change(input(), { target: { value: '5' } });
+    view.rerender(content('005930')); expect(input()).toHaveValue(9);
+    select('1'); expect(input()).toHaveValue(30);
+    view.rerender(content('000660')); expect(input()).toHaveValue(null);
+    select('2'); expect(input()).toHaveValue(5);
+    fireEvent.change(input(), { target: { value: '' } });
+    view.rerender(content('005930')); expect(input()).toHaveValue(9);
+    view.rerender(content('000660')); expect(input()).toHaveValue(null);
+    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
+  it('금액 프리셋의 환산 주수를 기억하고 시세 변경으로 재환산하거나 새 창에 복원하지 않는다', () => {
+    const client = new QueryClient();
+    const settings = normalizeOrderSettings({ rememberQuantity: true, unit: 'amount' });
+    const content = (code: string, id = 'first') => <QueryClientProvider client={client}><OrderWindow key={id} code={code} name={code} settings={settings} /></QueryClientProvider>;
+    const view = render(content('005930'));
+    fireEvent.click(screen.getByRole('button', { name: '500만' }));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(74);
+    view.rerender(content('000660'));
+    mock.quotePrice = 100000;
+    view.rerender(content('005930'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(74);
+    view.rerender(content('005930', 'new-window'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(10);
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
   it('종목을 다시 방문해도 수량은 빈칸이고 직접 지워도 0이나 프리셋으로 바뀌지 않는다', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const settings = { unit: 'quantity' as const, quantityPresets: [25, 75, 125] as [number, number, number],
-      amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, orderReceiptSound: false };
+      amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, orderReceiptSound: false, rememberQuantity: false };
     const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} settings={settings} /></QueryClientProvider>;
     const view = render(content('005930'));
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '321' } });

@@ -244,6 +244,54 @@ test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하
   expect(commands).toHaveLength(1);
 });
 
+test('종목별 주문수량 기억은 적용 후 계좌별로 복원하고 새로고침에는 설정만 남긴다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, false, true, false, 0, 2);
+  const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+  const account = window.getByRole('combobox', { name: '주문 계좌' });
+  const settings = window.getByRole('button', { name: '주문 설정', exact: true });
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  const changeCode = async (name: string) => {
+    await page.getByRole('button', { name: '종목 검색 열기' }).click();
+    const search = page.getByRole('dialog', { name: '종목 검색', exact: true });
+    await search.getByRole('combobox', { name: '종목 검색' }).fill(name);
+    await search.getByRole('option').filter({ hasText: name }).first().click();
+    await expect(page.getByRole('button', { name: `${name} 호가 주문 창 닫기`, exact: true })).toBeVisible();
+  };
+  await settings.click();
+  const remember = dialog.getByRole('checkbox', { name: '종목별 주문수량 기억', exact: true });
+  await expect(remember).not.toBeChecked();
+  await remember.check();
+  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await settings.click();
+  await expect(remember).not.toBeChecked();
+  await remember.check();
+  await dialog.screenshot({ path: testInfo.outputPath('remember-quantity-settings.png') });
+  await dialog.getByRole('button', { name: '적용', exact: true }).click();
+  await quantity.fill('30');
+  await account.selectOption('2');
+  await expect(quantity).toHaveValue('');
+  await quantity.fill('5');
+  await changeCode('SK하이닉스');
+  await expect(quantity).toHaveValue('');
+  await quantity.fill('7');
+  await changeCode('삼성전자');
+  await expect(quantity).toHaveValue('5');
+  await account.selectOption('1');
+  await expect(quantity).toHaveValue('30');
+  await quantity.clear();
+  await changeCode('SK하이닉스');
+  await expect(quantity).toHaveValue('');
+  await changeCode('삼성전자');
+  await expect(quantity).toHaveValue('');
+  await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeDisabled();
+  await quantity.fill('123');
+  await page.reload();
+  await expect(quantity).toHaveValue('10');
+  await settings.click();
+  await expect(remember).toBeChecked();
+  expect(commands).toHaveLength(0);
+});
+
 test('고정한 호가 주문 창의 종목 이동은 수량을 비우고 입력 전에는 주문을 막는다', async ({ page }) => {
   const { window, commands } = await setup(page);
   const frame = page.locator('[data-win]').filter({ has: window });
@@ -824,6 +872,36 @@ test('두 호가창의 시고저는 빠진 중간 가격을 최근접 행에 표
   for (const panel of [window, book]) {
     await expect(panel.locator('[data-price-badges]')).toHaveCount(1);
     await expect(panel.locator('[data-price-badges]')).toHaveText('시');
+  }
+  expect(commands).toHaveLength(0);
+});
+
+test('두 호가창의 가격 호버는 매수·매도 잔량 금액을 주문창 툴팁으로 표시한다', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page, false, false);
+  const book = page.locator('.book-panel');
+  const tooltip = page.getByRole('tooltip');
+  for (const [index, panel] of [window, book].entries()) {
+    const frame = page.locator('[data-win]').filter({ has: panel });
+    await frame.getByRole('button', { name: '창 최대화', exact: true }).click();
+    for (const [price, text] of [
+      ['67,300', '0.07억'],
+      ['67,200', '0.13억'],
+    ]) {
+      const target = panel.locator('.book-price-amount').filter({ hasText: new RegExp(`^${price}$`) });
+      await target.hover();
+      await expect(tooltip).toHaveText(text);
+      await expect(tooltip).toHaveClass(/order-tooltip/);
+      await expect(target).toHaveAttribute('aria-describedby', await tooltip.getAttribute('id') as string);
+      await page.screenshot({ path: testInfo.outputPath(`book-amount-${index}-${price}.png`) });
+      await page.mouse.move(0, 0);
+      await expect(tooltip).toHaveCount(0);
+      await page.mouse.move(0, 0);
+      await target.hover();
+      await expect(tooltip).toHaveText(text);
+      await page.mouse.move(0, 0);
+      await expect(tooltip).toHaveCount(0);
+    }
+    await frame.getByRole('button', { name: '원래 크기로 복원', exact: true }).click();
   }
   expect(commands).toHaveLength(0);
 });
@@ -2086,9 +2164,10 @@ test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치�
       for (const [selector, shortText, longText] of values) {
         for (const node of el.querySelectorAll(selector)) {
           // Preserve day/average marker children while changing the formatted price text.
-          const text = [...node.childNodes].find(child => child.nodeType === Node.TEXT_NODE);
+          const value = node.querySelector('.book-price-amount') ?? node;
+          const text = [...value.childNodes].find(child => child.nodeType === Node.TEXT_NODE);
           if (text) text.textContent = long ? longText : shortText;
-          else node.append(document.createTextNode(long ? longText : shortText));
+          else value.append(document.createTextNode(long ? longText : shortText));
         }
       }
     }, { values, long });
@@ -2103,7 +2182,7 @@ test('호가주문 간격은 컴팩트하고 긴 숫자에도 호가 열 위치�
       const cash = el.querySelector('.order-buying-power')!.getBoundingClientRect();
       const summary = el.querySelector('.order-holdings-summary')!.getBoundingClientRect();
       const fields = [...el.querySelectorAll('.order-holdings-summary > .order-field')].map(field => field.getBoundingClientRect());
-      return { cash: summary.left - cash.right, items: fields.slice(1).map((field, i) => field.left - fields[i].right) };
+      return { cash: cash.left - summary.right, items: fields.slice(1).map((field, i) => field.left - fields[i].right) };
     });
     expect(gaps.cash).toBeCloseTo(24, 1);
     for (const gap of gaps.items) expect(gap).toBeCloseTo(10, 1);

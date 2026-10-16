@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 /** Portal keeps a long name visible outside the clipped, scrolling list. */
-export function useTextTooltip(text: string, delayMs = 0, className = '') {
+export function useTextTooltip(text: string, delayMs = 0, className = '', hoverOnly = false) {
   const id = useId();
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
   const [active, setActive] = useState(false);
@@ -46,6 +46,8 @@ export function useTextTooltip(text: string, delayMs = 0, className = '') {
     const reveal = () => {
       timer.current = null;
       if (!element.isConnected) { hide(); return; }
+      // A workspace window can cover an anchor without delivering mouseleave.
+      if (hoverOnly && !element.matches(':hover')) { hide(); return; }
       const rect = element.getBoundingClientRect();
       setAnchor({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 72)) });
     };

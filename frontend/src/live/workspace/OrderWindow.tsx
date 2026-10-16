@@ -7,6 +7,7 @@ import { ToastViewport } from '../../ui/toast/ToastViewport';
 import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { useTextTooltip } from '../../ui/useTextTooltip';
+import { BookPriceAmount } from './BookPriceAmount';
 import { priceDirClass } from '../../ui/priceDir';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
@@ -38,6 +39,7 @@ import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
+import { useOrderQuantity } from './useOrderQuantity';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import './OrderWindow.css';
 
@@ -69,17 +71,13 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   const [selectedAccount, selectAccount] = useState(0);
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
   const preferences = settings ?? localSettings;
+  const accounts = useTradingAccounts(mode);
+  const account = selectedAccount || accounts.data?.accounts[0]?.account_seq || 0;
   useEffect(() => {
     if (preferences.orderReceiptSound) return subscribeOrderReceiptSoundRecovery();
   }, [preferences.orderReceiptSound]);
-  const [quantity, setQuantity] = useState<number | null>(() => preferences.quantityPresets[0]);
-  const [quantityCode, setQuantityCode] = useState(code);
+  const [quantity, setQuantity] = useOrderQuantity(code, account, preferences.rememberQuantity, preferences.quantityPresets[0]);
   const [profitAsPercent, setProfitAsPercent] = useState(false);
-  // Reset before the new symbol's keyed content commits, never after it becomes clickable.
-  if (quantityCode !== code) {
-    setQuantityCode(code);
-    setQuantity(null);
-  }
   function applySettings(next: OrderWindowSettings) {
     const quantitySlot = quantity == null ? -1 : preferences.quantityPresets.indexOf(quantity);
     if (quantitySlot >= 0) setQuantity(next.quantityPresets[quantitySlot]);
@@ -88,20 +86,18 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
   return <OrderWindowContent key={code} code={code}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} onApplySettings={applySettings}
     profitAsPercent={profitAsPercent} onToggleProfitDisplay={() => setProfitAsPercent(value => !value)}
-    chosenAccount={selectedAccount} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} />;
+    accounts={accounts} account={account} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} />;
 }
 
-function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymbol,
+function OrderWindowContent({ code, accounts, account, onAccountChange, onSelectSymbol,
   preferences, quantity, onQuantityChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string;
-  chosenAccount: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
+  accounts: ReturnType<typeof useTradingAccounts>; account: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
   quantity: number | null; onQuantityChange: (quantity: number | null) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
   profitAsPercent: boolean; onToggleProfitDisplay: () => void;
 }) {
   const client = useQueryClient();
-  const accounts = useTradingAccounts(mode);
-  const account = chosenAccount || accounts.data?.accounts[0]?.account_seq || 0;
   const state = useTradingState(account, code, mode);
   // Display follows the 10-level book's venue; broker orders remain SOR.
   const venue = useLiveVenueStore(s => s.venue);
@@ -535,7 +531,6 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
     <AccountTradingPanel key={account} account={account} accountLabel={accounts.data?.accounts.find(item => item.account_seq === account)?.label ?? '계좌 연결 대기'}
       tab={accountTab} anchorRef={accountAnchor} onTabChange={setAccountTab} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
     <div className="order-controls order-overview-controls">
-      <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
         <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
           disabled={!canFillHoldingQuantity} onClick={() => {
@@ -571,6 +566,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
           </button>
         </span>
       </div>
+      <span className="order-buying-power" aria-label="매수 가능 금액"><span className="order-meta">매수 가능</span><span className="order-field-value">{buyingPower != null && Number.isSafeInteger(buyingPower) && buyingPower >= 0 ? `${fmt(buyingPower)}원` : '—'}</span></span>
     </div>
     <div className="order-controls order-quantity-controls">
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
@@ -650,7 +646,7 @@ function OrderWindowContent({ code, chosenAccount, onAccountChange, onSelectSymb
               : info}
             <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
               {index === averageMarkerIndex && <span className="order-average-marker" role="img" aria-label={averageMarkerLabel} title={averageMarkerLabel} />}
-              {level.price > 0 ? fmt(level.price) : '—'}</span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
+              <BookPriceAmount price={level.price} qty={level.qty} /></span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {isAsk ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
             {orderCell('BUY', level.price, key)}
