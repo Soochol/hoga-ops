@@ -19,7 +19,6 @@ import { toFrac, toPx, type FracRect } from './rectSpace';
 import {
   computeMove,
   computeResize,
-  type Guides,
   type Rect,
   type RectWin,
   type ResizeMode,
@@ -100,7 +99,7 @@ export interface WorkspaceCanvasCoreProps<W extends WorkspaceWindowLike, C> {
   emptyState?: React.ReactNode;
   /** 좌표 API 전달 — 마운트 시 api, 언마운트 시 null. */
   onApi?: (api: WorkspaceCanvasApi<W> | null) => void;
-  /** 캔버스 위에 얹는 페이지 오버레이(자석 가이드와 같은 z-40 계층). */
+  /** 캔버스 위에 얹는 페이지 오버레이(z-40 계층). */
   overlays?: React.ReactNode;
   onCanvasSize?: (canvas: Canvas) => void;
 }
@@ -129,7 +128,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
 
   // 드래그 중 프리뷰(스토어 미커밋). null = 유휴.
   const [preview, setPreview] = useState<Map<string, Rect> | null>(null);
-  const [guides, setGuides] = useState<Guides>({ v: null, h: null });
   // 이동 드래그 대상 창 id — 프레임 리프트(그림자)용. 리사이즈는 리프트하지 않는다.
   const [movingId, setMovingId] = useState<string | null>(null);
 
@@ -142,7 +140,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
   const endDrag = useCallback(() => {
     dragRef.current = null;
     setPreview(null);
-    setGuides({ v: null, h: null });
     setMovingId(null);
   }, []);
 
@@ -216,7 +213,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
         const next = new Map([[d.id, { ...d.origin, x: r.x, y: r.y }]]);
         d.liveRects = next;
         setPreview(next);
-        setGuides(r.guides);
         return;
       }
 
@@ -234,7 +230,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
       const next = new Map<string, Rect>([[d.id, r.rect]]);
       d.liveRects = next;
       setPreview(next);
-      setGuides(r.guides);
     },
     [windows, commit],
   );
@@ -377,21 +372,6 @@ export function WorkspaceCanvasCore<W extends WorkspaceWindowLike, C>(
       onLostPointerCapture={commit}
     >
       {overlays}
-      {/* 자석 가이드라인 — 흡착 축을 accent 2px 선으로(토스식 분할선). 좌표에 중심을
-          맞추려 절반(1px)만큼 당긴다. */}
-      {guides.v !== null && (
-        <div
-          className="pointer-events-none absolute inset-y-0 z-40 w-[2px] bg-accent"
-          style={{ left: guides.v - 1 }}
-        />
-      )}
-      {guides.h !== null && (
-        <div
-          className="pointer-events-none absolute inset-x-0 z-40 h-[2px] bg-accent"
-          style={{ top: guides.h - 1 }}
-        />
-      )}
-
       {windows.length === 0 && emptyState}
       {windows.map((w) => (
         <WindowItem
