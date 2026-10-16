@@ -891,6 +891,7 @@ test('두 호가창의 가격 호버는 매수·매도 잔량 금액을 주문�
       await target.hover();
       await expect(tooltip).toHaveText(text);
       await expect(tooltip).toHaveClass(/order-tooltip/);
+      if (index === 0) await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('672,000원');
       await expect(target).toHaveAttribute('aria-describedby', await tooltip.getAttribute('id') as string);
       await page.screenshot({ path: testInfo.outputPath(`book-amount-${index}-${price}.png`) });
       await page.mouse.move(0, 0);
@@ -1146,8 +1147,9 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await drag(page, window.getByLabel('매수 67,200원 주문', { exact: true }), window.getByRole('button', { name: '주문 설정', exact: true }));
   const sell = window.getByRole('button', { name: /매도 67,300원 주문 추가/ });
   await expect(sell).toBeEnabled();
+  await sell.hover();
   await sell.focus();
-  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('3,365,000원');
+  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('3,360,000원');
   await expect(valuation.locator('.order-field-value')).toHaveText('120,000');
   await sell.click();
   expect(commands).toHaveLength(2);
@@ -1155,6 +1157,10 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   await sell.dblclick();
   await expect(window.getByLabel('매도 67,300원 주문', { exact: true })).toHaveText('50');
   expect(commands[2]).toMatchObject({ side: 'SELL', quantity: 50 });
+  await window.getByLabel('신규 주문 수량').fill('10');
+  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('672,000원');
+  await sell.hover();
+  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('672,000원');
   await window.screenshot({ path: testInfo.outputPath('unified-order-controls.png') });
 });
 
@@ -1195,7 +1201,7 @@ test('압축형 주·금액 전환은 수량 한 칸을 유지하고 금액 버�
   expect(commands).toHaveLength(0);
   const buy = window.getByRole('button', { name: /매수 68,200원 주문 추가/ });
   await buy.hover();
-  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('954,800원');
+  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('1,050,000원');
   await window.screenshot({ path: testInfo.outputPath('compact-amount-controls.png') });
   await buy.dblclick();
   expect(commands).toHaveLength(1);
