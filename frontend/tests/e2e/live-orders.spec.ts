@@ -1966,3 +1966,133 @@ test('기본 576px에서도 7자리 가격·긴 상세 값·폰트를 유지하�
   await expect(window.locator('[data-drag-order]')).toHaveCount(0);
   expect(commands).toHaveLength(3);
 });
+
+test('호가주문 숫자 자릿수 변경 배치 고정', async ({ page }, testInfo) => {
+  const { window, commands } = await setup(page);
+  await page.mouse.move(0, 0);
+  await page.evaluate(() => document.fonts.ready);
+  const values = [
+    ['.order-buying-power .order-field-value', '1원', '999,999,999,999원'],
+    ['.order-holding-quantity .order-field-value', '1', '999,999,999'],
+    ['[aria-label="매입평단가"] .order-field-value', '1', '9,999,999'],
+    ['.order-profit-toggle .order-field-value', '1', '-999,999,999,999'],
+    ['.order-estimate .order-field-value', '1원', '999,999,999,999원'],
+    ['.order-price-value', '1', '9,999,999'],
+    ['.order-price small', '0.00%', '-30.00%'],
+    ['.order-depth-qty', '1', '999,999,999'],
+    ['[data-testid="book-total-strip"] [aria-label^="매도총잔량"]', '1', '999,999,999'],
+    ['[data-testid="book-total-strip"] [aria-label^="매수총잔량"]', '1', '99'],
+  ];
+  const anchors = [
+    '.order-buying-power', '.order-buying-power .order-meta', '.order-holdings-summary',
+    '.order-holding-quantity', '[aria-label="매입평단가"]', '[aria-label="보유 종목 평가 수익"]',
+    '.order-profit-toggle', '.order-input-field', '.order-quantity-presets', '.order-estimate', '.order-estimate .order-meta',
+    '.order-price-value', '.order-price small', '.order-depth', '.order-lane',
+    '[data-testid="book-session-label"]', '[data-testid="book-session-toggle"]',
+  ];
+  const measure = () => window.evaluate((el, selectors) => Object.fromEntries(selectors.flatMap(selector => {
+    const node = el.querySelector(selector);
+    if (!node) return [];
+    const { x, y, width, height } = node.getBoundingClientRect();
+    return [[selector, { x, y, width, height }]];
+  })), anchors);
+  const setDigits = async (long: boolean) => {
+    await window.evaluate((el, { values, long }) => {
+      // Stress only formatted text to isolate layout from polling, venues and order state.
+      for (const [selector, shortText, longText] of values) {
+        for (const node of el.querySelectorAll(selector)) {
+          // Preserve day/average marker children while changing the formatted price text.
+          const text = [...node.childNodes].find(child => child.nodeType === Node.TEXT_NODE);
+          if (text) text.textContent = long ? longText : shortText;
+          else node.append(document.createTextNode(long ? longText : shortText));
+        }
+      }
+    }, { values, long });
+  };
+  const results = [];
+  for (const width of [800, 504, 360]) {
+    await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
+    await expect(window).toHaveClass(width < 560 ? /order-compact/ : /order-expanded/);
+    await setDigits(false);
+    const before = await measure();
+    await setDigits(true);
+    const after = await measure();
+    for (const selector of Object.keys(before)) {
+      for (const coordinate of ['x', 'y', 'width', 'height'] as const) {
+        expect(after[selector][coordinate], `${width}px ${selector} ${coordinate}`).toBeCloseTo(before[selector][coordinate], 1);
+      }
+    }
+    expect(await window.evaluate((el, values) => values.every(([selector]) => [...el.querySelectorAll(selector)]
+      .every(node => node.scrollWidth <= node.clientWidth + 1)), values), `${width}px full numeric values fit`).toBe(true);
+    await window.screenshot({ path: testInfo.outputPath(`stable-numbers-${width}.png`) });
+    await setDigits(false);
+    expect(await measure()).toEqual(before);
+    results.push({ width, before, after });
+  }
+  await testInfo.attach('digit-layout', { body: JSON.stringify(results, null, 2), contentType: 'application/json' });
+  expect(commands).toHaveLength(0);
+});
+
+test('호가주문 예상 체결가·체결량의 자릿수 변경은 배치를 유지한다', async ({ page }) => {
+  const { window, ws, commands } = await setup(page);
+  await ws.waitForSubscribe('005930');
+  const frame = { kind: 'ob', venue: 'UN', t_ms: Date.now(),
+    asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 100 }],
+    total_ask_qty: 100, total_bid_qty: 100, expected_price: 1, expected_qty: 1 };
+  const banner = window.getByTestId('book-expected-fill');
+  let sequence = 0;
+  for (const width of [800, 360]) {
+    await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
+    ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + sequence++ });
+    await expect(banner).toHaveText('예상 체결가1원예상 체결량1');
+    const fields = [banner, banner.locator('span > .font-data').nth(0), banner.locator('span > .font-data').nth(1)];
+    const before = await Promise.all(fields.map(field => field.boundingBox()));
+    ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + sequence++, expected_price: 9999999, expected_qty: 999999999 });
+    await expect(banner).toHaveText('예상 체결가9,999,999원예상 체결량999,999,999');
+    expect(await Promise.all(fields.map(field => field.boundingBox()))).toEqual(before);
+    expect(await banner.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  }
+  expect(commands).toHaveLength(0);
+});
+
+for (const tab of ['orders', 'holdings'] as const) {
+  test(`계좌 ${tab} 표는 숫자 자릿수가 바뀌어도 열 위치를 유지한다`, async ({ page }, testInfo) => {
+    const { window, commands } = await setup(page, true);
+    const button = window.getByRole('button', { name: tab === 'orders' ? '미체결 주문' : '보유종목', exact: true });
+    await button.click();
+    const panel = page.getByRole('dialog', { name: '계좌 목록' });
+    const table = panel.getByRole('table');
+    await expect(table.locator('tbody tr')).toHaveCount(1);
+    await page.evaluate(() => document.fonts.ready);
+    const numericColumns = tab === 'orders' ? [2, 3] : [1, 2, 3, 4];
+    const large = tab === 'orders' ? ['9,999,999', '999,999,999'] : ['999,999,999', '9,999,999', '999,999,999,999', '-100.00%'];
+    const setDigits = (long: boolean) => table.evaluate((el, { numericColumns, large, long }) => {
+      for (const row of el.querySelectorAll('tbody tr')) {
+        const cells = row.querySelectorAll('td');
+        numericColumns.forEach((column, index) => { cells[column].textContent = long ? large[index] : '1'; });
+      }
+    }, { numericColumns, large, long });
+    const headers = () => table.getByRole('columnheader').evaluateAll(nodes => nodes.map(node => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+    for (const width of [1440, 390]) {
+      await page.setViewportSize({ width, height: 900 });
+      await setDigits(false);
+      const before = await headers();
+      const bounds = await panel.boundingBox();
+      await setDigits(true);
+      expect(await headers()).toEqual(before);
+      expect(await panel.boundingBox()).toEqual(bounds);
+      expect(await table.evaluate((el, numericColumns) => [...el.querySelectorAll('tbody tr')].every(row => {
+        const cells = row.querySelectorAll('td');
+        return numericColumns.every(column => cells[column].scrollWidth <= cells[column].clientWidth + 1);
+      }), numericColumns)).toBe(true);
+      if (width === 390) expect(await panel.getByRole('tabpanel').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+      await panel.screenshot({ path: testInfo.outputPath(`stable-${tab}-${width}.png`) });
+      await setDigits(false);
+      expect(await headers()).toEqual(before);
+    }
+    expect(commands).toHaveLength(0);
+  });
+}
