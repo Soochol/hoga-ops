@@ -8,6 +8,12 @@ function archive(entries: Record<string, unknown>): SettingsArchive {
 }
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); });
 describe('settings transfer boundary', () => {
+  it.each(['obsidian-pro', 'ledger-studio'])('roundtrips the %s theme', (themePreference) => {
+    const input = archive({ 'ui.themePreference.v1': { themePreference } });
+    applySettings(localStorage, parseSettingsArchive(JSON.stringify(input)));
+    expect(exportSettings(localStorage, 'http://new-server:8000', '0.16.6.0').entries['ui.themePreference.v1'])
+      .toEqual({ themePreference });
+  });
   it('roundtrips workspace, per-window indicators, chart preferences, theme and drawings without server data', () => {
     const drawing = { v: 1, items: [{ id: 'a', kind: 'hline', price: 123, color: '#f0b429', width: 1, lineStyle: 'solid', paneId: 'candle' }] };
     const input = archive({

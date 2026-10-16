@@ -74,6 +74,8 @@ const THEME_LABEL: Record<ThemePreference, string> = {
   ledger: 'Ledger',
   'toss-light': 'Toss Light',
   'toss-dark': 'Toss Dark',
+  'obsidian-pro': 'Obsidian Pro',
+  'ledger-studio': 'Ledger Studio',
 };
 
 const THEME_HINT: Record<ThemePreference, string> = {
@@ -81,6 +83,8 @@ const THEME_HINT: Record<ThemePreference, string> = {
   ledger: '종이 느낌의 라이트 테마',
   'toss-light': '흰 배경과 파란 강조색',
   'toss-dark': '어두운 배경과 파란 강조색',
+  'obsidian-pro': '흑연색 배경과 앰버 강조색 · 장중 모니터링',
+  'ledger-studio': '아이보리 배경과 포레스트 그린 · 장후 복기와 리서치',
 };
 
 export function ThemeSection() {
@@ -88,7 +92,7 @@ export function ThemeSection() {
   const setThemePreference = useThemePrefsStore((s) => s.setThemePreference);
   return (
     <section className="space-y-2">
-      <SegmentedControl aria-label="테마 선택">
+      <SegmentedControl aria-label="테마 선택" className="max-w-full flex-wrap">
         {THEME_PREFERENCE_OPTIONS.map((value) => (
           <button
             key={value}
