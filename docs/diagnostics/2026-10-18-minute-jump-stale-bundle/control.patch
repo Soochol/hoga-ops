@@ -1,0 +1,12 @@
+diff --git a/frontend/src/live/useLiveBundle.ts b/frontend/src/live/useLiveBundle.ts
+index 1f5789d48..32288455d 100644
+--- a/frontend/src/live/useLiveBundle.ts
++++ b/frontend/src/live/useLiveBundle.ts
+@@ -1463,6 +1463,7 @@ export function useLiveBundle(
+     isMinute
+     && settledChart !== null
+     && settledChart.code === code
++    && settledChart.to_date === todayKstYyyymmdd
+     && settledChart.bucket_ms === bucketMs
+     && (restBypassEnabled
+       ? minuteDiskCandles.data == null && minuteDiskCandles.isFetching

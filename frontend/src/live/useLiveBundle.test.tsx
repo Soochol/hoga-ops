@@ -1147,6 +1147,68 @@ describe('useLiveBundle', () => {
       expect(result.current.chartBundle!.candles.map((c) => c.close)).toContain(71_234);
     });
 
+    it.each([
+      { disk: false, historicalFromDate: null },
+      { disk: true, historicalFromDate: null },
+      { disk: false, historicalFromDate: '20260501' },
+      { disk: true, historicalFromDate: '20260501' },
+    ])('does not hold another date during a cold jump or return (disk=$disk, history=$historicalFromDate)', ({ disk, historicalFromDate }) => {
+      const live = { ...liveFixture, ob: [], trade: [] };
+      if (disk) serveDisk();
+      const vendorReady = livePastCandlesSpy.getMockImplementation()!;
+      const diskReady = useRangeCandlesDeltaSpy.getMockImplementation()!;
+      const { result, rerender } = renderHook(
+        ({ date }) => useLiveBundle('005930', '1m', date, live, { hogaplaySourceEnabled: disk }),
+        { wrapper: createWrapper(), initialProps: { date: '20260527' } },
+      );
+      expect(result.current.chartBundle!.candles).not.toHaveLength(0);
+
+      const makeCold = () => {
+        if (disk) {
+          useRangeCandlesDeltaSpy.mockImplementation(() => ({
+            ...rangeResult(), isLoading: true, isFetching: true, isHistoricalDeltaFetching: true,
+          }));
+        } else {
+          livePastCandlesSpy.mockImplementation(() => ({
+            data: undefined, isLoading: true, error: null,
+            isPlaceholderData: false, isFetching: true,
+          }) as never);
+        }
+      };
+      makeCold();
+      // A date jump resets history in a parent effect. The old extension can
+      // still be pending in this commit, so both hold paths must reject it.
+      act(() => useLivePageStore.setState({ historicalFromDate }));
+      rangeMock.isHistoricalDeltaFetching = historicalFromDate !== null;
+      rerender({ date: '20260526' });
+      expect(result.current.chartBundle!.to_date).toBe('20260526');
+      expect(result.current.chartBundle!.candles).toEqual([]);
+
+      const pastCandle = { ...DEFAULT_CANDLE, t_ms: DEFAULT_CANDLE.t_ms - 86_400_000 };
+      candlesMock.candles = [pastCandle];
+      livePastCandlesSpy.mockImplementation(vendorReady);
+      useRangeCandlesDeltaSpy.mockImplementation(() => rangeResult({
+        ...fallbackRangeBundle(), to_date: '20260526',
+        segments: [{ ...fallbackRangeBundle().segments[0], date: '20260526',
+          session_open_ms: pastCandle.t_ms, session_close_ms: pastCandle.t_ms + 390 * 60_000 }],
+        candles: [{ ts_ms: pastCandle.t_ms, open: 69000, high: 69100, low: 68900, close: 69050, vol_a: 100, vol_b: 0 }],
+      }));
+      rangeMock.isHistoricalDeltaFetching = false;
+      rerender({ date: '20260526' });
+      expect(result.current.chartBundle!.candles[0].ts_ms).toBe(pastCandle.t_ms);
+
+      makeCold();
+      rerender({ date: '20260527' });
+      expect(result.current.chartBundle!.to_date).toBe('20260527');
+      expect(result.current.chartBundle!.candles).toEqual([]);
+
+      candlesMock.candles = [DEFAULT_CANDLE];
+      livePastCandlesSpy.mockImplementation(vendorReady);
+      useRangeCandlesDeltaSpy.mockImplementation(diskReady);
+      rerender({ date: '20260527' });
+      expect(result.current.chartBundle!.candles[0].ts_ms).toBe(DEFAULT_CANDLE.t_ms);
+    });
+
     it('종목 전환은 홀드하지 않는다 — 이전 종목 번들에 멈추면 안 된다', () => {
       const { result, rerender } = renderHook(
         ({ code }: { code: string }) => useLiveBundle(code, '1m', '20260527', liveFixture),

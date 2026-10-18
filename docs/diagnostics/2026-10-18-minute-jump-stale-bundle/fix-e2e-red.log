@@ -1,0 +1,74 @@
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+transforming...[WebServer] ✓ 951 modules transformed.
+
+Running 2 tests using 1 worker
+
+(node:1524505) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1524505) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✘  1 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 128 candles without inheriting the previous date (9.5s)
+(node:1528052) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1528052) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✘  2 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 384 candles without inheriting the previous date (6.5s)
+
+
+  1) [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 128 candles without inheriting the previous date
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 128
+    Received: 2
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      302 |     const expectedVisible = Math.min(destinationBars, 300);
+      303 |     const expectSeated = async () => {
+    > 304 |       await expect.poll(async () => (await snapshot(page, ids.minute))?.visibleCount).toBe(expectedVisible);
+          |                                                                                       ^
+      305 |       await settleFrame(page);
+      306 |       const state = (await snapshot(page, ids.minute))!;
+      307 |       expect(state.visibleCount).toBe(expectedVisible);
+        at expectSeated (/home/dev/.codex/worktrees/bb24/hoga-ops/frontend/tests/e2e/live-viewport-preservation.spec.ts:304:87)
+        at /home/dev/.codex/worktrees/bb24/hoga-ops/frontend/tests/e2e/live-viewport-preservation.spec.ts:311:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/live-viewport-preservation-0f1f8-nheriting-the-previous-date-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/live-viewport-preservation-0f1f8-nheriting-the-previous-date-chromium/error-context.md
+
+  2) [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 384 candles without inheriting the previous date
+
+    Error: expect(received).toBe(expected) // Object.is equality
+
+    Expected: 300
+    Received: 2
+
+    Call Log:
+    - Timeout 5000ms exceeded while waiting on the predicate
+
+      302 |     const expectedVisible = Math.min(destinationBars, 300);
+      303 |     const expectSeated = async () => {
+    > 304 |       await expect.poll(async () => (await snapshot(page, ids.minute))?.visibleCount).toBe(expectedVisible);
+          |                                                                                       ^
+      305 |       await settleFrame(page);
+      306 |       const state = (await snapshot(page, ids.minute))!;
+      307 |       expect(state.visibleCount).toBe(expectedVisible);
+        at expectSeated (/home/dev/.codex/worktrees/bb24/hoga-ops/frontend/tests/e2e/live-viewport-preservation.spec.ts:304:87)
+        at /home/dev/.codex/worktrees/bb24/hoga-ops/frontend/tests/e2e/live-viewport-preservation.spec.ts:311:11
+
+    attachment #1: screenshot (image/png) ──────────────────────────────────────────────────────────
+    test-results/live-viewport-preservation-22f18-nheriting-the-previous-date-chromium/test-failed-1.png
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+    Error Context: test-results/live-viewport-preservation-22f18-nheriting-the-previous-date-chromium/error-context.md
+
+  2 failed
+    [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 128 candles without inheriting the previous date
+    [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 384 candles without inheriting the previous date

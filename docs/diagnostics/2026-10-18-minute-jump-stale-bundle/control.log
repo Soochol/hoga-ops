@@ -1,0 +1,94 @@
+[WebServer] (node:1450699) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:1450777) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1450777) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+BEFORE {
+  visibleCount: 300,
+  count: 768,
+  lastClose: 77147,
+  x: 627.8713910761155,
+  latestX: 627.8713910761155,
+  width: 800,
+  span: 380,
+  spacing: 2.099737532808399,
+  range: { from: 468, to: 848 },
+  rightClose: 77147
+}
+AFTER {
+  visibleCount: 128,
+  count: 128,
+  lastClose: 74267,
+  x: 624.7668711656441,
+  latestX: 624.7668711656441,
+  width: 800,
+  span: 162,
+  spacing: 4.9079754601226995,
+  range: { from: 0, to: 162 },
+  rightClose: 74267
+}
+  ✓  1 tests/e2e/jump-investigation.spec.ts:70:1 › diagnostic cold jump across unequal history sizes (5.0s)
+(node:1452721) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1452721) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+BEFORE {
+  visibleCount: 300,
+  count: 768,
+  lastClose: 77147,
+  x: 627.8713910761155,
+  latestX: 627.8713910761155,
+  width: 800,
+  span: 380,
+  spacing: 2.099737532808399,
+  range: { from: 468, to: 848 },
+  rightClose: 77147
+}
+AFTER {
+  visibleCount: 128,
+  count: 128,
+  lastClose: 74267,
+  x: 624.7668711656441,
+  latestX: 624.7668711656441,
+  width: 800,
+  span: 162,
+  spacing: 4.9079754601226995,
+  range: { from: 0, to: 162 },
+  rightClose: 74267
+}
+  ✓  2 tests/e2e/jump-investigation.spec.ts:70:1 › diagnostic cold jump across unequal history sizes (2.6s)
+(node:1453925) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1453925) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+BEFORE {
+  visibleCount: 300,
+  count: 768,
+  lastClose: 77147,
+  x: 627.8713910761155,
+  latestX: 627.8713910761155,
+  width: 800,
+  span: 380,
+  spacing: 2.099737532808399,
+  range: { from: 468, to: 848 },
+  rightClose: 77147
+}
+AFTER {
+  visibleCount: 128,
+  count: 128,
+  lastClose: 74267,
+  x: 624.7668711656441,
+  latestX: 624.7668711656441,
+  width: 800,
+  span: 162,
+  spacing: 4.9079754601226995,
+  range: { from: 0, to: 162 },
+  rightClose: 74267
+}
+  ✓  3 tests/e2e/jump-investigation.spec.ts:70:1 › diagnostic cold jump across unequal history sizes (2.6s)
+
+  3 passed (12.1s)
