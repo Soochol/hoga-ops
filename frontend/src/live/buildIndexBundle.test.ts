@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { createVirtualAxis } from '../util/virtualAxis';
 import { buildIndexBundle } from './buildIndexBundle';
 
 describe('buildIndexBundle', () => {
@@ -40,4 +41,19 @@ describe('buildIndexBundle', () => {
     expect(bundle.broker_late_entries).toEqual([]);
     expect(bundle.segments[0].date).toBe('20260619');
   });
+});
+
+
+it.each(['NASDAQ_COMPOSITE', 'SP500', 'SOX'] as const)('%s minute candles survive KST midnight with real NY session instants', indexId => {
+  // NY July 10 10:59 / 11:00 = KST July 10 23:59 / July 11 00:00.
+  const start = Date.UTC(2026, 6, 10, 14, 59);
+  const bundle = buildIndexBundle({ indexId, from: '20260710', to: '20260710', bucketMs: 60_000,
+    candles: [0, 1, 2].map(i => ({ trading_date: '20260710', t_ms: start + i * 60_000, open: 120.1, high: 125, low: 119, close: 121.2345, volume: 0 })) });
+  expect(bundle.segments).toEqual([{ date: '20260710', session_open_ms: start, session_close_ms: start + 3 * 60_000 }]);
+  const axis = createVirtualAxis(bundle.segments.map(s => ({ date: s.date, sessionOpenMs: s.session_open_ms, sessionCloseMs: s.session_close_ms })), start);
+  for (const candle of bundle.candles) {
+    expect(axis.classifyAndProject(candle.ts_ms).contained).toBe(true);
+    expect(axis.toReal(axis.toVirtual(candle.ts_ms))).toBe(candle.ts_ms);
+  }
+  expect(bundle.candles.at(-1)?.close).toBe(121.2345);
 });

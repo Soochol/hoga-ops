@@ -1,0 +1,59 @@
+{
+  "us-index-minutes-SP500-ren-7d388-restore-and-bounded-polling-chromium": {
+    "count": 102,
+    "last": {
+      "open": 7659.44,
+      "high": 7659.44,
+      "low": 7659.44,
+      "close": 7659.44,
+      "time": 1792183320,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": -1.4210854715202004e-14,
+      "to": 122
+    },
+    "width": 1060,
+    "latestX": 873.7154471544716
+  },
+  "us-index-minutes-NASDAQ-CO-59bc1-restore-and-bounded-polling-chromium": {
+    "count": 102,
+    "last": {
+      "open": 26140.03,
+      "high": 26140.03,
+      "low": 26140.03,
+      "close": 26140.03,
+      "time": 1792181700,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": -1.4210854715202004e-14,
+      "to": 122
+    },
+    "width": 1054,
+    "latestX": 868.7642276422764
+  },
+  "us-index-minutes-SOX-rende-0b2d5-restore-and-bounded-polling-chromium": {
+    "count": 102,
+    "last": {
+      "open": 11137.29,
+      "high": 11137.29,
+      "low": 11137.29,
+      "close": 11137.29,
+      "time": 1792181700,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": 1.4210854715202004e-14,
+      "to": 122
+    },
+    "width": 1056,
+    "latestX": 870.4146341463414
+  }
+}

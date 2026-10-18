@@ -1,0 +1,131 @@
+{
+  "base_sha": "80d3aebab1c8533982a7acfb1425f8d433a42fd1",
+  "branch": "codex/us-index-minute-charts",
+  "captured_at_utc": "2026-10-18T15:16:30.637766+00:00",
+  "input_scope": [
+    "hoga",
+    "tests",
+    "frontend/src",
+    "frontend/tests",
+    "frontend/public",
+    "pyproject.toml",
+    "uv.lock",
+    "ruff.toml",
+    ".python-version",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/tsconfig.json",
+    "frontend/tsconfig.app.json",
+    "frontend/tsconfig.test.json",
+    "frontend/tsconfig.e2e.json",
+    "frontend/vite.config.ts",
+    "frontend/playwright.config.ts",
+    "frontend/index.html",
+    "frontend/eslint.config.js",
+    "frontend/postcss.config.js",
+    "frontend/tailwind.config.js",
+    "docs/adr",
+    "docs/research/2026-10-18-us-index-minute-probe.json",
+    "docs/research/2026-10-19-us-index-minute-app-live-probe.json",
+    "CONTEXT.md",
+    "CLAUDE.md"
+  ],
+  "input_sha256": "321caabe4e661414ec7480c3d27bd1c85c59864e863057e23e75eb36ba2c2fd0",
+  "input_file_count": 2574,
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "browser": "Google Chrome 155.0.8059.84",
+    "credentials": "empty worktree .env; E2E broker credentials explicitly blank; live probe standalone using existing cached KIS token only"
+  },
+  "status": "complete",
+  "verified_at_utc": "2026-10-18T15:18:34.536652+00:00",
+  "input_fingerprint_algorithm": "SHA-256 of json.dumps(sort_keys=True) mapping git ls-files -co --exclude-standard scoped relative paths to SHA-256 file contents; input manifest unchanged throughout final frontend validation.",
+  "checks": {
+    "backend_full": {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "6060 passed, 2 skipped, 13 deselected",
+      "duration_seconds": 241.75,
+      "run_base_sha": "159be204d1d53cbff009a8906a36a3c9cb7b511c",
+      "reuse_at_final_base": "Main #2098 changed only frontend useLiveBundle source/unit/E2E tests and diagnostic docs. All backend sources, Python tests, broker fixtures, dependencies, configuration and API TypeScript mirrors are unchanged. Final wire/parser/HTTP suite rerun at 80d3aebab also passed."
+    },
+    "frontend_full": {
+      "command": "npx vitest run --maxWorkers=2",
+      "result": "8463 passed, 650 files",
+      "summary": "Test Files  650 passed (650)\n      Tests  8463 passed (8463)\n   Start at  00:13:57\n   Duration  259.72s (transform 12.62s, setup 16.53s, import 53.02s, tests 153.36s, environment 235.77s)",
+      "input_sha256": "321caabe4e661414ec7480c3d27bd1c85c59864e863057e23e75eb36ba2c2fd0"
+    },
+    "frontend_types": {
+      "command": "npm run typecheck",
+      "result": "passed (app, unit, E2E projects)"
+    },
+    "frontend_build": {
+      "command": "npm run build",
+      "result": "passed; existing chunk-size warning remains"
+    },
+    "browser_e2e": {
+      "command": "npx playwright test tests/e2e/us-index-minutes.spec.ts tests/e2e/us-daily-candles.spec.ts tests/e2e/live-viewport-preservation.spec.ts --grep 'US|NASDAQ|SP500|SOX|preferred-share|cold date jump' --reporter=line",
+      "result": "12 passed",
+      "duration_seconds": 34.6,
+      "environment": "system Chrome, workers=1, backend 20182/frontend 21182, /tmp/hoga-e2e-data-182 and /tmp/hoga-e2e-dist-182, credentials blank",
+      "coverage": "3 indices: actual-provider fixture rows/points, painted reveal, bounded polling, stale last-good, no domestic API/WS leakage, pan has no history backfill, 5m/restore/DWM, KST midnight, SP500 incomplete 60m; existing US stock DWM/case; latest-main cold date jumps"
+    },
+    "api_wire_parser": {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_rest_wire_schema_contract.py tests/unit/live/test_us_index_minutes.py tests/api/test_us_daily_routes.py",
+      "result": "44 passed",
+      "duration_seconds": 3.5
+    },
+    "ruff": {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    "diff": {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    "live_read": {
+      "command": "uv run --extra dev python /tmp/us_index_minute_app_probe.py",
+      "result": "3 indices × 7 periods through KisClient, UsMarketApi, aggregation and Pydantic wire round-trip; each index 102 one-minute rows",
+      "receipt": "../../research/2026-10-19-us-index-minute-app-live-probe.json",
+      "authentication": "existing cached token only; no token issuance, WS or user server restart",
+      "limitations": "Latest provider window only; delay unverified (market closed); SP500 60m unavailable in this snapshot because buckets have gaps."
+    }
+  },
+  "regression_evidence": {
+    "domestic_api_leak": "Initial browser tests failed for all three indices on past-daily-candles requests using index keys. Central daily resolver now rejects all non-domestic stock codes, with five unit regressions; final 12 E2E tests pass.",
+    "painted_chart": "Fake-clock tests advance rAF/reveal timers and assert cover opacity zero before taking screenshots. Actual three charts were visually inspected.",
+    "viewport": "viewport.json records counts, real last timestamps, logical range, width and latestX for each index."
+  },
+  "excluded_checks": {
+    "wallclock": "13 deselected by repository standard; 2 pre-existing skipped tests are not reported as passes"
+  },
+  "modified_input_hashes": {
+    "CONTEXT.md": "c6bb6dbe095a09261087c4250c8fd9ff8a703a7721eacb77e3addbf989dd44e7",
+    "frontend/src/api/liveIndices.ts": "4b679b44912ea7b5e907bed08a3c52fdaa79b66445dbf633e322995bb7da5106",
+    "frontend/src/live/LiveChartRoot.tsx": "c8f0e66b02a5654f4f7e120079c3d5ed5259bd201ce28ab0127301fe387b6f79",
+    "frontend/src/live/TimeframeControl.tsx": "32fa3f62bcb89162fdf8e20407b386ca2a83166d2fac26730e536cc5774e3fdd",
+    "frontend/src/live/buildIndexBundle.test.ts": "7e146fce6c3042e76ef975e336f2a5f5189fe217dd87d9c045f823567cc06875",
+    "frontend/src/live/buildIndexBundle.ts": "12ca2b8a4d9e6bd65a2d3e2924deb4b4ff1c89909dbc74e9706e906b911126d5",
+    "frontend/src/live/indicators/useResolvedDailyCandles.test.tsx": "c122d6455b3923031a5805b265227f90514b44c81d0784d603d90152a5f371eb",
+    "frontend/src/live/indicators/useResolvedDailyCandles.ts": "c50e01fcf595edd6ef88ae1cbe268cd8bafd383da03d2dc5ca94010384f1d5af",
+    "frontend/src/live/liveInstrument.ts": "1ee631a2aad921e625bca273df49c0f110124b2c6f3ea0cc60b20f325bd15ddc",
+    "frontend/src/live/liveNavigate.ts": "7c6a23b402f9130ba47982a58a22159ad8b9dc053c2d7e1219761e103377112c",
+    "frontend/src/live/usDailyIntegration.test.ts": "c7dce88e6041d517a6192cf6536d09627933d460a52010d9e77430c75b97890a",
+    "frontend/src/live/useLiveChartData.ts": "af2a8b31f3ccc58653274a1a1d70fe645b461ad8758ccf80a6d273152a613c21",
+    "frontend/src/live/workspace/ChartWindow.tsx": "08fcf8054b54b8d0444c74c647a746f42086a89742de17c44ae772402ac44d0c",
+    "frontend/src/state/workspace.ts": "12e5e29f4570575dc9e7d0bd6bc63188380eb8d2e7aa04f9539f5e2c327b5300",
+    "frontend/tests/e2e/us-daily-candles.spec.ts": "65b9277936280d0e7bdb05b9f993efb7b4640ab92e7644f9c8b7cdc20fe7ffeb",
+    "frontend/tests/e2e/us-index-minutes.spec.ts": "9ec40126d745d293bdca196ead146abde95a104e99126f3a8372c02a90c90e64",
+    "hoga/live/api.py": "5b028c434759720cbc34e651d7acd799c96e61841a2f76e80ec2fc8ff3289ba7",
+    "hoga/live/index_registry.py": "08a5028f9c0a7d7e223430b1d09478c38c6cb40b8f0bd0634076152ee8c1ed85",
+    "hoga/live/kis_client.py": "9f91ac6ede8895521a08ca56344109ea9f00e48bbaaa188d9900c3e8cba99d24",
+    "hoga/live/us_index_minutes.py": "1b683f66a64636261db293131ac1088c5a7ee799805bbd94d1006860604f9e96",
+    "hoga/live/us_market_api.py": "da1364e0d64ea626766107dfecb6e4f2dff0414762338b50d06d0a1c81f4acb5",
+    "tests/api/test_us_daily_routes.py": "5c7114aa60d62c075ac41a6455d30871045c3f036fa52e15aad3f3c030f30a14",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "bd147c34e9772a66664e8b79fecc746ae10d3ae961e9f0057ea592f5b7a5795c",
+    "tests/unit/live/test_us_index_minutes.py": "783a450847f3c2492e45ecc9eac295627f0590f00c0b7d81adc0c7dc6bccd549"
+  }
+}

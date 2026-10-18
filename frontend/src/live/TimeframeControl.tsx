@@ -15,6 +15,7 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
 type Props = {
   calendarOnly?: boolean;
+  minuteTimeframes?: readonly MinuteTimeframe[];
   timeframe: LiveTimeframe;
   rememberedMinute: MinuteTimeframe;
   onChange: (timeframe: LiveTimeframe) => void;
@@ -37,13 +38,13 @@ function minuteLabel(tf: MinuteTimeframe): string {
   return `${tf.slice(0, -1)}분`;
 }
 
-export function TimeframeControl({ timeframe, rememberedMinute, onChange, compact = false, secondsEnabled = true, calendarOnly = false }: Props) {
+export function TimeframeControl({ timeframe, rememberedMinute, onChange, compact = false, secondsEnabled = true, calendarOnly = false, minuteTimeframes = MINUTE_TIMEFRAMES }: Props) {
   const [minuteMenuOpen, setMinuteMenuOpen] = useState(false);
   const minuteWrapRef = useRef<HTMLDivElement>(null);
   const minuteButtonRef = useRef<HTMLButtonElement>(null);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const isCurrentMinute = isMinuteTimeframe(timeframe);
-  const displayedMinute = isMinuteTimeframe(timeframe) ? timeframe : rememberedMinute;
+  const displayedMinute = isMinuteTimeframe(timeframe) ? timeframe : minuteTimeframes.includes(rememberedMinute) ? rememberedMinute : minuteTimeframes[0];
 
   const closeMinuteMenu = useCallback(() => setMinuteMenuOpen(false), []);
   useDismissablePopover(minuteMenuOpen, minuteWrapRef, closeMinuteMenu);
@@ -57,7 +58,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
     // 튀지 않고 메뉴를 연다(안 그러면 일→월 전환에 분봉을 거쳐야 한다).
     if (!isCurrentMinute && !isSecondTimeframe(timeframe) && !compact) {
       setMinuteMenuOpen(false);
-      onChange(rememberedMinute);
+      onChange(displayedMinute);
       return;
     }
 
@@ -120,7 +121,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
         {second.slice(0, -1)}초
       </button>)}
       {secondsEnabled && <div className="my-1 border-t border-border" />}
-      {MINUTE_TIMEFRAMES.map((minute) => {
+      {minuteTimeframes.map((minute) => {
         const selected = isCurrentMinute && timeframe === minute;
         return (
           <button

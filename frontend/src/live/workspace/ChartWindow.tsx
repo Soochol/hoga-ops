@@ -32,7 +32,7 @@ import {
   useWindowIndicatorDemand,
   type WindowViewValue,
 } from './windowView';
-import { indexInstrument, isLiveIndexId, stockInstrument, isUsIndexId, usCalendarTimeframe, usStockFromKey } from '../liveInstrument';
+import { indexInstrument, isLiveIndexId, stockInstrument, isUsIndexId, usCalendarTimeframe, usIndexTimeframe, US_INDEX_MINUTES, usStockFromKey } from '../liveInstrument';
 import { focusLiveSearch } from '../liveSearchFocus';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useEffectiveVenue } from '../useEffectiveVenue';
@@ -119,7 +119,7 @@ const EMPTY_CANDLES: readonly Candle[] = [];
 export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const calendarOnlySymbol = symbol?.kind === 'us_stock' || (symbol?.kind === 'index' && isUsIndexId(symbol.code));
   const savedTimeframe = win.chart?.timeframe ?? '1m';
-  const timeframe = calendarOnlySymbol ? usCalendarTimeframe(savedTimeframe) : savedTimeframe;
+  const timeframe = calendarOnlySymbol ? (symbol?.kind === 'index' ? usIndexTimeframe(savedTimeframe) : usCalendarTimeframe(savedTimeframe)) : savedTimeframe;
   // 창별 팬 백필 from-date — 비영속 런타임(#713 뷰포트 비저장, 세션 한정).
   // 좌측 팬이 useHistoricalRangeActions 로 확장하면 이 값이 창의 페치를 re-key 한다.
   const historicalFromDate = useWorkspaceStore(
@@ -171,8 +171,11 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
 
 function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
   const isIndex = symbol?.kind === 'index' || symbol?.kind === 'us_stock';
-  const calendarOnly = symbol?.kind === 'us_stock' || (symbol?.kind === 'index' && isUsIndexId(symbol.code));
+  const usIndex = symbol?.kind === 'index' && isUsIndexId(symbol.code);
+  const usInstrument = symbol?.kind === 'us_stock' || usIndex;
+  const calendarOnly = symbol?.kind === 'us_stock';
   const view = useWindowView(); // 창의 값(Provider 안)
+  const latestMinutesOnly = usIndex && isMinuteTimeframe(view.timeframe);
   const ind = useWindowIndicatorDemand();
   const selectedVenue = useLiveVenueStore((s) => s.venue);
   // 차트 계통의 venue 해석은 **여기 한 곳**이다. 아래 `useLiveChartData` 와
@@ -318,7 +321,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // 교체가 이 축에 안 보인다. 훅의 `mySymbolKey` 도크스트링 참조.
   const jumpSymbolKey = symbol ? `${symbol.kind}:${symbol.code}` : null;
   const minuteJumpTarget = useMinuteJumpTarget({
-    enabled: savedRangeFreeze === null && isTimeframeJumpTarget(view.timeframe),
+    enabled: !usIndex && savedRangeFreeze === null && isTimeframeJumpTarget(view.timeframe),
     myWindowId: win.id,
     myTimeframe: view.timeframe,
     myGroup: win.group,
@@ -527,7 +530,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
   // ── 「분봉으로」 기간 점프 ────────────────────────────────────────────────
   // 발행(캘린더 창)과 소비(분봉 창)가 한 창에 동시에 있을 수 없다 — 봉이 하나라
   // 헤더에도 둘 중 하나만 뜬다.
-  const canJump = canPublishTimeframeJump(view.timeframe);
+  const canJump = !usIndex && canPublishTimeframeJump(view.timeframe);
   // 모든 액션은 도구 행에 두고, 좁은 창에서는 줄바꿈한다.
   const [headerFold, headerRef] = useChartHeaderFold(
     LIVE_FOCUS_HEADER_FOLD,
@@ -809,7 +812,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           timeframe={view.timeframe}
           rememberedMinute={rememberedMinute}
           onChange={(tf) => setChartTimeframe(win.id, tf)}
-          secondsEnabled={!isIndex} calendarOnly={calendarOnly}
+          secondsEnabled={!isIndex} calendarOnly={calendarOnly} minuteTimeframes={usIndex ? US_INDEX_MINUTES : undefined}
           compact={headerFold.compactTimeframe}
         />
         {/* 저장뷰 기간 칩은 **헤더에 있다.** 차트 위 오버레이로 두면 `PaneLegendOverlay`
@@ -868,7 +871,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
           {canJump && <JumpToMinuteButton timeframe={view.timeframe as CalendarTimeframe}
             destinationDate={jumpDestination} hasMinuteWindow={hasMinuteWindow} onRun={runJump}
             showLabel={false} />}
-          <RegularSessionAction win={win} disabled={!isMinuteTimeframe(view.timeframe)} showLabel={false} />
+          <RegularSessionAction win={win} disabled={usInstrument || !isMinuteTimeframe(view.timeframe)} showLabel={false} />
           <IconToolbarButton
             aria-label={indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'}
             title={`${indicatorLegendsVisible ? '레전드 끄기' : '레전드 켜기'} — 시가·고가·저가·종가는 항상 표시`}
@@ -895,7 +898,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             name={symbol?.name ?? null} showLabel={false} getVisibleRange={getCollectVisibleRange} />
         </div>
       </div>
-      {calendarOnly && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
+      {usInstrument && !latestMinutesOnly && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
         <span>미국 {view.timeframe === 'W' ? '주봉' : view.timeframe === 'M' ? '월봉' : '일봉'} · {symbol?.kind === 'us_stock' ? 'USD · 수정 전 가격' : '지수값'} · 5분마다 확인</span>
         {view.timeframe !== 'D' && <span>완료된 일봉 집계 · 진행 중 기간 포함</span>}
         <span>최근 거래일 {d.dailyMetadata?.latest_bar_date ?? '—'} · 뉴욕 기준</span>
@@ -905,6 +908,17 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         {(d.dailyMetadata?.refresh_status === 'stale' || d.dailyMetadata?.refresh_status === 'error') && <span>조회 실패 · 이전 데이터 유지</span>}
         {d.dailyMetadata?.refresh_status === 'bypass' && <span>REST 우회 · 캐시 표시</span>}
         {symbol?.kind === 'us_stock' && <span>당일 봉 제외 · 일봉 세션 범위 미확인</span>}
+      </div>}
+      {latestMinutesOnly && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
+        <span>미국 {view.timeframe.slice(0, -1)}분봉 · 지수값 · 1분마다 REST 조회</span>
+        <span>최근 제공 구간만 조회 · 과거 날짜 조회 불가 · 지연 여부 미확인</span>
+        {d.minuteMetadata?.available_from_ms && d.workareaBundle?.candles.length === 0 && <span>해당 분봉 집계에 필요한 연속 데이터 부족 · 1분봉을 선택하세요</span>}
+        <span>차트 시간 KST · 거래일 뉴욕 · 장후 보정 포함 · 마지막 봉 변경 가능</span>
+        <span>제공 범위 {d.minuteMetadata?.available_from_ms ? new Date(d.minuteMetadata.available_from_ms).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} ~ {d.minuteMetadata?.available_to_ms ? new Date(d.minuteMetadata.available_to_ms).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} (뉴욕)</span>
+        {d.minuteMetadata?.last_successful_check_at_ms && <span>확인 {new Date(d.minuteMetadata.last_successful_check_at_ms).toLocaleTimeString()}</span>}
+        {d.minuteMetadata?.refresh_status === 'unconfigured' && <span>조회 API 키 설정 필요</span>}
+        {(d.minuteMetadata?.refresh_status === 'stale' || d.minuteMetadata?.refresh_status === 'error') && <span>조회 실패 · 이전 데이터 유지</span>}
+        {d.minuteMetadata?.refresh_status === 'bypass' && <span>REST 우회 · 캐시 표시</span>}
       </div>}
       <div className="min-h-0 flex-1">
         <ChartErrorBoundary>
@@ -927,6 +941,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               onJumpSourceReady={(read) => { jumpSourceRef.current = read; }}
               onJumpDestinationChange={setJumpDestination}
               onViewedDateChange={setViewedDate}
+              historyBackfillEnabled={!latestMinutesOnly}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
               bundle={d.workareaBundle}
@@ -967,7 +982,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               // ⚙️ 설정 → 차트의 「다른 종목까지」가 정한다(핀 때문에 같은 번호여도
               // 종목이 갈릴 수 있다).
               cursorSyncCrosshair
-              paneTogglesOverride={{ hogaPanes: d.capabilities.hogaPanes, ...(calendarOnly ? { volumeEnabled: false, tradeValueEnabled: false, programTradeEnabled: false } : {}) }}
+              paneTogglesOverride={{ hogaPanes: d.capabilities.hogaPanes, ...(usInstrument ? { volumeEnabled: false, tradeValueEnabled: false, programTradeEnabled: false } : {}) }}
             />
           </ChartDrawingShell>
         </ChartErrorBoundary>

@@ -9,6 +9,7 @@ import {
 import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { unixMsToKSTDate } from '../../util/time';
+import { isNonDomesticStockCode } from '../liveInstrument';
 
 export type ResolvedDailyCandleSource = 'kis_daily' | 'screener_daily';
 
@@ -39,7 +40,8 @@ const EMPTY_CANDLES: LivePastDailyCandle[] = [];
 const EMPTY_WARNINGS: ResolvedDailyWarning[] = [];
 
 function resolveInputs(input: UseResolvedDailyCandlesInput): { code: string; from: string; to: string } | null {
-  if (!input.enabled || !input.code || !input.from || !input.to || input.from > input.to) return null;
+  if (!input.enabled || !input.code || isNonDomesticStockCode(input.code)
+      || !input.from || !input.to || input.from > input.to) return null;
   return { code: input.code, from: input.from, to: input.to };
 }
 

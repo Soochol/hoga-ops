@@ -29,6 +29,7 @@ from hoga.live.us_daily_candles import (
     completed_through,
     parse_date,
 )
+from hoga.live.us_index_minutes import UsIndexMinuteService
 from hoga.util.timeenc import KST
 
 _SYMBOL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\-]{0,19}\Z")
@@ -52,6 +53,7 @@ class UsMarketApi:
     def __init__(self, data_dir: Path | None) -> None:
         self.data_dir = data_dir
         self.daily = UsDailyService()
+        self.minutes = UsIndexMinuteService()
         self.stocks: list[UsStockEntry] = []
         self.master_at_ms: int | None = None
         self.master_expiry = 0.0
@@ -67,6 +69,7 @@ class UsMarketApi:
                     self.master_pending.cancel()
                     await asyncio.gather(self.master_pending, return_exceptions=True)
                 await self.daily.aclose()
+                await self.minutes.aclose()
 
         self.router = APIRouter(lifespan=lifespan)
         self.router.add_api_route("/us-stocks", self.catalog, methods=["GET"], response_model=UsStockCatalogResponse)
@@ -115,6 +118,11 @@ class UsMarketApi:
             bypass=self.bypass(),
         )
         return self.calendar_bars(key, bars, meta, timeframe, end, stock=False)
+
+    async def index_minutes(self, index, timeframe: str):
+        bypass = self.bypass()
+        client = kis_runtime.ensure_kis_client_for_account(0, self.data_dir) if self.data_dir and not bypass else None
+        return await self.minutes.get(index.daily_code, timeframe, client=client, bypass=bypass)
 
     async def stock_daily(
         self,
