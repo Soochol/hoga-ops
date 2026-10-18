@@ -1,3 +1,4 @@
+import { useThemePrefsStore } from '../../state/themePrefs';
 import { useState, useEffect, useRef, useCallback, useContext, Fragment, type ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useChartPrefActions, useScopedChartPrefs } from '../../state/chartPrefs';
@@ -160,6 +161,7 @@ export default function IndicatorPanel({
   // 창-스코프 절단(ADR-0119 C2c-2a): 읽기=대상 창의 resolve 된 설정, 쓰기=창 봉
   // 버킷. Provider 밖(/study·플립 전 /live)에서는 둘 다 전역 스토어로 폴백.
   const ind = useWindowIndicators();
+  const theme = useThemePrefsStore(s => s.themePreference);
   const { windowKey, instrumentKind } = useWindowIndicatorScope();
   const ambient = useContext(WindowViewContext) === null;
   const read = useCallback(() => readIndicatorEditor({ windowKey, instrumentKind }, timeframe, ambient), [windowKey, instrumentKind, timeframe, ambient]);
@@ -477,7 +479,7 @@ export default function IndicatorPanel({
                     kbdFocused={kbdIndex === i}
                     kbdIndex={i}
                     query={trimmedQuery}
-                    dotColors={added ? dotColorsFor(c.id, ind) : EMPTY_DOT_COLORS}
+                    dotColors={added ? dotColorsFor(c.id, ind, theme) : EMPTY_DOT_COLORS}
                     onSelect={() => { setSelected(c.id); setLastAdded(null); setSelectedInstance(instancesFor(c.id)[0]?.id ?? PRIMARY_INDICATOR_ID); }}
                     action={mode === 'mine' && added && instancesFor(c.id).length === 1
                       ? { label: `${c.label} 삭제`, onClick: () => removeFor(c.id, instancesFor(c.id)[0].id) }

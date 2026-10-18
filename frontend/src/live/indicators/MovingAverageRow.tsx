@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useThemePrefsStore } from '../../state/themePrefs';
+import { resolveMaColor } from '../../util/maColor';
 import { ToggleSwitch } from '../settings/SettingsRow';
 import type { LiveMAConfig } from '../../state/livePage';
 import { MA_PERIOD_MIN, MA_PERIOD_MAX } from '../../state/livePage';
@@ -41,6 +43,7 @@ export default function MovingAverageRow({
   index, config, canRemove, onChange, onRemove, periodLabel, editorLayout = false,
 }: Props) {
   const label = periodLabel ?? `기간${index + 1}`;
+  const theme = useThemePrefsStore(s => s.themePreference);
   const [edit, setEdit] = useState<{ base: number; text: string } | null>(null);
   const draft = edit?.base === config.period ? edit.text : String(config.period);
 
@@ -57,7 +60,9 @@ export default function MovingAverageRow({
   };
 
   const style = <div className={editorLayout ? 'ma-config-style' : undefined}><MAStylePicker
-    color={config.color} lineWidth={config.lineWidth} onChange={onChange} />
+    color={resolveMaColor(config, theme)} lineWidth={config.lineWidth}
+    autoColor={config.colorMode === 'auto'} onAutoColor={() => onChange({ colorMode: 'auto' })}
+    onChange={patch => onChange({ ...patch, ...(patch.color !== undefined ? { colorMode: 'manual' } : {}) })} />
   </div>;
   const source = <div className={editorLayout ? 'ma-config-source' : undefined}><MASourceSelect value={config.source} onChange={source => onChange({ source })} /></div>;
   const period = <input type="number" min={MA_PERIOD_MIN} max={MA_PERIOD_MAX} step={1} value={draft}

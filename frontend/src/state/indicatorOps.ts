@@ -195,6 +195,7 @@ function patchMaSlot(
   const idx = current.findIndex((m) => m.id === id);
   if (idx === -1) return null;
   const next: LiveMAConfig = { ...current[idx], ...patch };
+  if (patch.color !== undefined && patch.colorMode === undefined) next.colorMode = 'manual';
   if (patch.period !== undefined) {
     const p = Number(patch.period);
     if (!Number.isFinite(p)) return null;
@@ -218,6 +219,7 @@ function addMaSlot(
     enabled: true,
     period,
     color: nextSlotColor(current),
+    colorMode: 'auto',
     lineWidth,
     source: 'close',
   };

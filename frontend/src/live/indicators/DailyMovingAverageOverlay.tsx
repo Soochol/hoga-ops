@@ -1,3 +1,5 @@
+import { resolveMaColor } from '../../util/maColor';
+import { useThemePrefsStore } from '../../state/themePrefs';
 import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
@@ -54,6 +56,7 @@ const priceFormat = {
 function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue = 'KRX', todayKst, dailyCandleKisEnabled = true, dailyMaWindowFloorDate = null, override }: Props) {
   const storeConfigs = useWindowIndicator((s) => s.dailyMovingAverages);
   const configs = override?.configs ?? storeConfigs;
+  const theme = useThemePrefsStore(s => s.themePreference);
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
@@ -107,7 +110,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
       if (!existing) {
         try {
           const s = chart.addSeries(LineSeries, {
-            color: cfg.color,
+            color: resolveMaColor(cfg, theme),
             lineWidth: cfg.lineWidth,
             priceLineVisible: false,
             lastValueVisible: false,
@@ -119,11 +122,11 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
           useDailyMaSeriesRegistry.getState().register(scope, cfg.id, s);
         } catch { /* torn down */ }
       } else {
-        existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
+        existing.applyOptions({ color: resolveMaColor(cfg, theme), lineWidth: cfg.lineWidth, ...updateScaleOptions });
       }
     }
     if (candleAlwaysOnTop) keepCandlesOnTop(chart);
-  }, [chart, configs, candleOnlyScale, candleAlwaysOnTop, scope]);
+  }, [chart, configs, candleOnlyScale, candleAlwaysOnTop, scope, theme]);
 
   // Unmount cleanup — remove all series.
   useEffect(() => {

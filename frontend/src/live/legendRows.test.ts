@@ -352,3 +352,16 @@ describe('readSeriesValue', () => {
     expect(readSeriesValue(undefined, null)).toBeNull();
   });
 });
+
+
+it('resolves automatic colors consistently in current and daily MA legend models', () => {
+  const configs = [ma({ id: 'auto', color: '#6B7280', colorMode: 'auto' }), ma({ id: 'manual', color: '#000000' })];
+  for (const [theme, color] of [['toss-light', '#374151'], ['toss-dark', '#CBD5E1']]) {
+    const rows = buildLegendRows({ ...base, theme, movingAverages: configs, dailyMovingAverages: configs, dailyMaApplicable: true });
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.kind === 'ma' || row.kind === 'daily-ma').toBe(true);
+      if (row.kind === 'ma' || row.kind === 'daily-ma') expect(row.mas.map(m => m.color)).toEqual([color, '#000000']);
+    }
+  }
+});

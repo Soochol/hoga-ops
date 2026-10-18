@@ -1,4 +1,6 @@
 import type { LineStyle } from '../../chart/drawing/types';
+import { resolveMaColor } from '../../util/maColor';
+import { useThemePrefsStore } from '../../state/themePrefs';
 import { lineVisible } from '../../state/indicatorLineVisibility';
 import { useScopedChartPrefs } from '../../state/chartPrefs';
 import { computeSupertrend } from '../../chart/projectors/supertrend';
@@ -17,11 +19,11 @@ const SAMPLE = Array.from({ length: 4096 }, (_, i) => {
 });
 const DISPLAY = SAMPLE.slice(-40);
 
-function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: boolean): PreviewLine[] {
+function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: boolean, theme: string): PreviewLine[] {
   if (category === 'moving-average' || category === 'daily-moving-average') {
     return (category === 'moving-average' ? s.movingAverages : s.dailyMovingAverages).filter(m => m.enabled && !m.hidden).map(m => ({
       label: `${m.period}${category === 'daily-moving-average' ? '일' : '봉'}`,
-      color: m.color, width: m.lineWidth,
+      color: resolveMaColor(m, theme), width: m.lineWidth,
       values: computeSMA(SAMPLE.map(c => selectSource(c, m.source)), m.period).slice(-40).map(value => value ?? 100),
     }));
   }
@@ -82,11 +84,12 @@ function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: bo
  * chart instances, or subscriptions are created for this small SVG. */
 export default function IndicatorStylePreview({ category, settings }: { category: CategoryId; settings: IndicatorSettings }) {
   const clipId = useId();
+  const theme = useThemePrefsStore(s => s.themePreference);
   const cumulative = useScopedChartPrefs().fillStrengthCumulative;
-  const lines = previewLines(category, settings, cumulative);
+  const lines = previewLines(category, settings, cumulative, theme);
   const controlled = ['moving-average', 'daily-moving-average', 'bollinger', 'supertrend', 'quote-totals', 'fill-strength'].includes(category);
   const hoga = category === 'quote-totals' || category === 'fill-strength';
-  const colors = dotColorsFor(category, settings);
+  const colors = dotColorsFor(category, settings, theme);
   if (!controlled && !lines.length && !colors.length) return null;
   const allValues = [...DISPLAY.flatMap(c => [c.low, c.high]), ...lines.flatMap(line => line.values.filter((v): v is number => v !== null))];
   const low = Math.min(...allValues) - 3, high = Math.max(...allValues) + 3;
