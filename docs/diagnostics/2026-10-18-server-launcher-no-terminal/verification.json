@@ -1,0 +1,22 @@
+{
+  "verified_at": "2026-10-18T14:08:24.927016+00:00",
+  "base": "448d4ec15595ac19d7f299549a24ab1520ca2ee6",
+  "checks": {
+    "lint": "passed",
+    "desktop_file_validate": "passed",
+    "Gio_desktop_entry": "found, visible, Terminal=false",
+    "dock": "ticklane-server.desktop added; existing favorites preserved",
+    "desktop_metadata": "trusted=true; old icon position cleared",
+    "pty_smoke": "Installed wrapper copied with only the Electron executable replaced by an isolated fake. Wrapper exited 0; fake app session ID equaled its PID, stdin was not a TTY and all server-manager arguments were preserved. No real server was started by the smoke test.",
+    "gui_launch": "gio launch focused the existing manager; PID 949918 and service listeners 950343, 950403, 951019 unchanged",
+    "git_diff_check": "passed"
+  },
+  "sha256": {
+    "/home/dev/.codex/worktrees/7c78/hoga-ops/desktop/scripts/install-server-shortcut.mjs": "b943376e81205ccc5760fb6fa36a38d2228a908300c5635e7f413ee257705dc6",
+    "/home/dev/.local/bin/ticklane-server": "91bb27f71a99359e7399714c4c523280b19652e1f07672fb065c8f393cec96bf",
+    "/home/dev/Desktop/ticklane-server.desktop": "4d7866a63260f5612b4d2a0420ab1b96216336cdf479f4e92136a5a8eab51b95",
+    "/home/dev/.local/share/applications/ticklane-server.desktop": "4d7866a63260f5612b4d2a0420ab1b96216336cdf479f4e92136a5a8eab51b95",
+    "/home/dev/.local/lib/ticklane/servers.json": "0882fe8fa38052bf56ecf7065887482e18d2c4ef8ed991e0a3136ea74fa448b0"
+  },
+  "current_terminal": "Existing terminal was left untouched to preserve its running manager. Future .desktop launches request no terminal; direct TTY script launches detach through setsid."
+}

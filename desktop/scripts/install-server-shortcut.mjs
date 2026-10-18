@@ -56,6 +56,10 @@ unset ELECTRON_RUN_AS_NODE
 export HOGA_SERVER_MANAGER_USER_DATA=${quote(join(home, '.config/ticklane-server'))}
 export HOGA_DESKTOP_USER_DATA=${quote(join(home, '.config/hoga-ops-local-dev'))}
 export PATH=${quote(dirname(process.execPath))}:"$PATH"
+if { [ -t 0 ] || [ -t 1 ] || [ -t 2 ]; } && command -v setsid >/dev/null 2>&1; then
+  setsid -f ${command} < /dev/null >> ${quote(join(state, 'server-manager-launch.log'))} 2>&1
+  exit 0
+fi
 exec ${command} >> ${quote(join(state, 'server-manager-launch.log'))} 2>&1
 `, { mode: 0o755 });
 await chmod(launcher, 0o755);
@@ -68,7 +72,7 @@ Exec=${desktopQuote(launcher)}
 Icon=${icon}
 Terminal=false
 Categories=Development;
-Keywords=ticklane;틱레인;frontend;backend;server;
+Keywords=ticklane;틱레인;서버;관리;frontend;backend;server;
 StartupNotify=true
 StartupWMClass=ticklane-server
 `;
