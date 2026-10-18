@@ -41,7 +41,7 @@ import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel'
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
 import { useOrderQuantity } from './useOrderQuantity';
-import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
+import { newOrderAvailabilityIssue, newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderNoticeToast, type OrderReceipt } from './OrderNoticeToast';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import './OrderWindow.css';
@@ -249,7 +249,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const issueId = useId();
   // Freeze the status row's geometry along with the book: inserting a "dragging"
   // status here moves the ladder under the pointer and can select the wrong price.
-  const inlineIssue = lockedBook ? dragInlineIssue : creationIssue ?? (lastRejection?.account === account ? {
+  const inlineIssue = lockedBook ? dragInlineIssue : newOrderAvailabilityIssue(availability) ?? (lastRejection?.account === account ? {
     ...lastRejection.notice, title: '직전 주문 접수 불가',
   } : null);
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];

@@ -171,15 +171,16 @@ for (const theme of ['obsidian', 'ledger']) {
     // Keep the real mounted order window, at its supported compact width.
     await window.evaluate(el => { el.style.width = '504px'; });
     const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
-    await quantity.fill('0');
+    await quantity.fill('');
     const inline = window.getByRole('status', { name: '신규 주문 상태' });
-    await expect(inline).toContainText('주문 수량');
+    await expect(inline).toBeHidden();
+    const toast = page.getByRole('alert', { name: '주문 알림', exact: true });
+    await expect(toast).toBeHidden();
     const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
     await expect(buy).toBeDisabled();
     // aria-disabled intentionally remains hit-testable to explain a blocked attempt.
     const box = (await buy.boundingBox())!;
     await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
-    const toast = page.getByRole('alert', { name: '주문 알림', exact: true });
     await expect(toast).toContainText('정수');
     expect(commands).toHaveLength(0);
     await buy.focus();
@@ -191,7 +192,7 @@ for (const theme of ['obsidian', 'ledger']) {
     await toast.getByRole('button', { name: '주문 알림 닫기' }).focus();
     await page.mouse.move(1, 1);
     await expect(toast.locator('.toast-progress')).toHaveCSS('animation-play-state', 'paused');
-    expect(await inline.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await expect(inline).toBeHidden();
     await page.screenshot({ path: testInfo.outputPath(`order-unavailable-${theme}.png`) });
     await quantity.fill('5');
     await expect(inline).toBeHidden();

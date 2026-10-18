@@ -90,16 +90,22 @@ describe('호가 주문', () => {
     expect(buy).toHaveAttribute('aria-disabled', 'false');
   });
 
-  it.each(['', '0', '1.5', '1000000001'])('잘못된 수량 %s는 마우스·키보드 시도를 설명하고 전송하지 않는다', value => {
+  it.each(['', '0', '1.5', '1000000001'])('잘못된 수량 %s는 입력 중 안내하지 않고 마우스·키보드 주문 시도에서만 검증한다', value => {
     show();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value } });
-    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('주문 수량');
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
     const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
-    fireEvent.doubleClick(buy);
-    fireEvent.keyDown(buy, { key: 'Enter' });
-    fireEvent.keyDown(buy, { key: ' ' });
-    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('정수');
+    for (const attempt of [() => fireEvent.doubleClick(buy), () => fireEvent.keyDown(buy, { key: 'Enter' }), () => fireEvent.keyDown(buy, { key: ' ' })]) {
+      attempt();
+      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('주문 수량은 1주 이상 10억주 이하의 정수로 입력하세요.');
+      fireEvent.click(screen.getByRole('button', { name: '주문 알림 닫기' }));
+    }
     expect(mock.command).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '7' } });
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
+    expect(buy).toHaveAttribute('aria-disabled', 'false');
   });
 
   it.each(['loading', 'unconfigured', 'account-error', 'state-error', 'unknown-result'] as const)('%s에서 신규 주문 불가 사유를 먼저 표시한다', reason => {
