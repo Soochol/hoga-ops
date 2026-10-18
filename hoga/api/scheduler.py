@@ -180,6 +180,22 @@ async def _daily_run(data_dir: Path) -> bool:
     except Exception:  # one source of failure mustn't block the other
         log.exception("daily run: live promotion failed; continuing to hogaplay enqueue")
 
+    # Version bumps leave obsolete files behind, independently of the 180-day
+    # age policy. Run before the trading-day gate, with its own failure boundary.
+    from hoga.api.indicator_cache_prune import prune as prune_indicator_cache  # noqa: PLC0415
+
+    try:
+        cache_pruned = await asyncio.to_thread(prune_indicator_cache, data_dir, dry_run=False)
+        log.info(
+            "daily prune: indicator cache scanned=%d stale=%d retired=%d removed=%d "
+            "reclaimed=%.2f GiB unreadable=%d unknown_kind=%d",
+            cache_pruned.scanned, cache_pruned.stale, cache_pruned.retired,
+            cache_pruned.deleted, cache_pruned.bytes_freed / 1024**3,
+            cache_pruned.unreadable, cache_pruned.unknown_kind,
+        )
+    except Exception:
+        log.exception("daily run: indicator cache prune failed; continuing")
+
     # Stage 9: Prune COMPLETE hogaplay raw past the retention window (ADR-0075).
     # Scheduler-owned, queue-untouching (like Promotion) — runs every day,
     # before the trading-day gate, so weekends/holidays still reclaim disk.

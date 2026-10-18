@@ -129,3 +129,82 @@ def test_prune_covers_regular_only_namespace_without_canonical_root(tmp_path):
     assert path.exists()
     assert prune(tmp_path, dry_run=False).deleted == 1
     assert not path.exists()
+
+
+def test_current_large_payload_never_needs_full_json_parse(tmp_path, monkeypatch):
+    path = _write(tmp_path, "20260101.ask_peak.60000.json", KIND_VERSIONS["ask_peak"])
+    path.write_text(json.dumps({"version": KIND_VERSIONS["ask_peak"], "rows": "x" * 100_000}))
+
+    def unexpected_parse(*_args, **_kwargs):
+        pytest.fail("current cache payload must not be parsed during daily cleanup")
+
+    monkeypatch.setattr("hoga.api.indicator_cache_prune.json.load", unexpected_parse)
+    result = prune(tmp_path, dry_run=False)
+    assert result.deleted == 0
+    assert path.exists()
+
+
+@pytest.mark.parametrize("payload", ["null", "[]", '"text"', "{\"version\": 1, broken"])
+def test_malformed_deletion_candidates_are_preserved(tmp_path, payload):
+    path = _write(tmp_path, "20260101.ask_peak.60000.json", 1)
+    path.write_text(payload)
+    result = prune(tmp_path, dry_run=False)
+    assert result.unreadable == 1
+    assert result.deleted == 0
+    assert path.exists()
+
+
+@pytest.mark.parametrize("version", [True, False, None, "1", 1.5])
+def test_non_integer_versions_are_preserved(tmp_path, version):
+    path = _write(tmp_path, "20260101.ask_peak.60000.json", version)
+    assert prune(tmp_path, dry_run=False).deleted == 0
+    assert path.exists()
+
+
+def test_old_prefix_does_not_override_a_later_current_version(tmp_path):
+    path = _write(tmp_path, "20260101.ask_peak.60000.json", 1)
+    path.write_text(f'{{"version": 1, "version": {KIND_VERSIONS["ask_peak"]}}}')
+    assert prune(tmp_path, dry_run=False).deleted == 0
+    assert path.exists()
+
+
+def test_unusual_header_still_uses_validated_json(tmp_path):
+    path = _write(tmp_path, "20260101.ask_peak.60000.json", 1)
+    path.write_text(json.dumps({"rows": "x" * 1000, "version": 1}))
+    assert prune(tmp_path, dry_run=False).deleted == 1
+    assert not path.exists()
+
+
+def test_fresh_atomic_replacement_is_preserved(tmp_path, monkeypatch):
+    from hoga.api import indicator_cache_prune as module
+
+    path = _write(tmp_path, "20260101.ask_peak.60000.json", 1)
+    read_version = module._read_version
+
+    def replace_after_read(candidate, current):
+        version, snapshot = read_version(candidate, current)
+        replacement = candidate.with_suffix(".tmp")
+        replacement.write_text(json.dumps({"version": current}))
+        replacement.replace(candidate)
+        return version, snapshot
+
+    monkeypatch.setattr(module, "_read_version", replace_after_read)
+    result = prune(tmp_path, dry_run=False)
+    assert result.deleted == 0
+    assert result.bytes_freed == 0
+    assert json.loads(path.read_text())["version"] == KIND_VERSIONS["ask_peak"]
+
+
+def test_failed_delete_does_not_report_reclaimed_bytes(tmp_path, monkeypatch):
+    path = _write(tmp_path, "20260101.ask_peak.60000.json", 1)
+    unlink = Path.unlink
+
+    def deny(candidate, *args, **kwargs):
+        if candidate == path:
+            raise PermissionError("read-only cache")
+        return unlink(candidate, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", deny)
+    result = prune(tmp_path, dry_run=False)
+    assert result.deleted == result.bytes_freed == 0
+    assert path.exists()
