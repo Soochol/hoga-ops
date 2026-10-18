@@ -92,11 +92,10 @@ export function classifyWithinSegment(seg: SessionSegment, realMs: number): Sess
   return realMs >= window.start && realMs <= window.end ? 'auction' : 'regular';
 }
 
-/** Last index whose pre-open band start (`sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS`)
- *  is ≤ realMs. -1 when realMs precedes the first segment's pre-open band.
- *  Equivalent to `sessionOpenMs ≤ realMs + PRE_OPEN_WINDOW_LENGTH_MS`. */
+/** Last segment whose actual session open is ≤ realMs. Actual trading
+ * takes precedence over an upcoming segment's overlapping pre-open band. */
 function lowerBoundOwning(segments: readonly SessionSegment[], realMs: number): number {
-  const key = realMs + PRE_OPEN_WINDOW_LENGTH_MS;
+  const key = realMs;
   let lo = 0;
   let hi = segments.length - 1;
   let ans = -1;
@@ -121,10 +120,8 @@ export interface SegmentLocation {
 /**
  * Binary-search variant of phase classification. Returns both the owning
  * segment index (for callers that also need the segment, e.g. virtual-coord
- * projection) and the phase. Owning segment = last whose pre-open band has
- * started. Assumes inter-session gaps exceed PRE_OPEN_WINDOW_LENGTH_MS (true
- * for daily KRX sessions); the prior linear implementation made the same
- * assumption.
+ * projection) and the phase. An actual session owns its bars even when a
+ * following session's pre-open band overlaps it (extended US trading).
  */
 export function locateSegment(
   segments: readonly SessionSegment[],
@@ -132,13 +129,17 @@ export function locateSegment(
 ): SegmentLocation {
   if (segments.length === 0) return { idx: -1, phase: 'pre-axis' };
   const idx = lowerBoundOwning(segments, realMs);
-  if (idx < 0) return { idx: -1, phase: 'pre-axis' };
   const seg = segments[idx];
-  if (realMs <= seg.sessionCloseMs) {
+  if (seg && realMs <= seg.sessionCloseMs) {
     return { idx, phase: classifyWithinSegment(seg, realMs) };
   }
+  const next = segments[idx + 1];
+  if (next && realMs >= next.sessionOpenMs - PRE_OPEN_WINDOW_LENGTH_MS) {
+    return { idx: idx + 1, phase: 'pre-open' };
+  }
+  if (idx < 0) return { idx: -1, phase: 'pre-axis' };
   // Past this segment's close: gap if another segment follows, else post-axis.
-  return { idx, phase: idx === segments.length - 1 ? 'post-axis' : 'gap' };
+  return { idx, phase: next ? 'gap' : 'post-axis' };
 }
 
 /**

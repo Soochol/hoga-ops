@@ -21,7 +21,7 @@ import {
   seedIndicatorScopeForWindow,
 } from './indicatorScopeGc';
 import { liveDefaultWindows } from './liveDefaultLayout';
-import { isLiveIndexId, isUsIndexId, usCalendarTimeframe, usIndexTimeframe } from '../live/liveInstrument';
+import { isLiveIndexId, isUsIndexId, usChartTimeframe } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 import { normalizeOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
 import { isTradeMinAmountManwon } from './tradeWindowSettings';
@@ -444,8 +444,8 @@ function readSymbol(raw: unknown): GroupSymbol | null {
 }
 
 function symbolTimeframe(symbol: GroupSymbol | null | undefined, tf: LiveTimeframe): LiveTimeframe {
-  if (symbol?.kind === 'us_stock') return usCalendarTimeframe(tf);
-  return symbol?.kind === 'index' && isUsIndexId(symbol.code) ? usIndexTimeframe(tf) : tf;
+  if (symbol?.kind === 'us_stock') return usChartTimeframe(tf);
+  return symbol?.kind === 'index' && isUsIndexId(symbol.code) ? usChartTimeframe(tf) : tf;
 }
 function normalizeUsWindow(w: WorkspaceWindow, symbol: GroupSymbol | null | undefined): WorkspaceWindow {
   if (!w.chart) return w;

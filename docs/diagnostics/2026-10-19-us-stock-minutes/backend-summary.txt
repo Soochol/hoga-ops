@@ -1,0 +1,6 @@
+tests/unit/api/test_pattern_saves.py::test_conditions_carry_the_whole_question_not_the_answer
+  /home/dev/.codex/worktrees/08d8/hoga-ops/tests/unit/api/test_pattern_saves.py:111: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
+    fields = set(req.conditions.model_fields)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=== 6201 passed, 2 skipped, 13 deselected, 35 warnings in 242.97s (0:04:02) ====

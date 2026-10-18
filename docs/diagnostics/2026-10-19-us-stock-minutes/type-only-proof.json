@@ -1,0 +1,6 @@
+{
+  "path": "frontend/src/api/trading.ts",
+  "base": "1db4edc34bac7266dc37c0723ce11f0eac42fe33",
+  "proof": "TypeScript transpileModule output before/after type-only additions is byte-identical",
+  "javascript_sha256": "faecbf146fda6e4fe56db74a78f82651d3edfdc20c5a91c0a76126e5a6a45568"
+}

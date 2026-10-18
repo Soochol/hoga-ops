@@ -88,7 +88,7 @@ test('US stock search preserves exchange/ticker and never requests domestic stoc
   await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
   await expect.poll(() => requests.some(url => url.includes('us-stock-daily-candles?exchange=NASDAQ&symbol=NVDA'))).toBe(true);
   expect(requests.filter(url => /\/(past-daily-candles|quotes|stock-limits|investor-net|series)\?/.test(url) && /NVDA/.test(url))).toEqual([]);
-  await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(3);
+  await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(4);
   expect(usWsFrames).toEqual([]);
   await frame.screenshot({ path: testInfo.outputPath('NVDA-daily.png') });
   for (const [tf, label] of [['W', '주'], ['M', '월']]) {

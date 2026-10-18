@@ -1,0 +1,810 @@
+{
+  "tested_at_utc": "2026-10-18T15:27:51.121305+00:00",
+  "authentication": "existing cached token only; no issuance; no WS",
+  "responses": [
+    {
+      "instrument_key": "us-stock:NASDAQ:NVDA",
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "from": "20261016",
+      "to": "20261016",
+      "timeframe": "1m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1792143600000,
+        "available_to_ms": 1792191540000,
+        "last_successful_check_at_ms": 1792337234407,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "95e528ee8f37fab92ea42c2b1ed932be2e2f206a8e796513c5c006153541a96c",
+      "first_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792143600000,
+          "open": 218.18,
+          "high": 218.26,
+          "low": 218.1,
+          "close": 218.1,
+          "volume": 894
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792143660000,
+          "open": 218.1,
+          "high": 218.22,
+          "low": 218.02,
+          "close": 218.0888,
+          "volume": 6645
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191480000,
+          "open": 213.84,
+          "high": 213.85,
+          "low": 213.83,
+          "close": 213.8305,
+          "volume": 1405
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191540000,
+          "open": 213.83,
+          "high": 213.84,
+          "low": 213.77,
+          "close": 213.8314,
+          "volume": 7079
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:NVDA",
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "from": "20261014",
+      "to": "20261016",
+      "timeframe": "3m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1792042200000,
+        "available_to_ms": 1792191420000,
+        "last_successful_check_at_ms": 1792337237685,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "111743901b04f27e1394f2dabcb02ea36ac999dec8d87393546a0f080e68efef",
+      "first_two": [
+        {
+          "trading_date": "20261014",
+          "t_ms": 1792042200000,
+          "open": 219.1,
+          "high": 219.1,
+          "low": 218.53,
+          "close": 218.58,
+          "volume": 4518
+        },
+        {
+          "trading_date": "20261014",
+          "t_ms": 1792042380000,
+          "open": 218.6,
+          "high": 218.67,
+          "low": 218.3,
+          "close": 218.46,
+          "volume": 10912
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191240000,
+          "open": 213.97,
+          "high": 213.9997,
+          "low": 213.88,
+          "close": 213.9008,
+          "volume": 8218
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191420000,
+          "open": 213.9,
+          "high": 213.98,
+          "low": 213.77,
+          "close": 213.8314,
+          "volume": 12383
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:NVDA",
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "from": "20261013",
+      "to": "20261016",
+      "timeframe": "5m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1791941700000,
+        "available_to_ms": 1792191300000,
+        "last_successful_check_at_ms": 1792337241036,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "8f55d588d6cde2258225f8cf6e62f7f67b5d263f253966b2b52fbed3594212a1",
+      "first_two": [
+        {
+          "trading_date": "20261013",
+          "t_ms": 1791941700000,
+          "open": 229.4,
+          "high": 229.4,
+          "low": 229.14,
+          "close": 229.16,
+          "volume": 944
+        },
+        {
+          "trading_date": "20261013",
+          "t_ms": 1791942000000,
+          "open": 229.14,
+          "high": 229.31,
+          "low": 229.13,
+          "close": 229.24,
+          "volume": 798
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191000000,
+          "open": 214.15,
+          "high": 214.16,
+          "low": 213.89,
+          "close": 213.89,
+          "volume": 16085
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191300000,
+          "open": 213.9414,
+          "high": 213.98,
+          "low": 213.77,
+          "close": 213.8314,
+          "volume": 13968
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:NVDA",
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "from": "20261008",
+      "to": "20261016",
+      "timeframe": "10m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1791517200000,
+        "available_to_ms": 1792191000000,
+        "last_successful_check_at_ms": 1792337244364,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "ddfc990bad183c46477e2ee10822a5b3cc5c45ecbca64549f5af01a86713696d",
+      "first_two": [
+        {
+          "trading_date": "20261008",
+          "t_ms": 1791517200000,
+          "open": 232.26,
+          "high": 232.35,
+          "low": 232.25,
+          "close": 232.25,
+          "volume": 4528
+        },
+        {
+          "trading_date": "20261008",
+          "t_ms": 1791517800000,
+          "open": 232.27,
+          "high": 232.35,
+          "low": 232.27,
+          "close": 232.34,
+          "volume": 3083
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792190400000,
+          "open": 214.15,
+          "high": 214.24,
+          "low": 214.11,
+          "close": 214.15,
+          "volume": 10484
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191000000,
+          "open": 214.15,
+          "high": 214.16,
+          "low": 213.77,
+          "close": 213.8314,
+          "volume": 30053
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:NVDA",
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "from": "20261005",
+      "to": "20261016",
+      "timeframe": "15m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1791261900000,
+        "available_to_ms": 1792190700000,
+        "last_successful_check_at_ms": 1792337247709,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "aad4df5614bc94601b9b6d99feeb8710975d9981e13979b7cb2df495630cea8f",
+      "first_two": [
+        {
+          "trading_date": "20261005",
+          "t_ms": 1791261900000,
+          "open": 239.61,
+          "high": 239.61,
+          "low": 239.24,
+          "close": 239.49,
+          "volume": 17433
+        },
+        {
+          "trading_date": "20261005",
+          "t_ms": 1791262800000,
+          "open": 239.46,
+          "high": 239.65,
+          "low": 239.45,
+          "close": 239.63,
+          "volume": 12664
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792189800000,
+          "open": 214.24,
+          "high": 214.36,
+          "low": 214.1,
+          "close": 214.17,
+          "volume": 27137
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792190700000,
+          "open": 214.1442,
+          "high": 214.23,
+          "low": 213.77,
+          "close": 213.8314,
+          "volume": 35626
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:NVDA",
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "from": "20260923",
+      "to": "20261016",
+      "timeframe": "30m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1790172000000,
+        "available_to_ms": 1792189800000,
+        "last_successful_check_at_ms": 1792337251054,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "ffc3933f6c234e451d51be0ec56966539206b3cea261bab5bb152cc9b51e8022",
+      "first_two": [
+        {
+          "trading_date": "20260923",
+          "t_ms": 1790172000000,
+          "open": 227.725,
+          "high": 228.1599,
+          "low": 225.02,
+          "close": 225.605,
+          "volume": 6660857
+        },
+        {
+          "trading_date": "20260923",
+          "t_ms": 1790173800000,
+          "open": 225.605,
+          "high": 226.6499,
+          "low": 225.2301,
+          "close": 226.06,
+          "volume": 3838025
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792188000000,
+          "open": 214.2695,
+          "high": 214.47,
+          "low": 214.01,
+          "close": 214.14,
+          "volume": 69550
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792189800000,
+          "open": 214.24,
+          "high": 214.36,
+          "low": 213.77,
+          "close": 213.8314,
+          "volume": 62763
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:NVDA",
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "from": "20260827",
+      "to": "20261016",
+      "timeframe": "60m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1787893200000,
+        "available_to_ms": 1792188000000,
+        "last_successful_check_at_ms": 1792337254390,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "412ef8e86df4d2eb001a91554b72e2c57f2d08bb587888a0751e5dc8c37a49d0",
+      "first_two": [
+        {
+          "trading_date": "20260827",
+          "t_ms": 1787893200000,
+          "open": 226.6,
+          "high": 226.6,
+          "low": 226.14,
+          "close": 226.19,
+          "volume": 36626
+        },
+        {
+          "trading_date": "20260827",
+          "t_ms": 1787896800000,
+          "open": 226.17,
+          "high": 227.09,
+          "low": 226.15,
+          "close": 227.08,
+          "volume": 90259
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792184400000,
+          "open": 214.4893,
+          "high": 216.0477,
+          "low": 214.13,
+          "close": 214.28,
+          "volume": 440936
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792188000000,
+          "open": 214.2695,
+          "high": 214.47,
+          "low": 213.77,
+          "close": 213.8314,
+          "volume": 132313
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:AAPL",
+      "exchange": "NASDAQ",
+      "symbol": "AAPL",
+      "from": "20261016",
+      "to": "20261016",
+      "timeframe": "1m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1792143240000,
+        "available_to_ms": 1792191540000,
+        "last_successful_check_at_ms": 1792337257732,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "5cdbb8fd08f155e6c4bcfdbbb3f64bb90d1cfc3a475724939b82a681b6d1b921",
+      "first_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792143240000,
+          "open": 342.4,
+          "high": 342.4,
+          "low": 342.21,
+          "close": 342.21,
+          "volume": 1921
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792143300000,
+          "open": 342.2,
+          "high": 342.2,
+          "low": 342.14,
+          "close": 342.14,
+          "volume": 101
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191480000,
+          "open": 343.17,
+          "high": 343.17,
+          "low": 342.85,
+          "close": 343.0,
+          "volume": 169
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191540000,
+          "open": 342.86,
+          "high": 343.1699,
+          "low": 342.86,
+          "close": 343.0,
+          "volume": 20
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NYSE:KO",
+      "exchange": "NYSE",
+      "symbol": "KO",
+      "from": "20261016",
+      "to": "20261016",
+      "timeframe": "1m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1792142040000,
+        "available_to_ms": 1792191540000,
+        "last_successful_check_at_ms": 1792337261077,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "e683877bc1b864a579036a9966b1db8308ef9a84446eb386c0be79ed0317e304",
+      "first_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792142040000,
+          "open": 92.38,
+          "high": 92.38,
+          "low": 92.38,
+          "close": 92.38,
+          "volume": 983
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792142100000,
+          "open": 92.39,
+          "high": 92.4,
+          "low": 92.39,
+          "close": 92.39,
+          "volume": 400
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191480000,
+          "open": 93.7,
+          "high": 93.7,
+          "low": 93.7,
+          "close": 93.7,
+          "volume": 2
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191540000,
+          "open": 93.75,
+          "high": 93.75,
+          "low": 93.75,
+          "close": 93.75,
+          "volume": 15
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NYSE:BRKb",
+      "exchange": "NYSE",
+      "symbol": "BRKb",
+      "from": "20261015",
+      "to": "20261016",
+      "timeframe": "1m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1792102500000,
+        "available_to_ms": 1792191540000,
+        "last_successful_check_at_ms": 1792337264450,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "868c650b4beb819d84862b2e946dd3df42e426d79e29b52c127396ee1ba9c737",
+      "first_two": [
+        {
+          "trading_date": "20261015",
+          "t_ms": 1792102500000,
+          "open": 526.1,
+          "high": 526.15,
+          "low": 526.1,
+          "close": 526.15,
+          "volume": 46
+        },
+        {
+          "trading_date": "20261015",
+          "t_ms": 1792102560000,
+          "open": 526.15,
+          "high": 526.15,
+          "low": 526.15,
+          "close": 526.15,
+          "volume": 1
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191480000,
+          "open": 531.82,
+          "high": 531.82,
+          "low": 531.82,
+          "close": 531.82,
+          "volume": 21
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792191540000,
+          "open": 531.1,
+          "high": 531.1,
+          "low": 531.1,
+          "close": 531.1,
+          "volume": 22
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:NYSE:AHT_pd",
+      "exchange": "NYSE",
+      "symbol": "AHT_pd",
+      "from": "20260804",
+      "to": "20261016",
+      "timeframe": "1m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1785865500000,
+        "available_to_ms": 1792180500000,
+        "last_successful_check_at_ms": 1792337267821,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "c6b6a26c4b2e7dd3591dc5c3d599723a387faef0c559c6fcf91e06ca765c81a1",
+      "first_two": [
+        {
+          "trading_date": "20260804",
+          "t_ms": 1785865500000,
+          "open": 5.3,
+          "high": 5.44,
+          "low": 5.3,
+          "close": 5.44,
+          "volume": 200
+        },
+        {
+          "trading_date": "20260804",
+          "t_ms": 1785865920000,
+          "open": 5.415,
+          "high": 5.415,
+          "low": 5.415,
+          "close": 5.415,
+          "volume": 100
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792176000000,
+          "open": 3.525,
+          "high": 3.525,
+          "low": 3.525,
+          "close": 3.525,
+          "volume": 108
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792180500000,
+          "open": 3.525,
+          "high": 3.83,
+          "low": 3.525,
+          "close": 3.83,
+          "volume": 105
+        }
+      ]
+    },
+    {
+      "instrument_key": "us-stock:AMEX:AAAA",
+      "exchange": "AMEX",
+      "symbol": "AAAA",
+      "from": "20260710",
+      "to": "20261016",
+      "timeframe": "1m",
+      "minute_metadata": {
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "history_scope": "bounded_recent_window",
+        "delay_status": "unverified",
+        "session_scope": "vendor_extended_unverified",
+        "available_from_ms": 1783694640000,
+        "available_to_ms": 1792177260000,
+        "last_successful_check_at_ms": 1792337271098,
+        "refresh_status": "normal",
+        "messages": [],
+        "price_basis": "raw",
+        "currency": "USD",
+        "bar_limit": 800,
+        "pages_fetched": 8,
+        "more_available": true
+      },
+      "candles_count": 800,
+      "candles_sha256": "ab960aa5344a7228bb953cda047899ab33b028755c3cdac95b3715a35312fb1d",
+      "first_two": [
+        {
+          "trading_date": "20260710",
+          "t_ms": 1783694640000,
+          "open": 30.365,
+          "high": 30.365,
+          "low": 30.365,
+          "close": 30.365,
+          "volume": 2
+        },
+        {
+          "trading_date": "20260710",
+          "t_ms": 1783694940000,
+          "open": 30.365,
+          "high": 30.365,
+          "low": 30.365,
+          "close": 30.365,
+          "volume": 3
+        }
+      ],
+      "last_two": [
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792174500000,
+          "open": 30.2,
+          "high": 30.2,
+          "low": 30.2,
+          "close": 30.2,
+          "volume": 268
+        },
+        {
+          "trading_date": "20261016",
+          "t_ms": 1792177260000,
+          "open": 30.2,
+          "high": 30.2,
+          "low": 30.2,
+          "close": 30.2,
+          "volume": 10
+        }
+      ]
+    }
+  ]
+}

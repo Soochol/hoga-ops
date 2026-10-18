@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createVirtualAxis } from '../util/virtualAxis';
-import { buildIndexBundle } from './buildIndexBundle';
+import { buildIndexBundle, buildPriceBundle } from './buildIndexBundle';
 
 describe('buildIndexBundle', () => {
   it('preserves actual calendar turnover including zero without inferring missing amounts', () => {
@@ -56,4 +56,19 @@ it.each(['NASDAQ_COMPOSITE', 'SP500', 'SOX'] as const)('%s minute candles surviv
     expect(axis.toReal(axis.toVirtual(candle.ts_ms))).toBe(candle.ts_ms);
   }
   expect(bundle.candles.at(-1)?.close).toBe(121.2345);
+});
+
+
+it('keeps native US overnight sessions disjoint at adjacent hourly business-day boundaries', () => {
+  const first = Date.UTC(2026, 9, 15, 7); // NY 03:00, represented as prior business day 27:00
+  const bundle = buildPriceBundle({ code: 'us-stock:NASDAQ:NVDA', from: '20261014', to: '20261015', bucketMs: 3_600_000, observedSessions: true,
+    candles: [{ trading_date: '20261014', t_ms: first, open: 120, high: 125, low: 119, close: 121, volume: 1 },
+      { trading_date: '20261014', t_ms: first + 59 * 60_000, open: 121, high: 125, low: 119, close: 122, volume: 2 },
+      { trading_date: '20261015', t_ms: first + 3_600_000, open: 121, high: 125, low: 119, close: 122, volume: 2 }] });
+  expect(bundle.segments[0].session_close_ms).toBeLessThan(bundle.segments[1].session_open_ms);
+  const axis = createVirtualAxis(bundle.segments.map(s => ({ date: s.date, sessionOpenMs: s.session_open_ms, sessionCloseMs: s.session_close_ms })), first);
+  for (const row of bundle.candles) {
+    expect(axis.contains(row.ts_ms)).toBe(true);
+    expect(axis.toReal(axis.toVirtual(row.ts_ms))).toBe(row.ts_ms);
+  }
 });

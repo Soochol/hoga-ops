@@ -108,6 +108,8 @@ class TrSpec:
 # === TR 스펙 테이블 =========================================================
 # ADR-0136 §1 의 대응 매핑. 표면 이관 PR(#1039~#1045)이 여기에 줄을 더한다.
 TR: dict[str, TrSpec] = {
+    "usa06011": TrSpec("usa06011", "/api/us/chart", "result_list", cursor=True,
+                        required=("stex_tp", "stk_cd", "strt_dt", "tic_scope", "upd_stkpc_tp", "exrt_appl_tp")),
     "usa06012": TrSpec("usa06012", "/api/us/chart", "result_list", cursor=True,
                         required=("stex_tp", "stk_cd", "strt_dt", "upd_stkpc_tp", "exrt_appl_tp")),
     "usa10099": TrSpec("usa10099", "/api/us/stkinfo", "list", cursor=True, required=("stex_tp",)),

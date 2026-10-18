@@ -1,4 +1,4 @@
-import { isUsIndexId, US_INDEX_MINUTES } from '../live/liveInstrument';
+import { isUsIndexId, US_MINUTE_TIMEFRAMES } from '../live/liveInstrument';
 import { usDailyRefetchInterval, type UsDailyMetadata } from './usDailyCandles';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
@@ -131,7 +131,7 @@ export function useLiveIndexCandles(
   to: string | null,
 ) {
   const queryClient = useQueryClient();
-  const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || [...US_INDEX_MINUTES, 'D', 'W', 'M'].includes(timeframe));
+  const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || [...US_MINUTE_TIMEFRAMES, 'D', 'W', 'M'].includes(timeframe));
   const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number } }) => isUsIndexId(indexId) && isMinuteTimeframe(timeframe) ? 60_000 : isUsIndexId(indexId) ? usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount) : indexCandlesRefetchInterval(timeframe, to);
   return useQuery({
     queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,

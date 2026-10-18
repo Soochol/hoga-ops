@@ -283,3 +283,60 @@ def test_us_minute_http_latest_window_metadata_and_shared_cache(tmp_path, monkey
             "/api/live/us-stock-daily-candles?exchange=NASDAQ&symbol=AAPL&timeframe=1m&from=20260101&to=20261018"
         )
         assert stocks.status_code == 422
+
+
+@pytest.mark.parametrize("exchange,symbol,vendor", [("NASDAQ", "NVDA", "ND"), ("NYSE", "BRKb", "NY"),
+                                                   ("NYSE", "AHT_pd", "NY"), ("AMEX", "AAAA", "NA")])
+def test_us_stock_minute_http_preserves_identity_native_prices_and_timestamps(tmp_path, monkeypatch,
+                                                                          exchange, symbol, vendor):
+    calls = []
+
+    async def call(api_id, payload, **kw):
+        calls.append((api_id, payload, kw))
+        rows = [dict(cntr_tm="20261015261000", bus_dt="20261015", cur_prc="213.8314", open_pric="213.83",
+                     high_pric="214", low_pric="213.77", trde_qty="7079", upd_stkpc_tp="1f", upd_rt="")]
+        return Page(rows=rows, cont=False, next_key="", raw={"return_code": 0, "result_list": rows})
+
+    fake = SimpleNamespace(call=call)
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_rest_client", lambda *a: fake)
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_scheduler", lambda *a: object())
+
+    async def run(scheduler, **kw):
+        return await kw["fetch_fn"](fake)
+
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", run)
+    with TestClient(app_for(tmp_path)) as client:
+        url = f"/api/live/us-stock-minute-candles?exchange={exchange}&symbol={symbol}&timeframe=5m"
+        response = client.get(url)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["instrument_key"] == f"us-stock:{exchange}:{symbol}"
+        assert body["timeframe"] == "5m" and "daily_metadata" not in body
+        assert body["from"] == body["to"] == "20261015"
+        candle = body["candles"][0]
+        assert candle["close"] == 213.8314 and candle["volume"] == 7079
+        assert candle["t_ms"] == 1792131000000  # Oct 16 02:10 New York / 06:10 UTC
+        meta = body["minute_metadata"]
+        assert meta["source"] == "kiwoom" and meta["currency"] == "USD"
+        assert meta["history_scope"] == "bounded_recent_window" and meta["bar_limit"] == 800
+        assert meta["delay_status"] == "unverified" and meta["refresh_status"] == "normal"
+        assert meta["pages_fetched"] == 1 and not meta["more_available"]
+        assert client.get(url).json() == body and len(calls) == 1
+        assert calls[0][0] == "usa06011" and calls[0][1]["stex_tp"] == vendor
+        assert calls[0][1]["stk_cd"] == symbol and calls[0][1]["tic_scope"] == "5"
+        for tf in ["1s", "120m", "D"]:
+            assert client.get(url.replace("timeframe=5m", f"timeframe={tf}")).status_code == 422
+        assert client.get(url.replace(symbol, "bad:ticker")).status_code == 422
+
+
+@pytest.mark.parametrize("bypass,status", [(False, "unconfigured"), (True, "bypass")])
+def test_us_stock_minute_unconfigured_and_bypass_are_typed(tmp_path, monkeypatch, bypass, status):
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_rest_client", lambda *a: None)
+    monkeypatch.setattr("hoga.live.us_market_api.UsMarketApi.bypass", lambda self: bypass)
+    with TestClient(app_for(tmp_path)) as client:
+        response = client.get("/api/live/us-stock-minute-candles?exchange=NASDAQ&symbol=NVDA&timeframe=1m")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["candles"] == [] and body["minute_metadata"]["refresh_status"] == status
+        assert body["minute_metadata"]["available_from_ms"] is None
+        assert body["minute_metadata"]["last_successful_check_at_ms"] is None

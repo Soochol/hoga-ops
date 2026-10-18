@@ -94,6 +94,16 @@ export function normalizeBrokerOrder(order: BrokerOrderWire): TradingOrder {
 type BrokerStateWire = Omit<OrderStateResponse, 'account_seq' | 'orders' | 'recent_orders'> & {
   account_ref: string; orders: BrokerOrderWire[]; recent_orders: BrokerOrderWire[];
 };
+export interface BrokerBalancesWire {
+  account_ref: string; code: string; buying_power: string | null; buyable_quantity: string | null;
+  sellable_quantity: string | null; holding_quantity: string | null; average_purchase_price: string | null;
+  fetched_at_ms: number; capacity_status: 'available' | 'unavailable';
+}
+export type BrokerFullStateWire = BrokerStateWire & BrokerBalancesWire;
+export interface BrokerHoldingsWire { account_ref: string; holdings: TradingHolding[]; fetched_at_ms: number }
+export interface BrokerCommandStatusWire {
+  command_id: string; state: string; result: Record<string, unknown> | null;
+}
 function normalizeState(value: OrderStateResponse | BrokerStateWire): OrderStateResponse {
   if (!('account_ref' in value)) return value;
   return { ...value, account_seq: value.account_ref, orders: value.orders.map(normalizeBrokerOrder),

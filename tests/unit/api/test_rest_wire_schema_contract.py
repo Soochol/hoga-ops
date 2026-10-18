@@ -78,7 +78,8 @@ from hoga.live.us_daily_candles import (
 )
 from hoga.live.us_index_minutes import UsMinuteMetadata
 from hoga.live.us_market_api import UsStockCatalogResponse, UsStockEntry
-from hoga.trading import models as trading_models
+from hoga.live.us_stock_minutes import UsStockMinuteMetadata, UsStockMinuteResponse
+from hoga.trading import contracts as broker_contracts, models as trading_models
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -340,9 +341,19 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    broker_contracts.BrokerState: frozenset({"account_ref", "code", "buying_power", "buyable_quantity",
+        "sellable_quantity", "holding_quantity", "average_purchase_price", "fetched_at_ms", "capacity_status",
+        "orders", "recent_orders", "unresolved_commands", "events_connected", "revision"}),
+    broker_contracts.BrokerHoldings: frozenset({"account_ref", "holdings", "fetched_at_ms"}),
+    broker_contracts.BrokerCommandStatus: frozenset({"command_id", "state", "result"}),
     UsMinuteMetadata: frozenset({"market_timezone", "source", "history_scope", "delay_status", "session_scope",
                                 "available_from_ms", "available_to_ms", "last_successful_check_at_ms",
                                 "refresh_status", "messages"}),
+    UsStockMinuteMetadata: frozenset({"market_timezone", "source", "history_scope", "delay_status", "session_scope",
+        "available_from_ms", "available_to_ms", "last_successful_check_at_ms", "refresh_status", "messages",
+        "price_basis", "currency", "bar_limit", "pages_fetched", "more_available"}),
+    UsStockMinuteResponse: frozenset({"instrument_key", "exchange", "symbol", "from_", "to", "timeframe",
+                                      "candles", "minute_metadata"}),
     UsDailyBar: frozenset({"trading_date", "t_ms", "open", "high", "low", "close", "volume"}),
     UsDateRange: frozenset({"start", "end"}),
     UsDailyMetadata: frozenset({"market", "market_timezone", "source", "price_basis", "currency", "session_scope",
