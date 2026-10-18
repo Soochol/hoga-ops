@@ -565,7 +565,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     }}>
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
-      {accounts.data && accounts.data.accounts.length > 1 ? <select aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
+      {accounts.data && accounts.data.accounts.length > 1 ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
         onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
           if (next) onAccountChange(next.account_seq);
           closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); setLastRejection(null); }}>
