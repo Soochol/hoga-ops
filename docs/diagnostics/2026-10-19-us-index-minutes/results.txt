@@ -1,0 +1,12 @@
+Base: 80d3aebab1c8533982a7acfb1425f8d433a42fd1
+Branch: codex/us-index-minute-charts
+Input SHA-256: 321caabe4e661414ec7480c3d27bd1c85c59864e863057e23e75eb36ba2c2fd0
+Backend: 6060 passed, 2 skipped, 13 wallclock deselected (241.75s).
+Frontend: 8463 passed / 650 files.
+Browser: 12 passed (34.6s), system Chrome, workers=1, empty broker credentials.
+App/unit/E2E TypeScript checks passed. Production build passed. Ruff and diff checks passed.
+Wire/parser/HTTP regression suite: 44 passed.
+Standalone cached-token live read: NASDAQ/S&P500/SOX each returned 102 one-minute rows.
+No arbitrary date minute history or verified real-time/fixed delay guarantee.
+SP500 60m currently has no complete contiguous bucket; UI explicitly explains the limit.
+Feature branch not published, merged on GitHub or deployed; latest main fast-forwarded locally. No user server restart.

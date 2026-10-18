@@ -1,6 +1,6 @@
 import type { Candle, InvestorNetPoint, RangeBundle, VolumeProfile } from '../api/types';
 import type { LiveIndexCandle } from '../api/liveIndices';
-import { indexWorkareaCode, type LiveIndexId } from './liveInstrument';
+import { indexWorkareaCode, isUsIndexId, type LiveIndexId } from './liveInstrument';
 import {
   realMsToYyyymmdd,
   regularSessionCloseMs,
@@ -23,10 +23,10 @@ export function buildIndexBundle(input: {
   candles: LiveIndexCandle[];
   investorPoints?: InvestorNetPoint[];
 }): RangeBundle {
-  return buildPriceBundle({ ...input, code: indexWorkareaCode(input.indexId) });
+  return buildPriceBundle({ ...input, code: indexWorkareaCode(input.indexId), observedSessions: isUsIndexId(input.indexId) && input.bucketMs < 86_400_000 });
 }
 
-export function buildPriceBundle(input: { code: string; from: string; to: string; bucketMs: number; candles: LiveIndexCandle[]; investorPoints?: InvestorNetPoint[] }): RangeBundle {
+export function buildPriceBundle(input: { observedSessions?: boolean; code: string; from: string; to: string; bucketMs: number; candles: LiveIndexCandle[]; investorPoints?: InvestorNetPoint[] }): RangeBundle {
   const candles: Candle[] = input.candles.map((c) => ({
     ts_ms: c.t_ms,
     open: c.open,
@@ -45,8 +45,9 @@ export function buildPriceBundle(input: { code: string; from: string; to: string
     bucket_ms: input.bucketMs,
     segments: dates.map((date) => ({
       date,
-      session_open_ms: regularSessionOpenMs(date),
-      session_close_ms: regularSessionCloseMs(date),
+      // Foreign sessions cross KST midnight; group actual instants by NY trading date.
+      session_open_ms: input.observedSessions ? Math.min(...input.candles.filter(c => c.trading_date === date).map(c => c.t_ms)) : regularSessionOpenMs(date),
+      session_close_ms: input.observedSessions ? Math.max(...input.candles.filter(c => c.trading_date === date).map(c => c.t_ms)) + input.bucketMs : regularSessionCloseMs(date),
     })),
     candles,
     quote_ratio: { bucket_ms: input.bucketMs, points: [] },

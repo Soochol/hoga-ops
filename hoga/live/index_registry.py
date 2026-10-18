@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from hoga.live.us_index_minutes import MINUTE_TIMEFRAMES
+
 LiveIndexId = Literal[
     "KOSPI", "KOSDAQ", "KOSPI200", "KOSDAQ150", "KRX100", "KRX300", "NASDAQ_COMPOSITE", "SP500", "SOX",
 ]
@@ -77,11 +79,11 @@ _REPRESENTATIVE_INDICES: tuple[RepresentativeIndex, ...] = (
         enabled_by_default=False,
     ),
     RepresentativeIndex("NASDAQ_COMPOSITE", "나스닥 종합", None, "none", True,
-                        "US", "America/New_York", "kis", "COMP", ("D", "W", "M")),
+                        "US", "America/New_York", "kis", "COMP", (*MINUTE_TIMEFRAMES, "D", "W", "M")),
     RepresentativeIndex("SP500", "S&P 500", None, "none", True,
-                        "US", "America/New_York", "kis", "SPX", ("D", "W", "M")),
+                        "US", "America/New_York", "kis", "SPX", (*MINUTE_TIMEFRAMES, "D", "W", "M")),
     RepresentativeIndex("SOX", "필라델피아 반도체지수", None, "none", True,
-                        "US", "America/New_York", "kis", "SOX", ("D", "W", "M")),
+                        "US", "America/New_York", "kis", "SOX", (*MINUTE_TIMEFRAMES, "D", "W", "M")),
 )
 
 

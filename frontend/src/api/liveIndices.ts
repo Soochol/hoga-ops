@@ -1,4 +1,4 @@
-import { isUsIndexId } from '../live/liveInstrument';
+import { isUsIndexId, US_INDEX_MINUTES } from '../live/liveInstrument';
 import { usDailyRefetchInterval, type UsDailyMetadata } from './usDailyCandles';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
@@ -61,7 +61,21 @@ export interface LiveIndexCandlesWarning extends WireDataWarning {
   msg: string;
 }
 
+export interface UsMinuteMetadata {
+  market_timezone: string;
+  source: string;
+  history_scope: string;
+  delay_status: string;
+  session_scope: string;
+  available_from_ms: number | null;
+  available_to_ms: number | null;
+  last_successful_check_at_ms: number | null;
+  refresh_status: UsDailyMetadata['refresh_status'];
+  messages: string[];
+}
+
 export interface LiveIndexCandlesResponse {
+  minute_metadata?: UsMinuteMetadata;
   daily_metadata?: UsDailyMetadata;
   index_id: LiveIndexId;
   from: string;
@@ -117,8 +131,8 @@ export function useLiveIndexCandles(
   to: string | null,
 ) {
   const queryClient = useQueryClient();
-  const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || ['D', 'W', 'M'].includes(timeframe));
-  const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number } }) => isUsIndexId(indexId) ? usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount) : indexCandlesRefetchInterval(timeframe, to);
+  const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || [...US_INDEX_MINUTES, 'D', 'W', 'M'].includes(timeframe));
+  const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number } }) => isUsIndexId(indexId) && isMinuteTimeframe(timeframe) ? 60_000 : isUsIndexId(indexId) ? usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount) : indexCandlesRefetchInterval(timeframe, to);
   return useQuery({
     queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,
     queryFn: async ({ signal }) => {

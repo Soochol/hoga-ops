@@ -282,6 +282,16 @@ class KisClient(KisOptionEndpointsMixin, KisFuturesEndpointsMixin, KisInvestorEn
             foreground=True,
         )
 
+    async def get_global_index_minute_snapshot(self, code: str) -> dict[str, Any]:
+        """Latest US cash-index window; the provider has no documented date cursor."""
+        return await self._get(
+            "/uapi/overseas-price/v1/quotations/inquire-time-indexchartprice",
+            "FHKST03030200",
+            {"FID_COND_MRKT_DIV_CODE": "N", "FID_INPUT_ISCD": code,
+             "FID_HOUR_CLS_CODE": "0", "FID_PW_DATA_INCU_YN": "Y"},
+            foreground=True,
+        )
+
     async def _get(
         self,
         path: str,

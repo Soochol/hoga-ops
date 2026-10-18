@@ -63,7 +63,7 @@ def test_us_index_http_preserves_dates_decimals_metadata_and_routes_only_to_kis(
         before = len(calls)
         assert client.get(url).json() == body
         assert len(calls) == before
-        assert client.get(url.replace("timeframe=D", "timeframe=1m")).status_code == 422
+        assert client.get(url.replace("timeframe=D", "timeframe=120m")).status_code == 422
         assert client.get(url.replace("index-candles", "index-investor-net")).status_code == 422
 
 
@@ -251,3 +251,35 @@ def test_us_stock_week_month_http_and_invalid_intraday(tmp_path, monkeypatch, ti
         assert body["daily_metadata"]["price_basis"] == "raw"
         assert calls == [("NYSE", "BRKb", aligned, "20240616")]
         assert client.get(url.replace(f"timeframe={timeframe}", "timeframe=1m")).status_code == 422
+
+
+@pytest.mark.parametrize("index_id,code", [("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX")])
+def test_us_minute_http_latest_window_metadata_and_shared_cache(tmp_path, monkeypatch, index_id, code):
+    calls = []
+
+    async def snapshot(symbol):
+        calls.append(symbol)
+        return {"rt_cd": "0", "output2": [dict(stck_bsop_date="20261016", stck_cntg_hour="143500",
+                optn_oprc="120", optn_hgpr="125", optn_lwpr="119", optn_prpr="120.888", cntg_vol="0")]}
+
+    monkeypatch.setattr("hoga.live.kis_runtime.ensure_kis_client_for_account",
+                        lambda *a: SimpleNamespace(get_global_index_minute_snapshot=snapshot))
+    with TestClient(app_for(tmp_path)) as client:
+        url = f"/api/live/index-candles?index_id={index_id}&timeframe=1m&from=20200101&to=20261018"
+        response = client.get(url)
+        assert response.status_code == 200
+        result = response.json()
+        assert result["from"] == result["to"] == "20261016"
+        assert result["candles"][0]["close"] == 120.888
+        assert result["candles"][0]["t_ms"] == 1792175700000
+        assert "daily_metadata" not in result
+        meta = result["minute_metadata"]
+        assert meta["history_scope"] == "latest_snapshot" and meta["delay_status"] == "unverified"
+        assert meta["refresh_status"] == "normal" and meta["available_from_ms"] == result["candles"][0]["t_ms"]
+        assert client.get(url.replace("timeframe=1m", "timeframe=5m")).json()["candles"][0]["close"] == 120.888
+        assert calls == [code]
+        assert client.get(url.replace("timeframe=1m", "timeframe=240m")).status_code == 422
+        stocks = client.get(
+            "/api/live/us-stock-daily-candles?exchange=NASDAQ&symbol=AAPL&timeframe=1m&from=20260101&to=20261018"
+        )
+        assert stocks.status_code == 422

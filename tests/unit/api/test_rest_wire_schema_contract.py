@@ -76,6 +76,7 @@ from hoga.live.us_daily_candles import (
     UsExchange,
     UsStockDailyResponse,
 )
+from hoga.live.us_index_minutes import UsMinuteMetadata
 from hoga.live.us_market_api import UsStockCatalogResponse, UsStockEntry
 from hoga.trading import models as trading_models
 
@@ -339,6 +340,9 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    UsMinuteMetadata: frozenset({"market_timezone", "source", "history_scope", "delay_status", "session_scope",
+                                "available_from_ms", "available_to_ms", "last_successful_check_at_ms",
+                                "refresh_status", "messages"}),
     UsDailyBar: frozenset({"trading_date", "t_ms", "open", "high", "low", "close", "volume"}),
     UsDateRange: frozenset({"start", "end"}),
     UsDailyMetadata: frozenset({"market", "market_timezone", "source", "price_basis", "currency", "session_scope",
@@ -352,7 +356,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     LiveIndexEntry: frozenset({"kind", "id", "label", "investor_scope", "market", "market_timezone",
                                "supported_timeframes"}),
     LiveIndexCandlesResponse: frozenset({"index_id", "from_", "to", "timeframe", "candles",
-                                         "data_warnings", "daily_metadata"}),
+                                         "data_warnings", "daily_metadata", "minute_metadata"}),
     trading_models.TradingAccount: frozenset({"account_seq", "label"}),
     trading_models.TradingAccountsResponse: frozenset({"configured", "accounts"}),
     trading_models.TradingStateResponse: frozenset({

@@ -1,8 +1,13 @@
 import type { LiveTimeframe } from '../state/livePage';
 
-/** US charts share D/W/M, while intraday requests fall back to D. */
+/** US stocks support calendar bars; indices also have bounded minute snapshots. */
 export function usCalendarTimeframe(timeframe: LiveTimeframe): LiveTimeframe {
   return timeframe === 'W' || timeframe === 'M' ? timeframe : 'D';
+}
+
+export const US_INDEX_MINUTES = ['1m', '3m', '5m', '10m', '15m', '30m', '60m'] as const;
+export function usIndexTimeframe(timeframe: LiveTimeframe): LiveTimeframe {
+  return (US_INDEX_MINUTES as readonly string[]).includes(timeframe) ? timeframe : usCalendarTimeframe(timeframe);
 }
 
 export type UsExchange = 'NASDAQ' | 'NYSE' | 'AMEX';

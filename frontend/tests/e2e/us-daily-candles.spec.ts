@@ -26,7 +26,7 @@ async function setup(page: Page) {
   await installLiveMocks(page);
   await page.addInitScript(() => {
     if (!sessionStorage.getItem('live.workspace.v1')) sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
-      windows: [{ id: 'us-daily-test', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 0.8, h: 0.8 }, chart: { timeframe: '1m' } }],
+      windows: [{ id: 'us-daily-test', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 0.8, h: 0.8 }, chart: { timeframe: 'D' } }],
       zOrder: ['us-daily-test'], groupSymbols: {},
     }));
   });
@@ -53,7 +53,7 @@ for (const id of Object.keys(indexLabels)) {
     const frame = page.locator('.live-window-chart');
     await expect(frame.getByRole('status')).toContainText('지수값');
     await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
-    await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(3);
+    await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(4);
     await expect.poll(() => requests.some(url => url.includes(`index_id=${id}&timeframe=D`))).toBe(true);
     expect(requests.filter(url => /index_id=(NASDAQ_COMPOSITE|SP500|SOX)/.test(url) && /timeframe=([0-9]+[ms])/.test(url))).toEqual([]);
     await frame.screenshot({ path: testInfo.outputPath(`${id}-daily.png`) });

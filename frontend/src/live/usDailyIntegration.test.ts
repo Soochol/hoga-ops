@@ -57,9 +57,25 @@ describe('US daily chart identity and capability boundaries', () => {
     ], zOrder: ['us-test', 'pinned'] });
     activateLiveInstrument(indexInstrument('SOX'));
     const windows = useWorkspaceStore.getState().windows;
-    expect(windows[0].chart?.timeframe).toBe('D');
+    expect(windows[0].chart?.timeframe).toBe('1m');
     expect(windows[1].pinned?.code).toBe('005930');
     expect(windows[1].chart?.timeframe).toBe('3m');
+  });
+  it.each(['NASDAQ_COMPOSITE', 'SP500', 'SOX'] as const)('%s preserves supported minutes through group, pin and stock changes', id => {
+    activateLiveInstrument(indexInstrument(id));
+    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m', '60m'] as const) {
+      useWorkspaceStore.getState().setChartTimeframe('us-test', tf);
+      useWorkspaceStore.getState().toggleWindowPin('us-test');
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe(tf);
+      useWorkspaceStore.getState().toggleWindowPin('us-test');
+    }
+    for (const tf of ['1s', '120m', '240m'] as const) {
+      useWorkspaceStore.getState().setChartTimeframe('us-test', tf);
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
+    }
+    useWorkspaceStore.getState().setChartTimeframe('us-test', '5m');
+    activateLiveInstrument(usStockInstrument('NASDAQ', 'AAPL'));
+    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
   });
   it('disables domestic sidecars, collection, volume and turnover but allows price indicators', () => {
     for (const instrument of [usStockInstrument('NASDAQ', 'NVDA'), indexInstrument('NASDAQ_COMPOSITE'), indexInstrument('SP500'), indexInstrument('SOX')]) {

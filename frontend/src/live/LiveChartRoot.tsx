@@ -403,6 +403,7 @@ interface Props {
    * 없어 백필이 이미 inert 였다. 그 페이지는 2026-08-23 에 사라졌다.)
    */
   savedRangeFrozen?: boolean;
+  historyBackfillEnabled?: boolean;
   /**
    * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 와
    * `/live` 워크스페이스가 둘 다 넘긴다.
@@ -519,6 +520,7 @@ export function LiveChartRoot({
   savedRangeAnchorMs = null,
   savedRangeFromDate = null,
   savedRangeFrozen = false,
+  historyBackfillEnabled = true,
   cursorSyncCrosshair = false,
   paneTogglesOverride,
   dailyMovingAverageOverride,
@@ -1050,9 +1052,9 @@ export function LiveChartRoot({
     // 얼린 창은 백필을 아예 돌리지 않는다 — 근거는 `savedRangeFrozen` prop 도크스트링.
     // 초기 부분 응답의 예약 공간은 사용자 팬이 아니다. 최초 조회의 재시도가
     // 끝나기 전에 음수 좌단을 추가 조회 수요로 읽어 조회 구간을 바꾸지 않는다.
-    () => !savedRangeFrozen && !isInitialMinuteHistoryPending
+    () => historyBackfillEnabled && !savedRangeFrozen && !isInitialMinuteHistoryPending
       && (lastAppliedCountRef.current !== null || historicalRange.snapshot().historicalFromDate !== null),
-    [historicalRange, savedRangeFrozen, isInitialMinuteHistoryPending],
+    [historicalRange, savedRangeFrozen, isInitialMinuteHistoryPending, historyBackfillEnabled],
   );
   const canReseatAfterSourceSwap = useCallback(
     () => initialMinuteHistoryRef.current === null
