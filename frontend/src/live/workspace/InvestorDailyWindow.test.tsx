@@ -102,6 +102,7 @@ describe('InvestorDailyWindow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
     const row = screen.getByTestId('investor-daily-row-20260803');
+    expect(screen.getByText('단위: 주')).toBeInTheDocument();
     expect(within(row).getByText('+8,658,155')).toBeInTheDocument();  // 개인
     expect(within(row).getByText('-3,563,890')).toBeInTheDocument();  // 금융투자
     expect(within(row).getByText('-1,292,721')).toBeInTheDocument();  // 투신
@@ -186,7 +187,13 @@ describe('InvestorDailyWindow', () => {
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
 
     const row = screen.getByTestId('investor-daily-row-20260803');
-    expect(within(row).getByText('+4,097억')).toBeInTheDocument();
+    expect(within(row).getByText('+4,097')).toBeInTheDocument();
+    expect(screen.getByText('단위: 억원')).toBeInTheDocument();
+    expect(row.closest('table')?.querySelector('tfoot')).toHaveTextContent('+4,097');
+    expect(row.closest('table')).not.toHaveTextContent('억');
+    fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
+    expect(within(row).getByText('+4,097')).toBeInTheDocument();
+    expect(screen.getByText('단위: 억원')).toBeInTheDocument();
   });
 
   it('⚠ 셀은 **응답의 단위**로 그린다 — 토글이 앞서가도 옛 값을 새 단위로 안 읽는다', () => {
@@ -198,8 +205,9 @@ describe('InvestorDailyWindow', () => {
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
 
     const row = screen.getByTestId('investor-daily-row-20260803');
-    expect(within(row).getByText('+8,658K')).toBeInTheDocument();
+    expect(within(row).getByText('+8,658')).toBeInTheDocument();
     expect(within(row).queryByText(/억/)).toBeNull();
+    expect(screen.getByText('단위: 천 주')).toBeInTheDocument();
     // 칩은 스토어를 따른다 — 눌림 상태와 숫자의 출처가 다른 것이 요점이다.
     expect(screen.getByRole('button', { name: '금액(억원)' })).toHaveAttribute('aria-pressed', 'true');
   });
@@ -218,7 +226,7 @@ describe('InvestorDailyWindow', () => {
     // 표는 **지우지 않는다** — 축을 오갈 때마다 사라지면 비교가 끊긴다. 범위를 행으로
     // 좁히는 것은 단일 행 픽스처에서 누적행이 같은 값을 들기 때문이다(표 전체로
     // 찾으면 "multiple elements" 로 터진다).
-    expect(within(row).getByText('+8,658K')).toBeInTheDocument();
+    expect(within(row).getByText('+8,658')).toBeInTheDocument();
   });
 
   it('축이 도착하면 흐림과 문구가 함께 사라진다', () => {
@@ -239,7 +247,7 @@ describe('InvestorDailyWindow', () => {
     render(<InvestorDailyWindow code="005930" cursorDate={null} />);
 
     const row = screen.getByTestId('investor-daily-row-20260803');
-    expect(within(row).getByText('+8,658K')).toBeInTheDocument();
+    expect(within(row).getByText('+8,658')).toBeInTheDocument();
   });
 
   it('데이터가 없으면 빈 상태를 보여 준다 — 무자격 dev 의 정상 경로다', () => {
@@ -452,28 +460,30 @@ it('접힌 표는 날짜 한 줄·투자자 한 셀에 세 값을 K주로 표시
   const row = screen.getByTestId('investor-daily-row-20260803');
   expect(within(row).getAllByRole('cell')).toHaveLength(4);
   const foreign = within(row).getAllByRole('cell')[1];
-  expect(foreign).toHaveTextContent('+85K·285K·200K');
+  expect(foreign).toHaveTextContent('+85·285·200');
   expect(within(foreign).getByTitle('총매수 285,400주')).toBeInTheDocument();
   expect(screen.queryByRole('group', { name: '매매 기준' })).toBeNull();
   expect(screen.getByRole('group', { name: '표기 방법' })).toBeInTheDocument();
-  expect(screen.queryByText('단위: K주 · 1K = 1,000주')).not.toBeInTheDocument();
+  expect(screen.getByText('단위: 천 주')).toBeInTheDocument();
+  expect(screen.getByText('단위: 천 주').closest('.responsive-data-controls')).toContainElement(screen.getByRole('button', { name: '5일' }));
+  expect(row.closest('table')?.querySelector('tfoot')).toHaveTextContent('+85·285·200');
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
   expect(foreign).toHaveTextContent('+85,200·285,400·200,200');
-  expect(screen.queryByText('단위: 주')).not.toBeInTheDocument();
+  expect(screen.getByText('단위: 주')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
   fireEvent.click(screen.getByRole('button', { name: '총매수' }));
   expect(within(screen.getByTestId('investor-daily-row-20260803')).getAllByRole('cell')[1])
-    .toHaveTextContent('285K');
+    .toHaveTextContent('285');
   expect(screen.queryByText('순매수', { selector: 'span.font-semibold' })).toBeNull();
   fireEvent.click(within(screen.getByRole('group', { name: '표기 방법' }))
     .getByRole('button', { name: '모두' }));
   expect(within(screen.getByTestId('investor-daily-row-20260803')).getAllByRole('cell')[1])
-    .toHaveTextContent('+85K·285K·200K');
+    .toHaveTextContent('+85·285·200');
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
   expect(screen.getByRole('group', { name: '매매 기준' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '총매도' }));
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 접기' }));
-  expect(screen.getByTestId('investor-daily-row-20260803')).toHaveTextContent('+85K');
+  expect(screen.getByTestId('investor-daily-row-20260803')).toHaveTextContent('+85');
 });
 
 
