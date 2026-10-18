@@ -4,6 +4,26 @@ import { WindowActionsMenu } from './WindowActionsMenu';
 import { TradeWindowSettings } from './TradeWindowSettings';
 
 describe('compact window actions', () => {
+  it('opens settings directly while actions fit and preserves settings and focus when folded', () => {
+    const apply = vi.fn();
+    const props = { maximized: false, alwaysOnTop: false, pinned: false, canPin: true,
+      settings: { title: '체결창 설정', render: (close: () => void) => <TradeWindowSettings minAmountManwon={0}
+        onApply={amount => { apply(amount); close(); }} /> } };
+    const { rerender } = render(<WindowActionsMenu {...props} compact={false} />);
+    fireEvent.click(screen.getByRole('button', { name: '체결창 설정' }));
+    expect(screen.getByRole('dialog', { name: '체결창 설정' })).toBeVisible();
+    expect(screen.queryByRole('dialog', { name: '창 옵션' })).not.toBeInTheDocument();
+    rerender(<WindowActionsMenu {...props} compact />);
+    fireEvent.click(screen.getByRole('button', { name: '1천만' }));
+    expect(apply).toHaveBeenCalledWith(1000);
+    expect(screen.getByRole('button', { name: '창 옵션' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: '창 옵션' }));
+    fireEvent.click(screen.getByRole('button', { name: '설정' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '창 옵션' })).toHaveFocus();
+  });
+
   it('keeps pinning and maximizing separate, closes after picking and restores focus', () => {
     const onPin = vi.fn();
     const onMaximize = vi.fn();

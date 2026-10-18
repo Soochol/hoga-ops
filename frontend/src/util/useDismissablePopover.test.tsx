@@ -4,8 +4,9 @@
 // the contract is asserted once and consumers (DrawingMenu, DrawingPropertyPanel,
 // SymbolSearch, …) inherit the guarantee instead of re-asserting it.
 
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, createEvent } from '@testing-library/react';
 import { useRef } from 'react';
+import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import { useDismissablePopover } from './useDismissablePopover';
 
@@ -21,9 +22,9 @@ function Harness({
   return (
     <div>
       <div ref={ref} data-testid="anchor">
-        <button data-testid="inside">inside</button>
+        <button data-testid="inside" onPointerDown={event => event.preventDefault()}>inside</button>
       </div>
-      <button data-testid="outside">outside</button>
+      <button data-testid="outside" onPointerDown={event => event.preventDefault()}>outside</button>
     </div>
   );
 }
@@ -70,6 +71,30 @@ describe('useDismissablePopover', () => {
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 
+  it('dismisses once when a drag handle cancels pointerdown and suppresses mousedown', async () => {
+    const onDismiss = vi.fn();
+    const { getByTestId } = render(<Harness isOpen onDismiss={onDismiss} />);
+    const onMouseDown = vi.fn();
+    getByTestId('outside').addEventListener('mousedown', onMouseDown);
+    await userEvent.click(getByTestId('outside'));
+    expect(onMouseDown).not.toHaveBeenCalled();
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it('keeps normal pointer and mouse delivery from dismissing twice', async () => {
+    const onDismiss = vi.fn();
+    const { getByTestId } = render(<PortalHarness isOpen onDismiss={onDismiss} />);
+    await userEvent.click(getByTestId('outside'));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it('ignores a cancelled pointerdown inside the anchor', async () => {
+    const onDismiss = vi.fn();
+    const { getByTestId } = render(<Harness isOpen onDismiss={onDismiss} />);
+    await userEvent.click(getByTestId('inside'));
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it('does not dismiss on mousedown inside the anchor', () => {
     const onDismiss = vi.fn();
     const { getByTestId } = render(<Harness isOpen={true} onDismiss={onDismiss} />);
@@ -96,6 +121,9 @@ describe('useDismissablePopover', () => {
     const onDismiss = vi.fn();
     const { unmount } = render(<Harness isOpen={true} onDismiss={onDismiss} />);
     unmount();
+    const pointerDown = createEvent.pointerDown(document.body, { cancelable: true });
+    pointerDown.preventDefault();
+    fireEvent(document.body, pointerDown);
     fireEvent.mouseDown(document.body);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onDismiss).not.toHaveBeenCalled();
@@ -105,6 +133,9 @@ describe('useDismissablePopover', () => {
     const onDismiss = vi.fn();
     const { rerender } = render(<Harness isOpen={true} onDismiss={onDismiss} />);
     rerender(<Harness isOpen={false} onDismiss={onDismiss} />);
+    const pointerDown = createEvent.pointerDown(document.body, { cancelable: true });
+    pointerDown.preventDefault();
+    fireEvent(document.body, pointerDown);
     fireEvent.mouseDown(document.body);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onDismiss).not.toHaveBeenCalled();
