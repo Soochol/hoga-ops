@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>Ticklane server tray</title>
+  <g fill="#f1f2f4" stroke="#131418" stroke-width=".6">
+    <rect x="2" y="2" width="19" height="7" rx="2"/>
+    <rect x="2" y="11" width="19" height="7" rx="2"/>
+  </g>
+  <g fill="#131418">
+    <circle cx="5.5" cy="5.5" r="1"/><circle cx="5.5" cy="14.5" r="1"/>
+    <rect x="10" y="5" width="7" height="1" rx=".5"/><rect x="10" y="14" width="7" height="1" rx=".5"/>
+  </g>
+  <circle cx="18.5" cy="18.5" r="5" fill="#6dd5a7" stroke="#131418" stroke-width="1.5"/>
+</svg>
