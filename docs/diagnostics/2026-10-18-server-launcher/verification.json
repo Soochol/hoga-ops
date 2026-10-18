@@ -1,0 +1,97 @@
+{
+  "recorded_at": "2026-10-18T20:42:50.666807+09:00",
+  "change": "Development server-manager UI saves automatically reload only the renderer, preserving the main process, managed servers, ownership and UI preferences.",
+  "project": "/home/dev/code/hoga-ops",
+  "inputs": {
+    "desktop/package.json": "6e2e2b6e7a9229d2c402b06eb7049e42b6f8dac506967c1e7f6c4fe59739ecc2",
+    "desktop/scripts/build.mjs": "15ed3a987e6b149f0d2d3912a6a464891df31f07030d85c6b051976410ea5c54",
+    "desktop/scripts/install-shortcut.mjs": "5c9a2fe8384f9fab3556766aba537c510ad36184b95140273b03f5cca25532c2",
+    "desktop/scripts/install-server-shortcut.mjs": "85163ab0a1a3edf34156cfb7a490e02bd761ad9ce0ef79506d405e02701ba2e5",
+    "desktop/src/bootstrap.cjs": "37f42d0c7598d12d9e653cf992bef606ba93e63c97b7f418442683fe4e557000",
+    "desktop/src/preload/server.cjs": "fda02704a90c4bc01a11fc3e8291d43830974f3dc84da61db777297c6479a537",
+    "desktop/src/server/controller.ts": "30548f36cb32f62f0b3298a7ae118503ed8b8d1a9a32d457f0a9786006e76eb4",
+    "desktop/src/server/main.ts": "e7ec09922b21e033c2772b4b5f0c808747312f1a1b96125c897f73f95bfacaf4",
+    "desktop/src/server-ui/index.html": "57d3e370277de2012e04e810f120798ec1d8c4a3ca41b3a8364deea4ce7e5a0c",
+    "desktop/src/server-ui/server.css": "a363a623570227c12d518976eea8773680007bc1986a007191222e3a78cb357e",
+    "desktop/src/server-ui/server.js": "940e5a868370d84cc66e1f39ec2e25487a260202d39f0f338c165b97f4019601",
+    "desktop/src/launcher/launcher.js": "f94beefb3c5e252470ec9002404cc4325dc344f0d752deb8da748f2657e23091",
+    "desktop/tests/e2e/server-ui-reload.spec.cjs": "4f7bca0f0cfdf4a74f0894d1f5eec72e46110836edf622e929e6299d17a4dd32"
+  },
+  "checks": {
+    "desktop_lint": "passed",
+    "desktop_typecheck": "passed",
+    "unit_tests_passed": 9,
+    "source_electron_tests_passed": 13,
+    "extracted_deb_electron_tests_passed": 12,
+    "critical_manager_repeat_passed": 5,
+    "initial_launcher_race_repeat_passed": 5,
+    "frontend_build": "passed",
+    "linux_deb_and_zip_build": "passed",
+    "installed_real_config": "new GUI recognizes localhost services as external, offers Ticklane open, hides stop, loads brand icon, collapses logs; existing servers preserved",
+    "generated_shell_syntax": "passed",
+    "desktop_file_validate": "passed",
+    "desktop_terminal": false,
+    "ticklane_desktop_entries": 2,
+    "old_separate_server_entries_removed": true,
+    "local_endpoints": {
+      "backend": 200,
+      "frontend": 200
+    },
+    "close_hide_relaunch_repeat_passed": 5,
+    "compact_viewports": "420/680px; close and quit remain visible while logs expand",
+    "extracted_deb_source_only_tests_skipped": 1,
+    "ui_hot_reload_repeat_passed": 5,
+    "source_ui_watch_active_in_installed_running_manager": true
+  },
+  "behavior_verified": [
+    "starts/stops owned frontend/backend and their descendant process groups",
+    "reuses external servers and leaves them alive on stop or quit",
+    "cancel during startup cleans owned processes",
+    "port conflicts preserve foreign processes and allow retry",
+    "failed startup cleans owned processes and permits retry",
+    "hide keeps servers alive and relaunch shows same manager",
+    "separate client app coexists and its shutdown preserves servers",
+    "renderer sandbox enabled, no arbitrary executable IPC, logs rendered as text",
+    "atomic HTML/CSS/JS saves reload only the renderer; main and managed service PIDs remain unchanged",
+    "log expansion and auto-scroll choice survive UI reload; pending stop confirmation does not stop servers on reload",
+    "hidden manager stays hidden after UI saves; stop controls still work after repeated reloads"
+  ],
+  "installed_paths": [
+    "/home/dev/.local/bin/ticklane-server",
+    "/home/dev/.local/lib/ticklane/servers.json",
+    "/home/dev/.local/share/applications/ticklane-server.desktop",
+    "/home/dev/Desktop/ticklane-server.desktop"
+  ],
+  "artifacts": {
+    "deb": "/home/dev/.codex/worktrees/7c78/hoga-ops/desktop/out/make/deb/x64/ticklane_0.16.6-rev.0_amd64.deb",
+    "sha256": "9792851daa0d50bd9d14420c41b700f763720ef175343699d0944cb383359bb9"
+  },
+  "limits": [
+    "Uses this PC's existing Python/Node dependencies; not a self-contained server binary.",
+    "Real servers were already running and remained untouched. Start/stop was verified with isolated fake services.",
+    "Automatic UI file watching is enabled for source runs including the local shortcut. Packaged apps use bundled UI. Electron main, preload and server-control changes require a rebuild and manager restart."
+  ],
+  "ui_applied": [
+    "compact graphite and amber design with Ticklane icon and draggable header",
+    "state-based primary action: start, starting, open Ticklane, retry",
+    "service status rows with explicit external ownership",
+    "collapsed logs with local timestamps, automatic expansion on error, preserved user collapse",
+    "stop confirmation; immediate startup cancellation",
+    "X and native close hide the manager without stopping servers; relaunch restores it",
+    "explicit manager quit confirms stopping owned services",
+    "opens or focuses the separate Ticklane client using the existing local connection profile"
+  ],
+  "running_manager_pid": 172137,
+  "hot_reload_activation": {
+    "old_manager_pid": 109556,
+    "new_manager_pid": 172137,
+    "server_listener_pids_unchanged": [
+      37886,
+      37894,
+      38088
+    ],
+    "independent_client_pids_preserved": [
+      130080
+    ]
+  }
+}
