@@ -48,3 +48,47 @@ def test_parse_expiry_falls_back_to_expires_in():
     exp = KiwoomTokenProvider._parse_expiry({"expires_in": 3600})
     now = datetime.now(KIWOOM_KST)
     assert 3500 < (exp - now).total_seconds() < 3700
+
+
+def test_mock_credentials_never_fall_back_to_real(monkeypatch, tmp_path):
+    monkeypatch.setenv("KIWOOM_APP_KEY", "fake-real")
+    monkeypatch.setenv("KIWOOM_APP_SECRET", "fake-secret")
+    monkeypatch.delenv("KIWOOM_MOCK_APP_KEY", raising=False)
+    monkeypatch.delenv("KIWOOM_MOCK_APP_SECRET", raising=False)
+    assert R.configured_account_ids(tmp_path, environment="mock") == []
+    assert R.ensure_token_provider_for_account(0, tmp_path, environment="mock") is None
+    assert R._token_cache_path(tmp_path, 0, "mock").name == "kiwoom-mock-token.json"
+    monkeypatch.setenv("KIWOOM_MOCK_APP_KEY", "fake-mock")
+    monkeypatch.setenv("KIWOOM_MOCK_APP_SECRET", "fake-mock-secret")
+    assert R.configured_account_ids(tmp_path, environment="mock") == [0]
+    assert R._resolve_env_creds(0, "mock").environment == "mock"
+
+
+def test_token_cache_environment_isolation_and_legacy_real_cache(tmp_path):
+    import json
+    from datetime import timedelta
+
+    import httpx
+
+    from hoga.live.kiwoom_token_provider import KiwoomCredentials
+
+    path = tmp_path / "cache.json"
+    transport = httpx.MockTransport(lambda request: (_ for _ in ()).throw(AssertionError("no network expected")))
+    real = KiwoomTokenProvider(KiwoomCredentials("same-fake-key", "fake-secret"), path, _transport=transport)
+    mock = KiwoomTokenProvider(KiwoomCredentials("same-fake-key", "fake-secret", "mock"), path, _transport=transport)
+    try:
+        expiry = datetime.now(KIWOOM_KST) + timedelta(days=1)
+        real._write_cache("fake-real-token", expiry)
+        assert real._read_cache()[0] == "fake-real-token"
+        assert mock._read_cache() is None
+        cached = json.loads(path.read_text())
+        cached.pop("environment")
+        path.write_text(json.dumps(cached))
+        assert real._read_cache()[0] == "fake-real-token"
+        assert mock._read_cache() is None
+        mock._write_cache("fake-mock-token", expiry)
+        assert real._read_cache() is None
+        assert mock._read_cache()[0] == "fake-mock-token"
+    finally:
+        real.close()
+        mock.close()

@@ -1,0 +1,280 @@
+{
+  "observed_at": "2026-10-18T23:33:52.300200+09:00",
+  "environment": "real",
+  "credential_alias": "KIWOOM_APP_KEY",
+  "code": "005930",
+  "order_date": "20261016",
+  "orders_sent": 0,
+  "websockets_opened": 0,
+  "tokens_issued": 0,
+  "account": {
+    "queries": {
+      "ka10075:": {
+        "status": "ok",
+        "pages": 1
+      },
+      "kt00007:%": {
+        "status": "ok",
+        "pages": 1
+      },
+      "kt00018:KRX": {
+        "status": "ok",
+        "pages": 1
+      },
+      "kt00011:": {
+        "status": "ok",
+        "pages": 1
+      },
+      "kt00010:": {
+        "status": "failed",
+        "reason": "read-vendor-rejected:kt00010"
+      },
+      "kt00018:NXT": {
+        "status": "ok",
+        "pages": 1
+      }
+    },
+    "binding": {
+      "verified_from_token": true,
+      "account_number_length": 10
+    }
+  },
+  "status": "partial",
+  "requests": [
+    {
+      "api_id": "ka00001",
+      "http_status": 200,
+      "elapsed_ms": 51.4,
+      "venue": null,
+      "return_code": 0,
+      "shape": {
+        "fields": [
+          "acctNo",
+          "return_code",
+          "return_msg"
+        ],
+        "lists": {}
+      }
+    },
+    {
+      "api_id": "ka10001",
+      "http_status": 200,
+      "elapsed_ms": 20.4,
+      "venue": null,
+      "return_code": 0,
+      "shape": {
+        "fields": [
+          "250hgst",
+          "250hgst_pric_dt",
+          "250hgst_pric_pre_rt",
+          "250lwst",
+          "250lwst_pric_dt",
+          "250lwst_pric_pre_rt",
+          "base_pric",
+          "bps",
+          "bus_pro",
+          "cap",
+          "crd_rt",
+          "cup_nga",
+          "cur_prc",
+          "dstr_rt",
+          "dstr_stk",
+          "eps",
+          "ev",
+          "exp_cntr_pric",
+          "exp_cntr_qty",
+          "fav",
+          "fav_unit",
+          "flo_stk",
+          "flu_rt",
+          "for_exh_rt",
+          "high_pric",
+          "low_pric",
+          "lst_pric",
+          "mac",
+          "mac_wght",
+          "open_pric",
+          "oyr_hgst",
+          "oyr_lwst",
+          "pbr",
+          "per",
+          "pre_sig",
+          "pred_pre",
+          "repl_pric",
+          "return_code",
+          "return_msg",
+          "roe",
+          "sale_amt",
+          "setl_mm",
+          "stk_cd",
+          "stk_nm",
+          "trde_pre",
+          "trde_qty",
+          "upl_pric"
+        ],
+        "lists": {}
+      }
+    },
+    {
+      "api_id": "ka10075",
+      "http_status": 200,
+      "elapsed_ms": 21.7,
+      "venue": "0",
+      "return_code": 0,
+      "shape": {
+        "fields": [
+          "oso",
+          "return_code",
+          "return_msg"
+        ],
+        "lists": {
+          "oso": {
+            "rows": 0,
+            "row_fields": []
+          }
+        }
+      }
+    },
+    {
+      "api_id": "kt00007",
+      "http_status": 200,
+      "elapsed_ms": 18.3,
+      "venue": "%",
+      "return_code": 0,
+      "shape": {
+        "fields": [
+          "acnt_ord_cntr_prps_dtl",
+          "return_code",
+          "return_msg"
+        ],
+        "lists": {
+          "acnt_ord_cntr_prps_dtl": {
+            "rows": 0,
+            "row_fields": []
+          }
+        }
+      }
+    },
+    {
+      "api_id": "kt00018",
+      "http_status": 200,
+      "elapsed_ms": 34.3,
+      "venue": "KRX",
+      "return_code": 0,
+      "shape": {
+        "fields": [
+          "acnt_evlt_remn_indv_tot",
+          "prsm_dpst_aset_amt",
+          "return_code",
+          "return_msg",
+          "tot_crd_loan_amt",
+          "tot_crd_ls_amt",
+          "tot_evlt_amt",
+          "tot_evlt_pl",
+          "tot_loan_amt",
+          "tot_prft_rt",
+          "tot_pur_amt"
+        ],
+        "lists": {
+          "acnt_evlt_remn_indv_tot": {
+            "rows": 0,
+            "row_fields": []
+          }
+        }
+      }
+    },
+    {
+      "api_id": "kt00011",
+      "http_status": 200,
+      "elapsed_ms": 110.7,
+      "venue": null,
+      "return_code": 0,
+      "shape": {
+        "fields": [
+          "aplc_rt",
+          "entr",
+          "min_ord_alow_amt",
+          "min_ord_alowq",
+          "min_pred_reu_amt",
+          "min_tdy_reu_amt",
+          "ord_alowa",
+          "ord_pos_repl",
+          "profa_100ord_alow_amt",
+          "profa_100ord_alowq",
+          "profa_100pred_reu_amt",
+          "profa_100tdy_reu_amt",
+          "profa_20ord_alow_amt",
+          "profa_20ord_alowq",
+          "profa_20pred_reu_amt",
+          "profa_20tdy_reu_amt",
+          "profa_30ord_alow_amt",
+          "profa_30ord_alowq",
+          "profa_30pred_reu_amt",
+          "profa_30tdy_reu_amt",
+          "profa_40ord_alow_amt",
+          "profa_40ord_alowq",
+          "profa_40pred_reu_amt",
+          "profa_40tdy_reu_amt",
+          "profa_50ord_alow_amt",
+          "profa_50ord_alowq",
+          "profa_50pred_reu_amt",
+          "profa_50tdy_reu_amt",
+          "profa_60ord_alow_amt",
+          "profa_60ord_alowq",
+          "profa_60pred_reu_amt",
+          "profa_60tdy_reu_amt",
+          "profa_rt",
+          "repl_amt",
+          "return_code",
+          "return_msg",
+          "stk_profa_rt",
+          "uncla"
+        ],
+        "lists": {}
+      }
+    },
+    {
+      "api_id": "kt00010",
+      "http_status": 200,
+      "elapsed_ms": 34.9,
+      "venue": null,
+      "return_code": 20,
+      "shape": {
+        "fields": [
+          "return_code",
+          "return_msg"
+        ],
+        "lists": {}
+      }
+    },
+    {
+      "api_id": "kt00018",
+      "http_status": 200,
+      "elapsed_ms": 18.5,
+      "venue": "NXT",
+      "return_code": 0,
+      "shape": {
+        "fields": [
+          "acnt_evlt_remn_indv_tot",
+          "prsm_dpst_aset_amt",
+          "return_code",
+          "return_msg",
+          "tot_crd_loan_amt",
+          "tot_crd_ls_amt",
+          "tot_evlt_amt",
+          "tot_evlt_pl",
+          "tot_loan_amt",
+          "tot_prft_rt",
+          "tot_pur_amt"
+        ],
+        "lists": {
+          "acnt_evlt_remn_indv_tot": {
+            "rows": 0,
+            "row_fields": []
+          }
+        }
+      }
+    }
+  ],
+  "read_requests_sent": 8
+}

@@ -87,6 +87,7 @@ class CollectorWorker:
             nxt_map_fn=lambda: self.config.get("nxt_map"),
             gate_fn=lambda: self.day_allowed(now_ms()) and bool(self.open_clock(now_ms())),
             token_getter=self.token, token_invalidator=self.invalid_tokens.add,
+            on_account_row=self.account_row, on_account_state=self.account_state,
             stream_options={"signal_monitor_fn": lambda: self.monitor,
                             "open_venues_fn": self.open_venues},
         )
@@ -96,6 +97,12 @@ class CollectorWorker:
         self.last_ob_error = False
         self.ready = False
         self.stopping = asyncio.Event()
+
+    async def account_row(self, account: int, row: dict, generation: int) -> None:
+        await self.peer.call("account_event", {"account": account, "row": row, "generation": generation})
+
+    async def account_state(self, account: int, connected: bool, generation: int) -> None:
+        await self.peer.call("account_state", {"account": account, "connected": connected, "generation": generation})
 
     def day_allowed(self, stamp: int) -> bool:
         day = datetime.fromtimestamp(stamp / 1000, KST)
@@ -177,7 +184,15 @@ class CollectorWorker:
         self.config = args
         self.buffer.desired_version = version
         self.monitor.set_targets(args.get("names", set(args["targets"])))
+        previous_accounts = set(getattr(self.manager, "_account_refs", set()))
+        desired_accounts = set(args.get("account_refs", []))
+        if previous_accounts or desired_accounts:
+            self.manager._account_refs = desired_accounts
         await self.manager.sync(tuple(args["targets"]), n_accounts=args["n_accounts"])
+        for account in previous_accounts | desired_accounts:
+            conn = self.manager._conns.get(account)
+            if conn is not None:
+                await conn.client.set_account_events(account in desired_accounts)
         desired = {(v["code"], v["ref"]): set(v["venues"]) for v in args.get("view_refs", [])}
         for (code, ref), venues in self.views.items():
             removed = venues - desired.get((code, ref), set())

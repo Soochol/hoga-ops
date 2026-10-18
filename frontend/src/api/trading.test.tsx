@@ -2,7 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useTradingAccountList, useTradingState } from './trading';
+import { normalizeBrokerOrder, tradingCommand, useTradingAccounts, useTradingAccountList, useTradingState } from './trading';
 import { pauseTradingRefresh, scheduleTradingRefresh } from './tradingRefresh';
 
 const mock = vi.hoisted(() => ({ call: vi.fn(), listeners: new Set<(event: { type: string; mode?: string }) => void>() }));
@@ -23,6 +23,59 @@ beforeEach(() => {
   mock.call.mockImplementation((path: string) => Promise.resolve(path.includes('part=orders') ? orders : balances));
 });
 afterEach(() => { cleanup(); client.clear(); vi.clearAllTimers(); vi.useRealTimers(); });
+
+describe('broker-independent trading', () => {
+  const ref = `acc_${'b'.repeat(32)}`;
+  it('discovers opaque broker accounts and falls back only on missing v2 routes', async () => {
+    mock.call.mockResolvedValue({ configured: true, accounts: [{ account_ref: ref, label: '키움', broker: 'kiwoom', routes: [], order_enabled: false }] });
+    const { result } = renderHook(() => useTradingAccounts('live'), { wrapper });
+    await advance();
+    expect(result.current.data?.accounts[0]).toMatchObject({ account_seq: ref, broker: 'kiwoom', order_enabled: false });
+    expect(mock.call.mock.calls.map(([path]) => path)).toEqual(['/api/trading/v2/accounts']);
+  });
+  it.each([401, 503])('does not mask v2 %s failures with a legacy account', async status => {
+    mock.call.mockRejectedValue({ status });
+    const { result } = renderHook(() => useTradingAccounts('live'), { wrapper });
+    await advance();
+    expect(result.current.isError).toBe(true);
+    expect(mock.call).toHaveBeenCalledOnce();
+  });
+  it('uses legacy accounts only on 404', async () => {
+    mock.call.mockRejectedValueOnce({ status: 404 }).mockResolvedValueOnce({ configured: true, accounts: [{ account_seq: 1, label: '토스' }] });
+    const { result } = renderHook(() => useTradingAccounts('live'), { wrapper });
+    await advance();
+    expect(result.current.data?.accounts[0].account_seq).toBe(1);
+    expect(mock.call.mock.calls.map(([path]) => path)).toEqual(['/api/trading/v2/accounts', '/api/trading/accounts']);
+  });
+  it('preserves broker remainder and unavailable fill/balance values', async () => {
+    const wire = { order_ref: 'ord_test', account_ref: ref, code: '005930', side: 'BUY' as const, order_type: 'LIMIT',
+      status: 'PARTIAL_FILLED', price: '67200', quantity: '100', remaining_quantity: '50', filled_quantity: null,
+      ordered_at: null, average_filled_price: null, editable: false };
+    expect(normalizeBrokerOrder(wire)).toMatchObject({ remaining_quantity: '50', editable: false, execution: { filledQuantity: null } });
+    mock.call.mockImplementation((path: string) => Promise.resolve(path.includes('part=orders')
+      ? { account_ref: ref, orders: [wire], recent_orders: [], code: '005930', unresolved_commands: [], fetched_at_ms: 1 }
+      : { account_ref: ref, code: '005930', buying_power: null, sellable_quantity: null, holding_quantity: '100' }));
+    const { result } = renderHook(() => useTradingState(ref, '005930', 'live'), { wrapper });
+    await advance();
+    expect(result.current.data?.account_seq).toBe(ref);
+    expect(result.current.data?.buying_power).toBeNull();
+    expect(result.current.data?.orders[0].orderId).toBe('ord_test');
+    expect(mock.call.mock.calls.every(([path]) => String(path).includes(`/api/trading/v2/state?account_ref=${ref}`))).toBe(true);
+    const before = mock.call.mock.calls.length;
+    act(() => mock.listeners.forEach(listener => listener({ type: 'trading_changed_v2', account_ref: 'another-account' } as { type: string })));
+    await advance(500);
+    expect(mock.call.mock.calls.length).toBe(before);
+  });
+  it('sends account_ref and explicit route, retaining operation identity', async () => {
+    mock.call.mockResolvedValue({ command_id: 'new', order_ref: 'ord_target', operation_ref: 'ord_operation', status: 'accepted' });
+    const result = await tradingCommand<{ order_id: string }>('/orders', { account_seq: ref, code: '005930', command_id: 'new', route: 'KRX' }, 'live');
+    const [path, options] = mock.call.mock.calls[0];
+    expect(path).toBe('/api/trading/v2/orders');
+    expect(JSON.parse(options.body)).toEqual({ account_ref: ref, code: '005930', command_id: 'new', route: 'KRX' });
+    expect(options.headers['X-Hoga-Order']).toBe('1');
+    expect(result.order_id).toBe('ord_operation');
+  });
+});
 
 describe('independent trading reads and refresh coordination', () => {
   it('continues event display updates in all windows without REST reads during a write', async () => {

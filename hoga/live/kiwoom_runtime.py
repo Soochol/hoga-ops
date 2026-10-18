@@ -18,37 +18,40 @@ from pathlib import Path
 from .kiwoom_token_provider import KiwoomCredentials, KiwoomTokenProvider
 
 _token_providers: dict[int, KiwoomTokenProvider] = {}
+_mock_token_providers: dict[int, KiwoomTokenProvider] = {}
 _lock = threading.Lock()
 
 
-def _account_env(account_id: int) -> tuple[str, str]:
+def _account_env(account_id: int, environment: str = "real") -> tuple[str, str]:
     """account_id(0-based) → (KEY 환경변수명, SECRET 환경변수명).
 
     0 = KIWOOM_APP_KEY/SECRET. k>0 = 접미 (k+1) ('사람이 세는 번호') →
     account_id=1 ↔ KIWOOM_APP_KEY_2 (2번째 키). KIS_APP_KEY 관례 복제.
     """
+    prefix = "KIWOOM_MOCK" if environment == "mock" else "KIWOOM"
     if account_id == 0:
-        return "KIWOOM_APP_KEY", "KIWOOM_APP_SECRET"
+        return f"{prefix}_APP_KEY", f"{prefix}_APP_SECRET"
     suffix = account_id + 1
-    return f"KIWOOM_APP_KEY_{suffix}", f"KIWOOM_APP_SECRET_{suffix}"
+    return f"{prefix}_APP_KEY_{suffix}", f"{prefix}_APP_SECRET_{suffix}"
 
 
-def _token_cache_path(data_dir: Path, account_id: int) -> Path:
-    name = "kiwoom-token.json" if account_id == 0 else f"kiwoom-token-{account_id}.json"
+def _token_cache_path(data_dir: Path, account_id: int, environment: str = "real") -> Path:
+    prefix = "kiwoom-mock-token" if environment == "mock" else "kiwoom-token"
+    name = f"{prefix}.json" if account_id == 0 else f"{prefix}-{account_id}.json"
     return data_dir / ".local" / name
 
 
-def _resolve_env_creds(account_id: int) -> KiwoomCredentials | None:
+def _resolve_env_creds(account_id: int, environment: str = "real") -> KiwoomCredentials | None:
     """env → KiwoomCredentials, 키/시크릿 부재 시 None (boot 시맨틱, reload 없음)."""
-    key_name, sec_name = _account_env(account_id)
+    key_name, sec_name = _account_env(account_id, environment)
     app_key = os.environ.get(key_name)
     app_secret = os.environ.get(sec_name)
     if not app_key or not app_secret:
         return None
-    return KiwoomCredentials(app_key=app_key, app_secret=app_secret)
+    return KiwoomCredentials(app_key=app_key, app_secret=app_secret, environment=environment)
 
 
-def configured_account_ids(data_dir: Path) -> list[int]:
+def configured_account_ids(data_dir: Path, *, environment: str = "real") -> list[int]:
     """env 키+시크릿이 있는 account_id 연속 목록(0부터, 첫 공백에서 정지 — skip 없음).
 
     [] = 키움 미설정(오프라인). [0,1,2,3] = 4앱키(=호가+체결 800종목, 실측 2026-07-16).
@@ -56,7 +59,8 @@ def configured_account_ids(data_dir: Path) -> list[int]:
     """
     ids: list[int] = []
     account_id = 0
-    while _resolve_env_creds(account_id) is not None:
+    while (_resolve_env_creds(account_id) if environment == "real"
+           else _resolve_env_creds(account_id, environment)) is not None:
         ids.append(account_id)
         account_id += 1
     return ids
@@ -75,23 +79,29 @@ def ensure_token_provider(
 
 
 def ensure_token_provider_for_account(
-    account_id: int, data_dir: Path
+    account_id: int, data_dir: Path, *, environment: str = "real",
 ) -> KiwoomTokenProvider | None:
     """계정 creds를 env에서 풀어 토큰 provider 싱글톤 반환, 부재 시 None."""
-    creds = _resolve_env_creds(account_id)
+    creds = _resolve_env_creds(account_id) if environment == "real" else _resolve_env_creds(account_id, environment)
     if creds is None:
         return None
-    return ensure_token_provider(
-        _token_cache_path(data_dir, account_id), creds, account_id
-    )
+    if environment == "real":
+        return ensure_token_provider(_token_cache_path(data_dir, account_id), creds, account_id)
+    with _lock:
+        if account_id not in _mock_token_providers:
+            _mock_token_providers[account_id] = KiwoomTokenProvider(
+                creds, _token_cache_path(data_dir, account_id, environment)
+            )
+        return _mock_token_providers[account_id]
 
 
 def close_all() -> None:
     """모든 계정 토큰 provider 종료 — 프로세스 종료 시에만."""
-    for prov in list(_token_providers.values()):
+    for prov in [*list(_token_providers.values()), *list(_mock_token_providers.values())]:
         with contextlib.suppress(Exception):
             prov.close()
     _token_providers.clear()
+    _mock_token_providers.clear()
 
 
 def reset_for_tests() -> None:

@@ -165,8 +165,12 @@ class KiwoomWsClient:
         stable_session_s: float = 30.0,
         monotonic_fn: Callable[[], float] = time.monotonic,
         account_id: int | None = None,
+        account_events: bool = False,
+        on_account_row=None,
+        on_account_state=None,
     ) -> None:
         self.account_id = account_id
+        self._init_account_events(account_events, on_account_row, on_account_state)
         self._token_fn = token_fn
         # LOGIN rc!=0(토큰 거부) 시 호출 — 캐시 토큰을 무효화해 다음 재연결이 신선 토큰을
         # 받게 한다(리뷰 Major: 없으면 stale 토큰으로 최대 24h 재연결 루프). provider의
@@ -362,7 +366,7 @@ class KiwoomWsClient:
         from . import provider_errors  # noqa: PLC0415
         self._codes = list(codes)
         while True:
-            if self._gate_fn is not None and not await asyncio.to_thread(self._gate_fn):
+            if not self.account_events and self._gate_fn is not None and not await asyncio.to_thread(self._gate_fn):
                 self.connected = False
                 await asyncio.sleep(30)
                 continue
@@ -405,7 +409,7 @@ class KiwoomWsClient:
                 )
                 await asyncio.sleep(delay * random.uniform(0.9, 1.1))
 
-    async def _session_once(self) -> None:
+    async def _session_once(self) -> None:  # noqa: PLR0915 — socket ownership and retirement remain in one scope
         """1세션: connect → recv 루프 기동 → LOGIN → 전 종목 배치 REG → drain(recv 루프
         await). recv 소유는 단일 reader — LOGIN/REG는 send 후 ACK Future를 await한다.
         구독 완료 후 안정 기간을 통과해야 재연결/킥 카운터를 초기화한다."""
@@ -436,6 +440,8 @@ class KiwoomWsClient:
                 self._reject_all_waiters(RuntimeError("new session"))
                 await self._login(ws, token)
                 self.connected = True
+                self.account_events_acked = False
+                await self._register_accounts(ws)
                 # **업종을 먼저 등록한다.** 예약(`coverage.KIWOOM_SECTOR_RESERVE`)이
                 # 틀어져 자리가 모자라면 뒤엣것이 밀리는데, 종목이 밀리면
                 # `sub_rejected`·워치독이 시끄럽게 드러내는 반면 업종은 조용히 죽는다
@@ -459,6 +465,9 @@ class KiwoomWsClient:
         finally:
             self._reset_after_stable_session()
             self.connected = False
+            self.account_events_acked = False
+            if self._on_account_state and self.account_events:
+                await self._on_account_state(False, self.connection_generation)
             self._ws = None
             try:
                 await self._end_session(ws, recv_task, retire_task)
@@ -482,6 +491,7 @@ class KiwoomWsClient:
     async def _recv_loop(self, ws: _WsLike) -> None:
         """One socket reader routes controls; one bounded consumer preserves REAL order."""
         queue: asyncio.Queue[_DataMessage] = asyncio.Queue(maxsize=_DATA_QUEUE_MAX_MESSAGES)
+        self._account_queue = asyncio.Queue(maxsize=128)
         self._data_queue = queue
         self._reader_budget = None
         self._consumer_budget = None
@@ -489,10 +499,13 @@ class KiwoomWsClient:
         self._session_started_at_ms = int(time.time() * 1000)
         reader = asyncio.create_task(self._read_frames(ws, queue), name="kiwoom-control-reader")
         consumer = asyncio.create_task(self._consume_frames(queue), name="kiwoom-data-consumer")
+        accounts = (asyncio.create_task(self._consume_account_frames(), name="kiwoom-account-consumer")
+                    if self._on_account_row is not None else None)
+        workers = (reader, consumer, accounts) if accounts is not None else (reader, consumer)
         try:
-            done, _ = await asyncio.wait((reader, consumer), return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait(workers, return_when=asyncio.FIRST_COMPLETED)
             # Propagate the original failure; neither task normally returns.
-            await (reader if reader in done else consumer)
+            await next(task for task in workers if task in done)
         except Exception as exc:
             if self._retiring_failure is not None:
                 raise self._retiring_failure from exc
@@ -500,7 +513,10 @@ class KiwoomWsClient:
         finally:
             reader.cancel()
             consumer.cancel()
-            await asyncio.gather(reader, consumer, return_exceptions=True)
+            if accounts is not None:
+                accounts.cancel()
+            await asyncio.gather(*workers, return_exceptions=True)
+            self._account_queue = None
             self._data_messages_discarded += queue.qsize()
             # Failure tracebacks can retain this queue through the reconnect
             # backoff. Release pending payloads now instead of waiting for GC.
@@ -510,7 +526,9 @@ class KiwoomWsClient:
             self._data_queued_at.clear()
             self._data_queue_bytes = 0
 
-    async def _read_frames(self, ws: _WsLike, queue: asyncio.Queue[_DataMessage]) -> None:
+    async def _read_frames(  # noqa: PLR0915 — the single socket reader owns control and bounded dispatch
+        self, ws: _WsLike, queue: asyncio.Queue[_DataMessage]
+    ) -> None:
         with LoopWorkBudget(self._tick_yield_interval_s, self._monotonic) as budget:
             self._reader_budget = budget
             while True:
@@ -538,6 +556,10 @@ class KiwoomWsClient:
                 if not isinstance(msg, dict):
                     continue
                 if msg.get("trnm") == "REAL":
+                    msg = self._split_account_frame(msg)
+                    if msg is None:
+                        await self._maybe_yield(budget)
+                        continue
                     if self._flow is not None:
                         data = msg.get("data")
                         self._flow.receive(len(data) if isinstance(data, list) else 0, self._monotonic())
@@ -693,6 +715,63 @@ class KiwoomWsClient:
             _log.warning("live.kiwoom.vi_reg_rate_limited_persist")
         except Exception as e:  # noqa: BLE001 — 관측 실패로 세션을 죽이지 않는다
             _log.warning("live.kiwoom.vi_reg_failed err=%r", e)
+
+    async def _register_accounts(self, ws: _WsLike) -> None:
+        if not self.account_events:
+            return
+        message = json.dumps({"trnm": "REG", "grp_no": "4", "refresh": "1",
+                              "data": [{"item": [""], "type": ["00", "04"]}]})
+        ack = await self._send_and_wait(ws, message, "REG", item_count=1)
+        if ack.get("return_code") != 0:
+            raise ConnectionError("account event registration rejected")
+        self.account_events_acked = True
+        if self._on_account_state:
+            await self._on_account_state(True, self.connection_generation)
+
+    def _init_account_events(self, enabled, on_row, on_state) -> None:
+        if enabled and on_row is None:
+            raise ValueError("account events require a private consumer")
+        self.account_events = enabled
+        self.account_events_acked = False
+        self._on_account_row = on_row
+        self._on_account_state = on_state
+        self._account_queue: asyncio.Queue | None = None
+
+    def _split_account_frame(self, msg: dict) -> dict | None:
+        if not self.account_events or not isinstance(msg.get("data"), list):
+            return msg
+        market = []
+        for row in msg["data"]:
+            if isinstance(row, dict) and row.get("type") in {"00", "04"}:
+                if self._account_queue is None or self._account_queue.full():
+                    raise KiwoomDataBacklogError("account event queue capacity exceeded")
+                self._account_queue.put_nowait((row, self.connection_generation))
+            else:
+                market.append(row)
+        return {**msg, "data": market} if market else None
+
+    async def set_account_events(self, enabled: bool) -> None:
+        if enabled and self._on_account_row is None:
+            raise ValueError("account events require a private consumer")
+        async with self._sub_lock:
+            self.account_events = enabled
+            if self._ws is not None and enabled and not self.account_events_acked:
+                await self._register_accounts(self._ws)
+            elif self._ws is not None and not enabled and self.account_events_acked:
+                ack = await self._send_and_wait(self._ws, json.dumps({"trnm": "REMOVE", "grp_no": "4",
+                    "data": [{"item": [""], "type": ["00", "04"]}]}), "REMOVE", item_count=1)
+                if ack.get("return_code") != 0:
+                    raise ConnectionError("account event removal rejected")
+                self.account_events_acked = False
+                if self._on_account_state:
+                    await self._on_account_state(False, self.connection_generation)
+
+    async def _consume_account_frames(self) -> None:
+        queue = self._account_queue
+        while True:
+            row, generation = await queue.get()
+            if self._on_account_row:
+                await self._on_account_row(row, generation)
 
     async def _register_sectors(self, ws: _WsLike) -> None:
         """0J/0U 업종·지수 구독(on_sector_row 설정 시).

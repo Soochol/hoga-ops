@@ -120,9 +120,18 @@ class KiwoomSessionManager:
         token_getter: Callable[[int], Awaitable[str]] | None = None,
         token_invalidator: Callable[[int], None] | None = None,
         stream_options: dict | None = None,
+        environment: str = "real",
+        on_account_row=None,
+        on_account_state=None,
     ) -> None:
         self._nxt_map_fn = nxt_map_fn or (lambda: _nxt_map())  # noqa: PLW0108 — late DI
         self._token_getter = token_getter
+        self._environment = environment
+        self._on_account_row = on_account_row
+        self._on_account_state = on_account_state
+        self._account_refs: set[int] = set()
+        self._desired_targets: tuple[str, ...] = ()
+        self._desired_n_accounts = 0
         self._token_invalidator = token_invalidator
         self._stream_options = stream_options or {}
         self._buffer = buffer
@@ -196,11 +205,27 @@ class KiwoomSessionManager:
 
         운영 건강(죽은 conn 재빌드·시간대 venue 스왑·재구독)은 watchdog_pass(30s)로
         분리됐다(ADR-0118 §5) — sync는 저장셋 멤버십만 반영한다."""
+        self._desired_targets, self._desired_n_accounts = kiwoom_targets, n_accounts
+        n_accounts = max(n_accounts, max(self._account_refs, default=-1) + 1)
         if kiwoom_targets and n_accounts > 0:
             await self._refresh_connection_gate()
         async with self._lock:
             await self._sync_locked(kiwoom_targets, n_accounts=n_accounts)
         await asyncio.sleep(0)  # dispatch workers; completion is reported by status
+
+    async def retain_account(self, account: int) -> None:
+        self._account_refs.add(account)
+        await self.sync(self._desired_targets, n_accounts=self._desired_n_accounts)
+        conn = self._conns.get(account)
+        if conn is not None:
+            await conn.client.set_account_events(True)
+
+    async def release_account(self, account: int) -> None:
+        self._account_refs.discard(account)
+        conn = self._conns.get(account)
+        if conn is not None:
+            await conn.client.set_account_events(False)
+        await self.sync(self._desired_targets, n_accounts=self._desired_n_accounts)
 
     async def _refresh_connection_gate(self) -> None:
         # Calendar-backed gates may block. Serialize observations without holding
@@ -219,9 +244,11 @@ class KiwoomSessionManager:
                 self._last_registration_warning = None
             self._check_registration_locked()
 
-    async def _sync_locked(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
+    async def _sync_locked(  # noqa: PLR0912 — reconcile market partitions and private-account leases atomically
+        self, kiwoom_targets: tuple[str, ...], *, n_accounts: int
+    ) -> None:
         codes = list(dict.fromkeys(kiwoom_targets))
-        if not codes or n_accounts <= 0:
+        if (not codes and not self._account_refs) or n_accounts <= 0:
             await self._stop_locked()
             return
         # 분할 단위는 종목이 아니라 **wire 등록 수**다(PR-F) — NXT 상장 종목은 3개를 쓴다.
@@ -246,7 +273,10 @@ class KiwoomSessionManager:
         # 업종 스트림이 통째로 없어진다).
         self._sector_account = n_accounts - 1
         wanted = {k: part for k, part in enumerate(parts) if part}
-        wanted.setdefault(self._sector_account, [])
+        if codes:
+            wanted.setdefault(self._sector_account, [])
+        for account in self._account_refs:
+            wanted.setdefault(account, [])
         # teardown: 더는 필요 없는 계정(빈 파티션 포함).
         for account_id in list(self._conns):
             if account_id not in wanted:
@@ -286,7 +316,7 @@ class KiwoomSessionManager:
         """
         await self._refresh_connection_gate()
         async with self._lock:
-            if self._connection_allowed:
+            if self._connection_allowed or self._account_refs:
                 await self._rebuild_dead_locked()
             self._sweep_display(now_ms)     # 유예 만료 표시키 회수
             self._reassign_display()  # 커버 전이(저장셋 변화·연결 재빌드) 재배정
@@ -886,7 +916,9 @@ class KiwoomSessionManager:
         from .stream import LiveStream  # noqa: PLC0415 — 순환 import 회피
         from .writer import LiveWriter  # noqa: PLC0415
 
-        prov = (kiwoom_runtime.ensure_token_provider_for_account(account_id, self._data_dir)
+        prov = ((kiwoom_runtime.ensure_token_provider_for_account(account_id, self._data_dir)
+                 if self._environment == "real" else kiwoom_runtime.ensure_token_provider_for_account(
+                     account_id, self._data_dir, environment=self._environment))
                 if self._token_getter is None else None)
         if prov is None and self._token_getter is None:  # 키움 자격증명 부재 — 조용히 스킵(계좌는 설정됐으나 키 없음)
             _log.warning("live.kiwoom.no_creds account=%d — skip", account_id)
@@ -911,20 +943,39 @@ class KiwoomSessionManager:
         # 타 계정 저장코드)→buffer.publish. 연결별 _conn_members 공유 참조라 sync 갱신을
         # 항상 반영(전역 아님 — 리뷰: 타 계정 저장코드의 표시 틱 유실 방지).
         conn_members = self._conn_members.setdefault(account_id, set())
+
+        async def account_row(row, generation):
+            if self._on_account_row:
+                await self._on_account_row(account_id, row, generation)
+            else:
+                from .account_events import dispatch_account_event  # noqa: PLC0415
+                await dispatch_account_event(self._environment, account_id, row, generation)
+
+        async def account_state(connected, generation):
+            if self._on_account_state:
+                await self._on_account_state(account_id, connected, generation)
+            else:
+                from .account_events import dispatch_account_state  # noqa: PLC0415
+                await dispatch_account_state(self._environment, account_id, connected, generation)
+
         client = KiwoomWsClient(
             account_id=account_id,
             token_fn=token_fn,
+            url=("wss://mockapi.kiwoom.com:10000/api/dostk/websocket" if self._environment == "mock"
+                 else "wss://api.kiwoom.com:10000/api/dostk/websocket"),
+            account_events=account_id in self._account_refs,
+            on_account_row=account_row, on_account_state=account_state,
             on_tick=self._make_conn_on_tick(stream, conn_members),
             date_fn=self._date_fn,
             gate_fn=self._gate_fn,
             invalidate_fn=(lambda: self._token_invalidator(account_id))
             if self._token_invalidator is not None else prov.invalidate,  # one parent token owner
             # VI 는 계정 0 전용(시장 전체 스트림 중복 방지 — __init__ 주석).
-            on_vi_row=self._on_vi_row if account_id == 0 else None,
+            on_vi_row=self._on_vi_row if account_id == 0 and self._environment == "real" else None,
             # 0J/0U 는 **마지막 계정** 하나만 태운다. 계정마다 걸면 같은 틱을 4번 받고,
             # 무엇보다 **슬롯을 4배로 먹는다**(코드당 1개 — 2026-08-07 실측).
             on_sector_row=(
-                self._on_sector_row if account_id == self._sector_account else None
+                self._on_sector_row if account_id == self._sector_account and self._environment == "real" else None
             ),
         )
         # 초기 구독 wire = 저장셋 × 종목별 venue(ADR-0140 §2 파생 집합). 시각 무관 —

@@ -313,6 +313,8 @@ class KiwoomRestClient:
             "cont-yn": "Y" if cont else "N",
             "next-key": next_key,
         }
+        from .kiwoom_budget import budget_for  # noqa: PLC0415 — shared private/market admission
+        await budget_for(self._provider).acquire(api_id)
         try:
             resp = await self._client.post(spec.path, json=body, headers=headers)
         except httpx.TransportError as exc:

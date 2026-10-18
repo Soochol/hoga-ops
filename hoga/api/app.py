@@ -58,6 +58,7 @@ from hoga.api.study_view_routes import build_router as build_study_view_router
 from hoga.api.symbols import build_router as build_symbols_router
 from hoga.api.test_routes import build_test_router
 from hoga.api.trading_routes import build_paper_router, build_router as build_trading_router
+from hoga.api.trading_v2_routes import build_router as build_trading_v2_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
 from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
@@ -99,6 +100,7 @@ from hoga.live.program_trade_tape_api import build_router as build_program_trade
 from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.second_trade_api import build_router as build_second_trade_router
 from hoga.live.trade_history_api import build_router as build_trade_history_router
+from hoga.trading.multi_broker import BrokerTradingService
 from hoga.trading.paper import PaperTradingService
 from hoga.trading.service import TradingService
 
@@ -359,7 +361,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     ))
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:  # noqa: PLR0915 — centralized resource shutdown order
         migrate_to_v2_layout(data_dir)
         # ADR-0068: one-time seed of the independent heatmap.json from the
         # watchlist (folders+entries, capture fields stripped) the first boot
@@ -454,6 +456,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
             # finishing refresh cannot start a new scan during resource teardown.
             await _symbols_module.aclose_refresh()
             await _symbols_module.aclose_capture_counts()
+            await _app.state.broker_trading_service.close()
             await _app.state.trading_service.close()
             await _app.state.paper_trading_service.close()
             _captures_module.begin_capture_shutdown()
@@ -630,15 +633,20 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_news_router(data_dir=data_dir))
+    def publish_toss_order(account, order, revision):
+        bus.publish({"type": "trading_order", "mode": "live", "account_seq": account,
+                     "order": order.model_dump(), "revision": revision})
+        if hasattr(app.state, "broker_trading_service"):
+            app.state.broker_trading_service.toss_order_event(account, order, revision)
+
     app.state.trading_service = TradingService(
         data_dir,
         on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision, "mode": "live"}),
-        on_order_change=lambda account, order, revision: bus.publish({
-            "type": "trading_order", "mode": "live", "account_seq": account,
-            "order": order.model_dump(), "revision": revision,
-        }),
+        on_order_change=publish_toss_order,
     )
     app.include_router(build_trading_router(app.state.trading_service))
+    app.state.broker_trading_service = BrokerTradingService(data_dir, app.state.trading_service, on_event=bus.publish)
+    app.include_router(build_trading_v2_router(app.state.broker_trading_service))
     app.state.paper_trading_service = PaperTradingService(
         data_dir, book_getter=_paper_live_book,
         on_change=lambda revision: bus.publish({"type": "trading_changed", "revision": revision, "mode": "paper"}),

@@ -1,3 +1,4 @@
+import type { TradingAccountId } from '../../api/trading';
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -49,8 +50,9 @@ function HoldingsTable({ holdings, onSelect }: { holdings: TradingHolding[]; onS
   </table>;
 }
 
-export const AccountTradingPanel = memo(function AccountTradingPanel({ account, accountLabel, tab, anchorRef, onTabChange, onClose, onSelectSymbol }: {
-  account: number; accountLabel: string; tab: AccountListTab | null; anchorRef: RefObject<HTMLElement | null>;
+export const AccountTradingPanel = memo(function AccountTradingPanel({ account, accountLabel, orderEnabled = true, tab, anchorRef, onTabChange, onClose, onSelectSymbol }: {
+  account: TradingAccountId; accountLabel: string; tab: AccountListTab | null; anchorRef: RefObject<HTMLElement | null>;
+  orderEnabled?: boolean;
   onTabChange: (tab: AccountListTab) => void; onClose: () => void; onSelectSymbol?: (code: string, name: string) => void;
 }) {
   const client = useQueryClient();
@@ -85,7 +87,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
   const { ref, style } = useAnchoredPopover<HTMLDivElement>(open, anchorRef, dismiss, 800);
 
   async function cancel(order: TossOrder, retry: boolean) {
-    if (inFlight.current.has(order.orderId) || paused) return;
+    if (inFlight.current.has(order.orderId) || paused || !orderEnabled) return;
     const previous = cancellations[order.orderId];
     const command = retry && previous ? previous.command : { account_seq: account, code: order.symbol, command_id: nanoid() };
     inFlight.current.add(order.orderId);
@@ -155,7 +157,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
           const record = cancellations[order.orderId];
           const rejected = record?.operationId && orders.data?.recent_orders.some(item => item.orderId === record.operationId && item.status === 'CANCEL_REJECTED');
           const pending = !!record?.operationId && !rejected;
-          const disabled = paused || !!record?.sending || (!record?.error && (orders.isError || !editableOrder(order) || pending || orderRemainder(order) <= 0));
+          const disabled = !orderEnabled || paused || !!record?.sending || (!record?.error && (orders.isError || !editableOrder(order) || pending || orderRemainder(order) <= 0));
           const label = record?.error ? '재확인' : record?.sending ? '취소 중' : pending ? '확인 중' : '취소';
           const name = nameOf(order.symbol);
           return <tr key={order.orderId} className={order.side === 'BUY' ? 'account-order-buy' : 'account-order-sell'}>

@@ -1,0 +1,461 @@
+{
+  "observed_at": "2026-10-18T23:39:51.092663+09:00",
+  "kind": "real_readonly_credential_account_binding",
+  "credential_count": 6,
+  "distinct_account_count": 6,
+  "bindings": [
+    {
+      "credential_alias": "KIWOOM_APP_KEY",
+      "status": "ok",
+      "account_alias": "account_1",
+      "requests": [
+        {
+          "api_id": "ka00001",
+          "http_status": 200,
+          "elapsed_ms": 38.1,
+          "venue": null,
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acctNo",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {}
+          }
+        }
+      ]
+    },
+    {
+      "credential_alias": "KIWOOM_APP_KEY_2",
+      "status": "ok",
+      "account_alias": "account_2",
+      "requests": [
+        {
+          "api_id": "ka00001",
+          "http_status": 200,
+          "elapsed_ms": 41.6,
+          "venue": null,
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acctNo",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {}
+          }
+        }
+      ]
+    },
+    {
+      "credential_alias": "KIWOOM_APP_KEY_3",
+      "status": "ok",
+      "account_alias": "account_3",
+      "requests": [
+        {
+          "api_id": "ka00001",
+          "http_status": 200,
+          "elapsed_ms": 47.5,
+          "venue": null,
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acctNo",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {}
+          }
+        }
+      ]
+    },
+    {
+      "credential_alias": "KIWOOM_APP_KEY_4",
+      "status": "ok",
+      "account_alias": "account_4",
+      "requests": [
+        {
+          "api_id": "ka00001",
+          "http_status": 200,
+          "elapsed_ms": 39.5,
+          "venue": null,
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acctNo",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {}
+          }
+        }
+      ]
+    },
+    {
+      "credential_alias": "KIWOOM_APP_KEY_5",
+      "status": "ok",
+      "account_alias": "account_5",
+      "requests": [
+        {
+          "api_id": "ka00001",
+          "http_status": 200,
+          "elapsed_ms": 44.0,
+          "venue": null,
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acctNo",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {}
+          }
+        }
+      ]
+    },
+    {
+      "credential_alias": "KIWOOM_APP_KEY_6",
+      "status": "ok",
+      "account_alias": "account_6",
+      "requests": [
+        {
+          "api_id": "ka00001",
+          "http_status": 200,
+          "elapsed_ms": 86.8,
+          "venue": null,
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acctNo",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {}
+          }
+        }
+      ]
+    }
+  ],
+  "additional_distinct_accounts": [
+    {
+      "account_alias": "account_2",
+      "queries": {
+        "kt00007": {
+          "status": "ok",
+          "pages": 1
+        },
+        "kt00018": {
+          "status": "ok",
+          "pages": 1
+        }
+      },
+      "requests": [
+        {
+          "api_id": "kt00007",
+          "http_status": 200,
+          "elapsed_ms": 43.6,
+          "venue": "%",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_ord_cntr_prps_dtl",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {
+              "acnt_ord_cntr_prps_dtl": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        },
+        {
+          "api_id": "kt00018",
+          "http_status": 200,
+          "elapsed_ms": 24.2,
+          "venue": "KRX",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_evlt_remn_indv_tot",
+              "prsm_dpst_aset_amt",
+              "return_code",
+              "return_msg",
+              "tot_crd_loan_amt",
+              "tot_crd_ls_amt",
+              "tot_evlt_amt",
+              "tot_evlt_pl",
+              "tot_loan_amt",
+              "tot_prft_rt",
+              "tot_pur_amt"
+            ],
+            "lists": {
+              "acnt_evlt_remn_indv_tot": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "account_alias": "account_3",
+      "queries": {
+        "kt00007": {
+          "status": "ok",
+          "pages": 1
+        },
+        "kt00018": {
+          "status": "ok",
+          "pages": 1
+        }
+      },
+      "requests": [
+        {
+          "api_id": "kt00007",
+          "http_status": 200,
+          "elapsed_ms": 127.8,
+          "venue": "%",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_ord_cntr_prps_dtl",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {
+              "acnt_ord_cntr_prps_dtl": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        },
+        {
+          "api_id": "kt00018",
+          "http_status": 200,
+          "elapsed_ms": 18.6,
+          "venue": "KRX",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_evlt_remn_indv_tot",
+              "prsm_dpst_aset_amt",
+              "return_code",
+              "return_msg",
+              "tot_crd_loan_amt",
+              "tot_crd_ls_amt",
+              "tot_evlt_amt",
+              "tot_evlt_pl",
+              "tot_loan_amt",
+              "tot_prft_rt",
+              "tot_pur_amt"
+            ],
+            "lists": {
+              "acnt_evlt_remn_indv_tot": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "account_alias": "account_4",
+      "queries": {
+        "kt00007": {
+          "status": "ok",
+          "pages": 1
+        },
+        "kt00018": {
+          "status": "ok",
+          "pages": 1
+        }
+      },
+      "requests": [
+        {
+          "api_id": "kt00007",
+          "http_status": 200,
+          "elapsed_ms": 138.7,
+          "venue": "%",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_ord_cntr_prps_dtl",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {
+              "acnt_ord_cntr_prps_dtl": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        },
+        {
+          "api_id": "kt00018",
+          "http_status": 200,
+          "elapsed_ms": 21.8,
+          "venue": "KRX",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_evlt_remn_indv_tot",
+              "prsm_dpst_aset_amt",
+              "return_code",
+              "return_msg",
+              "tot_crd_loan_amt",
+              "tot_crd_ls_amt",
+              "tot_evlt_amt",
+              "tot_evlt_pl",
+              "tot_loan_amt",
+              "tot_prft_rt",
+              "tot_pur_amt"
+            ],
+            "lists": {
+              "acnt_evlt_remn_indv_tot": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "account_alias": "account_5",
+      "queries": {
+        "kt00007": {
+          "status": "ok",
+          "pages": 1
+        },
+        "kt00018": {
+          "status": "ok",
+          "pages": 1
+        }
+      },
+      "requests": [
+        {
+          "api_id": "kt00007",
+          "http_status": 200,
+          "elapsed_ms": 137.9,
+          "venue": "%",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_ord_cntr_prps_dtl",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {
+              "acnt_ord_cntr_prps_dtl": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        },
+        {
+          "api_id": "kt00018",
+          "http_status": 200,
+          "elapsed_ms": 95.9,
+          "venue": "KRX",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_evlt_remn_indv_tot",
+              "prsm_dpst_aset_amt",
+              "return_code",
+              "return_msg",
+              "tot_crd_loan_amt",
+              "tot_crd_ls_amt",
+              "tot_evlt_amt",
+              "tot_evlt_pl",
+              "tot_loan_amt",
+              "tot_prft_rt",
+              "tot_pur_amt"
+            ],
+            "lists": {
+              "acnt_evlt_remn_indv_tot": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "account_alias": "account_6",
+      "queries": {
+        "kt00007": {
+          "status": "ok",
+          "pages": 1
+        },
+        "kt00018": {
+          "status": "ok",
+          "pages": 1
+        }
+      },
+      "requests": [
+        {
+          "api_id": "kt00007",
+          "http_status": 200,
+          "elapsed_ms": 41.7,
+          "venue": "%",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_ord_cntr_prps_dtl",
+              "return_code",
+              "return_msg"
+            ],
+            "lists": {
+              "acnt_ord_cntr_prps_dtl": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        },
+        {
+          "api_id": "kt00018",
+          "http_status": 200,
+          "elapsed_ms": 18.9,
+          "venue": "KRX",
+          "return_code": 0,
+          "shape": {
+            "fields": [
+              "acnt_evlt_remn_indv_tot",
+              "prsm_dpst_aset_amt",
+              "return_code",
+              "return_msg",
+              "tot_crd_loan_amt",
+              "tot_crd_ls_amt",
+              "tot_evlt_amt",
+              "tot_evlt_pl",
+              "tot_loan_amt",
+              "tot_prft_rt",
+              "tot_pur_amt"
+            ],
+            "lists": {
+              "acnt_evlt_remn_indv_tot": {
+                "rows": 0,
+                "row_fields": []
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "read_requests_sent": 16,
+  "orders_sent": 0,
+  "websockets_opened": 0,
+  "tokens_issued": 0
+}

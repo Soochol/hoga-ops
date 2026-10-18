@@ -86,6 +86,7 @@ class CaptureProcessSession:
         self._sync_started_at: float | None = None
         self._sync_acked_at: float | None = None
         self._sync_failed = False
+        self.account_refs: set[int] = set()
 
     def alive(self) -> bool:
         return self.process is not None and self.process.is_alive()
@@ -176,6 +177,23 @@ class CaptureProcessSession:
 
         while True:
             command = await peer.commands.get()
+            if command.get("method") in {"account_event", "account_state"}:
+                from .account_events import dispatch_account_event, dispatch_account_state  # noqa: PLC0415
+                args = command["args"]
+                account = args.get("account")
+                if (account not in range(self.config.get("n_accounts", 0)) or
+                    (command["method"] == "account_event" and account not in self.account_refs)):
+                    await peer.reply(command, error="unsubscribed account event")
+                    continue
+                try:
+                    if command["method"] == "account_event":
+                        await dispatch_account_event("real", account, args["row"], args["generation"])
+                    else:
+                        await dispatch_account_state("real", account, bool(args["connected"]), args["generation"])
+                    await peer.reply(command, result=True)
+                except Exception:  # noqa: BLE001 — report failed private delivery to the worker, never lose silently
+                    await peer.reply(command, error="account event delivery failed")
+                continue
             if command.get("method") != "token":
                 await peer.reply(command, error="unknown parent method")
                 continue
@@ -251,6 +269,7 @@ class CaptureProcessSession:
         from hoga.util.timeenc import KST  # noqa: PLC0415
 
         return {"targets": list(targets), "n_accounts": n_accounts, "nxt_map": _nxt_map(),
+                "account_refs": sorted(self.account_refs),
                 "calendar_date": datetime.fromtimestamp(stamp / 1000, KST).strftime("%Y%m%d"),
                 "calendar_allowed": await asyncio.to_thread(is_trading_day_now, stamp),
                 "view_codes": sorted({k[0] for k in self.views}),
@@ -295,6 +314,17 @@ class CaptureProcessSession:
     async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         async with self.lock:
             await self._sync_locked(kiwoom_targets, n_accounts)
+
+    async def retain_account(self, account: int) -> None:
+        from .kiwoom_runtime import configured_account_ids  # noqa: PLC0415
+        self.account_refs.add(account)
+        await self.sync(tuple(self.config.get("targets", [])),
+                        n_accounts=len(configured_account_ids(self.data_dir)))
+
+    async def release_account(self, account: int) -> None:
+        self.account_refs.discard(account)
+        if self.config and self.alive():
+            await self.sync(tuple(self.config.get("targets", [])), n_accounts=self.config["n_accounts"])
 
     async def watchdog_pass(self, now_ms: int) -> None:
         async with self.lock:

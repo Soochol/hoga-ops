@@ -1,0 +1,25 @@
+{
+  "kind": "real_readonly_followup",
+  "purpose": "Distinguish missing optional parameters from closed-day business rejection",
+  "read_requests_sent": 2,
+  "api_ids": [
+    "ka10001",
+    "kt00010"
+  ],
+  "kt00010": {
+    "optional_inputs_added": [
+      "io_amt",
+      "exp_buy_unp"
+    ],
+    "http_status": 200,
+    "return_code": 20,
+    "vendor_reason_codes": [
+      "2000",
+      "571489"
+    ],
+    "sanitized_message": "[2000](571489:장이 열리지 않는 날입니다.)"
+  },
+  "orders_sent": 0,
+  "websockets_opened": 0,
+  "tokens_issued": 0
+}

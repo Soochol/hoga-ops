@@ -17,6 +17,7 @@ from urllib.parse import quote
 from websockets.asyncio.client import connect
 from websockets.exceptions import InvalidStatus, WebSocketException
 
+from hoga.trading.commands import dispatch_command
 from hoga.trading.models import (
     CancelTradingOrders,
     CreateTradingOrder,
@@ -72,7 +73,9 @@ class CommandJournal:
         )
         return db
 
-    def begin(self, command_id: str, payload: dict[str, Any]) -> tuple[str, dict[str, Any] | None]:
+    def begin(
+        self, command_id: str, payload: dict[str, Any], *, prepared: bool = False
+    ) -> tuple[str, dict[str, Any] | None]:
         encoded = json.dumps(payload, sort_keys=True)
         with contextlib.closing(self._connect()) as db, db:
             row = db.execute("SELECT payload, state, result FROM commands WHERE id=?", (command_id,)).fetchone()
@@ -80,7 +83,8 @@ class CommandJournal:
                 if row[0] != encoded:
                     raise TradingError(409, "command-id-conflict", "같은 요청 식별자로 주문 내용을 바꿀 수 없습니다.")
                 return row[1], json.loads(row[2]) if row[2] else None
-            db.execute("INSERT INTO commands VALUES (?, ?, 'sending', NULL, ?)", (command_id, encoded, time.time()))
+            db.execute("INSERT INTO commands VALUES (?, ?, ?, NULL, ?)",
+                       (command_id, encoded, "prepared" if prepared else "sending", time.time()))
         return "new", None
 
     def finish(self, command_id: str, state: str, result: dict[str, Any]) -> None:
@@ -92,7 +96,7 @@ class CommandJournal:
             return []
         with contextlib.closing(self._connect()) as db, db:
             rows = db.execute("SELECT id, payload FROM commands WHERE state IN ('sending', 'unknown')").fetchall()
-        return [cid for cid, raw in rows if (p := json.loads(raw))["account_seq"] == account and p["code"] == code]
+        return [cid for cid, raw in rows if (p := json.loads(raw)).get("account_seq") == account and p["code"] == code]
 
     def review(self, command_id: str, account: int, code: str) -> None:
         with contextlib.closing(self._connect()) as db, db:
@@ -100,7 +104,7 @@ class CommandJournal:
             if not row:
                 raise TradingError(404, "command-not-found", "요청 기록이 없습니다.")
             payload = json.loads(row[0])
-            if payload["account_seq"] != account or payload["code"] != code:
+            if payload.get("account_seq") != account or payload["code"] != code:
                 raise TradingError(403, "command-context-mismatch", "계좌·종목이 다른 요청입니다.")
             if row[1] in ("sending", "unknown", "reviewed"):
                 db.execute("UPDATE commands SET state='reviewed' WHERE id=?", (command_id,))
@@ -114,7 +118,7 @@ class CommandJournal:
             ).fetchall()
         for raw, result in rows:
             payload = json.loads(raw)
-            if payload["account_seq"] == account and payload["code"] == code and payload["order_id"] == order_id:
+            if payload.get("account_seq") == account and payload["code"] == code and payload["order_id"] == order_id:
                 return json.loads(result)["order_id"]
         return None
 
@@ -126,12 +130,24 @@ class CommandJournal:
             if (
                 cid != command.command_id
                 and cid not in active
-                and p["account_seq"] == command.account_seq
+                and p.get("account_seq") == command.account_seq
                 and p["code"] == command.code
                 and p["order_id"] == order_id
             ):
                 return True
         return False
+
+    def lookup(self, command_id: str) -> tuple[dict, str, dict | None] | None:
+        with contextlib.closing(self._connect()) as db:
+            row = db.execute("SELECT payload, state, result FROM commands WHERE id=?", (command_id,)).fetchone()
+        return (json.loads(row[0]), row[1], json.loads(row[2]) if row[2] else None) if row else None
+
+    def scoped(self, account_ref: str, code: str = "") -> list[tuple[str, dict, str, dict | None]]:
+        with contextlib.closing(self._connect()) as db:
+            rows = db.execute("SELECT id, payload, state, result FROM commands ORDER BY created DESC").fetchall()
+        return [(cid, p, state, json.loads(result) if result else None)
+                for cid, raw, state, result in rows
+                if (p := json.loads(raw)).get("account_ref") == account_ref and (not code or p["code"] == code)]
 
 
 class TradingService:
@@ -515,24 +531,11 @@ class TradingService:
         self, command: TradingCommand, action: str, order_id: str, *, cancel_order: TossOrder | None = None,
     ) -> TradingCommandResponse:
         payload = {**command.model_dump(), "action": action, "order_id": order_id}
-        state, result = self.journal.begin(command.command_id, payload)
-        if state == "accepted":
-            return TradingCommandResponse.model_validate(result)
-        if state == "rejected":
-            assert result is not None
-            raise TradingError(result["status"], result["code"], result["message"])
-        if state != "new":
-            task = self._commands.get(command.command_id)
-            if task is not None:
-                return await asyncio.shield(task)
-            raise TradingError(
-                409,
-                "order-outcome-unknown",
-                "같은 주문을 다시 전송하지 않았습니다. 토스증권 주문 내역에서 결과를 확인하세요.",
-            )
-        task = asyncio.create_task(self._execute(command, action, order_id, cancel_order=cancel_order))
-        self._commands[command.command_id] = task
-        return await asyncio.shield(task)
+        return await dispatch_command(
+            self.journal, self._commands, command.command_id, payload,
+            lambda: self._execute(command, action, order_id, cancel_order=cancel_order),
+            TradingCommandResponse.model_validate,
+        )
 
     async def _execute(
         self, command: TradingCommand, action: str, order_id: str, *, cancel_order: TossOrder | None = None,
