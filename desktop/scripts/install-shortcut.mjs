@@ -15,7 +15,7 @@ const applications = join(home, '.local/share/applications');
 const icon = join(home, '.local/share/icons/hicolor/256x256/apps/ticklane-local-v1.png');
 const binary = join(root, 'node_modules/electron/dist/electron');
 await access(binary);
-await access(join(root, 'dist/main.js'));
+await access(join(root, 'dist/bootstrap.cjs'));
 for (const folder of [join(home, '.local/bin'), applications, data, join(home, '.local/share/icons/hicolor/256x256/apps')]) await mkdir(folder, { recursive: true });
 await copyFile(join(root, 'assets/icon.png'), icon);
 const settings = join(data, 'connections.json');
@@ -27,7 +27,7 @@ set -eu
 umask 077
 unset ELECTRON_RUN_AS_NODE
 export HOGA_DESKTOP_USER_DATA=${quote(data)}
-if [ ! -x ${quote(binary)} ] || [ ! -f ${quote(join(root, 'dist/main.js'))} ]; then
+if [ ! -x ${quote(binary)} ] || [ ! -f ${quote(join(root, 'dist/bootstrap.cjs'))} ]; then
   if command -v notify-send >/dev/null 2>&1; then notify-send 'Ticklane' 'Electron 실행 파일이 없습니다. desktop에서 npm run install:shortcut을 다시 실행하세요.'; fi
   exit 1
 fi

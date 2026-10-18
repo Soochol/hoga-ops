@@ -15,8 +15,10 @@ for (const file of ['package.json', 'package-lock.json']) {
 }
 execFileSync(process.execPath, ['node_modules/typescript/bin/tsc'], { stdio: 'inherit' });
 await mkdir('dist', { recursive: true });
+await cp('src/bootstrap.cjs', 'dist/bootstrap.cjs');
 await cp('src/preload', 'dist/preload', { recursive: true });
 await cp('src/launcher', 'dist/launcher', { recursive: true });
+await cp('src/server-ui', 'dist/server-ui', { recursive: true });
 let commit = 'unknown';
 try { commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { /* source archives */ }
 await writeFile('dist/build.json', JSON.stringify({ sourceVersion, version, commit }) + '\n');

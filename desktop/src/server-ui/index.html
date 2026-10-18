@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+  <title>Ticklane 서버</title><link rel="stylesheet" href="server.css">
+</head>
+<body>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m20 6-11 11-5-5"/></symbol>
+    <symbol id="icon-power" viewBox="0 0 24 24"><path d="M12 2v10M5.64 5.64a9 9 0 1 0 12.72 0"/></symbol>
+    <symbol id="icon-wait" viewBox="0 0 24 24"><path d="M5 12h.01M12 12h.01M19 12h.01"/></symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24"><path d="m12 3 10 18H2L12 3ZM12 9v4M12 17h.01"/></symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
+    <symbol id="icon-monitor" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="14" rx="2"/><path d="M12 17v4M8 21h8"/></symbol>
+    <symbol id="icon-frontend" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 9v12"/></symbol>
+    <symbol id="icon-backend" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0"/></symbol>
+    <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.55-1L20 9M4 15l2.35 3A7 7 0 0 0 17.9 17"/></symbol>
+  </defs></svg>
+  <header class="chrome"><img src="icon.png" alt="" width="28" height="28"><span>Ticklane 서버</span><button id="close" class="window-close" aria-label="관리 창 숨기기" title="창만 숨기고 서버는 계속 실행합니다">×</button></header>
+  <main>
+    <div class="heading"><h1>로컬 서버</h1><span class="device"><svg class="icon" aria-hidden="true"><use href="#icon-monitor"/></svg>이 PC</span></div>
+    <section class="hero" aria-label="전체 서버 상태">
+      <span class="state-icon" aria-hidden="true"><svg class="icon"><use id="state-icon" href="#icon-wait"/></svg></span>
+      <div><h2 id="headline">서버 상태를 확인하고 있습니다</h2><p id="message" role="status" aria-live="polite">서버 실행 설정을 읽고 있습니다.</p></div>
+    </section>
+    <div class="actions"><button id="primary" class="primary" disabled><svg class="icon" aria-hidden="true"><use id="primary-icon" href="#icon-power"/></svg><span id="primary-label">확인 중…</span></button><button id="stop" hidden disabled>서버 중지</button></div>
+    <section id="services" aria-label="서비스 연결 상태">
+      <div class="section-head"><span>서비스</span><div><span>자동 확인</span><button id="refresh" class="icon-button" aria-label="상태 새로고침" title="상태 새로고침"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg></button></div></div>
+      <article id="service-frontend" class="service" aria-label="프론트엔드"><svg class="icon service-icon" aria-hidden="true"><use href="#icon-frontend"/></svg><div class="service-info"><h3>화면 서버</h3><p class="address">프론트엔드</p><p class="detail" hidden></p></div><span class="service-status"><span class="dot" aria-hidden="true"></span><span class="phase">확인 중</span></span></article>
+      <article id="service-backend" class="service" aria-label="백엔드"><svg class="icon service-icon" aria-hidden="true"><use href="#icon-backend"/></svg><div class="service-info"><h3>API 서버</h3><p class="address">백엔드</p><p class="detail" hidden></p></div><span class="service-status"><span class="dot" aria-hidden="true"></span><span class="phase">확인 중</span></span></article>
+    </section>
+    <p id="external-note" class="note" hidden title="해당 실행기에서 종료한 뒤 여기서 다시 시작하면 관리 대상이 됩니다.">다른 곳에서 실행한 서버입니다. 이 창에서는 상태만 확인합니다.</p>
+    <details id="log-details"><summary><span class="chevron" aria-hidden="true">›</span>실행 기록 <span class="log-hint">· 필요할 때 확인</span></summary><div class="log-tools"><label><input id="follow" type="checkbox" checked> 자동 스크롤</label><button id="open-logs" class="subtle">로그 폴더 열기</button></div><pre id="logs" aria-label="실행 로그 내용" tabindex="0">아직 실행 로그가 없습니다.</pre></details>
+    <p id="feedback" role="alert" hidden></p>
+  </main>
+  <footer><div><span id="project" title="실행할 프로젝트 경로">로컬 프로젝트</span><span>창을 닫아도 서버는 계속 실행됩니다</span></div><button id="quit" class="subtle">관리 앱 종료</button></footer>
+  <dialog id="stop-dialog" aria-labelledby="stop-title" aria-describedby="stop-description"><h2 id="stop-title">로컬 서버를 중지할까요?</h2><p id="stop-description">Ticklane 창은 유지되지만, 이 PC의 서버 연결이 끊깁니다. 이 관리 창에서 시작한 서버만 중지하며 다시 시작할 수 있습니다.</p><div class="dialog-actions"><button id="cancel-stop" autofocus>계속 실행</button><button id="confirm-stop" class="danger">서버 중지</button></div></dialog>
+  <script src="server.js"></script>
+</body></html>

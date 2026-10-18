@@ -1,0 +1,28 @@
+{
+  "recorded_at": "2026-10-18T20:44:52.453464+09:00",
+  "design": "Two amber server chassis and network connection on a graphite tile",
+  "client_icons_unchanged": true,
+  "server_icon_sha256": "da68dc57e2e1164dccc52d2298206c706321cbb924aecf5e4e38b21c3e23a22e",
+  "installed_icon_matches": true,
+  "desktop_file_validate": "passed",
+  "desktop_typecheck": "passed",
+  "desktop_lint": "passed",
+  "external_service_regression": "passed",
+  "installed_real_config": "both services healthy and external; image loaded; services preserved",
+  "activation": {
+    "old_manager_pid": 172137,
+    "new_manager_pid": 184832,
+    "server_listener_pids_unchanged": [
+      37886,
+      37894,
+      38088
+    ],
+    "independent_client_pids_preserved": []
+  },
+  "scope": [
+    "server shortcut",
+    "server management header",
+    "server running window icon"
+  ],
+  "package_note": "Existing release archives were not rebuilt for this icon-only change."
+}

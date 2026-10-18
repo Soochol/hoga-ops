@@ -1,6 +1,7 @@
 const fields = Object.fromEntries(['profiles', 'name', 'origin', 'mode', 'api-origin', 'api-field', 'connect', 'cancel', 'remove', 'status', 'version', 'switch-hint'].map(id => [id, document.getElementById(id)]));
 let profiles = [];
 let busy = false;
+let ready = false;
 let generation = 0;
 function modeChanged() { fields['api-field'].hidden = fields.mode.value !== 'development'; }
 function selectProfile() {
@@ -10,7 +11,7 @@ function selectProfile() {
 }
 function setBusy(value) {
   busy = value;
-  for (const key of ['profiles', 'name', 'origin', 'mode', 'api-origin', 'connect', 'remove']) fields[key].disabled = value;
+  for (const key of ['profiles', 'name', 'origin', 'mode', 'api-origin', 'connect', 'remove']) fields[key].disabled = value || !ready;
   fields.cancel.hidden = !value;
 }
 window.refreshLauncher = async () => {
@@ -23,6 +24,7 @@ window.refreshLauncher = async () => {
     fields.version.textContent = `Desktop ${data.build.sourceVersion} (${data.build.commit})`;
     fields.status.textContent = data.warning;
   } catch { fields.status.textContent = '연결 설정을 읽지 못했습니다. 앱을 다시 실행하세요.'; }
+  finally { ready = true; setBusy(busy); }
 };
 fields.profiles.addEventListener('change', selectProfile); fields.mode.addEventListener('change', modeChanged);
 document.getElementById('connection').addEventListener('submit', async event => {
@@ -39,4 +41,5 @@ fields.remove.addEventListener('click', async () => {
   try { if (fields.profiles.value) await window.launcher.remove(fields.profiles.value); await window.refreshLauncher(); }
   catch { fields.status.textContent = '프로필을 삭제하지 못했습니다.'; }
 });
+setBusy(false);
 void window.refreshLauncher();
