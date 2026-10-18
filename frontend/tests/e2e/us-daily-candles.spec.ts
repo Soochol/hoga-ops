@@ -22,7 +22,7 @@ function periodCandles(timeframe: string | null) {
 
 const meta = { market: 'US', market_timezone: 'America/New_York', source: 'kis', price_basis: 'index_points', currency: 'index_points', session_scope: 'cash_index', latest_bar_date: candles.at(-1)!.trading_date, last_successful_check_at_ms: 1_792_100_000_000, completed: [], missing: [], truncated: false, refresh_status: 'normal', messages: [] };
 
-async function setup(page: Page) {
+async function setup(page: Page, stockStatus: () => 'normal' | 'partial' = () => 'normal') {
   await installLiveMocks(page);
   await page.addInitScript(() => {
     if (!sessionStorage.getItem('live.workspace.v1')) sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
@@ -38,7 +38,7 @@ async function setup(page: Page) {
   await page.route(/\/api\/live\/us-stocks(?:\?|$)/, route => route.fulfill({ json: { stocks: [{ exchange: 'NASDAQ', symbol: 'NVDA', label: '엔비디아', english_name: 'NVIDIA', is_etf: false }], status: 'normal', fetched_at_ms: 1_792_100_000_000 } }));
   await page.route(/\/api\/live\/us-stock-daily-candles\?/, route => {
     const params = new URL(route.request().url()).searchParams;
-    return route.fulfill({ json: { instrument_key: `us-stock:${params.get('exchange')}:${params.get('symbol')}`, exchange: params.get('exchange'), symbol: params.get('symbol'), from: params.get('from'), to: params.get('to'), timeframe: params.get('timeframe') ?? 'D', candles: periodCandles(params.get('timeframe')), daily_metadata: { ...meta, source: 'kiwoom', price_basis: 'raw', currency: 'USD', session_scope: 'vendor_daily_unverified' } } });
+    return route.fulfill({ json: { instrument_key: `us-stock:${params.get('exchange')}:${params.get('symbol')}`, exchange: params.get('exchange'), symbol: params.get('symbol'), from: params.get('from'), to: params.get('to'), timeframe: params.get('timeframe') ?? 'D', candles: periodCandles(params.get('timeframe')), daily_metadata: { ...meta, refresh_status: stockStatus(), source: 'kiwoom', price_basis: 'raw', currency: 'USD', session_scope: 'vendor_daily_unverified' } } });
   });
 }
 
@@ -51,23 +51,24 @@ for (const id of Object.keys(indexLabels)) {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`/live?index=${id}`);
     const frame = page.locator('.live-window-chart');
-    await expect(frame.getByRole('status')).toContainText('지수값');
     await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+    await expect(frame.getByRole('status')).toHaveCount(0);
     await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(4);
     await expect.poll(() => requests.some(url => url.includes(`index_id=${id}&timeframe=D`))).toBe(true);
     expect(requests.filter(url => /index_id=(NASDAQ_COMPOSITE|SP500|SOX)/.test(url) && /timeframe=([0-9]+[ms])/.test(url))).toEqual([]);
     await frame.screenshot({ path: testInfo.outputPath(`${id}-daily.png`) });
-    for (const [tf, label, status] of [['W', '주', '주봉'], ['M', '월', '월봉']]) {
+    for (const [tf, label] of [['W', '주'], ['M', '월']]) {
       const button = frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true });
       await button.click();
       await expect(button).toHaveAttribute('aria-pressed', 'true');
-      await expect(frame.getByRole('status')).toContainText(`미국 ${status}`);
       await expect.poll(() => requests.some(url => url.includes(`index_id=${id}&timeframe=${tf}`))).toBe(true);
       await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+      await expect(frame.getByRole('status')).toHaveCount(0);
     }
     await page.reload();
     await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: '월', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+    await expect(frame.getByRole('status')).toHaveCount(0);
     await frame.screenshot({ path: testInfo.outputPath(`${id}-monthly.png`) });
     expect(errors).toEqual([]);
   });
@@ -84,7 +85,7 @@ test('US stock search preserves exchange/ticker and never requests domestic stoc
   await page.getByRole('combobox').fill('NVDA');
   await page.getByRole('option', { name: /엔비디아/ }).click();
   const frame = page.locator('.live-window-chart');
-  await expect(frame.getByRole('status')).toContainText('USD · 수정 전 가격');
+  await expect(frame.getByRole('status')).toHaveCount(0);
   await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
   await expect.poll(() => requests.some(url => url.includes('us-stock-daily-candles?exchange=NASDAQ&symbol=NVDA'))).toBe(true);
   expect(requests.filter(url => /\/(past-daily-candles|quotes|stock-limits|investor-net|series)\?/.test(url) && /NVDA/.test(url))).toEqual([]);
@@ -97,11 +98,12 @@ test('US stock search preserves exchange/ticker and never requests domestic stoc
     await expect(button).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => requests.some(url => url.includes('us-stock-daily-candles?exchange=NASDAQ&symbol=NVDA') && url.includes(`timeframe=${tf}`))).toBe(true);
     await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+    await expect(frame.getByRole('status')).toHaveCount(0);
   }
   // Reload restores both the US instrument and monthly timeframe.
   await page.reload();
   await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: '월', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await expect(frame.getByRole('status')).toContainText('USD · 수정 전 가격');
+  await expect(frame.getByRole('status')).toHaveCount(0);
   await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
 });
 
@@ -117,4 +119,17 @@ test('preferred-share URL keeps broker case and underscore across restore', asyn
   await page.reload();
   await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
   expect(requests.filter(url => url.includes('symbol=AHT_PD'))).toEqual([]);
+});
+
+test('US daily partial data keeps its retry action and removes the notice after recovery', async ({ page }) => {
+  let partial = true;
+  await setup(page, () => partial ? 'partial' : 'normal');
+  await page.goto('/live?market=US&exchange=NASDAQ&symbol=NVDA');
+  const frame = page.locator('.live-window-chart');
+  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  await expect(frame.getByRole('status')).toHaveText('과거 일부 조회됨더 조회');
+  partial = false;
+  await frame.getByRole('button', { name: '더 조회', exact: true }).click();
+  await expect(frame.getByRole('status')).toHaveCount(0);
+  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
 });

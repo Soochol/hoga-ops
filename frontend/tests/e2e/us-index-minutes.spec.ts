@@ -54,10 +54,8 @@ for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX']) {
     page.on('websocket', ws => ws.on('framesent', event => wsMessages.push(String(event.payload))));
     await page.goto(`/live?index=${id}`);
     const frame = page.locator('.live-window-chart');
-    await expect(frame.getByRole('status')).toContainText('미국 1분봉');
-    await expect(frame.getByRole('status')).toContainText('지연 여부 미확인');
-    await expect(frame.getByRole('status')).toContainText('과거 날짜 조회 불가');
     await expect.poll(async () => (await measurements(page)).count).toBe(102);
+    await expect(frame.getByRole('status')).toHaveCount(0);
     const expected = evidence.responses.find(r => r.index_id === id && r.timeframe === '1m')!.candles.at(-1)!;
     await expect(frame.getByText(`${expected.close.toLocaleString('en-US')} pt`, { exact: false }).first()).toBeVisible();
     // Fake time must advance rAF/reveal timers before testing the painted chart.
@@ -87,15 +85,15 @@ for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX']) {
     await expect(menu.getByRole('menuitemradio')).toHaveCount(7);
     await expect(menu.getByRole('menuitemradio', { name: '120분', exact: true })).toHaveCount(0);
     await menu.getByRole('menuitemradio', { name: '5분', exact: true }).click();
-    await expect(frame.getByRole('status')).toContainText('미국 5분봉');
+    await expect(frame.getByRole('status')).toHaveCount(0);
     await expect.poll(async () => (await measurements(page)).count).toBe(evidence.responses.find(r => r.index_id === id && r.timeframe === '5m')!.candles.length);
     await page.reload();
-    await expect(frame.getByRole('status')).toContainText('미국 5분봉');
+    await expect(frame.getByRole('status')).toHaveCount(0);
     await expect(frame.getByRole('button', { name: '분봉 선택 열기: 5분', exact: true })).toBeVisible();
-    for (const [label, title] of [['일', '일봉'], ['주', '주봉'], ['월', '월봉']]) {
+    for (const label of ['일', '주', '월']) {
       await frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true }).click();
-      await expect(frame.getByRole('status')).toContainText(`미국 ${title}`);
       await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+      await expect(frame.getByRole('status')).toHaveCount(0);
     }
     expect(requests.filter(url => /\/(past-candles|past-daily-candles|screener-daily-candles|index-investor-net|quotes|series)\?/.test(url) && new RegExp(id).test(url))).toEqual([]);
     expect(wsMessages.filter(message => /NASDAQ_COMPOSITE|SP500|SOX/.test(message))).toEqual([]);
@@ -108,7 +106,7 @@ test('US minute candles cross KST midnight without losing the next-date candles'
   await page.goto('/live?index=NASDAQ_COMPOSITE');
   await expect.poll(async () => (await measurements(page)).count).toBe(102);
   expect((await measurements(page)).last).toMatchObject({ time: Date.UTC(2026, 9, 16, 16, 11) / 1000 });
-  await expect(page.getByRole('status')).toContainText('차트 시간 KST · 거래일 뉴욕');
+  await expect(page.locator('.live-window-chart').getByRole('status')).toHaveCount(0);
   await expect(page.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
   await page.locator('.live-window-chart').screenshot({ path: testInfo.outputPath('midnight-painted.png') });
 });

@@ -1,0 +1,110 @@
+{
+  "status": "passed",
+  "captured_at_utc": "2026-10-18T16:30:27.841230+00:00",
+  "branch": "codex/hide-us-daily-info",
+  "base_sha": "ef386a37c89b9ce2e4743d88bb1bcf28b9b250cb",
+  "latest_main_checked_before_tests": "ef386a37c89b9ce2e4743d88bb1bcf28b9b250cb",
+  "input_sha256": "b140dc656445518cb92d2cf359156e2866e7046c4fecc551388b8119dfc1e147",
+  "input_scope": [
+    "scripts",
+    "hoga",
+    "tests",
+    "frontend/src",
+    "frontend/tests",
+    "frontend/public",
+    "pyproject.toml",
+    "uv.lock",
+    "ruff.toml",
+    ".python-version",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/tsconfig.json",
+    "frontend/tsconfig.app.json",
+    "frontend/tsconfig.test.json",
+    "frontend/tsconfig.e2e.json",
+    "frontend/vite.config.ts",
+    "frontend/playwright.config.ts",
+    "frontend/index.html",
+    "frontend/eslint.config.js",
+    "frontend/postcss.config.js",
+    "frontend/tailwind.config.js",
+    "docs/adr",
+    "docs/research/2026-10-19-us-index-minute-app-live-probe.json",
+    "docs/research/2026-10-19-us-stock-minute-probe.json",
+    "docs/research/2026-10-19-us-stock-minute-app-live.json.gz",
+    "docs/research/2026-10-19-us-stock-minute-history-live.json.gz",
+    "docs/research/2026-10-19-us-stock-minute-history-live-summary.json",
+    "CONTEXT.md",
+    "CLAUDE.md"
+  ],
+  "input_file_count": 2621,
+  "manifest": "inputs.json.gz",
+  "fingerprint_algorithm": "SHA256(json.dumps(manifest, sort_keys=True)); manifest maps source, test, fixture, dependency and configuration paths to SHA256.",
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "browser": "Google Chrome 155.0.8059.84",
+    "credentials": "empty worktree .env; E2E broker credentials explicitly blank; no live vendor calls for this UI change"
+  },
+  "runs": {
+    "typecheck": {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "typecheck.log.gz",
+      "log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250"
+    },
+    "unit": {
+      "command": "npx vitest run src/live/LivePage.test.tsx src/live/LiveChartRoot.test.tsx src/live/useLiveChartData.test.tsx --maxWorkers=2",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "unit.log.gz",
+      "log_sha256": "6402b6f614a8e34c2c99f5ea7ee91fbf3771ea50315c2b72b2af8f0e9730acbc"
+    },
+    "e2e": {
+      "command": "npx playwright test tests/e2e/us-daily-candles.spec.ts tests/e2e/us-index-minutes.spec.ts tests/e2e/us-stock-minutes.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "e2e.log.gz",
+      "log_sha256": "e525d69183408103d18df138fafbc84803cbb9ab40c7ce1dc6d03a5efbf40e6e"
+    },
+    "build": {
+      "command": "npm run build",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "build.log.gz",
+      "log_sha256": "985e13a253a2146e9dacf036c759d2a5365f4bec8c75a617cb56ad67cf275ea2"
+    },
+    "adr": {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_adr_invariants.py",
+      "cwd": ".",
+      "result": "passed",
+      "log": "adr.log.gz",
+      "log_sha256": "d3d2f6d02d18034f46fea4af6f0b51c015bae32c6d5dd1b02c9c9886ba49356e"
+    }
+  },
+  "results": {
+    "unit": 232,
+    "e2e": 18,
+    "doc_invariants": 66,
+    "typecheck": "passed (app/unit/E2E)",
+    "build": "passed (existing chunk-size warning)"
+  },
+  "browser": {
+    "workers": 1,
+    "backend_port": 20182,
+    "frontend_port": 21182,
+    "data_dir": "/tmp/hoga-e2e-data-182",
+    "dist_dir": "/tmp/hoga-e2e-dist-182",
+    "screenshots": [
+      "SOX-monthly.png",
+      "NASDAQ_COMPOSITE-1m.png",
+      "NVDA-daily.png"
+    ],
+    "visually_reviewed": true
+  },
+  "scope": "Remove persistent metadata banners and empty banner space on US stocks and NASDAQ Composite/SP500/SOX indices for minute, daily, weekly and monthly charts. Preserve actionable configuration, failure, partial/empty-data guidance and retries. Data fetching, polling and history paths unchanged. E2E covers D/W/M selection and restore for all three indices and NVDA, minute polling/errors/period changes, insufficient SP500 minute data, and daily partial-data retry/recovery. Backend runtime unchanged; full backend and full frontend suites were not repeated for this presentation-only change."
+}
