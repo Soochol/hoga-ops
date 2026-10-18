@@ -150,13 +150,14 @@ export default function ProgramTradeSummaryCard({
 }
 
 
-function ProgramTradeControls({ view, onSelect }: {
+function ProgramTradeControls({ view, onSelect, showUnit = true }: {
   view: 'intraday' | 'daily';
   onSelect: (value: 'intraday' | 'daily') => void;
+  showUnit?: boolean;
 }) {
   const measure = useProgramTradeDisplayStore((state) => state.measure);
   const setMeasure = useProgramTradeDisplayStore((state) => state.setMeasure);
-  return <div className="flex w-full flex-wrap items-center justify-between gap-2">
+  return <div className={`program-trade-controls flex shrink-0 items-center gap-1${showUnit ? ' w-full' : ''}`}>
     <div className="ui-segmented" role="group" aria-label="프로그램 조회 구분">
     {(['intraday', 'daily'] as const).map((value) => <button key={value} type="button"
       aria-pressed={view === value} onClick={() => onSelect(value)}
@@ -174,6 +175,7 @@ function ProgramTradeControls({ view, onSelect }: {
       {value === 'amount' ? '금액' : '수량'}
     </button>)}
     </div>
+    {showUnit && <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim">단위: {measure === 'amount' ? '억원' : '주'}</span>}
   </div>;
 }
 
@@ -221,8 +223,8 @@ function ProgramDailySummary({
     all: '모두', net: '순매수', buy: '총매수', sell: '총매도',
   };
   const format = useMemo(() => (value: number | null) => value == null ? '—'
-    : measure === 'amount' ? formatAmount(value).replace(/^\+/, '')
-      : useK ? formatKoreanK(value) : formatKoreanInt(value), [measure, useK]);
+    : measure === 'amount' ? formatAmount(value).replace(/억$/, '').replace(/^\+/, '')
+      : useK ? formatKoreanK(value).replace(/K$/, '') : formatKoreanInt(value), [measure, useK]);
   const rowContents = useMemo(() => rows.map((row) => {
     const values = programDailyValues(row, measure);
     return {
@@ -232,13 +234,13 @@ function ProgramDailySummary({
           {formatDailyDate(row.t_ms)}
         </th>
         {display === 'all'
-          ? <InvestorDailySummaryCell values={values} unit={unit} useK={useK} divided={false} />
+          ? <InvestorDailySummaryCell values={values} unit={unit} useK={useK} divided={false} showUnitSuffix={false} />
           : <ProgramDailyValueCell value={values[display]} side={display} format={format} />}
       </>,
     };
   }), [rows, display, measure, unit, useK, format]);
   const totalCells = useMemo(() => display === 'all'
-    ? <InvestorDailySummaryCell values={totals} unit={unit} useK={useK} foot divided={false} />
+    ? <InvestorDailySummaryCell values={totals} unit={unit} useK={useK} foot divided={false} showUnitSuffix={false} />
     : <ProgramDailyValueCell value={totals[display]} side={display} format={format} foot />,
   [display, totals, unit, useK, format]);
   useEffect(() => {
@@ -260,7 +262,12 @@ function ProgramDailySummary({
     return () => window.clearTimeout(timer);
   }, [cursorDate, followCursor, rows, span]);
   return <div className="live-data-table-panel flex h-full min-h-0 flex-col bg-bg-card font-data text-xs">
-    <ResponsiveDataControls secondary={<>
+    <ResponsiveDataControls
+      trailing={<span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim"
+        title={measure === 'qty' && useK ? '1K = 1,000주' : undefined}>
+        단위: {measure === 'amount' ? '억원' : useK ? '천 주' : '주'}
+      </span>}
+      secondary={<>
       <div role="group" aria-label="일별 프로그램 표시 기간" className="ui-segmented">
         {([5, 20, 60, 0] as const).map((value) => <button key={value} type="button"
           aria-pressed={span === value} onClick={() => {
@@ -286,7 +293,7 @@ function ProgramDailySummary({
         className={`rounded border px-1.5 py-px text-2xs ${followCursor
           ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>커서 따라가기</button>
     </>}>
-      <ProgramTradeControls view="daily" onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
+      <ProgramTradeControls view="daily" showUnit={false} onSelect={(value) => { if (value === 'intraday') onShowIntraday(); }} />
     </ResponsiveDataControls>
     <div ref={scrollRef} aria-label="일별 프로그램 내역" className="live-data-table-viewport min-h-0 flex-1 overflow-auto">
       {error ? <SidebarState>일별 프로그램 조회 실패</SidebarState>
@@ -295,7 +302,7 @@ function ProgramDailySummary({
             : <table className="w-full border-collapse font-data text-xs tabular-nums">
               <thead className="sticky top-0 z-20 text-fg-dim"><tr>
                 <th className="sticky left-0 z-10 whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-left font-medium">날짜</th>
-                <th className="whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램 {display === 'all' ? <span className="ml-1 font-normal">순·매수·매도</span> : labels[display]} <span className="font-normal">({measure === 'amount' ? '억원' : useK ? 'K주' : '주'})</span></th>
+                <th className="whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램 {display === 'all' ? <span className="ml-1 font-normal">순·매수·매도</span> : labels[display]}</th>
               </tr></thead>
               <tbody>{rowContents.map(({ date, cells }) => <ProgramDailyRow key={date} date={date}
                 isCursor={followCursor && cursorDate === date} cells={cells} />)}</tbody>
@@ -695,13 +702,13 @@ function formatProgramValue(
   measure: ProgramTradeMeasure,
 ): string {
   if (value === null) return '-';
-  const formatted = measure === 'amount' ? formatKoreanWonEok(value) : formatKoreanInt(value);
+  const formatted = formatProgramAxisValue(value, measure);
   return side === 'net' && value > 0 ? `+${formatted}` : formatted;
 }
 
 
 function formatProgramAxisValue(value: number, measure: ProgramTradeMeasure): string {
-  return measure === 'amount' ? formatKoreanWonEok(value) : formatKoreanInt(value);
+  return measure === 'amount' ? formatKoreanWonEok(value).replace(/억$/, '') : formatKoreanInt(value);
 }
 
 

@@ -47,7 +47,10 @@ export function InvestorTrendEstimateCard({ query }: Props) {
         </div>
       )}
 
-      <div className="flex shrink-0 justify-end px-2 py-1"><UnitChip unit={unit} onToggle={toggleUnit} /></div>
+      <div className="flex shrink-0 items-center gap-2 px-2 py-1">
+        <UnitChip unit={unit} onToggle={toggleUnit} />
+        <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim">단위: {qty ? '주' : '억원'}</span>
+      </div>
       <table className="w-full border-collapse font-data text-sm tabular-nums">
         {/* 헤더 배경은 창 본문(--bg-card)과 같은 값 — 밴드로 분리하지 않는다
             (2026-07-30 사용자 결정, 거래원 합계행 #961 과 동일 방침).
@@ -104,7 +107,7 @@ function ValueCell({
 }) {
   return (
     <td className={`py-1.5 text-right tabular-nums whitespace-nowrap ${className} ${qtyClass(value)}`}>
-      {unit === 'qty' ? formatQty(value) : formatAmount(value)}
+      {unit === 'qty' ? formatQty(value) : formatAmount(value).replace(/억$/, '')}
     </td>
   );
 }
