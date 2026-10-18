@@ -29,16 +29,20 @@ export function DataControlPopover({ label, children }: { label: string; childre
 }
 
 /** Keep the primary controls visible; move secondary controls outside narrow windows. */
-export function ResponsiveDataControls({ children, secondary, trailing, status, label = '표시 설정' }: {
+export function ResponsiveDataControls({ children, secondary, trailing, status, label = '표시 설정', secondaryPlacement = 'inline' }: {
   children: ReactNode; secondary: ReactNode; trailing?: ReactNode; status?: ReactNode; label?: string;
+  secondaryPlacement?: 'inline' | 'below';
 }) {
   return <>
     <div className={`responsive-data-controls live-data-controls${trailing ? ' responsive-data-controls-with-trailing' : ''}`}>
       <div className="responsive-data-primary">{children}</div>
-      <div className="responsive-data-secondary">{secondary}</div>
-      <div className="responsive-data-more"><DataControlPopover label={label}>{secondary}</DataControlPopover></div>
+      {secondaryPlacement === 'inline' && <>
+        <div className="responsive-data-secondary">{secondary}</div>
+        <div className="responsive-data-more"><DataControlPopover label={label}>{secondary}</DataControlPopover></div>
+      </>}
       {trailing}
     </div>
+    {secondaryPlacement === 'below' && <div className="responsive-data-secondary-below">{secondary}</div>}
     {status && <div role="status" className="responsive-data-status">{status}</div>}
   </>;
 }
