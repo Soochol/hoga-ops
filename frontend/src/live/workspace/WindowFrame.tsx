@@ -17,6 +17,7 @@ import { TitleBarSymbolRow } from './TitleBarSymbolRow';
 import { WindowActionsMenu } from './WindowActionsMenu';
 import { TradeWindowSettings } from './TradeWindowSettings';
 import { formatTradeMinAmount } from '../../state/tradeWindowSettings';
+import { useWindowActionsCompact } from './useWindowActionsCompact';
 
 export type { WindowRectPx };
 
@@ -113,8 +114,9 @@ function WindowFrameImpl(props: WindowFrameProps) {
   } = props;
 
   const marketWide = kind === 'market-indices';
-  const tradeTape = kind === 'trade' || kind === 'program-trade';
   const title = marketWide ? KIND_LABEL[kind] : symbolLabel ?? `그룹 ${group}`;
+  const hasSettings = kind === 'trade' && !!onTradeMinAmountChange;
+  const { actionsRef, compact } = useWindowActionsCompact(hasSettings);
 
   return (
     <WindowFrameCore
@@ -155,68 +157,67 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </span>
             </>
           )}
-          {/* 창 수준 액션은 오른쪽 끝에 모은다. 차트·체결창은 제목, 나머지는
-              스페이서 한 곳이 여유를 흡수해 버튼 사이 간격을 일정하게 유지한다. */}
+          {/* 제목이 여유 공간을 흡수하고, 액션은 실제로 공간이 부족할 때만 접는다. */}
           {kind === 'trade' && tradeMinAmountManwon > 0 && <span className="shrink-0 rounded-sm bg-tint-selection px-1 text-xs text-accent font-data"
             aria-label={`체결금액 ${formatTradeMinAmount(tradeMinAmountManwon)} 이상 표시`}>{formatTradeMinAmount(tradeMinAmountManwon)} 이상</span>}
-          <span aria-hidden data-testid="window-header-spacer" className={marketWide || tradeTape || (kind === 'chart' && symbolCode) ? 'hidden' : 'flex-1'} />
-          {onToggleMaximize && (
-            <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
-              aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
-              onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
-              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
-              </svg>
-            </button>
-          )}
-          {onToggleAlwaysOnTop && (
-            <button
-              type="button"
-              data-window-secondary-action
-              aria-label="항상 위"
-              aria-pressed={alwaysOnTop}
-              title={alwaysOnTop ? '항상 위 해제' : '항상 위 — 다른 창에 가려지지 않게 표시'}
-              className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${alwaysOnTop
-                ? 'bg-tint-selection text-accent hover:brightness-125'
-                : 'text-fg-dim hover:bg-tint-selection hover:text-fg'}`}
-              onPointerDown={(e) => e.stopPropagation()}
-              onClick={() => onToggleAlwaysOnTop(id)}
-            >
-              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4h16M12 18V8m-5 5 5-5 5 5" />
-                {alwaysOnTop && <path d="M4 21h16" />}
-              </svg>
-            </button>
-          )}
-          {!marketWide && onTogglePin && (
-            <>
+          <div ref={actionsRef} className="live-window-direct-actions" data-compact={compact ? '' : undefined}>
+            {onToggleMaximize && (
+              <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
+                aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
+                onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
+                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
+                </svg>
+              </button>
+            )}
+            {onToggleAlwaysOnTop && (
               <button
                 type="button"
-                data-window-secondary-action
-                data-testid="window-pin-toggle"
-                aria-pressed={pinned}
-                disabled={!canPin}
-                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${
-                  pinned
-                    ? 'bg-tint-selection text-accent hover:brightness-125'
-                    : canPin
-                      ? 'text-fg-dim hover:bg-tint-selection hover:text-accent'
-                      : 'cursor-not-allowed text-fg-dimmer'
-                }`}
+                aria-label="항상 위"
+                aria-pressed={alwaysOnTop}
+                title={alwaysOnTop ? '항상 위 해제' : '항상 위 — 다른 창에 가려지지 않게 표시'}
+                className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${alwaysOnTop
+                  ? 'bg-tint-selection text-accent hover:brightness-125'
+                  : 'text-fg-dim hover:bg-tint-selection hover:text-fg'}`}
                 onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => onTogglePin(id)}
-                title={
-                  pinned
-                    ? '이 창 종목 고정 해제 — 다시 링크 그룹을 따릅니다'
-                    : canPin
-                      ? '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다'
-                      : '고정할 종목이 없습니다'
-                }
+                onClick={() => onToggleAlwaysOnTop(id)}
               >
-                <PinGlyph filled={pinned} />
+                <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 4h16M12 18V8m-5 5 5-5 5 5" />
+                  {alwaysOnTop && <path d="M4 21h16" />}
+                </svg>
               </button>
-            </>
-          )}
+            )}
+            {!marketWide && onTogglePin && (
+              <>
+                <button
+                  type="button"
+                  data-testid="window-pin-toggle"
+                  aria-label="종목 고정"
+                  aria-pressed={pinned}
+                  disabled={!canPin}
+                  className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${
+                    pinned
+                      ? 'bg-tint-selection text-accent hover:brightness-125'
+                      : canPin
+                        ? 'text-fg-dim hover:bg-tint-selection hover:text-accent'
+                        : 'cursor-not-allowed text-fg-dimmer'
+                  }`}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={() => onTogglePin(id)}
+                  title={
+                    pinned
+                      ? '이 창 종목 고정 해제 — 다시 링크 그룹을 따릅니다'
+                      : canPin
+                        ? '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다'
+                        : '고정할 종목이 없습니다'
+                  }
+                >
+                  <PinGlyph filled={pinned} />
+                </button>
+              </>
+            )}
+          </div>
           <WindowActionsMenu maximized={maximized} alwaysOnTop={alwaysOnTop} pinned={pinned} canPin={canPin}
             onMaximize={onToggleMaximize ? () => onToggleMaximize(id) : undefined}
             onAlwaysOnTop={onToggleAlwaysOnTop ? () => onToggleAlwaysOnTop(id) : undefined}

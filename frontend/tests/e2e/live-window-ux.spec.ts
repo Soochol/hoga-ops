@@ -32,10 +32,19 @@ test('창 최대화·Escape 복원은 원래 배치를 보존한다', async ({ p
   expect(restored!.height).toBeCloseTo(before!.height, 0);
 });
 
-test('좁은 작업 영역에 추가한 잠정투자자 창도 숫자에 필요한 기본 너비를 확보한다', async ({ page }) => {
+test('좁은 작업 영역에 추가한 잠정투자자 창도 숫자에 필요한 기본 너비를 확보한다', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await installLiveMocks(page);
-  await page.goto('/live');
+  await page.route('**/api/live/investor-trend-estimate?**', async route => {
+    await route.fulfill({ json: {
+      code: '098460', trading_day: '20261018', fetched_at_ms: Date.now(), source: 'kiwoom', status: 'ok',
+      data_warning: null, latest: null, rows: [{
+        slot: '1', observed_at_ms: Date.now(), foreign_qty: 1500, institution_qty: -200, sum_qty: 1300,
+        foreign_amt_mwon: 360, institution_amt_mwon: -48, sum_amt_mwon: 312,
+      }],
+    } });
+  });
+  await page.goto('/live?code=098460');
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-investor').click();
   const added = page.locator('[data-win]').last();
@@ -44,4 +53,16 @@ test('좁은 작업 영역에 추가한 잠정투자자 창도 숫자에 필요�
   const rect = (await added.boundingBox())!;
   expect(rect.x).toBeGreaterThanOrEqual(0);
   expect(rect.x + rect.width).toBeLessThanOrEqual(1280);
+  await expect(added.getByText('단위: 주', { exact: true })).toBeVisible();
+  await added.getByRole('button', { name: '금액(억원)', exact: true }).click();
+  const unit = added.getByText('단위: 억원', { exact: true });
+  await expect(unit).toBeInViewport();
+  await expect(added.getByRole('table')).toContainText('+3.6');
+  await expect(added.getByRole('table')).not.toContainText('억');
+  await expect.poll(async () => {
+    const label = (await unit.boundingBox())!;
+    const button = (await added.getByRole('button', { name: '금액(억원)', exact: true }).boundingBox())!;
+    return Math.abs(label.y + label.height / 2 - button.y - button.height / 2);
+  }).toBeLessThan(2);
+  await added.screenshot({ path: testInfo.outputPath('investor-amount-unit.png') });
 });

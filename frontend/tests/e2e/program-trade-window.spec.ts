@@ -226,7 +226,9 @@ test('체결·프로그램 체결 헤더는 좁은 창에서도 창 이름과 �
         return { centerDifference: Math.abs((kind.top + kind.bottom) / 2 - (name.top + name.bottom) / 2), nameVisible: name.width > 0 };
       })).toEqual({ centerDifference: 0, nameVisible: true });
       await expect(frame.locator('.live-data-title .live-symbol-name')).toHaveText('고영');
-      await expect(frame.getByTestId('window-header-spacer')).toBeHidden();
+      await expect(frame.getByRole('button', { name: '창 최대화', exact: true })).toBeVisible();
+      await expect(frame.getByRole('button', { name: '항상 위', exact: true })).toBeVisible();
+      await expect(frame.getByRole('button', { name: '종목 고정', exact: true })).toBeVisible();
     }
     await frame.screenshot({ path: testInfo.outputPath(`${kind}-single-line-header.png`) });
   }

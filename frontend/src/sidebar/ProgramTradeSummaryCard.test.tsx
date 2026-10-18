@@ -177,10 +177,12 @@ describe('ProgramTradeSummaryCard — render states', () => {
     ]);
     render(<ProgramTradeSummaryCard series={series} cursorMs={T0 + 500} />);
     // 커서 → 첫 point (1억).
-    expect(screen.getByText('+1억')).toBeInTheDocument();
-    expect(screen.getByText('5억')).toBeInTheDocument();
-    expect(screen.getByText('4억')).toBeInTheDocument();
-    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('2억');
+    expect(screen.getByText('+1')).toBeInTheDocument();
+    expect(screen.getByText('5')).toBeInTheDocument();
+    expect(screen.getByText('4')).toBeInTheDocument();
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('2');
+    expect(screen.getByText('단위: 억원')).toBeInTheDocument();
+    expect(screen.getByTestId('program-metric-strip')).not.toHaveTextContent('억');
     expect(screen.getByTestId('program-metric-strip')).not.toHaveClass('border');
 
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
@@ -188,6 +190,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByText('70')).toBeInTheDocument();
     expect(screen.getByText('60')).toBeInTheDocument();
     expect(screen.getByTestId('axis-label-max')).toHaveTextContent('20');
+    expect(screen.getByText('단위: 주')).toBeInTheDocument();
 
     expect(screen.queryByRole('button', { name: '총매수70' })).not.toBeInTheDocument();
   });
@@ -202,9 +205,9 @@ describe('ProgramTradeSummaryCard — render states', () => {
 
     expect(screen.getByRole('group', { name: '일별 프로그램 표시 기간' })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: '일별 프로그램 표기 방법' })).toBeInTheDocument();
-    expect(screen.getAllByText('−8K')).toHaveLength(2);
-    expect(screen.getAllByText('29K')).toHaveLength(2);
-    expect(screen.getAllByText('37K')).toHaveLength(2);
+    expect(screen.getAllByText('−8')).toHaveLength(2);
+    expect(screen.getAllByText('29')).toHaveLength(2);
+    expect(screen.getAllByText('37')).toHaveLength(2);
     expect(screen.queryByTestId('program-sparkline')).not.toBeInTheDocument();
   });
 
@@ -242,7 +245,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
     const row = screen.getByTestId('program-daily-row-20260721');
     expect(row).toHaveClass('bg-tint-selection');
     expect(row).toHaveTextContent('07-21');
-    expect(row).toHaveTextContent('+9K·203K·194K');
+    expect(row).toHaveTextContent('+9·203·194');
     expect(row.querySelector('td')).not.toHaveClass('border-l');
     expect(screen.getByText('누적 1일')).toBeInTheDocument();
     expect(screen.getAllByTitle('총매수 203,000주')).toHaveLength(2);
@@ -283,23 +286,26 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByRole('button', { name: '금액' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('button', { name: 'K 단위' })).not.toBeInTheDocument();
     const row = screen.getByTestId('program-daily-row-20260721');
-    expect(row).toHaveTextContent('-1억·2억·3억');
-    expect(screen.getByRole('columnheader', { name: /프로그램.*억원/ })).toBeInTheDocument();
+    expect(row).toHaveTextContent('-1·2·3');
+    expect(screen.getByText('단위: 억원')).toBeInTheDocument();
+    expect(screen.getByText('단위: 억원').closest('.responsive-data-controls')).toContainElement(screen.getByRole('button', { name: '일별' }));
+    expect(screen.getByRole('table')).not.toHaveTextContent(/[K억]/);
     const foot = screen.getByRole('rowheader', { name: '누적 2일' }).closest('tr')!;
-    expect(foot).toHaveTextContent('+1억·5억·4억');
+    expect(foot).toHaveTextContent('+1·5·4');
 
-    for (const [label, value, total] of [['순매수', '-1억', '+1억'], ['총매수', '2억', '5억'], ['총매도', '3억', '4억']]) {
+    for (const [label, value, total] of [['순매수', '-1', '+1'], ['총매수', '2', '5'], ['총매도', '3', '4']]) {
       fireEvent.click(screen.getByRole('button', { name: label }));
       expect(within(row).getByRole('cell')).toHaveTextContent(value);
       expect(within(foot).getByRole('cell')).toHaveTextContent(total);
     }
     fireEvent.click(screen.getByRole('button', { name: '모두' }));
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
-    expect(row).toHaveTextContent('−1K·2K·3K');
-    expect(foot).toHaveTextContent('+1K·5K·4K');
+    expect(row).toHaveTextContent('−1·2·3');
+    expect(screen.getByText('단위: 천 주')).toBeInTheDocument();
+    expect(foot).toHaveTextContent('+1·5·4');
     fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
     expect(row).toHaveTextContent('-1,000·2,000·3,000');
-    expect(screen.getByRole('columnheader', { name: /프로그램.*\(주\)/ })).toBeInTheDocument();
+    expect(screen.getByText('단위: 주')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '당일 누적' }));
     expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '일별' }));
@@ -320,8 +326,8 @@ describe('ProgramTradeSummaryCard — render states', () => {
     const foot = screen.getByRole('rowheader', { name: '누적 2일' }).closest('tr')!;
     expect(within(foot).getAllByText('—')).toHaveLength(3);
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
-    expect(row).toHaveTextContent('+1K·2K·1K');
-    expect(foot).toHaveTextContent('+1K·2K·1K');
+    expect(row).toHaveTextContent('+1·2·1');
+    expect(foot).toHaveTextContent('+1·2·1');
   });
 
   it('keeps both controls available while daily data loads, fails or is empty', () => {
@@ -351,7 +357,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
   it('renders normally in latest mode when the last point is from today', () => {
     const series = seriesOf([point(T0, 100_000_000, { net_qty: 10 })]);
     render(<ProgramTradeSummaryCard series={series} todayKst="20260721" />);
-    expect(screen.getByText('+1억')).toBeInTheDocument();
+    expect(screen.getByText('+1')).toBeInTheDocument();
   });
 
   it('does not toggle a 보간 label as the cursor crosses gap-risk points', () => {
@@ -491,15 +497,15 @@ describe('ProgramTradeSummaryCard — sparkline', () => {
     const series = seriesOf([point(T0, 0), point(T0 + 30_000, 500_000_000_000)]);
     render(<ProgramTradeSummaryCard series={series} />);
     // 도메인은 0을 항상 포함 — 전량 양수 날이면 하한 라벨이 0억이 된다.
-    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('5,000억');
-    expect(screen.getByTestId('axis-label-min')).toHaveTextContent('0억');
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('5,000');
+    expect(screen.getByTestId('axis-label-min')).toHaveTextContent('0');
   });
 
   it('labels a negative domain bound with its sign', () => {
     const series = seriesOf([point(T0, 0), point(T0 + 30_000, -200_000_000_000)]);
     render(<ProgramTradeSummaryCard series={series} />);
-    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('0억');
-    expect(screen.getByTestId('axis-label-min')).toHaveTextContent('-2,000억');
+    expect(screen.getByTestId('axis-label-max')).toHaveTextContent('0');
+    expect(screen.getByTestId('axis-label-min')).toHaveTextContent('-2,000');
   });
 
   it('adds a zero-line label only when zero sits mid-domain', () => {
@@ -509,7 +515,7 @@ describe('ProgramTradeSummaryCard — sparkline', () => {
       point(T0 + 30_000, -100_000_000_000),
     ]);
     const { rerender } = render(<ProgramTradeSummaryCard series={straddling} />);
-    expect(screen.getByTestId('axis-label-zero')).toHaveTextContent('0억');
+    expect(screen.getByTestId('axis-label-zero')).toHaveTextContent('0');
 
     // 단일 부호 날은 하한 라벨이 이미 0억이므로 중복 라벨을 달지 않는다.
     rerender(
@@ -726,7 +732,7 @@ describe('ProgramTradeSummaryCard — 커서가 순매수 첫 관측보다 앞�
     expect(screen.getAllByText('-')).toHaveLength(3);
     expect(screen.queryByText('누적 순매수')).not.toBeInTheDocument();
     expect(screen.queryByText('09:05:00')).not.toBeInTheDocument();
-    expect(screen.queryByText('+1억')).toBeNull();
+    expect(screen.queryByText('+1')).toBeNull();
   });
 
   it('still shows the empty state when the series itself has no today point', () => {
@@ -750,7 +756,7 @@ describe('ProgramTradeSummaryCard — 커서가 순매수 첫 관측보다 앞�
       />,
     );
     expect(screen.queryByText(/프로그램 순매수 데이터 없음/)).toBeNull();
-    expect(screen.getByText('+2억')).toBeInTheDocument();
+    expect(screen.getByText('+2')).toBeInTheDocument();
   });
 });
 
@@ -777,7 +783,7 @@ it('daily follow completes during same-date minute updates without reformatting 
     expect(format.mock.calls).toHaveLength(0);
     expect(row).toHaveClass('bg-tint-selection');
     rerender(<ProgramTradeSummaryCard dailyPoints={[{ ...dailyPoints[0], net_qty: 124000 }]} cursorDate="20260721" />);
-    expect(row).toHaveTextContent('+124K');
+    expect(row).toHaveTextContent('+124');
   } finally {
     vi.restoreAllMocks();
     vi.useRealTimers();

@@ -67,6 +67,9 @@ fixed canvas axis/primitive sizes remain governed by the canvas exceptions above
 2026-10-16 사용자 승인: 창 헤더의 연결 그룹 배지는 `연결` 문구 없이 번호(1~10)만
 표시한다. 기존 글자 크기·높이·색상·모서리를 유지하고, 두 자리 숫자가 들어가는
 고정 폭을 사용한다. 그룹 변경 툴팁·접근성 이름과 번호 선택 메뉴는 유지한다.
+2026-10-18 사용자 승인: 모든 `/live` 창은 최대화·항상 위·종목 고정 아이콘을 우선
+노출한다. 제목은 남은 공간에서 말줄임하고, 짧은 제목의 최소 공간과 전체 버튼이
+실제로 함께 들어가지 않을 때만 `…`으로 접는다. 체결창의 별도 설정 메뉴는 유지한다.
 The calendar-chart “분봉으로” action sits directly after “그리기” in the toolbar,
 with its label folded at narrow widths, rather than inside the More popup.
 
