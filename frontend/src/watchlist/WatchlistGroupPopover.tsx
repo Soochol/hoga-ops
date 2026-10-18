@@ -33,6 +33,16 @@ export function WatchlistGroupPopover({ x, y, role, label, testId, onClose, anch
     <div ref={ref} role={role} aria-label={label} data-testid={testId}
       onPointerDown={event => event.stopPropagation()}
       onContextMenu={event => event.preventDefault()}
+      onKeyDown={event => {
+        if (event.key !== 'Escape') return;
+        // This portal can be nested in the stock search. Escape belongs to
+        // the group picker, not its React parent or the chart behind it.
+        event.stopPropagation();
+        if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+        event.preventDefault();
+        onClose();
+        anchorRef?.current?.focus({ preventScroll: true });
+      }}
       className="z-[60] flex max-h-[calc(100vh-16px)] w-[var(--watchlist-panel-w)] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-lg border border-border bg-bg-card py-1 shadow-overlay"
       style={{ position: 'fixed', left, top }}>
       {children}

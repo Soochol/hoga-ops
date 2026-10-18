@@ -554,6 +554,19 @@ chevron+라벨보다 종목명이 왼쪽에서 시작해 위계가 역전되던 
 닫고, 외부 클릭이 다른 컨트롤에 포커스를 옮긴 경우를 제외하면 이전 포커스를
 복원한다. 기존 테마·폰트 토큰과 최근 5개 저장 정책은 유지한다.
 
+**2026-10-18 사용자 승인 시안 — 빠른 종목 전환:** 위 검색 표면의 폭·위치·비모달
+동작을 유지한다. 입력 안내에 초성을 추가하고 검색어 지우기를 둔다. 최근 검색과
+결과의 관심 그룹 하트는 같은 크기·위치로 표시하며, 최근 기록 삭제는 하트 오른쪽의
+독립 버튼이다. 종목명에서 직접 일치하는 부분은 굵기로 강조하고 현재 보고 있는
+종목에만 `현재`를 표시한다. 결과 제목 옆에는 표시 건수(최대 20개)를, 하단에는
+방향키 이동과 Enter로 열릴 종목명을 표시한다. Escape 안내는 헤더의 닫기 버튼에 둔다.
+정확한 이름·코드, 접두사, 부분 일치, 초성 순으로 정렬하고 같은 순위는 이름 길이와
+원본 순서로 고정한다. 최근 이력과 관심 등록은 검색 순위에 영향을 주지 않는다.
+종목·지수 목록의 준비 중·조회 실패·정상 빈 결과를 구분하고 실패한 목록은 다시
+시도할 수 있다. 모든 종목 창이 고정되면 선택을 막되 검색과 관심 그룹 편집은
+유지한다. 관심 그룹 팝오버의 Escape는 그 팝오버만 닫고 하트로 포커스를 돌려준다.
+초성 검색·새 정렬은 라이브 검색에만 적용하며 캡처·히트맵의 검색 계약은 유지한다.
+
 Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss `useEffect`.
 - **Center modal** (full-screen backdrop, fixed-position card): wrap in `ModalShell` (`frontend/src/ui/ModalShell.tsx`) — it owns the backdrop, Escape + backdrop-click dismiss, the canon card, and the title + ✕ header. **`/live` 의 보조지표(IndicatorPanel)·설정(SettingsSections) 패널이 2026-08-21 부터 여기 속한다**(사용자 결정, 아래 결정 로그) — 둘은 폭·높이·마스터-디테일 nav 를 `frontend/src/live/workspacePanel.ts` 상수로 공유하므로 클래스를 다시 적지 말고 상수를 소비할 것. 그 동기화는 `App.test.tsx`(설정)와 `IndicatorPanel.test.tsx`(지표)가 **같은 상수를 각각 단언**해서 지킨다 — 한쪽이 하드코딩으로 이탈하면 그 테스트가 빨개진다.
 - **Right drawer** (`ModalShell side='right'`, ADR-0116) — ⚠ **2026-08-21 부터 앱 소비자가 0 이다**(설정·보조지표가 중앙 모달로 옮겨갔다; 코드와 `ModalShell.test.tsx` 커버리지는 되돌릴 여지를 위해 남겼다. 새로 쓰기 전에 결정 로그를 읽을 것 — 되돌림이지 신규 선택지가 아니다): full-height right-anchored variant of the same shell — lighter dim (`bg-black/30` vs the center modal's `bg-black/50`), `border-l` instead of the rounded card border, 150ms ease-out slide-in. Purpose: **immediate-apply settings stay visible against the live chart** — the left ~520px of chart remains readable behind the dim, so a toggle's effect is seen in place. Used by the `/live` 보조지표(IndicatorPanel) and 설정(LiveSettingsModal) drawers, which share width (`760px`) and master-detail nav (`240px`) via what is now `frontend/src/live/workspacePanel.ts` (renamed 2026-08-21 — the file no longer describes a drawer) — the two panels must not shift when the user switches between the toolbar buttons, so consume the constants rather than restating the classes.

@@ -1,4 +1,5 @@
 import { lineVisible } from '../../state/indicatorLineVisibility';
+import { resolveMaColor } from '../../util/maColor';
 import type { IndicatorSettings } from '../../state/indicatorSettingsV2';
 import type { CategoryId } from './IndicatorPanelHelpers';
 
@@ -14,7 +15,7 @@ export const INDICATOR_DOT_LIMIT = 4;
  *
  * 이 점들이 장식이 아니라 데이터인 것이 요점이다. 같은 색이 패널 행 · 레전드 칩 ·
  * 캔버스 선 세 곳에 나오므로, "이 행이 저 선" 이라는 연결이 이름을 읽지 않아도 선다.
- * 그래서 **여기서 색을 만들지 않는다** — 사용자가 고른 값을 그대로 읽는다.
+ * 직접 지정은 저장된 색을 쓰고, 자동은 캔버스·범례와 같은 resolver 를 쓴다.
  *
  * ## 색 점이 없는 지표가 있다 (의도)
  *
@@ -24,7 +25,7 @@ export const INDICATOR_DOT_LIMIT = 4;
  * 점을 그렸지만 그건 일러스트였고, 실제로 찍으려면 없는 값을 지어내야 한다 —
  * 지어낸 색은 차트와 어긋나는 순간 거짓말이 된다. 점이 없는 것이 정직하다.
  */
-export function dotColorsFor(id: CategoryId, ind: IndicatorSettings): string[] {
+export function dotColorsFor(id: CategoryId, ind: IndicatorSettings, theme?: string): string[] {
   const capped = (colors: string[]) => colors.slice(0, INDICATOR_DOT_LIMIT);
 
   switch (id) {
@@ -33,9 +34,9 @@ export function dotColorsFor(id: CategoryId, ind: IndicatorSettings): string[] {
     case 'bollinger':
       return [ind.bollingerUpperColor, ind.bollingerMiddleColor, ind.bollingerLowerColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, (['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const)[i]));
     case 'moving-average':
-      return capped(ind.movingAverages.filter((m) => m.enabled && !m.hidden).map((m) => m.color));
+      return capped(ind.movingAverages.filter((m) => m.enabled && !m.hidden).map((m) => resolveMaColor(m, theme)));
     case 'daily-moving-average':
-      return capped(ind.dailyMovingAverages.filter((m) => m.enabled && !m.hidden).map((m) => m.color));
+      return capped(ind.dailyMovingAverages.filter((m) => m.enabled && !m.hidden).map((m) => resolveMaColor(m, theme)));
 
     // 방향 마스터가 꺼져 있으면 그 방향의 계열은 아무것도 안 그려진다 — 켜진 계열의
     // 색만 모은다. 순서는 매도(체결·미도달·전체) → 매수 로 매트릭스 읽는 순서와 같다.

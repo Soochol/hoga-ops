@@ -1,4 +1,6 @@
 import type { MouseEventParams, Time } from 'lightweight-charts';
+import { resolveMaColor } from '../../util/maColor';
+import { useThemePrefsStore } from '../../state/themePrefs';
 import { useLivePageStore } from '../../state/livePage';
 import { bucketsForScope, resolveIndicatorSettings } from '../../state/indicatorSettingsV2';
 import { indicatorInstanceSummary, instanceSettings, indicatorGroupHidden, clearIndicatorGroupHidden } from '../../state/indicatorInstances';
@@ -17,6 +19,7 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
   id: string; cursorTimeSec?: number | null; seriesData?: MouseEventParams<Time>['seriesData'];
 }) {
   const base = useWindowIndicators();
+  const theme = useThemePrefsStore(s => s.themePreference);
   const scope = useWindowIndicatorScope();
   const tf = useWindowIndicatorTimeframe();
   const windowId = useWindowScopeId();
@@ -29,6 +32,8 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
   const panes = usePaneLegendRegistry(s => scopeEntries(s.byScope, windowId?.split(':indicator:')[0] ?? null));
   if (!row) return null;
   const settings = instanceSettings(base, row);
+  const maSlots = row.category === 'moving-average' ? settings.movingAverages
+    : row.category === 'daily-moving-average' ? settings.dailyMovingAverages : [];
   const category = CATEGORIES.find(c => c.id === row.category)!;
   const hidden = row.hidden || indicatorGroupHidden(row.category, settings);
   const title = `${category.label} · ${indicatorInstanceSummary(row.category, settings)}`;
@@ -54,6 +59,9 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
     if (remove) s.setIndicatorUndoToast({ label: `${category.label} 삭제됨`, scope, timeframe, patch: {}, removedInstance: { row: current.find(item => item.id === id)!, index: current.findIndex(item => item.id === id) } });
   };
   return <div className="indicator-instance-legend" data-testid={`indicator-instance-legend-${id}`}>
+    {!hidden && maSlots.filter(m => m.enabled && !m.hidden).map(m => <span key={m.id}
+      aria-label={`${m.period} ${row.category === 'daily-moving-average' ? '일봉' : '현재봉'} 이평선 색상`}
+      style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: resolveMaColor(m, theme) }} />)}
     <span className={hidden ? 'text-fg-dimmer' : undefined} title={title}>{title}</span>
     {!hidden && values.length > 0 && <span className="font-data">{values.join(' · ')}</span>}
     <button type="button" aria-label={`${title} ${hidden ? '표시' : '숨기기'}`} onClick={() => update(false)}><EyeGlyph hidden={hidden === true} /></button>

@@ -411,15 +411,17 @@ describe('seedV2FromV1', () => {
     });
     expect(v2.byTimeframe.minute!.dailyMovingAverages!.every((m) => m.enabled)).toBe(true);
 
-    // 마스터가 꺼져 있었으면 슬롯이 enabled:true 여도 안 그려졌다 — 새 공장값(전 슬롯
-    // off)과 같아지므로 diff 에서 빠진다.
+    // 마스터가 꺼져 있었으면 슬롯도 off 로 옮긴다. 저장된 색은 직접 지정으로
+    // 보존하므로, 자동 색상인 새 공장값과 달라 비활성 슬롯도 diff 에 남는다.
     const off = seedV2FromV1({
       dailyMovingAverages: [
         { id: 'dma-1', enabled: true, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
       ],
       dailyMovingAverageEnabled: false,
     });
-    expect(off.byTimeframe.minute?.dailyMovingAverages).toBeUndefined();
+    expect(off.byTimeframe.minute?.dailyMovingAverages).toEqual([
+      { id: 'dma-1', enabled: false, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+    ]);
   });
 
   it('seeds nothing beyond old-default drift for a pristine v1 blob', () => {
