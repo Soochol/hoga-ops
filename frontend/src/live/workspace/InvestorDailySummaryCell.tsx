@@ -9,12 +9,13 @@ const exactAmount = new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 })
 const labels = { net: '순매수', buy: '총매수', sell: '총매도' };
 const sides = ['net', 'buy', 'sell'] as const;
 
-export function InvestorDailySummaryCell({ values, unit, useK = true, foot = false, divided = true }: {
+export function InvestorDailySummaryCell({ values, unit, useK = true, foot = false, divided = true, showUnitSuffix = true }: {
   values: Record<InvestorTradeSide, number | null>;
   unit: InvestorNetUnit;
   useK?: boolean;
   foot?: boolean;
   divided?: boolean;
+  showUnitSuffix?: boolean;
 }) {
   return <td className={`whitespace-nowrap px-2 py-1 text-right ${divided ? 'border-l border-border' : ''} ${foot ? 'border-t border-border bg-bg-card' : ''}`}>
     <div className="grid grid-cols-[minmax(7ch,1fr)_auto_minmax(7ch,1fr)_auto_minmax(7ch,1fr)] items-baseline gap-x-1 tabular-nums">
@@ -27,7 +28,8 @@ export function InvestorDailySummaryCell({ values, unit, useK = true, foot = fal
           ? useK ? formatInvestorK(value, side === 'net')
             : `${side === 'net' && value > 0 ? '+' : ''}${exactQuantity.format(value)}`
           : formatAmount(unit === 'amt_eok' ? value * 100 : value);
-        const text = side === 'net' ? formatted : formatted.replace(/^\+/, '');
+        const number = showUnitSuffix ? formatted : formatted.replace(/[K억]$/, '');
+        const text = side === 'net' ? number : number.replace(/^\+/, '');
         return <span key={side} className="contents">
           {index > 0 && <span aria-hidden="true" className="text-fg-dimmer">·</span>}
           <span title={`${labels[side]} ${exact}`} aria-label={`${labels[side]} ${exact}`}

@@ -180,7 +180,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     cells: <>
       <DateCell date={row.date} isToday={row.date === today} />
       {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-        <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} values={{
+        <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} values={{
           net: dataSide === 'net' ? row.values[column.key] : null,
           buy: summary.buy.value(row.date, column.key),
           sell: summary.sell.value(row.date, column.key),
@@ -199,7 +199,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
   const totalCells = useMemo(() => (<>
     {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-      <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} foot values={{
+      <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} foot values={{
         net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
         buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
       }} /> : <ValueCell
@@ -298,10 +298,15 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     ? `${TRADE_SIDE_LABELS[tradeSide]} 조회 중` : axisPending
     ? `${INVESTOR_ESTIMATE_UNIT_LABELS[unit]} 조회 중`
     : getStateText(query, table.rows.length);
+  const displayedUnit = query.data ? dataUnit : requestedUnit;
+  const unitLabel = displayedUnit === 'qty_shares' ? (!showDetails && useK ? '천 주' : '주') : '억원';
 
   return (
     <div className="live-data-table-panel flex h-full flex-col bg-bg-card">
-      <ResponsiveDataControls status={table.rows.length > 0 ? stateText : null} secondary={<>
+      <ResponsiveDataControls status={table.rows.length > 0 ? stateText : null}
+        trailing={<span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim"
+          title={unitLabel === '천 주' ? '1K = 1,000주' : undefined}>단위: {unitLabel}</span>}
+        secondary={<>
           {showDetails && <div role="group" aria-label="매매 기준" className="ui-segmented">
             {(Object.keys(TRADE_SIDE_LABELS) as InvestorTradeSide[]).map((side) => (
               <button key={side} type="button" aria-pressed={tradeSide === side}
@@ -551,7 +556,7 @@ function ValueCell({
       } ${qtyClass(value === null || dataSide === 'net' ? value : dataSide === 'sell' ? -value : value)} ${className}`}
     >
       {value === null ? '' : dataUnit === 'qty_shares' && compact && useK
-        ? formatInvestorK(value, dataSide === 'net')
+        ? formatInvestorK(value, dataSide === 'net').replace(/K$/, '')
         : dataSide === 'net' ? formatCell(value, dataUnit) : formatCell(value, dataUnit).replace(/^\+/, '')}
     </td>
   );
@@ -561,9 +566,9 @@ function ValueCell({
  *  하나라 남겨 둔다 — 억원 값을 백만원 포맷터에 넣으면 100배 작아진다. */
 function formatCell(value: number, dataUnit: InvestorNetUnit): string {
   if (dataUnit === 'qty_shares') return formatQty(value);
-  if (dataUnit === 'amt_mwon') return formatAmount(value);
+  if (dataUnit === 'amt_mwon') return formatAmount(value).replace(/억$/, '');
   // amt_eok — 이미 억이므로 백만원으로 되돌린 뒤 같은 포맷터를 태운다.
-  return formatAmount(value * 100);
+  return formatAmount(value * 100).replace(/억$/, '');
 }
 
 /** 단위 칩 — 잠정투자자 카드와 **같은 스토어**를 쓴다(위 도크스트링).

@@ -79,7 +79,8 @@ test('일별 투자자 총매수·총매도에서 단위 전환과 과거 스크
     await expect(rows.first().getByRole('cell').nth(1)).toHaveText(side === '총매수' ? '120' : '130');
   }
   await win.getByRole('group', { name: '표시 단위', exact: true }).getByRole('button', { name: '금액(억원)', exact: true }).click();
-  await expect(rows.first().getByRole('cell').nth(1)).toHaveText('1.3억');
+  await expect(rows.first().getByRole('cell').nth(1)).toHaveText('1.3');
+  await expect(win.getByText('단위: 억원', { exact: true })).toBeVisible();
   await scroller.hover();
   await page.mouse.wheel(0, 10000);
   await expect.poll(() => rows.count()).toBeGreaterThan(60);
