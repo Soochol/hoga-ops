@@ -94,9 +94,9 @@ for (const [exchange, symbol] of [['NASDAQ', 'NVDA'], ['NASDAQ', 'AAPL'], ['NYSE
       await page.reload();
       await expect(frame.getByRole('button', { name: '분봉 선택 열기: 60분' })).toBeVisible();
       await expect(frame.getByRole('status')).toHaveCount(0);
-      for (const [label, title] of [['일', '일봉'], ['주', '주봉'], ['월', '월봉']]) {
+      for (const label of ['일', '주', '월']) {
         await frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true }).click();
-        await expect(frame.getByRole('status')).toContainText(`미국 ${title}`);
+        await expect(frame.getByRole('status')).toHaveCount(0);
         await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
       }
     }

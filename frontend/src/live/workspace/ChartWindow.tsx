@@ -790,7 +790,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     );
   }
 
-  const showMinuteDetails = symbol?.kind !== 'us_stock';
+  const hasDailyIssue = ['unconfigured', 'stale', 'error', 'partial'].includes(d.dailyMetadata?.refresh_status ?? '');
   const hasMinuteIssue = !!d.usStockHistoryError ||
     ['unconfigured', 'stale', 'error', 'partial'].includes(d.minuteMetadata?.refresh_status ?? '') ||
     (d.minuteMetadata?.refresh_status === 'normal' && d.workareaBundle?.candles.length === 0);
@@ -902,27 +902,13 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
             name={symbol?.name ?? null} showLabel={false} getVisibleRange={getCollectVisibleRange} />
         </div>
       </div>
-      {usInstrument && !latestMinutesOnly && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
-        <span>미국 {view.timeframe === 'W' ? '주봉' : view.timeframe === 'M' ? '월봉' : '일봉'} · {symbol?.kind === 'us_stock' ? 'USD · 수정 전 가격' : '지수값'} · 5분마다 확인</span>
-        {view.timeframe !== 'D' && <span>완료된 일봉 집계 · 진행 중 기간 포함</span>}
-        <span>최근 거래일 {d.dailyMetadata?.latest_bar_date ?? '—'} · 뉴욕 기준</span>
-        {d.dailyMetadata?.last_successful_check_at_ms && <span>확인 {new Date(d.dailyMetadata.last_successful_check_at_ms).toLocaleTimeString()}</span>}
+      {usInstrument && !latestMinutesOnly && hasDailyIssue && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
         {d.dailyMetadata?.refresh_status === 'unconfigured' && <span>조회 API 키 설정 필요</span>}
         {d.dailyMetadata?.refresh_status === 'partial' && <><span>과거 일부 조회됨</span><button type="button" className="text-accent" onClick={() => { void d.refetchCandles(); }}>더 조회</button></>}
         {(d.dailyMetadata?.refresh_status === 'stale' || d.dailyMetadata?.refresh_status === 'error') && <span>조회 실패 · 이전 데이터 유지</span>}
-        {d.dailyMetadata?.refresh_status === 'bypass' && <span>REST 우회 · 캐시 표시</span>}
-        {symbol?.kind === 'us_stock' && <span>당일 봉 제외 · 일봉 세션 범위 미확인</span>}
       </div>}
-      {latestMinutesOnly && (showMinuteDetails || hasMinuteIssue) && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
-        {showMinuteDetails && <>
-          <span>미국 {view.timeframe.slice(0, -1)}분봉 · 지수값 · 1분마다 REST 조회</span>
-          <span>최근 제공 구간만 조회 · 과거 날짜 조회 불가 · 지연 여부 미확인</span>
-          <span>차트 시간 KST · 거래일 뉴욕 · 장후 보정 포함 · 마지막 봉 변경 가능</span>
-          <span>제공 범위 {d.minuteMetadata?.available_from_ms ? new Date(d.minuteMetadata.available_from_ms).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} ~ {d.minuteMetadata?.available_to_ms ? new Date(d.minuteMetadata.available_to_ms).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} (뉴욕)</span>
-          {d.minuteMetadata?.last_successful_check_at_ms && <span>확인 {new Date(d.minuteMetadata.last_successful_check_at_ms).toLocaleTimeString()}</span>}
-          {d.minuteMetadata?.available_from_ms && d.workareaBundle?.candles.length === 0 && <span>해당 분봉 집계에 필요한 연속 데이터 부족 · 1분봉을 선택하세요</span>}
-          {d.minuteMetadata?.refresh_status === 'bypass' && <span>REST 우회 · 캐시 표시</span>}
-        </>}
+      {latestMinutesOnly && hasMinuteIssue && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
+        {symbol?.kind !== 'us_stock' && d.minuteMetadata?.available_from_ms && d.workareaBundle?.candles.length === 0 && <span>해당 분봉 집계에 필요한 연속 데이터 부족 · 1분봉을 선택하세요</span>}
         {d.usStockHistoryError && <span>과거 조회 실패 · 기존 데이터 유지 {('status' in d.usStockHistoryError && d.usStockHistoryError.status === 422)
           ? '연결 정보를 갱신하려면 차트를 새로고침하세요.' : <button type="button" onClick={d.retryUsStockHistory}>다시 시도</button>}</span>}
         {d.minuteMetadata?.refresh_status === 'unconfigured' && <span>조회 API 키 설정 필요</span>}
