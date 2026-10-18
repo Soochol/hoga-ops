@@ -242,6 +242,14 @@ uv run hoga prune --include-confirmed-gaps --include-expired-unconfirmed
 두지 않았다 — 옵트인은 "게이트는 있는데 아무도 안 켜서 쌓인다" 를 재현한다.
 보존 창은 `HOGA_DERIVED_RETENTION_DAYS`(기본 180일).
 
+구버전 지표 캐시는 보존 기간과 별개로 **매일 22:00 KST 일일 배치에서 자동 정리**한다.
+휴일에도 두 지표 캐시 루트(`kis-past-indicators/`, `kis-past-indicators-regular/`)를
+검사해 현재보다 낮은 버전과 제거된 지표만 삭제한다. 현재·더 높은 버전, 알 수 없는
+종류, 읽을 수 없는 파일은 보존하며 원본 Parquet는 건드리지 않는다. 현재 버전은
+파일 앞부분만 확인하고, 삭제 후보는 JSON 전체를 검증한다. 실패는 로그에 남기고
+나머지 일일 배치는 계속한다. 서버가 실행 중이고 일일 배치 소유권을 가진 인스턴스가
+필요하다. 수동 점검은 `hoga prune-indicator-cache`(dry-run), 삭제는 `--yes`를 붙인다.
+
 코드가 더 이상 읽지 않는 트리(`kis-past-candles/`, `_trash_*`)는 `hoga prune` 이
 **항상 보고**하되 삭제는 `--include-dead-trees`(+`--execute`) 옵트인이다 —
 "안 쓴다" 는 판단이고, 판단으로 지우는 것은 명시적이어야 한다.

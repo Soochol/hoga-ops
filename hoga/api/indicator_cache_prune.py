@@ -24,6 +24,9 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
+import re
+import stat
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
@@ -33,6 +36,8 @@ from hoga.api.past_indicators_cache import KIND_VERSIONS
 log = logging.getLogger(__name__)
 
 _DATE_LEN = 8
+_VERSION_PREFIX = re.compile(r'\s*\{\s*"version"\s*:\s*(-?(?:0|[1-9][0-9]*))\s*[,}]')
+_PREFIX_CHARS = 256
 
 #: 파일명 접두 → `KIND_VERSIONS` 키. **둘이 항상 같지 않다** — `_poc_path` 는
 #: `trade_volume_poc.…` 를, `vdist` 는 `volume_distribution.…` 를 파일명에 쓴다.
@@ -76,6 +81,30 @@ def kind_of(filename: str) -> str | None:
     return _FILENAME_PREFIX_TO_KIND.get(parts[1], parts[1])
 
 
+def _read_version(path: Path, current: int) -> tuple[object, os.stat_result]:
+    """Keep current/future files after a bounded read; fully validate deletion candidates.
+
+    The writer places version first. Reading every current payload made a sweep
+    parse ~91 GiB even when nothing was obsolete. An unfamiliar prefix falls back
+    to normal JSON parsing, and an old prefix alone never authorizes deletion.
+    """
+    with path.open(encoding="utf-8") as stream:
+        snapshot = os.fstat(stream.fileno())
+        match = _VERSION_PREFIX.match(stream.read(_PREFIX_CHARS))
+        if match and int(match[1]) >= current:
+            return int(match[1]), snapshot
+        stream.seek(0)
+        body = json.load(stream)
+    if not isinstance(body, dict):
+        raise ValueError("cache payload must be an object")
+    return body.get("version"), snapshot
+
+
+def _identity(snapshot: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (snapshot.st_dev, snapshot.st_ino, snapshot.st_size,
+            snapshot.st_mtime_ns, snapshot.st_ctime_ns)
+
+
 def prune(data_dir: Path, *, dry_run: bool = True) -> PruneResult:
     """죽은 버전 캐시 파일을 센다(그리고 `dry_run=False` 면 지운다). 멱등."""
     roots = [data_dir / name for name in ("kis-past-indicators", "kis-past-indicators-regular")]
@@ -84,20 +113,23 @@ def prune(data_dir: Path, *, dry_run: bool = True) -> PruneResult:
     if not any(root.exists() for root in roots):
         return PruneResult(0, 0, 0, 0, 0, 0, 0)
 
-    def _drop(path: Path) -> None:
+    def _drop(path: Path, snapshot: os.stat_result) -> None:
         nonlocal freed, deleted
-        # 크기를 못 재도 삭제는 진행한다 — 보고 숫자가 조금 작아질 뿐이다.
-        with contextlib.suppress(OSError):
-            freed += path.stat().st_size
-        if dry_run:
-            return
         try:
-            path.unlink()
+            # A compute worker may have atomically published a fresh version
+            # while this scan was reading the old inode. Preserve that file.
+            current = path.lstat()
+            if not stat.S_ISREG(current.st_mode) or _identity(current) != _identity(snapshot):
+                return
+            if not dry_run:
+                path.unlink()
         except OSError:
             # 다른 프로세스가 먼저 지웠거나 권한 문제 — 다음 실행이 다시 잡는다.
             log.warning("indicator cache prune: could not unlink %s", path)
             return
-        deleted += 1
+        freed += snapshot.st_size
+        if not dry_run:
+            deleted += 1
 
     for path in chain.from_iterable(root.rglob("*.json") for root in roots):
         scanned += 1
@@ -108,20 +140,21 @@ def prune(data_dir: Path, *, dry_run: bool = True) -> PruneResult:
         if kind in _RETIRED_KINDS:
             # 은퇴 kind 는 **내용을 읽지 않는다** — 버전이 무엇이든 읽는 코드가 없다.
             retired += 1
-            _drop(path)
+            with contextlib.suppress(OSError):
+                _drop(path, path.lstat())
             continue
         if kind not in KIND_VERSIONS:
             unknown += 1
             continue
         try:
-            version = json.loads(path.read_text(encoding="utf-8")).get("version")
+            version, snapshot = _read_version(path, KIND_VERSIONS[kind])
         except (OSError, ValueError):
             unreadable += 1
             continue
-        if not isinstance(version, int) or version >= KIND_VERSIONS[kind]:
+        if type(version) is not int or version >= KIND_VERSIONS[kind]:
             continue
         stale += 1
-        _drop(path)
+        _drop(path, snapshot)
 
     log.info(
         "indicator_cache_prune scanned=%d stale=%d retired=%d deleted=%d freed=%.1fMB "
