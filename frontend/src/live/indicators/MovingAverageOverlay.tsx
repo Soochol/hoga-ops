@@ -1,3 +1,5 @@
+import { resolveMaColor } from '../../util/maColor';
+import { useThemePrefsStore } from '../../state/themePrefs';
 import { memo, useEffect, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
@@ -33,6 +35,7 @@ const priceFormat = {
  *  같은 데이터 patch는 setData만 호출 — series identity churn 없음. */
 function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useWindowIndicator((s) => s.movingAverages);
+  const theme = useThemePrefsStore(s => s.themePreference);
   const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
@@ -66,7 +69,7 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
       if (!existing) {
         try {
           const s = chart.addSeries(LineSeries, {
-            color: cfg.color,
+            color: resolveMaColor(cfg, theme),
             lineWidth: cfg.lineWidth,
             priceLineVisible: false,
             lastValueVisible: false,
@@ -78,11 +81,11 @@ function MovingAverageOverlay({ chart, bundle, axis }: Props) {
           useMaSeriesRegistry.getState().register(scope, cfg.id, s);
         } catch { /* chart torn down */ }
       } else {
-        existing.applyOptions({ color: cfg.color, lineWidth: cfg.lineWidth, ...updateScaleOptions });
+        existing.applyOptions({ color: resolveMaColor(cfg, theme), lineWidth: cfg.lineWidth, ...updateScaleOptions });
       }
     }
     if (candleAlwaysOnTop) keepCandlesOnTop(chart);
-  }, [chart, configs, candleOnlyScale, candleAlwaysOnTop, scope]);
+  }, [chart, configs, candleOnlyScale, candleAlwaysOnTop, scope, theme]);
 
   // Unmount cleanup — remove all series.
   useEffect(() => {

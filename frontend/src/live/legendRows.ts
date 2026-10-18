@@ -1,3 +1,4 @@
+import { resolveMaColor } from '../util/maColor';
 // Pane Legend — pure row model.
 //
 // `buildLegendRows` turns the MA store snapshot + the per-pane cursor-resolved
@@ -154,6 +155,7 @@ export type PaneCellInput = {
 };
 
 export type BuildLegendRowsInput = {
+  theme?: string;
   /** Candle OHLC readout — emitted as the candle pane's FIRST (top) row when
    *  present. Unconditional (no store toggle): the "항상 표시" contract. Null when
    *  there are no drawn candles (cold load / empty view). */
@@ -179,10 +181,11 @@ export type BuildLegendRowsInput = {
 function toLegendMaValues(
   configs: ReadonlyArray<LiveMAConfig>,
   values: ReadonlyMap<string, number> | undefined,
+  theme?: string,
 ): LegendMAValue[] {
   return configs.map((m) => ({
     id: m.id,
-    color: m.color,
+    color: resolveMaColor(m, theme),
     period: m.period,
     value: m.enabled && !m.hidden ? values?.get(m.id) ?? null : null,
     enabled: m.enabled && !m.hidden,
@@ -202,13 +205,13 @@ export function buildLegendRows(input: BuildLegendRowsInput): LegendRow[] {
   // 거르지 **않는다**: 꺼진 슬롯은 dim 칩으로 남아야 다시 켤 수 있다. 그래서 행이
   // 사라지는 유일한 조건은 슬롯 자체가 0개인 것이고, 그건 사용자가 전부 지운
   // 유효 상태다.
-  const mas = toLegendMaValues(input.movingAverages, input.maValues);
+  const mas = toLegendMaValues(input.movingAverages, input.maValues, input.theme);
   if (mas.length > 0) rows.push({ paneId: 'candle', kind: 'ma', mas });
 
   // daily-MA 행 — MA 행의 미러 + 봉 게이트(오버레이가 D/W/M 에서 series 를 비우므로
   // 행을 내면 전부 "—" 가 된다).
   if (input.dailyMaApplicable) {
-    const dailyMas = toLegendMaValues(input.dailyMovingAverages ?? [], input.dailyMaValues);
+    const dailyMas = toLegendMaValues(input.dailyMovingAverages ?? [], input.dailyMaValues, input.theme);
     if (dailyMas.length > 0) rows.push({ paneId: 'candle', kind: 'daily-ma', mas: dailyMas });
   }
 

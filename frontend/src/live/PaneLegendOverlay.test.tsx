@@ -1,3 +1,4 @@
+import { useThemePrefsStore } from '../state/themePrefs';
 import { bindPaneSpec } from '../chart/paneSpecs';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
@@ -1470,5 +1471,26 @@ describe('PaneLegendOverlay — pane 병합/분리 (칩 메뉴·드래그)', () 
     expect(screen.queryByTestId('pane-drop-merge')).toBeNull();
     fireEvent.pointerUp(btn, { clientX: 400, clientY: 210 });
     expect(useLivePageStore.getState().paneGroups).toEqual(before);
+  });
+});
+
+
+describe('PaneLegendOverlay — automatic MA colors', () => {
+  beforeEach(resetStore);
+  afterEach(() => { cleanup(); useThemePrefsStore.getState().setThemePreference('toss-light'); });
+  it('recolors automatic legend chips immediately while retaining manual chip colors', () => {
+    useThemePrefsStore.getState().setThemePreference('toss-light');
+    useLivePageStore.setState({ movingAverages: [
+      { id: 'auto', enabled: true, period: 120, color: '#6B7280', colorMode: 'auto', lineWidth: 1, source: 'close' },
+      { id: 'manual', enabled: true, period: 5, color: '#000000', lineWidth: 1, source: 'close' },
+    ] });
+    renderOverlay();
+    const automatic = screen.getByRole('button', { name: '이동평균선 120 숨김' });
+    const manual = screen.getByRole('button', { name: '이동평균선 5 숨김' });
+    expect(automatic).toHaveStyle({ color: '#374151' });
+    expect(manual).toHaveStyle({ color: '#000000' });
+    act(() => useThemePrefsStore.getState().setThemePreference('toss-dark'));
+    expect(automatic).toHaveStyle({ color: '#CBD5E1' });
+    expect(manual).toHaveStyle({ color: '#000000' });
   });
 });

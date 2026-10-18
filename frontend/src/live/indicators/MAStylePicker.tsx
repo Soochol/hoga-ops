@@ -31,6 +31,9 @@ type Props = {
   /** aria-label 접두어. 기본 'MA' — 기존 호출부 불변. 매도벽 등 재활용 시 지정. */
   label?: string;
   extraColors?: readonly string[];
+  /** Only MA slots opt in; other indicator style pickers remain manual. */
+  autoColor?: boolean;
+  onAutoColor?: () => void;
   /** 지정 시 색·두께에 더해 모양(실선/파선/점선) 선택 섹션을 노출한다. 미지정이면
    *  기존 호출부와 동일하게 색+두께만. `onLineStyleChange`와 함께 넘겨야 렌더된다. */
   lineStyle?: LineStyle;
@@ -42,7 +45,7 @@ type Props = {
  *  trigger는 현재 색을 보여주는 작은 swatch. 클릭하면 32색 grid +
  *  4개 굵기 카드가 같이 뜬다. ColorSwatchButton + LineWidthSelect 합본. */
 export default function MAStylePicker({
-  color, lineWidth, onChange, label, extraColors, lineStyle, onLineStyleChange,
+  color, lineWidth, onChange, label, extraColors, lineStyle, onLineStyleChange, autoColor = false, onAutoColor,
 }: Props) {
   const lbl = label ?? 'MA';
   const theme = useThemePrefsStore((s) => s.themePreference);
@@ -83,7 +86,7 @@ export default function MAStylePicker({
       <button
         type="button"
         aria-label={`${lbl} 스타일 선택`}
-        title={lowContrast ? '배경과 구분하기 어려운 색 · 팔레트에서 변경' : undefined}
+        title={autoColor ? '자동 색상 · 테마에 맞춰 변경' : lowContrast ? '배경과 구분하기 어려운 색 · 팔레트에서 변경' : undefined}
         onClick={() => setOpen((o) => !o)}
         style={{
           display: 'inline-flex',
@@ -134,6 +137,13 @@ export default function MAStylePicker({
             border: '1px solid var(--border-strong)',
           }}
         >
+          {onAutoColor && <button
+            type="button"
+            aria-label={`${lbl} 자동 색상`}
+            aria-pressed={autoColor}
+            className="mb-3 w-full rounded border border-border px-2 py-1.5 text-left text-sm text-fg hover:bg-bg-input-hover"
+            onClick={() => { onAutoColor(); setOpen(false); }}
+          >{autoColor ? '✓ ' : ''}자동 · 테마에 맞춤</button>}
           {lowContrast && (
             <div className="mb-3 text-xs text-fg-dim">
               배경과 구분하기 어려운 색입니다
@@ -153,7 +163,7 @@ export default function MAStylePicker({
             {colorRows.map((row, ri) => (
               <div key={ri} className="grid grid-cols-8" style={{ gap: 'var(--space-xs)' }}>
                 {row.map((c) => {
-                  const selected = c.toLowerCase() === color.toLowerCase();
+                  const selected = !autoColor && c.toLowerCase() === color.toLowerCase();
                   return (
                     <button
                       key={c}

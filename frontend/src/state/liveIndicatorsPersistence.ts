@@ -33,6 +33,8 @@ export type LiveMAConfig = {
   hidden?: boolean;
   period: number;
   color: string;
+  /** Absent on legacy settings: preserve the stored color as manually selected. */
+  colorMode?: 'auto' | 'manual';
   lineWidth: 1 | 2 | 3 | 4;
   source: MASource;
 };
@@ -42,14 +44,14 @@ export const MA_PERIOD_MAX = 400;
 export const MA_SLOT_LIMIT = 8;
 
 /** 기본색은 MA 팔레트에서 선택한다(canvas는 CSS var를 직접 받지 못함).
- *  120선은 밝은/어두운 배경에서 식별 가능한 회색. 저장된 사용자 색은 보존한다.
+ *  기본·신규 슬롯은 자동 색상으로 테마에 맞춰 표시한다. 저장된 사용자 색은 보존한다.
  *  --ma-2 (#3B82F6, blue)는 KRX --price-down (#2563EB,
  *  blue)과 색역이 가까워 기본 슬롯에서 의도적으로 스킵. spec §1 참조. */
 export const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
-  { id: 'ma-1', enabled: true, period: 5,   color: '#EC4899', lineWidth: 1, source: 'close' },
-  { id: 'ma-2', enabled: true, period: 20,  color: '#F97316', lineWidth: 1, source: 'close' },
-  { id: 'ma-3', enabled: true, period: 60,  color: '#22C55E', lineWidth: 1, source: 'close' },
-  { id: 'ma-4', enabled: true, period: 120, color: '#6B7280', lineWidth: 1, source: 'close' },
+  { id: 'ma-1', enabled: true, period: 5,   color: '#EC4899', lineWidth: 1, source: 'close', colorMode: 'auto' },
+  { id: 'ma-2', enabled: true, period: 20,  color: '#F97316', lineWidth: 1, source: 'close', colorMode: 'auto' },
+  { id: 'ma-3', enabled: true, period: 60,  color: '#22C55E', lineWidth: 1, source: 'close', colorMode: 'auto' },
+  { id: 'ma-4', enabled: true, period: 120, color: '#6B7280', lineWidth: 1, source: 'close', colorMode: 'auto' },
 ]) as readonly LiveMAConfig[];
 
 /** 일봉 이동평균선 기본 슬롯 — period 20 단일. 색 #EAB308(--ma-7, yellow)은
@@ -62,7 +64,7 @@ export const DEFAULT_LIVE_MAS: readonly LiveMAConfig[] = Object.freeze([
  *  그려진다. 현재봉 MA(`DEFAULT_LIVE_MAS`)가 true 인 것과 갈리는 이유가 이것이다 —
  *  그쪽 마스터는 기본 true 였다. */
 export const DEFAULT_DAILY_MAS: readonly LiveMAConfig[] = Object.freeze([
-  { id: 'dma-1', enabled: false, period: 20, color: '#EAB308', lineWidth: 2, source: 'close' },
+  { id: 'dma-1', enabled: false, period: 20, color: '#EAB308', lineWidth: 2, source: 'close', colorMode: 'auto' },
 ]) as readonly LiveMAConfig[];
 
 const VALID_LINE_WIDTHS = new Set([1, 2, 3, 4]);
@@ -449,8 +451,12 @@ function normalizeSlotArray<T>(
 
 function normalizeMaSlots(raw: unknown, factory: readonly LiveMAConfig[]): LiveMAConfig[] {
   return normalizeSlotArray(raw, factory, isValidEntry, MA_SLOT_LIMIT).map(m => {
-    const { hidden, ...slot } = m;
-    return hidden === true ? { ...slot, hidden: true } : slot;
+    const { hidden, colorMode, ...slot } = m;
+    return {
+      ...slot,
+      ...(hidden === true ? { hidden: true } : {}),
+      ...(colorMode === 'auto' || colorMode === 'manual' ? { colorMode } : {}),
+    };
   });
 }
 

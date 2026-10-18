@@ -1,4 +1,5 @@
 import { IndicatorInstanceLegend } from './indicators/IndicatorInstanceLegend';
+import { useThemePrefsStore } from '../state/themePrefs';
 import { EMPTY_INDICATOR_INSTANCES } from '../state/indicatorInstances';
 import { CATEGORY_PANE, indicatorInstanceApplicable } from './indicators/indicatorInstancePanes';
 import { basePaneId } from '../chart/paneOrder';
@@ -739,6 +740,7 @@ function PaneLegendOverlay({
   axis,
   code = null,
 }: Props) {
+  const theme = useThemePrefsStore(s => s.themePreference);
   const paneDisplayName = (paneId: PaneId) => {
     if (paneId.startsWith('indicator:')) return PANE_DISPLAY_NAME[basePaneId(paneId)];
     if (paneId === 'program-daily') {
@@ -1206,6 +1208,7 @@ function PaneLegendOverlay({
   ];
 
   const rows = buildLegendRows({
+    theme,
     ohlc,
     movingAverages: indicatorLegendsVisible ? movingAverages : [],
     maValues,
