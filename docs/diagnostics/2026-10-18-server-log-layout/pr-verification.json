@@ -1,0 +1,107 @@
+{
+  "verified_at": "2026-10-18T12:40:14.578818+00:00",
+  "tested_commit": "f1b5d4db8d653f750ab7115a67bfdb52bf25ac20",
+  "base_commit": "d4e674552a2edc5cdc98cb1b10edb91a29e61595",
+  "scope": "Server-manager window controls and flexible log layout; source UI watching, packaged runtime and real React/FastAPI integration.",
+  "checks": [
+    {
+      "command": "npm run lint && npm run typecheck",
+      "cwd": "desktop",
+      "result": "passed"
+    },
+    {
+      "command": "npm test",
+      "cwd": "desktop",
+      "result": "9 passed"
+    },
+    {
+      "command": "npx vite build",
+      "cwd": "frontend",
+      "result": "passed; existing >700kB chunk-size advisory"
+    },
+    {
+      "command": "npm run package",
+      "cwd": "desktop",
+      "result": "Linux x64 folder package passed"
+    },
+    {
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test",
+      "cwd": "desktop",
+      "result": "15 passed (27.2s)"
+    },
+    {
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 HOGA_DESKTOP_EXECUTABLE=desktop/out/Ticklane-linux-x64/ticklane npx playwright test",
+      "cwd": "desktop (executable is absolute in the actual invocation)",
+      "result": "14 passed, 1 source-watch-only test skipped (25.7s)"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "electron": "44.8.0",
+    "playwright": "1.64.1",
+    "typescript": "6.0.2",
+    "platform": "Linux x64",
+    "window_system": "x11",
+    "chromiumSandbox": true,
+    "DISPLAY": ":0",
+    "WAYLAND_DISPLAY": "wayland-0",
+    "XDG_SESSION_TYPE": "wayland",
+    "isolation": "Random TCP ports and temporary profiles/data, blank vendor credentials for real backend, fake managed services for lifecycle tests"
+  },
+  "fingerprints": {
+    "desktop_runtime": {
+      "files": 28,
+      "sha256": "4faaf761e185d1dc98952d6c09efa74b08adb092f189db4dfbf23e64ff49db61"
+    },
+    "desktop_tests": {
+      "files": 7,
+      "sha256": "2a08f608191ddbc417631b1cdf1c4ef811d38f834766c8676a62aa020c95ab68"
+    },
+    "desktop_build_config": {
+      "files": 13,
+      "sha256": "25e64ed939f653caa1d1eb531f80ae3f6eaa72fd755775784daedbd33267ef0d"
+    },
+    "frontend": {
+      "files": 1647,
+      "sha256": "fdaa3cdfb036834e83c2341f7da691804f3ba081a2ec1037172081ce36a97857"
+    },
+    "backend": {
+      "files": 269,
+      "sha256": "67d4d8245999c04c0393d4b9519912b794276184ea627a640a237eac535880a0"
+    },
+    "version": {
+      "files": 1,
+      "sha256": "719e1cf56797b0e6340e3dba5643c0003807ecefabf2ee3486da315e620a44fe"
+    },
+    "frontend_dist": {
+      "files": 133,
+      "sha256": "b240928ddeb37516c3a798c928b296e0e49d14d893c6432a8ea1cfe89f38f5bc"
+    },
+    "desktop_dist": {
+      "files": 17,
+      "sha256": "770f43d0e27408182112f559e966a37bc01968f8d228f7cfe03db27271451f1f"
+    },
+    "packaged_asar_sha256": "1a658fec887e8d44251dddbac2e92e9ede9f4c548c8c78ebde052be71e3829fc"
+  },
+  "desktop_configs": {
+    "desktop/playwright.config.cjs": "6c49425f8c8fcf846fc1680b6b252a7dffba334160e5b1747941febe6d9ec249",
+    "desktop/forge.config.cjs": "926ab05d0d4a6c9c9a15f22d1559753c68cffa9d254e49e9262ccaa7ed63244c",
+    "desktop/eslint.config.mjs": "081f701a9f8cdb90a4b24bd5de4fb5fc078976abe8d86a02ca44d344c2e61da4",
+    "desktop/tsconfig.json": "41a72ac33c1680f827054ba6605e01c8bc8818392aca297d3492776c30167857"
+  },
+  "reuse_policy": "These inputs include latest main d4e674552. The subsequent verification-record commit changes documentation only; runtime/test inputs remain identical. No frontend or backend application changes are introduced by this PR.",
+  "live_services": {
+    "manager_pid": 184832,
+    "frontend_pid": 256258,
+    "backend_reloader_pid": 256249,
+    "backend_worker_pid": 592704,
+    "server_stop_or_restart_commands_issued": false
+  },
+  "open_pr_overlap_check": "Open PRs #1927 and #1726 do not modify this PR files."
+}
