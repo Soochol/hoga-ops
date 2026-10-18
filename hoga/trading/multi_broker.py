@@ -227,7 +227,9 @@ class BrokerTradingService:
                     )
                     if route not in account.routes:
                         raise TradingError(
-                            409, "kiwoom-orders-disabled", account.blocked_reason or "검증되지 않은 주문 경로입니다."
+                            409,
+                            "kiwoom-orders-disabled",
+                            account.blocked_reason or "이 계좌에서 지원하지 않는 주문 거래소입니다.",
                         )
                     if action == "create":
                         if not isinstance(command, CreateBrokerOrder):

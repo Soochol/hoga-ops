@@ -171,7 +171,7 @@ async def setup(tmp_path):
     gateway = KiwoomAccountGateway(
         provider, transport=httpx.MockTransport(broker.handle), budget=KiwoomBudget(interval=0)
     )
-    adapter = KiwoomTradingAdapter(gateway, registry, tmp_path, validated_routes={"KRX", "SOR"})
+    adapter = KiwoomTradingAdapter(gateway, registry, tmp_path)
     legacy = TradingService(tmp_path)
     service = BrokerTradingService(tmp_path, legacy, kiwoom=[adapter])
     app = FastAPI()
@@ -275,17 +275,24 @@ async def test_explicit_business_rejection_is_durable_and_redacted(setup):
     assert service.journal.lookup("create-1")[1] == "rejected"
 
 
-async def test_acceptance_gate_is_disabled_by_default_for_every_write(setup):
+@pytest.mark.parametrize("route", ["KRX", "NXT", "SOR"])
+async def test_real_orders_are_enabled_without_acceptance_file(setup, route):
     broker, _, adapter, service, _ = setup
-    adapter.validated_routes = None
     account = await adapter.account()
-    assert not account.order_enabled and account.routes == []
+    assert account.order_enabled and account.routes == ["KRX", "NXT", "SOR"]
+    assert account.supported_routes == account.routes and account.blocked_reason is None
+    assert not (adapter.data_dir / "trading/kiwoom-acceptance.json").exists()
+    command = create(adapter.account_ref).model_copy(update={"route": route})
+    await service.execute(command, "create")
+    assert len(broker.writes) == 1
+    assert json.loads(broker.writes[0].content)["dmst_stex_tp"] == route
+
+
+async def test_direct_gateway_write_still_requires_durable_command_path(setup):
+    broker, _, adapter, _, _ = setup
     with pytest.raises(TradingError) as error:
-        await service.execute(create(adapter.account_ref), "create")
-    assert error.value.code == "kiwoom-orders-disabled" and not broker.writes
-    with pytest.raises(TradingError):
         await adapter.gateway.call("kt10000", {})
-    assert not broker.writes
+    assert error.value.code == "kiwoom-orders-disabled" and not broker.writes
 
 
 @pytest.mark.parametrize("capacity", ["0", None])
@@ -324,7 +331,6 @@ async def test_second_account_cannot_resolve_or_cancel_first_account_order(setup
         ),
         service.registry,
         service.data_dir,
-        validated_routes={"KRX"},
     )
     service._kiwoom.append(other)
     await service.accounts()
@@ -638,19 +644,13 @@ async def test_unknown_status_and_market_modify_are_blocked(setup):
     assert error.value.code == "unsupported-order-type" and broker.writes == []
 
 
-async def test_acceptance_record_requires_account_environment_and_evidence(setup):
+async def test_legacy_acceptance_file_does_not_block_supported_routes(setup):
     _, _, adapter, _, _ = setup
-    adapter.validated_routes = None
     path = adapter.data_dir / "trading/kiwoom-acceptance.json"
-    record = {"environment": "real", "routes": ["KRX"]}
-    path.write_text(json.dumps({"accounts": {adapter.account_ref: record}}))
-    assert adapter.routes() == []
-    record.update(verified_at="2026-10-19T10:00:00+09:00", evidence="mocked-test-only")
-    path.write_text(json.dumps({"schema_version": 1, "accounts": {adapter.account_ref: record}}))
-    assert adapter.routes() == ["KRX"]
-    record["environment"] = "mock"
-    path.write_text(json.dumps({"schema_version": 1, "accounts": {adapter.account_ref: record}}))
-    assert adapter.routes() == []
+    for content in ('{', json.dumps({"accounts": {adapter.account_ref: {"routes": []}}})):
+        path.write_text(content)
+        assert (await adapter.account()).order_enabled
+        assert adapter.routes() == ["KRX", "NXT", "SOR"]
 
 
 async def test_mock_gateway_rejects_real_provider_and_uses_only_mock_host(tmp_path):
@@ -664,11 +664,12 @@ async def test_mock_gateway_rejects_real_provider_and_uses_only_mock_host(tmp_pa
         budget=KiwoomBudget(interval=0),
     )
     adapter = KiwoomTradingAdapter(
-        gateway, AccountRegistry(tmp_path / "accounts.sqlite3"), tmp_path, validated_routes={"KRX", "NXT", "SOR"}
+        gateway, AccountRegistry(tmp_path / "accounts.sqlite3"), tmp_path
     )
     try:
         account = await adapter.account()
         assert account.environment == "mock" and account.routes == ["KRX"]
+        assert account.order_enabled and account.supported_routes == ["KRX"]
         assert broker.requests[0].url.host == "mockapi.kiwoom.com"
     finally:
         await gateway.close()
