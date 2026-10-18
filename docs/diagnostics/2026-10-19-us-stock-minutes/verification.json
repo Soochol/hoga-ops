@@ -1,0 +1,191 @@
+{
+  "base_sha": "7cfe78aa2a65b9d3ed94a4d0181fad1170843341",
+  "branch": "codex/us-stock-minute-charts",
+  "captured_at_utc": "2026-10-18T15:44:57.945629+00:00",
+  "input_scope": [
+    "scripts",
+    "hoga",
+    "tests",
+    "frontend/src",
+    "frontend/tests",
+    "frontend/public",
+    "pyproject.toml",
+    "uv.lock",
+    "ruff.toml",
+    ".python-version",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/tsconfig.json",
+    "frontend/tsconfig.app.json",
+    "frontend/tsconfig.test.json",
+    "frontend/tsconfig.e2e.json",
+    "frontend/vite.config.ts",
+    "frontend/playwright.config.ts",
+    "frontend/index.html",
+    "frontend/eslint.config.js",
+    "frontend/postcss.config.js",
+    "frontend/tailwind.config.js",
+    "docs/adr",
+    "docs/research/2026-10-19-us-stock-minute-probe.json",
+    "docs/research/2026-10-19-us-stock-minute-app-live-summary.json",
+    "docs/research/2026-10-19-us-stock-minute-app-live.json.gz",
+    "CONTEXT.md",
+    "CLAUDE.md"
+  ],
+  "input_sha256": "9ff3827876372728fd81cb6768be37c97a94f6a9b6fde7695b1ba1612c5342d3",
+  "input_file_count": 2615,
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "browser": "Google Chrome 155.0.8059.84",
+    "credentials": "empty worktree .env; E2E broker credentials explicitly blank; live probe standalone using existing cached Kiwoom token only; KIS comparison read-only research"
+  },
+  "status": "passed",
+  "frontend_result_reuse": {
+    "full_suite_result": "8475 passed / 650 files",
+    "previous_input_sha256": "a3906f1bf47058b85162a7e4b8643f291f1401fdfcf542a8dd4fa383196bc992",
+    "changed_frontend_files": [
+      "frontend/src/api/trading.ts",
+      "frontend/src/live/workspace/OrderWindow.tsx",
+      "frontend/tests/e2e/live-orders.spec.ts"
+    ],
+    "unchanged": "all frontend unit tests, dependencies, lock, setup and build configuration; latest main changes OrderWindow account label and 2 broker E2E fixtures",
+    "runtime_proof": {
+      "path": "frontend/src/api/trading.ts",
+      "base": "1db4edc34bac7266dc37c0723ce11f0eac42fe33",
+      "proof": "TypeScript transpileModule output before/after type-only additions is byte-identical",
+      "javascript_sha256": "faecbf146fda6e4fe56db74a78f82651d3edfdc20c5a91c0a76126e5a6a45568"
+    },
+    "final_typecheck": "passed; app/unit/E2E projects",
+    "latest_main_recheck": "OrderWindow and trading unit suites; 2 updated multi-broker E2Es; final typecheck and production build rerun"
+  },
+  "latest_main_result_reuse": {
+    "full_backend_base_sha": "1db4edc34bac7266dc37c0723ce11f0eac42fe33",
+    "full_backend_input_sha256": "e0917e694b01ccd6400b77e077bacfd92d14a29720b7a5a78b53e0b634c78f56",
+    "final_base_sha": "7cfe78aa2a65b9d3ed94a4d0181fad1170843341",
+    "changed_backend_inputs": [
+      "hoga/trading/kiwoom.py",
+      "hoga/trading/multi_broker.py",
+      "tests/unit/api/test_broker_trading.py"
+    ],
+    "changed_frontend_inputs": [
+      "frontend/src/api/trading.ts",
+      "frontend/src/live/workspace/OrderWindow.tsx",
+      "frontend/tests/e2e/live-orders.spec.ts"
+    ],
+    "reason": "Latest-main changes Kiwoom trading account availability and account label only; US price adapter, chart, session handling, caches, HTTP contracts and their fixtures/tests unchanged. Reran all affected broker/legacy/wire/probe backend tests (139), OrderWindow/trading frontend tests, 2 updated broker E2Es, typecheck and production build."
+  },
+  "completed_at_utc": "2026-10-18T15:45:48.135640+00:00",
+  "code_head_before_feature_commit": "7cfe78aa2a65b9d3ed94a4d0181fad1170843341",
+  "inputs_unchanged_at_completion": true,
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "status": "passed",
+      "result": "All checks passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "status": "passed",
+      "result": "=== 6201 passed, 2 skipped, 13 deselected, 35 warnings in 242.97s (0:04:02) ===="
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "status": "passed",
+      "result": "app + unit/component + E2E TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run --maxWorkers=2",
+      "status": "passed",
+      "result": "Test Files  650 passed (650); Tests  8475 passed (8475); Duration  239.25s (transform 10.97s, setup 15.20s, import 46.95s, tests 146.90s, environment 213.14s)"
+    },
+    {
+      "command": "cd frontend && npm run build",
+      "status": "passed",
+      "result": "production build; existing >700kB chunk advisory retained"
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/us-stock-minutes.spec.ts tests/e2e/us-index-minutes.spec.ts tests/e2e/us-daily-candles.spec.ts tests/e2e/live-viewport-preservation.spec.ts tests/e2e/live-orders.spec.ts --grep 'us-stock-minutes|us-index-minutes|us-daily-candles|live-viewport-preservation|증권사 계좌 전환|검증된 키움 경로' --reporter=line",
+      "status": "passed",
+      "result": "29/29: US stocks 7, US indices 5, US calendar regression 5, domestic viewport 10, multi-broker order UI 2. Initial viewport/pan transient did not recur; final sweep fully green."
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/live-viewport-preservation.spec.ts --grep 'partial history recovery preserves pan viewport' --repeat-each=3 --reporter=line",
+      "status": "passed",
+      "result": "3/3 repeats passed on identical chart source before the final 29-case sweep"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/api/trading.test.tsx src/api/tradingOrderEvents.test.ts",
+      "status": "passed",
+      "result": "22 passed, 2 files; final response-contract mirrors typechecked"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_broker_trading.py tests/unit/api/test_trading_v2_wire.py tests/unit/api/test_toss_trading.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/test_probe_kiwoom_http_latency.py",
+      "status": "passed",
+      "result": "139 passed on final base"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/workspace/OrderWindow.test.tsx src/api/trading.test.tsx src/api/tradingOrderEvents.test.ts",
+      "status": "passed",
+      "result": "Test Files  3 passed (3); Tests  150 passed (150); Duration  8.23s (transform 762ms, setup 161ms, import 1.03s, tests 7.03s, environment 984ms)"
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/live-orders.spec.ts --grep '증권사 계좌 전환|키움 주문의 가짜 응답' --reporter=line",
+      "status": "passed",
+      "result": "2 passed on final base; fake order API only"
+    }
+  ],
+  "live_reads": {
+    "path": "docs/research/2026-10-19-us-stock-minute-post-main-summary.json",
+    "cases": 12,
+    "bars_per_case": 800,
+    "pages_per_case": 8,
+    "all_status": "normal",
+    "all_more_available": true,
+    "all_candle_digests_match_frozen_fixture": true,
+    "production_path": "UsMarketApi.stock_minutes / UsStockMinuteService / KiwoomRestClient / shared capacity + REST admission budget",
+    "auth": "cached tokens only; no issuance; no WS/orders",
+    "browser": "frozen public responses from real reads; broker credentials blank"
+  },
+  "browser_environment": {
+    "backend_port": 20182,
+    "frontend_port": 21182,
+    "data_dir": "/tmp/hoga-e2e-data-182",
+    "dist_dir": "/tmp/hoga-e2e-dist-182",
+    "workers": 1,
+    "viewport": "stock charts 1280x720, deviceScaleFactor=1",
+    "visual_review": [
+      "NVDA-60m.png",
+      "BRKb-1m.png",
+      "AAAA-1m.png",
+      "KST-midnight.png"
+    ],
+    "initial_measurements": "viewport.json; six symbols × 800 bars; latest X within chart"
+  },
+  "test_notes": [
+    "Initial new-feature E2E exposed missing bars at adjacent overnight sessions. Fixed session ownership and inclusive boundaries, added unit regression; all seven stock E2Es then passed.",
+    "Initial existing domestic viewport/pan failure (span 380→388) passed three unchanged-source repeats and the final 29-case sweep. No assertion was weakened.",
+    "First typecheck caught Node-only imports in app-scoped test. Removed them and retained browser coverage plus small session regression; final three-project typecheck passed.",
+    "Backend default checks intentionally exclude wallclock; two pre-existing skips remain. Initial full run: 6195 passed/2 failed; latest-main response models and diagnostic fake-clock regression fixed; complete backend suite rerun."
+  ],
+  "limitations": [
+    "App recent 800-bar cap, no historical automatic backfill/date jump",
+    "Provider earliest retention floor not established",
+    "Delay and full vendor session scope unverified during closed-market probe",
+    "All 7 native periods live-tested on NVDA; other 5 tickers live-tested at 1m; no claim of exhaustive ticker coverage"
+  ],
+  "log_sha256": {
+    "backend": "bd61e2773f21c53a932562c6e138533c978dbd419dbdc00a6d64cd773ce182e9",
+    "frontend": "17e9f9478ba8d1b5a7284299738203916bb75c41b438bbe14aec04391191ce18",
+    "build": "26ad35dc1a4c861b497f9c6c657330e5ce70e83c0e88c1c353bf70974b9cfe16",
+    "typecheck": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+    "e2e": "ce5cf409c8a1c0c4c6a534b4e8899e65dc8690a73ddc503babcbb75aa7b3c87d",
+    "viewport_recheck": "57734dd43926976855c75075036d0bf5aa45109163ce7002e6f20a68683a942b",
+    "latest_backend": "0ef55f5d8b01e40cbaa191310830fb8d7d4b1f600702510fbaba716ed8ef9917",
+    "latest_frontend": "f438c31b5ebfa1ce5dedaff03e271ec06b569b5775bddd160a9169d6e1a62f79",
+    "latest_e2e": "8a93dee627e47377787b52ba8244e05a73b37e39c97ff6effe7b0b29ede9f226"
+  }
+}

@@ -1,0 +1,43 @@
+uv run --extra dev ruff check .
+passed
+All checks passed
+
+uv run --extra dev pytest -q -m 'not wallclock'
+passed
+=== 6201 passed, 2 skipped, 13 deselected, 35 warnings in 242.97s (0:04:02) ====
+
+cd frontend && npm run typecheck
+passed
+app + unit/component + E2E TypeScript projects
+
+cd frontend && npx vitest run --maxWorkers=2
+passed
+Test Files  650 passed (650); Tests  8475 passed (8475); Duration  239.25s (transform 10.97s, setup 15.20s, import 46.95s, tests 146.90s, environment 213.14s)
+
+cd frontend && npm run build
+passed
+production build; existing >700kB chunk advisory retained
+
+cd frontend && npx playwright test tests/e2e/us-stock-minutes.spec.ts tests/e2e/us-index-minutes.spec.ts tests/e2e/us-daily-candles.spec.ts tests/e2e/live-viewport-preservation.spec.ts tests/e2e/live-orders.spec.ts --grep 'us-stock-minutes|us-index-minutes|us-daily-candles|live-viewport-preservation|증권사 계좌 전환|검증된 키움 경로' --reporter=line
+passed
+29/29: US stocks 7, US indices 5, US calendar regression 5, domestic viewport 10, multi-broker order UI 2. Initial viewport/pan transient did not recur; final sweep fully green.
+
+cd frontend && npx playwright test tests/e2e/live-viewport-preservation.spec.ts --grep 'partial history recovery preserves pan viewport' --repeat-each=3 --reporter=line
+passed
+3/3 repeats passed on identical chart source before the final 29-case sweep
+
+cd frontend && npx vitest run src/api/trading.test.tsx src/api/tradingOrderEvents.test.ts
+passed
+22 passed, 2 files; final response-contract mirrors typechecked
+
+uv run --extra dev pytest -q tests/unit/api/test_broker_trading.py tests/unit/api/test_trading_v2_wire.py tests/unit/api/test_toss_trading.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/test_probe_kiwoom_http_latency.py
+passed
+139 passed on final base
+
+cd frontend && npx vitest run src/live/workspace/OrderWindow.test.tsx src/api/trading.test.tsx src/api/tradingOrderEvents.test.ts
+passed
+Test Files  3 passed (3); Tests  150 passed (150); Duration  8.23s (transform 762ms, setup 161ms, import 1.03s, tests 7.03s, environment 984ms)
+
+cd frontend && npx playwright test tests/e2e/live-orders.spec.ts --grep '증권사 계좌 전환|키움 주문의 가짜 응답' --reporter=line
+passed
+2 passed on final base; fake order API only

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from hoga.trading.models import TradingHolding
 
 Broker = Literal["toss", "kiwoom"]
 Environment = Literal["real", "mock"]
@@ -109,3 +111,20 @@ class BrokerCommandResult(BaseModel):
 
 class ReviewBrokerCommand(BrokerCommand):
     confirmed: Literal[True]
+
+
+class BrokerState(BrokerOrderState, BrokerBalances):
+    pass
+
+
+class BrokerHoldings(BaseModel):
+    account_ref: str
+    holdings: list[TradingHolding] = Field(default_factory=list)
+    fetched_at_ms: int
+
+
+class BrokerCommandStatus(BaseModel):
+    command_id: str
+    state: str
+    # Journal entries contain operation-specific receipts and review evidence.
+    result: dict[str, Any] | None

@@ -1,4 +1,4 @@
-vi.mock('../api/usDailyCandles', () => ({ useUsStockDaily: () => ({ data: undefined, isLoading: false, isFetching: false }) }));
+vi.mock('../api/usDailyCandles', () => ({ useUsStockDaily: () => ({ data: undefined, isLoading: false, isFetching: false }), useUsStockMinutes: () => ({ data: undefined, isLoading: false, isFetching: false }) }));
 vi.mock('./useEffectiveVenue', () => ({ useEffectiveVenue: (_code: string | null, venue: string) => venue }));
 /**
  * useLiveChartData — workarea 파생값의 **소스 선택** 계약.

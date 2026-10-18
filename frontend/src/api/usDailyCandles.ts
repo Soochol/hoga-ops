@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { apiCall } from './client';
 import type { LiveInstrument, UsExchange } from '../live/liveInstrument';
 import type { LiveTimeframe } from '../state/livePage';
-import type { LiveIndexCandle } from './liveIndices';
+import { US_MINUTE_TIMEFRAMES } from '../live/liveInstrument';
+import type { UsMinuteMetadata, LiveIndexCandle } from './liveIndices';
 
 export type UsDailyStatus = 'normal' | 'stale' | 'unconfigured' | 'error' | 'bypass' | 'partial';
 export interface UsDateRange { start: string; end: string }
@@ -54,5 +55,37 @@ export function useUsStockDaily(instrument: LiveInstrument | null, timeframe: Li
     staleTime: 300_000,
     refetchInterval: (query) => usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount),
     refetchOnWindowFocus: (query) => usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount) !== false,
+  });
+}
+
+
+export interface UsStockMinuteMetadata extends UsMinuteMetadata {
+  price_basis: string;
+  currency: string;
+  bar_limit: number;
+  pages_fetched: number;
+  more_available: boolean;
+}
+export interface UsStockMinuteResponse {
+  instrument_key: string;
+  exchange: UsExchange;
+  symbol: string;
+  from: string;
+  to: string;
+  timeframe: string;
+  candles: UsDailyBar[];
+  minute_metadata: UsStockMinuteMetadata;
+}
+export function useUsStockMinutes(instrument: LiveInstrument | null, timeframe: LiveTimeframe) {
+  const stock = instrument?.kind === 'us_stock' ? instrument : null;
+  return useQuery({
+    queryKey: ['live', 'us-stock-minute', stock?.exchange, stock?.symbol, timeframe],
+    enabled: !!stock && (US_MINUTE_TIMEFRAMES as readonly string[]).includes(timeframe),
+    queryFn: ({ signal }) => apiCall<UsStockMinuteResponse>(`/api/live/us-stock-minute-candles?exchange=${stock!.exchange}&symbol=${encodeURIComponent(stock!.symbol)}&timeframe=${timeframe}`, { signal }),
+    placeholderData: previous => previous?.instrument_key === `us-stock:${stock?.exchange}:${stock?.symbol}` && previous.timeframe === timeframe ? previous : undefined,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: true,
   });
 }

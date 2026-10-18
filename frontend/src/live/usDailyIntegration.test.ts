@@ -31,11 +31,11 @@ describe('US daily chart identity and capability boundaries', () => {
       expect(liveDeepLinkPath(usStockInstrument('NYSE', symbol))).toContain(`symbol=${symbol}`);
     }
   });
-  it('normalizes intraday shortcuts to D and retains W/M on search, drops and pins', () => {
+  it('retains minute and W/M selections on US stock search, drops and pins', () => {
     activateLiveInstrument(usStockInstrument('NASDAQ', 'AAPL'));
-    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
-    useWorkspaceStore.getState().setChartTimeframe('us-test', '1m');
-    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
+    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('1m');
+    useWorkspaceStore.getState().setChartTimeframe('us-test', '5m');
+    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('5m');
     useWorkspaceStore.getState().setWindowSymbol('us-test', { code: 'us-stock:NYSE:BRK.B', name: '버크셔' });
     expect(useWorkspaceStore.getState().groupSymbols[1]?.kind).toBe('us_stock');
     for (const tf of ['W', 'M'] as const) {
@@ -75,7 +75,22 @@ describe('US daily chart identity and capability boundaries', () => {
     }
     useWorkspaceStore.getState().setChartTimeframe('us-test', '5m');
     activateLiveInstrument(usStockInstrument('NASDAQ', 'AAPL'));
-    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
+    expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('5m');
+  });
+  it.each(['NASDAQ', 'NYSE', 'AMEX'] as const)('%s stocks preserve supported minutes through pins and group replacements', exchange => {
+    activateLiveInstrument(usStockInstrument(exchange, 'Test_pd'));
+    for (const tf of ['1m', '3m', '5m', '10m', '15m', '30m', '60m'] as const) {
+      useWorkspaceStore.getState().setChartTimeframe('us-test', tf);
+      useWorkspaceStore.getState().toggleWindowPin('us-test');
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe(tf);
+      useWorkspaceStore.getState().toggleWindowPin('us-test');
+      activateLiveInstrument(usStockInstrument(exchange, 'Other_b'));
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe(tf);
+    }
+    for (const tf of ['1s', '120m', '240m'] as const) {
+      useWorkspaceStore.getState().setChartTimeframe('us-test', tf);
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
+    }
   });
   it('disables domestic sidecars, collection, volume and turnover but allows price indicators', () => {
     for (const instrument of [usStockInstrument('NASDAQ', 'NVDA'), indexInstrument('NASDAQ_COMPOSITE'), indexInstrument('SP500'), indexInstrument('SOX')]) {

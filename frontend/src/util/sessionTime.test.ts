@@ -298,3 +298,16 @@ describe('extended venue close', () => {
     expect(classifyWithinSegment(krx, at('15:25'))).toBe('auction');
   });
 });
+
+
+it('keeps adjacent extended sessions inside the owning session rather than the next pre-open band', () => {
+  const open = DAY1_OPEN;
+  const sessions = [0, 1, 2, 3].map(i => ({ sessionOpenMs: open + i * 60_000, sessionCloseMs: open + (i + 1) * 60_000 - 1000 }));
+  for (const [idx, segment] of sessions.entries()) {
+    for (const instant of [segment.sessionOpenMs, segment.sessionCloseMs]) {
+      expect(locateSegment(sessions, instant).idx).toBe(idx);
+      expect(isRegularSession(sessions, instant)).toBe(true);
+    }
+  }
+  expect(locateSegment(sessions, open - 1)).toEqual({ idx: 0, phase: 'pre-open' });
+});

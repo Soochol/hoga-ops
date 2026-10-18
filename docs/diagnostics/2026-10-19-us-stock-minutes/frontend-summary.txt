@@ -1,0 +1,8 @@
+    at invokeEventListeners (/home/dev/.codex/worktrees/08d8/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/08d8/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/08d8/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+
+ Test Files  650 passed (650)
+      Tests  8475 passed (8475)
+   Start at  00:35:32
+   Duration  239.25s (transform 10.97s, setup 15.20s, import 46.95s, tests 146.90s, environment 213.14s)

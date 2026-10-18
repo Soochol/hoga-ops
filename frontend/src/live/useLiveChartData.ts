@@ -1,4 +1,4 @@
-import { useUsStockDaily } from '../api/usDailyCandles';
+import { useUsStockDaily, useUsStockMinutes } from '../api/usDailyCandles';
 import { usStockKey } from './liveInstrument';
 import { buildPriceBundle } from './buildIndexBundle';
 import type { InvestorTradeSide } from '../api/types';
@@ -260,14 +260,17 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
   const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
   const indexCandles = useLiveIndexCandles(activeIndexId, timeframe, indexFrom, today);
-  const usCandles = useUsStockDaily(activeInstrument, timeframe, indexFrom, today);
+  const usDailyCandles = useUsStockDaily(activeInstrument, timeframe, indexFrom, today);
+  const usMinuteCandles = useUsStockMinutes(activeInstrument, timeframe);
+  const usCandles = isMinuteTimeframe(timeframe) ? usMinuteCandles : usDailyCandles;
   const activeUsStock = activeInstrument?.kind === 'us_stock' ? activeInstrument : null;
   const usBundle = useMemo(() => activeUsStock && usCandles.data
-    ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: INDEX_BUCKET_MS[timeframe as keyof typeof INDEX_BUCKET_MS], candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
+    ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: INDEX_BUCKET_MS[timeframe as keyof typeof INDEX_BUCKET_MS], observedSessions: isMinuteTimeframe(timeframe), candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
     : null, [activeUsStock, usCandles.data, timeframe]);
   const remoteHistory = !!activeIndexId || !!activeUsStock;
-  const minuteMetadata = indexCandles.data?.minute_metadata;
-  const dailyMetadata = usCandles.data?.daily_metadata ?? indexCandles.data?.daily_metadata;
+  const stockMinuteMetadata = usMinuteCandles.data?.minute_metadata;
+  const minuteMetadata = stockMinuteMetadata ?? indexCandles.data?.minute_metadata;
+  const dailyMetadata = usDailyCandles.data?.daily_metadata ?? indexCandles.data?.daily_metadata;
 
   const indexInvestorFrom = indexCandles.data?.from ?? indexFrom;
   const indexInvestorTo = indexCandles.data?.to ?? today;
@@ -428,7 +431,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
 
   return {
     today,
-    remoteHistory, dailyMetadata, minuteMetadata,
+    remoteHistory, dailyMetadata, minuteMetadata, stockMinuteMetadata,
     live,
     liveInitial,
     liveTradePrice,

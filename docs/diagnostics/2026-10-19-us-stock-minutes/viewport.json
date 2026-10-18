@@ -1,0 +1,122 @@
+[
+  {
+    "count": 800,
+    "last": {
+      "open": 93.75,
+      "high": 93.75,
+      "low": 93.75,
+      "close": 93.75,
+      "time": 1792191540,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": 500,
+      "to": 857
+    },
+    "width": 1074,
+    "latestX": 897.5,
+    "case": "us-stock-minutes-NYSE-KO-n-e5882-domestic-API-or-WS-requests-chromium"
+  },
+  {
+    "count": 800,
+    "last": {
+      "open": 342.86,
+      "high": 343.1699,
+      "low": 342.86,
+      "close": 343,
+      "time": 1792191540,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": 500,
+      "to": 857
+    },
+    "width": 1068,
+    "latestX": 892.4804469273743,
+    "case": "us-stock-minutes-NASDAQ-AA-deb97-domestic-API-or-WS-requests-chromium"
+  },
+  {
+    "count": 800,
+    "last": {
+      "open": 213.83,
+      "high": 213.84,
+      "low": 213.77,
+      "close": 213.8314,
+      "time": 1792191540,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": 500,
+      "to": 857
+    },
+    "width": 1070,
+    "latestX": 894.1536312849162,
+    "case": "us-stock-minutes-NASDAQ-NV-32df2-domestic-API-or-WS-requests-chromium"
+  },
+  {
+    "count": 800,
+    "last": {
+      "open": 531.1,
+      "high": 531.1,
+      "low": 531.1,
+      "close": 531.1,
+      "time": 1792190581,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": 500,
+      "to": 857
+    },
+    "width": 1068,
+    "latestX": 892.4804469273743,
+    "case": "us-stock-minutes-NYSE-BRKb-56923-domestic-API-or-WS-requests-chromium"
+  },
+  {
+    "count": 800,
+    "last": {
+      "open": 3.525,
+      "high": 3.83,
+      "low": 3.525,
+      "close": 3.83,
+      "time": 1786642187,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": 500,
+      "to": 857
+    },
+    "width": 1082,
+    "latestX": 904.1927374301677,
+    "case": "us-stock-minutes-NYSE-AHT--11d70-domestic-API-or-WS-requests-chromium"
+  },
+  {
+    "count": 800,
+    "last": {
+      "open": 30.2,
+      "high": 30.2,
+      "low": 30.2,
+      "close": 30.2,
+      "time": 1784789580,
+      "color": "#de2b39",
+      "borderColor": "#de2b39",
+      "wickColor": "#de2b39"
+    },
+    "range": {
+      "from": 500,
+      "to": 857
+    },
+    "width": 1074,
+    "latestX": 897.5,
+    "case": "us-stock-minutes-AMEX-AAAA-3476d-domestic-API-or-WS-requests-chromium"
+  }
+]

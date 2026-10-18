@@ -38,17 +38,25 @@ export function buildPriceBundle(input: { observedSessions?: boolean; code: stri
     ...(c.trade_value_won != null ? { trade_value_won: c.trade_value_won } : {}),
   }));
   const dates = Array.from(new Set(input.candles.map((c) => c.trading_date ?? realMsToYyyymmdd(c.t_ms))));
+  const segments = dates.map((date) => ({
+    date,
+    // Foreign sessions cross KST midnight; group actual instants by NY trading date.
+    session_open_ms: input.observedSessions ? Math.min(...input.candles.filter(c => c.trading_date === date).map(c => c.t_ms)) : regularSessionOpenMs(date),
+    session_close_ms: input.observedSessions ? Math.max(...input.candles.filter(c => c.trading_date === date).map(c => c.t_ms)) + input.bucketMs : regularSessionCloseMs(date),
+  }));
+  if (input.observedSessions) {
+    // Native extended-hours buckets can abut the next business day's first
+    // bar. Session bounds are inclusive: leave one second for the axis gap.
+    for (let i = 0; i < segments.length - 1; i++) {
+      segments[i].session_close_ms = Math.min(segments[i].session_close_ms, segments[i + 1].session_open_ms - 1000);
+    }
+  }
   return {
     code: input.code,
     from_date: input.from,
     to_date: input.to,
     bucket_ms: input.bucketMs,
-    segments: dates.map((date) => ({
-      date,
-      // Foreign sessions cross KST midnight; group actual instants by NY trading date.
-      session_open_ms: input.observedSessions ? Math.min(...input.candles.filter(c => c.trading_date === date).map(c => c.t_ms)) : regularSessionOpenMs(date),
-      session_close_ms: input.observedSessions ? Math.max(...input.candles.filter(c => c.trading_date === date).map(c => c.t_ms)) + input.bucketMs : regularSessionCloseMs(date),
-    })),
+    segments,
     candles,
     quote_ratio: { bucket_ms: input.bucketMs, points: [] },
     fill_strength: { bucket_ms: input.bucketMs, points: [] },

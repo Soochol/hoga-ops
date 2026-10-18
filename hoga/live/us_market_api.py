@@ -30,6 +30,7 @@ from hoga.live.us_daily_candles import (
     parse_date,
 )
 from hoga.live.us_index_minutes import UsIndexMinuteService
+from hoga.live.us_stock_minutes import UsStockMinuteResponse, UsStockMinuteService
 from hoga.util.timeenc import KST
 
 _SYMBOL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\-]{0,19}\Z")
@@ -54,6 +55,7 @@ class UsMarketApi:
         self.data_dir = data_dir
         self.daily = UsDailyService()
         self.minutes = UsIndexMinuteService()
+        self.stock_minute_service = UsStockMinuteService()
         self.stocks: list[UsStockEntry] = []
         self.master_at_ms: int | None = None
         self.master_expiry = 0.0
@@ -70,11 +72,15 @@ class UsMarketApi:
                     await asyncio.gather(self.master_pending, return_exceptions=True)
                 await self.daily.aclose()
                 await self.minutes.aclose()
+                await self.stock_minute_service.aclose()
 
         self.router = APIRouter(lifespan=lifespan)
         self.router.add_api_route("/us-stocks", self.catalog, methods=["GET"], response_model=UsStockCatalogResponse)
         self.router.add_api_route(
             "/us-stock-daily-candles", self.stock_daily, methods=["GET"], response_model=UsStockDailyResponse
+        )
+        self.router.add_api_route(
+            "/us-stock-minute-candles", self.stock_minutes, methods=["GET"], response_model=UsStockMinuteResponse
         )
 
     def bypass(self) -> bool:
@@ -170,6 +176,27 @@ class UsMarketApi:
             timeframe=timeframe,
             candles=bars,
             daily_metadata=meta,
+        )
+
+    async def stock_minutes(
+        self,
+        exchange: UsExchange = Query(...),
+        symbol: str = Query(...),
+        timeframe: Literal["1m", "3m", "5m", "10m", "15m", "30m", "60m"] = "1m",
+    ) -> UsStockMinuteResponse:
+        if not _SYMBOL.fullmatch(symbol):
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "invalid US ticker"})
+        bypass = self.bypass()
+        client = kiwoom_rest_runtime.ensure_rest_client(self.data_dir) if self.data_dir and not bypass else None
+        scheduler = kiwoom_rest_runtime.ensure_scheduler(self.data_dir) if client else None
+        bars, meta = await self.stock_minute_service.get(
+            exchange, symbol, timeframe, client=client, scheduler=scheduler, bypass=bypass,
+        )
+        day = self.stock_minute_service.calendar_now().strftime("%Y%m%d")
+        return UsStockMinuteResponse(
+            instrument_key=f"us-stock:{exchange}:{symbol}", exchange=exchange, symbol=symbol, timeframe=timeframe,
+            **{"from": bars[0].trading_date if bars else day, "to": bars[-1].trading_date if bars else day},
+            candles=bars, minute_metadata=meta,
         )
 
     async def catalog(self) -> UsStockCatalogResponse:

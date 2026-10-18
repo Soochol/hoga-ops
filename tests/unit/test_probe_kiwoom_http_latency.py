@@ -355,6 +355,9 @@ async def test_deadline_stops_probe_and_closes_transport(monkeypatch):
 async def test_sequential_samples_reuse_transport_pace_after_response_and_keep_slow_verdict(monkeypatch):
     clock = Clock()
     monkeypatch.setattr(probe, "perf_counter", clock)
+    # Admission and the probe must use the same simulated clock. A real
+    # monotonic clock would schedule a second sleep despite fake pacing.
+    monkeypatch.setattr("hoga.live.kiwoom_budget.time.monotonic", clock)
     real_sleep = asyncio.sleep
     events = []
 
