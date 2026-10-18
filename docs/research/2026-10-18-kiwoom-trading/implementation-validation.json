@@ -59,5 +59,14 @@
     "Official contract examples and synthetic events do not establish real exchange semantics or rate-limit boundaries.",
     "Kiwoom routes remain disabled until operator acceptance evidence is recorded for the exact account, environment and route.",
     "The earlier 26 production read-only probes belong to the design-stage report and were not repeated here."
-  ]
+  ],
+  "integration_validation": {
+    "base_revision": "7bcfe1aa293f4255cde5a317b139c9799b4d7ef5",
+    "backend_order_regression_passed": 357,
+    "kiwoom_http_regression_passed": 18,
+    "frontend_order_unit_passed": 189,
+    "browser_critical_passed": 5,
+    "typescript_app": "passed",
+    "external_broker_order_transmissions": 0
+  }
 }
