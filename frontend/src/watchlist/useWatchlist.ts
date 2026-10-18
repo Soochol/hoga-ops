@@ -222,7 +222,7 @@ export function useReorderItems() {
 }
 export function useAddMember() {
   return useOptimisticWatchlistMutation<AddMemberVars>(
-    (v) => addMember(v.folderId, v.code, v.at).then(() => undefined), applyAddMember);
+    (v) => (v.code.startsWith('us-stock:') ? addMember(v.folderId, v.code, v.at, v.name) : addMember(v.folderId, v.code, v.at)).then(() => undefined), applyAddMember);
 }
 export function useRemoveMember() {
   return useOptimisticWatchlistMutation<RemoveMemberVars>(

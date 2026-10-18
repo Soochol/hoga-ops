@@ -1,6 +1,6 @@
 import { useNavigate, useLocation } from 'react-router';
 import { activateLiveCode, openLiveInNewTab } from './liveNavigate';
-import { stockInstrument } from './liveInstrument';
+import { stockInstrument, usStockFromKey } from './liveInstrument';
 
 /** 새 탭 여부 판정에 필요한 최소 지분 — React 의 Mouse/Keyboard 이벤트와 네이티브
  *  MouseEvent 가 모두 구조적으로 들어맞아, 호출부가 어떤 이벤트를 넘겨도 된다. */
@@ -28,7 +28,7 @@ export function useJumpToLive() {
   const { pathname } = useLocation();
   return (code: string, label?: string, e?: JumpModifiers) => {
     if (wantsNewTab(e)) {
-      openLiveInNewTab(stockInstrument(code, label ?? code));
+      openLiveInNewTab(usStockFromKey(code, label) ?? stockInstrument(code, label ?? code));
       return;
     }
     activateLiveCode(code, label);

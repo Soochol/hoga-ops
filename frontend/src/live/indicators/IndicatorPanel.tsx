@@ -246,6 +246,7 @@ export default function IndicatorPanel({
   }, [menuOpen, onClose]);
 
   const categories = CATEGORIES.filter((c) => {
+    if (c.id === 'volume' && capabilities.volume === false) return false;
     if (c.id === 'trade-value') return capabilities.tradeValue === true && isCalendarTimeframe(timeframe);
     if (c.id === 'program-daily') return capabilities.investorNet === 'stock';
     if (c.group === 'hoga' || c.group === 'program') return capabilities.hogaPanes;

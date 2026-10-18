@@ -1,3 +1,4 @@
+import { useUsStocks } from '../api/usDailyCandles';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSymbols } from '../capture/useSymbols';
@@ -8,13 +9,12 @@ import { onFocusLiveSearch } from './liveSearchFocus';
 import { shouldIgnoreEvent } from '../util/keyboard';
 import { WatchlistHeartButton } from '../watchlist/WatchlistHeartButton';
 import { useWatchlistMembership } from '../watchlist/useWatchlistMembership';
-import type { SymbolHit } from '../api/types';
 import { ClearSearchIcon } from '../ui/ClearSearchIcon';
 import { useLiveIndices } from '../api/liveIndices';
-import { indexInstrument, type LiveIndexId } from './liveInstrument';
+import { indexInstrument, usStockInstrument, usStockKey, usStockFromKey, type LiveIndexId } from './liveInstrument';
 import { buildLiveSearchCatalog, searchItemIdentity, searchLiveCatalog, type SearchItem } from './liveSymbolSearchModel';
 
-type RecentSearch = Pick<SymbolHit, 'code' | 'name' | 'market'>;
+type RecentSearch = { code: string; name: string; market: string };
 
 const RECENT_SEARCH_KEY = 'hoga.liveSymbolSearch.recent';
 const RECENT_SEARCH_LIMIT = 5;
@@ -68,19 +68,23 @@ export function LiveSymbolSearch() {
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>(() => readRecentSearches());
   const symbolsQuery = useSymbols();
   const indicesQuery = useLiveIndices();
+  const usStocksQuery = useUsStocks();
   const { refetch: refetchSymbols, isFetching: symbolsFetching } = symbolsQuery;
   const symbolsStatus = symbolsQuery.data?.status;
   const catalog = useMemo(() => buildLiveSearchCatalog(
-    symbolsQuery.data?.symbols ?? [], indicesQuery.data ?? [],
-  ), [symbolsQuery.data?.symbols, indicesQuery.data]);
+    symbolsQuery.data?.symbols ?? [], indicesQuery.data ?? [], usStocksQuery.data?.stocks ?? [],
+  ), [symbolsQuery.data?.symbols, indicesQuery.data, usStocksQuery.data?.stocks]);
   const q = query.trim().toLowerCase();
   const matches = useMemo(() => searchLiveCatalog(catalog, q), [catalog, q]);
   const recentItems: SearchItem[] = q.length === 0
-    ? recentSearches.map((hit) => ({ kind: 'stock', hit: {
-        ...hit,
+    ? recentSearches.map((hit): SearchItem => {
+        const us = usStockFromKey(hit.code, hit.name);
+        if (us?.kind === 'us_stock') return { kind: 'us_stock', stock: { exchange: us.exchange, symbol: us.symbol, label: hit.name, english_name: '', is_etf: false } };
+        return { kind: 'stock', hit: {
+        ...hit, market: hit.market === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI',
         captured_count: 0,
         captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 },
-      } }))
+      } }; })
     : [];
   const items = q ? matches : recentItems;
   const stockFailed = symbolsQuery.isError || symbolsQuery.data?.status === 'unavailable';
@@ -103,7 +107,12 @@ export function LiveSymbolSearch() {
     // Re-read the destination at commit time; pinned windows never change and
     // failed selections must not close the search or enter recent history.
     if (activationTarget(useWorkspaceStore.getState()).kind === 'blocked') return;
-    if (item.kind === 'stock') {
+    if (item.kind === 'us_stock') {
+      activateLiveInstrument(usStockInstrument(item.stock.exchange, item.stock.symbol, item.stock.label));
+      const code = usStockKey(item.stock.exchange, item.stock.symbol);
+      const nextRecent = [{ code, name: item.stock.label, market: item.stock.exchange }, ...recentSearches.filter(r => r.code !== code)].slice(0, RECENT_SEARCH_LIMIT);
+      setRecentSearches(nextRecent); writeRecentSearches(nextRecent);
+    } else if (item.kind === 'stock') {
       activateLiveCode(item.hit.code, item.hit.name);
       const nextRecent = [
         { code: item.hit.code, name: item.hit.name, market: item.hit.market },
@@ -273,13 +282,13 @@ export function LiveSymbolSearch() {
           {items.length === 0 ? (
             !catalogNotice && <div className="px-3 py-8 text-center">
               <p className="text-base font-medium text-fg">일치하는 종목이 없습니다</p>
-              <p className="mt-2 text-sm text-fg-dim">종목명·6자리 코드·초성을 확인해 주세요.</p>
+              <p className="mt-2 text-sm text-fg-dim">종목명·코드·미국 티커·초성을 확인해 주세요.</p>
             </div>
           ) : items.map((item, i) => {
             const { name, code, market } = searchItemIdentity(item);
-            const isCurrent = currentKey === `${item.kind}:${code}`;
+            const isCurrent = currentKey === `${item.kind}:${item.kind === 'us_stock' ? usStockKey(item.stock.exchange, item.stock.symbol) : code}`;
             return (
-              <div key={`${item.kind}:${code}`} role="presentation"
+              <div key={`${item.kind}:${market}:${code}`} role="presentation"
                 style={{ background: i === highlightedIndex ? 'var(--tint-selection)' : 'transparent' }}
                 className="flex items-center gap-2 rounded-lg px-3">
                 <button type="button" role="option" id={`${listId}-${i}`} tabIndex={-1} disabled={blocked}
@@ -296,11 +305,11 @@ export function LiveSymbolSearch() {
                     <span>{market}</span>
                   </span>
                 </button>
-                {item.kind === 'stock' && <WatchlistHeartButton code={code} name={name} isMember={isMember(code)}
+                {item.kind !== 'index' && <WatchlistHeartButton code={item.kind === 'us_stock' ? usStockKey(item.stock.exchange, item.stock.symbol) : code} name={name} isMember={isMember(item.kind === 'us_stock' ? usStockKey(item.stock.exchange, item.stock.symbol) : code)}
                   className="flex h-8 w-8 shrink-0 items-center justify-center rounded hover:bg-bg-input-hover focus-visible:outline focus-visible:outline-accent [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11" />}
-                {showingRecent && item.kind === 'stock' && (
+                {showingRecent && item.kind !== 'index' && (
                   <button type="button" aria-label={`${name} 최근 검색 삭제`}
-                    onClick={() => removeRecent(code)}
+                    onClick={() => removeRecent(item.kind === 'us_stock' ? usStockKey(item.stock.exchange, item.stock.symbol) : code)}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-fg-dim hover:bg-bg-input hover:text-fg [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11">
                     <ClearSearchIcon className="h-4 w-4" />
                   </button>

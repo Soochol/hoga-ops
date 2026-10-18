@@ -1,3 +1,4 @@
+import { formatInstrumentPrice, isUsWorkareaCode } from './instrumentPriceFormat';
 import { drawnCandleIndex, EMPTY_DRAWN_CANDLE_INDEX } from '../chart/drawnCandleIndex';
 import { hasSyntheticCrosshair } from '../chart/syntheticCrosshair';
 import { useCursorSyncResolution } from './useCursorSyncResolution';
@@ -49,12 +50,12 @@ const rowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-betwee
 const keyStyle: CSSProperties = { color: 'var(--fg-dimmer)' };
 const valStyle: CSSProperties = { color: 'var(--fg)' };
 
-const signed = (n: number) => (n >= 0 ? '+' : '') + formatKoreanInt(n);
+const signed = (n: number, code?: string) => (n >= 0 ? '+' : '') + formatInstrumentPrice(n, code);
 const signedPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
 
 // OHLC 행: 가격(중립 --fg) + 직전 봉(이전 캔들) 종가 대비 변동률%(상승 빨강/하락 파랑).
 // pct 없으면(가장 이른 봉 / prev.close<=0) % 칸은 비워 세로 정렬을 유지한다.
-function PriceRow({ k, price, pct }: { k: string; price: number; pct: number | null }) {
+function PriceRow({ k, price, pct, code }: { k: string; price: number; pct: number | null; code?: string | null }) {
   // 색·텍스트 모두 '반올림된' 값 기준 — 표시가 "+0.00%" 인데 색만 빨강/파랑인 불일치 방지
   // (priceDirClass 는 raw 부호, signedPct 는 toFixed(2) 반올림이라 미세값에서 어긋남).
   const r = pct != null && Number.isFinite(pct) ? Number(pct.toFixed(2)) : null;
@@ -62,7 +63,7 @@ function PriceRow({ k, price, pct }: { k: string; price: number; pct: number | n
     <div style={rowStyle}>
       <span style={keyStyle}>{k}</span>
       <span style={{ display: 'inline-flex', gap: 10 }}>
-        <span style={{ ...valStyle, minWidth: '7ch', textAlign: 'right' }}>{formatKoreanInt(price)}</span>
+        <span style={{ ...valStyle, minWidth: '7ch', textAlign: 'right' }}>{formatInstrumentPrice(price, code)}</span>
         <span
           className={r != null ? priceDirClass(r) : undefined}
           style={{ minWidth: '6ch', textAlign: 'right' }}
@@ -267,20 +268,20 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
       <div style={{ ...rowStyle, color: 'var(--fg-dim)', marginBottom: 4 }}>
         <span>{m.dateLabel}{m.timeLabel ? ` ${m.timeLabel}` : ''}</span>
       </div>
-      <PriceRow k="시" price={m.open} pct={m.openPct} />
-      <PriceRow k="고" price={m.high} pct={m.highPct} />
-      <PriceRow k="저" price={m.low} pct={m.lowPct} />
-      <PriceRow k="종" price={m.close} pct={m.closePct} />
+      <PriceRow code={bundle.code} k="시" price={m.open} pct={m.openPct} />
+      <PriceRow code={bundle.code} k="고" price={m.high} pct={m.highPct} />
+      <PriceRow code={bundle.code} k="저" price={m.low} pct={m.lowPct} />
+      <PriceRow code={bundle.code} k="종" price={m.close} pct={m.closePct} />
       <Row k="직전대비">
         <span className={m.barOverBarWon == null ? undefined : priceDirClass(m.barOverBarWon)}>
-          {m.barOverBarWon == null ? '—' : signed(m.barOverBarWon)}
+          {m.barOverBarWon == null ? '—' : signed(m.barOverBarWon, bundle.code)}
         </span>
       </Row>
       <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
-      <Row k="거래량"><span style={valStyle}>{formatKoreanInt(m.volume)}</span></Row>
-      <Row k="거래량비">
+      {!isUsWorkareaCode(bundle.code) && <Row k="거래량"><span style={valStyle}>{formatKoreanInt(m.volume)}</span></Row>}
+      {!isUsWorkareaCode(bundle.code) && <Row k="거래량비">
         <span style={valStyle}>{m.volumeRatioPct == null ? '—' : `${Math.round(m.volumeRatioPct)}%`}</span>
-      </Row>
+      </Row>}
       {timeframe === 'D' && /^\d{6}$/.test(bundle.code) && (
         <DailyCandleDetails code={bundle.code} candles={drawn} candle={drawn[idx]} />
       )}

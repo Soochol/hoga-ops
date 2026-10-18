@@ -1,0 +1,757 @@
+{
+  "tested_at": "2026-10-18T22:39:26.143426+09:00",
+  "server": "https://openapi.koreainvestment.com:9443",
+  "tr_id": "FHKST03030100",
+  "path": "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+  "probes": [
+    {
+      "name": "나스닥 종합",
+      "request": {
+        "FID_COND_MRKT_DIV_CODE": "N",
+        "FID_INPUT_ISCD": "COMP",
+        "FID_INPUT_DATE_1": "20261001",
+        "FID_INPUT_DATE_2": "20261018",
+        "FID_PERIOD_DIV_CODE": "D"
+      },
+      "http_status": 200,
+      "rt_cd": "0",
+      "msg_cd": "MCA00000",
+      "msg1": "정상처리 되었습니다.",
+      "raw_rows": 10,
+      "valid_rows": 10,
+      "output1": {
+        "ovrs_nmix_prdy_vrss": "-573.00",
+        "prdy_vrss_sign": "5",
+        "prdy_ctrt": "-2.15",
+        "ovrs_nmix_prdy_clpr": "26713.03",
+        "acml_vol": "9779302200",
+        "hts_kor_isnm": "나스닥 종합",
+        "ovrs_nmix_prpr": "26140.03",
+        "stck_shrn_iscd": "COMP",
+        "ovrs_prod_oprc": "26652.99",
+        "ovrs_prod_hgpr": "26674.66",
+        "ovrs_prod_lwpr": "26023.10"
+      },
+      "first": [
+        {
+          "stck_bsop_date": "20261016",
+          "ovrs_nmix_prpr": "26140.03",
+          "ovrs_nmix_oprc": "26652.99",
+          "ovrs_nmix_hgpr": "26674.66",
+          "ovrs_nmix_lwpr": "26023.10",
+          "acml_vol": "9779302200",
+          "mod_yn": "N"
+        },
+        {
+          "stck_bsop_date": "20261015",
+          "ovrs_nmix_prpr": "26713.03",
+          "ovrs_nmix_oprc": "26380.77",
+          "ovrs_nmix_hgpr": "26754.02",
+          "ovrs_nmix_lwpr": "26308.85",
+          "acml_vol": "11140684900",
+          "mod_yn": "N"
+        }
+      ],
+      "last": [
+        {
+          "stck_bsop_date": "20261005",
+          "ovrs_nmix_prpr": "27477.31",
+          "ovrs_nmix_oprc": "27225.93",
+          "ovrs_nmix_hgpr": "27544.07",
+          "ovrs_nmix_lwpr": "27223.49",
+          "acml_vol": "8138535600",
+          "mod_yn": "N"
+        }
+      ],
+      "tr_cont": "",
+      "response": {
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-573.00",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.15",
+          "ovrs_nmix_prdy_clpr": "26713.03",
+          "acml_vol": "9779302200",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26140.03",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26652.99",
+          "ovrs_prod_hgpr": "26674.66",
+          "ovrs_prod_lwpr": "26023.10"
+        },
+        "output2": [
+          {
+            "stck_bsop_date": "20261016",
+            "ovrs_nmix_prpr": "26140.03",
+            "ovrs_nmix_oprc": "26652.99",
+            "ovrs_nmix_hgpr": "26674.66",
+            "ovrs_nmix_lwpr": "26023.10",
+            "acml_vol": "9779302200",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261015",
+            "ovrs_nmix_prpr": "26713.03",
+            "ovrs_nmix_oprc": "26380.77",
+            "ovrs_nmix_hgpr": "26754.02",
+            "ovrs_nmix_lwpr": "26308.85",
+            "acml_vol": "11140684900",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261014",
+            "ovrs_nmix_prpr": "26692.87",
+            "ovrs_nmix_oprc": "27031.64",
+            "ovrs_nmix_hgpr": "27134.29",
+            "ovrs_nmix_lwpr": "26602.12",
+            "acml_vol": "9059590500",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261013",
+            "ovrs_nmix_prpr": "27204.38",
+            "ovrs_nmix_oprc": "27138.73",
+            "ovrs_nmix_hgpr": "27277.88",
+            "ovrs_nmix_lwpr": "27116.08",
+            "acml_vol": "7237081200",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261012",
+            "ovrs_nmix_prpr": "27245.90",
+            "ovrs_nmix_oprc": "27352.51",
+            "ovrs_nmix_hgpr": "27376.66",
+            "ovrs_nmix_lwpr": "27219.42",
+            "acml_vol": "6596457300",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261009",
+            "ovrs_nmix_prpr": "27366.17",
+            "ovrs_nmix_oprc": "27342.27",
+            "ovrs_nmix_hgpr": "27395.41",
+            "ovrs_nmix_lwpr": "27254.03",
+            "acml_vol": "7085095500",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261008",
+            "ovrs_nmix_prpr": "27193.34",
+            "ovrs_nmix_oprc": "27416.03",
+            "ovrs_nmix_hgpr": "27491.90",
+            "ovrs_nmix_lwpr": "27066.76",
+            "acml_vol": "9131738700",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261007",
+            "ovrs_nmix_prpr": "27538.69",
+            "ovrs_nmix_oprc": "27430.54",
+            "ovrs_nmix_hgpr": "27547.20",
+            "ovrs_nmix_lwpr": "27341.31",
+            "acml_vol": "7562331300",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261006",
+            "ovrs_nmix_prpr": "27599.79",
+            "ovrs_nmix_oprc": "27641.17",
+            "ovrs_nmix_hgpr": "27722.75",
+            "ovrs_nmix_lwpr": "27592.56",
+            "acml_vol": "8710899800",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261005",
+            "ovrs_nmix_prpr": "27477.31",
+            "ovrs_nmix_oprc": "27225.93",
+            "ovrs_nmix_hgpr": "27544.07",
+            "ovrs_nmix_lwpr": "27223.49",
+            "acml_vol": "8138535600",
+            "mod_yn": "N"
+          }
+        ],
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다."
+      }
+    },
+    {
+      "name": "S&P 500",
+      "request": {
+        "FID_COND_MRKT_DIV_CODE": "N",
+        "FID_INPUT_ISCD": "SPX",
+        "FID_INPUT_DATE_1": "20261001",
+        "FID_INPUT_DATE_2": "20261018",
+        "FID_PERIOD_DIV_CODE": "D"
+      },
+      "http_status": 200,
+      "rt_cd": "0",
+      "msg_cd": "MCA00000",
+      "msg1": "정상처리 되었습니다.",
+      "raw_rows": 10,
+      "valid_rows": 10,
+      "output1": {
+        "ovrs_nmix_prdy_vrss": "-84.62",
+        "prdy_vrss_sign": "5",
+        "prdy_ctrt": "-1.09",
+        "ovrs_nmix_prdy_clpr": "7744.06",
+        "acml_vol": "0",
+        "hts_kor_isnm": "S&P500",
+        "ovrs_nmix_prpr": "7659.44",
+        "stck_shrn_iscd": "SPX",
+        "ovrs_prod_oprc": "7745.32",
+        "ovrs_prod_hgpr": "7756.84",
+        "ovrs_prod_lwpr": "7631.77"
+      },
+      "first": [
+        {
+          "stck_bsop_date": "20261016",
+          "ovrs_nmix_prpr": "7659.44",
+          "ovrs_nmix_oprc": "7745.32",
+          "ovrs_nmix_hgpr": "7756.84",
+          "ovrs_nmix_lwpr": "7631.77",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        },
+        {
+          "stck_bsop_date": "20261015",
+          "ovrs_nmix_prpr": "7744.06",
+          "ovrs_nmix_oprc": "7687.31",
+          "ovrs_nmix_hgpr": "7754.15",
+          "ovrs_nmix_lwpr": "7669.66",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        }
+      ],
+      "last": [
+        {
+          "stck_bsop_date": "20261005",
+          "ovrs_nmix_prpr": "7773.95",
+          "ovrs_nmix_oprc": "7730.86",
+          "ovrs_nmix_hgpr": "7794.35",
+          "ovrs_nmix_lwpr": "7727.59",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        }
+      ],
+      "tr_cont": "",
+      "response": {
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-84.62",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.09",
+          "ovrs_nmix_prdy_clpr": "7744.06",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.44",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7745.32",
+          "ovrs_prod_hgpr": "7756.84",
+          "ovrs_prod_lwpr": "7631.77"
+        },
+        "output2": [
+          {
+            "stck_bsop_date": "20261016",
+            "ovrs_nmix_prpr": "7659.44",
+            "ovrs_nmix_oprc": "7745.32",
+            "ovrs_nmix_hgpr": "7756.84",
+            "ovrs_nmix_lwpr": "7631.77",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261015",
+            "ovrs_nmix_prpr": "7744.06",
+            "ovrs_nmix_oprc": "7687.31",
+            "ovrs_nmix_hgpr": "7754.15",
+            "ovrs_nmix_lwpr": "7669.66",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261014",
+            "ovrs_nmix_prpr": "7718.94",
+            "ovrs_nmix_oprc": "7774.18",
+            "ovrs_nmix_hgpr": "7789.15",
+            "ovrs_nmix_lwpr": "7693.31",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261013",
+            "ovrs_nmix_prpr": "7805.45",
+            "ovrs_nmix_oprc": "7795.27",
+            "ovrs_nmix_hgpr": "7814.15",
+            "ovrs_nmix_lwpr": "7786.11",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261012",
+            "ovrs_nmix_prpr": "7807.24",
+            "ovrs_nmix_oprc": "7813.04",
+            "ovrs_nmix_hgpr": "7821.67",
+            "ovrs_nmix_lwpr": "7796.94",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261009",
+            "ovrs_nmix_prpr": "7811.54",
+            "ovrs_nmix_oprc": "7786.36",
+            "ovrs_nmix_hgpr": "7820.57",
+            "ovrs_nmix_lwpr": "7779.34",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261008",
+            "ovrs_nmix_prpr": "7765.36",
+            "ovrs_nmix_oprc": "7778.45",
+            "ovrs_nmix_hgpr": "7797.79",
+            "ovrs_nmix_lwpr": "7731.26",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261007",
+            "ovrs_nmix_prpr": "7801.77",
+            "ovrs_nmix_oprc": "7792.98",
+            "ovrs_nmix_hgpr": "7807.02",
+            "ovrs_nmix_lwpr": "7763.34",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261006",
+            "ovrs_nmix_prpr": "7818.93",
+            "ovrs_nmix_oprc": "7805.96",
+            "ovrs_nmix_hgpr": "7844.52",
+            "ovrs_nmix_lwpr": "7805.96",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261005",
+            "ovrs_nmix_prpr": "7773.95",
+            "ovrs_nmix_oprc": "7730.86",
+            "ovrs_nmix_hgpr": "7794.35",
+            "ovrs_nmix_lwpr": "7727.59",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          }
+        ],
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다."
+      }
+    },
+    {
+      "name": "나스닥 100",
+      "request": {
+        "FID_COND_MRKT_DIV_CODE": "N",
+        "FID_INPUT_ISCD": "NDX",
+        "FID_INPUT_DATE_1": "20261001",
+        "FID_INPUT_DATE_2": "20261018",
+        "FID_PERIOD_DIV_CODE": "D"
+      },
+      "http_status": 200,
+      "rt_cd": "0",
+      "msg_cd": "MCA00000",
+      "msg1": "정상처리 되었습니다.",
+      "raw_rows": 10,
+      "valid_rows": 10,
+      "output1": {
+        "ovrs_nmix_prdy_vrss": "-748.05",
+        "prdy_vrss_sign": "5",
+        "prdy_ctrt": "-2.50",
+        "ovrs_nmix_prdy_clpr": "29935.60",
+        "acml_vol": "0",
+        "hts_kor_isnm": "나스닥 100",
+        "ovrs_nmix_prpr": "29187.55",
+        "stck_shrn_iscd": "NDX",
+        "ovrs_prod_oprc": "29797.10",
+        "ovrs_prod_hgpr": "29822.91",
+        "ovrs_prod_lwpr": "29073.29"
+      },
+      "first": [
+        {
+          "stck_bsop_date": "20261016",
+          "ovrs_nmix_prpr": "29187.55",
+          "ovrs_nmix_oprc": "29797.10",
+          "ovrs_nmix_hgpr": "29822.91",
+          "ovrs_nmix_lwpr": "29073.29",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        },
+        {
+          "stck_bsop_date": "20261015",
+          "ovrs_nmix_prpr": "29935.60",
+          "ovrs_nmix_oprc": "29526.71",
+          "ovrs_nmix_hgpr": "29985.62",
+          "ovrs_nmix_lwpr": "29408.41",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        }
+      ],
+      "last": [
+        {
+          "stck_bsop_date": "20261005",
+          "ovrs_nmix_prpr": "31076.44",
+          "ovrs_nmix_oprc": "30812.76",
+          "ovrs_nmix_hgpr": "31117.36",
+          "ovrs_nmix_lwpr": "30798.42",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        }
+      ],
+      "tr_cont": "",
+      "response": {
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-748.05",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.50",
+          "ovrs_nmix_prdy_clpr": "29935.60",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 100",
+          "ovrs_nmix_prpr": "29187.55",
+          "stck_shrn_iscd": "NDX",
+          "ovrs_prod_oprc": "29797.10",
+          "ovrs_prod_hgpr": "29822.91",
+          "ovrs_prod_lwpr": "29073.29"
+        },
+        "output2": [
+          {
+            "stck_bsop_date": "20261016",
+            "ovrs_nmix_prpr": "29187.55",
+            "ovrs_nmix_oprc": "29797.10",
+            "ovrs_nmix_hgpr": "29822.91",
+            "ovrs_nmix_lwpr": "29073.29",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261015",
+            "ovrs_nmix_prpr": "29935.60",
+            "ovrs_nmix_oprc": "29526.71",
+            "ovrs_nmix_hgpr": "29985.62",
+            "ovrs_nmix_lwpr": "29408.41",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261014",
+            "ovrs_nmix_prpr": "29950.82",
+            "ovrs_nmix_oprc": "30316.03",
+            "ovrs_nmix_hgpr": "30436.60",
+            "ovrs_nmix_lwpr": "29861.06",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261013",
+            "ovrs_nmix_prpr": "30569.48",
+            "ovrs_nmix_oprc": "30405.16",
+            "ovrs_nmix_hgpr": "30595.81",
+            "ovrs_nmix_lwpr": "30372.30",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261012",
+            "ovrs_nmix_prpr": "30664.70",
+            "ovrs_nmix_oprc": "30796.04",
+            "ovrs_nmix_hgpr": "30813.96",
+            "ovrs_nmix_lwpr": "30618.65",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261009",
+            "ovrs_nmix_prpr": "30883.15",
+            "ovrs_nmix_oprc": "30900.07",
+            "ovrs_nmix_hgpr": "30946.74",
+            "ovrs_nmix_lwpr": "30770.06",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261008",
+            "ovrs_nmix_prpr": "30725.81",
+            "ovrs_nmix_oprc": "30985.23",
+            "ovrs_nmix_hgpr": "31125.13",
+            "ovrs_nmix_lwpr": "30556.40",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261007",
+            "ovrs_nmix_prpr": "31160.08",
+            "ovrs_nmix_oprc": "30976.25",
+            "ovrs_nmix_hgpr": "31170.12",
+            "ovrs_nmix_lwpr": "30904.46",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261006",
+            "ovrs_nmix_prpr": "31224.47",
+            "ovrs_nmix_oprc": "31255.40",
+            "ovrs_nmix_hgpr": "31361.37",
+            "ovrs_nmix_lwpr": "31208.20",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261005",
+            "ovrs_nmix_prpr": "31076.44",
+            "ovrs_nmix_oprc": "30812.76",
+            "ovrs_nmix_hgpr": "31117.36",
+            "ovrs_nmix_lwpr": "30798.42",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          }
+        ],
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다."
+      }
+    },
+    {
+      "name": "나스닥 종합: 이전 구간",
+      "request": {
+        "FID_COND_MRKT_DIV_CODE": "N",
+        "FID_INPUT_ISCD": "COMP",
+        "FID_INPUT_DATE_1": "20261001",
+        "FID_INPUT_DATE_2": "20261004",
+        "FID_PERIOD_DIV_CODE": "D"
+      },
+      "http_status": 200,
+      "rt_cd": "0",
+      "msg_cd": "MCA00000",
+      "msg1": "정상처리 되었습니다.",
+      "raw_rows": 2,
+      "valid_rows": 2,
+      "output1": {
+        "ovrs_nmix_prdy_vrss": "-573.00",
+        "prdy_vrss_sign": "5",
+        "prdy_ctrt": "-2.15",
+        "ovrs_nmix_prdy_clpr": "26713.03",
+        "acml_vol": "9779302200",
+        "hts_kor_isnm": "나스닥 종합",
+        "ovrs_nmix_prpr": "26140.03",
+        "stck_shrn_iscd": "COMP",
+        "ovrs_prod_oprc": "26652.99",
+        "ovrs_prod_hgpr": "26674.66",
+        "ovrs_prod_lwpr": "26023.10"
+      },
+      "first": [
+        {
+          "stck_bsop_date": "20261002",
+          "ovrs_nmix_prpr": "27190.86",
+          "ovrs_nmix_oprc": "27216.91",
+          "ovrs_nmix_hgpr": "27353.68",
+          "ovrs_nmix_lwpr": "27112.24",
+          "acml_vol": "8167491500",
+          "mod_yn": "N"
+        },
+        {
+          "stck_bsop_date": "20261001",
+          "ovrs_nmix_prpr": "26871.60",
+          "ovrs_nmix_oprc": "26992.31",
+          "ovrs_nmix_hgpr": "27014.47",
+          "ovrs_nmix_lwpr": "26733.89",
+          "acml_vol": "7595504700",
+          "mod_yn": "N"
+        }
+      ],
+      "last": [
+        {
+          "stck_bsop_date": "20261001",
+          "ovrs_nmix_prpr": "26871.60",
+          "ovrs_nmix_oprc": "26992.31",
+          "ovrs_nmix_hgpr": "27014.47",
+          "ovrs_nmix_lwpr": "26733.89",
+          "acml_vol": "7595504700",
+          "mod_yn": "N"
+        }
+      ],
+      "tr_cont": "",
+      "response": {
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-573.00",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.15",
+          "ovrs_nmix_prdy_clpr": "26713.03",
+          "acml_vol": "9779302200",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26140.03",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26652.99",
+          "ovrs_prod_hgpr": "26674.66",
+          "ovrs_prod_lwpr": "26023.10"
+        },
+        "output2": [
+          {
+            "stck_bsop_date": "20261002",
+            "ovrs_nmix_prpr": "27190.86",
+            "ovrs_nmix_oprc": "27216.91",
+            "ovrs_nmix_hgpr": "27353.68",
+            "ovrs_nmix_lwpr": "27112.24",
+            "acml_vol": "8167491500",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261001",
+            "ovrs_nmix_prpr": "26871.60",
+            "ovrs_nmix_oprc": "26992.31",
+            "ovrs_nmix_hgpr": "27014.47",
+            "ovrs_nmix_lwpr": "26733.89",
+            "acml_vol": "7595504700",
+            "mod_yn": "N"
+          }
+        ],
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다."
+      }
+    },
+    {
+      "name": "S&P 500: 이전 구간",
+      "request": {
+        "FID_COND_MRKT_DIV_CODE": "N",
+        "FID_INPUT_ISCD": "SPX",
+        "FID_INPUT_DATE_1": "20261001",
+        "FID_INPUT_DATE_2": "20261004",
+        "FID_PERIOD_DIV_CODE": "D"
+      },
+      "http_status": 200,
+      "rt_cd": "0",
+      "msg_cd": "MCA00000",
+      "msg1": "정상처리 되었습니다.",
+      "raw_rows": 2,
+      "valid_rows": 2,
+      "output1": {
+        "ovrs_nmix_prdy_vrss": "-84.62",
+        "prdy_vrss_sign": "5",
+        "prdy_ctrt": "-1.09",
+        "ovrs_nmix_prdy_clpr": "7744.06",
+        "acml_vol": "0",
+        "hts_kor_isnm": "S&P500",
+        "ovrs_nmix_prpr": "7659.44",
+        "stck_shrn_iscd": "SPX",
+        "ovrs_prod_oprc": "7745.32",
+        "ovrs_prod_hgpr": "7756.84",
+        "ovrs_prod_lwpr": "7631.77"
+      },
+      "first": [
+        {
+          "stck_bsop_date": "20261002",
+          "ovrs_nmix_prpr": "7722.72",
+          "ovrs_nmix_oprc": "7734.69",
+          "ovrs_nmix_hgpr": "7754.67",
+          "ovrs_nmix_lwpr": "7700.51",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        },
+        {
+          "stck_bsop_date": "20261001",
+          "ovrs_nmix_prpr": "7666.45",
+          "ovrs_nmix_oprc": "7666.47",
+          "ovrs_nmix_hgpr": "7684.75",
+          "ovrs_nmix_lwpr": "7616.78",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        }
+      ],
+      "last": [
+        {
+          "stck_bsop_date": "20261001",
+          "ovrs_nmix_prpr": "7666.45",
+          "ovrs_nmix_oprc": "7666.47",
+          "ovrs_nmix_hgpr": "7684.75",
+          "ovrs_nmix_lwpr": "7616.78",
+          "acml_vol": "0",
+          "mod_yn": "N"
+        }
+      ],
+      "tr_cont": "",
+      "response": {
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-84.62",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.09",
+          "ovrs_nmix_prdy_clpr": "7744.06",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.44",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7745.32",
+          "ovrs_prod_hgpr": "7756.84",
+          "ovrs_prod_lwpr": "7631.77"
+        },
+        "output2": [
+          {
+            "stck_bsop_date": "20261002",
+            "ovrs_nmix_prpr": "7722.72",
+            "ovrs_nmix_oprc": "7734.69",
+            "ovrs_nmix_hgpr": "7754.67",
+            "ovrs_nmix_lwpr": "7700.51",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          },
+          {
+            "stck_bsop_date": "20261001",
+            "ovrs_nmix_prpr": "7666.45",
+            "ovrs_nmix_oprc": "7666.47",
+            "ovrs_nmix_hgpr": "7684.75",
+            "ovrs_nmix_lwpr": "7616.78",
+            "acml_vol": "0",
+            "mod_yn": "N"
+          }
+        ],
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다."
+      }
+    }
+  ],
+  "completed_at": "2026-10-18T22:39:45.133046+09:00",
+  "index_master": {
+    "source": "https://new.real.download.dws.co.kr/common/master/frgn_code.mst.zip",
+    "rows": [
+      {
+        "classification": "P",
+        "symbol": "COMP",
+        "name_en": "NASDAQ Composite",
+        "name_ko": "나스닥 종합",
+        "raw_line": "PCOMP      NASDAQ Composite                       나스닥 종합                                 000NASD501"
+      },
+      {
+        "classification": "P",
+        "symbol": "NDX",
+        "name_en": "NASDAQ-100 (DRM)",
+        "name_ko": "나스닥 100",
+        "raw_line": "PNDX       NASDAQ-100 (DRM)                       나스닥 100                                  000NASD501"
+      },
+      {
+        "classification": "P",
+        "symbol": "SPX",
+        "name_en": "S&P 500 INDEX",
+        "name_ko": "S&P500",
+        "raw_line": "PSPX       S&P 500 INDEX                          S&P500                                         SANP501"
+      }
+    ]
+  },
+  "verification": {
+    "all_requests_http_200_rt_cd_0": true,
+    "all_ohlc_ordering_valid": true,
+    "all_dates_within_requested_range": true,
+    "unique_bar_counts": {
+      "COMP": 12,
+      "SPX": 12,
+      "NDX": 10
+    },
+    "note": "Latest range requests returned 10 rows each; moving end date earlier fetched the remaining Oct 1-2 bars for COMP and SPX. This probe does not establish maximum historical depth or a universal per-request row limit."
+  }
+}

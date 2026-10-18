@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { indexInstrument, isLiveIndexId, stockInstrument } from '../liveInstrument';
+import { indexInstrument, isLiveIndexId, stockInstrument, usStockFromKey } from '../liveInstrument';
 import { type WindowViewValue } from './windowView';
 import { targetChartWindow, useWorkspaceStore, windowSymbolOf, type GroupSymbol, type WorkspaceWindow } from '../../state/workspace';
 
@@ -27,10 +27,12 @@ export function useChartWindowView(windowId: string | null): ChartWindowView | n
     : null;
   const symbol: GroupSymbol | null = windowSymbolOf({ groupSymbols }, target);
   const timeframe = target?.chart?.timeframe ?? '1m';
-  const isIndex = symbol?.kind === 'index';
+  const isIndex = symbol?.kind === 'index' || symbol?.kind === 'us_stock';
+
 
   const instrument = useMemo(() => {
     if (!symbol) return null;
+    if (symbol.kind === 'us_stock') return usStockFromKey(symbol.code, symbol.name);
     if (symbol.kind === 'index') {
       return isLiveIndexId(symbol.code) ? indexInstrument(symbol.code, symbol.name) : null;
     }

@@ -32,6 +32,15 @@ _Avoid_: 종목별 전체 기사/완결된 아카이브; 제공 코드만으로 
 **LiveInstrument**:
 The canonical subject model for the `/live` page: either a stock instrument (`{ kind: 'stock', code, label }`) or a representative index instrument (`{ kind: 'index', id, label }`). `activeInstrument` is the full subject; `activeCode` is only the stock-code projection used by older stock-only hooks. The stable subject key is `stock:005930` or `index:KOSPI`.
 _Avoid_: overloading **Code** for indices; representing an index as a fake 6-digit ticker.
+미국 일봉 확장(2026-10-18): `kind='us_stock'`, 거래소(`NASDAQ`/`NYSE`/`AMEX`)와
+티커를 별도로 보존한다. 정본 키는 `us-stock:NASDAQ:AAPL`, 국내 `Code` 투영은
+`null`이다. URL은 `?market=US&exchange=NASDAQ&symbol=AAPL`이다.
+`NASDAQ_COMPOSITE`·`SP500`·`SOX`는 대표지수 ID이며 한투 REST 일봉을 사용한다.
+미국 개별 종목은 키움 REST 일봉(USD·수정 전 가격)을 사용한다. 모두 D만 지원하고
+가격 지표·드로잉·검색·관심목록·그룹/핀 복원을 공유한다. 미국 관심목록 키는
+국내 자동 수집·WS 구독·히트맵 시드에 포함하지 않는다. `trading_date`가 정본이며
+09:00 KST 타임스탬프는 일봉 표시용 가상 앵커다. 실제 미국 장시간을 뜻하지 않는다.
+
 
 **Representative Index**:
 A fixed `/live` index instrument backed by KIS domestic index APIs. The enabled set is KOSPI, KOSDAQ, KOSPI200, KOSDAQ150, and KRX100; KRX300 stays disabled until a usable KIS index code is confirmed. Representative indices can show candle and volume data but cannot show orderbook-derived panes. KOSPI/KOSDAQ may additionally show market-level foreign/institution net-buy data; narrower indices must not borrow broader-market investor data.

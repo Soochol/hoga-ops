@@ -1,0 +1,583 @@
+[
+  {
+    "daily_metadata": {
+      "market": "US",
+      "market_timezone": "America/New_York",
+      "source": "kis",
+      "price_basis": "index_points",
+      "currency": "index_points",
+      "session_scope": "cash_index",
+      "history_start": null,
+      "latest_bar_date": "20261016",
+      "last_successful_check_at_ms": 1792333033677,
+      "completed": [
+        {
+          "start": "20261005",
+          "end": "20261016"
+        },
+        {
+          "start": "20261001",
+          "end": "20261003"
+        },
+        {
+          "start": "20261004",
+          "end": "20261004"
+        }
+      ],
+      "missing": [],
+      "truncated": false,
+      "refresh_status": "normal",
+      "messages": []
+    },
+    "index_id": "NASDAQ_COMPOSITE",
+    "from": "20261001",
+    "to": "20261016",
+    "timeframe": "D",
+    "candles": [
+      {
+        "trading_date": "20261001",
+        "t_ms": 1790812800000,
+        "open": 26992.31,
+        "high": 27014.47,
+        "low": 26733.89,
+        "close": 26871.6,
+        "volume": 7595504700.0
+      },
+      {
+        "trading_date": "20261002",
+        "t_ms": 1790899200000,
+        "open": 27216.91,
+        "high": 27353.68,
+        "low": 27112.24,
+        "close": 27190.86,
+        "volume": 8167491500.0
+      },
+      {
+        "trading_date": "20261005",
+        "t_ms": 1791158400000,
+        "open": 27225.93,
+        "high": 27544.07,
+        "low": 27223.49,
+        "close": 27477.31,
+        "volume": 8138535600.0
+      },
+      {
+        "trading_date": "20261006",
+        "t_ms": 1791244800000,
+        "open": 27641.17,
+        "high": 27722.75,
+        "low": 27592.56,
+        "close": 27599.79,
+        "volume": 8710899800.0
+      },
+      {
+        "trading_date": "20261007",
+        "t_ms": 1791331200000,
+        "open": 27430.54,
+        "high": 27547.2,
+        "low": 27341.31,
+        "close": 27538.69,
+        "volume": 7562331300.0
+      },
+      {
+        "trading_date": "20261008",
+        "t_ms": 1791417600000,
+        "open": 27416.03,
+        "high": 27491.9,
+        "low": 27066.76,
+        "close": 27193.34,
+        "volume": 9131738700.0
+      },
+      {
+        "trading_date": "20261009",
+        "t_ms": 1791504000000,
+        "open": 27342.27,
+        "high": 27395.41,
+        "low": 27254.03,
+        "close": 27366.17,
+        "volume": 7085095500.0
+      },
+      {
+        "trading_date": "20261012",
+        "t_ms": 1791763200000,
+        "open": 27352.51,
+        "high": 27376.66,
+        "low": 27219.42,
+        "close": 27245.9,
+        "volume": 6596457300.0
+      },
+      {
+        "trading_date": "20261013",
+        "t_ms": 1791849600000,
+        "open": 27138.73,
+        "high": 27277.88,
+        "low": 27116.08,
+        "close": 27204.38,
+        "volume": 7237081200.0
+      },
+      {
+        "trading_date": "20261014",
+        "t_ms": 1791936000000,
+        "open": 27031.64,
+        "high": 27134.29,
+        "low": 26602.12,
+        "close": 26692.87,
+        "volume": 9059590500.0
+      },
+      {
+        "trading_date": "20261015",
+        "t_ms": 1792022400000,
+        "open": 26380.77,
+        "high": 26754.02,
+        "low": 26308.85,
+        "close": 26713.03,
+        "volume": 11140684900.0
+      },
+      {
+        "trading_date": "20261016",
+        "t_ms": 1792108800000,
+        "open": 26652.99,
+        "high": 26674.66,
+        "low": 26023.1,
+        "close": 26140.03,
+        "volume": 9779302200.0
+      }
+    ],
+    "data_warnings": []
+  },
+  {
+    "daily_metadata": {
+      "market": "US",
+      "market_timezone": "America/New_York",
+      "source": "kis",
+      "price_basis": "index_points",
+      "currency": "index_points",
+      "session_scope": "cash_index",
+      "history_start": null,
+      "latest_bar_date": "20261016",
+      "last_successful_check_at_ms": 1792333033700,
+      "completed": [
+        {
+          "start": "20261005",
+          "end": "20261016"
+        },
+        {
+          "start": "20261001",
+          "end": "20261003"
+        },
+        {
+          "start": "20261004",
+          "end": "20261004"
+        }
+      ],
+      "missing": [],
+      "truncated": false,
+      "refresh_status": "normal",
+      "messages": []
+    },
+    "index_id": "SP500",
+    "from": "20261001",
+    "to": "20261016",
+    "timeframe": "D",
+    "candles": [
+      {
+        "trading_date": "20261001",
+        "t_ms": 1790812800000,
+        "open": 7666.47,
+        "high": 7684.75,
+        "low": 7616.78,
+        "close": 7666.45,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261002",
+        "t_ms": 1790899200000,
+        "open": 7734.69,
+        "high": 7754.67,
+        "low": 7700.51,
+        "close": 7722.72,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261005",
+        "t_ms": 1791158400000,
+        "open": 7730.86,
+        "high": 7794.35,
+        "low": 7727.59,
+        "close": 7773.95,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261006",
+        "t_ms": 1791244800000,
+        "open": 7805.96,
+        "high": 7844.52,
+        "low": 7805.96,
+        "close": 7818.93,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261007",
+        "t_ms": 1791331200000,
+        "open": 7792.98,
+        "high": 7807.02,
+        "low": 7763.34,
+        "close": 7801.77,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261008",
+        "t_ms": 1791417600000,
+        "open": 7778.45,
+        "high": 7797.79,
+        "low": 7731.26,
+        "close": 7765.36,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261009",
+        "t_ms": 1791504000000,
+        "open": 7786.36,
+        "high": 7820.57,
+        "low": 7779.34,
+        "close": 7811.54,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261012",
+        "t_ms": 1791763200000,
+        "open": 7813.04,
+        "high": 7821.67,
+        "low": 7796.94,
+        "close": 7807.24,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261013",
+        "t_ms": 1791849600000,
+        "open": 7795.27,
+        "high": 7814.15,
+        "low": 7786.11,
+        "close": 7805.45,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261014",
+        "t_ms": 1791936000000,
+        "open": 7774.18,
+        "high": 7789.15,
+        "low": 7693.31,
+        "close": 7718.94,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261015",
+        "t_ms": 1792022400000,
+        "open": 7687.31,
+        "high": 7754.15,
+        "low": 7669.66,
+        "close": 7744.06,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261016",
+        "t_ms": 1792108800000,
+        "open": 7745.32,
+        "high": 7756.84,
+        "low": 7631.77,
+        "close": 7659.44,
+        "volume": 0.0
+      }
+    ],
+    "data_warnings": []
+  },
+  {
+    "daily_metadata": {
+      "market": "US",
+      "market_timezone": "America/New_York",
+      "source": "kis",
+      "price_basis": "index_points",
+      "currency": "index_points",
+      "session_scope": "cash_index",
+      "history_start": null,
+      "latest_bar_date": "20261016",
+      "last_successful_check_at_ms": 1792333033831,
+      "completed": [
+        {
+          "start": "20261005",
+          "end": "20261016"
+        },
+        {
+          "start": "20261001",
+          "end": "20261003"
+        },
+        {
+          "start": "20261004",
+          "end": "20261004"
+        }
+      ],
+      "missing": [],
+      "truncated": false,
+      "refresh_status": "normal",
+      "messages": []
+    },
+    "index_id": "SOX",
+    "from": "20261001",
+    "to": "20261016",
+    "timeframe": "D",
+    "candles": [
+      {
+        "trading_date": "20261001",
+        "t_ms": 1790812800000,
+        "open": 12651.56,
+        "high": 12913.4,
+        "low": 12587.34,
+        "close": 12829.0,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261002",
+        "t_ms": 1790899200000,
+        "open": 13130.76,
+        "high": 13269.33,
+        "low": 13082.01,
+        "close": 13136.68,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261005",
+        "t_ms": 1791158400000,
+        "open": 13148.84,
+        "high": 13179.71,
+        "low": 13004.67,
+        "close": 13172.74,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261006",
+        "t_ms": 1791244800000,
+        "open": 13260.98,
+        "high": 13349.96,
+        "low": 13196.5,
+        "close": 13217.82,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261007",
+        "t_ms": 1791331200000,
+        "open": 12932.51,
+        "high": 13082.11,
+        "low": 12864.94,
+        "close": 13066.15,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261008",
+        "t_ms": 1791417600000,
+        "open": 12842.79,
+        "high": 12997.48,
+        "low": 12483.95,
+        "close": 12623.72,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261009",
+        "t_ms": 1791504000000,
+        "open": 12796.0,
+        "high": 12826.67,
+        "low": 12507.88,
+        "close": 12572.42,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261012",
+        "t_ms": 1791763200000,
+        "open": 12361.24,
+        "high": 12378.31,
+        "low": 12216.45,
+        "close": 12236.79,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261013",
+        "t_ms": 1791849600000,
+        "open": 11959.26,
+        "high": 12217.21,
+        "low": 11861.28,
+        "close": 12208.8,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261014",
+        "t_ms": 1791936000000,
+        "open": 11960.04,
+        "high": 12022.21,
+        "low": 11638.92,
+        "close": 11684.38,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261015",
+        "t_ms": 1792022400000,
+        "open": 11280.89,
+        "high": 11620.14,
+        "low": 11171.53,
+        "close": 11581.22,
+        "volume": 0.0
+      },
+      {
+        "trading_date": "20261016",
+        "t_ms": 1792108800000,
+        "open": 11345.01,
+        "high": 11480.76,
+        "low": 11128.08,
+        "close": 11137.29,
+        "volume": 0.0
+      }
+    ],
+    "data_warnings": []
+  },
+  {
+    "instrument_key": "us-stock:NASDAQ:AAPL",
+    "exchange": "NASDAQ",
+    "symbol": "AAPL",
+    "from": "20261001",
+    "to": "20261016",
+    "timeframe": "D",
+    "candles": [
+      {
+        "trading_date": "20261001",
+        "t_ms": 1790812800000,
+        "open": 330.0,
+        "high": 332.4816,
+        "low": 325.81,
+        "close": 330.32,
+        "volume": 36306346
+      },
+      {
+        "trading_date": "20261002",
+        "t_ms": 1790899200000,
+        "open": 333.26,
+        "high": 334.54,
+        "low": 330.61,
+        "close": 333.69,
+        "volume": 33278552
+      },
+      {
+        "trading_date": "20261005",
+        "t_ms": 1791158400000,
+        "open": 332.815,
+        "high": 336.21,
+        "low": 331.65,
+        "close": 332.89,
+        "volume": 34400850
+      },
+      {
+        "trading_date": "20261006",
+        "t_ms": 1791244800000,
+        "open": 332.28,
+        "high": 334.38,
+        "low": 330.62,
+        "close": 333.63,
+        "volume": 30449005
+      },
+      {
+        "trading_date": "20261007",
+        "t_ms": 1791331200000,
+        "open": 336.96,
+        "high": 338.67,
+        "low": 332.78,
+        "close": 336.67,
+        "volume": 34147860
+      },
+      {
+        "trading_date": "20261008",
+        "t_ms": 1791417600000,
+        "open": 336.815,
+        "high": 341.57,
+        "low": 335.9,
+        "close": 340.42,
+        "volume": 35332449
+      },
+      {
+        "trading_date": "20261009",
+        "t_ms": 1791504000000,
+        "open": 331.695,
+        "high": 338.61,
+        "low": 330.7,
+        "close": 336.64,
+        "volume": 37881199
+      },
+      {
+        "trading_date": "20261012",
+        "t_ms": 1791763200000,
+        "open": 338.215,
+        "high": 342.63,
+        "low": 337.6,
+        "close": 340.97,
+        "volume": 25900599
+      },
+      {
+        "trading_date": "20261013",
+        "t_ms": 1791849600000,
+        "open": 344.665,
+        "high": 348.1499,
+        "low": 340.74,
+        "close": 341.27,
+        "volume": 38983839
+      },
+      {
+        "trading_date": "20261014",
+        "t_ms": 1791936000000,
+        "open": 344.605,
+        "high": 347.09,
+        "low": 341.72,
+        "close": 342.96,
+        "volume": 50061053
+      },
+      {
+        "trading_date": "20261015",
+        "t_ms": 1792022400000,
+        "open": 346.95,
+        "high": 347.85,
+        "low": 341.6,
+        "close": 342.0,
+        "volume": 39767256
+      },
+      {
+        "trading_date": "20261016",
+        "t_ms": 1792108800000,
+        "open": 346.085,
+        "high": 347.82,
+        "low": 340.46,
+        "close": 343.46,
+        "volume": 59946368
+      }
+    ],
+    "daily_metadata": {
+      "market": "US",
+      "market_timezone": "America/New_York",
+      "source": "kiwoom",
+      "price_basis": "raw",
+      "currency": "USD",
+      "session_scope": "vendor_daily_unverified",
+      "history_start": null,
+      "latest_bar_date": "20261016",
+      "last_successful_check_at_ms": 1792333033920,
+      "completed": [
+        {
+          "start": "20261001",
+          "end": "20261003"
+        },
+        {
+          "start": "20261004",
+          "end": "20261016"
+        }
+      ],
+      "missing": [],
+      "truncated": false,
+      "refresh_status": "normal",
+      "messages": []
+    }
+  }
+]

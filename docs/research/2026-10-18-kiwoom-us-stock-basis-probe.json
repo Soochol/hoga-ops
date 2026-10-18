@@ -1,0 +1,423 @@
+[
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "NVDA",
+      "strt_dt": "20240611",
+      "upd_stkpc_tp": "0",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20240119",
+    "latest": "20240611",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "121.7900",
+        "pred_pre": "+0.9020",
+        "flu_rt": "+0.74",
+        "acc_trde_qty": "314162650",
+        "acc_trde_prica": "38100192307",
+        "open_pric": "120.3700",
+        "high_pric": "123.1000",
+        "low_pric": "117.0100",
+        "dt": "20240610",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      },
+      {
+        "cur_prc": "1208.8800",
+        "pred_pre": "-1.1000",
+        "flu_rt": "-0.09",
+        "acc_trde_qty": "41238580",
+        "acc_trde_prica": "49507777555",
+        "open_pric": "1197.7000",
+        "high_pric": "1216.9171",
+        "low_pric": "1180.2200",
+        "dt": "20240607",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "NVDA",
+      "strt_dt": "20240611",
+      "upd_stkpc_tp": "1",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20240119",
+    "latest": "20240611",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "121.7900",
+        "pred_pre": "+0.9020",
+        "flu_rt": "+0.74",
+        "acc_trde_qty": "314162650",
+        "acc_trde_prica": "38100192307",
+        "open_pric": "120.3700",
+        "high_pric": "123.1000",
+        "low_pric": "117.0100",
+        "dt": "20240610",
+        "upd_stkpc_tp": "3231",
+        "upd_rt": "-90.00000"
+      },
+      {
+        "cur_prc": "120.8880",
+        "pred_pre": "-1.1000",
+        "flu_rt": "-0.91",
+        "acc_trde_qty": "412385800",
+        "acc_trde_prica": "49507777555",
+        "open_pric": "119.7700",
+        "high_pric": "121.6917",
+        "low_pric": "118.0220",
+        "dt": "20240607",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "NVDA",
+      "strt_dt": "20261018",
+      "upd_stkpc_tp": "0",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20260527",
+    "latest": "20261016",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "214.1300",
+        "pred_pre": "-3.1000",
+        "flu_rt": "-1.45",
+        "acc_trde_qty": "121252522",
+        "acc_trde_prica": "26173034620",
+        "open_pric": "216.5600",
+        "high_pric": "218.6760",
+        "low_pric": "213.3200",
+        "dt": "20261016",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "NVDA",
+      "strt_dt": "20261018",
+      "upd_stkpc_tp": "1",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20260527",
+    "latest": "20261016",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "214.1300",
+        "pred_pre": "-3.1000",
+        "flu_rt": "-1.45",
+        "acc_trde_qty": "121252522",
+        "acc_trde_prica": "26173034620",
+        "open_pric": "216.5600",
+        "high_pric": "218.6760",
+        "low_pric": "213.3200",
+        "dt": "20261016",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "AAPL",
+      "strt_dt": "20200901",
+      "upd_stkpc_tp": "0",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20200413",
+    "latest": "20200901",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "129.0400",
+        "pred_pre": "+4.2325",
+        "flu_rt": "+3.28",
+        "acc_trde_qty": "225702688",
+        "acc_trde_prica": "29106466942",
+        "open_pric": "127.5800",
+        "high_pric": "131.0000",
+        "low_pric": "126.0000",
+        "dt": "20200831",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      },
+      {
+        "cur_prc": "499.2300",
+        "pred_pre": "-0.8100",
+        "flu_rt": "-0.16",
+        "acc_trde_qty": "46907479",
+        "acc_trde_prica": "23515112855",
+        "open_pric": "504.0500",
+        "high_pric": "505.7700",
+        "low_pric": "498.3100",
+        "dt": "20200828",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "AAPL",
+      "strt_dt": "20200901",
+      "upd_stkpc_tp": "1",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20200413",
+    "latest": "20200901",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "129.0400",
+        "pred_pre": "+4.2325",
+        "flu_rt": "+3.28",
+        "acc_trde_qty": "225702688",
+        "acc_trde_prica": "29106466942",
+        "open_pric": "127.5800",
+        "high_pric": "131.0000",
+        "low_pric": "126.0000",
+        "dt": "20200831",
+        "upd_stkpc_tp": "3231",
+        "upd_rt": "-75.00000"
+      },
+      {
+        "cur_prc": "124.8075",
+        "pred_pre": "-0.8100",
+        "flu_rt": "-0.65",
+        "acc_trde_qty": "187629916",
+        "acc_trde_prica": "23515112855",
+        "open_pric": "126.0125",
+        "high_pric": "126.4425",
+        "low_pric": "124.5775",
+        "dt": "20200828",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "AAPL",
+      "strt_dt": "20261018",
+      "upd_stkpc_tp": "0",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20260527",
+    "latest": "20261016",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "343.4600",
+        "pred_pre": "+1.4600",
+        "flu_rt": "+0.43",
+        "acc_trde_qty": "59946368",
+        "acc_trde_prica": "20645996425",
+        "open_pric": "346.0850",
+        "high_pric": "347.8200",
+        "low_pric": "340.4600",
+        "dt": "20261016",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "AAPL",
+      "strt_dt": "20261018",
+      "upd_stkpc_tp": "1",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20260527",
+    "latest": "20261016",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "343.4600",
+        "pred_pre": "+1.4600",
+        "flu_rt": "+0.43",
+        "acc_trde_qty": "59946368",
+        "acc_trde_prica": "20645996425",
+        "open_pric": "346.0850",
+        "high_pric": "347.8200",
+        "low_pric": "340.4600",
+        "dt": "20261016",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "master_count": 19378,
+    "master_cont": false,
+    "master_samples": [
+      {
+        "stex_tp": "NY",
+        "stk_cd": "A",
+        "stk_nm": "애질런트 테크놀로지스",
+        "stk_enm": "AGILENT TECHNOLOGIES INC",
+        "mkgb": "NYSE",
+        "upgb": "바이오",
+        "isEtf": "N"
+      },
+      {
+        "stex_tp": "NY",
+        "stk_cd": "AA",
+        "stk_nm": "알코아",
+        "stk_enm": "ALCOA CORPORATION",
+        "mkgb": "NYSE",
+        "upgb": "금속 및 채광",
+        "isEtf": "N"
+      },
+      {
+        "stex_tp": "NY",
+        "stk_cd": "AAA",
+        "stk_nm": "선순위 CLO 채권 AXS ETF",
+        "stk_enm": "INVESTMENT MANAGERS SERIES TR II ALTERNA",
+        "mkgb": "NYSE",
+        "upgb": "",
+        "isEtf": "Y"
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "NVDA",
+      "strt_dt": "20240607",
+      "upd_stkpc_tp": "0",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20240117",
+    "latest": "20240607",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "1208.8800",
+        "pred_pre": "-1.1000",
+        "flu_rt": "-0.09",
+        "acc_trde_qty": "41238580",
+        "acc_trde_prica": "49507777555",
+        "open_pric": "1197.7000",
+        "high_pric": "1216.9171",
+        "low_pric": "1180.2200",
+        "dt": "20240607",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "NVDA",
+      "strt_dt": "20240607",
+      "upd_stkpc_tp": "1",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20240117",
+    "latest": "20240607",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "1208.8800",
+        "pred_pre": "-1.1000",
+        "flu_rt": "-0.09",
+        "acc_trde_qty": "41238580",
+        "acc_trde_prica": "49507777555",
+        "open_pric": "1197.7000",
+        "high_pric": "1216.9171",
+        "low_pric": "1180.2200",
+        "dt": "20240607",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "AAPL",
+      "strt_dt": "20200828",
+      "upd_stkpc_tp": "0",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20200408",
+    "latest": "20200828",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "499.2300",
+        "pred_pre": "-0.8100",
+        "flu_rt": "-0.16",
+        "acc_trde_qty": "46907479",
+        "acc_trde_prica": "23515112855",
+        "open_pric": "504.0500",
+        "high_pric": "505.7700",
+        "low_pric": "498.3100",
+        "dt": "20200828",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  },
+  {
+    "request": {
+      "stex_tp": "ND",
+      "stk_cd": "AAPL",
+      "strt_dt": "20200828",
+      "upd_stkpc_tp": "1",
+      "exrt_appl_tp": "0"
+    },
+    "count": 100,
+    "earliest": "20200408",
+    "latest": "20200828",
+    "cont": true,
+    "rows": [
+      {
+        "cur_prc": "499.2300",
+        "pred_pre": "-0.8100",
+        "flu_rt": "-0.16",
+        "acc_trde_qty": "46907479",
+        "acc_trde_prica": "23515112855",
+        "open_pric": "504.0500",
+        "high_pric": "505.7700",
+        "low_pric": "498.3100",
+        "dt": "20200828",
+        "upd_stkpc_tp": "",
+        "upd_rt": ""
+      }
+    ]
+  }
+]

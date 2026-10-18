@@ -23,6 +23,10 @@ export function buildIndexBundle(input: {
   candles: LiveIndexCandle[];
   investorPoints?: InvestorNetPoint[];
 }): RangeBundle {
+  return buildPriceBundle({ ...input, code: indexWorkareaCode(input.indexId) });
+}
+
+export function buildPriceBundle(input: { code: string; from: string; to: string; bucketMs: number; candles: LiveIndexCandle[]; investorPoints?: InvestorNetPoint[] }): RangeBundle {
   const candles: Candle[] = input.candles.map((c) => ({
     ts_ms: c.t_ms,
     open: c.open,
@@ -33,9 +37,9 @@ export function buildIndexBundle(input: {
     vol_b: 0,
     ...(c.trade_value_won != null ? { trade_value_won: c.trade_value_won } : {}),
   }));
-  const dates = Array.from(new Set(input.candles.map((c) => realMsToYyyymmdd(c.t_ms))));
+  const dates = Array.from(new Set(input.candles.map((c) => c.trading_date ?? realMsToYyyymmdd(c.t_ms))));
   return {
-    code: indexWorkareaCode(input.indexId),
+    code: input.code,
     from_date: input.from,
     to_date: input.to,
     bucket_ms: input.bucketMs,

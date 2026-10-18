@@ -23,8 +23,8 @@ function instanceSpec(spec: BoundPaneSpec, id: string): BoundPaneSpec {
   if (!bound) { bound = { ...spec, name: instancePaneId(id, spec.name as BasePaneId) }; specs.set(key, bound); }
   return bound;
 }
-export function indicatorInstancePanes(base: IndicatorSettings, row: IndicatorInstance, tf: LiveTimeframe, hogaPanes: boolean): BoundPaneSpec[] {
-  if (row.hidden || !indicatorInstanceApplicable(row.category, tf, hogaPanes)) return [];
+export function indicatorInstancePanes(base: IndicatorSettings, row: IndicatorInstance, tf: LiveTimeframe, hogaPanes: boolean, priceOnly = false): BoundPaneSpec[] {
+  if (row.hidden || !indicatorInstanceApplicable(row.category, tf, hogaPanes, priceOnly)) return [];
   const pane = CATEGORY_PANE[row.category]; if (!pane) return [];
   const settings = instanceSettings(base, row);
   const toggles = resolvePaneToggles({ indicators: settings, peakWallPaneHasContent: peakWallPaneHasContent(settings), hogaPanes });
@@ -49,7 +49,8 @@ export function filterPrimaryPaneGroups(groups: readonly (readonly BoundPaneSpec
     return kept;
   }).filter(group => group.length > 0);
 }
-export function indicatorInstanceApplicable(category: CategoryId, tf: LiveTimeframe, hogaPanes: boolean): boolean {
+export function indicatorInstanceApplicable(category: CategoryId, tf: LiveTimeframe, hogaPanes: boolean, priceOnly = false): boolean {
+  if (priceOnly) return ['moving-average', 'bollinger', 'supertrend'].includes(category);
   if (category === 'daily-moving-average') return !['D', 'W', 'M'].includes(tf);
   if (category === 'foreign-net' || category === 'institution-net' || category === 'program-daily') return tf === 'D';
   if (category === 'trade-value') return ['D', 'W', 'M'].includes(tf);

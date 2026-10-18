@@ -21,7 +21,7 @@ from pydantic import (
 )
 
 from hoga.api.error_codes import UpstreamCode
-from hoga.api.params import CODE_PATTERN
+from hoga.api.params import CODE_PATTERN, WATCHLIST_CODE_PATTERN
 from hoga.api.sources import SourceName
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
@@ -1161,7 +1161,7 @@ class WatchlistCodeItem(BaseModel):
     """폴더 items 의 종목 항목(v4). v3 의 `member_codes` 원소가 이것으로 승격됐다."""
 
     kind: Literal["code"] = "code"
-    code: str = Field(pattern=CODE_PATTERN)
+    code: str = Field(pattern=WATCHLIST_CODE_PATTERN)
 
 
 class WatchlistMemoItem(BaseModel):
@@ -1234,7 +1234,7 @@ class WatchlistEntry(BaseModel):
     have no entry (they are not Codes). STORE model; the wire ships the
     exploded WatchlistEntryView."""
 
-    code: str = Field(pattern=CODE_PATTERN)
+    code: str = Field(pattern=WATCHLIST_CODE_PATTERN)
     name: str
     registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
     last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
@@ -1273,7 +1273,7 @@ class WatchlistFolderView(BaseModel):
 
 
 class WatchlistEntryView(BaseModel):
-    code: str = Field(pattern=CODE_PATTERN)
+    code: str = Field(pattern=WATCHLIST_CODE_PATTERN)
     name: str
     registered_at_kst_date: str = Field(pattern=r"^\d{8}$")
     last_success_date: str | None = Field(default=None, pattern=r"^\d{8}$")
@@ -1304,7 +1304,7 @@ class WatchlistResponse(BaseModel):
 
 
 class WatchlistAddRequest(BaseModel):
-    code: str = Field(pattern=CODE_PATTERN)
+    code: str = Field(pattern=WATCHLIST_CODE_PATTERN)
 
 
 class MemberAddRequest(BaseModel):
@@ -1315,8 +1315,9 @@ class MemberAddRequest(BaseModel):
     이미 멤버인 코드면 at 은 무시된다 — add 는 멱등 no-op 계약이다.
     """
 
-    code: str = Field(pattern=CODE_PATTERN)
+    code: str = Field(pattern=WATCHLIST_CODE_PATTERN)
     at: int | None = Field(default=None, ge=0)
+    name: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 class _FolderNameBody(BaseModel):
@@ -1521,12 +1522,11 @@ class SignalAlertClearResponse(BaseModel):
     cleared_through_seq: int
 
 
-# Code lists below validate against params.CODE_PATTERN (6-char alphanumeric +
-# Q-prefixed ETN) — same boundary rule as every other code input, so the
-# folder endpoints can't smuggle arbitrary strings into watchlist storage.
+# Watchlist code lists accept domestic tickers and canonical US exchange/ticker
+# identities. Capture and market-data endpoints still use params.CODE_PATTERN.
 
 class EntriesMoveRequest(BaseModel):
-    codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    codes: list[Annotated[str, Field(pattern=WATCHLIST_CODE_PATTERN)]]
     folder_id: str | None = None
 
 
@@ -1539,12 +1539,12 @@ class EntriesReorderRequest(BaseModel):
     """
 
     folder_id: str = Field(pattern=r"^f_[0-9a-f]{8}$")  # v3: reorder is within one real folder
-    ordered_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    ordered_codes: list[Annotated[str, Field(pattern=WATCHLIST_CODE_PATTERN)]]
 
 
 class CodeItemRef(BaseModel):
     kind: Literal["code"] = "code"
-    code: str = Field(pattern=CODE_PATTERN)
+    code: str = Field(pattern=WATCHLIST_CODE_PATTERN)
 
 
 class MemoItemRef(BaseModel):
@@ -1583,11 +1583,11 @@ class WatchlistItemsTransactionRequest(BaseModel):
 class WatchlistMembershipsRemoveRequest(WatchlistItemsTransactionRequest):
     """Remove selected memberships, guarding the confirmed final-membership loss."""
 
-    orphan_codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    orphan_codes: list[Annotated[str, Field(pattern=WATCHLIST_CODE_PATTERN)]]
 
 
 class EntriesRemoveRequest(BaseModel):
-    codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    codes: list[Annotated[str, Field(pattern=WATCHLIST_CODE_PATTERN)]]
 
 
 class MembersRemoveRequest(BaseModel):
@@ -1595,7 +1595,7 @@ class MembersRemoveRequest(BaseModel):
     다르다 — 저쪽은 모든 폴더에서 빼는 전역 제거이고, 이쪽은 한 폴더에서만 뺀다
     (다른 폴더에 남아 있으면 Watchlist 에 남는다)."""
 
-    codes: list[Annotated[str, Field(pattern=CODE_PATTERN)]]
+    codes: list[Annotated[str, Field(pattern=WATCHLIST_CODE_PATTERN)]]
 
 
 # --- Heatmap (independent monitoring store, ADR-0068) ----------------------

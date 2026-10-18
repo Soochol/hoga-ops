@@ -1,3 +1,4 @@
+import { isUsWorkareaCode } from './instrumentPriceFormat';
 import { peakWallInstancePoints } from './indicators/peakWallInstancePoints';
 import { ScopedIndicatorPane } from './indicators/IndicatorInstancePane';
 import { IndicatorDistributionInstance } from './indicators/IndicatorDistributionInstance';
@@ -2025,6 +2026,7 @@ export function LiveChartRoot({
       forceHogaPanes,
       hogaPanes: paneTogglesOverride?.hogaPanes,
       override: {
+        ...(isUsWorkareaCode(code) ? { foreignNet: false, institutionNet: false, dailyProgramEnabled: false, peakWallPaneEnabled: false } : {}),
         ...(paneTogglesOverride?.tradeValueEnabled !== undefined
           ? { tradeValueEnabled: paneTogglesOverride.tradeValueEnabled }
           : {}),
@@ -2049,6 +2051,7 @@ export function LiveChartRoot({
       forceHogaPanes,
       indicatorPrefs,
       prefPeakWallPaneHasContent,
+      code,
       paneTogglesOverride?.hogaPanes,
       paneTogglesOverride?.volumeEnabled,
       paneTogglesOverride?.tradeValueEnabled,
@@ -2059,8 +2062,8 @@ export function LiveChartRoot({
     ],
   );
   const candlePaneContext = useMemo<CandlePaneContext>(
-    () => ({ muteAuctionCandles: candleVenue === 'KRX' }),
-    [candleVenue],
+    () => ({ muteAuctionCandles: !isUsWorkareaCode(code) && candleVenue === 'KRX', ...(isUsWorkareaCode(code) ? { decimalPrices: true } : {}) }),
+    [candleVenue, code],
   );
   const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
 
@@ -2074,8 +2077,8 @@ export function LiveChartRoot({
   // 설정의 "켜짐"과 실제 화면이 달라지고 separator 저장 인덱스도 흔들린다.
   const instanceBase = useWindowIndicators();
   const extraPaneGroups = useMemo(() => (instanceBase.indicatorInstances ?? []).flatMap(row =>
-    indicatorInstancePanes(instanceBase, row, timeframe, paneTogglesOverride?.hogaPanes !== false).map(instancePaneGroup)),
-  [instanceBase, timeframe, paneTogglesOverride?.hogaPanes]);
+    indicatorInstancePanes(instanceBase, row, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code)).map(instancePaneGroup)),
+  [instanceBase, timeframe, paneTogglesOverride?.hogaPanes, code]);
   const primaryVisibleGroups = useMemo(() => filterPrimaryPaneGroups(gatedPaneGroups, instanceBase.indicatorPrimaryHidden), [gatedPaneGroups, instanceBase.indicatorPrimaryHidden]);
   const visiblePaneGroups = useMemo(() => [...primaryVisibleGroups, ...extraPaneGroups], [primaryVisibleGroups, extraPaneGroups]);
 
@@ -2770,7 +2773,7 @@ export function LiveChartRoot({
         <>
           {candleAlwaysOnTop && (
             <>
-              {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false)).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
+              {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code))).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
                 <IndicatorInstanceOverlays category={row.category} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
                   paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
                   dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}
@@ -2808,7 +2811,7 @@ export function LiveChartRoot({
             )))}
           {!candleAlwaysOnTop && (
             <>
-              {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false)).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
+              {(instanceBase.indicatorInstances ?? []).filter(row => indicatorInstanceApplicable(row.category, timeframe, paneTogglesOverride?.hogaPanes !== false, isUsWorkareaCode(code))).map(row => <IndicatorInstanceProvider key={row.id} id={row.id} manageRegistry>
                 <IndicatorInstanceOverlays category={row.category} pocs={tradeVolumePocs} chart={chart} bundle={cb} liveBundle={liveBundle ?? cb} axis={axis}
                   paneSeries={paneSeries} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst}
                   dayAskPeaks={dayAskPeaks} dayBidPeaks={dayBidPeaks} liveTradeSnapshots={liveTradeSnapshots}

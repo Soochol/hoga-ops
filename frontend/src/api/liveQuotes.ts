@@ -76,7 +76,7 @@ export function quotesRefetchInterval(phase: string | undefined): number {
 }
 
 function uniqueSortedCodes(codes: string[]): string[] {
-  return [...new Set(codes)].sort();
+  return [...new Set(codes.filter(code => !code.startsWith('us-stock:') && !code.startsWith('index:')))].sort();
 }
 
 /**

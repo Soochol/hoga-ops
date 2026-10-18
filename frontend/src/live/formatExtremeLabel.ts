@@ -1,3 +1,5 @@
+import { formatInstrumentPrice, instrumentPriceUnit } from './instrumentPriceFormat';
+
 /**
  * 극값 라벨 문자열 — `"<가격>원 (<±극값 대비율>%)"`.
  *
@@ -9,8 +11,8 @@
  *
  * 부호는 음수면 toFixed 의 `-`, 0·양수면 `+`.
  */
-export function formatExtremeLabel(price: number, pct: number): string {
-  const priceStr = Math.round(price).toLocaleString('ko-KR');
+export function formatExtremeLabel(price: number, pct: number, code?: string): string {
+  const priceStr = formatInstrumentPrice(price, code);
   const pctStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}`;
-  return `${priceStr}원 (${pctStr}%)`;
+  return `${priceStr}${instrumentPriceUnit(code)} (${pctStr}%)`;
 }

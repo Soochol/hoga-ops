@@ -1,0 +1,322 @@
+[
+  {
+    "instrument_key": "us-stock:NYSE:BRKb",
+    "exchange": "NYSE",
+    "symbol": "BRKb",
+    "from": "20261001",
+    "to": "20261016",
+    "timeframe": "D",
+    "candles": [
+      {
+        "trading_date": "20261001",
+        "t_ms": 1790812800000,
+        "open": 497.25,
+        "high": 501.53,
+        "low": 495.96,
+        "close": 500.5,
+        "volume": 4597976
+      },
+      {
+        "trading_date": "20261002",
+        "t_ms": 1790899200000,
+        "open": 500.1,
+        "high": 503.62,
+        "low": 499.01,
+        "close": 502.65,
+        "volume": 4193461
+      },
+      {
+        "trading_date": "20261005",
+        "t_ms": 1791158400000,
+        "open": 502.05,
+        "high": 505.88,
+        "low": 501.2994,
+        "close": 504.26,
+        "volume": 3570800
+      },
+      {
+        "trading_date": "20261006",
+        "t_ms": 1791244800000,
+        "open": 504.335,
+        "high": 508.52,
+        "low": 503.78,
+        "close": 505.54,
+        "volume": 3251113
+      },
+      {
+        "trading_date": "20261007",
+        "t_ms": 1791331200000,
+        "open": 506.12,
+        "high": 506.7,
+        "low": 504.3,
+        "close": 506.25,
+        "volume": 3506275
+      },
+      {
+        "trading_date": "20261008",
+        "t_ms": 1791417600000,
+        "open": 506.61,
+        "high": 513.1499,
+        "low": 505.27,
+        "close": 511.05,
+        "volume": 4683438
+      },
+      {
+        "trading_date": "20261009",
+        "t_ms": 1791504000000,
+        "open": 510.0,
+        "high": 516.57,
+        "low": 509.7133,
+        "close": 515.62,
+        "volume": 4306143
+      },
+      {
+        "trading_date": "20261012",
+        "t_ms": 1791763200000,
+        "open": 517.36,
+        "high": 518.32,
+        "low": 515.0,
+        "close": 517.6,
+        "volume": 3180105
+      },
+      {
+        "trading_date": "20261013",
+        "t_ms": 1791849600000,
+        "open": 520.35,
+        "high": 524.16,
+        "low": 517.34,
+        "close": 520.59,
+        "volume": 4769029
+      },
+      {
+        "trading_date": "20261014",
+        "t_ms": 1791936000000,
+        "open": 522.63,
+        "high": 527.19,
+        "low": 518.19,
+        "close": 526.35,
+        "volume": 5283975
+      },
+      {
+        "trading_date": "20261015",
+        "t_ms": 1792022400000,
+        "open": 532.5,
+        "high": 533.55,
+        "low": 525.53,
+        "close": 525.68,
+        "volume": 4194179
+      },
+      {
+        "trading_date": "20261016",
+        "t_ms": 1792108800000,
+        "open": 529.595,
+        "high": 532.6422,
+        "low": 528.0,
+        "close": 532.02,
+        "volume": 4081637
+      }
+    ],
+    "daily_metadata": {
+      "market": "US",
+      "market_timezone": "America/New_York",
+      "source": "kiwoom",
+      "price_basis": "raw",
+      "currency": "USD",
+      "session_scope": "vendor_daily_unverified",
+      "history_start": null,
+      "latest_bar_date": "20261016",
+      "last_successful_check_at_ms": 1792333158718,
+      "completed": [
+        {
+          "start": "20261001",
+          "end": "20261003"
+        },
+        {
+          "start": "20261004",
+          "end": "20261016"
+        }
+      ],
+      "missing": [],
+      "truncated": false,
+      "refresh_status": "normal",
+      "messages": []
+    }
+  },
+  {
+    "instrument_key": "us-stock:NYSE:AHT_pd",
+    "exchange": "NYSE",
+    "symbol": "AHT_pd",
+    "from": "20261001",
+    "to": "20261016",
+    "timeframe": "D",
+    "candles": [
+      {
+        "trading_date": "20261001",
+        "t_ms": 1790812800000,
+        "open": 4.31,
+        "high": 4.65,
+        "low": 4.31,
+        "close": 4.65,
+        "volume": 1889
+      },
+      {
+        "trading_date": "20261002",
+        "t_ms": 1790899200000,
+        "open": 4.5,
+        "high": 4.62,
+        "low": 4.3,
+        "close": 4.3,
+        "volume": 4448
+      },
+      {
+        "trading_date": "20261005",
+        "t_ms": 1791158400000,
+        "open": 4.1367,
+        "high": 4.35,
+        "low": 4.1367,
+        "close": 4.35,
+        "volume": 1419
+      },
+      {
+        "trading_date": "20261006",
+        "t_ms": 1791244800000,
+        "open": 4.49,
+        "high": 4.55,
+        "low": 4.0,
+        "close": 4.2,
+        "volume": 2681
+      },
+      {
+        "trading_date": "20261007",
+        "t_ms": 1791331200000,
+        "open": 4.125,
+        "high": 4.125,
+        "low": 4.005,
+        "close": 4.005,
+        "volume": 1674
+      },
+      {
+        "trading_date": "20261008",
+        "t_ms": 1791417600000,
+        "open": 3.91,
+        "high": 3.91,
+        "low": 3.91,
+        "close": 3.91,
+        "volume": 156
+      },
+      {
+        "trading_date": "20261009",
+        "t_ms": 1791504000000,
+        "open": 3.85,
+        "high": 4.8,
+        "low": 3.68,
+        "close": 3.99,
+        "volume": 14546
+      },
+      {
+        "trading_date": "20261012",
+        "t_ms": 1791763200000,
+        "open": 4.15,
+        "high": 4.4,
+        "low": 3.5,
+        "close": 3.97,
+        "volume": 26354
+      },
+      {
+        "trading_date": "20261013",
+        "t_ms": 1791849600000,
+        "open": 3.78,
+        "high": 3.78,
+        "low": 3.7,
+        "close": 3.7,
+        "volume": 946
+      },
+      {
+        "trading_date": "20261014",
+        "t_ms": 1791936000000,
+        "open": 3.54,
+        "high": 4.23,
+        "low": 3.19,
+        "close": 3.82,
+        "volume": 15475
+      },
+      {
+        "trading_date": "20261015",
+        "t_ms": 1792022400000,
+        "open": 4.12,
+        "high": 4.12,
+        "low": 3.62,
+        "close": 3.7599,
+        "volume": 6191
+      },
+      {
+        "trading_date": "20261016",
+        "t_ms": 1792108800000,
+        "open": 3.42,
+        "high": 3.87,
+        "low": 3.42,
+        "close": 3.83,
+        "volume": 9724
+      }
+    ],
+    "daily_metadata": {
+      "market": "US",
+      "market_timezone": "America/New_York",
+      "source": "kiwoom",
+      "price_basis": "raw",
+      "currency": "USD",
+      "session_scope": "vendor_daily_unverified",
+      "history_start": null,
+      "latest_bar_date": "20261016",
+      "last_successful_check_at_ms": 1792333158840,
+      "completed": [
+        {
+          "start": "20261001",
+          "end": "20261003"
+        },
+        {
+          "start": "20261004",
+          "end": "20261016"
+        }
+      ],
+      "missing": [],
+      "truncated": false,
+      "refresh_status": "normal",
+      "messages": []
+    }
+  },
+  {
+    "master_count": 12758,
+    "status": "normal",
+    "samples": [
+      {
+        "exchange": "NASDAQ",
+        "symbol": "AAPL",
+        "label": "애플",
+        "english_name": "APPLE INC",
+        "is_etf": false
+      },
+      {
+        "exchange": "NYSE",
+        "symbol": "AHT_pd",
+        "label": "애시포드 호스피털리티 트러스트 우선주 D",
+        "english_name": "ASHFORD HOSPITALITY TRUST INC 8.45% CUM",
+        "is_etf": false
+      },
+      {
+        "exchange": "NYSE",
+        "symbol": "BRKb",
+        "label": "버크셔 해서웨이 B",
+        "english_name": "BERKSHIRE HATHAWAY INC",
+        "is_etf": false
+      },
+      {
+        "exchange": "NASDAQ",
+        "symbol": "NVDA",
+        "label": "엔비디아",
+        "english_name": "NVIDIA CORP",
+        "is_etf": false
+      }
+    ]
+  }
+]

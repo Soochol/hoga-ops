@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-LiveIndexId = Literal["KOSPI", "KOSDAQ", "KOSPI200", "KOSDAQ150", "KRX100", "KRX300"]
+LiveIndexId = Literal[
+    "KOSPI", "KOSDAQ", "KOSPI200", "KOSDAQ150", "KRX100", "KRX300", "NASDAQ_COMPOSITE", "SP500", "SOX",
+]
 InvestorScope = Literal["market", "index", "none"]
 
 
@@ -24,6 +26,11 @@ class RepresentativeIndex:
     kis_index_code: str | None
     investor_scope: InvestorScope
     enabled_by_default: bool
+    market: str = "KR"
+    market_timezone: str = "Asia/Seoul"
+    daily_source: str = "kiwoom"
+    daily_code: str | None = None
+    supported_timeframes: tuple[str, ...] = ()
 
 
 _REPRESENTATIVE_INDICES: tuple[RepresentativeIndex, ...] = (
@@ -69,6 +76,12 @@ _REPRESENTATIVE_INDICES: tuple[RepresentativeIndex, ...] = (
         investor_scope="none",
         enabled_by_default=False,
     ),
+    RepresentativeIndex("NASDAQ_COMPOSITE", "나스닥 종합", None, "none", True,
+                        "US", "America/New_York", "kis", "COMP", ("D",)),
+    RepresentativeIndex("SP500", "S&P 500", None, "none", True,
+                        "US", "America/New_York", "kis", "SPX", ("D",)),
+    RepresentativeIndex("SOX", "필라델피아 반도체지수", None, "none", True,
+                        "US", "America/New_York", "kis", "SOX", ("D",)),
 )
 
 

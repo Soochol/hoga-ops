@@ -271,6 +271,17 @@ class KisClient(KisOptionEndpointsMixin, KisFuturesEndpointsMixin, KisInvestorEn
     async def aclose(self) -> None:
         await self._client.aclose()
 
+    async def get_global_index_daily_page(self, code: str, start: str, end: str) -> dict[str, Any]:
+        """US cash indices only; shared authentication, retry and foreground bucket."""
+        return await self._get(
+            "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+            "FHKST03030100",
+            {"FID_COND_MRKT_DIV_CODE": "N", "FID_INPUT_ISCD": code,
+             "FID_INPUT_DATE_1": start, "FID_INPUT_DATE_2": end,
+             "FID_PERIOD_DIV_CODE": "D"},
+            foreground=True,
+        )
+
     async def _get(
         self,
         path: str,

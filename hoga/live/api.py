@@ -105,6 +105,8 @@ from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.screener_daily_candles import read_screener_daily_candles
 from hoga.live.session_gate import is_after_hours_single_price_window
 from hoga.live.stock_sessions import krx_aftermarket_introduced
+from hoga.live.us_daily_candles import UsDailyMetadata
+from hoga.live.us_market_api import UsMarketApi
 from hoga.live.venue import LiveVenuePolicy, parse_live_venue_policy, quote_venue_for_policy
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST
@@ -261,7 +263,7 @@ def _validate_index_range(index_id: str, from_: str, to: str):
             422,
             {"code": LiveErrorCode.INVALID_INDEX_ID, "message": "unknown representative index"},
         ) from e
-    if index.kis_index_code is None:
+    if index.market == "KR" and index.kis_index_code is None:
         raise HTTPException(
             422,
             {"code": LiveErrorCode.UNSUPPORTED_INDEX, "message": f"{index.id} is not supported by KIS index routes"},
@@ -774,6 +776,9 @@ class LiveIndexEntry(BaseModel):
     id: str
     label: str
     investor_scope: Literal["market", "index", "none"]
+    market: str = "KR"
+    market_timezone: str = "Asia/Seoul"
+    supported_timeframes: list[str] = Field(default_factory=list)
 
 
 class LiveIndicesResponse(BaseModel):
@@ -1533,6 +1538,7 @@ class LiveSeriesResponse(BaseModel):
 class LiveCandleRow(BaseModel):
     """OHLCV 한 봉. 분·일·지수·스크리너 네 경로가 같은 shape 을 공유한다."""
 
+    trading_date: str | None = Field(default=None, exclude_if=lambda value: value is None)
     t_ms: int
     open: float
     high: float
@@ -1662,6 +1668,7 @@ class LivePastInvestorNetResponse(BaseModel):
 
 
 class LiveIndexCandlesResponse(BaseModel):
+    daily_metadata: UsDailyMetadata | None = Field(default=None, exclude_if=lambda value: value is None)
     index_id: str
     from_: str = Field(alias="from")
     to: str
@@ -1933,6 +1940,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             준다(lifecycle.ensure_today_peaks_seeded). None → 복원 없음(기존 동작).
     """
     router = APIRouter(prefix="/api/live")
+    us_markets = UsMarketApi(data_dir)
+    router.include_router(us_markets.router)
 
     @router.get("/status", response_model=LiveStatus)
     async def _get_status(request: Request, background_tasks: BackgroundTasks) -> LiveStatus:
@@ -2043,6 +2052,8 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     id=index.id,
                     label=index.label,
                     investor_scope=index.investor_scope,
+                    market=index.market, market_timezone=index.market_timezone,
+                    supported_timeframes=list(index.supported_timeframes),
                 )
                 for index in list_representative_indices()
             ],
@@ -2060,7 +2071,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
     @router.get("/index-quotes", response_model=LiveIndexQuotesResponse)
     async def _get_index_quotes() -> LiveIndexQuotesResponse:
-        indices = list_representative_indices()
+        indices = [i for i in list_representative_indices() if i.market == "KR"]
 
         def snapshot() -> LiveIndexQuotesResponse:
             return LiveIndexQuotesResponse(
@@ -2136,6 +2147,16 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         to: str = Query(...),
     ) -> LiveIndexCandlesResponse:
         index = _validate_index_range(index_id, from_, to)
+        if index.market == "US":
+            if timeframe != "D":
+                raise HTTPException(422, {"code": LiveErrorCode.UNSUPPORTED_INDEX,
+                                          "message": "US indices support daily candles only"})
+            bars, meta = await us_markets.index_daily(index, from_, to)
+            return LiveIndexCandlesResponse(
+                index_id=index.id, **{"from": from_, "to": to}, timeframe="D",
+                candles=[LiveCandleRow.model_validate(b.model_dump()) for b in bars],
+                daily_metadata=meta,
+            )
         if data_dir is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not wired"})
         if timeframe in {"D", "W", "M"}:
@@ -2361,6 +2382,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         to: str = Query(...),
     ) -> LiveIndexInvestorNetResponse:
         index = _validate_index_range(index_id, from_, to)
+        if index.market == "US":
+            raise HTTPException(422, {"code": LiveErrorCode.UNSUPPORTED_INDEX_INVESTOR_NET,
+                                      "message": "US index investor data is unsupported"})
         if index.investor_scope != "market":
             raise HTTPException(
                 422,
@@ -3110,9 +3134,11 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         try:
             reference_date = datetime.strptime(as_of, "%Y%m%d").date()
         except ValueError as exc:
-            raise HTTPException(422, "as_of must be a valid YYYYMMDD date") from exc
+            raise HTTPException(422, {"code": LiveErrorCode.INVALID_DATE,
+                                      "message": "as_of must be a valid YYYYMMDD date"}) from exc
         if reference_date > current.date():
-            raise HTTPException(422, "as_of must not be in the future")
+            raise HTTPException(422, {"code": LiveErrorCode.DATE_IN_FUTURE,
+                                      "message": "as_of must not be in the future"})
 
         async def fetch_previous_daily(previous_date: str):
             client = kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir else None

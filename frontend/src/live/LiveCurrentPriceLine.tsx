@@ -4,7 +4,7 @@ import type { RangeBundle } from '../api/types';
 import type { PaneId } from '../chart/drawing/types';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 import { useQuoteByCode } from '../api/liveQuotes';
-import { isIndexWorkareaCode } from './liveInstrument';
+import { isNonDomesticStockCode } from './liveInstrument';
 import { useLiveVenueStore } from '../state/liveVenue';
 import { resolveTokensThemed } from '../util/tokens';
 import { deriveCurrentPriceLine } from './deriveCurrentPriceLine';
@@ -46,7 +46,7 @@ function LiveCurrentPriceLine({ paneSeries, bundle, code, liveTradePrice }: Prop
   // 종가로 그리므로 지수 현재가 라인은 그대로 산다. 색이 neutral 로 굳는 것도 회귀가
   // 아니다 — 빈 응답이면 `basis` 가 null 이라 이미 neutral 이었다. 컴포넌트를 통째로
   // 끄면 그때가 회귀다.
-  const quoteCode = code && !isIndexWorkareaCode(code) ? code : null;
+  const quoteCode = code && !isNonDomesticStockCode(code) ? code : null;
   const quote = useQuoteByCode(quoteCode ? [quoteCode] : [], venue).get(quoteCode ?? '');
   const TOKENS = resolveTokensThemed(TOKEN_SPEC);
   const model = deriveCurrentPriceLine(bundle, quote, TOKENS, liveTradePrice);

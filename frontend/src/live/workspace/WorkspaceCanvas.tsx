@@ -348,7 +348,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   const frameProps: Omit<WindowFrameProps, 'children'> = {
     id: win.id, kind: win.kind, group: win.group, rect, zIndex, focused, lifting,
     symbolLabel: symbol?.name ?? null, symbolCode: symbol?.code ?? null,
-    isIndex: symbol?.kind === 'index', paletteOpen, alwaysOnTop: win.alwaysOnTop,
+    isIndex: symbol?.kind === 'index' || symbol?.kind === 'us_stock', paletteOpen, alwaysOnTop: win.alwaysOnTop,
     onToggleAlwaysOnTop: toggleAlwaysOnTop, maximized, onToggleMaximize,
     pinned: win.pinned != null, canPin, onHandleDown, onFocus, onClose,
     onTogglePalette, onPickGroup, onTogglePin,

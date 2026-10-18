@@ -98,6 +98,7 @@ def test_live_indices_route_lists_only_enabled_representative_indices() -> None:
         "KOSPI200",
         "KOSDAQ150",
         "KRX100",
+        "NASDAQ_COMPOSITE", "SP500", "SOX",
     ]
     assert body["indices"][0]["kind"] == "index"
     assert body["indices"][0]["investor_scope"] == "market"

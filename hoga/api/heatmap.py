@@ -284,8 +284,8 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
     # Local import: avoids any chance of an import cycle at module load.
     from hoga.api import watchlist as _watchlist  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
     wl = _watchlist.load_document(data_dir)
-    if not wl.entries:
-        return  # nothing to seed yet; retry next boot
+    if not any(not entry.code.startswith("us-stock:") for entry in wl.entries):
+        return  # no domestic capture entries to seed yet; retry next boot
     from hoga.api.watchlist_projection import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
         first_membership_positions,
         ordered_folders,
@@ -297,7 +297,7 @@ def seed_from_watchlist_if_absent(data_dir: Path) -> None:
     entries = [
         HeatmapEntry(code=code, name=name_by_code.get(code, code),
                      folder_id=fid, order=order)
-        for code, (fid, order) in placement.items()
+        for code, (fid, order) in placement.items() if not code.startswith("us-stock:")
     ]
     save_document(data_dir, HeatmapDocument(folders=folders, entries=entries))
     log.info("seeded heatmap.json from watchlist: %d folders, %d entries",

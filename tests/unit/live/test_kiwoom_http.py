@@ -13,12 +13,12 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from hoga.live import kiwoom_http
+from hoga.live import kiwoom_access, kiwoom_http, kiwoom_rest_runtime
 from hoga.live.kiwoom_after_hours import KiwoomAfterHoursFetcher
 from hoga.live.kiwoom_errors import KiwoomTransportError
 from hoga.live.kiwoom_index_candles import KiwoomIndexCandlesFetcher
 from hoga.live.kiwoom_rankings import KiwoomRankingsFetcher
-from hoga.live.kiwoom_rest import KiwoomRestClient
+from hoga.live.kiwoom_rest import KiwoomRestClient, Page
 from hoga.live.kiwoom_stock_info import KiwoomStockInfoFetcher
 
 
@@ -84,14 +84,13 @@ def test_rest_client_respects_injected_transport() -> None:
     "make",
     [
         lambda: KiwoomAfterHoursFetcher(_Prov())._client,
-        lambda: KiwoomRankingsFetcher(_Prov())._client,
         lambda: KiwoomStockInfoFetcher(_Prov())._client,
         lambda: KiwoomIndexCandlesFetcher(_Prov())._client,
     ],
-    ids=["after_hours", "rankings", "stock_info", "index_candles"],
+    ids=["after_hours", "stock_info", "index_candles"],
 )
 def test_sync_fetchers_use_policy(make) -> None:
-    """동기 fetcher 넷도 같은 정책을 쓴다 — 하나라도 빠지면 그 TR 만 콜드로 남는다."""
+    """동기 fetcher도 같은 정책을 쓴다 — 하나라도 빠지면 그 TR만 콜드로 남는다."""
     pool = _pool(make())
     assert pool._keepalive_expiry == kiwoom_http.DEFAULT_KEEPALIVE_S
     assert pool._retries == kiwoom_http.CONNECT_RETRIES
@@ -101,15 +100,66 @@ def test_sync_fetchers_use_policy(make) -> None:
     "make",
     [
         lambda t: KiwoomAfterHoursFetcher(_Prov(), _transport=t)._client,
-        lambda t: KiwoomRankingsFetcher(_Prov(), _transport=t)._client,
         lambda t: KiwoomStockInfoFetcher(_Prov(), _transport=t)._client,
         lambda t: KiwoomIndexCandlesFetcher(_Prov(), client=httpx.Client(transport=t))._client,
     ],
-    ids=["after_hours", "rankings", "stock_info", "index_candles"],
+    ids=["after_hours", "stock_info", "index_candles"],
 )
 def test_sync_fetchers_respect_injection(make) -> None:
     mock = httpx.MockTransport(lambda _r: httpx.Response(200, json={}))
     assert make(mock)._transport is mock
+
+
+async def test_rankings_runtime_client_uses_policy(monkeypatch, tmp_path) -> None:
+    """순위는 비동기 공용 클라이언트를 빌린다. 실제 조회 경로에서 풀을 확인한다."""
+    client = KiwoomRestClient(_Prov())
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", lambda _dir: client)
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda _dir: object())
+    seen = []
+
+    async def run_page(_scheduler, **kwargs):
+        seen.append(kwargs["client"])
+        pool = _pool(kwargs["client"]._client)
+        assert pool._keepalive_expiry == kiwoom_http.DEFAULT_KEEPALIVE_S
+        assert pool._retries == kiwoom_http.CONNECT_RETRIES
+        return Page([], False, "", {"pred_pre_flu_rt_upper": []})
+
+    monkeypatch.setattr(kiwoom_access, "run_with_capacity", run_page)
+    try:
+        fetcher = KiwoomRankingsFetcher(_Prov(), data_dir=tmp_path)
+        await fetcher._fetch_rankings("change", "all", "up", "KRX", 30)
+        assert seen == [client]
+    finally:
+        await client.aclose()
+
+
+async def test_rankings_respects_injected_transport(monkeypatch, tmp_path) -> None:
+    """주입한 transport로 조회까지 수행해 공용 실서비스 클라이언트 누출을 막는다."""
+    seen = []
+
+    def respond(request):
+        seen.append(request)
+        return httpx.Response(200, json={"return_code": 0, "pred_pre_flu_rt_upper": []})
+
+    def unexpected_runtime_client(_dir):
+        pytest.fail("injected rankings transport must not resolve a runtime client")
+
+    class Scheduler:
+        async def submit(self, **kwargs):
+            return await kwargs["call"](None)
+
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_rest_client", unexpected_runtime_client)
+    monkeypatch.setattr(kiwoom_rest_runtime, "ensure_scheduler", lambda _dir: Scheduler())
+    fetcher = KiwoomRankingsFetcher(
+        _Prov(), _transport=httpx.MockTransport(respond), data_dir=tmp_path,
+    )
+    try:
+        rows, count, has_more = await fetcher._fetch_rankings("change", "all", "up", "KRX", 30)
+        assert (rows, count, has_more) == ((), 0, False)
+        assert len(seen) == 1
+        assert seen[0].headers["api-id"] == "ka10027"
+    finally:
+        await fetcher._injected_client.aclose()
 
 
 # === 전송 실패는 상시 경고로 남는다 ==========================================

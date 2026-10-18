@@ -1,0 +1,83 @@
+{
+  "stock": {
+    "exchange": "NASDAQ",
+    "symbol": "AAPL",
+    "from": "20251001",
+    "to": "20261016",
+    "count": 263,
+    "earliest": "20251001",
+    "latest": "20261016",
+    "metadata": {
+      "market": "US",
+      "market_timezone": "America/New_York",
+      "source": "kiwoom",
+      "price_basis": "raw",
+      "currency": "USD",
+      "session_scope": "vendor_daily_unverified",
+      "history_start": null,
+      "latest_bar_date": "20261016",
+      "last_successful_check_at_ms": 1792333034300,
+      "completed": [
+        {
+          "start": "20260527",
+          "end": "20261003"
+        },
+        {
+          "start": "20261004",
+          "end": "20261016"
+        },
+        {
+          "start": "20251231",
+          "end": "20260526"
+        },
+        {
+          "start": "20251001",
+          "end": "20251230"
+        }
+      ],
+      "missing": [],
+      "truncated": false,
+      "refresh_status": "normal",
+      "messages": []
+    },
+    "first": {
+      "trading_date": "20251001",
+      "t_ms": 1759276800000,
+      "open": 255.04,
+      "high": 258.79,
+      "low": 254.93,
+      "close": 255.45,
+      "volume": 48713940
+    },
+    "last": {
+      "trading_date": "20261016",
+      "t_ms": 1792108800000,
+      "open": 346.085,
+      "high": 347.82,
+      "low": 340.46,
+      "close": 343.46,
+      "volume": 59946368
+    }
+  },
+  "master": {
+    "status": "normal",
+    "count": 12675,
+    "fetched_at_ms": 1792333035144,
+    "samples": [
+      {
+        "exchange": "NASDAQ",
+        "symbol": "AAPL",
+        "label": "애플",
+        "english_name": "APPLE INC",
+        "is_etf": false
+      },
+      {
+        "exchange": "NASDAQ",
+        "symbol": "NVDA",
+        "label": "엔비디아",
+        "english_name": "NVIDIA CORP",
+        "is_etf": false
+      }
+    ]
+  }
+}

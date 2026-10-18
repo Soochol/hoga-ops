@@ -1,3 +1,4 @@
+import { usStockFromKey, instrumentToSubjectKey } from '../liveInstrument';
 import { displayIndicatorSettings, indicatorDemandSettings } from '../../state/indicatorInstances';
 /**
  * WindowView — 멀티창 워크스페이스의 창-스코프 뷰 컨텍스트 (ADR-0119, PR-B).
@@ -120,6 +121,7 @@ function liveWorkareaCode(windowId: string): string | null {
     // 조건**으로 거르고(`kind==='index' && isLiveIndexId(code)` 아니면 instrument=null
     // → workareaCode=null), 여기서 조건이 한 글자라도 넓으면 그 폴백 상태에서 가드가
     // `'index:쓰레기' !== ''` 로 다시 반려한다. 생산자와 조건을 맞춘다.
+    if (sym.kind === 'us_stock') return usStockFromKey(sym.code, sym.name) ? sym.code : null;
     return sym.kind === 'index' && isLiveIndexId(sym.code)
       ? indexWorkareaCode(sym.code)
       : sym.code;
@@ -586,7 +588,7 @@ const GLOBAL_VIEW_GUARD: ViewGuard = () => {
     // 비워 두므로, instrument 기반으로 갈아엎으면 전부 null 이 된다). 지수에서만
     // null 이던 구멍을 창-스코프 가드와 같은 공간으로 메운다.
     code: s.activeCode
-      ?? (s.activeInstrument?.kind === 'index' ? indexWorkareaCode(s.activeInstrument.id) : null),
+      ?? (s.activeInstrument?.kind === 'index' ? indexWorkareaCode(s.activeInstrument.id) : s.activeInstrument?.kind === 'us_stock' ? instrumentToSubjectKey(s.activeInstrument) : null),
     timeframe: s.candleTimeframe,
   };
 };

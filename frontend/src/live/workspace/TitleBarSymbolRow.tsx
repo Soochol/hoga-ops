@@ -1,3 +1,4 @@
+import { usStockFromKey } from '../liveInstrument';
 /**
  * TitleBarSymbolRow — 차트 창 타이틀바(제목 표시줄)의 종목 식별 행.
  *
@@ -43,7 +44,9 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
   const venue = useLiveVenueStore((s) => s.venue);
   const effectiveVenue = useEffectiveVenue(code, venue);
 
-  const symbolLabel = name ? `${name}(${code})` : code;
+  const usStock = usStockFromKey(code);
+  const displayCode = usStock?.kind === 'us_stock' ? `${usStock.symbol} · ${usStock.exchange}` : code;
+  const symbolLabel = name ? `${name}(${displayCode})` : displayCode;
 
   // 현재가·등락률 — 관심/스크리너 패널과 동일한 라이브 quote 단일 출처(ADR-0056).
   // 타이틀바는 candles 폴백이 없어 quote.price 를 직접 쓴다(stale·0·비유한 배제).
@@ -93,7 +96,7 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     >
       <span className="live-symbol-identity">
         <span className="live-symbol-name truncate text-fg" title={symbolTitle} tabIndex={0}>{name ?? code}</span>
-        {name && name !== code && <span className="live-symbol-code font-data">{code}</span>}
+        {name && name !== code && <span className="live-symbol-code font-data">{displayCode}</span>}
         {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
       </span>
       {!isIndex && (
