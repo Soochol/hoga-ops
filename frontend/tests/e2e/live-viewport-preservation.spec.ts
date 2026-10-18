@@ -432,3 +432,96 @@ for (const gesture of ['none', 'pan', 'zoom'] as const) {
     }
   });
 }
+
+for (const sparse of [true, false]) {
+  test(`3m: wheel zoom after jump preserves candles through backfill (sparse=${sparse})`, async ({ page }, info) => {
+    await setup(page);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let backfills = 0;
+    const queries: unknown[] = [];
+    await page.route(apiExact('live/past-candles'), async route => {
+      const p = new URL(route.request().url()).searchParams;
+      const from = p.get('from')!;
+      const to = p.get('to')!;
+      const bucket_ms = Number(p.get('bucket_ms') ?? 60000);
+      queries.push({ from, to });
+      if (to < '20260929') { backfills++; await gate; }
+      await route.fulfill({ json: { code: '098460', from, to, bucket_ms,
+        candles: candles(from, to, bucket_ms).filter(c => !sparse || ymd(c.t_ms) < '20260922' || ymd(c.t_ms) >= '20260929'),
+        cached_dates: [], fresh_dates: [], data_warnings: [] } });
+    });
+    await page.route(apiExact('live/past-daily-candles'), route => route.fulfill({ json: {
+      code: '098460', from: ymd(days[0]), to: today,
+      candles: days.map(t_ms => ({ t_ms, open: 35000, high: 35100, low: 34900, close: 35050, volume: 100 })),
+      cached_batches: [], fresh_batches: [], data_warnings: [],
+    } }));
+    await page.goto('/live?code=098460');
+    await expect.poll(() => snapshot(page)).not.toBeNull();
+    const ids = await page.evaluate(async () => {
+      const path = '/src/state/workspace.ts';
+      const { useWorkspaceStore: store } = await import(path);
+      store.getState().applyWorkspaceSnapshot({ windows: [] });
+      store.getState().addWindow('chart');
+      const wins = store.getState().windows.filter((w: { kind: string }) => w.kind === 'chart').slice(0, 2);
+      store.setState({ windows: wins.map((w: WorkspaceWindow, i: number) => ({ ...w, group: 1,
+        rect: { x: i * .5, y: 0, w: .5, h: 1 }, chart: { ...w.chart, timeframe: i ? 'D' : '3m' } })),
+        zOrder: wins.map((w: { id: string }) => w.id), maximizedId: null });
+      for (const w of wins) store.getState().setWindowSymbol(w.id, { code: '098460', name: '고영', kind: 'stock' });
+      return { minute: wins[0].id, daily: wins[1].id };
+    });
+    await expect.poll(() => snapshot(page, ids.daily)).not.toBeNull();
+    await expect(page.getByTestId('chart-reveal-cover').first()).toHaveCSS('opacity', '0');
+    await page.evaluate(id => {
+      const chart = (window as unknown as ChartsWindow).__liveCharts.get(id)!;
+      const rows = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!.data();
+      const ts = chart.timeScale();
+      const index = ts.timeToIndex(rows.at(-3)!.time)!;
+      ts.setVisibleLogicalRange({ from: index - 5, to: index });
+    }, ids.daily);
+    const jump = page.getByTestId('live-jump-to-minute-button');
+    await expect(jump).toHaveAttribute('title', '분봉으로 — 09-29');
+    await jump.click();
+    await expect.poll(async () => (await snapshot(page, ids.minute))?.count).toBe(sparse ? 128 : 768);
+    await expect(page.getByTestId('chart-reveal-cover').first()).toHaveCSS('opacity', '0');
+    await settleFrame(page);
+    const initial = (await snapshot(page, ids.minute))!;
+    const box = await page.evaluate(id => {
+      const chart = (window as unknown as ChartsWindow).__liveCharts.get(id)!;
+      const rect = chart.panes()[0].getHTMLElement()!.getBoundingClientRect();
+      const width = chart.timeScale().width();
+      return { x: rect.left, y: rect.top, width, height: rect.height,
+        maxSpan: width / chart.options().timeScale.minBarSpacing - 1 };
+    }, ids.minute);
+    await page.mouse.move(box.x + box.width * .4, box.y + box.height * .6);
+    let before: typeof initial;
+    try {
+      for (let i = 0; i < 10 && backfills === 0; i++) {
+        const previous = (await snapshot(page, ids.minute))!;
+        if (previous.span >= box.maxSpan - 1e-6) break;
+        await page.mouse.wheel(0, 240);
+        await expect.poll(async () => (await snapshot(page, ids.minute))!.span).toBeGreaterThan(previous.span);
+        await settleFrame(page);
+      }
+      await expect.poll(() => backfills).toBeGreaterThan(0);
+      const pending = (await snapshot(page, ids.minute))!;
+      if (pending.span < box.maxSpan - 1e-6) {
+        // The response must preserve the latest wheel input, including input
+        // made after the historical request was already in flight.
+        await page.mouse.wheel(0, 240);
+        await expect.poll(async () => (await snapshot(page, ids.minute))!.span).toBeGreaterThan(pending.span);
+        await settleFrame(page);
+      }
+      before = (await snapshot(page, ids.minute))!;
+    } finally { release(); }
+    await expect.poll(async () => (await snapshot(page, ids.minute))!.count).toBeGreaterThan(initial.count);
+    await settleFrame(page);
+    const after = (await snapshot(page, ids.minute))!;
+    await info.attach('backfill-diagnostics', { body: JSON.stringify({ sparse, initial, before, after, queries }, null, 2), contentType: 'application/json' });
+    expect(Math.abs(after.latestX! - before.latestX!)).toBeLessThan(1);
+    expect(after.visibleCount).toBeGreaterThanOrEqual(before.visibleCount);
+    expect(after.lastClose).toBe(before.lastClose);
+    expect(after.span).toBeCloseTo(before.span, 5);
+    expect(after.spacing).toBeCloseTo(before.spacing, 5);
+  });
+}

@@ -1,0 +1,103 @@
+{
+  "date_kst": "2026-10-19",
+  "source_base": "7bcfe1aa293f4255cde5a317b139c9799b4d7ef5",
+  "branch": "codex/fix-minute-jump-backfill-viewport",
+  "node": "v24.13.1",
+  "inputs_sha256": {
+    "frontend/src/live/useViewportBackfill.ts": "26c02694f830709bb1317da4684875b1a4a744e109983a159dc8c83a96ff14ac",
+    "frontend/src/live/useViewportBackfill.test.tsx": "2955f8e5a694b04035694abb717e0bf7e02dc2c7b7af37de436b93d503214a57",
+    "frontend/src/live/LiveChartRoot.tsx": "c8f0e66b02a5654f4f7e120079c3d5ed5259bd201ce28ab0127301fe387b6f79",
+    "frontend/src/live/LiveChartRoot.test.tsx": "5a2a459e24002ea188bd5c24f21aa67bc8e3035c5c74e7a0aee38c5e68dbca9a",
+    "frontend/src/live/useLiveBundle.ts": "30161885d65a19edc95d5e23e51ed0ffe59b5e44810dfe2895a753d9fa410040",
+    "frontend/src/live/useLiveBundle.test.tsx": "70b85578777a6618bfee3035a1b1b0f23f3de4d052c03cdb90fb569ae3dc2b29",
+    "frontend/src/live/useTimeframeJump.ts": "da46e0a1a786b90745a2fdb3d1a32cc796f1635eb523db43b667831e8e5ea0a6",
+    "frontend/src/api/livePastCandles.ts": "839c8606212aa64189b89f346a270dc3fbffe33c4858568ad7b5c09c549a1684",
+    "frontend/src/chart/windowedChart.ts": "23c795a9dc6b74fdb8a2fdc8326b22d3e4e522be55d36a9241fba01b3840b553",
+    "frontend/tests/e2e/live-viewport-preservation.spec.ts": "59e5598586d67fa8caf4c137d70763f75e785478742e07a8bdf414c8c9691766",
+    "frontend/tests/e2e/live-backfill-window.spec.ts": "95f45dab639fa16bbf65270cb4cf80ad1109461b34c4cea7f2d4e77f1bd0b090",
+    "frontend/playwright.config.ts": "5db48591aea25b3e51659784e5e6a31e38073effc3b9090bb0b2bda61c32c11d",
+    "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f",
+    "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493"
+  },
+  "checks": [
+    {
+      "command": "npx vitest run src/live/useViewportBackfill.test.tsx -t \"does not replay a date\"",
+      "stage": "before fix",
+      "result": "1 expected regression failure"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts --grep \"wheel zoom after jump\" --reporter=list",
+      "stage": "before fix",
+      "result": "2 expected regression failures; viewport reset and candle drift"
+    },
+    {
+      "command": "npx vitest run src/live/useViewportBackfill.test.tsx src/live/useViewportBackfill.cached.test.tsx src/live/LiveChartRoot.test.tsx src/live/useLiveBundle.test.tsx src/live/useTimeframeJump.test.tsx src/api/livePastCandles.test.tsx",
+      "result": "6 files / 504 passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts tests/e2e/live-backfill-window.spec.ts --reporter=list",
+      "result": "11 passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts --grep \"wheel zoom after jump\" --repeat-each=5 --reporter=list",
+      "result": "10 passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed after removing a redundant test initializer"
+    },
+    {
+      "command": "npm run build",
+      "result": "passed; existing chunk-size advisory"
+    },
+    {
+      "command": "npx eslint src/live/useViewportBackfill.ts src/live/useViewportBackfill.test.tsx tests/e2e/live-viewport-preservation.spec.ts -f json",
+      "result": "0 errors; 11 existing product warnings, same counts by rule as HEAD; tests 0 warnings"
+    }
+  ],
+  "merge_verification": {
+    "source_commit": "7462cfbe0f5326a648b85d85c2eefc1665c64159",
+    "base_commit": "d563703de181613a38d10d16f973f63dba0bfdd8",
+    "inputs_sha256": {
+      "frontend/src/live/useViewportBackfill.ts": "26c02694f830709bb1317da4684875b1a4a744e109983a159dc8c83a96ff14ac",
+      "frontend/src/live/useViewportBackfill.test.tsx": "2955f8e5a694b04035694abb717e0bf7e02dc2c7b7af37de436b93d503214a57",
+      "frontend/src/live/LiveChartRoot.tsx": "c8f0e66b02a5654f4f7e120079c3d5ed5259bd201ce28ab0127301fe387b6f79",
+      "frontend/src/live/LiveChartRoot.test.tsx": "5a2a459e24002ea188bd5c24f21aa67bc8e3035c5c74e7a0aee38c5e68dbca9a",
+      "frontend/src/live/useLiveBundle.ts": "30161885d65a19edc95d5e23e51ed0ffe59b5e44810dfe2895a753d9fa410040",
+      "frontend/src/live/useLiveBundle.test.tsx": "70b85578777a6618bfee3035a1b1b0f23f3de4d052c03cdb90fb569ae3dc2b29",
+      "frontend/src/live/useTimeframeJump.ts": "da46e0a1a786b90745a2fdb3d1a32cc796f1635eb523db43b667831e8e5ea0a6",
+      "frontend/src/api/livePastCandles.ts": "839c8606212aa64189b89f346a270dc3fbffe33c4858568ad7b5c09c549a1684",
+      "frontend/src/chart/windowedChart.ts": "23c795a9dc6b74fdb8a2fdc8326b22d3e4e522be55d36a9241fba01b3840b553",
+      "frontend/tests/e2e/live-viewport-preservation.spec.ts": "59e5598586d67fa8caf4c137d70763f75e785478742e07a8bdf414c8c9691766",
+      "frontend/tests/e2e/live-backfill-window.spec.ts": "95f45dab639fa16bbf65270cb4cf80ad1109461b34c4cea7f2d4e77f1bd0b090",
+      "frontend/playwright.config.ts": "ab37842cb52c4f93d436130846372c792aedb9c14a89b54db742b6a976e1169b",
+      "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f",
+      "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493",
+      "frontend/src/api/types.ts": "92cc1edc50e67aa1f4dc73a25c16046e17fe4367f06cb1fc8b4136ff8fd6b980",
+      "frontend/src/live/useLiveChartData.test.tsx": "ff6548d817daa63cbe6f405519420c1ea3b4e6f6bc26c67313df7a39694c0c43",
+      "frontend/src/live/LivePage.test.tsx": "70620c91e855e650883bc566969655ee09848848396f28ebca1b1bb971df9df8"
+    },
+    "checks": [
+      {
+        "command": "npx vitest run src/live/useViewportBackfill.test.tsx src/live/useViewportBackfill.cached.test.tsx src/live/LiveChartRoot.test.tsx src/live/useLiveBundle.test.tsx src/live/useTimeframeJump.test.tsx src/api/livePastCandles.test.tsx src/live/useLiveChartData.test.tsx src/live/LivePage.test.tsx",
+        "result": "8 files / 568 passed"
+      },
+      {
+        "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts tests/e2e/live-backfill-window.spec.ts --reporter=list",
+        "result": "11 passed"
+      },
+      {
+        "command": "npm run typecheck",
+        "result": "passed; app, unit, E2E"
+      },
+      {
+        "command": "npm run build",
+        "result": "passed; existing chunk-size advisory"
+      }
+    ]
+  }
+}

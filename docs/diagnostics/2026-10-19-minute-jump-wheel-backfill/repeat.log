@@ -1,0 +1,42 @@
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+transforming...[WebServer] ✓ 951 modules transformed.
+
+Running 10 tests using 1 worker
+
+(node:1910508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1910508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✓   1 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=true) (4.2s)
+  ✓   2 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=false) (3.0s)
+(node:1910909) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1910909) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✓   3 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=true) (2.8s)
+  ✓   4 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=false) (2.9s)
+(node:1913494) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1913494) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✓   5 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=true) (2.8s)
+  ✓   6 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=false) (3.2s)
+(node:1913850) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1913850) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✓   7 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=true) (2.8s)
+  ✓   8 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=false) (3.2s)
+(node:1916206) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1916206) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✓   9 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=true) (2.8s)
+  ✓  10 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=false) (3.0s)
+
+  10 passed (39.0s)

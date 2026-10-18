@@ -1,0 +1,23 @@
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+transforming...[WebServer] ✓ 951 modules transformed.
+
+Running 11 tests using 1 worker
+
+(node:1901379) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1901379) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✓   1 [chromium] › tests/e2e/live-backfill-window.spec.ts:8:1 › deep history: cached drag, backfill anchor, native window and latest values (8.4s)
+  ✓   2 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:70:3 › 1m: watchlist today seed stays at latest through history loading (1.7s)
+  ✓   3 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:70:3 › 15m: watchlist today seed stays at latest through history loading (2.1s)
+  ✓   4 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:129:1 › refresh, minute jump and held drag keep the target date and backfill anchor (3.2s)
+  ✓   5 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 128 candles without inheriting the previous date (2.7s)
+  ✓   6 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 384 candles without inheriting the previous date (2.6s)
+  ✓   7 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:330:3 › 3m: partial history recovery preserves none viewport (2.3s)
+  ✓   8 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:330:3 › 3m: partial history recovery preserves pan viewport (2.3s)
+  ✓   9 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:330:3 › 3m: partial history recovery preserves zoom viewport (2.3s)
+  ✓  10 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=true) (3.4s)
+  ✓  11 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:437:3 › 3m: wheel zoom after jump preserves candles through backfill (sparse=false) (3.0s)
+
+  11 passed (40.5s)

@@ -1992,3 +1992,35 @@ describe('useViewportBackfill — 기간 점프 뒤의 좌측 팬 (fill 상태 �
     expect(extendSpy).toHaveBeenCalledTimes(2);
   });
 });
+
+
+describe('useViewportBackfill — date jump source ownership', () => {
+  beforeEach(() => {
+    vi.mocked(livePerfLog).mockClear();
+    useLivePageStore.setState({ activeCode: '005930', candleTimeframe: '1m', historicalFromDate: null });
+  });
+
+  it('does not replay a date source swap on the first backfill of a new chart', () => {
+    const oldChart = chartWithCapturedHandler({ from: 0, to: 100 });
+    const nextChart = chartWithCapturedHandler({ from: -400, to: 100 });
+    for (const cap of [oldChart, nextChart]) {
+      Object.assign(cap.ts, { width: () => 800, scrollPosition: () => 0, scrollToPosition: vi.fn() });
+    }
+    const axis = axisWithOneSession();
+    const bundle = bundleWithCandles();
+    type Props = { chart: typeof oldChart.chart | null; key: string; ready: boolean; bundle: RangeBundle | null };
+    const { rerender } = renderHook((props: Props) => useViewportBackfill({
+      chart: props.chart, axis, bundle: props.bundle, code: '005930', timeframe: '1m', isExtending: false,
+      candleSourceKey: props.key, canTriggerBackfill: () => props.ready,
+    }), { initialProps: { chart: oldChart.chart, key: 'vendor|20260709', ready: true, bundle } as Props });
+    rerender({ chart: null, key: 'vendor|20260708', ready: false, bundle: null });
+    rerender({ chart: nextChart.chart, key: 'vendor|20260708', ready: false, bundle });
+    rerender({ chart: nextChart.chart, key: 'vendor|20260708', ready: true, bundle });
+    vi.mocked(livePerfLog).mockClear();
+    rerender({ chart: nextChart.chart, key: 'vendor|20260708', ready: true,
+      bundle: { ...bundle, candles: [{ ...bundle.candles[0], ts_ms: 500 }, ...bundle.candles] } });
+    expect(nextChart.ts.setVisibleLogicalRange).not.toHaveBeenCalled();
+    expect(vi.mocked(livePerfLog).mock.calls.filter(([name, data]) =>
+      name === 'viewport_reseat' && data.kind === 'source_swap')).toEqual([]);
+  });
+});

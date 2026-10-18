@@ -1,0 +1,39 @@
+RUN  v4.1.7 /home/dev/.codex/worktrees/bb24/hoga-ops/frontend
+
+ ❯ src/live/useViewportBackfill.test.tsx (70 tests | 1 failed | 69 skipped) 15ms
+     × does not replay a date source swap on the first backfill of a new chart 13ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/live/useViewportBackfill.test.tsx > useViewportBackfill — date jump source ownership > does not replay a date source swap on the first backfill of a new chart
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      Object {
+        "from": 0,
+        "to": 13,
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ src/live/useViewportBackfill.test.tsx:2022:53
+    2020|     rerender({ chart: nextChart.chart, key: 'vendor|20260708', ready: …
+    2021|       bundle: { ...bundle, candles: [{ ...bundle.candles[0], ts_ms: 50…
+    2022|     expect(nextChart.ts.setVisibleLogicalRange).not.toHaveBeenCalled();
+       |                                                     ^
+    2023|     expect(vi.mocked(livePerfLog).mock.calls.filter(([name, data]) =>
+    2024|       name === 'viewport_reseat' && data.kind === 'source_swap')).toEq…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 69 skipped (70)
+   Start at  00:25:31
+   Duration  801ms (transform 288ms, setup 30ms, import 376ms, tests 15ms, environment 293ms)
