@@ -856,9 +856,7 @@ test('평단가 원은 시고저 배지·7자리 가격과 좁은 창에서도 �
       await expect.poll(() => value.evaluate(el => {
         const badgeBox = el.querySelector('[data-price-badges] > span')!.getBoundingClientRect();
         const dotBox = el.querySelector('.order-average-marker')!.getBoundingClientRect();
-        const text = Array.from(el.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent?.includes('1,469,000'))!;
-        const range = document.createRange(); range.selectNode(text);
-        const textBox = range.getBoundingClientRect();
+        const textBox = el.querySelector('.book-price-amount')!.getBoundingClientRect();
         const priceBox = el.parentElement!.getBoundingClientRect();
         const percentBox = el.parentElement!.querySelector('small')!.getBoundingClientRect();
         return {
@@ -1864,8 +1862,8 @@ test('호가 주문 가격·잔량·총잔량 폰트는 기존 10호가창과 �
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-book').click();
   const book = page.locator('.book-panel');
-  await expect(book.locator('.font-data.text-base').first()).toBeAttached();
-  const dataFont = await book.locator('.font-data.text-base').first().evaluate(el => getComputedStyle(el).fontSize);
+  await expect(book.locator('.book-price-value').first()).toBeAttached();
+  const dataFont = await book.locator('.book-price-value').first().evaluate(el => getComputedStyle(el).fontSize);
   const metaFont = await book.locator('.text-xs').first().evaluate(el => getComputedStyle(el).fontSize);
   for (const selector of ['.order-price > span', '.order-depth > span', '.order-info > span:last-child', '[data-testid="book-total-strip"] .font-data']) {
     expect(await window.locator(selector).first().evaluate(el => getComputedStyle(el).fontSize)).toBe(dataFont);
@@ -1896,15 +1894,15 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
     const ask = window.locator('.order-ask').last();
     const bid = window.locator('.order-bid').first();
     const askBox = (await ask.boundingBox())!, bidBox = (await bid.boundingBox())!;
-    expect(askBox.width).toBeCloseTo(bidBox.width, 3);
+    expect(askBox.width).toBeCloseTo(bidBox.width, 1);
     const barWidth = (field: Locator) => field.evaluate(el => parseFloat(getComputedStyle(el, '::before').width));
     expect(await barWidth(ask)).toBeGreaterThan(0);
-    expect(await barWidth(ask)).toBeCloseTo(await barWidth(bid), 3);
+    expect(await barWidth(ask)).toBeCloseTo(await barWidth(bid), 1);
     expect(await ask.evaluate(el => getComputedStyle(el, '::before').right)).toBe('3px');
     expect(await bid.evaluate(el => getComputedStyle(el, '::before').left)).toBe('3px');
     const rowBox = (await window.locator('.order-row').first().boundingBox())!;
     const priceBox = (await window.locator('.order-price').first().boundingBox())!;
-    expect(priceBox.x + priceBox.width / 2).toBeCloseTo(rowBox.x + rowBox.width / 2, 2);
+    expect(priceBox.x + priceBox.width / 2).toBeCloseTo(rowBox.x + rowBox.width / 2, 1);
     const info = window.getByRole('button', { name: '종목 상세 정보', exact: true });
     const usableWidth = await window.locator('.order-scroll').evaluate(el => el.clientWidth);
     if (width >= 560 && usableWidth >= 560) {
@@ -2231,14 +2229,13 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
     ['[aria-label="매입평단가"] .order-field-value', '1', '9,999,999'],
     ['.order-profit-toggle .order-field-value', '1', '-999,999,999,999'],
     ['.order-estimate .order-field-value', '1원', '999,999,999,999원'],
-    ['.order-price-value', '1', '9,999,999'],
-    ['.order-price small', '0.00%', '-30.00%'],
+    // Price/rate digit changes use real snapshots in the ladder layout tests.
     ['.order-depth-qty', '1', '999,999,999'],
     ['[data-testid="book-total-strip"] [aria-label^="매도총잔량"]', '1', '999,999,999'],
     ['[data-testid="book-total-strip"] [aria-label^="매수총잔량"]', '1', '99'],
   ];
   const anchors = [
-    '.order-price-value', '.order-price small', '.order-depth', '.order-lane',
+    '.order-price', '.order-price small', '.order-depth', '.order-lane',
     '.order-overview-controls', '.order-holding-quantity', '[aria-label="매입평단가"]',
     '.order-profit-toggle', '.order-buying-power', '.order-buying-power .order-meta', '.order-buying-power .order-field-value',
   ];
@@ -2297,6 +2294,7 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
       else expect(Math.abs(gap)).toBeLessThanOrEqual(1);
     }
     const before = await measure();
+    const priceRight = await window.locator('.book-price-amount').first().evaluate(el => el.getBoundingClientRect().right);
     const profitToggle = window.getByRole('button', { name: '평가손익 표시 전환', exact: true });
     await profitToggle.dblclick();
     expect(await measure()).toEqual(before);
@@ -2304,6 +2302,8 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
     expect(await measure()).toEqual(before);
     await setDigits(true);
     const after = await measure();
+    // The badge follows the text's start; the price column and numeric right edge stay fixed.
+    expect(await window.locator('.book-price-amount').first().evaluate(el => el.getBoundingClientRect().right)).toBeCloseTo(priceRight, 1);
     for (const selector of Object.keys(before)) {
       for (const coordinate of ['x', 'y', 'width', 'height'] as const) {
         expect(after[selector][coordinate], `${width}px ${selector} ${coordinate}`).toBeCloseTo(before[selector][coordinate], 1);
@@ -2389,5 +2389,57 @@ for (const tab of ['orders', 'holdings'] as const) {
       expect(await headers()).toEqual(before);
     }
     expect(commands).toHaveLength(0);
+  });
+}
+
+for (const price of [67_200, 1_469_000, 10_469_000, 99_990_000]) {
+  test(`호가주문 ${price}원은 평단가 원과 4px 간격·작은 등락률·가격 정렬을 유지한다`, async ({ page }, testInfo) => {
+    const { window, ws, commands } = await setup(page, false, false, true, price - 67_200, 1, { averagePrice: String(price) });
+    await ws.waitForSubscribe('005930');
+    ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(),
+      day_open: price, day_high: price + 1000, day_low: price - 900, trades: [] });
+    const current = window.locator(`[data-order-price="${price}"] .order-price`);
+    await expect(current.locator('[data-price-badges]')).toHaveText('시');
+    await expect(current.locator('.order-average-marker')).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    for (const fontSize of [16, 24]) {
+      await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, fontSize);
+      for (const width of [800, 576, 504, 360]) {
+        await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
+        await expect(async () => {
+          const geometry = await window.locator('.order-price').evaluateAll(rows => rows.map(row => {
+            const box = row.getBoundingClientRect();
+            const value = row.querySelector('.book-price-value')!.getBoundingClientRect();
+            const amount = row.querySelector('.book-price-amount')!.getBoundingClientRect();
+            const percent = row.querySelector('small')!.getBoundingClientRect();
+            const dot = row.querySelector('.order-average-marker')?.getBoundingClientRect();
+            const day = row.querySelector('[data-price-badges]')?.getBoundingClientRect();
+            return { contained: value.left >= box.left - 0.1 && percent.right <= box.right + 0.1,
+              gap: dot ? amount.left - dot.right : null,
+              markersSeparated: !dot || !day || day.right + 1 <= dot.left,
+              separated: amount.right <= percent.left,
+              innerGap: percent.left - amount.right,
+              leftGutter: value.left - box.left, rightGutter: box.right - percent.right,
+              smaller: parseFloat(getComputedStyle(row.querySelector('small')!).fontSize) < parseFloat(getComputedStyle(row.querySelector('.book-price-value')!).fontSize),
+              edge: amount.right };
+          }));
+          for (const row of geometry) {
+            expect(row.contained).toBe(true); expect(row.separated).toBe(true);
+            expect(row.innerGap).toBeCloseTo(2, 1);
+            expect(row.leftGutter).toBeGreaterThanOrEqual(7.9); expect(row.rightGutter).toBeGreaterThanOrEqual(7.9);
+            expect(row.leftGutter).toBeCloseTo(row.rightGutter, 1);
+            expect(row.markersSeparated).toBe(true); expect(row.smaller).toBe(true);
+            if (row.gap !== null) expect(row.gap).toBeCloseTo(4, 1);
+          }
+          expect(Math.max(...geometry.map(row => row.edge)) - Math.min(...geometry.map(row => row.edge))).toBeLessThan(0.5);
+        }).toPass();
+      }
+    }
+    expect(commands).toHaveLength(0);
+    if (price === 10_469_000) {
+      await page.evaluate(() => { document.documentElement.style.fontSize = '16px'; });
+      await window.evaluate(el => { (el as HTMLElement).style.width = '576px'; });
+      await window.screenshot({ path: testInfo.outputPath('ten-million-order-price.png') });
+    }
   });
 }

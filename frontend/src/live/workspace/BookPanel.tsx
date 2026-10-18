@@ -16,11 +16,13 @@
  * 그렇게 생겼는지의 내력**이지 지금 살아 있는 소비처가 아니다.
  */
 import './BookPanel.css';
+import './BookPriceLayout.css';
 import { useCallback, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { BookScrollArea } from './BookScrollArea';
 import { BookPriceAmount } from './BookPriceAmount';
+import { useBookPriceLayout } from './useBookPriceLayout';
 import { bookDayMarkers, type BookPriceMarker } from './bookDayMarkers';
 import type { OrderbookSnapshot } from '../../api/types';
 import type { OrderbookDeltaBadges, OrderbookDeltaBadge } from '../../sidebar/orderbookDeltaBadges';
@@ -31,7 +33,7 @@ import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
 import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
 import { otherBookSessionMode } from '../bookSessionMode';
-import { BOOK_PANEL_COMPACT_GRID_COLS, BOOK_PANEL_COMPACT_MIN_W, BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W, BOOK_PANEL_PRICE_COL_W } from './bookPanelMetrics';
+import { BOOK_PANEL_COMPACT_GRID_COLS, BOOK_PANEL_COMPACT_MIN_W, BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W } from './bookPanelMetrics';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
@@ -50,6 +52,8 @@ export type BookStockLimits = {
 };
 
 type Props = {
+  /** Resets the retained price width when switching symbols. */
+  symbol?: string;
   snapshot: OrderbookSnapshot | null | undefined;
   /** 전일종가 — 등락률 분모이자 가격 색 기준. */
   baselinePrice: number | null;
@@ -135,6 +139,7 @@ const BAR_INSET = 3;
 const SUMMARY_ROWS = 10;
 
 export default function BookPanel({
+  symbol = '',
   snapshot,
   baselinePrice,
   summary,
@@ -154,6 +159,7 @@ export default function BookPanel({
   onSelectSessionMode,
   stale = false,
 }: Props) {
+  const priceLayout = useBookPriceLayout(snapshot ? [...snapshot.ask, ...snapshot.bid] : [], symbol, false, baselinePrice);
   const [infoOpen, setInfoOpen] = useState(false);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const infoId = useId();
@@ -258,10 +264,10 @@ export default function BookPanel({
           가격·등락률·잔량·체결의 폰트와 행 정렬을 유지한다. */}
       <BookScrollArea>
         <div
-          className="book-panel-grid grid"
+          className="book-panel-grid grid font-data"
           style={{ '--book-wide-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-wide-cols': BOOK_PANEL_GRID_COLS,
             '--book-compact-min-w': `${BOOK_PANEL_COMPACT_MIN_W}px`, '--book-compact-cols': BOOK_PANEL_COMPACT_GRID_COLS,
-            '--book-price-w': `${BOOK_PANEL_PRICE_COL_W}px` } as React.CSSProperties}
+            ...priceLayout } as React.CSSProperties}
         >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
           <div className="flex flex-col" style={{ paddingTop: askPadding }}>
@@ -516,15 +522,13 @@ export function ExpectedFillBanner({
 const BADGE_CLS =
   'items-center justify-center rounded-sm px-[3px] py-px font-ui text-badge font-semibold leading-none';
 
-/** 가격 span의 상시 왼쪽 여백(24px) 안에 놓는다. ADR-0170의 absolute 배치를
- * 유지하되 칩 폭도 가격 열 예산에 포함한다. 칩 없는 행에도 같은 여백이 있으므로
- * 가격 x 정렬은 변하지 않고, 긴 가격에서도 잔량 열을 침범하지 않는다. */
+/** Anchor the day badge to the content-sized price span, leaving a 4px gap. */
 function PriceBadges({ marker }: { marker: BookPriceMarker | null }) {
   const tooltip = useTextTooltip(marker?.tooltip ?? '', 500, 'book-price-tooltip');
   if (marker === null) return null;
   return (
     <>
-      <span data-price-badges="" className="absolute left-0 top-1/2 flex w-5 -translate-y-1/2 justify-end">
+      <span data-price-badges="" className="book-day-marker absolute left-0 top-1/2 flex -translate-y-1/2 justify-end">
         <span className={`flex ${BADGE_CLS} text-white ${marker.bg}`} role="img" aria-label={marker.tooltip}
           tabIndex={0} aria-describedby={tooltip.id}
           onMouseEnter={event => tooltip.show(event.currentTarget)} onMouseLeave={tooltip.hide}
@@ -571,28 +575,21 @@ function PriceCell({
     baselinePrice !== null && baselinePrice > 0
       ? ((price - baselinePrice) / baselinePrice) * 100
       : null;
-  // 가격과 등락률은 **한 덩어리**로 읽혀야 한다 — justify-between 으로 컬럼 양 끝에
-  // 밀어놓으면 폭이 넓을수록 시선이 끊긴다. 가운데 모아 붙이고, 등락률에 최소폭을
-  // 줘서 값 길이(-0.19% ↔ +30.00%)가 달라져도 가격 우측 끝이 흔들리지 않게 한다.
-  // 위계는 크기로 준다: 가격 12px intent(0.75rem) vs 등락률 badge(8.5px) — 보조
-  // 정보라 뚜렷하게 작아야 가격이 먼저 읽힌다(이전 sm/xs 는 1px 차라 위계가 없었다).
+  // Both ladders use sm prices and xs percentages, with a fixed right edge.
   const cell = (
     <div
-      className={`relative flex items-baseline justify-center gap-1.5 px-2 ${
-        boxed ? 'rounded-md border border-fg-dim bg-tint-selection font-semibold' : ''
+      className={`book-price-line relative font-data tabular-nums ${
+        boxed ? 'book-price-current rounded-md bg-tint-selection' : ''
       }`}
       style={{ height: topDivider ? ROW_H - 1 : ROW_H }}
     >
-      <span className={`relative shrink-0 whitespace-nowrap pl-6 font-data text-base tabular-nums ${color}`}>
+      <span className={`book-price-value font-data text-sm tabular-nums ${color}${boxed ? ' font-semibold' : ''}`}>
         <PriceBadges marker={marker} />
         <BookPriceAmount price={price} qty={qty} />
       </span>
       {pct !== null && price > 0 && (
         <span
-          className={`shrink-0 whitespace-nowrap font-data text-badge tabular-nums text-left opacity-70 ${color}`}
-          // 7ch = "+30.00%"(최장). 좌측정렬 + 최장 기준 고정폭이라야 부호 없는
-          // 보합행("0.00%")만 중앙정렬이 흔들려 오른쪽으로 밀리는 일이 없다.
-          style={{ minWidth: '7ch' }}
+          className={`book-price-percent font-data text-xs tabular-nums ${color}`}
         >
           {pct > 0 ? '+' : ''}
           {pct.toFixed(2)}%

@@ -504,6 +504,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       </DataContext>}
       <div className="min-h-0 flex-1">
         <BookPanel
+          symbol={code}
           snapshot={snapshot}
           expectedFill={!isSpot && !storedLadder && activeSinglePrice === null
             ? { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null } : undefined}
