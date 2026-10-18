@@ -87,7 +87,7 @@ for (const item of evidence.responses) {
     expect(requests.history).toBe(0);
     await wheelIntoHistory(page);
     await expect.poll(() => requests.history).toBe(1);
-    await expect(page.locator('.live-window-chart').getByRole('status')).toContainText('이전 분봉 불러오는 중');
+    await expect(page.locator('.live-window-chart').getByRole('status')).toHaveCount(0);
     // User changes zoom while HTTP is pending; the commit must preserve THIS view.
     await page.mouse.wheel(0, -120); await settle(page);
     const before = await snapshot(page);
@@ -100,7 +100,7 @@ for (const item of evidence.responses) {
     expect(after.span!).toBeCloseTo(before.span!, 5);
     expect(after.spacing!).toBeCloseTo(before.spacing!, 5);
     expect(Math.abs(after.x! - before.x!)).toBeLessThan(1);
-    await expect(page.locator('.live-window-chart').getByRole('status')).toContainText('공급자 제공 과거 구간 끝');
+    await expect(page.locator('.live-window-chart').getByRole('status')).toHaveCount(0);
     writeFileSync(info.outputPath('viewport.json'), JSON.stringify({ before, after, source: { exchange: item.exchange, symbol: item.symbol, timeframe: item.timeframe } }, null, 2));
     await page.locator('.live-window-chart').screenshot({ path: info.outputPath('history.png') });
     expect(urls.filter(url => /\/(past-candles|past-daily-candles|quotes|series|stock-limits|investor-net)\?/.test(url) && url.includes(item.symbol))).toEqual([]);
@@ -121,7 +121,7 @@ test('history failure preserves displayed bars and retries the same cursor', asy
   await page.getByRole('button', { name: '다시 시도', exact: true }).click();
   await expect.poll(async () => (await snapshot(page)).count).toBe(1600);
   expect(requests.history).toBe(2);
-  await expect(page.locator('.live-window-chart').getByRole('status')).not.toContainText('과거 조회 실패');
+  await expect(page.locator('.live-window-chart').getByRole('status')).toHaveCount(0);
 });
 
 
@@ -156,7 +156,7 @@ test('continued scrolling resumes the next native cursor instead of replaying re
   await wheelIntoHistory(page);
   await expect.poll(async () => (await snapshot(page)).count).toBe(2400);
   expect(requests.history).toBe(2);
-  await expect(page.locator('.live-window-chart').getByRole('status')).toContainText('공급자 제공 과거 구간 끝');
+  await expect(page.locator('.live-window-chart').getByRole('status')).toHaveCount(0);
 });
 
 

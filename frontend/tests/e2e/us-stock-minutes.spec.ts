@@ -55,11 +55,8 @@ for (const [exchange, symbol] of [['NASDAQ', 'NVDA'], ['NASDAQ', 'AAPL'], ['NYSE
     page.on('websocket', ws => ws.on('framesent', event => wsFrames.push(String(event.payload))));
     await page.goto(`/live?market=US&exchange=${exchange}&symbol=${symbol}`);
     const frame = page.locator('.live-window-chart');
-    await expect(frame.getByRole('status')).toContainText('미국 주식 1분봉');
-    await expect(frame.getByRole('status')).toContainText('USD · 수정 전 가격');
-    await expect(frame.getByRole('status')).toContainText('최근 800봉부터');
-    await expect(frame.getByRole('status')).toContainText('지연 여부 미확인');
     await expect.poll(async () => (await measure(page)).count).toBe(800);
+    await expect(frame.getByRole('status')).toHaveCount(0);
     await page.clock.runFor(500);
     await expect(frame.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
     const expected = evidence.responses.find(r => r.exchange === exchange && r.symbol === symbol && r.timeframe === '1m')!.candles.at(-1)!;
@@ -82,21 +79,21 @@ for (const [exchange, symbol] of [['NASDAQ', 'NVDA'], ['NASDAQ', 'AAPL'], ['NYSE
     await expect.poll(async () => (await measure(page)).count).toBe(800);
     stale = false;
     await page.reload();
-    await expect(frame.getByRole('status')).toContainText('미국 주식 1분봉');
     await expect.poll(async () => (await measure(page)).count).toBe(800);
     if (symbol === 'NVDA') {
       for (const period of ['3', '5', '10', '15', '30', '60']) {
         await frame.getByRole('button', { name: /분봉 선택 열기:/ }).click();
         await expect(page.getByRole('menu', { name: '분봉 목록' }).getByRole('menuitemradio')).toHaveCount(7);
         await page.getByRole('menuitemradio', { name: `${period}분`, exact: true }).click();
-        await expect(frame.getByRole('status')).toContainText(`미국 주식 ${period}분봉`);
+        await expect(frame.getByRole('status')).toHaveCount(0);
         await expect.poll(async () => (await measure(page)).count).toBe(800);
         await page.clock.runFor(300);
         await expect(frame.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
       }
       await frame.screenshot({ path: testInfo.outputPath('NVDA-60m.png') });
       await page.reload();
-      await expect(frame.getByRole('status')).toContainText('미국 주식 60분봉');
+      await expect(frame.getByRole('button', { name: '분봉 선택 열기: 60분' })).toBeVisible();
+      await expect(frame.getByRole('status')).toHaveCount(0);
       for (const [label, title] of [['일', '일봉'], ['주', '주봉'], ['월', '월봉']]) {
         await frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true }).click();
         await expect(frame.getByRole('status')).toContainText(`미국 ${title}`);
