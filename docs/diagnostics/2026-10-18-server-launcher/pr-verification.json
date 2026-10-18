@@ -1,0 +1,122 @@
+{
+  "validated_code_commit": "1bdcf747557beafbbcd21b30b386efe58d986473",
+  "base_commit": "8c12015d3b01345245116c103e701390e9a2dac8",
+  "inputs": {
+    "desktop": {
+      "sha256": "38c12cbb7fc9086bdc94d23f1a06d220db5c05e1715c865fdc3fa1e0333fe4de",
+      "file_count": 48,
+      "paths": [
+        "desktop/src",
+        "desktop/tests",
+        "desktop/scripts",
+        "desktop/assets",
+        "desktop/package.json",
+        "desktop/package-lock.json",
+        "desktop/tsconfig.json",
+        "desktop/eslint.config.mjs",
+        "desktop/playwright.config.cjs",
+        "desktop/forge.config.cjs"
+      ]
+    },
+    "frontend": {
+      "sha256": "f08a3dabb8cc7890c004dca8e70b0106f6cf38ca2c36d6f9a57f8b4c635707aa",
+      "file_count": 1530,
+      "paths": [
+        "frontend/src",
+        "frontend/tests/e2e/helpers",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/tsconfig.json",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.node.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json"
+      ]
+    },
+    "backend": {
+      "sha256": "c8edd2e1a783fc43ebdef8bc2947fa507db907b83fa94e8ca995c20d4fbadd46",
+      "file_count": 269,
+      "paths": [
+        "hoga",
+        "pyproject.toml",
+        "uv.lock"
+      ]
+    },
+    "version": {
+      "sha256": "9e11c536c7082e9b3c2b08046ac30103bbbb7c1c5b7f1c7af3c4a4bed384098d",
+      "file_count": 1,
+      "paths": [
+        "VERSION"
+      ]
+    }
+  },
+  "tools_and_environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "python": "Python 3.14.7",
+    "electron": "44.8.0",
+    "playwright": "1.64.1",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "session": {
+      "XDG_SESSION_TYPE": "wayland",
+      "WAYLAND_DISPLAY": "wayland-0",
+      "DISPLAY": ":0"
+    }
+  },
+  "recorded_at": "2026-10-18T20:48:56.904910+09:00",
+  "checks": [
+    {
+      "cwd": "frontend",
+      "command": "npm run build",
+      "result": "passed",
+      "note": "Refreshed production React assets after merging latest main; existing bundle-size warning only."
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run lint && npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm test",
+      "result": "passed",
+      "passed": 9
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run test:e2e",
+      "result": "passed",
+      "passed": 13
+    },
+    {
+      "cwd": "desktop",
+      "command": "npx playwright test tests/e2e/server-ui-reload.spec.cjs --repeat-each=5",
+      "result": "passed",
+      "passed": 5
+    },
+    {
+      "cwd": "desktop",
+      "command": "npm run make && npm run verify:deb",
+      "result": "passed",
+      "passed": 12,
+      "skipped": 1,
+      "skip_reason": "UI file watching applies only to source runs, so that source-only test is skipped in the extracted package."
+    }
+  ],
+  "scope": "Current feature and latest main were validated together. Only changelog and verification evidence are added after the validated code commit; the recorded runtime input fingerprints must remain identical.",
+  "backend_scope": "No Python code or dependency changes in this PR. Fresh real FastAPI/React integration coverage is included in desktop E2E; the unrelated full Python suite was not rerun.",
+  "overlapping_open_pr_files": "No shared files with currently open PRs #1927 and #1726.",
+  "user_processes": "Existing server listener PIDs 37886/37894/38088 and running manager/client PIDs 184832/130080 were preserved; localhost health checks passed.",
+  "artifacts": {
+    "ticklane_0.16.6-rev.0_amd64.deb": {
+      "sha256": "628372b6790fef4a596e4d9bfdc7a98b98a4d38cf2f23fc87e14e34529050d64",
+      "bytes": 96680668
+    },
+    "Ticklane-linux-x64-0.16.6-rev.0.zip": {
+      "sha256": "02b0b3113c707735970ac23e353b63d3bae083123a6e35fd2a2b9831e95e2b26",
+      "bytes": 128700885
+    }
+  }
+}
