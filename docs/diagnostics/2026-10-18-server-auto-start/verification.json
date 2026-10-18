@@ -1,0 +1,133 @@
+{
+  "verified_at": "2026-10-18T14:15:39.209888+00:00",
+  "base_commit": "cb6011d8e48e4ea4022b9bc4b806d821c6a57b94",
+  "branch": "codex/server-auto-start",
+  "scope": "One-time server-manager startup in the primary Electron main process. Existing ServerController port probes, ownership, serialization and cancellation are reused. No frontend/backend application or controller changes.",
+  "checks": [
+    {
+      "command": "npm run build",
+      "cwd": "desktop",
+      "result": "passed"
+    },
+    {
+      "command": "npm run lint && npm run typecheck",
+      "cwd": "desktop",
+      "result": "passed"
+    },
+    {
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/server-manager.spec.cjs tests/e2e/server-tray.spec.cjs tests/e2e/server-ui-reload.spec.cjs",
+      "cwd": "desktop",
+      "result": "17 passed (27.5s)"
+    },
+    {
+      "command": "npm run package",
+      "cwd": "desktop",
+      "result": "Linux x64 folder package passed"
+    },
+    {
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 HOGA_DESKTOP_EXECUTABLE=/home/dev/.codex/worktrees/7c78/hoga-ops/desktop/out/Ticklane-linux-x64/ticklane npx playwright test tests/e2e/server-manager.spec.cjs",
+      "cwd": "desktop",
+      "result": "13 passed (20.1s)"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "Starts both services on launch without clicking Start",
+    "Reuses both external services without replacing their PIDs",
+    "Reuses existing backend or frontend and starts only the missing service",
+    "Cancel and quit during automatic startup leave no owned child processes",
+    "Manual stop is respected after refresh, renderer reload and duplicate icon launch",
+    "Duplicate manager launches reuse the same process and service PIDs",
+    "Occupied unknown ports do not start the other service",
+    "Failed startup cleans owned processes and supports explicit retry",
+    "Tray actions and source UI hot reload retain lifecycle behavior"
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "electron": "44.8.0",
+    "playwright": "1.64.1",
+    "typescript": "6.0.2",
+    "platform": "Linux x64",
+    "test_window_system": "x11",
+    "DISPLAY": ":0",
+    "WAYLAND_DISPLAY": "wayland-0",
+    "chromiumSandbox": true,
+    "isolation": "Temporary profiles and fake executables on random ports. No actual user server start, restart or stop commands."
+  },
+  "current_user_services": {
+    "manager_pid": 1001105,
+    "backend_reloader_pid": 1001949,
+    "backend_worker_pid": 1002255,
+    "frontend_pid": 1001958,
+    "left_running": true,
+    "activation": "Compiled source launcher loads new automatic-start behavior on the next complete manager launch. The current owning manager was not restarted."
+  },
+  "packaged_asar_sha256": "27b95c364d71e666d3df95c7252a34ea032716e75938c19ea7e249c57763911f",
+  "sha256": {
+    "VERSION": "d263dcddd50bcd79007ca311d2e5a30923115d610b88e4692600795787978d59",
+    "desktop/assets/README.md": "c1af73c86b898cbccb32a0f23d5e5c0565b7578e618101765a36eb7844f905ab",
+    "desktop/assets/icon.png": "96d8ecda854b1d4d20ebde6ab13ab472fb4ef06806d50bb07cb3cb926c2ae6a6",
+    "desktop/assets/proposals/2026-10-16/a-orderbook.png": "3a59e2efdf1e0e6144cab596d7729a8bd39f3aeb6b820cd03980b6af64119e97",
+    "desktop/assets/proposals/2026-10-16/b-candles.png": "3c6991a1256c0200684e8a84d0891affa96983a16797586ec5f5298302819821",
+    "desktop/assets/proposals/2026-10-16/c-price-flow.png": "081eee17f20ed6bff86530c73c9ec6cac365f9e6cd414b4447425ad8fefcdfb0",
+    "desktop/assets/proposals/2026-10-16/d-trade-pulse.png": "cc177ad1df48e6089a43d4a439ed7df57074b13abefea7324ba7d4794357b6df",
+    "desktop/assets/proposals/2026-10-16/e-market-dial.png": "4caefb7416078f3ef9c42a7d92603503cbe8628de2a207bce1191093ae200963",
+    "desktop/assets/proposals/2026-10-16/f-price-ticks.png": "96d8ecda854b1d4d20ebde6ab13ab472fb4ef06806d50bb07cb3cb926c2ae6a6",
+    "desktop/assets/proposals/2026-10-16/prompts-round-2.json": "3a6a639e284e223393ab30274702349f25934a8223b439783bc1cd802d8c0f2e",
+    "desktop/assets/proposals/2026-10-16/prompts.json": "1687b7fa5e97298acf5d30486f01fbe8a00f54411a844f227ec32cc9aca3fee6",
+    "desktop/assets/server-icon.png": "da68dc57e2e1164dccc52d2298206c706321cbb924aecf5e4e38b21c3e23a22e",
+    "desktop/assets/server-icon.svg": "55cb05f6783c5d7fa20a0308e07b871684fe8cd117e0635d045df290ada4b119",
+    "desktop/assets/server-tray-busy.png": "073bfc441c15a3edcef26e22e54278ed4e1e60d760b00247552026fc23c318a5",
+    "desktop/assets/server-tray-busy@2x.png": "d82460ee801287d11fe314b5175a08bacd23abb97ad7dd758032be2f05a82c17",
+    "desktop/assets/server-tray-error.png": "d67d993c95c1c86bb925ab4cc3e8b6a048edb053932189d7a145241e15838bb8",
+    "desktop/assets/server-tray-error@2x.png": "223bae628f1f9f4dd613148d793472dda40e63b53f6adb2b4136ad693a4e623d",
+    "desktop/assets/server-tray-running.png": "ca6419c12e2ed7f9c2d46791583c7870fbec8112cd9281d2439acdf6aaef37d4",
+    "desktop/assets/server-tray-running@2x.png": "d5219955f87f3bff37ee345aef0ca13bb9c18f055cee7744ba7ce9a7c950f191",
+    "desktop/assets/server-tray-stopped.png": "b0a64321419a28261d63623595a4634774f0452c3ed5640595ce787ab9a65ab7",
+    "desktop/assets/server-tray-stopped@2x.png": "e198eb4bb6b5f598a15c32ec99d83798ab0ea5131171661e74025627fa26905a",
+    "desktop/assets/server-tray.svg": "85edb2b8b1a8f769996d73f58c48c4f9160d73a79849c88346368eadb490943d",
+    "desktop/eslint.config.mjs": "081f701a9f8cdb90a4b24bd5de4fb5fc078976abe8d86a02ca44d344c2e61da4",
+    "desktop/forge.config.cjs": "926ab05d0d4a6c9c9a15f22d1559753c68cffa9d254e49e9262ccaa7ed63244c",
+    "desktop/package-lock.json": "913027885f935c6077429db3bf2cabdc39c5dbc0577bf786344ded7ef73e0609",
+    "desktop/package.json": "6e2e2b6e7a9229d2c402b06eb7049e42b6f8dac506967c1e7f6c4fe59739ecc2",
+    "desktop/playwright.config.cjs": "6c49425f8c8fcf846fc1680b6b252a7dffba334160e5b1747941febe6d9ec249",
+    "desktop/scripts/build.mjs": "15ed3a987e6b149f0d2d3912a6a464891df31f07030d85c6b051976410ea5c54",
+    "desktop/scripts/generate-tray-icons.cjs": "49362328fab5fc24c218cf502c28183851db269469b2bcdd709513b6b7874ee5",
+    "desktop/scripts/install-server-shortcut.mjs": "b943376e81205ccc5760fb6fa36a38d2228a908300c5635e7f413ee257705dc6",
+    "desktop/scripts/install-shortcut.mjs": "5c9a2fe8384f9fab3556766aba537c510ad36184b95140273b03f5cca25532c2",
+    "desktop/scripts/sandbox-profile.mjs": "f607ff01292e201dbce8866f811abc73db4acd7850f72b1b8d498180fc05e493",
+    "desktop/scripts/setup-sandbox.mjs": "201469be665743b8536393a8679917ecc812f7d12305a36100fe926f8ae46470",
+    "desktop/scripts/verify-deb.mjs": "0961e72249bbdd2c66444d7d194aaa974bff6c498512090e3d15fe5185da4548",
+    "desktop/scripts/version.mjs": "a0b531e8861b4ef35775315648de318b90666666d8d2b9c291cc98b03aae5f9f",
+    "desktop/src/bootstrap.cjs": "37f42d0c7598d12d9e653cf992bef606ba93e63c97b7f418442683fe4e557000",
+    "desktop/src/connection.ts": "c6f4b5fc574aa29b974fcd1732f358c5ad54b53403c8d78ca691139d17ead4b0",
+    "desktop/src/launcher/index.html": "50837c08c2ebde36de129e000049937c4f1e49482426705ae78284b8ee16da89",
+    "desktop/src/launcher/launcher.css": "27326dac5c91d6d681b8cc37854df017361e1cbf6fd6f171c35faed36efe19e4",
+    "desktop/src/launcher/launcher.js": "f94beefb3c5e252470ec9002404cc4325dc344f0d752deb8da748f2657e23091",
+    "desktop/src/main.ts": "acac572e2b98b1f3a803bd5e21c43337bf7bb3955ba0638c00dda090eb2467be",
+    "desktop/src/navigation.ts": "467d69356a62c920b093da9ec62af87b0c28dfc995d5e1ef4d6242aa55e19a45",
+    "desktop/src/preload/content.cjs": "bae860d0694e6c2d9ac08e842a3b54a6f2dd3d52ac7654bb3414a4ef7f1f2fa2",
+    "desktop/src/preload/launcher.cjs": "0d1791e5bc91fd1cd38638f113fa805b3fb6614c40663042bdb9678e4fca3d84",
+    "desktop/src/preload/server.cjs": "1c7af7204f3a2e01a5d2ae7f6a9fa7ce80ba1a0d55ab91f4749b872e1277654a",
+    "desktop/src/profiles.ts": "7e02a2f2cc76d8414064ed696d73e8643923efa9029710d835434a4a468f93a3",
+    "desktop/src/server/controller.ts": "30548f36cb32f62f0b3298a7ae118503ed8b8d1a9a32d457f0a9786006e76eb4",
+    "desktop/src/server/main.ts": "6a492c50ce7d96b481701c03fc20c524eaaf371d63952e1a8d5ddc31b7bc738f",
+    "desktop/src/server/tray.ts": "1ece030890134410334f727fea61c43adb64d3cc6f249e959609f600d5d7a440",
+    "desktop/src/server-ui/index.html": "a39cfbfd57508d6891585fb52901004792738a83da8e4ccec72aad9a670322d2",
+    "desktop/src/server-ui/server.css": "233a01a3f63f0967c9eb1ca0dc10b7ba014fe66ee0da9b442d0afdb58cdc2e91",
+    "desktop/src/server-ui/server.js": "4062783cb9e3d9ae2b6abbfc0965c4e58ac89bbefed7ca22039b0ba4972a73f0",
+    "desktop/tests/core.test.cjs": "6e5a68d1cd19784a2db6c9e57482eb2f06c99758ec4df92f83c35f602d5880b8",
+    "desktop/tests/e2e/desktop.spec.cjs": "d4cb4d85ac7e1c15a7105fc243955c6a377a6d6073dd9185886802b25acd354e",
+    "desktop/tests/e2e/full-app.spec.cjs": "5e1a0271c57377679a3eb68ce8508226330a6288496d36a6e549e84caeeec524",
+    "desktop/tests/e2e/server-manager.spec.cjs": "fe5aa8b05f84ee1f88ac0fc67d9020b9fedee2d95b580793d5cec9caa6e906a6",
+    "desktop/tests/e2e/server-tray.spec.cjs": "dd48a62f453ca45cdea138ba3a27ae8002c0b151c98c2cff49e7584c4372666a",
+    "desktop/tests/e2e/server-ui-reload.spec.cjs": "84a9771189dcd3855cbf19e0f009c8f076a89609aa245d29a0544a2b696c7590",
+    "desktop/tests/helpers/server-fixture.cjs": "8517f9b4dfd9d36b2f360a02e62136c265c22fc9b29b4bcbebe54acc344feb67",
+    "desktop/tests/server-config.test.cjs": "d78717f91984d6779ca56f2377b820226c237a527acc707595a95a542197abb8",
+    "desktop/tsconfig.json": "41a72ac33c1680f827054ba6605e01c8bc8818392aca297d3492776c30167857"
+  }
+}

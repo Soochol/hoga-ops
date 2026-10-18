@@ -159,7 +159,9 @@ else {
       const argument = process.argv.find(value => value.startsWith('--server-config='));
       const path = argument?.slice('--server-config='.length) || join(homedir(), '.local/lib/ticklane/servers.json');
       if (!isAbsolute(path)) throw new Error('서버 설정 경로는 절대 경로여야 합니다.');
-      controller = new ServerController(await readServerConfig(path), join(logFolder, 'server.log'));
+      const config = await readServerConfig(path);
+      if (quitting || shuttingDown) return;
+      controller = new ServerController(config, join(logFolder, 'server.log'));
       controller.on('change', publish);
       controller.startMonitoring();
     } catch (error) {
@@ -168,5 +170,12 @@ else {
     }
     publish();
     watchUi();
+    // Run once for the primary app process, never on renderer reload or activation.
+    // start() probes both ports and reuses healthy services before spawning anything.
+    if (controller && !quitting && !shuttingDown) {
+      const currentController = controller;
+      void currentController.start().then(() => currentController.refresh())
+        .catch(error => console.error('서버 자동 시작 실패:', error));
+    }
   }).catch(error => { dialog.showErrorBox('Ticklane 서버 시작 실패', String(error)); quitting = true; app.quit(); });
 }

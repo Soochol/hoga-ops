@@ -42,17 +42,14 @@ async function healthy(port) {
   try { return (await fetch(`http://127.0.0.1:${port}/health`)).ok; } catch { return false; }
 }
 
-test('manager starts/stops services, escapes logs, and coexists with the Ticklane app', async () => {
+test('manager automatically starts services, supports manual restart and coexists with Ticklane', async () => {
   const f = await fixture(); let app; let client;
   try {
     const result = await manager(f); app = result.app; const page = result.page;
-    await stopped(page);
+    await running(page);
     await expect(page.locator('#log-details')).toHaveJSProperty('open', false);
-    await expect(page.evaluate(() => window.serverManager.openClient())).rejects.toThrow('두 서버가 준비된 뒤');
     expect(await page.evaluate(() => typeof window.require)).toBe('undefined');
     expect(await app.evaluate(({ BrowserWindow, app }) => ({ sandbox: BrowserWindow.getAllWindows()[0].webContents.getLastWebPreferences().sandbox, unsafe: app.commandLine.hasSwitch('no-sandbox') }))).toEqual({ sandbox: true, unsafe: false });
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click();
-    await running(page);
     const first = [await f.marker('backend'), await f.marker('frontend')];
     expect(first[1].api).toBe(`http://localhost:${f.ports.backend}`);
     expect(first[1].args).toContain('--strictPort');
@@ -77,6 +74,11 @@ test('manager starts/stops services, escapes logs, and coexists with the Ticklan
     await running(page);
     await stop(page);
     await stopped(page); await dead(first);
+    await expect(page.evaluate(() => window.serverManager.openClient())).rejects.toThrow('두 서버가 준비된 뒤');
+    // Monitoring, UI reload and reactivation must respect an explicit manual stop.
+    await page.evaluate(() => window.serverManager.refresh());
+    await page.reload(); await stopped(page);
+    await expect(page.getByRole('button', { name: '서버 시작', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '서버 시작', exact: true }).click();
     await running(page);
     const second = [await f.marker('backend'), await f.marker('frontend')];
@@ -93,12 +95,15 @@ test('external services are read-only and survive management app shutdown', asyn
     f.external('backend'); f.external('frontend');
     await expect.poll(() => healthy(f.ports.backend)).toBe(true);
     await expect.poll(() => healthy(f.ports.frontend)).toBe(true);
+    const external = [await f.marker('backend'), await f.marker('frontend')];
     const result = await manager(f); app = result.app; const page = result.page;
     await running(page);
     await expect(page.locator('#service-backend')).toHaveAttribute('data-owner', 'external');
     await expect(page.locator('#stop')).toBeHidden();
     await expect(page.getByRole('button', { name: 'Ticklane 열기', exact: true })).toBeEnabled();
     await expect(page.locator('#external-note')).toBeVisible();
+    expect((await f.marker('backend')).pid).toBe(external[0].pid);
+    expect((await f.marker('frontend')).pid).toBe(external[1].pid);
     await expect(page.getByRole('button', { name: '관리 앱 종료', exact: true })).toBeInViewport();
     await page.evaluate(() => window.serverManager.stop());
     await app.close(); app = undefined;
@@ -107,17 +112,61 @@ test('external services are read-only and survive management app shutdown', asyn
   } finally { if (app) await app.close(); await f.dispose(); }
 });
 
-test('stop cancels startup and leaves no child processes', async () => {
+for (const existing of ['backend', 'frontend']) {
+  test(`automatic startup reuses existing ${existing} and starts only the missing service`, async () => {
+    const f = await fixture(); let app;
+    const missing = existing === 'backend' ? 'frontend' : 'backend';
+    try {
+      f.external(existing);
+      await expect.poll(() => healthy(f.ports[existing])).toBe(true);
+      const external = await f.marker(existing);
+      const result = await manager(f); app = result.app; const page = result.page;
+      await running(page);
+      await expect(page.locator(`#service-${existing}`)).toHaveAttribute('data-owner', 'external');
+      await expect(page.locator(`#service-${missing}`)).toHaveAttribute('data-owner', 'managed');
+      expect((await f.marker(existing)).pid).toBe(external.pid);
+      const managed = await f.marker(missing);
+      await app.close(); app = undefined;
+      await dead([managed]);
+      expect(await alive(external.pid)).toBe(true);
+      expect(await alive(external.worker)).toBe(true);
+      expect(await healthy(f.ports[existing])).toBe(true);
+    } finally { if (app) await app.close(); await f.dispose(); }
+  });
+}
+
+test('automatic startup can be cancelled and is not retried on reload or icon relaunch', async () => {
   const f = await fixture(); let app;
   try {
     const result = await manager(f, { TICKLANE_FIXTURE_DELAY_MS: '5000' }); app = result.app; const page = result.page;
-    await expect(page.getByRole('button', { name: '서버 시작', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click();
+    await expect(page.locator('body')).toHaveAttribute('data-phase', 'starting');
+    await expect(page.evaluate(() => window.serverManager.openClient())).rejects.toThrow('두 서버가 준비된 뒤');
     await expect.poll(async () => { try { await f.marker('backend'); await f.marker('frontend'); return true; } catch { return false; } }).toBe(true);
     const markers = [await f.marker('backend'), await f.marker('frontend')];
     await page.getByRole('button', { name: '시작 취소', exact: true }).click();
     await stopped(page); await dead(markers);
+    await page.evaluate(() => window.serverManager.refresh());
+    await page.reload(); await stopped(page);
+    const mainPid = app.process().pid;
+    const opts = options(f);
+    const duplicate = spawn(opts.executablePath || require('electron'), opts.args, { cwd: opts.cwd, env: opts.env, stdio: 'ignore' });
+    expect(await new Promise(done => duplicate.once('exit', done))).toBe(0);
+    await stopped(page); expect(app.process().pid).toBe(mainPid);
+    expect((await f.marker('backend')).pid).toBe(markers[0].pid);
+    expect((await f.marker('frontend')).pid).toBe(markers[1].pid);
     await expect(page.getByRole('button', { name: '서버 시작', exact: true })).toBeEnabled();
+  } finally { if (app) await app.close(); await f.dispose(); }
+});
+
+test('quitting during automatic startup cleans both owned process groups', async () => {
+  const f = await fixture(); let app;
+  try {
+    const result = await manager(f, { TICKLANE_FIXTURE_DELAY_MS: '5000' }); app = result.app;
+    await expect(result.page.locator('body')).toHaveAttribute('data-phase', 'starting');
+    await expect.poll(async () => { try { await f.marker('backend'); await f.marker('frontend'); return true; } catch { return false; } }).toBe(true);
+    const markers = [await f.marker('backend'), await f.marker('frontend')];
+    await app.close(); app = undefined;
+    await dead(markers);
   } finally { if (app) await app.close(); await f.dispose(); }
 });
 
@@ -128,7 +177,6 @@ test('port conflicts do not start the other service and can be retried', async (
   try {
     const result = await manager(f); app = result.app; const page = result.page;
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: '다시 시도', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('포트가 사용 중');
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeEnabled();
     await expect(page.locator('#log-details')).toHaveJSProperty('open', true);
@@ -148,8 +196,6 @@ test('failed startup cleans owned processes and supports retry', async () => {
   const f = await fixture(); let app;
   try {
     const result = await manager(f, { TICKLANE_FIXTURE_FAIL: 'frontend' }); app = result.app; const page = result.page;
-    await expect(page.getByRole('button', { name: '서버 시작', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('시작하지 못했습니다');
     await expect(page.locator('#log-details')).toHaveJSProperty('open', true);
     await dead([await f.marker('backend')]);
@@ -164,8 +210,7 @@ test('close always hides the manager and relaunch focuses the same app without s
   const f = await fixture(); let app;
   try {
     const result = await manager(f); app = result.app; const page = result.page;
-    await expect(page.getByRole('button', { name: '서버 시작', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    await running(page);
     const markers = [await f.marker('backend'), await f.marker('frontend')];
     for (const native of [false, true]) {
       if (native) await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close());
@@ -177,6 +222,8 @@ test('close always hides the manager and relaunch focuses the same app without s
       await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(true);
       await running(page);
       expect(await alive(markers[0].pid)).toBe(true);
+      expect((await f.marker('backend')).pid).toBe(markers[0].pid);
+      expect((await f.marker('frontend')).pid).toBe(markers[1].pid);
     }
   } finally { if (app) await app.close(); await f.dispose(); }
 });
@@ -185,7 +232,7 @@ test('explicit manager quit can be cancelled and confirmed quit gracefully stops
   const f = await fixture(); let app;
   try {
     const result = await manager(f); app = result.app; const page = result.page;
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    await running(page);
     const markers = [await f.marker('backend'), await f.marker('frontend')];
     await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1 }); });
     await page.getByRole('button', { name: '관리 앱 종료', exact: true }).click();
@@ -202,7 +249,7 @@ test('status view fits the compact window and live service failure reveals logs'
   try {
     const result = await manager(f); app = result.app; const page = result.page;
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    await running(page);
     for (const width of [420, 680]) {
       await app.evaluate(({ BrowserWindow }, width) => BrowserWindow.getAllWindows()[0].setSize(width, 650), width);
       await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -227,7 +274,7 @@ test('expanded logs fill the available height and resize without restarting serv
   try {
     await appendFile(f.settings.uv, '\nfor (let i = 0; i < 200; i++) console.log("layout fixture log " + i);\n');
     const result = await manager(f); app = result.app; const page = result.page;
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    await running(page);
     const markers = [await f.marker('backend'), await f.marker('frontend')];
     const mainPid = app.process().pid;
     const size = (width, height) => app.evaluate(({ BrowserWindow }, [width, height]) => BrowserWindow.getAllWindows()[0].setSize(width, height), [width, height]);
@@ -286,7 +333,7 @@ test('titlebar minimizes, maximizes, restores and hides without restarting manag
     await expect(controls.getByRole('button')).toHaveCount(3);
     await expect(controls.getByRole('button', { name: '최대화', exact: true })).toBeEnabled();
     expect(await controls.getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))).toEqual(['최소화', '최대화', '관리 창 숨기기']);
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    await running(page);
     const markers = [await f.marker('backend'), await f.marker('frontend')];
     const mainPid = app.process().pid;
 
