@@ -1,3 +1,4 @@
+import { formatInstrumentPrice, instrumentPriceUnit } from './instrumentPriceFormat';
 import { IndicatorInstanceLegend } from './indicators/IndicatorInstanceLegend';
 import { useThemePrefsStore } from '../state/themePrefs';
 import { EMPTY_INDICATOR_INSTANCES } from '../state/indicatorInstances';
@@ -81,7 +82,6 @@ import { lineVisible, type IndicatorLineKey } from '../state/indicatorLineVisibi
 import { FLAG_INDICATOR_TYPES, type MaSliceKey } from '../state/indicatorOps';
 import MaInstancePopover from './indicators/MaInstancePopover';
 import type { LiveMAConfig } from '../state/livePage';
-import { formatKoreanInt } from '../util/koreanNumber';
 import { formatHhmm } from '../util/tradingTime';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
 
@@ -233,9 +233,9 @@ const maValueCellStyle: CSSProperties = {
 
 // MA 값 셀: 값이 있으면 9ch 우측정렬, 없으면(cold/범위 밖) min-width 없이 "—" 만 —
 // 값 없는 슬롯이 넓은 빈 칸을 예약해 레전드가 성겨 보이던 문제를 없앤다.
-function MaValueCell({ value }: { value: number | null }) {
+function MaValueCell({ value, code }: { value: number | null; code?: string | null }) {
   if (value == null) return <span style={{ color: 'var(--fg-dimmer)' }}>—</span>;
-  return <span style={maValueCellStyle}>{formatKoreanInt(value)}</span>;
+  return <span style={maValueCellStyle}>{formatInstrumentPrice(value, code)}</span>;
 }
 
 const swatchStyle: CSSProperties = {
@@ -424,13 +424,13 @@ const signedPct = (n: number) => (n >= 0 ? '+' : '') + n.toFixed(2) + '%';
 
 /** OHLC 한 칸: 라벨(저채도) + 가격(중립) + 직전종가 대비 %(부호색, 괄호). pct 없으면
  *  (가장 이른 봉) % 는 생략. 색·텍스트 모두 반올림값 기준(툴팁 PriceRow 선례). */
-function OhlcCell({ label, price, pct, className }: { label: string; price: number; pct: number | null; className?: string }) {
+function OhlcCell({ label, price, pct, className, code }: { label: string; price: number; pct: number | null; className?: string; code?: string | null }) {
   const r = pct != null && Number.isFinite(pct) ? Number(pct.toFixed(2)) : null;
   return (
     <span className={className} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2xs)' }}>
       <span style={{ color: 'var(--fg-dim)' }}>{label}</span>
       <span style={{ color: 'var(--fg)', fontVariantNumeric: 'tabular-nums' }}>
-        {formatKoreanInt(price)}원
+        {formatInstrumentPrice(price, code)}{instrumentPriceUnit(code)}
       </span>
       {r != null && (
         <span className={priceDirClass(r)} style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -445,13 +445,13 @@ function OhlcCell({ label, price, pct, className }: { label: string; price: numb
  *  좁은 창에서는 행 컨테이너의 overflow:hidden 이 글자 중간을 자르는 대신, pane 래퍼
  *  컨테이너 폭 기준으로 낮은 우선순위 셀부터 숨긴다(저가 → 고가 → 시작 — 종가+등락률이
  *  마지막까지 남는다). 규칙은 global.css `.legend-ohlc-*` 컨테이너 쿼리. */
-function OhlcLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ohlc' }> }) {
+function OhlcLegendRow({ row, code }: { row: Extract<LegendRow, { kind: 'ohlc' }>; code?: string | null }) {
   return (
     <>
-      <OhlcCell className="legend-ohlc-open" label="시작" price={row.open} pct={row.openPct} />
-      <OhlcCell className="legend-ohlc-high" label="고가" price={row.high} pct={row.highPct} />
-      <OhlcCell className="legend-ohlc-low" label="저가" price={row.low} pct={row.lowPct} />
-      <OhlcCell label="종가" price={row.close} pct={row.closePct} />
+      <OhlcCell code={code} className="legend-ohlc-open" label="시작" price={row.open} pct={row.openPct} />
+      <OhlcCell code={code} className="legend-ohlc-high" label="고가" price={row.high} pct={row.highPct} />
+      <OhlcCell code={code} className="legend-ohlc-low" label="저가" price={row.low} pct={row.lowPct} />
+      <OhlcCell code={code} label="종가" price={row.close} pct={row.closePct} />
     </>
   );
 }
@@ -477,13 +477,14 @@ const DISABLED_CHIP_OPACITY = 0.4;
  * 여백은 여전히 `none` 이라 사각지대는 칩 스트립에 국한된다.
  */
 function MaChip({
-  ma,
+  ma, code,
   label,
   onToggle,
   onRemove,
   onOpenSettings,
 }: {
   ma: LegendMAValue;
+  code?: string | null;
   label: string;
   onToggle: () => void;
   onRemove: () => void;
@@ -524,7 +525,7 @@ function MaChip({
       </button>
       {ma.enabled && (
         <span className="legend-ma-value">
-          <MaValueCell value={ma.value} />
+          <MaValueCell value={ma.value} code={code} />
         </span>
       )}
       <button
@@ -548,7 +549,8 @@ function MaChip({
  * 유지되어 내 지표에서 다시 켤 수 있다. 칩 ✕ 만 인스턴스를 삭제한다.
  */
 function MaSlotLegendRow(
-  { row, slice, label, configs, onToggleAll, onToggleOne, onRemoveOne, onPatchOne }: {
+  { row, code, slice, label, configs, onToggleAll, onToggleOne, onRemoveOne, onPatchOne }: {
+    code?: string | null;
     row: Extract<LegendRow, { kind: 'ma' | 'daily-ma' }>;
     slice: MaSliceKey;
     label: string;
@@ -575,7 +577,7 @@ function MaSlotLegendRow(
       {row.mas.map((m) => (
         <MaChip
           key={m.id}
-          ma={m}
+          ma={m} code={code}
           label={label}
           onToggle={() => onToggleOne(m.id, !m.enabled)}
           onRemove={() => onRemoveOne(m.id)}
@@ -603,12 +605,13 @@ function MaSlotLegendRow(
   );
 }
 
-function MaLegendRow({ row }: { row: Extract<LegendRow, { kind: 'ma' }> }) {
+function MaLegendRow({ row, code }: { row: Extract<LegendRow, { kind: 'ma' }>; code?: string | null }) {
   const actions = useIndicatorActions();
   const configs = useWindowIndicator((s) => s.movingAverages);
   return (
     <MaSlotLegendRow
       row={row}
+      code={code}
       slice="movingAverages"
       label="이동평균선"
       configs={configs}
@@ -1418,9 +1421,9 @@ function PaneLegendOverlay({
                       style={boxStyle}
                     >
                       {row.kind === 'ohlc' ? (
-                        <OhlcLegendRow row={row} />
+                        <OhlcLegendRow row={row} code={code} />
                       ) : row.kind === 'ma' ? (
-                        <MaLegendRow row={row} />
+                        <MaLegendRow row={row} code={code} />
                       ) : row.kind === 'daily-ma' ? (
                         <DailyMaLegendRow row={row} />
                       ) : row.kind === 'flag' ? (

@@ -1,3 +1,5 @@
+import { isUsIndexId } from '../live/liveInstrument';
+import { usDailyRefetchInterval, type UsDailyMetadata } from './usDailyCandles';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
 import type { WireDataWarning } from './dataWarnings';
@@ -15,6 +17,9 @@ type LiveIndexWire = {
   id: LiveIndexId;
   label: string;
   investor_scope: LiveIndexInvestorScope;
+  market?: string;
+  market_timezone?: string;
+  supported_timeframes?: string[];
 };
 
 type LiveIndicesResponse = {
@@ -29,6 +34,7 @@ export type LiveIndexEntry = {
 };
 
 export interface LiveIndexCandle {
+  trading_date?: string;
   t_ms: number;
   open: number;
   high: number;
@@ -56,6 +62,7 @@ export interface LiveIndexCandlesWarning extends WireDataWarning {
 }
 
 export interface LiveIndexCandlesResponse {
+  daily_metadata?: UsDailyMetadata;
   index_id: LiveIndexId;
   from: string;
   to: string;
@@ -110,8 +117,8 @@ export function useLiveIndexCandles(
   to: string | null,
 ) {
   const queryClient = useQueryClient();
-  const enabled = !!(indexId && from && to && from <= to);
-  const refetchInterval = () => indexCandlesRefetchInterval(timeframe, to);
+  const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || timeframe === 'D');
+  const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number } }) => isUsIndexId(indexId) ? usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount) : indexCandlesRefetchInterval(timeframe, to);
   return useQuery({
     queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,
     queryFn: async ({ signal }) => {
@@ -145,7 +152,7 @@ export function useLiveIndexCandles(
     // 탭 가림 중 정지 방지 + focus refetch 를 같은 술어로 게이트 — 근거는
     // livePastCandles.ts 의 PAST_CANDLES_REFETCH_IN_BACKGROUND 주석 참조.
     refetchIntervalInBackground: PAST_CANDLES_REFETCH_IN_BACKGROUND,
-    refetchOnWindowFocus: () => refetchInterval() !== false,
+    refetchOnWindowFocus: (query) => refetchInterval(query) !== false,
     placeholderData: (prev) => (prev && prev.index_id === indexId && prev.timeframe === timeframe ? prev : undefined),
   });
 }

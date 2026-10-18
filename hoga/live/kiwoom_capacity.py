@@ -155,7 +155,7 @@ class KiwoomCapacityScheduler:
         tr_rates: dict[str, float] | None = None,
     ) -> None:
         self._rate = rate_per_sec
-        self._tr_rates = dict(tr_rates or {})
+        self._tr_rates = {"usa10099": 5 / 60, **(tr_rates or {})}
         # 버킷 키가 (앱키, TR) 인 이유는 ADR-0138 실측이다: 유량은 TR별인 **동시에**
         # 앱키별이다. 앱키0 을 429 까지 밀어붙인 직후 앱키1 이 대기 없이 통과했다.
         self._buckets: dict[tuple[int, str], _TokenBucket] = {}
@@ -322,10 +322,21 @@ class KiwoomCapacityScheduler:
             self._buckets[(account_id, api_id)] = b
         return b
 
+    def _us_bucket(self, account_id: int) -> _TokenBucket:
+        # Shared conservative US query cap, safe even during 09:00–10:00 KST.
+        key = (account_id, "us-query-group")
+        if key not in self._buckets:
+            self._buckets[key] = _TokenBucket(3 * _HEADROOM)
+        return self._buckets[key]
+
+    def _query_available_at(self, account_id: int, api_id: str) -> float:
+        ready = self._bucket(account_id, api_id).available_at()
+        return max(ready, self._us_bucket(account_id).available_at()) if api_id.startswith("usa") else ready
+
     def _available_at(self, account_id: int, api_id: str) -> float:
         """이 계정이 이 TR 을 다음에 쏠 수 있는 시각 — **유량과 인증 중 늦은 쪽**."""
         return max(
-            self._bucket(account_id, api_id).available_at(),
+            self._query_available_at(account_id, api_id),
             self._auth_blocked_until.get(account_id, 0.0),
         )
 
@@ -374,7 +385,7 @@ class KiwoomCapacityScheduler:
                     blocked.append(req)
                     continue
                 account = self._pick_account(req.api_id)
-                available = self._bucket(account, req.api_id).available_at()
+                available = self._query_available_at(account, req.api_id)
                 if available <= time.monotonic():
                     chosen = req, account
                     continue
@@ -438,6 +449,8 @@ class KiwoomCapacityScheduler:
                 # _next_ready returned an available bucket without yielding.
                 # acquire reserves this slot immediately, with no pacing sleep.
                 await self._bucket(account, req.api_id).acquire()
+                if req.api_id.startswith("usa"):
+                    await self._us_bucket(account).acquire()
                 self._calls_by_account[account] = self._calls_by_account.get(account, 0) + 1
                 result = await req.call(self._client_for(account))
                 # 벤더 콜이 실제로 돌아왔다 = 이 계정의 토큰이 산다. **연속** 실패만
@@ -470,7 +483,7 @@ class KiwoomCapacityScheduler:
             # **그 계정의 버킷만** 버린다 — 전 계정을 버리면 멀쩡한 앱키의 페이싱
             # 상태까지 잃는다(ADR-0138).
             if exc.quota and exc.quota > 0:
-                self._tr_rates[api_id] = float(exc.quota)
+                self._tr_rates[api_id] = min(float(exc.quota), 5 / 60) if api_id == "usa10099" else float(exc.quota)
                 self._buckets.pop((account_id, api_id), None)
             self._bucket(account_id, api_id).penalize(_RATE_LIMIT_PENALTY_SECONDS)
             log.warning(

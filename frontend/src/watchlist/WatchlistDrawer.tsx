@@ -792,7 +792,7 @@ export function WatchlistDrawer() {
   };
 
   // 다중 소속이라 한 코드가 여러 폴더 행으로 등장 → quote 폴링용 코드는 dedup.
-  const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
+  const codes = useMemo(() => [...new Set(data?.entries.filter(e => !e.code.startsWith('us-stock:')).map((e) => e.code) ?? [])], [data]);
   const venue = useLiveVenueStore((s) => s.venue);
   const liveQuoteByCode = useQuoteByCode(codes, venue);
   const quoteByCode = useFrozenWhileDragging(liveQuoteByCode, isDragging);

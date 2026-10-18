@@ -1,0 +1,266 @@
+{
+  "rows": 19378,
+  "by_exchange": {
+    "NY": 8374,
+    "NA": 3658,
+    "ND": 6495,
+    "NP": 851
+  },
+  "invalid_symbol_count": 83,
+  "invalid_samples": [
+    {
+      "stex_tp": "NY",
+      "stk_cd": "AGMa",
+      "stk_nm": "페더럴 애그리컬처럴 모기지 A",
+      "stk_enm": "FEDERAL AGRICULTURAL MORTGAGE CORP",
+      "mkgb": "NYSE",
+      "upgb": "금융서비스",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "AHT_pd",
+      "stk_nm": "애시포드 호스피털리티 트러스트 우선주 D",
+      "stk_enm": "ASHFORD HOSPITALITY TRUST INC 8.45% CUM",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "AKOa",
+      "stk_nm": "엠보테야도라 안디나 A(ADR)",
+      "stk_enm": "EMBOTELLADORA ANDINA SA SPON ADR-EACH RE",
+      "mkgb": "NYSE",
+      "upgb": "음식료 및 담배 생산",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "AKOb",
+      "stk_nm": "엠보테야도라 안디나 B(ADR)",
+      "stk_enm": "EMBOTELLADORA ANDINA SA SPON ADR-EACH RE",
+      "mkgb": "NYSE",
+      "upgb": "음식료 및 담배 생산",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "ALL_pb",
+      "stk_nm": "올스테이트 우선주(5.100%)",
+      "stk_enm": "ALLSTATE CORP 5.1% PREF 15/01/2053",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BAC_pe",
+      "stk_nm": "뱅크오브아메리카 우선주 E(변동금리)",
+      "stk_enm": "BANK OF AMERICA CORPORATION DEP SHARES R",
+      "mkgb": "NYSE",
+      "upgb": "상업은행",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BAC_pl",
+      "stk_nm": "뱅크오브아메리카 우선주 L(7.250%)",
+      "stk_enm": "BANK OF AMERICA CORPORATION 7.25% NON-CU",
+      "mkgb": "NYSE",
+      "upgb": "상업은행",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BFa",
+      "stk_nm": "브라운 포맨 A",
+      "stk_enm": "BROWN-FORMAN CORP",
+      "mkgb": "NYSE",
+      "upgb": "음식료 및 담배 생산",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BFb",
+      "stk_nm": "브라운 포맨 B",
+      "stk_enm": "BROWN-FORMAN CORP",
+      "mkgb": "NYSE",
+      "upgb": "음식료 및 담배 생산",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BIOb",
+      "stk_nm": "바이오 래드 래브러토리스 B",
+      "stk_enm": "BIO RAD LABORATORIES INC",
+      "mkgb": "NYSE",
+      "upgb": "바이오",
+      "isEtf": "N"
+    }
+  ],
+  "berkshire": [
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BDVG",
+      "stk_nm": "버크셔 배당 성장주 IMGP ETF",
+      "stk_enm": "IMGP BERKSHIRE DIVIDEND GROWTH ETF",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BRKC",
+      "stk_nm": "YIELDMAX BRKB OPTION INCOME STRATEGY",
+      "stk_enm": "YIELDMAX BRK.B OPTION INCOME STRATEGY ET",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BRKa",
+      "stk_nm": "버크셔 해서웨이 A",
+      "stk_enm": "BERKSHIRE HATHAWAY INC",
+      "mkgb": "NYSE",
+      "upgb": "금융서비스",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BRKb",
+      "stk_nm": "버크셔 해서웨이 B",
+      "stk_enm": "BERKSHIRE HATHAWAY INC",
+      "mkgb": "NYSE",
+      "upgb": "금융서비스",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "OMAH",
+      "stk_nm": "타겟 15 버크셔 셀렉트 인컴 비타셰어즈 ET",
+      "stk_enm": "VISTASHARES TARGET 15 BERKSHIRE SELECT I",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NA",
+      "stk_cd": "BRKL",
+      "stk_nm": "코기 버크셔 해서웨이 B(BRK.B) 2X",
+      "stk_enm": "CORGI BRKB 2X DAILY ETF",
+      "mkgb": "AMEX",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NA",
+      "stk_cd": "BRKW",
+      "stk_nm": "ROUNDHILL BRKB WEEKLYPAY",
+      "stk_enm": "ROUNDHILL BRKB WEEKLYPAY ETF",
+      "mkgb": "AMEX",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BDVG",
+      "stk_nm": "버크셔 배당 성장주 IMGP ETF",
+      "stk_enm": "IMGP BERKSHIRE DIVIDEND GROWTH ETF",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "BRKC",
+      "stk_nm": "YIELDMAX BRKB OPTION INCOME STRATEGY",
+      "stk_enm": "YIELDMAX BRK.B OPTION INCOME STRATEGY ET",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NA",
+      "stk_cd": "BRKL",
+      "stk_nm": "코기 버크셔 해서웨이 B(BRK.B) 2X",
+      "stk_enm": "CORGI BRKB 2X DAILY ETF",
+      "mkgb": "AMEX",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "ND",
+      "stk_cd": "BRKU",
+      "stk_nm": "버크셔해서웨이B 2배레버리지 디렉시온 ETF",
+      "stk_enm": "DIREXION DAILY BRKB BULL 2X ETF",
+      "mkgb": "NASDAQ",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NA",
+      "stk_cd": "BRKW",
+      "stk_nm": "ROUNDHILL BRKB WEEKLYPAY",
+      "stk_enm": "ROUNDHILL BRKB WEEKLYPAY ETF",
+      "mkgb": "AMEX",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "NY",
+      "stk_cd": "OMAH",
+      "stk_nm": "타겟 15 버크셔 셀렉트 인컴 비타셰어즈 ET",
+      "stk_enm": "VISTASHARES TARGET 15 BERKSHIRE SELECT I",
+      "mkgb": "NYSE",
+      "upgb": "",
+      "isEtf": "Y"
+    },
+    {
+      "stex_tp": "ND",
+      "stk_cd": "BRKH",
+      "stk_nm": "버테크 인수회사 II",
+      "stk_enm": "BURTECH ACQUISITION CORPORATION II",
+      "mkgb": "NASDAQ",
+      "upgb": "",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "ND",
+      "stk_cd": "BRKHU",
+      "stk_nm": "버테크 인수 II 유닛",
+      "stk_enm": "BURTECH ACQUISITION CORPORATION II UNITS",
+      "mkgb": "NASDAQ",
+      "upgb": "",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "ND",
+      "stk_cd": "BRKR",
+      "stk_nm": "브루커",
+      "stk_enm": "BRUKER CORPORATION",
+      "mkgb": "NASDAQ",
+      "upgb": "바이오",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "ND",
+      "stk_cd": "BRKRP",
+      "stk_nm": "브루커 전환우선주 A(6.375%)",
+      "stk_enm": "BRUKER CORPORATION 6.375% CONV PREF SER",
+      "mkgb": "NASDAQ",
+      "upgb": "",
+      "isEtf": "N"
+    },
+    {
+      "stex_tp": "ND",
+      "stk_cd": "BRKU",
+      "stk_nm": "버크셔해서웨이B 2배레버리지 디렉시온 ETF",
+      "stk_enm": "DIREXION DAILY BRKB BULL 2X ETF",
+      "mkgb": "NASDAQ",
+      "upgb": "",
+      "isEtf": "Y"
+    }
+  ]
+}

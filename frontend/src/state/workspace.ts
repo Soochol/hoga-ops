@@ -21,7 +21,7 @@ import {
   seedIndicatorScopeForWindow,
 } from './indicatorScopeGc';
 import { liveDefaultWindows } from './liveDefaultLayout';
-import { isLiveIndexId } from '../live/liveInstrument';
+import { isLiveIndexId, isUsIndexId } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 import { normalizeOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
 import { isTradeMinAmountManwon } from './tradeWindowSettings';
@@ -68,7 +68,7 @@ export const WORKSPACE_SCHEMA_VERSION = 2;
 function detectDeepLinkTab(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.has('code') || params.has('index') || params.has('view');
+    return params.get('market') === 'US' || params.has('code') || params.has('index') || params.has('view');
   } catch {
     return false;
   }
@@ -210,7 +210,7 @@ export interface GroupSymbol {
   code: string;
   name: string;
   /** 생략 = 'stock'(하위호환 — 기존 저장값·검색 경로 대부분). */
-  kind?: 'stock' | 'index';
+  kind?: 'stock' | 'index' | 'us_stock';
 }
 
 type Persisted = {
@@ -436,8 +436,18 @@ function readSymbol(raw: unknown): GroupSymbol | null {
   if (typeof s.code !== 'string' || typeof s.name !== 'string') return null;
   // kind='index' 는 code 가 실제 LiveIndexId 일 때만 보존 — 손상/외래 값이
   // 상태바 폴백(`index:FOO`)·드로어 capabilities 로 새는 것을 입구에서 차단(리뷰 #2).
+  if (s.kind === 'us_stock') {
+    return /^us-stock:(NASDAQ|NYSE|AMEX):[A-Za-z0-9][A-Za-z0-9._\-]{0,19}$/.test(s.code) ? { code: s.code, name: s.name, kind: 'us_stock' } : null;
+  }
   const isIndex = s.kind === 'index' && isLiveIndexId(s.code);
   return { code: s.code, name: s.name, ...(isIndex ? { kind: 'index' as const } : {}) };
+}
+
+function symbolDailyOnly(symbol: GroupSymbol | null | undefined): boolean {
+  return symbol?.kind === 'us_stock' || (symbol?.kind === 'index' && isUsIndexId(symbol.code));
+}
+function normalizeUsWindow(w: WorkspaceWindow, symbol: GroupSymbol | null | undefined): WorkspaceWindow {
+  return w.chart && symbolDailyOnly(symbol) ? { ...w, chart: { ...w.chart, timeframe: 'D' } } : w;
 }
 
 function readGroupSymbols(raw: unknown): Partial<Record<GroupId, GroupSymbol>> {
@@ -529,7 +539,7 @@ function readStorage(): Persisted & { pendingNormalize: boolean } {
     pendingTransferPinIds: Array.isArray(parsed.pendingTransferPinIds)
       ? parsed.pendingTransferPinIds.filter((id): id is string => typeof id === 'string' && windows.some(w => w.id === id))
       : undefined,
-    windows: isDeepLinkTab() && inherited ? windows.map(withoutPin) : windows,
+    windows: (isDeepLinkTab() && inherited ? windows.map(withoutPin) : windows).map(w => normalizeUsWindow(w, w.pinned ?? readGroupSymbols(parsed.groupSymbols)[w.group])),
     zOrder: normalizeZOrder(parsed.zOrder, windows),
     groupSymbols: readGroupSymbols(parsed.groupSymbols),
     pendingNormalize: legacyPx,
@@ -791,7 +801,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
         const src = focusedChart(state);
         win.chart = src?.chart ? { ...src.chart } : { timeframe: '1m' };
       }
-      const next = { windows: [...state.windows, win], zOrder: [...state.zOrder, id], maximizedId: null };
+      const next = { windows: [...state.windows, normalizeUsWindow(win, state.groupSymbols[group])], zOrder: [...state.zOrder, id], maximizedId: null };
       persistFromState({ ...state, ...next });
       return next;
     });
@@ -865,7 +875,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     set((state) => {
       const prev = state.windows.find((w) => w.id === id);
       if (!prev || prev.group === group) return {};
-      const windows = state.windows.map((w) => (w.id === id ? { ...w, group } : w));
+      const windows = state.windows.map((w) => (w.id === id ? normalizeUsWindow({ ...w, group }, w.pinned ?? state.groupSymbols[group]) : w));
       // 그룹 이동 = 이 창의 표시 종목 교체(그룹=종목 SSOT #711) — fresh-view 런타임 리셋.
       // **핀 창은 예외**: 그룹을 옮겨도 자기 종목을 계속 그리므로 표시가 안 바뀐다
       // (그룹은 크로스헤어 동기화 축으로만 남는다). setGroupSymbol 의 핀 제외와 같은 논리.
@@ -876,6 +886,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   },
 
   setGroupSymbol: (group, symbol) => {
+    if (/^us-stock:(NASDAQ|NYSE|AMEX):/.test(symbol.code)) symbol = { ...symbol, kind: 'us_stock' };
     if (!isGroupId(group)) return;
     set((state) => {
       const groupSymbols = { ...state.groupSymbols, [group]: symbol };
@@ -883,8 +894,9 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       // **핀 창은 빠진다** — 그룹이 바뀌어도 그 창의 화면은 안 바뀌므로, 리셋하면
       // 진행 중이던 딥 백필만 이유 없이 되감긴다(backfillSymbolNames 와 같은 논리).
       const affected = state.windows.filter((w) => w.group === group && !w.pinned).map((w) => w.id);
-      persistFromState({ ...state, groupSymbols });
-      return { groupSymbols, chartRuntime: clearedChartRuntime(state.chartRuntime, affected) };
+      const windows = state.windows.map(w => w.group === group && !w.pinned ? normalizeUsWindow(w, symbol) : w);
+      persistFromState({ ...state, groupSymbols, windows });
+      return { groupSymbols, windows, chartRuntime: clearedChartRuntime(state.chartRuntime, affected) };
     });
   },
 
@@ -945,6 +957,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   },
 
   setWindowSymbol: (id, symbol) => {
+    if (/^us-stock:(NASDAQ|NYSE|AMEX):/.test(symbol.code)) symbol = { ...symbol, kind: 'us_stock' };
     const win = get().windows.find((w) => w.id === id);
     if (!win || win.kind === 'market-indices') return;
     if (!win.pinned) {
@@ -952,7 +965,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
       return;
     }
     set((state) => {
-      const windows = state.windows.map((w) => (w.id === id ? { ...w, pinned: symbol } : w));
+      const windows = state.windows.map((w) => (w.id === id ? normalizeUsWindow({ ...w, pinned: symbol }, symbol) : w));
       persistFromState({ ...state, windows });
       return { windows, chartRuntime: clearedChartRuntime(state.chartRuntime, [id]) };
     });
@@ -990,7 +1003,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   backfillSymbolNames: (resolve) => {
     set((state) => {
       const healed = (symbol: GroupSymbol | undefined): GroupSymbol | null => {
-        if (!symbol || symbol.kind === 'index' || symbol.name !== symbol.code) return null;
+        if (!symbol || symbol.kind === 'index' || symbol.kind === 'us_stock' || symbol.name !== symbol.code) return null;
         const name = resolve(symbol.code);
         return !name || name === symbol.code ? null : { ...symbol, name };
       };
@@ -1087,6 +1100,8 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
 
   setChartTimeframe: (id, tf) => {
     if (!isLiveTimeframe(tf)) return;
+    const current = get();
+    if (symbolDailyOnly(windowSymbolOf(current, current.windows.find(w => w.id === id)))) tf = 'D';
     set((state) => {
       const prev = state.windows.find((w) => w.id === id)?.chart;
       if (!prev) return {};
@@ -1229,7 +1244,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
             return pin ? { ...w, pinned: pin } : w;
           });
       // 종목은 payload 를 보지 않고 현재 것을 그대로 넘긴다 — 폴백 분기까지 한 규칙.
-      const next = { windows, zOrder: normalized.zOrder, groupSymbols: state.groupSymbols, pendingTransferPinIds: undefined };
+      const next = { windows: windows.map(w => normalizeUsWindow(w, w.pinned ?? state.groupSymbols[w.group])), zOrder: normalized.zOrder, groupSymbols: state.groupSymbols, pendingTransferPinIds: undefined };
       persistFromState(next);
       // 창이 통째로 갈리며 id 도 프리셋 것으로 바뀐다 → 창에 매인 비영속 런타임은
       // 가리킬 창이 없어진다. 종목이 유지돼도 이 리셋은 그대로 필요하다(fresh-view).

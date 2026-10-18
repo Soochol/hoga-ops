@@ -1,3 +1,6 @@
+import { useUsStockDaily } from '../api/usDailyCandles';
+import { usStockKey } from './liveInstrument';
+import { buildPriceBundle } from './buildIndexBundle';
 import type { InvestorTradeSide } from '../api/types';
 import { useEffectiveVenue } from './useEffectiveVenue';
 /**
@@ -257,6 +260,14 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const capabilities = useMemo(() => capabilitiesForInstrument(activeInstrument), [activeInstrument]);
   const indexFrom = historicalFromDate ?? subtractDaysKst(today, initialHistoricalDaysFor(timeframe));
   const indexCandles = useLiveIndexCandles(activeIndexId, timeframe, indexFrom, today);
+  const usCandles = useUsStockDaily(activeInstrument, timeframe, indexFrom, today);
+  const activeUsStock = activeInstrument?.kind === 'us_stock' ? activeInstrument : null;
+  const usBundle = useMemo(() => activeUsStock && usCandles.data
+    ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: 86_400_000, candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
+    : null, [activeUsStock, usCandles.data]);
+  const remoteHistory = !!activeIndexId || !!activeUsStock;
+  const dailyMetadata = usCandles.data?.daily_metadata ?? indexCandles.data?.daily_metadata;
+
   const indexInvestorFrom = indexCandles.data?.from ?? indexFrom;
   const indexInvestorTo = indexCandles.data?.to ?? today;
   const indexInvestorNet = useLiveIndexInvestorNet(
@@ -272,7 +283,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
       from: indexCandles.data.from,
       to: indexCandles.data.to,
       bucketMs: isSecondTimeframe(timeframe) ? Number(timeframe.slice(0, -1)) * 1000 : INDEX_BUCKET_MS[timeframe],
-      candles: indexCandles.data.candles,
+      candles: indexCandles.data.candles.map(c => indexCandles.data.daily_metadata ? ({ ...c, volume: 0 }) : c),
       investorPoints: indexInvestorNet.data?.points ?? [],
     });
   }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);
@@ -384,10 +395,10 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
       depth_heatmap: stockBundle.depth_heatmap ?? [],
     };
   }, [stockBundle, stockChartBundle, dayAskPeaks, dayBidPeaks, tradeVolumePocs]);
-  const workareaCode = activeCode ?? (activeIndexId ? indexWorkareaCode(activeIndexId) : null);
-  const workareaBundle = activeIndexId ? indexBundle : stockBundle;
-  const workareaChartBundle = activeIndexId ? indexBundle : stockChartBundle;
-  const workareaHogaBundle = activeIndexId ? indexBundle : stockHogaBundle;
+  const workareaCode = activeUsStock ? usStockKey(activeUsStock.exchange, activeUsStock.symbol) : activeCode ?? (activeIndexId ? indexWorkareaCode(activeIndexId) : null);
+  const workareaBundle = activeUsStock ? usBundle : activeIndexId ? indexBundle : stockBundle;
+  const workareaChartBundle = activeUsStock ? usBundle : activeIndexId ? indexBundle : stockChartBundle;
+  const workareaHogaBundle = activeUsStock ? usBundle : activeIndexId ? indexBundle : stockHogaBundle;
   /**
    * 호가 잔량 히트맵 오버레이의 소스. **반드시 병합 번들(`workareaBundle`)에서** 온다.
    *
@@ -404,18 +415,19 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
    * 에서 뽑으면 조용히 과거분만 얻는다.
    */
   const workareaDepthHeatmap: readonly DepthHeatmapPointWire[] =
-    (activeIndexId ? indexBundle : stockBundle)?.depth_heatmap ?? EMPTY_DEPTH_HEATMAP;
-  const workareaLoading = activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
-  const indexExtending = activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
+    (activeUsStock ? usBundle : activeIndexId ? indexBundle : stockBundle)?.depth_heatmap ?? EMPTY_DEPTH_HEATMAP;
+  const workareaLoading = activeUsStock ? usCandles.isLoading : activeIndexId ? indexCandles.isLoading : isPastCandlesLoading;
+  const indexExtending = activeUsStock ? historicalFromDate !== null && usCandles.isFetching : activeIndexId ? historicalFromDate !== null && indexCandles.isFetching : false;
   /** 지수 캔들 응답이 되싣는 from — 웜 캐시 스텝의 백필 진행 신호(#1328).
    *  지수는 캔들 쿼리 하나가 곧 스텝이라(동반 확장할 range 지표가 없다) 종목 D/W/M과
    *  달리 **전 봉**에서 안전하다. 지수 분봉도 병합 캐시가 없어 같은 잠금을 겪으므로
    *  봉으로 가르지 않는다. `indexExtending` 식 자체는 원자화 의미라 손대지 않는다. */
-  const indexSettledFromDate = activeIndexId ? indexCandles.data?.from ?? null : null;
-  const workareaDataWarnings = activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
+  const indexSettledFromDate = activeUsStock ? usCandles.data?.from ?? null : activeIndexId ? indexCandles.data?.from ?? null : null;
+  const workareaDataWarnings = activeUsStock ? [] : activeIndexId ? indexCandles.data?.data_warnings ?? [] : pastDataWarnings;
 
   return {
     today,
+    remoteHistory, dailyMetadata,
     live,
     liveInitial,
     liveTradePrice,
@@ -464,7 +476,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     /** 캔들 빈 상태 — 지수 워크에어리어는 캔들 파이프라인이 달라(indexBundle) 이
      *  판별의 대상이 아니다. `workareaHogaMissingDates` 와 같은 규율. */
     workareaCandleEmpty: activeIndexId ? null : candleEmpty,
-    refetchCandles,
+    refetchCandles: activeUsStock ? usCandles.refetch : activeIndexId ? indexCandles.refetch : refetchCandles,
     workareaDepthHeatmap,
     workareaLoading,
     workareaDataWarnings,

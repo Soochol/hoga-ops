@@ -19,5 +19,7 @@ from fastapi import Query
 
 CODE_PATTERN = r"^(?:[0-9A-Z]{6}|Q[0-9]{6})$"
 
+WATCHLIST_CODE_PATTERN = r"^(?:[0-9A-Z]{6}|Q[0-9]{6}|us-stock:(?:NASDAQ|NYSE|AMEX):[A-Za-z0-9][A-Za-z0-9._\-]{0,19})$"
+
 Code = Annotated[str, Query(..., pattern=CODE_PATTERN)]
 StockDate = Annotated[str, Query(..., pattern=r"^\d{8}$")]

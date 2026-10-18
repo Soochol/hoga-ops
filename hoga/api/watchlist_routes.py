@@ -39,7 +39,7 @@ from hoga.api.models import (
     WatchlistResponse,
 )
 from hoga.api.mutation_broadcast import mutation_broadcast_route_class
-from hoga.api.params import CODE_PATTERN
+from hoga.api.params import WATCHLIST_CODE_PATTERN
 from hoga.api.scheduler import catchup_one_entry, next_run_at_ms
 from hoga.api.watchlist import (
     FolderNotFoundError,
@@ -71,12 +71,12 @@ from hoga.live.lifecycle import refresh_live_stream
 
 log = logging.getLogger(__name__)
 
-# KRX code — params.CODE_PATTERN is the single source of the ticker grammar
-# (6-char alphanumeric + 7-char Q-prefixed ETN).
+# Watchlist identity accepts domestic codes and canonical US exchange/ticker keys.
+# Domestic capture/query validators retain the narrower params.CODE_PATTERN.
 #
 # import 블록 **아래** 에 둔다. 위(중간)에 있으면 그 뒤 import 전부가 E402
 # "module level import not at top of file" 로 잡힌다 — 별칭 한 줄이 8건을 만들었다.
-CodePathParam = Annotated[str, PathParam(pattern=CODE_PATTERN)]
+CodePathParam = Annotated[str, PathParam(pattern=WATCHLIST_CODE_PATTERN)]
 
 
 def _next_run_at_ms(now: dt.datetime) -> int:
@@ -156,6 +156,9 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
     @router.post("/{code}/catchup", status_code=201, response_model=EnqueueResponse)
     async def catchup_one(code: CodePathParam) -> EnqueueResponse:
+        if code.startswith("us-stock:"):
+            raise HTTPException(422, {"code": "unsupported_capture",
+                                      "message": "US favorites do not support domestic capture"})
         entries = load_watchlist(data_dir)
         match = next((e for e in entries if e.code == code), None)
         if match is None:
@@ -220,15 +223,18 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
 
     @router.post("/folders/{folder_id}/members", status_code=201, response_model=WatchlistEntry)
     async def add_folder_member(folder_id: str, req: MemberAddRequest) -> WatchlistEntry:
-        hits = symbols.search(req.code, limit=1)
-        match = next((h for h in hits if h.code == req.code), None)
-        if match is None:
-            raise HTTPException(status_code=404, detail={
-                "code": "unknown_code",
-                "message": f"Code {req.code} is not in the symbol master."})
+        if req.code.startswith("us-stock:"):
+            name = req.name or req.code.rsplit(":", 1)[-1]
+        else:
+            hits = symbols.search(req.code, limit=1)
+            match = next((h for h in hits if h.code == req.code), None)
+            if match is None:
+                raise HTTPException(status_code=404, detail={
+                    "code": "unknown_code", "message": f"Code {req.code} is not in the symbol master."})
+            name = match.name
         today = now_kst().strftime("%Y%m%d")
         try:
-            entry = await add_member(data_dir, code=req.code, name=match.name,
+            entry = await add_member(data_dir, code=req.code, name=name,
                                      today_kst_date=today, folder_id=folder_id, at=req.at)
         except FolderNotFoundError as e:
             raise HTTPException(status_code=404, detail={

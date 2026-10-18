@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -373,7 +373,9 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
     __resetGroupChartLinksForTests();
     publishGroupChartLink(chartLink({ bundle, todayKst: '20260719' }));
     renderWithQuery(<DataWindow win={dataWin('program')} symbol={symbol} />);
-    expect(screen.getByText('+1억')).toBeInTheDocument();
+    expect(within(screen.getByTestId('program-metric-strip')).getByText('+1')).toBeInTheDocument();
+    expect(screen.getByText('단위: 억원')).toBeInTheDocument();
+    expect(screen.queryByText('프로그램 순매수 데이터 없음')).not.toBeInTheDocument();
   });
 
   it('링크 code 가 창 종목과 다르면(교체 직후 stale 발행) 소비하지 않는다', () => {

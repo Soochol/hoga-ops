@@ -69,6 +69,8 @@ def capture_ordered_codes(
     out: list[str] = []
     for folder in ordered_folders(doc):
         for code in folder.code_members():
+            if code.startswith("us-stock:"):
+                continue
             if code in seen:
                 continue
             if code not in by_code:

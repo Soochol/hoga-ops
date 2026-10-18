@@ -1,4 +1,4 @@
-import { formatKoreanInt } from '../util/koreanNumber';
+import { formatInstrumentPrice, isUsWorkareaCode } from '../live/instrumentPriceFormat';
 import type {
   IChartApi,
   IPrimitivePaneRenderer,
@@ -63,6 +63,7 @@ const TOKEN_SPEC = {
 export type LevelLineStyle = { on: boolean; color: string; width: number };
 
 export type HighLowLabelsSnapshot = {
+  code?: string;
   candles: readonly Candle[];
   axis: VirtualAxis;
   /** Ask/Bid Peak(최대벽) 도킹 라벨 — 픽셀이 아닌 가격/시각. 좌표 변환은 draw 가 한다. */
@@ -265,7 +266,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
   private timeAxis: VirtualAxis | null = null;
   private candleTimes = new WeakMap<Candle, number | null>();
   private textByPlace = new Map<ExtremeLabelPlace, {
-    price: number; pct: number; time: number; axis: VirtualAxis;
+    price: number; pct: number; time: number; axis: VirtualAxis; code?: string;
     full: string; short: string; detail: string;
   }>();
 
@@ -380,12 +381,12 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
 
         let textInfo = this.textByPlace.get(item.place);
         if (!textInfo || textInfo.price !== item.e.price || textInfo.pct !== item.e.pct
-          || textInfo.time !== item.e.virtualSec || textInfo.axis !== snap.axis) {
-          const full = formatExtremeLabel(item.e.price, item.e.pct);
+          || textInfo.time !== item.e.virtualSec || textInfo.axis !== snap.axis || textInfo.code !== snap.code) {
+          const full = formatExtremeLabel(item.e.price, item.e.pct, snap.code);
           textInfo = {
-            price: item.e.price, pct: item.e.pct, time: item.e.virtualSec, axis: snap.axis,
-            full, short: formatKoreanInt(item.e.price),
-            detail: `${item.place === 'above' ? '최고가' : '최저가'} ${full} · ${extremeTimeFormat.format(snap.axis.toReal(item.e.virtualSec * 1000))}`,
+            price: item.e.price, pct: item.e.pct, time: item.e.virtualSec, axis: snap.axis, code: snap.code,
+            full, short: formatInstrumentPrice(item.e.price, snap.code),
+            detail: `${item.place === 'above' ? '최고가' : '최저가'} ${full} · ${isUsWorkareaCode(snap.code) ? new Date(snap.axis.toReal(item.e.virtualSec * 1000)).toISOString().slice(0, 10) : extremeTimeFormat.format(snap.axis.toReal(item.e.virtualSec * 1000))}`,
           };
           this.textByPlace.set(item.place, textInfo);
         }

@@ -1,0 +1,23 @@
+Base: 8037fb02ec3abea9f2607681bdcdec5dcd7d28d7
+Final input SHA-256: 9325edfa0983f47b94682cd2ff9e4b81e44a1290e49dd946d81ca6c5480a2737
+Final input files: 2388
+Final inputs unchanged throughout validation.
+
+uv run --extra dev ruff check .: All checks passed!
+uv run --extra dev pytest -q -m 'not wallclock':
+=== 6024 passed, 2 skipped, 13 deselected, 35 warnings in 211.58s (0:03:31) ====
+
+frontend: npm run typecheck: passed (all three TypeScript projects)
+frontend: npx vitest run --maxWorkers=2:
+Test Files  650 passed (650)
+Tests  8448 passed (8448)
+Duration  233.08s (transform 10.80s, setup 14.84s, import 45.45s, tests 139.61s, environment 208.38s)
+
+frontend: npx vite build: built in 2.43s
+frontend: npx playwright test tests/e2e/us-daily-candles.spec.ts --workers=1 --reporter=line:
+5 passed (12.0s)
+
+Focused backend: 55 passed
+Focused frontend: 135 passed (2 files)
+git diff --check: passed
+All three previous baseline failures resolved; no production source changes for these repairs.

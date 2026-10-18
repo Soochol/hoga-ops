@@ -50,7 +50,10 @@ from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, Prog
 from hoga.live import flow_receipts, futures_runtime, market_overview
 from hoga.live.api import (
     AfterHoursBookResponse,
+    LiveCandleRow,
     LiveDailyProgramTradeResponse,
+    LiveIndexCandlesResponse,
+    LiveIndexEntry,
     LivePastInvestorNetResponse,
     LiveQuote,
     RankingRowModel,
@@ -58,12 +61,22 @@ from hoga.live.api import (
 from hoga.live.collector_process import CollectorStateReason, CollectorSyncPhase
 from hoga.live.daily_program_trade import DailyProgramTradePoint
 from hoga.live.error_policy import LiveErrorKind
+from hoga.live.index_registry import LiveIndexId
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
 from hoga.live.krx_close import KrxCloseResponse
 from hoga.live.krx_previous_close import KrxPreviousCloseResponse
 from hoga.live.lifecycle import LiveStatus
 from hoga.live.provider_errors import ProviderFailure
 from hoga.live.service_status import ProviderStatus
+from hoga.live.us_daily_candles import (
+    UsDailyBar,
+    UsDailyMetadata,
+    UsDailyStatus,
+    UsDateRange,
+    UsExchange,
+    UsStockDailyResponse,
+)
+from hoga.live.us_market_api import UsStockCatalogResponse, UsStockEntry
 from hoga.trading import models as trading_models
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -326,6 +339,20 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    UsDailyBar: frozenset({"trading_date", "t_ms", "open", "high", "low", "close", "volume"}),
+    UsDateRange: frozenset({"start", "end"}),
+    UsDailyMetadata: frozenset({"market", "market_timezone", "source", "price_basis", "currency", "session_scope",
+        "history_start", "latest_bar_date", "last_successful_check_at_ms", "completed", "missing",
+        "truncated", "refresh_status", "messages"}),
+    UsStockDailyResponse: frozenset({"instrument_key", "exchange", "symbol", "from_", "to",
+                                     "timeframe", "candles", "daily_metadata"}),
+    UsStockEntry: frozenset({"exchange", "symbol", "label", "english_name", "is_etf"}),
+    UsStockCatalogResponse: frozenset({"stocks", "status", "fetched_at_ms"}),
+    LiveCandleRow: frozenset({"trading_date", "t_ms", "open", "high", "low", "close", "volume", "trade_value_won"}),
+    LiveIndexEntry: frozenset({"kind", "id", "label", "investor_scope", "market", "market_timezone",
+                               "supported_timeframes"}),
+    LiveIndexCandlesResponse: frozenset({"index_id", "from_", "to", "timeframe", "candles",
+                                         "data_warnings", "daily_metadata"}),
     trading_models.TradingAccount: frozenset({"account_seq", "label"}),
     trading_models.TradingAccountsResponse: frozenset({"configured", "accounts"}),
     trading_models.TradingStateResponse: frozenset({
@@ -355,7 +382,8 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
         "observed_at_ms", "connection", "connected_accounts", "configured_accounts", "ready_accounts",
         "last_received_at_ms", "notice", "notice_phase", "notice_config_error", "failures",
     }),
-    DailyProgramTradePoint: frozenset({"t_ms", "net_qty", "buy_qty", "sell_qty"}),
+    DailyProgramTradePoint: frozenset({"t_ms", "net_qty", "buy_qty", "sell_qty",
+                                       "net_amount", "buy_amount", "sell_amount"}),
     LiveDailyProgramTradeResponse: frozenset({
         "code", "from_", "to", "points", "cached_batches", "fresh_batches", "data_warnings",
     }),
@@ -464,6 +492,9 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "LiveIndexId": (frozenset(get_args(LiveIndexId)), "frontend/src/live/liveInstrument.ts"),
+    "UsExchange": (frozenset(get_args(UsExchange)), "frontend/src/live/liveInstrument.ts"),
+    "UsDailyStatus": (frozenset(get_args(UsDailyStatus)), "frontend/src/api/usDailyCandles.ts"),
     "CaptureCountsStatus": (frozenset(get_args(m.CaptureCountsStatus)), "frontend/src/api/types.ts"),
     "TradingSide": (frozenset(get_args(trading_models.TradingSide)), "frontend/src/api/trading.ts"),
     "StockNewsStatus": (frozenset(get_args(m.StockNewsStatus)), "frontend/src/api/stockNews.ts"),

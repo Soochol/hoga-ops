@@ -14,7 +14,7 @@ import type { SeriesDataSink } from '../../chart/seriesDataDiff';
 import { syncChartSeriesData } from '../../chart/replaceSeriesData';
 import { dailyMaFetchWindow, pickTodayLiveClose } from './dailyMaProjection';
 import { useResolvedDailyCandles } from './useResolvedDailyCandles';
-import { isIndexWorkareaCode } from '../liveInstrument';
+import { isNonDomesticStockCode } from '../liveInstrument';
 import { useDailyMaSeriesRegistry } from './dailyMaSeriesRegistry';
 import { useWindowScopeId } from '../workspace/windowView';
 import { useWindowIndicator } from '../workspace/windowView';
@@ -72,7 +72,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   const enabled = configs.some((c) => c.enabled)
     && isMinuteTimeframe(timeframe)
     && !!code
-    && !isIndexWorkareaCode(code)
+    && !isNonDomesticStockCode(code)
     && !!todayKst;
 
   // 일봉 fetch 창은 today 앵커라 좌측 팬에 불변 → react-query 키 안정 → 재fetch 없이

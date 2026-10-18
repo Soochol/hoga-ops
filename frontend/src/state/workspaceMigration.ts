@@ -1,3 +1,4 @@
+import { usStockKey } from '../live/liveInstrument';
 /**
  * 워크스페이스 마이그레이션 — 레거시 키 → `live.workspace.v1` 1회 시드 (ADR-0119 PR-C, #713).
  *
@@ -73,6 +74,7 @@ function visibleCardsInOrder(layout: Record<string, unknown>): LiveCardKey[] {
 /** 그룹 1 종목 — 주식={code,name}, 지수={code:id, kind:'index'}(C2c-2c 정식 지원). */
 function groupOneSymbol(page: Record<string, unknown>): GroupSymbol | null {
   const inst = page.activeInstrument;
+  if (isLiveInstrument(inst) && inst.kind === 'us_stock') return { code: usStockKey(inst.exchange, inst.symbol), name: inst.label, kind: 'us_stock' };
   if (isLiveInstrument(inst) && inst.kind === 'stock') {
     return { code: inst.code, name: inst.label };
   }

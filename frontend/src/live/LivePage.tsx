@@ -12,7 +12,7 @@ import { useLiveKeyboard } from './useLiveKeyboard';
 import { SingleCodeCollectDialog } from '../heatmap/CollectDialog';
 import { useSymbols } from '../capture/useSymbols';
 import { useDocumentTitle } from '../util/useDocumentTitle';
-import { indexInstrument, isLiveIndexId } from './liveInstrument';
+import { indexInstrument, isLiveIndexId, isUsExchange, usStockInstrument } from './liveInstrument';
 import { WORKSPACE_PAGE_PAD } from '../ui/WorkspaceShell';
 import { WorkspaceCanvas } from './workspace/WorkspaceCanvas';
 import { WorkspaceLiveToolbar } from './workspace/WorkspaceLiveToolbar';
@@ -50,6 +50,9 @@ export function LivePage() {
   const [params] = useSearchParams();
   const queryCode = params.get('code');
   const queryIndex = params.get('index');
+  const queryExchange = params.get('exchange');
+  const querySymbol = params.get('symbol');
+  const queryUs = params.get('market') === 'US';
   // `?view=` — 저장뷰 딥링크(ctrl/⌘+클릭 새 탭·북마크). 종목 시드와 **다른 훅**인
   // 이유는 시점이 다르기 때문이다: `?code=` 는 URL 만으로 즉시 시드하지만 저장뷰는
   // 행을 받아 와야 종목·구간을 안다. 계약·순서는 그 훅의 도크스트링에 있다.
@@ -80,12 +83,13 @@ export function LivePage() {
   useEffect(() => {
     if (seeded.current) return;
     seeded.current = true;
-    if (queryCode) activateLiveCode(queryCode, symbolNameOf(queryCode));
+    if (queryUs && isUsExchange(queryExchange) && querySymbol && /^[A-Za-z0-9][A-Za-z0-9._\-]{0,19}$/.test(querySymbol)) activateLiveInstrument(usStockInstrument(queryExchange, querySymbol));
+    else if (queryCode) activateLiveCode(queryCode, symbolNameOf(queryCode));
     else if (isLiveIndexId(queryIndex)) activateLiveInstrument(indexInstrument(queryIndex, queryIndex));
     else return;
     // 전 창이 핀이어도 URL 종목이 먼저 들어간 뒤 고정한다.
     useWorkspaceStore.getState().restoreTransferredPins();
-  }, [queryCode, queryIndex, symbolNameOf]);
+  }, [queryCode, queryIndex, queryUs, queryExchange, querySymbol, symbolNameOf]);
 
   // 실명 보강 — 시드가 놓친 경우 + 검색창의 "6자리 코드 + Enter"(드롭다운이 비어
   // 있을 때만 타는 경로라 마스터 로딩 중에 발화한다) + 이름 없는 드롭이 남긴 값,
@@ -126,7 +130,7 @@ export function LivePage() {
     );
   }, [activeSymbol, focusedChartTf]);
 
-  const activeStockCode = activeSymbol && activeSymbol.kind !== 'index' ? activeSymbol.code : null;
+  const activeStockCode = activeSymbol && (!activeSymbol.kind || activeSymbol.kind === 'stock') ? activeSymbol.code : null;
   useDocumentTitle(activeStockCode);
 
   // 지표 드로어 = 전역 1개 + **대상 창 id**(#759 결정 3). boolean 이던 시절엔

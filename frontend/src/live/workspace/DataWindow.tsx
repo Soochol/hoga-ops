@@ -89,7 +89,7 @@ import {
 } from '../continuousTradeVolumeDistribution';
 import { previousDayObExpired, realMsToYyyymmdd, subtractDaysKst, regularSessionOpenMs, regularSessionCloseMs } from '../liveDateTime';
 import { SectorRankingWindow } from './SectorRankingWindow';
-import { isLiveIndexId } from '../liveInstrument';
+import { isLiveIndexId, isUsIndexId } from '../liveInstrument';
 import { WINDOW_KIND_LABEL } from './windowKindLabels';
 import type { GroupId, GroupSymbol, WorkspaceWindow, WindowKind } from '../../state/workspace';
 import { useWorkspaceStore } from '../../state/workspace';
@@ -98,6 +98,9 @@ import { focusLiveSearch } from '../liveSearchFocus';
 const OrderWindow = lazy(() => import('./OrderWindow').then(module => ({ default: module.OrderWindow })));
 
 export function DataWindow({ win, symbol }: { win: WorkspaceWindow; symbol: GroupSymbol | null }) {
+  if (symbol?.kind === 'us_stock' || (symbol?.kind === 'index' && isUsIndexId(symbol.code))) {
+    return <div className="flex h-full items-center justify-center text-xs text-fg-dim">{symbol.name} · 미국 일봉 차트에서 조회할 수 있습니다</div>;
+  }
   // 섹터 랭킹은 지수 그룹 전용 데이터 창(PR-D) — 일반 지수 게이트보다 먼저 처리한다
   // (지수에서 유일하게 허용되는 kind). 주식·미지정 그룹에는 안내 카드.
   if (win.kind === 'sector-ranking') {

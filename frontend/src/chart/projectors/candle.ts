@@ -19,6 +19,7 @@ const TOKEN_SPEC = {
 
 export type CandlePaneContext = {
   muteAuctionCandles: boolean;
+  decimalPrices?: boolean;
 };
 
 const DEFAULT_CONTEXT: CandlePaneContext = { muteAuctionCandles: true };
@@ -149,6 +150,7 @@ export const CANDLE_SPEC = {
           priceFormat,
         };
       },
+      renderOptions: (ctx) => ({ priceFormat: ctx.decimalPrices ? { type: 'price', precision: 4, minMove: 0.0001 } : priceFormat }),
       data: projectCandleCached,
       afterAdd: (series) => {
         series.priceScale().applyOptions({

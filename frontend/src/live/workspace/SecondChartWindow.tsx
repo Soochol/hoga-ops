@@ -35,7 +35,7 @@ type Props = { win: WorkspaceWindow; symbol: GroupSymbol | null; timeframe: Seco
 export function SecondChartWindow({ win, symbol, timeframe }: Props) {
   useThemeChangeRerender();
   const selectedVenue = useLiveVenueStore(s => s.venue);
-  const code = symbol?.kind === 'index' ? null : symbol?.code ?? null;
+  const code = (symbol?.kind === 'index' || symbol?.kind === 'us_stock') ? null : symbol?.code ?? null;
   const venue = useEffectiveVenue(code, selectedVenue);
   const today = realMsToYyyymmdd(useMinuteClock());
   const date = today;
@@ -219,7 +219,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
 
   return <div className="h-full flex flex-col bg-bg-card" data-testid="second-chart" data-day-count={axis.segments.length} data-bar-count={bars.length}>
     <div className="flex shrink-0 items-center gap-2 px-2 py-1 border-b border-border whitespace-nowrap overflow-x-auto">
-      <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index'} /></span>
+      <span><TimeframeControl timeframe={timeframe} rememberedMinute={win.chart?.lastMinuteTimeframe ?? '1m'} onChange={tf => setTimeframe(win.id, tf)} secondsEnabled={symbol?.kind !== 'index' && symbol?.kind !== 'us_stock'} /></span>
       <RegularSessionAction win={win} />
     </div>
     <div className="relative min-h-0 flex-1">

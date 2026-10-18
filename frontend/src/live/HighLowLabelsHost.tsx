@@ -111,6 +111,7 @@ function HighLowLabelsHost({
     snapshotRef.current = enabled
       ? {
         candles: bundle.candles,
+        code: bundle.code,
         axis,
         avoidWallLabels,
         avoidRankArrows,

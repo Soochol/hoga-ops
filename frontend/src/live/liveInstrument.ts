@@ -1,6 +1,9 @@
-export type LiveIndexId = 'KOSPI' | 'KOSDAQ' | 'KOSPI200' | 'KOSDAQ150' | 'KRX100' | 'KRX300';
+export type UsExchange = 'NASDAQ' | 'NYSE' | 'AMEX';
+
+export type LiveIndexId = 'KOSPI' | 'KOSDAQ' | 'KOSPI200' | 'KOSDAQ150' | 'KRX100' | 'KRX300' | 'NASDAQ_COMPOSITE' | 'SP500' | 'SOX';
 
 export type LiveInstrument =
+  | { kind: 'us_stock'; exchange: UsExchange; symbol: string; label: string }
   | { kind: 'stock'; code: string; label: string }
   | { kind: 'index'; id: LiveIndexId; label: string };
 
@@ -22,6 +25,7 @@ export function instrumentLabel(instrument: LiveInstrument | null): string {
 }
 
 export function instrumentToSubjectKey(instrument: LiveInstrument): string {
+  if (instrument.kind === 'us_stock') return usStockKey(instrument.exchange, instrument.symbol);
   return instrument.kind === 'stock' ? `stock:${instrument.code}` : `index:${instrument.id}`;
 }
 
@@ -61,13 +65,16 @@ export function isLiveIndexId(value: unknown): value is LiveIndexId {
     value === 'KOSPI200' ||
     value === 'KOSDAQ150' ||
     value === 'KRX100' ||
-    value === 'KRX300'
+    value === 'KRX300' || isUsIndexId(value)
   );
 }
 
 export function isLiveInstrument(value: unknown): value is LiveInstrument {
   if (!value || typeof value !== 'object') return false;
   const o = value as Record<string, unknown>;
+  if (o.kind === 'us_stock') {
+    return isUsExchange(o.exchange) && typeof o.symbol === 'string' && /^[A-Za-z0-9][A-Za-z0-9._\-]{0,19}$/.test(o.symbol) && typeof o.label === 'string';
+  }
   if (o.kind === 'stock') {
     return typeof o.code === 'string' && typeof o.label === 'string';
   }
@@ -75,4 +82,30 @@ export function isLiveInstrument(value: unknown): value is LiveInstrument {
     return isLiveIndexId(o.id) && typeof o.label === 'string';
   }
   return false;
+}
+
+export function isUsExchange(value: unknown): value is UsExchange {
+  return value === 'NASDAQ' || value === 'NYSE' || value === 'AMEX';
+}
+export function isUsIndexId(value: unknown): boolean {
+  return value === 'NASDAQ_COMPOSITE' || value === 'SP500' || value === 'SOX';
+}
+export function isUsInstrument(instrument: LiveInstrument | null): boolean {
+  return instrument?.kind === 'us_stock' || (instrument?.kind === 'index' && isUsIndexId(instrument.id));
+}
+export function usStockKey(exchange: UsExchange, symbol: string): string {
+  return `us-stock:${exchange}:${symbol}`;
+}
+export function usStockInstrument(exchange: UsExchange, symbol: string, label = symbol): LiveInstrument {
+  return { kind: 'us_stock', exchange, symbol, label };
+}
+export function usStockFromKey(key: string, label?: string): LiveInstrument | null {
+  const parts = key.split(':');
+  if (parts.length !== 3) return null;
+  const [, exchange, symbol] = parts;
+  return key.startsWith('us-stock:') && isUsExchange(exchange) && symbol && /^[A-Za-z0-9][A-Za-z0-9._\-]{0,19}$/.test(symbol)
+    ? usStockInstrument(exchange, symbol, label ?? symbol) : null;
+}
+export function isNonDomesticStockCode(code: string | null | undefined): boolean {
+  return !!code && (isIndexWorkareaCode(code) || code.startsWith('us-stock:'));
 }

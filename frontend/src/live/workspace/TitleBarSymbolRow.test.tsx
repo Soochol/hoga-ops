@@ -60,6 +60,13 @@ describe('TitleBarSymbolRow', () => {
     expect(screen.getByText('삼성전자')).toHaveAttribute('title', '삼성전자(005930)');
   });
 
+  it('shows the US ticker and exchange while keeping its internal identity out of the title', () => {
+    renderRow({ name: '버크셔', code: 'us-stock:NYSE:BRKb', isIndex: true });
+    expect(screen.getByText('BRKb · NYSE')).toBeInTheDocument();
+    expect(screen.getByText('버크셔')).toHaveAttribute('title', '버크셔(BRKb · NYSE)');
+    expect(screen.getByTestId('titlebar-symbol-row')).not.toHaveTextContent('us-stock:');
+  });
+
   it('falls back to bare code when name is null', () => {
     renderRow({ name: null, code: '005930' });
     const text = screen.getByTestId('titlebar-symbol-row').textContent ?? '';

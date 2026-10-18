@@ -3,6 +3,7 @@ import { useLivePageStore } from '../state/livePage';
 import { activationTarget, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
 import {
   indexInstrument,
+  isUsInstrument, usStockKey, usStockFromKey, instrumentToSubjectKey,
   instrumentToActiveCode,
   isLiveIndexId,
   stockInstrument,
@@ -59,7 +60,7 @@ export function activateLiveInstrument(instrument: LiveInstrument): void {
   page.projectActiveView({
     instrument,
     code: instrumentToActiveCode(instrument) ?? '',
-    timeframe: page.candleTimeframe,
+    timeframe: isUsInstrument(instrument) ? 'D' : page.candleTimeframe,
     historicalFromDate: null,
     lastMinuteHistoricalFromDate: null,
     lastMinuteHistoricalTimeframe: null,
@@ -67,12 +68,13 @@ export function activateLiveInstrument(instrument: LiveInstrument): void {
 }
 
 export function activateLiveCode(code: string, label?: string): void {
-  activateLiveInstrument(stockInstrument(code, label ?? code));
+  activateLiveInstrument(usStockFromKey(code, label) ?? stockInstrument(code, label ?? code));
 }
 
 /** `/live` 딥링크 경로. LivePage 가 마운트 시 `?code=`/`?index=` 를 1회 읽어 활성
  *  그룹에 시드한다(LivePage.tsx) — 상태→URL 반영은 없으므로 매번 코드로 조립한다. */
 export function liveDeepLinkPath(instrument: LiveInstrument): string {
+  if (instrument.kind === 'us_stock') return `/live?market=US&exchange=${instrument.exchange}&symbol=${encodeURIComponent(instrument.symbol)}`;
   const q =
     instrument.kind === 'index'
       ? `index=${encodeURIComponent(instrument.id)}`
@@ -90,6 +92,7 @@ export function openLiveInNewTab(instrument: LiveInstrument): void {
 }
 
 export function toGroupSymbol(instrument: LiveInstrument): GroupSymbol {
+  if (instrument.kind === 'us_stock') return { code: usStockKey(instrument.exchange, instrument.symbol), name: instrument.label, kind: 'us_stock' };
   return instrument.kind === 'index'
     ? { code: instrument.id, name: instrument.label, kind: 'index' }
     : { code: instrument.code, name: instrument.label };
@@ -107,7 +110,7 @@ export function mirrorActiveGroupToLivePage(
 ): void {
   const page = useLivePageStore.getState();
   const instrument: LiveInstrument | null = symbol
-    ? symbol.kind === 'index'
+    ? symbol.kind === 'us_stock' ? usStockFromKey(symbol.code, symbol.name) : symbol.kind === 'index'
       ? (isLiveIndexId(symbol.code) ? indexInstrument(symbol.code, symbol.name) : null)
       : stockInstrument(symbol.code, symbol.name)
     : null;
@@ -129,7 +132,7 @@ export function mirrorActiveGroupToLivePage(
   // 남는 staleness 는 유계다 — 다음 실전이(종목·봉 교체)에서 같이 따라온다.
   if (
     (page.activeCode ?? '') === (code ?? '') &&
-    (page.activeInstrument?.kind ?? null) === (instrument?.kind ?? null) &&
+    (page.activeInstrument ? instrumentToSubjectKey(page.activeInstrument) : null) === (instrument ? instrumentToSubjectKey(instrument) : null) &&
     page.candleTimeframe === focusedTimeframe
   ) {
     return; // 변화 없음 — persist 낭비·재렌더 회피
