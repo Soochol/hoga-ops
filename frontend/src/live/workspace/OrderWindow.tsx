@@ -47,6 +47,7 @@ import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderRec
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
+const accountDisplayLabel = (label?: string) => label?.replace(' · 실전 ·', ' ·') ?? '계좌 연결 대기';
 const EMPTY_ORDERS: TossOrder[] = [];
 const mode = 'live' as const;
 type Action = {
@@ -569,8 +570,8 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
           if (next) onAccountChange(next.account_seq);
           closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); setLastRejection(null); }}>
-        {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
-      </select> : <span className="order-account-label text-fg-dim" title={activeAccount?.label}>{activeAccount?.label ?? '계좌 연결 대기'}</span>}
+        {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
+      </select> : <span className="order-account-label text-fg-dim" title={accountDisplayLabel(activeAccount?.label)}>{accountDisplayLabel(activeAccount?.label)}</span>}
       {routes && <span className="text-fg-dim" aria-label="주문 경로">시세 {venue} · 주문 {activeAccount?.order_enabled === false ? '검증 대기' : orderRoute}</span>}
       {routes && routes.length > 1 && <select aria-label="주문 거래소" value={orderRoute} disabled={busy || !!lockedBook}
         onChange={e => { chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>

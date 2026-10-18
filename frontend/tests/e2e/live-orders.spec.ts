@@ -100,7 +100,7 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up();
 }
 
-async function multiBrokerSetup(page: Page, kiwoomEnabled: boolean) {
+async function multiBrokerSetup(page: Page) {
   await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
   await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
   const { window } = await setup(page);
@@ -109,8 +109,7 @@ async function multiBrokerSetup(page: Page, kiwoomEnabled: boolean) {
   await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: true, accounts: [
     { account_ref: toss, broker: 'toss', environment: 'real', label: '토스증권 · ****1234', routes: ['SOR'], order_enabled: true },
     { account_ref: kiwoom, broker: 'kiwoom', environment: 'real', label: '키움증권 · 실전 · ****5678',
-      routes: kiwoomEnabled ? ['KRX', 'SOR'] : [], order_enabled: kiwoomEnabled,
-      blocked_reason: kiwoomEnabled ? null : '키움 주문 수용 테스트 확인 전입니다. 계좌 조회만 사용할 수 있습니다.' },
+      routes: ['KRX', 'NXT', 'SOR'], order_enabled: true, blocked_reason: null },
   ] } }));
   await page.route('**/api/trading/v2/state?*', route => {
     const url = new URL(route.request().url());
@@ -128,16 +127,16 @@ async function multiBrokerSetup(page: Page, kiwoomEnabled: boolean) {
   return { window, toss, kiwoom, commands };
 }
 
-test('증권사 계좌 전환은 검증 전 키움 주문을 차단하고 토스 주문을 유지한다', async ({ page }, testInfo) => {
-  const { window, toss, kiwoom, commands } = await multiBrokerSetup(page, false);
+test('증권사 계좌 전환은 키움 주문을 활성화하고 토스 주문을 유지한다', async ({ page }, testInfo) => {
+  const { window, toss, kiwoom, commands } = await multiBrokerSetup(page);
   const account = window.getByRole('combobox', { name: '주문 계좌' });
   const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await account.selectOption(kiwoom);
-  await expect(buy).toBeDisabled();
-  await expect(window.getByLabel('주문 경로')).toContainText('검증 대기');
-  await expect(window.getByRole('status', { name: '신규 주문 상태' })).toContainText('수용 테스트');
+  await expect(buy).toBeEnabled();
+  await expect(window.getByRole('combobox', { name: '주문 거래소' })).toHaveValue('SOR');
+  await expect(account.locator('option:checked')).toHaveText('키움증권 · ****5678');
   expect(commands).toHaveLength(0);
-  await page.screenshot({ path: testInfo.outputPath('kiwoom-disabled.png') });
+  await page.screenshot({ path: testInfo.outputPath('kiwoom-enabled.png') });
   await account.selectOption(toss);
   await expect(buy).toBeEnabled();
   await buy.dblclick();
@@ -146,8 +145,8 @@ test('증권사 계좌 전환은 검증 전 키움 주문을 차단하고 토스
   expect(commands[0].body).not.toHaveProperty('account_seq');
 });
 
-test('검증된 키움 경로의 모의 응답은 선택 거래소와 계좌 식별자를 전송한다', async ({ page }, testInfo) => {
-  const { window, kiwoom, commands } = await multiBrokerSetup(page, true);
+test('키움 주문의 가짜 응답은 선택 거래소와 계좌 식별자를 전송한다', async ({ page }, testInfo) => {
+  const { window, kiwoom, commands } = await multiBrokerSetup(page);
   await window.getByRole('combobox', { name: '주문 계좌' }).selectOption(kiwoom);
   const route = window.getByRole('combobox', { name: '주문 거래소' });
   await expect(route).toBeVisible();

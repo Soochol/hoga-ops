@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import re
 import time
 from collections.abc import Callable
@@ -94,7 +93,7 @@ class KiwoomAccountGateway:
             raise TradingError(422, "unsupported-trading-api", "지원하지 않는 주문 API입니다.")
         write = api_id in WRITES
         if write and (not write_authorized or before_send is None):
-            raise TradingError(409, "kiwoom-orders-disabled", "주문 전송은 검증된 계좌의 명령 경로에서만 가능합니다.")
+            raise TradingError(409, "kiwoom-orders-disabled", "주문 전송은 계좌가 확인된 명령 경로에서만 가능합니다.")
         try:
             token = await asyncio.to_thread(self.provider.get_token)
         except Exception as exc:
@@ -192,11 +191,8 @@ class KiwoomTradingAdapter:
         gateway: KiwoomAccountGateway,
         registry: AccountRegistry,
         data_dir: Path,
-        *,
-        validated_routes: set[str] | None = None,
     ) -> None:
         self.gateway, self.registry, self.data_dir = gateway, registry, data_dir
-        self.validated_routes = validated_routes
         self.account_ref = ""
         self._account_no = ""
         self._verified_at = 0.0
@@ -233,31 +229,15 @@ class KiwoomTradingAdapter:
             label=(
                 f"키움증권 · {'실전' if self.gateway.environment == 'real' else '모의'} · ****{self._account_no[-4:]}"
             ),
-            supported_routes=["KRX"] if self.gateway.environment == "mock" else ["KRX", "NXT", "SOR"],
+            supported_routes=routes,
             routes=routes,
             order_enabled=bool(routes),
-            blocked_reason=None if routes else "키움 주문 수용 테스트 확인 전입니다. 계좌 조회만 사용할 수 있습니다.",
+            blocked_reason=None,
         )
 
-    def routes(self) -> list:
-        routes = self.validated_routes
-        if routes is None:
-            try:
-                acceptance = json.loads((self.data_dir / "trading/kiwoom-acceptance.json").read_text())
-                record = acceptance["accounts"][self.account_ref]
-                verified = datetime.fromisoformat(record["verified_at"])
-                if (
-                    acceptance["schema_version"] != 1
-                    or verified.tzinfo is None
-                    or not isinstance(record["routes"], list)
-                    or not record.get("evidence")
-                ):
-                    return []
-                routes = set(record["routes"]) if record["environment"] == self.gateway.environment else set()
-            except (OSError, ValueError, KeyError, TypeError):
-                routes = set()
-        allowed = {"KRX"} if self.gateway.environment == "mock" else {"KRX", "NXT", "SOR"}
-        return sorted(routes & allowed)
+    def routes(self) -> list[str]:
+        # Account verification authorizes the supported routes; no acceptance file is required.
+        return ["KRX"] if self.gateway.environment == "mock" else ["KRX", "NXT", "SOR"]
 
     def changed(self) -> None:
         self._snapshots.clear()
