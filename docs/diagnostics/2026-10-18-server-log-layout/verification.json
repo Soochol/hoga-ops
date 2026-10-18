@@ -1,0 +1,73 @@
+{
+  "verified_at": "2026-10-18T12:37:18.048552+00:00",
+  "head": "9b9536fd2f93722278f48c664e8dd940a5ed3cd2",
+  "scope": "server manager renderer log flex layout, window resizing and UI-only reload",
+  "checks": [
+    {
+      "command": "npm run build",
+      "result": "passed"
+    },
+    {
+      "command": "HOGA_DESKTOP_TEST_PLATFORM=x11 npx playwright test tests/e2e/server-manager.spec.cjs tests/e2e/server-ui-reload.spec.cjs",
+      "result": "11 passed (22.9s)"
+    },
+    {
+      "command": "npm run lint && npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "tools": {
+    "node": "v24.13.1",
+    "electron": "44.8.0",
+    "playwright": "1.64.1"
+  },
+  "environment": {
+    "platform": "Linux x64",
+    "test_window_system": "x11",
+    "chromiumSandbox": true,
+    "services": "isolated fixture processes on random ports"
+  },
+  "live_services": {
+    "manager_pid": 184832,
+    "frontend_pid": 256258,
+    "backend_reloader_pid": 256249,
+    "backend_worker_before": 256396,
+    "backend_worker_after": 592704,
+    "server_stop_or_restart_commands_issued": false,
+    "health": "backend /health ok; frontend /@vite/client HTTP 200",
+    "separate_backend_reload": "2026-10-18T12:36:25Z WatchFiles detected changes in hoga/api/scheduler.py and hoga/api/indicator_cache_prune.py; these files were not modified in this UI task"
+  },
+  "sha256": {
+    "desktop/package-lock.json": "913027885f935c6077429db3bf2cabdc39c5dbc0577bf786344ded7ef73e0609",
+    "desktop/package.json": "6e2e2b6e7a9229d2c402b06eb7049e42b6f8dac506967c1e7f6c4fe59739ecc2",
+    "desktop/playwright.config.cjs": "6c49425f8c8fcf846fc1680b6b252a7dffba334160e5b1747941febe6d9ec249",
+    "desktop/scripts/build.mjs": "15ed3a987e6b149f0d2d3912a6a464891df31f07030d85c6b051976410ea5c54",
+    "desktop/src/bootstrap.cjs": "37f42d0c7598d12d9e653cf992bef606ba93e63c97b7f418442683fe4e557000",
+    "desktop/src/connection.ts": "c6f4b5fc574aa29b974fcd1732f358c5ad54b53403c8d78ca691139d17ead4b0",
+    "desktop/src/launcher/index.html": "50837c08c2ebde36de129e000049937c4f1e49482426705ae78284b8ee16da89",
+    "desktop/src/launcher/launcher.css": "27326dac5c91d6d681b8cc37854df017361e1cbf6fd6f171c35faed36efe19e4",
+    "desktop/src/launcher/launcher.js": "f94beefb3c5e252470ec9002404cc4325dc344f0d752deb8da748f2657e23091",
+    "desktop/src/main.ts": "acac572e2b98b1f3a803bd5e21c43337bf7bb3955ba0638c00dda090eb2467be",
+    "desktop/src/navigation.ts": "467d69356a62c920b093da9ec62af87b0c28dfc995d5e1ef4d6242aa55e19a45",
+    "desktop/src/preload/content.cjs": "bae860d0694e6c2d9ac08e842a3b54a6f2dd3d52ac7654bb3414a4ef7f1f2fa2",
+    "desktop/src/preload/launcher.cjs": "0d1791e5bc91fd1cd38638f113fa805b3fb6614c40663042bdb9678e4fca3d84",
+    "desktop/src/preload/server.cjs": "1c7af7204f3a2e01a5d2ae7f6a9fa7ce80ba1a0d55ab91f4749b872e1277654a",
+    "desktop/src/profiles.ts": "7e02a2f2cc76d8414064ed696d73e8643923efa9029710d835434a4a468f93a3",
+    "desktop/src/server/controller.ts": "30548f36cb32f62f0b3298a7ae118503ed8b8d1a9a32d457f0a9786006e76eb4",
+    "desktop/src/server/main.ts": "db5bde1bb49c795e0bb345432b7671c6083d695eee0d92004b118dc1fbf103a3",
+    "desktop/src/server-ui/index.html": "a39cfbfd57508d6891585fb52901004792738a83da8e4ccec72aad9a670322d2",
+    "desktop/src/server-ui/server.css": "233a01a3f63f0967c9eb1ca0dc10b7ba014fe66ee0da9b442d0afdb58cdc2e91",
+    "desktop/src/server-ui/server.js": "4062783cb9e3d9ae2b6abbfc0965c4e58ac89bbefed7ca22039b0ba4972a73f0",
+    "desktop/tests/core.test.cjs": "6e5a68d1cd19784a2db6c9e57482eb2f06c99758ec4df92f83c35f602d5880b8",
+    "desktop/tests/e2e/desktop.spec.cjs": "d4cb4d85ac7e1c15a7105fc243955c6a377a6d6073dd9185886802b25acd354e",
+    "desktop/tests/e2e/full-app.spec.cjs": "5e1a0271c57377679a3eb68ce8508226330a6288496d36a6e549e84caeeec524",
+    "desktop/tests/e2e/server-manager.spec.cjs": "91d8b877ce17775932e3c94a9780b6142a621540a37fd646d7965dcc5d453686",
+    "desktop/tests/e2e/server-ui-reload.spec.cjs": "4f7bca0f0cfdf4a74f0894d1f5eec72e46110836edf622e929e6299d17a4dd32",
+    "desktop/tests/helpers/server-fixture.cjs": "8517f9b4dfd9d36b2f360a02e62136c265c22fc9b29b4bcbebe54acc344feb67",
+    "desktop/tests/server-config.test.cjs": "d78717f91984d6779ca56f2377b820226c237a527acc707595a95a542197abb8"
+  }
+}

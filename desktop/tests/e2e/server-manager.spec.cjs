@@ -1,6 +1,6 @@
 const { test, expect, _electron: electron } = require('@playwright/test');
 const { createServer } = require('node:http');
-const { access, readFile } = require('node:fs/promises');
+const { access, appendFile, readFile } = require('node:fs/promises');
 const { spawn } = require('node:child_process');
 const { join, resolve } = require('node:path');
 const { fixture, alive } = require('../helpers/server-fixture.cjs');
@@ -219,5 +219,114 @@ test('status view fits the compact window and live service failure reveals logs'
     await expect(page.getByRole('button', { name: '다시 시도', exact: true })).toBeEnabled();
     await page.getByRole('button', { name: '다시 시도', exact: true }).click(); await running(page);
     expect(errors).toEqual([]);
+  } finally { if (app) await app.close(); await f.dispose(); }
+});
+
+test('expanded logs fill the available height and resize without restarting servers', async () => {
+  const f = await fixture(); let app;
+  try {
+    await appendFile(f.settings.uv, '\nfor (let i = 0; i < 200; i++) console.log("layout fixture log " + i);\n');
+    const result = await manager(f); app = result.app; const page = result.page;
+    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    const markers = [await f.marker('backend'), await f.marker('frontend')];
+    const mainPid = app.process().pid;
+    const size = (width, height) => app.evaluate(({ BrowserWindow }, [width, height]) => BrowserWindow.getAllWindows()[0].setSize(width, height), [width, height]);
+    const layout = () => page.evaluate(() => {
+      const logs = document.getElementById('logs');
+      const main = document.querySelector('main');
+      return { height: logs.clientHeight, bottom: logs.getBoundingClientRect().bottom,
+        mainBottom: main.getBoundingClientRect().bottom - parseFloat(getComputedStyle(main).paddingBottom),
+        mainOverflow: main.scrollHeight - main.clientHeight,
+        logOverflow: logs.scrollHeight - logs.clientHeight,
+        tail: logs.scrollHeight - logs.clientHeight - logs.scrollTop };
+    });
+    // Maximizing must not open a panel that the user left collapsed.
+    await page.getByRole('button', { name: '최대화', exact: true }).click();
+    await expect(page.getByRole('button', { name: '이전 크기로 복원', exact: true })).toBeEnabled();
+    await expect(page.locator('#log-details')).toHaveJSProperty('open', false);
+    await page.locator('summary').click();
+    await expect(page.locator('#logs')).toContainText('layout fixture log 199');
+    await expect.poll(async () => Math.abs((await layout()).bottom - (await layout()).mainBottom)).toBeLessThan(2);
+    await page.getByRole('button', { name: '이전 크기로 복원', exact: true }).click();
+    await size(680, 650);
+    await expect.poll(async () => (await layout()).height).toBeLessThan(230);
+    const compact = (await layout()).height;
+    await size(1100, 1100);
+    await expect.poll(async () => (await layout()).height).toBeGreaterThan(compact + 200);
+    await expect.poll(async () => Math.abs((await layout()).bottom - (await layout()).mainBottom)).toBeLessThan(2);
+    expect((await layout()).mainOverflow).toBeLessThan(2);
+    expect((await layout()).logOverflow).toBeGreaterThan(0);
+    await expect.poll(async () => Math.abs((await layout()).tail)).toBeLessThan(2);
+    await expect(page.locator('#primary')).toBeInViewport();
+    await expect(page.locator('#quit')).toBeInViewport();
+    await page.locator('#follow').uncheck();
+    await page.locator('#logs').evaluate(logs => { logs.scrollTop = 100; });
+    await size(1100, 1000);
+    await expect.poll(() => page.locator('#logs').evaluate(logs => logs.scrollTop)).toBe(100);
+    await page.reload(); await running(page);
+    await expect(page.locator('#log-details')).toHaveJSProperty('open', true);
+    await expect(page.locator('#follow')).not.toBeChecked();
+    await expect.poll(() => page.locator('#logs').evaluate(logs => logs.scrollTop)).toBe(100);
+    await page.screenshot({ path: join(root, 'test-results/server-logs-expanded.png') });
+    await size(420, 580);
+    await expect(page.locator('#close')).toBeInViewport();
+    await expect(page.locator('#quit')).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(app.process().pid).toBe(mainPid);
+    expect(await Promise.all(markers.flatMap(marker => [alive(marker.pid), alive(marker.worker)]))).toEqual([true, true, true, true]);
+    expect(await healthy(f.ports.backend)).toBe(true);
+  } finally { if (app) await app.close(); await f.dispose(); }
+});
+
+test('titlebar minimizes, maximizes, restores and hides without restarting managed servers', async () => {
+  const f = await fixture(); let app;
+  try {
+    const result = await manager(f); app = result.app; const page = result.page;
+    const controls = page.getByRole('group', { name: '창 제어', exact: true });
+    await expect(controls.getByRole('button')).toHaveCount(3);
+    await expect(controls.getByRole('button', { name: '최대화', exact: true })).toBeEnabled();
+    expect(await controls.getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label')))).toEqual(['최소화', '최대화', '관리 창 숨기기']);
+    await page.getByRole('button', { name: '서버 시작', exact: true }).click(); await running(page);
+    const markers = [await f.marker('backend'), await f.marker('frontend')];
+    const mainPid = app.process().pid;
+
+    await controls.getByRole('button', { name: '최소화', exact: true }).click();
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMinimized())).toBe(true);
+    const opts = options(f);
+    const duplicate = spawn(opts.executablePath || require('electron'), opts.args, { cwd: opts.cwd, env: opts.env, stdio: 'ignore' });
+    expect(await new Promise(done => duplicate.once('exit', done))).toBe(0);
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMinimized())).toBe(false);
+
+    await controls.getByRole('button', { name: '최대화', exact: true }).click();
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized())).toBe(true);
+    await expect(controls.getByRole('button', { name: '이전 크기로 복원', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.reload();
+    await expect(controls.getByRole('button', { name: '이전 크기로 복원', exact: true })).toBeEnabled();
+    await running(page);
+    await controls.getByRole('button', { name: '이전 크기로 복원', exact: true }).click();
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized())).toBe(false);
+    await expect(controls.getByRole('button', { name: '최대화', exact: true })).toHaveAttribute('aria-pressed', 'false');
+
+    // OS-originated state changes must update the same controls too.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].maximize());
+    await expect(controls.getByRole('button', { name: '이전 크기로 복원', exact: true })).toBeVisible();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].unmaximize());
+    await expect(controls.getByRole('button', { name: '최대화', exact: true })).toBeVisible();
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(420, 700));
+    await expect(controls.getByRole('button', { name: '최소화', exact: true })).toBeInViewport();
+    await expect(controls.getByRole('button', { name: '관리 창 숨기기', exact: true })).toBeInViewport();
+    expect(await controls.getByRole('button').evaluateAll(buttons => buttons.every(button => getComputedStyle(button).getPropertyValue('-webkit-app-region') === 'no-drag'))).toBe(true);
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(680, 700));
+    await page.locator('.chrome').screenshot({ path: join(root, 'test-results/server-window-controls-header.png') });
+    await controls.getByRole('button', { name: '관리 창 숨기기', exact: true }).click();
+    await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())).toBe(false);
+
+    expect(app.process().pid).toBe(mainPid);
+    for (const [index, id] of ['backend', 'frontend'].entries()) {
+      expect((await f.marker(id)).pid).toBe(markers[index].pid);
+      expect(await alive(markers[index].pid)).toBe(true);
+      expect(await alive(markers[index].worker)).toBe(true);
+      expect(await healthy(f.ports[id])).toBe(true);
+    }
   } finally { if (app) await app.close(); await f.dispose(); }
 });

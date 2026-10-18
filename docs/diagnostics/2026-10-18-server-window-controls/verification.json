@@ -1,0 +1,61 @@
+{
+  "recorded_at": "2026-10-18T20:57:00.035164+09:00",
+  "base_commit": "9b9536fd2f93722278f48c664e8dd940a5ed3cd2",
+  "change": "Minimize, maximize/restore and close controls on the Ticklane server-manager header. Close keeps servers running.",
+  "checks": {
+    "lint": "passed",
+    "typecheck": "passed",
+    "source_electron_tests_passed": 14,
+    "titlebar_lifecycle_repeat_passed": 5,
+    "coverage": [
+      "native minimize and launcher restore",
+      "maximize/restore toggle",
+      "OS state events and renderer reload keep maximize state synchronized",
+      "narrow window layout and button drag exclusion",
+      "managed backend/frontend processes and children survive all window actions"
+    ],
+    "live_upgrade_smoke": "Old main process received only window-control handlers; managed fake server PIDs unchanged; inspector closed after use."
+  },
+  "inputs": {
+    "desktop/src/server/main.ts": "db5bde1bb49c795e0bb345432b7671c6083d695eee0d92004b118dc1fbf103a3",
+    "desktop/src/preload/server.cjs": "1c7af7204f3a2e01a5d2ae7f6a9fa7ce80ba1a0d55ab91f4749b872e1277654a",
+    "desktop/src/server-ui/index.html": "a39cfbfd57508d6891585fb52901004792738a83da8e4ccec72aad9a670322d2",
+    "desktop/src/server-ui/server.css": "26229ffd3d08a1ea7a8e7c0f92777ec0d6740ed2ecbbec011fa792eae422a9a0",
+    "desktop/src/server-ui/server.js": "6f3af018a84a96eea92f8bcd86bd5e88f3e88731f15040e405b76f63a415f679",
+    "desktop/tests/e2e/server-manager.spec.cjs": "1befb1833077a992594765b1f35b91d3bc69af33c7ca7aa557e7a0d258ed8de4",
+    "desktop/tests/e2e/server-ui-reload.spec.cjs": "4f7bca0f0cfdf4a74f0894d1f5eec72e46110836edf622e929e6299d17a4dd32",
+    "desktop/tests/helpers/server-fixture.cjs": "8517f9b4dfd9d36b2f360a02e62136c265c22fc9b29b4bcbebe54acc344feb67",
+    "desktop/package.json": "6e2e2b6e7a9229d2c402b06eb7049e42b6f8dac506967c1e7f6c4fe59739ecc2",
+    "desktop/package-lock.json": "913027885f935c6077429db3bf2cabdc39c5dbc0577bf786344ded7ef73e0609",
+    "desktop/playwright.config.cjs": "6c49425f8c8fcf846fc1680b6b252a7dffba334160e5b1747941febe6d9ec249",
+    "desktop/tsconfig.json": "41a72ac33c1680f827054ba6605e01c8bc8818392aca297d3492776c30167857"
+  },
+  "activation": {
+    "manager_pid_unchanged": 184832,
+    "server_listener_pids_unchanged": [
+      256249,
+      256258,
+      256396
+    ],
+    "server_state_preserved": {
+      "phase": "running",
+      "canStop": true
+    },
+    "controls": [
+      {
+        "label": "최소화",
+        "disabled": false
+      },
+      {
+        "label": "최대화",
+        "disabled": false
+      },
+      {
+        "label": "관리 창 숨기기",
+        "disabled": false
+      }
+    ],
+    "inspector_closed": true
+  },
+  "activation_note": "Window-control handlers were added to the existing main process through its temporary loopback Node inspector. The renderer was reloaded and the inspector was closed. Main process and server controller were not restarted."
+}
