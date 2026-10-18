@@ -28,7 +28,7 @@ function Popover({
     <>
       <button type="button" ref={anchorRef} data-testid={`${testId}-anchor`}>anchor</button>
       {createPortal(
-        <div ref={layerRef} data-testid={testId}>{children}</div>,
+        <div ref={layerRef} data-testid={testId} onPointerDown={event => event.preventDefault()}>{children}</div>,
         document.body,
       )}
     </>
@@ -67,6 +67,19 @@ describe('useDismissablePopover — 중첩', () => {
     expect(outerDismiss).not.toHaveBeenCalled();
     // 안쪽도 자기 레이어 안이므로 닫지 않는다.
     expect(innerDismiss).not.toHaveBeenCalled();
+  });
+
+  it('중첩 레이어가 pointerdown 을 취소해도 안쪽을 누르면 어느 팝오버도 닫지 않는다', () => {
+    const outerDismiss = vi.fn();
+    const innerDismiss = vi.fn();
+    render(<Nested outerDismiss={outerDismiss} innerDismiss={innerDismiss} />);
+    fireEvent.click(screen.getByTestId('open-inner'));
+    fireEvent.pointerDown(screen.getByTestId('inner-item'));
+    expect(outerDismiss).not.toHaveBeenCalled();
+    expect(innerDismiss).not.toHaveBeenCalled();
+    fireEvent.pointerDown(screen.getByTestId('open-inner'));
+    expect(innerDismiss).toHaveBeenCalledOnce();
+    expect(outerDismiss).not.toHaveBeenCalled();
   });
 
   it('진짜 바깥 mousedown 은 둘 다 닫는다', () => {

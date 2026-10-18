@@ -15,6 +15,8 @@
 // while `isOpen` is true (zero cost when closed). Anchor-internal
 // mousedown is suppressed so the trigger button can toggle without
 // the global handler immediately closing what it just opened.
+// A cancelled pointerdown suppresses its compatibility mousedown (e.g. window
+// dragging). Handle that path too, without changing normal mouse event ordering.
 
 import { useEffect, type RefObject } from 'react';
 
@@ -62,14 +64,19 @@ export function useDismissablePopover(
       }
       onDismiss();
     };
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.defaultPrevented) onMouseDown(e);
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onDismiss();
     };
     window.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('keydown', onKey);
     return () => {
       openLayers.delete(token);
       window.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('keydown', onKey);
     };
   }, [isOpen, anchorRef, onDismiss, layerRef]);

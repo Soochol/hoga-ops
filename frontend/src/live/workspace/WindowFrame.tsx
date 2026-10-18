@@ -116,7 +116,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
   const marketWide = kind === 'market-indices';
   const title = marketWide ? KIND_LABEL[kind] : symbolLabel ?? `그룹 ${group}`;
   const hasSettings = kind === 'trade' && !!onTradeMinAmountChange;
-  const { actionsRef, compact } = useWindowActionsCompact(hasSettings);
+  const { actionsRef, compact } = useWindowActionsCompact(hasSettings, title);
 
   return (
     <WindowFrameCore
@@ -218,7 +218,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </>
             )}
           </div>
-          <WindowActionsMenu maximized={maximized} alwaysOnTop={alwaysOnTop} pinned={pinned} canPin={canPin}
+          <WindowActionsMenu maximized={maximized} alwaysOnTop={alwaysOnTop} pinned={pinned} canPin={canPin} compact={compact}
             onMaximize={onToggleMaximize ? () => onToggleMaximize(id) : undefined}
             onAlwaysOnTop={onToggleAlwaysOnTop ? () => onToggleAlwaysOnTop(id) : undefined}
             onPin={!marketWide && onTogglePin ? () => onTogglePin(id) : undefined}

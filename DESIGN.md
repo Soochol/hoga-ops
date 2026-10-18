@@ -574,6 +574,7 @@ Two layers, each with one shared owner. Use them; do **not** hand-roll a dismiss
 - **Center modal** (full-screen backdrop, fixed-position card): wrap in `ModalShell` (`frontend/src/ui/ModalShell.tsx`) — it owns the backdrop, Escape + backdrop-click dismiss, the canon card, and the title + ✕ header. **`/live` 의 보조지표(IndicatorPanel)·설정(SettingsSections) 패널이 2026-08-21 부터 여기 속한다**(사용자 결정, 아래 결정 로그) — 둘은 폭·높이·마스터-디테일 nav 를 `frontend/src/live/workspacePanel.ts` 상수로 공유하므로 클래스를 다시 적지 말고 상수를 소비할 것. 그 동기화는 `App.test.tsx`(설정)와 `IndicatorPanel.test.tsx`(지표)가 **같은 상수를 각각 단언**해서 지킨다 — 한쪽이 하드코딩으로 이탈하면 그 테스트가 빨개진다.
 - **Right drawer** (`ModalShell side='right'`, ADR-0116) — ⚠ **2026-08-21 부터 앱 소비자가 0 이다**(설정·보조지표가 중앙 모달로 옮겨갔다; 코드와 `ModalShell.test.tsx` 커버리지는 되돌릴 여지를 위해 남겼다. 새로 쓰기 전에 결정 로그를 읽을 것 — 되돌림이지 신규 선택지가 아니다): full-height right-anchored variant of the same shell — lighter dim (`bg-black/30` vs the center modal's `bg-black/50`), `border-l` instead of the rounded card border, 150ms ease-out slide-in. Purpose: **immediate-apply settings stay visible against the live chart** — the left ~520px of chart remains readable behind the dim, so a toggle's effect is seen in place. Used by the `/live` 보조지표(IndicatorPanel) and 설정(LiveSettingsModal) drawers, which share width (`760px`) and master-detail nav (`240px`) via what is now `frontend/src/live/workspacePanel.ts` (renamed 2026-08-21 — the file no longer describes a drawer) — the two panels must not shift when the user switches between the toolbar buttons, so consume the constants rather than restating the classes.
 - **Anchored popover / dropdown** (floats next to a trigger): use `useDismissablePopover` (`frontend/src/util/useDismissablePopover.ts`) for the outside-click + Escape contract, plus `clampToViewport` for edge safety.
+- 창 헤더처럼 드래그 시작을 위해 `pointerdown`을 취소하는 영역을 눌러도 열린 팝오버를 닫는다. 이때 생략되는 `mousedown`에만 의존하지 않는다. 트리거·메뉴 내부 및 중첩 팝오버의 예외는 유지한다.
 - A copied `addEventListener('mousedown'|'keydown')` is how this drifts (one site on `document`, another on `window`; one forgets Escape) — the helpers concentrate the contract so it can't.
 
 ## Decisions Log
@@ -781,7 +782,9 @@ A fourth category limited to identifying which capture source produced the data.
 전체·1천만·3천만·5천만·1억이며 직접 입력은 만원 단위 정수로 적용한다. 기본은 전체다.
 기준은 단건 체결가 × 체결량 이상이고 기존 대량 체결 강조와 독립적이다. 창별 기준을
 배치와 함께 저장하며 종목 변경·새로고침에도 유지한다. 활성 금액은 헤더에 표시하고
-넓은 창에서도 `⋯`에 접근할 수 있다. 필터는 200행 표시 제한 전에 적용한다. 필터 중에는
+넓은 창에서도 설정에 접근할 수 있다. 2026-10-18 체결창 점검 후, 창 액션이 모두
+노출된 상태에서는 톱니바퀴로 설정을 바로 열고, 액션이 접힌 상태에서만 `⋯` 메뉴를 쓴다.
+필터는 200행 표시 제한 전에 적용한다. 필터 중에는
 빈 공간을 채우려고 과거 페이지를 자동 소진하지 않으며 하단 스크롤·휠로 이어 읽는다.
 
 2026-10-15 사용자 승인: `프로그램 체결`을 독립 데이터 창으로 추가한다. 기존 체결창과

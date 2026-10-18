@@ -38,8 +38,12 @@ async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty
 }
 
 async function openTradeSettings(page: Page) {
-  await page.getByRole('button', { name: '창 옵션', exact: true }).click();
-  await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '설정', exact: true }).click();
+  const direct = page.getByRole('button', { name: '체결창 설정', exact: true });
+  if (await direct.isVisible()) await direct.click();
+  else {
+    await page.getByRole('button', { name: '창 옵션', exact: true }).click();
+    await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '설정', exact: true }).click();
+  }
   return page.getByRole('dialog', { name: '체결창 설정', exact: true });
 }
 
@@ -53,8 +57,7 @@ test('헤더 메뉴 설정은 넓은 창에서도 접근하며 금액 경계·�
   const { window, ws } = await setup(page, 'provided');
   const table = window.getByRole('table');
   await expect(table.getByRole('row')).toHaveCount(4);
-  await page.getByRole('button', { name: '창 옵션', exact: true }).click();
-  await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '창 최대화' }).click();
+  await page.getByRole('button', { name: '창 최대화', exact: true }).click();
   const settings = await openTradeSettings(page);
   await expect(settings).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('trade-settings-popover.png') });
@@ -83,7 +86,7 @@ test('헤더 메뉴 설정은 넓은 창에서도 접근하며 금액 경계·�
   await openTradeSettings(page);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: '체결창 설정' })).toBeHidden();
-  await expect(page.getByRole('button', { name: '창 옵션', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: /^(창 옵션|체결창 설정)$/ })).toBeFocused();
 });
 
 test('일치 없는 과거 페이지도 휠로 이어 조회하며 빈 결과에서 전체 표시로 복귀한다', async ({ page }) => {

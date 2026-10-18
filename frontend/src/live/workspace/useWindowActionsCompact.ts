@@ -1,10 +1,11 @@
 import { useLayoutEffect, useState } from 'react';
 
 /** Reserve a readable title and measure the full action group, even while folded. */
-export function useWindowActionsCompact(hasSettings: boolean) {
+export function useWindowActionsCompact(hasSettings: boolean, title: string) {
   const [actions, setActions] = useState<HTMLDivElement | null>(null);
   const [compact, setCompact] = useState(false);
 
+  // Symbol changes can change the title budget without resizing the header.
   useLayoutEffect(() => {
     const header = actions?.parentElement;
     if (!actions || !header) return;
@@ -20,7 +21,14 @@ export function useWindowActionsCompact(hasSettings: boolean) {
       });
       const required = children.reduce((width, child) => {
         const childStyle = getComputedStyle(child);
-        const titleReserve = parseFloat(childStyle.flexBasis);
+        let titleReserve = parseFloat(childStyle.flexBasis);
+        if (child.classList.contains('live-data-title') && childStyle.flexWrap === 'nowrap') {
+          // A short single-line title needs less than the long-name allowance.
+          const titleParts = Array.from(child.children);
+          const naturalWidth = titleParts.reduce((sum, part) => sum + part.scrollWidth, 0)
+            + (parseFloat(childStyle.columnGap) || 0) * Math.max(0, titleParts.length - 1);
+          titleReserve = Math.min(titleReserve, naturalWidth);
+        }
         // Flexible titles give up their extra space before any action is folded.
         return width + (parseFloat(childStyle.flexGrow) > 0 && Number.isFinite(titleReserve)
           ? titleReserve
@@ -35,7 +43,7 @@ export function useWindowActionsCompact(hasSettings: boolean) {
     observer.observe(header);
     for (const child of header.children) observer.observe(child);
     return () => observer.disconnect();
-  }, [actions, hasSettings]);
+  }, [actions, hasSettings, title]);
 
   return { actionsRef: setActions, compact };
 }
