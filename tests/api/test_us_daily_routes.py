@@ -164,3 +164,90 @@ def test_us_favorites_roundtrip_and_stay_out_of_capture_and_heatmap_seed(tmp_pat
         assert not heatmap.load_document(tmp_path).entries
         assert client.post("/api/watchlist/us-stock:NYSE:BRK.B/catchup").status_code == 422
         assert client.delete(f"/api/watchlist/folders/{folder_id}/members/us-stock:NYSE:BRK.B").status_code == 204
+
+
+@pytest.mark.parametrize("index_id,code", [("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX")])
+@pytest.mark.parametrize("timeframe,aligned,count", [("W", "20240603", 2), ("M", "20240601", 1)])
+def test_us_index_week_month_http_aggregates_shared_daily_history(
+    tmp_path, monkeypatch, index_id, code, timeframe, aligned, count
+):
+    calls = []
+
+    async def page(symbol, start, end):
+        calls.append((symbol, start, end))
+        rows = [
+            dict(
+                stck_bsop_date=day,
+                ovrs_nmix_oprc="120.125",
+                ovrs_nmix_hgpr="130.25",
+                ovrs_nmix_lwpr="119.5",
+                ovrs_nmix_prpr=str(121 + i / 10),
+                acml_vol="0",
+            )
+            for i, day in enumerate(["20240603", "20240607", "20240610", "20240614"])
+            if start <= day <= end
+        ]
+        return {"rt_cd": "0", "output2": rows}
+
+    monkeypatch.setattr(
+        "hoga.live.kis_runtime.ensure_kis_client_for_account",
+        lambda *a: SimpleNamespace(get_global_index_daily_page=page),
+    )
+    with TestClient(app_for(tmp_path)) as client:
+        url = f"/api/live/index-candles?index_id={index_id}&timeframe={timeframe}&from=20240605&to=20240616"
+        response = client.get(url)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["timeframe"] == timeframe and body["from"] == aligned
+        assert len(body["candles"]) == count
+        assert body["candles"][0]["trading_date"] == "20240603"
+        assert body["candles"][0]["open"] == 120.125
+        assert body["candles"][-1]["close"] == 121.3
+        assert not body["daily_metadata"]["missing"]
+        assert body["daily_metadata"]["latest_bar_date"] == "20240614"
+        assert all(symbol == code and start == aligned for symbol, start, _ in calls)
+        before = len(calls)
+        daily = client.get(f"/api/live/index-candles?index_id={index_id}&timeframe=D&from=20240603&to=20240616").json()
+        assert len(daily["candles"]) == 4 and len(calls) == before
+
+
+@pytest.mark.parametrize("timeframe,aligned,count", [("W", "20240603", 2), ("M", "20240601", 1)])
+def test_us_stock_week_month_http_and_invalid_intraday(tmp_path, monkeypatch, timeframe, aligned, count):
+    from hoga.live.candle_models import daily_anchor_ms
+    from hoga.live.us_daily_candles import UsDailyBar, UsDateRange, UsFetchResult
+
+    calls = []
+
+    async def fetch(client, scheduler, exchange, symbol, start, end):
+        calls.append((exchange, symbol, start, end))
+        return UsFetchResult(
+            bars=[
+                UsDailyBar(
+                    trading_date=day,
+                    t_ms=daily_anchor_ms(day),
+                    open=120.125,
+                    high=130.25,
+                    low=119.5,
+                    close=121 + i / 10,
+                    volume=10,
+                )
+                for i, day in enumerate(["20240603", "20240607", "20240610", "20240614"])
+            ],
+            completed=[UsDateRange(start=start, end=end)],
+        )
+
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_rest_client", lambda *a: object())
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_scheduler", lambda *a: object())
+    monkeypatch.setattr("hoga.live.us_market_api.fetch_stock_daily", fetch)
+    with TestClient(app_for(tmp_path)) as client:
+        url = ("/api/live/us-stock-daily-candles?exchange=NYSE&symbol=BRKb"
+               f"&from=20240605&to=20240616&timeframe={timeframe}")
+        response = client.get(url)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["timeframe"] == timeframe and body["from"] == aligned
+        assert body["symbol"] == "BRKb" and len(body["candles"]) == count
+        assert body["candles"][-1]["close"] == 121.3
+        assert body["daily_metadata"]["price_basis"] == "raw"
+        assert calls == [("NYSE", "BRKb", aligned, "20240616")]
+        assert client.get(url.replace(f"timeframe={timeframe}", "timeframe=1m")).status_code == 422

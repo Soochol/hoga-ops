@@ -7,6 +7,19 @@ const candles = Array.from({ length: 120 }, (_, index) => {
   const day = date.toISOString().slice(0, 10).replaceAll('-', '');
   return { trading_date: day, t_ms: Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()), open: 120.1234, high: 125.5678, low: 119.001, close: 121.2345, volume: 0 };
 });
+function periodCandles(timeframe: string | null) {
+  if (timeframe !== 'W' && timeframe !== 'M') return candles;
+  const grouped = new Map<string, typeof candles[number]>();
+  for (const bar of candles) {
+    const date = new Date(bar.t_ms);
+    if (timeframe === 'W') date.setUTCDate(date.getUTCDate() - (date.getUTCDay() + 6) % 7);
+    const key = date.toISOString().slice(0, timeframe === 'M' ? 7 : 10);
+    const previous = grouped.get(key);
+    grouped.set(key, previous ? { ...previous, high: Math.max(previous.high, bar.high), low: Math.min(previous.low, bar.low), close: bar.close } : bar);
+  }
+  return [...grouped.values()];
+}
+
 const meta = { market: 'US', market_timezone: 'America/New_York', source: 'kis', price_basis: 'index_points', currency: 'index_points', session_scope: 'cash_index', latest_bar_date: candles.at(-1)!.trading_date, last_successful_check_at_ms: 1_792_100_000_000, completed: [], missing: [], truncated: false, refresh_status: 'normal', messages: [] };
 
 async function setup(page: Page) {
@@ -17,15 +30,15 @@ async function setup(page: Page) {
       zOrder: ['us-daily-test'], groupSymbols: {},
     }));
   });
-  await page.route(/\/api\/live\/indices(?:\?|$)/, route => route.fulfill({ json: { indices: Object.entries(indexLabels).map(([id, label]) => ({ kind: 'index', id, label, investor_scope: 'none', market: 'US', market_timezone: 'America/New_York', supported_timeframes: ['D'] })) } }));
+  await page.route(/\/api\/live\/indices(?:\?|$)/, route => route.fulfill({ json: { indices: Object.entries(indexLabels).map(([id, label]) => ({ kind: 'index', id, label, investor_scope: 'none', market: 'US', market_timezone: 'America/New_York', supported_timeframes: ['D', 'W', 'M'] })) } }));
   await page.route(/\/api\/live\/index-candles\?/, route => {
     const params = new URL(route.request().url()).searchParams;
-    return route.fulfill({ json: { index_id: params.get('index_id'), from: params.get('from'), to: params.get('to'), timeframe: 'D', candles, data_warnings: [], daily_metadata: meta } });
+    return route.fulfill({ json: { index_id: params.get('index_id'), from: params.get('from'), to: params.get('to'), timeframe: params.get('timeframe') ?? 'D', candles: periodCandles(params.get('timeframe')), data_warnings: [], daily_metadata: meta } });
   });
   await page.route(/\/api\/live\/us-stocks(?:\?|$)/, route => route.fulfill({ json: { stocks: [{ exchange: 'NASDAQ', symbol: 'NVDA', label: '엔비디아', english_name: 'NVIDIA', is_etf: false }], status: 'normal', fetched_at_ms: 1_792_100_000_000 } }));
   await page.route(/\/api\/live\/us-stock-daily-candles\?/, route => {
     const params = new URL(route.request().url()).searchParams;
-    return route.fulfill({ json: { instrument_key: `us-stock:${params.get('exchange')}:${params.get('symbol')}`, exchange: params.get('exchange'), symbol: params.get('symbol'), from: params.get('from'), to: params.get('to'), timeframe: 'D', candles, daily_metadata: { ...meta, source: 'kiwoom', price_basis: 'raw', currency: 'USD', session_scope: 'vendor_daily_unverified' } } });
+    return route.fulfill({ json: { instrument_key: `us-stock:${params.get('exchange')}:${params.get('symbol')}`, exchange: params.get('exchange'), symbol: params.get('symbol'), from: params.get('from'), to: params.get('to'), timeframe: params.get('timeframe') ?? 'D', candles: periodCandles(params.get('timeframe')), daily_metadata: { ...meta, source: 'kiwoom', price_basis: 'raw', currency: 'USD', session_scope: 'vendor_daily_unverified' } } });
   });
 }
 
@@ -40,10 +53,22 @@ for (const id of Object.keys(indexLabels)) {
     const frame = page.locator('.live-window-chart');
     await expect(frame.getByRole('status')).toContainText('지수값');
     await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
-    await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(1);
+    await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(3);
     await expect.poll(() => requests.some(url => url.includes(`index_id=${id}&timeframe=D`))).toBe(true);
-    expect(requests.filter(url => /index_id=(NASDAQ_COMPOSITE|SP500|SOX)/.test(url) && /timeframe=(1m|W|M)/.test(url))).toEqual([]);
+    expect(requests.filter(url => /index_id=(NASDAQ_COMPOSITE|SP500|SOX)/.test(url) && /timeframe=([0-9]+[ms])/.test(url))).toEqual([]);
     await frame.screenshot({ path: testInfo.outputPath(`${id}-daily.png`) });
+    for (const [tf, label, status] of [['W', '주', '주봉'], ['M', '월', '월봉']]) {
+      const button = frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true });
+      await button.click();
+      await expect(button).toHaveAttribute('aria-pressed', 'true');
+      await expect(frame.getByRole('status')).toContainText(`미국 ${status}`);
+      await expect.poll(() => requests.some(url => url.includes(`index_id=${id}&timeframe=${tf}`))).toBe(true);
+      await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+    }
+    await page.reload();
+    await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: '월', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+    await frame.screenshot({ path: testInfo.outputPath(`${id}-monthly.png`) });
     expect(errors).toEqual([]);
   });
 }
@@ -63,11 +88,19 @@ test('US stock search preserves exchange/ticker and never requests domestic stoc
   await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
   await expect.poll(() => requests.some(url => url.includes('us-stock-daily-candles?exchange=NASDAQ&symbol=NVDA'))).toBe(true);
   expect(requests.filter(url => /\/(past-daily-candles|quotes|stock-limits|investor-net|series)\?/.test(url) && /NVDA/.test(url))).toEqual([]);
-  await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(1);
+  await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(3);
   expect(usWsFrames).toEqual([]);
   await frame.screenshot({ path: testInfo.outputPath('NVDA-daily.png') });
-  // Reload restores the selected US instrument from the existing workspace state.
+  for (const [tf, label] of [['W', '주'], ['M', '월']]) {
+    const button = frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => requests.some(url => url.includes('us-stock-daily-candles?exchange=NASDAQ&symbol=NVDA') && url.includes(`timeframe=${tf}`))).toBe(true);
+    await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  }
+  // Reload restores both the US instrument and monthly timeframe.
   await page.reload();
+  await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: '월', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(frame.getByRole('status')).toContainText('USD · 수정 전 가격');
   await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
 });

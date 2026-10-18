@@ -77,11 +77,11 @@ _REPRESENTATIVE_INDICES: tuple[RepresentativeIndex, ...] = (
         enabled_by_default=False,
     ),
     RepresentativeIndex("NASDAQ_COMPOSITE", "나스닥 종합", None, "none", True,
-                        "US", "America/New_York", "kis", "COMP", ("D",)),
+                        "US", "America/New_York", "kis", "COMP", ("D", "W", "M")),
     RepresentativeIndex("SP500", "S&P 500", None, "none", True,
-                        "US", "America/New_York", "kis", "SPX", ("D",)),
+                        "US", "America/New_York", "kis", "SPX", ("D", "W", "M")),
     RepresentativeIndex("SOX", "필라델피아 반도체지수", None, "none", True,
-                        "US", "America/New_York", "kis", "SOX", ("D",)),
+                        "US", "America/New_York", "kis", "SOX", ("D", "W", "M")),
 )
 
 

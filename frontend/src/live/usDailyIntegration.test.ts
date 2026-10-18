@@ -31,13 +31,24 @@ describe('US daily chart identity and capability boundaries', () => {
       expect(liveDeepLinkPath(usStockInstrument('NYSE', symbol))).toContain(`symbol=${symbol}`);
     }
   });
-  it('normalizes search, direct group drop, and timeframe shortcuts to D', () => {
+  it('normalizes intraday shortcuts to D and retains W/M on search, drops and pins', () => {
     activateLiveInstrument(usStockInstrument('NASDAQ', 'AAPL'));
     expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
     useWorkspaceStore.getState().setChartTimeframe('us-test', '1m');
     expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe('D');
     useWorkspaceStore.getState().setWindowSymbol('us-test', { code: 'us-stock:NYSE:BRK.B', name: '버크셔' });
     expect(useWorkspaceStore.getState().groupSymbols[1]?.kind).toBe('us_stock');
+    for (const tf of ['W', 'M'] as const) {
+      useWorkspaceStore.getState().setChartTimeframe('us-test', tf);
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe(tf);
+      activateLiveInstrument(indexInstrument('SOX'));
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe(tf);
+      useWorkspaceStore.getState().setWindowSymbol('us-test', { code: 'us-stock:NYSE:BRKb', name: '버크셔' });
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe(tf);
+      useWorkspaceStore.getState().toggleWindowPin('us-test');
+      expect(useWorkspaceStore.getState().windows[0].chart?.timeframe).toBe(tf);
+      useWorkspaceStore.getState().toggleWindowPin('us-test');
+    }
   });
   it('keeps pinned domestic windows unchanged when an overseas search replaces its group', () => {
     useWorkspaceStore.setState({ windows: [

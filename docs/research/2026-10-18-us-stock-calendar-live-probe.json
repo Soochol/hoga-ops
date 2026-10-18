@@ -1,0 +1,161 @@
+{
+  "tested_at_utc": "2026-10-18T14:51:35.485129+00:00",
+  "authentication": "existing cached token only; no issuance",
+  "responses": [
+    {
+      "instrument_key": "us-stock:NASDAQ:AAPL",
+      "exchange": "NASDAQ",
+      "symbol": "AAPL",
+      "from": "20260831",
+      "to": "20261016",
+      "timeframe": "W",
+      "candles": [
+        {
+          "trading_date": "20260831",
+          "t_ms": 1788134400000,
+          "open": 319.6,
+          "high": 330.81,
+          "low": 312.8,
+          "close": 319.97,
+          "volume": 205019204
+        },
+        {
+          "trading_date": "20260908",
+          "t_ms": 1788825600000,
+          "open": 317.1,
+          "high": 336.22,
+          "low": 309.9,
+          "close": 332.27,
+          "volume": 221845830
+        },
+        {
+          "trading_date": "20260914",
+          "t_ms": 1789344000000,
+          "open": 334.79,
+          "high": 338.49,
+          "low": 328.35,
+          "close": 336.13,
+          "volume": 230286758
+        },
+        {
+          "trading_date": "20260921",
+          "t_ms": 1789948800000,
+          "open": 335.28,
+          "high": 345.34,
+          "low": 333.05,
+          "close": 341.07,
+          "volume": 162105443
+        },
+        {
+          "trading_date": "20260928",
+          "t_ms": 1790553600000,
+          "open": 340.37,
+          "high": 342.988,
+          "low": 325.81,
+          "close": 333.69,
+          "volume": 190872341
+        },
+        {
+          "trading_date": "20261005",
+          "t_ms": 1791158400000,
+          "open": 332.815,
+          "high": 341.57,
+          "low": 330.62,
+          "close": 336.64,
+          "volume": 172211363
+        },
+        {
+          "trading_date": "20261012",
+          "t_ms": 1791763200000,
+          "open": 338.215,
+          "high": 348.1499,
+          "low": 337.6,
+          "close": 343.46,
+          "volume": 214659115
+        }
+      ],
+      "daily_metadata": {
+        "market": "US",
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "price_basis": "raw",
+        "currency": "USD",
+        "session_scope": "vendor_daily_unverified",
+        "history_start": null,
+        "latest_bar_date": "20261016",
+        "last_successful_check_at_ms": 1792335095484,
+        "completed": [
+          {
+            "start": "20260831",
+            "end": "20261003"
+          },
+          {
+            "start": "20261004",
+            "end": "20261016"
+          }
+        ],
+        "missing": [],
+        "truncated": false,
+        "refresh_status": "normal",
+        "messages": [
+          "Aggregated from completed daily bars; the current calendar period is provisional."
+        ]
+      }
+    },
+    {
+      "instrument_key": "us-stock:NASDAQ:AAPL",
+      "exchange": "NASDAQ",
+      "symbol": "AAPL",
+      "from": "20260901",
+      "to": "20261016",
+      "timeframe": "M",
+      "candles": [
+        {
+          "trading_date": "20260901",
+          "t_ms": 1788220800000,
+          "open": 316.98,
+          "high": 345.34,
+          "low": 309.9,
+          "close": 333.02,
+          "volume": 899301954
+        },
+        {
+          "trading_date": "20261001",
+          "t_ms": 1790812800000,
+          "open": 330.0,
+          "high": 348.1499,
+          "low": 325.81,
+          "close": 343.46,
+          "volume": 456455376
+        }
+      ],
+      "daily_metadata": {
+        "market": "US",
+        "market_timezone": "America/New_York",
+        "source": "kiwoom",
+        "price_basis": "raw",
+        "currency": "USD",
+        "session_scope": "vendor_daily_unverified",
+        "history_start": null,
+        "latest_bar_date": "20261016",
+        "last_successful_check_at_ms": 1792335095484,
+        "completed": [
+          {
+            "start": "20260901",
+            "end": "20261003"
+          },
+          {
+            "start": "20261004",
+            "end": "20261016"
+          }
+        ],
+        "missing": [],
+        "truncated": false,
+        "refresh_status": "normal",
+        "messages": [
+          "Aggregated from completed daily bars; the current calendar period is provisional."
+        ]
+      }
+    }
+  ]
+}

@@ -117,7 +117,7 @@ export function useLiveIndexCandles(
   to: string | null,
 ) {
   const queryClient = useQueryClient();
-  const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || timeframe === 'D');
+  const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || ['D', 'W', 'M'].includes(timeframe));
   const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number } }) => isUsIndexId(indexId) ? usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount) : indexCandlesRefetchInterval(timeframe, to);
   return useQuery({
     queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,

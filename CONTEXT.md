@@ -36,7 +36,10 @@ _Avoid_: overloading **Code** for indices; representing an index as a fake 6-dig
 티커를 별도로 보존한다. 정본 키는 `us-stock:NASDAQ:AAPL`, 국내 `Code` 투영은
 `null`이다. URL은 `?market=US&exchange=NASDAQ&symbol=AAPL`이다.
 `NASDAQ_COMPOSITE`·`SP500`·`SOX`는 대표지수 ID이며 한투 REST 일봉을 사용한다.
-미국 개별 종목은 키움 REST 일봉(USD·수정 전 가격)을 사용한다. 모두 D만 지원하고
+미국 개별 종목은 키움 REST 일봉(USD·수정 전 가격)을 사용한다. D/W/M을 지원하며,
+W/M은 실제 미국 거래일의 검증된 일봉을 집계한다. ISO 월요일·달력 월로 묶고 첫
+거래일을 표시 앵커로 쓴다. 미조회 구간이 걸친 주·월은 완전한 봉으로 표시하지 않는다.
+완료된 일봉까지만 반영하므로 현재 주·월은 진행 중 집계다.
 가격 지표·드로잉·검색·관심목록·그룹/핀 복원을 공유한다. 미국 관심목록 키는
 국내 자동 수집·WS 구독·히트맵 시드에 포함하지 않는다. `trading_date`가 정본이며
 09:00 KST 타임스탬프는 일봉 표시용 가상 앵커다. 실제 미국 장시간을 뜻하지 않는다.

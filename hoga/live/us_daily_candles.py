@@ -141,10 +141,22 @@ def missing_ranges(start: str, end: str, coverage: list[UsDateRange]) -> list[Us
     return missing
 
 
+def merge_date_ranges(ranges: list[UsDateRange]) -> list[UsDateRange]:
+    merged: list[UsDateRange] = []
+    for span in sorted(ranges, key=lambda s: s.start):
+        if merged and span.start <= shift(merged[-1].end, 1):
+            merged[-1] = UsDateRange(start=merged[-1].start, end=max(merged[-1].end, span.end))
+        else:
+            merged.append(span)
+    return merged
+
+
 @dataclass
 class _Entry:
     rows: dict[str, UsDailyBar] = field(default_factory=dict)
     coverage: list[tuple[UsDateRange, float]] = field(default_factory=list)
+    # Last-good completeness survives freshness expiry, just like the stored bars.
+    verified: list[UsDateRange] = field(default_factory=list)
     successful_at_ms: int | None = None
     retry_at: float = 0
     failures: int = 0
@@ -164,6 +176,10 @@ class UsDailyService:
         self.max_instruments = max_instruments
         self.clock = clock
         self.calendar_now = calendar_now or (lambda: datetime.now(NY))
+
+    def verified_coverage(self, key: str) -> list[UsDateRange]:
+        entry = self.entries.get(key)
+        return list(entry.verified) if entry else []
 
     async def aclose(self) -> None:
         tasks = list(self.pending.values())
@@ -248,6 +264,7 @@ class UsDailyService:
             for covered in result.completed:
                 if not (span.start <= covered.start <= covered.end <= span.end):
                     raise ValueError("adapter coverage outside requested interval")
+                entry.verified = merge_date_ranges([*entry.verified, covered])
                 # All historical coverage has a finite life (including negative lookups).
                 if covered.start < tail:
                     older = UsDateRange(start=covered.start, end=min(covered.end, shift(tail, -1)))

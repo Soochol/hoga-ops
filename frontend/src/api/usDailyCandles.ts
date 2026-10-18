@@ -47,10 +47,10 @@ export function usDailyRefetchInterval(meta: UsDailyMetadata | undefined, curren
 export function useUsStockDaily(instrument: LiveInstrument | null, timeframe: LiveTimeframe, from: string, to: string) {
   const stock = instrument?.kind === 'us_stock' ? instrument : null;
   return useQuery({
-    queryKey: ['live', 'us-stock-daily', stock?.exchange, stock?.symbol, from, to],
-    enabled: !!stock && timeframe === 'D',
-    queryFn: ({ signal }) => apiCall<UsStockDailyResponse>(`/api/live/us-stock-daily-candles?exchange=${stock!.exchange}&symbol=${encodeURIComponent(stock!.symbol)}&from=${from}&to=${to}`, { signal }),
-    placeholderData: (previous) => previous?.instrument_key === `us-stock:${stock?.exchange}:${stock?.symbol}` ? previous : undefined,
+    queryKey: ['live', 'us-stock-daily', stock?.exchange, stock?.symbol, timeframe, from, to],
+    enabled: !!stock && ['D', 'W', 'M'].includes(timeframe),
+    queryFn: ({ signal }) => apiCall<UsStockDailyResponse>(`/api/live/us-stock-daily-candles?exchange=${stock!.exchange}&symbol=${encodeURIComponent(stock!.symbol)}&from=${from}&to=${to}&timeframe=${timeframe}`, { signal }),
+    placeholderData: (previous) => previous?.instrument_key === `us-stock:${stock?.exchange}:${stock?.symbol}` && previous.timeframe === timeframe ? previous : undefined,
     staleTime: 300_000,
     refetchInterval: (query) => usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount),
     refetchOnWindowFocus: (query) => usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount) !== false,

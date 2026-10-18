@@ -3,7 +3,7 @@ import { useLivePageStore } from '../state/livePage';
 import { activationTarget, useWorkspaceStore, type GroupSymbol } from '../state/workspace';
 import {
   indexInstrument,
-  isUsInstrument, usStockKey, usStockFromKey, instrumentToSubjectKey,
+  isUsInstrument, usCalendarTimeframe, usStockKey, usStockFromKey, instrumentToSubjectKey,
   instrumentToActiveCode,
   isLiveIndexId,
   stockInstrument,
@@ -60,7 +60,7 @@ export function activateLiveInstrument(instrument: LiveInstrument): void {
   page.projectActiveView({
     instrument,
     code: instrumentToActiveCode(instrument) ?? '',
-    timeframe: isUsInstrument(instrument) ? 'D' : page.candleTimeframe,
+    timeframe: isUsInstrument(instrument) ? usCalendarTimeframe(page.candleTimeframe) : page.candleTimeframe,
     historicalFromDate: null,
     lastMinuteHistoricalFromDate: null,
     lastMinuteHistoricalTimeframe: null,
