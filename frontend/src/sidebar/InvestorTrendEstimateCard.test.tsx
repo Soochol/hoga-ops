@@ -259,6 +259,7 @@ describe('unit chip', () => {
 
     expect(screen.getByRole('button', { name: '수량(주)' })).toHaveAttribute('aria-pressed', 'true');
     expect(chip()).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('단위: 주')).toBeInTheDocument();
     expect(screen.getByText('+1,500')).toBeInTheDocument();
   });
 
@@ -272,9 +273,11 @@ describe('unit chip', () => {
 
     expect(chip()).toHaveTextContent('억');
     expect(chip()).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByText('+3.6억')).toBeInTheDocument();
-    expect(screen.getByText('-0.5억')).toBeInTheDocument();
-    expect(screen.getByText('+3.1억')).toBeInTheDocument();
+    expect(screen.getByText('+3.6')).toBeInTheDocument();
+    expect(screen.getByText('-0.5')).toBeInTheDocument();
+    expect(screen.getByText('+3.1')).toBeInTheDocument();
+    expect(screen.getByText('단위: 억원')).toBeInTheDocument();
+    expect(screen.getByRole('table')).not.toHaveTextContent('억');
     expect(screen.queryByText('+1,500')).not.toBeInTheDocument();
   });
 
@@ -299,7 +302,7 @@ describe('unit chip', () => {
 
     await user.click(chip());
 
-    expect(screen.getByText('+3.6억')).toHaveClass('text-price-up');
-    expect(screen.getByText('-0.5억')).toHaveClass('text-price-down');
+    expect(screen.getByText('+3.6')).toHaveClass('text-price-up');
+    expect(screen.getByText('-0.5')).toHaveClass('text-price-down');
   });
 });
