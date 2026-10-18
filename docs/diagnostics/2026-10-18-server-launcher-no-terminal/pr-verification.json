@@ -1,0 +1,59 @@
+{
+  "verified_at": "2026-10-18T14:09:43.607359+00:00",
+  "verified_source_commit": "106d8a0942a4484a63d27835ae26793318483805",
+  "base_commit": "448d4ec15595ac19d7f299549a24ab1520ca2ee6",
+  "checks": [
+    {
+      "command": "npm run lint",
+      "cwd": "desktop",
+      "result": "passed"
+    },
+    {
+      "command": "python3 /tmp/ticklane-launcher-pr-smoke.py",
+      "result": "passed: TTY wrapper exits 0, fake app gets its own session without a TTY; GUI path retains exec and PID; server-manager args preserved in both modes"
+    },
+    {
+      "command": "desktop-file-validate ~/.local/share/applications/ticklane-server.desktop",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "scope": "Installer shell generation and search keywords only. Electron runtime, frontend and backend code are unchanged. Smoke test substitutes an isolated fake executable and never starts real servers. No application E2E or backend tests are needed for this scope.",
+  "inputs": {
+    "lint_files": 39,
+    "lint_inputs_sha256": "5473aa6615ebefd55313a201c533c72b1135f89d5df8b27812d61b2889bd5f48",
+    "installer_sha256": "b943376e81205ccc5760fb6fa36a38d2228a908300c5635e7f413ee257705dc6",
+    "smoke_script_sha256": "f97fe4196a39fd790f85170186e573d458f2d0c7a016eccf3ab4af66b8b52dc1",
+    "installed_wrapper_sha256": "91bb27f71a99359e7399714c4c523280b19652e1f07672fb065c8f393cec96bf",
+    "installed_entry_sha256": "4d7866a63260f5612b4d2a0420ab1b96216336cdf479f4e92136a5a8eab51b95"
+  },
+  "tools": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.4",
+    "setsid": "setsid from util-linux 2.41.3",
+    "shell": "/usr/bin/dash",
+    "eslint": "10.3.0"
+  },
+  "environment": {
+    "platform": "Linux x64",
+    "DISPLAY": ":0",
+    "WAYLAND_DISPLAY": "wayland-0",
+    "fixtures": "Temporary directory and fake Node executable, pty.openpty for TTY mode, DEVNULL/pipes for GUI mode"
+  },
+  "preservation": {
+    "manager_pid": 949918,
+    "service_listener_pids": [
+      950343,
+      950403,
+      951019
+    ],
+    "server_restart_or_stop_commands": false,
+    "main_local_files_snapshotted": 31
+  },
+  "open_pr_overlap": "Open PRs #1927 and #1726 do not modify these files.",
+  "following_commit": "Only this verification document is added after the source commit; executable inputs stay identical."
+}
