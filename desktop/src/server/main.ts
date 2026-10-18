@@ -6,6 +6,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { readServerConfig, ServerController, type ServerSnapshot } from './controller';
+import { ServerTray } from './tray';
 
 const PAGE = 'app://server/index.html';
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
@@ -16,6 +17,7 @@ app.setName('Ticklane 서버');
 if (process.platform === 'linux') app.setDesktopName('ticklane-server.desktop');
 let window: BrowserWindow | undefined;
 let controller: ServerController | undefined;
+let tray: ServerTray | undefined;
 let setupMessage = '서버 실행 설정을 읽고 있습니다.';
 let setupFailed = false;
 let quitting = false;
@@ -48,7 +50,10 @@ function trusted(event: IpcMainInvokeEvent): void {
   if (!window || event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || event.senderFrame.url !== PAGE) throw new Error('허용되지 않은 서버 관리 요청입니다.');
 }
 function publish(): void {
-  if (window && !window.isDestroyed() && window.webContents.getURL() === PAGE) window.webContents.send('server:state', state());
+  const snapshot = state();
+  try { tray?.update(snapshot); }
+  catch (error) { console.error('서버 트레이 상태 갱신 실패:', error); }
+  if (window && !window.isDestroyed() && window.webContents.getURL() === PAGE) window.webContents.send('server:state', snapshot);
 }
 function windowState(): { maximized: boolean } { return { maximized: window?.isMaximized() ?? false }; }
 function publishWindowState(): void {
@@ -66,6 +71,7 @@ async function quitManager(): Promise<void> {
   if (!controller?.hasOwnedServers) { void shutdown(); return; }
   quitDialog = true;
   try {
+    showWindow();
     const result = await dialog.showMessageBox(window, {
       type: 'question', title: 'Ticklane 서버', message: '서버를 중지하고 관리 앱을 종료할까요?',
       detail: '이 관리 창에서 시작한 서버만 중지합니다. 창만 숨기려면 취소한 뒤 오른쪽 위 ×를 누르세요.',
@@ -101,7 +107,7 @@ else {
   app.on('before-quit', event => {
     if (!quitting) { event.preventDefault(); void shutdown(); }
   });
-  app.on('will-quit', () => { uiWatcher?.close(); clearTimeout(reloadTimer); controller?.dispose(); });
+  app.on('will-quit', () => { tray?.destroy(); uiWatcher?.close(); clearTimeout(reloadTimer); controller?.dispose(); });
   process.once('SIGTERM', () => { void shutdown(); });
   process.once('SIGINT', () => { void shutdown(); });
   void app.whenReady().then(async () => {
@@ -127,6 +133,13 @@ else {
     window.on('maximize', publishWindowState);
     window.on('unmaximize', publishWindowState);
     window.once('ready-to-show', showWindow);
+    try {
+      tray = new ServerTray(window, {
+        showWindow, start: async () => controller?.start(), stop: async () => controller?.stop(), openClient,
+        openLogs: async () => { const error = await shell.openPath(logFolder); if (error) throw new Error(error); },
+        quit: quitManager,
+      }, state());
+    } catch (error) { console.error('서버 트레이를 시작하지 못했습니다. 실행 아이콘으로 관리 창을 열 수 있습니다:', error); }
     ipcMain.handle('server:read', event => { trusted(event); return state(); });
     ipcMain.handle('server:refresh', async event => { trusted(event); return await controller?.refresh() ?? state(); });
     ipcMain.handle('server:start', async event => { trusted(event); return await controller?.start() ?? state(); });

@@ -1,0 +1,39 @@
+{
+  "checked_at": "2026-10-18T14:04:38.105000+00:00",
+  "verified_source_commit": "90bd7678d006a51f65376d7d113ef7186cf1da6e",
+  "base_commit": "75804a521bf3c83bc6993bfc2be4bce5dff5bc49",
+  "reused_record": "docs/diagnostics/2026-10-18-server-tray/verification.json",
+  "reused_record_sha256": "f22a234c1cdae1e4fd50559945c115a8bf55ee8e20d43e91954bf3aa31f1bdcb",
+  "input_files_checked": 61,
+  "changed_inputs": [],
+  "installed_dependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-deb": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.12.4",
+    "electron": "44.8.0",
+    "eslint": "10.3.0",
+    "globals": "17.6.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.59.2"
+  },
+  "tools": {
+    "node": "v24.13.1",
+    "npm": "11.8.0"
+  },
+  "packaged_asar_unchanged": true,
+  "reused_checks": [
+    "lint",
+    "typecheck",
+    "9 unit tests",
+    "14 source manager/tray/UI-reload E2E tests",
+    "Linux x64 folder package build",
+    "10 packaged manager E2E tests"
+  ],
+  "basis": "Current source, tests, fixtures, assets, build/test configuration, VERSION, dependency lock and installed tool versions match the successful run. Latest main 75804a521 is already included. Isolated fake-service tests do not depend on user server uptime; the user intentionally stopped real servers. This PR-verification record is the only following commit change.",
+  "scope": "No frontend/backend application changes. Native panel D-Bus registration and temporary in-place activation evidence in the original record are historical observations, not claims that the user-stopped server app is currently running.",
+  "open_pr_overlap": "Open PRs #1927 and #1726 do not modify this PR files.",
+  "user_services": "Left stopped as requested; no restart or launch performed."
+}
