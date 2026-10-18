@@ -513,13 +513,17 @@ export function useViewportBackfill({
    * 되돌렸다 오기)도 3b 를 거치고 3e 자신도 같은 `fillKind` 게이트 뒤에 있어서다.
    * (**코드 추적이지 브라우저 실측이 아니다** — 확진은 아래 훅 테스트 두 개가 한다.)
    *
-   * ⚠ **여기서 리셋하는 것은 fill 기계뿐이다.** 스왑 스냅샷 계열(`preSwapRef` ·
+   * 스왑 스냅샷 계열(`preSwapRef` ·
    * `prevAxisRef` · `prevCandle*`)은 건드리지 않는다 — 그쪽의 축은 **캔들 정체성**이지
    * 차트 인스턴스가 아니고, 1b 래치(`prevSourceKeyRef`)를 지우면 안 되는 이유와 같은
-   * 계열의 함정이다. `initialCoverageCheckedRef`(3c 의 1회 래치)도 그대로 둔다: 그것은
+   * 계열의 함정이다. 단 새 차트의 초기 배치는 LiveChartRoot가 소유하므로 이전
+   * 인스턴스의 스왑 대기는 소비한다. 날짜 점프에서 남긴 대기가 첫 백필 때 발화하면
+   * 사용자가 휠로 넓힌 화면을 소스 전환의 초기 줌으로 되돌린다.
+   * `initialCoverageCheckedRef`(3c 의 1회 래치)도 그대로 둔다: 그것은
    * 잠김이 아니라 **중복 판정 금지** 장치라 되살리면 점프마다 여분의 확장이 나간다.
    */
   useEffect(() => {
+    swapPendingRef.current = false;
     fillKindRef.current = null;
     fillBudgetRef.current = 0;
     fillCoverageTargetRef.current = null;
