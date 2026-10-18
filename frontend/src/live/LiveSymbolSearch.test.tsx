@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LiveSymbolSearch } from './LiveSymbolSearch';
 import { useLivePageStore } from '../state/livePage';
 import { useWorkspaceStore, type WorkspaceWindow } from '../state/workspace';
-import type { SymbolHit } from '../api/types';
+import type { SymbolHit, SymbolsAllResponse } from '../api/types';
 
 const HIT: SymbolHit = {
   code: '005930', name: '삼성전자', market: 'KOSPI',
@@ -20,21 +20,19 @@ const RECENT_HITS: SymbolHit[] = [
   { ...HIT, code: '068270', name: '셀트리온' },
 ];
 
-// Faithful to the real contract: filterSymbols('') returns ALL symbols (not
-// []), so the mock returns [HIT] for EVERY query — including the empty one.
-// This is what lets the empty-Enter guard test below catch the regression.
-vi.mock('../capture/useSymbols', () => ({
-  useSymbolSearch: () => [HIT],
-}));
-
-vi.mock('../api/liveIndices', () => ({
-  useLiveIndices: () => ({
-    data: [
-      { kind: 'index', id: 'KOSPI', label: 'KOSPI', investorScope: 'market' },
-      { kind: 'index', id: 'KOSPI200', label: 'KOSPI 200', investorScope: 'none' },
-    ],
-  }),
-}));
+const catalogMock = {
+  data: { symbols: [HIT], status: 'fresh', fetched_at_ms: 1 } as SymbolsAllResponse | undefined,
+  isPending: false, isFetching: false, isError: false, refetch: vi.fn(),
+};
+const indexMock = {
+  data: [
+    { kind: 'index' as const, id: 'KOSPI' as const, label: 'KOSPI', investorScope: 'market' as const },
+    { kind: 'index' as const, id: 'KOSPI200' as const, label: 'KOSPI 200', investorScope: 'none' as const },
+  ],
+  isPending: false, isFetching: false, isError: false, refetch: vi.fn(),
+};
+vi.mock('../capture/useSymbols', () => ({ useSymbols: () => catalogMock }));
+vi.mock('../api/liveIndices', () => ({ useLiveIndices: () => indexMock }));
 
 function renderSearch() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -55,6 +53,11 @@ describe('LiveSymbolSearch', () => {
   beforeEach(() => {
     cleanup();
     localStorage.clear();
+    catalogMock.data = { symbols: [HIT], status: 'fresh', fetched_at_ms: 1 };
+    catalogMock.isPending = catalogMock.isFetching = catalogMock.isError = false;
+    indexMock.isPending = indexMock.isFetching = indexMock.isError = false;
+    catalogMock.refetch.mockClear();
+    indexMock.refetch.mockClear();
     useLivePageStore.setState({ activeInstrument: null, activeCode: null });
   });
 
@@ -63,7 +66,7 @@ describe('LiveSymbolSearch', () => {
     expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
     fireEvent.keyDown(window, { key: '/' });
     const dialog = screen.getByRole('dialog', { name: '종목 검색' });
-    const input = screen.getByPlaceholderText('종목명·코드·지수 검색') as HTMLInputElement;
+    const input = screen.getByPlaceholderText('종목명·코드·초성·지수 검색') as HTMLInputElement;
     expect(dialog).toHaveClass('fixed', 'left-1/2', 'top-[12vh]');
     expect(input).toHaveClass('text-base');
     expect(input).not.toHaveClass('text-[22px]');
@@ -75,7 +78,7 @@ describe('LiveSymbolSearch', () => {
     expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '종목 검색 열기' }));
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
-    expect(document.activeElement).toBe(screen.getByPlaceholderText('종목명·코드·지수 검색'));
+    expect(document.activeElement).toBe(screen.getByPlaceholderText('종목명·코드·초성·지수 검색'));
   });
 
   it('clips the trigger contents and hides the kbd chip in narrow containers', () => {
@@ -101,7 +104,7 @@ describe('LiveSymbolSearch', () => {
     renderSearch();
     const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
-    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByRole('option', { name: /삼성전자/ }));
     expect(useLivePageStore.getState().activeCode).toBe('005930');
   });
 
@@ -109,10 +112,100 @@ describe('LiveSymbolSearch', () => {
     renderSearch();
     const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
-    fireEvent.click(screen.getByText('삼성전자'));
+    fireEvent.click(screen.getByRole('option', { name: /삼성전자/ }));
     expect(JSON.parse(localStorage.getItem('hoga.liveSymbolSearch.recent') ?? '[]')).toEqual([
       { code: '005930', name: '삼성전자', market: 'KOSPI' },
     ]);
+  });
+
+  it('matches initials, ranks an exact name before preferred shares, and keeps history out of ranking', () => {
+    catalogMock.data!.symbols = [{ ...HIT, code: '005935', name: '삼성전자우' }, HIT];
+    localStorage.setItem('hoga.liveSymbolSearch.recent', JSON.stringify([catalogMock.data!.symbols[0]]));
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: 'ㅅㅅㅈㅈ' } });
+    expect(screen.getAllByRole('option').map((row) => within(row).getByText(/^\d{6}$/).textContent))
+      .toEqual(['005930', '005935']);
+    fireEvent.change(input, { target: { value: '삼성전자' } });
+    expect(screen.getByRole('option', { selected: true })).toHaveTextContent('005930');
+    expect(screen.getByText('삼성전자 열기')).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: 'ArrowDown' });
+    expect(screen.getByText('삼성전자우 열기')).toBeInTheDocument();
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+  });
+
+  it('clears a query back to recent history without switching stocks or losing input focus', () => {
+    localStorage.setItem('hoga.liveSymbolSearch.recent', JSON.stringify([RECENT_HITS[0]]));
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: '삼성' } });
+    fireEvent.click(screen.getByRole('button', { name: '검색어 지우기' }));
+    expect(input).toHaveValue('');
+    expect(input).toHaveFocus();
+    expect(screen.getByRole('option', { name: /SK하이닉스/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '검색어 지우기' })).toBeNull();
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '관심 그룹 편집' }));
+    expect(screen.getByRole('dialog', { name: '내 관심 그룹' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(JSON.parse(localStorage.getItem('hoga.liveSymbolSearch.recent')!)).toHaveLength(1);
+    fireEvent.keyDown(screen.getByRole('textbox', { name: '새 그룹 만들기' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: '내 관심 그룹' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '관심 그룹 편집' })).toHaveFocus();
+  });
+
+  it('distinguishes loading, unavailable and successful empty results', () => {
+    catalogMock.data = { symbols: [], status: 'loading', fetched_at_ms: null };
+    const view = renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: '없는종목' } });
+    expect(screen.getByRole('status')).toHaveTextContent('종목 목록을 불러오는 중입니다.');
+    expect(screen.queryByText('일치하는 종목이 없습니다')).toBeNull();
+    catalogMock.isError = true;
+    view.rerender(<QueryClientProvider client={new QueryClient()}><LiveSymbolSearch /></QueryClientProvider>);
+    expect(screen.getByRole('alert')).toHaveTextContent('종목 목록을 불러오지 못했습니다.');
+    expect(screen.getByRole('listbox')).toHaveAttribute('aria-busy', 'false');
+    catalogMock.isError = false;
+    catalogMock.data = { symbols: [], status: 'unavailable', fetched_at_ms: null };
+    view.rerender(<QueryClientProvider client={new QueryClient()}><LiveSymbolSearch /></QueryClientProvider>);
+    expect(screen.getByRole('alert')).toHaveTextContent('종목 목록을 불러오지 못했습니다.');
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+    expect(catalogMock.refetch).toHaveBeenCalledOnce();
+    expect(indexMock.refetch).not.toHaveBeenCalled();
+    catalogMock.data = { symbols: [HIT], status: 'fresh', fetched_at_ms: 1 };
+    view.rerender(<QueryClientProvider client={new QueryClient()}><LiveSymbolSearch /></QueryClientProvider>);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByText('일치하는 종목이 없습니다')).toBeInTheDocument();
+  });
+
+  it('keeps cached results selectable when the catalog request fails and retries the failing source', () => {
+    catalogMock.isError = true;
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: '삼성' } });
+    expect(screen.getByRole('alert')).toHaveTextContent('표시된 목록은 계속 사용할 수 있습니다.');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useLivePageStore.getState().activeCode).toBe(HIT.code);
+  });
+
+  it('does not accept an unknown six-digit code after a successful lookup', () => {
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: '999999' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useLivePageStore.getState().activeCode).toBeNull();
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+  });
+
+  it('retains direct six-digit navigation when the catalog is unavailable', () => {
+    catalogMock.data = { symbols: [], status: 'unavailable', fetched_at_ms: null };
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: '005930' } });
+    expect(screen.getByText('005930 코드로 열기')).toBeInTheDocument();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(useLivePageStore.getState().activeCode).toBe('005930');
   });
 
   it('shows the five most recent selected stocks when "/" focuses an empty search', () => {
@@ -121,7 +214,7 @@ describe('LiveSymbolSearch', () => {
     fireEvent.keyDown(window, { key: '/' });
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
     expect(screen.getByText('최근 검색')).toBeInTheDocument();
-    expect(screen.getByText('최근 검색')).toHaveClass('text-sm');
+    expect(screen.getByText('최근 검색').parentElement).toHaveClass('text-sm');
     expect(screen.getByRole('option', { name: /SK하이닉스/ })).toHaveClass('text-base');
     expect(screen.getByText('SK하이닉스')).toBeInTheDocument();
     expect(screen.getByText('삼성바이오로직스')).toBeInTheDocument();
@@ -136,7 +229,7 @@ describe('LiveSymbolSearch', () => {
     expect(useLivePageStore.getState().activeCode).toBeNull();
     expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
     expect(screen.queryByRole('option')).toBeNull();
-    expect(screen.getByText('종목명, 코드 또는 지수를 입력하세요.')).toBeInTheDocument();
+    expect(screen.getByText('종목명·코드·초성·지수를 입력하세요.')).toBeInTheDocument();
     expect(JSON.parse(localStorage.getItem('hoga.liveSymbolSearch.recent')!)).toEqual([]);
     expect(input).toHaveFocus();
     expect(input).not.toHaveAttribute('aria-activedescendant');
@@ -221,8 +314,8 @@ describe('LiveSymbolSearch', () => {
     const input = openSearchPopover();
     fireEvent.change(input, { target: { value: 'kospi' } });
     expect(screen.getAllByText('지수')).toHaveLength(2);
-    expect(screen.getByText('삼성전자')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '관심 그룹 편집' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /삼성전자/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: '관심 그룹 편집' })).toBeNull();
   });
 
   it('clicking a result row heart opens the group picker (v3)', () => {
@@ -249,9 +342,9 @@ describe('LiveSymbolSearch', () => {
     renderSearch();
     const input = openSearchPopover();
     fireEvent.change(input, { target: { value: '삼성' } });
-    expect(screen.getByText('삼성전자')).toBeInTheDocument(); // dropdown open
+    expect(screen.getByRole('option', { name: /삼성전자/ })).toBeInTheDocument(); // dropdown open
     fireEvent.mouseDown(document.body);                       // click outside
-    expect(screen.queryByText('삼성전자')).toBeNull();         // dropdown closed
+    expect(screen.queryByRole('option', { name: /삼성전자/ })).toBeNull();         // dropdown closed
   });
 });
 
@@ -272,6 +365,35 @@ it('only shows an availability notice when all windows are pinned', () => {
     expect(screen.getByRole('status')).toHaveTextContent('모든 창이 고정되어 있습니다');
     act(() => useWorkspaceStore.setState({ windows: [], zOrder: [] }));
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  } finally {
+    cleanup();
+    useWorkspaceStore.setState(previous);
+  }
+});
+
+it('keeps blocked selections open and out of recent history until a destination is available', () => {
+  const previous = useWorkspaceStore.getState();
+  const pinned: WorkspaceWindow = { id: 'pinned', kind: 'chart', group: 1,
+    rect: { x: 0, y: 0, w: 1, h: 1 }, pinned: { code: '000660', name: 'SK하이닉스' } };
+  useWorkspaceStore.setState({ windows: [pinned], zOrder: ['pinned'] });
+  try {
+    cleanup();
+    localStorage.clear();
+    catalogMock.data = { symbols: [HIT], status: 'fresh', fetched_at_ms: 1 };
+    renderSearch();
+    const input = openSearchPopover();
+    fireEvent.change(input, { target: { value: '삼성' } });
+    const option = screen.getByRole('option', { name: /삼성전자/ });
+    expect(option).toBeDisabled();
+    fireEvent.click(option);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.getByRole('dialog', { name: '종목 검색' })).toBeInTheDocument();
+    expect(localStorage.getItem('hoga.liveSymbolSearch.recent')).toBeNull();
+    expect(useWorkspaceStore.getState().windows[0].pinned?.code).toBe('000660');
+    act(() => useWorkspaceStore.setState({ windows: [{ ...pinned, pinned: undefined }] }));
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.queryByRole('dialog', { name: '종목 검색' })).toBeNull();
+    expect(useWorkspaceStore.getState().groupSymbols[1]?.code).toBe(HIT.code);
   } finally {
     cleanup();
     useWorkspaceStore.setState(previous);
