@@ -37,7 +37,16 @@
   background: var(--bg-card);
 }
 .live-window .live-window-titlebar[data-focused] { background: var(--bg-subtle); }
-.live-window .live-window-titlebar > button { width: 1.5rem; height: 1.5rem; }
+.live-window .live-window-titlebar > button,
+.live-window-direct-actions > button { width: 1.5rem; height: 1.5rem; }
+.live-window-direct-actions { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-xs); width: max-content; }
+/* Keep the full group measurable so folding never changes its width budget. */
+.live-window-direct-actions[data-compact] { position: absolute; visibility: hidden; pointer-events: none; }
+.live-window .live-window-direct-actions[data-compact] ~ .live-window-actions-menu { display: inline-flex; }
+/* Reserve a short title; longer names truncate before actions fold. */
+.live-window-titlebar > .live-data-title,
+.live-window-titlebar > .live-symbol-row,
+.live-window-titlebar > .major-indices-header { flex: 1 1 4.5rem; }
 .live-window-chart .live-window-titlebar { min-height: 2rem; padding-block: var(--space-xs); }
 .live-symbol-row { display: flex; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; align-items: center; gap: var(--space-xs); }
 .live-symbol-identity { display: flex; flex: 1 1 7rem; align-items: center; gap: var(--space-xs); min-width: 0; overflow: hidden; }
@@ -46,7 +55,7 @@
 .live-symbol-price { flex: 0 0 10ch; width: 10ch; text-align: right; font-size: var(--live-text-data); font-weight: 600; }
 .live-symbol-change { flex: 0 0 8ch; width: 8ch; text-align: right; font-size: var(--live-text-data); }
 .live-symbol-sector { flex: 0 1 9rem; max-width: 9rem; margin-left: var(--space-xs); font-size: var(--live-text-meta); color: var(--fg-dim); }
-.live-data-title { flex: 1; }
+.live-data-title { flex: 1; overflow: hidden; }
 .live-data-title-kind { color: var(--fg-dim); font-weight: 400; }
 .live-window .live-window-actions-menu { display: none; }
 .live-window .live-window-actions-menu[data-has-settings] { display: inline-flex; }
@@ -91,19 +100,12 @@
 }
 @container (max-width: 420px) {
   .live-window-titlebar { padding-inline: var(--space-xs) !important; }
-  .live-window [data-window-secondary-action] { display: none; }
-  .live-window .live-window-actions-menu { display: inline-flex; }
-}
-@container (max-width: 320px) {
-  .live-window-maximize { display: none; }
-  .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title { flex-wrap: wrap; gap: 0 !important; line-height: 1.15; }
-  .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title-kind { width: 100%; font-size: var(--live-text-meta); }
-}
-@container (max-width: 240px) {
   .live-symbol-change { display: none; }
 }
-@container (max-width: 200px) {
-  .live-symbol-price { display: none; }
+@container (max-width: 320px) {
+  .live-symbol-price, .live-symbol-backfill { display: none; }
+  .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title { flex-wrap: wrap; gap: 0 !important; line-height: 1.15; }
+  .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title-kind { width: 100%; font-size: var(--live-text-meta); }
 }
 
 .live-top-nav [aria-label^="현재 시각"] { font-weight: 400; color: var(--fg-dim); }
