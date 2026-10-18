@@ -14,7 +14,7 @@ import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 
 type Props = {
-  dailyOnly?: boolean;
+  calendarOnly?: boolean;
   timeframe: LiveTimeframe;
   rememberedMinute: MinuteTimeframe;
   onChange: (timeframe: LiveTimeframe) => void;
@@ -37,7 +37,7 @@ function minuteLabel(tf: MinuteTimeframe): string {
   return `${tf.slice(0, -1)}분`;
 }
 
-export function TimeframeControl({ timeframe, rememberedMinute, onChange, compact = false, secondsEnabled = true, dailyOnly = false }: Props) {
+export function TimeframeControl({ timeframe, rememberedMinute, onChange, compact = false, secondsEnabled = true, calendarOnly = false }: Props) {
   const [minuteMenuOpen, setMinuteMenuOpen] = useState(false);
   const minuteWrapRef = useRef<HTMLDivElement>(null);
   const minuteButtonRef = useRef<HTMLButtonElement>(null);
@@ -143,7 +143,7 @@ export function TimeframeControl({ timeframe, rememberedMinute, onChange, compac
     </div>
   ) : null;
 
-  if (dailyOnly) return <div className="ui-segmented" role="group" aria-label="LiveTimeframe"><button type="button" className="ui-choice font-data" aria-pressed="true" onClick={() => onChange('D')}>일</button></div>;
+  if (calendarOnly) return <div className="ui-segmented" role="group" aria-label="LiveTimeframe">{CALENDAR_TIMEFRAMES.map(tf => <button key={tf} type="button" className="ui-choice font-data" aria-pressed={timeframe === tf} onClick={() => onChange(tf)}>{CALENDAR_LABELS[tf]}</button>)}</div>;
 
   // shrink-0 + nowrap: 좁은 창 헤더에서 "1분"·"일" 라벨이 두 줄로 꺾이지 않게 —
   // 넘치는 폭은 헤더 overflow-hidden + 접힘 정책(#762)이 처리한다.

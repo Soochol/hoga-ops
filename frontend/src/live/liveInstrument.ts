@@ -1,3 +1,10 @@
+import type { LiveTimeframe } from '../state/livePage';
+
+/** US charts share D/W/M, while intraday requests fall back to D. */
+export function usCalendarTimeframe(timeframe: LiveTimeframe): LiveTimeframe {
+  return timeframe === 'W' || timeframe === 'M' ? timeframe : 'D';
+}
+
 export type UsExchange = 'NASDAQ' | 'NYSE' | 'AMEX';
 
 export type LiveIndexId = 'KOSPI' | 'KOSDAQ' | 'KOSPI200' | 'KOSDAQ150' | 'KRX100' | 'KRX300' | 'NASDAQ_COMPOSITE' | 'SP500' | 'SOX';

@@ -263,8 +263,8 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const usCandles = useUsStockDaily(activeInstrument, timeframe, indexFrom, today);
   const activeUsStock = activeInstrument?.kind === 'us_stock' ? activeInstrument : null;
   const usBundle = useMemo(() => activeUsStock && usCandles.data
-    ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: 86_400_000, candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
-    : null, [activeUsStock, usCandles.data]);
+    ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: INDEX_BUCKET_MS[timeframe as keyof typeof INDEX_BUCKET_MS], candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
+    : null, [activeUsStock, usCandles.data, timeframe]);
   const remoteHistory = !!activeIndexId || !!activeUsStock;
   const dailyMetadata = usCandles.data?.daily_metadata ?? indexCandles.data?.daily_metadata;
 

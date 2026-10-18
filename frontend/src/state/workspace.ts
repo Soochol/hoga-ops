@@ -21,7 +21,7 @@ import {
   seedIndicatorScopeForWindow,
 } from './indicatorScopeGc';
 import { liveDefaultWindows } from './liveDefaultLayout';
-import { isLiveIndexId, isUsIndexId } from '../live/liveInstrument';
+import { isLiveIndexId, isUsIndexId, usCalendarTimeframe } from '../live/liveInstrument';
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 import { normalizeOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
 import { isTradeMinAmountManwon } from './tradeWindowSettings';
@@ -443,11 +443,11 @@ function readSymbol(raw: unknown): GroupSymbol | null {
   return { code: s.code, name: s.name, ...(isIndex ? { kind: 'index' as const } : {}) };
 }
 
-function symbolDailyOnly(symbol: GroupSymbol | null | undefined): boolean {
+function symbolCalendarOnly(symbol: GroupSymbol | null | undefined): boolean {
   return symbol?.kind === 'us_stock' || (symbol?.kind === 'index' && isUsIndexId(symbol.code));
 }
 function normalizeUsWindow(w: WorkspaceWindow, symbol: GroupSymbol | null | undefined): WorkspaceWindow {
-  return w.chart && symbolDailyOnly(symbol) ? { ...w, chart: { ...w.chart, timeframe: 'D' } } : w;
+  return w.chart && symbolCalendarOnly(symbol) ? { ...w, chart: { ...w.chart, timeframe: usCalendarTimeframe(w.chart.timeframe) } } : w;
 }
 
 function readGroupSymbols(raw: unknown): Partial<Record<GroupId, GroupSymbol>> {
@@ -1101,7 +1101,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
   setChartTimeframe: (id, tf) => {
     if (!isLiveTimeframe(tf)) return;
     const current = get();
-    if (symbolDailyOnly(windowSymbolOf(current, current.windows.find(w => w.id === id)))) tf = 'D';
+    if (symbolCalendarOnly(windowSymbolOf(current, current.windows.find(w => w.id === id)))) tf = usCalendarTimeframe(tf);
     set((state) => {
       const prev = state.windows.find((w) => w.id === id)?.chart;
       if (!prev) return {};

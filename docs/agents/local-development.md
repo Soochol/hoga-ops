@@ -30,7 +30,7 @@ Python은 루트 `.python-version`의 버전으로 설치·실행·검증한다.
 - E2E는 [playwright.config.ts](../../frontend/playwright.config.ts)의 빈 환경변수로 키를 차단한다.
   `load_dotenv(override=False)`가 환경변수의 존재를 존중하므로 빈 문자열도 상속을 막는다.
   `HOGA_DATA_DIR`만 바꾸는 것으로는 자격증명이 격리되지 않는다.
-- 국내 주식 실시간 WS·폴링 REST는 키움, KIS는 옵션 심리 등 파생 경로와 승인된 뉴스·미국 현물지수 일봉 경로를 담당한다.
+- 국내 주식 실시간 WS·폴링 REST는 키움, KIS는 옵션 심리 등 파생 경로와 승인된 뉴스·미국 현물지수 일봉 기반 D/W/M 경로를 담당한다.
   키가 없는 개발 환경의 실시간·벤더 조회 부재를 인증 장애로 오인하지 않는다.
   분담 근거는 [ADR-0136](../adr/0136-kis-removal-kiwoom-full-replacement.md)에 있다.
 - 종목 검색은 커밋된 [마스터 시드](../../hoga/api/kiwoom_master_seed.json),

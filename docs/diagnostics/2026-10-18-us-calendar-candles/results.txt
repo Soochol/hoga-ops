@@ -1,0 +1,17 @@
+Base: 506b67e8384d17c0b93f43d3087df56e543fd07b
+Final input SHA-256: ff812a64c18cc684baa6d0c9cdf2fae1175aae98dfabf19a6d77d098f08c433e
+Input files: 2569
+Final backend input manifest unchanged throughout validation.
+uv run ruff check .: passed
+uv run --extra dev pytest -q -m 'not wallclock': 6041 passed, 0 failed, 2 skipped, 13 deselected
+npx vitest run --maxWorkers=2: 8448 passed (650 files); unchanged frontend inputs reused
+npm run typecheck: passed (all 3 TypeScript projects)
+npx vite build: passed (final Playwright webServer build)
+npx playwright test tests/e2e/us-daily-candles.spec.ts --workers=1 --reporter=line: 5 passed
+Backend focused: 55 passed; frontend focused: 81 passed
+Negative control: 2 regressions fail without stale-tail fix; original source restored and fixed tests pass
+git diff --check: passed
+Actual broker probes and mocked browser E2E are recorded separately.
+
+PR validation after KST date rollover: 2026-10-19T00:01:11.973386+09:00
+Same main and validation input fingerprint; backend routes/cache/wire 55 passed; browser E2E 5 passed; fresh build passed; Ruff and diff check passed.

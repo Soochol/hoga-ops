@@ -287,3 +287,111 @@ async def test_us_query_group_and_master_minute_limits_are_independent_of_domest
     await scheduler._us_bucket(0).acquire()
     assert scheduler._query_available_at(0, "usa06012") > scheduler._query_available_at(0, "ka10081")
     await scheduler.aclose()
+
+
+@pytest.mark.parametrize(
+    "day,timeframe,expected",
+    [
+        ("20210101", "W", ("20201228", "20210103")),
+        ("20240229", "M", ("20240201", "20240229")),
+        ("20240311", "W", ("20240311", "20240317")),
+    ],
+)
+def test_us_calendar_uses_original_dates_across_year_leap_and_dst(day, timeframe, expected):
+    from hoga.live.us_calendar_candles import calendar_bounds
+
+    assert calendar_bounds(day, timeframe) == expected
+
+
+@pytest.mark.parametrize("timeframe,start,end", [("W", "20240603", "20240609"), ("M", "20240601", "20240630")])
+def test_us_calendar_ohlc_and_anchor_need_the_entire_period_prefix(timeframe, start, end):
+    from hoga.live.us_calendar_candles import aggregate_us_calendar
+
+    rows = [bar("20240603", 121), bar("20240607", 123)]
+    rows[1] = rows[1].model_copy(update={"high": 130, "low": 110, "volume": 4})
+    coverage = [UsDateRange(start=start, end=end)]
+    result = aggregate_us_calendar(rows, timeframe, end, coverage)
+    assert len(result) == 1
+    assert result[0].model_dump() == {
+        "trading_date": "20240603",
+        "t_ms": 0,
+        "open": 120,
+        "high": 130,
+        "low": 110,
+        "close": 123,
+        "volume": 4,
+    }
+    # A missing holiday/calendar prefix still cannot be assumed empty.
+    assert not aggregate_us_calendar(rows, timeframe, end, [UsDateRange(start="20240604", end=end)])
+    assert not aggregate_us_calendar(
+        rows,
+        timeframe,
+        end,
+        [
+            UsDateRange(start=start, end="20240604"),
+            UsDateRange(start="20240606", end=end),
+        ],
+    )
+
+
+def test_us_calendar_partial_walk_discards_only_unverified_bucket():
+    from hoga.live.us_calendar_candles import aggregate_us_calendar
+
+    rows = [bar("20240607"), bar("20240610"), bar("20240614")]
+    result = aggregate_us_calendar(rows, "W", "20240616", [UsDateRange(start="20240607", end="20240616")])
+    assert [b.trading_date for b in result] == ["20240610"]
+    # The current period is an as-of aggregate, excluding not-yet-completed days.
+    assert (
+        len(
+            aggregate_us_calendar(
+                [bar("20240610")],
+                "W",
+                "20240611",
+                [
+                    UsDateRange(start="20240610", end="20240611"),
+                ],
+            )
+        )
+        == 1
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("timeframe,start", [("W", "20240610"), ("M", "20240601")])
+async def test_calendar_keeps_verified_last_good_after_refresh_failure(timeframe, start):
+    from hoga.live.us_market_api import UsMarketApi
+
+    clock = [0.0]
+    now = [datetime(2024, 6, 11, 18, tzinfo=NY)]
+    api = UsMarketApi(None)
+    api.daily = UsDailyService(clock=lambda: clock[0], calendar_now=lambda: now[0])
+    key = "index:SP500:points"
+
+    async def good(start, end):
+        return UsFetchResult(bars=[bar("20240610"), bar("20240611")], completed=[UsDateRange(start=start, end=end)])
+
+    bars, meta = await api.daily.get(
+        key, start, "20240611", source="kis", price_basis="index_points", stock=False, fetch=good
+    )
+    original, _ = api.calendar_bars(key, bars, meta, timeframe, "20240611", stock=False)
+    clock[0] = 301
+
+    async def failed(start, end):
+        return UsFetchResult(messages=["temporary failure"])
+
+    bars, meta = await api.daily.get(
+        key, start, "20240611", source="kis", price_basis="index_points", stock=False, fetch=failed
+    )
+    stale, meta = api.calendar_bars(key, bars, meta, timeframe, "20240611", stock=False)
+    assert meta.refresh_status == "stale"
+    assert stale == original and len(stale) == 1
+    assert api.daily.verified_coverage(key) == [UsDateRange(start=start, end="20240611")]
+    now[0] = datetime(2024, 6, 12, 18, tzinfo=NY)
+    clock[0] += 301
+    bars, meta = await api.daily.get(
+        key, start, "20240612", source="kis", price_basis="index_points", stock=False, fetch=failed
+    )
+    extended, meta = api.calendar_bars(key, bars, meta, timeframe, "20240612", stock=False)
+    assert extended == original
+    assert meta.refresh_status == "stale" and meta.missing
+    await api.daily.aclose()

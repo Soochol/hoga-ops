@@ -8,6 +8,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -18,10 +19,14 @@ from hoga.live.kis_global_index_candles import fetch_index_daily
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded
 from hoga.live.kiwoom_errors import KiwoomRestError
 from hoga.live.kiwoom_us_daily_candles import EXCHANGE_CODES, fetch_stock_daily
+from hoga.live.us_calendar_candles import aggregate_us_calendar, calendar_bounds
 from hoga.live.us_daily_candles import (
+    UsDailyBar,
+    UsDailyMetadata,
     UsDailyService,
     UsExchange,
     UsStockDailyResponse,
+    completed_through,
     parse_date,
 )
 from hoga.util.timeenc import KST
@@ -72,7 +77,25 @@ class UsMarketApi:
     def bypass(self) -> bool:
         return self.data_dir is not None and live_settings.rest_bypass_enabled(self.data_dir)
 
-    async def index_daily(self, index, start: str, end: str):
+    def calendar_bars(
+        self, key: str, bars: list[UsDailyBar], meta: UsDailyMetadata,
+        timeframe: str, end: str, *, stock: bool,
+    ) -> tuple[list[UsDailyBar], UsDailyMetadata]:
+        if timeframe == "D":
+            return bars, meta
+        through = min(end, completed_through(stock=stock, now=self.daily.calendar_now()))
+        # A failed next-day refresh must not erase the previous partial week/month.
+        # Preserve its verified as-of aggregate while metadata reports the stale tail.
+        if meta.refresh_status in {"stale", "bypass", "unconfigured"} and meta.latest_bar_date:
+            through = min(through, meta.latest_bar_date)
+        bars = aggregate_us_calendar(bars, timeframe, through, self.daily.verified_coverage(key))
+        meta = meta.model_copy(update={"messages": [
+            *meta.messages, "Aggregated from completed daily bars; the current calendar period is provisional."
+        ]})
+        return bars, meta
+
+    async def index_daily(self, index, start: str, end: str, timeframe: str = "D"):
+        start = calendar_bounds(start, timeframe)[0]
         client = (
             kis_runtime.ensure_kis_client_for_account(0, self.data_dir) if self.data_dir and not self.bypass() else None
         )
@@ -80,8 +103,9 @@ class UsMarketApi:
         async def fetch(frm, too):
             return await fetch_index_daily(client, index.daily_code, frm, too)
 
-        return await self.daily.get(
-            f"index:{index.id}:points",
+        key = f"index:{index.id}:points"
+        bars, meta = await self.daily.get(
+            key,
             start,
             end,
             source="kis",
@@ -90,6 +114,7 @@ class UsMarketApi:
             fetch=fetch if client else None,
             bypass=self.bypass(),
         )
+        return self.calendar_bars(key, bars, meta, timeframe, end, stock=False)
 
     async def stock_daily(
         self,
@@ -97,6 +122,7 @@ class UsMarketApi:
         symbol: str = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
+        timeframe: Literal["D", "W", "M"] = "D",
     ) -> UsStockDailyResponse:
         if not _SYMBOL.fullmatch(symbol):
             raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "invalid US ticker"})
@@ -109,6 +135,7 @@ class UsMarketApi:
             ) from exc
         if to > datetime.now(KST).strftime("%Y%m%d"):
             raise HTTPException(422, {"code": LiveErrorCode.DATE_IN_FUTURE, "message": "to must be <= today"})
+        from_ = calendar_bounds(from_, timeframe)[0]
         client = kiwoom_rest_runtime.ensure_rest_client(self.data_dir) if self.data_dir and not self.bypass() else None
         scheduler = kiwoom_rest_runtime.ensure_scheduler(self.data_dir) if client else None
         key = f"us-stock:{exchange}:{symbol}"
@@ -126,11 +153,13 @@ class UsMarketApi:
             fetch=fetch if client else None,
             bypass=self.bypass(),
         )
+        bars, meta = self.calendar_bars(f"{key}:raw:USD", bars, meta, timeframe, to, stock=True)
         return UsStockDailyResponse(
             instrument_key=key,
             exchange=exchange,
             symbol=symbol,
             **{"from": from_, "to": to},
+            timeframe=timeframe,
             candles=bars,
             daily_metadata=meta,
         )

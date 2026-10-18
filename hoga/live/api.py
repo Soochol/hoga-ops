@@ -105,6 +105,7 @@ from hoga.live.quote_change_resolver import QuoteChangeResolver
 from hoga.live.screener_daily_candles import read_screener_daily_candles
 from hoga.live.session_gate import is_after_hours_single_price_window
 from hoga.live.stock_sessions import krx_aftermarket_introduced
+from hoga.live.us_calendar_candles import calendar_bounds
 from hoga.live.us_daily_candles import UsDailyMetadata
 from hoga.live.us_market_api import UsMarketApi
 from hoga.live.venue import LiveVenuePolicy, parse_live_venue_policy, quote_venue_for_policy
@@ -2148,12 +2149,12 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     ) -> LiveIndexCandlesResponse:
         index = _validate_index_range(index_id, from_, to)
         if index.market == "US":
-            if timeframe != "D":
+            if timeframe not in {"D", "W", "M"}:
                 raise HTTPException(422, {"code": LiveErrorCode.UNSUPPORTED_INDEX,
-                                          "message": "US indices support daily candles only"})
-            bars, meta = await us_markets.index_daily(index, from_, to)
+                                          "message": "US indices support D/W/M candles only"})
+            bars, meta = await us_markets.index_daily(index, from_, to, timeframe)
             return LiveIndexCandlesResponse(
-                index_id=index.id, **{"from": from_, "to": to}, timeframe="D",
+                index_id=index.id, **{"from": calendar_bounds(from_, timeframe)[0], "to": to}, timeframe=timeframe,
                 candles=[LiveCandleRow.model_validate(b.model_dump()) for b in bars],
                 daily_metadata=meta,
             )

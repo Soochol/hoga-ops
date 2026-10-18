@@ -1,0 +1,234 @@
+{
+  "base_sha": "506b67e8384d17c0b93f43d3087df56e543fd07b",
+  "branch": "codex/us-index-intraday-research-calendar",
+  "started_at_utc": "2026-10-18T14:55:12.765685+00:00",
+  "input_scope": [
+    "hoga",
+    "tests",
+    "frontend/src",
+    "frontend/tests",
+    "frontend/public",
+    "pyproject.toml",
+    "uv.lock",
+    "ruff.toml",
+    ".python-version",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/tsconfig.json",
+    "frontend/tsconfig.app.json",
+    "frontend/tsconfig.test.json",
+    "frontend/tsconfig.e2e.json",
+    "frontend/vite.config.ts",
+    "frontend/playwright.config.ts",
+    "frontend/index.html",
+    "frontend/eslint.config.js",
+    "frontend/postcss.config.js",
+    "frontend/tailwind.config.js",
+    "docs/adr",
+    "CONTEXT.md",
+    "CLAUDE.md"
+  ],
+  "input_file_count": 2569,
+  "input_sha256": "ff812a64c18cc684baa6d0c9cdf2fae1175aae98dfabf19a6d77d098f08c433e",
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "browser": "Google Chrome 155.0.8059.84",
+    "credentials": "empty worktree .env; E2E broker credentials explicitly blank; live probes standalone with existing cached tokens"
+  },
+  "frontend_reuse": {
+    "from_input_sha256": "6606553bacb17d922b7fe00fb4a9167e5789dd85d5da5919349b034243db27a7",
+    "unchanged_frontend_inputs": true,
+    "changed_files": [
+      "hoga/live/us_market_api.py",
+      "tests/unit/live/test_us_daily_candles.py"
+    ],
+    "reason": "Only backend aggregate stale-tail handling and its Python regressions changed after the frontend full suite started. All frontend source, tests, dependencies, settings and runtime inputs are unchanged."
+  },
+  "status": "complete",
+  "verified_at_utc": "2026-10-18T14:58:56.423244+00:00",
+  "final_input_sha256": "ff812a64c18cc684baa6d0c9cdf2fae1175aae98dfabf19a6d77d098f08c433e",
+  "input_fingerprint_algorithm": "SHA-256 of JSON(sort_keys=True) mapping relative input paths to SHA-256 content digests; final full input manifest unchanged throughout final backend validation",
+  "checks": {
+    "ruff": {
+      "command": "uv run ruff check .",
+      "result": "passed"
+    },
+    "diff": {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    "backend_full": {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "6041 passed, 0 failed, 2 skipped, 13 deselected",
+      "duration_seconds": 195.2,
+      "input_sha256": "ff812a64c18cc684baa6d0c9cdf2fae1175aae98dfabf19a6d77d098f08c433e",
+      "note": "wallclock exclusion follows CLAUDE.md repository standard"
+    },
+    "frontend_full": {
+      "command": "npx vitest run --maxWorkers=2",
+      "cwd": "frontend",
+      "result": "8448 passed across 650 files",
+      "input_reuse": {
+        "from_input_sha256": "6606553bacb17d922b7fe00fb4a9167e5789dd85d5da5919349b034243db27a7",
+        "unchanged_frontend_inputs": true,
+        "changed_files": [
+          "hoga/live/us_market_api.py",
+          "tests/unit/live/test_us_daily_candles.py"
+        ],
+        "reason": "Only backend aggregate stale-tail handling and its Python regressions changed after the frontend full suite started. All frontend source, tests, dependencies, settings and runtime inputs are unchanged."
+      }
+    },
+    "typecheck": {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed; app, unit-test, E2E projects; all final frontend inputs unchanged since this check"
+    },
+    "build": {
+      "command": "npx vite build",
+      "cwd": "frontend",
+      "result": "passed in final Playwright webServer startup"
+    },
+    "browser": {
+      "command": "npx playwright test tests/e2e/us-daily-candles.spec.ts --workers=1 --reporter=line",
+      "cwd": "frontend",
+      "result": "5 passed",
+      "duration_seconds": 16.7,
+      "credentials": "explicitly blank",
+      "ports": {
+        "backend": 20182,
+        "frontend": 21182
+      },
+      "scope": "Three indices D/W/M transitions and monthly reload restoration, US stock D/W/M restoration, case-sensitive preferred-share URL"
+    },
+    "backend_focused": {
+      "command": "uv run pytest tests/unit/live/test_us_daily_candles.py tests/api/test_us_daily_routes.py tests/unit/api/test_rest_wire_schema_contract.py -q",
+      "result": "55 passed"
+    },
+    "frontend_focused": {
+      "command": "npx vitest run src/live/usDailyIntegration.test.ts src/live/useLiveChartData.test.tsx src/live/workspace/ChartWindow.test.tsx src/state/workspace.test.ts src/api/liveIndices.test.ts --maxWorkers=2",
+      "result": "81 passed across 4 matching files"
+    },
+    "negative_control": {
+      "command": "Temporarily remove stale-tail as-of fallback and run test_calendar_keeps_verified_last_good_after_refresh_failure",
+      "result": "2 failed as expected; source restored, then fixed focused suite 55 passed",
+      "purpose": "Proves W/M bars survive failure while extending to a new trading date"
+    }
+  },
+  "live_probes": {
+    "authentication": "Standalone reads with existing cached KIS/Kiwoom tokens; no token issuance and no new WS connections",
+    "minutes": {
+      "tr_id": "FHKST03030200",
+      "requests": 9,
+      "history_requests": 6,
+      "summaries": {
+        "COMP": {
+          "rt_cd": "0",
+          "msg_cd": "MCA00000",
+          "msg1": "정상처리 되었습니다.",
+          "rows": 102,
+          "earliest": "20261016143400",
+          "latest": "20261016161500",
+          "row_digest": "fa081904be3685fa8558b0bcc418c7de7c4c8efa5cf00b8632edb8e31d6739c3"
+        },
+        "SPX": {
+          "rt_cd": "0",
+          "msg_cd": "MCA00000",
+          "msg1": "정상처리 되었습니다.",
+          "rows": 102,
+          "earliest": "20261016144000",
+          "latest": "20261016164200",
+          "row_digest": "130325ef844b2d366f04672d6048ff0fec1ac16e8b718cbf1bfc8397fcc27e3f"
+        },
+        "SOX": {
+          "rt_cd": "0",
+          "msg_cd": "MCA00000",
+          "msg1": "정상처리 되었습니다.",
+          "rows": 102,
+          "earliest": "20261016143400",
+          "latest": "20261016161500",
+          "row_digest": "b4590789d3457c886bc7a0bdcbcbe225d9d9c4a61d6736e5696d3fc3e0968e30"
+        }
+      },
+      "oldest_supported_date": "unknown; only recent 102-row windows were observed; continuation/date probes did not extend them",
+      "delay_status": "unconfirmed; Sunday market closure prevents live quote-lag measurement; response has no explicit delay flag"
+    },
+    "calendar_indices": {
+      "range": [
+        "20260101",
+        "20261016"
+      ],
+      "NASDAQ_COMPOSITE": {
+        "W": 42,
+        "M": 10,
+        "close": 26140.03
+      },
+      "SP500": {
+        "W": 42,
+        "M": 10,
+        "close": 7659.44
+      },
+      "SOX": {
+        "W": 42,
+        "M": 10,
+        "close": 11137.29
+      }
+    },
+    "calendar_stock": {
+      "symbol": "AAPL",
+      "range": [
+        "20260901",
+        "20261016"
+      ],
+      "W": 7,
+      "M": 2,
+      "close": 343.46
+    }
+  },
+  "scope": {
+    "intervals": [
+      "D",
+      "W",
+      "M"
+    ],
+    "indices": [
+      "NASDAQ_COMPOSITE",
+      "SP500",
+      "SOX"
+    ],
+    "stocks": [
+      "NASDAQ",
+      "NYSE",
+      "AMEX"
+    ],
+    "aggregation": "verified completed daily bars; calendar weeks/months; provisional current period",
+    "transport": "REST",
+    "minute_ui": false,
+    "disk_cache": false,
+    "deployment": "current worktree implementation; no user service restart or merge in this follow-up"
+  },
+  "evidence_files": [
+    "docs/research/2026-10-18-us-calendar-live-probe.json",
+    "docs/research/2026-10-18-us-index-minute-and-calendar.md",
+    "docs/research/2026-10-18-us-index-minute-history-probe.json",
+    "docs/research/2026-10-18-us-index-minute-probe.json",
+    "docs/research/2026-10-18-us-stock-calendar-live-probe.json"
+  ],
+  "pr_validation": {
+    "checked_at_utc": "2026-10-18T15:01:11.973386+00:00",
+    "checked_at_kst": "2026-10-19T00:01:11.973386+09:00",
+    "base_sha": "506b67e8384d17c0b93f43d3087df56e543fd07b",
+    "input_sha256": "ff812a64c18cc684baa6d0c9cdf2fae1175aae98dfabf19a6d77d098f08c433e",
+    "input_match": true,
+    "overlapping_open_prs": [],
+    "reuse": "Source, test, fixture, dependency, lockfile, config and environment fingerprints match prior passing full suites. KST rollover paths were freshly checked; no vendor probe was repeated and delay status remains unconfirmed.",
+    "focused_backend": "55 passed",
+    "browser": "5 passed (16.2s)",
+    "build": "passed in fresh E2E startup (3.07s)",
+    "ruff": "passed",
+    "diff_check": "passed"
+  }
+}
