@@ -262,7 +262,7 @@ function ProgramDailySummary({
     return () => window.clearTimeout(timer);
   }, [cursorDate, followCursor, rows, span]);
   return <div className="live-data-table-panel flex h-full min-h-0 flex-col bg-bg-card font-data text-xs">
-    <ResponsiveDataControls
+    <ResponsiveDataControls secondaryPlacement="below"
       trailing={<span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim"
         title={measure === 'qty' && useK ? '1K = 1,000주' : undefined}>
         단위: {measure === 'amount' ? '억원' : useK ? '천 주' : '주'}

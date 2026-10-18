@@ -4,6 +4,8 @@
 :where(.responsive-data-controls-with-trailing) .responsive-data-secondary { display:flex; align-items:center; gap:4px; min-width:0; overflow-x:auto; scrollbar-width:thin; }
 :where(.responsive-data-controls-with-trailing) .responsive-data-secondary > * { flex-shrink:0; }
 .responsive-data-more { display:none; flex-shrink:0; }
+.responsive-data-secondary-below { display:flex; flex-wrap:wrap; align-items:center; flex-shrink:0; gap:var(--space-xs); padding:0 10px 4px; }
+.responsive-data-secondary-below > * { flex-shrink:0; }
 .program-trade-controls .ui-segmented > button { padding-inline:var(--space-xs); }
 .responsive-data-status { flex-shrink:0; min-width:0; padding:0 10px 4px; font-size:var(--text-xs); color:var(--fg-dim); }
 .data-settings-popover { padding:8px; max-height:calc(100vh - 16px); overflow:auto; font-size:var(--text-sm); }

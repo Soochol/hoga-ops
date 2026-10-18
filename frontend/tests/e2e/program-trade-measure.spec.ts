@@ -42,31 +42,35 @@ test('프로그램 금액·수량은 두 조회에서 공유되고 좁은 창과
   await expect(frame.getByText('단위: 억원', { exact: true })).toBeVisible();
   expect(requests).toBe(count);
 
-  // Resize with the same handles as users; primary controls must stay outside the popover.
-  const bounds = (await frame.boundingBox())!;
-  const handle = (await frame.locator('[data-handle="e"]').boundingBox())!;
-  await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(handle.x + handle.width / 2 + 300 - bounds.width, handle.y + handle.height / 2, { steps: 5 });
-  await page.mouse.up();
-  await expect.poll(async () => (await frame.boundingBox())!.width).toBeCloseTo(300, 0);
-  await expect(frame.getByRole('button', { name: '일별', exact: true })).toBeInViewport({ ratio: 1 });
-  await expect(frame.getByRole('button', { name: '금액', exact: true })).toBeInViewport({ ratio: 1 });
-  await expect(frame.getByRole('button', { name: '수량', exact: true })).toBeInViewport({ ratio: 1 });
-  await expect(frame.getByRole('button', { name: '표시 설정', exact: true })).toBeVisible();
-  const unit = frame.getByText('단위: 억원', { exact: true });
-  await expect(unit).toBeInViewport();
-  await expect.poll(async () => {
-    const label = (await unit.boundingBox())!;
-    const button = (await frame.getByRole('button', { name: '금액', exact: true }).boundingBox())!;
-    return Math.abs(label.y + label.height / 2 - button.y - button.height / 2);
-  }).toBeLessThan(2);
-  await frame.screenshot({ path: testInfo.outputPath('program-daily-amount-300px.png') });
-  await frame.getByRole('button', { name: '표시 설정', exact: true }).click();
-  const settings = page.getByRole('dialog', { name: '표시 설정', exact: true });
-  await expect(settings.getByRole('button', { name: 'K 단위', exact: true })).toHaveCount(0);
-  await settings.getByRole('button', { name: '총매수', exact: true }).click();
-  await settings.getByRole('button', { name: '표시 설정 닫기', exact: true }).click();
+  // All daily settings remain visible below the primary row at every window width.
+  await frame.getByRole('button', { name: '수량', exact: true }).click();
+  for (const width of [900, 520, 300]) {
+    const bounds = (await frame.boundingBox())!;
+    const handle = (await frame.locator('[data-handle="e"]').boundingBox())!;
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(handle.x + handle.width / 2 + width - bounds.width, handle.y + handle.height / 2, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => (await frame.boundingBox())!.width).toBeCloseTo(width, 0);
+    for (const name of ['당일 누적', '일별', '금액', '수량', '5일', '20일', '60일', '전체', '모두', '순매수', '총매수', '총매도', 'K 단위', '커서 따라가기']) {
+      await expect(frame.getByRole('button', { name, exact: true })).toBeInViewport({ ratio: 1 });
+    }
+    const unit = frame.getByText('단위: 천 주', { exact: true });
+    await expect(unit).toBeInViewport({ ratio: 1 });
+    await expect(frame.getByRole('button', { name: '표시 설정', exact: true })).toHaveCount(0);
+    await expect.poll(async () => {
+      const label = (await unit.boundingBox())!;
+      const button = (await frame.getByRole('button', { name: '금액', exact: true }).boundingBox())!;
+      return Math.abs(label.y + label.height / 2 - button.y - button.height / 2);
+    }).toBeLessThan(2);
+    const period = (await frame.getByRole('group', { name: '일별 프로그램 표시 기간', exact: true }).boundingBox())!;
+    const primary = (await unit.boundingBox())!;
+    expect(period.y).toBeGreaterThanOrEqual(primary.y + primary.height);
+    await frame.screenshot({ path: testInfo.outputPath(`program-daily-qty-${width}px.png`) });
+  }
+  await frame.getByRole('button', { name: '금액', exact: true }).click();
+  await expect(frame.getByRole('button', { name: 'K 단위', exact: true })).toHaveCount(0);
+  await frame.getByRole('button', { name: '총매수', exact: true }).click();
   await expect(rows.first().getByRole('cell')).toHaveText('2');
   await frame.getByRole('button', { name: '수량', exact: true }).click();
   await expect(rows.first().getByRole('cell')).toHaveText('2');
