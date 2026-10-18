@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { HeartIcon } from '../ui/HeartIcon';
 import { WatchlistGroupPicker } from './WatchlistGroupPicker';
 
@@ -21,14 +21,16 @@ import { WatchlistGroupPicker } from './WatchlistGroupPicker';
  *  - 'row'     : 행 안에서 group-hover/focus로 등장(미등록은 초저대비).
  *  - 'status'  : 라이브 상태바 — 항상 또렷(채움/빈은 색·fill로 구분).
  */
-export function WatchlistHeartButton({ code, name, isMember, variant = 'default' }: {
+export function WatchlistHeartButton({ code, name, isMember, variant = 'default', className = '' }: {
   code: string;
   /** ≥1 그룹 소속 여부. 리스트 소유자가 `useWatchlistMembership()` 을 한 번 불러 내린다. */
   isMember: boolean;
   name?: string;
   variant?: 'default' | 'row' | 'status';
+  className?: string;
 }) {
   const member = isMember;
+  const anchorRef = useRef<HTMLButtonElement>(null);
   const [picker, setPicker] = useState<{ x: number; y: number } | null>(null);
 
   const tone = member
@@ -40,6 +42,7 @@ export function WatchlistHeartButton({ code, name, isMember, variant = 'default'
   return (
     <>
       <button
+        ref={anchorRef}
         type="button"
         aria-label="관심 그룹 편집"
         aria-pressed={member}
@@ -50,13 +53,13 @@ export function WatchlistHeartButton({ code, name, isMember, variant = 'default'
           const r = e.currentTarget.getBoundingClientRect();
           setPicker({ x: r.left, y: r.bottom + 4 });
         }}
-        className={`leading-none transition-[opacity,color] duration-[80ms] ${tone}`}
+        className={`leading-none transition-[opacity,color] duration-[80ms] ${tone} ${className}`}
       >
         <HeartIcon filled={member} className="w-[1em] h-[1em]" />
       </button>
       {picker && (
         <WatchlistGroupPicker code={code} name={name} x={picker.x} y={picker.y}
-          onClose={() => setPicker(null)} />
+          anchorRef={anchorRef} onClose={() => setPicker(null)} />
       )}
     </>
   );
