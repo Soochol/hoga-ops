@@ -20,6 +20,7 @@
 .order-window .order-account-controls button[aria-expanded=true] { background:var(--tint-selection); color:var(--accent); }
 .order-account-label { color:var(--fg-dim); font-size:var(--live-text-meta,var(--text-xs)); white-space:nowrap; }
 .order-window .order-account-controls select { max-width:100%; padding:2px 0.25rem; border-radius:var(--radius-md); }
+.order-window .order-account-select:focus { outline:none; }
 .order-overview-controls { display:grid; grid-template-columns:max-content minmax(0,1fr); padding:1px 0.625rem; gap:8px; border-bottom:0; align-items:center; overflow-x:auto; }
 .order-buying-power { display:grid; grid-template-columns:max-content 17ch; justify-self:end; align-items:center; gap:4px; white-space:nowrap; }
 .order-buying-power .order-field-value { display:block; width:17ch; overflow-x:auto; scrollbar-width:none; text-align:right; font-weight:500; }
