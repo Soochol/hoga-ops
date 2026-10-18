@@ -432,6 +432,13 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   return {
     today,
     remoteHistory, dailyMetadata, minuteMetadata, stockMinuteMetadata,
+    usStockHistory: activeUsStock && isMinuteTimeframe(timeframe) ? {
+      hasMore: usMinuteCandles.historyHasMore, loading: usMinuteCandles.historyLoading,
+      blocked: !!usMinuteCandles.historyError, loadOlder: usMinuteCandles.loadOlder,
+    } : undefined,
+    usStockHistoryError: usMinuteCandles.historyError,
+    usStockHistoryLimitReached: usMinuteCandles.historyLimitReached,
+    retryUsStockHistory: usMinuteCandles.retryHistory,
     live,
     liveInitial,
     liveTradePrice,

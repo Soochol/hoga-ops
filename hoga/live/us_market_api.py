@@ -183,15 +183,20 @@ class UsMarketApi:
         exchange: UsExchange = Query(...),
         symbol: str = Query(...),
         timeframe: Literal["1m", "3m", "5m", "10m", "15m", "30m", "60m"] = "1m",
+        cursor: str | None = Query(default=None, min_length=1, max_length=4096),
     ) -> UsStockMinuteResponse:
         if not _SYMBOL.fullmatch(symbol):
             raise HTTPException(422, {"code": LiveErrorCode.INVALID_CODE, "message": "invalid US ticker"})
         bypass = self.bypass()
         client = kiwoom_rest_runtime.ensure_rest_client(self.data_dir) if self.data_dir and not bypass else None
         scheduler = kiwoom_rest_runtime.ensure_scheduler(self.data_dir) if client else None
-        bars, meta = await self.stock_minute_service.get(
-            exchange, symbol, timeframe, client=client, scheduler=scheduler, bypass=bypass,
-        )
+        try:
+            bars, meta = await self.stock_minute_service.get(
+                exchange, symbol, timeframe, client=client, scheduler=scheduler, bypass=bypass,
+                cursor=cursor if isinstance(cursor, str) else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, detail={"code": LiveErrorCode.INVALID_CODE, "message": str(exc)}) from exc
         day = self.stock_minute_service.calendar_now().strftime("%Y%m%d")
         return UsStockMinuteResponse(
             instrument_key=f"us-stock:{exchange}:{symbol}", exchange=exchange, symbol=symbol, timeframe=timeframe,

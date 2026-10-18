@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
 import type { LiveInstrument, UsExchange } from '../live/liveInstrument';
 import type { LiveTimeframe } from '../state/livePage';
@@ -65,6 +66,7 @@ export interface UsStockMinuteMetadata extends UsMinuteMetadata {
   bar_limit: number;
   pages_fetched: number;
   more_available: boolean;
+  next_cursor: string | null;
 }
 export interface UsStockMinuteResponse {
   instrument_key: string;
@@ -76,16 +78,72 @@ export interface UsStockMinuteResponse {
   candles: UsDailyBar[];
   minute_metadata: UsStockMinuteMetadata;
 }
+export const US_MINUTE_MAX_BARS = 51_200;
+
+/** Latest wins on overlap. Never throw away already loaded history on polling. */
+export function mergeUsMinuteBars(...parts: UsDailyBar[][]): UsDailyBar[] {
+  const rows = new Map<number, UsDailyBar>();
+  for (const part of parts) for (const row of part) rows.set(row.t_ms, row);
+  return [...rows.values()].sort((a, b) => a.t_ms - b.t_ms).slice(-US_MINUTE_MAX_BARS);
+}
+
+export function retainUsMinuteWindow(old: UsStockMinuteResponse | undefined, next: UsStockMinuteResponse): UsStockMinuteResponse {
+  if (!old || old.instrument_key !== next.instrument_key || old.timeframe !== next.timeframe) return next;
+  const candles = mergeUsMinuteBars(old.candles, next.candles);
+  const keepCursor = !!old.candles.length && !!next.candles.length && old.candles[0].t_ms < next.candles[0].t_ms;
+  return { ...next, candles, from: candles[0]?.trading_date ?? next.from,
+    minute_metadata: { ...next.minute_metadata, available_from_ms: candles[0]?.t_ms ?? null,
+      ...(keepCursor ? { next_cursor: old.minute_metadata.next_cursor, more_available: old.minute_metadata.more_available } : {}) } };
+}
+
 export function useUsStockMinutes(instrument: LiveInstrument | null, timeframe: LiveTimeframe) {
   const stock = instrument?.kind === 'us_stock' ? instrument : null;
-  return useQuery({
-    queryKey: ['live', 'us-stock-minute', stock?.exchange, stock?.symbol, timeframe],
+  const client = useQueryClient();
+  const key = ['live', 'us-stock-minute', stock?.exchange, stock?.symbol, timeframe];
+  const url = `/api/live/us-stock-minute-candles?exchange=${stock?.exchange}&symbol=${encodeURIComponent(stock?.symbol ?? '')}&timeframe=${timeframe}`;
+  const latest = useQuery({
+    queryKey: key,
     enabled: !!stock && (US_MINUTE_TIMEFRAMES as readonly string[]).includes(timeframe),
-    queryFn: ({ signal }) => apiCall<UsStockMinuteResponse>(`/api/live/us-stock-minute-candles?exchange=${stock!.exchange}&symbol=${encodeURIComponent(stock!.symbol)}&timeframe=${timeframe}`, { signal }),
-    placeholderData: previous => previous?.instrument_key === `us-stock:${stock?.exchange}:${stock?.symbol}` && previous.timeframe === timeframe ? previous : undefined,
+    queryFn: ({ signal }) => apiCall<UsStockMinuteResponse>(url, { signal }),
+    structuralSharing: (old, next) => retainUsMinuteWindow(old as UsStockMinuteResponse | undefined, next as UsStockMinuteResponse),
     staleTime: 60_000,
+    gcTime: 5 * 60_000,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
     refetchIntervalInBackground: true,
   });
+  const history = useInfiniteQuery({
+    queryKey: [...key, 'history'],
+    enabled: false,
+    initialPageParam: null as string | null,
+    queryFn: async ({ pageParam, signal }) => {
+      const cursor = pageParam ?? client.getQueryData<UsStockMinuteResponse>(key)?.minute_metadata.next_cursor;
+      if (!cursor) throw new Error('과거 조회 연결 정보가 없습니다. 차트를 새로고침하세요.');
+      const page = await apiCall<UsStockMinuteResponse>(`${url}&cursor=${encodeURIComponent(cursor)}`, { signal });
+      if (!page.candles.length && page.minute_metadata.refresh_status !== 'normal')
+        throw new Error('과거 조회에 실패했습니다. 다시 시도하세요.');
+      return page;
+    },
+    getNextPageParam: (last, pages) => pages.length < 63 ? last.minute_metadata.next_cursor : undefined,
+    staleTime: Infinity,
+    gcTime: 5 * 60_000,
+    // Completed pages keep their object references; avoid recursively walking
+    // tens of thousands of immutable bars after every append.
+    structuralSharing: false,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const pages = history.data?.pages;
+  const data = useMemo(() => {
+    if (!latest.data) return undefined;
+    const candles = mergeUsMinuteBars(...(history.data?.pages ?? []).map(p => p.candles), latest.data.candles);
+    return { ...latest.data, candles, from: candles[0]?.trading_date ?? latest.data.from };
+  }, [history.data, latest.data]);
+  const candles = data?.candles ?? [];
+  const nextCursor = pages?.length ? pages.at(-1)?.minute_metadata.next_cursor : latest.data?.minute_metadata.next_cursor;
+  const hasMore = !!stock && !!nextCursor && (pages?.length ?? 0) < 63 && candles.length < US_MINUTE_MAX_BARS;
+  return { ...latest, data, historyLoading: history.isFetchingNextPage, historyError: history.error,
+    historyHasMore: hasMore, historyLimitReached: (pages?.length ?? 0) >= 63 || candles.length >= US_MINUTE_MAX_BARS,
+    loadOlder: () => { if (hasMore && !history.isFetchingNextPage) void history.fetchNextPage({ cancelRefetch: false }); },
+    retryHistory: () => { void history.fetchNextPage({ cancelRefetch: false }); } };
 }

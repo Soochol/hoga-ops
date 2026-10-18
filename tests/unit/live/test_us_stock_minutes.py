@@ -110,13 +110,14 @@ async def test_bad_continuations_stop_as_partial_without_fabricated_history(monk
         if failure == "stalled":
             return page([row()], True, "next2")
         if failure == "conflict":
-            return page([row(close="213.9"), row("20261016185800")])
+            return page([row("20261016185800"), row(close="213.9")])
         return page([row("20261016185800")], True, "next" if failure == "repeat_key" else "")
 
     monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", run)
     result = await fetch_stock_minutes(object(), object(), "NASDAQ", "NVDA", "1m", "20261018")
     assert result.failed and result.messages and len(calls) == 2
     assert result.bars[0].t_ms == parse_stock_minute(row()).t_ms
+    assert len(result.bars) == 1 and result.cursor == "next"
 
 
 @pytest.mark.asyncio
@@ -200,3 +201,102 @@ async def test_pending_refresh_is_shielded_and_lru_is_bounded(monkeypatch):
     with pytest.raises(asyncio.CancelledError):
         await waiter
     assert not service.pending
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exchange,symbol,tf", [("NASDAQ", "NVDA", tf) for tf in
+                         ["1m", "3m", "5m", "10m", "15m", "30m", "60m"]] +
+                         [("NYSE", "BRKb", "1m"), ("AMEX", "AAAA", "1m")])
+async def test_history_continues_native_cursor_without_rewalking_and_stops_at_end(monkeypatch, exchange, symbol, tf):
+    calls = []
+    origin = datetime(2026, 10, 16, 18, 59)
+
+    async def run(scheduler, **kw):
+        client = SimpleNamespace(call=call)
+        return await kw["fetch_fn"](client)
+
+    async def call(api_id, body, *, cont=False, next_key=""):
+        offset = int(next_key) if cont else 0
+        calls.append((offset, dict(body)))
+        rows = []
+        for i in range(100):
+            dt = origin - timedelta(minutes=(offset + i) * int(tf[:-1]))
+            rows.append(row(dt.strftime("%Y%m%d%H%M%S"), dt.strftime("%Y%m%d")))
+        return page(rows, offset < 2300, str(offset + 100))
+
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", run)
+    service = UsStockMinuteService(calendar_now=lambda: datetime(2026, 10, 18, tzinfo=NY))
+    client = object()
+    latest, metadata = await service.get(exchange, symbol, tf, client=client)
+    token = metadata.next_cursor
+    assert len(latest) == 800 and token and metadata.more_available
+    older, second = await service.get(exchange, symbol, tf, client=client, cursor=token)
+    assert len(older) == 800 and older[-1].t_ms < latest[0].t_ms
+    assert second.history_scope == "cursor_history_page" and second.next_cursor
+    assert (await service.get(exchange, symbol, tf, client=client, cursor=token))[0] == older
+    assert len(calls) == 16  # history cache hit never retraverses latest pages
+    final, end = await service.get(exchange, symbol, tf, client=client, cursor=second.next_cursor)
+    assert len(final) == 800 and final[-1].t_ms < older[0].t_ms
+    assert not end.next_cursor and not end.more_available
+    assert [n for n, _ in calls] == list(range(0, 2400, 100))
+    assert all(body["tic_scope"] == tf[:-1] and body["strt_dt"] == "20261018" for _, body in calls)
+    for ex, sym, period, bad in [(exchange, symbol, tf, token + "x"),
+                                  (exchange, symbol + "x", tf, token),
+                                  (exchange, symbol, "3m" if tf != "3m" else "1m", token)]:
+        with pytest.raises(ValueError, match="새로고침"):
+            await service.get(ex, sym, period, client=client, cursor=bad)
+    assert len(calls) == 24
+    await service.aclose()
+
+
+@pytest.mark.asyncio
+async def test_partial_history_exposes_only_last_valid_cursor_for_safe_resume(monkeypatch):
+    calls = []
+    origin = datetime(2026, 10, 16, 18, 59)
+    fail = [True]
+
+    async def run(scheduler, **kw):
+        offset = int(kw["key"][-1] or "0")
+        calls.append(offset)
+        if offset == 900 and fail[0]:
+            raise ValueError("temporary vendor failure")
+        rows = [row((origin - timedelta(minutes=offset + i)).strftime("%Y%m%d%H%M%S")) for i in range(100)]
+        return page(rows, True, str(offset + 100))
+
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", run)
+    service = UsStockMinuteService()
+    _, latest = await service.get("NASDAQ", "NVDA", "1m", client=object())
+    rows, partial = await service.get("NASDAQ", "NVDA", "1m", client=object(), cursor=latest.next_cursor)
+    assert len(rows) == 100 and partial.refresh_status == "partial" and partial.next_cursor
+    fail[0] = False
+    resumed, metadata = await service.get("NASDAQ", "NVDA", "1m", client=object(), cursor=partial.next_cursor)
+    assert len(resumed) == 800 and resumed[-1].t_ms < rows[0].t_ms
+    assert metadata.refresh_status == "normal" and calls.count(800) == 1
+    await service.aclose()
+
+
+@pytest.mark.asyncio
+async def test_failed_cold_history_can_be_explicitly_retried_without_dropping_latest(monkeypatch):
+    calls = []
+    fail = [True]
+    origin = datetime(2026, 10, 16, 18, 59)
+
+    async def run(scheduler, **kw):
+        offset = int(kw["key"][-1] or "0")
+        calls.append(offset)
+        if offset == 800 and fail[0]:
+            raise TimeoutError("temporary")
+        rows = [row((origin - timedelta(minutes=offset + i)).strftime("%Y%m%d%H%M%S")) for i in range(100)]
+        return page(rows, offset < 1500, str(offset + 100))
+
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", run)
+    service = UsStockMinuteService(clock=lambda: 0)
+    rows, seed = await service.get("NASDAQ", "NVDA", "1m", client=object())
+    empty, failed = await service.get("NASDAQ", "NVDA", "1m", client=object(), cursor=seed.next_cursor)
+    assert not empty and failed.refresh_status == "error"
+    fail[0] = False
+    older, end = await service.get("NASDAQ", "NVDA", "1m", client=object(), cursor=seed.next_cursor)
+    assert len(older) == 800 and end.refresh_status == "normal" and not end.next_cursor
+    assert calls.count(800) == 2
+    assert (await service.get("NASDAQ", "NVDA", "1m", client=object()))[0] == rows
+    await service.aclose()

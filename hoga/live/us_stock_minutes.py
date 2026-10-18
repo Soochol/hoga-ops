@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
+import json
+import secrets
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -20,8 +25,11 @@ from hoga.live.us_index_minutes import MINUTE_TIMEFRAMES, UsMinuteMetadata
 MAX_BARS = 800
 MAX_PAGES = 8
 MAX_ENTRIES = 64
-MAX_PAGE_ROWS = 2000
+MAX_PAGE_ROWS = 100
 MAX_EXTENDED_HOUR = 48
+CURSOR_FIELDS = 6
+MAX_VENDOR_CURSOR = 1024
+MAX_EPOCH_MS = 32_503_680_000_000
 
 
 class UsStockMinuteMetadata(UsMinuteMetadata):
@@ -33,6 +41,7 @@ class UsStockMinuteMetadata(UsMinuteMetadata):
     bar_limit: int = MAX_BARS
     pages_fetched: int = 0
     more_available: bool = False
+    next_cursor: str | None = None
 
 
 class UsStockMinuteResponse(BaseModel):
@@ -73,15 +82,17 @@ class StockMinuteWindow:
     more: bool = False
     failed: bool = False
     messages: list[str] = field(default_factory=list)
+    cursor: str = ""
 
 
 async def fetch_stock_minutes(client, scheduler, exchange, symbol, timeframe, anchor,
-                              *, max_pages=MAX_PAGES, budget_seconds=12) -> StockMinuteWindow:
+                              *, max_pages=MAX_PAGES, budget_seconds=12, start_cursor="",
+                              before_ms=None) -> StockMinuteWindow:
     body = {"stex_tp": EXCHANGE_CODES[exchange], "stk_cd": symbol, "strt_dt": anchor,
             "tic_scope": timeframe[:-1], "upd_stkpc_tp": "0", "exrt_appl_tp": "0"}
     result = StockMinuteWindow()
     seen: dict[int, UsDailyBar] = {}
-    cursor, cursors, previous_oldest = "", set(), None
+    cursor, cursors, previous_oldest = start_cursor, {start_cursor} if start_cursor else set(), before_ms
     deadline = time.monotonic() + budget_seconds
     for _ in range(max_pages):
         try:
@@ -108,12 +119,20 @@ async def fetch_stock_minutes(client, scheduler, exchange, symbol, timeframe, an
                 raise ValueError("Kiwoom US minute cursor stalled")
             if page.cont and (not bars or not page.next_key or page.next_key in cursors):
                 raise ValueError("invalid Kiwoom US minute continuation")
+            accepted: dict[int, UsDailyBar] = {}
             for bar in bars:
-                if bar.t_ms in seen and seen[bar.t_ms] != bar:
+                if before_ms is not None and bar.t_ms >= before_ms:
+                    continue
+                existing = accepted.get(bar.t_ms, seen.get(bar.t_ms))
+                if existing is not None and existing != bar:
                     raise ValueError("conflicting Kiwoom US minute timestamps")
-                seen[bar.t_ms] = bar
+                accepted[bar.t_ms] = bar
+            # Publish a page atomically with its cursor. A bad row must not
+            # advance the boundary past an otherwise uncommitted page.
+            seen.update(accepted)
             result.pages += 1
             result.more = page.cont
+            result.cursor = page.next_key if page.cont else ""
             if not page.cont or len(seen) >= MAX_BARS:
                 break
             cursor, previous_oldest = page.next_key, oldest
@@ -136,13 +155,42 @@ class _Entry:
 class UsStockMinuteService:
     def __init__(self, *, clock=time.monotonic, wall_clock=time.time, calendar_now=lambda: datetime.now(NY)):
         self.clock, self.wall_clock, self.calendar_now = clock, wall_clock, calendar_now
-        self.entries: OrderedDict[tuple[str, str, str], _Entry] = OrderedDict()
-        self.pending: dict[tuple[str, str, str], asyncio.Task] = {}
+        self._cursor_secret = secrets.token_bytes(32)
+        self.entries: OrderedDict[tuple[str, ...], _Entry] = OrderedDict()
+        self.pending: dict[tuple[str, ...], asyncio.Task] = {}
 
-    async def get(self, exchange, symbol, timeframe, *, client=None, scheduler=None, bypass=False):
+    def _encode_cursor(self, key, anchor, vendor_cursor, before_ms):
+        payload = base64.urlsafe_b64encode(json.dumps([*key[:3], anchor, vendor_cursor, before_ms],
+                                                     separators=(",", ":")).encode()).decode()
+        signature = hmac.new(self._cursor_secret, payload.encode(), hashlib.sha256).hexdigest()
+        return payload + "." + signature
+
+    def _decode_cursor(self, key, token):
+        try:
+            payload, signature = token.rsplit(".", 1)
+            expected = hmac.new(self._cursor_secret, payload.encode(), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected, signature):
+                raise ValueError("invalid cursor signature")
+            context = json.loads(base64.urlsafe_b64decode(payload))
+            if len(context) != CURSOR_FIELDS or context[:3] != list(key[:3]):
+                raise ValueError("cursor belongs to another instrument/period")
+            _, _, _, anchor, vendor, before = context
+            parse_date(anchor)
+            if not isinstance(vendor, str) or not vendor or len(vendor) > MAX_VENDOR_CURSOR:
+                raise ValueError("invalid vendor cursor")
+            if not isinstance(before, int) or not 0 < before < MAX_EPOCH_MS:
+                raise ValueError("invalid cursor boundary")
+            return anchor, vendor, before
+        except (ValueError, TypeError, IndexError, AttributeError) as exc:
+            raise ValueError("과거 조회 연결 정보가 유효하지 않습니다. 차트를 새로고침하세요.") from exc
+
+    async def get(self, exchange, symbol, timeframe, *, client=None, scheduler=None, bypass=False, cursor=None):
         if exchange not in EXCHANGE_CODES or timeframe not in MINUTE_TIMEFRAMES:
             raise ValueError("unsupported US stock minute exchange/period")
         key = (exchange, symbol, timeframe)
+        context = self._decode_cursor(key, cursor) if cursor else None
+        if cursor:
+            key = (*key, cursor)
         if key not in self.entries:
             if len(self.entries) >= MAX_ENTRIES:
                 victim = next((k for k in self.entries if k not in self.pending), None)
@@ -156,7 +204,7 @@ class UsStockMinuteService:
             if key in self.pending:
                 await asyncio.shield(self.pending[key])
             elif self.clock() >= entry.expiry:
-                task = asyncio.create_task(self._refresh(key, entry, client, scheduler))
+                task = asyncio.create_task(self._refresh(key, entry, client, scheduler, context))
                 self.pending[key] = task
                 task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
                 await asyncio.shield(task)
@@ -165,15 +213,20 @@ class UsStockMinuteService:
             meta = meta.model_copy(update={"refresh_status": "bypass" if bypass else "unconfigured"})
         return entry.bars, meta
 
-    async def _refresh(self, key, entry, client, scheduler):
+    async def _refresh(self, key, entry, client, scheduler, context=None):
         try:
-            window = await fetch_stock_minutes(client, scheduler, *key, self.calendar_now().strftime("%Y%m%d"))
+            anchor, vendor, before = context or (self.calendar_now().strftime("%Y%m%d"), "", None)
+            options = {"start_cursor": vendor, "before_ms": before} if context else {}
+            window = await fetch_stock_minutes(client, scheduler, *key[:3], anchor, **options)
             if window.failed and entry.meta.last_successful_check_at_ms is not None:
                 entry.meta = entry.meta.model_copy(update={"refresh_status": "stale", "messages": window.messages})
             else:
                 entry.bars = window.bars
                 entry.meta = UsStockMinuteMetadata(
-                    pages_fetched=window.pages, more_available=window.more,
+                    pages_fetched=window.pages, more_available=bool(window.more and window.cursor and window.bars),
+                    next_cursor=self._encode_cursor(key, anchor, window.cursor, window.bars[0].t_ms)
+                    if window.more and window.cursor and window.bars else None,
+                    history_scope="cursor_history_page" if context else "bounded_recent_window",
                     available_from_ms=window.bars[0].t_ms if window.bars else None,
                     available_to_ms=window.bars[-1].t_ms if window.bars else None,
                     last_successful_check_at_ms=int(self.wall_clock() * 1000) if not window.failed else None,
@@ -181,7 +234,10 @@ class UsStockMinuteService:
                                     "error" if window.failed else "normal"),
                     messages=window.messages,
                 )
-            entry.expiry = self.clock() + (30 if window.failed else 60)
+            # A failed cold history page has no data to cache. Only an explicit
+            # retry follows it; the UI stops automatic paging on failure.
+            ttl = (0 if context and not entry.bars else 30) if window.failed else (300 if context else 60)
+            entry.expiry = self.clock() + ttl
         finally:
             self.pending.pop(key, None)
 

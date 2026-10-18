@@ -1,3 +1,4 @@
+import { usePagedChartHistory, type PagedChartHistory } from './usePagedChartHistory';
 import { isUsWorkareaCode } from './instrumentPriceFormat';
 import { peakWallInstancePoints } from './indicators/peakWallInstancePoints';
 import { ScopedIndicatorPane } from './indicators/IndicatorInstancePane';
@@ -404,6 +405,7 @@ interface Props {
    */
   savedRangeFrozen?: boolean;
   historyBackfillEnabled?: boolean;
+  pagedHistory?: PagedChartHistory;
   /**
    * 창 간 크로스헤어 동기화(옆 분봉 창 호버 → 이 일봉 창)를 켠다. `/study` 와
    * `/live` 워크스페이스가 둘 다 넘긴다.
@@ -521,6 +523,7 @@ export function LiveChartRoot({
   savedRangeFromDate = null,
   savedRangeFrozen = false,
   historyBackfillEnabled = true,
+  pagedHistory,
   cursorSyncCrosshair = false,
   paneTogglesOverride,
   dailyMovingAverageOverride,
@@ -1262,6 +1265,7 @@ export function LiveChartRoot({
   // render window before viewport repair reads/repositions the new time grid.
   useEffect(() => { flushWindowedChart(chart); });
 
+  usePagedChartHistory(chart, axis, cb, pagedHistory, containerRef);
   const { sourceSwapClampNotice } = useViewportBackfill({
     chart,
     axis,

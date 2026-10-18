@@ -1,0 +1,566 @@
+[
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.0230286332101315,
+      "x": 548.2222245265368,
+      "row": {
+        "open": 29.85,
+        "high": 29.85,
+        "low": 29.85,
+        "close": 29.85,
+        "time": 1783958414,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1363,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 626.9804087664942,
+        "to": 892.9434602183585
+      },
+      "spacing": 4.023028633210132,
+      "x": 548.2222245265369,
+      "row": {
+        "open": 29.85,
+        "high": 29.85,
+        "low": 29.85,
+        "close": 29.85,
+        "time": 1776320770,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "AMEX",
+      "symbol": "AAAA",
+      "timeframe": "1m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.00804528634529,
+      "x": 546.1767041372386,
+      "row": {
+        "open": 216.7769,
+        "high": 216.88,
+        "low": 216.73,
+        "close": 216.8232,
+        "time": 1792155600,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.008045286345291,
+      "x": 546.1767041372387,
+      "row": {
+        "open": 216.7769,
+        "high": 216.88,
+        "low": 216.73,
+        "close": 216.8232,
+        "time": 1792154701,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "timeframe": "1m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 236,
+        "high": 236.3688,
+        "low": 235.92,
+        "close": 236.09,
+        "time": 1791449103,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 236,
+        "high": 236.3688,
+        "low": 235.92,
+        "close": 236.09,
+        "time": 1791096311,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "timeframe": "15m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 218.4275,
+        "high": 233.7118,
+        "low": 208.1399,
+        "close": 218.7205,
+        "time": 1788642002,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 218.4275,
+        "high": 233.7118,
+        "low": 208.1399,
+        "close": 218.7205,
+        "time": 1787432409,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "timeframe": "60m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 225.63,
+        "high": 225.76,
+        "low": 225.11,
+        "close": 225.4106,
+        "time": 1791640802,
+        "color": "#1957c2",
+        "borderColor": "#1957c2",
+        "wickColor": "#1957c2"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 225.63,
+        "high": 225.76,
+        "low": 225.11,
+        "close": 225.4106,
+        "time": 1791464408,
+        "color": "#1957c2",
+        "borderColor": "#1957c2",
+        "wickColor": "#1957c2"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "timeframe": "10m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 227.818,
+        "high": 228.12,
+        "low": 227.79,
+        "close": 227.983,
+        "time": 1790546401,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 227.818,
+        "high": 228.12,
+        "low": 227.79,
+        "close": 227.983,
+        "time": 1789768805,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "timeframe": "30m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 220.69,
+        "high": 220.69,
+        "low": 220.4,
+        "close": 220.53,
+        "time": 1792001701,
+        "color": "#1957c2",
+        "borderColor": "#1957c2",
+        "wickColor": "#1957c2"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 220.69,
+        "high": 220.69,
+        "low": 220.4,
+        "close": 220.53,
+        "time": 1791826204,
+        "color": "#1957c2",
+        "borderColor": "#1957c2",
+        "wickColor": "#1957c2"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "timeframe": "5m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 348.4,
+        "high": 348.59,
+        "low": 347,
+        "close": 347.83,
+        "time": 1792155600,
+        "color": "#1957c2",
+        "borderColor": "#1957c2",
+        "wickColor": "#1957c2"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 348.4,
+        "high": 348.59,
+        "low": 347,
+        "close": 347.83,
+        "time": 1792154581,
+        "color": "#1957c2",
+        "borderColor": "#1957c2",
+        "wickColor": "#1957c2"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "AAPL",
+      "timeframe": "1m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 216.75,
+        "high": 216.88,
+        "low": 216.6201,
+        "close": 216.84,
+        "time": 1792078201,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 216.75,
+        "high": 216.88,
+        "low": 216.6201,
+        "close": 216.84,
+        "time": 1792077302,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NASDAQ",
+      "symbol": "NVDA",
+      "timeframe": "3m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.0230286332101315,
+      "x": 548.2222245265368,
+      "row": {
+        "open": 92.7923,
+        "high": 92.7974,
+        "low": 92.7526,
+        "close": 92.7974,
+        "time": 1792154580,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.023028633210132,
+      "x": 548.2222245265369,
+      "row": {
+        "open": 92.7923,
+        "high": 92.7974,
+        "low": 92.7526,
+        "close": 92.7974,
+        "time": 1792153681,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NYSE",
+      "symbol": "KO",
+      "timeframe": "1m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.052995326939816,
+      "x": 552.313265305133,
+      "row": {
+        "open": 6.61,
+        "high": 6.61,
+        "low": 6.61,
+        "close": 6.61,
+        "time": 1786007408,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.052995326939817,
+      "x": 552.3132653051331,
+      "row": {
+        "open": 6.61,
+        "high": 6.61,
+        "low": 6.61,
+        "close": 6.61,
+        "time": 1782500977,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NYSE",
+      "symbol": "AHT_pd",
+      "timeframe": "1m"
+    }
+  },
+  {
+    "before": {
+      "count": 800,
+      "span": 265.9630514518644,
+      "range": {
+        "from": 63.98040876649418,
+        "to": 329.94346021835855
+      },
+      "spacing": 4.000553612912868,
+      "x": 545.1539439425898,
+      "row": {
+        "open": 528.29,
+        "high": 528.29,
+        "low": 528.29,
+        "close": 528.29,
+        "time": 1792148821,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "after": {
+      "count": 1600,
+      "span": 265.9630514518643,
+      "range": {
+        "from": 863.9804087664942,
+        "to": 1129.9434602183585
+      },
+      "spacing": 4.000553612912869,
+      "x": 545.1539439425899,
+      "row": {
+        "open": 528.29,
+        "high": 528.29,
+        "low": 528.29,
+        "close": 528.29,
+        "time": 1792147922,
+        "color": "#de2b39",
+        "borderColor": "#de2b39",
+        "wickColor": "#de2b39"
+      }
+    },
+    "source": {
+      "exchange": "NYSE",
+      "symbol": "BRKb",
+      "timeframe": "1m"
+    }
+  }
+]

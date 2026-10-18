@@ -351,7 +351,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
                                 "refresh_status", "messages"}),
     UsStockMinuteMetadata: frozenset({"market_timezone", "source", "history_scope", "delay_status", "session_scope",
         "available_from_ms", "available_to_ms", "last_successful_check_at_ms", "refresh_status", "messages",
-        "price_basis", "currency", "bar_limit", "pages_fetched", "more_available"}),
+        "price_basis", "currency", "bar_limit", "pages_fetched", "more_available", "next_cursor"}),
     UsStockMinuteResponse: frozenset({"instrument_key", "exchange", "symbol", "from_", "to", "timeframe",
                                       "candles", "minute_metadata"}),
     UsDailyBar: frozenset({"trading_date", "t_ms", "open", "high", "low", "close", "volume"}),
