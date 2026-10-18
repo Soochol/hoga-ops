@@ -50,6 +50,10 @@ function trusted(event: IpcMainInvokeEvent): void {
 function publish(): void {
   if (window && !window.isDestroyed() && window.webContents.getURL() === PAGE) window.webContents.send('server:state', state());
 }
+function windowState(): { maximized: boolean } { return { maximized: window?.isMaximized() ?? false }; }
+function publishWindowState(): void {
+  if (window && !window.isDestroyed() && window.webContents.getURL() === PAGE) window.webContents.send('server:window-state', windowState());
+}
 async function shutdown(): Promise<void> {
   if (quitting || shuttingDown) return;
   shuttingDown = true;
@@ -120,6 +124,8 @@ else {
     window.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     window.webContents.session.setPermissionCheckHandler(() => false);
     window.on('close', event => { if (!quitting) { event.preventDefault(); window?.hide(); } });
+    window.on('maximize', publishWindowState);
+    window.on('unmaximize', publishWindowState);
     window.once('ready-to-show', showWindow);
     ipcMain.handle('server:read', event => { trusted(event); return state(); });
     ipcMain.handle('server:refresh', async event => { trusted(event); return await controller?.refresh() ?? state(); });
@@ -127,6 +133,12 @@ else {
     ipcMain.handle('server:stop', async event => { trusted(event); return await controller?.stop() ?? state(); });
     ipcMain.handle('server:logs', async event => { trusted(event); return shell.openPath(logFolder); });
     ipcMain.handle('server:open-client', event => { trusted(event); return openClient(); });
+    ipcMain.handle('server:window-state', event => { trusted(event); return windowState(); });
+    ipcMain.handle('server:minimize', event => { trusted(event); window?.minimize(); });
+    ipcMain.handle('server:toggle-maximize', event => {
+      trusted(event);
+      if (window?.isMaximized()) window.unmaximize(); else window?.maximize();
+    });
     ipcMain.handle('server:close', event => { trusted(event); window?.hide(); });
     ipcMain.handle('server:quit', event => { trusted(event); void quitManager(); });
     await window.loadURL(PAGE);

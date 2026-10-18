@@ -12,6 +12,10 @@ let openingClient = false;
 let restoringUi = true;
 byId('log-details').open = savedUi.logsOpen === true;
 byId('follow').checked = savedUi.follow !== false;
+// Keep the latest line visible when the window or the expanded log panel resizes.
+new ResizeObserver(() => {
+  if (byId('follow').checked) byId('logs').scrollTop = byId('logs').scrollHeight;
+}).observe(byId('logs'));
 
 window.addEventListener('beforeunload', () => {
   try {
@@ -23,6 +27,15 @@ window.addEventListener('beforeunload', () => {
 });
 
 function feedback(message) { byId('feedback').textContent = message; byId('feedback').hidden = !message; }
+function renderWindowState(state) {
+  const label = state.maximized ? '이전 크기로 복원' : '최대화';
+  byId('maximize').setAttribute('aria-label', label);
+  byId('maximize').title = label;
+  byId('maximize').setAttribute('aria-pressed', String(state.maximized));
+  byId('maximize-icon').setAttribute('href', state.maximized ? '#icon-restore' : '#icon-maximize');
+  byId('minimize').disabled = false;
+  byId('maximize').disabled = false;
+}
 function renderLogs(lines) {
   const next = lines.join('\n');
   if (next === logText) return;
@@ -116,6 +129,13 @@ byId('refresh').addEventListener('click', () => run(api.refresh));
 byId('log-details').querySelector('summary').addEventListener('click', () => { autoOpened = false; });
 byId('open-logs').addEventListener('click', () => { void api.openLogs().then(error => { if (error) feedback('로그 폴더를 열지 못했습니다.'); }).catch(() => feedback('로그 폴더를 열지 못했습니다.')); });
 byId('close').addEventListener('click', () => { void api.close().catch(error => feedback(error.message)); });
+byId('minimize').addEventListener('click', () => { void api.minimize?.().catch(error => feedback(error.message)); });
+byId('maximize').addEventListener('click', () => { void api.toggleMaximize?.().catch(error => feedback(error.message)); });
 byId('quit').addEventListener('click', () => { void api.quit().catch(error => feedback(error.message)); });
+// Older running main/preload code keeps working while a source UI update is applied.
+if (api.windowState && api.onWindowState) {
+  api.onWindowState(renderWindowState);
+  void api.windowState().then(renderWindowState).catch(error => feedback(error.message));
+}
 api.onState(render);
 run(api.read);
