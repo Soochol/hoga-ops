@@ -1,0 +1,65 @@
+
+ RUN  v4.1.7 /home/dev/.codex/worktrees/bb24/hoga-ops/frontend
+
+stderr | src/live/useLiveBundle.test.tsx > useLiveBundle > 창별 hogaplay 소스 > does not hold another date during a cold jump or return (disk=false, history='20260501')
+Warning: An update to TestComponent inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at TestComponent (/home/dev/.codex/worktrees/bb24/hoga-ops/frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+    at QueryClientProvider (file:///home/dev/.codex/worktrees/bb24/hoga-ops/frontend/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+    at /home/dev/.codex/worktrees/bb24/hoga-ops/frontend/src/live/useLiveBundle.test.tsx:286:12
+
+stderr | src/live/useLiveBundle.test.tsx > useLiveBundle > 창별 hogaplay 소스 > does not hold another date during a cold jump or return (disk=true, history='20260501')
+Warning: An update to TestComponent inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at TestComponent (/home/dev/.codex/worktrees/bb24/hoga-ops/frontend/node_modules/@testing-library/react/dist/pure.js:328:5)
+    at QueryClientProvider (file:///home/dev/.codex/worktrees/bb24/hoga-ops/frontend/node_modules/@tanstack/react-query/build/modern/QueryClientProvider.js:20:3)
+    at /home/dev/.codex/worktrees/bb24/hoga-ops/frontend/src/live/useLiveBundle.test.tsx:286:12
+
+ ❯ src/live/useLiveBundle.test.tsx (163 tests | 4 failed | 159 skipped) 39ms
+       × does not hold another date during a cold jump or return (disk=false, history=null) 22ms
+       × does not hold another date during a cold jump or return (disk=true, history=null) 4ms
+       × does not hold another date during a cold jump or return (disk=false, history='20260501') 6ms
+       × does not hold another date during a cold jump or return (disk=true, history='20260501') 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/live/useLiveBundle.test.tsx > useLiveBundle > 창별 hogaplay 소스 > does not hold another date during a cold jump or return (disk=false, history=null)
+ FAIL  src/live/useLiveBundle.test.tsx > useLiveBundle > 창별 hogaplay 소스 > does not hold another date during a cold jump or return (disk=true, history=null)
+ FAIL  src/live/useLiveBundle.test.tsx > useLiveBundle > 창별 hogaplay 소스 > does not hold another date during a cold jump or return (disk=false, history='20260501')
+ FAIL  src/live/useLiveBundle.test.tsx > useLiveBundle > 창별 hogaplay 소스 > does not hold another date during a cold jump or return (disk=true, history='20260501')
+AssertionError: expected '20260527' to be '20260526' // Object.is equality
+
+Expected: "20260526"
+Received: "20260527"
+
+ ❯ src/live/useLiveBundle.test.tsx:1184:51
+    1182|       rangeMock.isHistoricalDeltaFetching = historicalFromDate !== nul…
+    1183|       rerender({ date: '20260526' });
+    1184|       expect(result.current.chartBundle!.to_date).toBe('20260526');
+       |                                                   ^
+    1185|       expect(result.current.chartBundle!.candles).toEqual([]);
+    1186|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 159 skipped (163)
+   Start at  00:01:33
+   Duration  1.33s (transform 528ms, setup 42ms, import 733ms, tests 39ms, environment 405ms)

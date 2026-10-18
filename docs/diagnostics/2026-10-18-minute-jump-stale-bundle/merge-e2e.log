@@ -1,0 +1,20 @@
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+transforming...[WebServer] ✓ 951 modules transformed.
+
+Running 8 tests using 1 worker
+
+(node:1639153) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1639153) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[e2e] worktree=/home/dev/.codex/worktrees/bb24/hoga-ops · slot=280 · backend=20280 · frontend=21280 · data=/tmp/hoga-e2e-data-280 · dist=/tmp/hoga-e2e-dist-280
+  ✓  1 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:70:3 › 1m: watchlist today seed stays at latest through history loading (5.6s)
+  ✓  2 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:70:3 › 15m: watchlist today seed stays at latest through history loading (2.2s)
+  ✓  3 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:129:1 › refresh, minute jump and held drag keep the target date and backfill anchor (4.3s)
+  ✓  4 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 128 candles without inheriting the previous date (3.1s)
+  ✓  5 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:244:3 › 3m: cold date jump seats 384 candles without inheriting the previous date (3.3s)
+  ✓  6 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:330:3 › 3m: partial history recovery preserves none viewport (2.8s)
+  ✓  7 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:330:3 › 3m: partial history recovery preserves pan viewport (3.0s)
+  ✓  8 [chromium] › tests/e2e/live-viewport-preservation.spec.ts:330:3 › 3m: partial history recovery preserves zoom viewport (2.5s)
+
+  8 passed (34.3s)

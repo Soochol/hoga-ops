@@ -1459,9 +1459,16 @@ export function useLiveBundle(
   // (candleEmpty)가 종전대로 나온다. 첫 타일이 오는 순간 풀리므로 이후 워크백은
   // 점진 프리펜드로 이어진다.
   const settledChart = lastSettledChartRef.current;
+  // A date jump remounts the chart before its cold query completes. Feeding
+  // that chart the previous date consumes its one-shot initial placement and
+  // leaves only two candles visible when the destination replaces the grid.
+  // Reject the previous date in both holds: the parent can still be resetting
+  // historicalFromDate while an old historical extension remains pending.
+  const settledChartMatchesDate = settledChart?.to_date === todayKstYyyymmdd;
   const sourceSwapHold =
     isMinute
     && settledChart !== null
+    && settledChartMatchesDate
     && settledChart.code === code
     && settledChart.bucket_ms === bucketMs
     && (restBypassEnabled
@@ -1471,7 +1478,8 @@ export function useLiveBundle(
   // 빠지고 진행 신호에는 남는다」 주석 참조. `extending` 을 쓰면 5초짜리 sidecar 가
   // 캔들을 다시 붙잡아 빈 화면이 그대로 돌아온다.
   const holdChart = chartHoldPending || sourceSwapHold;
-  const chartBundle = holdChart && settledChart && settledSessionRef.current === regularSessionOnly
+  const chartBundle = holdChart && settledChart && settledChartMatchesDate
+    && settledSessionRef.current === regularSessionOnly
     ? settledChart : computedChartBundle;
   useEffect(() => {
     if (!holdChart) {

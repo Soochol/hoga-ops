@@ -240,6 +240,91 @@ test('refresh, minute jump and held drag keep the target date and backfill ancho
   }).toBe(true);
 });
 
+for (const destinationBars of [128, 384]) {
+  test(`3m: cold date jump seats ${destinationBars} candles without inheriting the previous date`, async ({ page }) => {
+    await setup(page);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let destinationRequests = 0;
+    await page.route(apiExact('live/past-candles'), async route => {
+      const p = new URL(route.request().url()).searchParams;
+      const from = p.get('from')!;
+      const to = p.get('to')!;
+      const bucket_ms = Number(p.get('bucket_ms') ?? 60000);
+      if (to === '20260929') { destinationRequests++; await gate; }
+      await route.fulfill({ json: { code: '098460', from, to, bucket_ms,
+        // A normal response with fewer trading days than the previous view;
+        // closing-auction aggregation reduces each 130 raw bars to 128.
+        candles: to === '20260929' ? candles(from, to, bucket_ms).slice(-destinationBars / 128 * 130)
+          : candles(from, to, bucket_ms),
+        cached_dates: [], fresh_dates: [], data_warnings: [] } });
+    });
+    await page.route(apiExact('live/past-daily-candles'), route => route.fulfill({ json: {
+      code: '098460', from: ymd(days[0]), to: today,
+      candles: days.map(t_ms => ({ t_ms, open: 35000, high: 35100, low: 34900, close: 35050, volume: 100 })),
+      cached_batches: [], fresh_batches: [], data_warnings: [],
+    } }));
+    await page.goto('/live?code=098460');
+    await expect.poll(() => snapshot(page)).not.toBeNull();
+    const ids = await page.evaluate(async () => {
+      const path = '/src/state/workspace.ts';
+      const { useWorkspaceStore: store } = await import(path);
+      store.getState().applyWorkspaceSnapshot({ windows: [] });
+      store.getState().addWindow('chart');
+      const wins = store.getState().windows.filter((w: { kind: string }) => w.kind === 'chart').slice(0, 2);
+      store.setState({ windows: wins.map((w: WorkspaceWindow, i: number) => ({ ...w, group: 1,
+        rect: { x: i * .5, y: 0, w: .5, h: 1 }, chart: { ...w.chart, timeframe: i ? 'D' : '3m' } })),
+        zOrder: wins.map((w: { id: string }) => w.id), maximizedId: null });
+      for (const w of wins) store.getState().setWindowSymbol(w.id, { code: '098460', name: '고영', kind: 'stock' });
+      return { minute: wins[0].id, daily: wins[1].id };
+    });
+    await expect.poll(async () => (await snapshot(page, ids.minute))?.count).toBe(768);
+    await expect.poll(() => snapshot(page, ids.daily)).not.toBeNull();
+    await page.evaluate(id => {
+      const chart = (window as unknown as ChartsWindow).__liveCharts.get(id)!;
+      const rows = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!.data();
+      const ts = chart.timeScale();
+      const index = ts.timeToIndex(rows.at(-3)!.time)!;
+      ts.setVisibleLogicalRange({ from: index - 5, to: index });
+    }, ids.daily);
+    const jump = page.getByTestId('live-jump-to-minute-button');
+    await expect(jump).toHaveAttribute('title', '분봉으로 — 09-29');
+    await jump.click();
+    try {
+      await expect.poll(() => destinationRequests).toBeGreaterThan(0);
+      // Give the new chart a full commit while the destination is pending.
+      // Never reposition the minute destination to make the assertion pass.
+      await settleFrame(page);
+    } finally {
+      release();
+    }
+    await expect.poll(async () => (await snapshot(page, ids.minute))?.count).toBe(destinationBars);
+    const expectedVisible = Math.min(destinationBars, 300);
+    const expectSeated = async () => {
+      await expect(page.getByTestId('chart-reveal-cover').first()).toHaveCSS('opacity', '0');
+      await expect.poll(async () => (await snapshot(page, ids.minute))?.visibleCount).toBe(expectedVisible);
+      await settleFrame(page);
+      const state = (await snapshot(page, ids.minute))!;
+      expect(state.visibleCount).toBe(expectedVisible);
+      expect(state.latestX).toBeGreaterThan(state.width * .65);
+      expect(state.latestX).toBeLessThan(state.width * .9);
+    };
+    await expectSeated();
+    // Cached repeats and clearing the jump must also seat the correct date.
+    await jump.click();
+    await expectSeated();
+    await page.getByRole('button', { name: '기간 점프 해제' }).click();
+    await expect(page.getByTestId('live-minute-jump-chip')).toHaveCount(0);
+    await expect.poll(async () => (await snapshot(page, ids.minute))?.count).toBe(768);
+    await expect.poll(async () => (await snapshot(page, ids.minute))?.visibleCount).toBe(300);
+    await settleFrame(page);
+    const live = (await snapshot(page, ids.minute))!;
+    expect(live.lastClose).toBe(candles(today, today, 180000).at(-1)!.close);
+    expect(live.latestX).toBeGreaterThan(live.width * .65);
+    expect(live.latestX).toBeLessThan(live.width * .9);
+  });
+}
+
 // Partial responses must reserve the initial zoom without resetting later user input.
 for (const gesture of ['none', 'pan', 'zoom'] as const) {
   test(`3m: partial history recovery preserves ${gesture} viewport`, async ({ page }) => {

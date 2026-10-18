@@ -1,0 +1,121 @@
+{
+  "date_kst": "2026-10-19",
+  "base_commit": "506b67e8384d17c0b93f43d3087df56e543fd07b",
+  "origin_main": "159be204d1d53cbff009a8906a36a3c9cb7b511c",
+  "branch": "codex/fix-minute-jump-stale-bundle",
+  "product_diff_sha256": "9a1537a3612c5ba139e05bc036e07411b1e2a51208c2340086f1594d0b4fb72c",
+  "node": "v24.13.1",
+  "chrome": "Google Chrome 155.0.8059.84",
+  "installed_versions": {
+    "react": "18.3.1",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0",
+    "typescript": "6.0.3",
+    "lightweight-charts": "5.2.0",
+    "@tanstack/react-query": "5.100.11"
+  },
+  "inputs_sha256": {
+    "frontend/src/live/useLiveBundle.ts": "30161885d65a19edc95d5e23e51ed0ffe59b5e44810dfe2895a753d9fa410040",
+    "frontend/src/live/useLiveBundle.test.tsx": "70b85578777a6618bfee3035a1b1b0f23f3de4d052c03cdb90fb569ae3dc2b29",
+    "frontend/src/live/LiveChartRoot.test.tsx": "5a2a459e24002ea188bd5c24f21aa67bc8e3035c5c74e7a0aee38c5e68dbca9a",
+    "frontend/src/live/useTimeframeJump.test.tsx": "0335000aeeff73026ae888c3b919b0829fc6c2412be4bb7c5fdf38c85b55b8fc",
+    "frontend/src/live/useViewportBackfill.test.tsx": "6927e3dde077e4236635f514028a824994163ee395ac47bb82ef30b0eb592819",
+    "frontend/src/live/useViewportBackfill.cached.test.tsx": "57f0849dee6895aa8977d63bba6f185c8cde534119f63f767070bfa9e9f63a53",
+    "frontend/src/api/livePastCandles.test.tsx": "a5bbebf64e5891e58e2773cec96a2a215103db5cdde0f8567474eeb51caf4843",
+    "frontend/tests/e2e/live-viewport-preservation.spec.ts": "815b98d4657c0770474f0204c4715c8cf16ff59d4a3a06bcea30ca2fa61703fc",
+    "frontend/tests/e2e/helpers/liveMocks.ts": "8ffa69f8411218bb09f4072e08c7ac4e4f4bced418e9dd4e058a5c3b1bb89851",
+    "frontend/tests/e2e/helpers/apiRoutes.ts": "34708ce997d1723604e76e424ffacde3f10318f089e4e70d8cdb951c3a54b549",
+    "frontend/tests/e2e/worktreeEnv.ts": "8e63a68d925dccb4358177556b03fd58c5e997b793eb236fb7188e75d343eaa2",
+    "frontend/playwright.config.ts": "5db48591aea25b3e51659784e5e6a31e38073effc3b9090bb0b2bda61c32c11d",
+    "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493",
+    "frontend/package.json": "20c82c1b5bcd1caf12bd988786df6fa156b27609a8e79c3ebcdbe635b3d3719a",
+    "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "uv.lock": "b6704bb6abd785df4c1898f776d837a9e5defd547a99d2c8dede66d758ed3893"
+  },
+  "checks": [
+    {
+      "command": "npx vitest run src/live/useLiveBundle.test.tsx -t 'does not hold another date'",
+      "stage": "before fix",
+      "result": "4 expected regression failures"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts --grep 'cold date jump' --reporter=list",
+      "stage": "before fix",
+      "result": "2 expected regression failures, both displayed 2 candles"
+    },
+    {
+      "command": "npx vitest run src/live/useLiveBundle.test.tsx src/live/LiveChartRoot.test.tsx src/live/useTimeframeJump.test.tsx src/live/useViewportBackfill.test.tsx src/live/useViewportBackfill.cached.test.tsx src/api/livePastCandles.test.tsx",
+      "result": "6 files / 503 passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed; app, unit, E2E; before final E2E wait assertions"
+    },
+    {
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed; final E2E input"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts --reporter=list",
+      "result": "8 passed; before final E2E wait assertions"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts --grep 'cold date jump' --repeat-each=5 --reporter=list",
+      "result": "10 passed; final E2E input"
+    },
+    {
+      "command": "npx eslint src/live/useLiveBundle.ts src/live/useLiveBundle.test.tsx tests/e2e/live-viewport-preservation.spec.ts -f json",
+      "result": "0 errors; 53 warnings in useLiveBundle.ts versus 70 on HEAD; tests 0 warnings; final E2E file separately checked"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "npm run build",
+      "result": "passed; final source; existing chunk-size advisory"
+    }
+  ],
+  "e2e_resources": {
+    "backend_port": 20280,
+    "frontend_port": 21280,
+    "data": "/tmp/hoga-e2e-data-280",
+    "dist": "/tmp/hoga-e2e-dist-280",
+    "workers": 1,
+    "vendor_credentials": "empty by playwright.config.ts"
+  },
+  "merge_verification": {
+    "source_commit": "bc431db5d15f42af50977ec47463d628cd596cc3",
+    "base_commit": "159be204d1d53cbff009a8906a36a3c9cb7b511c",
+    "direct_inputs_match_original_verification": true,
+    "additional_inputs_sha256": {
+      "frontend/src/live/workspace/ChartWindow.tsx": "9735c1c1abef7a18c160d61e4ef9fc99e805f0de717d0e5a0149b7469d308969",
+      "frontend/src/live/useLiveChartData.ts": "ecc66e448cff1531c82e288cded4aff62dad6082d1bb92b22188501a8029482a",
+      "frontend/src/live/usDailyIntegration.test.ts": "f9f2932bd6cdcf57cf68d9bd003b23e17bbf3595747946a027a7137b08c35717",
+      "frontend/src/live/useLiveChartData.test.tsx": "ff6548d817daa63cbe6f405519420c1ea3b4e6f6bc26c67313df7a39694c0c43",
+      "frontend/src/live/LivePage.test.tsx": "70620c91e855e650883bc566969655ee09848848396f28ebca1b1bb971df9df8"
+    },
+    "checks": [
+      {
+        "command": "npm run typecheck",
+        "result": "passed; app, unit, E2E"
+      },
+      {
+        "command": "npx vitest run src/live/useLiveBundle.test.tsx src/live/LiveChartRoot.test.tsx src/live/useTimeframeJump.test.tsx src/live/useViewportBackfill.test.tsx src/live/useViewportBackfill.cached.test.tsx src/api/livePastCandles.test.tsx src/live/useLiveChartData.test.tsx src/live/LivePage.test.tsx src/live/usDailyIntegration.test.ts",
+        "result": "9 files / 575 passed"
+      },
+      {
+        "command": "npx playwright test tests/e2e/live-viewport-preservation.spec.ts --reporter=list",
+        "result": "8 passed; final wait assertions"
+      },
+      {
+        "command": "npm run build",
+        "result": "passed on integrated source; existing chunk-size advisory"
+      }
+    ]
+  }
+}

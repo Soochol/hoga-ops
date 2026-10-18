@@ -1,0 +1,121 @@
+import { writeFile } from 'node:fs/promises';
+import { test, expect, type Page } from '@playwright/test';
+import type { IChartApi, Time } from 'lightweight-charts';
+import type { WorkspaceWindow } from '../../src/state/workspace';
+import { installLiveMocks } from './helpers/liveMocks';
+import { apiExact } from './helpers/apiRoutes';
+
+type ChartsWindow = Window & { __liveCharts: Map<string, IChartApi> };
+const dayMs = 86400000;
+const today = '20261001';
+const end = Date.UTC(2026, 9, 1);
+const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10).replaceAll('-', '');
+const days = Array.from({ length: 30 }, (_, i) => end - (29 - i) * dayMs)
+  .filter(ms => ![0, 6].includes(new Date(ms).getUTCDay()));
+
+function candles(from: string, to: string, bucketMs: number) {
+  return days.filter(ms => ymd(ms) >= from && ymd(ms) <= to).flatMap(ms =>
+    Array.from({ length: Math.ceil(390 * 60000 / bucketMs) }, (_, i) => {
+      const t_ms = ms + i * bucketMs; // 09:00 KST
+      const close = 35000 + (t_ms - days[0]) / 60000;
+      return { t_ms, open: close - 1, high: close + 2, low: close - 2, close, volume: 100 };
+    }));
+}
+
+async function snapshot(page: Page, id?: string, anchorClose?: number) {
+  return page.evaluate(({ id, anchorClose }) => {
+    const charts = (window as unknown as ChartsWindow).__liveCharts;
+    const chart = id ? charts?.get(id) : charts?.values().next().value;
+    const series = chart?.panes()[0]?.getSeries().find(s => s.seriesType() === 'Candlestick');
+    if (!chart || !series || !series.data().length) return null;
+    const rows = series.data() as readonly { time: Time; close: number }[];
+    const ts = chart.timeScale();
+    const range = ts.getVisibleLogicalRange();
+    if (!range) return null;
+    const last = rows.at(-1)!;
+    const anchor = anchorClose === undefined ? last : rows.find(p => p.close === anchorClose)!;
+    return {
+      visibleCount: rows.filter(row => {
+        const index = ts.timeToIndex(row.time)!;
+        return index >= range.from && index <= range.to;
+      }).length,
+      count: rows.length, lastClose: last.close, x: ts.timeToCoordinate(anchor.time),
+      latestX: ts.timeToCoordinate(last.time), width: ts.width(),
+      span: range.to - range.from, spacing: ts.options().barSpacing, range,
+      rightClose: (series.dataByIndex(Math.floor(range.to), -1) as { close?: number } | null)?.close,
+    };
+  }, { id, anchorClose });
+}
+
+async function setup(page: Page) {
+  await page.setViewportSize({ width: 1800, height: 1000 });
+  await page.clock.setFixedTime(new Date('2026-10-01T17:00:00+09:00'));
+  await installLiveMocks(page);
+  await page.routeWebSocket(/\/api\/ws/, () => {});
+  // The shared fixture is dated May; use session metadata matching this
+  // scenario's clock so the daily axis has ordered, non-overlapping sessions.
+  await page.route(apiExact('live/series'), route => route.fulfill({ json: {
+    code: new URL(route.request().url()).searchParams.get('code'), date: today,
+    session_open_ms: end, session_close_ms: end + 390 * 60000, is_open: false,
+    snapshots: [], trades: [], brokers: [],
+  } }));
+}
+
+async function settleFrame(page: Page) {
+  // Pointer events request a range; lwc paints it on the next frame. Compare
+  // committed pixel positions on both sides of backfill, not a pending draw.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
+
+test('diagnostic cold jump across unequal history sizes', async ({ page }, info) => {
+  await setup(page);
+  await page.route(apiExact('live/past-candles'), async route => {
+    const p = new URL(route.request().url()).searchParams;
+    const from = p.get('from')!, to = p.get('to')!, bucket_ms = Number(p.get('bucket_ms') ?? 60000);
+    if(to === '20260929') await new Promise(resolve => setTimeout(resolve, 400));
+    const data = candles(from, to, bucket_ms);
+    await route.fulfill({ json: { code: '098460', from, to, bucket_ms,
+      candles: to === '20260929' ? data.slice(-130) : data, cached_dates: [], fresh_dates: [], data_warnings: [] } });
+  });
+  await page.route(apiExact('live/past-daily-candles'), route => route.fulfill({ json: {
+    code:'098460', from: ymd(days[0]), to: today,
+    candles: days.map(t_ms => ({ t_ms, open:35000, high:35100, low:34900, close:35050, volume:100 })),
+    cached_batches: [], fresh_batches: [], data_warnings: [],
+  } }));
+  await page.goto('/live?code=098460');
+  await expect.poll(() => snapshot(page)).not.toBeNull();
+  const ids = await page.evaluate(async () => {
+    const { useWorkspaceStore: store } = await import('/src/state/workspace.ts');
+    store.getState().applyWorkspaceSnapshot({windows:[]}); store.getState().addWindow('chart');
+    const wins=store.getState().windows.filter(w=>w.kind==='chart').slice(0,2);
+    store.setState({windows:wins.map((w,i)=>({...w,group:1,rect:{x:i*.5,y:0,w:.5,h:1},chart:{...w.chart,timeframe:i?'D':'3m'}})), zOrder:wins.map(w=>w.id),maximizedId:null});
+    for(const w of wins) store.getState().setWindowSymbol(w.id,{code:'098460',name:'고영',kind:'stock'});
+    return {minute:wins[0].id,daily:wins[1].id};
+  });
+  await expect.poll(() => snapshot(page,ids.daily)).not.toBeNull();
+  await expect.poll(async () => (await snapshot(page,ids.minute))?.count).toBeGreaterThan(500);
+  await settleFrame(page);
+  console.log('BEFORE', await snapshot(page,ids.minute));
+  await page.evaluate(id => {
+    const c=(window as any).__liveCharts.get(id), ts=c.timeScale();
+    const rows=c.panes()[0].getSeries().find(s=>s.seriesType()==='Candlestick').data();
+    const idx=ts.timeToIndex(rows.at(-3).time); ts.setVisibleLogicalRange({from:idx-5,to:idx});
+  },ids.daily);
+  await expect(page.getByTestId('live-jump-to-minute-button')).toHaveAttribute('title','분봉으로 — 09-29');
+  await page.getByTestId('live-jump-to-minute-button').click();
+  await expect.poll(async () => (await snapshot(page,ids.minute))?.count).toBe(128);
+  await expect(page.getByTestId('chart-reveal-cover').first()).toHaveCSS('opacity','0');
+  await settleFrame(page);
+  const after = await snapshot(page,ids.minute);
+  console.log('AFTER', after);
+  expect(after!.visibleCount).toBe(Number(process.env.JUMP_EXPECT_VISIBLE ?? 2));
+  await writeFile(info.outputPath('metrics.json'), JSON.stringify(after, null, 2));
+  await page.screenshot({path:info.outputPath('cold.png')});
+  await page.getByTestId('live-jump-to-minute-button').click();
+  await expect.poll(async () => (await snapshot(page,ids.minute))?.visibleCount).toBe(128);
+  await settleFrame(page);
+  const warm = await snapshot(page,ids.minute);
+  console.log('WARM_REPEAT', warm);
+  await writeFile(info.outputPath('warm-metrics.json'), JSON.stringify(warm, null, 2));
+});

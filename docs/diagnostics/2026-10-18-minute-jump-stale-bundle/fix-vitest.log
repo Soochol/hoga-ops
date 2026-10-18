@@ -1,0 +1,8 @@
+
+ RUN  v4.1.7 /home/dev/.codex/worktrees/bb24/hoga-ops/frontend
+
+
+ Test Files  6 passed (6)
+      Tests  503 passed (503)
+   Start at  00:02:07
+   Duration  9.08s (transform 5.38s, setup 515ms, import 7.72s, tests 9.42s, environment 4.07s)
