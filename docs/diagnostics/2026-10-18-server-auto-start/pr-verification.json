@@ -1,0 +1,48 @@
+{
+  "checked_at": "2026-10-18T14:16:42.996403+00:00",
+  "verified_source_commit": "790322a85a6a19f25ad4328adddf5c31e2a529ae",
+  "base_commit": "cb6011d8e48e4ea4022b9bc4b806d821c6a57b94",
+  "reused_record": "docs/diagnostics/2026-10-18-server-auto-start/verification.json",
+  "reused_record_sha256": "0deee4072f986e072308224228ad64de6449594d6f6d887ce93eda332b47038f",
+  "inputs_checked": 61,
+  "changed_inputs": [],
+  "installed_dependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-deb": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.12.4",
+    "electron": "44.8.0",
+    "eslint": "10.3.0",
+    "globals": "17.6.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.59.2"
+  },
+  "tools": {
+    "node": "v24.13.1",
+    "npm": "11.8.0"
+  },
+  "packaged_asar_unchanged": true,
+  "reused_checks": [
+    "build",
+    "lint",
+    "typecheck",
+    "17 source manager/tray/UI-reload E2E tests",
+    "Linux x64 folder package build",
+    "13 packaged manager E2E tests"
+  ],
+  "basis": "Latest main cb6011d8e is included. Source, tests, fixtures, assets, VERSION, configs and dependency lock match the successful run; installed tool versions and tested package bytes also match. The tests use temporary profiles and fake services on random ports, independent of user service uptime. Only this documentation record is committed after the source commit.",
+  "scope": "Primary server-manager startup only. Existing controller probes/coalescing/ownership are reused; no frontend/backend application or controller changes.",
+  "open_pr_overlap": "Open PRs #1927 and #1726 do not modify these files.",
+  "preservation": {
+    "manager_pid": 1001105,
+    "service_listener_pids": [
+      1001949,
+      1001958,
+      1002255
+    ],
+    "server_start_restart_or_stop_commands": false,
+    "main_local_files_snapshotted": 31
+  }
+}

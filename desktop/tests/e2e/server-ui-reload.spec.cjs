@@ -23,7 +23,6 @@ test('editing manager HTML, CSS and JS reloads only the renderer and preserves m
     app = await electron.launch({ args, cwd: root, env, chromiumSandbox: true });
     const page = await app.firstWindow();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    await page.getByRole('button', { name: '서버 시작', exact: true }).click();
     await expect(page.locator('body')).toHaveAttribute('data-phase', 'running');
     const mainPid = app.process().pid;
     const markers = { backend: await f.marker('backend'), frontend: await f.marker('frontend') };

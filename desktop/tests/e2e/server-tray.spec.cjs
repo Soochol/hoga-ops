@@ -28,7 +28,7 @@ async function launch(f, extra = {}) {
   if (process.env.HOGA_DESKTOP_TEST_PLATFORM) args.push(`--ozone-platform=${process.env.HOGA_DESKTOP_TEST_PLATFORM}`);
   const app = await electron.launch({ args, env, cwd: root, chromiumSandbox: true });
   const page = await app.firstWindow();
-  await expect(page.locator('#primary')).toBeEnabled();
+  await expect(page.locator('body')).toHaveAttribute('data-phase', /starting|running|error|stopped/);
   return { app, page };
 }
 const item = (app, id) => app.evaluate((_, id) => {
@@ -54,8 +54,10 @@ test('native tray controls services, restores hidden windows and confirms stop/q
   try {
     const result = await launch(f); app = result.app; const page = result.page;
     const mainPid = app.process().pid;
+    await phase(page, 'running');
+    await page.evaluate(() => window.serverManager.stop());
     await phase(page, 'stopped');
-    expect(await item(app, 'start')).toEqual({ label: '서버 시작', enabled: true });
+    await expect.poll(() => item(app, 'start')).toEqual({ label: '서버 시작', enabled: true });
     expect((await item(app, 'stop')).enabled).toBe(false);
     expect((await item(app, 'client')).enabled).toBe(false);
     const stoppedIcon = await app.evaluate(() => globalThis.trayImage);
@@ -151,14 +153,15 @@ test('tray allows startup cancellation and distinguishes busy and failure states
   const f = await fixture(); let app;
   try {
     const result = await launch(f, { TICKLANE_FIXTURE_DELAY_MS: '5000' }); app = result.app; const page = result.page;
-    const stoppedIcon = await app.evaluate(() => globalThis.trayImage);
-    await click(app, 'start'); await phase(page, 'starting');
+    await phase(page, 'starting');
     await expect.poll(async () => { try { await f.marker('backend'); await f.marker('frontend'); return true; } catch { return false; } }).toBe(true);
     const markers = [await f.marker('backend'), await f.marker('frontend')];
     expect(await item(app, 'stop')).toEqual({ label: '시작 취소', enabled: true });
     const busyIcon = await app.evaluate(() => globalThis.trayImage);
-    expect(busyIcon).not.toBe(stoppedIcon);
     await click(app, 'stop'); await phase(page, 'stopped');
+    await expect.poll(async () => (await item(app, 'start')).enabled).toBe(true);
+    const stoppedIcon = await app.evaluate(() => globalThis.trayImage);
+    expect(busyIcon).not.toBe(stoppedIcon);
     await expect.poll(() => alive(markers[0].pid)).toBe(false);
     await expect.poll(() => alive(markers[1].pid)).toBe(false);
     await app.evaluate(() => { process.env.TICKLANE_FIXTURE_FAIL = 'frontend'; });
