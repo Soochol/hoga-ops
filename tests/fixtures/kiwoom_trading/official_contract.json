@@ -1,0 +1,499 @@
+{
+  "source_kind": "official_documentation_examples_not_server_capture",
+  "source_url": "https://raw.githubusercontent.com/Kiwoom-Securities/Kiwoom-REST-API/953e5dbff123f437ab4d11a78a95191a685eb51f/kiwoom/_data/kiwoom_api_spec.json",
+  "commit": "953e5dbff123f437ab4d11a78a95191a685eb51f",
+  "apis": {
+    "ka10075": {
+      "path": "/api/dostk/acnt",
+      "required_request_fields": [
+        "all_stk_tp",
+        "trde_tp",
+        "stex_tp"
+      ],
+      "response_fields": [
+        "oso",
+        "acnt_no",
+        "ord_no",
+        "mang_empno",
+        "stk_cd",
+        "tsk_tp",
+        "ord_stt",
+        "stk_nm",
+        "ord_qty",
+        "ord_pric",
+        "oso_qty",
+        "cntr_tot_amt",
+        "orig_ord_no",
+        "io_tp_nm",
+        "trde_tp",
+        "tm",
+        "cntr_no",
+        "cntr_pric",
+        "cntr_qty",
+        "cur_prc",
+        "sel_bid",
+        "buy_bid",
+        "unit_cntr_pric",
+        "unit_cntr_qty",
+        "tdy_trde_cmsn",
+        "tdy_trde_tax",
+        "ind_invsr",
+        "stex_tp",
+        "stex_tp_txt",
+        "sor_yn",
+        "stop_pric"
+      ]
+    },
+    "kt00007": {
+      "path": "/api/dostk/acnt",
+      "required_request_fields": [
+        "qry_tp",
+        "stk_bond_tp",
+        "sell_tp",
+        "dmst_stex_tp"
+      ],
+      "response_fields": [
+        "acnt_ord_cntr_prps_dtl",
+        "ord_no",
+        "stk_cd",
+        "trde_tp",
+        "crd_tp",
+        "ord_qty",
+        "ord_uv",
+        "cnfm_qty",
+        "acpt_tp",
+        "rsrv_tp",
+        "ord_tm",
+        "ori_ord",
+        "stk_nm",
+        "io_tp_nm",
+        "loan_dt",
+        "cntr_qty",
+        "cntr_uv",
+        "ord_remnq",
+        "comm_ord_tp",
+        "mdfy_cncl",
+        "cnfm_tm",
+        "dmst_stex_tp",
+        "cond_uv"
+      ]
+    },
+    "kt00010": {
+      "path": "/api/dostk/acnt",
+      "required_request_fields": [
+        "stk_cd",
+        "trde_tp",
+        "uv"
+      ],
+      "response_fields": [
+        "profa_20ord_alow_amt",
+        "profa_20ord_alowq",
+        "profa_30ord_alow_amt",
+        "profa_30ord_alowq",
+        "profa_40ord_alow_amt",
+        "profa_40ord_alowq",
+        "profa_50ord_alow_amt",
+        "profa_50ord_alowq",
+        "profa_60ord_alow_amt",
+        "profa_60ord_alowq",
+        "profa_rdex_60ord_alow_amt",
+        "profa_rdex_60ord_alowq",
+        "profa_100ord_alow_amt",
+        "profa_100ord_alowq",
+        "pred_reu_alowa",
+        "tdy_reu_alowa",
+        "entr",
+        "repl_amt",
+        "uncla",
+        "ord_pos_repl",
+        "ord_alowa",
+        "wthd_alowa",
+        "nxdy_wthd_alowa",
+        "pur_amt",
+        "cmsn",
+        "pur_exct_amt",
+        "d2entra",
+        "profa_rdex_aplc_tp"
+      ]
+    },
+    "kt00011": {
+      "path": "/api/dostk/acnt",
+      "required_request_fields": [
+        "stk_cd"
+      ],
+      "response_fields": [
+        "stk_profa_rt",
+        "profa_rt",
+        "aplc_rt",
+        "profa_20ord_alow_amt",
+        "profa_20ord_alowq",
+        "profa_20pred_reu_amt",
+        "profa_20tdy_reu_amt",
+        "profa_30ord_alow_amt",
+        "profa_30ord_alowq",
+        "profa_30pred_reu_amt",
+        "profa_30tdy_reu_amt",
+        "profa_40ord_alow_amt",
+        "profa_40ord_alowq",
+        "profa_40pred_reu_amt",
+        "profa_40tdy_reu_amt",
+        "profa_50ord_alow_amt",
+        "profa_50ord_alowq",
+        "profa_50pred_reu_amt",
+        "profa_50tdy_reu_amt",
+        "profa_60ord_alow_amt",
+        "profa_60ord_alowq",
+        "profa_60pred_reu_amt",
+        "profa_60tdy_reu_amt",
+        "profa_100ord_alow_amt",
+        "profa_100ord_alowq",
+        "profa_100pred_reu_amt",
+        "profa_100tdy_reu_amt",
+        "min_ord_alow_amt",
+        "min_ord_alowq",
+        "min_pred_reu_amt",
+        "min_tdy_reu_amt",
+        "entr",
+        "repl_amt",
+        "uncla",
+        "ord_pos_repl",
+        "ord_alowa"
+      ]
+    },
+    "kt00018": {
+      "path": "/api/dostk/acnt",
+      "required_request_fields": [
+        "qry_tp",
+        "dmst_stex_tp"
+      ],
+      "response_fields": [
+        "tot_pur_amt",
+        "tot_evlt_amt",
+        "tot_evlt_pl",
+        "tot_prft_rt",
+        "prsm_dpst_aset_amt",
+        "tot_loan_amt",
+        "tot_crd_loan_amt",
+        "tot_crd_ls_amt",
+        "acnt_evlt_remn_indv_tot",
+        "stk_cd",
+        "stk_nm",
+        "evltv_prft",
+        "prft_rt",
+        "pur_pric",
+        "pred_close_pric",
+        "rmnd_qty",
+        "trde_able_qty",
+        "cur_prc",
+        "pred_buyq",
+        "pred_sellq",
+        "tdy_buyq",
+        "tdy_sellq",
+        "pur_amt",
+        "pur_cmsn",
+        "evlt_amt",
+        "sell_cmsn",
+        "tax",
+        "sum_cmsn",
+        "poss_rt",
+        "crd_tp",
+        "crd_tp_nm",
+        "crd_loan_dt"
+      ]
+    },
+    "kt10000": {
+      "path": "/api/dostk/ordr",
+      "required_request_fields": [
+        "dmst_stex_tp",
+        "stk_cd",
+        "ord_qty",
+        "trde_tp"
+      ],
+      "response_fields": [
+        "ord_no",
+        "dmst_stex_tp"
+      ],
+      "request_example": {
+        "dmst_stex_tp": "KRX",
+        "stk_cd": "005930",
+        "ord_qty": "1",
+        "ord_uv": "",
+        "trde_tp": "3",
+        "cond_uv": ""
+      },
+      "response_example_text": "{\n    \"ord_no\" : \"00024\"\n    \"return_code\":0,\n    \"return_msg\":\"정상적으로 처리되었습니다\"\n}"
+    },
+    "kt10001": {
+      "path": "/api/dostk/ordr",
+      "required_request_fields": [
+        "dmst_stex_tp",
+        "stk_cd",
+        "ord_qty",
+        "trde_tp"
+      ],
+      "response_fields": [
+        "ord_no",
+        "dmst_stex_tp"
+      ],
+      "request_example": {
+        "dmst_stex_tp": "KRX",
+        "stk_cd": "005930",
+        "ord_qty": "1",
+        "ord_uv": "",
+        "trde_tp": "3",
+        "cond_uv": ""
+      },
+      "response_example": {
+        "ord_no": "0000138",
+        "dmst_stex_tp": "KRX",
+        "return_code": 0,
+        "return_msg": "매도주문이 완료되었습니다."
+      }
+    },
+    "kt10002": {
+      "path": "/api/dostk/ordr",
+      "required_request_fields": [
+        "dmst_stex_tp",
+        "orig_ord_no",
+        "stk_cd",
+        "mdfy_qty",
+        "mdfy_uv"
+      ],
+      "response_fields": [
+        "ord_no",
+        "base_orig_ord_no",
+        "mdfy_qty",
+        "dmst_stex_tp"
+      ],
+      "request_example": {
+        "dmst_stex_tp": "KRX",
+        "orig_ord_no": "0000139",
+        "stk_cd": "005930",
+        "mdfy_qty": "1",
+        "mdfy_uv": "199700",
+        "mdfy_cond_uv": ""
+      },
+      "response_example": {
+        "ord_no": "0000140",
+        "base_orig_ord_no": "0000139",
+        "mdfy_qty": "000000000001",
+        "dmst_stex_tp": "KRX",
+        "return_code": 0,
+        "return_msg": "매수정정 주문입력이 완료되었습니다"
+      }
+    },
+    "kt10003": {
+      "path": "/api/dostk/ordr",
+      "required_request_fields": [
+        "dmst_stex_tp",
+        "orig_ord_no",
+        "stk_cd",
+        "cncl_qty"
+      ],
+      "response_fields": [
+        "ord_no",
+        "base_orig_ord_no",
+        "cncl_qty"
+      ],
+      "request_example": {
+        "dmst_stex_tp": "KRX",
+        "orig_ord_no": "0000140",
+        "stk_cd": "005930",
+        "cncl_qty": "1"
+      },
+      "response_example": {
+        "ord_no": "0000141",
+        "base_orig_ord_no": "0000139",
+        "cncl_qty": "000000000001",
+        "return_code": 0,
+        "return_msg": "매수취소 주문입력이 완료되었습니다"
+      }
+    },
+    "00": {
+      "path": "/api/dostk/websocket",
+      "required_request_fields": [
+        "trnm",
+        "grp_no",
+        "refresh",
+        "type"
+      ],
+      "response_fields": [
+        "return_code",
+        "return_msg",
+        "trnm",
+        "data",
+        "type",
+        "name",
+        "item",
+        "values",
+        "9201",
+        "9203",
+        "9205",
+        "9001",
+        "912",
+        "913",
+        "302",
+        "900",
+        "901",
+        "902",
+        "903",
+        "904",
+        "905",
+        "906",
+        "907",
+        "908",
+        "909",
+        "910",
+        "911",
+        "10",
+        "27",
+        "28",
+        "914",
+        "915",
+        "938",
+        "939",
+        "919",
+        "920",
+        "921",
+        "922",
+        "923",
+        "10010",
+        "2134",
+        "2135",
+        "2136"
+      ],
+      "frame": {
+        "data": [
+          {
+            "values": {
+              "9201": "1111111111",
+              "9203": "0000018",
+              "9205": "",
+              "9001": "005930",
+              "912": "JJ",
+              "913": "접수",
+              "302": "삼성전자",
+              "900": "1",
+              "901": "0",
+              "902": "1",
+              "903": "0",
+              "904": "0000000",
+              "905": "+매수",
+              "906": "시장가",
+              "907": "2",
+              "908": "094022",
+              "909": "",
+              "910": "",
+              "911": "",
+              "10": "+60700",
+              "27": "+60700",
+              "28": "-60000",
+              "914": "",
+              "915": "",
+              "938": "0",
+              "939": "0",
+              "919": "0",
+              "920": "",
+              "921": "0701002",
+              "922": "00",
+              "923": "00000000",
+              "10010": "",
+              "2134": "1",
+              "2135": "KRX",
+              "2136": "Y"
+            },
+            "type": "00",
+            "name": "주문체결",
+            "item": "005930"
+          }
+        ],
+        "trnm": "REAL"
+      }
+    },
+    "04": {
+      "path": "/api/dostk/websocket",
+      "required_request_fields": [
+        "trnm",
+        "grp_no",
+        "refresh",
+        "type"
+      ],
+      "response_fields": [
+        "return_code",
+        "return_msg",
+        "trnm",
+        "data",
+        "type",
+        "name",
+        "item",
+        "values",
+        "9201",
+        "9001",
+        "917",
+        "916",
+        "302",
+        "10",
+        "930",
+        "931",
+        "932",
+        "933",
+        "945",
+        "946",
+        "950",
+        "951",
+        "27",
+        "28",
+        "307",
+        "8019",
+        "957",
+        "958",
+        "918",
+        "990",
+        "991",
+        "992",
+        "993",
+        "959",
+        "924"
+      ],
+      "frame": {
+        "data": [
+          {
+            "values": {
+              "9201": "1111111111",
+              "9001": "005930",
+              "917": "00",
+              "916": "00000000",
+              "302": "삼성전자",
+              "10": "-60150",
+              "930": "102",
+              "931": "154116",
+              "932": "15719834",
+              "933": "102",
+              "945": "4",
+              "946": "2",
+              "950": "0",
+              "951": "0",
+              "27": "-60200",
+              "28": "-60100",
+              "307": "60300",
+              "8019": "0.00",
+              "957": "0",
+              "958": "0",
+              "918": "00000000",
+              "990": "0",
+              "991": "0.00",
+              "992": "0",
+              "993": "0.00",
+              "959": "0",
+              "924": "0"
+            },
+            "type": "04",
+            "name": "현물잔고",
+            "item": "005930"
+          }
+        ],
+        "trnm": "REAL"
+      }
+    }
+  }
+}

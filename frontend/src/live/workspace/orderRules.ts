@@ -2,8 +2,9 @@ import type { TossOrder } from '../../api/trading';
 
 export const ORDER_ROW_HEIGHT = 24;
 export const HIGH_VALUE_WON = 100_000_000;
-export const editableOrder = (order: TossOrder) => ['PENDING', 'PARTIAL_FILLED'].includes(order.status);
-export const orderRemainder = (order: TossOrder) => Math.max(0, Number(order.quantity) - Number(order.execution.filledQuantity));
+export const editableOrder = (order: TossOrder) => order.editable !== false && ['PENDING', 'PARTIAL_FILLED'].includes(order.status);
+export const orderRemainder = (order: TossOrder) => order.remaining_quantity != null ? Number(order.remaining_quantity)
+  : Math.max(0, Number(order.quantity) - Number(order.execution.filledQuantity));
 export const orderSideLabel = (side: string) => side === 'BUY' ? '매수' : '매도';
 
 function exactHoldingCost(quantity: number | null, averagePrice: string | null | undefined) {

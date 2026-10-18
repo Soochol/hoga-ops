@@ -18,6 +18,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 import httpx
 
@@ -67,10 +68,15 @@ def _key_fingerprint(app_key: str) -> str:
 class KiwoomCredentials:
     app_key: str
     app_secret: str
+    environment: Literal["real", "mock"] = "real"
+
+    def __post_init__(self) -> None:
+        if self.environment not in {"real", "mock"}:
+            raise ValueError("unknown Kiwoom environment")
 
     @property
     def base_url(self) -> str:
-        return _BASE_REAL
+        return _BASE_REAL if self.environment == "real" else "https://mockapi.kiwoom.com"
 
 
 class KiwoomTokenProvider:
@@ -198,6 +204,8 @@ class KiwoomTokenProvider:
                 return None
             if data.get("app_key_sha256") != _key_fingerprint(self._creds.app_key):
                 return None
+            if data.get("environment", "real") != self._creds.environment:
+                return None
             exp = datetime.fromisoformat(data["expires_at"])
             if datetime.now(KIWOOM_KST) >= exp - timedelta(minutes=10):
                 return None
@@ -210,6 +218,7 @@ class KiwoomTokenProvider:
             "access_token": token,
             "expires_at": expires_at.isoformat(),
             "app_key_sha256": _key_fingerprint(self._creds.app_key),
+            "environment": self._creds.environment,
         })
         try:
             self._cache_path.parent.mkdir(parents=True, exist_ok=True)

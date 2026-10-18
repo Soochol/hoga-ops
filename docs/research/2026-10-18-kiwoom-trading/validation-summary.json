@@ -1,0 +1,43 @@
+{
+  "observed_at": "2026-10-18T23:37:26.928039+09:00",
+  "repository_base_commit": "8037fb02ec3abea9f2607681bdcdec5dcd7d28d7",
+  "backend": {
+    "tests": 264,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "numTotalTests": 181,
+    "numPassedTests": 181,
+    "numFailedTests": 0,
+    "success": true
+  },
+  "real_readonly": {
+    "requests": 26,
+    "successful_initial_requests": 7,
+    "initial_requests": 8,
+    "business_rejections": 2,
+    "rejected_api_id": "kt00010",
+    "orders_sent": 0,
+    "websockets_opened": 0,
+    "tokens_issued": 0,
+    "successful_requests": 24,
+    "credential_count": 6,
+    "distinct_account_count": 6,
+    "additional_binding_and_account_reads": 16
+  },
+  "limitations": [
+    "No broker mock credentials were available; user subsequently authorized production-address reads.",
+    "No broker order/create/modify/cancel was sent.",
+    "All six configured accounts returned empty 2026-10-16 historical-order and KRX holding lists; the primary account also had no open orders.",
+    "No fresh WebSocket connection was opened, to preserve the active session.",
+    "Order lifecycle, SOR/NXT routing, partial-fill sequencing and actual quota boundaries remain acceptance gates."
+  ],
+  "evidence_classes": [
+    "existing_regression_tests",
+    "synthetic_counterexamples_against_current_code",
+    "official_documentation_examples_not_server_capture",
+    "real_readonly_responses"
+  ]
+}

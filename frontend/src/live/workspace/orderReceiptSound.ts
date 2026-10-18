@@ -1,3 +1,4 @@
+import type { TradingAccountId } from '../../api/trading';
 const PEAK_GAIN = 0.45;
 const NOTE_SECONDS = 0.16;
 const SECOND_NOTE_AT = 0.17;
@@ -123,7 +124,7 @@ export async function playOrderReceiptSound(): Promise<boolean> {
 }
 
 /** Deduplicate concurrent calls, and remember only successfully started notifications. */
-export function notifyOrderReceiptAccepted(account: number, commandId: string): Promise<boolean> {
+export function notifyOrderReceiptAccepted(account: TradingAccountId, commandId: string): Promise<boolean> {
   const key = `${account}:${commandId}`;
   if (notifiedCommands.has(key)) return Promise.resolve(true);
   const pending = pendingCommands.get(key);

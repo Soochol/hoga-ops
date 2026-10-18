@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-10-19T00:17:55.324070+09:00",
+  "scope": "Toss-compatible Kiwoom multi-broker implementation; local synthetic broker contracts and regression tests",
+  "results": {
+    "backend": {
+      "passed": 357,
+      "failed": 0,
+      "skipped": 0,
+      "runner": "python scripts/run_kiwoom_trading_validation.py -q"
+    },
+    "frontend_order_unit": {
+      "passed": 189,
+      "failed": 0,
+      "test_files": 7
+    },
+    "browser_order_regression": {
+      "passed": 81,
+      "failed": 0,
+      "spec": "frontend/tests/e2e/live-orders.spec.ts"
+    },
+    "browser_critical_repetition": {
+      "scenarios": 5,
+      "runs_per_scenario": 5,
+      "passed": 25,
+      "failed": 0
+    },
+    "typescript": {
+      "app": "passed",
+      "unit_tests": "passed",
+      "e2e": "passed",
+      "build_cache": "isolated per project"
+    },
+    "ruff": "passed",
+    "eslint": "passed without warnings",
+    "vite_production_build": "passed"
+  },
+  "safety": {
+    "live_broker_order_transmissions": 0,
+    "authenticated_kiwoom_mock_order_transmissions": 0,
+    "external_broker_token_issues": 0,
+    "external_broker_websocket_connections": 0,
+    "new_live_readonly_probes": 0,
+    "backend_isolation": "Credentials cleared, dotenv loading disabled, external TCP rejected in the test process; local loopback permitted. Spawn/IPC tests use fake managers.",
+    "browser_isolation": "Empty temporary worktree dotenv, broker credentials cleared, HTTP/WS broker responses stubbed.",
+    "operator_acceptance_file_created": false
+  },
+  "coverage": [
+    "Opaque stable account identities, environment separation, credential rebinding and cross-account rejection",
+    "Explicit order remainder, native leading zeros and business-day identity, cash-only capacities and duplicate holding rows",
+    "New orders, modify/cancel lineage and route retention, frozen bulk-cancel targets",
+    "Durable deduplication, restart, canceled waiters, queue expiry, lost/invalid acknowledgements and post-send local failures",
+    "Private account events, monotonic remainder checks, queue overflow retirement, shared WS owner and reliable collector IPC",
+    "Legacy Toss and v2 command joining, event conversion isolation, broker switching and disabled Kiwoom routes",
+    "Drag geometry stability, existing click/drag/cancel, high-value confirmation, account panels and order settings"
+  ],
+  "limits": [
+    "No authenticated Kiwoom server order acceptance, fill, replace or cancel was exercised.",
+    "Official contract examples and synthetic events do not establish real exchange semantics or rate-limit boundaries.",
+    "Kiwoom routes remain disabled until operator acceptance evidence is recorded for the exact account, environment and route.",
+    "The earlier 26 production read-only probes belong to the design-stage report and were not repeated here."
+  ]
+}

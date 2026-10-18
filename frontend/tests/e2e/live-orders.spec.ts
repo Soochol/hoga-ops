@@ -13,6 +13,8 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
   await page.addInitScript(venue => localStorage.setItem('live.venue.v1', JSON.stringify({ venue })), market.venue ?? 'UN');
   await installLiveMocks(page);
+  // Legacy fixtures explicitly exercise the v2-404 compatibility path.
+  await page.route('**/api/trading/v2/accounts', route => route.fulfill({ status: 404, json: { detail: 'legacy fixture' } }));
   const ws = await installLiveWs(page);
   await page.route(/^https?:\/\/[^/]+\/api\/symbols\/all$/, route => route.fulfill({ json: {
     symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI' }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
@@ -97,6 +99,67 @@ async function drag(page: Page, from: Locator, to: Locator) {
   await page.mouse.move(b!.x + b!.width / 2, b!.y + b!.height / 2, { steps: 12 });
   await page.mouse.up();
 }
+
+async function multiBrokerSetup(page: Page, kiwoomEnabled: boolean) {
+  await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
+  await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
+  const { window } = await setup(page);
+  const toss = `acc_${'a'.repeat(32)}`, kiwoom = `acc_${'b'.repeat(32)}`;
+  const commands: { path: string; body: Record<string, unknown> }[] = [];
+  await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: true, accounts: [
+    { account_ref: toss, broker: 'toss', environment: 'real', label: '토스증권 · ****1234', routes: ['SOR'], order_enabled: true },
+    { account_ref: kiwoom, broker: 'kiwoom', environment: 'real', label: '키움증권 · 실전 · ****5678',
+      routes: kiwoomEnabled ? ['KRX', 'SOR'] : [], order_enabled: kiwoomEnabled,
+      blocked_reason: kiwoomEnabled ? null : '키움 주문 수용 테스트 확인 전입니다. 계좌 조회만 사용할 수 있습니다.' },
+  ] } }));
+  await page.route('**/api/trading/v2/state?*', route => {
+    const url = new URL(route.request().url());
+    return route.fulfill({ json: { account_ref: url.searchParams.get('account_ref'), code: '005930',
+      orders: [], recent_orders: [], unresolved_commands: [], events_connected: false, fetched_at_ms: Date.now(),
+      buying_power: '20000000', sellable_quantity: '100', holding_quantity: '100', average_purchase_price: '66000' } });
+  });
+  await page.route('**/api/trading/v2/orders', route => {
+    commands.push({ path: new URL(route.request().url()).pathname, body: route.request().postDataJSON() });
+    expect(route.request().headers()['x-hoga-order']).toBe('1');
+    return route.fulfill({ json: { command_id: commands.at(-1)!.body.command_id, order_ref: 'ord_fixture', status: 'accepted' } });
+  });
+  await page.reload();
+  await expect(window.getByRole('combobox', { name: '주문 계좌' })).toHaveValue(toss);
+  return { window, toss, kiwoom, commands };
+}
+
+test('증권사 계좌 전환은 검증 전 키움 주문을 차단하고 토스 주문을 유지한다', async ({ page }, testInfo) => {
+  const { window, toss, kiwoom, commands } = await multiBrokerSetup(page, false);
+  const account = window.getByRole('combobox', { name: '주문 계좌' });
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await account.selectOption(kiwoom);
+  await expect(buy).toBeDisabled();
+  await expect(window.getByLabel('주문 경로')).toContainText('검증 대기');
+  await expect(window.getByRole('status', { name: '신규 주문 상태' })).toContainText('수용 테스트');
+  expect(commands).toHaveLength(0);
+  await page.screenshot({ path: testInfo.outputPath('kiwoom-disabled.png') });
+  await account.selectOption(toss);
+  await expect(buy).toBeEnabled();
+  await buy.dblclick();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0].body).toMatchObject({ account_ref: toss, route: 'SOR', code: '005930', side: 'BUY' });
+  expect(commands[0].body).not.toHaveProperty('account_seq');
+});
+
+test('검증된 키움 경로의 모의 응답은 선택 거래소와 계좌 식별자를 전송한다', async ({ page }, testInfo) => {
+  const { window, kiwoom, commands } = await multiBrokerSetup(page, true);
+  await window.getByRole('combobox', { name: '주문 계좌' }).selectOption(kiwoom);
+  const route = window.getByRole('combobox', { name: '주문 거래소' });
+  await expect(route).toBeVisible();
+  await route.selectOption('KRX');
+  await expect(window.getByLabel('주문 경로')).toContainText('주문 KRX');
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await expect(buy).toBeEnabled();
+  await buy.dblclick();
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0].body).toMatchObject({ account_ref: kiwoom, route: 'KRX', code: '005930' });
+  await page.screenshot({ path: testInfo.outputPath('kiwoom-route.png') });
+});
 
 for (const theme of ['obsidian', 'ledger']) {
   test(`주문 불가 사유와 공통 알림은 좁은 주문창에서 안내하고 전송을 차단한다 (${theme})`, async ({ page }, testInfo) => {
@@ -356,7 +419,7 @@ test('종목별 주문수량 기억은 즉시 저장하고 계좌별로 복원�
 test('고정한 호가 주문 창의 종목 이동은 수량을 비우고 입력 전에는 주문을 막는다', async ({ page }) => {
   const { window, commands } = await setup(page);
   const frame = page.locator('[data-win]').filter({ has: window });
-  await frame.getByRole('button', { name: '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다', exact: true }).click();
+  await frame.getByRole('button', { name: '종목 고정', exact: true }).click();
   await window.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('123');
   await window.getByRole('button', { name: '보유종목', exact: true }).click();
   await page.getByRole('dialog', { name: '계좌 목록' }).getByRole('button', { name: 'SK하이닉스', exact: true }).click();
@@ -1328,7 +1391,8 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
     await settings.click();
     await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('29');
     await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('31');
-    await window.getByLabel('매수 가능 금액').click();
+    // The buying-power label can be covered by the anchored popover.
+    await window.getByRole('spinbutton', { name: '신규 주문 수량' }).click();
     await expect(dialog).toHaveCount(0);
     await settings.click();
     await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('31');
@@ -1442,7 +1506,8 @@ test('주문 설정은 즉시 저장하고 잘못된 입력은 제외하며 금�
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('89');
   const buy = window.getByRole('button', { name: /매수 68,200원 주문 추가/ });
   await buy.hover();
-  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('6,069,800원');
+  // The estimate uses the current quote; the actual order uses the clicked level.
+  await expect(window.getByLabel('예상 주문 금액').locator('.order-field-value')).toHaveText('5,980,800원');
   await buy.dblclick();
   await expect(window.getByLabel('매수 68,200원 주문', { exact: true })).toHaveText('89');
   expect(commands[0]).toMatchObject({ side: 'BUY', price: 68200, quantity: 89 });
@@ -1650,7 +1715,7 @@ test('시간외종가의 잔량은 정규장 잔량이 0이어도 두 호가창�
       total_ask_qty: ask, total_bid_qty: bid });
     for (const panel of [window, book]) {
       const strip = panel.getByTestId('book-total-strip');
-      await expect(strip).toHaveText(`${ask}마지막 수신 · 15:47:00${bid}`);
+      await expect(strip).toHaveText(`${ask}시간외종가 · 15:48:05${bid}`);
       await expect(strip.getByTestId('book-total-fill')).toBeVisible();
       expect(await strip.getByTestId('book-total-fill').evaluate(el => (el as HTMLElement).style.gridTemplateColumns)).toBe(`${ask}fr ${bid}fr`);
     }
@@ -1682,7 +1747,7 @@ test('VI처럼 호가가 줄어도 중앙 경계·체결 위치를 유지하고 
     await expect(window.locator('.order-row').nth(10)).toContainText('체결강도');
     await expect(window.locator('.order-row').nth(19).locator('.order-info')).toContainText('901');
     await expect(window.getByTestId('book-summary')).toBeVisible();
-    await expect(book.locator('.font-data.text-base')).toHaveCount(askCount + bidCount);
+    await expect(book.locator('.book-price-value')).toHaveCount(askCount + bidCount);
     await expect(async () => {
       const centered = await book.evaluate(el => {
         const region = el.querySelector('.book-scroll-region')!.getBoundingClientRect();

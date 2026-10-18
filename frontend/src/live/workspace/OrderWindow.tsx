@@ -1,3 +1,4 @@
+import type { TradingAccountId } from '../../api/trading';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
@@ -64,11 +65,12 @@ type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: numbe
 export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
 }) {
-  const [selectedAccount, selectAccount] = useState(0);
+  const [selectedAccount, selectAccount] = useState<TradingAccountId | null>(null);
   const [localSettings, setLocalSettings] = useState(() => normalizeOrderSettings(settings));
   const preferences = settings ?? localSettings;
   const accounts = useTradingAccounts(mode);
-  const account = selectedAccount || accounts.data?.accounts[0]?.account_seq || 0;
+  const account = selectedAccount ?? accounts.data?.accounts[0]?.account_seq ?? 0;
+  if (selectedAccount === null && accounts.data?.accounts.length) selectAccount(accounts.data.accounts[0].account_seq);
   useEffect(() => {
     if (preferences.orderReceiptSound) return subscribeOrderReceiptSoundRecovery();
   }, [preferences.orderReceiptSound]);
@@ -88,14 +90,18 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
 function OrderWindowContent({ code, accounts, account, onAccountChange, onSelectSymbol,
   preferences, quantity, onQuantityChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
   code: string;
-  accounts: ReturnType<typeof useTradingAccounts>; account: number; onAccountChange: (account: number) => void; preferences: OrderWindowSettings;
+  accounts: ReturnType<typeof useTradingAccounts>; account: TradingAccountId; onAccountChange: (account: TradingAccountId) => void; preferences: OrderWindowSettings;
   quantity: number | null; onQuantityChange: (quantity: number | null) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
   profitAsPercent: boolean; onToggleProfitDisplay: () => void;
 }) {
   const client = useQueryClient();
   const state = useTradingState(account, code, mode);
-  // Display follows the 10-level book's venue; broker orders remain SOR.
+  const activeAccount = accounts.data?.accounts.find(item => item.account_seq === account);
+  const [chosenRoute, chooseRoute] = useState<'SOR' | 'KRX' | 'NXT'>('SOR');
+  const routes = activeAccount?.routes;
+  const orderRoute = routes?.includes(chosenRoute) ? chosenRoute : routes?.[0] ?? 'SOR';
+  // Display venue and the account's explicit order route are independent.
   const venue = useLiveVenueStore(s => s.venue);
   const live = useLiveSeries(code, venue);
   const quote = useQuoteByCode([code], venue).get(code);
@@ -118,6 +124,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const vi = useLiveViStatus(code, effectiveVenue);
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [lockedBook, lockBook] = useState<OrderbookSnapshot | null>(null);
+  const [dragInlineIssue, setDragInlineIssue] = useState<OrderNotice | null>(null);
   const book = lockedBook ?? snapshot;
   const deltaBadges = useOrderbookDeltaBadges(live.ob, !lockedBook && !storedLadder);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
@@ -133,10 +140,10 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const [reviewedUnknown, reviewUnknown] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
-  const [noticeState, setNoticeState] = useState<(OrderNotice & { account: number }) | null>(null);
+  const [noticeState, setNoticeState] = useState<(OrderNotice & { account: TradingAccountId }) | null>(null);
   const notice = noticeState?.account === account ? noticeState : null;
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
-  const [lastRejection, setLastRejection] = useState<{ account: number; notice: OrderNotice } | null>(null);
+  const [lastRejection, setLastRejection] = useState<{ account: TradingAccountId; notice: OrderNotice } | null>(null);
   function setNotice(value: string | OrderNotice | null) {
     if (value) setReceipt(null);
     setNoticeState(value == null ? null : {
@@ -225,17 +232,23 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const groups = useMemo(() => groupPriceOrders(orders), [orders]);
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
-  const ready = account > 0 && !!state.data && !state.isError && !busy;
+  const ready = !!account && !!activeAccount && !!state.data && !state.isError && !busy && activeAccount.order_enabled !== false;
   const availability = {
     accountsLoading: accounts.isLoading, configured: accounts.data?.configured === true, account,
-    accountError: accounts.error, stateReady: !!state.data && !state.isError, stateError: state.error,
+    accountError: accounts.error ?? (!accounts.data?.accounts.length && Object.keys(accounts.data?.errors ?? {}).length
+      ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
+    stateReady: !!state.data && !state.isError, stateError: state.error,
     busy, unresolved: !!state.data?.unresolved_commands.length, settingsOpen: !!settingsDraft,
     locked: !!lockedBook, stored: storedLadder, singlePrice: activeSinglePrice !== null,
     hasBook: !!snapshot, fresh, quantity,
+    brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
+      : activeAccount?.order_enabled === false ? activeAccount.blocked_reason ?? '이 계좌의 주문 경로를 확인하세요.' : null,
   };
   const creationIssue = newOrderIssue(availability);
   const issueId = useId();
-  const inlineIssue = creationIssue ?? (lastRejection?.account === account ? {
+  // Freeze the status row's geometry along with the book: inserting a "dragging"
+  // status here moves the ladder under the pointer and can select the wrong price.
+  const inlineIssue = lockedBook ? dragInlineIssue : creationIssue ?? (lastRejection?.account === account ? {
     ...lastRejection.notice, title: '직전 주문 접수 불가',
   } : null);
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
@@ -362,7 +375,8 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       } else {
         let response: TradingCommandResponse;
         if (next.type === 'create') {
-          const body: CreateTradingOrder = { ...next.base, side: next.side!, price: next.price, quantity: next.quantity!, confirm_high_value: high };
+          const body: CreateTradingOrder = { ...next.base, side: next.side!, price: next.price, quantity: next.quantity!, confirm_high_value: high,
+            ...(typeof account === 'string' ? { route: next.base.route } : {}) };
           response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
           if (preferences.orderReceiptSound) {
             const soundFailed = () => setReceipt(current => current?.commandId === next.base.command_id && !current.sending
@@ -423,13 +437,14 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       return;
     }
     if (!Number.isSafeInteger(price) || price <= 0) { setNotice('유효한 주문 가격을 확인하세요.'); return; }
-    request({ type: 'create', base: base(), side, price, quantity });
+    request({ type: 'create', base: { ...base(), ...(typeof account === 'string' ? { route: orderRoute } : {}) }, side, price, quantity });
   }
 
   function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false) {
     const targets = candidates.filter(order => editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
     if (e.button !== 0 || !targets.length || !ready) return;
     e.stopPropagation();
+    setDragInlineIssue(inlineIssue);
     drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
     lockBook(snapshot ?? null); e.currentTarget.setPointerCapture(e.pointerId);
   }
@@ -494,7 +509,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
       aria-disabled={!canCreate && !canDrag}
-      aria-describedby={creationIssue ? issueId : undefined}
+      aria-describedby={inlineIssue ? issueId : undefined}
       onDoubleClick={() => { if (!suppressClick.current) create(side, price); }}
       onKeyDown={event => {
         if (creationIssue && !event.repeat && (event.key === 'Enter' || event.key === ' ')) {
@@ -551,9 +566,16 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
       {accounts.data && accounts.data.accounts.length > 1 ? <select aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
-        onChange={e => { onAccountChange(Number(e.target.value)); closeAction(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); setLastRejection(null); }}>
+        onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
+          if (next) onAccountChange(next.account_seq);
+          closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); setLastRejection(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{a.label}</option>)}
-      </select> : <span className="order-account-label text-fg-dim" title={accounts.data?.accounts[0]?.label}>{accounts.data?.accounts[0]?.label ?? '계좌 연결 대기'}</span>}
+      </select> : <span className="order-account-label text-fg-dim" title={activeAccount?.label}>{activeAccount?.label ?? '계좌 연결 대기'}</span>}
+      {routes && <span className="text-fg-dim" aria-label="주문 경로">시세 {venue} · 주문 {activeAccount?.order_enabled === false ? '검증 대기' : orderRoute}</span>}
+      {routes && routes.length > 1 && <select aria-label="주문 거래소" value={orderRoute} disabled={busy || !!lockedBook}
+        onChange={e => { chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>
+        {routes.map(route => <option key={route} value={route}>{route}</option>)}
+      </select>}
       {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
         disabled={!account || !!lockedBook || busy} onClick={() => { closeAction(); setSettingsDraft(null); setAccountTab(accountTab === tab ? null : tab); }}>
         {tab === 'orders' ? '미체결 주문' : '보유종목'}
@@ -569,7 +591,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
     </div>
-    <AccountTradingPanel key={account} account={account} accountLabel={accounts.data?.accounts.find(item => item.account_seq === account)?.label ?? '계좌 연결 대기'}
+    <AccountTradingPanel key={account} account={account} orderEnabled={!!activeAccount && activeAccount.order_enabled !== false} accountLabel={activeAccount?.label ?? '계좌 연결 대기'}
       tab={accountTab} anchorRef={accountAnchor} onTabChange={setAccountTab} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
     <div className="order-controls order-overview-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
@@ -651,7 +673,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
     </div>, document.body)}
     {!!state.data?.unresolved_commands.length && <div className="order-editor"><span role="alert" className="text-error">결과가 불명확한 요청이 있습니다.</span>
-      <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />토스 앱·WTS에서 실제 주문·체결 여부를 확인했습니다</label>
+      <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />해당 증권사의 실제 주문·체결 여부를 확인했습니다</label>
       {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
     </div>}
     <ExpectedFillBanner

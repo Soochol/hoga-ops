@@ -1,3 +1,4 @@
+import type { TradingAccountId } from './trading';
 import type { QueryClient } from '@tanstack/react-query';
 import type { OrderStateResponse, TossOrder, TradingMode } from './trading';
 
@@ -12,9 +13,9 @@ type Refresh = {
   replacements: Map<string, string>;
 };
 const clients = new WeakMap<QueryClient, Map<string, Refresh>>();
-export const tradingStateKey = (mode: TradingMode, account: number) => ['trading', mode, 'state', account] as const;
+export const tradingStateKey = (mode: TradingMode, account: TradingAccountId) => ['trading', mode, 'state', account] as const;
 
-function shared(client: QueryClient, mode: TradingMode, account: number): Refresh {
+function shared(client: QueryClient, mode: TradingMode, account: TradingAccountId): Refresh {
   let contexts = clients.get(client);
   if (!contexts) { contexts = new Map(); clients.set(client, contexts); }
   const key = `${mode}:${account}`;
@@ -37,6 +38,7 @@ function publish(refresh: Refresh) {
 /** Display-only merge. No command ever uses an event as its submission-time validation. */
 export function mergeOrderSnapshot(previous: TossOrder | undefined, next: TossOrder, canonical = false): TossOrder | null {
   const quantity = Number(next.quantity), filled = Number(next.execution.filledQuantity);
+  if (next.execution.filledQuantity == null) return null; // Reconcile incomplete account events through REST.
   if (!Number.isSafeInteger(quantity) || !Number.isSafeInteger(filled) || quantity < 0 || filled < 0 || filled > quantity
     || (!openStates.has(next.status) && !terminalStates.has(next.status))) return null;
   if (!previous) return next;
@@ -50,11 +52,11 @@ export function mergeOrderSnapshot(previous: TossOrder | undefined, next: TossOr
   return { ...next, status, execution: { ...next.execution, filledAt: next.execution.filledAt ?? previous.execution.filledAt } };
 }
 
-export function tradingRefreshVersion(client: QueryClient, mode: TradingMode, account: number) {
+export function tradingRefreshVersion(client: QueryClient, mode: TradingMode, account: TradingAccountId) {
   return shared(client, mode, account).version;
 }
 
-export function resetTradingOrderEvents(client: QueryClient, mode: TradingMode, account: number) {
+export function resetTradingOrderEvents(client: QueryClient, mode: TradingMode, account: TradingAccountId) {
   const refresh = shared(client, mode, account);
   refresh.replacements.clear();
   if (!refresh.events.size) return;
@@ -67,7 +69,7 @@ export function resetTradingOrderEvents(client: QueryClient, mode: TradingMode, 
 }
 
 /** The broker ACK identifies the new order, but only its ready snapshot completes a replacement. */
-export function acceptTradingReplacement(client: QueryClient, mode: TradingMode, account: number, code: string,
+export function acceptTradingReplacement(client: QueryClient, mode: TradingMode, account: TradingAccountId, code: string,
   originalId: string, replacementId: string) {
   if (!replacementId || replacementId === originalId) return;
   const refresh = shared(client, mode, account);
@@ -92,7 +94,7 @@ export function acceptTradingReplacement(client: QueryClient, mode: TradingMode,
   publish(refresh);
 }
 
-export function applyTradingOrderEvent(client: QueryClient, mode: TradingMode, account: number, order: TossOrder, revision: number) {
+export function applyTradingOrderEvent(client: QueryClient, mode: TradingMode, account: TradingAccountId, order: TossOrder, revision: number) {
   const refresh = shared(client, mode, account);
   const key = `${order.symbol}:${order.orderId}`;
   const prior = refresh.events.get(key);
@@ -120,7 +122,7 @@ export function applyTradingOrderEvent(client: QueryClient, mode: TradingMode, a
   return true;
 }
 
-export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, account: number, code: string | null,
+export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, account: TradingAccountId, code: string | null,
   base: OrderStateResponse | undefined): OrderStateResponse | undefined {
   if (!base) return undefined;
   const events = [...shared(client, mode, account).events.values()].filter(event => code === null || event.order.symbol === code);
@@ -143,19 +145,19 @@ export function mergeTradingOrderEvents(client: QueryClient, mode: TradingMode, 
   return { ...base, orders: [...orders.values()], recent_orders: [...recent.values()].reverse().slice(0, 10) };
 }
 
-export function tradingRefreshPaused(client: QueryClient, mode: TradingMode, account: number) {
+export function tradingRefreshPaused(client: QueryClient, mode: TradingMode, account: TradingAccountId) {
   return shared(client, mode, account).pending > 0;
 }
 
-export function subscribeTradingRefresh(client: QueryClient, mode: TradingMode, account: number, listener: () => void) {
+export function subscribeTradingRefresh(client: QueryClient, mode: TradingMode, account: TradingAccountId, listener: () => void) {
   const refresh = shared(client, mode, account);
   refresh.listeners.add(listener);
   return () => { refresh.listeners.delete(listener); };
 }
 
-export function scheduleTradingRefresh(client: QueryClient, mode: TradingMode, account: number, orders = true) {
+export function scheduleTradingRefresh(client: QueryClient, mode: TradingMode, account: TradingAccountId, orders = true) {
   const refresh = shared(client, mode, account);
-  if (account <= 0 || refresh.pending) return;
+  if (!account || refresh.pending) return;
   const key = tradingStateKey(mode, account);
   // Each burst gets one refresh. Do not repeatedly abort an in-flight REST read.
   if (orders && refresh.ordersTimer === undefined) refresh.ordersTimer = setTimeout(() => {
@@ -174,7 +176,7 @@ export function scheduleTradingRefresh(client: QueryClient, mode: TradingMode, a
 }
 
 /** All windows for this account pause background reads while a write/group is active. */
-export function pauseTradingRefresh(client: QueryClient, mode: TradingMode, account: number) {
+export function pauseTradingRefresh(client: QueryClient, mode: TradingMode, account: TradingAccountId) {
   const refresh = shared(client, mode, account);
   refresh.pending++;
   clearTimeout(refresh.ordersTimer); clearTimeout(refresh.balancesTimer);
