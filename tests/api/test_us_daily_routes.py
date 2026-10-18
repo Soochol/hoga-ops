@@ -340,3 +340,51 @@ def test_us_stock_minute_unconfigured_and_bypass_are_typed(tmp_path, monkeypatch
         assert body["candles"] == [] and body["minute_metadata"]["refresh_status"] == status
         assert body["minute_metadata"]["available_from_ms"] is None
         assert body["minute_metadata"]["last_successful_check_at_ms"] is None
+
+
+def test_stock_minute_http_history_cursor_is_scoped_cached_and_serialized(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta
+
+    calls = []
+
+    async def call(api_id, payload, *, cont=False, next_key=""):
+        offset = int(next_key) if cont else 0
+        calls.append((offset, payload.copy()))
+        origin = datetime(2026, 10, 16, 18, 59)
+        rows = []
+        for i in range(100):
+            moment = origin - timedelta(minutes=offset + i)
+            rows.append(dict(cntr_tm=moment.strftime("%Y%m%d%H%M%S"), bus_dt=moment.strftime("%Y%m%d"),
+                             cur_prc="213.8314", open_pric="213.83", high_pric="214", low_pric="213.77",
+                             trde_qty="7079"))
+        return Page(rows=rows, cont=offset < 1500, next_key=str(offset + 100),
+                    raw={"return_code": 0, "result_list": rows})
+
+    fake = SimpleNamespace(call=call)
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_rest_client", lambda *a: fake)
+    monkeypatch.setattr("hoga.live.kiwoom_rest_runtime.ensure_scheduler", lambda *a: object())
+
+    async def run(scheduler, **kw):
+        return await kw["fetch_fn"](fake)
+
+    monkeypatch.setattr("hoga.live.kiwoom_access.run_with_capacity", run)
+    with TestClient(app_for(tmp_path)) as client:
+        url = "/api/live/us-stock-minute-candles"
+        params = {"exchange": "NYSE", "symbol": "BRKb", "timeframe": "1m"}
+        recent = client.get(url, params=params).json()
+        cursor = recent["minute_metadata"]["next_cursor"]
+        assert cursor and len(recent["candles"]) == 800
+        older = client.get(url, params={**params, "cursor": cursor})
+        assert older.status_code == 200
+        body = older.json()
+        assert len(body["candles"]) == 800 and body["candles"][-1]["t_ms"] < recent["candles"][0]["t_ms"]
+        assert body["minute_metadata"]["history_scope"] == "cursor_history_page"
+        assert body["minute_metadata"]["next_cursor"] is None
+        assert not body["minute_metadata"]["more_available"]
+        assert client.get(url, params={**params, "cursor": cursor}).json() == body
+        assert len(calls) == 16
+        for bad in [{**params, "symbol": "BRKB"}, {**params, "timeframe": "5m"}, {**params, "exchange": "NASDAQ"}]:
+            rejected = client.get(url, params={**bad, "cursor": cursor})
+            assert rejected.status_code == 422 and "새로고침" in rejected.json()["detail"]["message"]
+        assert client.get(url, params={**params, "cursor": "bad"}).status_code == 422
+        assert len(calls) == 16

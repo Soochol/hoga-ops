@@ -910,11 +910,16 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       </div>}
       {latestMinutesOnly && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
         <span>미국 {symbol?.kind === 'us_stock' ? '주식 ' : ''}{view.timeframe.slice(0, -1)}분봉 · {symbol?.kind === 'us_stock' ? 'USD · 수정 전 가격' : '지수값'} · 1분마다 REST 조회</span>
-        <span>{symbol?.kind === 'us_stock' ? `앱 최근 최대 ${d.stockMinuteMetadata?.bar_limit ?? 800}봉 · 과거 자동 확장 미지원` : '최근 제공 구간만 조회 · 과거 날짜 조회 불가'} · 지연 여부 미확인</span>
-        {d.stockMinuteMetadata?.more_available && <span>공급자에 이전 구간 더 있음</span>}
+        <span>{symbol?.kind === 'us_stock' ? `최근 ${d.stockMinuteMetadata?.bar_limit ?? 800}봉부터 · 왼쪽으로 이동하면 과거 자동 조회` : '최근 제공 구간만 조회 · 과거 날짜 조회 불가'} · 지연 여부 미확인</span>
+        {symbol?.kind === 'us_stock' && <span>불러온 {d.workareaBundle?.candles.length.toLocaleString() ?? 0}봉</span>}
+        {d.usStockHistory?.loading && <span>이전 분봉 불러오는 중</span>}
+        {d.usStockHistoryError && <span>과거 조회 실패 · 기존 데이터 유지 {('status' in d.usStockHistoryError && d.usStockHistoryError.status === 422)
+          ? '연결 정보를 갱신하려면 차트를 새로고침하세요.' : <button type="button" onClick={d.retryUsStockHistory}>다시 시도</button>}</span>}
+        {d.usStockHistoryLimitReached && <span>앱 과거 조회 한도 도달</span>}
+        {symbol?.kind === 'us_stock' && d.usStockHistory && !d.usStockHistory.hasMore && !d.usStockHistory.loading && !d.usStockHistoryError && !d.usStockHistoryLimitReached && d.stockMinuteMetadata?.refresh_status === 'normal' && !!d.workareaBundle?.candles.length && <span>공급자 제공 과거 구간 끝</span>}
         {d.minuteMetadata?.available_from_ms && d.workareaBundle?.candles.length === 0 && <span>해당 분봉 집계에 필요한 연속 데이터 부족 · 1분봉을 선택하세요</span>}
         <span>차트 시간 KST · {symbol?.kind === 'us_stock' ? '영업일 키움 기준 · 장외 포함' : '거래일 뉴욕 · 장후 보정 포함'} · 마지막 봉 변경 가능</span>
-        <span>제공 범위 {d.minuteMetadata?.available_from_ms ? new Date(d.minuteMetadata.available_from_ms).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} ~ {d.minuteMetadata?.available_to_ms ? new Date(d.minuteMetadata.available_to_ms).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} (뉴욕)</span>
+        <span>제공 범위 {(symbol?.kind === 'us_stock' ? d.workareaBundle?.candles[0]?.ts_ms : d.minuteMetadata?.available_from_ms) ? new Date((symbol?.kind === 'us_stock' ? d.workareaBundle?.candles[0]?.ts_ms : d.minuteMetadata?.available_from_ms)!).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} ~ {(symbol?.kind === 'us_stock' ? d.workareaBundle?.candles.at(-1)?.ts_ms : d.minuteMetadata?.available_to_ms) ? new Date((symbol?.kind === 'us_stock' ? d.workareaBundle?.candles.at(-1)?.ts_ms : d.minuteMetadata?.available_to_ms)!).toLocaleString('ko-KR', { timeZone: 'America/New_York' }) : '—'} (뉴욕)</span>
         {d.minuteMetadata?.last_successful_check_at_ms && <span>확인 {new Date(d.minuteMetadata.last_successful_check_at_ms).toLocaleTimeString()}</span>}
         {d.minuteMetadata?.refresh_status === 'unconfigured' && <span>조회 API 키 설정 필요</span>}
         {(d.minuteMetadata?.refresh_status === 'stale' || d.minuteMetadata?.refresh_status === 'error') && <span>조회 실패 · 이전 데이터 유지</span>}
@@ -944,6 +949,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
               onJumpDestinationChange={setJumpDestination}
               onViewedDateChange={setViewedDate}
               historyBackfillEnabled={!latestMinutesOnly}
+              pagedHistory={savedRangeFreeze === null ? d.usStockHistory : undefined}
               savedRangeFrozen={savedRangeFreeze !== null}
               savedRangeAnchorMs={savedRange && isMinuteTimeframe(view.timeframe) ? savedRange.toMs : null}
               bundle={d.workareaBundle}

@@ -1,0 +1,170 @@
+{
+  "status": "passed",
+  "recorded_at_utc": "2026-10-18T16:09:46.630110+00:00",
+  "branch": "codex/us-stock-minute-history",
+  "base_sha": "23783a87c074b46b670eb65ecd5d801dcf7f58ea",
+  "latest_origin_main_sha": "23783a87c074b46b670eb65ecd5d801dcf7f58ea",
+  "latest_main_checked_before_final_tests": true,
+  "input_sha256": "2eb247223430dcbaae88f8901a974fcb0f561712181eca51fb4ca5d8807b6aa8",
+  "input_file_count": 2620,
+  "input_manifest": "inputs.json.gz",
+  "input_scope": [
+    "scripts",
+    "hoga",
+    "tests",
+    "frontend/src",
+    "frontend/tests",
+    "frontend/public",
+    "pyproject.toml",
+    "uv.lock",
+    "ruff.toml",
+    ".python-version",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/tsconfig.json",
+    "frontend/tsconfig.app.json",
+    "frontend/tsconfig.test.json",
+    "frontend/tsconfig.e2e.json",
+    "frontend/vite.config.ts",
+    "frontend/playwright.config.ts",
+    "frontend/index.html",
+    "frontend/eslint.config.js",
+    "frontend/postcss.config.js",
+    "frontend/tailwind.config.js",
+    "docs/adr",
+    "docs/research/2026-10-19-us-stock-minute-probe.json",
+    "docs/research/2026-10-19-us-stock-minute-app-live.json.gz",
+    "docs/research/2026-10-19-us-stock-minute-history-live.json.gz",
+    "docs/research/2026-10-19-us-stock-minute-history-live-summary.json",
+    "CONTEXT.md",
+    "CLAUDE.md"
+  ],
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "browser": "Google Chrome 155.0.8059.84",
+    "credentials": "empty worktree .env; E2E broker credentials explicitly blank; live probe standalone using existing cached Kiwoom token only; KIS comparison read-only research"
+  },
+  "runs": {
+    "backend-full": {
+      "command": "uv run --extra dev ruff check . && uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "passed",
+      "log": "backend-full.log.gz",
+      "log_sha256": "7fffad85f3d401eb5e3e25c842c1566344f7197cab50b6fa72ce77e10bee1ba2",
+      "input_manifest": "inputs.json.gz"
+    },
+    "backend-focused": {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_us_stock_minutes.py tests/api/test_us_daily_routes.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "passed",
+      "log": "backend-focused.log.gz",
+      "log_sha256": "2580880136cf69a695a1d0300d6b6994de538d03fea6481f9ec48f13d97d7ac3",
+      "input_manifest": "inputs.json.gz"
+    },
+    "frontend-full": {
+      "command": "cd frontend && npx vitest run --maxWorkers=2",
+      "result": "passed",
+      "log": "frontend-full.log.gz",
+      "log_sha256": "28c232e5386dbc88d47301696cb4c5b8cd1570e871f46b93084f6201fe56dcc2",
+      "input_manifest": "inputs-frontend-start.json.gz"
+    },
+    "frontend-typecheck": {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed",
+      "log": "frontend-typecheck.log.gz",
+      "log_sha256": "6edb4e536f9d90345e33c7426aedb0fd14986f6cf9aba0aae2d298b6d472d40d",
+      "input_manifest": "inputs-frontend-start.json.gz"
+    },
+    "frontend-build": {
+      "command": "cd frontend && npm run build",
+      "result": "passed",
+      "log": "frontend-build.log.gz",
+      "log_sha256": "db4f95d1bfc7b524bf909467d583b1f329ad7eef1f02ad371913550055484a53",
+      "input_manifest": "inputs.json.gz"
+    },
+    "browser": {
+      "command": "cd frontend && npx playwright test tests/e2e/us-stock-minute-history.spec.ts tests/e2e/us-stock-minutes.spec.ts tests/e2e/us-index-minutes.spec.ts tests/e2e/us-daily-candles.spec.ts tests/e2e/live-viewport-preservation.spec.ts --reporter=line",
+      "result": "passed",
+      "log": "browser.log.gz",
+      "log_sha256": "a955da00af944373d68f85e7551939cb4e5e3e03b0ec84c8202af5495abd8954",
+      "input_manifest": "inputs-frontend-start.json.gz"
+    }
+  },
+  "results": {
+    "ruff": "passed",
+    "backend": {
+      "passed": 6216,
+      "skipped": 2,
+      "deselected_wallclock": 13
+    },
+    "backend_focused": 73,
+    "frontend": {
+      "passed": 8483,
+      "files": 652
+    },
+    "browser": {
+      "passed": 44,
+      "workers": 1,
+      "slot": 182,
+      "backend_port": 20182,
+      "frontend_port": 21182,
+      "data_dir": "/tmp/hoga-e2e-data-182",
+      "dist_dir": "/tmp/hoga-e2e-dist-182"
+    },
+    "typecheck": "passed (app, unit and E2E projects)",
+    "build": "passed (existing chunk-size warning)"
+  },
+  "input_reuse": {
+    "backend": "Full run started after the final atomic-page validation fix; all recorded backend inputs match final sources.",
+    "frontend_and_browser": "Runs started from /tmp/us-stock-history-final-start.json. Only hoga/live/us_stock_minutes.py and tests/unit/live/test_us_stock_minutes.py changed afterward, to reject an entire conflicting page. Frontend sources, tests, fixtures, dependencies, TypeScript and Playwright configuration stayed identical; browser stock price routes use the fixed live-response fixtures. Final backend full/focused runs cover the atomic-page change. Typecheck and build passed for identical final frontend inputs.",
+    "earlier_runs": "Earlier passing runs and an interrupted backend run are not counted as final verification."
+  },
+  "live_probe": {
+    "report": "../../research/2026-10-19-us-stock-minute-history-live-summary.json",
+    "full_responses": "../../research/2026-10-19-us-stock-minute-history-live.json.gz",
+    "cases": 12,
+    "chunks": 25,
+    "bars": 19763,
+    "nvda_1m_chain": [
+      800,
+      1600,
+      2400
+    ],
+    "aaaa_final_history_bars": 563,
+    "credentials": "standalone cached-token read only; no token issuance/revoke, orders or WS",
+    "delay_status": "unverified; market was closed",
+    "retention_floor": "not generalized from sampled continuation end",
+    "post_probe_change": "Page validation became atomic on conflicting rows; successful-page behavior and requests unchanged."
+  },
+  "viewport": {
+    "cases": 12,
+    "before_count": 800,
+    "after_counts": [
+      1363,
+      1600
+    ],
+    "maximum_anchor_pixel_drift": 1.1368683772161603e-13,
+    "metrics": "viewport-all-cases.json",
+    "images_reviewed": [
+      "history-1.png",
+      "history-6.png",
+      "history-12.png"
+    ]
+  },
+  "limits": {
+    "latest_refresh_seconds": 60,
+    "vendor_pages_per_chunk": 8,
+    "bars_per_chunk": 800,
+    "request_budget_seconds": 12,
+    "automatic_chunks_per_gesture": 3,
+    "history_chunk_limit": 63,
+    "frontend_bars_limit": 51200,
+    "global_server_cache_chunks": 64,
+    "inactive_client_cache_minutes": 5,
+    "cursor_lifetime": "server process; reload browser after server restart",
+    "meaning": "Application resource budgets, not provider retention years."
+  },
+  "scope": "US individual-stock minute cursor backfill; domestic/index/daily regressions included. All repository unit/API tests passed; browser verification covers the five listed related suites, not every E2E suite."
+}

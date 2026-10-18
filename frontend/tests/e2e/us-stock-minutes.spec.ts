@@ -57,7 +57,7 @@ for (const [exchange, symbol] of [['NASDAQ', 'NVDA'], ['NASDAQ', 'AAPL'], ['NYSE
     const frame = page.locator('.live-window-chart');
     await expect(frame.getByRole('status')).toContainText('미국 주식 1분봉');
     await expect(frame.getByRole('status')).toContainText('USD · 수정 전 가격');
-    await expect(frame.getByRole('status')).toContainText('최대 800봉');
+    await expect(frame.getByRole('status')).toContainText('최근 800봉부터');
     await expect(frame.getByRole('status')).toContainText('지연 여부 미확인');
     await expect.poll(async () => (await measure(page)).count).toBe(800);
     await page.clock.runFor(500);
