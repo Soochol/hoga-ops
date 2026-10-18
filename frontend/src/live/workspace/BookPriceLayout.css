@@ -1,0 +1,47 @@
+/* Intrinsic shared tracks keep the numeric right edge fixed. Hidden samples
+ * reserve the symbol's widest text, and extra space is split equally outside. */
+.book-panel-grid,.order-window { --book-day-width:max(16px,1.4em); }
+.book-price-line {
+  display:grid;
+  grid-template-columns:max-content max-content;
+  justify-content:center;
+  align-items:center;
+  gap:2px;
+  padding-inline:8px;
+  white-space:nowrap;
+  font-size:var(--live-text-data,var(--text-sm));
+}
+.book-price-line::before,.book-price-line::after {
+  visibility:hidden;
+  pointer-events:none;
+  user-select:none;
+  line-height:1;
+}
+.book-panel-grid .book-price-line::before { font-weight:600; }
+.book-price-line::before {
+  content:var(--book-price-sample);
+  grid-area:1 / 1;
+  padding-left:calc(var(--book-day-width) + 4px);
+}
+.book-price-line::after {
+  content:var(--book-percent-sample);
+  grid-area:1 / 2;
+  font-size:var(--live-text-meta,var(--text-xs));
+}
+.book-price-value {
+  grid-area:1 / 1;
+  position:relative;
+  justify-self:end;
+  width:max-content;
+  padding-left:calc(var(--book-day-width) + 4px);
+  white-space:nowrap;
+}
+.book-day-marker { width:var(--book-day-width); }
+.book-day-marker > span { width:100%; }
+.book-price-percent {
+  grid-area:1 / 2;
+  white-space:nowrap;
+  text-align:left;
+  font-size:var(--live-text-meta,var(--text-xs));
+}
+.book-price-current { outline:1px solid var(--fg-dim); outline-offset:-1px; }

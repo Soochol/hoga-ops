@@ -1,11 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 
 for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as const) {
   test(`${depth} 호가는 빈 가격 없이 잔량과 정렬되고 상세 정보를 열 수 있다`, async ({ page }, testInfo) => {
     await page.goto(`/tests/e2e/fixtures/book-price-layout.html?depth=${depth}`);
     const panel = page.locator('.book-panel');
     const grid = panel.locator('.book-panel-grid');
-    await expect(grid.locator('.font-data.text-base')).toHaveCount(askCount + bidCount);
+    await expect(grid.locator('.book-price-value')).toHaveCount(askCount + bidCount);
     for (const width of [640, 409]) {
       await page.locator('#fixture').evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
       if (width >= 531) await expect(panel.locator('.book-inline-summary')).toBeVisible();
@@ -74,7 +74,7 @@ test('10호가는 부분·한쪽 호가에서도 사다리 중앙에 경계를 �
     await expect(panel.locator('.book-panel-grid')).toHaveCSS('height', '440px');
     await region.evaluate(el => { el.scrollTop = el.scrollHeight; });
     await expect.poll(() => region.evaluate(el => Math.abs(el.scrollHeight - el.clientHeight - el.scrollTop))).toBeLessThan(1);
-    if (depth !== 'ask-only') await expect(panel.locator('.book-panel-grid > div').nth(1).locator('.font-data.text-base').last()).toBeInViewport();
+    if (depth !== 'ask-only') await expect(panel.locator('.book-panel-grid > div').nth(1).locator('.book-price-value').last()).toBeInViewport();
   }
 });
 
@@ -98,7 +98,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
           const grid = el.querySelector('.book-panel-grid')!;
           const [left, center, right] = [...grid.children];
           const bounds = center.getBoundingClientRect();
-          const prices = [...center.querySelectorAll('.font-data.text-base')];
+          const prices = [...center.querySelectorAll('.book-price-value')];
           const edges = prices.map(price => {
             const range = document.createRange();
             range.selectNodeContents(price.lastChild!);
@@ -124,7 +124,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
           return {
             quantityFits,
             count: prices.length, gridWidth: grid.getBoundingClientRect().width,
-            leftWidth: left.getBoundingClientRect().width, rightWidth: right.getBoundingClientRect().width,
+            leftWidth: left.getBoundingClientRect().width, rightWidth: right.getBoundingClientRect().width, centerWidth: bounds.width,
             centerOffset: (bounds.left + bounds.right - grid.getBoundingClientRect().left - grid.getBoundingClientRect().right) / 2,
             askBarWidth: askBar.getBoundingClientRect().width, bidBarWidth: bidBar.getBoundingClientRect().width,
             askInset: ask.getBoundingClientRect().right - askBar.getBoundingClientRect().right,
@@ -136,7 +136,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
         });
         expect(g.count).toBe(20);
         expect(g.quantityFits).toBe(true);
-        expect(g.gridWidth).toBeCloseTo(Math.max(width, width < 531 ? 387 : 531), 0);
+        expect(g.gridWidth).toBeCloseTo(Math.max(width, (width < 531 ? 224 : 368) + g.centerWidth), 0);
         expect(g.leftWidth).toBeCloseTo(g.rightWidth, 1);
         expect(g.centerOffset).toBeCloseTo(0, 1);
         expect(g.askBarWidth).toBeCloseTo(g.bidBarWidth, 1);
@@ -150,7 +150,8 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
         expect(g.alignment).toBeLessThan(0.5);
       }).toPass({ timeout: 5000 });
       await expect(panel.getByText('체결강도', { exact: true })).toBeVisible();
-      expect(await region.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(width < 387);
+      const compactMin = Math.round(224 + (await gridCenterWidth(panel)));
+      expect(await region.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(width < compactMin);
       const inline = panel.locator('.book-inline-summary');
       const info = panel.getByRole('button', { name: '종목 상세 정보' });
       if (width >= 531) {
@@ -158,12 +159,12 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
         await expect(info).toBeHidden();
       } else {
         await expect(inline).toBeHidden();
-        if (width < 387) {
+        if (width < compactMin) {
           await region.focus();
           await page.keyboard.press('ArrowRight');
           await expect.poll(() => region.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
           await region.evaluate(el => { el.scrollLeft = el.scrollWidth; });
-          await expect(region).toHaveJSProperty('scrollLeft', 387 - width);
+          await expect(region).toHaveJSProperty('scrollLeft', compactMin - width);
         }
         await expect(info).toBeInViewport();
         await info.click();
@@ -218,4 +219,50 @@ test('압축 상세 정보는 바깥 클릭·닫기·넓은 배치 전환으로 
   await expect(info).toBeHidden();
   await expect(dialog).toHaveCount(0);
   await expect(page.locator('.book-inline-summary')).toBeVisible();
+});
+
+async function gridCenterWidth(panel: Locator) {
+  return panel.locator('.book-panel-grid > div').nth(1).evaluate(el => el.getBoundingClientRect().width);
+}
+
+test('10호가의 천만 원대 가격과 확대 글꼴은 배지·등락률·잔량을 침범하지 않는다', async ({ page }, testInfo) => {
+  await page.goto('/tests/e2e/fixtures/book-price-layout.html?offset=8838000');
+  await page.evaluate(() => document.fonts.ready);
+  const panel = page.locator('.book-panel');
+  for (const fontSize of [16, 20, 24]) {
+    await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, fontSize);
+    for (const width of [640, 409, 320]) {
+      await page.locator('#fixture').evaluate((el, w) => { (el as HTMLElement).style.width = `${w}px`; }, width);
+      await expect(async () => {
+        const geometry = await panel.locator('.book-price-line').evaluateAll(rows => rows.map(row => {
+          const box = row.getBoundingClientRect();
+          const value = row.querySelector('.book-price-value')!.getBoundingClientRect();
+          const amount = row.querySelector('.book-price-amount')!.getBoundingClientRect();
+          const percent = row.querySelector('.book-price-percent')!.getBoundingClientRect();
+          const badge = row.querySelector('[data-price-badges]')?.getBoundingClientRect();
+          return { text: row.querySelector('.book-price-amount')!.textContent,
+            font: getComputedStyle(row).fontSize, valueFont: getComputedStyle(row.querySelector('.book-price-value')!).fontSize,
+            padding: getComputedStyle(row.querySelector('.book-price-value')!).paddingLeft,
+            axisFont: getComputedStyle(row.closest('.book-panel-grid')!).fontSize,
+            columns: getComputedStyle(row).gridTemplateColumns, amountWidth: amount.width,
+            left: box.left, valueLeft: value.left, right: box.right, percentRight: percent.right, contained: value.left >= box.left && percent.right <= box.right + 0.1,
+            separated: amount.right <= percent.left, innerGap: percent.left - amount.right,
+            leftGutter: value.left - box.left, rightGutter: box.right - percent.right,
+            gap: badge ? amount.left - badge.right : null,
+            smaller: parseFloat(getComputedStyle(row.querySelector('.book-price-percent')!).fontSize) < parseFloat(getComputedStyle(row.querySelector('.book-price-value')!).fontSize),
+            edge: amount.right };
+        }));
+        for (const row of geometry) {
+          expect(row.contained, JSON.stringify({ fontSize, width, row })).toBe(true); expect(row.separated).toBe(true); expect(row.smaller).toBe(true);
+          expect(row.innerGap).toBeCloseTo(2, 1);
+          expect(row.leftGutter).toBeGreaterThanOrEqual(7.9); expect(row.rightGutter).toBeGreaterThanOrEqual(7.9);
+          if (row.gap !== null) expect(row.gap).toBeCloseTo(4, 1);
+        }
+        expect(Math.max(...geometry.map(row => row.edge)) - Math.min(...geometry.map(row => row.edge))).toBeLessThan(0.5);
+      }).toPass({ timeout: 3000 });
+    }
+  }
+  await page.evaluate(() => { document.documentElement.style.fontSize = '16px'; });
+  await page.locator('#fixture').evaluate(el => { (el as HTMLElement).style.width = '409px'; });
+  await panel.screenshot({ path: testInfo.outputPath('ten-million-book-price.png') });
 });

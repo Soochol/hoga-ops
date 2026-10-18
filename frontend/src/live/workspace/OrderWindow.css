@@ -55,24 +55,26 @@
 .order-window > .book-expected-fill > span > .font-data { display:inline-block; width:12ch; text-align:left; }
 .order-window > .book-expected-fill > span:nth-child(2) > .font-data { width:14ch; }
 .order-controls label,.order-editor label { display:flex; align-items:center; gap:0.25rem; }
-.order-scroll { --order-columns:72px minmax(128px,1fr) 144px minmax(128px,1fr) 72px; display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
-.order-ladder { position:relative; flex:1 0 auto; min-width:var(--order-min-w); min-height:244px; padding:4px 8px 0; }
+.order-scroll { --order-fixed-width:160px; --order-depth-min:128px; --order-columns:72px minmax(128px,1fr) var(--book-price-width) minmax(128px,1fr) 72px; display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
+.order-ladder { position:relative; flex:1 0 auto; min-width:max(var(--order-min-w),calc(var(--order-fixed-width) + 2 * var(--order-depth-min) + var(--book-price-width))); min-height:244px; padding:4px 8px 0; }
 /* Twenty fixed slots; the top spacer balances the 24px cancellation row
  * so the spread stays centered while cancellation follows the last slot.
  * Small windows scroll the full ladder instead of shrinking its order targets. */
 .order-ladder-centered { display:flex; flex-direction:column; min-height:536px; padding-block:0; }
 .order-ladder-centered::before,.order-ladder-centered::after { content:""; flex:1 0 4px; }
 .order-ladder-centered::before { flex-basis:28px; }
-.order-compact .order-scroll { --order-columns:64px minmax(96px,1fr) 168px minmax(96px,1fr) 64px; }
-.order-expanded .order-scroll { --order-columns:48px minmax(152px,1fr) 144px minmax(152px,1fr) 48px; }
-.order-expanded.order-spacious .order-scroll { --order-columns:72px minmax(184px,1fr) 168px minmax(184px,1fr) 72px; }
+.order-compact .order-scroll { --order-fixed-width:144px; --order-depth-min:96px; --order-columns:64px minmax(96px,1fr) var(--book-price-width) minmax(96px,1fr) 64px; }
+.order-expanded .order-scroll { --order-fixed-width:112px; --order-depth-min:152px; --order-columns:48px minmax(152px,1fr) var(--book-price-width) minmax(152px,1fr) 48px; }
+.order-expanded.order-spacious .order-scroll { --order-fixed-width:160px; --order-depth-min:184px; --order-columns:72px minmax(184px,1fr) var(--book-price-width) minmax(184px,1fr) 72px; }
 .order-cancel-row { display:grid; grid-template-columns:var(--order-columns); flex-shrink:0; padding:0 0 2px; }
 .order-window .order-cancel-row .order-lane { padding:0; font-size:var(--live-text-meta,var(--text-xs)); white-space:nowrap; }
 .order-cancel-row .order-buy { grid-column:5; }
-.order-summary-layer { position:absolute; top:max(4px,calc((100% - 480px) / 2)); right:56px; width:calc((100% - 256px) / 2); height:240px; }
-.order-spacious .order-summary-layer { right:80px; width:calc((100% - 328px) / 2); }
+.order-summary-layer { position:absolute; top:max(4px,calc((100% - 480px) / 2)); right:56px; width:calc((100% - var(--order-fixed-width) - var(--book-price-width)) / 2); height:240px; }
+.order-spacious .order-summary-layer { right:80px; }
 .order-expanded:not(.order-spacious) .order-summary-layer .book-summary > div:not(.book-summary-extra),
-.order-expanded:not(.order-spacious) .order-summary-layer .book-summary-extra > div { padding-inline:2px; column-gap:2px; }
+.order-expanded:not(.order-spacious) .order-summary-layer .book-summary-extra > div { padding-left:6px; padding-right:2px; column-gap:2px; }
+.order-spacious .order-summary-layer .book-summary > div:not(.book-summary-extra),
+.order-spacious .order-summary-layer .book-summary-extra > div { padding-left:6px; }
 .order-row { display:grid; grid-template-columns:var(--order-columns); height:24px; flex-shrink:0; align-items:center; }
 .order-divider { border-top:1px solid var(--border); }
 .order-target { background:var(--tint-selection); }
@@ -89,13 +91,12 @@
 .order-window .order-lane.order-drag-destination { outline:2px solid var(--accent); outline-offset:-2px; border-radius:var(--radius-sm); background:var(--tint-selection); }
 .order-drag-preview { position:fixed; top:0; left:0; z-index:70; pointer-events:none; display:flex; align-items:center; justify-content:center; min-width:3.5rem; padding:.375rem .625rem; color:var(--order-side); background:color-mix(in srgb,var(--order-side) 10%,var(--bg-card)); border:1px solid color-mix(in srgb,var(--order-side) 45%,var(--border)); border-radius:var(--radius-sm); box-shadow:var(--shadow-overlay); font-size:var(--live-text-data,var(--text-sm)); font-weight:600; white-space:nowrap; }
 .order-drag-preview-cancel { color:var(--error); border-color:var(--error); border-style:dashed; background:color-mix(in srgb,var(--error) 10%,var(--bg-card)); }
-.order-price { display:grid; grid-template-columns:minmax(0,1fr) 48px; align-items:center; gap:4px; height:100%; white-space:nowrap; }
-/* Separate fixed slots for the day badge (0–16px) and average dot (18–30px),
- * followed by a 4px gap before the price. */
-.order-price-value { position:relative; min-width:0; padding-left:34px; text-align:right; }
-.order-price-value > [data-price-badges] { width:16px; }
-.order-average-marker { position:absolute; left:18px; top:50%; transform:translateY(-50%); width:12px; height:12px; border-radius:50%; background:var(--price-up); }
-.order-price small { font-size:var(--live-text-meta,var(--text-xs)); min-width:0; text-align:right; }
+.order-price { height:100%; }
+/* The day slot follows the font; its 12px average dot keeps a 4px price gap. */
+.order-price-value { position:relative; min-width:0; padding-left:calc(var(--book-day-width) + 18px); text-align:right; }
+.order-price::before { padding-left:calc(var(--book-day-width) + 18px); }
+.order-average-marker { position:absolute; left:calc(var(--book-day-width) + 2px); top:50%; transform:translateY(-50%); width:12px; height:12px; border-radius:50%; background:var(--price-up); }
+.order-price small { font-size:var(--live-text-meta,var(--text-xs)); min-width:0; text-align:left; }
 .order-current { outline:1px solid var(--accent); outline-offset:-2px; border-radius:4px; }
 .order-info { display:flex; align-items:center; justify-content:space-between; gap:4px; padding:0 6px; font-size:var(--live-text-data,var(--text-sm)); }
 .order-meta { font-size:var(--live-text-meta,var(--text-xs)); color:var(--fg-dim); }

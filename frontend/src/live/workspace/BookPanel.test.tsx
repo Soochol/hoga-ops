@@ -300,7 +300,7 @@ describe('BookPanel', () => {
     const grid = container.querySelector('.book-panel-grid')!;
     const [left, center, right] = Array.from(grid.children);
     expect(left).toHaveStyle({ paddingTop: `${(10 - askCount) * 22}px` });
-    expect(center.querySelectorAll('.font-data.text-base')).toHaveLength(askCount + bidCount);
+    expect(center.querySelectorAll('.book-price-value')).toHaveLength(askCount + bidCount);
     expect(right.children[0]).toHaveStyle({ height: '220px' });
     expect(grid.querySelectorAll('[data-book-divider]')).toHaveLength(3);
   });
@@ -431,7 +431,7 @@ describe('BookPanel', () => {
   it('경계선이 현재가 박스(boxed)와 같은 요소를 다투지 않는다', () => {
     // 현재가가 매수 1호가인 흔한 경우 — 박스 윗변만 색이 갈리면 안 된다.
     const { container } = renderPanel({ lastPrice: 251_000 });
-    const boxed = container.querySelector('.border-fg-dim');
+    const boxed = container.querySelector('.book-price-current');
     expect(boxed).not.toBeNull();
     expect(boxed!.classList.contains('border-border')).toBe(false);
     // 박스는 경계선 래퍼 **안쪽**에 있고, 래퍼(1px)+셀(21px) = 22px 계약 유지.

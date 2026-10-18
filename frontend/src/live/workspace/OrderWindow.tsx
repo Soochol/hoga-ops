@@ -7,6 +7,7 @@ import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { useTextTooltip } from '../../ui/useTextTooltip';
 import { BookPriceAmount } from './BookPriceAmount';
+import { useBookPriceLayout } from './useBookPriceLayout';
 import { priceDirClass } from '../../ui/priceDir';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
@@ -248,6 +249,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const baseline = resolveBookBaseline({ isPastDateLadder: false, ladderBaseline: null,
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
+  const priceLayout = useBookPriceLayout(prices, code, true, baseline);
   const estimatePrice = quote?.price ?? null;
   const amountPresets = preferences.unit === 'amount';
   const presets = amountPresets ? preferences.amountPresets : preferences.quantityPresets;
@@ -531,7 +533,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       amountPresets: next.amountPresets.map((value, index) => validOrderInput(value, 'amount') ? value : preferences.amountPresets[index]) as OrderWindowSettings['amountPresets'],
     });
   }
-  return <div ref={rootRef} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
+  return <div ref={rootRef} style={priceLayout} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => {
       if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; }
       else if (e.detail === 1) suppressDoubleClick.current = false;
@@ -680,9 +682,9 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
             {orderCell('SELL', level.price, key)}
             {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
               : info}
-            <div className={`order-price ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
+            <div className={`order-price book-price-line ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value book-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
               {index === averageMarkerIndex && <span className="order-average-marker" role="img" aria-label={averageMarkerLabel} title={averageMarkerLabel} />}
-              <BookPriceAmount price={level.price} qty={level.qty} /></span><small>{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
+              <BookPriceAmount price={level.price} qty={level.qty} /></span><small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {isAsk ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}
             {orderCell('BUY', level.price, key)}
