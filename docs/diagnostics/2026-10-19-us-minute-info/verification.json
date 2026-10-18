@@ -1,0 +1,105 @@
+{
+  "status": "passed",
+  "captured_at_utc": "2026-10-18T16:15:49.192045+00:00",
+  "branch": "codex/hide-us-minute-info",
+  "base_sha": "ebf621933e884c735a25af8f4f6906501ca0fece",
+  "latest_main_checked_before_tests": "ebf621933e884c735a25af8f4f6906501ca0fece",
+  "input_sha256": "1061e272e642a82d5e7eefdc59c6d377e5476d58dcc00e5999e0336e4a7790c1",
+  "input_scope": [
+    "scripts",
+    "hoga",
+    "tests",
+    "frontend/src",
+    "frontend/tests",
+    "frontend/public",
+    "pyproject.toml",
+    "uv.lock",
+    "ruff.toml",
+    ".python-version",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/tsconfig.json",
+    "frontend/tsconfig.app.json",
+    "frontend/tsconfig.test.json",
+    "frontend/tsconfig.e2e.json",
+    "frontend/vite.config.ts",
+    "frontend/playwright.config.ts",
+    "frontend/index.html",
+    "frontend/eslint.config.js",
+    "frontend/postcss.config.js",
+    "frontend/tailwind.config.js",
+    "docs/adr",
+    "docs/research/2026-10-19-us-stock-minute-probe.json",
+    "docs/research/2026-10-19-us-stock-minute-app-live.json.gz",
+    "docs/research/2026-10-19-us-stock-minute-history-live.json.gz",
+    "docs/research/2026-10-19-us-stock-minute-history-live-summary.json",
+    "CONTEXT.md",
+    "CLAUDE.md"
+  ],
+  "input_file_count": 2620,
+  "manifest": "inputs.json.gz",
+  "fingerprint_algorithm": "SHA256(JSON.stringify-equivalent Python json.dumps(manifest, sort_keys=True)); manifest maps sorted tracked/nonignored source paths in input_scope to file SHA256.",
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "browser": "Google Chrome 155.0.8059.84",
+    "credentials": "Empty worktree .env and explicit blank broker credentials in Playwright; no live vendor calls for this UI change."
+  },
+  "runs": {
+    "typecheck": {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "typecheck.log.gz",
+      "log_sha256": "6edb4e536f9d90345e33c7426aedb0fd14986f6cf9aba0aae2d298b6d472d40d"
+    },
+    "unit": {
+      "command": "npx vitest run src/live/LivePage.test.tsx src/live/LiveChartRoot.test.tsx src/live/useLiveChartData.test.tsx src/api/usStockMinuteHistory.test.tsx src/live/usePagedChartHistory.test.tsx --maxWorkers=2",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "unit.log.gz",
+      "log_sha256": "f7504ff06035568e026ae0fd5d337f68fd7ac3ef81f0f0254a5481774fc34a27"
+    },
+    "e2e": {
+      "command": "npx playwright test tests/e2e/us-stock-minutes.spec.ts tests/e2e/us-stock-minute-history.spec.ts tests/e2e/us-index-minutes.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "e2e.log.gz",
+      "log_sha256": "00b18a70432c57e1daaa6d84caa7fcb534f769b0951fcb358e3623a0c6bab1ed"
+    },
+    "build": {
+      "command": "npm run build",
+      "cwd": "frontend",
+      "result": "passed",
+      "log": "build.log.gz",
+      "log_sha256": "80cfca58c79051c42703c602fec53d96edc4d189019edb82d3f3cb323fd0c4e1"
+    },
+    "docs": {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_adr_invariants.py",
+      "cwd": ".",
+      "result": "passed",
+      "log": "docs.log.gz",
+      "log_sha256": "6339465feb4ecb489b398246a0bc086ddc07cc9d48393e2ea6c34f5e0c684be0"
+    }
+  },
+  "results": {
+    "unit": 240,
+    "e2e": 29,
+    "doc_invariants": 66,
+    "typecheck": "passed (app/unit/E2E)",
+    "build": "passed (existing chunk-size warning)"
+  },
+  "browser": {
+    "workers": 1,
+    "backend_port": 20182,
+    "frontend_port": 21182,
+    "data_dir": "/tmp/hoga-e2e-data-182",
+    "dist_dir": "/tmp/hoga-e2e-dist-182",
+    "screenshot": "NVDA-3m.png",
+    "visually_reviewed": true
+  },
+  "scope": "Remove persistent US individual-stock minute metadata, counts/loading/end notices and their empty space. Preserve actionable fetch/configuration/empty-data notices and retry. Existing history/polling paths retained; index/daily banners retained. Unit tests cover LivePage, chart/data integration and minute history. E2E covers native minutes, history gestures/retry/polling and US index regression. Backend runtime sources unchanged; full backend/full frontend suites were not repeated for this UI-only change."
+}
