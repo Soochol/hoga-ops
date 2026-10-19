@@ -123,6 +123,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
           });
           return {
             quantityFits,
+            sideMinimum: parseFloat(getComputedStyle(grid).getPropertyValue('--book-side-content-width')),
             count: prices.length, gridWidth: grid.getBoundingClientRect().width,
             leftWidth: left.getBoundingClientRect().width, rightWidth: right.getBoundingClientRect().width, centerWidth: bounds.width,
             centerOffset: (bounds.left + bounds.right - grid.getBoundingClientRect().left - grid.getBoundingClientRect().right) / 2,
@@ -136,7 +137,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
         });
         expect(g.count).toBe(20);
         expect(g.quantityFits).toBe(true);
-        expect(g.gridWidth).toBeCloseTo(Math.max(width, (width < 531 ? 224 : 368) + g.centerWidth), 0);
+        expect(g.gridWidth).toBeCloseTo(Math.max(width, 2 * (width < 531 ? g.sideMinimum : Math.max(184, g.sideMinimum)) + g.centerWidth), 0);
         expect(g.leftWidth).toBeCloseTo(g.rightWidth, 1);
         expect(g.centerOffset).toBeCloseTo(0, 1);
         expect(g.askBarWidth).toBeCloseTo(g.bidBarWidth, 1);
@@ -150,7 +151,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
         expect(g.alignment).toBeLessThan(0.5);
       }).toPass({ timeout: 5000 });
       await expect(panel.getByText('체결강도', { exact: true })).toBeVisible();
-      const compactMin = Math.round(224 + (await gridCenterWidth(panel)));
+      const compactMin = Math.round(2 * await panel.locator('.book-panel-grid').evaluate(el => parseFloat(getComputedStyle(el).getPropertyValue('--book-side-content-width'))) + (await gridCenterWidth(panel)));
       expect(await region.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(width < compactMin);
       const inline = panel.locator('.book-inline-summary');
       const info = panel.getByRole('button', { name: '종목 상세 정보' });
