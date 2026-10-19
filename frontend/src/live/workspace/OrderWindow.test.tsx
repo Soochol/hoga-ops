@@ -487,18 +487,17 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('매입평단가')).not.toHaveTextContent('호가 범위 밖');
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it('예상 체결가·체결량을 상단 배너 대신 정보 2페이지에서 갱신한다', () => {
+  it('예상 체결가·체결량을 상단 배너 대신 정보 1페이지에서 갱신한다', () => {
     mock.expectedPrice = 241_000; mock.expectedQty = 6_140;
     const view = show();
     expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
-    fireEvent.click(screen.getByTestId('book-summary'));
     const banner = screen.getByTestId('book-expected-fill');
     expect(banner).toHaveTextContent('예상 체결가241,000원');
     expect(banner).toHaveTextContent('예상 체결량6,140');
-    expect(banner.closest('[data-testid="book-summary"]')).toHaveAttribute('data-page', '2');
+    expect(banner.closest('[data-testid="book-summary"]')).toHaveAttribute('data-page', '1');
     expect(screen.getByTestId('order-window').querySelector(':scope > .book-expected-fill')).toBeNull();
-    expect(screen.getByText('상한가')).toBeInTheDocument();
+    expect(screen.getByText('시작')).toBeInTheDocument();
     mock.expectedQty = 0;
     view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
     expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
@@ -525,9 +524,7 @@ describe('호가 주문', () => {
     try {
       mock.expectedPrice = 121100; mock.expectedQty = null;
       const view = render(content());
-      fireEvent.click(screen.getByTestId('book-summary'));
       fireEvent.click(within(screen.getByTestId('order-window')).getByRole('button', { name: '종목 상세 정보' }));
-      fireEvent.click(within(screen.getByRole('dialog', { name: '종목 상세 정보' })).getByTestId('book-summary'));
       const banners = screen.getAllByTestId('book-expected-fill');
       expect(banners).toHaveLength(2);
       banners.forEach(banner => {

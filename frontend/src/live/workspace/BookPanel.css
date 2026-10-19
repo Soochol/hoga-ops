@@ -31,7 +31,6 @@
 
 /* Both pages stay inside the existing ten ask rows, including the heading. */
 .book-summary { --book-summary-row-height:22px; cursor:pointer; }
-.book-summary:hover { background:var(--bg-input-hover); }
 .book-summary-heading { display:flex; flex-shrink:0; align-items:center; justify-content:space-between; gap:0.5rem; height:var(--book-summary-row-height); padding:0 var(--book-side-padding,0.5rem); border:0; background:transparent; color:var(--fg-dim); font:inherit; font-size:var(--live-text-meta,var(--text-xs)); cursor:pointer; }
 .book-summary-pages { display:flex; align-items:center; gap:0.5rem; padding-inline:0.125rem; }
 .book-summary-dot { width:5px; height:5px; border-radius:50%; background:var(--fg-dimmer); }

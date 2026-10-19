@@ -440,6 +440,8 @@ export function BookSummary({
         </span>
       </button>
       {page === 0 ? <div className="book-summary-page">
+        <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
+          baselinePrice={baselinePrice} dimClass={expectedDimClass} />
         <SummaryRow
           label="시작"
           value={fmtOr(summary.dayOpen)}
@@ -473,8 +475,6 @@ export function BookSummary({
         />
         <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
       </div> : <div className="book-summary-page">
-        <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
-          baselinePrice={baselinePrice} dimClass={expectedDimClass} />
         {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
         <SummaryRow
           label="상한가"
@@ -507,7 +507,7 @@ function dirClass(price: number, baselinePrice: number | null): string {
   return priceDirClass(price - baselinePrice);
 }
 
-/** 예상체결가·량(키움 0D/0H 또는 시간외 조회) — 정보 2페이지의 요약 행.
+/** 예상체결가·량(키움 0D/0H 또는 시간외 조회) — 정보 1페이지의 요약 행.
  *  qty=null은 수량 미제공인 가격 전용 표본이다. 0·불량 수량인 쌍은 숨긴다.
  *  가격은 전일종가 대비 방향색이다. */
 function ExpectedFillRows({

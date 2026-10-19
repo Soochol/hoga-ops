@@ -788,33 +788,32 @@ describe('BookPanel', () => {
     expect(screen.queryByText('+0.39%')).toBeNull();
   });
 
-  it('예상체결가·량은 상단 배너 없이 정보 2페이지에 표시한다', () => {
+  it('예상체결가·량은 상단 배너 없이 정보 1페이지에 표시한다', () => {
     const { container } = renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 12_345 } });
-    expect(screen.queryByTestId('book-expected-fill')).toBeNull();
     expect(container.querySelector('.book-panel')?.firstElementChild).not.toHaveClass('book-expected-fill');
-    fireEvent.click(screen.getByTestId('book-summary'));
     const cell = screen.getByTestId('book-expected-fill');
-    expect(cell.closest('[data-testid="book-summary"]')).toHaveAttribute('data-page', '2');
+    expect(cell.closest('[data-testid="book-summary"]')).toHaveAttribute('data-page', '1');
     expect(cell).toHaveTextContent('예상 체결가');
     expect(cell).toHaveTextContent('265,500원');
     expect(cell).toHaveTextContent('예상 체결량');
     expect(cell).toHaveTextContent('12,345');
+    expect(screen.getByTestId('book-summary').querySelectorAll('.book-summary-row')).toHaveLength(9);
+    fireEvent.click(screen.getByTestId('book-summary'));
+    expect(screen.queryByTestId('book-expected-fill')).toBeNull();
+    expect(screen.getByText('상한가')).toBeInTheDocument();
   });
 
   it('평시(예상체결 0/미제공)엔 예상체결 셀을 그리지 않는다', () => {
     renderPanel(); // snap() 은 exp_price/exp_qty 미포함
-    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
     // 한쪽만 값이 있어도(반쪽 프레임) 숨긴다.
     renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 0 } });
-    fireEvent.click(screen.getAllByTestId('book-summary')[1]);
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
   });
 
   it('실시간 예상 표본의 종료는 호가에 남은 예전 예상값보다 우선한다', () => {
     const snapshot = { ...snap(), exp_price: 265500, exp_qty: 12345 };
     const view = renderPanel({ snapshot, expectedFill: { price: 121100, qty: 5152 } });
-    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원예상 체결량5,152');
     view.rerender(<BookPanel snapshot={snapshot} baselinePrice={PREV_CLOSE} summary={SUMMARY}
       trades={[]} maskRatio={false} lastPrice={null} expectedFill={null} />);
@@ -824,7 +823,6 @@ describe('BookPanel', () => {
   it('수량 미제공 표본은 예상가만 표시하고 호가에 남은 수량을 섞지 않는다', () => {
     renderPanel({ snapshot: { ...snap(), exp_price: 265500, exp_qty: 12345 },
       expectedFill: { price: 121100, qty: null } });
-    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원');
     expect(screen.queryByText('예상 체결량')).not.toBeInTheDocument();
     expect(screen.queryByText('12,345')).not.toBeInTheDocument();
