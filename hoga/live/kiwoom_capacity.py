@@ -33,12 +33,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable, Hashable, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeVar
 
 log = logging.getLogger(__name__)
+_SLOW_QUEUE_MS = 250
 
 _T = TypeVar("_T")
 
@@ -84,6 +86,7 @@ class _Request:
     order: int
     seq: int
     key: Hashable = field(compare=False)
+    queued_at: float = field(compare=False, default_factory=time.monotonic)
     api_id: str = field(compare=False, default="")
     priority: Priority = field(compare=False, default="background")
     call: Callable[[Any], Awaitable[Any]] = field(compare=False, default=None)  # type: ignore[assignment]
@@ -481,6 +484,12 @@ class KiwoomCapacityScheduler:
             req, account = await self._next_ready()
             req.requeued = False
             try:
+                queued_ms = (time.monotonic() - req.queued_at) * 1000
+                if queued_ms >= _SLOW_QUEUE_MS:
+                    log.warning(
+                        "kiwoom.capacity.slow_queue pid=%d api_id=%s priority=%s account=%d duration_ms=%.1f",
+                        os.getpid(), req.api_id, req.priority, account, queued_ms,
+                    )
                 # _next_ready returned an available bucket without yielding.
                 # acquire reserves this slot immediately, with no pacing sleep.
                 await self._bucket(account, req.api_id).acquire()
@@ -506,6 +515,8 @@ class KiwoomCapacityScheduler:
                 if not req.future.done():
                     req.future.set_result(result)
             finally:
+                if req.requeued:
+                    req.queued_at = time.monotonic()
                 self._cleanup(req)
 
     def _penalize_if_rate_limited(

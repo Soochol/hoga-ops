@@ -27,7 +27,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import time
 from collections.abc import Awaitable, Callable
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -46,6 +49,22 @@ from hoga.live.kiwoom_errors import (
 )
 
 log = logging.getLogger(__name__)
+_SLOW_PHASE_SECONDS = 0.25
+
+
+@contextmanager
+def _observe_phase(api_id: str, phase: str):
+    """Separate slow admission/token work from upstream HTTP, without payloads."""
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        elapsed = time.monotonic() - started
+        if elapsed >= _SLOW_PHASE_SECONDS:
+            log.warning(
+                "kiwoom.rest.slow_phase pid=%d api_id=%s phase=%s duration_ms=%.1f",
+                os.getpid(), api_id, phase, elapsed * 1000,
+            )
 
 BASE_REAL = "https://api.kiwoom.com"
 
@@ -313,17 +332,21 @@ class KiwoomRestClient:
             # 벤더도 1511 로 알려주지만 왕복을 아끼고 호출부 오타를 즉시 드러낸다.
             raise KiwoomRestError(f"{api_id}: 필수 파라미터 누락 {missing}")
 
+        with _observe_phase(api_id, "token"):
+            token = await self._token()
         headers = {
             "Content-Type": "application/json;charset=UTF-8",
-            "authorization": f"Bearer {await self._token()}",
+            "authorization": f"Bearer {token}",
             "api-id": spec.api_id,
             "cont-yn": "Y" if cont else "N",
             "next-key": next_key,
         }
         from .kiwoom_budget import budget_for  # noqa: PLC0415 — shared private/market admission
-        await budget_for(self._provider).acquire(api_id)
+        with _observe_phase(api_id, "admission"):
+            await budget_for(self._provider).acquire(api_id)
         try:
-            resp = await self._client.post(spec.path, json=body, headers=headers)
+            with _observe_phase(api_id, "http"):
+                resp = await self._client.post(spec.path, json=body, headers=headers)
         except httpx.TransportError as exc:
             # `kiwoom_http` 의 keepalive 만료를 튜닝하는 **유일한 신호**다.
             # 여기까지 왔다는 것은 transport 의 연결 재시도로도 못 살렸다는 뜻이라,
