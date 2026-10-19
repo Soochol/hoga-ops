@@ -2,7 +2,7 @@ import { SegmentedControl } from '../ui/SegmentedControl';
 import type { LiveInvestorTrendEstimateResponse, LiveInvestorTrendEstimateRow } from '../api/liveInvestorTrendEstimate';
 import { useInvestorEstimateUnitStore, type InvestorEstimateUnit } from '../state/investorEstimateUnit';
 import { SidebarState } from './SidebarSurface';
-import { toDescendingDisplayRows, formatQty, formatAmount, qtyClass } from './InvestorTrendEstimateCardHelpers';
+import { toDescendingDisplayRows, formatQty, formatAmount, qtyClass, estimateTableMinWidth } from './InvestorTrendEstimateCardHelpers';
 
 
 type QueryLike = {
@@ -51,7 +51,14 @@ export function InvestorTrendEstimateCard({ query }: Props) {
         <UnitChip unit={unit} onToggle={toggleUnit} />
         <span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim">단위: {qty ? '주' : '억원'}</span>
       </div>
-      <table className="w-full border-collapse font-data text-sm tabular-nums">
+      <table className="w-full table-fixed border-collapse font-data text-sm tabular-nums"
+        style={{ minWidth: estimateTableMinWidth(rows) }}>
+        <colgroup>
+          <col className="w-[5.5rem]" />
+          <col />
+          <col />
+          <col />
+        </colgroup>
         {/* 헤더 배경은 창 본문(--bg-card)과 같은 값 — 밴드로 분리하지 않는다
             (2026-07-30 사용자 결정, 거래원 합계행 #961 과 동일 방침).
             sticky 는 창을 좁혀 스크롤이 생겼을 때 컬럼 이름을 붙잡아 두므로
@@ -63,7 +70,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
             <th className="whitespace-nowrap bg-bg-card py-1.5 pl-2.5 pr-3 text-left font-medium">차수</th>
             <th className="bg-bg-card px-2 py-1.5 text-right font-medium">외국인</th>
             <th className="bg-bg-card px-2 py-1.5 text-right font-medium">기관</th>
-            <th className="bg-bg-card py-1.5 pl-2 pr-2.5 text-right font-medium">합산</th>
+            <th className="bg-bg-card py-1.5 pl-4 pr-2.5 text-right font-medium">합산</th>
           </tr>
         </thead>
         <tbody>
@@ -85,7 +92,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
                   unit={unit}
                   value={qty ? row.institution_qty : row.institution_amt_mwon}
                 />
-                <ValueCell unit={unit} value={qty ? row.sum_qty : row.sum_amt_mwon} className="pl-2 pr-2.5" />
+                <ValueCell unit={unit} value={qty ? row.sum_qty : row.sum_amt_mwon} className="pl-4 pr-2.5 font-medium" />
               </tr>
             );
           })}
