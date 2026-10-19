@@ -17,11 +17,13 @@ export function scanConditions(scan: PanelScan | null): ConditionLeaf[] {
 
 /** Apply exclusions to cached/in-flight results; SQL owns replenishing the limit. */
 export function pruneExcludedRows(scan: PanelScan, exclusions: ScreenerExclusion[]): PanelScan {
-  const keys = new Set(exclusions.map(e => `${e.condition_key}:${e.code}:${e.date}`));
+  const keys = new Set(exclusions.map(e => `${e.condition_key}:${e.code}:${e.date}:${e.bar_start_ms ?? ''}`));
   let changed = false;
   const rows = scan.rows.flatMap(row => {
     if (!row.occurrences?.length) return [row];
-    const remaining = row.occurrences.filter(o => !keys.has(`${o.condition_key}:${row.code}:${o.date}`));
+    const remaining = row.occurrences.filter(o =>
+      !keys.has(`${o.condition_key}:${row.code}:${o.date}:${o.bar_start_ms ?? ''}`)
+      && !keys.has(`${o.condition_key}:${row.code}:${o.date}:`));
     if (remaining.length === row.occurrences.length) return [row];
     changed = true;
     const required = new Set(row.occurrences.map(o => o.condition_id));
@@ -53,7 +55,7 @@ async function refreshResults() {
     if (generation !== refreshGeneration || useScreenerPanelStore.getState().lastScan !== before) return;
     store.setLastScan({ ...before, interactionStartedAtMs: before.interactionStartedAtMs ?? before.scannedAtMs, rows: response.rows, scanStatus: response.status,
       warnings: response.warnings, hasMore: response.has_more,
-      historyCoverage: response.history_coverage, depthValues: response.depth_values ?? null,
+      historyCoverage: response.history_coverage, barCoverage: response.bar_coverage, depthValues: response.depth_values ?? null,
       intradayFailure: response.intraday_failure, scannedAtMs: response.scanned_at_ms ?? Date.now(), dataStale: false });
   } catch (error) {
     if (useScreenerPanelStore.getState().lastScan === before) store.markLastScanDataStale();
@@ -115,7 +117,7 @@ export function useOccurrenceExclusions(scan: PanelScan | null) {
       const condition = conditions.find(c => c.id === occurrence.condition_id);
       if (!condition) { setError('이 발생 건의 조회 조건이 없습니다. 다시 조회해 주세요.'); return; }
       void mutate(async () => {
-        const entry = await excludeScreenerOccurrence({ condition, code, stock_name: name, date: occurrence.date });
+        const entry = await excludeScreenerOccurrence({ condition, code, stock_name: name, date: occurrence.date, ...(occurrence.bar_start_ms != null ? { bar_start_ms: occurrence.bar_start_ms } : {}) });
         qc.setQueryData<ScreenerExclusionsFile>(KEY, old => ({ schema_version: 1,
           exclusions: [...(old?.exclusions ?? []).filter(e => e.id !== entry.id), entry] }));
         setLastExcluded(entry);

@@ -1,3 +1,4 @@
+import { BarVolumeCoverage } from '../screener/BarVolumeCoverage';
 import { StatusChip } from '../ui/StatusChip';
 import { useOccurrenceExclusions } from '../screener/useOccurrenceExclusions';
 import { OccurrenceExclusionToolbar } from '../screener/OccurrenceExclusions';
@@ -213,6 +214,7 @@ export function Screener() {
           intradayFailure: res.intraday_failure,
           warnings: res.warnings,
           historyCoverage: res.history_coverage,
+          barCoverage: res.bar_coverage,
         depthValues: res.depth_values ?? null,
           scannedAtMs: res.scanned_at_ms ?? Date.now(),
           basis,
@@ -400,6 +402,7 @@ export function Screener() {
                 오늘 장중: 키움 시세 반영
               </span>
             )}
+            <BarVolumeCoverage coverage={lastScan?.barCoverage} />
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
             <ScreenerUpdateProgress updating={status?.updating} />
             <StalenessChip status={status} />

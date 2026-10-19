@@ -7,6 +7,7 @@ import polars as pl
 
 from hoga.api import screener_depth, screener_universe
 from hoga.api.models import (
+    BarVolumeRangeParams,
     BreakoutParams,
     ConditionLeaf,
     HistoryDateRangeParams,
@@ -144,6 +145,35 @@ CONDITION_COMPILERS: dict[str, LeafCompiler] = {
 # 목록은 screener_depth 가 소유한다 — 여기 복제본을 두면 새 타입이 한쪽에만 추가돼
 # CONDITION_COMPILERS 조회로 새어 KeyError 가 난다.
 _DEPTH_TYPES = screener_depth.DEPTH_TYPES
+_DAILY_EXCLUSION_FIELDS = 3
+
+
+def _condition_source(con, leaf, i, *, bar_events, history_pass, depth_pass, occurrence_dates):
+    needs_bars = leaf.type == "new_high_vol" and (
+        isinstance(leaf.params, BarVolumeRangeParams)
+        or getattr(leaf.params, "timeframe", "D") != "D"
+        or not getattr(leaf.params, "include_open_bar", True))
+    if needs_bars and leaf.id not in bar_events:
+        raise ValueError("주기별 거래량 조건은 봉 이력 평가가 필요합니다")
+    if leaf.id in bar_events:
+        rel = f"event_src_{i}"
+        con.register(rel, pl.DataFrame([(code, event.date) for code, event in bar_events[leaf.id]],
+            schema={"code": pl.Utf8, "date": pl.Utf8}, orient="row"))
+        return f"cond_{i}_raw AS (SELECT code, CAST(date AS DATE) date FROM {rel})", []
+    elif isinstance(leaf.params, HistoryDateRangeParams) or leaf.type in _DEPTH_TYPES:
+        if isinstance(leaf.params, HistoryDateRangeParams) and history_pass is None:
+            raise ValueError("날짜 범위 조건은 이력 평가가 필요합니다")
+        codes = ((history_pass or {}) if isinstance(leaf.params, HistoryDateRangeParams)
+                 else (depth_pass or {})).get(leaf.id, [])
+        dates = (occurrence_dates or {}).get(leaf.id, {})
+        records = [(code, day) for code in codes for day in dates.get(code, [None])]
+        rel = f"event_src_{i}"
+        con.register(rel, pl.DataFrame(records, schema={"code": pl.Utf8, "date": pl.Utf8}, orient="row"))
+        return f"cond_{i}_raw AS (SELECT code, CAST(date AS DATE) date FROM {rel})", []
+    else:
+        cte, p = CONDITION_COMPILERS[leaf.type](leaf, i)
+        # Rename only the final relation; window helpers keep their existing names.
+        return cte.replace(f"cond_{i} AS (", f"cond_{i}_raw AS ("), p
 
 
 def run_scan(adjusted_path: Path, stocks_path: Path, *,
@@ -152,10 +182,12 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              intraday_rows: pl.DataFrame | None = None,
              depth_pass: dict[str, list[str]] | None = None,
              history_pass: dict[str, list[str]] | None = None,
+             bar_events: dict[str, list[tuple[str, ScreenerOccurrence]]] | None = None,
              occurrence_dates: dict[str, dict[str, list[str]]] | None = None,
-             excluded: set[tuple[str, str, str]] | None = None,
+             excluded: set[tuple] | None = None,
              scope_codes: set[str] | None = None,
              etf_codes: frozenset[str] | None = None) -> list[ScreenerRow]:
+    bar_events = _filter_bar_events(bar_events, excluded)
     con = connect_bounded()
     # 뷰는 전부 **TEMP** — connect_bounded 가 프로세스 공유 인스턴스의 커서를 주므로,
     # TEMP 없는 뷰는 전역 카탈로그에 들어가 동시 스캔끼리 이름이 충돌한다(실측:
@@ -206,24 +238,14 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     params: list = []
     keys = [condition_key(leaf) for leaf in conditions]
     con.register("excluded_events", pl.DataFrame(
-        list(excluded or []), schema={"condition_key": pl.Utf8, "code": pl.Utf8, "date": pl.Utf8},
+        [item for item in (excluded or []) if len(item) == _DAILY_EXCLUSION_FIELDS],
+        schema={"condition_key": pl.Utf8, "code": pl.Utf8, "date": pl.Utf8},
         orient="row"))
     for i, leaf in enumerate(conditions):
-        if isinstance(leaf.params, HistoryDateRangeParams) or leaf.type in _DEPTH_TYPES:
-            if isinstance(leaf.params, HistoryDateRangeParams) and history_pass is None:
-                raise ValueError("날짜 범위 조건은 이력 평가가 필요합니다")
-            codes = ((history_pass or {}) if isinstance(leaf.params, HistoryDateRangeParams)
-                     else (depth_pass or {})).get(leaf.id, [])
-            dates = (occurrence_dates or {}).get(leaf.id, {})
-            records = [(code, day) for code in codes for day in dates.get(code, [None])]
-            rel = f"event_src_{i}"
-            con.register(rel, pl.DataFrame(records, schema={"code": pl.Utf8, "date": pl.Utf8}, orient="row"))
-            ctes.append(f"cond_{i}_raw AS (SELECT code, CAST(date AS DATE) date FROM {rel})")
-        else:
-            cte, p = CONDITION_COMPILERS[leaf.type](leaf, i)
-            # Rename only the final relation; window helpers keep their existing names.
-            ctes.append(cte.replace(f"cond_{i} AS (", f"cond_{i}_raw AS ("))
-            params += p
+        cte, p = _condition_source(con, leaf, i, bar_events=bar_events, history_pass=history_pass,
+                                   depth_pass=depth_pass, occurrence_dates=occurrence_dates)
+        ctes.append(cte)
+        params += p
         ctes.append(
             f"cond_{i} AS (SELECT r.* FROM cond_{i}_raw r WHERE NOT EXISTS ("
             f"SELECT 1 FROM excluded_events e WHERE e.condition_key = '{keys[i]}' "
@@ -263,4 +285,23 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
                          for i, leaf in enumerate(conditions) for day in (d[f"dates_{i}"] or [])],
             trade_value_won=int(d["trade_value_won"]),
             change_pct=float(d["change_pct"]) if d["change_pct"] is not None else None))
-    return out
+    return _attach_bar_events(out, bar_events)
+
+
+def _filter_bar_events(bar_events, excluded):
+    excluded = excluded or set()
+    return {leaf_id: [(code, event) for code, event in events
+                     if (event.condition_key, code, event.date) not in excluded
+                     and (event.condition_key, code, event.date, event.bar_start_ms) not in excluded]
+            for leaf_id, events in (bar_events or {}).items()}
+
+
+def _attach_bar_events(rows, bar_events):
+    by_code = {}
+    for events in bar_events.values():
+        for code, event in events:
+            by_code.setdefault(code, []).append(event)
+    for row in rows:
+        row.occurrences = [event for event in row.occurrences if event.condition_id not in bar_events]
+        row.occurrences.extend(by_code.get(row.code, []))
+    return rows

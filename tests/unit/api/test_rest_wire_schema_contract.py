@@ -122,14 +122,19 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     }),
     "ScreenerResponse": frozenset({
         "status", "rows", "has_more", "scanned_at_ms", "warnings", "intraday_failure", "depth_coverage", "depth_values",
-        "history_coverage",
+        "history_coverage", "bar_coverage",
     }),
     "ScreenerRow": frozenset({"code", "name", "market", "price", "change_pct", "trade_value_won", "price_date",
                                "history_matches", "occurrences"}),
-    "ScreenerOccurrence": frozenset({"condition_id", "condition_key", "date", "history_match"}),
-    "ScreenerExclusionWrite": frozenset({"condition", "code", "date", "stock_name"}),
-    "ScreenerExclusion": frozenset({"id", "condition_key", "condition", "code", "date", "stock_name", "created_at_ms"}),
+    "ScreenerOccurrence": frozenset({"condition_id", "condition_key", "date", "history_match",
+                                          "bar_start_ms", "bar_match"}),
+    "ScreenerExclusionWrite": frozenset({"condition", "code", "date", "stock_name", "bar_start_ms"}),
+    "ScreenerExclusion": frozenset({"id", "condition_key", "condition", "code", "date", "stock_name",
+                                        "created_at_ms", "bar_start_ms"}),
     "ScreenerExclusionsFile": frozenset({"schema_version", "exclusions"}),
+    "BarVolumeMatch": frozenset({"timeframe", "volume", "maximum", "window_start_ms", "is_open", "fetched_at_ms"}),
+    "BarVolumeCoverage": frozenset({"total", "complete", "incomplete"}),
+    "BarVolumeCoverageItem": frozenset({"code", "condition_id", "reason"}),
     "HistoryCoverage": frozenset({"total", "complete", "incomplete"}),
     "HistoryCoverageItem": frozenset({"code", "condition_id", "required_from", "required_to", "missing_days",
                                          "reason"}),
@@ -512,6 +517,7 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "ScreenerTimeframe": (frozenset(get_args(m.ScreenerTimeframe)), "frontend/src/api/screener.ts"),
     "InvestorEstimateWarningReason": (
         frozenset(get_args(InvestorEstimateWarningReason)),
         "frontend/src/api/liveInvestorTrendEstimate.ts",

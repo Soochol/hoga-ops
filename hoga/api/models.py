@@ -1921,6 +1921,27 @@ class HistoryVolumeParams(HistoryDateRangeParams):
         return self
 
 
+ScreenerTimeframe = Literal["1m", "3m", "5m", "10m", "15m", "30m", "60m", "D", "W", "M"]
+
+
+class VolumeBreakoutParams(BreakoutParams):
+    model_config = {"extra": "forbid"}
+    timeframe: ScreenerTimeframe = "D"
+    include_open_bar: bool = True
+
+
+class BarRecordPeriod(BaseModel):
+    model_config = {"extra": "forbid"}
+    unit: Literal["bars"] = "bars"
+    value: int = Field(ge=1, le=1000)
+
+
+class BarVolumeRangeParams(HistoryDateRangeParams):
+    timeframe: ScreenerTimeframe
+    include_open_bar: bool = True
+    record_period: BarRecordPeriod
+
+
 class HistoryTradeValueParams(HistoryDateRangeParams):
     min_eok: float = Field(ge=0, allow_inf_nan=False)
 
@@ -2031,7 +2052,7 @@ class NewHighLeaf(BaseModel):
 class NewHighVolLeaf(BaseModel):
     type: Literal["new_high_vol"] = "new_high_vol"
     id: str
-    params: HistoryVolumeParams | BreakoutParams
+    params: BarVolumeRangeParams | HistoryVolumeParams | VolumeBreakoutParams
 
     @model_validator(mode="before")
     @classmethod
@@ -2039,7 +2060,11 @@ class NewHighVolLeaf(BaseModel):
         if isinstance(value, dict):
             params = value.get("params", {})
             if isinstance(params, dict) and {"mode", "start_date", "end_date", "record_period"}.intersection(params):
-                HistoryVolumeParams.model_validate(params)
+                record = params.get("record_period")
+                if isinstance(record, dict) and record.get("unit") == "bars":
+                    BarVolumeRangeParams.model_validate(params)
+                else:
+                    HistoryVolumeParams.model_validate(params)
         return value
 
 class NewHighTodayLeaf(BaseModel):
@@ -2205,11 +2230,34 @@ class HistoryJob(BaseModel):
     coverage: HistoryCoverage | None = None
 
 
+class BarVolumeMatch(BaseModel):
+    timeframe: ScreenerTimeframe
+    volume: int
+    maximum: int
+    window_start_ms: int
+    is_open: bool
+    fetched_at_ms: int
+
+
+class BarVolumeCoverageItem(BaseModel):
+    code: str
+    condition_id: str
+    reason: str
+
+
+class BarVolumeCoverage(BaseModel):
+    total: int
+    complete: int
+    incomplete: list[BarVolumeCoverageItem] = Field(default_factory=list)
+
+
 class ScreenerOccurrence(BaseModel):
     condition_id: str
     condition_key: str
     date: str
     history_match: HistoryMatch | HistoryTradeValueMatch | None = None
+    bar_start_ms: int | None = None
+    bar_match: BarVolumeMatch | None = None
 
 
 class ScreenerExclusionWrite(BaseModel):
@@ -2217,6 +2265,20 @@ class ScreenerExclusionWrite(BaseModel):
     code: str = Field(pattern=CODE_PATTERN)
     date: dt.date
     stock_name: str = Field(max_length=200)
+    bar_start_ms: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def validate_bar_date(self):
+        if self.bar_start_ms is not None:
+            try:
+                day = dt.datetime.fromtimestamp(self.bar_start_ms / 1000, KST).date()
+            except (OverflowError, OSError, ValueError) as exc:
+                raise ValueError("봉 시작 시각이 허용 범위를 벗어납니다") from exc
+            if day != self.date:
+                raise ValueError("봉 시작 시각과 발생 날짜가 다릅니다")
+            if self.condition.type != "new_high_vol":
+                raise ValueError("봉 시각은 기간내 신고거래량 조건에서만 사용합니다")
+        return self
 
 
 class ScreenerExclusion(BaseModel):
@@ -2227,6 +2289,7 @@ class ScreenerExclusion(BaseModel):
     date: dt.date
     stock_name: str
     created_at_ms: int
+    bar_start_ms: int | None = None
 
 
 class ScreenerExclusionsFile(BaseModel):
@@ -2291,6 +2354,7 @@ class DepthPeakValue(BaseModel):                       # 결과 행 검증용 �
 
 class ScreenerResponse(BaseModel):
     history_coverage: HistoryCoverage | None = None
+    bar_coverage: BarVolumeCoverage | None = None
     status: Literal["ok", "not_seeded", "building"]
     rows: list[ScreenerRow]
     # limit+1건을 확인해 정확히 limit건인 결과와 잘린 결과를 구별한다.

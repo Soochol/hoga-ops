@@ -4,6 +4,12 @@ import type { ConditionLeaf, ScanRequest } from './screener';
 // Normalize those differences before associating a server job with the editor.
 function conditionParams(leaf: ConditionLeaf) {
   switch (leaf.type) {
+    case 'new_high_vol': {
+      if ('mode' in leaf.params && leaf.params.record_period.unit !== 'bars') return leaf.params;
+      const { timeframe, include_open_bar, ...params } = leaf.params as typeof leaf.params & { timeframe?: string; include_open_bar?: boolean };
+      return { ...params, ...(timeframe && timeframe !== 'D' ? { timeframe } : {}),
+        ...(include_open_bar === false ? { include_open_bar } : {}) };
+    }
     case 'ma': return { ...leaf.params, source: leaf.params.source ?? 'close' };
     case 'high_off_peak': return { ...leaf.params, side: leaf.params.side ?? 'within' };
     case 'ask_depth_new_high': case 'bid_depth_new_high':
@@ -31,5 +37,6 @@ export const screenerRequestKey = (request: ScanRequest) => JSON.stringify(canon
   basis: request.basis ?? 'eod', limit: request.limit ?? 1000 }));
 
 export function isHistoricalCondition(leaf: ConditionLeaf): boolean {
-  return (leaf.type === 'new_high_vol' || leaf.type === 'trade_value_period') && 'mode' in leaf.params;
+  return (leaf.type === 'new_high_vol' && 'mode' in leaf.params && leaf.params.record_period.unit !== 'bars')
+    || (leaf.type === 'trade_value_period' && 'mode' in leaf.params);
 }

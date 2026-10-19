@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from hoga.api import (
+    screener_bar_volume,
     screener_depth,
     screener_exclusions,
     screener_history_coverage,
@@ -50,7 +51,8 @@ async def run_screener_scan(
         warnings.append("etf_filter_stale_master_unavailable")
 
     history = screener_history_coverage.history_leaves(req.conditions)
-    if req.basis == "intraday" and (not history or len(history) != len(req.conditions)):
+    if req.basis == "intraday" and (not req.conditions or any(screener_bar_volume.needs_daily_overlay(
+            leaf, now_value.date().isoformat()) for leaf in req.conditions)):
         if screener_intraday.intraday_overlay_bypassed(data_dir):
             warnings.extend([
                 "rest_bypassed_intraday_overlay_skipped",
@@ -108,6 +110,16 @@ async def run_screener_scan(
             scope=scope, etf_codes=etf_codes)
         history_eval = await asyncio.to_thread(
             screener_history_coverage.evaluate, data_dir, req.conditions, codes)
+    bar_eval = None
+    if screener_bar_volume.leaves(req.conditions):
+        codes = await asyncio.to_thread(
+            screener_universe.codes_for_universe, sdir / "stocks.parquet", req.universe,
+            scope=scope, etf_codes=etf_codes)
+        bar_eval = await screener_bar_volume.evaluate(
+            data_dir=data_dir, conditions=req.conditions, codes=codes, basis=req.basis,
+            now=now_value, overlay=intraday_rows)
+        if bar_eval.coverage.incomplete:
+            warnings.append("bar_volume_partial")
     excluded = screener_exclusions.exclusion_keys(
         await asyncio.to_thread(screener_exclusions.load_exclusions, data_dir))
     occurrence_dates = _occurrence_dates(depth_eval, history_eval)
@@ -123,12 +135,14 @@ async def run_screener_scan(
         scope_codes=scope,
         etf_codes=etf_codes,
         history_pass=history_eval.passing if history_eval else None,
+        bar_events=bar_eval.events if bar_eval else None,
         occurrence_dates=occurrence_dates, excluded=excluded,
     )
     if history_eval:
         _attach_history(rows, history_eval)
     return ScreenerResponse(
         history_coverage=history_eval.coverage if history_eval else None,
+        bar_coverage=bar_eval.coverage if bar_eval else None,
         status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
         scanned_at_ms=int(time.time() * 1000),
         intraday_failure=intraday_failure,

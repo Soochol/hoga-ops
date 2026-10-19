@@ -81,3 +81,12 @@ it('a committed exclusion remains known even if reloading the list fails', async
   await waitFor(() => expect(result.current.busy).toBe(false));
   expect(useScreenerPanelStore.getState().lastScan?.rows[0].occurrences).toHaveLength(2);
 });
+
+it('excludes one candle without pruning a sibling candle on the same date', () => {
+  const first = { condition_id: 'v', condition_key: 'bars', date: '2026-07-30', bar_start_ms: 1000 };
+  const second = { ...first, bar_start_ms: 2000 };
+  const input = { ...scan, rows: [{ ...scan.rows[0], occurrences: [first, second] }] };
+  const result = pruneExcludedRows(input, [{ ...excluded, condition_key: 'bars', date: first.date, bar_start_ms: 1000 }]);
+  expect(result.rows[0].occurrences).toEqual([second]);
+  expect(pruneExcludedRows(input, [{ ...excluded, condition_key: 'bars', date: first.date }]).rows).toEqual([]);
+});

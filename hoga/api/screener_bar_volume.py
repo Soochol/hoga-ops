@@ -1,0 +1,373 @@
+"""Candle-count volume records, with bounded, memory-only minute history.
+
+Calendar bars use the screener's adjusted daily corpus; minute bars retain the
+vendor's original volume, as the chart does. Minute scope is KRX regular session.
+No snapshot volume is added to an already cumulative candle.
+"""
+from __future__ import annotations
+
+import asyncio
+import calendar
+import datetime as dt
+import logging
+import time
+from collections import OrderedDict, defaultdict, deque
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import polars as pl
+
+from hoga.api import screener_exclusions, trading_days
+from hoga.api.models import (
+    BarVolumeCoverage,
+    BarVolumeCoverageItem,
+    BarVolumeMatch,
+    BarVolumeRangeParams,
+    HistoryDateRangeParams,
+    ScreenerOccurrence,
+)
+from hoga.api.screener_calendar import EOD_CUTOFF_HOUR
+from hoga.api.screener_write_lock import screener_read_lock
+from hoga.live import kiwoom_access, kiwoom_minute_candles, kiwoom_rest_runtime, settings
+from hoga.live.error_policy import classify_live_error
+from hoga.util.timeenc import KST
+
+log = logging.getLogger(__name__)
+MINUTE_TTL_MS = 15_000
+MAX_MINUTE_PAGES = 8
+MAX_MINUTE_CODES_PER_SCAN = 64
+MAX_CACHE_ENTRIES = 512
+MAX_CURSOR_ENTRIES = 8
+MAX_CACHE_BARS = 250_000
+WEEKEND_START = 5
+
+
+def leaves(conditions):
+    return [leaf for leaf in conditions if leaf.type == "new_high_vol"
+            and (isinstance(leaf.params, BarVolumeRangeParams)
+                 or getattr(leaf.params, "timeframe", "D") != "D"
+                 or not getattr(leaf.params, "include_open_bar", True))]
+
+
+def needs_daily_overlay(leaf, today: str) -> bool:
+    if leaf.type == "new_high_vol" and getattr(leaf.params, "timeframe", "D").endswith("m"):
+        return False
+    if isinstance(leaf.params, HistoryDateRangeParams):
+        return isinstance(leaf.params, BarVolumeRangeParams) and leaf.params.end_date >= today
+    return True
+
+
+@dataclass(frozen=True)
+class VolumeBar:
+    start_ms: int
+    volume: int
+    is_open: bool = False
+    valid: bool = True
+
+
+@dataclass
+class Evaluation:
+    coverage: BarVolumeCoverage
+    events: dict[str, list[tuple[str, ScreenerOccurrence]]] = field(default_factory=dict)
+
+
+def records(leaf, bars: list[VolumeBar], *, fetched_at_ms: int):
+    """Each event uses its own trailing window; later bars never alter history."""
+    p = leaf.params
+    bars = [bar for bar in bars if p.include_open_bar or not bar.is_open]
+    period = p.record_period.value if isinstance(p, BarVolumeRangeParams) else p.period
+    start = max(0, len(bars) - p.lookback) if hasattr(p, "lookback") else 0
+    peaks: deque[int] = deque()
+    invalid: deque[int] = deque()
+    events = []
+    complete = bool(bars) and (not hasattr(p, "lookback") or len(bars) >= p.lookback + p.period - 1)
+    key = screener_exclusions.condition_key(leaf)
+    for i, bar in enumerate(bars):
+        left = i - period + 1
+        while peaks and peaks[0] < left:
+            peaks.popleft()
+        while invalid and invalid[0] < left:
+            invalid.popleft()
+        while peaks and bars[peaks[-1]].volume <= bar.volume:
+            peaks.pop()
+        peaks.append(i)
+        if not bar.valid:
+            invalid.append(i)
+        day = dt.datetime.fromtimestamp(bar.start_ms / 1000, KST).date().isoformat()
+        eligible = (p.start_date <= day <= p.end_date) if isinstance(p, BarVolumeRangeParams) else i >= start
+        if not eligible:
+            continue
+        if left < 0 or invalid:
+            complete = False
+            continue
+        maximum = bars[peaks[0]].volume
+        if bar.volume > 0 and bar.volume >= maximum:
+            events.append(ScreenerOccurrence(
+                condition_id=leaf.id, condition_key=key, date=day,
+                bar_start_ms=bar.start_ms,
+                bar_match=BarVolumeMatch(timeframe=p.timeframe, volume=bar.volume,
+                    maximum=maximum, window_start_ms=bars[left].start_ms,
+                    is_open=bar.is_open, fetched_at_ms=fetched_at_ms)))
+    # An empty historical interval is unknown, not a complete no-match.
+    if isinstance(p, BarVolumeRangeParams) and not any(
+        p.start_date <= dt.datetime.fromtimestamp(b.start_ms / 1000, KST).date().isoformat() <= p.end_date
+        for b in bars
+    ):
+        complete = False
+    return events, complete
+
+
+def _bounds(day: dt.date, timeframe: str) -> tuple[dt.date, dt.date]:
+    if timeframe == "W":
+        first = day - dt.timedelta(days=day.weekday())
+        return first, first + dt.timedelta(days=6)
+    if timeframe == "M":
+        return day.replace(day=1), day.replace(day=calendar.monthrange(day.year, day.month)[1])
+    return day, day
+
+
+def _stamp(day: dt.date, hour=9, minute=0) -> int:
+    return int(dt.datetime.combine(day, dt.time(hour, minute), KST).timestamp() * 1000)
+
+
+def calendar_bars(values: dict[dt.date, int], days: list[dt.date], *, timeframe: str,
+                  as_of: dt.datetime, windows=None) -> list[VolumeBar]:
+    if not values:
+        return []
+    first_day = min(values)
+    windows = windows if windows is not None else _calendar_windows(days, timeframe, as_of)
+    out = []
+    for expected, is_open, calendar_valid in windows:
+        if expected[-1] < first_day:
+            continue
+        valid = calendar_valid and all(day in values for day in expected)
+        out.append(VolumeBar(_stamp(expected[0]), sum(values.get(day, 0) for day in expected), is_open, valid))
+    return out
+
+
+def _calendar_windows(days, timeframe, as_of):
+    grouped = defaultdict(list)
+    for day in days:
+        grouped[_bounds(day, timeframe)].append(day)
+    out = []
+    for (first, last), full_days in sorted(grouped.items()):
+        expected = [day for day in full_days if day <= as_of.date()]
+        if not expected:
+            continue
+        # Calendar coverage may stop today. A future portion of this week/month
+        # is still open; a known full period closes at its last actual trading day.
+        after_known = days[-1] + dt.timedelta(days=1)
+        remaining_weekdays = any((after_known + dt.timedelta(days=i)).weekday() < WEEKEND_START
+                                 for i in range(max(0, (last - after_known).days + 1)))
+        known_end = days[-1] >= last or last < as_of.date() or not remaining_weekdays
+        close_day = full_days[-1]
+        is_open = (not known_end and last >= as_of.date()) or as_of.timestamp() * 1000 < _stamp(close_day, 15, 30)
+        known_through = min(last, as_of.date())
+        calendar_valid = (days[0] <= first and (days[-1] >= known_through or all(
+            (after_known + dt.timedelta(days=i)).weekday() >= WEEKEND_START
+            for i in range(max(0, (known_through - after_known).days + 1)))))
+        out.append((expected, is_open, calendar_valid))
+    return out
+
+
+def _required_windows(leaf, days, as_of):
+    p = leaf.params
+    cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
+              if isinstance(p, BarVolumeRangeParams) else as_of)
+    windows = _calendar_windows(days, p.timeframe, cutoff)
+    if isinstance(p, BarVolumeRangeParams):
+        candidates = [i for i, (expected, _, _) in enumerate(windows)
+                      if p.start_date <= expected[0].isoformat() <= p.end_date]
+        return windows[max(0, candidates[0] - p.record_period.value + 1):candidates[-1] + 1] if candidates else []
+    needed = p.lookback + p.period - 1 + (not p.include_open_bar)
+    return windows[-needed:]
+
+
+def _daily_values(data_dir, codes, overlay, as_of, selected):
+    days = sorted(dt.datetime.strptime(day, "%Y%m%d").date()
+                  for day in trading_days.trading_days(data_dir))
+    windows = [window for leaf in selected for window in _required_windows(leaf, days, as_of)]
+    lower = min((window[0][0] for window in windows), default=as_of.date())
+    with screener_read_lock(data_dir / "screener"):
+        data = (pl.scan_parquet(data_dir / "screener/daily_adjusted.parquet")
+                .filter(pl.col("code").is_in(codes) & (pl.col("date") <= as_of.date())
+                        & (pl.col("date") >= lower))
+                .select("code", "date", "volume").collect())
+    values = defaultdict(dict)
+    for row in data.iter_rows(named=True):
+        values[row["code"]][row["date"]] = row["volume"]
+    if overlay is not None:
+        for row in overlay.iter_rows(named=True):
+            if row["date"] <= as_of.date():
+                values[row["code"]][row["date"]] = row["volume"]
+    return values, days
+
+
+@dataclass
+class MinuteSnapshot:
+    bars: list[VolumeBar]
+    fetched_at_ms: int
+    reason: str | None = None
+
+
+_CACHE: OrderedDict[tuple, MinuteSnapshot] = OrderedDict()
+_FLIGHTS: dict[tuple, asyncio.Task] = {}
+_CURSORS: OrderedDict[tuple, int] = OrderedDict()
+
+
+async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
+                         lower: dt.date | None, as_of: dt.datetime) -> MinuteSnapshot:
+    """One governor admission per page; bounded work and no persistent archive."""
+    fetched_at = int(time.time() * 1000)
+    client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
+    if client is None:
+        return MinuteSnapshot([], fetched_at, "credentials_missing")
+    scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
+    scope = timeframe.removesuffix("m")
+    cursor = as_of.strftime("%Y%m%d")
+    bars_by_ms = {}
+    reason = None
+    for page_index in range(MAX_MINUTE_PAGES):
+        page = await kiwoom_access.run_with_capacity(scheduler,
+            key=("screener-bars", code, timeframe, cursor, as_of.date().isoformat()),
+            api_id="ka10080", priority="background", client=client,
+            fetch_fn=lambda c, cur=cursor: c.call("ka10080", {
+                "stk_cd": code, "tic_scope": scope, "upd_stkpc_tp": "0", "base_dt": cur}))
+        parsed = [kiwoom_minute_candles.parse_row(row) for row in page.rows]
+        if any(row is None for row in parsed) or any(
+            not str(row.get("trde_qty", "")).strip().lstrip("+-").isdigit() for row in page.rows
+        ):
+            return MinuteSnapshot([], fetched_at, "invalid_rows")
+        rows = [row for row in parsed if row is not None]
+        if not rows:
+            break
+        oldest = min(day for day, _ in rows)
+        for day, candle in rows:
+            # The oldest day can be truncated. A directly requested latest KRX
+            # regular day fits one 900-row page, including at the retention floor.
+            if day == oldest and day != cursor:
+                continue
+            stamp = dt.datetime.fromtimestamp(candle.t_ms / 1000, KST)
+            if not (dt.time(9) <= stamp.time() <= dt.time(15, 30)) or stamp > as_of:
+                continue
+            close_ms = min(candle.t_ms + int(scope) * 60_000, _stamp(stamp.date(), 15, 30))
+            bars_by_ms[candle.t_ms] = VolumeBar(candle.t_ms, candle.volume,
+                                               int(as_of.timestamp() * 1000) < close_ms)
+        ordered = sorted(bars_by_ms)
+        enough = (len(ordered) >= needed if lower is None else bool(ordered)
+                  and dt.datetime.fromtimestamp(ordered[0] / 1000, KST).date() < lower
+                  and sum(dt.datetime.fromtimestamp(ms / 1000, KST).date() < lower for ms in ordered) >= needed)
+        if enough or oldest >= cursor:
+            break
+        cursor = oldest
+        if page_index == MAX_MINUTE_PAGES - 1:
+            reason = "fetch_budget_exhausted"
+    return MinuteSnapshot([bars_by_ms[ms] for ms in sorted(bars_by_ms)], fetched_at, reason)
+
+
+async def minute_snapshot(data_dir, code, timeframe, needed, lower, as_of):
+    key = (data_dir, code, timeframe, needed, lower, as_of.date())
+    cached = _CACHE.get(key)
+    now_ms = int(time.time() * 1000)
+    if cached is not None and now_ms - cached.fetched_at_ms < MINUTE_TTL_MS:
+        _CACHE.move_to_end(key)
+        return cached
+    if settings.rest_bypass_enabled(data_dir):
+        return MinuteSnapshot([], now_ms, "rest_bypassed")
+    task = _FLIGHTS.get(key)
+    if task is None:
+        task = asyncio.create_task(_load_minutes(key, data_dir, code, timeframe, needed, lower, as_of))
+        _FLIGHTS[key] = task
+
+    return await asyncio.shield(task)
+
+
+async def _load_minutes(key, data_dir, code, timeframe, needed, lower, as_of):
+    try:
+        result = await _fetch_minutes(data_dir, code, timeframe, needed, lower, as_of)
+    except Exception as exc:
+        policy = classify_live_error(exc)
+        log.exception("분봉 신고거래량 평가 불가 → %s (%s)", code, policy.reason)
+        return MinuteSnapshot([], int(time.time() * 1000), policy.reason)
+    finally:
+        _FLIGHTS.pop(key, None)
+    _CACHE[key] = result
+    _CACHE.move_to_end(key)
+    while len(_CACHE) > MAX_CACHE_ENTRIES or sum(len(item.bars) for item in _CACHE.values()) > MAX_CACHE_BARS:
+        _CACHE.popitem(last=False)
+    return result
+
+
+def _evaluate_calendar(result, selected, codes, values, days, as_of):
+    incomplete = set()
+    windows = {leaf.id: _required_windows(leaf, days, as_of) for leaf in selected}
+    for leaf in selected:
+        for code in codes:
+            bars = calendar_bars(values.get(code, {}), days, timeframe=leaf.params.timeframe,
+                                 as_of=as_of, windows=windows[leaf.id])
+            events, complete = records(leaf, bars, fetched_at_ms=int(time.time() * 1000))
+            result.events[leaf.id].extend((code, event) for event in events)
+            required_end = (dt.date.fromisoformat(leaf.params.end_date)
+                            if isinstance(leaf.params, BarVolumeRangeParams) else as_of.date())
+            if not complete or not days or days[-1] < required_end:
+                incomplete.add(code)
+                result.coverage.incomplete.append(BarVolumeCoverageItem(
+                    code=code, condition_id=leaf.id, reason="missing_history"))
+    return incomplete
+
+
+async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None) -> Evaluation:
+    selected = leaves(conditions)
+    result = Evaluation(BarVolumeCoverage(total=len(codes), complete=0),
+                        {leaf.id: [] for leaf in selected})
+    as_of = now.astimezone(KST) if now.tzinfo is not None else now.replace(tzinfo=KST)
+    if basis == "eod":
+        day = as_of.date() - dt.timedelta(days=as_of.hour < EOD_CUTOFF_HOUR)
+        as_of = dt.datetime.combine(day, dt.time(15, 30), KST)
+    calendar_leaves = [leaf for leaf in selected if not leaf.params.timeframe.endswith("m")]
+    values, days = (await asyncio.to_thread(_daily_values, data_dir, codes, overlay, as_of, calendar_leaves)
+                    if calendar_leaves else ({}, []))
+    incomplete = await asyncio.to_thread(
+        _evaluate_calendar, result, calendar_leaves, codes, values, days, as_of)
+    minute_leaves = [leaf for leaf in selected if leaf.params.timeframe.endswith("m")]
+    if minute_leaves:
+        # Rotate the bounded REST batch so repeated monitoring covers the whole
+        # requested universe. Cached fresh snapshots remain eligible on every scan.
+        cursor_key = (data_dir, tuple(codes))
+        offset = _CURSORS.get(cursor_key, 0)
+        fetch_codes = set((codes + codes)[offset:offset + min(len(codes), MAX_MINUTE_CODES_PER_SCAN)])
+        _CURSORS[cursor_key] = (offset + MAX_MINUTE_CODES_PER_SCAN) % max(1, len(codes))
+        while len(_CURSORS) > MAX_CURSOR_ENTRIES:
+            _CURSORS.popitem(last=False)
+        sem = asyncio.Semaphore(4)
+
+        async def one(leaf, code):
+            p = leaf.params
+            lower = dt.date.fromisoformat(p.start_date) if isinstance(p, BarVolumeRangeParams) else None
+            needed = (p.record_period.value if lower else p.period + p.lookback - 1) + (not p.include_open_bar)
+            cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
+                      if lower else as_of)
+            key = (data_dir, code, p.timeframe, needed, lower, cutoff.date())
+            cached = _CACHE.get(key)
+            if code not in fetch_codes and (cached is None
+                    or int(time.time() * 1000) - cached.fetched_at_ms >= MINUTE_TTL_MS):
+                return leaf, code, [], False, "fetch_budget_exhausted"
+            try:
+                async with asyncio.timeout(20):
+                    async with sem:
+                        snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff)
+            except TimeoutError:
+                return leaf, code, [], False, "fetch_timeout"
+            events, complete = await asyncio.to_thread(records, leaf, snapshot.bars,
+                                                       fetched_at_ms=snapshot.fetched_at_ms)
+            return leaf, code, events, complete and snapshot.reason is None, snapshot.reason
+
+        evaluations = await asyncio.gather(*(one(leaf, code) for leaf in minute_leaves for code in codes))
+        for leaf, code, events, complete, reason in evaluations:
+            result.events[leaf.id].extend((code, event) for event in events)
+            if not complete:
+                incomplete.add(code)
+                result.coverage.incomplete.append(BarVolumeCoverageItem(
+                    code=code, condition_id=leaf.id, reason=reason or "missing_history"))
+    result.coverage.complete = len(codes) - len(incomplete)
+    return result
