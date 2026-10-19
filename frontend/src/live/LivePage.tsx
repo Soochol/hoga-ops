@@ -29,10 +29,9 @@ import './LiveWorkspace.css';
 /**
  * /live page — 멀티창 워크스페이스 셸 (ADR-0119 C2c-2d 플립).
  *
- * Three-row grid (symbol search lives in the global TopNav header line):
- *   1. Reserved status slot (auto)             — operational issues live in service status
- *   2. WorkspaceLiveToolbar (auto)             — 창 추가·프리셋·캡처헬스
- *   3. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
+ * Two-row grid (symbol search lives in the global TopNav header line):
+ *   1. WorkspaceLiveToolbar (auto)             — 창 추가·프리셋·캡처헬스
+ *   2. WorkspaceCanvas (1fr)                   — 창들(차트·데이터) + 자석 스냅 엔진
  *
  * 종목 식별·현재가·등락률·히트맵·경고는 각 차트 창 **타이틀바**(TitleBarSymbolRow)가
  * 소유한다 — 페이지 상태바(LiveStatusBar)는 폐지됐다. 현재가·등락률·히트맵은 타이틀바가
@@ -200,16 +199,14 @@ export function LivePage() {
 
   return (
     <div
-      // 여백 소유자는 `WORKSPACE_PAGE_PAD` 한 곳이다 — `/study` 와 같은 상수를 쓰므로
-      // 두 워크스페이스 페이지의 창 영역이 갈리지 않는다(2026-08-17). 종전엔 여기
-      // 리터럴(`px-md pt-sm`)과 `/study` 의 `PageContainer`(`p-md`)가 따로 값을 들고 있었다.
+      // nav 와 툴바 사이 여백은 `WORKSPACE_PAGE_PAD` 의 상단 패딩 한 곳이 소유한다.
       // 여백은 그리드 컨테이너에 두므로 트랙(minmax)·캔버스 clamp 는 그대로다.
       className={`live-workspace h-full grid ${WORKSPACE_PAGE_PAD}`}
       style={{
         // minmax(0, 1fr) on the canvas row prevents chart canvases' intrinsic
-        // size from pushing the row past viewport height. 상태바 폐지로 행이 3개로
-        // 줄었다(배너·툴바·캔버스) — 폐지된 시세 스트립 행만큼 차트가 넓어진다.
-        gridTemplateRows: 'auto auto minmax(0, 1fr)',
+        // size from pushing the row past viewport height. 빈 상태 배너 행을 두지 않아
+        // nav 와 툴바 사이에 추가 그리드 간격이 생기지 않는다.
+        gridTemplateRows: 'auto minmax(0, 1fr)',
         // 열 축도 명시해야 한다. 비워두면 grid-auto-columns:auto 가 되고, 그 트랙은
         // 가장 넓은 자식의 min-content 폭에서 바닥을 친다. WorkspaceLiveToolbar 와
         // WorkspaceCanvas 는 각자 overflow 로 빠져나가므로 트랙을 minmax(0,1fr) 로
@@ -217,7 +214,6 @@ export function LivePage() {
         gridTemplateColumns: 'minmax(0, 1fr)',
       }}
     >
-      <div data-testid="live-state-banner-empty" />
       <WorkspaceLiveToolbar
         captureHealth={liveStatus.captureHealth}
       />

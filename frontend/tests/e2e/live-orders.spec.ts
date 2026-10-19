@@ -1254,13 +1254,14 @@ test('주문창은 실시간 틱 방향색·잔량 증감·가격 왼쪽 시고�
   expect(commands).toHaveLength(0);
 });
 
-test('하단 양쪽 주문 취소는 주문 열에 정렬되고 해당 방향만 취소한다', async ({ page }, testInfo) => {
+test('하단은 총 접수 버튼만 주문 열에 정렬되고 드래그 아웃으로 해당 방향을 취소한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, [mkOrder('buy'), { ...mkOrder('sell', '67300'), side: 'SELL' }]);
-  const row = window.getByRole('group', { name: '방향별 주문 취소' });
+  await expect(window.getByRole('group', { name: '방향별 주문 취소' })).toHaveCount(0);
+  const row = window.getByRole('group', { name: '방향별 총 접수 주문' });
   await expect(row.getByRole('button')).toHaveCount(2);
   await expect(row.getByRole('button', { name: /전체/ })).toHaveCount(0);
-  const sell = row.getByRole('button', { name: '매도 주문 취소', exact: true });
-  const buy = row.getByRole('button', { name: '매수 주문 취소', exact: true });
+  const sell = row.getByRole('button', { name: '매도 총 접수 주문', exact: true });
+  const buy = row.getByRole('button', { name: '매수 총 접수 주문', exact: true });
   for (const width of [820, 640, 540]) {
     await window.evaluate((el, width) => { el.style.width = `${width}px`; }, width);
     await expect(window).toHaveClass(width >= 696 ? /order-spacious/ : width >= 560 ? /order-expanded/ : /order-compact/);
@@ -1279,17 +1280,17 @@ test('하단 양쪽 주문 취소는 주문 열에 정렬되고 해당 방향만
         return range.getBoundingClientRect().width <= el.clientWidth;
       })).toBe(true);
     }
-    await window.screenshot({ path: testInfo.outputPath(`order-side-cancel-${width}.png`) });
+    await window.screenshot({ path: testInfo.outputPath(`order-side-total-${width}.png`) });
   }
-  await sell.click();
-  await expect(sell).toBeDisabled();
-  await expect(buy).toBeEnabled();
+  await drag(page, sell, window.getByRole('button', { name: '주문 설정', exact: true }));
+  await expect(sell).toHaveText('0(0)');
+  await expect(buy).toHaveText('70(1)');
   expect(commands).toHaveLength(1);
-  expect(commands[0]).toMatchObject({ account_seq: 1, code: '005930', side: 'SELL' });
-  await buy.click();
-  await expect(buy).toBeDisabled();
+  expect(commands[0]).toMatchObject({ account_seq: 1, code: '005930' });
+  await drag(page, buy, window.getByRole('button', { name: '주문 설정', exact: true }));
+  await expect(buy).toHaveText('0(0)');
   expect(commands).toHaveLength(2);
-  expect(commands[1]).toMatchObject({ account_seq: 1, code: '005930', side: 'BUY' });
+  expect(commands[1]).toMatchObject({ account_seq: 1, code: '005930' });
 });
 
 test('왼쪽 매도·오른쪽 매수 더블클릭 주문, 상하단 정보·신규 확인창 없음', async ({ page }, testInfo) => {
@@ -2169,6 +2170,53 @@ test('같은 가격 칸의 드래그 아웃은 그 가격의 주문만 모두 �
   expect(commands).toHaveLength(2);
   expect(commands.every(body => !('price' in body))).toBe(true);
 });
+
+for (const side of ['BUY', 'SELL'] as const) {
+  const label = side === 'BUY' ? '매수' : '매도';
+  const opposite = side === 'BUY' ? 'SELL' : 'BUY';
+  test(`${side} 총 접수 버튼의 드래그 아웃은 호가 밖 주문까지 해당 방향만 일괄 취소한다`, async ({ page }) => {
+    const { window, commands } = await setup(page, [
+      { ...mkOrder('one'), side }, { ...mkOrder('two', '67100'), side }, { ...mkOrder('outside', '70000'), side },
+      { ...mkOrder('opposite'), side: opposite }, { ...mkOrder('other-symbol'), symbol: '000660', side },
+    ]);
+    const total = window.getByRole('button', { name: `${label} 총 접수 주문`, exact: true });
+    await expect(total).toHaveText('210(3)');
+    await total.click(); await total.dblclick();
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    expect(commands).toHaveLength(0);
+    // The summary is a cancellation handle: dropping on a price must not replace every order.
+    await drag(page, total, window.getByRole('button', { name: new RegExp(`${label} 67,300원 주문 추가`) }));
+    expect(commands).toHaveLength(0);
+    await drag(page, total, window.getByRole('button', { name: '주문 설정', exact: true }));
+    await expect(total).toHaveText('0(0)');
+    await expect(window.getByRole('button', { name: `${side === 'BUY' ? '매도' : '매수'} 총 접수 주문`, exact: true })).toHaveText('70(1)');
+    expect(commands).toHaveLength(3);
+    expect(commands.every(body => !('price' in body) && body.code === '005930')).toBe(true);
+  });
+  test(`${side} 총 접수 우클릭 메뉴에서 개별 취소하고 남은 주문을 호가로 드래그 정정한다`, async ({ page }) => {
+    const { window, commands } = await setup(page, [
+      { ...mkOrder('one'), side }, { ...mkOrder('two', '67100'), side }, { ...mkOrder('outside', '70000'), side },
+    ]);
+    const total = window.getByRole('button', { name: `${label} 총 접수 주문`, exact: true });
+    await total.click({ button: 'right' });
+    const menu = page.getByRole('menu', { name: `${label} 전체 접수 주문 목록` });
+    await expect(menu.getByRole('menuitem')).toHaveCount(3);
+    await expect(menu).toContainText('70,000원');
+    await menu.getByRole('button', { name: '주문 1 개별 취소', exact: true }).click();
+    await expect(menu).toHaveCount(0);
+    await expect(total).toHaveText('140(2)');
+    expect(commands).toHaveLength(1);
+    await total.click({ button: 'right' });
+    const destinationPrice = side === 'BUY' ? 66300 : 68200;
+    await drag(page, menu.getByRole('menuitem', { name: '주문 1 · 70주', exact: true }),
+      window.getByRole('button', { name: new RegExp(`${label} ${destinationPrice.toLocaleString('ko-KR')}원 주문 추가`) }));
+    await expect(menu).toHaveCount(0);
+    await expect(window.getByRole('button', { name: new RegExp(`${label} ${destinationPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toHaveText('70');
+    await expect(total).toHaveText('140(2)');
+    expect(commands).toHaveLength(2);
+    expect(commands[1]).toMatchObject({ price: destinationPrice, quantity: null });
+  });
+}
 
 test('같은 가격의 여러 주문은 다른 호가로 모두 함께 정정한다', async ({ page }) => {
   const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67000')]);
