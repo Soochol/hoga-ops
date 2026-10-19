@@ -282,18 +282,19 @@ describe('InvestorCard', () => {
     expect(firstX).toBeLessThan(18);
   });
 
-  it('확정본이 나오면 헤더가 「잠정」 대신 「확정」 을 말한다', async () => {
-    // 확정본이 있으면 백엔드가 시계열 끝에 확정점을 붙인다 — 그 순간부터 「잠정」 은
-    // 거짓말이다. 상태를 응답(`confirmed`)에서 받으므로 하드코딩 라벨과 갈릴 수 없다.
+  it('keeps the confirmed values without routine header metadata', async () => {
     mockApi();
     renderCard();
-    expect(await screen.findByText(/잠정/)).toBeTruthy();
+    expect(await screen.findByText('-420')).toBeTruthy();
+    expect(screen.getByRole('heading')).toHaveTextContent('투자자 수급');
+    expect(screen.queryByText(/저장 표본|당일 누적|잠정/)).toBeNull();
 
     vi.restoreAllMocks();
-    mockApi(derivResponse(), { ...STOCK, confirmed: true });
+    mockApi(derivResponse(), { ...STOCK, confirmed: true, markets: {
+      ...STOCK.markets, KOSPI: [...STOCK.markets.KOSPI, { t_ms: T0 + 120_000, individual: 150, foreign: -450, institution: 300 }],
+    } });
     renderCard();
-    const confirmedHints = await screen.findAllByText(/확정/);
-    expect(confirmedHints.length).toBeGreaterThan(0);
+    expect(await screen.findByText('-450')).toBeTruthy();
   });
 
   it('마감 후 표본이 x축 끝에 클램프되지 않는다 — 종가 단일가 체결분이 붙는 점이다', async () => {
@@ -360,16 +361,16 @@ describe('InvestorCard', () => {
   });
 });
 
-it('daily period selection limits rows and totals and exposes short history', async () => {
+it('daily period selection limits rows and totals to the available history', async () => {
   mockApi(derivResponse(), { ...STOCK, daily: Array.from({ length: 8 }, (_, i) => ({
     date: `2026080${i + 1}`, markets: { KOSPI: { foreign: 100, institution: -50 } },
   })) });
   renderCard();
   await userEvent.click(await screen.findByRole('button', { name: '일별' }));
   await userEvent.click(screen.getByRole('button', { name: '5거래일' }));
-  expect(screen.getByText(/요청 5거래일/)).toHaveTextContent('제공 5거래일 · 20260804–20260808');
+  expect(screen.getAllByRole('row')).toHaveLength(7);
   expect(screen.getByRole('row', { name: /기간 합계/ })).toHaveTextContent('+500');
   await userEvent.click(screen.getByRole('button', { name: '60거래일' }));
-  expect(screen.getByText(/요청 60거래일/)).toHaveTextContent('제공 8거래일');
+  expect(screen.getAllByRole('row')).toHaveLength(10);
   expect(screen.getByRole('row', { name: /기간 합계/ })).toHaveTextContent('+800');
 });

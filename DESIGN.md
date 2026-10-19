@@ -55,6 +55,9 @@
 사용자 후속 요청에 따라 프로그램 일별의 기간 합계는 카드 하단에 고정하고 날짜별
 목록만 스크롤한다. 별도 `표본 N거래일` 라벨과 거래대금 카드 하단의 조회 시각·
 누적 집계 안내 문장은 제거한다.
+이어진 사용자 요청에 따라 카드의 기준일·조회/수신 시각·정상 수집 상태·저장 표본과
+일별 목록 위 요청/제공 기간·단위 안내 문장을 제거한다. 업종의 수급/등락 기준일 행도
+상시 표시하지 않는다. 조회 실패·수신 지연·파생 단위 미확정은 해당 상태일 때 표시한다.
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.

@@ -143,7 +143,7 @@ test('market empty-state action, chart keyboard inspection and after-hours axis'
   const market = page.locator('.market-page');
   await expect(market.getByText('20:00', { exact: true })).toBeVisible();
   await market.getByRole('button', { name: '일별 수급 보기' }).click();
-  await expect(market.getByText('09/08 기준', { exact: true })).toBeVisible();
+  await expect(market.getByRole('table', { name: '투자자 일별 수급 · 단위 억원' }).getByRole('row').nth(1)).toContainText('09/08');
   const chart = market.getByRole('group', { name: /차트 상세/ }).last();
   await chart.focus();
   await chart.press('Home');
@@ -279,7 +279,7 @@ test('investor flow refreshes every ten seconds after 15:30 and recovers from AP
       session_start_sec: 8 * 3600, session_end_sec: 16.5 * 3600,
       markets: { KOSPI: [
         { t_ms: t - 10_000, individual: 10, foreign: -5, institution: -5 },
-        { t_ms: received, individual: 20, foreign: -10, institution: -10 },
+        { t_ms: received, individual: count * 20, foreign: -count * 10, institution: -count * 10 },
       ] },
       coverage: { KOSPI: { first_sample_ms: t - 10_000, last_sample_ms: received,
         sample_count: count, expected_count: 3060, gap_ranges: [] } },
@@ -293,23 +293,24 @@ test('investor flow refreshes every ten seconds after 15:30 and recovers from AP
   });
   await page.goto('/market');
   const card = page.locator('.market-switch-card').filter({ has: page.getByRole('heading', { name: /투자자 수급/ }) });
-  await expect(card.getByRole('status')).toContainText('정상 수신');
-  await expect(card.getByRole('heading')).toContainText('저장 표본 2개');
+  const summary = card.getByLabel('투자자별 순매수 · 억원');
+  await expect(summary).toContainText('-20');
+  await expect(card.getByRole('heading')).toHaveText('투자자 수급');
   count = 3;
   await page.clock.fastForward(10_000);
-  await expect(card.getByRole('heading')).toContainText('저장 표본 3개');
+  await expect(summary).toContainText('-30');
   failing = true;
   const beforeFailure = requests;
   await page.clock.fastForward(10_000);
   await expect.poll(() => requests).toBeGreaterThan(beforeFailure);
   await page.clock.fastForward(2000); // query retry, not an arbitrary real-time sleep
   await expect(card.getByRole('status')).toContainText('서버 연결 확인 필요');
-  await expect(card.getByRole('heading')).toContainText('저장 표본 3개');
+  await expect(summary).toContainText('-30');
   failing = false;
   count = 4;
   await page.clock.fastForward(10_000);
-  await expect(card.getByRole('status')).toContainText('정상 수신');
-  await expect(card.getByRole('heading')).toContainText('저장 표본 4개');
+  await expect(summary).toContainText('-40');
+  await expect(card.getByRole('status')).toHaveCount(0);
 });
 
 for (const width of [1440, 600]) test(`flow freshness and inspection fit without clipping at ${width}px`, async ({ page }, testInfo) => {
@@ -330,9 +331,9 @@ for (const width of [1440, 600]) test(`flow freshness and inspection fit without
   await page.goto('/market');
   const body = page.locator('.market-investor-body');
   const lastReceipt = body.getByTitle('마지막 정상 수신 시각');
-  await expect(lastReceipt).toBeVisible();
-  await expect(lastReceipt).toHaveText('13:00:10 수신');
-  await expect(body.getByText('수집 종료', { exact: true })).toBeVisible();
+  await expect(body.getByLabel('투자자별 순매수 · 억원')).toContainText('-40');
+  await expect(lastReceipt).toHaveCount(0);
+  await expect(body.getByText('수집 종료', { exact: true })).toHaveCount(0);
   const probe = body.getByRole('group', { name: /차트 상세/ });
   await probe.focus();
   await probe.press('Home');
