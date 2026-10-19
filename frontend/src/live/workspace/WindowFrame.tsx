@@ -159,13 +159,10 @@ function WindowFrameImpl(props: WindowFrameProps) {
                 {kind !== 'chart' && <span className="live-data-title-kind shrink-0">{KIND_LABEL[kind]} ·</span>}
                 {showVenueSupport ? <span className="live-data-title-identity">
                   <span className="live-symbol-name truncate">{title}</span>
-                  <span className="live-symbol-venue-badges" aria-label="종목 지원 거래소">
-                  <span className="live-symbol-venue-badge" data-supported aria-label="KRX 거래 지원" title="KRX 거래 지원">KRX ✓</span>
                   <span className="live-symbol-venue-badge" data-supported={nxtEnabled === true ? '' : undefined}
                     aria-label={nxtEnabled === true ? 'NXT 거래 지원' : nxtEnabled === false ? 'NXT 거래 미지원' : 'NXT 지원 여부 미확인'}
                     title={nxtEnabled === true ? 'NXT 거래 지원' : nxtEnabled === false ? 'NXT 거래 미지원' : 'NXT 지원 여부 미확인'}>
-                    {nxtEnabled === true ? 'NXT ✓' : nxtEnabled === false ? 'NXT 미지원' : 'NXT 미확인'}
-                  </span>
+                    {nxtEnabled === true ? 'NXT 지원' : nxtEnabled === false ? 'NXT 미지원' : 'NXT 미확인'}
                   </span>
                 </span> : <span className="live-symbol-name truncate">{title}</span>}
               </span>
