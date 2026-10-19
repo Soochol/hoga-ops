@@ -22,6 +22,7 @@ from pydantic import (
 
 from hoga.api.error_codes import UpstreamCode
 from hoga.api.params import CODE_PATTERN, WATCHLIST_CODE_PATTERN
+from hoga.api.screener_expression import parse_expression
 from hoga.api.sources import SourceName
 from hoga.tables.candles import ApiCandle
 from hoga.tables.snapshots import ApiOrderbookSnapshot
@@ -2196,8 +2197,17 @@ ScreenerUpdateSkipReason = Literal[
 ]
 
 
-class ScanRequest(BaseModel):
+class ScreenerConditionExpression(BaseModel):
     conditions: list[ConditionLeaf] = Field(default_factory=list)
+    expression: str | None = Field(default=None, max_length=10_000)
+
+    @model_validator(mode="after")
+    def _validate_expression(self):
+        parse_expression(self.expression, len(self.conditions))
+        return self
+
+
+class ScanRequest(ScreenerConditionExpression):
     universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
     limit: int = Field(1000, ge=1, le=2000)
     basis: ScanBasis = "eod"
@@ -2424,9 +2434,8 @@ class ScreenerResponse(BaseModel):
     depth_coverage: DepthCoverage | None = None
     depth_values: dict[str, DepthPeakValue] | None = None
 
-class ScreenerSaveWriteRequest(BaseModel):
+class ScreenerSaveWriteRequest(ScreenerConditionExpression):
     name: str = Field(min_length=1, max_length=80)
-    conditions: list[ConditionLeaf] = Field(default_factory=list)
     universe: ScreenerUniverse = Field(default_factory=ScreenerUniverse)
 
     @field_validator("name")

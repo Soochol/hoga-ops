@@ -16,6 +16,7 @@ from hoga.api import (
     symbols,
 )
 from hoga.api.models import ScanRequest, ScreenerResponse
+from hoga.api.screener_expression import active_conditions
 from hoga.collector.orchestrator import now_kst
 
 
@@ -50,9 +51,10 @@ async def run_screener_scan(
     if req.universe.exclude_etf and etf_codes is None:
         warnings.append("etf_filter_stale_master_unavailable")
 
-    history = screener_history_coverage.history_leaves(req.conditions)
-    if req.basis == "intraday" and (not req.conditions or any(screener_bar_volume.needs_daily_overlay(
-            leaf, now_value.date().isoformat()) for leaf in req.conditions)):
+    conditions = active_conditions(req.conditions, req.expression)
+    history = screener_history_coverage.history_leaves(conditions)
+    if req.basis == "intraday" and (not conditions or any(screener_bar_volume.needs_daily_overlay(
+            leaf, now_value.date().isoformat()) for leaf in conditions)):
         if screener_intraday.intraday_overlay_bypassed(data_dir):
             warnings.extend([
                 "rest_bypassed_intraday_overlay_skipped",
@@ -80,7 +82,7 @@ async def run_screener_scan(
                 warnings.append("intraday_fallback_eod")
 
     depth_eval = None
-    if screener_depth.has_depth_conditions(req.conditions):
+    if screener_depth.has_depth_conditions(conditions):
         universe_codes = set(await asyncio.to_thread(
             screener_universe.codes_for_universe,
             sdir / "stocks.parquet",
@@ -92,7 +94,7 @@ async def run_screener_scan(
             screener_depth.evaluate,
             data_dir=data_dir,
             sdir=sdir,
-            conditions=req.conditions,
+            conditions=conditions,
             universe_codes=universe_codes,
             basis=req.basis,
             today=now_value.strftime("%Y%m%d"),
@@ -109,14 +111,14 @@ async def run_screener_scan(
             screener_universe.codes_for_universe, sdir / "stocks.parquet", req.universe,
             scope=scope, etf_codes=etf_codes)
         history_eval = await asyncio.to_thread(
-            screener_history_coverage.evaluate, data_dir, req.conditions, codes)
+            screener_history_coverage.evaluate, data_dir, conditions, codes)
     bar_eval = None
-    if screener_bar_volume.leaves(req.conditions):
+    if screener_bar_volume.leaves(conditions):
         codes = await asyncio.to_thread(
             screener_universe.codes_for_universe, sdir / "stocks.parquet", req.universe,
             scope=scope, etf_codes=etf_codes)
         bar_eval = await screener_bar_volume.evaluate(
-            data_dir=data_dir, conditions=req.conditions, codes=codes, basis=req.basis,
+            data_dir=data_dir, conditions=conditions, codes=codes, basis=req.basis,
             now=now_value, overlay=intraday_rows)
         if bar_eval.coverage.incomplete:
             warnings.append("bar_volume_partial")
@@ -128,6 +130,7 @@ async def run_screener_scan(
         sdir / "daily_adjusted.parquet",
         sdir / "stocks.parquet",
         conditions=req.conditions,
+        expression=req.expression,
         universe=req.universe,
         limit=req.limit + 1,
         intraday_rows=intraday_rows,

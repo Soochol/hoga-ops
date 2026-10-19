@@ -14,6 +14,23 @@ const SAVE: SavedScreener = {
 };
 
 describe('useSaveAnchor', () => {
+  it('persists expressions, remaps reordered letters, and keeps edits during a save dirty', () => {
+    const conditions = ['a', 'b', 'c'].map(id => ({ id, type: 'trade_value' as const, params: { min_eok: 1 } }));
+    const { result, unmount } = renderHook(() => useSaveAnchor());
+    act(() => result.current.loadSave({ ...SAVE, conditions, expression: 'A AND (B OR C)' }));
+    expect(result.current.expression).toBe('A AND (B OR C)');
+    act(() => result.current.editConditions([conditions[2], conditions[0], conditions[1]]));
+    expect(result.current.expression).toBe('(B AND (C OR A))');
+    act(() => result.current.beginSave());
+    act(() => result.current.editExpression('B OR C'));
+    act(() => result.current.settleAnchor('s1', SAVE.name));
+    expect(result.current.dirty).toBe(true);
+    unmount();
+    const restored = renderHook(() => useSaveAnchor());
+    expect(restored.result.current.expression).toBe('B OR C');
+    act(() => restored.result.current.newDraft());
+    expect(restored.result.current.expression).toBeNull();
+  });
   it('loads a closed-only save with open candles included and persists that draft', () => {
     const { result } = renderHook(() => useSaveAnchor());
     const condition = { id: 'old', type: 'ma' as const, params: {

@@ -12,6 +12,7 @@ import { useScreenerUpdate } from '../screener/useScreenerUpdate';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from '../screener/ScreenerUpdateProgress';
 import { ConditionBuilder } from '../screener/ConditionBuilder';
+import { expressionError } from '../screener/conditionExpression';
 import { ScreenerResults } from '../screener/ScreenerResults';
 import { SavedConditionSelect } from '../screener/SavedConditionSelect';
 import { StalenessChip } from '../screener/StalenessChip';
@@ -169,9 +170,11 @@ export function Screener() {
   // "KOSPI·KOSDAQ 전종목 거래대금 상위 1000행"이 나온다. 진입 시 저장 조건이
   // 자동 로드되므로(useSavedScreenerEditor) 평상시엔 걸리지 않는 가드.
   const hasConditions = editor.conditions.length > 0;
+  const invalidExpression = expressionError(editor.expression, editor.conditions.length);
   const scanBody = useMemo(
-    () => ({ conditions: editor.conditions, universe: editor.universe, basis }),
-    [editor.conditions, editor.universe, basis],
+    () => ({ conditions: editor.conditions, universe: editor.universe, basis,
+      ...(editor.expression != null ? { expression: editor.expression } : {}) }),
+    [editor.conditions, editor.expression, editor.universe, basis],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
@@ -193,6 +196,7 @@ export function Screener() {
     if (save) editor.load(save); else editor.newDraft();
   };
   const runScan = () => {
+    if (invalidExpression) return;
     const requestJson = JSON.stringify(scanBody);
     const anchored = !editor.dirty && editor.anchorId != null;
     const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
@@ -225,6 +229,7 @@ export function Screener() {
     });
   };
   const submitNameDialog = (name: string) => {
+    if (invalidExpression && nameDialog !== 'rename') return;
     if (nameDialog === 'save-new') editor.saveCurrent(name);
     else if (nameDialog === 'save-as') editor.saveAsNew(name);
     else if (nameDialog === 'rename' && anchorSave) editor.rename(anchorSave, name);
@@ -237,6 +242,7 @@ export function Screener() {
       ? `${editor.anchorName} 복사`
       : suggestSaveName(saves.map((s) => s.name));
   const saveCurrent = () => {
+    if (invalidExpression) return;
     if (editor.anchorId) editor.saveCurrent();
     else setNameDialog('save-new');
   };
@@ -292,10 +298,10 @@ export function Screener() {
             )}
           </div>
           <div className="flex flex-wrap items-center gap-1">
-            <ToolbarButton onClick={saveCurrent} disabled={editor.isSaving} className="text-fg">
+            <ToolbarButton onClick={saveCurrent} disabled={editor.isSaving || !!invalidExpression} className="text-fg">
               {editor.isSaving ? '저장 중…' : '저장'}
             </ToolbarButton>
-            <ToolbarButton onClick={() => setNameDialog('save-as')} disabled={editor.isSaving}>
+            <ToolbarButton onClick={() => setNameDialog('save-as')} disabled={editor.isSaving || !!invalidExpression}>
               다른 이름으로 저장
             </ToolbarButton>
           </div>
@@ -312,8 +318,9 @@ export function Screener() {
         </div>
         <div className="min-h-0 flex-1">
           <ConditionBuilder conditions={editor.conditions} universe={editor.universe}
-            onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}>
-            <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />
+            onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}
+            expression={editor.expression} onExpressionChange={editor.editExpression}>
+            {!invalidExpression && <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />}
           </ConditionBuilder>
         </div>
       </PanelCard>
@@ -337,8 +344,8 @@ export function Screener() {
               ))}
             </SegmentedControl>
             <ToolbarButton tone="primary" onClick={runScan}
-              disabled={screener.isPending || notSeeded || !hasConditions}
-              title={!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined}
+              disabled={screener.isPending || notSeeded || !hasConditions || !!invalidExpression}
+              title={invalidExpression ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
               className="px-lg py-sm text-base">
               {screener.isPending ? '조회 중…' : '조회'}
             </ToolbarButton>

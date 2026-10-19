@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException
 from hoga.api import screener_history_coverage as coverage, screener_universe, symbols
 from hoga.api.models import HistoryCoverage, HistoryJob, ScanRequest
 from hoga.api.screener_calendar import completed_day
+from hoga.api.screener_expression import active_conditions
 from hoga.api.screener_history_state import ACTIVE_STATUSES, JobCheckpoint, create_job
 from hoga.api.screener_history_storage import DailyPair, commit_verified, recover_publication, verified_factors
 from hoga.api.screener_store import _DAILY_PL_SCHEMA
@@ -73,9 +74,10 @@ def selected_codes(data_dir: Path, req: ScanRequest) -> list[str]:
 
 
 def preview(data_dir: Path, req: ScanRequest):
-    if not coverage.history_leaves(req.conditions):
+    if not coverage.history_leaves(active_conditions(req.conditions, req.expression)):
         raise ValueError("날짜 범위 조건이 필요합니다")
-    return coverage.evaluate(data_dir, req.conditions, selected_codes(data_dir, req)).coverage
+    return coverage.evaluate(
+        data_dir, active_conditions(req.conditions, req.expression), selected_codes(data_dir, req)).coverage
 
 
 def load_job(data_dir: Path) -> HistoryJob | None:
@@ -165,7 +167,8 @@ async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
         await _finish_disk_write(recover_publication, data_dir)
         # A failed publication is retried from authoritative disk observations by the same
         # collection operation, not treated as proof that the missing interval is complete.
-        report = await asyncio.to_thread(coverage.evaluate, data_dir, req.conditions, job.codes)
+        report = await asyncio.to_thread(
+            coverage.evaluate, data_dir, active_conditions(req.conditions, req.expression), job.codes)
         ranges = report.collection_starts
         raw_path = data_dir / "screener" / "daily_unadjusted.parquet"
         bounds = {}
@@ -202,7 +205,8 @@ async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
             job.done += 1
             _save(data_dir, job)
         await flush_batch(data_dir, job, pending, fetch)
-        report = await asyncio.to_thread(coverage.evaluate, data_dir, req.conditions, job.codes)
+        report = await asyncio.to_thread(
+            coverage.evaluate, data_dir, active_conditions(req.conditions, req.expression), job.codes)
         job.coverage = report.coverage
         job.status = "partial" if job.errors or report.coverage.incomplete else "complete"
     except asyncio.CancelledError:

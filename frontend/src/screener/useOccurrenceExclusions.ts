@@ -5,6 +5,7 @@ import {
   type ConditionLeaf, type ScanRequest, type ScreenerExclusion, type ScreenerExclusionsFile, type ScreenerOccurrence,
 } from '../api/screener';
 import { useScreenerPanelStore, type PanelScan } from '../state/screenerPanel';
+import { evaluateExpression, parseExpression } from './conditionExpression';
 
 const KEY = ['screener-occurrence-exclusions'];
 
@@ -13,6 +14,18 @@ export function scanConditions(scan: PanelScan | null): ConditionLeaf[] {
     const request: ScanRequest = JSON.parse(scan?.requestJson ?? scan?.scanKey ?? '{}');
     return Array.isArray(request.conditions) ? request.conditions : [];
   } catch { return []; }
+}
+
+function passesAfterExclusion(scan: PanelScan, original: ScreenerOccurrence[], remaining: ScreenerOccurrence[]): boolean {
+  const active = new Set(remaining.map(o => o.condition_id));
+  try {
+    const request: ScanRequest = JSON.parse(scan.requestJson ?? scan.scanKey ?? '{}');
+    if (request.expression != null) {
+      const matches = new Set(request.conditions.flatMap((c, i) => active.has(c.id) ? [i] : []));
+      return evaluateExpression(parseExpression(request.expression, request.conditions.length), matches);
+    }
+  } catch { /* Legacy result without a readable request: use its original required conditions. */ }
+  return original.every(o => active.has(o.condition_id));
 }
 
 /** Apply exclusions to cached/in-flight results; SQL owns replenishing the limit. */
@@ -26,9 +39,7 @@ export function pruneExcludedRows(scan: PanelScan, exclusions: ScreenerExclusion
       && !keys.has(`${o.condition_key}:${row.code}:${o.date}:`));
     if (remaining.length === row.occurrences.length) return [row];
     changed = true;
-    const required = new Set(row.occurrences.map(o => o.condition_id));
-    const active = new Set(remaining.map(o => o.condition_id));
-    if ([...required].some(id => !active.has(id))) return [];
+    if (!passesAfterExclusion(scan, row.occurrences, remaining)) return [];
     return [{ ...row, occurrences: remaining,
       history_matches: row.history_matches?.filter(m => remaining.some(o => o.condition_id === m.condition_id && o.date === m.date)) }];
   });
@@ -110,8 +121,10 @@ export function useOccurrenceExclusions(scan: PanelScan | null) {
     ready: query.isSuccess, conditions, lastExcluded,
     affectedOtherRows: (code: string, occurrence: ScreenerOccurrence) => {
       const events = scan?.rows.find(r => r.code === code)?.occurrences ?? [];
-      return events.filter(e => e.condition_id === occurrence.condition_id).length === 1
-        ? events.filter(e => e.condition_id !== occurrence.condition_id).length : 0;
+      if (!scan) return 0;
+      const remaining = events.filter(e => e !== occurrence && !(e.condition_id === occurrence.condition_id
+        && e.date === occurrence.date && e.bar_start_ms === occurrence.bar_start_ms));
+      return passesAfterExclusion(scan, events, remaining) ? 0 : remaining.length;
     },
     exclude: (code: string, name: string, occurrence: ScreenerOccurrence) => {
       const condition = conditions.find(c => c.id === occurrence.condition_id);

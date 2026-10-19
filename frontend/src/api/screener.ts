@@ -121,6 +121,8 @@ export interface ScreenerUniverse {
 export type ScanBasis = 'eod' | 'intraday';
 
 export interface ScanRequest {
+  /** A/B/C reference the conditions array; omitted/null means all AND. */
+  expression?: string | null;
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
   limit?: number;

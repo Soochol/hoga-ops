@@ -16,6 +16,7 @@ from hoga.api.models import (
 )
 from hoga.api.screener_bar_policy import needs_bars
 from hoga.api.screener_exclusions import condition_key
+from hoga.api.screener_expression import expression_sql, parse_expression
 from hoga.api.screener_trade_value import TRADE_VALUE_SQL as _TV, WON_PER_EOK as _WON_PER_EOK
 from hoga.duck import connect_bounded
 
@@ -174,6 +175,7 @@ def _condition_source(con, leaf, i, *, bar_events, history_pass, depth_pass, occ
 
 def run_scan(adjusted_path: Path, stocks_path: Path, *,
              conditions: list[ConditionLeaf], universe: ScreenerUniverse,
+             expression: str | None = None,
              limit: int = 1000,
              intraday_rows: pl.DataFrame | None = None,
              depth_pass: dict[str, list[str]] | None = None,
@@ -183,7 +185,11 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              excluded: set[tuple] | None = None,
              scope_codes: set[str] | None = None,
              etf_codes: frozenset[str] | None = None) -> list[ScreenerRow]:
-    bar_events = _filter_bar_events(bar_events, excluded)
+    tokens = parse_expression(expression, len(conditions))
+    indices = sorted({token for token in tokens if isinstance(token, int)})
+    active_ids = {conditions[i].id for i in indices}
+    bar_events = _filter_bar_events({key: value for key, value in (bar_events or {}).items()
+                                    if key in active_ids}, excluded)
     con = connect_bounded()
     # 뷰는 전부 **TEMP** — connect_bounded 가 프로세스 공유 인스턴스의 커서를 주므로,
     # TEMP 없는 뷰는 전역 카탈로그에 들어가 동시 스캔끼리 이름이 충돌한다(실측:
@@ -237,7 +243,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         [item for item in (excluded or []) if len(item) == _DAILY_EXCLUSION_FIELDS],
         schema={"condition_key": pl.Utf8, "code": pl.Utf8, "date": pl.Utf8},
         orient="row"))
-    for i, leaf in enumerate(conditions):
+    for i in indices:
+        leaf = conditions[i]
         cte, p = _condition_source(con, leaf, i, bar_events=bar_events, history_pass=history_pass,
                                    depth_pass=depth_pass, occurrence_dates=occurrence_dates)
         ctes.append(cte)
@@ -246,7 +253,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
             f"cond_{i} AS (SELECT r.* FROM cond_{i}_raw r WHERE NOT EXISTS ("
             f"SELECT 1 FROM excluded_events e WHERE e.condition_key = '{keys[i]}' "
             "AND e.code = r.code AND CAST(e.date AS DATE) = r.date))")
-        joins.append(f"SEMI JOIN cond_{i} ON cond_{i}.code = base.code")
+        if expression is None:
+            joins.append(f"SEMI JOIN cond_{i} ON cond_{i}.code = base.code")
 
     uwheres, uparams = screener_universe.duckdb_wheres(universe)
     params += uparams
@@ -255,6 +263,8 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
     # ScreenerRow 생성을 깨 전체 스캔을 500 시키지 못하도록 SQL 에서 걸러낸다(시장 목록은
     # ScreenerRow.market Literal 과 한 쌍 — 함께 바뀐다).
     wheres = ["stk.market IN ('KOSPI', 'KOSDAQ')", "stk.name IS NOT NULL", *uwheres]
+    if expression is not None:
+        wheres.append(expression_sql(tokens))
     where_sql = "WHERE " + " AND ".join(wheres)
 
     sel = ("base.code, stk.name, stk.market, base.close::BIGINT price, "
@@ -262,7 +272,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
            f"({_TV})::BIGINT trade_value_won, "
            "CASE WHEN base.prev_close IS NULL OR base.prev_close = 0 THEN NULL "
            "ELSE round((base.close / base.prev_close - 1) * 100, 2) END change_pct")
-    for i in range(len(conditions)):
+    for i in indices:
         sel += (f", (SELECT list(DISTINCT strftime(date, '%Y-%m-%d') ORDER BY "
                 f"strftime(date, '%Y-%m-%d') DESC) FROM cond_{i} "
                 f"WHERE code = base.code AND date IS NOT NULL) AS dates_{i}")
@@ -278,7 +288,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
             code=d["code"], name=d["name"], market=d["market"], price=int(d["price"]),
             price_date=d["price_date"],
             occurrences=[ScreenerOccurrence(condition_id=leaf.id, condition_key=keys[i], date=day)
-                         for i, leaf in enumerate(conditions) for day in (d[f"dates_{i}"] or [])],
+                         for i in indices for leaf in [conditions[i]] for day in (d[f"dates_{i}"] or [])],
             trade_value_won=int(d["trade_value_won"]),
             change_pct=float(d["change_pct"]) if d["change_pct"] is not None else None))
     return _attach_bar_events(out, bar_events)
