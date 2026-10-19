@@ -55,6 +55,22 @@ async function marketMocks(page: Page, populated = false) {
   } }));
 }
 
+async function expectContextChartHeights(page: Page) {
+  const charts = page.locator('.market-context-chart').filter({ visible: true });
+  await expect(charts).toHaveCount(3);
+  const heights = await charts.evaluateAll(elements => elements.map(el => ({
+    plot: el.getBoundingClientRect().height,
+    svg: el.querySelector('svg')!.getBoundingClientRect().height,
+    probe: el.querySelector('[role="group"]')!.getBoundingClientRect().height,
+    expected: parseFloat(getComputedStyle(document.documentElement).fontSize) * 7,
+  })));
+  for (const height of heights) {
+    expect(height.plot).toBeCloseTo(height.expected, 1);
+    expect(height.svg).toBeCloseTo(height.plot, 1);
+    expect(height.probe).toBeCloseTo(height.plot, 1);
+  }
+}
+
 test('flow layout groups market context and preserves explorer preferences across views', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1920, height: 1400 });
   await marketMocks(page, true);
@@ -63,8 +79,13 @@ test('flow layout groups market context and preserves explorer preferences acros
   const flow = page.getByRole('region', { name: '시장 흐름', exact: true });
   await expect(flow.getByRole('heading', { name: /업종 등락 · 수급/ })).toBeVisible();
   const context = page.getByRole('region', { name: '거래와 자금', exact: true });
-  const positions = await context.locator(':scope > .market-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().top));
-  expect(new Set(positions).size).toBe(1);
+  const positions = await context.locator(':scope > .market-card').evaluateAll(cards => cards.map(card => {
+    const { top, bottom } = card.getBoundingClientRect();
+    return { top, bottom };
+  }));
+  expect(new Set(positions.map(position => position.top)).size).toBe(1);
+  expect(new Set(positions.map(position => position.bottom)).size).toBe(1);
+  await expectContextChartHeights(page);
   await context.getByRole('group', { name: '거래대금 시장', exact: true }).getByRole('button', { name: '코스닥' }).click();
   await expect(context.getByRole('region', { name: '코스닥 거래대금', exact: true })).toContainText('4.00조');
   const ranks = page.getByRole('group', { name: '종목 순위 기준', exact: true });
@@ -88,6 +109,7 @@ test('flow layout groups market context and preserves explorer preferences acros
     await page.setViewportSize({ width: 600, height: 1100 });
     const overflow = await page.locator('.market-page').evaluate(root => [...root.querySelectorAll<HTMLElement>('.market-main,.market-context,.market-ranks,.market-card')].map(el => el.scrollWidth - el.clientWidth));
     expect(overflow.every(px => px <= 1)).toBe(true);
+    await expectContextChartHeights(page);
     await page.screenshot({ path: testInfo.outputPath(`market-flow-compact-${theme}.png`) });
   }
   await page.reload();
@@ -151,7 +173,10 @@ for (const populated of [false, true]) for (const width of [1440, 800, 600]) {
         expect(await positions()).toEqual(before);
         if (populated && label === '프로그램 표시 구간') {
           if (mode === '일별') await expect(page.getByText('표본 2거래일', { exact: true })).toHaveCount(2);
-          else await expect(page.getByText(/표본 2개/)).toHaveCount(2);
+          else {
+            await expect(page.getByText(/^표본 2개 ·/)).toHaveCount(0);
+            await expect(page.getByRole('note', { includeHidden: true }).filter({ hasText: '2개 표본' })).toHaveCount(2);
+          }
         }
         await expect.poll(positions).toEqual(before);
         if (populated) {
@@ -164,8 +189,8 @@ for (const populated of [false, true]) for (const width of [1440, 800, 600]) {
   });
 }
 
-test('daily list keeps its header and total visible while dates scroll', async ({ page }) => {
-  await page.setViewportSize({ width: 800, height: 900 });
+for (const [width, fontSize] of [[1440, 16], [800, 16], [600, 20], [1440, 24]]) test(`daily lists fill their card without covering rows at ${width}px / ${fontSize}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 1000 });
   await marketMocks(page);
   await page.route(apiPrefix('market/investor-flow'), route => route.fulfill({ json: {
     date: '20260909', markets: {}, daily: Array.from({ length: 20 }, (_, i) => ({
@@ -173,26 +198,55 @@ test('daily list keeps its header and total visible while dates scroll', async (
       markets: { KOSPI: { foreign: i * 100, institution: -i * 10 } },
     })),
   } }));
+  await page.route(apiPrefix('market/program'), route => route.fulfill({ json: {
+    markets: { KOSPI: Array.from({ length: 20 }, (_, i) => ({
+      t: `202608${String(i + 1).padStart(2, '0')}000000`,
+      arb_net_eok: i * 100, non_arb_net_eok: -i * 10, total_net_eok: i * 90,
+    })) },
+  } }));
   await page.goto('/market');
-  await page.getByRole('group', { name: '수급 표시 구간', exact: true }).getByRole('button', { name: '일별', exact: true }).click();
-  const table = page.getByRole('table', { name: '투자자 일별 수급 · 단위 억원' });
-  await expect(table.locator('.daily-net-rows [role="row"]').first()).toContainText('08/20');
-  const viewport = page.getByRole('region', { name: '투자자 일별 수급 목록 스크롤' });
-  await viewport.scrollIntoViewIfNeeded();
-  const metrics = () => viewport.evaluate(el => ({
-    header: el.querySelector('.daily-net-heading')!.getBoundingClientRect().top,
-    footer: el.querySelector('.daily-net-total')!.getBoundingClientRect().bottom,
-    overflow: el.scrollWidth - el.clientWidth,
-  }));
-  const before = await metrics();
-  await viewport.evaluate(el => { el.scrollTop = el.scrollHeight; });
-  const after = await metrics();
-  // scrollTop is rounded to CSS pixels, while row heights may be fractional.
-  expect(Math.abs(after.header - before.header)).toBeLessThan(1);
-  expect(Math.abs(after.footer - before.footer)).toBeLessThan(1);
-  expect(after.overflow).toBeLessThanOrEqual(1);
-  expect(before.overflow).toBeLessThanOrEqual(1);
-  await expect(table.locator('.daily-net-rows [role="row"]').last()).toBeInViewport();
+  await page.evaluate(fontSize => { document.documentElement.style.fontSize = `${fontSize}px`; }, fontSize);
+  for (const [modeLabel, label, bodyClass] of [
+    ['수급 표시 구간', '투자자 일별 수급', '.market-investor-body'],
+    ['프로그램 표시 구간', '코스피 프로그램 일별 수급', '.market-program-body'],
+  ]) {
+    await page.getByRole('group', { name: modeLabel, exact: true }).getByRole('button', { name: '일별', exact: true }).click();
+    const table = page.getByRole('table', { name: `${label} · 단위 억원` });
+    const viewport = page.getByRole('region', { name: `${label} 목록 스크롤` });
+    await expect(viewport.getByRole('row').first()).toContainText('08/20');
+    await viewport.scrollIntoViewIfNeeded();
+    const metrics = () => table.evaluate(el => ({
+      header: el.querySelector('.daily-net-heading')!.getBoundingClientRect().top,
+      footer: el.querySelector('.daily-net-total')!.getBoundingClientRect().bottom,
+      headerBottom: el.querySelector('.daily-net-heading')!.getBoundingClientRect().bottom,
+      footerTop: el.querySelector('.daily-net-total')!.getBoundingClientRect().top,
+      scrollTop: el.querySelector('[role="region"]')!.getBoundingClientRect().top,
+      scrollBottom: el.querySelector('[role="region"]')!.getBoundingClientRect().bottom,
+      lastRowBottom: el.querySelector('.daily-net-rows')!.lastElementChild!.getBoundingClientRect().bottom,
+      overflow: el.scrollWidth - el.clientWidth,
+    }));
+    const before = await metrics();
+    expect(before.headerBottom).toBeLessThanOrEqual(before.scrollTop);
+    expect(before.footerTop).toBeGreaterThanOrEqual(before.scrollBottom);
+    await viewport.focus();
+    await viewport.press('End');
+    // Scrolling rounds to CSS pixels, while row heights can be fractional.
+    await expect(viewport.getByRole('row').last()).toBeInViewport({ ratio: 0.99 });
+    const after = await metrics();
+    expect(after.lastRowBottom).toBeLessThanOrEqual(after.scrollBottom + 1);
+    expect(Math.abs(after.header - before.header)).toBeLessThan(1);
+    expect(Math.abs(after.footer - before.footer)).toBeLessThan(1);
+    expect(after.overflow).toBeLessThanOrEqual(1);
+    const body = page.locator(bodyClass);
+    expect(await body.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+    if (modeLabel === '수급 표시 구간') {
+      const bounds = await body.boundingBox();
+      expect(Math.abs(after.footer - (bounds!.y + bounds!.height))).toBeLessThan(1);
+    }
+    await viewport.press('Home');
+    await expect(viewport.getByRole('row').first()).toBeInViewport({ ratio: 0.99 });
+    await body.screenshot({ path: testInfo.outputPath(`${modeLabel}-daily.png`) });
+  }
 });
 
 test('investor flow refreshes every ten seconds after 15:30 and recovers from API failure', async ({ page }) => {

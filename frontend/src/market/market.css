@@ -3,12 +3,16 @@
 .market-indices-five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .market-indices-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .market-main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
-.market-context { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.market-context { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
 .market-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .market-ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .market-desk > * { flex-shrink: 0; }
 .market-desk .market-card-header h2 { font-size: var(--text-base); }
 .market-context .market-trade-body { grid-template-columns: minmax(0, 1fr); }
+/* Share the trade-value plot height across all three cards and density settings. */
+.market-context-chart { height: 7rem; }
+.market-context-chart > svg { height: 100%; }
+.market-context-chart > svg :is(path, line) { vector-effect: non-scaling-stroke; }
 .market-program-body > .ui-segmented, .market-context .market-card > .ui-segmented,
 .market-ranks .market-card > .ui-segmented { align-self: flex-start; max-width: 100%; }
 .market-flow-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-md); padding: var(--space-sm) 0 var(--space-md); }
@@ -54,12 +58,22 @@
 
 .daily-net-list {
   height: 10rem;
+}
+.daily-net-table {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+}
+.daily-net-scroll {
   overflow: auto;
   overscroll-behavior: contain;
+}
+.daily-net-scroll, .daily-net-heading, .daily-net-total {
+  overflow-y: auto;
   scrollbar-gutter: stable;
 }
 .daily-net-list-compact { height: 8rem; }
-.daily-net-list:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.daily-net-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .daily-net-row {
   display: grid;
   grid-template-columns: var(--daily-columns);
@@ -70,7 +84,12 @@
 .daily-net-row > * { white-space: nowrap; min-width: 0; }
 .daily-net-rows .daily-net-row { border-bottom: 1px solid var(--border); }
 .daily-net-rows .daily-net-row:last-child { border-bottom: 0; }
-.daily-net-heading { position: sticky; top: 0; z-index: 2; background: var(--bg); }
-.daily-net-total { position: sticky; bottom: 0; z-index: 2; background: var(--bg); border-top: 1px solid var(--border); }
+.daily-net-total { border-top: 1px solid var(--border); }
+
+/* Use the reserved daily-card space instead of leaving a fixed-height list
+   above an empty lower half. Keep scrolling inside the data rows. */
+.market-investor-body > .market-investor-daily { flex: 1; min-height: 0; }
+.market-investor-daily > * { flex-shrink: 0; }
+.market-investor-daily > .daily-net-list { flex: 1; min-height: 0; height: auto; }
 
 .market-investor-body details[open] { max-height: 6rem; overflow-y: auto; }

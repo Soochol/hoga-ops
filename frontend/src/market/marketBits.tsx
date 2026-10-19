@@ -49,6 +49,7 @@ type Series = { color: string; values: (number | null)[]; observed?: boolean[] }
 /** 다계열 누적 라인 — delta 배열을 누적해 그린다. 0 기준선 공유. */
 export function CumLinesChart({
   series,
+  className = '',
   width = 300,
   height = 96,
   labels,
@@ -59,6 +60,7 @@ export function CumLinesChart({
   names?: string[];
   unit?: string;
   series: Series[];
+  className?: string;
   width?: number;
   height?: number;
 }) {
@@ -77,7 +79,7 @@ export function CumLinesChart({
   const path = (s: number[]) =>
     s.map((v, i) => `${i === 0 ? 'M' : 'L'}${px(i).toFixed(1)},${py(v).toFixed(1)}`).join(' ');
   return (
-    <div className="relative">
+    <div className={`relative ${className}`}>
     <svg
       width="100%"
       height={height}
@@ -113,6 +115,7 @@ export function CumLinesChart({
    위한 것이고, 넘기지 않으면 `px()` 의 클램프가 창 밖 표본을 양 끝에 겹쳐 쌓는다. */
 export function SessionLinesChart({
   series,
+  className = '',
   sessionStartSec = 9 * 3600,
   sessionEndSec = 15.5 * 3600,
   height = 96,
@@ -121,6 +124,7 @@ export function SessionLinesChart({
   gaps = [],
 }: {
   series: { color: string; points: { sec: number; v: number | null }[] }[];
+  className?: string;
   sessionStartSec?: number;
   sessionEndSec?: number;
   height?: number;
@@ -153,7 +157,7 @@ export function SessionLinesChart({
     return d.trim();
   };
   return (
-    <div className={names ? 'relative mb-3xl' : 'relative'}>
+    <div className={`${names ? 'relative mb-3xl' : 'relative'} ${className}`}>
     <svg
       width="100%"
       height={height}

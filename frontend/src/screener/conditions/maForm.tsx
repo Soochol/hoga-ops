@@ -27,6 +27,5 @@ export function MaForm({ params, onChange }: { params: MaParams; onChange: (p: M
     <ConditionChoice label="이평선 관계" value={params.relation} onChange={relation => onChange({ ...params, relation })}
       options={[['above', '이평선 이상 ≥'], ['below', '이평선 이하 ≤']]} />
     <QuickValues values={[5, 20, 60, 120]} unit="봉" onChange={period => onChange({ ...params, period })} />
-    <p className="condition-help">선택한 기준가격과 같은 가격의 단순 이동평균(SMA)을 비교합니다. 동률을 포함합니다.</p>
   </CandleSettings>;
 }

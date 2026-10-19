@@ -340,7 +340,7 @@ function StockDaily({
     return <EmptyNote>확정 이력이 아직 없습니다. 장 마감 뒤 일일 배치가 하루씩 채웁니다.</EmptyNote>;
   }
   return (
-    <div className="flex flex-col gap-2xs">
+    <div className="market-investor-daily flex flex-col gap-2xs">
       <ModeSwitch value={days} onChange={setDays} label="투자자 일별 기간" options={[['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일']]} />
       <p className="text-2xs text-fg-dim">요청 {days}거래일 · 제공 {daily.length}거래일 · {daily[0]?.date}–{daily.at(-1)?.date}</p>
       <p className="text-xs text-fg-dim">단위: 억원 · + 순매수 / − 순매도 · 최신순</p>

@@ -2,7 +2,7 @@ import { useId, useState, type DragEvent } from 'react';
 import type { ConditionLeaf } from '../api/screener';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { catalogEntry } from './catalog';
-import { conditionDescription, conditionScope } from './conditionDescription';
+import { conditionScope } from './conditionScope';
 import './ConditionEditor.css';
 
 export function ConditionRow({
@@ -30,7 +30,6 @@ export function ConditionRow({
   const ParamForm = entry.ParamForm;
   const [expanded, setExpanded] = useState(true);
   const editorId = useId();
-  const summary = conditionDescription(leaf);
   return (
     <div role="group" aria-label={`${entry.label} 조건`} onDragOver={onDragOver} onDrop={onDrop}
       className="screener-condition" data-dragging={dragging || undefined}>
@@ -48,9 +47,8 @@ export function ConditionRow({
           onClick={() => setExpanded(value => !value)}>
           <span className="condition-heading">
             <span className="condition-name">{entry.label}</span>
-            {!expanded && <span className="condition-collapsed-summary font-data">{summary}</span>}
           </span>
-          {expanded && <span className="condition-scope">{conditionScope(leaf)}</span>}
+          <span className="condition-scope">{conditionScope(leaf)}</span>
           <ChevronIcon collapsed={!expanded} />
         </button>
         <button type="button" aria-label="조건 제거" onClick={onRemove}
@@ -60,7 +58,6 @@ export function ConditionRow({
         <div className="condition-editor-body">
           <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => onChange({ ...leaf, params } as ConditionLeaf)} />
         </div>
-        <p className="condition-summary" aria-live="polite">{summary}</p>
       </div>
     </div>
   );

@@ -34,7 +34,7 @@ function Tile({ name, points, base, samples, max, today, fetchedAt }: {
       <div aria-hidden="true" className="flex w-12 shrink-0 flex-col justify-between text-right font-data text-2xs text-fg-dim tabular-nums">
         <span>{eokToJoText(max)}</span><span>{eokToJoText(max / 2)}</span><span>0조</span>
       </div>
-      <div className="relative min-w-0 flex-1" style={{ height: '7rem' }}>
+      <div className="market-context-chart relative min-w-0 flex-1">
         <svg aria-hidden="true" className="h-full w-full" viewBox="0 0 600 100" preserveAspectRatio="none">
           {[0, 50, 100].map(y => <line key={y} x1="0" x2="600" y1={y} y2={y} stroke="var(--border)" vectorEffect="non-scaling-stroke" />)}
           {points.map((p, i) => <rect key={p.date} x={positions[i] * 600 - 600 / points.length * 0.34}

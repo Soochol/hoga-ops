@@ -35,8 +35,5 @@ export function TradeValuePeriodForm({ params, onChange }: {
     {historical && <Num label="봉당 최소 거래대금" ariaLabel="최소 거래대금(억)" suffix="억 원" min={0}
       value={params.min_eok} onChange={n => onChange({ ...params, min_eok: n ?? 0 })} />}
     <QuickValues values={[100, 500, 1000]} unit="억" onChange={min_eok => onChange({ ...params, min_eok })} />
-    <p className="condition-help">기간 중 개별 봉 하나라도 기준금액 이상 · 기간 전체 합계 조건이 아닙니다.
-      거래대금 추정치 · 주·월봉은 일별 추정치 합계, 분·일봉은 OHLC 평균가 × 거래량입니다.
-      {historical && !('timeframe' in params) && ' 기존 일봉 날짜 조건은 과거 일봉 보충 수집을 지원합니다.'}</p>
   </CandleSettings>;
 }
