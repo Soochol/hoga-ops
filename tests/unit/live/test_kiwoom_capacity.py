@@ -33,6 +33,112 @@ def _sched(**kw) -> KiwoomCapacityScheduler:
     return KiwoomCapacityScheduler(**kw)
 
 
+async def test_background_saturation_leaves_bounded_capacity_for_visible_reads() -> None:
+    """A slow poll must not hold all execution slots when a symbol changes."""
+    s = _sched()
+    background_full, visible_full = asyncio.Event(), asyncio.Event()
+    release_background, release_visible = asyncio.Event(), asyncio.Event()
+    started_background: list[int] = []
+    started_visible: list[int] = []
+
+    async def background(index):
+        started_background.append(index)
+        if len(started_background) == 4:
+            background_full.set()
+        await release_background.wait()
+
+    async def visible(index):
+        started_visible.append(index)
+        if len(started_visible) == 8:
+            visible_full.set()
+        await release_visible.wait()
+
+    tasks = [asyncio.create_task(s.submit(
+        key=("poll", i), api_id=f"poll-{i}", priority="background",
+        call=lambda _, i=i: background(i),
+    )) for i in range(12)]
+    try:
+        await asyncio.wait_for(background_full.wait(), 1)
+        tasks.extend(asyncio.create_task(s.submit(
+            key=("visible", i), api_id=f"visible-{i}", priority="user_visible",
+            call=lambda _, i=i: visible(i),
+        )) for i in range(9))
+        await asyncio.wait_for(visible_full.wait(), 1)
+        assert len(started_background) == 4
+        assert len(started_visible) == 8
+        assert len(s._started) == 12
+        assert s.snapshot()["queued"] == 9  # 8 background + 1 visible
+
+        # On completion, the queued visible read wins over older polls.
+        release_visible.set()
+        await asyncio.gather(*tasks[12:])
+        assert started_visible == list(range(9))
+        assert len(started_background) == 4
+        release_background.set()
+        await asyncio.gather(*tasks)
+        assert len(started_background) == 12
+        assert not s._started_background
+    finally:
+        await s.aclose()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def test_reserved_background_can_be_promoted_without_duplicate_execution() -> None:
+    s = _sched(workers=2, background_workers=1)
+    entered, release = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def blocked(_):
+        entered.set()
+        await release.wait()
+
+    async def shared(_):
+        nonlocal calls
+        calls += 1
+        return "shared"
+
+    blocker = asyncio.create_task(s.submit(
+        key="poll", api_id="poll", priority="background", call=blocked,
+    ))
+    await asyncio.wait_for(entered.wait(), 1)
+    original = asyncio.create_task(s.submit(
+        key="shared", api_id="shared", priority="background", call=shared,
+    ))
+    await asyncio.sleep(0)
+    promoted = asyncio.create_task(s.submit(
+        key="shared", api_id="shared", priority="user_visible", call=shared,
+    ))
+    try:
+        assert await asyncio.wait_for(promoted, 1) == "shared"
+        assert await original == "shared"
+        assert calls == 1
+        assert len(s._started_background) == 1
+    finally:
+        release.set()
+        await blocker
+        await s.aclose()
+
+
+async def test_failed_background_releases_reservation_for_next_poll() -> None:
+    s = _sched(workers=2, background_workers=1)
+
+    async def failed(_):
+        raise ValueError("failed poll")
+
+    async def success(_):
+        return "next"
+
+    try:
+        with pytest.raises(ValueError, match="failed poll"):
+            await s.submit(key="failed", api_id="a", priority="background", call=failed)
+        assert await asyncio.wait_for(s.submit(
+            key="next", api_id="b", priority="background", call=success,
+        ), 1) == "next"
+        assert not s._started_background
+    finally:
+        await s.aclose()
+
+
 # === 기계 ② 중복제거 =========================================================
 
 async def test_same_key_joins_one_inflight_call() -> None:
