@@ -932,6 +932,29 @@ describe('호가 주문', () => {
     expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('66,000');
   });
+  it('설정 목차를 이동해도 오른쪽의 모든 설정과 편집 중인 값은 계속 표시한다', () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    const dialog = screen.getByRole('dialog', { name: '주문 설정' });
+    const navigation = within(dialog).getByRole('navigation', { name: '주문 설정 목차' });
+    const quantity = within(dialog).getByRole('spinbutton', { name: '수량 프리셋 1' });
+    fireEvent.change(quantity, { target: { value: '25' } });
+    for (const name of ['주문 알림', '호가 표시', '주문 입력']) {
+      const button = within(navigation).getByRole('button', { name });
+      fireEvent.click(button);
+      expect(button).toHaveAttribute('aria-current', 'true');
+      for (const section of ['주문 입력', '호가 표시', '주문 알림']) {
+        expect(within(dialog).getByRole('region', { name: section })).toBeVisible();
+        expect(within(dialog).getByRole('heading', { name: section })).toBeVisible();
+      }
+      expect(quantity).toBeVisible();
+      expect(quantity).toHaveValue(25);
+      expect(within(dialog).getByRole('checkbox', { name: '내 평단가 표시' })).toBeVisible();
+      expect(within(dialog).getByRole('checkbox', { name: '주문접수 소리' })).toBeVisible();
+    }
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+
   it('프리셋은 즉시 저장하고 빈칸·범위 밖 값은 이전 값을 유지하며 다른 항목은 저장한다', async () => {
     const view = show();
     const edit = () => fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));

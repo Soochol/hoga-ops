@@ -1507,13 +1507,18 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
     expect(panel.y).toBeCloseTo(anchor.y + anchor.height + 4, 0);
     expect(panel.x + panel.width).toBeCloseTo(anchor.x + anchor.width, 0);
     await dialog.screenshot({ path: testInfo.outputPath(`order-settings-${theme}.png`) });
-    expect(panel.width).toBe(420);
-    expect(panel.height).toBeLessThan(240);
+    expect(panel.width).toBe(520);
+    expect(panel.height).toBeLessThan(440);
     const navigation = dialog.getByRole('navigation', { name: '주문 설정 목차' });
-    expect((await navigation.boundingBox())!.width).toBe(84);
+    expect((await navigation.boundingBox())!.width).toBe(96);
+    for (const name of ['주문 입력', '호가 표시', '주문 알림']) {
+      await expect(dialog.getByRole('region', { name, exact: true })).toBeInViewport();
+      await expect(dialog.getByRole('heading', { name, exact: true })).toBeInViewport();
+    }
     await navigation.getByRole('button', { name: '주문 알림', exact: true }).click();
     await expect(navigation.getByRole('button', { name: '주문 알림', exact: true })).toHaveAttribute('aria-current', 'true');
-    await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
+    await expect(dialog.getByRole('spinbutton')).toHaveCount(6);
+    await expect(dialog.getByRole('checkbox', { name: '내 평단가 표시' })).toBeInViewport();
     await expect(dialog.getByRole('button', { name: '소리 들어보기' })).toBeInViewport();
     await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeInViewport();
     await navigation.getByRole('button', { name: '주문 입력', exact: true }).click();
@@ -1558,6 +1563,20 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
   await page.setViewportSize({ width: 320, height: 360 });
   await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeInViewport();
   await expect(dialog.getByRole('navigation', { name: '주문 설정 목차' })).toBeInViewport();
+  const navigation = dialog.getByRole('navigation', { name: '주문 설정 목차' });
+  const body = dialog.locator('.order-settings-body');
+  await expect.poll(() => body.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  const sound = navigation.getByRole('button', { name: '주문 알림', exact: true });
+  await sound.focus();
+  await page.keyboard.press('Enter');
+  await expect(sound).toHaveAttribute('aria-current', 'true');
+  await expect(dialog.getByRole('button', { name: '소리 들어보기' })).toBeInViewport();
+  await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  await expect(dialog.getByRole('spinbutton')).toHaveCount(6);
+  await body.evaluate(el => { el.scrollTop = 0; });
+  await expect(navigation.getByRole('button', { name: '주문 입력', exact: true })).toHaveAttribute('aria-current', 'true');
+  await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('31');
+  await expect(dialog).toBeVisible();
   await dialog.screenshot({ path: testInfo.outputPath('order-settings-short-viewport.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
   await expect(dialog).toHaveCount(0);

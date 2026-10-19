@@ -138,7 +138,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     setSettingsDraft(null);
     settingsButtonRef.current?.focus({ preventScroll: true });
   }, []);
-  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 420);
+  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 520);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
