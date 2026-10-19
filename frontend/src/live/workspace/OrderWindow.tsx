@@ -3,7 +3,6 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { useQueryClient } from '@tanstack/react-query';
 import { nanoid } from 'nanoid';
 import { createPortal } from 'react-dom';
-import { InlineState } from '../../ui/DataSurface';
 import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { useTextTooltip } from '../../ui/useTextTooltip';
@@ -41,7 +40,7 @@ import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel'
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
 import { useOrderQuantity } from './useOrderQuantity';
-import { newOrderAvailabilityIssue, newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
+import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderNoticeToast, type OrderReceipt } from './OrderNoticeToast';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import './OrderWindow.css';
@@ -125,7 +124,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const vi = useLiveViStatus(code, effectiveVenue);
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [lockedBook, lockBook] = useState<OrderbookSnapshot | null>(null);
-  const [dragInlineIssue, setDragInlineIssue] = useState<OrderNotice | null>(null);
   const book = lockedBook ?? snapshot;
   const deltaBadges = useOrderbookDeltaBadges(live.ob, !lockedBook && !storedLadder);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
@@ -144,7 +142,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const [noticeState, setNoticeState] = useState<(OrderNotice & { account: TradingAccountId }) | null>(null);
   const notice = noticeState?.account === account ? noticeState : null;
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
-  const [lastRejection, setLastRejection] = useState<{ account: TradingAccountId; notice: OrderNotice } | null>(null);
   function setNotice(value: string | OrderNotice | null) {
     if (value) setReceipt(null);
     setNoticeState(value == null ? null : {
@@ -246,12 +243,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       : activeAccount?.order_enabled === false ? activeAccount.blocked_reason ?? '이 계좌의 주문 경로를 확인하세요.' : null,
   };
   const creationIssue = newOrderIssue(availability);
-  const issueId = useId();
-  // Freeze the status row's geometry along with the book: inserting a "dragging"
-  // status here moves the ladder under the pointer and can select the wrong price.
-  const inlineIssue = lockedBook ? dragInlineIssue : newOrderAvailabilityIssue(availability) ?? (lastRejection?.account === account ? {
-    ...lastRejection.notice, title: '직전 주문 접수 불가',
-  } : null);
   const asks = book?.ask.filter(level => Number.isFinite(level.price) && level.price > 0).reverse() ?? [];
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
   const prices = asks.concat(bids);
@@ -270,7 +261,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const currentPrice = quote?.price ?? null;
   const canConvertAmount = currentPrice != null && Number.isSafeInteger(currentPrice) && currentPrice > 0;
   function applyPreset(value: number) {
-    setLastRejection(null);
     if (!amountPresets) { onQuantityChange(value); setNotice(null); return; }
     const converted = canConvertAmount ? quantityForAmount(value, currentPrice) : null;
     if (converted == null || converted > MAX_ORDER_QUANTITY) {
@@ -402,7 +392,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       setReceipt(null);
       const failure = groupFailure ?? orderFailure(error, label);
       setNotice(failure);
-      if (next.type === 'create' && !failure.retry) setLastRejection({ account, notice: failure });
       if (next.type === 'group') closeAction();
       // A failure never opens the removed new-order editor. Retry retains its ID.
       setFailedRequest(failure.retry ? { action: retryAction, high } : null);
@@ -417,7 +406,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     const qty = next.quantity ?? (next.order ? orderRemainder(next.order) : 0);
     const high = changesPrice(next) && next.price * qty >= HIGH_VALUE_WON;
     setFailedRequest(null); setNotice(null);
-    setLastRejection(null);
     if (high) setAction(next);
     else { closeAction(); void submit(next); }
   }
@@ -445,7 +433,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     const targets = candidates.filter(order => editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
     if (e.button !== 0 || !targets.length || !ready) return;
     e.stopPropagation();
-    setDragInlineIssue(inlineIssue);
     drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
     lockBook(snapshot ?? null); e.currentTarget.setPointerCapture(e.pointerId);
   }
@@ -510,7 +497,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}
       aria-disabled={!canCreate && !canDrag}
-      aria-describedby={inlineIssue ? issueId : undefined}
       onDoubleClick={() => { if (!suppressClick.current) create(side, price); }}
       onKeyDown={event => {
         if (creationIssue && !event.repeat && (event.key === 'Enter' || event.key === ' ')) {
@@ -569,7 +555,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       {accounts.data && accounts.data.accounts.length > 1 ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
         onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
           if (next) onAccountChange(next.account_seq);
-          closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); setLastRejection(null); }}>
+          closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
       </select> : <span className="order-account-label text-fg-dim" title={accountDisplayLabel(activeAccount?.label)}>{accountDisplayLabel(activeAccount?.label)}</span>}
       {routes && <span className="text-fg-dim" aria-label="주문 경로">시세 {venue} · 주문 {activeAccount?.order_enabled === false ? '검증 대기' : orderRoute}</span>}
@@ -601,7 +587,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
             if (!canFillHoldingQuantity || sellableQuantity == null) return;
             onQuantityChange(sellableQuantity);
             setNotice(null);
-            setLastRejection(null);
             quantityTip.hide();
           }}
           onMouseEnter={e => quantityTip.show(e.currentTarget)} onMouseLeave={quantityTip.hide}
@@ -639,7 +624,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
           {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || !!lockedBook}
             onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
         </div>
-        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="1" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); setLastRejection(null); }} /><span className="order-meta">주</span></label>
+        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="1" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
         <div className="order-quantity-presets">
           {presets.map((value, index) => <button type="button" key={index} aria-pressed={amountPresets ? undefined : quantity === value}
             disabled={amountPresets && !canConvertAmount}
@@ -653,9 +638,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         </span>
       </div>
     </div>
-    {inlineIssue && <InlineState id={issueId} aria-label="신규 주문 상태" tone={inlineIssue.tone} className="order-availability">
-      <strong>{inlineIssue.title}</strong><span>{inlineIssue.message}</span>
-    </InlineState>}
     {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="order-info-popover order-surface font-data" style={infoStyle}>
       <OrderSurfaceHeading closeLabel="종목 정보 닫기" onClose={closeInfo}>종목 정보</OrderSurfaceHeading>
       <div className="order-info-body">{renderSummary(264)}</div>

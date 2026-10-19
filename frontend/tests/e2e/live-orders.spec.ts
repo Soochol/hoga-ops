@@ -212,14 +212,20 @@ test('주문 API의 거래시간 거절은 공통 경고에 사유를 표시하�
     attempts++;
     return route.fulfill({ status: 422, json: { detail: { code: 'order-hours-closed', message: '현재 해당 주문을 접수할 수 없는 시간입니다.' } } });
   });
-  await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
+  const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const beforeSubmit = await buy.boundingBox();
+  await buy.dblclick();
   const toast = page.getByRole('alert', { name: '주문 알림', exact: true });
   await expect(toast.getByText('주문 접수 불가', { exact: true })).toBeVisible();
   await expect(toast).toContainText('현재 해당 주문을 접수할 수 없는 시간입니다.');
   await expect(toast.getByRole('button', { name: '같은 요청 다시 확인' })).toHaveCount(0);
-  await expect(window.getByRole('status', { name: '신규 주문 상태' })).toContainText('직전 주문 접수 불가');
+  await expect(window.getByRole('status', { name: '신규 주문 상태' })).toBeHidden();
+  expect(await buy.boundingBox()).toEqual(beforeSubmit);
   expect(attempts).toBe(1);
   await page.screenshot({ path: testInfo.outputPath('order-hours-closed.png') });
+  await toast.getByRole('button', { name: '주문 알림 닫기' }).click();
+  await expect(toast).toBeHidden();
+  expect(await buy.boundingBox()).toEqual(beforeSubmit);
 });
 
 test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
@@ -269,11 +275,16 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   });
   const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   const receipt = page.getByRole('status', { name: '주문 접수 알림' });
+  const beforeSubmit = await buy.boundingBox();
   await buy.dblclick();
   await expect(receipt).toHaveText('주문 요청 중');
+  await expect(window.getByRole('status', { name: '신규 주문 상태' })).toBeHidden();
+  expect(await buy.boundingBox()).toEqual(beforeSubmit);
   expect(await soundStates()).toEqual([]);
   accept();
   await expect(receipt).toHaveText('주문 요청 접수됨');
+  await expect(window.getByRole('status', { name: '신규 주문 상태' })).toBeHidden();
+  expect(await buy.boundingBox()).toEqual(beforeSubmit);
   await expect.poll(soundStates).toEqual(['running']);
 
   await page.evaluate(async () => {
