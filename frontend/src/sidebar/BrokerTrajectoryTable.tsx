@@ -7,7 +7,8 @@ import { brokerDisplayShort, isForeignBroker } from './brokerDisplayNames';
 import { priceDirClass } from '../ui/priceDir';
 import { hoverMsFromClientX } from './sparklineHover';
 import { SidebarState } from './SidebarSurface';
-import { netAtCursor } from './BrokerTrajectoryTableHelpers';
+import { brokerFigureSizingValues, formatBrokerNet, netAtCursor } from './BrokerTrajectoryTableHelpers';
+import './BrokerTrajectoryTable.css';
 
 
 /** Gap detection threshold (ms). Consecutive points farther apart are
@@ -50,6 +51,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
         .filter((entry) => entry.points.length > 0),
     [series, venue],
   );
+  const sizingValues = useMemo(() => brokerFigureSizingValues(rows), [rows]);
   // Common time domain across all displayed brokers — keeps cursor marker
   // X positions aligned across rows.
   //
@@ -108,11 +110,10 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
   );
 
   return (
-    // 합계행을 창 바닥에 붙이려면 flex 기둥이 필요하다 — sticky 만으로는 스크롤이
-    // 있을 때(내용이 넘칠 때)만 바닥에 붙고, 창을 키워 여유가 생기면 마지막 행
-    // 바로 아래에 떠 버린다. min-h-full 이라 짧을 땐 창을 채우고 길면 늘어난다.
+    // Shared grid tracks align every trajectory and figure, including the footer.
+    // The middle spacer fills tall windows; sticky keeps the footer in short ones.
     <div
-      className="flex min-h-full flex-1 flex-col font-data text-sm"
+      className="broker-table grid min-h-full flex-1 font-data text-sm"
       onMouseEnter={() => setPointerInside(true)}
       onMouseLeave={() => {
         setPointerInside(false);
@@ -121,17 +122,20 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
     >
       {/* 열 헤더(거래원/당일 궤적/순매수(주)) 없음 — 창 제목이 이미 "거래원"을 말하고
           세 열의 정체(이름·스파크라인·부호 있는 숫자)가 형태로 자명하다는 사용자
-          판단(2026-07-29). 열 폭은 아래 행 grid 가 스스로 들고 있어 정렬은 불변. */}
+          판단(2026-07-29). 모든 행이 같은 grid 열을 공유한다. */}
+      <div className="broker-table-body">
+      <div aria-hidden="true" className="broker-number-sizer">
+        {[...sizingValues, '—'].map((value, index) => <span key={index} data-figure={value} />)}
+      </div>
       {rows.map((entry, rowIndex) => {
         const net = nets[rowIndex];
         return (
-          // shrink-0 — flex 기둥의 자식이라 기본 shrink 로 행 높이가 눌릴 수 있다.
-          <div key={entry.broker} className="shrink-0">
+          <div key={entry.broker} className="broker-row-group">
             {rowIndex === sellStart && sellStart > 0 && (
               <div
                 data-testid="broker-sell-divider"
                 aria-hidden
-                className="flex items-center px-2.5 py-0.5"
+                className="broker-sell-divider flex items-center py-0.5"
               >
                 {/* 라벨('순매도') 제거 — 경계 자체는 남긴다. 위=매수우위·아래=매도우위
                     라는 정렬 규칙을 읽어내는 유일한 단서라, 선까지 지우면 표가
@@ -141,9 +145,9 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
             )}
             <div
               data-testid="broker-row"
-              className="grid grid-cols-[78px_1fr_88px] gap-2 px-2.5 py-[3px] items-center"
+              className="broker-row grid py-[3px] items-center"
             >
-              <span className="truncate" title={entry.broker}>
+              <span className="whitespace-nowrap" title={entry.broker}>
                 {brokerDisplayShort(entry.broker)}
                 {foreignFlags[rowIndex] && (
                   <span
@@ -163,14 +167,13 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
               />
               {/* 관측 전·0에도 막대 2px + 간격 1px를 예약한다. 커서 이동으로
                   막대가 토글돼도 행 높이와 스크롤 유무가 바뀌지 않아야 한다. */}
-              <span className="relative block pb-[3px] text-right">
+              <span className="broker-net relative block whitespace-nowrap pb-[3px] text-right">
                 {net == null ? (
                   // 커서가 첫 관측 이전(아직 등장 전) — 진짜 0과 구분해 표기한다.
                   <span data-testid="broker-net-preobs" className="text-fg-dimmer">—</span>
                 ) : (
                   <span className={priceDirClass(net)}>
-                    {net > 0 ? '+' : ''}
-                    {net.toLocaleString('ko-KR')}
+                    {formatBrokerNet(net)}
                   </span>
                 )}
                 {/* 규모 스트립 — 숫자 뒤 배경 바는 긴 값이 열을 채우면 가려져
@@ -193,22 +196,20 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
           </div>
         );
       })}
+      </div>
+      <div aria-hidden="true" className="broker-table-spacer" />
       {/* 합계행 배경은 창 본문(--bg-card)과 같은 값 — 밴드로 분리하지 않는다
           (2026-07-30 사용자 결정, #955 의 --bg-subtle 밴드 되돌림).
           sticky 라 배경 자체는 필수다: 투명하면 스크롤되는 행이 뒤로 비친다. */}
-      {/* mt-auto = 남는 세로 공간을 전부 위로 밀어 합계행을 창 바닥에 붙인다(footer).
-          sticky 와 역할이 갈린다: 여유가 있을 땐 mt-auto 가, 내용이 넘쳐 스크롤이
-          생기면 sticky 가 바닥을 지킨다. */}
-      <div className="sticky bottom-0 z-10 mt-auto flex shrink-0 items-center justify-between bg-bg-card px-2.5 py-1 text-2xs">
-        <span className="text-fg-dimmer">외국계 합계</span>
+      <div className="broker-footer sticky bottom-0 z-10 bg-bg-card py-1 text-2xs">
+        <span className="broker-footer-label whitespace-nowrap text-fg-dimmer">외국계 합계</span>
         {foreignObserved ? (
-          <span data-testid="broker-foreign-sum" className={priceDirClass(foreignSum)}>
-            {foreignSum > 0 ? '+' : ''}
-            {foreignSum.toLocaleString('ko-KR')}
+          <span data-testid="broker-foreign-sum" className={`whitespace-nowrap text-right ${priceDirClass(foreignSum)}`}>
+            {formatBrokerNet(foreignSum)}
           </span>
         ) : (
           // 관측된 외국계 창구가 없으면 0 이 아니라 — (0 은 "상쇄"로 오독된다).
-          <span data-testid="broker-foreign-sum" className="text-fg-dimmer">—</span>
+          <span data-testid="broker-foreign-sum" className="text-right text-fg-dimmer">—</span>
         )}
       </div>
     </div>

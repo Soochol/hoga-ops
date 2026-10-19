@@ -1,4 +1,36 @@
 import type { BrokerSeriesEntry } from '../api/types';
+import { isForeignBroker } from './brokerDisplayNames';
+
+const quantities = new Intl.NumberFormat('ko-KR');
+export function formatBrokerNet(value: number): string {
+  return `${value > 0 ? '+' : ''}${quantities.format(value)}`;
+}
+
+/** Reserve the full loaded range, including simultaneous foreign totals.
+ * Cursor movement then only changes text, never the shared column width. */
+export function brokerFigureSizingValues(rows: readonly BrokerSeriesEntry[]): string[] {
+  let min = 0, max = 0;
+  const foreignChanges = new Map<number, number>();
+  for (const row of rows) {
+    const foreign = isForeignBroker(row.broker);
+    let previous = 0;
+    for (const point of row.points) {
+      min = Math.min(min, point.net);
+      max = Math.max(max, point.net);
+      if (foreign) {
+        foreignChanges.set(point.ts_ms, (foreignChanges.get(point.ts_ms) ?? 0) + point.net - previous);
+        previous = point.net;
+      }
+    }
+  }
+  let total = 0;
+  for (const [, delta] of [...foreignChanges].sort(([a], [b]) => a - b)) {
+    total += delta;
+    min = Math.min(min, total);
+    max = Math.max(max, total);
+  }
+  return [formatBrokerNet(min), formatBrokerNet(max)];
+}
 
 
 /** Pure function. Binary-searches entry.points for the last ts <= cursorMs.
