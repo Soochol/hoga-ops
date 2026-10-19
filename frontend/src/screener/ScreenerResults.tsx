@@ -88,7 +88,8 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
       </div>
       <p className="pb-sm text-xs text-fg-dim">
         {mode === 'live' ? '가격·등락률: 현재 시세(마지막 수신값)' : '가격·등락률: 조회 당시 값 · 가격 아래 날짜는 조회 가격의 기준일'}
-        {' · '}거래대금: 조회 당시 추정치
+        {' · '}거래대금: 조회 당시 추정치(일봉 기준) · 등락률: 전일 종가 대비
+        {' · '}조건별 주기·비교 기준의 평가값은 CSV 발생 건에 저장
         {' · '}CSV에는 조회 당시 값과 현재 시세를 함께 저장
       </p>
       {scan.rows.length > 0 && filtered.length === 0 ? (

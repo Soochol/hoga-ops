@@ -14,7 +14,14 @@ function conditionParams(leaf: ConditionLeaf) {
       if ('mode' in leaf.params && leaf.params.record_period.unit !== 'bars') return leaf.params;
       return candleDefaults(leaf.params);
     }
-    case 'new_high': case 'new_high_today': case 'new_high_vol_today': return candleDefaults(leaf.params);
+    case 'trade_value_period':
+      return 'mode' in leaf.params ? ('timeframe' in leaf.params
+        ? { ...candleDefaults(leaf.params), timeframe: leaf.params.timeframe } : leaf.params) : candleDefaults(leaf.params);
+    case 'change_pct': {
+      const { change_reference, ...params } = leaf.params;
+      return candleDefaults({ ...params, ...(change_reference && change_reference !== 'previous_day' ? { change_reference } : {}) });
+    }
+    case 'trade_value': case 'new_high': case 'new_high_today': case 'new_high_vol_today': return candleDefaults(leaf.params);
     case 'ma': return candleDefaults({ ...leaf.params, source: leaf.params.source ?? 'close' });
     case 'high_off_peak': return candleDefaults({ ...leaf.params, side: leaf.params.side ?? 'within' });
     case 'ask_depth_new_high': case 'bid_depth_new_high':
@@ -43,5 +50,5 @@ export const screenerRequestKey = (request: ScanRequest) => JSON.stringify(canon
 
 export function isHistoricalCondition(leaf: ConditionLeaf): boolean {
   return (leaf.type === 'new_high_vol' && 'mode' in leaf.params && leaf.params.record_period.unit !== 'bars')
-    || (leaf.type === 'trade_value_period' && 'mode' in leaf.params);
+    || (leaf.type === 'trade_value_period' && 'mode' in leaf.params && !('timeframe' in leaf.params));
 }

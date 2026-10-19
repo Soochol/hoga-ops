@@ -7,6 +7,7 @@ No snapshot volume is added to an already cumulative candle.
 from __future__ import annotations
 
 import asyncio
+import bisect
 import calendar
 import datetime as dt
 import logging
@@ -17,7 +18,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_bar_price, screener_exclusions, trading_days
+from hoga.api import screener_bar_price, screener_bar_threshold, screener_exclusions, trading_days
 from hoga.api.models import (
     BarVolumeCoverage,
     BarVolumeCoverageItem,
@@ -26,7 +27,15 @@ from hoga.api.models import (
     HistoryDateRangeParams,
     ScreenerOccurrence,
 )
-from hoga.api.screener_bar_policy import CANDLE_TYPES, VOLUME_TYPES, lookback, needs_bars
+from hoga.api.screener_bar_policy import (
+    CANDLE_TYPES,
+    RANGE_PARAMS,
+    TRADE_VALUE_TYPES,
+    VOLUME_TYPES,
+    comparison_period,
+    lookback,
+    needs_bars,
+)
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR
 from hoga.api.screener_write_lock import screener_read_lock
 from hoga.live import kiwoom_access, kiwoom_minute_candles, kiwoom_rest_runtime, settings
@@ -51,7 +60,7 @@ def needs_daily_overlay(leaf, today: str) -> bool:
     if leaf.type in CANDLE_TYPES and getattr(leaf.params, "timeframe", "D").endswith("m"):
         return False
     if isinstance(leaf.params, HistoryDateRangeParams):
-        return isinstance(leaf.params, BarVolumeRangeParams) and leaf.params.end_date >= today
+        return isinstance(leaf.params, RANGE_PARAMS) and leaf.params.end_date >= today
     return True
 
 
@@ -65,6 +74,9 @@ class VolumeBar:
     high: float | None = None
     low: float | None = None
     close: float | None = None
+    trade_value_won: float | None = None
+    previous_day_close: float | None = None
+    previous_day_ms: int | None = None
 
 
 @dataclass
@@ -75,6 +87,10 @@ class Evaluation:
 
 def records(leaf, bars: list[VolumeBar], *, fetched_at_ms: int):
     """Each event uses its own trailing window; later bars never alter history."""
+    if leaf.type in TRADE_VALUE_TYPES:
+        return screener_bar_threshold.turnover_records(leaf, bars, fetched_at_ms=fetched_at_ms)
+    if leaf.type == "change_pct":
+        return screener_bar_threshold.change_records(leaf, bars, fetched_at_ms=fetched_at_ms)
     if leaf.type not in VOLUME_TYPES:
         return screener_bar_price.records(leaf, bars, fetched_at_ms=fetched_at_ms)
     p = leaf.params
@@ -152,7 +168,14 @@ def calendar_bars(values: dict[dt.date, int | VolumeBar], days: list[dt.date], *
         if rows and all(isinstance(row, VolumeBar) and screener_bar_price.valid_prices(row) for row in rows):
             prices = dict(open=rows[0].open, high=max(row.high for row in rows),
                           low=min(row.low for row in rows), close=rows[-1].close)
-        out.append(VolumeBar(_stamp(expected[0]), volume, is_open, valid, **prices))
+        estimates = [screener_bar_threshold.estimate(row) if isinstance(row, VolumeBar) else None for row in rows]
+        turnover = sum(estimates) if estimates and all(value is not None for value in estimates) else None
+        previous = bisect.bisect_left(days, expected[-1]) - 1
+        prior = values.get(days[previous]) if previous >= 0 else None
+        reference = (dict(previous_day_close=prior.close, previous_day_ms=_stamp(days[previous]))
+                     if isinstance(prior, VolumeBar) and prior.valid and screener_bar_price.valid_prices(prior) else {})
+        out.append(VolumeBar(_stamp(expected[0]), volume, is_open, valid, **prices,
+                             trade_value_won=turnover, **reference))
     return out
 
 
@@ -184,13 +207,13 @@ def _calendar_windows(days, timeframe, as_of):
 def _required_windows(leaf, days, as_of):
     p = leaf.params
     cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
-              if isinstance(p, BarVolumeRangeParams) else as_of)
+              if isinstance(p, RANGE_PARAMS) else as_of)
     windows = _calendar_windows(days, p.timeframe, cutoff)
-    if isinstance(p, BarVolumeRangeParams):
+    if isinstance(p, RANGE_PARAMS):
         candidates = [i for i, (expected, _, _) in enumerate(windows)
                       if p.start_date <= expected[0].isoformat() <= p.end_date]
-        return windows[max(0, candidates[0] - p.record_period.value + 1):candidates[-1] + 1] if candidates else []
-    needed = lookback(leaf) + p.period - 1 + (not p.include_open_bar)
+        return windows[max(0, candidates[0] - comparison_period(leaf) + 1):candidates[-1] + 1] if candidates else []
+    needed = lookback(leaf) + comparison_period(leaf) - 1 + (not p.include_open_bar)
     return windows[-needed:]
 
 
@@ -199,6 +222,10 @@ def _daily_values(data_dir, codes, overlay, as_of, selected):
                   for day in trading_days.trading_days(data_dir))
     windows = [window for leaf in selected for window in _required_windows(leaf, days, as_of)]
     lower = min((window[0][0] for window in windows), default=as_of.date())
+    if any(getattr(leaf.params, "change_reference", None) == "previous_day" for leaf in selected):
+        prior = bisect.bisect_left(days, lower) - 1
+        if prior >= 0:
+            lower = days[prior]
     with screener_read_lock(data_dir / "screener"):
         data = (pl.scan_parquet(data_dir / "screener/daily_adjusted.parquet")
                 .filter(pl.col("code").is_in(codes) & (pl.col("date") <= as_of.date())
@@ -326,7 +353,7 @@ def _evaluate_calendar(result, selected, codes, values, days, as_of):
             events, complete = records(leaf, bars, fetched_at_ms=int(time.time() * 1000))
             result.events[leaf.id].extend((code, event) for event in events)
             required_end = (dt.date.fromisoformat(leaf.params.end_date)
-                            if isinstance(leaf.params, BarVolumeRangeParams) else as_of.date())
+                            if isinstance(leaf.params, RANGE_PARAMS) else as_of.date())
             if not complete or not days or days[-1] < required_end:
                 incomplete.add(code)
                 result.coverage.incomplete.append(BarVolumeCoverageItem(
@@ -361,8 +388,8 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None) -> 
 
         async def one(leaf, code):
             p = leaf.params
-            lower = dt.date.fromisoformat(p.start_date) if isinstance(p, BarVolumeRangeParams) else None
-            needed = (p.record_period.value if lower else p.period + lookback(leaf) - 1) + (not p.include_open_bar)
+            lower = dt.date.fromisoformat(p.start_date) if isinstance(p, RANGE_PARAMS) else None
+            needed = comparison_period(leaf) + (0 if lower else lookback(leaf) - 1) + (not p.include_open_bar)
             cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
                       if lower else as_of)
             key = (data_dir, code, p.timeframe, needed, lower, cutoff.date())
@@ -379,9 +406,10 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None) -> 
                             # Pages contain more bars than requested. Only the actual
                             # predicate window needs factors; today's window is factor 1.
                             data = [bar for bar in data if p.include_open_bar or not bar.is_open]
-                            data = data[-(p.period + lookback(leaf) - 1):]
-                            data, adjustment_reason = await screener_bar_price.adjusted_minutes(
-                                data_dir, code, data, (now.astimezone(KST) if now.tzinfo else
+                            if lower is None:
+                                data = data[-(comparison_period(leaf) + lookback(leaf) - 1):]
+                            data, adjustment_reason = await screener_bar_threshold.prepare_minutes(
+                                leaf, data, data_dir, code, (now.astimezone(KST) if now.tzinfo else
                                                        now.replace(tzinfo=KST)).strftime("%Y%m%d"))
             except TimeoutError:
                 return leaf, code, [], False, "fetch_timeout"

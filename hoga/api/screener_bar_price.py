@@ -11,7 +11,7 @@ from dataclasses import replace
 from hoga.api import screener_exclusions
 from hoga.api.models import BarPriceMatch, ScreenerOccurrence
 from hoga.api.screener_bar_policy import lookback
-from hoga.live import kiwoom_access, kiwoom_adjust_factors, kiwoom_rest_runtime
+from hoga.live import kiwoom_access, kiwoom_adjust_factors, kiwoom_rest_runtime, settings
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
@@ -29,6 +29,8 @@ def valid_prices(bar) -> bool:
 
 async def _load_factors(key, data_dir, code, anchor):
     try:
+        if settings.rest_bypass_enabled(data_dir):
+            return kiwoom_adjust_factors.AdjustFactors(anchor, (), ())
         client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
         if client is None:
             raise ValueError("수정계수 API 연결 설정 없음")

@@ -82,12 +82,12 @@ describe('catalog', () => {
   });
   it('summarize renders sublabels', () => {
     expect(CONDITION_CATALOG.new_high.summarize({ lookback: 200, period: 500 })).toBe('일봉 · 200·500');
-    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte', pct: 5 })).toBe('≥ 5%');
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte', pct: 5 })).toBe('일봉 · 전일 종가 대비 ≥ 5%');
     expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above' })).toBe('일봉 · 종가 ≥ MA20');
     expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'below' })).toBe('일봉 · 종가 ≤ MA20');
     expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above', source: 'open' })).toBe('일봉 · 시가 ≥ MA20');
     expect(CONDITION_CATALOG.new_high_today.summarize({ period: 200 })).toBe('일봉 · 최신 · 200봉 신고');
-    expect(CONDITION_CATALOG.trade_value_period.summarize({ lookback: 60, min_eok: 1000 })).toBe('60일내 ≥1000억');
+    expect(CONDITION_CATALOG.trade_value_period.summarize({ lookback: 60, min_eok: 1000 })).toBe('일봉 · 60봉내 ≥1000억 추정');
   });
   it('price_range default is a valid single bound', () => {
     const leaf = makeLeaf('price_range');
@@ -99,10 +99,10 @@ describe('catalog', () => {
     expect(CONDITION_CATALOG.price_range.summarize({ min: 1000, max: 50000 })).toBe('1000~50000원');
   });
   it('change_pct summarize never renders undefined', () => {
-    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'lte', pct: 3 })).toBe('≤ 3%');
-    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'between', lo: 2, hi: 5 })).toBe('2~5%');
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'lte', pct: 3 })).toBe('일봉 · 전일 종가 대비 ≤ 3%');
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'between', lo: 2, hi: 5 })).toBe('일봉 · 전일 종가 대비 2~5%');
     // between with bounds not yet set → neutral placeholder, no "undefined~undefined%"
-    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'between' })).toBe('사이');
-    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte' })).toBe('≥ %');
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'between' })).toBe('일봉 · 전일 종가 대비 사이');
+    expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte' })).toBe('일봉 · 전일 종가 대비 ≥ %');
   });
 });

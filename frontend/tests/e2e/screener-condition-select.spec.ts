@@ -32,7 +32,7 @@ test('saved-condition popup stays open and protects edits in page and rail workf
   await expect(page.getByRole('listbox')).toBeVisible();
   await expect(search).toBeFocused();
   await search.fill('4일');
-  await expect(page.getByRole('option')).toHaveCount(1);
+  await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1);
   await search.press('Enter');
   await expect(trigger).toContainText('4일 신고가');
   await expect(trigger).toBeFocused();
@@ -64,7 +64,7 @@ test('saved-condition popup stays open and protects edits in page and rail workf
 
   await trigger.click();
   await search.fill('장기 조건 24');
-  const longOption = page.getByRole('option');
+  const longOption = page.getByRole('listbox').getByRole('option');
   await expect(longOption).toHaveCount(1);
   await expect(longOption).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('condition-search-wide.png') });
@@ -81,7 +81,7 @@ test('saved-condition popup stays open and protects edits in page and rail workf
   await panelTrigger.click();
   await expect(search).toBeFocused();
   await search.fill('장기 조건 24');
-  await expect(page.getByRole('option')).toBeInViewport();
+  await expect(page.getByRole('listbox').getByRole('option')).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('condition-search-compact.png') });
   await search.press('Enter');
   await expect(panelTrigger).toHaveAttribute('title', saves.at(-1)!.name);
