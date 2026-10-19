@@ -1,0 +1,17 @@
+.order-window > .order-status-bar { min-width:0; }
+.order-status-bar { position:sticky; bottom:0; left:0; z-index:2; display:flex; align-items:center; flex:0 0 28px; height:28px; min-height:28px; max-height:28px; gap:6px; padding:0 8px; border-top:1px solid var(--border); background:var(--bg-card); color:var(--fg-dim); white-space:nowrap; overflow:hidden; font-size:var(--live-text-meta,var(--text-xs)); }
+.order-status-warn { color:var(--warn); }
+.order-status-error { color:var(--error); }
+.order-status-success { color:var(--success,var(--fg)); }
+.order-status-icon { display:inline-flex; align-items:center; justify-content:center; flex:0 0 14px; width:14px; height:14px; font-weight:500; }
+.order-status-bar [data-symbol]::before { content:attr(data-symbol); }
+.order-status-bar .order-status-message { display:block; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:left; border:0; border-radius:0; background:transparent; color:inherit; padding:0; font:inherit; }
+.order-status-bar .order-status-message:disabled { opacity:1; }
+.order-status-bar .order-status-action { flex-shrink:0; padding:1px 6px; font:inherit; color:var(--fg); background:transparent; border:1px solid var(--border); border-radius:var(--radius-sm); }
+.order-status-bar .order-status-dismiss { flex:0 0 18px; width:18px; padding:0; border:0; background:transparent; color:var(--fg-dim); font:inherit; }
+.order-status-detail { max-height:calc(100vh - 16px); overflow-y:auto; font-size:var(--live-text-data,var(--text-sm)); }
+.order-status-detail-body { display:flex; flex-direction:column; gap:10px; padding:12px; overflow-wrap:anywhere; }
+.order-status-detail-body p { margin:0; white-space:pre-wrap; }
+.order-status-detail-body label { display:flex; align-items:flex-start; gap:6px; }
+.order-status-detail-body input { flex-shrink:0; margin-top:3px; }
+.order-status-detail-body button { align-self:flex-start; font:inherit; }

@@ -170,7 +170,12 @@ for (const theme of ['obsidian', 'ledger']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
     // Keep the real mounted order window, at its supported compact width.
     await window.evaluate(el => { el.style.width = '504px'; });
+    await expect(window).toHaveClass(/order-compact/);
     const quantity = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+    const status = window.getByTestId('order-status-bar');
+    const beforeStatus = await status.boundingBox();
+    const beforeLadder = await window.locator('.order-ladder').boundingBox();
+    await expect(status).toHaveCSS('height', '28px');
     await quantity.fill('');
     const inline = window.getByRole('status', { name: '신규 주문 상태' });
     await expect(inline).toBeHidden();
@@ -188,13 +193,18 @@ for (const theme of ['obsidian', 'ledger']) {
     await expect(toast).toHaveCount(1);
     expect(commands).toHaveLength(0);
     await toast.hover();
-    await expect(toast.locator('.toast-progress')).toHaveCSS('animation-play-state', 'paused');
+    await expect(toast).toHaveCSS('height', '28px');
     await toast.getByRole('button', { name: '주문 알림 닫기' }).focus();
     await page.mouse.move(1, 1);
-    await expect(toast.locator('.toast-progress')).toHaveCSS('animation-play-state', 'paused');
+    await expect(toast.locator('.order-status-message')).toHaveCSS('white-space', 'nowrap');
+    expect(await status.boundingBox()).toEqual(beforeStatus);
+    expect(await window.locator('.order-ladder').boundingBox()).toEqual(beforeLadder);
+    await expect(page.locator('#toast-viewport .order-toast')).toHaveCount(0);
     await expect(inline).toBeHidden();
     await page.screenshot({ path: testInfo.outputPath(`order-unavailable-${theme}.png`) });
     await quantity.fill('5');
+    expect(await status.boundingBox()).toEqual(beforeStatus);
+    expect(await window.locator('.order-ladder').boundingBox()).toEqual(beforeLadder);
     await expect(inline).toBeHidden();
     await expect(buy).toBeEnabled();
     await buy.dblclick();
@@ -216,16 +226,65 @@ test('주문 API의 거래시간 거절은 공통 경고에 사유를 표시하�
   const beforeSubmit = await buy.boundingBox();
   await buy.dblclick();
   const toast = page.getByRole('alert', { name: '주문 알림', exact: true });
-  await expect(toast.getByText('주문 접수 불가', { exact: true })).toBeVisible();
+  await expect(toast).toContainText('주문 접수 불가');
   await expect(toast).toContainText('현재 해당 주문을 접수할 수 없는 시간입니다.');
   await expect(toast.getByRole('button', { name: '같은 요청 다시 확인' })).toHaveCount(0);
   await expect(window.getByRole('status', { name: '신규 주문 상태' })).toBeHidden();
   expect(await buy.boundingBox()).toEqual(beforeSubmit);
   expect(attempts).toBe(1);
+  await toast.getByRole('button', { name: '주문 알림 상세 보기' }).click();
+  const details = page.getByRole('dialog', { name: '주문 알림 상세' });
+  await expect(details).toContainText('현재 해당 주문을 접수할 수 없는 시간입니다.');
+  expect(await buy.boundingBox()).toEqual(beforeSubmit);
+  await details.getByRole('button', { name: '주문 알림 상세 닫기' }).click();
   await page.screenshot({ path: testInfo.outputPath('order-hours-closed.png') });
   await toast.getByRole('button', { name: '주문 알림 닫기' }).click();
   await expect(toast).toBeHidden();
   expect(await buy.boundingBox()).toEqual(beforeSubmit);
+});
+
+test('결과 불명확 확인은 한 줄 하단 상태줄 상세에서 처리하고 호가 위치를 유지한다', async ({ page }, testInfo) => {
+  await page.route(/^https?:\/\/[^/]+\/api\//, route => route.fulfill({ status: 404, json: { detail: 'not mocked' } }));
+  await page.route('**/config.json', route => route.fulfill({ json: { api_url: '' } }));
+  const { window, commands } = await setup(page);
+  const bar = window.getByTestId('order-status-bar');
+  const beforeBar = await bar.boundingBox();
+  const beforeLadder = await window.locator('.order-ladder').boundingBox();
+  let unresolved = ['unknown-command'];
+  const reviews: Record<string, unknown>[] = [];
+  await page.route(/\/api\/trading\/state\?/, route => {
+    if (new URL(route.request().url()).searchParams.get('part') !== 'orders') return route.fallback();
+    return route.fulfill({ json: { account_seq: 1, code: '005930', orders: [], recent_orders: [],
+      fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: unresolved } });
+  });
+  await page.route('**/api/trading/commands/unknown-command/review', route => {
+    reviews.push(route.request().postDataJSON()); unresolved = [];
+    return route.fulfill({ json: { command_id: 'unknown-command' } });
+  });
+  await page.reload();
+  await expect(bar).toContainText('결과가 불명확한 요청');
+  await page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '창 최대화', exact: true }).click();
+  await expect(window.locator('.order-row')).toHaveCount(20);
+  expect(await bar.boundingBox()).toEqual(beforeBar);
+  expect(await window.locator('.order-ladder').boundingBox()).toEqual(beforeLadder);
+  await expect(bar).toHaveCSS('height', '28px');
+  await expect(window.locator('.order-editor')).toHaveCount(0);
+  await window.getByRole('button', { name: '내역 확인', exact: true }).click();
+  const details = page.getByRole('dialog', { name: '주문 알림 상세' });
+  await expect(details).toBeVisible();
+  const confirm = details.getByRole('button', { name: '요청 unknown- 확인 완료' });
+  await expect(confirm).toBeDisabled();
+  expect(await window.locator('.order-ladder').boundingBox()).toEqual(beforeLadder);
+  await page.screenshot({ path: testInfo.outputPath('order-unresolved-footer.png') });
+  await details.getByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' }).check();
+  await confirm.click();
+  await expect.poll(() => reviews.length).toBe(1);
+  expect(reviews[0]).toMatchObject({ command_id: 'unknown-command', confirmed: true });
+  await expect(details).toBeHidden();
+  await expect(bar).toContainText('주문 대기');
+  expect(await bar.boundingBox()).toEqual(beforeBar);
+  expect(await window.locator('.order-ladder').boundingBox()).toEqual(beforeLadder);
+  expect(commands).toHaveLength(0);
 });
 
 test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
@@ -2160,6 +2219,7 @@ for (const uncertain of [false, true]) {
     expect(commands).toHaveLength(1);
     const retry = page.getByRole('button', { name: '같은 요청 다시 확인' });
     if (uncertain) {
+      await window.getByRole('button', { name: '내역 확인', exact: true }).click();
       await expect(retry).toBeEnabled();
       await retry.click();
     } else {
