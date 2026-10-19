@@ -572,7 +572,7 @@ export function ProgramCard() {
             const startSec = Math.min(9 * 3600, ...seconds);
             const endSec = Math.max(15.5 * 3600, ...seconds);
             return (
-              <div key={label} hidden={label !== market}>
+              <div key={label} hidden={label !== market} className={isIntraday ? undefined : 'market-program-daily'}>
                 <div className="flex flex-col gap-2xs">
                   <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
                     <span className="text-xs font-semibold text-fg-dim">
@@ -612,7 +612,6 @@ export function ProgramCard() {
                       <DailyNetList compact todayProvisional label={`${MARKET_LABELS[label] ?? label} 프로그램 일별 수급`}
                         columns={['차익', '비차익', '합계']}
                         rows={asc.map(p => ({ date: p.t, values: [p.arb_net_eok, p.non_arb_net_eok, p.total_net_eok] }))} />
-                      <span className="text-2xs text-fg-dim">표본 {asc.length}거래일</span>
                     </>
                   )}
                 </div>

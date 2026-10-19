@@ -44,6 +44,9 @@
 순위 세 종류와 연속 매매 두 주체는 카드 안에서 전환하며 각 주체의 저장된 시장·방향을
 유지한다. 중앙 최대 폭 1680px, 기존 테마·데이터 색상·기간·세션·결측값 의미는 유지한다.
 좁은 폭에서는 행을 순서대로 쌓고 숫자 표만 내부 가로 스크롤한다.
+사용자 후속 요청에 따라 프로그램 일별의 기간 합계는 카드 하단에 고정하고 날짜별
+목록만 스크롤한다. 별도 `표본 N거래일` 라벨과 거래대금 카드 하단의 조회 시각·
+누적 집계 안내 문장은 제거한다.
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.

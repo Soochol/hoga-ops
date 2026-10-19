@@ -49,7 +49,7 @@
 }
 .market-switch-card h2 > span { display: block; min-height: 1.25em; }
 .market-investor-body { height: calc(128px + 14rem); }
-.market-program-body { height: calc(96px + 14rem); }
+.market-program-body { flex: 1 0 auto; height: calc(96px + 14rem); }
 .market-investor-body, .market-program-body { overflow-y: auto; flex-shrink: 0; }
 .market-investor-body > *, .market-program-body > * { flex-shrink: 0; }
 @container market (max-width: 40rem) {
@@ -91,5 +91,9 @@
 .market-investor-body > .market-investor-daily { flex: 1; min-height: 0; }
 .market-investor-daily > * { flex-shrink: 0; }
 .market-investor-daily > .daily-net-list { flex: 1; min-height: 0; height: auto; }
+.market-program-body > .market-program-daily:not([hidden]) { display: flex; flex: 1; min-height: 0; }
+.market-program-daily > div { flex: 1; min-height: 0; }
+.market-program-daily > div > * { flex-shrink: 0; }
+.market-program-daily .daily-net-list { flex: 1; min-height: 0; height: auto; }
 
 .market-investor-body details[open] { max-height: 6rem; overflow-y: auto; }

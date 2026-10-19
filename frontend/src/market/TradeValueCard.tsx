@@ -4,7 +4,7 @@ import { useMarketSectors, useMarketTradeValue, type TradeValuePoint } from '../
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import { ChartProbe } from './ChartProbe';
 import { CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
-import { MARKET_LABELS, SERIES_COLORS, eokToJoText, formatMarketTime } from './marketFormat';
+import { MARKET_LABELS, SERIES_COLORS, eokToJoText } from './marketFormat';
 
 const SPANS = [['20', '20거래일'], ['60', '60거래일'], ['120', '120거래일']] as const;
 type Span = (typeof SPANS)[number][0];
@@ -12,9 +12,9 @@ const MARKETS = ['KOSPI', 'KOSDAQ'] as const;
 const COLORS = { KOSPI: SERIES_COLORS.deposit, KOSDAQ: SERIES_COLORS.arb };
 const mmdd = (date: string) => `${Number(date.slice(4, 6))}/${Number(date.slice(6, 8))}`;
 
-function Tile({ name, points, base, samples, max, today, fetchedAt }: {
+function Tile({ name, points, base, samples, max, today }: {
   name: typeof MARKETS[number]; points: TradeValuePoint[]; base: number | null;
-  samples: number; max: number; today: string; fetchedAt: number;
+  samples: number; max: number; today: string;
 }) {
   const last = points[points.length - 1];
   // The API has no finality signal for today's point. Keep it provisional even
@@ -52,7 +52,6 @@ function Tile({ name, points, base, samples, max, today, fetchedAt }: {
     <div className="ml-12 flex justify-between font-data text-2xs text-fg-dim tabular-nums">
       <span>{mmdd(points[0].date)}</span><span>{mmdd(last.date)}{provisional ? ' (오늘)' : ''}</span>
     </div>
-    <p className="text-2xs text-fg-dim">{fetchedAt ? `${formatMarketTime(fetchedAt)} 조회 · ` : ''}{provisional ? '오늘은 누적 집계액으로, 하루 전체 평균과 증감률을 비교하지 않습니다.' : '마지막 거래일 기준 · 평균은 해당 일을 제외합니다.'}</p>
   </section>;
 }
 
@@ -70,8 +69,7 @@ export function TradeValueCard() {
     const full = raw.map((p, index) => index === raw.length - 1 && p.date === today && fresh != null ? { ...p, value_eok: fresh } : p);
     const past = full.slice(0, -1).slice(-days);
     return { name, points: full.slice(-days), samples: past.length,
-      base: past.length ? past.reduce((sum, p) => sum + p.value_eok, 0) / past.length : null,
-      fetchedAt: raw.at(-1)?.date === today && fresh != null ? sectors.dataUpdatedAt : tv.dataUpdatedAt };
+      base: past.length ? past.reduce((sum, p) => sum + p.value_eok, 0) / past.length : null };
   });
   const largest = Math.max(1, ...tiles.flatMap(t => [...t.points.map(p => p.value_eok), t.base ?? 0]));
   const step = 10 ** Math.floor(Math.log10(largest));
