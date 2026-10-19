@@ -44,7 +44,7 @@ export function ModeSwitch<T extends string>({
  */
 export function MarketCard({ className = '', children }: { className?: string; children: React.ReactNode }) {
   return (
-    <PanelCard borderless flat className={`min-w-0 ${className}`}>
+    <PanelCard borderless flat className={`market-card min-w-0 ${className}`}>
       {children}
     </PanelCard>
   );

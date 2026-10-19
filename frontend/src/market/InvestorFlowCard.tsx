@@ -39,12 +39,12 @@ import {
   type InvestorFlowPoint,
 } from '../api/market';
 import {
-  LegendItem,
   SessionAxisLabels,
   SessionLinesChart,
 } from './marketBits';
 import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
-import { SERIES_COLORS } from './marketFormat';
+import { SERIES_COLORS, fmtSigned } from './marketFormat';
+import { priceDirClass } from '../ui/priceDir';
 
 const MARKET_LABELS: Record<string, string> = { KOSPI: '코스피', KOSDAQ: '코스닥' };
 
@@ -180,7 +180,7 @@ export function InvestorCard() {
   })();
 
   return (
-    <MarketCard className="market-switch-card flex flex-col gap-sm p-md">
+    <MarketCard className="market-switch-card market-investor-card flex flex-col gap-sm p-md">
       <CardHeader
         title="투자자 수급"
         hint={hint}
@@ -256,12 +256,18 @@ function FlowBody({
 }) {
   return (
     <div className="flex flex-col gap-2xs">
-      <div className="flex flex-wrap items-baseline justify-end gap-x-sm">
-        <span className="flex items-center gap-md font-data text-2xs tabular-nums">
-          {series.map((s) => (
-            <LegendItem key={s.label} color={s.color} label={s.label} value={last(s)} />
-          ))}
-        </span>
+      <div className="market-flow-summary" aria-label={`투자자별 순매수 · ${unit}`}>
+        {[...series].sort((a, b) => ['외국인', '기관', '개인'].indexOf(a.label) - ['외국인', '기관', '개인'].indexOf(b.label)).map((s) => {
+          const value = last(s);
+          return <div key={s.label} className="min-w-0">
+            <span className="flex items-center gap-xs text-xs text-fg-dim">
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.color }} aria-hidden="true" />{s.label}
+            </span>
+            <strong className={`block font-data text-xl font-semibold tabular-nums ${value == null ? 'text-fg-dim' : priceDirClass(value)}`}>
+              {fmtSigned(value)}
+            </strong>
+          </div>;
+        })}
       </div>
       {/* 벤더 누적을 그대로, x 는 세션 시간 비례 — 표본 4개가 전폭으로 늘어나
           "하루치 흐름" 처럼 읽히던 왜곡을 막는다. 부분 커버리지는 부분 선이다. */}

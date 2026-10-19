@@ -58,6 +58,7 @@ function Tile({ name, points, base, samples, max, today, fetchedAt }: {
 
 export function TradeValueCard() {
   const [span, setSpan] = useState<Span>('20');
+  const [market, setMarket] = useState<typeof MARKETS[number]>('KOSPI');
   const days = Number(span);
   // Fetch an extra sample so excluding the last day still leaves n prior days.
   const tv = useMarketTradeValue(days + 1);
@@ -78,10 +79,15 @@ export function TradeValueCard() {
   return <MarketCard className="flex flex-col gap-sm p-md">
     <CardHeader title="거래대금 추이" hint="일별 거래대금 · 조원"
       right={<ModeSwitch value={span} onChange={setSpan} options={SPANS} label="거래대금 기간" />} />
+    <ModeSwitch value={market} onChange={setMarket} options={[
+      ['KOSPI', '코스피'], ['KOSDAQ', '코스닥'],
+    ]} label="거래대금 시장" />
     <div className="market-pair market-trade-body grid gap-md">
       {tiles.every(t => t.points.length === 0) ? <EmptyNote>{tv.isLoading ? '거래대금 이력을 불러오는 중입니다.' : '거래대금 이력을 받지 못했습니다.'}</EmptyNote>
-        : tiles.map(t => t.points.length ? <Tile key={t.name} {...t} max={max} today={today} />
-          : <EmptyNote key={t.name}>{MARKET_LABELS[t.name]} 이력을 받지 못했습니다.</EmptyNote>)}
+        : tiles.map(t => <div key={t.name} hidden={t.name !== market}>
+          {t.points.length ? <Tile {...t} max={max} today={today} />
+            : <EmptyNote>{MARKET_LABELS[t.name]} 이력을 받지 못했습니다.</EmptyNote>}
+        </div>)}
     </div>
   </MarketCard>;
 }

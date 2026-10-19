@@ -28,6 +28,14 @@ async function marketMocks(page: Page, populated = false) {
       ] } },
       streaks: {}, breadth: { markets: {} }, 'trade-value': { markets: {} },
     };
+    if (populated) {
+      const sectors = Array.from({ length: 16 }, (_, i) => ({ code: String(i + 5).padStart(3, '0'), name: `업종 ${i + 1}`, change_pct: (i - 8) / 2 }));
+      responses.sectors = { markets: { '0': { sectors }, '1': { sectors: [] } }, volatility: { value: 20, change_pct: 1 } };
+      responses['sector-flow'] = { date: '20260909', markets: { KOSPI: sectors.map((s, i) => ({ ...s, foreign: i * 100 - 500, institution: 500 - i * 80, individual: -i * 20 })) } };
+      const values = Array.from({ length: 8 }, (_, i) => ({ date: `2026090${i + 1}`, value_eok: (i + 1) * 10000 }));
+      responses['trade-value'] = { markets: { KOSPI: values, KOSDAQ: values.map(p => ({ ...p, value_eok: p.value_eok / 2 })) } };
+      responses.streaks = { 외국인: [{ code: '005930', name: '삼성전자', streak_days: 3, streak_net_eok: 200 }], 기관: [{ code: '000660', name: 'SK하이닉스', streak_days: 2, streak_net_eok: -100 }] };
+    }
     if (populated && path === 'program') {
       const points = ['090000', '100000'].map((t, i) => ({
         t: url.searchParams.get('axis') === 'daily' ? `2026090${9 - i}000000` : t,
@@ -46,6 +54,46 @@ async function marketMocks(page: Page, populated = false) {
     market_open: false, fetched_at_ms: 1, venue: 'KRX', warnings: [],
   } }));
 }
+
+test('flow layout groups market context and preserves explorer preferences across views', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1920, height: 1400 });
+  await marketMocks(page, true);
+  await page.goto('/market');
+  await expect(page.getByLabel('투자자별 순매수 · 억원')).toContainText('-10');
+  const flow = page.getByRole('region', { name: '시장 흐름', exact: true });
+  await expect(flow.getByRole('heading', { name: /업종 등락 · 수급/ })).toBeVisible();
+  const context = page.getByRole('region', { name: '거래와 자금', exact: true });
+  const positions = await context.locator(':scope > .market-card').evaluateAll(cards => cards.map(card => card.getBoundingClientRect().top));
+  expect(new Set(positions).size).toBe(1);
+  await context.getByRole('group', { name: '거래대금 시장', exact: true }).getByRole('button', { name: '코스닥' }).click();
+  await expect(context.getByRole('region', { name: '코스닥 거래대금', exact: true })).toContainText('4.00조');
+  const ranks = page.getByRole('group', { name: '종목 순위 기준', exact: true });
+  await ranks.getByRole('button', { name: '상승률' }).click();
+  await expect(ranks.getByRole('button', { name: '상승률' })).toBeFocused();
+  await expect(page.getByRole('heading', { name: /상승률 상위/ })).toBeVisible();
+  await expect(page.getByText('현재가(원)', { exact: true }).filter({ visible: true })).toHaveCount(1);
+  const foreignMarket = page.getByRole('group', { name: '외국인 연속 매매 시장', exact: true });
+  await foreignMarket.getByRole('button', { name: '코스닥' }).click();
+  await page.getByRole('group', { name: '외국인 연속 매매 방향', exact: true }).getByRole('button', { name: '순매도' }).click();
+  await page.getByRole('group', { name: '연속 매매 주체', exact: true }).getByRole('button', { name: '기관', exact: true }).click();
+  await expect(page.getByRole('group', { name: '연속 매매 주체', exact: true }).getByRole('button', { name: '기관', exact: true })).toBeFocused();
+  await expect(page.getByRole('group', { name: '기관 연속 매매 시장', exact: true }).getByRole('button', { name: '코스피' })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('group', { name: '연속 매매 주체', exact: true }).getByRole('button', { name: '외국인', exact: true }).click();
+  await expect(foreignMarket.getByRole('button', { name: '코스닥' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('group', { name: '외국인 연속 매매 방향', exact: true }).getByRole('button', { name: '순매도' })).toHaveAttribute('aria-pressed', 'true');
+  await page.locator('.market-desk').evaluate(el => { el.scrollTop = 0; });
+  await page.screenshot({ path: testInfo.outputPath('market-flow-desktop.png') });
+  for (const theme of ['trading-desk', 'ledger-studio']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; document.documentElement.style.fontSize = '20px'; }, theme);
+    await page.setViewportSize({ width: 600, height: 1100 });
+    const overflow = await page.locator('.market-page').evaluate(root => [...root.querySelectorAll<HTMLElement>('.market-main,.market-context,.market-ranks,.market-card')].map(el => el.scrollWidth - el.clientWidth));
+    expect(overflow.every(px => px <= 1)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`market-flow-compact-${theme}.png`) });
+  }
+  await page.reload();
+  await page.getByRole('group', { name: '연속 매매 주체', exact: true }).scrollIntoViewIfNeeded();
+  await expect(foreignMarket.getByRole('button', { name: '코스닥' })).toHaveAttribute('aria-pressed', 'true');
+});
 
 for (const width of [1440, 800, 600]) {
   test(`market cards fit available width at ${width}px`, async ({ page }) => {

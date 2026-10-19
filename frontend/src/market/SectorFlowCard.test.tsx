@@ -35,10 +35,11 @@ const BREADTH = {
   },
 };
 
-function mockApi(flow: unknown = FLOW, breadth: unknown = BREADTH) {
+function mockApi(flow: unknown = FLOW, breadth: unknown = BREADTH, sectors: unknown = {}) {
   vi.spyOn(client, 'apiCall').mockImplementation((async (url: string) => {
     if (url.startsWith('/api/market/sector-flow')) return flow;
     if (url.startsWith('/api/market/breadth')) return breadth;
+    if (url.startsWith('/api/market/sectors')) return sectors;
     return {};
   }) as unknown as typeof client.apiCall);
 }
@@ -149,5 +150,46 @@ describe('SectorFlowCard', () => {
     await screen.findByText('종합(KOSPI)');
     const cells = Array.from(document.querySelectorAll('tbody tr td')).map((td) => td.textContent);
     expect(cells.filter((c) => c === '—').length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('코드가 같은 행만 합치고 시세의 결측값과 수급 미제공을 보존한다', async () => {
+    mockApi(FLOW, BREADTH, { markets: { '0': { sectors: [
+      { code: '027', name: '제조업', change_pct: null },
+      { code: '604', name: '고배당50', change_pct: 3 },
+      { code: '9999', name: '제약', change_pct: 5 },
+    ] } } });
+    renderCard();
+    await screen.findByText('고배당50');
+    const rows = Array.from(document.querySelectorAll('tbody tr'));
+    // Same code, different vendor name: one row, the quote's null stays null.
+    const manufacturing = rows.find(r => r.firstElementChild?.textContent === '제조')!;
+    expect(manufacturing.children[1].textContent).toBe('—');
+    expect(manufacturing.children[2].textContent).toBe('-2,601');
+    expect(screen.queryByText('제조업')).toBeNull();
+    // Same name, different code: separate rows; never borrow the other's flow.
+    expect(rows.filter(r => r.firstElementChild?.textContent === '제약')).toHaveLength(2);
+    const quoteOnly = rows.find(r => r.firstElementChild?.textContent === '고배당50')!;
+    expect(Array.from(quoteOnly.children).map(td => td.textContent)).toEqual(['고배당50', '+3.00%', '—', '—', '—']);
+    await userEvent.click(screen.getByRole('button', { name: '규모·대표지수' }));
+    expect(screen.getByText('고배당50')).toBeTruthy();
+    expect(screen.queryByText('제조')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '미분류' }));
+    expect(rowNames()).toEqual(['종합(KOSPI)', '제약']);
+  });
+
+  it('등락률을 전체에서 정렬한 뒤 12개로 자르고 전체 보기에서 복원한다', async () => {
+    mockApi({ markets: {} }, BREADTH, { markets: { '0': { sectors: [
+      ...Array.from({ length: 13 }, (_, i) => ({ code: String(i), name: `지수${i}`, change_pct: i === 0 ? null : -i })),
+      { code: '9999', name: '최대상승', change_pct: 20 },
+    ] } } });
+    renderCard();
+    await screen.findByText('지수0');
+    await userEvent.click(screen.getByRole('button', { name: '상승순' }));
+    expect(rowNames()[0]).toBe('최대상승');
+    expect(rowNames()).toHaveLength(12);
+    expect(screen.queryByText('지수0')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: '전체 보기' }));
+    expect(rowNames()).toHaveLength(14);
+    expect(rowNames().at(-1)).toBe('지수0');
   });
 });
