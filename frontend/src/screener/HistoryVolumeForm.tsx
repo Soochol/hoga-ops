@@ -8,7 +8,6 @@ export function HistoryVolumeForm({ params, onChange }: {
 }) {
   const historical = 'mode' in params;
   const timeframe = ('timeframe' in params ? params.timeframe : undefined) ?? 'D';
-  const minute = timeframe.endsWith('m');
   const legacyHistory = historical && params.record_period.unit !== 'bars';
   const includeOpenBar = ('include_open_bar' in params ? params.include_open_bar : undefined) ?? true;
   const changeTimeframe = (next: ScreenerTimeframe) => {
@@ -58,10 +57,5 @@ export function HistoryVolumeForm({ params, onChange }: {
       <Num label="신고 비교 기간" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000} value={params.period}
         onChange={value => onChange({ ...params, period: value ?? 1 })} />
     </ConditionFields>}
-    <p className="condition-help">{legacyHistory
-      ? '기간 중 한 번 이상 · 동률 포함 · 보정 거래량 기준. 년 단위는 당일까지 달력 기준이며 시작 경계일은 제외합니다.'
-      : `선택 주기의 봉수 기준 · 동률 포함 · ${minute ? 'KRX 정규장 · 원본 거래량' : 'KRX 일봉 코퍼스 · 보정 거래량'}. 진행 중 봉은 조회 시점까지 반영합니다.`}
-      {' '}각 조건은 자기 주기와 평가 범위로 판정하며, 충족 종목을 AND로 결합합니다.
-    </p>
   </div>;
 }

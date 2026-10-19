@@ -16,6 +16,5 @@ export function HighOffPeakForm({ params, onChange }: { params: HighOffPeakParam
     <ConditionChoice label="이내/이외" value={params.side}
       onChange={(side) => onChange({ ...params, side })}
       options={[['within', '이내'], ['outside', '이외']]} />
-    <p className="condition-help">종가가 아닌 최신 봉의 고가를 비교합니다.</p>
   </CandleSettings>;
 }

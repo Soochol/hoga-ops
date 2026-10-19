@@ -67,7 +67,6 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
         value={params.threshold_pct} onChange={n => onChange({ ...params, threshold_pct: n ?? 100 })} />
     </ConditionFields>
     <QuickValues values={[100, 120, 150]} unit="%" onChange={threshold_pct => onChange({ ...params, threshold_pct })} />
-    <p className="condition-help">관심·히트맵 종목 중 데이터 보유 종목 대상</p>
   </div>;
 }
 
@@ -82,10 +81,6 @@ export function DepthPeakPeriodForm({ params, onChange }: { params: DepthPeakPer
     <Num label="과거 peak 대비" ariaLabel="과거 peak 대비(%)" suffix="% 이상" min={1}
       value={params.threshold_pct} onChange={n => onChange({ ...params, threshold_pct: n ?? 100 })} />
     <QuickValues values={[100, 120, 150]} unit="%" onChange={threshold_pct => onChange({ ...params, threshold_pct })} />
-    <p className="condition-help">
-      관심·히트맵 종목 중 데이터 보유 종목 대상 · 최근 N일 중 하루라도 닿으면 통과
-      · 비교 창은 그 날을 제외한 직전 M거래일
-    </p>
   </div>;
 }
 
@@ -109,9 +104,5 @@ export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalPar
         onChange={n => onChange({ ...params, threshold_pct: n ?? 100 })} />
     </ConditionFields>
     <QuickValues values={[100, 101, 120]} unit="%" onChange={threshold_pct => onChange({ ...params, threshold_pct })} />
-    <p className="condition-help">
-      관심·히트맵 종목 대상 · 당일 기준(장중 조회에서만 동작) · 하루 중 한 번이라도 닿으면 계속 표시
-      · 100%는 동률 포함(더 큰 것만 보려면 101 이상)
-    </p>
   </div>;
 }
