@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import time
 from collections.abc import Awaitable, Callable, Hashable
 
 import pytest
@@ -182,6 +183,66 @@ class _GatedKis(_FakeKis):
             points=_investor_points(from_yyyymmdd, to_yyyymmdd),
             violations=[],
         )
+
+
+@pytest.mark.parametrize("axis", ["1", "2"])
+@pytest.mark.parametrize("trade_side", ["net", "buy", "sell"])
+async def test_latest_gap_and_today_share_one_walk_but_today_keeps_its_ttl(
+    tmp_path, kiwoom, axis, trade_side,
+):
+    fake = kiwoom(_FakeKis())
+    cache = PastDailyCandlesCache()
+    now = time.monotonic()
+    cache._today_mem._clock = lambda: now
+    backfill = LiveInvestorNetBackfill(data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
+                                      walkback=batched_daily_walkback, axis=axis, trade_side=trade_side)
+    args = dict(code="005930", frm=dt.date(2026, 10, 15), too=dt.date(2026, 10, 19),
+                today_d=dt.date(2026, 10, 19))
+    first = await backfill.collect(**args)
+    assert fake.calls == [("005930", "20261015", "20261019")]
+    assert first["fresh_batches"] == ["20261015__20261019"]
+    assert len(first["points"]) == 5
+    assert all(row["t_ms"] < _investor_points("20261019", "20261019")[0].t_ms
+               for _, _, rows, _ in cache.list_batches("005930") for row in rows)
+    now += 120
+    second = await backfill.collect(**args)
+    assert fake.calls[-1] == ("005930", "20261019", "20261019")
+    assert len(fake.calls) == 2  # expiry refreshes today, not the historical walk
+    assert second["points"] == first["points"]
+
+
+@pytest.mark.parametrize("calendar_answer,expected_calls", [(False, 0), (None, 1), (True, 1)])
+async def test_closed_only_gap_needs_no_vendor_call_but_unknown_calendar_still_fetches(
+    tmp_path, monkeypatch, kiwoom, calendar_answer, expected_calls,
+):
+    from hoga.api import calendar
+
+    monkeypatch.setattr(calendar, "is_trading_day", lambda _: calendar_answer)
+    fake = kiwoom(_FakeKis())
+    cache = PastDailyCandlesCache()
+    historic = [{"t_ms": p.t_ms, "foreign_net": p.foreign_net, "institution_net": p.institution_net}
+                for p in _investor_points("20261015", "20261016")]
+    cache.append_batch("005930", dt.date(2026, 10, 15), dt.date(2026, 10, 16), historic)
+    today = {"t_ms": _investor_points("20261019", "20261019")[0].t_ms,
+             "foreign_net": 999, "institution_net": 777}
+    cache.store_today("005930", today)
+    backfill = LiveInvestorNetBackfill(data_dir=tmp_path, cache=cache, scheduler=_RecordingScheduler(),
+                                      walkback=batched_daily_walkback)
+    result = await backfill.collect(code="005930", frm=dt.date(2026, 10, 15),
+                                    too=dt.date(2026, 10, 19), today_d=dt.date(2026, 10, 19))
+    assert len(fake.calls) == expected_calls
+    assert result["points"][-1] == today  # a fresh TTL row is never overwritten by a past fetch
+    if not expected_calls:
+        assert result["fresh_batches"] == []
+
+
+async def test_past_only_request_never_fetches_today(tmp_path, kiwoom):
+    fake = kiwoom(_FakeKis())
+    backfill = LiveInvestorNetBackfill(data_dir=tmp_path, cache=PastDailyCandlesCache(),
+                                      scheduler=_RecordingScheduler(), walkback=batched_daily_walkback)
+    await backfill.collect(code="005930", frm=dt.date(2026, 10, 15),
+                           too=dt.date(2026, 10, 18), today_d=dt.date(2026, 10, 19))
+    assert fake.calls == [("005930", "20261015", "20261018")]
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,8 @@
 """`kiwoom_adjust_factors` — 분봉 척도를 오늘로 고정하는 계수 테이블 (#1229)."""
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 import pytest
 
@@ -127,6 +129,44 @@ async def test_runner_receives_the_upd_flag_so_the_two_calls_cannot_join() -> No
     await fetch_adjust_factors(c, "005930", as_of_yyyymmdd="20260807", run_call=_run)
     assert seen == ["1", "0"]
     await c.aclose()
+
+
+async def test_factor_reads_overlap_but_keep_their_distinct_values() -> None:
+    started: set[str] = set()
+    both_started = asyncio.Event()
+
+    async def run(upd, _fetch):
+        from hoga.live.kiwoom_rest import Page
+
+        started.add(upd)
+        if len(started) == 2:
+            both_started.set()
+        # A serial implementation deadlocks here; no timing comparison needed.
+        await asyncio.wait_for(both_started.wait(), timeout=2)
+        return Page(rows=_rows([("20260805", 50 if upd == "1" else 100)]), cont=False, next_key="")
+
+    factors = await fetch_adjust_factors(object(), "005930", as_of_yyyymmdd="20260807", run_call=run)
+    assert factors.factor_for("20260805") == 0.5
+
+
+async def test_failed_factor_read_cancels_sibling_and_preserves_original_error() -> None:
+    from hoga.live.kiwoom_errors import KiwoomRestError
+
+    raw_started, raw_cancelled = asyncio.Event(), asyncio.Event()
+
+    async def run(upd, _fetch):
+        if upd == "1":
+            await raw_started.wait()
+            raise KiwoomRestError("factor unavailable")
+        raw_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            raw_cancelled.set()
+
+    with pytest.raises(KiwoomRestError, match="factor unavailable"):
+        await fetch_adjust_factors(object(), "005930", as_of_yyyymmdd="20260807", run_call=run)
+    assert raw_cancelled.is_set()
 
 
 async def test_venue_is_ignored_by_default_because_events_belong_to_the_issue() -> None:

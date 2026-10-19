@@ -2158,6 +2158,30 @@ def _investor_app(tmp_path, fake_kis, monkeypatch):
     return app
 
 
+def test_investor_route_serializes_joined_today_without_losing_rows_or_axes(tmp_path, monkeypatch):
+    from hoga.live import api as live_api
+
+    monkeypatch.setattr(live_api, "_today_kst_date", lambda: datetime.date(2026, 10, 19))
+    fake = _FakeKisForInvestor()
+    app = _investor_app(tmp_path, fake, monkeypatch)
+    with TestClient(app) as client:
+        first = client.get("/api/live/past-investor-net", params={
+            "code": "005930", "from": "20261015", "to": "20261019", "axis": "amount", "trade_side": "buy",
+        })
+        second = client.get("/api/live/past-investor-net", params={
+            "code": "005930", "from": "20261015", "to": "20261019", "axis": "amount", "trade_side": "buy",
+        })
+    assert first.status_code == second.status_code == 200
+    assert first.json()["unit"] == "amt_mwon"
+    assert first.json()["trade_side"] == "buy"
+    assert first.json()["fresh_batches"] == ["20261015__20261019"]
+    assert len(first.json()["points"]) == 5
+    assert second.json()["points"] == first.json()["points"]
+    assert fake.calls == [("005930", "20261015", "20261019")]
+    assert fake.axes == ["1"]
+    assert fake.trade_sides == ["buy"]
+
+
 def test_index_investor_net_uses_scheduler_backed_fetcher(tmp_path, monkeypatch) -> None:
     from hoga.live import lifecycle
     from hoga.live.api import build_router
