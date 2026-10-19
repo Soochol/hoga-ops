@@ -319,7 +319,7 @@ export function Screener() {
         <div className="min-h-0 flex-1">
           <ConditionBuilder conditions={editor.conditions} universe={editor.universe}
             onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}
-            expression={editor.expression} onExpressionChange={editor.editExpression}>
+            expression={editor.expression} onExpressionChange={editor.editExpression} expressionScope={editor.anchorId}>
             {!invalidExpression && <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />}
           </ConditionBuilder>
         </div>

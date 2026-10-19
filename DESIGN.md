@@ -504,6 +504,11 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 항만 제거한다. 추가 조건은 기존 식에 AND로 결합한다. 식에서 사용하지 않는 조건은
 검색하지 않고 목록을 안내한다. 조합식은 저장·초안·드로어·재조회에 함께 전달한다.
 
+조합식의 직접 입력·문자/연결어 버튼·전체 AND/OR 변경은 같은 실행 취소 이력을 쓴다.
+Ctrl+Z(⌘Z)로 되돌리고 Ctrl+Shift+Z(⌘⇧Z) 또는 Ctrl+Y로 다시 실행한다.
+커서와 선택 영역도 복원하며, 조건 추가·삭제·순서 변경이나 다른 저장 조건을 불러오면
+조건 문자의 의미가 바뀌므로 조합식 이력을 초기화한다.
+
 > **Scale note:** All px values in this section are **1.0× base intent**.
 > Default rendering = × 1.0 as of 2026-08-07, so these px values *are* what ships
 > today. That equality is a property of the current dial, not a permanent fact —
