@@ -8,17 +8,14 @@ import { useNowMs } from '../util/useNowMs';
 // MarketPage·BreadthCard 를 쓸어 병행 세션 충돌면만 키우고, 화면에 주는 이득은 0이다.
 import { CARD_HEADER_RULE, MarketCard } from '../market/marketCardBits';
 import {
-  GexChart,
-  GexSummary,
-  IvSkewChart,
-  OiContributors,
-  OiDistributionChart,
   PutCallPanel,
   PutCallSeriesChart,
 } from '../sentiment/SentimentPanels';
 import { fmtCompact } from '../sentiment/sentimentFormat';
 import { atmDomain, fullDomain, type StrikeDomain } from '../sentiment/strikeScale';
-import { PageState, SegmentedControl } from '../ui/PageShell';
+import { PageState } from '../ui/PageShell';
+import { StrikeWorkspace } from '../sentiment/StrikeWorkspace';
+import '../sentiment/sentiment.css';
 
 /**
  * KOSPI200 옵션 심리 패널 (ADR-0135).
@@ -31,16 +28,9 @@ import { PageState, SegmentedControl } from '../ui/PageShell';
  * 아니라 변동성 체제이며 부호는 검증 불가한 가정에 의존하고, IV 절대값은
  * 자기 히스토리 없이는 정보량이 적다.
  *
- * **레이아웃은 `/market` 문법을 따른다(2026-08-07)**: 중앙 고정 폭(1680px) + 평면
- * 카드(`MarketCard` = borderless flat) + 헤더 밑줄 하나로만 만드는 경계. 이전에는
- * `PanelCard borderless`(=`bg-bg-card` + `shadow-panel`)라 같은 디자인 시스템인데
- * 혼자 "떠 있는 흰 카드" 였고, 단일 열 전폭 스택이라 카드 5장이 세로로 늘어섰다.
- *
- * 열 배치의 제약은 하나다 — **행사가 축 3차트(OI·GEX·IV)는 반드시 한 열에 같은 폭으로
- * 쌓는다.** 셋은 `strikeScale` 의 공유 도메인으로 그려서 눈금이 세로 정렬되고, 그
- * 정렬이 "Max Pain 아래에 GEX 벽이 있다" 같은 교차 판독의 전제다. 좌우로 가르면
- * 축이 어긋나 그 판독이 죽는다. 축 정렬 의무가 없는 것(비율 숫자·시계열·기여 표)만
- * 우측 열로 뺀다.
+ * **구조 중심 배치(2026-10-19 사용자 승인)**: 기초자산·관측 시각 → 네 요약 →
+ * 같은 폭·도메인의 OI/GEX/IV 스택. 우측은 축 정렬 의무가 없는 P/C와 전 행사가 기여 표다.
+ * 수집·계산은 그대로 두고 선택 행사가만 공유한다.
  */
 
 function fmtTime(ms: number | null): string {
@@ -178,7 +168,7 @@ function StatTile({
 /** 로딩·에러·휴면 3상태의 공통 껍데기 — 본문과 같은 카드 크롬을 쓴다. */
 function StateCard({ children }: { children: React.ReactNode }) {
   return (
-    <PageContainer>
+    <PageContainer className="sentiment-page">
       <div className={`mx-auto w-full ${PAGE_MAX_W}`}>
         <MarketCard className="p-md">{children}</MarketCard>
       </div>
@@ -234,160 +224,34 @@ export default function Sentiment() {
   const maxPain = data.oi_distribution?.max_pain ?? null;
   const painGap = maxPain !== null && data.underlying !== null ? maxPain - data.underlying : null;
 
+  const fullStamp = <AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />;
+  const atmStamp = <AsOf label="ATM" ms={data.atm_as_of_ms} staleMs={ATM_STALE_MS} />;
   return (
-    <PageContainer>
-      {/* `/market` 과 같은 프레임: 중앙 고정 폭 + 카드 사이 `md`, 성격이 다른 좌우
-          열 사이만 `xl`(DESIGN.md 의 "Major section dividers"). */}
-      <div className={`mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
-        {/* 10초 요약 — 스크롤 없이 상단만 보고 시장 상태가 잡히게 핵심 수치를 모은다.
-            상세·해석 한계는 아래 카드가 담당한다. 5타일인 이유는 /market 지수 행과
-            같은 리듬을 쓰기 위해서다 — 25델타 RR 은 ATM IV 의 보조 줄로 접었다. */}
-        <div className="grid grid-cols-5 gap-md">
-          <StatTile
-            label="KOSPI200"
-            value={data.underlying?.toFixed(2) ?? '—'}
-            sub={`근월물 ${data.expiry ?? '—'}`}
-          />
-          <StatTile
-            label="거래량 P/C"
-            value={data.put_call?.volume_ratio?.toFixed(3) ?? '—'}
-            sub={`미결제 ${data.put_call?.oi_ratio?.toFixed(3) ?? '—'}`}
-          />
-          <StatTile
-            label="Max Pain"
-            value={maxPain ?? '—'}
-            sub={painGap === null ? undefined : `현재가 대비 (${painGap >= 0 ? '+' : ''}${painGap.toFixed(1)})`}
-          />
-          <StatTile
-            label="총 GEX"
-            value={data.gamma_exposure ? `${fmtCompact(data.gamma_exposure.total)}원` : '—'}
-            sub="1% 이동당"
-          />
-          <StatTile
-            label="ATM IV"
-            value={`${data.iv_skew?.atm_iv?.toFixed(2) ?? '—'}%`}
-            sub={
-              <>
-                25델타 RR {data.iv_skew?.risk_reversal_25d?.toFixed(2) ?? '—'} ·{' '}
-                <span>+면 하방 보험이 비쌈</span>
-              </>
-            }
-          />
-        </div>
-
-        {/* 제목 없는 컨트롤 바(PageContainer 규약) — 축 범위는 좌측 3차트 전체를
-            지배하는 페이지 단위 선택이라 카드 헤더가 아니라 여기에 둔다. */}
-        <div className="flex flex-wrap items-center justify-between gap-x-md gap-y-2xs">
-          <div className="flex items-center gap-sm">
-            <span className="text-2xs text-fg-dim">행사가 축</span>
-            <SegmentedControl aria-label="행사가 축 범위">
-              {(
-                [
-                  ['atm', 'ATM 근처'],
-                  ['all', '전체'],
-                ] as const
-              ).map(([key, label]) => {
-                const on = strikeRange === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    aria-pressed={on}
-                    onClick={() => setStrikeRange(key)}
-                    className={`whitespace-nowrap px-2 py-[2px] font-data text-2xs tabular-nums ${on ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </SegmentedControl>
+    <PageContainer className="sentiment-page">
+      <div className={`sentiment-desk mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
+        <div className="sentiment-context flex flex-wrap items-baseline justify-between gap-md px-xs">
+          <div className="flex flex-wrap items-baseline gap-md">
+            <span className="text-sm font-semibold text-fg-dim">KOSPI200</span>
+            <strong className="font-data text-xl font-semibold text-fg tabular-nums">{data.underlying?.toFixed(2) ?? '—'}</strong>
+            <span className="text-xs text-fg-dim">정규 옵션 · 근월물 {data.expiry ?? '—'}</span>
           </div>
-          <div className="font-data text-2xs text-fg-dim tabular-nums">
-            <AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />
-            {' · '}
-            <AsOf label="ATM" ms={data.atm_as_of_ms} staleMs={ATM_STALE_MS} />
+          <div className="flex flex-wrap gap-x-lg gap-y-xs font-data text-xs text-fg-dim tabular-nums">
+            <span>{fullStamp} · 5분 주기</span><span>{atmStamp} · 30초 주기</span>
           </div>
         </div>
-
-        <div className="grid grid-cols-[2fr_1fr] gap-x-xl gap-y-md">
-          {/* 좌: 행사가 축 스택. 세 카드가 같은 폭이라 눈금이 세로로 정렬된다. */}
-          <div className="flex flex-col gap-md">
-            {data.oi_distribution && (
-              <Section
-                title="행사가별 미결제약정 · Max Pain"
-                caveat="위 빨강이 콜, 아래 파랑이 풋입니다. Max Pain 은 만기 시 옵션 매도자 손실이 최소가 되는 지점일 뿐 가격 예측이 아닙니다."
-                asOf={<AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />}
-              >
-                {domain && (
-                  <OiDistributionChart
-                    dist={data.oi_distribution}
-                    underlying={data.underlying}
-                    domain={domain}
-                  />
-                )}
-              </Section>
-            )}
-
-            {data.gamma_exposure && (
-              <Section
-                title="감마 익스포저 (GEX)"
-                caveat="방향 지표가 아니라 변동성 체제 지표입니다. 양수는 움직임 억제, 음수는 증폭으로 읽습니다. 부호는 '딜러가 콜을 팔고 풋을 산다'는 관례적 가정에서 나오며 검증할 수 없습니다"
-                asOf={<AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />}
-              >
-                <GexSummary gex={data.gamma_exposure} />
-                {domain && (
-                  <GexChart gex={data.gamma_exposure} underlying={data.underlying} domain={domain} />
-                )}
-              </Section>
-            )}
-
-            {data.iv_skew && (
-              <Section
-                title="내재변동성 스마일"
-                caveat="IV 절대값은 그 자체로 정보량이 적습니다 — 주식 옵션은 구조적으로 항상 풋이 비쌉니다. 자기 히스토리 대비로 읽어야 의미가 생깁니다. ATM IV 와 리스크리버설만 30초 주기로 갱신됩니다"
-                asOf={
-                  <>
-                    <AsOf label="곡선" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />
-                    {' · '}
-                    <AsOf label="ATM" ms={data.atm_as_of_ms} staleMs={ATM_STALE_MS} />
-                  </>
-                }
-              >
-                {domain && (
-                  <IvSkewChart skew={data.iv_skew} underlying={data.underlying} domain={domain} />
-                )}
-              </Section>
-            )}
-          </div>
-
-          {/* 우: 행사가 축이 없는 것들 — 비율(시계열)과 기여 표. */}
-          <div className="flex flex-col gap-md">
-            {data.put_call && (
-              <Section
-                title="Put/Call 비율"
-                caveat="풋 매수가 하락 베팅인지 보유 포지션 헤지인지 구분하지 못합니다. 거래량은 당일 흐름, 미결제는 누적 포지션을 뜻합니다."
-                asOf={<AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />}
-              >
-                <PutCallPanel pc={data.put_call} />
-                <PutCallSeriesChart points={data.put_call_series} />
-              </Section>
-            )}
-
-            {data.oi_distribution && (
-              <Section
-                title="미결제 상위 행사가"
-                caveat="Max Pain 과 감마 플립이 무엇에 끌려간 값인지 보여줍니다. KOSPI200 은 델타가 0에 가까운 극외가에 미결제가 몰리는 특성이 있습니다. 축 범위와 무관하게 전 행사가 기준입니다"
-                asOf={<AsOf label="전수" ms={data.full_as_of_ms} staleMs={FULL_STALE_MS} />}
-              >
-                <OiContributors dist={data.oi_distribution} underlying={data.underlying} />
-              </Section>
-            )}
-          </div>
+        <div className="sentiment-overview grid gap-md">
+          <StatTile label="거래량 P/C" value={data.put_call?.volume_ratio?.toFixed(3) ?? '—'} sub={`미결제 P/C ${data.put_call?.oi_ratio?.toFixed(3) ?? '—'}`} />
+          <StatTile label="총 GEX" value={data.gamma_exposure ? `${fmtCompact(data.gamma_exposure.total)}원` : '—'} sub={<>1% 이동당 · 감마 플립 {data.gamma_exposure?.flip_strike ?? '—'}</>} />
+          <StatTile label="ATM IV" value={data.iv_skew?.atm_iv == null ? '—' : `${data.iv_skew.atm_iv.toFixed(2)}%`} sub={<>25델타 RR {data.iv_skew?.risk_reversal_25d?.toFixed(2) ?? '—'} · <span>+면 하방 보험이 비쌈</span></>} />
+          <StatTile label="Max Pain" value={maxPain ?? '—'} sub={painGap === null ? undefined : `현재가 대비 (${painGap >= 0 ? '+' : ''}${painGap.toFixed(1)})`} />
         </div>
-
-        <p className="text-xs text-fg-dim">
-          시장 상태를 관측하기 위한 지표입니다. 투자 판단 도구가 아닙니다.
-        </p>
+        <StrikeWorkspace key={data.expiry ?? 'unknown'} data={data} domain={domain} range={strikeRange} onRangeChange={setStrikeRange}
+          fullStamp={fullStamp} atmStamp={atmStamp} putCall={data.put_call && <Section title="Put/Call 비율"
+            caveat="풋 매수가 하락 베팅인지 보유 포지션 헤지인지 구분하지 못합니다. 거래량은 당일 흐름, 미결제는 누적 포지션을 뜻합니다."
+            asOf={fullStamp}>
+            <PutCallPanel pc={data.put_call} /><PutCallSeriesChart points={data.put_call_series} />
+          </Section>} />
+        <p className="px-xs text-xs text-fg-dim">시장 상태를 관측하기 위한 지표입니다. 투자 판단 도구가 아닙니다.</p>
       </div>
     </PageContainer>
   );

@@ -18,8 +18,8 @@ export interface StrikeDomain {
 
 /** 차트 SVG 공통 좌표계. 세 차트가 같은 값을 써야 축이 세로로 정렬된다. */
 export const CHART_W = 720;
-export const PAD_L = 8;
-export const PAD_R = 8;
+export const PAD_L = 64;
+export const PAD_R = 16;
 /** x축 눈금 라벨 밴드 높이 — 각 차트 viewBox 하단에 이만큼 더한다. */
 export const AXIS_H = 18;
 
@@ -50,17 +50,17 @@ export function atmDomain(
 }
 
 /** 행사가 → SVG x 픽셀. 도메인이 점(=폭 0)이면 중앙에 고정한다. */
-export function xOf(domain: StrikeDomain, strike: number): number {
+export function xOf(domain: StrikeDomain, strike: number, width = CHART_W): number {
   const span = domain.hi - domain.lo;
-  if (span <= 0) return CHART_W / 2;
-  return PAD_L + ((strike - domain.lo) / span) * (CHART_W - PAD_L - PAD_R);
+  if (span <= 0) return width / 2;
+  return PAD_L + ((strike - domain.lo) / span) * (width - PAD_L - PAD_R);
 }
 
 /** SVG x 픽셀 → 행사가 (호버 역변환). */
-export function strikeAt(domain: StrikeDomain, px: number): number {
+export function strikeAt(domain: StrikeDomain, px: number, width = CHART_W): number {
   const span = domain.hi - domain.lo;
   if (span <= 0) return domain.lo;
-  return domain.lo + ((px - PAD_L) / (CHART_W - PAD_L - PAD_R)) * span;
+  return domain.lo + ((px - PAD_L) / (width - PAD_L - PAD_R)) * span;
 }
 
 /** KOSPI200 옵션 행사가 간격(2.5p)과 정합하는 눈금 후보. */
