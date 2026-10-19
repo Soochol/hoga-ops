@@ -9,6 +9,7 @@
 .order-status-bar .order-status-message:disabled { opacity:1; }
 .order-status-bar .order-status-action { flex-shrink:0; padding:1px 6px; font:inherit; color:var(--fg); background:transparent; border:1px solid var(--border); border-radius:var(--radius-sm); }
 .order-status-bar .order-status-dismiss { flex:0 0 18px; width:18px; padding:0; border:0; background:transparent; color:var(--fg-dim); font:inherit; }
+.order-window .order-status-bar button:hover { background:transparent; }
 .order-status-detail { max-height:calc(100vh - 16px); overflow-y:auto; font-size:var(--live-text-data,var(--text-sm)); }
 .order-status-detail-body { display:flex; flex-direction:column; gap:10px; padding:12px; overflow-wrap:anywhere; }
 .order-status-detail-body p { margin:0; white-space:pre-wrap; }
