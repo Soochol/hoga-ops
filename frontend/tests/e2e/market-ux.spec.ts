@@ -172,7 +172,7 @@ for (const populated of [false, true]) for (const width of [1440, 800, 600]) {
         await group.getByRole('button', { name: mode, exact: true }).click();
         expect(await positions()).toEqual(before);
         if (populated && label === '프로그램 표시 구간') {
-          if (mode === '일별') await expect(page.getByText('표본 2거래일', { exact: true })).toHaveCount(2);
+          if (mode === '일별') await expect(page.getByText(/^표본 \d+거래일$/)).toHaveCount(0);
           else {
             await expect(page.getByText(/^표본 2개 ·/)).toHaveCount(0);
             await expect(page.getByRole('note', { includeHidden: true }).filter({ hasText: '2개 표본' })).toHaveCount(2);
@@ -210,10 +210,14 @@ for (const [width, fontSize] of [[1440, 16], [800, 16], [600, 20], [1440, 24]]) 
     ['수급 표시 구간', '투자자 일별 수급', '.market-investor-body'],
     ['프로그램 표시 구간', '코스피 프로그램 일별 수급', '.market-program-body'],
   ]) {
+    const body = page.locator(bodyClass);
+    const cardHeight = await body.evaluate(el => el.closest('.market-card')!.getBoundingClientRect().height);
     await page.getByRole('group', { name: modeLabel, exact: true }).getByRole('button', { name: '일별', exact: true }).click();
     const table = page.getByRole('table', { name: `${label} · 단위 억원` });
     const viewport = page.getByRole('region', { name: `${label} 목록 스크롤` });
     await expect(viewport.getByRole('row').first()).toContainText('08/20');
+    expect(await viewport.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(1);
+    expect(await body.evaluate(el => el.closest('.market-card')!.getBoundingClientRect().height)).toBeCloseTo(cardHeight, 1);
     await viewport.scrollIntoViewIfNeeded();
     const metrics = () => table.evaluate(el => ({
       header: el.querySelector('.daily-net-heading')!.getBoundingClientRect().top,
@@ -223,6 +227,7 @@ for (const [width, fontSize] of [[1440, 16], [800, 16], [600, 20], [1440, 24]]) 
       scrollTop: el.querySelector('[role="region"]')!.getBoundingClientRect().top,
       scrollBottom: el.querySelector('[role="region"]')!.getBoundingClientRect().bottom,
       lastRowBottom: el.querySelector('.daily-net-rows')!.lastElementChild!.getBoundingClientRect().bottom,
+      lastRowTop: el.querySelector('.daily-net-rows')!.lastElementChild!.getBoundingClientRect().top,
       overflow: el.scrollWidth - el.clientWidth,
     }));
     const before = await metrics();
@@ -231,18 +236,24 @@ for (const [width, fontSize] of [[1440, 16], [800, 16], [600, 20], [1440, 24]]) 
     await viewport.focus();
     await viewport.press('End');
     // Scrolling rounds to CSS pixels, while row heights can be fractional.
-    await expect(viewport.getByRole('row').last()).toBeInViewport({ ratio: 0.99 });
+    await expect.poll(() => viewport.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop)).toBeLessThanOrEqual(1);
+    await expect(viewport.getByRole('row').last()).toBeInViewport();
     const after = await metrics();
     expect(after.lastRowBottom).toBeLessThanOrEqual(after.scrollBottom + 1);
+    expect(after.lastRowTop).toBeGreaterThanOrEqual(after.scrollTop - 1);
     expect(Math.abs(after.header - before.header)).toBeLessThan(1);
     expect(Math.abs(after.footer - before.footer)).toBeLessThan(1);
     expect(after.overflow).toBeLessThanOrEqual(1);
-    const body = page.locator(bodyClass);
     expect(await body.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
-    if (modeLabel === '수급 표시 구간') {
-      const bounds = await body.boundingBox();
-      expect(Math.abs(after.footer - (bounds!.y + bounds!.height))).toBeLessThan(1);
-    }
+    const bounds = await body.boundingBox();
+    expect(Math.abs(after.footer - (bounds!.y + bounds!.height))).toBeLessThan(1);
+    const cardBottomGap = await body.evaluate(el => {
+      const card = el.closest('.market-card')!;
+      const style = getComputedStyle(card);
+      return card.getBoundingClientRect().bottom - parseFloat(style.paddingBottom) - parseFloat(style.borderBottomWidth)
+        - el.getBoundingClientRect().bottom;
+    });
+    expect(Math.abs(cardBottomGap)).toBeLessThan(1);
     await viewport.press('Home');
     await expect(viewport.getByRole('row').first()).toBeInViewport({ ratio: 0.99 });
     await body.screenshot({ path: testInfo.outputPath(`${modeLabel}-daily.png`) });
