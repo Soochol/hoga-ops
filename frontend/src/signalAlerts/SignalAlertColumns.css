@@ -1,0 +1,9 @@
+.signal-alert-list { display: grid; grid-template-columns: minmax(min-content, 1fr) max-content; column-gap: var(--list-gap); min-width: min-content; }
+.signal-alert-list > li, .signal-alert-row { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap:var(--list-gap); }
+.signal-alert-row { padding-inline: var(--list-padding); }
+.signal-alert-row > :nth-child(2) { white-space: nowrap; }
+.signal-alert-identity { gap: var(--list-gap); }
+.signal-alert-identity > :first-child { white-space:nowrap; }
+.signal-alert-identity > :nth-child(2) { min-width: calc(6 * var(--text-sm)); }
+.signal-alert-quantity { display: flex; justify-content: space-between; gap: var(--list-gap); white-space: nowrap; }
+.signal-alert-quantity > :last-child { text-align: right; }

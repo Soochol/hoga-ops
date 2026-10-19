@@ -1,0 +1,15 @@
+.pattern-results {
+  --pattern-thumb-width: 5.25rem;
+  display: grid;
+  grid-template-columns: minmax(calc(6 * var(--text-xs)), 1fr) var(--pattern-thumb-width) minmax(3.5rem, max-content);
+  column-gap: var(--list-gap);
+  min-width: min-content;
+}
+.pattern-match-row { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap:var(--list-gap); padding-inline: var(--list-padding); }
+.pattern-match-figures { white-space: nowrap; text-align: right; }
+@container responsive-list (max-width: 20rem) {
+  .pattern-results { --pattern-thumb-width: 4.5rem; }
+}
+@container responsive-list (max-width: 16.25rem) {
+  .pattern-results { --pattern-thumb-width: 4rem; }
+}
