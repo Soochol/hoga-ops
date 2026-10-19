@@ -8,7 +8,7 @@ export const STOCK_DATES_QUERY_KEY = ['stock-dates'] as const;
 export function useStockDates() {
   return useQuery({
     queryKey: STOCK_DATES_QUERY_KEY,
-    queryFn: () => apiGet<StockDate[]>('/api/stock-dates'),
+    queryFn: ({ signal }) => apiGet<StockDate[]>('/api/stock-dates', { signal }),
     staleTime: Infinity, // invalidated by SSE
   });
 }

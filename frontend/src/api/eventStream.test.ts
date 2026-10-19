@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
 import React from 'react';
 import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
@@ -281,7 +281,7 @@ describe('useEventStream inventory 무효화 접기', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) =>
       React.createElement(QueryClientProvider, { client: qc }, children);
     const view = renderHook(() => useEventStream(), { wrapper });
-    return { spy, view };
+    return { qc, spy, view };
   }
 
   function stockDatesCalls(spy: { mock: { calls: unknown[][] } }): number {
@@ -338,6 +338,49 @@ describe('useEventStream inventory 무효화 접기', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('keeps an in-flight inventory read and refreshes once after a dirty burst', async () => {
+    vi.useFakeTimers();
+    try {
+      const { spy } = mount();
+      let finish!: () => void;
+      const pending = new Promise<void>(resolve => { finish = resolve; });
+      spy.mockImplementation((filters) => filters?.queryKey?.[0] === 'stock-dates' ? pending : Promise.resolve());
+      await vi.advanceTimersByTimeAsync(0);
+      const sock = fakeSockets[0]; sock.open();
+      const change = () => sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20261019' } });
+      change(); await vi.advanceTimersByTimeAsync(250);
+      for (let i = 0; i < 10; i++) { change(); await vi.advanceTimersByTimeAsync(250); }
+      expect(stockDatesCalls(spy)).toBe(1);
+      expect(spy.mock.calls.find(([filters]) => filters?.queryKey?.[0] === 'stock-dates')?.[1])
+        .toEqual({ cancelRefetch: false });
+      finish(); await vi.advanceTimersByTimeAsync(250);
+      expect(stockDatesCalls(spy)).toBe(2);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(stockDatesCalls(spy)).toBe(2);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('refreshes after an event that arrives during the initial active query', async () => {
+    vi.useFakeTimers();
+    const { qc, view } = mount();
+    let finish!: (value: string) => void;
+    const first = new Promise<string>(resolve => { finish = resolve; });
+    const load = vi.fn().mockReturnValueOnce(first).mockResolvedValue('new');
+    const observer = new QueryObserver(qc, { queryKey: ['stock-dates'], queryFn: load, staleTime: Infinity });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      const sock = fakeSockets[0]; sock.open();
+      sock.message({ ch: 'event', data: { type: 'inventory_added', code: '005930', date: '20261019' } });
+      await vi.advanceTimersByTimeAsync(250);
+      expect(load).toHaveBeenCalledTimes(1);
+      finish('old');
+      await vi.advanceTimersByTimeAsync(250);
+      expect(load).toHaveBeenCalledTimes(2);
+      expect(qc.getQueryData(['stock-dates'])).toBe('new');
+    } finally { unsubscribe(); view.unmount(); vi.useRealTimers(); }
   });
 });
 

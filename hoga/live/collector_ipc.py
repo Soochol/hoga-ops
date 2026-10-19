@@ -21,6 +21,28 @@ RPC_TIMEOUT_S = 30.0
 STATE_FRESH_S = 10.0
 
 
+class PeakSnapshotDelta:
+    """Cumulative recovery when the bounded state outbox overwrites a frame.
+
+    Sent frames are ordered on one socket. If a previous frame is still queued,
+    its replacement must carry a full snapshot, never a delta based on that
+    unsent frame. A new epoch always starts with a full snapshot as well.
+    """
+    def __init__(self) -> None:
+        self.previous: dict | None = None
+        self.version: int | None = None
+
+    def apply(self, state: dict, *, queued: bool) -> dict:
+        peaks = state["peaks"]
+        full = self.previous is None or queued or self.version != state["desired_version"]
+        changed = peaks if full else {key: value for key, value in peaks.items()
+                                     if key not in self.previous or value != self.previous[key]}
+        removed = [] if full else list(self.previous.keys() - peaks.keys())
+        self.previous = peaks
+        self.version = state["desired_version"]
+        return {**state, "peaks": changed, "peaks_full": full, "peaks_removed": removed}
+
+
 def encode(message: dict, *, limit: int = MAX_FRAME_BYTES) -> bytes:
     payload = json.dumps(message, separators=(",", ":"), ensure_ascii=False).encode()
     if len(payload) > limit:

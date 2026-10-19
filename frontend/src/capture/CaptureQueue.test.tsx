@@ -33,12 +33,12 @@ const SNAPSHOT = (): QueueSnapshot => ({
 
 beforeEach(() => { vi.restoreAllMocks(); });
 
-function setup(snapshot: QueueSnapshot = SNAPSHOT()) {
+function setup(snapshot: QueueSnapshot = SNAPSHOT(), counts: { code: string; date: string; full_capture_count: number }[] = []) {
   vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
     const s = String(url);
     if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => snapshot } as Response;
     if (s.includes('/api/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
-    if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
+    if (s.includes('/api/capture-counts')) return { ok: true, status: 200, json: async () => ({ items: counts }) } as Response;
     return { ok: true, status: 200, json: async () => ({}) } as Response;
   });
   return new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -60,6 +60,16 @@ describe('computeHeaderSummary', () => {
 });
 
 describe('CaptureQueue', () => {
+  it('reads counts for queue keys without fetching the full inventory', async () => {
+    const qc = setup(SNAPSHOT(), [{ code: '005930', date: '20260518', full_capture_count: 7 }]);
+    render(<CaptureQueue />, { wrapper: W(qc) });
+    await waitFor(() => expect(screen.getAllByText('×7')).toHaveLength(6));
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls.some(([url]) => String(url).includes('/api/stock-dates'))).toBe(false);
+    const countCalls = calls.filter(([url]) => String(url).includes('/api/capture-counts'));
+    expect(countCalls).toHaveLength(1);
+    expect(JSON.parse(String(countCalls[0][1]?.body))).toEqual({ items: [{ code: '005930', date: '20260518' }] });
+  });
   it('renders header + 전체 취소 + 완료 지우기', async () => {
     const qc = setup();
     render(<CaptureQueue />, { wrapper: W(qc) });
@@ -92,7 +102,7 @@ describe('CaptureQueue', () => {
     const fetchMock = vi.spyOn(globalThis, 'fetch' as const).mockImplementation(async (url: RequestInfo | URL) => {
       const s = String(url);
       if (s.includes('/api/captures/queue')) return { ok: true, status: 200, json: async () => SNAPSHOT() } as Response;
-      if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
+      if (s.includes('/api/capture-counts')) return { ok: true, status: 200, json: async () => ({ items: [] }) } as Response;
       return { ok: true, status: 202, json: async () => ({}) } as Response;
     });
     render(<CaptureQueue />, { wrapper: W(qc) });
@@ -165,7 +175,7 @@ describe('CaptureQueue 실패 재시도 (ADR-0031)', () => {
         return { ok: true, status: 201, json: async () => ({ enqueued: [], skipped: [] }) } as Response;
       }
       if (s.includes('/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
-      if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
+      if (s.includes('/api/capture-counts')) return { ok: true, status: 200, json: async () => ({ items: [] }) } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -193,7 +203,7 @@ describe('CaptureQueue 실패 재시도 (ADR-0031)', () => {
       if (s.includes('/items')) { calls.push('items'); return { ok: true, status: 201, json: async () => ({ enqueued: [], deduped: [] }) } as Response; }
       if (s.includes('/queue')) return { ok: true, status: 200, json: async () => snap } as Response;
       if (s.includes('/symbols/all')) return { ok: true, status: 200, json: async () => ({ symbols: [], status: 'fresh', fetched_at_ms: 1 }) } as Response;
-      if (s.includes('/api/stock-dates')) return { ok: true, status: 200, json: async () => [] } as Response;
+      if (s.includes('/api/capture-counts')) return { ok: true, status: 200, json: async () => ({ items: [] }) } as Response;
       return { ok: true, status: 200, json: async () => ({}) } as Response;
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });

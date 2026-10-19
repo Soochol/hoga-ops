@@ -1,0 +1,127 @@
+{
+  "inventory": {
+    "requests": 32,
+    "rows": 5000,
+    "worker_slots": 3,
+    "scope": "real Pydantic response serialization; excludes filesystem traversal and process IPC",
+    "runs": [
+      {
+        "shared": false,
+        "repeat": 0,
+        "computations": 32,
+        "wall_ms": 281.30778100239695,
+        "cpu_ms": 278.02140799999984,
+        "response_bytes": 2760001,
+        "equal_bodies": true
+      },
+      {
+        "shared": false,
+        "repeat": 1,
+        "computations": 32,
+        "wall_ms": 227.81448600289878,
+        "cpu_ms": 228.96085,
+        "response_bytes": 2760001,
+        "equal_bodies": true
+      },
+      {
+        "shared": false,
+        "repeat": 2,
+        "computations": 32,
+        "wall_ms": 182.13657999876887,
+        "cpu_ms": 182.9545239999999,
+        "response_bytes": 2760001,
+        "equal_bodies": true
+      },
+      {
+        "shared": true,
+        "repeat": 0,
+        "computations": 1,
+        "wall_ms": 15.884248001384549,
+        "cpu_ms": 15.880006999999807,
+        "response_bytes": 2760001,
+        "equal_bodies": true
+      },
+      {
+        "shared": true,
+        "repeat": 1,
+        "computations": 1,
+        "wall_ms": 6.874368998978753,
+        "cpu_ms": 6.874344999999948,
+        "response_bytes": 2760001,
+        "equal_bodies": true
+      },
+      {
+        "shared": true,
+        "repeat": 2,
+        "computations": 1,
+        "wall_ms": 5.919491999520687,
+        "cpu_ms": 5.926135000000166,
+        "response_bytes": 2760001,
+        "equal_bodies": true
+      }
+    ]
+  },
+  "collector": {
+    "codes": 64,
+    "peak_rows_per_side": 150,
+    "frames": 30,
+    "changed_codes_per_frame": 1,
+    "scope": "snapshot comparison + JSON encode/decode + parent replacement; excludes snapshot builder/socket time",
+    "runs": [
+      {
+        "delta": false,
+        "bytes": 26868522,
+        "frames": 30,
+        "transport_total_ms": 422.1434640021471,
+        "frame_median_ms": 11.923963500521495,
+        "frame_max_ms": 69.60922999860486,
+        "state_equivalent": true
+      },
+      {
+        "delta": false,
+        "bytes": 26868522,
+        "frames": 30,
+        "transport_total_ms": 358.8024879936711,
+        "frame_median_ms": 11.580822498217458,
+        "frame_max_ms": 15.263720000803005,
+        "state_equivalent": true
+      },
+      {
+        "delta": false,
+        "bytes": 26868522,
+        "frames": 30,
+        "transport_total_ms": 354.2450550266949,
+        "frame_median_ms": 11.528850000104285,
+        "frame_max_ms": 16.175495999050327,
+        "state_equivalent": true
+      },
+      {
+        "delta": true,
+        "bytes": 1304450,
+        "frames": 30,
+        "transport_total_ms": 67.0643160083273,
+        "frame_median_ms": 1.9940679994761012,
+        "frame_max_ms": 11.897463002242148,
+        "state_equivalent": true
+      },
+      {
+        "delta": true,
+        "bytes": 1304450,
+        "frames": 30,
+        "transport_total_ms": 53.18752299717744,
+        "frame_median_ms": 1.461877001929679,
+        "frame_max_ms": 10.467481999512529,
+        "state_equivalent": true
+      },
+      {
+        "delta": true,
+        "bytes": 1304450,
+        "frames": 30,
+        "transport_total_ms": 49.99686800147174,
+        "frame_median_ms": 1.3615029984066496,
+        "frame_max_ms": 10.164892999455333,
+        "state_equivalent": true
+      }
+    ]
+  }
+}

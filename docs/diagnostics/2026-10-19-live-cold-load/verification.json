@@ -1,0 +1,117 @@
+{
+  "recordedAtKst": "2026-10-19T13:58:02.217269+09:00",
+  "implementationCommit": "1db98f8a8658505673e9ff233dfa2c27c1de3c3a",
+  "baseCommit": "83aedf349a2333449c6d4ae229837fcd9113d71e",
+  "scope": "Local affected-area verification; no production deployment or vendor tokens. The following documentation-only commit reuses identical code/test inputs.",
+  "inputFingerprints": {
+    "frontend": {
+      "files": 1671,
+      "sha256": "25e86a4994f17da420caf3afdc0c96ae3b84c2e990a2b00bcf221353214180dc",
+      "gitPathspecs": [
+        "frontend/src",
+        "frontend/tests",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/playwright.config.ts",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/tsconfig.node.json",
+        "frontend/vitest.config.ts"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    },
+    "backend": {
+      "files": 756,
+      "sha256": "70bdb40aaebf9b2723d6066b77503a259fae122e921ab146fd021408fae34e24",
+      "gitPathspecs": [
+        "hoga",
+        "tests",
+        "scripts/benchmark_live_cold_paths.py",
+        "pyproject.toml",
+        "uv.lock",
+        "ruff.toml",
+        ".python-version"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    }
+  },
+  "tools": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "playwright": "Version 1.60.0",
+    "typescript": "Version 6.0.3"
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; app + unit + E2E TypeScript projects",
+      "exitCode": 0
+    },
+    {
+      "command": "cd frontend && npx vitest run src/api/sharedLiveSeries.test.tsx src/api/eventStream.test.ts src/capture/CaptureQueue.test.tsx src/live/LiveChartRoot.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/InvestorDailyWindow.test.tsx",
+      "result": "394 tests / 6 files passed",
+      "exitCode": 0
+    },
+    {
+      "command": ".venv/bin/ruff check .",
+      "result": "all checks passed",
+      "exitCode": 0
+    },
+    {
+      "command": ".venv/bin/pytest -q tests/unit/test_compute_admission.py tests/unit/api/test_compute_pools.py tests/unit/api/test_stock_dates_snapshot.py tests/unit/live/test_collector_peak_delta.py tests/unit/live/test_collector_process.py tests/test_api_capture_counts.py tests/test_api_stock_dates.py tests/test_api_stock_dates_cache.py tests/test_api_stock_dates_completeness.py tests/test_api_events_inventory.py tests/test_api_ws_inventory.py tests/unit/api/test_inventory_kiwoom_live_rows.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "130 passed; followed by focused snapshot suite after adding one route-admission regression: 5 passed. 131 distinct cases covered.",
+      "exitCode": 0
+    },
+    {
+      "command": "cd frontend && npx playwright test live-smoke live-viewport-preservation --reporter=list",
+      "result": "13 passed; followed by newly added late-hoga viewport case: 1 passed. 14 distinct functional E2E cases.",
+      "exitCode": 0
+    },
+    {
+      "command": "cd frontend && HOGA_RUN_COLD_BENCHMARK=1 HOGA_COLD_BENCH_LEGACY=1 HOGA_COLD_BENCH_LABEL=legacy-controlled HOGA_COLD_BENCH_OUTPUT=<before-controlled.json> npx playwright test live-cold-switch-benchmark --reporter=list",
+      "result": "passed; 6 cold / 3 revisit samples",
+      "exitCode": 0
+    },
+    {
+      "command": "cd frontend && HOGA_RUN_COLD_BENCHMARK=1 HOGA_COLD_BENCH_LABEL=improved-controlled HOGA_COLD_BENCH_OUTPUT=<after-controlled.json> npx playwright test live-cold-switch-benchmark live-viewport-preservation --reporter=list",
+      "result": "11 passed; benchmark has 6 cold / 3 revisit samples",
+      "exitCode": 0
+    },
+    {
+      "command": "PYTHONPATH=. .venv/bin/python scripts/benchmark_live_cold_paths.py --output docs/diagnostics/2026-10-19-live-cold-load/backend-comparison.json",
+      "result": "3 repeats each; inventory response bytes and collector final states equivalent",
+      "exitCode": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "exitCode": 0
+    }
+  ],
+  "build": "Playwright webServer ran npx vite build successfully for each verification startup, including the final late-hoga test.",
+  "reuseNotes": [
+    "Controlled performance cases require non-empty new-code candles. Later empty/null-candle reveal guards do not change that path; their new unit cases and final smoke/viewport E2E passed.",
+    "Final inventory admission change is backend-only and affects no mocked benchmark response; the full backend run and dedicated bounded-waiter regression passed.",
+    "The last test-only additions introduce one late-hoga E2E and one HTTP waiter-admission case; broader existing results are reused where their inputs are unchanged.",
+    "Existing synthetic-workload React update-depth warnings are recorded in comparison.json; unhandled benchmark page errors were zero."
+  ],
+  "isolation": {
+    "backendPort": 20023,
+    "frontendPort": 21023,
+    "vendorCredentials": "blank overrides from unchanged Playwright config",
+    "userServerRestarted": false
+  },
+  "logSha256": {
+    "typecheck": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+    "frontend": "f2a7b1fefdffa73ef5e5a9f62ff93d9c196fc411fa480cbae8aa27005e027c15",
+    "backend": "c2c77fd35acfe5ee4d27846629355e55fbe730fa5193688fa47a35b3d9c05703",
+    "admission": "927079dfa593b01be233bf06b0edb6250a9fef8ae2aa66f61e91d23fb5e24c7d",
+    "e2e": "1771bbca3094efe4052d7a5a9a718f94d02a14c63cbbbec438764aeb56cc2506",
+    "lateHoga": "4a6b26106fd1b1c25a35afc4d48579f2f1e7eca4fc8fb794d31f9e5579b11783",
+    "before": "6a17298321cdefcc9ace61c37b6801befff29c7e3d859b59e2eccf6d8941dbb7",
+    "after": "92731ff9e301f6ff7ff5a30fe875c97a7f749e53db5c3cbb4fbf100f1717f0a0"
+  }
+}

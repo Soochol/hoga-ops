@@ -21,7 +21,7 @@ from pathlib import Path
 from hoga.util.timeenc import KST
 
 from .buffer import LiveBuffer
-from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, BoundedOutbox, RpcPeer, encode, open_channel
+from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, BoundedOutbox, PeakSnapshotDelta, RpcPeer, encode, open_channel
 from .snapshot import SnapshotKind
 
 log = logging.getLogger(__name__)
@@ -73,6 +73,7 @@ class CollectorWorker:
         self.root, self.epoch, self.peer = root, epoch, peer
         self.display = BoundedOutbox()
         self.state_outbox = BoundedOutbox(max_messages=1)
+        self.peak_delta = PeakSnapshotDelta()
         self.buffer = ForwardBuffer(epoch, self.display)
         self.config: dict = {}
         self.views: dict[tuple[str, str], set[str]] = {}
@@ -280,7 +281,15 @@ class CollectorWorker:
 
     async def states(self) -> None:
         while True:
-            self.state_outbox.put(encode(self.state()))
+            started = time.monotonic()
+            state = self.peak_delta.apply(self.state(), queued=bool(self.state_outbox.frames))
+            frame = encode(state)
+            self.state_outbox.put(frame)
+            from hoga import perf_debug  # noqa: PLC0415 — optional diagnostics
+            if perf_debug.enabled():
+                log.info("hoga_perf collector_state pid=%s bytes=%d peak_keys=%d changed=%d full=%s build_ms=%.1f",
+                         os.getpid(), len(frame), len(self.peak_delta.previous), len(state["peaks"]),
+                         state["peaks_full"], (time.monotonic() - started) * 1000)
             await asyncio.sleep(1)
 
     async def watchdog(self) -> None:

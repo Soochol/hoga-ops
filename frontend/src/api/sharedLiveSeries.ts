@@ -11,6 +11,13 @@ import { regularSessionOpenMs } from '../live/liveDateTime';
 import { preAuctionCutoff } from './livePreAuctionBook';
 
 export const LIVE_FLUSH_MS = 150;
+export const RETAINED_BOOK_MS = 30_000;
+const RETAINED_BOOK_CODES = 64;
+type RetainedBooks = { expires: number; latest: Map<string, ObSnapshot>; valid: Map<string, ObSnapshot>; preAuction?: ObSnapshot };
+// Only compact ladders survive a closed view. Indicator history and upstream
+// subscriptions are still released immediately; timestamps/freshness stay intact.
+const retainedBooks = new Map<string, RetainedBooks>();
+export function __resetRetainedBooksForTests(): void { retainedBooks.clear(); }
 type Frames = Pick<LiveSeriesData, 'ob' | 'trade' | 'broker' | 'program' | 'afterHours' | 'expected' | 'latestOb' | 'lastValidOb' | 'preAuctionOb'>;
 type Raw = Record<SnapshotKind, readonly RawSnapshot[]>;
 const KINDS = ['ob', 'trade', 'broker', 'program', 'ah', 'expected'] as const;
@@ -86,6 +93,24 @@ class SharedSeries {
   constructor(date: string) {
     this.regularOpen = regularSessionOpenMs(date);
     this.auctionCutoff = preAuctionCutoff(date);
+  }
+
+  restoreBooks(saved: RetainedBooks): void {
+    const now = Date.now();
+    const fresh = (book: ObSnapshot) => book.t_ms >= now - RETAINED_BOOK_MS && book.t_ms <= now + 5000;
+    this.latestOb = new Map([...saved.latest].filter(([, book]) => fresh(book)));
+    this.lastValidOb = new Map([...saved.valid].filter(([, book]) => fresh(book)));
+    this.preAuctionOb = saved.preAuction && fresh(saved.preAuction) ? saved.preAuction : undefined;
+  }
+
+  retainBooks(): RetainedBooks | null {
+    const now = Date.now();
+    const fresh = (book: ObSnapshot) => book.t_ms >= now - RETAINED_BOOK_MS && book.t_ms <= now + 5000;
+    const latest = new Map([...this.latestOb].filter(([, book]) => fresh(book)));
+    const valid = new Map([...this.lastValidOb].filter(([, book]) => fresh(book)));
+    if (!latest.size && !valid.size) return null;
+    return { expires: now + RETAINED_BOOK_MS, latest, valid,
+      preAuction: this.preAuctionOb && fresh(this.preAuctionOb) ? this.preAuctionOb : undefined };
   }
 
   private retainBook(entry: RawSnapshot, latest = true): void {
@@ -202,16 +227,28 @@ export function subscribeLiveSeries(code: string, date: string, listener: () => 
   let entry = entries.get(key);
   if (!entry) {
     entry = new SharedSeries(date);
+    for (const [oldKey, saved] of retainedBooks) if (saved.expires <= Date.now()) retainedBooks.delete(oldKey);
+    const saved = retainedBooks.get(key);
+    if (saved) { entry.restoreBooks(saved); retainedBooks.delete(key); }
     entries.set(key, entry);
     entry.start(code);
   }
   // 같은 callback을 두 번 구독해도 한 cleanup이 다른 구독을 없애지 않게 감싼다.
   const notify = () => listener();
   entry.listeners.add(notify);
+  let subscribed = true;
   return () => {
+    if (!subscribed) return;
+    subscribed = false;
     entry.listeners.delete(notify);
     if (!entry.listeners.size) {
       entry.stop();
+      const saved = entry.retainBooks();
+      if (saved) {
+        retainedBooks.delete(key);
+        retainedBooks.set(key, saved);
+        while (retainedBooks.size > RETAINED_BOOK_CODES) retainedBooks.delete(retainedBooks.keys().next().value!);
+      }
       if (entries.get(key) === entry) entries.delete(key);
     }
   };

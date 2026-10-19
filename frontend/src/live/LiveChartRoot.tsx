@@ -70,6 +70,7 @@ import LiveCurrentPriceLine from './LiveCurrentPriceLine';
 import QuoteLevelLines from './QuoteLevelLines';
 import { freshLiveTradePrice } from './deriveCurrentPriceLine';
 import type { TradeSnapshot } from './bucketHogaSeries';
+import { livePerfLog } from '../util/perfDebug';
 import type { PeakWallSegment, PeakWallLabelSide } from '../chart/PeakWallSegmentsPrimitive';
 import LivePeakWallSegments from './LivePeakWallSegments';
 import { usePeakWallRender } from './usePeakWallRender';
@@ -206,31 +207,12 @@ const EMPTY_CANDLES_FOR_DAILY_MA: readonly Candle[] = [];
 
 // 회피 입력의 빈 상태 — **공유 상수**여야 memo 결과가 참조로 안정되어 하위 스냅샷
 // effect 가 매 렌더 다시 돌지 않는다(빈 배열 리터럴은 매번 새 참조다).
-/** 캔들·호가가 settle된 뒤 **사이드카 지표만** 더 기다리는 상한.
- *
- * ## 왜 캡이 (다시) 있는가
- *
- * 이 캡은 #479 에서 도입됐다가 #579 가 제거했고, 2026-08-19 사용자 결정으로
- * 복원됐다. 취향의 왕복이 아니라 **전제가 실측으로 반박된** 경우다:
- *
- * - #579 의 근거는 "사이드카는 빠르다" 였다(실측 220ms). 캔들 콜드 ~1s 옆에서
- *   0.2s 는 공짜라, 캡 없이 다 같이 등장시키는 편이 나았다("기다림 > 따로 뜸").
- * - 그 뒤 실측이 그 전제를 깼다. 콜드 5거래일 창에서 호가 44ms 대 **사이드카
- *   4.68s**, 한 달 창은 **11.7s**(아래 지표 문구 주석에 기록). 2026-08-19
- *   `/live` 조사에서도 `/api/range` 가 콜드 2.6s, 서버 slow-log 09시대 19건
- *   평균 5.0s·최대 12.3s 였다.
- * - 즉 "0.2s 더 기다리기" 가 실제로는 "최대 11.7초 단색 커버 응시" 였다.
- *   그 구간에서는 따로 뜨는 편이 낫다 — 캡은 그 꼬리만 자른다.
- *
- * 700ms 는 #479 가 심사했던 값 그대로다. 빠른 경로(사이드카 220ms + vdist 의
- * 캔들-후행 체인 ~0.2s)는 캡 안에 들어오므로 **한 장면 등장이 그대로 유지되고**,
- * 잘리는 것은 rate-limit·넓은 창 같은 꼬리뿐이다.
- *
- * 대가: 캡이 발화한 뒤 사이드카가 도착하면 그 pane 이 늦게 채워진다. pane 멤버십
- * 자체는 토글·타임프레임으로만 정해지므로(`paneSpecsForTimeframe`) 데이터 도착이
- * pane 을 새로 만들지는 않지만, 빈 pane 을 lwc 가 지웠다가 되살리는 경로가 있어
- * 리플로우가 보일 수 있다. 11.7초 커버와 맞바꾼 값이다. */
-export const SIDECAR_REVEAL_CAP_MS = 700;
+/** 캔들 준비 후 호가·부가지표를 함께 기다리는 예산.
+ * 빠른 응답은 같은 화면에 공개하고, 늦는 지표는 같은 축에서 나중에 채운다.
+ * viewport 적용과 두 rAF 뒤의 fade는 유지해 초기 배율 flash를 막는다.
+ * 종전 sidecar 전용 700ms / 호가 무제한 대기를 200ms 공유 예산으로 바꿨다.
+ * API 응답 자체를 빠르게 만드는 값은 아니다. */
+export const SIDECAR_REVEAL_CAP_MS = 200;
 
 const DAILY_MIN_EFFECTIVE_BAR_SPACING = 3.5;
 
@@ -1091,8 +1073,10 @@ export function LiveChartRoot({
   const calendarViewportRetryRafRef = useRef<number | null>(null);
   // 사이드카 대기 상한(SIDECAR_REVEAL_CAP_MS)이 소진됐는가. viewKey 단위로 리셋한다 —
   // 이전 뷰의 cap-reached 가 새 뷰의 첫 커밋을 조기 reveal 하면 안 된다.
-  const [sidecarCapReached, setSidecarCapReached] = useState(false);
+  const [sidecarCapReachedKey, setSidecarCapReachedKey] = useState<string | null>(null);
+  const sidecarCapReached = sidecarCapReachedKey === viewKey;
   const sidecarCapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealStartedRef = useRef(performance.now());
   const chartReady = revealedKey === viewKey;
   useEffect(() => {
     lastAppliedCountRef.current = null;
@@ -1110,7 +1094,8 @@ export function LiveChartRoot({
       clearTimeout(sidecarCapTimerRef.current);
       sidecarCapTimerRef.current = null;
     }
-    setSidecarCapReached(false);
+    setSidecarCapReachedKey(null);
+    revealStartedRef.current = performance.now();
   }, [viewKey]);
   // Cancel a pending reveal rAF on unmount so it can't setState after teardown.
   useEffect(() => () => {
@@ -1118,23 +1103,17 @@ export function LiveChartRoot({
     if (calendarViewportRetryRafRef.current !== null) cancelAnimationFrame(calendarViewportRetryRafRef.current);
     if (sidecarCapTimerRef.current !== null) clearTimeout(sidecarCapTimerRef.current);
   }, []);
-  // 사이드카 캡 타이머. **캔들·호가가 이미 settle 됐고 사이드카만 남은 시점**에서만
-  // 시작한다 — 이 시작점이 설계의 급소다. viewKey 변경 시점부터 세면 캔들 콜드
-  // fetch(~1s)가 캡을 먼저 소진해, vdist 의 캔들-후행 체인(+0.2s)조차 매번 캡을
-  // 놓치고 **모든 콜드 로드가 따로 뜸**이 된다 — 고치려던 것보다 나쁜 결과다.
-  //
-  // 타이머는 viewKey 리셋·언마운트에서만 정리하므로(dep churn 에 재시작하지 않는다)
-  // 한 창(window)당 정확히 한 번 동작한다. 사이드카가 캡 전에 settle 되면 아래 메인
-  // reveal effect 가 즉시 열고(dep 에 isSidecarLoading 포함), 이 타이머는 뒤늦게
-  // fire 해도 무해하다(reveal 의 revealedKey === viewKey 가드로 no-op).
+  // Begin only after candles settle, so a slow candle request cannot consume
+  // the indicator budget. The timer belongs to viewKey and never restarts on
+  // bundle churn. All indicator lanes share it, including hoga and daily MA.
   useEffect(() => {
-    const waitingOnSidecar = isSidecarLoading && !isPastCandlesLoading && !isHogaLoading;
+    const waitingOnSidecar = (isSidecarLoading || isHogaLoading) && !isPastCandlesLoading;
     if (!waitingOnSidecar || sidecarCapReached || sidecarCapTimerRef.current !== null) return;
     sidecarCapTimerRef.current = setTimeout(() => {
       sidecarCapTimerRef.current = null;
-      setSidecarCapReached(true);
+      setSidecarCapReachedKey(viewKey);
     }, SIDECAR_REVEAL_CAP_MS);
-  }, [isSidecarLoading, isPastCandlesLoading, isHogaLoading, sidecarCapReached]);
+  }, [isSidecarLoading, isPastCandlesLoading, isHogaLoading, sidecarCapReached, viewKey]);
 
   // Leftward-pan historical backfill + staleness-free viewport repositioning
   // (pre-swap layout snapshot, post-setData reposition, lazy-fetch trigger,
@@ -1438,28 +1417,19 @@ export function LiveChartRoot({
       revealRafRef.current = requestAnimationFrame(() => {
         revealRafRef.current = requestAnimationFrame(() => {
           revealRafRef.current = null;
+          livePerfLog('chart_reveal', { code, timeframe, viewKey,
+            durationMs: performance.now() - revealStartedRef.current,
+            indicatorCapReached: sidecarCapReached, hogaPending: isHogaLoading, sidecarPending: isSidecarLoading });
           setRevealedKey(viewKey);
         });
       });
     };
-    // 데이터 홀드: 캔들 경로가 먼저 settle될 수 있으므로, 호가 경로도 settle될 때까지
-    // reveal을 홀드해 모든 pane이 한 번의 reveal로 등장하게 한다. 뷰포트 적용은 커버
-    // 뒤에서 그대로 선행하고, 호가 settle 시 effect가 재실행돼(isHogaLoading dep) reveal.
-    // 팬 경로(historicalFromDate)는 일부러 이 게이트를 우회한다(raw reveal 유지).
+    // Fast indicator lanes join the first reveal. Slow lanes keep their panes
+    // and loading state while candles become usable. Panning keeps its existing
+    // viewport/reveal path.
     const revealWhenSettled = () => {
-      // 캔들·호가·사이드카가 모두 settle될 때까지 홀드 → 캔들·모든 pane 지표가 한 번의
-      // reveal로 함께 등장(장면1). **단 사이드카에는 상한이 있다** — 캡이 소진되면
-      // 캔들을 먼저 공개한다. 근거·경위는 `SIDECAR_REVEAL_CAP_MS`(요약: 사이드카가
-      // 빠르다는 전제가 4.68s~11.7s 실측으로 반박됐다).
-      //
-      // 호가에는 캡이 없다. 실측이 수십~수백 ms 라 캔들 콜드 옆에서 무시할 수 있고,
-      // 호가 pane 은 캔들과 같은 축을 공유해 따로 뜨면 어긋남이 더 크게 읽힌다.
-      //
-      // isSidecarLoading 의 모든 항은 settle(성공·에러)로 반드시 false 수렴하므로
-      // 캡이 없더라도 커버가 고착되지는 않는다(useLiveBundle isSidecarLoading 주석) —
-      // 캡은 고착 방지가 아니라 **꼬리 지연 차단**이 목적이다.
       const sidecarBlocking = isSidecarLoading && !sidecarCapReached;
-      if (!isHogaLoading && !sidecarBlocking) reveal();
+      if ((!isHogaLoading || sidecarCapReached) && !sidecarBlocking) reveal();
     };
     if (!chart || !cb) {
       // No chart/bundle to position yet. If the past-candle fetch has SETTLED
@@ -1467,7 +1437,7 @@ export function LiveChartRoot({
       // the cover can't wedge opaque over a chartless surface; while still
       // loading, keep it up. Safe against a re-flash: a null bundle means no
       // candle data is pending, so nothing can later paint at the wrong zoom.
-      if (chart && !isPastCandlesLoading && !isHogaLoading) reveal();
+      if (chart && !isPastCandlesLoading && (!isHogaLoading || sidecarCapReached)) reveal();
       return;
     }
     if (cb.candles.length === 0) {
@@ -1475,7 +1445,7 @@ export function LiveChartRoot({
       // (empty result, or D/W/M with no history), reveal the empty chart so the
       // cover doesn't linger; while either is still loading, keep the cover up.
       // 신규상장 등 진짜 데이터 없는 코드도 호가가 빈/에러로 settle되므로 게이트가 열린다.
-      if (!isPastCandlesLoading && !isHogaLoading) reveal();
+      if (!isPastCandlesLoading && (!isHogaLoading || sidecarCapReached)) reveal();
       return;
     }
     const initialHistory = initialMinuteHistoryRef.current;
@@ -3040,7 +3010,7 @@ export function LiveChartRoot({
 
           캡(`SIDECAR_REVEAL_CAP_MS`, 2026-08-19 복원)이 생긴 뒤에도 이 술어는 그대로
           성립한다 — 캡이 발화하면 `chartReady` 가 true 가 되고 `!chartReady` 가드가
-          문구를 걷어 간다. 즉 문구가 뜨는 구간은 이제 **최대 700ms** 로 유계다.
+          문구를 걷어 간다. 즉 문구가 뜨는 구간은 이제 **캔들 준비 후 최대 200ms** 로 유계다.
 
           경위: 문구 자체가 #457 에서 **침묵 커버를 막으려고** 생겼는데, 이후 #479·#579 가
           홀드 게이트만 넓히고 문구를 안 데려갔다(그 불일치를 뒤에 맞췄다). #579 가 없앤
@@ -3056,6 +3026,13 @@ export function LiveChartRoot({
             fontSize: 'var(--text-sm)', zIndex: 31,
           }}
         >
+          지표 불러오는 중…
+        </div>
+      )}
+      {chartReady && cb !== null && cb.candles.length > 0 && (isHogaLoading || isSidecarLoading) && (
+        <div role="status" data-testid="indicator-loading-status"
+          className="pointer-events-none absolute right-sm top-sm text-xs text-fg-dim"
+          style={{ zIndex: 31, background: 'var(--bg-card)' }}>
           지표 불러오는 중…
         </div>
       )}

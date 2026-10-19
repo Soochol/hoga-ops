@@ -77,6 +77,7 @@ def classify_inventory_event(
 class EventBus:
     def __init__(self) -> None:
         self.queues: set[asyncio.Queue] = set()
+        self.inventory_revision = 0
 
     def subscribe(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=64)
@@ -87,6 +88,8 @@ class EventBus:
         self.queues.discard(q)
 
     def publish(self, evt: dict) -> None:
+        if evt.get("type") in {"inventory_added", "inventory_removed"}:
+            self.inventory_revision += 1
         for q in self.queues:
             try:
                 q.put_nowait(evt)

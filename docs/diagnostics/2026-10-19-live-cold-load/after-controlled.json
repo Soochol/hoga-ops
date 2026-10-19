@@ -1,0 +1,97 @@
+{
+  "label": "improved-controlled",
+  "browser": "155.0.8059.84",
+  "workload": {
+    "legacy": false,
+    "sevenWindows": true,
+    "candleMs": 80,
+    "hogaMs": 900,
+    "sidecarMs": 1400,
+    "latestBookAfterSubscribeMs": 1000,
+    "scope": "synthetic transport delays; empty auxiliary cards; public book only; not real vendor/server load"
+  },
+  "results": [
+    {
+      "repeat": 0,
+      "code": "000660",
+      "phase": "cold",
+      "chartMs": 549,
+      "bookMs": 1189,
+      "allResponsesMs": 2950,
+      "requests": 11
+    },
+    {
+      "repeat": 0,
+      "code": "035420",
+      "phase": "cold",
+      "chartMs": 527,
+      "bookMs": 1186,
+      "allResponsesMs": 2958,
+      "requests": 11
+    },
+    {
+      "repeat": 0,
+      "code": "000660",
+      "phase": "revisit",
+      "chartMs": 309,
+      "bookMs": 67,
+      "allResponsesMs": 309,
+      "requests": 2
+    },
+    {
+      "repeat": 1,
+      "code": "000660",
+      "phase": "cold",
+      "chartMs": 534,
+      "bookMs": 1187,
+      "allResponsesMs": 2949,
+      "requests": 11
+    },
+    {
+      "repeat": 1,
+      "code": "035420",
+      "phase": "cold",
+      "chartMs": 519,
+      "bookMs": 1182,
+      "allResponsesMs": 2942,
+      "requests": 11
+    },
+    {
+      "repeat": 1,
+      "code": "000660",
+      "phase": "revisit",
+      "chartMs": 288,
+      "bookMs": 54,
+      "allResponsesMs": 288,
+      "requests": 2
+    },
+    {
+      "repeat": 2,
+      "code": "000660",
+      "phase": "cold",
+      "chartMs": 541,
+      "bookMs": 1185,
+      "allResponsesMs": 2947,
+      "requests": 11
+    },
+    {
+      "repeat": 2,
+      "code": "035420",
+      "phase": "cold",
+      "chartMs": 540,
+      "bookMs": 1181,
+      "allResponsesMs": 2948,
+      "requests": 11
+    },
+    {
+      "repeat": 2,
+      "code": "000660",
+      "phase": "revisit",
+      "chartMs": 317,
+      "bookMs": 78,
+      "allResponsesMs": 317,
+      "requests": 2
+    }
+  ],
+  "errors": []
+}
