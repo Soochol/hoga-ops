@@ -102,4 +102,21 @@ describe('retained live cache policy', () => {
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();
   });
+
+  it('reports raw range payloads separately from the merged retention budget', () => {
+    const client = new QueryClient();
+    seed(client, 'closed', 1);
+    const raw = { points: [{ t: 1, qty: 2 }] };
+    client.setQueryData(['range', 'closed'], raw);
+    const emptyKey = mergedLiveRangeKey(JSON.stringify(['range', 'loading']));
+    const { unmount } = renderHook(() => useLiveCacheConsumer(client, emptyKey, true));
+    trimRetainedLiveCaches(client, 0, 0);
+    expect(liveCacheStats(client)).toMatchObject({
+      mergedEntries: 1, protectedEntries: 1, readyProtectedEntries: 0,
+      estimatedBytes: 0, rangeEntries: 1, rangeEstimatedBytes: estimateLivePayloadBytes(raw),
+    });
+    expect(client.getQueryData(['range', 'closed'])).toEqual(raw);
+    unmount();
+    client.clear();
+  });
 });

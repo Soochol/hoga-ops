@@ -1,0 +1,85 @@
+{
+  "checked_at_utc": "2026-10-19T04:10:33.509350+00:00",
+  "branch": "codex/live-cache-benchmark",
+  "measured_base_commit": "02e924ebbe430cc8265f47015807dbc2dd62c2cd",
+  "validated_head_commit": "3b9d7c39475ec66bc4fd987958d61f63131a81b3",
+  "latest_main_checked": "3b9d7c39475ec66bc4fd987958d61f63131a81b3",
+  "uncommitted_source_sha256": {
+    "CONTEXT.md": "451fc1eabb3a58fab3b0c34c91d91869145f0bbf023ad9fdee1164bbd2632dbe",
+    "frontend/src/api/liveCachePolicy.ts": "13574d4941a85e7070d498a5ffa2328d2ba917b070da94ab5e018f08d338c0bb",
+    "frontend/src/api/liveCachePolicy.test.tsx": "d153e09b7af556c9c40be03488017b4cbb85c78541447dd245a4726cdec5514f",
+    "frontend/src/api/range.ts": "8451e9451ed9f1aa1813e2c77cc5e1c2ac03ccc2005f8ebad0a7ec0afb76b1f4",
+    "frontend/tests/e2e/live-cache-benchmark.spec.ts": "9bc1ef18799e8c00c132e8633aff9ca3a3398af9525d58be0de6401a8760522e",
+    "frontend/tests/e2e/README.md": "2d8fd6d404d19fdd3694912c3dd80635cfd474df380e2c93482a1ef36dc67ed9"
+  },
+  "measurement_input_sha256": "0e190be42b2bd4799ff11534900b1ef770abe01e214cafa307c51c826c4fcc2d",
+  "measurement_input_file_count": 1934,
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "cpu": "AMD RYZEN AI MAX+ PRO 395 w/ Radeon 8060S",
+    "memory_total": "MemTotal:       96270700 kB",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "installed": {
+      "@playwright/test": "1.60.0",
+      "react": "18.3.1",
+      "@tanstack/react-query": "5.100.11",
+      "lightweight-charts": "5.2.0",
+      "typescript": "6.0.3",
+      "vitest": "4.1.7",
+      "vite": "8.0.16"
+    },
+    "load_average_at_start": [
+      8.25927734375,
+      6.55126953125,
+      5.2548828125
+    ]
+  },
+  "changes_after_measurement": {
+    "frontend/src/sidebar/InvestorTrendEstimateCard.tsx": {
+      "measured_sha256": "366a8872ea1316ba495fd9173e652ff430c66cc5769e515e8073c362880fd344",
+      "validated_sha256": "a55234864cdb9a01acc86877f7af918d4f08a865ee00ab0757b88a369dba3ac1"
+    }
+  },
+  "measurement_reuse_basis": "After measurement, fast-forwarded main commit 3b9d7c394 (investor estimate table spacing). Its changed component is used by DataWindow; the measured workspace contains a single chart and no data windows. Only its unrendered populated-table classes changed. Cache/chart implementation, runner, deterministic payload generator, dependencies and measurement configuration are unchanged. Module loading precedes measured stages. Cache unit inputs and dependencies are also unchanged. Full typecheck, build and three chart E2Es passed again on the updated head.",
+  "checks": [
+    {
+      "command": "HOGA_RUN_CACHE_BENCHMARK=1 HOGA_CACHE_BENCH_OUTPUT=/tmp/hoga-cache-benchmark.json npx playwright test tests/e2e/live-cache-benchmark.spec.ts --reporter=list",
+      "result": "exit 0; 1 test passed; 7 configurations x 2 runs, 1792 measured visits; 28.1 minutes; unhandled JS exceptions 0",
+      "base": "02e924ebbe430cc8265f47015807dbc2dd62c2cd"
+    },
+    {
+      "command": "npx vitest run src/api/liveCachePolicy.test.tsx src/api/range.test.tsx src/api/livePastCandles.test.tsx src/live/useLiveRangeCacheEviction.test.tsx src/api/range.depthHeatmap.test.ts",
+      "result": "exit 0; 179 tests / 5 files passed; 3.78 seconds",
+      "base": "02e924ebbe430cc8265f47015807dbc2dd62c2cd"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "exit 0; app, unit and E2E TypeScript projects passed on updated main"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-backfill-window.spec.ts tests/e2e/wheel-backfill-integration.spec.ts --reporter=list",
+      "result": "exit 0; 3 passed; 19.1 seconds on updated main"
+    },
+    {
+      "command": "npm run build",
+      "result": "exit 0; TypeScript build and Vite production build passed on updated main; existing >700kB chunk-size advisory"
+    },
+    {
+      "command": "git diff --check",
+      "result": "exit 0"
+    }
+  ],
+  "scope": "Frontend retention limits and development diagnostics only; no backend application/dependency/API changes. Backend full suite not rerun. Isolated E2E ports 20023/21023, fake data and blank vendor credentials. User development servers 8000/5173 were not restarted or modified.",
+  "known_limits": [
+    "138 React maximum-update-depth console warnings across matrix, including baseline and requested settings. These are recorded in measurements/check logs; no long-term stability claim.",
+    "Short revisits occur before raw range 30min GC. No post-expiry revisit, low-memory hardware run, actual vendor latency/streaming run, or multi-hour soak.",
+    "512MiB is estimated canonical payload retention, not a JS/process/GPU memory cap. Heap peaks are per-visit observations; forced-GC measurements are outside timing stages."
+  ],
+  "artifacts": {
+    "measurements.json.gz": "63f5f3cec9cfb9b167f77cbf75e3933bd69b920b84bc6201d944188f057047ce",
+    "checks.json.gz": "e1d5f86af502d2ad6ab532abf918195ec8159a34da395dfcb8103b0569b06a95",
+    "inputs.json.gz": "3296a052348693b43578c3677dae418aab4e393b5a40702941d89bf753fa220b",
+    "summary.json": "856b2b4ca0b89d64b0445b7cf8d9dd3510f5d3b9a91069a18985f530588d7062"
+  }
+}

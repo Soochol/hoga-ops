@@ -1,0 +1,40 @@
+{
+  "checked_at_utc": "2026-10-19T04:14:33.281129+00:00",
+  "verified_source_commit": "0a30c59434119a5815e5daccc494f3ae50538376",
+  "base_commit": "3b9d7c39475ec66bc4fd987958d61f63131a81b3",
+  "reused_record": "docs/diagnostics/2026-10-19-live-cache/verification.json",
+  "reused_record_sha256": "8dc14a6e76feed7793413ea6e1ccb486635de31414a4c182ddacfac6a93316b2",
+  "measurement_input_sha256": "0e190be42b2bd4799ff11534900b1ef770abe01e214cafa307c51c826c4fcc2d",
+  "current_source_hashes_checked": {
+    "CONTEXT.md": "451fc1eabb3a58fab3b0c34c91d91869145f0bbf023ad9fdee1164bbd2632dbe",
+    "frontend/src/api/liveCachePolicy.ts": "13574d4941a85e7070d498a5ffa2328d2ba917b070da94ab5e018f08d338c0bb",
+    "frontend/src/api/liveCachePolicy.test.tsx": "d153e09b7af556c9c40be03488017b4cbb85c78541447dd245a4726cdec5514f",
+    "frontend/src/api/range.ts": "8451e9451ed9f1aa1813e2c77cc5e1c2ac03ccc2005f8ebad0a7ec0afb76b1f4",
+    "frontend/tests/e2e/live-cache-benchmark.spec.ts": "9bc1ef18799e8c00c132e8633aff9ca3a3398af9525d58be0de6401a8760522e",
+    "frontend/tests/e2e/README.md": "2d8fd6d404d19fdd3694912c3dd80635cfd474df380e2c93482a1ef36dc67ed9"
+  },
+  "installed_dependencies_checked": {
+    "@playwright/test": "1.60.0",
+    "react": "18.3.1",
+    "@tanstack/react-query": "5.100.11",
+    "lightweight-charts": "5.2.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16"
+  },
+  "reused_checks": [
+    "179 cache unit tests",
+    "app/unit/E2E full TypeScript check",
+    "production build",
+    "3 chart drag/backfill/wheel E2Es",
+    "14 opt-in benchmark configurations/runs (1792 visits)"
+  ],
+  "basis": "Current source files, tests, deterministic fixtures, lockfiles, configuration, installed dependency versions and saved result artifacts match the recorded passing runs. The one main-only InvestorTrendEstimateCard change is already documented in verification.json; it is outside the measured single-chart render. Latest main 3b9d7c394 is included. The next commit only adds this verification record and does not change executable inputs.",
+  "open_pr_overlap": "Open PRs #1927 and #1726 do not modify this PR files.",
+  "known_limits": [
+    "138 React maximum-update-depth console warnings across matrix, including baseline and requested settings. These are recorded in measurements/check logs; no long-term stability claim.",
+    "Short revisits occur before raw range 30min GC. No post-expiry revisit, low-memory hardware run, actual vendor latency/streaming run, or multi-hour soak.",
+    "512MiB is estimated canonical payload retention, not a JS/process/GPU memory cap. Heap peaks are per-visit observations; forced-GC measurements are outside timing stages."
+  ],
+  "user_services": "No restart or changes to user servers; main checkout CLAUDE.md changes and 30 untracked local diagnostic/research files will be preserved during pull."
+}

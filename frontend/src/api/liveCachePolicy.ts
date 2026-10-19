@@ -4,7 +4,7 @@ import { QueryObserver, type Query, type QueryClient, type QueryKey } from '@tan
 // Retain expensive merged histories across code switches, within a shared
 // estimated payload budget. This is not a measurement of the browser heap.
 export const LIVE_CACHE_MAX_ESTIMATED_BYTES = 512 * 1024 * 1024;
-export const LIVE_CACHE_RECENT_CODES = 32;
+export const LIVE_CACHE_RECENT_CODES = 64;
 
 type Usage = { lastUsed: number; data: unknown; bytes: number };
 type Policy = {
@@ -150,10 +150,16 @@ export function trimRetainedLiveCaches(
 
 export function liveCacheStats(client: QueryClient) {
   const queries = client.getQueryCache().findAll({ queryKey: ['live'], predicate: q => isLiveMergedKey(q.queryKey) });
+  const rangeQueries = client.getQueryCache().findAll({ queryKey: ['range'] });
   return {
     mergedEntries: queries.length,
     estimatedBytes: queries.reduce((sum, query) => sum + usage(client, query).bytes, 0),
     protectedEntries: queries.filter(query => isLiveCacheProtected(client, query)).length,
+    readyProtectedEntries: queries.filter(query => query.state.data !== undefined && isLiveCacheProtected(client, query)).length,
+    // Separate surfaces: snapshots can share objects with range queries, so
+    // these estimates must not be added together as a browser heap measurement.
+    rangeEntries: rangeQueries.length,
+    rangeEstimatedBytes: rangeQueries.reduce((sum, query) => sum + usage(client, query).bytes, 0),
     maxEstimatedBytes: LIVE_CACHE_MAX_ESTIMATED_BYTES,
     maxRecentCodes: LIVE_CACHE_RECENT_CODES,
     evictions: { ...policy(client).evictions },
