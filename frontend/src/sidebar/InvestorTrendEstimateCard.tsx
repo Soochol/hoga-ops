@@ -60,10 +60,10 @@ export function InvestorTrendEstimateCard({ query }: Props) {
             thead/tr 배경이 sticky 헤더를 따라오지 않는다. */}
         <thead className="sticky top-0 z-10 text-xs text-fg-dim">
           <tr>
-            <th className="whitespace-nowrap bg-bg-card py-1.5 pl-2.5 pr-1 text-left font-medium">차수</th>
-            <th className="bg-bg-card px-1 py-1.5 text-right font-medium">외국인</th>
-            <th className="bg-bg-card px-1 py-1.5 text-right font-medium">기관</th>
-            <th className="bg-bg-card px-1 py-1.5 text-right font-medium">합산</th>
+            <th className="whitespace-nowrap bg-bg-card py-1.5 pl-2.5 pr-3 text-left font-medium">차수</th>
+            <th className="bg-bg-card px-2 py-1.5 text-right font-medium">외국인</th>
+            <th className="bg-bg-card px-2 py-1.5 text-right font-medium">기관</th>
+            <th className="bg-bg-card py-1.5 pl-2 pr-2.5 text-right font-medium">합산</th>
           </tr>
         </thead>
         <tbody>
@@ -76,7 +76,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
                 // 선택 행은 배경 틴트만 — 좌측 accent 바 금지(DESIGN.md list-row rule).
                 className={isLatest ? 'bg-tint-selection' : undefined}
               >
-                <td className="whitespace-nowrap py-1.5 pl-2.5 pr-1 text-left text-fg-dim">
+                <td className="whitespace-nowrap py-1.5 pl-2.5 pr-3 text-left text-fg-dim">
                   {ordinal !== null && <span>{ordinal}차 · </span>}
                   <span>{time}</span>
                 </td>
@@ -85,7 +85,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
                   unit={unit}
                   value={qty ? row.institution_qty : row.institution_amt_mwon}
                 />
-                <ValueCell unit={unit} value={qty ? row.sum_qty : row.sum_amt_mwon} />
+                <ValueCell unit={unit} value={qty ? row.sum_qty : row.sum_amt_mwon} className="pl-2 pr-2.5" />
               </tr>
             );
           })}
@@ -99,7 +99,7 @@ export function InvestorTrendEstimateCard({ query }: Props) {
 function ValueCell({
   value,
   unit,
-  className = 'px-1',
+  className = 'px-2',
 }: {
   value: number | null;
   unit: InvestorEstimateUnit;
