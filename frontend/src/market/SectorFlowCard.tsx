@@ -7,7 +7,7 @@ import {
   type MarketName,
   type SectorFlowRow,
 } from '../api/market';
-import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
+import { CardHeader, DataStatus, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
 import { useCardPref } from './marketCardBitsHelpers';
 import { sectorCategory } from './sectorCategory';
 
@@ -94,10 +94,10 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
         ]} />
         <span className="text-2xs text-fg-dim">{sectors.length}/{filtered.length}개 · {sort === 'actor' ? '순매수 절대값순' : sort === 'default' ? '제공 순서' : '등락률순'}</span>
       </div>
-      <div className="market-sector-stamps text-2xs text-fg-dim">
-        <div><span>수급</span><DataStamp date={flow.data?.date} fetchedAt={flow.dataUpdatedAt} error={flow.isError} /></div>
-        <div><span>등락</span><DataStamp fetchedAt={quotes.dataUpdatedAt} error={quotes.isError} /></div>
-      </div>
+      {(flow.isError || quotes.isError) && <div className="market-sector-stamps text-2xs text-fg-dim">
+        {flow.isError && <div><span>수급</span><DataStatus hasData={flow.data !== undefined} error /></div>}
+        {quotes.isError && <div><span>등락</span><DataStatus hasData={quotes.data !== undefined} error /></div>}
+      </div>}
       {all.length === 0 && quoteRows.length > 0 && <EmptyNote>{flow.isLoading ? '수급 표본을 읽는 중입니다.' : '오늘 수집된 수급 표본이 아직 없습니다.'}</EmptyNote>}
       {all.length === 0 && quoteRows.length === 0 ? (
         // 왜 비었는지 말한다 — 장 시작 전이면 표본이 아직 없는 게 정상이다.

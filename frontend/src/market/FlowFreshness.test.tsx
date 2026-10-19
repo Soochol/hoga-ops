@@ -28,12 +28,12 @@ describe('receipt freshness', () => {
     vi.useFakeTimers();
     const monotonic = vi.spyOn(performance, 'now').mockReturnValue(0);
     const { rerender } = render(<FlowFreshness collection={collection} target="KOSPI" receivedAt={1} error={false} />);
-    expect(screen.getByRole('status').textContent).toContain('정상 수신');
+    expect(screen.queryByRole('status')).toBeNull();
     monotonic.mockReturnValue(31_000);
     await act(() => vi.advanceTimersByTimeAsync(1000));
     expect(screen.getByRole('status').textContent).toContain('수신 지연');
     rerender(<FlowFreshness collection={collection} target="KOSPI" receivedAt={2} error={false} />);
-    expect(screen.getByRole('status').textContent).toContain('정상 수신');
+    expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('separates a browser API failure and a missing receipt file', () => {
@@ -42,6 +42,6 @@ describe('receipt freshness', () => {
     rerender(<FlowFreshness collection={collection} target="KOSPI" receivedAt={1} error />);
     expect(screen.getByRole('status').textContent).toContain('마지막 데이터 유지');
     rerender(<FlowFreshness target="KOSPI" receivedAt={1} error={false} />);
-    expect(screen.getByRole('status').textContent).toBe('수신 상태 확인 불가');
+    expect(screen.queryByRole('status')).toBeNull();
   });
 });

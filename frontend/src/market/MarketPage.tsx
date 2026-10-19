@@ -42,7 +42,7 @@ import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
 import { PAGE_MAX_W, PageContainer } from '../layout/PageContainer';
 import { persistJson, readJsonObject } from '../state/persist';
-import { CARD_HEADER_RULE, CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
+import { CARD_HEADER_RULE, CardHeader, DataStatus, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
 import { useCardPref } from './marketCardBitsHelpers';
 import { priceDirClass } from '../ui/priceDir';
 import {
@@ -286,7 +286,7 @@ function VolatilityCard({ row, fetchedAt, error }: { row: MarketVolatility; fetc
           <PctText pct={row.change_pct} />
         </span>
       </div>
-      <DataStamp fetchedAt={fetchedAt} error={error} />
+      <DataStatus hasData={Boolean(fetchedAt)} error={error} />
     </MarketCard>
   );
 }
@@ -481,7 +481,7 @@ function IndexCard({
             )
           : <Sparkline points={closes} baseline={dayOpen} />}
       </div>
-      <DataStamp fetchedAt={fetchedAt} error={error} />
+      <DataStatus hasData={Boolean(fetchedAt)} error={error} />
       {/* 카드 마지막 줄 — **모드가 바뀌어도 높이가 변하면 안 된다.**
           지수 상품(코스피200·코스닥150)은 등락종목수가 없어서(#1100) 현물 모드에 이
           줄이 통째로 비는데, 선물 모드에선 베이시스 한 줄이 생긴다. 그 차이만큼 카드가
@@ -540,13 +540,10 @@ export function ProgramCard() {
         <ModeSwitch value={market} onChange={setMarket} options={[
           ['KOSPI', '코스피'], ['KOSDAQ', '코스닥'],
         ]} label="프로그램 시장" />
-        <DataStamp fetchedAt={program.dataUpdatedAt} error={program.isError}
-          date={axis === 'daily' ? (markets[market] ?? []).map((p) => p.t.slice(0, 8)).filter((t) => /^\d{8}$/.test(t)).sort().at(-1) : undefined}
-          status={axis === 'intraday' ? '시간별 누적' : (markets[market] ?? []).some(p => p.t.slice(0, 8) === todayKstYyyymmdd()) ? '일별 · 오늘 잠정 포함' : '일별'} />
+        <DataStatus hasData={program.data !== undefined} error={program.isError} />
         {axis === 'daily' && <ModeSwitch value={days} onChange={setDays} label="프로그램 일별 기간" options={[
           ['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일'],
         ]} />}
-        {axis === 'daily' && <p className="text-2xs text-fg-dim">단위: 억원 · + 순매수 / − 순매도 · 최신순</p>}
         {Object.keys(markets).length === 0 ? (
           <EmptyNote>{program.isLoading ? '프로그램 매매 데이터를 불러오는 중입니다.' : '프로그램 매매 데이터를 받지 못했습니다.'}</EmptyNote>
         ) : (
@@ -608,7 +605,6 @@ export function ProgramCard() {
                     </>
                   ) : (
                     <>
-                      <p className="text-2xs text-fg-dim">요청 {days}거래일 · 제공 {asc.length}거래일 · {asc[0]?.t.slice(0, 8)}–{asc.at(-1)?.t.slice(0, 8)}</p>
                       <DailyNetList compact todayProvisional label={`${MARKET_LABELS[label] ?? label} 프로그램 일별 수급`}
                         columns={['차익', '비차익', '합계']}
                         rows={asc.map(p => ({ date: p.t, values: [p.arb_net_eok, p.non_arb_net_eok, p.total_net_eok] }))} />
@@ -686,7 +682,7 @@ export function ActorNetCard({ actor, embedded = false }: { actor: '외국인' |
           />
         </div>
       </div>
-      <DataStamp fetchedAt={streaks.dataUpdatedAt} error={streaks.isError} status={`제공 순서 · ${streaks.data?.warnings?.includes('etf_filter_unavailable') ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
+      <DataStatus hasData={streaks.data !== undefined} error={streaks.isError} status={`제공 순서 · ${streaks.data?.warnings?.includes('etf_filter_unavailable') ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
       <div className="grid grid-cols-[minmax(0,1fr)_3rem_5.5rem] gap-xs text-2xs text-fg-dim">
         <span>종목</span><span className="text-right">연속일수</span><span className="text-right" title="연속 매매 기간에 누적된 순매수 또는 순매도 금액">기간 누적(억)</span>
       </div>
@@ -741,19 +737,18 @@ export function FundsCard() {
   // 잔고(스톡) 지표라 "기간" = 시작 대비 증감의 창이다 — 토글이 곧 해석의 창.
   const series = (data?.series ?? []).slice(-Number(span));
   const last = series[series.length - 1];
-  const asOf = data?.as_of;
   return (
     <MarketCard className="flex flex-col gap-xs p-sm">
       <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
         <h2 className="text-sm font-semibold text-fg">
           증시 주변 자금{' '}
           <span className="text-2xs font-normal text-fg-dim">
-            {asOf ? `조원 · ${asOf.slice(4, 6)}/${asOf.slice(6)} 기준` : '조원'}
+            조원
           </span>
         </h2>
         <ModeSwitch value={span} onChange={setSpan} options={FUND_SPANS} label="자금 집계 기간" />
       </div>
-      <DataStamp date={asOf} fetchedAt={funds.dataUpdatedAt} error={funds.isError} status="공시 기준 · 실시간 자료 아님" />
+      <DataStatus hasData={funds.data !== undefined} error={funds.isError} status="공시 기준 · 실시간 자료 아님" />
       {data?.unavailable === 'credentials_missing' ? (
         <EmptyNote>KOFIA 인증키가 설정되지 않았습니다(.env: KOFIA_API_KEY).</EmptyNote>
       ) : series.length === 0 ? (
@@ -823,7 +818,7 @@ export function RankCard({
   return (
     <Frame className={`flex flex-col gap-xs ${embedded ? '' : 'p-md'}`}>
       {embedded ? <p className="text-2xs text-fg-dim">{hint}</p> : <CardHeader title={title} hint={hint} />}
-      <DataStamp fetchedAt={q.data?.fetchedAtMs} error={q.isError} status={q.data ? (q.data.marketOpen ? '장중' : '장 외') : undefined} />
+      <DataStatus hasData={q.data !== undefined} error={q.isError} status={q.data ? (q.data.marketOpen ? '장중' : '장 외') : undefined} />
       <div className="grid grid-cols-[1.2rem_minmax(0,1fr)_5.5rem_4.2rem] gap-sm text-2xs text-fg-dim">
         <span>#</span><span>종목</span><span className="text-right">{kind === 'value' ? '거래대금(억)' : '현재가(원)'}</span><span className="text-right">등락률</span>
       </div>

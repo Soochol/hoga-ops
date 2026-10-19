@@ -42,7 +42,7 @@ import {
   SessionAxisLabels,
   SessionLinesChart,
 } from './marketBits';
-import { CardHeader, DataStamp, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
+import { CardHeader, EmptyNote, MarketCard, ModeSwitch } from './marketCardBits';
 import { SERIES_COLORS, fmtSigned } from './marketFormat';
 import { priceDirClass } from '../ui/priceDir';
 
@@ -160,24 +160,7 @@ export function InvestorCard() {
   const units = deriv.data?.units;
   const derivEok = deriv.data?.unit === 'amt_eok';
 
-  const hint = (() => {
-    if (stockSel) {
-      // 선택된 시장의 커버리지 — 두 시장을 합치면 분자가 2배가 된다(#1247 후속).
-      const cov = stock.data?.coverage?.[sel];
-      // 확정본이 나오면 시계열 끝에 확정점이 붙으므로(백엔드) 「잠정」 은 그때부터
-      // 거짓말이 된다. 상태를 응답에서 받아 말한다 — `confirmed` 는 확정 파일의
-      // 존재로 파생된 값이라 저장된 플래그가 아니다(#1115).
-      const status = stock.data?.confirmed ? '확정' : '잠정';
-      return mode === 'intraday'
-        ? `당일 누적 · 억원 · ${status}${cov ? ` · 저장 표본 ${cov.sample_count}개` : ''}`
-        : '일별 확정 · 억원';
-    }
-    const cov = product?.coverage;
-    const axis = derivEok ? '억원' : '계약';
-    const sample = cov ? ` · 저장 표본 ${cov.sample_count}개` : '';
-    // 단위 미확정은 **숨기지 않는다** — 억원 축이 왜 비었는지 화면이 말해야 한다.
-    return `당일 누적 · ${axis} · 잠정${derivEok ? '' : ' · 단위 미확정'}${sample}`;
-  })();
+  const hint = stockSel ? undefined : derivEok ? '억원' : '계약 · 단위 미확정';
 
   return (
     <MarketCard className="market-switch-card market-investor-card flex flex-col gap-sm p-md">
@@ -203,13 +186,11 @@ export function InvestorCard() {
         }
       />
       <div className="market-investor-body flex flex-col gap-sm">
-        {showDaily && <DataStamp date={stock.data?.daily.at(-1)?.date} />}
         {!showDaily && <FlowFreshness
           collection={stockSel ? stock.data?.collection : deriv.data?.collection}
           target={sel}
           receivedAt={stockSel ? stock.dataUpdatedAt : deriv.dataUpdatedAt}
           error={stockSel ? stock.isError : deriv.isError}
-          date={stockSel ? stock.data?.date : deriv.data?.date}
         />}
         {showDaily && stock.isError && <p role="status" className="text-2xs text-fg-dim">서버 연결 확인 필요</p>}
         <FlowPicker value={sel} onChange={setSel} products={products} />
@@ -342,8 +323,6 @@ function StockDaily({
   return (
     <div className="market-investor-daily flex flex-col gap-2xs">
       <ModeSwitch value={days} onChange={setDays} label="투자자 일별 기간" options={[['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일']]} />
-      <p className="text-2xs text-fg-dim">요청 {days}거래일 · 제공 {daily.length}거래일 · {daily[0]?.date}–{daily.at(-1)?.date}</p>
-      <p className="text-xs text-fg-dim">단위: 억원 · + 순매수 / − 순매도 · 최신순</p>
       <DailyNetList label="투자자 일별 수급" columns={['외국인', '기관']}
         rows={daily.map(d => ({ date: d.date, values: [d.markets[market]?.foreign ?? null, d.markets[market]?.institution ?? null] }))} />
     </div>

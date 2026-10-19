@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from '../api/client';
 import { FundsCard, RankCard, SectorCard } from './MarketPage';
 import { ChartProbe } from './ChartProbe';
-import { DataStamp } from './marketCardBits';
+import { DataStatus } from './marketCardBits';
 import { fundChange } from './marketFormat';
 
 function mount(node: React.ReactNode) {
@@ -17,11 +17,9 @@ function mount(node: React.ReactNode) {
 beforeEach(() => vi.restoreAllMocks());
 
 describe('market data meaning', () => {
-  it('never uses the fetch date as the trading date', () => {
-    render(<DataStamp fetchedAt={Date.parse('2026-09-08T16:00:00Z')} />);
-    expect(screen.getByText('기준일 미제공')).toBeInTheDocument();
-    expect(screen.getByText(/조회$/)).toHaveTextContent('09. 09. 01:00');
-    expect(screen.queryByText('09/09 기준')).not.toBeInTheDocument();
+  it('does not add a status row for healthy data', () => {
+    const { container } = render(<DataStatus hasData />);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('renders value ranking amounts instead of disguising prices as amounts', async () => {
@@ -104,10 +102,9 @@ it('separates verified industries, index products and unknown codes without drop
   expect(screen.getByText('신규 코드')).toBeInTheDocument();
 });
 
-it('reports failed refreshes separately from unknown trading dates', () => {
-  render(<DataStamp fetchedAt={1} error />);
+it('reports failed refreshes with the cached-data state', () => {
+  render(<DataStatus hasData error />);
   expect(screen.getByRole('status')).toHaveTextContent('서버 연결 확인 필요 · 마지막 데이터 유지');
-  expect(screen.getByText('기준일 미제공')).toBeInTheDocument();
 });
 
 it('does not show a nearby sample as an observation inside a failed interval', () => {
