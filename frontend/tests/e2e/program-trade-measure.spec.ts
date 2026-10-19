@@ -28,17 +28,17 @@ test('프로그램 금액·수량은 두 조회에서 공유되고 좁은 창과
   await frame.getByRole('button', { name: '일별', exact: true }).click();
   const rows = frame.getByTestId(/^program-daily-row-/);
   await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toContainText('-1·2·3');
+  await expect(rows.first().getByRole('cell')).toHaveText(['-1', '2', '3']);
   await expect(frame.getByText('단위: 억원', { exact: true })).toBeVisible();
   const count = requests;
   await frame.getByRole('button', { name: '수량', exact: true }).click();
-  await expect(rows.first()).toContainText('−1·2·3');
+  await expect(rows.first().getByRole('cell')).toHaveText(['−1', '2', '3']);
   await expect(frame.getByText('단위: 천 주', { exact: true })).toBeVisible();
   await frame.getByRole('button', { name: '당일 누적', exact: true }).click();
   await expect(frame.getByRole('button', { name: '수량', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await frame.getByRole('button', { name: '금액', exact: true }).click();
   await frame.getByRole('button', { name: '일별', exact: true }).click();
-  await expect(rows.first()).toContainText('-1·2·3');
+  await expect(rows.first().getByRole('cell')).toHaveText(['-1', '2', '3']);
   await expect(frame.getByText('단위: 억원', { exact: true })).toBeVisible();
   expect(requests).toBe(count);
 

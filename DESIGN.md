@@ -280,6 +280,8 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 - 2026-10-19 사용자 승인(반응형 간격 후속 변경): 잠정투자자 표도 차수당 한 줄·기존 글자 크기와 숫자 오른쪽 정렬을 유지하면서 실제 표기 자릿수로 열 폭을 배분한다. 카드 너비 40rem 이상은 차수·시각 5.5rem·숫자 좌우 여백 0.5rem, 30~40rem은 5rem·0.25rem, 30rem 미만은 4.5rem·0.0625rem을 사용한다. 합산 왼쪽 추가 여백은 각각 0.5rem→0.25rem→0.125rem, 양 끝 여백은 0.625rem→0.375rem으로 줄인다. 합산의 500 굵기, 방향색, 원수량·금액 표기와 고정 헤더를 유지한다. 단위별 실제 표기에 맞춰 열 폭을 다시 배분하고, 줄바꿈·축약·생략 없이 내재 최소 폭 이하에서만 가로 스크롤한다.
 
+- 2026-10-19 사용자 승인: 프로그램 일별 표도 날짜당 한 줄을 유지하고 날짜·순매수·총매수·총매도를 독립 열로 배치한다. 날짜 폭은 40rem 이상 4.5rem, 30~40rem 3.5rem, 30rem 미만 3rem이며 숫자 좌우 여백은 0.25rem→0.0625rem으로 줄인다. 반복 점 구분자는 제거하고 실제 자릿수로 폭을 배분해 누적 행까지 오른쪽·금액 소수점 기준선을 공유한다. 날짜·헤더·누적 고정, 순매수 강조와 기존 글자 크기·표기 단위는 유지한다. 당일 누적의 세 값도 한 줄을 유지하고 말줄임 없이 표시한다. 창 너비에 따라 본문 좌우 여백은 0.75rem→0.5rem→0.375rem, 값 사이 여백은 0.5rem→0.25rem→0.0625rem으로 줄이며 내재 최소 폭 이하에서는 숫자 요약 영역만 가로 스크롤한다.
+
 - **Base unit:** 4px (base intent = rendered, since the dial is 1.0× as of 2026-08-07; was 4.5px rendered at 1.125×)
 - **Density:** Bloomberg-leaning — the dial sits at base intent (1.0×). Density is a spectrum, not a fixed point: the token system holds the whole ladder and the dial picks a rung. Looser rungs (1.125×, 1.25×) have both shipped as defaults before.
 - **Scale (rem-based, single dial):**
