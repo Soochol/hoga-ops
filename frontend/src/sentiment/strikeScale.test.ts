@@ -39,6 +39,17 @@ describe('픽셀 변환', () => {
       expect(strikeAt(d, xOf(d, k))).toBeCloseTo(k);
     }
   });
+
+  it('좁은 폭과 넓은 폭에서도 도메인과 선택 위치를 같은 좌표로 변환한다', () => {
+    const d = { lo: 850, hi: 1150 };
+    for (const width of [240, 600, 1100]) {
+      for (const strike of [850, 1000, 1150]) {
+        expect(strikeAt(d, xOf(d, strike, width), width)).toBeCloseTo(strike);
+      }
+      expect(xOf(d, 850, width)).toBeGreaterThan(0);
+      expect(xOf(d, 1150, width)).toBeLessThan(width);
+    }
+  });
 });
 
 describe('눈금', () => {

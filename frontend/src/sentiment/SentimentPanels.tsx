@@ -8,6 +8,7 @@ import type {
   PutCallSeriesPoint,
 } from '../api/optionSentiment';
 import { fmtCompact } from './sentimentFormat';
+import { useChartWidth } from './useChartWidth';
 import {
   AXIS_H,
   CHART_W,
@@ -34,25 +35,25 @@ import {
  */
 
 /** x축 눈금 밴드. 모든 차트가 같은 도메인을 쓰므로 라벨이 세로로 정렬된다. */
-function StrikeAxis({ domain, y }: { domain: StrikeDomain; y: number }) {
+function StrikeAxis({ domain, y, width }: { domain: StrikeDomain; y: number; width: number }) {
   return (
     <g>
-      <line x1={PAD_L} x2={CHART_W - PAD_R} y1={y} y2={y} stroke="var(--grid)" strokeWidth={1} />
-      {ticksFor(domain).map((t) => (
+      <line x1={PAD_L} x2={width - PAD_R} y1={y} y2={y} stroke="var(--grid)" strokeWidth={1} />
+      {ticksFor(domain, Math.max(2, Math.floor(width / 75))).map((t) => (
         <g key={t}>
           <line
-            x1={xOf(domain, t)}
-            x2={xOf(domain, t)}
+            x1={xOf(domain, t, width)}
+            x2={xOf(domain, t, width)}
             y1={y}
             y2={y + 3}
-            stroke="var(--fg-dimmer)"
+            stroke="var(--fg-dim)"
             strokeWidth={1}
           />
           <text
-            x={xOf(domain, t)}
+            x={xOf(domain, t, width)}
             y={y + 13}
             fontSize={10}
-            fill="var(--fg-dimmer)"
+            fill="var(--fg-dim)"
             textAnchor="middle"
           >
             {t.toLocaleString()}
@@ -73,28 +74,32 @@ function RefLine({
   height,
   label,
   dashed = false,
+  width,
+  showLabel = true,
 }: {
   strike: number;
   domain: StrikeDomain;
   height: number;
   label: string;
   dashed?: boolean;
+  width: number;
+  showLabel?: boolean;
 }) {
   if (strike < domain.lo) {
     return (
-      <text x={PAD_L} y={10} fontSize={10} fill="var(--accent)">
+      <text x={PAD_L} y={14} fontSize={10} fill="var(--accent)">
         {`◀ ${label}`}
       </text>
     );
   }
   if (strike > domain.hi) {
     return (
-      <text x={CHART_W - PAD_R} y={10} fontSize={10} fill="var(--accent)" textAnchor="end">
+      <text x={width - PAD_R} y={14} fontSize={10} fill="var(--accent)" textAnchor="end">
         {`${label} ▶`}
       </text>
     );
   }
-  const x = xOf(domain, strike);
+  const x = xOf(domain, strike, width);
   return (
     <g>
       <line
@@ -106,9 +111,9 @@ function RefLine({
         strokeWidth={1}
         strokeDasharray={dashed ? '3 3' : undefined}
       />
-      <text x={x + 3} y={10} fontSize={10} fill="var(--accent)">
+      {showLabel && <text x={x > width * 0.6 ? x - 3 : x + 3} y={14} fontSize={10} fill="var(--accent)" textAnchor={x > width * 0.6 ? 'end' : 'start'}>
         {label}
-      </text>
+      </text>}
     </g>
   );
 }
@@ -118,19 +123,27 @@ function RefLine({
  * jsdom 은 getBoundingClientRect 가 0 폭이라 가드로 조용히 무시된다 — 호버 스냅
  * 자체는 strikeScale 의 순수 함수 테스트가 커버한다.
  */
-function useStrikeHover(sortedStrikes: number[], domain: StrikeDomain) {
-  const [hover, setHover] = useState<number | null>(null);
+export interface StrikeSelection {
+  strike: number | null;
+  strikes: number[];
+  onChange: (strike: number) => void;
+}
+
+function useStrikeHover(sortedStrikes: number[], domain: StrikeDomain, width: number, selection?: StrikeSelection) {
+  const [localHover, setHover] = useState<number | null>(null);
   const onMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
       if (rect.width <= 0) return;
-      const px = ((e.clientX - rect.left) / rect.width) * CHART_W;
-      setHover(nearestStrike(sortedStrikes, strikeAt(domain, px)));
+      const px = ((e.clientX - rect.left) / rect.width) * width;
+      const next = nearestStrike(selection?.strikes ?? sortedStrikes, strikeAt(domain, px, width));
+      if (selection) { if (next !== null) selection.onChange(next); }
+      else setHover(next);
     },
-    [sortedStrikes, domain],
+    [sortedStrikes, domain, width, selection],
   );
-  const onMouseLeave = useCallback(() => setHover(null), []);
-  return { hover, onMouseMove, onMouseLeave };
+  const onMouseLeave = useCallback(() => { if (!selection) setHover(null); }, [selection]);
+  return { hover: selection ? selection.strike : localHover, onMouseMove, onMouseLeave };
 }
 
 /** 호버 툴팁 카드. 부모가 `relative` 여야 한다. */
@@ -138,12 +151,14 @@ function HoverTip({
   domain,
   strike,
   rows,
+  width,
 }: {
   domain: StrikeDomain;
   strike: number;
   rows: Array<[string, string]>;
+  width: number;
 }) {
-  const pct = (xOf(domain, strike) / CHART_W) * 100;
+  const pct = (xOf(domain, strike, width) / width) * 100;
   // 가장자리에서 카드가 잘리지 않게 클램프
   const left = Math.min(92, Math.max(8, pct));
   return (
@@ -162,9 +177,9 @@ function HoverTip({
   );
 }
 
-function HoverGuide({ domain, strike, height }: { domain: StrikeDomain; strike: number; height: number }) {
-  const x = xOf(domain, strike);
-  return <line x1={x} x2={x} y1={0} y2={height} stroke="var(--accent)" strokeWidth={1} opacity={0.35} />;
+function HoverGuide({ domain, strike, height, width }: { domain: StrikeDomain; strike: number; height: number; width: number }) {
+  const x = xOf(domain, strike, width);
+  return <line data-strike-guide={strike} x1={x} x2={x} y1={0} y2={height} stroke="var(--accent)" strokeWidth={1} opacity={0.35} />;
 }
 
 export function PutCallPanel({ pc }: { pc: PutCallRatio }) {
@@ -202,7 +217,7 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
   // x 가 시각이라 **행사가 축과 정렬 의무가 없다** — 그래서 CHART_W(720)를 빌려 쓰지
   // 않는다. 이 차트는 좁은 우측 열에 사는데, viewBox 폭이 720 이면 렌더 스케일이
   // 0.5 배로 떨어져 10px 라벨이 5~7px 로 뭉개진다. 좁은 열에 맞는 자기 폭을 쓴다.
-  const W = 360;
+  const { ref, width: W } = useChartWidth(360);
   if (points.length < 2) {
     return (
       <div className="text-xs text-fg-dim">
@@ -237,7 +252,7 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
     new Date(ms).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
   return (
-    <svg viewBox={`0 0 ${W} ${H + AXIS_H}`} className="w-full" role="img" aria-label="P/C 비율 당일 추이">
+    <svg ref={ref} viewBox={`0 0 ${W} ${H + AXIS_H}`} className="sentiment-pc-chart w-full" role="img" aria-label="P/C 비율 당일 추이">
       <line
         x1={PAD_L}
         x2={W - PAD_R}
@@ -254,9 +269,9 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
         x={W - PAD_R}
         y={y(1) - 3}
         fontSize={10}
-        fill="var(--fg-dimmer)"
+        fill="var(--fg-dim)"
         textAnchor="end"
-        stroke="var(--bg)"
+        stroke="var(--bg-card)"
         strokeWidth={3}
         paintOrder="stroke"
       >
@@ -272,7 +287,7 @@ export function PutCallSeriesChart({ points }: { points: PutCallSeriesPoint[] })
         <line x1={PAD_L + 58} x2={PAD_L + 72} y1={5} y2={5} stroke="var(--fg-dim)" strokeWidth={1.5} strokeDasharray="4 3" />
         <text x={PAD_L + 76} y={8}>미결제</text>
       </g>
-      <g fontSize={10} fill="var(--fg-dimmer)">
+      <g fontSize={10} fill="var(--fg-dim)">
         <text x={PAD_L} y={H + 13}>{fmtT(t0)}</text>
         <text x={W - PAD_R} y={H + 13} textAnchor="end">{fmtT(t1)}</text>
       </g>
@@ -284,37 +299,41 @@ export function OiDistributionChart({
   dist,
   underlying,
   domain,
+  selection,
 }: {
   dist: OiDistribution;
   underlying: number | null;
   domain: StrikeDomain;
+  selection?: StrikeSelection;
 }) {
+  const { ref, width } = useChartWidth(CHART_W);
   const rows = dist.strikes.filter(
     (s) => (s.call_oi > 0 || s.put_oi > 0) && s.strike >= domain.lo && s.strike <= domain.hi,
   );
   const { hover, onMouseMove, onMouseLeave } = useStrikeHover(
     rows.map((r) => r.strike),
-    domain,
+    domain, width, selection,
   );
   if (rows.length === 0) return <div className="text-xs text-fg-dim">이 구간에 미결제 데이터 없음</div>;
   const peak = Math.max(...rows.map((r) => Math.max(r.call_oi, r.put_oi)));
   const half = 70;
   const H = half * 2;
-  const barW = Math.max(1, (CHART_W - PAD_L - PAD_R) / rows.length - 0.5);
+  const barW = Math.max(1, Math.min(12, (width - PAD_L - PAD_R) / rows.length - 0.5));
   const hovered = hover === null ? null : rows.find((r) => r.strike === hover);
 
   return (
     <div className="relative">
       <svg
-        viewBox={`0 0 ${CHART_W} ${H + AXIS_H}`}
-        className="w-full"
+        ref={ref}
+        viewBox={`0 0 ${width} ${H + AXIS_H}`}
+        className="sentiment-strike-chart w-full"
         role="img"
         aria-label="행사가별 미결제약정 분포"
         onMouseMove={onMouseMove}
         onMouseLeave={onMouseLeave}
       >
         {rows.map((r) => {
-          const cx = xOf(domain, r.strike);
+          const cx = xOf(domain, r.strike, width);
           const ch = (r.call_oi / peak) * half;
           const ph = (r.put_oi / peak) * half;
           return (
@@ -324,25 +343,29 @@ export function OiDistributionChart({
             </g>
           );
         })}
-        <line x1={PAD_L} x2={CHART_W - PAD_R} y1={half} y2={half} stroke="var(--grid)" strokeWidth={1} />
-        {hover !== null && <HoverGuide domain={domain} strike={hover} height={H} />}
+        <g fontSize={10} fill="var(--fg-dim)" textAnchor="end">
+          <text x={PAD_L - 6} y={12}>{fmtCompact(peak)}</text><text x={PAD_L - 6} y={half + 3}>0</text><text x={PAD_L - 6} y={H - 3}>{fmtCompact(peak)}</text>
+        </g>
+        <line x1={PAD_L} x2={width - PAD_R} y1={half} y2={half} stroke="var(--grid)" strokeWidth={1} />
+        {hover !== null && <HoverGuide domain={domain} strike={hover} height={H} width={width} />}
         {underlying !== null && (
-          <RefLine strike={underlying} domain={domain} height={H} label={`현재 ${underlying.toFixed(2)}`} />
+          <RefLine width={width} showLabel={!selection} strike={underlying} domain={domain} height={H} label={`현재 ${underlying.toFixed(2)}`} />
         )}
         {dist.max_pain !== null && (
-          <RefLine strike={dist.max_pain} domain={domain} height={H} label={`Max Pain ${dist.max_pain}`} dashed />
+          <RefLine width={width} showLabel={!selection} strike={dist.max_pain} domain={domain} height={H} label={`Max Pain ${dist.max_pain}`} dashed />
         )}
         {/* 미니 범례 — caveat 문구가 하단으로 내려가도 색 의미가 즉시 보이게 */}
-        <g fontSize={10}>
+        {!selection && <g fontSize={10}>
           <rect x={PAD_L} y={2} width={8} height={3} fill="var(--price-up)" />
           <text x={PAD_L + 11} y={7} fill="var(--fg-dim)">콜</text>
           <rect x={PAD_L + 30} y={2} width={8} height={3} fill="var(--price-down)" />
           <text x={PAD_L + 41} y={7} fill="var(--fg-dim)">풋</text>
-        </g>
-        <StrikeAxis domain={domain} y={H + 2} />
+        </g>}
+        <StrikeAxis domain={domain} y={H + 2} width={width} />
       </svg>
-      {hovered && (
+      {!selection && hovered && (
         <HoverTip
+          width={width}
           domain={domain}
           strike={hovered.strike}
           rows={[
@@ -359,28 +382,32 @@ export function GexChart({
   gex,
   underlying,
   domain,
+  selection,
 }: {
   gex: GammaExposure;
   underlying: number | null;
   domain: StrikeDomain;
+  selection?: StrikeSelection;
 }) {
+  const { ref, width } = useChartWidth(CHART_W);
   const rows = gex.points.filter((p) => p.gex !== 0 && p.strike >= domain.lo && p.strike <= domain.hi);
   const { hover, onMouseMove, onMouseLeave } = useStrikeHover(
     rows.map((r) => r.strike),
-    domain,
+    domain, width, selection,
   );
   if (rows.length === 0) return <div className="text-xs text-fg-dim">이 구간에 감마 데이터 없음</div>;
   const peak = Math.max(...rows.map((r) => Math.abs(r.gex))) || 1;
   const half = 60;
   const H = half * 2;
-  const barW = Math.max(1, (CHART_W - PAD_L - PAD_R) / rows.length - 0.5);
+  const barW = Math.max(1, Math.min(12, (width - PAD_L - PAD_R) / rows.length - 0.5));
   const hovered = hover === null ? null : rows.find((r) => r.strike === hover);
 
   return (
     <div className="relative">
       <svg
-        viewBox={`0 0 ${CHART_W} ${H + AXIS_H}`}
-        className="w-full"
+        ref={ref}
+        viewBox={`0 0 ${width} ${H + AXIS_H}`}
+        className="sentiment-strike-chart w-full"
         role="img"
         aria-label="행사가별 감마 익스포저"
         onMouseMove={onMouseMove}
@@ -392,7 +419,7 @@ export function GexChart({
           return (
             <rect
               key={p.strike}
-              x={xOf(domain, p.strike) - barW / 2}
+              x={xOf(domain, p.strike, width) - barW / 2}
               y={up ? half - h : half}
               width={barW}
               height={h}
@@ -404,18 +431,22 @@ export function GexChart({
             />
           );
         })}
-        <line x1={PAD_L} x2={CHART_W - PAD_R} y1={half} y2={half} stroke="var(--grid)" strokeWidth={1} />
-        {hover !== null && <HoverGuide domain={domain} strike={hover} height={H} />}
+        <g fontSize={10} fill="var(--fg-dim)" textAnchor="end">
+          <text x={PAD_L - 6} y={12}>+{fmtCompact(peak)}</text><text x={PAD_L - 6} y={half + 3}>0</text><text x={PAD_L - 6} y={H - 3}>−{fmtCompact(peak)}</text>
+        </g>
+        <line x1={PAD_L} x2={width - PAD_R} y1={half} y2={half} stroke="var(--grid)" strokeWidth={1} />
+        {hover !== null && <HoverGuide domain={domain} strike={hover} height={H} width={width} />}
         {underlying !== null && (
-          <RefLine strike={underlying} domain={domain} height={H} label={`현재 ${underlying.toFixed(2)}`} />
+          <RefLine width={width} showLabel={!selection} strike={underlying} domain={domain} height={H} label={`현재 ${underlying.toFixed(2)}`} />
         )}
         {gex.flip_strike !== null && (
-          <RefLine strike={gex.flip_strike} domain={domain} height={H} label={`플립 ${gex.flip_strike}`} dashed />
+          <RefLine width={width} showLabel={!selection} strike={gex.flip_strike} domain={domain} height={H} label={`플립 ${gex.flip_strike}`} dashed />
         )}
-        <StrikeAxis domain={domain} y={H + 2} />
+        <StrikeAxis domain={domain} y={H + 2} width={width} />
       </svg>
-      {hovered && (
+      {!selection && hovered && (
         <HoverTip
+          width={width}
           domain={domain}
           strike={hovered.strike}
           rows={[['GEX', `${fmtCompact(hovered.gex)}원`]]}
@@ -429,18 +460,22 @@ export function IvSkewChart({
   skew,
   underlying,
   domain,
+  selection,
 }: {
   skew: IvSkew;
   underlying: number | null;
   domain: StrikeDomain;
+  selection?: StrikeSelection;
 }) {
+  const { ref, width } = useChartWidth(CHART_W);
   const rows = skew.points.filter((p) => p.strike >= domain.lo && p.strike <= domain.hi);
   const { hover, onMouseMove, onMouseLeave } = useStrikeHover(
     rows.map((r) => r.strike),
-    domain,
+    domain, width, selection,
   );
   if (rows.length === 0) return <div className="text-xs text-fg-dim">이 구간에 IV 데이터 없음</div>;
   const ivs = rows.flatMap((r) => [r.call_iv, r.put_iv]).filter((v): v is number => v !== null);
+  if (ivs.length === 0) return <div className="text-xs text-fg-dim">이 구간에 IV 데이터 없음</div>;
   const lo = Math.min(...ivs);
   const hi = Math.max(...ivs);
   const span = hi - lo || 1;
@@ -453,7 +488,7 @@ export function IvSkewChart({
       .filter((p): p is { k: number; v: number } => p.v !== null);
     if (pts.length === 0) return null;
     return pts
-      .map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(domain, p.k).toFixed(1)},${y(p.v).toFixed(1)}`)
+      .map((p, i) => `${i === 0 ? 'M' : 'L'}${xOf(domain, p.k, width).toFixed(1)},${y(p.v).toFixed(1)}`)
       .join(' ');
   };
   const callPath = path((r) => r.call_iv);
@@ -463,8 +498,9 @@ export function IvSkewChart({
   return (
     <div className="relative">
       <svg
-        viewBox={`0 0 ${CHART_W} ${H + AXIS_H}`}
-        className="w-full"
+        ref={ref}
+        viewBox={`0 0 ${width} ${H + AXIS_H}`}
+        className="sentiment-strike-chart w-full"
         role="img"
         aria-label="행사가별 내재변동성 스마일"
         onMouseMove={onMouseMove}
@@ -479,7 +515,7 @@ export function IvSkewChart({
           // 지표에서 지우는 대신 화면에서 감쇠한다 — 지우면 Max Pain·GEX 가 보는
           // 데이터와 달라진다.
           const alpha = Math.min(1, 0.2 + 0.8 * (Math.log10(1 + r.oi) / 4));
-          const cx = xOf(domain, r.strike);
+          const cx = xOf(domain, r.strike, width);
           return (
             <g key={r.strike} opacity={alpha}>
               {r.call_iv !== null && <circle cx={cx} cy={y(r.call_iv)} r={1.8} fill="var(--price-up)" />}
@@ -487,24 +523,25 @@ export function IvSkewChart({
             </g>
           );
         })}
-        {hover !== null && <HoverGuide domain={domain} strike={hover} height={H} />}
+        {hover !== null && <HoverGuide domain={domain} strike={hover} height={H} width={width} />}
         {underlying !== null && (
-          <RefLine strike={underlying} domain={domain} height={H} label={`현재 ${underlying.toFixed(2)}`} />
+          <RefLine width={width} showLabel={!selection} strike={underlying} domain={domain} height={H} label={`현재 ${underlying.toFixed(2)}`} />
         )}
         {/* 미니 범례 — 색 의미를 문장 밖에서도 알 수 있게 */}
-        <g fontSize={10}>
+        {!selection && <g fontSize={10}>
           <rect x={PAD_L} y={2} width={8} height={3} fill="var(--price-up)" />
           <text x={PAD_L + 11} y={7} fill="var(--fg-dim)">콜</text>
           <rect x={PAD_L + 30} y={2} width={8} height={3} fill="var(--price-down)" />
           <text x={PAD_L + 41} y={7} fill="var(--fg-dim)">풋</text>
+        </g>}
+        <g fontSize={10} fill="var(--fg-dim)" textAnchor="end">
+          <text x={PAD_L - 6} y={20}>{hi.toFixed(1)}</text><text x={PAD_L - 6} y={H - 3}>{lo.toFixed(1)}</text>
         </g>
-        <text x={PAD_L} y={H - 2} fontSize={10} fill="var(--fg-dimmer)">
-          IV {lo.toFixed(1)}~{hi.toFixed(1)}%
-        </text>
-        <StrikeAxis domain={domain} y={H + 2} />
+        <StrikeAxis domain={domain} y={H + 2} width={width} />
       </svg>
-      {hovered && (
+      {!selection && hovered && (
         <HoverTip
+          width={width}
           domain={domain}
           strike={hovered.strike}
           rows={[
@@ -548,9 +585,13 @@ export function GexSummary({ gex }: { gex: GammaExposure }) {
 export function OiContributors({
   dist,
   underlying,
+  onSelect,
+  selectedStrike,
 }: {
   dist: OiDistribution;
   underlying: number | null;
+  onSelect?: (strike: number) => void;
+  selectedStrike?: number | null;
 }) {
   const top = [...dist.strikes]
     .map((s) => ({ ...s, total: s.call_oi + s.put_oi }))
@@ -575,7 +616,7 @@ export function OiContributors({
       <tbody>
         {top.map((s) => (
           <tr key={s.strike} className="border-b border-grid text-fg last:border-b-0">
-            <td className="py-2xs text-left">{s.strike.toFixed(1)}</td>
+            <td className="py-2xs text-left">{onSelect ? <button type="button" className="sentiment-strike-link" aria-pressed={selectedStrike === s.strike} onClick={() => onSelect(s.strike)}>{s.strike.toFixed(1)}</button> : s.strike.toFixed(1)}</td>
             <td className="py-2xs text-right text-fg-dim">
               {underlying ? `${(((s.strike - underlying) / underlying) * 100).toFixed(1)}%` : '—'}
             </td>
