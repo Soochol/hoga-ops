@@ -1493,11 +1493,11 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
   const settings = window.getByRole('button', { name: '주문 설정', exact: true });
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   const editorStyles = (editor: Locator) => editor.evaluate(element => [
-    ['.settings-editor-heading', ['padding', 'borderBottomWidth']],
+    ['.settings-editor-heading', ['borderBottomWidth']],
     ['.settings-editor-heading h2', ['fontFamily', 'fontSize', 'fontWeight', 'color']],
     ['.settings-editor-sidebar', ['width', 'padding', 'backgroundColor']],
     ['.settings-editor-sidebar [aria-current=true]', ['padding', 'fontSize', 'fontWeight', 'borderRadius', 'color', 'backgroundColor']],
-    ['.settings-row', ['minHeight', 'padding', 'borderBottomWidth']],
+    ['.settings-row', ['borderBottomWidth']],
     ['.settings-row [role=switch]', ['width', 'height', 'borderRadius']],
   ].map(([selector, properties]) => {
     const style = getComputedStyle(element.querySelector(selector as string)!);
@@ -1522,13 +1522,36 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
     expect(panel.x + panel.width).toBeCloseTo(anchor.x + anchor.width, 0);
     await dialog.screenshot({ path: testInfo.outputPath(`order-settings-${theme}.png`) });
     expect(panel.width).toBe(520);
-    expect(panel.height).toBeLessThan(900);
+    expect(panel.height).toBeLessThan(360);
+    await expect(dialog.locator('.settings-editor-heading')).toHaveCSS('min-height', '44px');
+    expect(await dialog.locator('.settings-row').evaluateAll(rows => rows.map(row => row.getBoundingClientRect().height))).toEqual(Array(5).fill(36));
     const navigation = dialog.getByRole('navigation', { name: '주문 설정 목차' });
     expect((await dialog.locator('.settings-editor-sidebar').boundingBox())!.width).toBe(184);
     for (const name of ['주문 입력', '호가 표시', '주문 알림']) {
       await expect(dialog.getByRole('region', { name, exact: true })).toBeInViewport();
       await expect(dialog.getByRole('heading', { name, exact: true })).toBeInViewport();
+      await expect(dialog.getByRole('heading', { name, exact: true })).toHaveCSS('font-size', '14px');
     }
+    const soundToggle = dialog.getByRole('switch', { name: '주문접수 소리', exact: true });
+    const soundPreview = dialog.getByRole('button', { name: '소리 들어보기', exact: true });
+    const soundBounds = (await soundToggle.boundingBox())!;
+    const previewBounds = (await soundPreview.boundingBox())!;
+    expect(previewBounds.y + previewBounds.height / 2).toBeCloseTo(soundBounds.y + soundBounds.height / 2, 0);
+    const presetRow = dialog.locator('.order-settings-presets-row').first();
+    const labelBounds = (await presetRow.locator('div').first().boundingBox())!;
+    const inputBounds = (await presetRow.getByRole('spinbutton').first().boundingBox())!;
+    expect(labelBounds.y + labelBounds.height / 2).toBeCloseTo(inputBounds.y + inputBounds.height / 2, 0);
+    const quantity = dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true });
+    await quantity.fill('1000000');
+    expect(await quantity.evaluate(input => input.scrollWidth <= input.clientWidth)).toBe(true);
+    await quantity.fill('1000000000');
+    expect(await quantity.evaluate(input => {
+      const style = getComputedStyle(input);
+      const context = document.createElement('canvas').getContext('2d')!;
+      context.font = style.font;
+      return context.measureText((input as HTMLInputElement).value).width + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) <= input.clientWidth;
+    })).toBe(true);
+    await quantity.fill('10');
     await navigation.getByRole('button', { name: '주문 알림', exact: true }).click();
     await expect(navigation.getByRole('button', { name: '주문 알림', exact: true })).toHaveAttribute('aria-current', 'true');
     await expect(dialog.getByRole('spinbutton')).toHaveCount(6);
