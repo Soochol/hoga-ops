@@ -131,7 +131,8 @@ class DailyProgramTradeBackfill:
                 return kiwoom_access.run_with_capacity(
                     self._scheduler,
                     key=("daily-program-trade", code_, from_s, to_s, page_idx),
-                    api_id="ka90013", priority="background", client=client, fetch_fn=fetch_fn,
+                    # An open chart/data window is waiting for this history.
+                    api_id="ka90013", priority="user_visible", client=client, fetch_fn=fetch_fn,
                 )
 
             return await fetch_daily_program_trade(client, code_, from_s, to_s, run_page=run_page)

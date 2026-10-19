@@ -118,7 +118,7 @@ def kiwoom(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_live_investor_net_backfill_schedules_background_request(tmp_path, kiwoom) -> None:
+async def test_live_investor_net_backfill_schedules_user_visible_request(tmp_path, kiwoom) -> None:
     kis = kiwoom(_FakeKis())
     scheduler = _RecordingScheduler()
     backfill = LiveInvestorNetBackfill(
@@ -148,7 +148,7 @@ async def test_live_investor_net_backfill_schedules_background_request(tmp_path,
             # 중복제거해서, 금액 요청이 수량 walk 의 결과를 받는다.
             "key": ("live-investor-net", "2", "net", "005930", "20240101", "20240105", 0),
             "api_id": "ka10059",
-            "priority": "background",
+            "priority": "user_visible",
         }
     ]
 
@@ -227,3 +227,57 @@ async def test_collect_coalesces_concurrent_same_code_requests(tmp_path, kiwoom)
     assert len(r2["points"]) == 6
     assert r2["fresh_batches"] == []  # served entirely from the warm cache
     assert r2["cached_batches"] == ["20240101__20240110"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["investor", "program"])
+async def test_open_data_window_runs_before_queued_capture_traffic(tmp_path, kiwoom, monkeypatch, kind) -> None:
+    from hoga.live import daily_program_trade
+    from hoga.live.kiwoom_capacity import KiwoomCapacityScheduler
+
+    kiwoom(_FakeKis())
+    scheduler = KiwoomCapacityScheduler(workers=1, rate_per_sec=10_000)
+    gate, started = asyncio.Event(), asyncio.Event()
+    order: list[str] = []
+    api_id = "ka10059" if kind == "investor" else "ka90013"
+
+    async def blocker(_client):
+        started.set()
+        await gate.wait()
+
+    async def capture(_client):
+        order.append("capture")
+
+    async def page(client):
+        order.append("visible")
+        return await _fake_page_fetch(client)
+
+    async def fetch(_client, _code, frm, too, *, run_page, **_kwargs):
+        await run_page(page, 0)
+        points = _investor_points(frm, too)
+        if kind == "program":
+            return [{"t_ms": point.t_ms, "net_qty": 10} for point in points], [], None
+        return InvestorNetFetchResult(points=points, violations=[])
+
+    monkeypatch.setattr(kiwoom_investor, "fetch_investor_net", fetch)
+    monkeypatch.setattr(daily_program_trade, "fetch_daily_program_trade", fetch)
+    backfill_type = LiveInvestorNetBackfill if kind == "investor" else daily_program_trade.DailyProgramTradeBackfill
+    backfill = backfill_type(data_dir=tmp_path, cache=PastDailyCandlesCache(),
+        scheduler=scheduler, walkback=batched_daily_walkback)
+    block = asyncio.create_task(scheduler.submit(key="block", api_id=api_id,
+        priority="background", call=blocker))
+    await started.wait()
+    background = asyncio.create_task(scheduler.submit(key="capture", api_id=api_id,
+        priority="background", call=capture))
+    await asyncio.sleep(0)
+    visible = asyncio.create_task(backfill.collect(code="005930", frm=dt.date(2024, 1, 1),
+        too=dt.date(2024, 1, 5), today_d=dt.date(2024, 2, 1)))
+    await asyncio.sleep(0)
+    try:
+        gate.set()
+        _, _, response = await asyncio.gather(block, background, visible)
+        assert order == ["visible", "capture"]
+        assert len(response["points"]) == 5
+    finally:
+        gate.set()
+        await scheduler.aclose()

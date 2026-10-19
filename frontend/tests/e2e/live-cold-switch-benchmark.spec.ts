@@ -16,10 +16,14 @@ test('cold switch and latest-book revisit @benchmark', async ({ browser }, info)
   test.setTimeout(120000);
   const results = [];
   const errors: string[] = [];
+  const updateWarnings: string[] = [];
   for (let repeat = 0; repeat < 3; repeat++) {
     const context = await browser.newContext({ viewport: { width: 1600, height: 1100 } });
     const page = await context.newPage();
     page.on('pageerror', error => errors.push(error.message));
+    page.on('console', message => {
+      if (message.text().includes('Maximum update depth exceeded')) updateWarnings.push(message.text());
+    });
     await page.clock.install({ time: new Date('2026-10-19T10:00:00+09:00') });
     await installLiveMocks(page);
     if (legacy) {
@@ -162,6 +166,7 @@ test('cold switch and latest-book revisit @benchmark', async ({ browser }, info)
   await mkdir(resolve(output, '..'), { recursive: true });
   await writeFile(output, JSON.stringify({ label: process.env.HOGA_COLD_BENCH_LABEL, browser: browser.version(),
     workload: { legacy, sevenWindows: true, candleMs: 80, hogaMs: 900, sidecarMs: 1400, latestBookAfterSubscribeMs: 1000,
-      scope: 'synthetic transport delays; empty auxiliary cards; public book only; not real vendor/server load' }, results, errors }, null, 2));
+      scope: 'synthetic transport delays; empty auxiliary cards; public book only; not real vendor/server load' }, results, errors, updateWarnings }, null, 2));
   expect(errors).toEqual([]);
+  expect(updateWarnings).toEqual([]);
 });

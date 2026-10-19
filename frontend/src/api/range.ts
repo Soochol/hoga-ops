@@ -887,7 +887,10 @@ function useLiveRangeDelta(
 
   useEffect(() => {
     if (!data || query.isPlaceholderData) return;
-    const updatedAtMs = query.dataUpdatedAt || Date.now();
+    // Restoring a canonical bundle is not a fetch. A disabled delta query may
+    // have no dataUpdatedAt at all; Date.now() here makes each parent render
+    // appear fresher and forceRerender feeds that clock back into this effect.
+    const updatedAtMs = Math.max(query.dataUpdatedAt, cachedPrevious?.updatedAtMs ?? 0);
     const current = mergedRef.current;
     if (current?.identity === plan.identity && current.data === data) {
       // An unchanged refresh still advances freshness. Otherwise the stable
@@ -900,12 +903,12 @@ function useLiveRangeDelta(
       return;
     }
     mergedRef.current = { identity: plan.identity, data, updatedAtMs };
-    publishRangeSnapshot(queryClient, buildRangeBundleRequest(baseInput).queryKey, data);
+    publishRangeSnapshot(queryClient, buildRangeBundleRequest(baseInput).queryKey, data, updatedAtMs);
     // canonical 병합본 재발행 → 다음 리마운트·탭 복귀의 복원 소스(gcTime 2h). 이
     // 키의 수명 옵저버는 React 렌더를 구독하지 않아 재렌더를 유발하지 않는다. 위
     // 가드가 mergedRef 와 canonical 을 동기 유지하므로(둘 다 이 effect 에서만 쓰기)
     // 캔들의 별도 publishedRef 는 불필요 — range.ts 는 렌더 단계 pin 이 없다.
-    publishRangeSnapshot(queryClient, mergedLiveRangeKey(plan.identity), data);
+    publishRangeSnapshot(queryClient, mergedLiveRangeKey(plan.identity), data, updatedAtMs);
     // 위 재발행이 남긴 이전 팬 스텝 사본들을 즉시 회수 — 근거는 함수 주석.
     removeDominatedLiveRangeCopies(queryClient, plan.identity, data);
     // identity 축 상한. 위 회수는 **같은 identity 안의** 중복만 걷으므로, 지표 토글·봉
@@ -913,7 +916,7 @@ function useLiveRangeDelta(
     evictExcessMergedLiveRanges(queryClient);
     trimRetainedLiveCaches(queryClient);
     if (plan.forceRerenderAfterMerge) forceRerender();
-  }, [baseInput, data, queryClient, query.dataUpdatedAt, query.isPlaceholderData, plan.identity, plan.forceRerenderAfterMerge]);
+  }, [baseInput, data, queryClient, query.dataUpdatedAt, query.isPlaceholderData, cachedPrevious?.updatedAtMs, plan.identity, plan.forceRerenderAfterMerge]);
 
   return {
     ...query,
