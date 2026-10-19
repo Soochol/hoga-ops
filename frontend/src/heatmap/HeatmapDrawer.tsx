@@ -1,3 +1,6 @@
+import './HeatmapColumns.css';
+import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
+import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { usePanelRowSelection } from '../rightrail/usePanelRowSelection';
 import { ModalShell } from '../ui/ModalShell';
 import { PanelContextMenu } from '../ui/PanelContextMenu';
@@ -187,6 +190,7 @@ const typeAwareCollision = createPanelCollision('[data-testid="heatmap-drawer-sc
  * 미러(폴더별 행 정렬 토글은 드로어 툴바로 승격돼 헤더엔 없음).
  */
 function GroupHeader(props: {
+  columnLayout: React.CSSProperties;
   folderId: string; busy: boolean;
   label: string; count: number; collapsed: boolean;
   avg?: number | null;
@@ -228,7 +232,8 @@ function GroupHeader(props: {
       }}
       onKeyDown={(event) => { if (props.onRename && event.currentTarget.contains(event.target as Node)) openPanelContextMenuFromKeyboard(event); }}
       {...panelDragListeners(props.busy ? undefined : props.dragHandle?.listeners)}
-      className={`group ${props.dragHandle && !props.busy ? props.dragHandle.isDragging ? 'cursor-grabbing' : 'cursor-grab' : ''} select-none touch-none sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover`}>
+      style={props.columnLayout}
+      className={`heatmap-fluid-group-header quote-columns-min-width group ${props.dragHandle && !props.busy ? props.dragHandle.isDragging ? 'cursor-grabbing' : 'cursor-grab' : ''} select-none touch-none sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover`}>
 
       <button type="button" aria-label={`${props.label} ${props.collapsed ? '펼치기' : '접기'}`}
         aria-expanded={!props.collapsed}
@@ -245,11 +250,9 @@ function GroupHeader(props: {
           배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 같은 avgPct 지만 **라이브
           시세**로 계산한다 — 그룹 순서를 정하는 쪽은 SORT_THROTTLE_MS 로 스로틀된 시세를
           보므로, 창 안에서는 이 숫자가 현재 순서보다 앞선다(값은 실시간, 자리는 격자). */}
-      {props.avg != null && (
-        <span className={`flex-none text-xs font-normal font-data tabular-nums ${priceDirClass(props.avg)}`}>
-          {`${props.avg > 0 ? '+' : ''}${props.avg.toFixed(2)}%`}
-        </span>
-      )}
+      <span className={`heatmap-group-percent flex-none text-xs font-normal font-data tabular-nums ${props.avg == null ? 'text-fg-dim' : priceDirClass(props.avg)}`}>
+        {props.avg == null ? null : `${props.avg > 0 ? '+' : ''}${props.avg.toFixed(2)}%`}
+      </span>
       {props.onRename && (
         <>
 
@@ -568,6 +571,7 @@ export function HeatmapDrawer() {
   const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
   const venue = useLiveVenueStore((s) => s.venue);
   const quoteByCode = useQuoteByCode(codes, venue);
+  const columns = useQuoteColumns(codes, quoteByCode, scrollRef);
 
   const toggle = (key: string) => {
     clearSelection();
@@ -885,6 +889,7 @@ export function HeatmapDrawer() {
           || (event.target as HTMLElement).closest('[role="dialog"]')) return;
         if (selected.size) { event.preventDefault(); event.stopPropagation(); clearSelection(); }
       }}>
+      <QuoteColumnProbe probe={columns.probe} samples={columns.samples} />
       <RailDrawerHeader
         title="히트맵"
         actions={(
@@ -938,7 +943,7 @@ export function HeatmapDrawer() {
               const rows = g.rows;
               const renderGroup = (dragHandle?: GroupDragHandle) => (
                 <>
-                  <GroupHeader folderId={folder.id} busy={busy} label={folder.name} count={g.entries.length} collapsed={isCollapsed}
+                  <GroupHeader columnLayout={columns.layout} folderId={folder.id} busy={busy} label={folder.name} count={g.entries.length} collapsed={isCollapsed}
                     avg={avgPct(g.entries, pctOf)}
                     onToggle={() => toggle(key)}
                     onRename={() => setRenameTarget({ id: folder.id, name: folder.name })}
@@ -959,6 +964,7 @@ export function HeatmapDrawer() {
                           const q = quoteByCode.get(entry.code);
                           return (
                             <QuoteRow
+                              columnLayout={columns.layout}
                               name={entry.name} code={entry.code}
                               nameTooltip=""
                               price={q?.price ?? null}
@@ -1035,17 +1041,15 @@ export function HeatmapDrawer() {
           </SortableContext>
           <RailDragOverlay droppedOnChart fitContentHeight initialRect={groupGhost?.initialRect}>
             {groupGhost ? (
-              <li data-testid="heatmap-drag-ghost" className="flex h-full items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim">
+              <li data-testid="heatmap-drag-ghost" style={columns.layout} className="heatmap-fluid-group-header quote-columns-min-width flex h-full items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim">
                 <span className="grid h-6 w-6 shrink-0 place-items-center"><ChevronIcon collapsed /></span>
                 <span className="flex-1 min-w-0 flex items-baseline gap-1.5">
                   <span className="truncate">{ghost}</span>
                   <span className="flex-none text-xs font-normal text-fg-dim">{groupGhost.count}</span>
                 </span>
-                {groupGhost.avg != null && (
-                  <span className={`flex-none text-xs font-normal font-data tabular-nums ${priceDirClass(groupGhost.avg)}`}>
-                    {`${groupGhost.avg > 0 ? '+' : ''}${groupGhost.avg.toFixed(2)}%`}
-                  </span>
-                )}
+                <span className={`heatmap-group-percent flex-none text-xs font-normal font-data tabular-nums ${groupGhost.avg == null ? 'text-fg-dim' : priceDirClass(groupGhost.avg)}`}>
+                  {groupGhost.avg == null ? null : `${groupGhost.avg > 0 ? '+' : ''}${groupGhost.avg.toFixed(2)}%`}
+                </span>
               </li>
             ) : ghost && (
               <li data-testid="heatmap-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">{ghost} {copyIntent ? '복제' : '이동'}</li>

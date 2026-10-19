@@ -26,7 +26,7 @@ async function columns(row: Locator) {
 }
 
 for (const fontSize of [16, 20]) {
-  test(`관심종목은 이름 시작·상태 점 위치를 유지하고 줄인 숫자 여백을 이름에 배분한다 (${fontSize}px)`, async ({ page }) => {
+  test(`관심종목·히트맵은 같은 열 배치를 쓰고 수집 상태 점은 들여쓰기에 남는다 (${fontSize}px)`, async ({ page }) => {
     await installLiveMocks(page);
     await page.route(apiExact('watchlist'), route => route.fulfill({ json: {
       folders: [folder], entries: stocks.map(stock => ({ ...stock, registered_at_kst_date: '20260908', last_success_date: null })),
@@ -81,10 +81,10 @@ for (const fontSize of [16, 20]) {
       const row = heatmap.getByTestId(`heatmap-drawer-row-${stocks[index].code}`);
       await expect(row).toBeVisible();
       const heatmapColumns = await columns(row);
-      expect(watchlistColumns[index].name.left).toBeCloseTo(heatmapColumns.name.left, 3);
-      expect(watchlistColumns[index].name.width).toBeGreaterThan(heatmapColumns.name.width);
-      expect(watchlistColumns[index].price.width).toBeLessThan(heatmapColumns.price.width);
-      expect(watchlistColumns[index].percent.width).toBeLessThan(heatmapColumns.percent.width);
+      for (const column of ['name', 'price', 'percent'] as const) {
+        expect(watchlistColumns[index][column].left).toBeCloseTo(heatmapColumns[column].left, 3);
+        expect(watchlistColumns[index][column].width).toBeCloseTo(heatmapColumns[column].width, 3);
+      }
     }
   });
 }

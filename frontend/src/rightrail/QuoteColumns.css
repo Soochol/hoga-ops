@@ -1,13 +1,15 @@
-/* Opt-in on Watchlist QuoteRows only, including their body-portal drag clone. */
+/* Opt-in on measured rail lists; the portal clone receives the same variables. */
+.quote-row-fluid, .quote-columns-min-width {
+  min-width: calc(2.5rem + 6 * var(--text-xs) + var(--quote-price-width) + var(--quote-percent-width) + 2 * var(--quote-column-gap) + var(--quote-right-padding));
+}
 .quote-row-fluid {
   gap: var(--quote-column-gap);
   padding-right: var(--quote-right-padding);
-  min-width: calc(2.5rem + 6 * var(--text-xs) + var(--quote-price-width) + var(--quote-percent-width) + 2 * var(--quote-column-gap) + var(--quote-right-padding));
 }
 .quote-row-fluid > .quote-row-name { min-width: calc(6 * var(--text-xs)); }
 .quote-row-fluid > .quote-row-price { width: var(--quote-price-width); white-space: nowrap; }
 .quote-row-fluid > .quote-row-percent { width: var(--quote-percent-width); white-space: nowrap; }
-.watchlist-column-probe {
+.quote-column-probe {
   position: fixed;
   left: -10000px;
   top: 0;
@@ -17,5 +19,5 @@
   visibility: hidden;
   pointer-events: none;
 }
-.watchlist-column-probe > span { display: inline-block; white-space: nowrap; }
-.watchlist-column-probe > span::before { content: attr(data-figure); }
+.quote-column-probe > span { display: inline-block; white-space: nowrap; }
+.quote-column-probe > span::before { content: attr(data-figure); }

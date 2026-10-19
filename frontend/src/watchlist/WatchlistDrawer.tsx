@@ -1,5 +1,5 @@
-import './WatchlistColumns.css';
-import { useWatchlistColumns } from './useWatchlistColumns';
+import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
+import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
 import { usePanelRowSelection } from '../rightrail/usePanelRowSelection';
 import { ModalShell } from '../ui/ModalShell';
@@ -816,7 +816,7 @@ export function WatchlistDrawer() {
   const venue = useLiveVenueStore((s) => s.venue);
   const liveQuoteByCode = useQuoteByCode(codes, venue);
   const quoteByCode = useFrozenWhileDragging(liveQuoteByCode, isDragging);
-  const columns = useWatchlistColumns(codes, quoteByCode, scrollRef);
+  const columns = useQuoteColumns(codes, quoteByCode, scrollRef);
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusRaw } = useLiveStatus();
@@ -1389,10 +1389,7 @@ export function WatchlistDrawer() {
           || (event.target as HTMLElement).closest('[role="dialog"]')) return;
         if (selectedRows.size) { event.preventDefault(); event.stopPropagation(); clearSelection(); }
       }}>
-      <span ref={columns.probe} className="watchlist-column-probe font-data tabular-nums" aria-hidden="true">
-        {[400, 500].flatMap(weight => columns.samples.price.map(value => <span key={`${weight}:${value}`} data-watchlist-measure="price" data-figure={value} className="text-sm leading-tight" style={{ fontWeight: weight }} />))}
-        {[400, 500].flatMap(weight => columns.samples.percent.map(value => <span key={`${weight}:${value}`} data-watchlist-measure="percent" data-figure={value} className="text-xs leading-tight" style={{ fontWeight: weight }} />))}
-      </span>
+      <QuoteColumnProbe probe={columns.probe} samples={columns.samples} />
       <RailDrawerHeader
         title="관심종목"
         actions={(
