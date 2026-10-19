@@ -1,0 +1,76 @@
+{
+  "recordedAtKst": "2026-10-19T14:32:37.571666+09:00",
+  "implementationCommit": "958d5c5346da45669b63b0e6545883bd00a7d8c1",
+  "baseCommit": "bdfc204b6365602e47b8f8fa9b462a1c38ed8f57",
+  "scope": "Affected-area validation. Real-user measurements and screenshots stay local and are excluded from Git. Documentation-only follow-up commits reuse these exact code inputs.",
+  "inputFingerprints": {
+    "frontend": {
+      "files": 1689,
+      "sha256": "5a37d3f1a7a9a7307ef706cce3f95440ca235e4e7ea05273ab249caadaac543e",
+      "gitPathspecs": [
+        "frontend/src",
+        "frontend/tests",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/playwright.config.ts",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/tsconfig.node.json"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    },
+    "backend": {
+      "files": 756,
+      "sha256": "ed4a40a25c2b37d55c83bc54ab7564ba67826287ec0f71d7e6cdd3fd6d3b16f1",
+      "gitPathspecs": [
+        "hoga",
+        "tests",
+        "pyproject.toml",
+        "uv.lock",
+        "ruff.toml",
+        ".python-version"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    }
+  },
+  "tools": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "playwright": "1.60.0",
+    "typescript": "6.0.3"
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q tests/unit/live/test_investor_estimate_latency.py tests/unit/live/test_api.py tests/unit/live/test_kiwoom_investor.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "176 passed"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/api/liveInvestorTrendEstimate.test.tsx src/sidebar/InvestorTrendEstimateCard.test.tsx",
+      "result": "39 passed, 2 files"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed, all three TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/investor-estimate-recovery.spec.ts --reporter=list",
+      "result": "2 passed, one worker; fixture-only backend 20023/frontend 21023; production vite build passed; estimate HTTP responses mocked",
+      "reuse": "Frontend inputs unchanged after this run; later backend-only timeout discrimination is covered by HTTP unit tests."
+    },
+    {
+      "command": ".venv/bin/python -m ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "In-memory intentional BE enum mismatch probe, then restore and recheck",
+      "result": "mismatch rejected; restored mirror passed"
+    }
+  ]
+}
