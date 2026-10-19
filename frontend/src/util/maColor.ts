@@ -15,14 +15,14 @@ const SHADES: Record<string, readonly [light: string, dark: string]> = {
   '#94A3B8': ['#475569', '#94A3B8'],
 };
 const BACKGROUNDS: Record<string, string> = {
-  obsidian: '#121216', 'obsidian-pro': '#171A20', 'toss-dark': '#17171C',
+  obsidian: '#121216', 'obsidian-pro': '#171A20', 'toss-dark': '#17171C', 'trading-desk': '#121811',
   ledger: '#FDFCF8', 'ledger-studio': '#FFFEFA', 'toss-light': '#FFFFFF',
 };
 
 /** Missing mode is a legacy, explicitly stored color. Never rewrite it on theme changes. */
 export function resolveMaColor(config: Pick<LiveMAConfig, 'color' | 'colorMode'>, theme = currentThemeKey()): string {
   if (config.colorMode !== 'auto') return config.color;
-  const dark = theme === 'obsidian' || theme === 'obsidian-pro' || theme === 'toss-dark';
+  const dark = theme === 'obsidian' || theme === 'obsidian-pro' || theme === 'toss-dark' || theme === 'trading-desk';
   const shades = SHADES[config.color.toUpperCase()];
   if (shades) return shades[dark ? 1 : 0];
 

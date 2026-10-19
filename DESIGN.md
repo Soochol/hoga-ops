@@ -5,6 +5,21 @@
 **Approved mockup (original, at 1.0× base intent):** `docs/superpowers/designs/2026-05-20-replay-viewer.html`
 **Approved commercial themes (2026-07-08):** `docs/superpowers/designs/2026-07-08-commercial-terminal.html` (Obsidian, dark) · `docs/superpowers/designs/2026-07-08-commercial-ledger.html` (Ledger, light)
 
+**Trading Desk (2026-10-19, 사용자 승인):** 메인 페이지의 올리브 블랙·라임 컨셉을
+실제 `/live`에 적용한다. `trading-desk` 팔레트를 기본값으로 추가하되 기존 저장된
+테마·창 배치·지표 설정은 덮어쓰지 않는다. 기존 여섯 테마와 전역 테마 동기화는 유지한다.
+배경 `#0b0f0b`, 창 `#121811`, 제목줄 `#182014`, 라임 `#c7fa79`, 상승/매수
+`#f47f89`, 하락/매도 `#82b1fa`를 사용한다. 새 창 프레임 모서리 토큰은 9px이다.
+라임은 조작·선택에, 빨강·파랑은 시세에 사용한다. 이동평균은 사용자가 지정한 색과
+자동 명도 보정을 유지하며 저장된 지표 색을 미리보기 색으로 교체하지 않는다.
+
+라이브 크롬은 `TradingDesk.css`에서 테마 선택에 따라 적용한다. 중성 경계선과
+짧은 그림자, 일관된 제목줄·창 조작 버튼을 사용한다. 사용자 후속 요청(2026-10-19)에
+따라 차트 제목줄은 종목명·현재가·등락률·창 조작 버튼을 한 줄에 배치하고,
+현재가는 기존 `text-sm` 크기를 사용한다. 좁은 창의 메타데이터 생략과 버튼 우선순위는 유지한다. 드래그·리사이즈 좌표, 호가 20단과 숫자 폭,
+행 높이, 주문·정정·취소, 창 연결·고정·프리셋은 기존 구현을 유지한다.
+브랜드의 궤도선만 허용하고 차트 위 배경 장식·상시 발광·동작 애니메이션은 추가하지 않는다.
+
 ## Product Context
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
@@ -114,16 +129,17 @@ with its label folded at narrow widths, rather than inside the More popup.
 ## Color
 
 - **Approach:** Restrained. Single UI accent per theme. Three mutually-exclusive color categories for UI state, status semantic, and price direction. All palettes share one token contract (see below) — components never branch on theme, they only read tokens.
-- **Themes (six, selectable):** the app ships six full palettes behind `<html data-theme>`:
+- **Themes (seven, selectable):** the app ships seven full palettes behind `<html data-theme>`:
   - **Obsidian** (dark) — warm graphite surfaces + brass accent. The trading-terminal / live surfaces.
   - **Ledger** (light) — ivory paper surfaces + banker's-green accent. The review/research surfaces.
-  - **Toss Light** (light, `toss-light`) — white cards on a grey floor + toss-blue accent. Benchmarked from tossinvest.com's live tokens (2026-07-22). **The default preference** (2026-08-07 사용자 결정 — `DEFAULT_THEME_PREFERENCE` in `state/themePrefs.ts`, mirrored in `index.html`). See the Toss Light/Dark note below the token table for the accent-vs-price collision it carries, which is now the *default* experience rather than opt-in.
+  - **Toss Light** (light, `toss-light`) — white cards on a grey floor + toss-blue accent. Benchmarked from tossinvest.com's live tokens (2026-07-22). The former default preference (2026-08-07 to 2026-10-19); existing saved preferences are preserved. See the Toss Light/Dark note below the token table for the accent-vs-price collision.
   - **Toss Dark** (dark, `toss-dark`) — lighter cards on a near-black floor + toss-blue accent. The dark counterpart of Toss Light, benchmarked from tossinvest.com's live dark tokens (2026-07-22). **Manual-select only.**
   - **Obsidian Pro** (dark, `obsidian-pro`, user-approved 2026-10-17) — cool graphite floor `#101216`, raised panels `#171a20`, amber UI accent `#e9b44c`, coral up `#ff747f` and blue down `#7aafff`. Live monitoring palette; dark moving-average defaults inherited from the base.
   - **Ledger Studio** (light, `ledger-studio`, user-approved 2026-10-17) — ivory floor `#f5f3ed`, paper panels `#fffefa`, forest-green UI accent `#28664d`, red up `#ba3a47` and blue down `#285eb3`. Review/research palette; light moving averages and paper elevation shared with Ledger.
-  - The **preference** (`obsidian` / `ledger` / `toss-light` / `toss-dark` / `obsidian-pro` / `ledger-studio`) lives in `state/themePrefs.ts` (localStorage `ui.themePreference.v1`). **The preference IS the theme** — there is no resolution step and the route is not an input (the `auto` preference that made it one was removed 2026-08-30; see the History table). `subscribeThemeToDom` writes it to `data-theme` **synchronously inside the store's `set()`** — not from an effect, because React runs child effects before parent ones and the chart would otherwise read the old CSS variables (#1656); `index.html` sets it inline before first paint (FOUC + wrong-theme chart cache guard).
+  - **Trading Desk** (dark, `trading-desk`, user-approved 2026-10-19) — olive-black floor `#0b0f0b`, olive panels `#121811`, lime `#c7fa79`, coral up `#f47f89` and blue down `#82b1fa`. The default when no preference is saved. Live-specific chrome is described above.
+  - The **preference** (`obsidian` / `ledger` / `toss-light` / `toss-dark` / `obsidian-pro` / `ledger-studio` / `trading-desk`) lives in `state/themePrefs.ts` (localStorage `ui.themePreference.v1`). **The preference IS the theme** — there is no resolution step and the route is not an input (the `auto` preference that made it one was removed 2026-08-30; see the History table). `subscribeThemeToDom` writes it to `data-theme` **synchronously inside the store's `set()`** — not from an effect, because React runs child effects before parent ones and the chart would otherwise read the old CSS variables (#1656); `index.html` sets it inline before first paint (FOUC + wrong-theme chart cache guard).
   - **Scope: the user's open browser tabs, not just one.** `subscribeToThemePreferenceStorage` (App.tsx, one subscription for every route since App is the layout route) mirrors another tab's change through the `storage` event, so a tab opened *before* the change follows without a reload — `/live` deep links open in new tabs, so stale tabs were the normal case. What travels between tabs is the **preference**, which since 2026-08-30 is the theme itself — every tab lands on the same value regardless of its route.
-  - **Selectors:** `:root, [data-theme='dark'], [data-theme='obsidian']` carry the Obsidian palette + the scale dial + font + all size/spacing/layout tokens. Other themes override **colors only** outside the generated base span (density, typography and workspace layout stay theme-independent). Ledger Studio also matches the shared Ledger light-palette block before its own overrides. The `--color-scheme` token supplies `dark`/`light` for native controls such as the news date field, without component branches on theme names. Theme choices wrap inside narrow settings editors.
+  - **Selectors:** `:root, [data-theme='dark'], [data-theme='obsidian']` carry the Obsidian palette + the scale dial + font + all size/spacing/layout tokens. Palette overrides live outside the generated base span. Trading Desk adds the approved live chrome above; density and saved workspace geometry stay theme-independent. Ledger Studio also matches the shared Ledger light-palette block before its own overrides. The `--color-scheme` token supplies `dark`/`light` for native controls such as the news date field, without component branches on theme names. Theme choices wrap inside narrow settings editors.
 
   > Table below shows the two primary themes (Obsidian/Ledger). **Toss Light** and
   > **Toss Dark**, **Obsidian Pro**, and **Ledger Studio** are extra palettes;
@@ -272,7 +288,7 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 - **Known limitation — MA / peak / drawing default colors:** the moving-average palette (`liveIndicatorsPersistence.ts`), peak-wall defaults, and drawing-tool colors are **user-selectable and persisted as hex in localStorage**, not theme tokens — so they do NOT change with the theme. As of 2026-09-08, the stock default MA-120 and new-slot palette use gray (`#6B7280`) instead of white for readability on light and dark surfaces. Persisted user colors stay unchanged. The style picker outlines its swatch and, when the selected hex color has less than 3:1 contrast against the current card background, offers an explicit gray replacement. `--ma-5` remains separate for token consumers.
 
-- **No OS/system mode:** there is no "system/OS" auto-follow mode. `data-theme` is one of `obsidian`, `ledger`, `toss-light`, `toss-dark`, `obsidian-pro`, or `ledger-studio` at runtime (the legacy `dark` alias maps to Obsidian). There is no route-based mode either: the `auto` preference was removed 2026-08-30. All six palettes are manual-select; Toss Light remains the default. (History: this was "both themes only, no third theme" until 2026-07-22.)
+- **No OS/system mode:** there is no "system/OS" auto-follow mode. `data-theme` is one of `obsidian`, `ledger`, `toss-light`, `toss-dark`, `obsidian-pro`, `ledger-studio`, or `trading-desk` at runtime (the legacy `dark` alias maps to Obsidian). There is no route-based mode either: the `auto` preference was removed 2026-08-30. All seven palettes are manual-select; Trading Desk is the default for new preferences (2026-10-19). (History: this was "both themes only, no third theme" until 2026-07-22.)
 
 ## Spacing
 

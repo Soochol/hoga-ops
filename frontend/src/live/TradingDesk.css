@@ -1,0 +1,174 @@
+/* Approved Trading Desk presentation. Keep geometry, resize hit areas, data
+   pipelines and persisted workspace layouts owned by their existing modules.
+   The theme selector still controls the palette across every open tab. */
+.live-workspace-label { display: none; }
+
+[data-theme='trading-desk'] .live-app-shell {
+  background: var(--bg);
+}
+
+[data-theme='trading-desk'] .live-top-nav {
+  border-bottom: 1px solid var(--border);
+}
+
+[data-theme='trading-desk'] .live-top-nav .live-brand-mark {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--accent);
+  background: transparent;
+  font-weight: 600;
+}
+
+[data-theme='trading-desk'] .live-top-nav .live-brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: var(--space-xs) calc(-1 * var(--space-xs));
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-full);
+  transform: rotate(-30deg);
+  opacity: .6;
+  pointer-events: none;
+}
+
+[data-theme='trading-desk'] .live-top-nav .live-brand-name {
+  font-weight: 600;
+}
+
+[data-theme='trading-desk'] .live-top-nav a[aria-current='page'] {
+  color: var(--accent);
+  box-shadow: inset 0 -2px var(--accent);
+  font-weight: 500;
+}
+
+[data-theme='trading-desk'] .live-workspace-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+  padding-right: var(--space-md);
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+[data-theme='trading-desk'] .live-workspace-label::before {
+  content: '';
+  width: var(--space-xs);
+  height: var(--space-xs);
+  border-radius: var(--radius-full);
+  background: var(--accent);
+}
+
+[data-theme='trading-desk'] .live-workspace > [data-testid='workspace-live-toolbar'] {
+  padding-block: var(--space-xs);
+  backdrop-filter: none;
+}
+
+[data-theme='trading-desk'] [data-testid='workspace-add-menu-button'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 500;
+}
+
+[data-theme='trading-desk'] .live-window > [data-outlined] {
+  border-radius: var(--radius-window);
+}
+
+[data-theme='trading-desk'] .live-window .live-window-titlebar {
+  background: var(--bg-subtle);
+  border-bottom: 1px solid var(--border);
+  padding-block: var(--space-xs);
+  min-height: 2.25rem;
+}
+
+[data-theme='trading-desk'] .live-window .live-window-titlebar[data-focused] {
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-subtle));
+}
+
+[data-theme='trading-desk'] .live-window-titlebar > .select-none {
+  opacity: .6;
+}
+
+[data-theme='trading-desk'] .live-data-title-kind {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+[data-theme='trading-desk'] .live-data-title .live-symbol-name {
+  color: var(--fg-dim);
+  font-size: var(--text-xs);
+  font-weight: 400;
+}
+
+[data-theme='trading-desk'] .live-window-direct-actions > button,
+[data-theme='trading-desk'] .live-window-titlebar > button:last-child {
+  border-radius: var(--radius-md);
+}
+
+[data-theme='trading-desk'] .live-window-direct-actions > [aria-pressed='true'] {
+  background: var(--tint-selection);
+  color: var(--accent);
+}
+
+/* Keep the quote and window actions on the same draggable title row. */
+[data-theme='trading-desk'] .live-window-chart .live-window-titlebar {
+  min-height: 2.25rem;
+  align-items: center;
+  flex-wrap: nowrap;
+  padding-block: var(--space-xs);
+}
+
+[data-theme='trading-desk'] .live-symbol-price[data-direction='up'] { color: var(--price-up); }
+[data-theme='trading-desk'] .live-symbol-price[data-direction='down'] { color: var(--price-down); }
+
+[data-theme='trading-desk'] .live-window .live-chart-toolbar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+[data-theme='trading-desk'] .live-window .ui-segmented {
+  border-color: var(--border);
+  background: var(--bg-input);
+}
+
+[data-theme='trading-desk'] .live-chart-toolbar .ui-choice[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+[data-theme='trading-desk'] .live-window table {
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme='trading-desk'] .live-window thead {
+  color: var(--fg-dim);
+  font-weight: 400;
+}
+
+[data-theme='trading-desk'] .live-window [data-testid='program-metric-strip'] {
+  background: var(--bg-card);
+}
+
+[data-theme='trading-desk'] .live-data-context {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+/* The ladder retains its established row sizes, numeric lanes and hit boxes. */
+[data-theme='trading-desk'] .order-current,
+[data-theme='trading-desk'] .book-last-price {
+  background: var(--tint-selection);
+}
+
+@container (max-width: 420px) {
+  /* NXT capability wraps inside the title instead of reserving a 12rem
+     single-line budget that would fold the three window actions too early. */
+  [data-theme='trading-desk'] .live-window-titlebar > .live-data-title-with-venues {
+    flex-basis: 4.5rem;
+  }
+}
+
+@media (max-width: 70rem) {
+  [data-theme='trading-desk'] .live-workspace-label { display: none; }
+}

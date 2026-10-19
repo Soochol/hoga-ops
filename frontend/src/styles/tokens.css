@@ -1,7 +1,7 @@
 /**
  * Design tokens — hoga-ops
  * Source of truth: DESIGN.md at the repo root.
- * Six selectable palettes; shared typography and density live on :root.
+ * Seven selectable palettes; shared typography and density live on :root.
  */
 :root,
 [data-theme='dark'],
@@ -178,6 +178,7 @@
   --radius-sm: 2px; /* Hairline bars, dense badges */
   --radius-md: 4px; /* Default (bare `rounded`) — chips, small buttons, presets */
   --radius-lg: 6px; /* Cards, modals, inputs, larger panels */
+  --radius-window: 9px; /* Trading Desk window frames (2026-10-19 approved) */
   --radius-full: 9999px; /* Status dots, avatars */
 
   /* ───── Layout (rem-based; rendered px @ 16px root = default density) ───── */
@@ -576,6 +577,51 @@
   --tint-price-down: rgba(40, 94, 179, 0.09);
   --bar-ask: rgba(40, 94, 179, 0.30);
   --bar-bid: rgba(186, 58, 71, 0.30);
+}
+
+/* Trading Desk — homepage's olive-black / lime concept, approved 2026-10-19.
+   The palette follows the existing global theme preference; only the live
+   workspace's presentation changes shape (TradingDesk.css). */
+[data-theme='trading-desk'] {
+  --color-scheme: dark;
+  --bg: #0b0f0b;
+  --bg-card: #121811;
+  --bg-subtle: #182014;
+  --bg-input: #0d130c;
+  --bg-input-hover: #202b1a;
+  --border: #2b3625;
+  --border-strong: #3c4a31;
+  --chart-pane-divider: #34412b;
+  --chart-day-boundary: #879576;
+  --fg: #e7eddf;
+  --fg-dim: #9ca791;
+  --fg-dimmer: #78836d;
+  --accent: #c7fa79;
+  --accent-fg: #18220e;
+  --accent-shade: #a9d563;
+  --success: #81c69b;
+  --error: #f093ad;
+  --warn: #dec184;
+  --price-up: #f47f89;
+  --price-down: #82b1fa;
+  --grid: #263020;
+  --heat-lo: #172011;
+  --heat-hi: #c7fa79;
+  --shadow: 0 4px 12px rgba(0, 0, 0, 0.32);
+  --shadow-overlay: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-panel: 0 2px 8px rgba(0, 0, 0, 0.20);
+  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.45);
+  --tint-selection: rgba(199, 250, 121, 0.08);
+  --tint-success: rgba(129, 198, 155, 0.10);
+  --tint-error: rgba(240, 147, 173, 0.10);
+  --tint-warn: rgba(222, 193, 132, 0.10);
+  --tint-neutral: rgba(156, 167, 145, 0.10);
+  --tint-success-border: rgba(129, 198, 155, 0.30);
+  --tint-error-border: rgba(240, 147, 173, 0.30);
+  --tint-price-up: rgba(244, 127, 137, 0.08);
+  --tint-price-down: rgba(130, 177, 250, 0.08);
+  --bar-ask: rgba(130, 177, 250, 0.18);
+  --bar-bid: rgba(244, 127, 137, 0.18);
 }
 
 /* Live window chrome: aliases resolve against the current theme. */
