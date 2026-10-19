@@ -22,15 +22,17 @@ function Tile({ name, points, base, samples, max, today }: {
   const provisional = last.date === today;
   const difference = base ? (last.value_eok / base - 1) * 100 : null;
   const positions = points.map((_, i) => (i + 0.5) / points.length);
-  return <section aria-label={`${MARKET_LABELS[name]} 거래대금`} className="min-w-0 flex flex-col gap-xs">
-    <div className="flex flex-wrap items-baseline gap-x-sm gap-y-2xs">
-      <span className="text-sm font-semibold text-fg">{MARKET_LABELS[name]}</span>
-      <span className="text-xs text-fg-dim">{provisional ? '오늘 누적' : `${mmdd(last.date)} 거래대금`}</span>
-      <strong className="font-data text-xl text-fg tabular-nums">{eokToJoText(last.value_eok)}</strong>
-      <span className="text-xs text-fg-dim">{provisional ? '집계 중 · 잠정' : difference == null ? '비교 이력 부족' : `하루 평균 대비 ${difference > 0 ? '+' : ''}${difference.toFixed(0)}%`}</span>
+  return <section aria-label={`${MARKET_LABELS[name]} 거래대금`} className="market-trade-tile min-w-0 flex flex-col gap-xs">
+    <div className="market-context-summary flex flex-col gap-xs">
+      <div className="flex flex-wrap items-baseline gap-x-sm gap-y-2xs">
+        <span className="text-sm font-semibold text-fg">{MARKET_LABELS[name]}</span>
+        <span className="text-xs text-fg-dim">{provisional ? '오늘 누적' : `${mmdd(last.date)} 거래대금`}</span>
+        <strong className="font-data text-xl text-fg tabular-nums">{eokToJoText(last.value_eok)}</strong>
+        <span className="text-xs text-fg-dim">{provisional ? '집계 중 · 잠정' : difference == null ? '비교 이력 부족' : `하루 평균 대비 ${difference > 0 ? '+' : ''}${difference.toFixed(0)}%`}</span>
+      </div>
+      <p className="font-data text-xs text-fg-dim tabular-nums">직전 {samples}거래일 하루 평균 {eokToJoText(base)}</p>
     </div>
-    <p className="font-data text-xs text-fg-dim tabular-nums">직전 {samples}거래일 하루 평균 {eokToJoText(base)}</p>
-    <div className="flex gap-xs">
+    <div className="market-context-plot flex gap-xs">
       <div aria-hidden="true" className="flex w-12 shrink-0 flex-col justify-between text-right font-data text-2xs text-fg-dim tabular-nums">
         <span>{eokToJoText(max)}</span><span>{eokToJoText(max / 2)}</span><span>0조</span>
       </div>
@@ -49,7 +51,7 @@ function Tile({ name, points, base, samples, max, today }: {
           summaries={points.map(p => `${MARKET_LABELS[name]} ${eokToJoText(p.value_eok)}${p.date === today ? ' · 집계 중 · 잠정' : ''}`)} />
       </div>
     </div>
-    <div className="ml-12 flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+    <div className="market-context-axis ml-12 flex justify-between font-data text-2xs text-fg-dim tabular-nums">
       <span>{mmdd(points[0].date)}</span><span>{mmdd(last.date)}{provisional ? ' (오늘)' : ''}</span>
     </div>
   </section>;
@@ -74,15 +76,17 @@ export function TradeValueCard() {
   const largest = Math.max(1, ...tiles.flatMap(t => [...t.points.map(p => p.value_eok), t.base ?? 0]));
   const step = 10 ** Math.floor(Math.log10(largest));
   const max = Math.ceil(largest * 1.1 / step) * step;
-  return <MarketCard className="flex flex-col gap-sm p-md">
+  return <MarketCard className="market-context-card market-trade-card flex flex-col gap-sm p-md">
     <CardHeader title="거래대금 추이" hint="일별 거래대금 · 조원"
       right={<ModeSwitch value={span} onChange={setSpan} options={SPANS} label="거래대금 기간" />} />
-    <ModeSwitch value={market} onChange={setMarket} options={[
-      ['KOSPI', '코스피'], ['KOSDAQ', '코스닥'],
-    ]} label="거래대금 시장" />
+    <div className="market-context-controls">
+      <ModeSwitch value={market} onChange={setMarket} options={[
+        ['KOSPI', '코스피'], ['KOSDAQ', '코스닥'],
+      ]} label="거래대금 시장" />
+    </div>
     <div className="market-pair market-trade-body grid gap-md">
       {tiles.every(t => t.points.length === 0) ? <EmptyNote>{tv.isLoading ? '거래대금 이력을 불러오는 중입니다.' : '거래대금 이력을 받지 못했습니다.'}</EmptyNote>
-        : tiles.map(t => <div key={t.name} hidden={t.name !== market}>
+        : tiles.map(t => <div key={t.name} hidden={t.name !== market} className="market-context-series">
           {t.points.length ? <Tile {...t} max={max} today={today} />
             : <EmptyNote>{MARKET_LABELS[t.name]} 이력을 받지 못했습니다.</EmptyNote>}
         </div>)}

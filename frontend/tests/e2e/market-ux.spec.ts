@@ -55,19 +55,44 @@ async function marketMocks(page: Page, populated = false) {
   } }));
 }
 
+async function expectProgramHeaderSingleLine(page: Page) {
+  const bounds = await page.locator('.market-program-card .market-card-header h2').evaluate(el => {
+    const title = document.createRange();
+    title.selectNodeContents(el.firstChild!);
+    const titleRect = title.getBoundingClientRect();
+    const hint = el.querySelector('span')!.getBoundingClientRect();
+    return {
+      overlap: Math.min(titleRect.bottom, hint.bottom) - Math.max(titleRect.top, hint.top),
+      hintRight: hint.right, right: el.getBoundingClientRect().right,
+    };
+  });
+  expect(bounds.overlap).toBeGreaterThan(0);
+  expect(bounds.hintRight).toBeLessThanOrEqual(bounds.right + 1);
+}
+
 async function expectContextChartHeights(page: Page) {
+  await expectProgramHeaderSingleLine(page);
   const charts = page.locator('.market-context-chart').filter({ visible: true });
   await expect(charts).toHaveCount(3);
   const heights = await charts.evaluateAll(elements => elements.map(el => ({
+    top: el.getBoundingClientRect().top,
+    bottom: el.getBoundingClientRect().bottom,
+    cardTop: el.closest('.market-card')!.getBoundingClientRect().top,
     plot: el.getBoundingClientRect().height,
     svg: el.querySelector('svg')!.getBoundingClientRect().height,
     probe: el.querySelector('[role="group"]')!.getBoundingClientRect().height,
-    expected: parseFloat(getComputedStyle(document.documentElement).fontSize) * 7,
+    expected: parseFloat(getComputedStyle(document.documentElement).fontSize) * 9,
   })));
   for (const height of heights) {
     expect(height.plot).toBeCloseTo(height.expected, 1);
     expect(height.svg).toBeCloseTo(height.plot, 1);
     expect(height.probe).toBeCloseTo(height.plot, 1);
+  }
+  for (const a of heights) for (const b of heights) {
+    if (Math.abs(a.cardTop - b.cardTop) < 1) {
+      expect(a.top).toBeCloseTo(b.top, 1);
+      expect(a.bottom).toBeCloseTo(b.bottom, 1);
+    }
   }
 }
 
@@ -86,6 +111,20 @@ test('flow layout groups market context and preserves explorer preferences acros
   expect(new Set(positions.map(position => position.top)).size).toBe(1);
   expect(new Set(positions.map(position => position.bottom)).size).toBe(1);
   await expectContextChartHeights(page);
+  const mainBounds = await flow.locator(':scope > .market-card').evaluateAll(cards => cards.map(el => {
+    const { top, bottom } = el.getBoundingClientRect();
+    return { top, bottom };
+  }));
+  expect(mainBounds[0].top).toBeCloseTo(mainBounds[1].top, 1);
+  expect(mainBounds[0].bottom).toBeCloseTo(mainBounds[1].bottom, 1);
+  const mainBottom = mainBounds[0].bottom;
+  await flow.getByRole('button', { name: '전체 보기', exact: true }).click();
+  expect(await flow.locator('.market-sector-card').evaluate(el => el.getBoundingClientRect().bottom)).toBeCloseTo(mainBottom, 1);
+  const sectorTable = flow.getByRole('region', { name: '업종 등락과 수급 목록' });
+  expect(await sectorTable.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(1);
+  await sectorTable.focus();
+  await sectorTable.press('End');
+  await expect(sectorTable.getByRole('row').last()).toBeInViewport();
   await context.getByRole('group', { name: '거래대금 시장', exact: true }).getByRole('button', { name: '코스닥' }).click();
   await expect(context.getByRole('region', { name: '코스닥 거래대금', exact: true })).toContainText('4.00조');
   const ranks = page.getByRole('group', { name: '종목 순위 기준', exact: true });
@@ -104,6 +143,10 @@ test('flow layout groups market context and preserves explorer preferences acros
   await expect(page.getByRole('group', { name: '외국인 연속 매매 방향', exact: true }).getByRole('button', { name: '순매도' })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.market-desk').evaluate(el => { el.scrollTop = 0; });
   await page.screenshot({ path: testInfo.outputPath('market-flow-desktop.png') });
+  for (const width of [1000, 800]) {
+    await page.setViewportSize({ width, height: 1100 });
+    await expectContextChartHeights(page);
+  }
   for (const theme of ['trading-desk', 'ledger-studio']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; document.documentElement.style.fontSize = '20px'; }, theme);
     await page.setViewportSize({ width: 600, height: 1100 });
@@ -216,6 +259,7 @@ for (const [width, fontSize] of [[1440, 16], [800, 16], [600, 20], [1440, 24]]) 
     const table = page.getByRole('table', { name: `${label} · 단위 억원` });
     const viewport = page.getByRole('region', { name: `${label} 목록 스크롤` });
     await expect(viewport.getByRole('row').first()).toContainText('08/20');
+    if (modeLabel === '프로그램 표시 구간') await expectProgramHeaderSingleLine(page);
     expect(await viewport.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(1);
     expect(await body.evaluate(el => el.closest('.market-card')!.getBoundingClientRect().height)).toBeCloseTo(cardHeight, 1);
     await viewport.scrollIntoViewIfNeeded();

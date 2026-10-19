@@ -135,7 +135,6 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
         </div>
       )}
 
-      <p className="text-2xs text-fg-dim">등락률은 지수 시세 우선 · 시세 미제공 시 수급 표본 기준 · 수급 미제공은 —</p>
       <BreadthLine breadth={breadth.data} />
     </MarketCard>
   );
