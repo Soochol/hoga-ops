@@ -72,13 +72,14 @@ it('결과 불명확 알림은 진행바·자동 만료 없이 남기고 재확�
   expect(retry).toHaveBeenCalledOnce();
 });
 
-it('전송 중에는 만료하지 않고 접수 성공으로 바뀐 시점부터 4초를 센다', () => {
-  const content = (receipt: OrderReceipt) => <OrderNoticeToast notice={null} receipt={receipt} busy={receipt.sending}
+it('전송 중에는 알리지 않고 접수 성공 시점부터 4초를 센다', () => {
+  const content = (receipt: OrderReceipt | null) => <OrderNoticeToast notice={null} receipt={receipt} busy={receipt === null}
     onDismiss={expired} onExpireReceipt={expired} onRetry={retry} />;
-  const view = render(content({ text: '주문 요청 중', sending: true, commandId: 'one' }));
+  const view = render(content(null));
+  expect(screen.queryByRole('status', { name: '주문 접수 알림' })).not.toBeInTheDocument();
   act(() => vi.advanceTimersByTime(60000));
   expect(expired).not.toHaveBeenCalled();
-  view.rerender(content({ text: '주문 요청 접수됨', sending: false, commandId: 'one' }));
+  view.rerender(content({ text: '주문 요청 접수됨', commandId: 'one' }));
   act(() => vi.advanceTimersByTime(3999));
   expect(expired).not.toHaveBeenCalled();
   act(() => vi.advanceTimersByTime(1));

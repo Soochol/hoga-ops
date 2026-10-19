@@ -352,9 +352,13 @@ describe('호가 주문', () => {
     fireEvent.doubleClick(screen.getByRole('button', { name: new RegExp(label) }));
     expect(prepareOrderReceiptSound).toHaveBeenCalledOnce();
     expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
-    expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 중');
+    expect(screen.queryByRole('status', { name: '주문 접수 알림' })).not.toBeInTheDocument();
     expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: new RegExp(label) })).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.doubleClick(screen.getByRole('button', { name: new RegExp(label) }));
+    fireEvent.keyDown(screen.getByRole('button', { name: new RegExp(label) }), { key: 'Enter' });
+    expect(mock.command).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
     await act(async () => resolve({ command_id: mock.command.mock.calls[0][1].command_id, order_id: 'new', status: 'accepted' }));
     expect(notifyOrderReceiptAccepted).toHaveBeenCalledExactlyOnceWith(1, mock.command.mock.calls[0][1].command_id);
     expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 접수됨');

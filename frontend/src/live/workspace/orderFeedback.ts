@@ -12,7 +12,7 @@ export interface OrderNotice {
 
 interface NewOrderInput {
   accountsLoading: boolean; configured: boolean; account: TradingAccountId; accountError: unknown;
-  stateReady: boolean; stateError: unknown; busy: boolean; unresolved: boolean;
+  stateReady: boolean; stateError: unknown; unresolved: boolean;
   settingsOpen: boolean; locked: boolean; stored: boolean; singlePrice: boolean;
   hasBook: boolean; fresh: boolean; quantity: number | null;
   brokerBlocked?: string | null;
@@ -20,7 +20,6 @@ interface NewOrderInput {
 
 /** Block invalid commands and report the reason through the order toast. */
 export function newOrderIssue(input: NewOrderInput): OrderNotice | null {
-  if (input.busy) return { title: '주문 처리 중', message: '진행 중인 요청의 결과를 기다리고 있습니다.', tone: 'neutral' };
   if (input.accountsLoading) return { title: '계좌 확인 중', message: '주문 계좌를 불러오고 있습니다.', tone: 'neutral' };
   const error = input.accountError ?? input.stateError;
   if (error) return { title: '계좌 확인 필요', message: error instanceof Error ? error.message : '계좌 조회에 실패했습니다.', tone: 'error' };

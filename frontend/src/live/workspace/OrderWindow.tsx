@@ -236,7 +236,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     accountError: accounts.error ?? (!accounts.data?.accounts.length && Object.keys(accounts.data?.errors ?? {}).length
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
-    busy, unresolved: !!state.data?.unresolved_commands.length, settingsOpen: !!settingsDraft,
+    unresolved: !!state.data?.unresolved_commands.length, settingsOpen: !!settingsDraft,
     locked: !!lockedBook, stored: storedLadder, singlePrice: activeSinglePrice !== null,
     hasBook: !!snapshot, fresh, quantity,
     brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
@@ -317,13 +317,13 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     if (!account || next.base.account_seq !== account || next.base.code !== code) { setNotice('계좌·종목이 변경되었습니다. 다시 선택하세요.'); return; }
     const issue = next.type === 'create' ? newOrderIssue({ ...availability, quantity: next.quantity,
       unresolved: !!state.data?.unresolved_commands.some(id => id !== next.base.command_id) })
-      : changesPrice(next) && !fresh ? newOrderIssue({ ...availability, busy: false, settingsOpen: false, locked: false }) : null;
+      : changesPrice(next) && !fresh ? newOrderIssue({ ...availability, settingsOpen: false, locked: false }) : null;
     if (issue) { setNotice(issue); return; }
     if (next.type === 'create' && preferences.orderReceiptSound) prepareOrderReceiptSound();
     busyRef.current = true; setBusy(true); setNotice(null); setFailedRequest(null);
     const resumeRefresh = pauseTradingRefresh(client, mode, account);
     const label = next.type === 'create' ? '주문' : (next.operation ?? next.type) === 'modify' ? '정정' : '취소';
-    setReceipt({ text: `${label} 요청 중`, sending: true, commandId: next.base.command_id });
+    setReceipt(null);
     let retryAction = next;
     let groupFailure: OrderNotice | null = null;
     let accepted = true;
@@ -370,7 +370,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
             ...(typeof account === 'string' ? { route: next.base.route } : {}) };
           response = await tradingCommand<TradingCommandResponse>('/orders', body, mode);
           if (preferences.orderReceiptSound) {
-            const soundFailed = () => setReceipt(current => current?.commandId === next.base.command_id && !current.sending
+            const soundFailed = () => setReceipt(current => current?.commandId === next.base.command_id
               ? { ...current, text: '주문은 접수됐지만 알림음을 재생하지 못했습니다', soundFailed: true } : current);
             void notifyOrderReceiptAccepted(account, next.base.command_id).then(started => {
               if (!started) soundFailed();
@@ -387,7 +387,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         }
       }
       closeAction();
-      setReceipt(accepted ? { text: `${label} 요청 접수됨`, sending: false, commandId: next.base.command_id } : null);
+      setReceipt(accepted ? { text: `${label} 요청 접수됨`, commandId: next.base.command_id } : null);
     } catch (error) {
       setReceipt(null);
       const failure = groupFailure ?? orderFailure(error, label);
@@ -420,6 +420,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number) {
+    if (busyRef.current) return;
     if (creationIssue) {
       // A blocked new order must not hide the outstanding request's reconciliation action.
       if (!(creationIssue.persistent && notice?.retry && failedRequest)) setNotice(creationIssue);
@@ -492,7 +493,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   function orderCell(side: TradingSide, price: number, rowKey: string) {
     const group = groups.get(`${side}:${price}`) ?? [];
     const destination = draggedOrder?.side === side && dragTarget === price && price > 0;
-    const canCreate = !creationIssue && price > 0;
+    const canCreate = !busy && !creationIssue && price > 0;
     const canDrag = ready && group.some(order => editableOrder(order) && !pending(order));
     return <button type="button" className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'} ${destination ? 'order-drag-destination' : ''}`}
       data-order-side={side} aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문 추가 ${rowKey}`}

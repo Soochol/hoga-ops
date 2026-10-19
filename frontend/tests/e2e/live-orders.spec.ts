@@ -266,9 +266,10 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   await dialog.getByRole('button', { name: '닫기', exact: true }).click();
   expect(await soundStates()).toEqual([]);
 
-  let accept!: () => void;
+  let accept!: () => void, attempts = 0;
   const accepted = new Promise<void>(resolve => { accept = resolve; });
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/orders$/, async route => {
+    attempts++;
     await accepted;
     const body = route.request().postDataJSON();
     await route.fulfill({ json: { command_id: body.command_id, order_id: 'sound-order', status: 'accepted' } });
@@ -277,7 +278,12 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   const receipt = page.getByRole('status', { name: '주문 접수 알림' });
   const beforeSubmit = await buy.boundingBox();
   await buy.dblclick();
-  await expect(receipt).toHaveText('주문 요청 중');
+  await expect.poll(() => attempts).toBe(1);
+  await expect(receipt).toBeHidden();
+  await buy.focus();
+  await page.keyboard.press('Enter');
+  expect(attempts).toBe(1);
+  await expect(page.getByRole('alert', { name: '주문 알림', exact: true })).toBeHidden();
   await expect(window.getByRole('status', { name: '신규 주문 상태' })).toBeHidden();
   expect(await buy.boundingBox()).toEqual(beforeSubmit);
   expect(await soundStates()).toEqual([]);
