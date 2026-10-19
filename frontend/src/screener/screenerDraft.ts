@@ -1,5 +1,6 @@
 import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import { persistJson, readJsonObject } from '../state/persist';
+import { includeOpenBars } from './candlePolicy';
 
 const STORAGE_KEY = 'screenerDraft.v1';
 
@@ -43,7 +44,7 @@ export function readScreenerDraft(): ScreenerDraft {
   const raw = readJsonObject(STORAGE_KEY);
   if (!isConditionLeafArray(raw.conditions) || !isUniverse(raw.universe)) return EMPTY_SCREENER_DRAFT;
   return {
-    conditions: raw.conditions,
+    conditions: includeOpenBars(raw.conditions),
     universe: raw.universe,
     anchorId: typeof raw.anchorId === 'string' ? raw.anchorId : null,
     anchorName: typeof raw.anchorName === 'string' ? raw.anchorName : null,

@@ -10,9 +10,9 @@ test('turnover, period turnover and referenced change preserve independent candl
   page.on('pageerror', error => errors.push(error.message));
   let saved = { id: 'thresholds', name: '주기별 금액·등락', universe: {}, created_at_ms: 1, updated_at_ms: 1,
     conditions: [
-      { id: 'amount', type: 'trade_value', params: { min_eok: 50 } },
-      { id: 'period-amount', type: 'trade_value_period', params: { min_eok: 100, lookback: 60 } },
-      { id: 'rate', type: 'change_pct', params: { op: 'gte', pct: 5 } },
+      { id: 'amount', type: 'trade_value', params: { min_eok: 50, include_open_bar: false } },
+      { id: 'period-amount', type: 'trade_value_period', params: { min_eok: 100, lookback: 60, include_open_bar: false } },
+      { id: 'rate', type: 'change_pct', params: { op: 'gte', pct: 5, include_open_bar: false } },
     ] as ConditionLeaf[] };
   const scans: ScanRequest[] = [];
   await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok', warnings: [] } }));
@@ -50,10 +50,10 @@ test('turnover, period turnover and referenced change preserve independent candl
   await change.getByLabel('봉 주기').selectOption('M');
   await change.getByLabel('등락률 비교 기준').selectOption('previous_bar');
   await change.getByLabel('등락률(%)').fill('80');
-  for (const card of [amount, period, change]) await card.getByLabel('진행 중 봉 포함').uncheck();
+  await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   await page.getByRole('button', { name: '저장', exact: true }).click();
   await expect.poll(() => saved.conditions[2].params).toMatchObject({ timeframe: 'M', pct: 80,
-    include_open_bar: false, change_reference: 'previous_bar' });
+    include_open_bar: true, change_reference: 'previous_bar' });
   await expect(page.getByRole('button', { name: '저장본으로 되돌리기', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(amount.getByLabel('분봉 간격')).toHaveValue('5m');
@@ -74,20 +74,20 @@ test('turnover, period turnover and referenced change preserve independent candl
   await period.getByLabel('거래대금 발생 시작일').fill('2026-07-01');
   await period.getByLabel('거래대금 발생 종료일').fill('2026-07-30');
   await period.getByLabel('봉 주기').selectOption('M');
-  await expect(period.getByLabel('진행 중 봉 포함')).not.toBeChecked();
+  await expect(period.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   await change.getByLabel('등락률 비교 기준').selectOption('bar_open');
   await change.getByLabel('등락률 연산').selectOption('between');
   await change.getByLabel('등락률 하한(%)').fill('50');
   await change.getByLabel('등락률 상한(%)').fill('150');
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect.poll(() => scans.at(-1)?.conditions[1].params).toMatchObject({ mode: 'date_range', timeframe: 'M',
-    start_date: '2026-07-01', end_date: '2026-07-30', include_open_bar: false });
+    start_date: '2026-07-01', end_date: '2026-07-30', include_open_bar: true });
   expect(scans.at(-1)?.conditions[2].params).toMatchObject({ timeframe: 'M', change_reference: 'bar_open', lo: 50, hi: 150 });
   await expect(page.getByText('조건 변경됨 · 다시 조회 필요', { exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('bar-threshold-wide.png'), fullPage: true });
   await page.setViewportSize({ width: 768, height: 1000 });
   for (const card of [amount, period, change]) {
-    const input = card.getByLabel('진행 중 봉 포함');
+    const input = card.getByLabel('봉 주기');
     await input.scrollIntoViewIfNeeded();
     await expect(input).toBeVisible();
     const bounds = await card.boundingBox();

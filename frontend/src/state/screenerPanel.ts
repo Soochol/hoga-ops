@@ -179,6 +179,18 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
   if (typeof raw.scannedAtMs !== 'number' || !Number.isFinite(raw.scannedAtMs)) return null;
   if (typeof raw.dataStale !== 'boolean') return null;
 
+  // A result evaluated with closed candles no longer describes the editor's
+  // current policy. Drop that snapshot; never relabel its request/evidence.
+  const requestJson = typeof raw.requestJson === 'string' ? raw.requestJson : raw.scanKey;
+  if (typeof requestJson === 'string') {
+    try {
+      const request = JSON.parse(requestJson);
+      if (Array.isArray(request?.conditions) && request.conditions.some(
+        (leaf: { params?: { include_open_bar?: boolean } } | null) => leaf?.params?.include_open_bar === false,
+      )) return null;
+    } catch { /* Legacy opaque keys are still supported. */ }
+  }
+
   const savedId = raw.savedId ?? null;
   const savedName = raw.savedName ?? null;
   const savedUpdatedAtMs = raw.savedUpdatedAtMs ?? null;

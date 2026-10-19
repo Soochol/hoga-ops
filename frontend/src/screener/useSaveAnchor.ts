@@ -3,6 +3,7 @@ import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
 import { persistScreenerDraft, readScreenerDraft } from './screenerDraft';
 import { persistJson, readJsonObject } from '../state/persist';
+import { includeOpenBars } from './candlePolicy';
 
 // 마지막으로 앵커된 저장 조건검색 id — 페이지 재진입 시 자동 로드의 씨앗.
 // screenerDraft.v1(라이브 빌더 미러)과 달리 마지막 "비-null 앵커"만 기억한다:
@@ -76,7 +77,7 @@ export function useSaveAnchor(): SaveAnchor {
 
   const loadSave = (s: SavedScreener) => {
     setIsNewDraft(false);
-    setConditions(s.conditions);
+    setConditions(includeOpenBars(s.conditions));
     setUniverse(s.universe);
     setAnchorId(s.id);
     setAnchorName(s.name);
@@ -84,7 +85,7 @@ export function useSaveAnchor(): SaveAnchor {
     persistAnchorId(s.id);
   };
   const newDraft = () => { setIsNewDraft(true); setConditions([]); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
-  const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(c); setDirty(true); };
+  const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(includeOpenBars(c)); setDirty(true); };
   const editUniverse = (u: ScreenerUniverse) => { editGen.current += 1; setUniverse(u); setDirty(true); };
   const beginSave = () => { pendingSaveGen.current = editGen.current; };
   const settleAnchor = (id: string | null, name?: string | null) => {

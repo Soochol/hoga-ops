@@ -14,6 +14,17 @@ const SAVE: SavedScreener = {
 };
 
 describe('useSaveAnchor', () => {
+  it('loads a closed-only save with open candles included and persists that draft', () => {
+    const { result } = renderHook(() => useSaveAnchor());
+    const condition = { id: 'old', type: 'ma' as const, params: {
+      period: 20, relation: 'above' as const, timeframe: 'W' as const, include_open_bar: false,
+    } };
+    act(() => result.current.loadSave({ ...SAVE, conditions: [condition] }));
+    expect(result.current.conditions).toEqual([{ ...condition,
+      params: { ...condition.params, include_open_bar: true } }]);
+    expect(result.current.dirty).toBe(false);
+    expect(JSON.parse(localStorage.getItem('screenerDraft.v1')!).conditions).toEqual(result.current.conditions);
+  });
   it('starts empty, unanchored, clean', () => {
     const { result } = renderHook(() => useSaveAnchor());
     expect(result.current.conditions).toEqual([]);
