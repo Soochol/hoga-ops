@@ -1,0 +1,101 @@
+{
+  "tools": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "playwright": "1.60.0",
+    "typescript": "6.0.3"
+  },
+  "implementationCommit": "eca3e550089f8c59994110d75f091263ec94525a",
+  "baseCommit": "e104487a51836db2cb9813acfa463c3adf746e9a",
+  "scope": "Shared read-budget readiness and cross-TR account load selection. Existing private/write admission is unchanged. Current main includes account table PR #2147; refreshed frontend checks and targeted main-table E2E included. The initial mocked pan viewport failure and reruns are retained. Real-user measurements/payloads are local only.",
+  "inputFingerprints": {
+    "frontend": {
+      "files": 1698,
+      "sha256": "5c147773f6590611984bcf9ed5ce0fcfd23f61253287416681a1cac08de9b5ec",
+      "gitPathspecs": [
+        "frontend/src",
+        "frontend/tests",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/playwright.config.ts",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/tsconfig.node.json"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    },
+    "backend": {
+      "files": 756,
+      "sha256": "e1ca9f67bcb166819effabe533df3c43705d888e40918a101823b4a4b694899b",
+      "gitPathspecs": [
+        "hoga",
+        "tests",
+        "pyproject.toml",
+        "uv.lock",
+        "ruff.toml",
+        ".python-version"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    }
+  },
+  "recordedAtKst": "2026-10-19T15:18:54.058807+09:00",
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q tests/unit/live/test_kiwoom_capacity.py tests/unit/live/test_kiwoom_rest_scheduling.py tests/unit/live/test_kiwoom_rest_runtime_accounts.py tests/unit/live/test_kiwoom_governor_snapshot_wire.py tests/unit/live/test_kiwoom_rest_seam.py tests/unit/live/test_kiwoom_access_seam_coverage.py tests/unit/live/test_kiwoom_trading_events.py tests/unit/live/test_kiwoom_trading_design_evidence.py tests/unit/live/test_live_candle_backfill.py tests/unit/live/test_live_daily_candle_backfill.py tests/unit/live/test_live_investor_net_backfill.py tests/unit/live/test_daily_program_trade.py tests/unit/live/test_api.py tests/unit/api/test_broker_trading.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "366 passed"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed, app/unit/E2E projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/api/client.test.ts src/api/livePastCandles.test.tsx src/api/livePastInvestorNet.test.tsx src/live/workspace/InvestorDailyWindow.test.tsx src/live/workspace/useOrderColumnLayout.test.ts src/live/workspace/useAccountOrderColumns.test.ts",
+      "result": "101 passed / 6 files"
+    },
+    {
+      "command": "cd frontend && npx playwright test live-smoke investor-daily-scroll live-viewport-preservation live-orders --grep 'live-smoke|investor-daily-scroll|live-viewport-preservation|증권사 계좌 전환|키움 주문의 가짜 응답|주문 불가 사유' --reporter=list",
+      "result": "Initial run: 20 passed / 1 failed (mocked partial-history pan, span 380 -> 388). No assertion or UI code changed. Final rerun: 21 passed. First-run failure retained; root cause not established."
+    },
+    {
+      "command": "cd frontend && npx playwright test live-viewport-preservation --grep 'partial history recovery preserves pan viewport' --repeat-each 3 --reporter=list",
+      "result": "3 passed before full subset rerun"
+    },
+    {
+      "command": "cd frontend && npx playwright test live-orders --grep '계좌 holdings 표|미체결 주문 열은|미체결 주문 취소 상태' --reporter=list",
+      "result": "3 passed; current main account-table regression coverage"
+    },
+    {
+      "command": ".venv/bin/python -m ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "cd frontend && npm run typecheck (after integrating PR #2149)",
+      "result": "passed"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/api/client.test.ts src/api/livePastCandles.test.tsx src/api/livePastInvestorNet.test.tsx src/live/workspace/InvestorDailyWindow.test.tsx src/live/workspace/useOrderColumnLayout.test.ts src/live/workspace/useAccountOrderColumns.test.ts src/live/workspace/useHoldingColumns.test.ts",
+      "result": "102 passed / 7 files; current main"
+    },
+    {
+      "command": "cd frontend && npx playwright test live-smoke investor-daily-scroll live-viewport-preservation live-orders --grep 'live-smoke|investor-daily-scroll|live-viewport-preservation|증권사 계좌 전환|키움 주문의 가짜 응답|주문 불가 사유|보유종목은 좁은 창|미체결 주문 열은|미체결 주문 취소 상태' --reporter=list",
+      "result": "23 passed / 1 failed. The mocked partial-history pan case again changed logical span 380 -> 388. NOT recorded as a pass. All other selected current-main scenarios passed."
+    },
+    {
+      "command": "cd frontend && npx playwright test live-viewport-preservation --grep 'partial history recovery preserves pan viewport' --repeat-each 3 --reporter=list (temporary geometry diagnostics)",
+      "result": "3 passed; before/after width 800, spacing 2.0997375, span 380, anchor x unchanged. Temporary logging removed; original assertions and production UI retained."
+    }
+  ],
+  "browserEnvironment": "One worker; backend 20023/frontend 21023; /tmp/hoga-e2e-data-23; /tmp/hoga-e2e-dist-23; blank credentials; production Vite build passed. Final 21-test and 3-test runs use unchanged inputs.",
+  "backendTestedCommit": "a33dc2f8e39ca7e87fcc6702ac3f28e32afdc1f4",
+  "mainIntegration": "PR #2149 integrated. Backend inputs unchanged; frontend typecheck, all seven affected unit files, and current main selected browser scenarios rerun. Controlled browser speed comparisons pin the agent frontend to 6b96c0ccf before and after, then restore current main.",
+  "knownLimitations": [
+    "Mocked partial-history pan scenario is intermittently unstable in full subsets, despite two independent three-repeat passes and an earlier 21-case subset pass. Root cause not established. Its history requests are fulfilled in the browser and do not execute the changed Kiwoom routing code. No test weakening, skip, or production chart change was made. Latest failing full-subset result remains a failure."
+  ]
+}

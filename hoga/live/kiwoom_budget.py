@@ -17,6 +17,16 @@ class KiwoomBudget:
         self._next: dict[str, float] = {}
         self._lock = asyncio.Lock()
 
+    def available_at(self, api_id: str, *, write: bool = False) -> float:
+        """Observe the existing shared gate without reserving or weakening it.
+
+        Market routing must see private reads too. Read the current budget on
+        each lookup because account verification can bind two providers to one
+        stricter owner. Actual admission remains in acquire().
+        """
+        group = "write" if write else "read"
+        return max(time.monotonic(), self._next.get(group, 0), self._next.get(api_id, 0))
+
     async def acquire(self, api_id: str, *, write: bool = False, deadline: float | None = None) -> None:
         group = "write" if write else "read"
         async with self._lock:

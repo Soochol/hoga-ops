@@ -8,6 +8,7 @@ import pytest
 
 from hoga.live import kiwoom_capacity
 from hoga.live.error_policy import classify_live_error
+from hoga.live.kiwoom_budget import budget_for
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, KiwoomCapacityScheduler
 from hoga.live.kiwoom_errors import KiwoomAuthTransientError
 from hoga.live.kiwoom_rest import KiwoomRestClient
@@ -17,6 +18,87 @@ from hoga.live.kiwoom_token_provider import KiwoomAuthTransient
 async def settle():
     for _ in range(30):
         await asyncio.sleep(0)
+
+
+def market_clients(count):
+    class Provider:
+        def get_token(self):
+            return "synthetic"
+
+    return [KiwoomRestClient(Provider(), transport=httpx.MockTransport(
+        lambda _: pytest.fail("synthetic scheduling test must not send HTTP"),
+    )) for _ in range(count)]
+
+
+async def test_unrelated_trs_spread_while_token_lookups_have_not_reserved_read_budget():
+    clients = market_clients(6)
+    scheduler = KiwoomCapacityScheduler()
+    scheduler.set_clients(clients)
+    release, full = asyncio.Event(), asyncio.Event()
+    seen = []
+
+    async def fetch(client):
+        seen.append(clients.index(client))
+        if len(seen) == 6:
+            full.set()
+        # This represents the await in token lookup, before budget.acquire.
+        await release.wait()
+
+    tasks = [asyncio.create_task(scheduler.submit(
+        key=i, api_id=f"synthetic-tr-{i}", priority="user_visible", call=fetch,
+    )) for i in range(6)]
+    try:
+        await asyncio.wait_for(full.wait(), 1)
+        assert seen == list(range(6))
+        release.set()
+        await asyncio.gather(*tasks)
+        assert scheduler._started_accounts == {}
+    finally:
+        await stop(scheduler, tasks)
+        await asyncio.gather(*(c.aclose() for c in clients))
+
+
+async def test_private_read_budget_is_visible_when_choosing_market_account():
+    clients = market_clients(2)
+    scheduler = KiwoomCapacityScheduler()
+    scheduler.set_clients(clients)
+    # A private read on account 0 holds its group gate, including unrelated TRs.
+    budget_for(clients[0]._provider)._next["read"] = time.monotonic() + 3600
+    try:
+        result = await asyncio.wait_for(scheduler.submit(
+            key="chart", api_id="ka10081", priority="user_visible",
+            call=lambda c: asyncio.sleep(0, result=clients.index(c)),
+        ), 1)
+        assert result == 1
+    finally:
+        await scheduler.aclose()
+        await asyncio.gather(*(c.aclose() for c in clients))
+
+
+async def test_shared_budget_wait_stays_queued_instead_of_occupying_http_worker():
+    clients = market_clients(1)
+    scheduler = KiwoomCapacityScheduler(workers=1)
+    scheduler.set_clients(clients)
+    budget_for(clients[0]._provider)._next["ka10081"] = time.monotonic() + 3600
+
+    async def blocked(_):
+        pytest.fail("shared TR gate must still be respected")
+
+    tasks = [asyncio.create_task(scheduler.submit(
+        key="blocked", api_id="ka10081", priority="user_visible", call=blocked,
+    ))]
+    try:
+        await settle()
+        assert scheduler._started_accounts == {}
+        assert scheduler.snapshot()["queued"] == 1
+        assert await asyncio.wait_for(scheduler.submit(
+            key="ready", api_id="ka10001", priority="background",
+            call=lambda _: asyncio.sleep(0, result="ready"),
+        ), 1) == "ready"
+        assert not tasks[0].done()
+    finally:
+        await stop(scheduler, tasks)
+        await clients[0].aclose()
 
 
 async def stop(scheduler, tasks):

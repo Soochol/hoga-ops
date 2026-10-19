@@ -173,6 +173,7 @@ class KiwoomCapacityScheduler:
         self._queued_priority: dict[Hashable, Priority] = {}
         self._started: set[Hashable] = set()
         self._started_background: set[Hashable] = set()
+        self._started_accounts: dict[Hashable, int] = {}
         self._workers: list[asyncio.Task] = []
         # 워커가 붙어 있는 루프. 바뀌면 큐·inflight 를 통째로 버린다(_ensure_started).
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -308,6 +309,7 @@ class KiwoomCapacityScheduler:
         self._queued_priority.clear()
         self._started.clear()
         self._started_background.clear()
+        self._started_accounts.clear()
         self._queue = asyncio.PriorityQueue()
         self._wake.clear()
 
@@ -339,7 +341,10 @@ class KiwoomCapacityScheduler:
 
     def _query_available_at(self, account_id: int, api_id: str) -> float:
         ready = self._bucket(account_id, api_id).available_at()
-        return max(ready, self._us_bucket(account_id).available_at()) if api_id.startswith("usa") else ready
+        if api_id.startswith("usa"):
+            ready = max(ready, self._us_bucket(account_id).available_at())
+        read_gate = getattr(self._client_for(account_id), "read_available_at", None)
+        return max(ready, read_gate(api_id)) if read_gate is not None else ready
 
     def _available_at(self, account_id: int, api_id: str) -> float:
         """이 계정이 이 TR 을 다음에 쏠 수 있는 시각 — **유량과 인증 중 늦은 쪽**."""
@@ -360,7 +365,16 @@ class KiwoomCapacityScheduler:
         accounts = self._accounts
         if len(accounts) == 1:
             return accounts[0]
-        return min(accounts, key=lambda a: self._available_at(a, api_id))
+        def rank(account: int) -> tuple[float, int]:
+            at = self._available_at(account, api_id)
+            # All currently ready gates must tie. available_at() includes a
+            # fresh monotonic clock read; comparing those timestamps directly
+            # always favored account 0, including across unrelated TRs.
+            at = at if at > time.monotonic() else 0.0
+            active = sum(a == account for a in self._started_accounts.values())
+            return at, active
+
+        return min(accounts, key=rank)
 
     def _client_for(self, account_id: int) -> Any | None:
         """풀이 비었으면 None — 호출자가 넘긴 클라이언트를 쓰라는 신호다."""
@@ -369,8 +383,9 @@ class KiwoomCapacityScheduler:
     def _pending_count(self) -> int:
         return sum(key not in self._started for key in self._inflight)
 
-    def _mark_started(self, req: _Request) -> None:
+    def _mark_started(self, req: _Request, account: int) -> None:
         self._started.add(req.key)
+        self._started_accounts[req.key] = account
         if req.priority == "background":
             self._started_background.add(req.key)
 
@@ -418,7 +433,7 @@ class KiwoomCapacityScheduler:
                         if waiting.priority == "background" and not waiting.deferred:
                             waiting.deferred = True
                             self.background_deferred_due_to_user_visible += 1
-                self._mark_started(req)
+                self._mark_started(req, account)
                 return req, account
             if next_at is None:
                 await self._wake.wait()
@@ -452,6 +467,7 @@ class KiwoomCapacityScheduler:
             self._queued_priority.clear()
             self._started.clear()
             self._started_background.clear()
+            self._started_accounts.clear()
             self._workers = []
         self._loop = loop
         self._workers = [t for t in self._workers if not t.done()]
@@ -638,6 +654,7 @@ class KiwoomCapacityScheduler:
     def _cleanup(self, req: _Request) -> None:
         self._started.discard(req.key)
         self._started_background.discard(req.key)
+        self._started_accounts.pop(req.key, None)
         self._wake.set()
         # 되큐된 요청은 **아직 살아 있다** — inflight 를 떨어뜨리면 같은 key 의 새 요청이
         # 조인할 future 를 잃고 중복 호출이 된다(기계 ②가 뚫린다).

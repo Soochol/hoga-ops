@@ -275,6 +275,11 @@ class KiwoomRestClient:
         provider_errors.clear(self)
         await self._client.aclose()
 
+    def read_available_at(self, api_id: str) -> float:
+        """Expose shared read admission to the market scheduler, not credentials."""
+        from .kiwoom_budget import budget_for  # noqa: PLC0415 — shared private/market admission
+        return budget_for(self._provider).available_at(api_id)
+
     async def call(
         self, api_id: str, body: dict[str, Any], *, cont: bool = False, next_key: str = "",
     ) -> Page:
