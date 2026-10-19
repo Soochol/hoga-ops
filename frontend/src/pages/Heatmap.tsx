@@ -2,7 +2,9 @@ import { HeatmapPanelDropTarget } from '../heatmap/HeatmapPanelDropTarget';
 import { useEntryDragStore } from '../state/entryDrag';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { shouldIgnoreEvent } from '../util/keyboard';
-import { useHeatmapGroupFlow } from '../api/heatmapGroupFlow';
+import { useSearchParams } from 'react-router';
+import { groupFlowSparklines, useHeatmapGroupFlowData } from '../api/heatmapGroupFlow';
+import { HeatmapFlowComparison } from '../heatmap/HeatmapFlowComparison';
 import {
   useHeatmap, useCreateHeatmapFolder, useReorderHeatmapEntries,
   useRemoveFromHeatmap, useMoveHeatmapEntries, useCopyHeatmapEntry,
@@ -31,6 +33,13 @@ const PHASE_LABEL: Record<string, string> = { pre_open: '장전', open: '● 장
 type RowMenu = { x: number; y: number; code: string; name: string; folderId: string };
 
 export function Heatmap() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const comparingFlow = searchParams.get('view') === 'flow';
+  const setComparingFlow = (open: boolean) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous);
+    if (open) next.set('view', 'flow'); else next.delete('view');
+    return next;
+  });
   // 독립 스토어(ADR-0068): useHeatmap(['heatmap']) — 관심종목(['watchlist'])과 분리.
   const { data, isLoading, error } = useHeatmap();
   const entries = useMemo(() => data?.entries ?? [], [data]);
@@ -42,7 +51,8 @@ export function Heatmap() {
 
   const { quoteByCode, phase, dataUpdatedAt } = useLiveQuoteOverlay(codes, venue);
   // 그룹 헤더 당일 흐름 미니 그래프(folder_id → 등락률 시계열). 60초 폴링.
-  const flowByFolder = useHeatmapGroupFlow(venue);
+  const flowQuery = useHeatmapGroupFlowData(venue);
+  const flowByFolder = useMemo(() => groupFlowSparklines(flowQuery.data), [flowQuery.data]);
   const groups = useMemo(() => groupHeatmapEntries(folders, entries), [folders, entries]);
   const onPick = useJumpToLive();
   const sortMode = useHeatmapPrefsStore((s) => s.sortMode);
@@ -100,6 +110,7 @@ export function Heatmap() {
   // 마운트 동안만 활성이라 다른 라우트에 영향이 없다.
   const searchRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
+    if (comparingFlow) return;
     function onKey(e: KeyboardEvent) {
       if (e.key !== '/' || shouldIgnoreEvent(e.target)) return;
       e.preventDefault();
@@ -108,7 +119,7 @@ export function Heatmap() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [comparingFlow]);
   const [showNewGroup, setShowNewGroup] = useState(false);
   // 방금 만든 그룹 — 재조회로 카드가 나타나는 순간 '＋종목' 팝오버가 스스로 열리고
   // 그 그룹으로 스크롤된다(FolderAddButton 이 마운트 시 소비). 새 그룹은 비어 있어 헤더
@@ -198,7 +209,8 @@ export function Heatmap() {
 
   return (
     <PageContainer centered="board" className="min-h-0 !pb-0">
-      <PanelCard borderless flat data-testid="heatmap-page-primary" className="flex h-full min-h-0 flex-col overflow-hidden">
+      {comparingFlow && <HeatmapFlowComparison folders={folders} venue={venue} flow={flowQuery} onClose={() => setComparingFlow(false)} />}
+      <PanelCard borderless flat data-testid="heatmap-page-primary" style={comparingFlow ? { display: 'none' } : undefined} className="flex h-full min-h-0 flex-col overflow-hidden">
         {/* 헤더·섹터 스트립 배경은 카드 본문과 동일한 --bg(회색 바닥색) — flat 통일
             (2026-07-23). 이전 bg-card(흰 밴드)를 걷어내 상단이 바닥에 녹아든다.
             구분선 없음(border-b 제거): 분리는 간격이 담당. */}
@@ -213,6 +225,9 @@ export function Heatmap() {
           </span>
           <div className="flex-1" />
           <ControlBar className="gap-sm flex-wrap">
+            <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setComparingFlow(true)}>
+              흐름 비교
+            </ToolbarButton>
             <ToolbarButton className="text-xs px-2 py-1 rounded" onClick={() => setShowNewGroup(true)}>
               ＋ 새 그룹
             </ToolbarButton>

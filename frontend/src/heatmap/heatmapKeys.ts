@@ -5,7 +5,8 @@ import type { QueryClient } from '@tanstack/react-query';
 import { INDEX_SECTOR_RANKINGS_KEY } from '../api/indexSectorRankings';
 
 export const HEATMAP_KEY = ['heatmap'] as const;
-export const HEATMAP_DEPENDENT_KEYS = [HEATMAP_KEY, INDEX_SECTOR_RANKINGS_KEY] as const;
+export const HEATMAP_GROUP_FLOW_KEY = ['heatmap-group-flow'] as const;
+export const HEATMAP_DEPENDENT_KEYS = [HEATMAP_KEY, INDEX_SECTOR_RANKINGS_KEY, HEATMAP_GROUP_FLOW_KEY] as const;
 
 /** 히트맵 문서가 바뀌면 같이 스테일이 되는 쿼리 전부를 무효화한다.
  *
@@ -17,6 +18,7 @@ export const HEATMAP_DEPENDENT_KEYS = [HEATMAP_KEY, INDEX_SECTOR_RANKINGS_KEY] a
  *  index-sector-rankings 가 딸려 오는 이유: 그 응답이 히트맵 그룹 구성을 그대로
  *  투영한다(폴더·순서·멤버). 히트맵만 무효화하면 지수·업종 랭킹이 옛 그룹을 계속
  *  말한다.
+ *  group-flow 역시 구성 종목 평균이므로 그룹 편집 시 함께 갱신한다.
  *
  *  useHeatmap.ts 가 아니라 이 파일에 두는 이유: eventStream 은 App 루트에서 항상
  *  로드되므로, 무거운 히트맵 피처 모듈을 끌어오면 `/live` 첫 페인트가 히트맵 코드를
