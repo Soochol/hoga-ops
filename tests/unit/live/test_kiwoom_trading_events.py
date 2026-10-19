@@ -237,7 +237,32 @@ async def test_budget_groups_mock_tr_limit_and_deadline_are_independent(monkeypa
     await budget.acquire("ka00001")
     await budget.acquire("kt10000", write=True)
     assert delays == []
+    assert budget.available_at("ka00001") == 1.05
+    assert budget.available_at("ka10081") == 0
+    assert budget.available_at("kt10000", write=True) == 1.05
+    assert delays == []  # Observation neither waits nor reserves another slot.
     with pytest.raises(TimeoutError):
         await budget.acquire("kt10000", write=True, deadline=1)
     await budget.acquire("ka00001")
     assert delays == [1.05]
+
+
+async def test_market_read_gate_follows_later_account_budget_binding(monkeypatch):
+    from hoga.live.kiwoom_rest import KiwoomRestClient
+
+    class Provider:
+        pass
+
+    monkeypatch.setattr("hoga.live.kiwoom_budget.time.monotonic", lambda: 100.0)
+    first, second = Provider(), Provider()
+    clients = [KiwoomRestClient(p) for p in (first, second)]
+    try:
+        assert clients[0].read_available_at("ka10081") == 100
+        budget_for(second)._next["read"] = 110
+        bind_budget(first, "synthetic-late-budget-binding")
+        bind_budget(second, "synthetic-late-budget-binding")
+        assert [c.read_available_at("ka10081") for c in clients] == [110, 110]
+        assert budget_for(first).available_at("kt10000", write=True) == 100
+    finally:
+        for client in clients:
+            await client.aclose()
