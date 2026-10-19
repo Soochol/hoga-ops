@@ -58,28 +58,6 @@ export function formatAmount(mwon: number | null | undefined): string {
 }
 
 
-/** 같은 폭의 세 숫자 열을 두 단위 중 긴 표기에 맞춘다. 단위 전환으로 열이 움직이지 않는다. */
-export function estimateTableMinWidth(rows: LiveInvestorTrendEstimateRow[]): string {
-  let maxFigureWidth = 0;
-  for (const row of rows) {
-    const values = [
-      ...[row.foreign_qty, row.institution_qty, row.sum_qty].map(formatQty),
-      ...[row.foreign_amt_mwon, row.institution_amt_mwon, row.sum_amt_mwon]
-        .map(value => formatAmount(value).replace(/억$/, '')),
-    ];
-    for (const value of values) {
-      // Pretendard의 쉼표·소수점은 숫자보다 좁다. 모두 1ch로 잡으면
-      // 9자리 수량도 기본 400px 창에 불필요한 가로 스크롤을 만든다.
-      const punctuation = value.match(/[,.]/g)?.length ?? 0;
-      maxFigureWidth = Math.max(maxFigureWidth, value.length - punctuation / 2);
-    }
-  }
-  // 차수·시각 88px, 숫자 열 최소 104px. 합산의 좌우 여백(16+10px)까지 보호한다.
-  // ch/rem은 데이터 폰트와 밀도 다이얼을 함께 따른다.
-  return `calc(5.5rem + 3 * max(6.5rem, calc(${maxFigureWidth}ch + 1.625rem)))`;
-}
-
-
 /** 집계시간 셀을 차수와 시각 두 조각으로 나눠 준다 — 셀 안에서 차수는 한 단계
  *  더 흐리게 깔고 시각이 읽히도록. `1차(09:20)` 한 덩어리였을 땐 괄호가 폭을
  *  먹고 두 값이 같은 무게로 붙어 있었다.

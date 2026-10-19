@@ -278,7 +278,7 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 - 2026-10-19 사용자 승인(균등 폭 배치에 대한 후속 변경): 일별 투자자는 **날짜당 한 줄·기존 글자 크기**를 유지하면서 실제 표기 자릿수로 열 폭을 배분한다. 모두 보기의 순매수·매수·매도를 각각 표 열로 분리해 날짜·누적의 기준선을 공유하며, 표시 순서는 공통 범례에서 한 번 설명한다. 창 본문 너비 40rem 이상은 날짜 4.5rem·숫자 좌우 여백 0.25rem, 30~40rem은 날짜 3.5rem·여백 0.0625rem, 30rem 미만은 날짜 3rem·여백 0.0625rem을 사용한다. 그룹 시작 여백은 0.125rem을 추가하되 30rem 미만에서는 생략한다. 순매수의 방향색·굵기, 금액 소수점 정렬과 날짜·헤더 고정은 유지한다. 긴 숫자는 줄바꿈·생략 없이 표의 내재 최소 폭까지 보호하며 그 이하에서 가로 스크롤한다.
 
-- 2026-10-19 사용자 승인: 잠정투자자 표는 차수·시각 5.5rem과 동일 폭의 외국인·기관·합산 세 열을 사용한다. 숫자 열은 최소 6.5rem이며 두 단위의 가장 긴 표기와 합산의 여백을 모두 수용한다. 외국인↔기관 간격은 최소 1rem, 기관↔합산은 최소 1.5rem, 오른쪽 끝은 0.625rem이다. 합산 숫자는 500 굵기로 강조한다. 단위 전환 시 열 위치를 유지하고 좁은 창에서는 축약 없이 가로 스크롤한다.
+- 2026-10-19 사용자 승인(반응형 간격 후속 변경): 잠정투자자 표도 차수당 한 줄·기존 글자 크기와 숫자 오른쪽 정렬을 유지하면서 실제 표기 자릿수로 열 폭을 배분한다. 카드 너비 40rem 이상은 차수·시각 5.5rem·숫자 좌우 여백 0.5rem, 30~40rem은 5rem·0.25rem, 30rem 미만은 4.5rem·0.0625rem을 사용한다. 합산 왼쪽 추가 여백은 각각 0.5rem→0.25rem→0.125rem, 양 끝 여백은 0.625rem→0.375rem으로 줄인다. 합산의 500 굵기, 방향색, 원수량·금액 표기와 고정 헤더를 유지한다. 단위별 실제 표기에 맞춰 열 폭을 다시 배분하고, 줄바꿈·축약·생략 없이 내재 최소 폭 이하에서만 가로 스크롤한다.
 
 - **Base unit:** 4px (base intent = rendered, since the dial is 1.0× as of 2026-08-07; was 4.5px rendered at 1.125×)
 - **Density:** Bloomberg-leaning — the dial sits at base intent (1.0×). Density is a spectrum, not a fixed point: the token system holds the whole ladder and the dial picks a rung. Looser rungs (1.125×, 1.25×) have both shipped as defaults before.
