@@ -15,4 +15,3 @@ export function candleSummary(params: CandleOptions, summary: string): string {
 
 export const volumeTimeframeLabel = (timeframe: ScreenerTimeframe) =>
   timeframe.endsWith('m') ? `${timeframe.slice(0, -1)}분` : ({ D: '일', W: '주', M: '월' }[timeframe as 'D' | 'W' | 'M']);
-
