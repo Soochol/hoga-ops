@@ -2680,17 +2680,16 @@ test('호가주문 예상 체결가·체결량의 자릿수 변경은 배치를 
   expect(commands).toHaveLength(0);
 });
 
-for (const tab of ['orders', 'holdings'] as const) {
-  test(`계좌 ${tab} 표는 숫자 자릿수가 바뀌어도 열 위치를 유지한다`, async ({ page }, testInfo) => {
+test('계좌 holdings 표는 숫자 자릿수가 바뀌어도 열 위치를 유지한다', async ({ page }, testInfo) => {
     const { window, commands } = await setup(page, true);
-    const button = window.getByRole('button', { name: tab === 'orders' ? '미체결 주문' : '보유종목', exact: true });
+    const button = window.getByRole('button', { name: '보유종목', exact: true });
     await button.click();
     const panel = page.getByRole('dialog', { name: '계좌 목록' });
     const table = panel.getByRole('table');
     await expect(table.locator('tbody tr')).toHaveCount(1);
     await page.evaluate(() => document.fonts.ready);
-    const numericColumns = tab === 'orders' ? [2, 3] : [1, 2, 3, 4];
-    const large = tab === 'orders' ? ['9,999,999', '999,999,999'] : ['999,999,999', '9,999,999', '999,999,999,999', '-100.00%'];
+    const numericColumns = [1, 2, 3, 4];
+    const large = ['999,999,999', '9,999,999', '999,999,999,999', '-100.00%'];
     const setDigits = (long: boolean) => table.evaluate((el, { numericColumns, large, long }) => {
       for (const row of el.querySelectorAll('tbody tr')) {
         const cells = row.querySelectorAll('td');
@@ -2714,13 +2713,12 @@ for (const tab of ['orders', 'holdings'] as const) {
         return numericColumns.every(column => cells[column].scrollWidth <= cells[column].clientWidth + 1);
       }), numericColumns)).toBe(true);
       if (width === 390) expect(await panel.locator('.account-trading-scroll').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-      await panel.screenshot({ path: testInfo.outputPath(`stable-${tab}-${width}.png`) });
+      await panel.screenshot({ path: testInfo.outputPath(`stable-holdings-${width}.png`) });
       await setDigits(false);
       expect(await headers()).toEqual(before);
     }
     expect(commands).toHaveLength(0);
-  });
-}
+});
 
 for (const price of [67_200, 1_469_000, 10_469_000, 99_990_000]) {
   test(`호가주문 ${price}원은 평단가 원과 4px 간격·작은 등락률·가격 정렬을 유지한다`, async ({ page }, testInfo) => {
@@ -2877,4 +2875,112 @@ test('긴 주문·합계·잔량·체결 수량은 생략하지 않고 계좌와
   await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeInViewport();
   await window.screenshot({ path: testInfo.outputPath('order-fluid-long-figures.png') });
   expect(commands).toHaveLength(0);
+});
+
+
+async function accountOrderGeometry(panel: Locator) {
+  return panel.locator('.account-orders-table').evaluate(table => {
+    const bounds = (el: Element) => { const range = document.createRange(); range.selectNodeContents(el); return range.getBoundingClientRect(); };
+    const heads = [...table.querySelectorAll('th')];
+    const rows = [...table.querySelectorAll('tbody tr')];
+    const overflows = rows.flatMap(row => [2, 3, 4].flatMap(index => {
+      const cell = row.children[index], box = cell.getBoundingClientRect();
+      const text = index === 4 ? cell.querySelector('button')!.getBoundingClientRect() : bounds(cell);
+      return text.left >= box.left - 0.5 && text.right <= box.right + 0.5 ? [] : [cell.textContent];
+    }));
+    const aligned = [2, 3].every(index => {
+      const edge = heads[index].getBoundingClientRect().right - parseFloat(getComputedStyle(heads[index]).paddingRight);
+      return rows.every(row => Math.abs(bounds(row.children[index]).right - edge) < 1);
+    });
+    const centered = rows.every(row => { const cell = row.children[1], text = bounds(cell), box = cell.getBoundingClientRect();
+      return Math.abs(text.left + text.right - box.left - box.right) < 1; });
+    const scroll = table.closest('.account-trading-scroll')!;
+    return { columns: heads.map(th => { const { x, width } = th.getBoundingClientRect(); return { x, width }; }),
+      overflows, aligned, centered, scroll: scroll.scrollWidth > scroll.clientWidth + 1,
+      padding: getComputedStyle(heads[2]).paddingRight, edge: getComputedStyle(scroll).paddingRight,
+      font: rows.length ? getComputedStyle(rows[0].children[2]).fontSize : null };
+  });
+}
+
+test('미체결 주문 열은 실제 숫자 폭과 반응형 여백을 사용하고 필터·주문 제거 후에도 유지한다', async ({ page }, testInfo) => {
+  const small = mkOrder('small');
+  const large = { ...mkOrder('large', '123456789.25', '0'), symbol: '000660', side: 'SELL', quantity: '123456789012345' };
+  let listed = [small];
+  const { window, commands } = await setup(page, [small]);
+  await page.route(/\/api\/trading\/account-orders\?/, route => route.fulfill({ json: { account_seq: 1, code: '',
+    orders: listed, recent_orders: [], fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [] } }));
+  await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: '계좌 목록' });
+  await expect(panel.locator('tbody tr')).toHaveCount(1);
+  await page.evaluate(() => document.fonts.ready);
+  const initial = await accountOrderGeometry(panel);
+  listed = [small, large];
+  await panel.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(panel.getByRole('cell', { name: '123,456,789,012,345', exact: true })).toBeVisible();
+  await expect.poll(async () => (await accountOrderGeometry(panel)).columns[3].width).toBeGreaterThan(initial.columns[3].width);
+  for (const [viewport, padding, edge] of [[1440, '4px', '10px'], [450, '2px', '6px'], [390, '1px', '4px'], [320, '1px', '4px']] as const) {
+    await page.setViewportSize({ width: viewport, height: 900 });
+    await expect(async () => {
+      const m = await accountOrderGeometry(panel);
+      expect(m.overflows).toEqual([]); expect(m.aligned).toBe(true); expect(m.centered).toBe(true);
+      expect(m.padding).toBe(padding); expect(m.edge).toBe(edge); expect(m.font).toBe('11px');
+      expect(m.scroll).toBe(viewport === 320);
+    }).toPass({ timeout: 5000 });
+    const before = await accountOrderGeometry(panel);
+    await panel.getByRole('button', { name: '매수', exact: true }).click();
+    await expect(panel.locator('tbody tr')).toHaveCount(1);
+    expect((await accountOrderGeometry(panel)).columns).toEqual(before.columns);
+    await panel.getByRole('button', { name: '매도', exact: true }).click();
+    await expect(panel.locator('tbody tr')).toHaveCount(1);
+    expect((await accountOrderGeometry(panel)).columns).toEqual(before.columns);
+    await panel.getByRole('button', { name: '전체', exact: true }).click();
+    await panel.screenshot({ path: testInfo.outputPath(`unfilled-columns-${viewport}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(panel.locator('th').nth(2)).toHaveCSS('padding-right', '4px');
+  const retained = (await accountOrderGeometry(panel)).columns;
+  listed = [small];
+  await panel.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(panel.locator('tbody tr')).toHaveCount(1);
+  expect((await accountOrderGeometry(panel)).columns).toEqual(retained);
+  listed = [];
+  await panel.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(panel.getByText('미체결 주문 없음', { exact: true })).toBeVisible();
+  expect((await accountOrderGeometry(panel)).columns).toEqual(retained);
+  expect(commands).toHaveLength(0);
+});
+
+test('미체결 주문 취소 상태 문구가 바뀌어도 열과 버튼 폭을 유지하고 재확인은 같은 요청을 사용한다', async ({ page }, testInfo) => {
+  const { window } = await setup(page, true);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const sent: Record<string, unknown>[] = [];
+  await page.route(/\/api\/trading\/orders\/old\/cancel$/, async route => {
+    sent.push(route.request().postDataJSON());
+    if (sent.length === 1) { await gate; await route.fulfill({ status: 503, json: { detail: '취소 결과 확인 필요' } }); }
+    else await route.fulfill({ json: { command_id: sent[0].command_id, order_id: 'cancel-pending', status: 'accepted' } });
+  });
+  try {
+    await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
+    const panel = page.getByRole('dialog', { name: '계좌 목록' });
+    await expect(panel.locator('tbody tr')).toHaveCount(1);
+    await page.evaluate(() => document.fonts.ready);
+    const before = (await accountOrderGeometry(panel)).columns;
+    const buttonWidth = (await panel.locator('.account-cancel').boundingBox())!.width;
+    await panel.getByRole('button', { name: '삼성전자 매수 주문 1 취소', exact: true }).click();
+    await expect(panel.getByRole('button', { name: '삼성전자 매수 주문 1 취소 중', exact: true })).toBeDisabled();
+    expect((await accountOrderGeometry(panel)).columns).toEqual(before);
+    expect((await panel.locator('.account-cancel').boundingBox())!.width).toBe(buttonWidth);
+    release();
+    const retry = panel.getByRole('button', { name: '삼성전자 매수 주문 1 재확인', exact: true });
+    await expect(retry).toBeEnabled();
+    expect((await accountOrderGeometry(panel)).columns).toEqual(before);
+    expect((await retry.boundingBox())!.width).toBe(buttonWidth);
+    await retry.click();
+    await expect(panel.getByRole('button', { name: '삼성전자 매수 주문 1 확인 중', exact: true })).toBeDisabled();
+    expect((await accountOrderGeometry(panel)).columns).toEqual(before);
+    expect((await panel.locator('.account-cancel').boundingBox())!.width).toBe(buttonWidth);
+    expect(sent).toHaveLength(2); expect(sent[1]).toEqual(sent[0]);
+    await panel.screenshot({ path: testInfo.outputPath('unfilled-cancel-pending.png') });
+  } finally { release(); }
 });

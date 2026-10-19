@@ -11,6 +11,7 @@ import { useSymbols } from '../../capture/useSymbols';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { RefreshIcon } from '../../ui/RefreshIcon';
 import { OrderSurfaceHeading } from './OrderSurface';
+import { useAccountOrderColumns } from './useAccountOrderColumns';
 import { editableOrder, holdingProfitPercent, holdingProfitWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
 import './AccountTradingPanel.css';
 
@@ -96,12 +97,15 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
       resume();
     }
   }
+  const allOrders = orders.data?.orders ?? [];
+  const { setProbe, samples, style: columnStyle } = useAccountOrderColumns(account,
+    allOrders.map(order => fmt(order.price)), allOrders.map(order => fmt(orderRemainder(order))));
   function select(code: string, name: string) { onClose(); onSelectSymbol?.(code, name); }
   if (tab === null) return null;
   const query = tab === 'orders' ? orders : holdings;
-  const displayedOrders = orders.data?.orders.filter(order => side === null || order.side === side) ?? [];
+  const displayedOrders = allOrders.filter(order => side === null || order.side === side);
   const title = tab === 'orders' ? '미체결 주문' : '보유종목';
-  return createPortal(<div ref={ref} style={style} role="dialog" aria-label="계좌 목록" aria-description={accountLabel} className="account-trading-panel order-surface font-data">
+  return createPortal(<div ref={ref} style={{ ...style, ...columnStyle }} role="dialog" aria-label="계좌 목록" aria-description={accountLabel} className={`account-trading-panel order-surface font-data ${tab === 'orders' ? 'account-trading-orders' : ''}`}>
     <OrderSurfaceHeading closeLabel="계좌 목록 닫기" onClose={dismiss} actions={<>
       {tab === 'orders' && <div role="group" aria-label="주문 방향 필터" className="account-trading-filters order-surface-segment">
         {([null, 'BUY', 'SELL'] as const).map(value => <button key={value ?? 'all'} type="button" aria-pressed={side === value}
@@ -116,6 +120,14 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
     {query.isPending && <p role="status" className="account-trading-message">목록 불러오는 중…</p>}
     {notice && <p role="status" className="account-trading-message">{notice}</p>}
     <div role="region" aria-label={tab === 'orders' ? '미체결 주문 목록' : '보유종목 목록'} className="account-trading-scroll">
+      {tab === 'orders' && <span ref={setProbe} aria-hidden="true" className="account-orders-sizer">
+        <span data-order-measure="price" className="account-order-heading-probe" data-figure="가격" />
+        {samples.price.map(value => <span key={value} data-order-measure="price" data-figure={value} />)}
+        <span data-order-measure="quantity" className="account-order-heading-probe" data-figure="잔여" />
+        {samples.quantity.map(value => <span key={value} data-order-measure="quantity" data-figure={value} />)}
+        {['매수', '매도'].map(value => <span key={value} data-order-measure="side" data-figure={value} />)}
+        {['취소', '취소 중', '확인 중', '재확인'].map(value => <span key={value} data-order-measure="cancel" className="account-order-cancel-probe" data-figure={value} />)}
+      </span>}
       {tab === 'orders' ? <table className="account-orders-table">
         <colgroup><col /><col /><col /><col /><col /></colgroup>
         <thead><tr><th>종목</th><th>구분</th><th>가격</th><th>잔여</th><th><span className="sr-only">취소</span></th></tr></thead>
