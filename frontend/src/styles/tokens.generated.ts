@@ -51,6 +51,7 @@ export const TAILWIND_THEME = {
     "sm": "var(--radius-sm)",
     "md": "var(--radius-md)",
     "lg": "var(--radius-lg)",
+    "window": "var(--radius-window)",
     "full": "var(--radius-full)",
   },
 } as const;

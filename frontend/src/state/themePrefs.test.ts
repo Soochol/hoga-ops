@@ -38,7 +38,7 @@ describe('useThemePrefsStore', () => {
     // 저장값이 없을 때 스토어가 무엇으로 시작하는지는 모듈 로드 시점에 한 번
     // 정해지므로(beforeEach 가 덮어쓴다) 상수 자체를 못박는다. 라우트별 테마
     // 전환을 없앤 결정이라 `auto` 로 되돌아가면 그 결정이 조용히 풀린다.
-    expect(DEFAULT_THEME_PREFERENCE).toBe('toss-light');
+    expect(DEFAULT_THEME_PREFERENCE).toBe('trading-desk');
     expect(THEME_PREFERENCE_OPTIONS).toContain(DEFAULT_THEME_PREFERENCE);
   });
 
@@ -137,10 +137,11 @@ describe('useThemePrefsStore', () => {
       'toss-dark',
       'obsidian-pro',
       'ledger-studio',
+      'trading-desk',
     ]);
   });
 
-  it.each(['obsidian-pro', 'ledger-studio'] as const)('persists, restores and bootstraps %s', (theme) => {
+  it.each(['obsidian-pro', 'ledger-studio', 'trading-desk'] as const)('persists, restores and bootstraps %s', (theme) => {
     useThemePrefsStore.getState().setThemePreference(theme);
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toEqual({ themePreference: theme });
     useThemePrefsStore.setState({ themePreference: 'ledger' });

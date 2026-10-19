@@ -6,7 +6,7 @@ import { INDICATOR_OPS, MA_PALETTE } from '../state/indicatorOps';
 import { FACTORY_INDICATOR_SETTINGS } from '../state/indicatorSettingsV2';
 
 const backgrounds = {
-  obsidian: '#121216', 'obsidian-pro': '#171A20', 'toss-dark': '#17171C',
+  obsidian: '#121216', 'obsidian-pro': '#171A20', 'toss-dark': '#17171C', 'trading-desk': '#121811',
   ledger: '#FDFCF8', 'ledger-studio': '#FFFEFA', 'toss-light': '#FFFFFF',
 };
 
@@ -17,7 +17,7 @@ describe('automatic moving average colors', () => {
     expect(INDICATOR_OPS.addDailyMovingAverage(FACTORY_INDICATOR_SETTINGS)?.dailyMovingAverages?.at(-1)?.colorMode).toBe('auto');
   });
 
-  it('provides readable, distinct colors for every assigned hue in all six themes', () => {
+  it('provides readable, distinct colors for every assigned hue in every theme', () => {
     for (const [theme, background] of Object.entries(backgrounds)) {
       const colors = MA_PALETTE.map(color => resolveMaColor({ color, colorMode: 'auto' }, theme));
       expect(new Set(colors).size).toBe(MA_PALETTE.length);

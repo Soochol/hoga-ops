@@ -57,11 +57,11 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
           <Link to="/" title="홈으로 이동" aria-label="Ticklane 홈" className="inline-flex shrink-0 items-center gap-sm whitespace-nowrap">
             <span
               aria-hidden="true"
-              className="grid h-[22px] w-[22px] place-items-center rounded bg-fg text-bg text-xs font-extrabold leading-none"
+              className="live-brand-mark grid h-[22px] w-[22px] place-items-center rounded bg-fg text-bg text-xs font-extrabold leading-none"
             >
               T
             </span>
-            <span className="text-lg font-extrabold leading-none text-fg">Ticklane</span>
+            <span className="live-brand-name text-lg font-extrabold leading-none text-fg">Ticklane</span>
           </Link>
 
           {WORKSPACE_NAV_ITEMS.map((item) => (

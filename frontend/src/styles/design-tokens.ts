@@ -159,6 +159,7 @@ export const FIXED_PX_TOKENS = {
   // app as a side effect of fixing a leak.
   'radius-md':   { px: 4,    usage: 'Default (bare `rounded`) — chips, small buttons, presets', isDefault: true },
   'radius-lg':   { px: 6,    usage: 'Cards, modals, inputs, larger panels' },
+  'radius-window': { px: 9, usage: 'Trading Desk window frames (2026-10-19 approved)' },
   'radius-full': { px: 9999, usage: 'Status dots, avatars' },
 } as const satisfies Record<string, FixedPxToken>;
 

@@ -31,8 +31,8 @@
       (function () {
         try {
           var raw = localStorage.getItem('ui.themePreference.v1');
-          var pref = raw ? JSON.parse(raw).themePreference : 'toss-light';
-          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'toss-light' && pref !== 'toss-dark' && pref !== 'obsidian-pro' && pref !== 'ledger-studio') pref = 'toss-light';
+          var pref = raw ? JSON.parse(raw).themePreference : 'trading-desk';
+          if (pref !== 'obsidian' && pref !== 'ledger' && pref !== 'toss-light' && pref !== 'toss-dark' && pref !== 'obsidian-pro' && pref !== 'ledger-studio' && pref !== 'trading-desk') pref = 'trading-desk';
           document.documentElement.setAttribute('data-theme', pref);
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'obsidian');

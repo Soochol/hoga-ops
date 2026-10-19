@@ -100,7 +100,10 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
         {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
       </span>
       {!isIndex && (
-        <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="live-symbol-price shrink-0 font-data text-fg">
+        <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="live-symbol-price shrink-0 font-data text-fg"
+          data-direction={currentPrice !== null && quote?.change_pct != null
+            ? quote.change_pct > 0 ? 'up' : quote.change_pct < 0 ? 'down' : undefined
+            : undefined}>
           {currentPrice !== null ? formatKoreanInt(currentPrice) : '—'}
         </span>
       )}

@@ -7,12 +7,13 @@ import { persistJson, readJsonObject } from './persist';
  * - `obsidian`   — the dark trading-terminal theme.
  * - `ledger`     — the light paper/research theme (ivory + banker's green).
  * - `toss-light` — the Toss Securities benchmark light theme (white + toss blue).
- *                  **The default preference** (2026-08-07).
+ *                  The former default preference (2026-08-07).
  * - `toss-dark`  — the Toss Securities benchmark dark theme (near-black + toss blue).
  * - `obsidian-pro` — graphite surfaces + amber, tuned for live trading.
  * - `ledger-studio` — ivory surfaces + forest green, tuned for research.
+ * - `trading-desk` — olive-black surfaces + lime, approved live workspace (2026-10-19).
  *
- * **선호가 곧 테마다** — 여섯 값은 그대로 `<html data-theme>` 가 된다. 라우트별로
+ * **선호가 곧 테마다** — 일곱 값은 그대로 `<html data-theme>` 가 된다. 라우트별로
  * 갈리는 `auto` 가 있던 시절에는 preference(5개)와 effective theme(4개)이 다른
  * 개념이었고 `effectiveTheme(pref, pathname)` 이 그 사이를 옮겼다. 2026-08-30 에
  * `auto` 를 제거하면서 그 층이 통째로 사라졌다(사유는 DEFAULT_THEME_PREFERENCE 참조).
@@ -21,7 +22,7 @@ import { persistJson, readJsonObject } from './persist';
  * `set()` 안에서 동기로 반영된다. index.html 의 인라인 부트스트랩이 첫 페인트 값을
  * 칠하고, 그 복제는 themePrefs.test.ts 가 지킨다.
  */
-export type ThemePreference = 'obsidian' | 'ledger' | 'toss-light' | 'toss-dark' | 'obsidian-pro' | 'ledger-studio';
+export type ThemePreference = 'obsidian' | 'ledger' | 'toss-light' | 'toss-dark' | 'obsidian-pro' | 'ledger-studio' | 'trading-desk';
 
 export const THEME_PREFERENCE_OPTIONS: readonly ThemePreference[] = [
   'obsidian',
@@ -30,12 +31,14 @@ export const THEME_PREFERENCE_OPTIONS: readonly ThemePreference[] = [
   'toss-dark',
   'obsidian-pro',
   'ledger-studio',
+  'trading-desk',
 ];
 
 const STORAGE_KEY = 'ui.themePreference.v1';
 
 /**
- * Preference used when nothing is stored (2026-08-07, 사용자 결정).
+ * Preference used when nothing is stored (Trading Desk approved 2026-10-19).
+ * Existing saved preferences remain valid and are never overwritten.
  *
  * Was `auto`, which picked a theme *per route* — so a single nav click
  * (히트맵 → 스크리너) flipped the whole app between dark and light. An explicit
@@ -61,7 +64,7 @@ const STORAGE_KEY = 'ui.themePreference.v1';
  * ⚠️ `index.html` duplicates this value in its first-paint bootstrap (it must
  * run before any module loads). themePrefs.test.ts fails if the two diverge.
  */
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'toss-light';
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'trading-desk';
 
 function readStorage(): ThemePreference | null {
   const obj = readJsonObject(STORAGE_KEY);

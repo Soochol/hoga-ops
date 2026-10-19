@@ -76,6 +76,7 @@ const THEME_LABEL: Record<ThemePreference, string> = {
   'toss-dark': 'Toss Dark',
   'obsidian-pro': 'Obsidian Pro',
   'ledger-studio': 'Ledger Studio',
+  'trading-desk': 'Trading Desk',
 };
 
 const THEME_HINT: Record<ThemePreference, string> = {
@@ -85,6 +86,7 @@ const THEME_HINT: Record<ThemePreference, string> = {
   'toss-dark': '어두운 배경과 파란 강조색',
   'obsidian-pro': '흑연색 배경과 앰버 강조색 · 장중 모니터링',
   'ledger-studio': '아이보리 배경과 포레스트 그린 · 장후 복기와 리서치',
+  'trading-desk': '올리브 블랙과 라임 강조색 · 트레이딩 데스크',
 };
 
 export function ThemeSection() {

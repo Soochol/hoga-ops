@@ -167,6 +167,7 @@ describe('AppInfoSections — 테마', () => {
   it.each([
     ['Obsidian Pro', 'obsidian-pro', '흑연색 배경과 앰버 강조색 · 장중 모니터링'],
     ['Ledger Studio', 'ledger-studio', '아이보리 배경과 포레스트 그린 · 장후 복기와 리서치'],
+    ['Trading Desk', 'trading-desk', '올리브 블랙과 라임 강조색 · 트레이딩 데스크'],
   ] as const)('selects %s and persists its preference', (label, theme, hint) => {
     renderWithQuery(<ThemeSection />);
     const option = screen.getByRole('button', { name: label });
