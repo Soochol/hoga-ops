@@ -43,6 +43,8 @@ export interface QuoteRowProps {
   trailingAction?: React.ReactNode;
   /** Flat occurrence lists reserve more room for the name in narrow rails. */
   compact?: boolean;
+  /** Panel-wide measured columns, also shared with the portal drag clone. */
+  columnLayout?: React.CSSProperties;
   nameTooltip?: string;
   /** 종목명 아래 보조 지표. 가격·등락률 컬럼과 행의 탐색/드래그를 유지한다. */
   nameDetail?: React.ReactNode;
@@ -92,7 +94,7 @@ function formatPct(pct: number | null): string {
 
 export function QuoteRow({
   name, code, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
-  active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, nameTooltip, nameDetail,
+  active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, columnLayout, nameTooltip, nameDetail,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
   onContextMenu, onDelete, selected, selectionId, onSelectionKeyDown, indented, flash, matched,
@@ -168,7 +170,7 @@ export function QuoteRow({
       onBlur={nameTip.hide}
       onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
-      className={`group ${indentContent != null ? 'relative' : ''} ${selected !== undefined ? 'select-none' : ''} ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group ${columnLayout ? 'quote-row-fluid' : ''} ${indentContent != null ? 'relative' : ''} ${selected !== undefined ? 'select-none' : ''} ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
@@ -177,6 +179,7 @@ export function QuoteRow({
         // 관심·히트맵·스크리너·순위가 이 행을 공유하므로 여기 한 곳이 네 리스트를 결정한다(2026-07-23).
         background: selected || active || (selected == null && matched) ? 'var(--tint-selection)' : 'transparent',
         ...sortableStyle,
+        ...columnLayout,
         ...(dragging
           ? (draggingAppearance === 'placeholder' ? sortablePlaceholderStyle() : sortableDraggingStyle(18))
           : {}),
@@ -191,9 +194,9 @@ export function QuoteRow({
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분.
           flex 아이템은 min-w-0, 내부 이름은 block truncate 로 폭을 제한한다.
-          가격/% 는 flex-none 고정폭이라
+          가격/% 는 flex-none 공통폭(기본 고정폭, 관심종목은 측정폭)이라
           종목명이 대신 잘리고(전체 이름은 행 aria-label), 행마다 우측 끝자리가 정렬된다. */}
-      <span className="flex-1 min-w-0">
+      <span className="quote-row-name flex-1 min-w-0">
         <span onMouseEnter={(e) => nameTip.show(e.currentTarget)} onMouseLeave={nameTip.hide} className={`block truncate text-xs leading-tight ${selected !== undefined && active ? 'font-semibold text-accent' : selected !== undefined && matched ? 'font-semibold text-fg' : 'text-fg'}`}>
           {/* 동시호가 예상 마커. 긴 종목명은 뒤쪽이 잘리며 마커는 항상 남는다.
               크기는 종목명 상속(text-xs) — 별표 글리프 자체가 이미 작아
@@ -209,10 +212,10 @@ export function QuoteRow({
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
-      <span title={priceTitle} className="flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
+      <span title={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>
-      <span className={`flex-none ${compact ? 'w-[3rem]' : 'w-[3.5rem]'} text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
+      <span className={`quote-row-percent flex-none ${compact ? 'w-[3rem]' : 'w-[3.5rem]'} text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
         {shownPct != null ? formatPct(shownPct) : ''}
       </span>
       {trailingAction != null && (
