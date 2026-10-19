@@ -2680,46 +2680,6 @@ test('호가주문 예상 체결가·체결량의 자릿수 변경은 배치를 
   expect(commands).toHaveLength(0);
 });
 
-test('계좌 holdings 표는 숫자 자릿수가 바뀌어도 열 위치를 유지한다', async ({ page }, testInfo) => {
-    const { window, commands } = await setup(page, true);
-    const button = window.getByRole('button', { name: '보유종목', exact: true });
-    await button.click();
-    const panel = page.getByRole('dialog', { name: '계좌 목록' });
-    const table = panel.getByRole('table');
-    await expect(table.locator('tbody tr')).toHaveCount(1);
-    await page.evaluate(() => document.fonts.ready);
-    const numericColumns = [1, 2, 3, 4];
-    const large = ['999,999,999', '9,999,999', '999,999,999,999', '-100.00%'];
-    const setDigits = (long: boolean) => table.evaluate((el, { numericColumns, large, long }) => {
-      for (const row of el.querySelectorAll('tbody tr')) {
-        const cells = row.querySelectorAll('td');
-        numericColumns.forEach((column, index) => { cells[column].textContent = long ? large[index] : '1'; });
-      }
-    }, { numericColumns, large, long });
-    const headers = () => table.getByRole('columnheader').evaluateAll(nodes => nodes.map(node => {
-      const { x, y, width, height } = node.getBoundingClientRect();
-      return { x, y, width, height };
-    }));
-    for (const width of [1440, 390]) {
-      await page.setViewportSize({ width, height: 900 });
-      await setDigits(false);
-      const before = await headers();
-      const bounds = await panel.boundingBox();
-      await setDigits(true);
-      expect(await headers()).toEqual(before);
-      expect(await panel.boundingBox()).toEqual(bounds);
-      expect(await table.evaluate((el, numericColumns) => [...el.querySelectorAll('tbody tr')].every(row => {
-        const cells = row.querySelectorAll('td');
-        return numericColumns.every(column => cells[column].scrollWidth <= cells[column].clientWidth + 1);
-      }), numericColumns)).toBe(true);
-      if (width === 390) expect(await panel.locator('.account-trading-scroll').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
-      await panel.screenshot({ path: testInfo.outputPath(`stable-holdings-${width}.png`) });
-      await setDigits(false);
-      expect(await headers()).toEqual(before);
-    }
-    expect(commands).toHaveLength(0);
-});
-
 for (const price of [67_200, 1_469_000, 10_469_000, 99_990_000]) {
   test(`호가주문 ${price}원은 평단가 원과 4px 간격·작은 등락률·가격 정렬을 유지한다`, async ({ page }, testInfo) => {
     const { window, ws, commands } = await setup(page, false, false, true, price - 67_200, 1, { averagePrice: String(price) });
@@ -2983,4 +2943,108 @@ test('미체결 주문 취소 상태 문구가 바뀌어도 열과 버튼 폭을
     expect(sent).toHaveLength(2); expect(sent[1]).toEqual(sent[0]);
     await panel.screenshot({ path: testInfo.outputPath('unfilled-cancel-pending.png') });
   } finally { release(); }
+});
+
+
+async function holdingGeometry(panel: Locator) {
+  return panel.locator('.account-holdings-table').evaluate(table => {
+    const textBounds = (el: Element) => { const range = document.createRange(); range.selectNodeContents(el); return range.getBoundingClientRect(); };
+    const heads = [...table.querySelectorAll('th')], rows = [...table.querySelectorAll('tbody tr')];
+    const overflows = rows.flatMap(row => [1, 2, 3, 4].flatMap(index => {
+      const cell = row.children[index], box = cell.getBoundingClientRect();
+      const values = index === 4 ? [...cell.children] : [cell];
+      return values.flatMap(value => { const text = textBounds(value);
+        return text.left >= box.left - 0.5 && text.right <= box.right + 0.5 ? [] : [value.textContent]; });
+    }));
+    const aligned = [1, 2, 3, 4].every(index => {
+      const edge = heads[index].getBoundingClientRect().right - parseFloat(getComputedStyle(heads[index]).paddingRight);
+      return rows.every(row => (index === 4 ? [...row.children[index].children] : [row.children[index]])
+        .every(value => Math.abs(textBounds(value).right - edge) < 1));
+    });
+    const scroll = table.closest('.account-trading-scroll')!;
+    const tableLeft = table.getBoundingClientRect().left;
+    return { columns: heads.map(th => { const { x, width } = th.getBoundingClientRect(); return { x: x - tableLeft, width }; }),
+      overflows, aligned, scroll: scroll.scrollWidth > scroll.clientWidth + 1,
+      padding: getComputedStyle(heads[1]).paddingRight, edge: getComputedStyle(scroll).paddingRight,
+      tableDisplay: getComputedStyle(table).display, headingDisplay: getComputedStyle(table.querySelector('thead')!).display,
+      rowDisplay: rows.length ? getComputedStyle(rows[0]).display : null,
+      profitFonts: rows.length ? [...rows[0].children[4].children].map(span => getComputedStyle(span).fontSize) : [] };
+  });
+}
+
+test('보유종목은 좁은 창에서도 5열과 손익 두 줄을 유지하고 시세·종목 제거·닫기 후에도 숫자 폭을 유지한다', async ({ page }, testInfo) => {
+  const base = { code: '000660', name: 'SK하이닉스', quantity: '22', average_purchase_price: '180000' };
+  const large = { code: '005930', name: '삼성전자', quantity: '100000000', average_purchase_price: '900000' };
+  const neutral = { code: '035420', name: 'NAVER', quantity: '0', average_purchase_price: '1' };
+  let listed = [base];
+  let largePrice = 1000000;
+  const { window, commands } = await setup(page, false, true, false, 0, 1, { venue: 'KRX' });
+  await page.route(/\/api\/trading\/holdings\?/, route => route.fulfill({ json: { account_seq: 1, holdings: listed, fetched_at_ms: Date.now() } }));
+  await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: { phase: 'open', quotes:
+    (new URL(route.request().url()).searchParams.get('codes') ?? '').split(',').map(code => ({ code,
+      price: code === '005930' ? largePrice : code === '000660' ? 185000 : 1 })) } }));
+  await window.getByRole('button', { name: '보유종목', exact: true }).click();
+  const panel = page.getByRole('dialog', { name: '계좌 목록' });
+  await expect(panel.getByRole('cell', { name: '4,070,000', exact: true })).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  for (const viewport of [1440, 390, 320]) {
+    await page.setViewportSize({ width: viewport, height: 900 });
+    await expect(async () => {
+      const m = await holdingGeometry(panel);
+      expect(m.columns).toHaveLength(5); expect(m.tableDisplay).toBe('table'); expect(m.headingDisplay).toBe('table-header-group');
+      expect(m.rowDisplay).toBe('table-row'); expect(m.overflows).toEqual([]); expect(m.aligned).toBe(true);
+      expect(m.scroll).toBe(false); expect(m.profitFonts).toEqual(['11px', '10px']);
+    }).toPass({ timeout: 5000 });
+    await panel.screenshot({ path: testInfo.outputPath(`holdings-normal-${viewport}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(panel.locator('th').nth(1)).toHaveCSS('padding-right', '4px');
+  const initial = (await holdingGeometry(panel)).columns;
+  listed = [base, large];
+  await panel.getByRole('button', { name: '새로고침', exact: true }).click();
+  const largeRow = panel.getByRole('row').filter({ hasText: '삼성전자' });
+  await expect(largeRow.getByRole('cell').nth(3)).toHaveText('100,000,000,000,000');
+  await expect(largeRow.locator('.account-holding-profit')).toHaveText('+10,000,000,000,000원+11.11%');
+  await expect(largeRow.locator('.account-holding-profit')).toHaveClass(/text-price-up/);
+  await expect.poll(async () => (await holdingGeometry(panel)).columns[3].width).toBeGreaterThan(initial[3].width);
+  for (const [viewport, padding, edge] of [[1440, '4px', '10px'], [450, '2px', '6px'], [390, '1px', '4px'], [320, '1px', '4px']] as const) {
+    await page.setViewportSize({ width: viewport, height: 900 });
+    await expect(async () => {
+      const m = await holdingGeometry(panel);
+      expect(m.columns).toHaveLength(5); expect(m.tableDisplay).toBe('table'); expect(m.headingDisplay).toBe('table-header-group');
+      expect(m.overflows).toEqual([]); expect(m.aligned).toBe(true);
+      expect(m.padding).toBe(padding); expect(m.edge).toBe(edge); expect(m.profitFonts).toEqual(['11px', '10px']);
+      if (viewport === 1440) expect(m.scroll).toBe(false);
+      if (viewport === 320) expect(m.scroll).toBe(true);
+    }).toPass({ timeout: 5000 });
+    await panel.screenshot({ path: testInfo.outputPath(`holdings-large-${viewport}.png`) });
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(panel.locator('th').nth(1)).toHaveCSS('padding-right', '4px');
+  const retained = (await holdingGeometry(panel)).columns;
+  largePrice = 500000;
+  listed = [base, large, neutral]; // A new quote set fetches the changed price immediately.
+  await panel.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(largeRow.locator('.account-holding-profit')).toHaveText('-40,000,000,000,000원-44.44%');
+  await expect(largeRow.locator('.account-holding-profit')).toHaveClass(/text-price-down/);
+  expect((await holdingGeometry(panel)).columns).toEqual(retained);
+  listed = [base];
+  await panel.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(panel.locator('tbody tr')).toHaveCount(1);
+  expect((await holdingGeometry(panel)).columns).toEqual(retained);
+  await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
+  await expect(panel.getByRole('heading', { name: '미체결 주문', exact: true })).toBeVisible();
+  await window.getByRole('button', { name: '보유종목', exact: true }).click();
+  await expect(panel.locator('.account-holdings-table')).toBeVisible();
+  expect((await holdingGeometry(panel)).columns).toEqual(retained);
+  listed = [];
+  await panel.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(panel.getByText('보유종목 없음', { exact: true })).toBeVisible();
+  expect((await holdingGeometry(panel)).columns).toEqual(retained);
+  await page.keyboard.press('Escape');
+  await expect(panel).toHaveCount(0);
+  await window.getByRole('button', { name: '보유종목', exact: true }).click();
+  await expect(panel.locator('.account-holdings-table')).toBeVisible();
+  expect((await holdingGeometry(panel)).columns).toEqual(retained);
+  expect(commands).toHaveLength(0);
 });
