@@ -176,11 +176,13 @@ it('restores scan results after unmount/remount (route round-trip)', async () =>
   expect(runScan).not.toHaveBeenCalled();
 });
 
-it('runs full-page scans with intraday basis by default', async () => {
+it('requests automatic server selection without manual basis controls', async () => {
   await renderPageReady();
   fireEvent.click(screen.getByText('조회'));
   await waitFor(() => expect(runScan).toHaveBeenCalled());
-  expect(vi.mocked(runScan).mock.calls.at(-1)?.[0]).toMatchObject({ basis: 'intraday' });
+  expect(vi.mocked(runScan).mock.calls.at(-1)?.[0]).toMatchObject({ basis: 'auto' });
+  expect(screen.queryByRole('button', { name: '오늘 장중' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '전일 확정' })).not.toBeInTheDocument();
 });
 
 it('shows an EOD fallback warning when intraday scan falls back', async () => {
@@ -213,7 +215,7 @@ it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보�
   const { unmount } = await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await waitFor(() => expect(finish).toBeDefined());
-  fireEvent.click(screen.getByRole('button', { name: '전일 확정' }));
+  expect(screen.queryByRole('group', { name: '스크리너 기준' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '조건 제거' }));
   const serverTime = Date.now() - 1000;
   await act(async () => finish({ status: 'ok', warnings: [], scanned_at_ms: serverTime,
@@ -221,7 +223,7 @@ it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보�
       trade_value_won: 1e9, price_date: '2026-09-07' }],
   }));
   const snapshot = useScreenerPanelStore.getState().lastScan!;
-  expect(JSON.parse(snapshot.requestJson!)).toMatchObject({ basis: 'intraday', conditions: [{ type: 'trade_value' }] });
+  expect(JSON.parse(snapshot.requestJson!)).toMatchObject({ basis: 'auto', conditions: [{ type: 'trade_value' }] });
   expect(snapshot.scannedAtMs).toBe(serverTime);
   expect(snapshot.savedName).toBe('기본조건');
   unmount();

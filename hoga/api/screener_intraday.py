@@ -69,7 +69,7 @@ def intraday_overlay_bypassed(data_dir: Path) -> bool:
     return live_settings.rest_bypass_enabled(data_dir)
 
 
-def _session_warning(data_dir: Path, now: dt.datetime) -> str | None:
+def session_warning(data_dir: Path, now: dt.datetime) -> str | None:
     session = trading_days.is_trading_day(now.strftime("%Y%m%d"), data_dir)
     if now.hour < 9 or now.weekday() >= 5 or session is False:  # noqa: PLR2004 — KRX 09:00, weekdays
         return "intraday_session_closed"
@@ -161,7 +161,7 @@ async def build_intraday_overlay(
     # Gate before cache/client access, including midnight, weekends and holidays.
     now = dt.datetime.fromtimestamp(now_ms / 1000, KST)
     today = now.strftime("%Y%m%d")
-    if warning := _session_warning(data_dir, now):
+    if warning := session_warning(data_dir, now):
         return _empty([warning])
     key = (data_dir, today, unique_codes)
     cached = _CACHE.get(key)

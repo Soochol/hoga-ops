@@ -34,6 +34,14 @@ const SCAN: PanelScan = {
 };
 
 describe('screenerPanel store', () => {
+  it('retains automatic selection and server cutoffs across storage reloads', async () => {
+    const scan: PanelScan = { ...SCAN, basis: 'auto', basisAtMs: NOW - 60000,
+      fallbackBasisAtMs: NOW - 86400000, requestJson: '{"basis":"auto","conditions":[],"universe":{}}' };
+    useScreenerPanelStore.getState().setLastScan(scan);
+    vi.resetModules();
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().lastScan).toEqual(scan);
+  });
   it.each(['requestJson', 'scanKey'])('drops a closed-only snapshot identified by %s', async field => {
     const request = JSON.stringify({ conditions: [{ id: 'c', type: 'ma',
       params: { period: 20, relation: 'above', include_open_bar: false } }] });

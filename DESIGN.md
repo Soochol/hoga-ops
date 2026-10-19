@@ -517,6 +517,12 @@ Ctrl+Z(⌘Z)로 되돌리고 Ctrl+Shift+Z(⌘⇧Z) 또는 Ctrl+Y로 다시 실�
 커서와 선택 영역도 복원하며, 조건 추가·삭제·순서 변경이나 다른 저장 조건을 불러오면
 조건 문자의 의미가 바뀌므로 조합식 이력을 초기화한다.
 
+2026-10-20 사용자 요청: 오늘 장중/전일 확정 선택을 제거하고 페이지·드로어 모두
+서버의 자동 기준으로 조회한다. 결과 메타에는 실제 적용 기준 날짜·시각(KST)을 표시한다.
+아카이브 최신일이나 조회 완료 시각을 평가 기준으로 대신 표시하지 않는다. 시세 일부가
+확정 데이터로 대체되면 실제 두 기준 시각을 범위로 표시한다. 빈 결과와 새로고침 후에도
+서버 기준을 유지한다. 조회 모드 안내 문구와 별도의 일봉 기준일 표시는 제거한다.
+
 > **Scale note:** All px values in this section are **1.0× base intent**.
 > Default rendering = × 1.0 as of 2026-08-07, so these px values *are* what ships
 > today. That equality is a property of the current dial, not a permanent fact —

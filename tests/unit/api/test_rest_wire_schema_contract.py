@@ -127,7 +127,8 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
                                  "created_at_ms", "updated_at_ms"}),
     "SavedScreenersFile": frozenset({"schema_version", "saves"}),
     "ScreenerResponse": frozenset({
-        "status", "rows", "has_more", "scanned_at_ms", "warnings", "intraday_failure", "depth_coverage", "depth_values",
+        "status", "rows", "has_more", "scanned_at_ms", "basis_at_ms", "fallback_basis_at_ms",
+        "warnings", "intraday_failure", "depth_coverage", "depth_values",
         "history_coverage", "bar_coverage",
     }),
     "ScreenerRow": frozenset({"code", "name", "market", "price", "change_pct", "trade_value_won", "price_date",

@@ -76,10 +76,15 @@ function renderController() {
 it('hydration prunes first then accepts the refreshed result and its latest evidence', async () => {
   vi.spyOn(api, 'listScreenerExclusions').mockResolvedValue({ schema_version: 1, exclusions: [excluded] });
   const refreshed = { ...pruneExcludedRows(scan, [excluded]).rows[0], price: 999 };
-  vi.spyOn(api, 'runScan').mockResolvedValue({ status: 'ok', warnings: [], rows: [refreshed] });
+  const refresh = vi.spyOn(api, 'runScan').mockResolvedValue({ status: 'ok', warnings: [], rows: [refreshed],
+    basis_at_ms: 123, fallback_basis_at_ms: 100 });
+  useScreenerPanelStore.getState().setLastScan({ ...scan, basis: 'eod',
+    requestJson: JSON.stringify({ ...JSON.parse(scan.requestJson!), basis: 'eod' }) });
   renderController();
   await waitFor(() => expect(useScreenerPanelStore.getState().lastScan?.rows[0].price).toBe(999));
   expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(false);
+  expect(refresh).toHaveBeenCalledWith(expect.objectContaining({ basis: 'auto' }));
+  expect(useScreenerPanelStore.getState().lastScan).toMatchObject({ basis: 'auto', basisAtMs: 123, fallbackBasisAtMs: 100 });
 });
 
 it('a committed exclusion remains known even if reloading the list fails', async () => {

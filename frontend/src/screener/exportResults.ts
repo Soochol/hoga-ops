@@ -1,5 +1,6 @@
 import type { PanelScan } from '../state/screenerPanel';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
+import { scanBasisLabel } from './scanBasisLabel';
 
 /** 숫자는 숫자로, 외부 텍스트는 스프레드시트 수식으로 실행되지 않게 내보낸다. */
 function csvCell(value: string | number | null | undefined): string {
@@ -34,7 +35,7 @@ export function resultsCsv(
       `'${row.code}`, row.name, row.market, row.price, row.change_pct, row.price_date,
       row.trade_value_won, quote?.price, quote?.change_pct,
       quote?.expected_price, quote?.expected_change_pct,
-      scan.basis === 'intraday' ? '오늘 장중' : '전일 확정', kstTimestamp(scan.scannedAtMs),
+      scanBasisLabel(scan), kstTimestamp(scan.scannedAtMs),
       kstTimestamp(exportedAtMs), scan.savedName ?? '임시 조건',
       scan.requestJson ?? scan.scanKey ?? '기록 없음',
       [...scan.warnings, ...(scan.intradayFailure ? [JSON.stringify(scan.intradayFailure)] : [])].join(' | '),
