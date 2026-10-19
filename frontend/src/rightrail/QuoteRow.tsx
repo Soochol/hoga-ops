@@ -71,7 +71,7 @@ export interface QuoteRowProps {
   // chevron+라벨 구조보다 종목명이 왼쪽에서 시작해 위계가 역전되던 것을 밀어냈다
   // (실측 @1.0× 다이얼: 라벨 시작 990px < 종목명 992px — 여유 2px).
   // 지금은 우측 레일 네 리스트의 **종목명 시작 x 를 맞추는 계약**이다. 관심·히트맵·
-  // 스크리너는 이 prop 으로, 순위는 leading 순위번호(w-5 + gap-2 = 1.75rem)가 pl-md 위에
+  // 스크리너는 이 prop 으로, 순위는 leading 순위번호와 독립 간격이 pl-md 위에
   // 얹혀 같은 2.5rem 에 떨어진다. 셋 다 rem 이라 밀도 다이얼을 돌려도 함께 움직인다.
   // 스크리너는 "평면 목록이라 폭 절약"을 근거로 2026-08-18 까지 홀로 미전달이었고,
   // 그래서 이름 열이 1.75rem 왼쪽에서 시작해 패널 토글 때 이름 열이 튀었다.
@@ -194,7 +194,7 @@ export function QuoteRow({
       {/* 종목명은 가격(text-sm)보다 의도적으로 작게(text-xs) — 그룹 헤더(text-sm/600) >
           종목명 크기 위계 + 가격이 1차 콘텐츠. 등락(text-xs)과는 서체(mono)·색으로 구분.
           flex 아이템은 min-w-0, 내부 이름은 block truncate 로 폭을 제한한다.
-          가격/% 는 flex-none 공통폭(기본 고정폭, 관심종목은 측정폭)이라
+          가격/% 는 flex-none 공통폭(기본 고정폭, 반응형 패널은 측정폭)이라
           종목명이 대신 잘리고(전체 이름은 행 aria-label), 행마다 우측 끝자리가 정렬된다. */}
       <span className="quote-row-name flex-1 min-w-0">
         <span onMouseEnter={(e) => nameTip.show(e.currentTarget)} onMouseLeave={nameTip.hide} className={`block truncate text-xs leading-tight ${selected !== undefined && active ? 'font-semibold text-accent' : selected !== undefined && matched ? 'font-semibold text-fg' : 'text-fg'}`}>

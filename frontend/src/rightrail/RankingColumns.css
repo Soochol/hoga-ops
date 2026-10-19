@@ -1,0 +1,8 @@
+.quote-row-fluid > .ranking-rank {
+  /* Keep the name at the shared indent while numeric-column gaps shrink.
+     The rank/name gap is independent of the other flex gaps. */
+  width: var(--quote-rank-width);
+  margin-right: calc(var(--quote-rank-gap) - var(--quote-column-gap));
+  white-space: nowrap;
+}
+.ranking-net-buy { display: block; text-align: right; white-space: nowrap; }
