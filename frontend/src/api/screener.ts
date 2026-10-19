@@ -3,7 +3,8 @@ import type { WireDataWarning } from './dataWarnings';
 
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams { min_eok: number }
-export interface BreakoutParams { lookback: number; period: number }
+export interface CandleOptions { timeframe?: ScreenerTimeframe; include_open_bar?: boolean }
+export interface BreakoutParams extends CandleOptions { lookback: number; period: number }
 export type ScreenerTimeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m' | 'D' | 'W' | 'M';
 export interface VolumeBreakoutParams extends BreakoutParams {
   timeframe?: ScreenerTimeframe; include_open_bar?: boolean;
@@ -16,6 +17,10 @@ export interface BarVolumeRangeParams {
 export type VolumeParams = VolumeBreakoutParams | HistoryVolumeParams | BarVolumeRangeParams;
 export interface BarVolumeMatch {
   timeframe: ScreenerTimeframe; volume: number; maximum: number;
+  window_start_ms: number; is_open: boolean; fetched_at_ms: number;
+}
+export interface BarPriceMatch {
+  timeframe: ScreenerTimeframe; source: MaSource; value: number; reference: number;
   window_start_ms: number; is_open: boolean; fetched_at_ms: number;
 }
 export interface BarVolumeCoverageItem { code: string; condition_id: string; reason: string }
@@ -46,17 +51,17 @@ export interface HistoryJob {
   current_code: string | null; started_at_ms: number; cancel_requested: boolean;
   coverage: HistoryCoverage | null;
 }
-export interface PeriodParams { period: number }
+export interface PeriodParams extends CandleOptions { period: number }
 export interface TradeValuePeriodParams { lookback: number; min_eok: number }
 export type ChangePctOp = 'gte' | 'lte' | 'between';
 export interface ChangePctParams { op: ChangePctOp; pct?: number; lo?: number; hi?: number }
 export interface PriceRangeParams { min?: number; max?: number }
 // 최근 period일 고가 peak 대비 현재 고가 위치. within=고점 −pct% 이내 / outside=이외.
 export type HighOffPeakSide = 'within' | 'outside';
-export interface HighOffPeakParams { period: number; pct: number; side: HighOffPeakSide }
+export interface HighOffPeakParams extends CandleOptions { period: number; pct: number; side: HighOffPeakSide }
 export type MaRelation = 'above' | 'below';
 export type MaSource = 'open' | 'high' | 'low' | 'close';
-export interface MaParams { period: number; relation: MaRelation; source?: MaSource }
+export interface MaParams extends CandleOptions { period: number; relation: MaRelation; source?: MaSource }
 // 매도/매수 총잔량 분봉 peak 신고: 당일 peak ≥ (threshold_pct/100) × 지난 N일 peak.
 export interface DepthPeakParams { lookback: number; threshold_pct: number }
 // 기간내 매도/매수 총잔량 peak: 최근 lookback 거래일 중 **어느 하루 d 라도**
@@ -517,6 +522,7 @@ export const deletePatternSave = (id: string) =>
 export interface ScreenerOccurrence {
   bar_start_ms?: number | null;
   bar_match?: BarVolumeMatch | null;
+  bar_price_match?: BarPriceMatch | null;
   history_match?: HistoryMatch | HistoryTradeValueMatch | null;
   condition_id: string;
   condition_key: string;

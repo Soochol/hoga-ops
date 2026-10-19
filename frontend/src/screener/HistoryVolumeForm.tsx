@@ -78,7 +78,7 @@ export function HistoryVolumeForm({ params, onChange }: {
     <p className="text-2xs text-fg-dim">{legacyHistory
       ? '기간 중 한 번 이상 · 동률 포함 · 보정 거래량 기준. 년 단위는 당일까지 달력 기준이며 시작 경계일은 제외합니다.'
       : `선택 주기의 봉수 기준 · 동률 포함 · ${minute ? 'KRX 정규장 · 원본 거래량' : 'KRX 일봉 코퍼스 · 보정 거래량'}. 진행 중 봉은 조회 시점까지 반영합니다.`}
-      {' '}다른 현재가·이동평균 조건은 최신일 기준으로 함께 적용됩니다.
+      {' '}각 조건은 자기 주기와 평가 범위로 판정하며, 충족 종목을 AND로 결합합니다.
     </p>
   </div>;
 }

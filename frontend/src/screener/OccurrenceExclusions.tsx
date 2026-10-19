@@ -1,3 +1,4 @@
+import { BarMatchEvidence } from './BarMatchEvidence';
 import { occurrenceTimeLabel } from './occurrenceTime';
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
@@ -70,9 +71,7 @@ export function OccurrenceLabel({ occurrence, controller }: { occurrence: Screen
 function OccurrenceEvidence({ occurrence, fallback }: {
   occurrence: ScreenerOccurrence; fallback?: ScreenerRow['history_matches'];
 }) {
-  if (occurrence.bar_match) return <span className="font-data text-right text-fg-dim">
-    {occurrence.bar_match.volume.toLocaleString('ko-KR')}주 · {occurrence.bar_match.is_open ? '진행 중' : '완료'}
-  </span>;
+  if (occurrence.bar_match || occurrence.bar_price_match) return <BarMatchEvidence event={occurrence} />;
   const evidence = occurrence.history_match
     ?? fallback?.find(item => item.condition_id === occurrence.condition_id && item.date === occurrence.date);
   if (!evidence) return <span className="font-data text-right text-fg-dim">—</span>;
