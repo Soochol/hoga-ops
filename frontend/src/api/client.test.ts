@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../config', () => ({
   loadConfig: vi.fn(async () => ({ api_url: 'http://test' })),
@@ -19,7 +19,22 @@ function mockFetch(status: number, body: unknown) {
 }
 
 describe('buildApiError (via apiCall)', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   beforeEach(() => { vi.clearAllMocks(); __resetConfigForTests(); });
+
+  it('reports historical cache provenance in opt-in logs without logging numeric rows', async () => {
+    vi.stubEnv('VITE_HOGA_PERF_DEBUG', '1');
+    const body = { cached_batches: ['20261001__20261016'], fresh_batches: ['20261019__20261019'],
+      points: [{ foreign_net: 987654321 }], data_warnings: [] };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(body)));
+    const log = vi.spyOn(console, 'info').mockImplementation(() => {});
+    expect(await apiCall('/api/live/past-investor-net?code=005930')).toEqual(body);
+    const message = String(log.mock.calls.at(-1)?.[0]);
+    const event = JSON.parse(message.slice(message.indexOf('{')));
+    expect(event.history).toEqual({ cached_batches: body.cached_batches, fresh_batches: body.fresh_batches,
+      points_count: 1, data_warnings_count: 0 });
+    expect(message).not.toContain('987654321');
+  });
 
   it('surfaces a FastAPI 422 validation reason instead of "<status> <path>"', async () => {
     mockFetch(422, { detail: [

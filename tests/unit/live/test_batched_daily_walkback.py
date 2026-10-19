@@ -9,6 +9,7 @@ thin adapter smoke tests in test_api.py.
 from __future__ import annotations
 
 import asyncio
+import time
 from datetime import date, datetime
 
 import httpx
@@ -454,6 +455,92 @@ def _empty_response_violation():
     return DailyInvariantViolation(
         date_yyyymmdd="(empty)", reason="malformed_row", detail="unparsable dt ''",
     )
+
+
+def test_joined_today_is_ttl_only_and_its_dated_warning_does_not_freeze_in_past():
+    cache = PastDailyCandlesCache()
+    today = date(2026, 10, 19)
+    old = date(2026, 10, 16)
+    row_warning = DailyInvariantViolation(date_yyyymmdd="20261019", reason="malformed_row", detail="today row")
+    batch_warning = _empty_response_violation()
+    calls = []
+
+    async def fetch(code, frm, to):
+        calls.append((frm, to))
+        return [{"t_ms": _t_ms(old), "v": 1}, {"t_ms": _t_ms(today), "v": 2}], [row_warning, batch_warning], None
+
+    out = _run(batched_daily_walkback(cache=cache, fetch_batch=fetch, output_key="points",
+        code="005930", frm=old, too=today, today_d=today, include_today_in_latest_gap=True))
+    assert calls == [("20261016", "20261019")]
+    assert out["fresh_batches"] == ["20261016__20261019"]
+    assert all(w["batch"] in out["fresh_batches"] for w in out["data_warnings"])
+    assert len(out["data_warnings"]) == 2
+    batches = cache.list_batches("005930")
+    assert batches[0][2] == [{"t_ms": _t_ms(old), "v": 1}]
+    assert batches[0][3] == [batch_warning]
+    assert cache.get_today("005930") == ("hit", {"t_ms": _t_ms(today), "v": 2})
+
+
+def test_failed_joined_fetch_does_not_cache_today_negative_and_fallback_can_recover():
+    cache = PastDailyCandlesCache()
+    today = date(2026, 10, 19)
+    calls = []
+
+    async def fetch(code, frm, to):
+        calls.append((frm, to))
+        if frm != to:
+            raise KiwoomTransportError("history unavailable")
+        return [{"t_ms": _t_ms(today), "v": 5}], [], None
+
+    out = _run(batched_daily_walkback(cache=cache, fetch_batch=fetch, output_key="points",
+        code="005930", frm=date(2026, 10, 16), too=today, today_d=today, include_today_in_latest_gap=True))
+    assert calls == [("20261016", "20261019"), ("20261019", "20261019")]
+    assert out["points"] == [{"t_ms": _t_ms(today), "v": 5}]
+    assert out["data_warnings"]
+    assert cache.list_batches("005930") == []
+    assert cache.get_today("005930")[0] == "hit"
+
+
+@pytest.mark.parametrize("latest_rows", [True, False])
+def test_long_joined_walk_refreshes_today_instead_of_reaging_its_old_first_page(latest_rows):
+    cache = PastDailyCandlesCache()
+    now = time.monotonic()
+    cache._today_mem._clock = lambda: now
+    today = date(2026, 10, 19)
+    calls = []
+
+    async def fetch(code, frm, to):
+        nonlocal now
+        calls.append((frm, to))
+        if frm != to:
+            now += 120
+            return [{"t_ms": _t_ms(date(2026, 10, 16)), "v": 1},
+                    {"t_ms": _t_ms(today), "v": 2}], [], None
+        return ([{"t_ms": _t_ms(today), "v": 3}] if latest_rows else []), [], None
+
+    out = _run(batched_daily_walkback(cache=cache, fetch_batch=fetch, output_key="points",
+        code="005930", frm=date(2026, 10, 16), too=today, today_d=today, include_today_in_latest_gap=True))
+    assert calls == [("20261016", "20261019"), ("20261019", "20261019")]
+    if latest_rows:
+        assert out["points"][-1] == {"t_ms": _t_ms(today), "v": 3}
+        assert cache.get_today("005930") == ("hit", {"t_ms": _t_ms(today), "v": 3})
+    else:
+        assert out["points"] == [{"t_ms": _t_ms(date(2026, 10, 16)), "v": 1}]
+        assert cache.get_today("005930")[0] == "negative"
+
+
+def test_today_join_never_expands_an_older_interior_gap_over_cached_history():
+    today = date(2026, 10, 19)
+    cache = _FakeCache(batches=[(date(2026, 10, 16), date(2026, 10, 18), [])])
+    calls = []
+
+    async def fetch(code, frm, to):
+        calls.append((frm, to))
+        return [], [], None
+
+    _run(batched_daily_walkback(cache=cache, fetch_batch=fetch, output_key="points",
+        code="005930", frm=date(2026, 10, 15), too=today, today_d=today, include_today_in_latest_gap=True))
+    assert calls == [("20261015", "20261015"), ("20261019", "20261019")]
 
 
 def test_cache_hit_still_reports_the_violation_the_cold_call_reported() -> None:
