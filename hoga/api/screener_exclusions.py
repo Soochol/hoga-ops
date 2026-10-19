@@ -54,9 +54,19 @@ def load_exclusions(data_dir: Path) -> ScreenerExclusionsFile:
 
 
 def exclusion_keys(file: ScreenerExclusionsFile) -> set[tuple]:
-    return {(e.condition_key, e.code, e.date.isoformat(), e.bar_start_ms)
-            if e.bar_start_ms is not None else (e.condition_key, e.code, e.date.isoformat())
-            for e in file.exclusions}
+    keys: set[tuple] = set()
+    for item in file.exclusions:
+        suffix = (item.code, item.date.isoformat())
+        if item.bar_start_ms is not None:
+            suffix += (item.bar_start_ms,)
+        keys.add((item.condition_key, *suffix))
+        # The UI now always includes open candles. Carry old closed-only
+        # dismissals forward without rewriting their IDs or restore history.
+        if getattr(item.condition.params, "include_open_bar", True) is False:
+            params = item.condition.params.model_copy(update={"include_open_bar": True})
+            condition = item.condition.model_copy(update={"params": params})
+            keys.add((condition_key(condition), *suffix))
+    return keys
 
 
 async def put_exclusion(data_dir: Path, req: ScreenerExclusionWrite) -> ScreenerExclusion:

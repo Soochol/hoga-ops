@@ -26,6 +26,14 @@ describe('screenerDraft', () => {
     expect(readScreenerDraft()).toEqual(DRAFT);
   });
 
+  it('restores an old closed-only draft with current candles included', () => {
+    const leaf = DRAFT.conditions[0];
+    persistScreenerDraft({ ...DRAFT, conditions: [{ ...leaf,
+      params: { ...leaf.params, timeframe: 'W', include_open_bar: false } } as typeof leaf] });
+    expect(readScreenerDraft()).toEqual({ ...DRAFT, conditions: [{ ...leaf,
+      params: { ...leaf.params, timeframe: 'W', include_open_bar: true } }] });
+  });
+
   it('falls back to empty when conditions are not a leaf array', () => {
     localStorage.setItem('screenerDraft.v1', JSON.stringify({
       conditions: [{ id: 'c' }], // no string type

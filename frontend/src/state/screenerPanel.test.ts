@@ -34,6 +34,17 @@ const SCAN: PanelScan = {
 };
 
 describe('screenerPanel store', () => {
+  it.each(['requestJson', 'scanKey'])('drops a closed-only snapshot identified by %s', async field => {
+    const request = JSON.stringify({ conditions: [{ id: 'c', type: 'ma',
+      params: { period: 20, relation: 'above', include_open_bar: false } }] });
+    localStorage.setItem('screenerPanel.v1', JSON.stringify({ selectedSavedId: 's1',
+      lastScan: { ...SCAN, requestJson: undefined, [field]: request } }));
+    vi.resetModules();
+    vi.setSystemTime(NOW);
+    const { useScreenerPanelStore: fresh } = await import('./screenerPanel');
+    expect(fresh.getState().selectedSavedId).toBe('s1');
+    expect(fresh.getState().lastScan).toBeNull();
+  });
   beforeEach(() => {
     localStorage.clear();
     vi.useFakeTimers();

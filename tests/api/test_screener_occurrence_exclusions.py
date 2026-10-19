@@ -93,6 +93,26 @@ async def test_write_failure_does_not_claim_success(tmp_path, monkeypatch):
     assert exclusions.load_exclusions(tmp_path).exclusions == []
 
 
+@pytest.mark.parametrize("bar_start_ms", [None, 1788912000000])
+async def test_closed_only_exclusion_survives_open_candle_migration_and_restore(tmp_path, bar_start_ms):
+    from hoga.api.models import ScreenerExclusionWrite
+
+    old = leaf(type="new_high_vol", lookback=3, period=12, timeframe="5m", include_open_bar=False)
+    current = leaf(type="new_high_vol", lookback=3, period=12, timeframe="5m", include_open_bar=True)
+    item = await exclusions.put_exclusion(tmp_path, ScreenerExclusionWrite(condition=old, code="005930",
+        date=dt.date(2026, 9, 9), stock_name="삼성전자", bar_start_ms=bar_start_ms))
+    file = exclusions.load_exclusions(tmp_path)
+    suffix = ("005930", "2026-09-09") + (() if bar_start_ms is None else (bar_start_ms,))
+    keys = exclusions.exclusion_keys(file)
+    assert keys == {(exclusions.condition_key(old), *suffix), (exclusions.condition_key(current), *suffix)}
+    other = leaf(type="new_high_vol", lookback=3, period=13, timeframe="5m")
+    assert (exclusions.condition_key(other), *suffix) not in keys
+    assert file.exclusions[0].id == item.id
+    assert file.exclusions[0].condition.params.include_open_bar is False
+    await exclusions.restore_exclusion(tmp_path, item.id)
+    assert exclusions.exclusion_keys(exclusions.load_exclusions(tmp_path)) == set()
+
+
 def test_history_keeps_all_dates_and_applies_exclusions_before_join(corpus):
     condition = leaf(mode="date_range", start_date="2026-09-07", end_date="2026-09-09", min_eok=1)
     dates = [dt.date(2026, 9, d) for d in (7, 8, 9)]
@@ -125,7 +145,8 @@ def test_current_conditions_use_actual_corpus_day(corpus, type, params):
     assert [r.code for r in remaining] == ['000660']
 
 
-async def test_real_scan_http_reloads_exclusions_and_restores_latest(corpus):
+@pytest.mark.parametrize("closed_only_exclusions", [False, True])
+async def test_real_scan_http_reloads_exclusions_and_restores_latest(corpus, closed_only_exclusions):
     from hoga.api.screener import build_router
     sdir = corpus / 'screener'
     sdir.mkdir()
@@ -135,6 +156,7 @@ async def test_real_scan_http_reloads_exclusions_and_restores_latest(corpus):
     app = FastAPI()
     app.include_router(build_router(data_dir=corpus))
     condition = leaf()
+    excluded_condition = leaf(lookback=3, min_eok=1, include_open_bar=False) if closed_only_exclusions else condition
     request = {'conditions': [condition.model_dump()], 'limit': 1}
     async with AsyncClient(transport=ASGITransport(app=app), base_url='http://test') as client:
         before = (await client.post('/api/screener/scan', json=request)).json()
@@ -143,7 +165,7 @@ async def test_real_scan_http_reloads_exclusions_and_restores_latest(corpus):
         identities = []
         for day in (7, 8, 9):
             response = await client.put('/api/screener/exclusions', json={
-                'condition': condition.model_dump(), 'code': '005930', 'stock_name': '삼성전자',
+                'condition': excluded_condition.model_dump(), 'code': '005930', 'stock_name': '삼성전자',
                 'date': f'2026-09-0{day}',
             })
             identities.append(response.json()['id'])

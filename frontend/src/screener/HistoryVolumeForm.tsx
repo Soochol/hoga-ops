@@ -70,11 +70,6 @@ export function HistoryVolumeForm({ params, onChange }: {
       <Num ariaLabel="신고 기준 기간(봉)" w="w-16" min={1} max={1000} value={params.period}
         onChange={value => onChange({ ...params, period: value ?? 1 })} />봉 신고
     </div>}
-    {!legacyHistory && <label className="inline-flex items-center gap-2 text-sm">
-      <input type="checkbox" checked={includeOpenBar}
-        onChange={e => onChange({ ...params, include_open_bar: e.target.checked } as VolumeParams)} />
-      진행 중 봉 포함
-    </label>}
     <p className="text-2xs text-fg-dim">{legacyHistory
       ? '기간 중 한 번 이상 · 동률 포함 · 보정 거래량 기준. 년 단위는 당일까지 달력 기준이며 시작 경계일은 제외합니다.'
       : `선택 주기의 봉수 기준 · 동률 포함 · ${minute ? 'KRX 정규장 · 원본 거래량' : 'KRX 일봉 코퍼스 · 보정 거래량'}. 진행 중 봉은 조회 시점까지 반영합니다.`}

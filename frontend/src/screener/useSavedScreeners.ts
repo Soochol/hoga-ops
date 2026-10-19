@@ -1,8 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listSaves, createSave, updateSave, deleteSave, type SaveWriteRequest } from '../api/savedScreeners';
+import { listSaves, createSave, updateSave, deleteSave, type SaveWriteRequest, type SavedScreenerListResponse } from '../api/savedScreeners';
 import { SCREENER_SAVES_KEY as KEY } from './screenerKeys';
+import { includeOpenBars } from './candlePolicy';
 
-export const useSavedScreeners = () => useQuery({ queryKey: KEY, queryFn: listSaves });
+const withOpenBars = (data: SavedScreenerListResponse) => ({ ...data,
+  saves: data.saves.map(save => ({ ...save, conditions: includeOpenBars(save.conditions) })),
+});
+export const useSavedScreeners = () => useQuery({ queryKey: KEY, queryFn: listSaves, select: withOpenBars });
 
 export function useSaveMutations() {
   const qc = useQueryClient();

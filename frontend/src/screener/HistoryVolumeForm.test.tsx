@@ -23,8 +23,7 @@ it('changes minute/day/week/month without changing the candle counts', () => {
       expect(screen.getByRole('status')).toHaveTextContent('"timeframe":"3m"');
     }
   }
-  fireEvent.click(screen.getByLabelText('진행 중 봉 포함'));
-  expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":false');
+  expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
 });
 
 it('preserves date bounds when converting old daily history to candle counts', () => {
@@ -48,11 +47,13 @@ describe('saved conditions', () => {
 });
 
 it('keeps the open-bar policy and comparison count when switching the search window', () => {
-  render(<Editor initial={{ lookback: 3, period: 12, timeframe: '5m', include_open_bar: false }} />);
+  render(<Editor initial={{ lookback: 3, period: 12, timeframe: '5m', include_open_bar: true }} />);
   fireEvent.change(screen.getByLabelText('거래량 검색 기간'), { target: { value: 'date_range' } });
-  expect(screen.getByLabelText('진행 중 봉 포함')).not.toBeChecked();
+  expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
   expect(screen.getByLabelText('거래량 비교 기간')).toHaveValue(12);
   fireEvent.change(screen.getByLabelText('거래량 검색 기간'), { target: { value: 'recent' } });
-  expect(screen.getByLabelText('진행 중 봉 포함')).not.toBeChecked();
+  expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
   expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue(12);
 });

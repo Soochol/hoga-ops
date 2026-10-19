@@ -14,10 +14,10 @@ function AmountEditor({ initial }: { initial: TradeValuePeriodOptions }) {
 }
 
 it('preserves amount/timeframe/open policy when switching recent/date modes', () => {
-  render(<AmountEditor initial={{ timeframe: '5m', include_open_bar: false, min_eok: 123, lookback: 7 }} />);
+  render(<AmountEditor initial={{ timeframe: '5m', include_open_bar: true, min_eok: 123, lookback: 7 }} />);
   fireEvent.change(screen.getByLabelText('거래대금 검색 기간'), { target: { value: 'date_range' } });
   expect(screen.getByLabelText('분봉 간격')).toHaveValue('5m');
-  expect(screen.getByLabelText('진행 중 봉 포함')).not.toBeChecked();
+  expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('"timeframe":"5m"');
   fireEvent.change(screen.getByLabelText('거래대금 발생 시작일'), { target: { value: '2026-07-01' } });
   fireEvent.change(screen.getByLabelText('봉 주기'), { target: { value: 'M' } });
@@ -25,7 +25,8 @@ it('preserves amount/timeframe/open policy when switching recent/date modes', ()
   fireEvent.change(screen.getByLabelText('거래대금 검색 기간'), { target: { value: 'recent' } });
   expect(screen.getByLabelText('봉 주기')).toHaveValue('M');
   expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(123);
-  expect(screen.getByLabelText('진행 중 봉 포함')).not.toBeChecked();
+  expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
 });
 
 it('keeps legacy daily collection distinct from explicitly selected candle dates', () => {
@@ -37,15 +38,17 @@ it('keeps legacy daily collection distinct from explicitly selected candle dates
   expect(screenerRequestKey({ conditions: [condition], universe: {} })).not.toBe(
     screenerRequestKey({ conditions: [changed], universe: {} }));
   render(<AmountEditor initial={params} />);
-  fireEvent.click(screen.getByLabelText('진행 중 봉 포함'));
+  expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText('봉 주기'), { target: { value: 'W' } });
+  fireEvent.change(screen.getByLabelText('봉 주기'), { target: { value: 'D' } });
   expect(screen.getByRole('status')).toHaveTextContent('"timeframe":"D"');
-  expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":false');
+  expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
   expect(screen.getByLabelText('거래대금 발생 종료일')).toHaveValue('2022-12-31');
 });
 
 function ChangeEditor() {
   const [params, setParams] = useState<ChangePctParams>({ op: 'gte', pct: 5, timeframe: 'W',
-    include_open_bar: false, change_reference: 'previous_bar' });
+    include_open_bar: true, change_reference: 'previous_bar' });
   return <><ChangePctForm params={params} onChange={setParams} /><output>{JSON.stringify(params)}</output></>;
 }
 
@@ -59,7 +62,8 @@ it('keeps reference and candle settings across operator changes and permits rate
   fireEvent.change(screen.getByLabelText('등락률 비교 기준'), { target: { value: 'bar_open' } });
   fireEvent.change(screen.getByLabelText('등락률 연산'), { target: { value: 'lte' } });
   expect(screen.getByLabelText('봉 주기')).toHaveValue('W');
-  expect(screen.getByLabelText('진행 중 봉 포함')).not.toBeChecked();
+  expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
   expect(screen.getByLabelText('등락률 비교 기준')).toHaveValue('bar_open');
 });
 

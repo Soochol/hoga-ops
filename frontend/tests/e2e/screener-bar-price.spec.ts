@@ -10,11 +10,11 @@ test('five candle conditions preserve independent timeframes, counts and policy 
   page.on('pageerror', error => errors.push(error.message));
   let saved = { id: 'bar-prices', name: '주기별 가격 조건', universe: {}, created_at_ms: 1, updated_at_ms: 1,
     conditions: [
-      { id: 'high', type: 'new_high_today', params: { period: 20 } },
-      { id: 'period-high', type: 'new_high', params: { lookback: 10, period: 60 } },
-      { id: 'volume', type: 'new_high_vol_today', params: { period: 30 } },
-      { id: 'near', type: 'high_off_peak', params: { period: 52, pct: 10, side: 'within' } },
-      { id: 'average', type: 'ma', params: { period: 20, relation: 'above' } },
+      { id: 'high', type: 'new_high_today', params: { period: 20, include_open_bar: false } },
+      { id: 'period-high', type: 'new_high', params: { lookback: 10, period: 60, include_open_bar: false } },
+      { id: 'volume', type: 'new_high_vol_today', params: { period: 30, include_open_bar: false } },
+      { id: 'near', type: 'high_off_peak', params: { period: 52, pct: 10, side: 'within', include_open_bar: false } },
+      { id: 'average', type: 'ma', params: { period: 20, relation: 'above', include_open_bar: false } },
     ] as ConditionLeaf[] };
   const scans: ScanRequest[] = [];
   await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok', warnings: [] } }));
@@ -42,19 +42,19 @@ test('five candle conditions preserve independent timeframes, counts and policy 
   await expect(page.getByLabel('봉 주기')).toHaveCount(5);
   for (const [index, value] of ['minute', 'W', 'minute', 'M', 'D'].entries()) {
     await page.getByLabel('봉 주기', { exact: true }).nth(index).selectOption(value);
-    await page.getByLabel('진행 중 봉 포함', { exact: true }).nth(index).uncheck();
+    await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   }
   await page.getByLabel('분봉 간격').nth(1).selectOption('3m');
   await page.getByLabel('최근 기간(봉)').fill('4');
   await page.getByLabel('신고 기준 기간(봉)').nth(0).fill('12');
   await page.getByLabel('MA 기준가격').selectOption('low');
   await page.getByRole('button', { name: '저장', exact: true }).click();
-  await expect.poll(() => saved.conditions[0].params).toMatchObject({ timeframe: '5m', period: 12, include_open_bar: false });
+  await expect.poll(() => saved.conditions[0].params).toMatchObject({ timeframe: '5m', period: 12, include_open_bar: true });
   await expect(page.getByRole('button', { name: '저장본으로 되돌리기', exact: true })).toHaveCount(0);
   await page.reload();
   for (const [index, value] of ['minute', 'W', 'minute', 'M', 'D'].entries()) {
     await expect(page.getByLabel('봉 주기', { exact: true }).nth(index)).toHaveValue(value);
-    await expect(page.getByLabel('진행 중 봉 포함', { exact: true }).nth(index)).not.toBeChecked();
+    await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   }
   await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('4');
   await expect(page.getByLabel('신고 기준 기간(봉)').nth(0)).toHaveValue('12');
@@ -72,11 +72,11 @@ test('five candle conditions preserve independent timeframes, counts and policy 
   await page.setViewportSize({ width: 768, height: 1000 });
   for (const label of ['신고가', '기간내 신고가', '신고거래량', '신고가 대비 고가', '이동평균']) {
     const card = page.getByRole('group', { name: `${label} 조건`, exact: true });
-    const checkbox = card.getByLabel('진행 중 봉 포함');
-    await checkbox.scrollIntoViewIfNeeded();
-    await expect(checkbox).toBeVisible();
+    const control = card.getByLabel('봉 주기');
+    await control.scrollIntoViewIfNeeded();
+    await expect(control).toBeVisible();
     const bounds = await card.boundingBox();
-    const input = await checkbox.boundingBox();
+    const input = await control.boundingBox();
     expect(input!.y + input!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height);
   }
   await page.screenshot({ path: testInfo.outputPath('bar-price-narrow.png'), fullPage: true });

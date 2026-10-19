@@ -24,24 +24,26 @@ describe.each(kinds)('%s candle editor', kind => {
     render(<Editor kind={kind} />);
     const original = JSON.parse(screen.getByRole('status').textContent!);
     expect(screen.getByLabelText('봉 주기')).toHaveValue('D');
-    fireEvent.click(screen.getByLabelText('진행 중 봉 포함'));
+    expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
     for (const value of ['minute', 'W', 'M', 'D']) {
       fireEvent.change(screen.getByLabelText('봉 주기'), { target: { value } });
       if (value === 'minute') {
         fireEvent.change(screen.getByLabelText('분봉 간격'), { target: { value: '15m' } });
       }
-      expect(JSON.parse(screen.getByRole('status').textContent!)).toEqual({ ...original,
-        timeframe: value === 'minute' ? '15m' : value, include_open_bar: false });
+      const current = JSON.parse(screen.getByRole('status').textContent!);
+      expect(current).toMatchObject({ ...original,
+        timeframe: value === 'minute' ? '15m' : value });
+      expect(current.include_open_bar ?? true).toBe(true);
     }
     if (kind === 'ma') {
       fireEvent.change(screen.getByLabelText('MA 기준가격'), { target: { value: 'low' } });
       expect(JSON.parse(screen.getByRole('status').textContent!)).toMatchObject({
-        source: 'low', timeframe: 'D', include_open_bar: false });
+        source: 'low', timeframe: 'D' });
     }
     if (kind === 'high_off_peak') {
       fireEvent.change(screen.getByLabelText('이내/이외'), { target: { value: 'outside' } });
       expect(JSON.parse(screen.getByRole('status').textContent!)).toMatchObject({
-        side: 'outside', timeframe: 'D', include_open_bar: false });
+        side: 'outside', timeframe: 'D' });
     }
   });
 
