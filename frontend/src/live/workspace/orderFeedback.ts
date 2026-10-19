@@ -10,16 +10,16 @@ export interface OrderNotice {
   retry?: boolean;
 }
 
-interface NewOrderAvailability {
+interface NewOrderInput {
   accountsLoading: boolean; configured: boolean; account: TradingAccountId; accountError: unknown;
   stateReady: boolean; stateError: unknown; busy: boolean; unresolved: boolean;
   settingsOpen: boolean; locked: boolean; stored: boolean; singlePrice: boolean;
-  hasBook: boolean; fresh: boolean;
+  hasBook: boolean; fresh: boolean; quantity: number | null;
   brokerBlocked?: string | null;
 }
 
-/** Availability issues are shared by the inline status and command guard. */
-export function newOrderAvailabilityIssue(input: NewOrderAvailability): OrderNotice | null {
+/** Block invalid commands and report the reason through the order toast. */
+export function newOrderIssue(input: NewOrderInput): OrderNotice | null {
   if (input.busy) return { title: '주문 처리 중', message: '진행 중인 요청의 결과를 기다리고 있습니다.', tone: 'neutral' };
   if (input.accountsLoading) return { title: '계좌 확인 중', message: '주문 계좌를 불러오고 있습니다.', tone: 'neutral' };
   const error = input.accountError ?? input.stateError;
@@ -35,13 +35,6 @@ export function newOrderAvailabilityIssue(input: NewOrderAvailability): OrderNot
   if (input.singlePrice) return { title: '신규 주문 불가', message: '현재 표시 중인 시간외 단일가 호가에서는 지정가 주문을 지원하지 않습니다.', tone: 'warn' };
   if (!input.hasBook) return { title: '주문 대기', message: '실시간 호가를 기다리고 있습니다.', tone: 'warn' };
   if (!input.fresh) return { title: '주문 대기', message: '실시간 호가가 오래되었습니다. 최신 호가를 기다리고 있습니다.', tone: 'warn' };
-  return null;
-}
-
-/** Validate draft input only when an order is attempted. */
-export function newOrderIssue(input: NewOrderAvailability & { quantity: number | null }): OrderNotice | null {
-  const availabilityIssue = newOrderAvailabilityIssue(input);
-  if (availabilityIssue) return availabilityIssue;
   if (input.quantity == null || !validOrderInput(input.quantity, 'quantity')) return {
     title: '신규 주문 불가', message: '주문 수량은 1주 이상 10억주 이하의 정수로 입력하세요.', tone: 'warn',
   };

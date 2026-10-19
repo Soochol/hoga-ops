@@ -70,15 +70,13 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
-  it('호가 지연 사유를 계속 표시하고 주문 시도는 같은 토스트로 안내하며 API를 호출하지 않는다', () => {
+  it('호가 지연 사유는 상단에 표시하지 않고 주문 시도에서 토스트로 안내하며 API를 호출하지 않는다', () => {
     mock.snapshotAt = mock.now - 60_000;
     show();
-    const inline = screen.getByLabelText('신규 주문 상태');
-    expect(inline).toHaveTextContent('최신 호가를 기다리고 있습니다');
-    expect(inline).not.toHaveTextContent('거래시간');
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
     const buy = screen.getByRole('button', { name: /매수 67,200원 주문 추가/ });
-    expect(buy).toHaveAttribute('aria-describedby', inline.id);
+    expect(buy).not.toHaveAttribute('aria-describedby');
     fireEvent.doubleClick(buy);
     fireEvent.doubleClick(buy);
     expect(screen.getAllByRole('alert', { name: '주문 알림' })).toHaveLength(1);
@@ -108,7 +106,7 @@ describe('호가 주문', () => {
     expect(buy).toHaveAttribute('aria-disabled', 'false');
   });
 
-  it.each(['loading', 'unconfigured', 'account-error', 'state-error', 'unknown-result'] as const)('%s에서 신규 주문 불가 사유를 먼저 표시한다', reason => {
+  it.each(['loading', 'unconfigured', 'account-error', 'state-error', 'unknown-result'] as const)('%s에서 신규 주문 불가 사유는 주문 시도에만 토스트로 안내한다', reason => {
     mock.accountsLoading = reason === 'loading';
     mock.configured = reason !== 'unconfigured';
     mock.accountError = reason === 'account-error' ? new Error('계좌 인증에 실패했습니다') : null;
@@ -117,9 +115,11 @@ describe('호가 주문', () => {
     show();
     const text = { loading: '계좌 확인 중', unconfigured: '계좌 연결 필요', 'account-error': '계좌 인증에 실패했습니다',
       'state-error': '주문 내역을 조회할 수 없습니다', 'unknown-result': '주문 결과 확인 필요' }[reason]!;
-    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent(text);
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent(text);
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     expect(mock.command).not.toHaveBeenCalled();
   });
 
@@ -133,11 +133,11 @@ describe('호가 주문', () => {
     const toast = await screen.findByRole('alert', { name: '주문 알림' });
     expect(within(toast).getByText('주문 접수 불가')).toBeInTheDocument();
     expect(within(toast).getByText(message)).toBeInTheDocument();
-    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent(`직전 주문 접수 불가${message}`);
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
     expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '주문 알림 닫기' }));
-    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent(message);
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
     expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
   });
@@ -153,13 +153,13 @@ describe('호가 주문', () => {
     expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('최신 호가');
   });
 
-  it('계좌를 바꾸면 이전 계좌의 확정 거절 사유와 토스트를 해제한다', async () => {
+  it('계좌를 바꾸면 이전 계좌의 거절 토스트를 해제한다', async () => {
     mock.accountCount = 2;
     mock.command.mockRejectedValueOnce(Object.assign(new Error('주문 접수 시간이 아닙니다'), { code: 'order-hours-closed', status: 422 }));
     show();
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     await screen.findByRole('alert', { name: '주문 알림' });
-    expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('직전 주문 접수 불가');
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     fireEvent.change(screen.getByRole('combobox', { name: '주문 계좌' }), { target: { value: '2' } });
     expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
@@ -194,7 +194,7 @@ describe('호가 주문', () => {
       view.rerender(content());
       act(() => vi.advanceTimersByTime(60_000));
       expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('주문 결과 확인 필요');
-      expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('주문 결과 확인 필요');
+      expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
       fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
       expect(mock.command).toHaveBeenCalledOnce();
       fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
@@ -348,13 +348,17 @@ describe('호가 주문', () => {
     mock.command.mockReturnValueOnce(new Promise(done => { resolve = done; }));
     show(); enableReceiptSound();
     vi.mocked(prepareOrderReceiptSound).mockClear();
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole('button', { name: new RegExp(label) }));
     expect(prepareOrderReceiptSound).toHaveBeenCalledOnce();
     expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
     expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 중');
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: new RegExp(label) })).toHaveAttribute('aria-disabled', 'true');
     await act(async () => resolve({ command_id: mock.command.mock.calls[0][1].command_id, order_id: 'new', status: 'accepted' }));
     expect(notifyOrderReceiptAccepted).toHaveBeenCalledExactlyOnceWith(1, mock.command.mock.calls[0][1].command_id);
     expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 접수됨');
+    expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
   });
   it('소리 끄기는 접수 성공에도 오디오를 준비하거나 재생하지 않는다', async () => {
     show();
@@ -1423,7 +1427,10 @@ describe('호가 주문', () => {
       expect(api).toHaveBeenCalledTimes(1);
       expect(new URL(api.mock.calls[0][0], 'http://test').searchParams.get('t')).toBe(String(Date.UTC(2026, 9, 14, 6, 20) - 1));
       expect(frozenBuy).toHaveAttribute('aria-disabled', 'true');
-      expect(screen.getByLabelText('신규 주문 상태')).toHaveTextContent('저장된 호가는 조회만 가능합니다');
+      expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
+      fireEvent.doubleClick(frozenBuy);
+      expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('저장된 호가는 조회만 가능합니다');
+      expect(mock.command).not.toHaveBeenCalled();
       afterHours = [{ t_ms: mock.now + 1000, total_ask_qty: 0, total_bid_qty: 1640 }];
       view.rerender(content());
       for (const id of ['close-book', 'close-order']) {
