@@ -2807,7 +2807,7 @@ test('주문창 반응형 간격은 중앙 5열과 전체 숫자를 유지하고
     trades: Array.from({ length: 9 }, (_, i) => ({ price: i % 2 ? 67100 : 67200, qty: i % 2 ? 85 : 850, side: i % 2 ? -1 : 1 })) });
   await expect(window.locator('.order-trade')).toHaveCount(9);
   await page.evaluate(() => document.fonts.ready);
-  for (const width of [800, 696, 576, 559, 504, 440, 409, 360]) {
+  for (const width of [800, 696, 576, 559, 504, 480, 440, 409, 360]) {
     await window.evaluate((root, width) => { root.style.width = `${width}px`; }, width);
     await expect(window.locator('.order-depth').first()).toHaveCSS('padding-left', width >= 696 ? '6px' : width >= 560 ? '4px' : '2px');
     await expect(async () => {
@@ -2818,12 +2818,12 @@ test('주문창 반응형 간격은 중앙 5열과 전체 숫자를 유지하고
       expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
       expect(m.centered).toBeLessThan(1);
       expect(m.heights).toEqual(Array(20).fill(24));
-      if (width >= 409) expect(m.scroll).toBe(false);
+      if (width >= 480) expect(m.scroll).toBe(false);
       if (width === 360) expect(m.scroll).toBe(true);
       for (const row of m.trades) expect(row).toEqual(m.trades[0]);
     }).toPass();
     expect(await window.evaluate(root => root.scrollWidth > root.clientWidth + 1)).toBe(false);
-    if (width === 409) await window.screenshot({ path: testInfo.outputPath('order-fluid-409.png') });
+    if (width === 480) await window.screenshot({ path: testInfo.outputPath('order-fluid-480.png') });
   }
   await expect(window.locator('.order-estimate .order-field-value')).toHaveCSS('justify-content', 'flex-end');
   expect(commands).toHaveLength(0);
