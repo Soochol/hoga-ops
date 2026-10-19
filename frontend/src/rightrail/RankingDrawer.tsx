@@ -1,3 +1,6 @@
+import './RankingColumns.css';
+import { QuoteColumnProbe } from './QuoteColumnProbe';
+import { useQuoteColumns } from './useQuoteColumns';
 import { InlineState } from '../ui/DataSurface';
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -66,9 +69,12 @@ const NET_BUY_AMOUNT_FORMAT = new Intl.NumberFormat('ko-KR', {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
 });
 
+function formatNetBuyAmount(won: number | null | undefined) {
+  return won == null ? '—' : `${won > 0 ? '+' : ''}${NET_BUY_AMOUNT_FORMAT.format(won / 100_000_000)}억`;
+}
 function NetBuyAmount({ won, label }: { won: number | null | undefined; label: string }) {
-  const amount = won == null ? '—' : `${won > 0 ? '+' : ''}${NET_BUY_AMOUNT_FORMAT.format(won / 100_000_000)}억`;
-  return <span className="font-data tabular-nums text-fg-dim" title={`${label} 순매수 ${amount}`}>{amount}</span>;
+  const amount = formatNetBuyAmount(won);
+  return <span className="ranking-net-buy font-data tabular-nums text-fg-dim" title={`${label} 순매수 ${amount}`}>{amount}</span>;
 }
 
 function netBuyAmount(row: RankingRow, kind: RankingKind): number | null | undefined {
@@ -90,9 +96,9 @@ function formatUpdatedAt(ms: number | undefined): string {
 
 /** 순위번호 슬롯 — 리스트 행과 드래그 고스트가 **함께** 쓴다.
  *
- *  이 폭이 좌측 정렬 계약의 절반이다: `w-5`(1.25rem) + 행의 `gap-2`(0.5rem) = 1.75rem 이
- *  `pl-md`(0.75rem) 위에 얹혀 종목명 시작 x 를 2.5rem 으로 만든다 — 관심·히트맵이
- *  `QuoteRow indented`(pl-10)로 얻는 값과 같다(계약은 QuoteRow 의 prop 주석).
+ *  반응형 열은 순위번호~이름 구간을 별도로 계산한다. 네 자리 순위의 실제 폭과
+ *  0.125rem 간격을 보호하며 종목명 시작은 기본 2.5rem 으로 맞춘다. 나머지 숫자 열의
+ *  간격이 변해도 이 구간은 유지한다(상세 식은 RankingColumns.css).
  *
  *  **왜 컴포넌트로 빼는가**: 두 곳에 손으로 옮겨 적으면 한쪽 폭만 바뀌었을 때 드래그
  *  중에만 어긋나고, 그 순간은 스크린샷으로 잡기 가장 어려운 상태다.
@@ -103,7 +109,7 @@ function RankSlot({ rank }: { rank?: number }) {
   return (
     <span
       data-testid="ranking-rank"
-      className="w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dim"
+      className="ranking-rank w-5 flex-none text-right font-data tabular-nums text-xs text-fg-dim"
     >
       {rank}
     </span>
@@ -127,7 +133,9 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
   onOpenMenu,
   kind,
   netBuyLabel,
+  columnLayout,
 }: {
+  columnLayout: React.CSSProperties;
   row: RankingRow;
   active: boolean;
   onActivate: (row: RankingRow, e?: JumpModifiers) => void;
@@ -144,6 +152,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
+      columnLayout={columnLayout}
       name={row.name} code={row.code}
       nameTooltip=""
       price={row.price}
@@ -176,9 +185,10 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
  *     `trailingAction` 까지 싣는다). 순위 행의 좌측 슬롯은 여백이 아니라 순위번호이므로,
  *     `indented` 로 폭만 맞추면 손에 든 것이 집어 든 것과 달라지고 카드 안에 내용 없는
  *     거터가 남는다. */
-function RankingDragGhost({ ghost }: { ghost: ChartDropGhost }) {
+function RankingDragGhost({ ghost, columnLayout }: { ghost: ChartDropGhost; columnLayout: React.CSSProperties }) {
   return (
     <QuoteRow
+      columnLayout={columnLayout}
       name={ghost.name}
       nameTooltip=""
       price={ghost.price}
@@ -237,6 +247,25 @@ export function RankingDrawer() {
   // 순위가 통째로 갈리고, 잡고 있던 행이 언마운트되면 드래그가 그대로 끊긴다.
   const liveRows = useMemo(() => sortRankingRows(data?.rows ?? [], sortMode), [data?.rows, sortMode]);
   const rows = useFrozenWhileDragging(liveRows, drag.isDragging);
+  const columnScope = useFrozenWhileDragging(data ? scope : null, drag.isDragging);
+  const columnQuotes = useMemo(() => new Map(rows.map(row => [row.code, row])), [rows]);
+  const columnCodes = useMemo(() => rows.map(row => row.code), [rows]);
+  const extraFigures = useMemo(() => ({
+    // Reserve four ranks from the start so expanding through 5000 never moves names.
+    rank: ['8888', ...rows.map(row => String(row.rank))],
+    detail: netBuyLabel ? rows.flatMap(row => {
+      const won = netBuyAmount(row, kind);
+      return won == null ? ['—'] : [formatNetBuyAmount(Math.abs(won)), formatNetBuyAmount(-Math.abs(won))];
+    }) : [],
+  }), [rows, kind, netBuyLabel]);
+  const columns = useQuoteColumns(columnCodes, columnQuotes, scrollRef, columnScope, extraFigures);
+  const columnLayout = useMemo(() => ({ ...columns.layout,
+    '--quote-rank-gap': '0.125rem',
+    '--quote-name-start': '2.5rem',
+    // Use the left gutter for the four-digit figure; the name stays at 2.5rem.
+    paddingLeft: 'max(0px, calc(var(--quote-name-start) - var(--quote-rank-width) - var(--quote-rank-gap)))',
+    '--quote-name-min': 'max(calc(6 * var(--text-xs)), var(--quote-detail-width))',
+  }) as React.CSSProperties, [columns.layout]);
 
   const captureAnchor = useCallback(() => {
     const scroller = scrollRef.current;
@@ -301,6 +330,7 @@ export function RankingDrawer() {
 
   return (
     <RailDrawer id="right-rail-ranking-panel" testId="ranking-panel" ariaLabel="순위">
+      <QuoteColumnProbe probe={columns.probe} samples={columns.samples} />
       <RailDrawerHeader
         title="순위"
         actions={
@@ -432,6 +462,7 @@ export function RankingDrawer() {
             <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
               {rows.map((r) => (
                 <DraggableRankingRow
+                  columnLayout={columnLayout}
                   key={r.code}
                   row={r}
                   active={r.code === activeCode}
@@ -444,7 +475,7 @@ export function RankingDrawer() {
             </ul>
             {/* 커서를 따라오는 고스트 — 패널 밖(차트 창)까지 손에 든 것이 보인다. */}
             <RailDragOverlay droppedOnChart={drag.droppedOnChart}>
-              {drag.ghost && <RankingDragGhost ghost={drag.ghost} />}
+              {drag.ghost && <RankingDragGhost ghost={drag.ghost} columnLayout={columnLayout} />}
             </RailDragOverlay>
           </DndContext>
         )}

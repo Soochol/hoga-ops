@@ -1,12 +1,12 @@
 /* Opt-in on measured rail lists; the portal clone receives the same variables. */
 .quote-row-fluid, .quote-columns-min-width {
-  min-width: calc(2.5rem + 6 * var(--text-xs) + var(--quote-price-width) + var(--quote-percent-width) + 2 * var(--quote-column-gap) + var(--quote-right-padding));
+  min-width: calc(var(--quote-name-start, 2.5rem) + var(--quote-name-min, 6 * var(--text-xs)) + var(--quote-price-width) + var(--quote-percent-width) + 2 * var(--quote-column-gap) + var(--quote-right-padding));
 }
 .quote-row-fluid {
   gap: var(--quote-column-gap);
   padding-right: var(--quote-right-padding);
 }
-.quote-row-fluid > .quote-row-name { min-width: calc(6 * var(--text-xs)); }
+.quote-row-fluid > .quote-row-name { min-width: var(--quote-name-min, calc(6 * var(--text-xs))); }
 .quote-row-fluid > .quote-row-price { width: var(--quote-price-width); white-space: nowrap; }
 .quote-row-fluid > .quote-row-percent { width: var(--quote-percent-width); white-space: nowrap; }
 .quote-column-probe {

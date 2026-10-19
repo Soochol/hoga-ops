@@ -41,7 +41,7 @@ test('sorted expansion and polling preserve the visible stock and expanded range
   await page.goto('/live');
   await page.getByRole('button', { name: '순위 패널 토글', exact: true }).click();
   const panel = page.getByTestId('ranking-panel');
-  await panel.getByRole('button', { name: '대금', exact: true }).click();
+  await panel.getByRole('button', { name: '거래대금', exact: true }).click();
   await expect(panel.getByText('상위 100위 조회', { exact: true })).toBeVisible();
   await panel.getByRole('button', { name: '등락률 정렬', exact: true }).click();
   const more = panel.getByRole('button', { name: '101~200위 더 보기', exact: true });
@@ -84,7 +84,7 @@ test('additional request failure keeps rows and scroll, retries, and ends at the
   await page.goto('/live');
   await page.getByRole('button', { name: '순위 패널 토글', exact: true }).click();
   const panel = page.getByTestId('ranking-panel');
-  await panel.getByRole('button', { name: '대금', exact: true }).click();
+  await panel.getByRole('button', { name: '거래대금', exact: true }).click();
   const more = panel.getByRole('button', { name: '101~200위 더 보기', exact: true });
   await more.scrollIntoViewIfNeeded();
   const scroller = page.getByTestId('ranking-scroll');
