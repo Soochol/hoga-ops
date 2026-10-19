@@ -16,23 +16,26 @@ type SectionId = (typeof SECTIONS)[number]['id'];
 
 function OrderSettingsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return <section id={id} className="order-settings-section" aria-labelledby={`${id}-heading`}>
-    <h3 id={`${id}-heading`} className="mb-3 text-xl font-medium text-fg">{title}</h3>
+    <h3 id={`${id}-heading`} className="order-settings-section-title">{title}</h3>
     {children}
   </section>;
 }
 
-function OrderSettingsToggleRow({ label, icon, checked, onChange, disabled = false }: {
-  label: string; icon?: ReactNode; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean;
+function OrderSettingsToggleRow({ label, icon, actions, checked, onChange, disabled = false }: {
+  label: string; icon?: ReactNode; actions?: ReactNode; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean;
 }) {
-  return <SettingsRow label={<span className="inline-flex items-center gap-1.5">{icon}{label}</span>} disabled={disabled}>
-    <ToggleSwitch label={label} checked={checked} disabled={disabled} onClick={() => onChange(!checked)} />
+  return <SettingsRow label={<span className="inline-flex items-center gap-1.5">{icon}{label}</span>} disabled={disabled} className={actions ? 'order-settings-action-row' : ''}>
+    <div className="order-settings-toggle-controls">{actions}
+      <ToggleSwitch label={label} checked={checked} disabled={disabled} onClick={() => onChange(!checked)} />
+    </div>
   </SettingsRow>;
 }
 
 function PresetInputs({ label, suffix, max, values, onChange, disabled }: {
   label: string; suffix: string; max: number; values: OrderPresets; onChange: (values: OrderPresets) => void; disabled: boolean;
 }) {
-  return <SettingsRow label={`${label.startsWith('수량') ? '수량' : '금액'} · ${suffix}`} className="order-settings-presets-row" disabled={disabled}>
+  const wide = values.some(value => String(value).length > 7);
+  return <SettingsRow label={`${label.startsWith('수량') ? '수량' : '금액'} · ${suffix}`} className={`order-settings-presets-row${wide ? ' order-settings-presets-wide' : ''}`} disabled={disabled}>
     <div className="order-settings-presets" role="group" aria-label={label}>{values.map((value, index) =>
       <input key={index} type="number" className="ui-field font-data" aria-label={`${label} ${index + 1}`} min="1" max={max} step="1" disabled={disabled} value={Number.isNaN(value) ? '' : value}
         onChange={e => onChange(values.map((n, i) => i === index ? e.target.value === '' ? NaN : Number(e.target.value) : n) as OrderPresets)} />
@@ -100,13 +103,12 @@ export function OrderSettingsForm({ draft, onChange, busy, onClose }: {
           onChange={orderReceiptSound => {
             if (orderReceiptSound) prepareOrderReceiptSound();
             onChange({ ...draft, orderReceiptSound });
-          }} />
-        <div className="order-settings-sound-preview">
+          }} actions={
           <button type="button" className="ui-choice" disabled={busy} onClick={async () => {
             setPreviewFailed(false);
             setPreviewFailed(!await playOrderReceiptSound());
           }}>소리 들어보기</button>
-        </div>
+          } />
         {previewFailed && <p role="status" className="text-xs text-fg-dim">소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.</p>}
       </OrderSettingsSection>
       {!valid && <p role="alert" className="mt-3 text-xs text-error">프리셋은 허용 범위의 양의 정수만 저장됩니다.</p>}
