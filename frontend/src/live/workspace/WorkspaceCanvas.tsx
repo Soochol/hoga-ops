@@ -4,10 +4,9 @@
  * 드래그·스냅·좌표계 변환·캔버스 실측은 `workspace/WorkspaceCanvas` 코어가
  * 소유하고, 이 컴포넌트는 /live 전용을 담당한다: 워크스페이스 스토어 어댑팅,
  * 링크 그룹 팔레트 상태, 관심종목/스크리너 행 드래그의 정밀 드롭(entryDrag),
- * 드롭 어포던스 오버레이, 창 콘텐츠(ChartWindow/DataWindow) 렌더.
+ * 창 콘텐츠(ChartWindow/DataWindow) 렌더.
  */
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { toPx } from '../../workspace/rectSpace';
 import type { Rect, ResizeMode } from '../../workspace/snapEngine';
 import {
   WorkspaceCanvasCore,
@@ -77,7 +76,7 @@ export function WorkspaceCanvas() {
   const normalizeLegacyRects = useWorkspaceStore((s) => s.normalizeLegacyRects);
 
   const [palette, setPalette] = useState<string | null>(null);
-  // 코어의 좌표 API — ref 기반이라 참조 안정. 드롭 리졸버·어포던스가 소비.
+  // 코어의 좌표 API — ref 기반이라 참조 안정. 드롭 타깃·리졸버가 소비.
   const [api, setApi] = useState<LiveCanvasApi | null>(null);
 
   // 창 항목 memo(F6)를 위한 안정 콜백 — id 를 인자로 받으므로 창별 클로저 불필요.
@@ -101,11 +100,6 @@ export function WorkspaceCanvas() {
   const clearChartTarget = useEntryDragStore((s) => s.clearChartTarget);
   const registerChartDropResolver = useEntryDragStore((s) => s.registerChartDropResolver);
   const clearChartDropResolver = useEntryDragStore((s) => s.clearChartDropResolver);
-  // 드롭 어포던스(리뷰 F1 복구): 행 드래그 고스트는 패널 overflow 에서 잘리므로
-  // 캔버스 자체가 유일한 드롭 표시다 — 구 LiveWorkarea ChartDropOverlay 이관.
-  const draggingEntry = useEntryDragStore((s) => s.draggingCode != null);
-  const overChart = useEntryDragStore((s) => s.overChart);
-  const dragPoint = useEntryDragStore((s) => s.dragPoint);
   useEffect(() => {
     if (!api) return undefined;
     const hitTest = (clientX: number, clientY: number): boolean => {
@@ -143,99 +137,6 @@ export function WorkspaceCanvas() {
     registerChartDropResolver(resolver);
     return () => clearChartDropResolver(resolver);
   }, [api, registerChartDropResolver, clearChartDropResolver]);
-
-  // 드래그 중 호버 창(어포던스용) — dragPoint 아래 z-최상위 창. DOM 측정
-  // (getBoundingClientRect)은 effect 에서만(렌더 중 ref 접근 금지 규율).
-  //
-  // dragPoint 는 프레임당 한 번만 발행되므로 재계산 빈도가 낮다. 그 스로틀은 여기가
-  // 아니라 **발행 측**에 있다(`state/useDragPointPublisher`) — 우측 레일 세 드로어
-  // (관심종목·스크리너·순위)가 그 훅 하나를 공유한다. 새 드래그 소스를 추가하면 그
-  // 훅을 쓸 것: 직접 setDragPoint 를 치면 포인터 이동마다 여기가 강제 레이아웃을 돈다.
-  //
-  // 창 밖이면 null → 캔버스 전면 오버레이(활성 그룹 교체)로 폴백.
-  const [hoverDropWin, setHoverDropWin] = useState<WorkspaceWindow | null>(null);
-  useEffect(() => {
-    // rAF 로 측정+setState 를 커밋 이후로 미룬다 — 렌더 중 ref 접근·effect 내 동기
-    // setState 를 둘 다 피한다(react-compiler 규율). 드래그는 저빈도라 무해.
-    const raf = requestAnimationFrame(() => {
-      if (!draggingEntry || !dragPoint || !api) {
-        setHoverDropWin((prev) => (prev === null ? prev : null));
-        return;
-      }
-      const rect = api.boxRect();
-      const next = rect ? api.windowAtPoint(dragPoint.x - rect.left, dragPoint.y - rect.top) : null;
-      setHoverDropWin((prev) => (prev?.id === next?.id ? prev : next));
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [draggingEntry, dragPoint, api]);
-
-  // 호버 창 하이라이트는 px 로 그린다 — 스토어 rect 는 비율(ADR-0122)이라 그대로
-  // style 에 넣으면 1px 근처로 붕괴한다(일반화 이전의 잔존 버그 수정).
-  const hoverDropRect: Rect | null =
-    hoverDropWin && api ? toPx(hoverDropWin.rect, api.canvasSize()) : null;
-
-  const overlays = (
-    <>
-      {/* 행 드래그 드롭 어포던스. 창 위 = 그 창 하이라이트(정밀 드롭 — 핀 창이면 그 창,
-          아니면 그룹 N 교체), 창 밖 = 캔버스 전면(클릭과 같은 목적지 규칙). #711 PR-D2.
-          여백 문구가 "활성 그룹" 을 말하지 않는 이유: 목적지가 포커스 창이 아니라
-          `activationTarget`(핀 창을 건너뛴 첫 창)이라 그 표현이 더 이상 참이 아니다. */}
-      {draggingEntry && hoverDropWin && hoverDropRect && (
-        <div
-          aria-hidden
-          data-testid="workspace-drop-window-highlight"
-          className="pointer-events-none absolute z-40 flex items-center justify-center rounded-md"
-          style={{
-            left: hoverDropRect.x,
-            top: hoverDropRect.y,
-            width: hoverDropRect.w,
-            height: hoverDropRect.h,
-            background: 'var(--tint-selection)',
-            border: '2px solid var(--accent)',
-            transition: 'left 150ms ease-in-out, top 150ms ease-in-out, width 150ms ease-in-out, height 150ms ease-in-out',
-          }}
-        >
-          <span
-            className="rounded-md font-ui text-sm font-semibold"
-            style={{
-              padding: 'var(--space-sm) var(--space-md)',
-              background: 'var(--accent)',
-              color: 'var(--accent-fg)',
-              boxShadow: 'var(--shadow-overlay)',
-            }}
-          >
-            {hoverDropWin.kind === 'market-indices' ? '주요 지수 · 종목 연동 없음' : hoverDropWin.pinned ? '고정된 이 창의 종목 교체' : `그룹 ${hoverDropWin.group} 종목 교체`}
-          </span>
-        </div>
-      )}
-      {draggingEntry && !hoverDropWin && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center"
-          style={{
-            background: overChart ? 'var(--tint-selection)' : 'transparent',
-            border: '2px dashed var(--accent)',
-            opacity: overChart ? 1 : 0.7,
-            transition: 'opacity 150ms ease, background 150ms ease',
-          }}
-        >
-          <span
-            className="rounded-md font-ui text-sm font-semibold"
-            style={{
-              padding: 'var(--space-sm) var(--space-md)',
-              background: 'var(--accent)',
-              color: 'var(--accent-fg)',
-              boxShadow: 'var(--shadow-overlay)',
-              transform: overChart ? 'scale(1)' : 'scale(0.97)',
-              transition: 'transform 150ms ease',
-            }}
-          >
-            여기에 놓아 종목 변경
-          </span>
-        </div>
-      )}
-    </>
-  );
 
   const emptyState = (
     <div className="flex h-full w-full items-center justify-center">
@@ -283,7 +184,6 @@ export function WorkspaceCanvas() {
       itemCtx={itemCtx}
       emptyState={emptyState}
       onApi={setApi}
-      overlays={overlays}
     />
   );
 }
