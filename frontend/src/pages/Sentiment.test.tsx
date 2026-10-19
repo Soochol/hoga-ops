@@ -179,8 +179,8 @@ it('헤더 요약만으로 시장 상태가 잡힌다 — P/C·Max Pain 괴리·
   mount(ready({ full_as_of_ms: Date.now(), atm_as_of_ms: Date.now() }));
   // Max Pain 1100, 현재가 1007.83 → 괴리 +92.2 가 헤더에 붙는다
   expect(screen.getByText(/\(\+92\.2\)/)).toBeInTheDocument();
-  // 총 GEX 는 압축 표기 (−73,431,064,166 → −734.3억원). 헤더와 GEX 카드 두 곳.
-  expect(screen.getAllByText(/-734\.3억원/).length).toBe(2);
+  // 전체 GEX와 선택 행사가 GEX를 분리한다. 전체 합계는 헤더에 한 번 표시한다.
+  expect(screen.getAllByText(/-734\.3억원/).length).toBe(1);
   // RR 부호 해석 마이크로 라벨 — 값만 있으면 방향을 모른다
   expect(screen.getByText('+면 하방 보험이 비쌈')).toBeInTheDocument();
 });
@@ -209,4 +209,39 @@ it('비율 분모가 0이면 0 이 아니라 — 로 표시한다', () => {
     },
   }));
   expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+});
+
+it('선택한 행사가를 세 차트에서 공유하고 다른 행사가의 값으로 결측을 채우지 않는다', () => {
+  mount(ready());
+  const slider = screen.getByRole('slider', { name: '비교할 행사가' });
+  fireEvent.change(slider, { target: { value: '1' } }); // ATM 범위의 두 번째 행사가 = 1100
+  const readout = screen.getByLabelText('선택 행사가 상세');
+  expect(readout).toHaveTextContent('3,000 / 1,000');
+  expect(readout).toHaveTextContent('92.10 / —');
+  expect(readout.querySelectorAll('dd')[1]).toHaveTextContent(/^—$/);
+  const guides = Array.from(document.querySelectorAll('[data-strike-guide]'));
+  expect(guides).toHaveLength(3);
+  expect(guides.every(g => g.getAttribute('data-strike-guide') === '1100')).toBe(true);
+  expect(new Set(guides.map(g => g.getAttribute('x1'))).size).toBe(1);
+});
+
+it('기여 표에서 극외가를 선택하면 전체 축으로 전환하고 같은 행사가를 유지한다', () => {
+  mount(ready());
+  fireEvent.click(screen.getByRole('button', { name: '1597.5' }));
+  expect(screen.getByRole('button', { name: '전체' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '1,597.5');
+  expect(screen.getByLabelText('선택 행사가 상세')).toHaveTextContent('14,444 / 100');
+  expect(screen.getByLabelText('선택 행사가 상세').querySelectorAll('dd')[1]).toHaveTextContent(/^—$/);
+  fireEvent.click(screen.getByRole('button', { name: 'ATM 근처' }));
+  expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '1,100');
+});
+
+it('선택 지표의 0은 보존하고 IV가 모두 없으면 무한대 축을 만들지 않는다', () => {
+  mount(ready({
+    gamma_exposure: { points: [{ strike: 1000, gex: 0 }, { strike: 1100, gex: 1e8 }], total: 1e8, flip_strike: null },
+    iv_skew: { points: [{ strike: 1000, call_iv: null, put_iv: null, oi: 7873 }], atm_iv: null, risk_reversal_25d: null },
+  }));
+  expect(screen.getByLabelText('선택 행사가 상세').querySelectorAll('dd')[1]).toHaveTextContent(/^0원$/);
+  expect(screen.getByText('이 구간에 IV 데이터 없음')).toBeInTheDocument();
+  expect(document.body.innerHTML).not.toMatch(/NaN|Infinity/);
 });
