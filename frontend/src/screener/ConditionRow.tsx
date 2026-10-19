@@ -1,6 +1,9 @@
-import type { DragEvent } from 'react';
+import { useId, useState, type DragEvent } from 'react';
 import type { ConditionLeaf } from '../api/screener';
+import { ChevronIcon } from '../ui/ChevronIcon';
 import { catalogEntry } from './catalog';
+import { conditionDescription, conditionScope } from './conditionDescription';
+import './ConditionEditor.css';
 
 export function ConditionRow({
   leaf,
@@ -25,25 +28,39 @@ export function ConditionRow({
 }) {
   const entry = catalogEntry(leaf.type);
   const ParamForm = entry.ParamForm;
+  const [expanded, setExpanded] = useState(true);
+  const editorId = useId();
+  const summary = conditionDescription(leaf);
   return (
     <div role="group" aria-label={`${entry.label} 조건`} onDragOver={onDragOver} onDrop={onDrop}
-      className={`shrink-0 border border-border bg-bg-subtle rounded-md overflow-hidden ${dragging ? 'opacity-60 border-border-strong' : ''}`}>
-      <div className="flex items-center gap-2 px-2.5 py-1.5">
+      className="screener-condition" data-dragging={dragging || undefined}>
+      <div className="condition-header">
         <button type="button" aria-label="조건 순서 변경" title="조건 순서 변경"
           draggable={draggable}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
-          className="shrink-0 w-6 h-6 inline-flex items-center justify-center rounded text-fg-dimmer hover:text-fg hover:bg-bg-input-hover cursor-grab active:cursor-grabbing disabled:cursor-default"
+          className="condition-icon-button condition-drag-handle"
           disabled={!draggable}>
           ⋮⋮
         </button>
-        <span className="text-sm font-medium">{entry.label}</span>
-        <span className="font-data text-xs text-fg-dim">{entry.summarize(leaf.params)}</span>
+        <button type="button" className="condition-toggle" aria-expanded={expanded}
+          aria-controls={editorId} aria-label={`${entry.label} ${expanded ? '접기' : '펼치기'}`}
+          onClick={() => setExpanded(value => !value)}>
+          <span className="condition-heading">
+            <span className="condition-name">{entry.label}</span>
+            {!expanded && <span className="condition-collapsed-summary font-data">{summary}</span>}
+          </span>
+          {expanded && <span className="condition-scope">{conditionScope(leaf)}</span>}
+          <ChevronIcon collapsed={!expanded} />
+        </button>
         <button type="button" aria-label="조건 제거" onClick={onRemove}
-          className="ml-auto text-fg-dimmer hover:text-fg bg-transparent border-none cursor-pointer leading-none">×</button>
+          className="condition-icon-button">×</button>
       </div>
-      <div className="px-2.5 pb-2.5">
-        <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => onChange({ ...leaf, params } as ConditionLeaf)} />
+      <div id={editorId} hidden={!expanded}>
+        <div className="condition-editor-body">
+          <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => onChange({ ...leaf, params } as ConditionLeaf)} />
+        </div>
+        <p className="condition-summary" aria-live="polite">{summary}</p>
       </div>
     </div>
   );

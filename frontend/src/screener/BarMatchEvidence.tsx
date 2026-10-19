@@ -1,4 +1,4 @@
-import { CHANGE_REFERENCE_LABELS } from './CandleSettings';
+import { CHANGE_REFERENCE_LABELS } from './candleLabels';
 import type { ScreenerOccurrence } from '../api/screener';
 
 const PRICE = { open: '시가', high: '고가', low: '저가', close: '종가' };

@@ -1,4 +1,4 @@
-import { candleSummary } from '../CandleSettings';
+import { candleSummary } from '../candleLabels';
 import type { CatalogEntry } from './types';
 import { PeriodForm } from '../paramForms';
 

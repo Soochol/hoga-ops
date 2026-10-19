@@ -57,7 +57,7 @@ for (const editWhileCollecting of [false, true]) {
       } });
     });
     await page.goto('/screener');
-    await page.getByRole('combobox', { name: '거래량 검색 기간' }).selectOption('date_range');
+    await page.getByRole('group', { name: '거래량 검색 기간', exact: true }).getByRole('button', { name: '날짜 범위' }).click();
     await expect(page.getByLabel('거래량 발생 시작일')).toHaveValue('2019-01-01');
     await page.getByRole('button', { name: '조회', exact: true }).click();
     await expect(page.getByText('이력 확인 필요 1종목', { exact: false })).toBeVisible();

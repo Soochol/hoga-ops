@@ -1,4 +1,4 @@
-import { candleSummary, CHANGE_REFERENCE_LABELS } from '../CandleSettings';
+import { candleSummary, CHANGE_REFERENCE_LABELS } from '../candleLabels';
 import type { CatalogEntry } from './types';
 import { ChangePctForm } from './change_pctForm';
 
