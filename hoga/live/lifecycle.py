@@ -18,6 +18,7 @@ import time.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 import time
 from collections.abc import Callable, Mapping
@@ -813,6 +814,19 @@ async def restore_last_ob_from_disk(data_dir: Path) -> int:
     return restored
 
 
+def _trading_calendar_refresh_delay(data_dir, interval_s: float) -> float:
+    from hoga.api import trading_days  # noqa: PLC0415 — live/API 순환 절단
+
+    now = dt.datetime.fromtimestamp(time.time(), KST)
+    if now.weekday() < 5:  # noqa: PLR2004 — weekdays
+        opening = now.replace(hour=9, minute=0, second=0, microsecond=0)
+        if now < opening:
+            return min(interval_s, (opening - now).total_seconds())
+        if now.hour < 16 and trading_days.is_trading_day(now.strftime("%Y%m%d"), data_dir) is None:  # noqa: PLR2004 — confirmation cutoff
+            return min(interval_s, 60.0)
+    return interval_s
+
+
 def start_trading_calendar_refresher(
     data_dir,
     *,
@@ -824,9 +838,9 @@ def start_trading_calendar_refresher(
     벤더를 부르지 않는다. 이 태스크는 그 오버레이를 키움 `ka20006` 으로 하루씩
     밀어 준다.
 
-    저빈도(6시간)로 충분하다 — 새 거래일은 하루에 하나 늘 뿐이다. 실패해도 조회는
-    시드까지 그대로 답하므로 이 태스크의 사망이 달력을 죽이지 않는다. 그게 KIS
-    판과 가장 크게 다른 점이다(그쪽은 조회가 곧 원격 호출이라 장애가 곧 조회 실패).
+    기본 6시간 간격이며 다음 장 시작에는 다시 확인한다. 장중 오늘의 거래일이
+    아직 미확인이면 1분 간격으로 갱신해 스크리너가 오후까지 EOD 대체에 머무르지
+    않게 한다. 확인 후에는 기본 간격으로 돌아간다. 조회 경로에는 벤더 호출을 넣지 않는다.
     """
     log = logging.getLogger(__name__)
 
@@ -840,6 +854,6 @@ def start_trading_calendar_refresher(
                 # 갱신 실패는 **조회를 막지 않는다** — 시드까지는 그대로 답한다.
                 # 다만 반복되면 커버리지가 더 이상 전진하지 않으므로 ERROR 다.
                 log.exception("live.trading_calendar.refresh_failed")
-            await asyncio.sleep(interval_s)
+            await asyncio.sleep(_trading_calendar_refresh_delay(data_dir, interval_s))
 
     return asyncio.create_task(loop(), name="trading-calendar-refresher")

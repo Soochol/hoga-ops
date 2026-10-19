@@ -361,19 +361,31 @@ def _evaluate_calendar(result, selected, codes, values, days, as_of):
     return incomplete
 
 
-async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None) -> Evaluation:
+async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
+                   daily_fallback_codes: set[str] | None = None) -> Evaluation:
     selected = leaves(conditions)
     result = Evaluation(BarVolumeCoverage(total=len(codes), complete=0),
                         {leaf.id: [] for leaf in selected})
     as_of = now.astimezone(KST) if now.tzinfo is not None else now.replace(tzinfo=KST)
+    confirmed_as_of = dt.datetime.combine(
+        as_of.date() - dt.timedelta(days=as_of.hour < EOD_CUTOFF_HOUR), dt.time(15, 30), KST)
     if basis == "eod":
-        day = as_of.date() - dt.timedelta(days=as_of.hour < EOD_CUTOFF_HOUR)
-        as_of = dt.datetime.combine(day, dt.time(15, 30), KST)
+        as_of = confirmed_as_of
     calendar_leaves = [leaf for leaf in selected if not leaf.params.timeframe.endswith("m")]
-    values, days = (await asyncio.to_thread(_daily_values, data_dir, codes, overlay, as_of, calendar_leaves)
-                    if calendar_leaves else ({}, []))
-    incomplete = await asyncio.to_thread(
-        _evaluate_calendar, result, calendar_leaves, codes, values, days, as_of)
+    incomplete = set()
+    # SQL already keeps confirmed data for codes without an overlay. Calendar
+    # predicates must do the same, rather than require an empty current day/week.
+    # Minute predicates retain their live clock even when daily quotes failed.
+    fallback = daily_fallback_codes or set()
+    groups = [([code for code in codes if code not in fallback], as_of, overlay),
+              ([code for code in codes if code in fallback], confirmed_as_of, None)]
+    for group, cutoff, daily_overlay in groups:
+        if not calendar_leaves or not group:
+            continue
+        values, days = await asyncio.to_thread(
+            _daily_values, data_dir, group, daily_overlay, cutoff, calendar_leaves)
+        incomplete.update(await asyncio.to_thread(
+            _evaluate_calendar, result, calendar_leaves, group, values, days, cutoff))
     minute_leaves = [leaf for leaf in selected if leaf.params.timeframe.endswith("m")]
     if minute_leaves:
         # Rotate the bounded REST batch so repeated monitoring covers the whole

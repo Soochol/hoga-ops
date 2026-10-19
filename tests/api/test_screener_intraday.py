@@ -10,8 +10,10 @@ import pytest
 from hoga.api import screener_intraday, screener_universe
 from hoga.api.models import ScreenerUniverse
 from hoga.live.kiwoom_errors import KiwoomRateLimitError
+from hoga.util.timeenc import KST
 
 _RATE_LIMIT_MSG = "허용된 요청 개수를 초과하였습니다[1700:유량=5, API ID=ka10095]"
+_NOW_MS = int(dt.datetime(2026, 6, 25, 10, tzinfo=KST).timestamp() * 1000)
 
 
 @dataclass(frozen=True)
@@ -108,12 +110,11 @@ async def test_build_intraday_overlay_creates_daily_rows(monkeypatch, tmp_path: 
     overlay = await screener_intraday.build_intraday_overlay(
         data_dir=tmp_path,
         codes=["000111", "000222"],
-        today="20260625",
-        now_ms=1_000,
+        now_ms=_NOW_MS,
         ttl_ms=15_000,
     )
 
-    assert overlay.fetched_at_ms == 1_000
+    assert overlay.fetched_at_ms == _NOW_MS
     assert overlay.rows.height == 1
     row = overlay.rows.to_dicts()[0]
     assert row["code"] == "000111"
@@ -139,8 +140,7 @@ async def test_build_intraday_overlay_warns_when_volume_is_unavailable(monkeypat
     overlay = await screener_intraday.build_intraday_overlay(
         data_dir=tmp_path,
         codes=["000111"],
-        today="20260625",
-        now_ms=1_000,
+        now_ms=_NOW_MS,
         ttl_ms=15_000,
     )
 
@@ -154,10 +154,10 @@ async def test_build_intraday_overlay_reuses_ttl_cache(monkeypatch, tmp_path: Pa
     _patch_scheduler(monkeypatch, fake)
 
     first = await screener_intraday.build_intraday_overlay(
-        data_dir=tmp_path, codes=["000111"], today="20260625", now_ms=1_000, ttl_ms=15_000,
+        data_dir=tmp_path, codes=["000111"], now_ms=_NOW_MS, ttl_ms=15_000,
     )
     second = await screener_intraday.build_intraday_overlay(
-        data_dir=tmp_path, codes=["000111"], today="20260625", now_ms=2_000, ttl_ms=15_000,
+        data_dir=tmp_path, codes=["000111"], now_ms=_NOW_MS + 1_000, ttl_ms=15_000,
     )
 
     assert fake.calls == 1
@@ -189,7 +189,7 @@ async def test_overlay_submits_one_capacity_request_per_chunk(monkeypatch, tmp_p
     _patch_scheduler(monkeypatch, fake, calls)
 
     overlay = await screener_intraday.build_intraday_overlay(
-        data_dir=tmp_path, codes=codes, today="20260625", now_ms=1_000,
+        data_dir=tmp_path, codes=codes, now_ms=_NOW_MS,
     )
 
     assert len(calls) == 3, "100 + 100 + 50 → 세 번 제출돼야 한다"
@@ -216,7 +216,7 @@ async def test_overlay_names_the_rate_limit_instead_of_generic_failure(
 
     with caplog.at_level(logging.WARNING, logger="hoga.api.screener_intraday"):
         overlay = await screener_intraday.build_intraday_overlay(
-            data_dir=tmp_path, codes=_many(120), today="20260625", now_ms=1_000,
+            data_dir=tmp_path, codes=_many(120), now_ms=_NOW_MS,
         )
 
     assert overlay.rows.height == 0
@@ -259,7 +259,7 @@ async def test_overlay_keeps_partial_results_when_some_chunks_fail(
     )
 
     overlay = await screener_intraday.build_intraday_overlay(
-        data_dir=tmp_path, codes=codes, today="20260625", now_ms=1_000,
+        data_dir=tmp_path, codes=codes, now_ms=_NOW_MS,
     )
 
     assert overlay.rows.height == 150, "1·3번 청크(100+50)는 살아남아야 한다"
@@ -281,7 +281,7 @@ async def test_overlay_distinguishes_missing_credentials_from_fetch_failure(
     )
 
     overlay = await screener_intraday.build_intraday_overlay(
-        data_dir=tmp_path, codes=["000111"], today="20260625", now_ms=1_000,
+        data_dir=tmp_path, codes=["000111"], now_ms=_NOW_MS,
     )
 
     assert overlay.rows.height == 0
@@ -299,10 +299,10 @@ async def test_build_intraday_overlay_singleflights_concurrent_fetches(monkeypat
 
     first, second = await asyncio.gather(
         screener_intraday.build_intraday_overlay(
-            data_dir=tmp_path, codes=["000111"], today="20260625", now_ms=1_000, ttl_ms=15_000,
+            data_dir=tmp_path, codes=["000111"], now_ms=_NOW_MS, ttl_ms=15_000,
         ),
         screener_intraday.build_intraday_overlay(
-            data_dir=tmp_path, codes=["000111"], today="20260625", now_ms=1_000, ttl_ms=15_000,
+            data_dir=tmp_path, codes=["000111"], now_ms=_NOW_MS, ttl_ms=15_000,
         ),
     )
 

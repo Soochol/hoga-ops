@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { intradayDegradationText } from './intradayDegradation';
 
 describe('intradayDegradationText', () => {
+  it('장전·휴장일과 달력 미확인을 조회 실패와 구분한다', () => {
+    expect(intradayDegradationText(['intraday_session_closed', 'intraday_fallback_eod']))
+      .toBe('장 시작 전 또는 휴장일 · 전일 확정 데이터로 표시 중');
+    expect(intradayDegradationText(['intraday_calendar_unavailable', 'intraday_fallback_eod']))
+      .toBe('거래일 달력 미확인 · 전일 확정 데이터로 표시 중');
+  });
   it('시세 검증 실패만 있으면 배너를 표시하지 않는다', () => {
     expect(intradayDegradationText(['intraday_quote_invalid'])).toBeNull();
   });

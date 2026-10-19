@@ -60,6 +60,8 @@ const NON_CAUSE_WARNINGS: ReadonlySet<string> = new Set([
   'intraday_partial',
   'intraday_quote_invalid',
   'intraday_volume_unavailable',
+  'intraday_session_closed',
+  'intraday_calendar_unavailable',
 ]);
 
 const FALLBACK_SUFFIX = '전일 확정 데이터로 표시 중';
@@ -97,6 +99,12 @@ export function intradayDegradationText(
   failure?: WireDataWarning | null,
 ): string | null {
   if ((!warnings || warnings.length === 0) && !failure) return null;
+  if (warnings?.includes('intraday_session_closed')) {
+    return `장 시작 전 또는 휴장일 · ${FALLBACK_SUFFIX}`;
+  }
+  if (warnings?.includes('intraday_calendar_unavailable')) {
+    return `거래일 달력 미확인 · ${FALLBACK_SUFFIX}`;
+  }
   const cause = resolveCause(warnings ?? [], failure);
   if (!warnings || warnings.length === 0) {
     // 상태 태그 없이 사유만 온 경우 — 전량 폴백 문장으로 낸다(오버레이가 통째로
