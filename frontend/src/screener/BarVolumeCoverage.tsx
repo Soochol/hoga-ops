@@ -2,6 +2,7 @@ import type { BarVolumeCoverage as Coverage } from '../api/screener';
 
 const REASONS: Record<string, string> = {
   adjustment_unavailable: '분봉 수정계수 미확인 · 가격 비교 불가',
+  missing_reference: '기준이 되는 전일 종가 미확인',
   missing_history: '비교 이력 또는 거래일 달력 부족',
   credentials_missing: '키움 API 연결 설정 필요',
   rest_bypassed: '시세 조회 중지됨',

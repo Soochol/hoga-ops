@@ -127,11 +127,15 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "ScreenerRow": frozenset({"code", "name", "market", "price", "change_pct", "trade_value_won", "price_date",
                                "history_matches", "occurrences"}),
     "ScreenerOccurrence": frozenset({"condition_id", "condition_key", "date", "history_match",
-                                          "bar_start_ms", "bar_match", "bar_price_match"}),
+                                          "bar_start_ms", "bar_match", "bar_price_match",
+                                          "bar_trade_value_match", "bar_change_match"}),
     "ScreenerExclusionWrite": frozenset({"condition", "code", "date", "stock_name", "bar_start_ms"}),
     "ScreenerExclusion": frozenset({"id", "condition_key", "condition", "code", "date", "stock_name",
                                         "created_at_ms", "bar_start_ms"}),
     "ScreenerExclusionsFile": frozenset({"schema_version", "exclusions"}),
+    "BarTradeValueMatch": frozenset({"timeframe", "trade_value_won", "method", "is_open", "fetched_at_ms"}),
+    "BarChangeMatch": frozenset({"timeframe", "change_reference", "change_pct", "close", "reference_close",
+                                 "reference_start_ms", "is_open", "fetched_at_ms"}),
     "BarPriceMatch": frozenset({"timeframe", "source", "value", "reference", "window_start_ms",
                                  "is_open", "fetched_at_ms"}),
     "BarVolumeMatch": frozenset({"timeframe", "volume", "maximum", "window_start_ms", "is_open", "fetched_at_ms"}),
@@ -519,6 +523,8 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "ChangeReference": (frozenset(get_args(m.ChangeReference)), "frontend/src/api/screener.ts"),
+    "TradeValueMethod": (frozenset(get_args(m.TradeValueMethod)), "frontend/src/api/screener.ts"),
     "MaSource": (frozenset(get_args(m.MaSource)), "frontend/src/api/screener.ts"),
     "ScreenerTimeframe": (frozenset(get_args(m.ScreenerTimeframe)), "frontend/src/api/screener.ts"),
     "InvestorEstimateWarningReason": (

@@ -1868,13 +1868,6 @@ class ScreenerStatusFile(BaseModel):
 
 # === Saved-screener condition leaves (2026-05-31 saved-screener spec) ===
 
-class TradeValueParams(BaseModel):
-    min_eok: float = Field(ge=0)                       # 최신일 거래대금 ≥ N억
-
-class TradeValuePeriodParams(BaseModel):                # 최근 N거래일 중 하루라도 거래대금 ≥ min_eok억
-    lookback: int = Field(ge=1)
-    min_eok: float = Field(ge=0)
-
 ScreenerTimeframe = Literal["1m", "3m", "5m", "10m", "15m", "30m", "60m", "D", "W", "M"]
 
 
@@ -1882,6 +1875,14 @@ class CandleParams(BaseModel):
     model_config = {"extra": "forbid"}
     timeframe: ScreenerTimeframe = "D"
     include_open_bar: bool = True
+
+
+class TradeValueParams(CandleParams):
+    min_eok: float = Field(ge=0, allow_inf_nan=False)
+
+
+class TradeValuePeriodParams(TradeValueParams):
+    lookback: int = Field(ge=1)
 
 
 class BreakoutParams(CandleParams):                    # 신고가/신고거래량 공용 (구 BreakoutFilter)
@@ -1950,14 +1951,24 @@ class HistoryTradeValueParams(HistoryDateRangeParams):
     min_eok: float = Field(ge=0, allow_inf_nan=False)
 
 
+class BarTradeValueRangeParams(HistoryTradeValueParams):
+    timeframe: ScreenerTimeframe
+    include_open_bar: bool = True
+
+
+ChangeReference = Literal["previous_day", "previous_bar", "bar_open"]
+TradeValueMethod = Literal["ohlcv_estimate", "daily_estimate_sum"]
+
+
 class PeriodParams(CandleParams):                      # 최신 선택 봉 — 단일 비교 윈도우
     period: int = Field(ge=1)
 
-class ChangePctParams(BaseModel):
+class ChangePctParams(CandleParams):
+    change_reference: ChangeReference = "previous_day"
     op: Literal["gte", "lte", "between"]
-    pct: float | None = None                           # gte/lte
-    lo: float | None = None                            # between
-    hi: float | None = None
+    pct: float | None = Field(default=None, allow_inf_nan=False)  # gte/lte
+    lo: float | None = Field(default=None, allow_inf_nan=False)   # between
+    hi: float | None = Field(default=None, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _check(self) -> ChangePctParams:
@@ -2040,7 +2051,7 @@ class TradeValueLeaf(BaseModel):
 class TradeValuePeriodLeaf(BaseModel):
     type: Literal["trade_value_period"] = "trade_value_period"
     id: str
-    params: HistoryTradeValueParams | TradeValuePeriodParams
+    params: BarTradeValueRangeParams | HistoryTradeValueParams | TradeValuePeriodParams
 
     @model_validator(mode="before")
     @classmethod
@@ -2048,7 +2059,9 @@ class TradeValuePeriodLeaf(BaseModel):
         if isinstance(value, dict):
             params = value.get("params", {})
             if isinstance(params, dict) and {"mode", "start_date", "end_date"}.intersection(params):
-                HistoryTradeValueParams.model_validate(params)
+                model = (BarTradeValueRangeParams if {"timeframe", "include_open_bar"}.intersection(params)
+                         else HistoryTradeValueParams)
+                model.model_validate(params)
         return value
 
 class NewHighLeaf(BaseModel):
@@ -2256,6 +2269,25 @@ class BarPriceMatch(BaseModel):
     fetched_at_ms: int
 
 
+class BarTradeValueMatch(BaseModel):
+    timeframe: ScreenerTimeframe
+    trade_value_won: float
+    method: TradeValueMethod
+    is_open: bool
+    fetched_at_ms: int
+
+
+class BarChangeMatch(BaseModel):
+    timeframe: ScreenerTimeframe
+    change_reference: ChangeReference
+    change_pct: float
+    close: float
+    reference_close: float
+    reference_start_ms: int
+    is_open: bool
+    fetched_at_ms: int
+
+
 class BarVolumeCoverageItem(BaseModel):
     code: str
     condition_id: str
@@ -2276,6 +2308,8 @@ class ScreenerOccurrence(BaseModel):
     bar_start_ms: int | None = None
     bar_match: BarVolumeMatch | None = None
     bar_price_match: BarPriceMatch | None = None
+    bar_trade_value_match: BarTradeValueMatch | None = None
+    bar_change_match: BarChangeMatch | None = None
 
 
 class ScreenerExclusionWrite(BaseModel):
@@ -2295,7 +2329,7 @@ class ScreenerExclusionWrite(BaseModel):
             if day != self.date:
                 raise ValueError("봉 시작 시각과 발생 날짜가 다릅니다")
             if self.condition.type not in {"new_high_vol", "new_high_vol_today", "new_high", "new_high_today",
-                                           "high_off_peak", "ma"}:
+                                           "high_off_peak", "ma", "trade_value", "trade_value_period", "change_pct"}:
                 raise ValueError("봉 시각은 주기별 가격·거래량 조건에서만 사용합니다")
         return self
 

@@ -36,6 +36,8 @@ def condition_key(leaf: ConditionLeaf) -> str:
         params.pop("timeframe")
     if params.get("include_open_bar") is True:
         params.pop("include_open_bar")
+    if leaf.type == "change_pct" and params.get("change_reference") == "previous_day":
+        params.pop("change_reference")
     value = json.dumps({"type": leaf.type, "params": params}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(value.encode()).hexdigest()
 

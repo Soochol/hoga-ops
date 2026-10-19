@@ -2,7 +2,7 @@ import { apiCall, apiAction } from './client';
 import type { WireDataWarning } from './dataWarnings';
 
 // --- condition params (one per catalog type; type keys MUST match backend) ---
-export interface TradeValueParams { min_eok: number }
+export interface TradeValueParams extends CandleOptions { min_eok: number }
 export interface CandleOptions { timeframe?: ScreenerTimeframe; include_open_bar?: boolean }
 export interface BreakoutParams extends CandleOptions { lookback: number; period: number }
 export type ScreenerTimeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m' | 'D' | 'W' | 'M';
@@ -32,6 +32,19 @@ export interface HistoryVolumeParams {
 export interface HistoryTradeValueParams {
   mode: 'date_range'; start_date: string; end_date: string; min_eok: number;
 }
+export interface BarTradeValueRangeParams extends HistoryTradeValueParams {
+  timeframe: ScreenerTimeframe; include_open_bar?: boolean;
+}
+export type TradeValuePeriodOptions = TradeValuePeriodParams | HistoryTradeValueParams | BarTradeValueRangeParams;
+export interface BarTradeValueMatch {
+  timeframe: ScreenerTimeframe; trade_value_won: number; method: TradeValueMethod;
+  is_open: boolean; fetched_at_ms: number;
+}
+export interface BarChangeMatch {
+  timeframe: ScreenerTimeframe; change_reference: ChangeReference; change_pct: number;
+  close: number; reference_close: number; reference_start_ms: number;
+  is_open: boolean; fetched_at_ms: number;
+}
 export interface HistoryTradeValueMatch {
   condition_id: string; date: string; trade_value_won: number;
 }
@@ -52,9 +65,11 @@ export interface HistoryJob {
   coverage: HistoryCoverage | null;
 }
 export interface PeriodParams extends CandleOptions { period: number }
-export interface TradeValuePeriodParams { lookback: number; min_eok: number }
+export interface TradeValuePeriodParams extends CandleOptions { lookback: number; min_eok: number }
 export type ChangePctOp = 'gte' | 'lte' | 'between';
-export interface ChangePctParams { op: ChangePctOp; pct?: number; lo?: number; hi?: number }
+export type ChangeReference = 'previous_day' | 'previous_bar' | 'bar_open';
+export type TradeValueMethod = 'ohlcv_estimate' | 'daily_estimate_sum';
+export interface ChangePctParams extends CandleOptions { change_reference?: ChangeReference; op: ChangePctOp; pct?: number; lo?: number; hi?: number }
 export interface PriceRangeParams { min?: number; max?: number }
 // 최근 period일 고가 peak 대비 현재 고가 위치. within=고점 −pct% 이내 / outside=이외.
 export type HighOffPeakSide = 'within' | 'outside';
@@ -76,7 +91,7 @@ export interface DepthRenewalParams { start_hhmm: number; threshold_pct: number 
 
 export type ConditionLeaf =
   | { id: string; type: 'trade_value'; params: TradeValueParams }
-  | { id: string; type: 'trade_value_period'; params: TradeValuePeriodParams | HistoryTradeValueParams }
+  | { id: string; type: 'trade_value_period'; params: TradeValuePeriodOptions }
   | { id: string; type: 'new_high_today'; params: PeriodParams }
   | { id: string; type: 'new_high'; params: BreakoutParams }
   | { id: string; type: 'new_high_vol_today'; params: PeriodParams }
@@ -523,6 +538,8 @@ export interface ScreenerOccurrence {
   bar_start_ms?: number | null;
   bar_match?: BarVolumeMatch | null;
   bar_price_match?: BarPriceMatch | null;
+  bar_trade_value_match?: BarTradeValueMatch | null;
+  bar_change_match?: BarChangeMatch | null;
   history_match?: HistoryMatch | HistoryTradeValueMatch | null;
   condition_id: string;
   condition_key: string;

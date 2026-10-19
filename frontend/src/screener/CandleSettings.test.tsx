@@ -7,7 +7,7 @@ import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { BarMatchEvidence } from './BarMatchEvidence';
 import { occurrenceTimeLabel } from './occurrenceTime';
 
-const kinds = ['new_high_today', 'new_high', 'new_high_vol_today', 'high_off_peak', 'ma'] as const;
+const kinds = ['new_high_today', 'new_high', 'new_high_vol_today', 'high_off_peak', 'ma', 'trade_value', 'trade_value_period', 'change_pct'] as const;
 
 function Editor({ kind }: { kind: ConditionType }) {
   const [leaf, setLeaf] = useState(() => makeLeaf(kind));

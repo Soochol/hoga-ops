@@ -14,6 +14,7 @@ import polars as pl
 
 from hoga.api import trading_days
 from hoga.api.models import (
+    BarTradeValueRangeParams,
     BarVolumeRangeParams,
     HistoryCoverage,
     HistoryCoverageItem,
@@ -30,7 +31,7 @@ from hoga.api.screener_write_lock import screener_read_lock
 
 def history_leaves(conditions):
     return [leaf for leaf in conditions if isinstance(leaf.params, HistoryDateRangeParams)
-            and not isinstance(leaf.params, BarVolumeRangeParams)]
+            and not isinstance(leaf.params, (BarVolumeRangeParams, BarTradeValueRangeParams))]
 
 
 def subtract_years(day: dt.date, years: int) -> dt.date:

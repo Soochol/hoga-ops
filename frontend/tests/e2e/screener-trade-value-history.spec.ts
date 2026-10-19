@@ -40,7 +40,7 @@ test('historical trade value collects, rescans, and exports dated amount evidenc
         date: '2020-03-19', trade_value_won: 150000000000 }] }] : [],
   } }));
   await page.goto('/screener');
-  await expect(page.getByLabel('최근 기간(일)')).toHaveValue('60');
+  await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('60');
   await page.getByRole('combobox', { name: '거래대금 검색 기간' }).selectOption('date_range');
   await expect(page.getByLabel('거래대금 발생 시작일')).toHaveValue('2019-01-01');
   await expect(page.getByLabel('거래대금 발생 종료일')).toHaveValue('2022-12-31');
