@@ -91,6 +91,11 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   return { window, commands, ws, stateRequests };
 }
 
+async function setSettingSwitch(control: Locator, checked: boolean) {
+  if (await control.getAttribute('aria-checked') !== String(checked)) await control.click();
+  await expect(control).toHaveAttribute('aria-checked', String(checked));
+}
+
 async function drag(page: Page, from: Locator, to: Locator) {
   const a = await from.boundingBox(), b = await to.boundingBox();
   expect(a).not.toBeNull(); expect(b).not.toBeNull();
@@ -307,23 +312,23 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   const { window, commands } = await setup(page);
   const settings = window.getByRole('button', { name: '주문 설정', exact: true });
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
-  const checkbox = dialog.getByRole('checkbox', { name: '주문접수 소리', exact: true });
+  const checkbox = dialog.getByRole('switch', { name: '주문접수 소리', exact: true });
   await settings.click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
-  await expect(checkbox).not.toBeChecked();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'false');
   await expect(dialog.getByRole('slider')).toHaveCount(0);
   await dialog.getByRole('button', { name: '소리 들어보기', exact: true }).click();
   await expect.poll(soundStates).toEqual(['running']);
   expect(await page.evaluate(() => (globalThis.window as unknown as { __orderSoundDurations: number[] }).__orderSoundDurations[0])).toBeCloseTo(0.33, 3);
   expect(commands).toHaveLength(0);
-  await checkbox.check();
+  await setSettingSwitch(checkbox, true);
   await dialog.screenshot({ path: testInfo.outputPath('order-sound-settings.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
 
   await page.reload();
   await settings.click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
-  await expect(checkbox).toBeChecked();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'true');
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   expect(await soundStates()).toEqual([]);
 
@@ -366,7 +371,7 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
 
   await settings.click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
-  await checkbox.uncheck();
+  await setSettingSwitch(checkbox, false);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/trading/orders');
   await buy.dblclick();
@@ -397,7 +402,7 @@ test('오디오 재생 거절은 주문 접수를 유지하고 복구 후 다음
   await window.getByRole('button', { name: '주문 설정', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
-  await dialog.getByRole('checkbox', { name: '주문접수 소리', exact: true }).check();
+  await setSettingSwitch(dialog.getByRole('switch', { name: '주문접수 소리', exact: true }), true);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await buy.dblclick();
@@ -462,13 +467,13 @@ test('종목별 주문수량 기억은 즉시 저장하고 계좌별로 복원�
     await expect(page.getByRole('button', { name: `${name} 호가 주문 창 닫기`, exact: true })).toBeVisible();
   };
   await settings.click();
-  const remember = dialog.getByRole('checkbox', { name: '종목별 주문수량 기억', exact: true });
-  await expect(remember).not.toBeChecked();
-  await remember.check();
+  const remember = dialog.getByRole('switch', { name: '종목별 주문수량 기억', exact: true });
+  await expect(remember).toHaveAttribute('aria-checked', 'false');
+  await setSettingSwitch(remember, true);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await settings.click();
-  await expect(remember).toBeChecked();
-  await remember.check();
+  await expect(remember).toHaveAttribute('aria-checked', 'true');
+  await setSettingSwitch(remember, true);
   await dialog.screenshot({ path: testInfo.outputPath('remember-quantity-settings.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await quantity.fill('30');
@@ -492,7 +497,7 @@ test('종목별 주문수량 기억은 즉시 저장하고 계좌별로 복원�
   await page.reload();
   await expect(quantity).toHaveValue('10');
   await settings.click();
-  await expect(remember).toBeChecked();
+  await expect(remember).toHaveAttribute('aria-checked', 'true');
   expect(commands).toHaveLength(0);
 });
 
@@ -1482,35 +1487,44 @@ test('압축형 팝오버는 다크 테마에서도 표시하고 키보드 전�
 
 test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클릭·Escape로 닫는다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page);
+  await page.route(/^https?:\/\/[^/]+\/api\/symbols\/info$/, route => route.fulfill({ json: {
+    count: 1, fetched_at_ms: Date.now(), status: 'fresh', reason: null,
+  } }));
   const settings = window.getByRole('button', { name: '주문 설정', exact: true });
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  const editorStyles = (editor: Locator) => editor.evaluate(element => [
+    ['.settings-editor-heading', ['padding', 'borderBottomWidth']],
+    ['.settings-editor-heading h2', ['fontFamily', 'fontSize', 'fontWeight', 'color']],
+    ['.settings-editor-sidebar', ['width', 'padding', 'backgroundColor']],
+    ['.settings-editor-sidebar [aria-current=true]', ['padding', 'fontSize', 'fontWeight', 'borderRadius', 'color', 'backgroundColor']],
+    ['.settings-row', ['minHeight', 'padding', 'borderBottomWidth']],
+    ['.settings-row [role=switch]', ['width', 'height', 'borderRadius']],
+  ].map(([selector, properties]) => {
+    const style = getComputedStyle(element.querySelector(selector as string)!);
+    return (properties as string[]).map(property => style[property as keyof CSSStyleDeclaration]);
+  }));
   for (const theme of ['toss-light', 'toss-dark']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
-    await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
-    const accountPanel = page.getByRole('dialog', { name: '계좌 목록' });
-    const accountStyle = await accountPanel.evaluate(el => {
-      const s = getComputedStyle(el);
-      return [s.backgroundColor, s.color, s.borderColor, s.borderRadius, s.boxShadow, s.fontSize];
-    });
+    await page.getByRole('button', { name: '설정', exact: true }).first().click();
+    const headerEditor = page.getByTestId('settings-shell');
+    await expect(headerEditor.getByRole('switch', { name: '캔들이 항상 위', exact: true })).toBeVisible();
+    const headerStyles = await editorStyles(headerEditor);
+    await headerEditor.getByRole('button', { name: '닫기', exact: true }).click();
     await settings.click();
-    await expect(accountPanel).toHaveCount(0);
     await expect(dialog).toBeVisible();
     await expect(dialog).not.toHaveAttribute('aria-modal', 'true');
     await expect(settings).toHaveAttribute('aria-expanded', 'true');
-    const settingsStyle = await dialog.evaluate(el => {
-      const s = getComputedStyle(el);
-      return [s.backgroundColor, s.color, s.borderColor, s.borderRadius, s.boxShadow, s.fontSize];
-    });
-    expect(settingsStyle).toEqual(accountStyle);
+    expect(await editorStyles(page.getByTestId('order-settings-shell'))).toEqual(headerStyles);
+    await expect(dialog.getByRole('button', { name: '되돌리기' })).toHaveCount(0);
     const anchor = (await settings.boundingBox())!;
     const panel = (await dialog.boundingBox())!;
     expect(panel.y).toBeCloseTo(anchor.y + anchor.height + 4, 0);
     expect(panel.x + panel.width).toBeCloseTo(anchor.x + anchor.width, 0);
     await dialog.screenshot({ path: testInfo.outputPath(`order-settings-${theme}.png`) });
     expect(panel.width).toBe(520);
-    expect(panel.height).toBeLessThan(440);
+    expect(panel.height).toBeLessThan(900);
     const navigation = dialog.getByRole('navigation', { name: '주문 설정 목차' });
-    expect((await navigation.boundingBox())!.width).toBe(96);
+    expect((await dialog.locator('.settings-editor-sidebar').boundingBox())!.width).toBe(184);
     for (const name of ['주문 입력', '호가 표시', '주문 알림']) {
       await expect(dialog.getByRole('region', { name, exact: true })).toBeInViewport();
       await expect(dialog.getByRole('heading', { name, exact: true })).toBeInViewport();
@@ -1518,7 +1532,7 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
     await navigation.getByRole('button', { name: '주문 알림', exact: true }).click();
     await expect(navigation.getByRole('button', { name: '주문 알림', exact: true })).toHaveAttribute('aria-current', 'true');
     await expect(dialog.getByRole('spinbutton')).toHaveCount(6);
-    await expect(dialog.getByRole('checkbox', { name: '내 평단가 표시' })).toBeInViewport();
+    await expect(dialog.getByRole('switch', { name: '내 평단가 표시' })).toBeInViewport();
     await expect(dialog.getByRole('button', { name: '소리 들어보기' })).toBeInViewport();
     await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeInViewport();
     await navigation.getByRole('button', { name: '주문 입력', exact: true }).click();
@@ -1555,10 +1569,13 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
   }));
   expect(layout).toEqual(Array(6).fill(true));
   const navBounds = (await dialog.getByRole('navigation', { name: '주문 설정 목차' }).boundingBox())!;
+  const sidebarBounds = (await dialog.locator('.settings-editor-sidebar').boundingBox())!;
   const bodyBounds = (await dialog.locator('.order-settings-body').boundingBox())!;
-  expect(navBounds.width).toBe(84);
-  expect(navBounds.x + navBounds.width).toBeCloseTo(bodyBounds.x, 0);
-  expect(navBounds.y).toBe(bodyBounds.y);
+  expect(sidebarBounds.width).toBe(124);
+  expect(sidebarBounds.x + sidebarBounds.width).toBeCloseTo(bodyBounds.x, 0);
+  expect(navBounds.x).toBeGreaterThanOrEqual(sidebarBounds.x);
+  expect(navBounds.x + navBounds.width).toBeLessThanOrEqual(sidebarBounds.x + sidebarBounds.width);
+  expect(navBounds.y).toBeGreaterThanOrEqual(bodyBounds.y);
   await page.screenshot({ path: testInfo.outputPath('order-settings-anchored-narrow.png') });
   await page.setViewportSize({ width: 320, height: 360 });
   await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeInViewport();
@@ -1684,24 +1701,24 @@ test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에�
   const first = page.getByTestId('order-window').first();
   const settings = first.getByRole('button', { name: '주문 설정', exact: true });
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
-  const checkbox = dialog.getByRole('checkbox', { name: '내 평단가 표시', exact: true });
+  const checkbox = dialog.getByRole('switch', { name: '내 평단가 표시', exact: true });
   await expect(first.locator('.order-average-marker')).toHaveCount(1);
   await settings.click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
-  await expect(checkbox).toBeChecked();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'true');
   for (const theme of ['toss-light', 'toss-dark']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
     await dialog.screenshot({ path: testInfo.outputPath(`order-average-settings-${theme}.png`) });
   }
   await checkbox.focus();
   await page.keyboard.press('Space');
-  await expect(checkbox).not.toBeChecked();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'false');
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await settings.click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
-  await expect(checkbox).not.toBeChecked();
-  await checkbox.uncheck();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'false');
+  await setSettingSwitch(checkbox, false);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
   await expect(first.getByLabel('매입평단가')).toContainText('67,001');
@@ -1710,7 +1727,7 @@ test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에�
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
   await settings.click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
-  await expect(checkbox).not.toBeChecked();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'false');
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
@@ -1718,13 +1735,13 @@ test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에�
   await expect(second.locator('.order-average-marker')).toHaveCount(1);
   await second.getByRole('button', { name: '주문 설정', exact: true }).click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
-  await expect(checkbox).toBeChecked();
+  await expect(checkbox).toHaveAttribute('aria-checked', 'true');
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await page.locator('[data-win]').filter({ has: page.getByTestId('order-window') }).nth(1)
     .getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
   await settings.click();
   await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
-  await checkbox.check();
+  await setSettingSwitch(checkbox, true);
   await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(first.locator('.order-average-marker')).toHaveCount(1);
   expect(commands).toHaveLength(0);
