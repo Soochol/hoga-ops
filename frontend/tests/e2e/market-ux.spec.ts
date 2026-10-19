@@ -70,6 +70,49 @@ async function expectProgramHeaderSingleLine(page: Page) {
   expect(bounds.hintRight).toBeLessThanOrEqual(bounds.right + 1);
 }
 
+async function expectMarketCardSpacing(page: Page) {
+  const spacing = await page.locator('.market-desk .market-card').evaluateAll(cards => cards.map(card => {
+    const style = getComputedStyle(card);
+    return [style.paddingTop, style.paddingRight, style.paddingBottom, style.paddingLeft, style.rowGap];
+  }));
+  expect(spacing.length).toBeGreaterThan(3);
+  for (const values of spacing) expect(values).toEqual(spacing[0]);
+  const headers = await page.locator('.market-card-header').evaluateAll(elements => elements.map(el => {
+    const style = getComputedStyle(el);
+    return [style.columnGap, style.rowGap, style.paddingBottom];
+  }));
+  for (const values of headers) expect(values).toEqual(headers[0]);
+}
+
+async function expectContextLayout(page: Page) {
+  const layout = await page.locator('.market-context').evaluate(el => {
+    const container = el.closest('.market-page')!;
+    const style = getComputedStyle(container);
+    const width = container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    return {
+      stacked: width <= 60 * parseFloat(getComputedStyle(document.documentElement).fontSize),
+      width: el.clientWidth,
+      cards: [...el.children].map(card => {
+        const { top, bottom, left, width } = card.getBoundingClientRect();
+        return { top, bottom, left, width };
+      }),
+    };
+  });
+  expect(layout.cards).toHaveLength(3);
+  const first = layout.cards[0];
+  for (const [i, card] of layout.cards.entries()) {
+    expect(card.width).toBeCloseTo(first.width, 1);
+    if (layout.stacked) {
+      expect(card.width).toBeCloseTo(layout.width, 1);
+      expect(card.left).toBeCloseTo(first.left, 1);
+      if (i > 0) expect(card.top).toBeGreaterThan(layout.cards[i - 1].bottom);
+    } else {
+      expect(card.top).toBeCloseTo(first.top, 1);
+      expect(card.bottom).toBeCloseTo(first.bottom, 1);
+    }
+  }
+}
+
 async function expectContextChartHeights(page: Page) {
   await expectProgramHeaderSingleLine(page);
   const charts = page.locator('.market-context-chart').filter({ visible: true });
@@ -111,6 +154,8 @@ test('flow layout groups market context and preserves explorer preferences acros
   expect(new Set(positions.map(position => position.top)).size).toBe(1);
   expect(new Set(positions.map(position => position.bottom)).size).toBe(1);
   await expectContextChartHeights(page);
+  await expectContextLayout(page);
+  await expectMarketCardSpacing(page);
   const mainBounds = await flow.locator(':scope > .market-card').evaluateAll(cards => cards.map(el => {
     const { top, bottom } = el.getBoundingClientRect();
     return { top, bottom };
@@ -143,16 +188,24 @@ test('flow layout groups market context and preserves explorer preferences acros
   await expect(page.getByRole('group', { name: '외국인 연속 매매 방향', exact: true }).getByRole('button', { name: '순매도' })).toHaveAttribute('aria-pressed', 'true');
   await page.locator('.market-desk').evaluate(el => { el.scrollTop = 0; });
   await page.screenshot({ path: testInfo.outputPath('market-flow-desktop.png') });
-  for (const width of [1000, 800]) {
+  for (const width of [1100, 1000, 800]) {
     await page.setViewportSize({ width, height: 1100 });
     await expectContextChartHeights(page);
+    await expectContextLayout(page);
+    await expectMarketCardSpacing(page);
   }
   for (const theme of ['trading-desk', 'ledger-studio']) {
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; document.documentElement.style.fontSize = '20px'; }, theme);
+    await page.setViewportSize({ width: 1100, height: 1100 });
+    await expectContextLayout(page);
+    await expectContextChartHeights(page);
+    await expectMarketCardSpacing(page);
     await page.setViewportSize({ width: 600, height: 1100 });
     const overflow = await page.locator('.market-page').evaluate(root => [...root.querySelectorAll<HTMLElement>('.market-main,.market-context,.market-ranks,.market-card')].map(el => el.scrollWidth - el.clientWidth));
     expect(overflow.every(px => px <= 1)).toBe(true);
     await expectContextChartHeights(page);
+    await expectContextLayout(page);
+    await expectMarketCardSpacing(page);
     await page.screenshot({ path: testInfo.outputPath(`market-flow-compact-${theme}.png`) });
   }
   await page.reload();
