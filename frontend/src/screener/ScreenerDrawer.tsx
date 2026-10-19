@@ -88,6 +88,7 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
     <QuoteRow
       columnLayout={columnLayout}
       name={row.name} code={row.code}
+      nameTooltip=""
       price={row.price}
       pct={row.change_pct}
       changeWon={row.change_won}
@@ -121,6 +122,7 @@ function ScreenerDragGhost({ ghost, row, columnLayout }: {
     <QuoteRow
       columnLayout={columnLayout}
       name={ghost.name}
+      nameTooltip=""
       expectedPrice={row?.expected_price}
       expectedPct={row?.expected_change_pct}
       price={ghost.price}
