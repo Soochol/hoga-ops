@@ -2,18 +2,14 @@ import { useMemo, useState } from 'react';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useConnectionLiveness } from '../../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../../api/liveness';
-import { SidebarState } from '../../sidebar/SidebarSurface';
+import { ProgramTradeTickTable } from '../../sidebar/ProgramTradeTickTable';
 import { useLiveVenueStore } from '../../state/liveVenue';
-import { priceDirClass } from '../../ui/priceDir';
-import { unixMsToKSTClock } from '../../util/time';
 import { useKstDay } from '../../util/useKstDay';
 import { buildProgramTradeTicks, combineProgramTradeHistory, mergeProgramTradeTicks } from '../programTradeTicks';
 import { useProgramTradeHistory } from '../../api/programTradeTicks';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useTapeScroll } from './useTapeScroll';
 import type { LiveVenueOption } from '../../state/liveVenue';
-
-const COLS = 'grid-cols-[auto_1fr_1fr]';
 
 /** Live program tape with earlier captured events; no chart link required. */
 export function ProgramTradeTickWindow({ code }: { code: string }) {
@@ -39,26 +35,12 @@ function ProgramTradeTickContent({ code, venue, date }: { code: string; venue: L
   const latestAtMs = history.data?.pages[0]?.latest_at_ms ?? null;
   const all = useMemo(() => combineProgramTradeHistory(observed, archive, latestAtMs), [observed, archive, latestAtMs]);
   const { scroll, end, ticks, onScroll, onWheel, failed } = useTapeScroll(all, history);
-  return <div data-testid="program-trade-window" className="flex h-full flex-col bg-bg-card">
+  return <div data-testid="program-trade-window" className="flex h-full flex-col bg-bg-card [container:trade-tape/inline-size]">
     <div ref={scroll} aria-label="프로그램 체결 목록" className="min-h-0 flex-1 overflow-auto font-data text-sm tabular-nums"
       onScroll={onScroll}
       onWheel={onWheel}>
-      {ticks.length === 0 ? <SidebarState>
-        {connected ? '최근 수신 프로그램 증감 없음 · 새 수신 대기' : '실시간 연결 확인 중 · 프로그램 수신 대기'}
-      </SidebarState> : <div role="table" aria-label="프로그램 체결 내역">
-        <div role="row" className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-2xs text-fg-dim`}>
-          <span role="columnheader" title="과거 내역은 키움 제공 시각, 실시간 내역은 수신 시각">시간</span>
-          <span role="columnheader" className="text-right">현재가(원)</span>
-          <span role="columnheader" className="text-right">순매수 증감(주)</span>
-        </div>
-        {ticks.map(tick => <div role="row" key={tick.key} data-tape-event={tick.key} className={`grid ${COLS} gap-2 px-2.5 py-0.5`}>
-          <span role="cell" className="text-fg-dim">{unixMsToKSTClock(tick.tMs)}</span>
-          <span role="cell" className="text-right">{tick.price?.toLocaleString('ko-KR') ?? '—'}</span>
-          <span role="cell" className={`text-right ${priceDirClass(tick.deltaQty)}`}>
-            {tick.deltaQty > 0 ? '+' : '−'}{Math.abs(tick.deltaQty).toLocaleString('ko-KR')}
-          </span>
-        </div>)}
-      </div>}
+      <ProgramTradeTickTable ticks={ticks} emptyText={connected
+        ? '최근 수신 프로그램 증감 없음 · 새 수신 대기' : '실시간 연결 확인 중 · 프로그램 수신 대기'} />
       {history.isFetching && <div role="status" className="px-2.5 py-1 text-xs text-fg-dim">이전 내역 조회 중…</div>}
       {failed && <button type="button" className="ui-choice m-1" onClick={() => {
         void (history.isFetchNextPageError ? history.fetchNextPage({ cancelRefetch: false }) : history.refetch());

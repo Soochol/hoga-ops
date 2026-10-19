@@ -2,6 +2,7 @@ import { act, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProgramTradeTickWindow } from './ProgramTradeTickWindow';
 import { useLiveVenueStore } from '../../state/liveVenue';
+import { ProgramTradeTickTable } from '../../sidebar/ProgramTradeTickTable';
 
 const mock = vi.hoisted(() => ({
   program: [] as Record<string, unknown>[],
@@ -64,5 +65,19 @@ describe('ProgramTradeTickWindow', () => {
     mock.connected = false;
     render(<ProgramTradeTickWindow code="005930" />);
     expect(screen.getByText(/실시간 연결 확인 중/)).toBeInTheDocument();
+  });
+  it('reserves both signed quantity widths through eviction and empty data, resetting on remount', () => {
+    const large = [{ key: 'large', tMs: T, price: 1234567, deltaQty: -123456789 }];
+    const small = [{ key: 'small', tMs: T, price: null, deltaQty: 10 }];
+    const view = render(<ProgramTradeTickTable ticks={large} emptyText="대기" />);
+    view.rerender(<ProgramTradeTickTable ticks={small} emptyText="대기" />);
+    const sizes = () => [...view.container.querySelectorAll('.trade-tick-sizer > span')].map(el => el.getAttribute('data-figure'));
+    expect(sizes()).toEqual(['1,234,567', '+123,456,789', '−123,456,789']);
+    view.rerender(<ProgramTradeTickTable ticks={[]} emptyText="대기" />);
+    view.rerender(<ProgramTradeTickTable ticks={small} emptyText="대기" />);
+    expect(sizes()).toEqual(['1,234,567', '+123,456,789', '−123,456,789']);
+    view.unmount();
+    const next = render(<ProgramTradeTickTable ticks={small} emptyText="대기" />);
+    expect(next.container.querySelector('.trade-tick-sizer > span:last-child')).toHaveAttribute('data-figure', '−10');
   });
 });

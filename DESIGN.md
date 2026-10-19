@@ -286,6 +286,8 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 - 2026-10-19 사용자 승인: 체결 창은 시각·체결가·체결량의 한 줄 구조와 전체 시각(초 포함)을 유지한다. 헤더와 모든 행이 공통 열을 공유하며 창 너비 40rem 이상/30~40rem/30rem 미만에서 시각 폭은 4rem→3.5rem→3.25rem, 열 간격은 0.5rem→0.25rem→0.125rem, 양 끝 여백은 0.625rem→0.375rem으로 줄인다. 가격·수량은 실제 데이터 폰트의 내재 폭을 수용하고 같은 종목·거래소·날짜에서 관측한 최대 자릿수 폭을 유지해 표시 버퍼 이탈이나 빈 필터로 열이 줄어들지 않는다. 강조 배경은 수량 셀 안에 유지하고 헤더와 같은 안쪽 여백을 사용해 오른쪽 기준선을 맞춘다. 기존 글자 크기·가격/체결 방향색·강조 설정·최신순·과거 스크롤은 유지하고 숫자·시각을 생략하지 않으며 최소 폭 이하에서만 가로 스크롤한다.
 
+- 2026-10-19 사용자 승인: 프로그램 체결 창도 일반 체결과 같은 공통 열·반응형 간격을 사용한다. 시간·현재가·순매수 증감의 한 줄 구조를 유지하고 시간 폭은 4rem→3.5rem→3.25rem, 열 간격은 0.5rem→0.25rem→0.125rem, 바깥 여백은 0.625rem→0.375rem으로 조절한다(40/30rem 경계). 증감은 +·− 부호의 실제 폭까지 확보하고 같은 종목·거래소·날짜에서 관측한 최대 가격·증감 자릿수 폭을 유지해 큰 값의 버퍼 이탈이나 빈 데이터로 열이 줄어들지 않는다. 초 단위 시간·전체 숫자·기존 글자 크기·헤더 고정·방향색·누락 현재가의 — 표기·최신순·과거 조회는 유지하며 최소 폭 이하에서만 가로 스크롤한다.
+
 - **Base unit:** 4px (base intent = rendered, since the dial is 1.0× as of 2026-08-07; was 4.5px rendered at 1.125×)
 - **Density:** Bloomberg-leaning — the dial sits at base intent (1.0×). Density is a spectrum, not a fixed point: the token system holds the whole ladder and the dial picks a rung. Looser rungs (1.125×, 1.25×) have both shipped as defaults before.
 - **Scale (rem-based, single dial):**
