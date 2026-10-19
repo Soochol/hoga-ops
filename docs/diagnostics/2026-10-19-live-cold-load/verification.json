@@ -38,7 +38,7 @@
     }
   },
   "tools": {
-    "python": "3.14.4",
+    "python": "3.14.7",
     "node": "v24.13.1",
     "npm": "11.8.0",
     "playwright": "Version 1.60.0",
