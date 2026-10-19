@@ -54,6 +54,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 from bisect import bisect_right
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -199,10 +200,18 @@ async def fetch_adjust_factors(
 
         return await (run_call(upd, _fetch) if run_call is not None else _fetch(client))
 
-    # 순차다. 두 콜이 같은 TR 버킷(`ka10081`)을 쓰므로 병렬로 던져 봐야 거버너가
-    # 줄을 세운다 — 동시성만 늘고 얻는 것이 없다.
-    adjusted = await _call(UPD_ADJUSTED)
-    raw = await _call(UPD_RAW)
+    # Independent reads can overlap HTTP latency (and use separate accounts).
+    # Each still obtains its own ka10081 governor slot and distinct upd key.
+    tasks = [asyncio.create_task(_call(upd)) for upd in (UPD_ADJUSTED, UPD_RAW)]
+    try:
+        adjusted, raw = await asyncio.gather(*tasks)
+    finally:
+        # Preserve the original vendor exception/cancellation, not an
+        # ExceptionGroup, and leave no sibling running after a failed pair.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
     return build_factors(adjusted.rows, raw.rows, as_of=as_of_yyyymmdd)
 
 

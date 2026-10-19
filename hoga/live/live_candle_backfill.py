@@ -21,6 +21,7 @@ from hoga.live.error_policy import classify_live_error
 from hoga.live.kiwoom_capacity import KiwoomCapacityOverloaded, Priority
 from hoga.live.kiwoom_errors import KiwoomRateLimitError, KiwoomRestError
 from hoga.live.past_candles_cache import PastCandlesCache
+from hoga.live.single_flight import SingleFlight
 from hoga.live.venue import LiveVenuePolicy, Venue, session_window_hhmmss
 from hoga.util.timeenc import KST
 
@@ -133,6 +134,7 @@ class LiveMinuteCandleBackfill:
         # 무한 증식하므로 기준일이 바뀔 때 통째로 비운다.
         self._factors: dict[tuple[str, str], kiwoom_adjust_factors.AdjustFactors] = {}
         self._factors_as_of: str | None = None
+        self._factor_flights = SingleFlight()
         # 기준일이 넘어갈 때 옆으로 옮겨 둔 어제 테이블. 새 테이블과 대조해 밤사이
         # 척도가 바뀐 종목의 봉 캐시를 버리는 데만 쓴다(`_drop_cached_bars_if_rescaled`).
         self._stale_factors: dict[str, kiwoom_adjust_factors.AdjustFactors] = {}
@@ -683,6 +685,14 @@ class LiveMinuteCandleBackfill:
             return None, lambda date_s: _rest_error_warning(date_s, rest_exc), False
 
     async def _ensure_factors(
+        self, code: str, *, as_of: str
+    ) -> kiwoom_adjust_factors.AdjustFactors:
+        # Multiple windows/timeframes must share the completed pair, even if
+        # one request arrives between the first and second vendor responses.
+        async with self._factor_flights.acquire(code):
+            return await self._load_factors(code, as_of=as_of)
+
+    async def _load_factors(
         self, code: str, *, as_of: str
     ) -> kiwoom_adjust_factors.AdjustFactors:
         """(종목, 기준일) 수정계수 테이블. 캐시 히트면 벤더 콜 0.

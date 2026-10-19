@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import re
 from collections.abc import Awaitable, Callable, Hashable
@@ -1001,6 +1002,32 @@ async def test_factor_table_is_fetched_once_per_code_and_as_of(
             today_d=dt.date(2026, 6, 1), policy="KRX",
         )
 
+    assert fake.factor_calls == [("005930", "20260601")]
+
+
+async def test_concurrent_windows_share_the_completed_factor_pair(tmp_path, monkeypatch, kiwoom):
+    from hoga.api import calendar as cal
+
+    monkeypatch.setattr(cal, "is_trading_day", lambda _: True)
+    fake = kiwoom(_FakeWalk())
+    started, release = asyncio.Event(), asyncio.Event()
+    original = fake.factors
+
+    async def factors(*args, **kwargs):
+        started.set()
+        await release.wait()
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(kiwoom_adjust_factors, "fetch_adjust_factors", factors)
+    backfill = LiveMinuteCandleBackfill(data_dir=tmp_path, cache=PastCandlesCache(data_dir=tmp_path),
+                                     scheduler=_RecordingScheduler())
+    first = asyncio.create_task(backfill._ensure_factors("005930", as_of="20260601"))
+    await started.wait()
+    second = asyncio.create_task(backfill._ensure_factors("005930", as_of="20260601"))
+    await asyncio.sleep(0)
+    release.set()
+    a, b = await asyncio.gather(first, second)
+    assert a is b
     assert fake.factor_calls == [("005930", "20260601")]
 
 

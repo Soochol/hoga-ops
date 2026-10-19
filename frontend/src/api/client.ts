@@ -88,6 +88,7 @@ export async function apiCall<T>(path: string, init?: RequestInit): Promise<T> {
         path,
         durationMs: Math.round((performance.now() - t0) * 10) / 10,
         contentLength: r.headers.get('content-length'),
+        ...pastDataPerfSummary(path, out),
       });
     }
     return out;
@@ -103,6 +104,20 @@ export async function apiCall<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw e;
   }
+}
+
+function pastDataPerfSummary(path: string, out: unknown): Record<string, unknown> {
+  if (!/^\/api\/live\/past-(candles|investor-net)\?/.test(path)
+    || !out || typeof out !== 'object') return {};
+  const data = out as Record<string, unknown>;
+  const summary: Record<string, unknown> = {};
+  for (const key of ['cached_dates', 'fresh_dates', 'cached_batches', 'fresh_batches']) {
+    if (Array.isArray(data[key])) summary[key] = data[key];
+  }
+  for (const key of ['candles', 'points', 'data_warnings']) {
+    if (Array.isArray(data[key])) summary[`${key}_count`] = data[key].length;
+  }
+  return { history: summary };
 }
 
 /** Fire-and-forget action endpoint with no JSON response body. Throws ApiError

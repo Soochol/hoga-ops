@@ -117,6 +117,8 @@ class LiveInvestorNetBackfill:
                 frm=frm,
                 too=too,
                 today_d=today_d,
+                include_today_in_latest_gap=True,
+                skip_closed_gaps=True,
             )
 
 

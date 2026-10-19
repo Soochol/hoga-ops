@@ -18,7 +18,7 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from hoga.api import symbols
+from hoga.api import calendar as trading_calendar, symbols
 from hoga.api.error_codes import LiveErrorCode
 from hoga.api.models import LiveSettingsResponse, LiveSettingsUpdate, LiveTimeframeModel
 from hoga.api.params import CODE_PATTERN
@@ -545,6 +545,8 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     frm: date,
     too: date,
     today_d: date,
+    include_today_in_latest_gap: bool = False,
+    skip_closed_gaps: bool = False,
 ) -> dict:
     """Shared gap/cache/today/dedupe walk-back orchestration for the daily KIS
     series endpoints — `/past-daily-candles` (**Live Candle Backfill** 일봉) and
@@ -573,6 +575,10 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     사이 행을 어차피 받는다. 그걸 캐시 커버리지로 인정하면 **다음 갭이 사라진다**
     — 안 그러면 좌측 스크롤마다 오늘부터 다시 걷는다. `None` 은 "요청 구간만
     덮었다"(투자자 순매수 경로 — 커서가 `to` 상대라 넓힐 것이 없다).
+
+    Investor walks opt into including today in the latest historical gap:
+    that single vendor walk supplies both immutable history and the TTL today
+    slot. Known closed-only gaps can be covered without an upstream call.
     """
     today_s = today_d.strftime("%Y%m%d")
     from_s = frm.strftime("%Y%m%d")
@@ -615,6 +621,7 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
     # 이번 요청 안에서 이미 덮은 최대 날짜. 넓은 fetch 하나가 뒤쪽 갭들을
     # 통째로 덮으므로, 그걸 모르면 같은 구간을 갭 개수만큼 다시 받는다.
     covered_through: date | None = None
+    today_loaded_with_past = False
     if frm <= req_to_past:
         # `_compute_daily_gaps` 는 오름차순(오래된 것부터)이다 — 그래야 첫 fetch 의
         # 넓은 커버리지가 뒤 갭들을 덮는다. 순서가 뒤집히면 스킵이 무력해진다.
@@ -628,9 +635,31 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 # 이유: `fresh_batches` 는 벤더 왕복 기록이라 안 한 왕복을 적으면
                 # 거짓이 된다. 스킵 자체는 정상 경로라 경고도 아니다.
                 continue
+            if skip_closed_gaps and all(
+                trading_calendar.is_trading_day(
+                    (gap_from + timedelta(days=offset)).strftime("%Y%m%d")
+                ) is False
+                for offset in range((gap_to - gap_from).days + 1)
+            ):
+                # A row-normalized batch ends on Friday. Do not buy another
+                # vendor page just to rediscover a known Saturday/Sunday gap.
+                cache.append_batch(code, gap_from, gap_to, [])
+                cached_batches.append(label)
+                continue
+            fetch_to_s = gap_to_s
+            join_today = (
+                include_today_in_latest_gap and too >= today_d
+                and gap_to == cache_ceiling and cache.get_today(code)[0] == "miss"
+            )
+            if join_today:
+                # Only extend the latest gap by one day. Extending an older
+                # interior gap would re-walk already cached history in between.
+                fetch_to_s = today_s
+                label = f"{gap_from_s}__{fetch_to_s}"
+            fetched_at = monotonic_time.monotonic()
             try:
                 rows, violations, covered_to = await fetch_batch(
-                    code, gap_from_s, gap_to_s
+                    code, gap_from_s, fetch_to_s
                 )
             except _STOP_WALK_ERRORS as e:
                 # 뒤 배치를 두드려 봐야 같은 거절이라 걷기를 **중단**한다. 경고 하나면
@@ -643,6 +672,14 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 # 나눌 이유가 없다. 전송 실패는 클라이언트가 이미 1회 재시도했다(ADR-0050).
                 warnings.append(_vendor_error_to_warning(e, label))
                 continue
+            if join_today:
+                today_ms = int(datetime.combine(today_d, time(9, 0), tzinfo=_KST).timestamp() * 1000)
+                today_row = next((row for row in rows if row.get("t_ms") == today_ms), None)
+                # Today's snapshot arrived on the first page. A long history
+                # walk must not reset its age at completion (daily candles use
+                # the same rule); let the separate today probe refresh it.
+                cache.store_today(code, today_row, fetched_at=fetched_at)
+                today_loaded_with_past = cache.get_today(code)[0] != "miss"
             # 확장의 근거는 **"그 행을 실제로 받았다"** 이다. 빈 응답까지 넓게
             # 주장하면, 일시적 빈 응답 하나가 오늘까지의 큰 구간을 "조회 완료" 로
             # 굳혀 다음 롤오버까지 재시도를 막는다. 빈 갭 캐싱(휴일 구간 무한
@@ -664,12 +701,20 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 code, gap_from, batch_to,
                 [r for r in rows if not isinstance(r.get("t_ms"), int)
                  or r["t_ms"] <= ceiling_ms],
-                # 행과 달리 위반은 `ceiling_ms` 로 자르지 않는다 — 자를 t_ms 가 없다
-                # (빈 응답 위반은 날짜조차 `"(empty)"` 다). 읽을 때 구간 필터가 건다.
-                violations=violations,
+                # A joined today's dated violation must not freeze in history.
+                # Keep undated batch diagnoses such as "(empty)" intact.
+                violations=(
+                    violations_for_range(violations, gap_from_s, gap_to_s)
+                    if join_today else violations
+                ),
             )
-            loaded.extend(rows)
-            # 라벨은 **요청한 갭** 그대로다 — 이 필드는 벤더 왕복 기록이지 캐시
+            if join_today:
+                loaded.extend(row for row in rows if row.get("t_ms") != today_ms)
+                if today_loaded_with_past and today_row is not None:
+                    loaded.append(today_row)
+            else:
+                loaded.extend(rows)
+            # 라벨은 **요청한 갭**(당일 합병 시 그 끝)이다 — 벤더 왕복 기록이지 캐시
             # 커버리지 기록이 아니다. 게다가 캐시는 `_normalize_batch` 로 경계를
             # 실제 행 범위까지 다시 조이므로, 넓힌 값을 여기 적으면 실제 저장된
             # 구간과 어긋날 수 있다. 넓어진 커버리지는 다음 요청의
@@ -681,7 +726,7 @@ async def batched_daily_walkback(  # noqa: PLR0912, PLR0915
                 warnings.append(violation_to_warning(v, label))
 
     # 5. Today handling (separate from past — memory only, tri-state).
-    if too >= today_d:
+    if too >= today_d and not today_loaded_with_past:
         state, today_row = cache.get_today(code)
         if state == "hit":
             loaded.append(today_row)  # type: ignore[arg-type]
