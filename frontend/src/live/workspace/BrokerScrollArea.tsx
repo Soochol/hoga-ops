@@ -16,7 +16,7 @@ export function BrokerScrollArea({ children }: { children: ReactNode }) {
     update();
     return () => { observer?.disconnect(); el.removeEventListener('scroll', update); };
   }, []);
-  return <div className="relative min-h-0 flex-1">
+  return <div className="relative min-h-0 flex-1 [container:broker-list/inline-size]">
     <div ref={viewport} tabIndex={0} role="region" aria-label="거래원 목록" className="h-full overflow-auto">
       <div ref={content} className="flex min-h-full flex-col">{children}</div>
     </div>
