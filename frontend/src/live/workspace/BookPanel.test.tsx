@@ -85,7 +85,7 @@ describe('호가 잔량 금액 툴팁', () => {
     act(() => vi.advanceTimersByTime(500));
     const next = { ...snapshot, ask: snapshot.ask.map(level => ({ ...level, qty: 0 })) };
     view.rerender(<BookPanel snapshot={next} baselinePrice={PREV_CLOSE} summary={SUMMARY} trades={[]} maskRatio={false} lastPrice={null} />);
-    expect(screen.getByRole('tooltip')).toHaveTextContent('0억');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('0.00억');
     view.unmount();
     expect(screen.queryByRole('tooltip')).toBeNull();
   });
