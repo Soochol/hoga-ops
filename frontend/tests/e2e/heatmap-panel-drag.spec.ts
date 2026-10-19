@@ -185,11 +185,73 @@ test('이동 이후 다른 변경이 있으면 되돌리기가 덮어쓰지 않�
 test('그룹 헤더로 순서를 옮기고 드롭 후 목록이 돌아온다', async ({ page }) => {
   const state = await setup(page);
   await start(page, group(page, A).getByTestId('heatmap-group-header'));
+  await expect(row(page, A, '005930')).toBeHidden();
   await over(page, group(page, B));
   await page.mouse.up();
   await expect.poll(state.folders).toEqual([B, A]);
   await expect(row(page, A, '005930')).toBeVisible();
 });
+
+for (const scenario of [
+  { name: '첫 그룹', source: A, count: 8 },
+  { name: '아래쪽 그룹', source: B, count: 8, drop: true },
+  { name: '스크롤 후 아래쪽 그룹', source: B, count: 30, drop: true },
+  { name: '스크롤에 고정된 헤더', source: A, count: 30, sticky: true },
+  { name: '이미 접힌 그룹', source: B, count: 8, collapsed: true },
+  { name: '일부만 접힌 그룹', source: B, count: 8, mixed: true },
+]) {
+  test(`그룹 헤더가 접히는 동안 잡은 좌표를 유지한다: ${scenario.name}`, async ({ page }) => {
+    await page.routeWebSocket(/\/api\/ws/, (ws) => ws.onMessage(() => {}));
+    const state = await setup(page, {
+      [A]: Array.from({ length: scenario.count }, (_, i) => code(String(100000 + i))),
+      [B]: [code('035420'), code('051910')],
+    });
+    const panel = page.getByTestId('heatmap-drawer-scroll');
+    if (scenario.collapsed) {
+      await group(page, A).getByRole('button', { name: '스윙 접기', exact: true }).click();
+      await group(page, B).getByRole('button', { name: '반도체 접기', exact: true }).click();
+    }
+    if (scenario.mixed) await group(page, B).getByRole('button', { name: '반도체 접기', exact: true }).click();
+    if (scenario.sticky) await panel.evaluate((el) => { el.scrollTop = 150; });
+    const header = group(page, scenario.source).getByTestId('heatmap-group-header');
+    await header.scrollIntoViewIfNeeded();
+    const rect = await header.boundingBox();
+    if (!rect) throw new Error('Group header missing');
+    if (scenario.count === 30) expect(await panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+    const rows = page.locator('[data-testid^="heatmap-drawer-row-"]');
+    const rowCount = await rows.count();
+    const savedCollapse = await page.evaluate(() => localStorage.getItem('heatmapDrawer.collapsed'));
+    // Grab away from the centre to verify the original grab point, not a snap-to-centre.
+    const grab = { x: rect.width * 0.37, y: rect.height * 0.75 };
+    const origin = { x: rect.x + grab.x, y: rect.y + grab.y };
+    await page.mouse.move(origin.x, origin.y);
+    await page.mouse.down();
+    const ghost = page.getByTestId('heatmap-drag-ghost');
+    for (const delta of [{ x: 7, y: 0 }, { x: 39, y: 34 }, { x: -21, y: -29 }]) {
+      const cursor = { x: origin.x + delta.x, y: origin.y + delta.y };
+      await page.mouse.move(cursor.x, cursor.y, { steps: 4 });
+      await expect(ghost).toBeVisible();
+      await expect(rows).toHaveCount(0);
+      await expect.poll(async () => {
+        const box = await ghost.boundingBox();
+        if (!box) return Infinity;
+        return Math.max(Math.abs(box.x + grab.x - cursor.x), Math.abs(box.y + grab.y - cursor.y),
+          Math.abs(box.width - rect.width), Math.abs(box.height - rect.height));
+      }).toBeLessThan(1);
+    }
+    if (scenario.drop) {
+      await over(page, group(page, A).getByTestId('heatmap-group-header'));
+      await page.mouse.up();
+      await expect.poll(state.folders).toEqual([B, A]);
+    } else {
+      await page.keyboard.press('Escape');
+      expect(state.folders()).toEqual([A, B]);
+    }
+    await expect(ghost).toHaveCount(0);
+    await expect(rows).toHaveCount(rowCount);
+    expect(await page.evaluate(() => localStorage.getItem('heatmapDrawer.collapsed'))).toBe(savedCollapse);
+  });
+}
 
 test('가장자리에서 자동 스크롤하며 멀어지면 멈춘다', async ({ page }) => {
   await setup(page, { [A]: [code('005930'), ...Array.from({ length: 50 }, (_, i) => code(String(100000 + i)))], [B]: [] });

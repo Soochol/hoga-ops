@@ -6,6 +6,8 @@ const FLY_BACK: DropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }),
 };
 
+export type RailDragOverlayRect = Pick<DOMRect, 'top' | 'left' | 'width' | 'height'>;
+
 /**
  * 우측 레일 드로어 공용 드래그 고스트 껍데기 — 커서를 따라오는 행 클론을 띄운다.
  *
@@ -28,8 +30,10 @@ const FLY_BACK: DropAnimation = {
  *
  * `wrapperElement="ul"` 인 이유: 고스트로 넘어오는 행이 `<li>`(QuoteRow·MemoRow)다.
  */
-export function RailDragOverlay({ droppedOnChart, fitContentHeight = false, children }: {
+export function RailDragOverlay({ droppedOnChart, fitContentHeight = false, initialRect, children }: {
   droppedOnChart: boolean;
+  /** 드래그 시작 전 헤더의 뷰포트 좌표. 그룹 접힘·스크롤 보정 후에도 잡은 위치를 유지한다. */
+  initialRect?: RailDragOverlayRect;
   /**
    * 고스트 **높이**를 내용에 맞춘다(기본은 원본 노드 높이).
    *
@@ -58,6 +62,9 @@ export function RailDragOverlay({ droppedOnChart, fitContentHeight = false, chil
       style={{
         listStyle: 'none', margin: 0, padding: 0,
         ...(fitContentHeight ? { height: 'auto' } : {}),
+        // dnd-kit의 translate는 그대로 쓰고 시작 위치만 고정한다. 래퍼 자체를 배치해야
+        // 보이는 고스트와 충돌 판정 rect가 함께 이동한다.
+        ...initialRect,
       }}
       className="pointer-events-none rounded overflow-hidden bg-bg-card shadow-overlay cursor-grabbing"
     >

@@ -13,14 +13,14 @@ import {
   type DragEndEvent, type DragMoveEvent, type DragStartEvent, type DraggableAttributes, type DraggableSyntheticListeners,
 } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { CSS, useCombinedRefs, useNodeRef } from '@dnd-kit/utilities';
 import { resolveFolderDrag, folderDroppableId, entrySortableId } from '../watchlist/dragHandlers';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { dropPoint, isPointOnChart, resolveDropOnChart, useEntryDragStore } from '../state/entryDrag';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
 import { createPanelCollision } from '../watchlist/panelDragCollision';
 import { DragPanelAssist } from '../watchlist/DragPanelAssist';
-import { RailDragOverlay } from '../rightrail/RailDragOverlay';
+import { RailDragOverlay, type RailDragOverlayRect } from '../rightrail/RailDragOverlay';
 import { folderCodes, planHeatmapTransfer, planHeatmapMembershipRemoval, type HeatmapTransferSource } from './transferEntries';
 import { useHeatmapTransfer } from './useHeatmapTransfer';
 import { useQuoteByCode } from '../api/liveQuotes';
@@ -86,6 +86,12 @@ type GroupDragHandle = {
   isDragging: boolean;
 };
 
+type GroupDragGhost = {
+  count: number;
+  avg: number | null;
+  initialRect?: RailDragOverlayRect;
+};
+
 /** 폴더(그룹)의 sortable 단위 = 그룹 블록 전체(헤더 + 종목들). setNodeRef/transform 은
  *  컨테이너 div, listeners 는 children render-prop 으로 헤더에 전달 — 헤더를 잡으면 그룹이
  *  통째로 움직인다. data.type='folder' 태깅으로 행(entry) 드래그와 충돌을 분리한다. */
@@ -94,17 +100,30 @@ function SortableGroup({ folderId, busy, children }: {
   busy: boolean;
   children: (handle: GroupDragHandle) => React.ReactNode;
 }) {
+  const [headerRef, setHeaderNodeRef] = useNodeRef();
+  const getOverlayRect = useCallback(() => headerRef.current?.getBoundingClientRect(), [headerRef]);
   const { setNodeRef, setActivatorNodeRef, transform, transition, listeners, attributes, isDragging } =
-    useSortable({ id: folderId, disabled: busy, data: { type: 'folder' } });
+    useSortable({ id: folderId, disabled: busy, data: { type: 'folder', getOverlayRect } });
+  const setHeaderRef = useCombinedRefs(setActivatorNodeRef, setHeaderNodeRef);
   return (
     <div ref={setNodeRef} data-testid={`heatmap-drawer-group-${folderId}`}
       style={{
         transform: CSS.Transform.toString(transform), transition,
-        ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 1 } : {}),
+        // 이웃의 sticky 헤더(z-10/20)보다 위에 이동 프리뷰를 표시한다.
+        ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 30 } : {}),
       }}>
-      {children({ listeners, attributes, setActivatorNodeRef, isDragging })}
+      {children({ listeners, attributes, setActivatorNodeRef: setHeaderRef, isDragging })}
     </div>
   );
+}
+
+/** 그룹을 접거나 임시로 펼친 직후 드롭 타깃을 새 배치에서 다시 측정한다. */
+function RemeasureOnCollapse({ active }: { active: boolean }) {
+  const { measureDroppableContainers } = useDndContext();
+  useLayoutEffect(() => {
+    if (active) measureDroppableContainers([]);
+  }, [active, measureDroppableContainers]);
+  return null;
 }
 
 /** 한 그룹 블록을 종목 이동의 드롭 타깃으로 감싼다(id=folderDroppableId).
@@ -496,6 +515,8 @@ export function HeatmapDrawer() {
   const sourcesRef = useRef<HeatmapTransferSource[]>([]);
   const pointRef = useRef<{ x: number; y: number } | null>(null);
   const [ghost, setGhost] = useState<string | null>(null);
+  const [groupGhost, setGroupGhost] = useState<GroupDragGhost | null>(null);
+  const folderDragActive = groupGhost !== null;
   const [dragHint, setDragHint] = useState('그룹의 원하는 위치에 놓으세요 · 바깥에 놓으면 취소');
   const [destination, setDestination] = useState<{ folderId: string; at: number; rowId?: string; side?: 'before' | 'after'; where: string; duplicates: number } | null>(null);
   const [expandedDuringDrag, setExpandedDuringDrag] = useState<Set<string>>(new Set());
@@ -763,7 +784,13 @@ export function HeatmapDrawer() {
     dragDataRef.current = data ?? null;
     const d = ev.active.data.current;
     if (d?.type !== 'entry') {
-      setGhost(data?.folders.find((f) => f.id === String(ev.active.id))?.name ?? '그룹');
+      const group = rowGroups.find((g) => g.folder.id === String(ev.active.id));
+      // 전체 그룹이 접히기 전, 실제로 잡은 sticky 헤더의 뷰포트 좌표를 저장한다.
+      // 그룹 블록은 스크롤로 화면 위에 숨을 수 있어 헤더 위치를 대신할 수 없다.
+      const rect = d?.getOverlayRect?.() as DOMRect | undefined;
+      setGroupGhost({ count: group?.entries.length ?? 0, avg: group ? avgPct(group.entries, pctOf) : null,
+        initialRect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : undefined });
+      setGhost(group?.folder.name ?? '그룹');
       return;
     }
     seed(ev.activatorEvent);
@@ -792,6 +819,7 @@ export function HeatmapDrawer() {
     cancelDragPointFlush();
     setIsEntryDragging(false);
     setGhost(null);
+    setGroupGhost(null);
     setDestination(null);
     setExpandedDuringDrag(new Set());
     endEntryDrag();
@@ -882,6 +910,7 @@ export function HeatmapDrawer() {
         <DndContext sensors={sensors} collisionDetection={typeAwareCollision} autoScroll={false}
           onDragStart={onDragStart} onDragMove={onDragMove} onDragOver={onDragMove} onDragEnd={onDragEnd}
           onDragCancel={finishEntryDrag}>
+          <RemeasureOnCollapse active={folderDragActive || expandedDuringDrag.size > 0} />
           <DragPanelAssist collapsed={collapsed} onExpand={expandDuringDrag} pointRef={pointRef} scrollSelector='[data-testid="heatmap-drawer-scroll"]' />
           <SortableContext items={draggableFolderIds} strategy={verticalListSortingStrategy}>
             {rowGroups.map((g, gi) => {
@@ -891,7 +920,9 @@ export function HeatmapDrawer() {
               // (/heatmap 보드도 이제 같다 — 예전의 '보드만 빈 폴더 숨김' 비대칭은 갓 만든
               //  그룹을 채울 표면을 없애 데드엔드였다).
               // 검색 중엔 접기 무시 — 매칭된 행이 보여야 한다(collapsed Set 은 안 건드림).
-              const isCollapsed = !isSearching && collapsed.has(key) && !expandedDuringDrag.has(key);
+              // 드래그 중에는 모든 그룹 이름만 보여 준다. 저장된 접힘 상태는 그대로 두어
+              // 드롭·취소 시 원래 펼침 상태로 돌아간다.
+              const isCollapsed = folderDragActive || (!isSearching && collapsed.has(key) && !expandedDuringDrag.has(key));
               const rows = g.rows;
               const renderGroup = (dragHandle?: GroupDragHandle) => (
                 <>
@@ -988,8 +1019,23 @@ export function HeatmapDrawer() {
               );
             })}
           </SortableContext>
-          <RailDragOverlay droppedOnChart fitContentHeight>
-            {ghost && <li data-testid="heatmap-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">{ghost} {isEntryDragging ? copyIntent ? '복제' : '이동' : '그룹 이동'}</li>}
+          <RailDragOverlay droppedOnChart fitContentHeight initialRect={groupGhost?.initialRect}>
+            {groupGhost ? (
+              <li data-testid="heatmap-drag-ghost" className="flex h-full items-center gap-1.5 px-3 py-1.5 text-sm font-semibold text-fg-dim">
+                <span className="grid h-6 w-6 shrink-0 place-items-center"><ChevronIcon collapsed /></span>
+                <span className="flex-1 min-w-0 flex items-baseline gap-1.5">
+                  <span className="truncate">{ghost}</span>
+                  <span className="flex-none text-xs font-normal text-fg-dim">{groupGhost.count}</span>
+                </span>
+                {groupGhost.avg != null && (
+                  <span className={`flex-none text-xs font-normal font-data tabular-nums ${priceDirClass(groupGhost.avg)}`}>
+                    {`${groupGhost.avg > 0 ? '+' : ''}${groupGhost.avg.toFixed(2)}%`}
+                  </span>
+                )}
+              </li>
+            ) : ghost && (
+              <li data-testid="heatmap-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">{ghost} {copyIntent ? '복제' : '이동'}</li>
+            )}
           </RailDragOverlay>
         </DndContext>
       </RailDrawerBody>
