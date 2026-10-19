@@ -427,6 +427,54 @@ describe('호가 주문', () => {
     expect(holdingBookMarker(100, '67200', prices)).toEqual({ price: 67200, outside: false });
     expect(holdingBookMarker(100, '67300', prices)).toEqual({ price: 67300, outside: false });
   });
+  it.each([
+    ['67240.5', 67200],
+    ['67300', 67200],
+    ['67300.00000000000000001', null],
+    ['67400', null],
+    ['67499.99999999999999999', null],
+    ['67500', 67600],
+  ])('빈 호가 구간의 평단가 %s는 최근접 호가에서 1틱 이내일 때만 표시한다', (average, price) => {
+    expect(holdingBookMarker(100, average, [67600, 67200])).toEqual({ price, outside: false });
+  });
+  it.each([
+    [2000, 1, 5], [5000, 5, 10], [20000, 10, 50],
+    [50000, 50, 100], [200000, 100, 500], [500000, 500, 1000],
+  ])('%i원 가격대 경계는 평단가 방향의 1틱을 적용한다', (boundary, lowerTick, upperTick) => {
+    const lowerPrices = [boundary, boundary - 4 * lowerTick];
+    const upperPrices = [boundary + 4 * upperTick, boundary];
+    expect(holdingBookMarker(3, String(boundary - lowerTick), lowerPrices)).toEqual({ price: boundary, outside: false });
+    expect(holdingBookMarker(3, String(boundary - lowerTick - 0.1), lowerPrices)).toEqual({ price: null, outside: false });
+    expect(holdingBookMarker(3, String(boundary + upperTick), upperPrices)).toEqual({ price: boundary, outside: false });
+    expect(holdingBookMarker(3, String(boundary + upperTick + 0.1), upperPrices)).toEqual({ price: null, outside: false });
+  });
+  it('평단가가 표시 호가에서 1틱을 넘으면 원만 숨기고 상단 평단가는 유지한다', () => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    vi.mocked(useLiveSeries).mockImplementation((...args) => ({ ...originalSeries(...args),
+      latestOb: { t_ms: mock.snapshotAt, asks: [{ price: 67600, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
+        total_ask_qty: 100, total_bid_qty: 200 },
+    }));
+    try {
+      const client = new QueryClient();
+      const content = () => <QueryClientProvider client={client}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>;
+      mock.averagePrice = '67400';
+      const view = render(content());
+      expect(view.container.querySelector('.order-average-marker')).toBeNull();
+      expect(screen.getByLabelText('매입평단가')).toHaveTextContent('67,400');
+      for (const [average, price] of [['67300', '67200'], ['67500', '67600']] as const) {
+        mock.averagePrice = average;
+        view.rerender(content());
+        expect(view.container.querySelector('.order-average-marker')?.closest('.order-row')).toHaveAttribute('data-order-price', price);
+      }
+      mock.averagePrice = '67400';
+      view.rerender(content());
+      expect(view.container.querySelector('.order-average-marker')).toBeNull();
+      expect(screen.getByLabelText('매입평단가')).toHaveTextContent('67,400');
+      expect(mock.command).not.toHaveBeenCalled();
+    } finally {
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+    }
+  });
   it('범위 밖 평단가와 미보유·잘못된 평단가·빈 호가를 구분한다', () => {
     expect(holdingBookMarker(100, '67199.99999999999999999', [67300, 67200])).toEqual({ price: null, outside: true });
     expect(holdingBookMarker(100, '67300.1', [67300, 67200])).toEqual({ price: null, outside: true });
