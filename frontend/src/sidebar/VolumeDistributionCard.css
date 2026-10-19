@@ -1,1 +1,11 @@
-.volume-distribution-poc-label { top:clamp(0.5em, var(--volume-poc-position), calc(100% - 0.5em)); }
+.volume-distribution-card {
+  --volume-bar-fill: color-mix(in srgb, var(--fg-dim) 85%, var(--volume-distribution-color));
+  --volume-max-fill: color-mix(in srgb, var(--volume-distribution-max-color) 65%, var(--fg-dim));
+}
+.volume-distribution-legend { display:flex; flex-shrink:0; flex-wrap:wrap; align-items:center; gap:var(--space-sm); padding-block:var(--space-xs); color:var(--fg-dim); font-size:var(--live-text-meta, var(--text-xs)); }
+.volume-distribution-legend > span { display:inline-flex; align-items:center; gap:var(--space-xs); }
+.volume-distribution-max-swatch { width:var(--space-md); height:3px; background:var(--volume-max-fill); opacity:0.55; }
+.volume-distribution-price-swatch { width:var(--space-md); height:1px; background:var(--fg-dim); opacity:0.8; }
+.volume-distribution-bar { background:var(--volume-bar-fill); opacity:0.38; }
+.volume-distribution-max-bar { background:var(--volume-max-fill); opacity:0.55; }
+.volume-distribution-poc-label { top:clamp(0.5em, var(--volume-poc-position), calc(100% - 0.5em)); color:color-mix(in srgb, var(--fg) 65%, var(--volume-distribution-max-color)); }
