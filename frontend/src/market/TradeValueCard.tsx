@@ -76,7 +76,7 @@ export function TradeValueCard() {
   const largest = Math.max(1, ...tiles.flatMap(t => [...t.points.map(p => p.value_eok), t.base ?? 0]));
   const step = 10 ** Math.floor(Math.log10(largest));
   const max = Math.ceil(largest * 1.1 / step) * step;
-  return <MarketCard className="market-context-card market-trade-card flex flex-col gap-sm p-md">
+  return <MarketCard className="market-context-card market-trade-card">
     <CardHeader title="거래대금 추이" hint="일별 거래대금 · 조원"
       right={<ModeSwitch value={span} onChange={setSpan} options={SPANS} label="거래대금 기간" />} />
     <div className="market-context-controls">

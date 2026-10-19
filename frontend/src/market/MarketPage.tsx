@@ -222,7 +222,7 @@ export function IndexCards() {
   const rows = quotes.data ?? [];
   if (rows.length === 0) {
     return (
-      <MarketCard className="p-md">
+      <MarketCard>
         {/* 원인을 단정하지 않는다 — "자격증명" 으로 못박았다가 실제 원인(마감 후
             tm_n 센티넬 파싱 실패)을 오래 못 찾았다(2026-08-05). */}
         <EmptyNote>지수 시세를 받지 못했습니다. 잠시 후 다시 시도합니다.</EmptyNote>
@@ -266,7 +266,7 @@ export function IndexCards() {
  *  없는 것을 만들어 채우느니 있는 두 값만 보여준다. */
 function VolatilityCard({ row, fetchedAt, error }: { row: MarketVolatility; fetchedAt: number; error: boolean }) {
   return (
-    <MarketCard className="flex flex-col gap-sm p-md">
+    <MarketCard>
       <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
         <span className="text-xs font-semibold uppercase text-fg-dim" title="KOSPI 200 옵션 가격에 반영된 향후 30일 예상 변동성. 상승은 변동성 확대를 뜻합니다."><span>VKOSPI</span> · 변동성</span>
       </div>
@@ -407,9 +407,9 @@ function IndexCard({
       : { value: quote.value, change: quote.change, changeRate: quote.changeRate };
 
   return (
-    <MarketCard className="flex flex-col gap-sm p-md">
+    <MarketCard>
       <div
-        className={`flex flex-wrap items-baseline justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}
+        className={`flex flex-wrap items-baseline justify-between ${CARD_HEADER_RULE}`}
       >
         <span className="inline-flex items-baseline gap-2xs text-xs font-semibold uppercase text-fg-dim">
           {showFutures ? future.label : quote.label}
@@ -520,7 +520,7 @@ export function ProgramCard() {
   const [days, setDays] = useState<'5' | '20' | '60'>('20');
   const markets = program.data?.markets ?? {};
   return (
-    <MarketCard className="market-switch-card market-program-card market-context-card flex flex-col gap-sm p-md">
+    <MarketCard className="market-switch-card market-program-card market-context-card">
       <CardHeader
         title="프로그램"
         hint={axis === 'intraday' ? '당일 누적 · 억원' : '일별 · 억원'}
@@ -661,17 +661,17 @@ export function ActorNetCard({ actor, embedded = false }: { actor: '외국인' |
   const accent = actor === '외국인' ? SERIES_COLORS.foreign : SERIES_COLORS.institution;
   const Frame = embedded ? 'div' : MarketCard;
   return (
-    <Frame className={`flex flex-col gap-xs ${embedded ? '' : 'p-sm'}`}>
+    <Frame className="flex flex-col gap-sm">
       {/* 토글이 둘이라 좁은 폭에서는 헤더가 줄바꿈된다(`flex-wrap`) — 잘리는 대신
           높이를 내주는 쪽이 맞다. 읽는 순서대로 시장 → 방향. */}
-      <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
+      <div className={`flex flex-wrap items-center justify-between ${CARD_HEADER_RULE}`}>
         {/* 색 바는 **주체**의 표식이라 시장·방향을 따라가지 않는다 — 방향은 토글과
             값의 색(적/청)이 이미 말한다. */}
         <h2 className="flex items-center gap-2xs text-sm font-semibold text-fg">
           <span className="inline-block h-[2px] w-[10px]" style={{ background: accent }} />
           {actor} <span className="text-2xs font-normal text-fg-dim">연속 · 억원</span>
         </h2>
-        <div className="flex flex-wrap items-center gap-2xs">
+        <div className="flex flex-wrap items-center gap-sm">
           <ModeSwitch
             value={market}
             onChange={setMarket}
@@ -747,8 +747,8 @@ export function FundsCard() {
     { label: 'CMA', color: SERIES_COLORS.cma, won: last?.cma_won, change: fundChange(series.map(r => r.cma_won)) },
   ];
   return (
-    <MarketCard className="market-context-card market-funds-card flex flex-col gap-sm p-md">
-      <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
+    <MarketCard className="market-context-card market-funds-card">
+      <div className={`flex flex-wrap items-center justify-between ${CARD_HEADER_RULE}`}>
         <h2 className="text-sm font-semibold text-fg">
           증시 주변 자금{' '}
           <span className="text-2xs font-normal text-fg-dim">
@@ -823,7 +823,7 @@ export function RankCard({
   const Frame = embedded ? 'div' : MarketCard;
   const hint = `${q.data?.venue === 'UN' ? '통합' : q.data?.venue ?? '—'} · 코스피+코스닥 · ${q.data?.etfFilterUnavailable ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`;
   return (
-    <Frame className={`flex flex-col gap-xs ${embedded ? '' : 'p-md'}`}>
+    <Frame className="flex flex-col gap-sm">
       {embedded ? <p className="text-2xs text-fg-dim">{hint}</p> : <CardHeader title={title} hint={hint} />}
       <DataStatus hasData={q.data !== undefined} error={q.isError} status={q.data ? (q.data.marketOpen ? '장중' : '장 외') : undefined} />
       <div className="grid grid-cols-[1.2rem_minmax(0,1fr)_5.5rem_4.2rem] gap-sm text-2xs text-fg-dim">
@@ -863,7 +863,7 @@ export function RankExplorer() {
   const [view, setView] = useState<RankView>('value');
   const title = (key: RankView) => key === 'value' ? '거래대금 상위' : key === 'up' ? '상승률 상위' : '하락률 상위';
   // The selector stays mounted and focused while all three query subscriptions stay active.
-  return <MarketCard className="flex flex-col gap-sm p-md">
+  return <MarketCard>
     <CardHeader title={title(view)} right={<ModeSwitch value={view} onChange={setView} options={RANK_VIEWS} label="종목 순위 기준" />} />
     {RANK_VIEWS.map(([key]) => <div key={key} hidden={view !== key}>
       <RankCard title={title(key)} embedded kind={key === 'value' ? 'value' : 'change'} direction={key === 'down' ? 'down' : 'up'} />
@@ -874,7 +874,7 @@ export function RankExplorer() {
 export function StreakExplorer() {
   const [actor, setActor] = useState<'외국인' | '기관'>('외국인');
   // Each actor keeps its own persisted market/direction and its existing query.
-  return <MarketCard className="flex flex-col gap-sm p-md">
+  return <MarketCard>
     <CardHeader title="연속 매매" right={<ModeSwitch value={actor} onChange={setActor} options={[
       ['외국인', '외국인'], ['기관', '기관'],
     ]} label="연속 매매 주체" />} />

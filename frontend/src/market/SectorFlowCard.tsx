@@ -73,7 +73,7 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
   const max = Math.max(...sectors.map((r) => Math.abs(r[actor] ?? 0)), 1);
 
   return (
-    <MarketCard className="market-sector-card flex flex-col gap-sm p-md">
+    <MarketCard className="market-sector-card">
       <CardHeader
         title="업종 등락 · 수급"
         hint="당일 누적 · 억원"

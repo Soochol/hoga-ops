@@ -29,15 +29,13 @@
 .market-sector-table:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @container market (max-width: 60rem) {
   .market-main { grid-template-columns: minmax(0, 1fr); }
-  .market-context { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .market-context > :last-child { grid-column: 1 / -1; }
+  .market-context { grid-template-columns: minmax(0, 1fr); }
   .market-indices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .market-ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @container market (max-width: 40rem) {
   .market-indices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-pair, .market-ranks, .market-context { grid-template-columns: minmax(0, 1fr); }
-  .market-context > :last-child { grid-column: auto; }
 }
 
 /* Reserve the same shell for both modes, including pending/empty responses.

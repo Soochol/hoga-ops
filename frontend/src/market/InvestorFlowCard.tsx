@@ -163,7 +163,7 @@ export function InvestorCard() {
   const hint = stockSel ? undefined : derivEok ? '억원' : '계약 · 단위 미확정';
 
   return (
-    <MarketCard className="market-switch-card market-investor-card flex flex-col gap-sm p-md">
+    <MarketCard className="market-switch-card market-investor-card">
       <CardHeader
         title="투자자 수급"
         hint={hint}

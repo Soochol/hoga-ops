@@ -65,6 +65,11 @@
 줄인다. 주변 자금은 최신 잔고를 차트 위, 기간 증감을 아래의 3열 요약으로 배치한다.
 투자자 수급·업종이 나란히 놓일 때 카드 하단선을 맞추고 업종 목록은 남는 높이를
 채워 내부 스크롤한다. 좁은 화면의 세로 배치와 프로그램 일별 합계의 하단 고정은 유지한다.
+같은 날 후속 승인: 거래와 자금 영역은 콘텐츠 컨테이너 60rem 이하에서 세 카드를
+한 열로 쌓는다. 중간 폭의 2+1 배치와 마지막 카드의 전체 열 확장을 제거한다.
+시장 카드의 안쪽 여백은 md, 주요 영역과 포함된 순위·연속 매매 본문의 간격은 sm으로
+공통화한다. 헤더의 가로 간격은 sm, 줄바꿈 간격과 구분선 위 여백은 xs를 사용한다.
+표 행 높이·숫자 크기·차트 9rem 높이·일별 합계의 하단 고정은 유지한다.
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.

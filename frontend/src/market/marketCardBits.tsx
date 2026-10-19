@@ -43,7 +43,7 @@ export function ModeSwitch<T extends string>({
  */
 export function MarketCard({ className = '', children }: { className?: string; children: React.ReactNode }) {
   return (
-    <PanelCard borderless flat className={`market-card min-w-0 ${className}`}>
+    <PanelCard borderless flat className={`market-card min-w-0 flex flex-col gap-sm p-md ${className}`}>
       {children}
     </PanelCard>
   );
@@ -63,12 +63,12 @@ export function MarketCard({ className = '', children }: { className?: string; c
  * DESIGN.md 상 일탈이 아니다 — `--border` 는 "카드 프레임이 아니라 카드 **내부**
  * 구분선" 용도로 명시돼 있다.
  */
-export const CARD_HEADER_RULE = 'market-card-header border-b border-border pb-2xs';
+export const CARD_HEADER_RULE = 'market-card-header gap-x-sm gap-y-xs border-b border-border pb-xs';
 
 
 export function CardHeader({ title, hint, right }: { title: string; hint?: string; right?: React.ReactNode }) {
   return (
-    <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
+    <div className={`flex flex-wrap items-center justify-between ${CARD_HEADER_RULE}`}>
       {/* 제목은 semibold — 카드 안 서브라벨(`text-xs font-semibold`)보다 제목이 가벼운
           위계 역전의 교정. 힌트는 `font-normal` 명시가 필수다(없으면 h2 의 600 을 상속).
           `font-data` 는 표본 카운터(투자자 수급 힌트) 같은 갱신 숫자의 폭 고정용. */}
