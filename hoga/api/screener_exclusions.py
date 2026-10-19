@@ -29,9 +29,13 @@ def condition_key(leaf: ConditionLeaf) -> str:
                      "ask_depth_new_high_period", "bid_depth_new_high_period"}:
         params.pop("lookback", None)
     record_period = params.get("record_period")
-    if record_period and record_period["unit"] == "trading_days":
+    if record_period and record_period["unit"] in {"trading_days", "bars"}:
         params["period"] = record_period["value"]
         del params["record_period"]
+    if params.get("timeframe") == "D":
+        params.pop("timeframe")
+    if params.get("include_open_bar") is True:
+        params.pop("include_open_bar")
     value = json.dumps({"type": leaf.type, "params": params}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(value.encode()).hexdigest()
 
@@ -47,13 +51,16 @@ def load_exclusions(data_dir: Path) -> ScreenerExclusionsFile:
     return result
 
 
-def exclusion_keys(file: ScreenerExclusionsFile) -> set[tuple[str, str, str]]:
-    return {(e.condition_key, e.code, e.date.isoformat()) for e in file.exclusions}
+def exclusion_keys(file: ScreenerExclusionsFile) -> set[tuple]:
+    return {(e.condition_key, e.code, e.date.isoformat(), e.bar_start_ms)
+            if e.bar_start_ms is not None else (e.condition_key, e.code, e.date.isoformat())
+            for e in file.exclusions}
 
 
 async def put_exclusion(data_dir: Path, req: ScreenerExclusionWrite) -> ScreenerExclusion:
     key = condition_key(req.condition)
-    identity = hashlib.sha256(f"{key}:{req.code}:{req.date.isoformat()}".encode()).hexdigest()
+    suffix = f":{req.bar_start_ms}" if req.bar_start_ms is not None else ""
+    identity = hashlib.sha256(f"{key}:{req.code}:{req.date.isoformat()}{suffix}".encode()).hexdigest()
     async with _lock:
         file = load_exclusions(data_dir)
         for item in file.exclusions:

@@ -4,6 +4,22 @@ import type { WireDataWarning } from './dataWarnings';
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams { min_eok: number }
 export interface BreakoutParams { lookback: number; period: number }
+export type ScreenerTimeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m' | 'D' | 'W' | 'M';
+export interface VolumeBreakoutParams extends BreakoutParams {
+  timeframe?: ScreenerTimeframe; include_open_bar?: boolean;
+}
+export interface BarVolumeRangeParams {
+  mode: 'date_range'; start_date: string; end_date: string;
+  timeframe: ScreenerTimeframe; include_open_bar?: boolean;
+  record_period: { unit: 'bars'; value: number };
+}
+export type VolumeParams = VolumeBreakoutParams | HistoryVolumeParams | BarVolumeRangeParams;
+export interface BarVolumeMatch {
+  timeframe: ScreenerTimeframe; volume: number; maximum: number;
+  window_start_ms: number; is_open: boolean; fetched_at_ms: number;
+}
+export interface BarVolumeCoverageItem { code: string; condition_id: string; reason: string }
+export interface BarVolumeCoverage { total: number; complete: number; incomplete: BarVolumeCoverageItem[] }
 export interface HistoryVolumeParams {
   mode: 'date_range'; start_date: string; end_date: string;
   record_period: { unit: 'years' | 'trading_days'; value: number };
@@ -59,7 +75,7 @@ export type ConditionLeaf =
   | { id: string; type: 'new_high_today'; params: PeriodParams }
   | { id: string; type: 'new_high'; params: BreakoutParams }
   | { id: string; type: 'new_high_vol_today'; params: PeriodParams }
-  | { id: string; type: 'new_high_vol'; params: BreakoutParams | HistoryVolumeParams }
+  | { id: string; type: 'new_high_vol'; params: VolumeParams }
   | { id: string; type: 'high_off_peak'; params: HighOffPeakParams }
   | { id: string; type: 'change_pct'; params: ChangePctParams }
   | { id: string; type: 'price_range'; params: PriceRangeParams }
@@ -138,6 +154,7 @@ export interface DepthPeakValue {
 }
 
 export interface ScreenerResponse {
+  bar_coverage?: BarVolumeCoverage | null;
   history_coverage?: HistoryCoverage | null;
   scanned_at_ms?: number | null;
   status: 'ok' | 'not_seeded' | 'building';
@@ -498,12 +515,15 @@ export const deletePatternSave = (id: string) =>
   apiAction(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
 
 export interface ScreenerOccurrence {
+  bar_start_ms?: number | null;
+  bar_match?: BarVolumeMatch | null;
   history_match?: HistoryMatch | HistoryTradeValueMatch | null;
   condition_id: string;
   condition_key: string;
   date: string;
 }
 export interface ScreenerExclusionWrite {
+  bar_start_ms?: number | null;
   condition: ConditionLeaf;
   code: string;
   date: string;

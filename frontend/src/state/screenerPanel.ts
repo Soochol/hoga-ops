@@ -44,6 +44,7 @@ export interface PanelScan {
   intradayFailure?: ScreenerResponse['intraday_failure'];
   // 총잔량 신고 조건이 있을 때만 채워진다 — 결과 테이블의 호가 신고 값 컬럼 복원용.
   historyCoverage?: ScreenerResponse['history_coverage'];
+  barCoverage?: ScreenerResponse['bar_coverage'];
   depthValues: Record<string, DepthPeakValue> | null;
   scannedAtMs: number;
   /** 제외/복원 재조회 동안 결과 검색·선택·펼침 상태를 유지하는 조회 세션. */
@@ -203,6 +204,7 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     intradayFailure: raw.intradayFailure as PanelScan['intradayFailure'],
     warnings: raw.warnings as string[],
     historyCoverage: raw.historyCoverage as PanelScan['historyCoverage'],
+    barCoverage: raw.barCoverage as PanelScan['barCoverage'],
     depthValues,
     scannedAtMs: raw.scannedAtMs,
     interactionStartedAtMs: typeof raw.interactionStartedAtMs === 'number' ? raw.interactionStartedAtMs : undefined,

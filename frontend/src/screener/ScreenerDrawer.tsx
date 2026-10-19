@@ -1,3 +1,4 @@
+import { BarVolumeCoverage } from './BarVolumeCoverage';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { InlineState } from '../ui/DataSurface';
@@ -224,6 +225,7 @@ export function ScreenerDrawer() {
         intradayFailure: res.intraday_failure,
         warnings: res.warnings,
         historyCoverage: res.history_coverage,
+          barCoverage: res.bar_coverage,
         depthValues: res.depth_values ?? null,
         scannedAtMs: res.scanned_at_ms ?? Date.now(),
         basis: DRAWER_SCAN_BASIS,
@@ -477,6 +479,7 @@ export function ScreenerDrawer() {
           </RailState>
         ) : lastScan ? (
           <>
+            <BarVolumeCoverage coverage={lastScan.barCoverage} />
             {limitNotice && <RailState tone="warn">{limitNotice}</RailState>}
             {!!lastScan?.historyCoverage?.incomplete.length && <RailState tone="warn">
               과거 일봉이 부족한 종목이 있습니다. <a href="/screener" className="underline">스크리너에서 수집</a>
