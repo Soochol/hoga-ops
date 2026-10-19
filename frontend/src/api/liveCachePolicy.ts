@@ -3,7 +3,7 @@ import { QueryObserver, type Query, type QueryClient, type QueryKey } from '@tan
 
 // Retain expensive merged histories across code switches, within a shared
 // estimated payload budget. This is not a measurement of the browser heap.
-export const LIVE_CACHE_MAX_ESTIMATED_BYTES = 96 * 1024 * 1024;
+export const LIVE_CACHE_MAX_ESTIMATED_BYTES = 128 * 1024 * 1024;
 export const LIVE_CACHE_RECENT_CODES = 6;
 
 type Usage = { lastUsed: number; data: unknown; bytes: number };
