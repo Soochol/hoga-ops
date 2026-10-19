@@ -1,7 +1,7 @@
-.order-window { --order-min-w:560px; height:100%; display:flex; flex-direction:column; background:var(--bg-card); color:var(--fg); font-size:var(--live-text-data,var(--text-sm)); overflow:auto; container:order-window / inline-size; }
-.order-window.order-compact { --order-min-w:504px; }
-.order-window.order-expanded.order-spacious { --order-min-w:696px; }
-.order-window > * { min-width:var(--order-min-w); }
+.order-window { --order-cell-padding:6px; --order-cell-gap:6px; --order-summary-gap:12px; height:100%; display:flex; flex-direction:column; background:var(--bg-card); color:var(--fg); font-size:var(--live-text-data,var(--text-sm)); overflow:auto; container:order-window / inline-size; }
+.order-window.order-compact { --order-cell-padding:2px; --order-cell-gap:2px; --order-summary-gap:4px; }
+.order-window.order-expanded:not(.order-spacious) { --order-cell-padding:4px; --order-cell-gap:4px; --order-summary-gap:6px; }
+.order-window > * { min-width:0; }
 .order-window > .book-expected-fill { min-width:0; }
 .order-window button,.order-window select,.order-window input { font:inherit; color:inherit; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm,4px); }
 .order-window button { padding:3px 6px; }
@@ -50,40 +50,35 @@
 .order-window .order-quantity-presets button { padding:2px 0.3125rem; border-radius:var(--radius-md); background:var(--bg-card); white-space:nowrap; }
 .order-window .order-quantity-presets button[aria-pressed=true] { background:var(--tint-selection); border-color:var(--accent); color:var(--accent); }
 .order-estimate { margin-left:6px; flex-shrink:0; }
-.order-estimate .order-field-value { width:18ch; justify-content:flex-start; }
+.order-estimate .order-field-value { width:18ch; justify-content:flex-end; text-align:right; }
 /* The auction banner uses the same price/quantity slots for every update. */
 .order-window > .book-expected-fill > span > .font-data { display:inline-block; width:12ch; text-align:left; }
 .order-window > .book-expected-fill > span:nth-child(2) > .font-data { width:14ch; }
 .order-controls label { display:flex; align-items:center; gap:0.25rem; }
-.order-scroll { --order-fixed-width:160px; --order-depth-min:128px; --order-columns:72px minmax(128px,1fr) var(--book-price-width) minmax(128px,1fr) 72px; display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
-.order-ladder { position:relative; flex:1 0 auto; min-width:max(var(--order-min-w),calc(var(--order-fixed-width) + 2 * var(--order-depth-min) + var(--book-price-width))); min-height:244px; padding:4px 8px 0; }
+.order-scroll { --order-lane-width:max(48px,var(--order-lane-content-width)); --order-depth-min:var(--order-depth-content-width); --order-columns:var(--order-lane-width) minmax(var(--order-depth-min),1fr) var(--book-price-width) minmax(var(--order-depth-min),1fr) var(--order-lane-width); display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
+.order-ladder { position:relative; flex:1 0 auto; min-width:calc(16px + 2 * var(--order-lane-width) + 2 * var(--order-depth-min) + var(--book-price-width)); min-height:244px; padding:4px 8px 0; }
 /* Twenty fixed slots; the top spacer balances the totals row
  * so the spread stays centered while the totals follow the last slot.
  * Small windows scroll the full ladder instead of shrinking its order targets. */
 .order-ladder-centered { display:flex; flex-direction:column; min-height:536px; padding-block:0; }
 .order-ladder-centered::before,.order-ladder-centered::after { content:""; flex:1 0 4px; }
 .order-ladder-centered::before { flex-basis:28px; }
-.order-compact .order-scroll { --order-fixed-width:144px; --order-depth-min:96px; --order-columns:64px minmax(96px,1fr) var(--book-price-width) minmax(96px,1fr) 64px; }
-.order-expanded .order-scroll { --order-fixed-width:112px; --order-depth-min:152px; --order-columns:48px minmax(152px,1fr) var(--book-price-width) minmax(152px,1fr) 48px; }
-.order-expanded.order-spacious .order-scroll { --order-fixed-width:160px; --order-depth-min:184px; --order-columns:72px minmax(184px,1fr) var(--book-price-width) minmax(184px,1fr) 72px; }
+.order-expanded .order-scroll { --order-depth-min:max(152px,var(--order-depth-content-width)); }
+.order-expanded.order-spacious .order-scroll { --order-lane-width:max(72px,var(--order-lane-content-width)); --order-depth-min:max(184px,var(--order-depth-content-width)); }
 .order-total-row { display:grid; grid-template-columns:var(--order-columns); flex-shrink:0; padding:0 0 2px; }
 .order-window .order-total-row .order-lane { padding:0; font-size:var(--live-text-meta,var(--text-xs)); white-space:nowrap; }
 .order-total-row .order-buy { grid-column:5; }
 .order-window .order-total[aria-disabled=false] { cursor:grab; touch-action:none; }
-.order-total { overflow:hidden; text-overflow:ellipsis; font-variant-numeric:tabular-nums; }
-.order-summary-layer { position:absolute; top:max(4px,calc((100% - 480px) / 2)); right:56px; width:calc((100% - var(--order-fixed-width) - var(--book-price-width)) / 2); height:240px; }
-.order-spacious .order-summary-layer { right:80px; }
-.order-expanded:not(.order-spacious) .order-summary-layer .book-summary > div:not(.book-summary-extra),
-.order-expanded:not(.order-spacious) .order-summary-layer .book-summary-extra > div { padding-left:6px; padding-right:2px; column-gap:2px; }
-.order-spacious .order-summary-layer .book-summary > div:not(.book-summary-extra),
-.order-spacious .order-summary-layer .book-summary-extra > div { padding-left:6px; }
+.order-total { white-space:nowrap; font-variant-numeric:tabular-nums; text-align:right; }
+.order-summary-layer { position:absolute; top:max(4px,calc((100% - 480px) / 2)); right:calc(8px + var(--order-lane-width)); width:calc((100% - 16px - 2 * var(--order-lane-width) - var(--book-price-width)) / 2); height:240px; }
+.order-summary-layer .book-summary-row { padding-inline:var(--order-cell-padding); column-gap:var(--order-summary-gap); }
 .order-row { display:grid; grid-template-columns:var(--order-columns); height:24px; flex-shrink:0; align-items:center; }
 .order-divider { border-top:1px solid var(--border); }
 .order-target { background:var(--tint-selection); }
-.order-window .order-lane { display:flex; align-items:center; justify-content:center; gap:3px; padding:0 3px; height:22px; min-width:0; margin:0 3px; border:0; color:var(--order-side); background:color-mix(in srgb,var(--order-side) 5%,var(--bg-card)); }
+.order-window .order-lane { display:flex; align-items:center; justify-content:flex-end; gap:3px; padding:0 3px; height:22px; min-width:0; margin:0 3px; border:0; color:var(--order-side); background:color-mix(in srgb,var(--order-side) 5%,var(--bg-card)); }
 .order-window .order-lane:has(.order-quantity) { background:var(--order-tint); }
 .order-window .order-lane:has([data-drag-order]),.order-quantity[data-drag-order] { cursor:grab; touch-action:none; }
-.order-quantity { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.order-quantity { flex:1; min-width:max-content; white-space:nowrap; text-align:right; }
 .order-quantity-blocked { opacity:.5; }
 .order-buy { --order-side:var(--price-up); --order-tint:var(--tint-price-up); }
 .order-sell { --order-side:var(--price-down); --order-tint:var(--tint-price-down); }
@@ -100,15 +95,15 @@
 .order-average-marker { position:absolute; left:calc(var(--book-day-width) + 2px); top:50%; transform:translateY(-50%); width:12px; height:12px; border-radius:50%; background:var(--price-up); }
 .order-price small { font-size:var(--live-text-meta,var(--text-xs)); min-width:0; text-align:left; }
 .order-current { outline:1px solid var(--accent); outline-offset:-2px; border-radius:4px; }
-.order-info { display:flex; align-items:center; justify-content:space-between; gap:4px; padding:0 6px; font-size:var(--live-text-data,var(--text-sm)); }
+.order-info { display:flex; align-items:center; justify-content:space-between; gap:4px; padding:0 var(--order-cell-padding); font-size:var(--live-text-data,var(--text-sm)); white-space:nowrap; }
 .order-meta { font-size:var(--live-text-meta,var(--text-xs)); color:var(--fg-dim); }
-.order-depth { position:relative; padding:0 6px; font-size:var(--live-text-data,var(--text-sm)); }
+.order-depth { position:relative; padding:0 var(--order-cell-padding); font-size:var(--live-text-data,var(--text-sm)); }
 .order-depth::before { content:""; position:absolute; right:3px; height:16px; top:calc(50% - 8px); width:calc((100% - 6px) * var(--order-depth)); background:var(--bar-ask); border-radius:3px; }
 .order-depth span { position:relative; }
-.order-depth .order-depth-values { display:flex; align-items:baseline; gap:6px; }
+.order-depth .order-depth-values { display:flex; align-items:baseline; gap:var(--order-cell-gap); white-space:nowrap; }
 .order-bid .order-depth-values { flex-direction:row-reverse; }
-.order-depth-qty { flex:1; }
-.order-depth .book-qty-delta { min-width:0; flex-shrink:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.order-depth-qty { flex:1; min-width:max-content; }
+.order-depth .book-qty-delta { flex-shrink:0; white-space:nowrap; }
 .order-ask { text-align:right; color:var(--price-down); }
 .order-bid { color:var(--price-up); }
 .order-bid::before { left:3px; right:auto; background:var(--bar-bid); }
@@ -152,5 +147,15 @@
 .order-confirm-body label { display:flex; align-items:center; gap:0.375rem; }
 .order-drag-preview { border-radius:var(--radius-lg); font-weight:500; }
 
-.order-expanded:not(.order-spacious) .order-lane { padding-inline:0; gap:2px; }
+
 .order-expanded:not(.order-spacious) .order-chip { padding-inline:0; }
+
+.order-trade { display:grid; grid-template-columns:var(--order-trade-price-width) minmax(max-content,1fr); }
+.order-trade > span { text-align:right; }
+.order-column-sizer { position:absolute; visibility:hidden; pointer-events:none; width:max-content; display:flex; flex-direction:column; align-items:flex-start; }
+.order-column-sizer > span { display:flex; width:max-content; white-space:nowrap; }
+.order-depth-probe { padding-inline:var(--order-cell-padding); gap:var(--order-cell-gap); }
+.order-info-probe { padding-inline:var(--order-cell-padding); gap:4px; }
+.order-lane-probe { padding-inline:3px; }
+.order-total-probe { font-size:var(--live-text-meta,var(--text-xs)); }
+.order-column-sizer [data-figure]::before,.order-column-sizer[data-figure]::before { content:attr(data-figure); }

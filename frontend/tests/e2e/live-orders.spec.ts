@@ -2158,7 +2158,8 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
     const fields = [window.getByRole('spinbutton', { name: '신규 주문 수량' }), window.getByRole('button', { name: '50주', exact: true }), window.getByLabel('예상 주문 금액')];
     const boxes = await Promise.all(fields.map(field => field.boundingBox()));
     if (width >= 504) for (const box of boxes) expect(box!.y + box!.height / 2).toBeCloseTo(boxes[0]!.y + boxes[0]!.height / 2, 0);
-    expect(await window.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(width < 504);
+    expect(await window.evaluate(el => el.scrollWidth > el.clientWidth)).toBe(false);
+    expect(await window.locator('.order-scroll').evaluate(el => el.scrollWidth > el.clientWidth + 1)).toBe(width < 400);
     const ask = window.locator('.order-ask').last();
     const bid = window.locator('.order-bid').first();
     const askBox = (await ask.boundingBox())!, bidBox = (await bid.boundingBox())!;
@@ -2220,7 +2221,7 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
   await expect(page.getByRole('dialog', { name: '종목 상세 정보', exact: true })).toHaveCount(0);
   await window.evaluate(el => { (el as HTMLElement).style.width = '360px'; el.scrollLeft = el.scrollWidth; });
   await expect(window).toHaveClass(/order-compact/);
-  await window.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+  await window.locator('.order-scroll').evaluate(el => { el.scrollLeft = el.scrollWidth; });
   await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeInViewport();
   await window.getByRole('button', { name: /매수 67,200원 주문 추가/ }).dblclick();
   const chip = window.getByLabel('매수 67,200원 주문', { exact: true });
@@ -2772,3 +2773,90 @@ for (const price of [67_200, 1_469_000, 10_469_000, 99_990_000]) {
     }
   });
 }
+
+
+async function orderColumnMetrics(window: Locator) {
+  return window.evaluate(root => {
+    const row = root.querySelector('.order-row:not(.order-empty)')!;
+    const cells = [...row.children].map(cell => cell.getBoundingClientRect());
+    const bounds = row.getBoundingClientRect(), scroll = root.querySelector('.order-scroll')!;
+    const textBox = (node: Element) => { const r = document.createRange(); r.selectNodeContents(node); return r.getBoundingClientRect(); };
+    const fits = [...root.querySelectorAll('.order-depth-values, .order-info, .order-lane')].every(cell => {
+      const bounds = cell.getBoundingClientRect();
+      const spans = cell.children.length ? [...cell.children] : [cell];
+      return spans.every(span => { const text = textBox(span); return text.left >= bounds.left - 1 && text.right <= bounds.right + 1; });
+    });
+    const trades = [...root.querySelectorAll('.order-trade')].map(row => [...row.children].map(span => textBox(span).right));
+    return { fits, trades, widths: cells.map(cell => cell.width),
+      centered: Math.abs((cells[2].left + cells[2].right - bounds.left - bounds.right) / 2),
+      heights: [...root.querySelectorAll('.order-row')].map(row => row.getBoundingClientRect().height),
+      scroll: scroll.scrollWidth > scroll.clientWidth + 1,
+      padding: getComputedStyle(root.querySelector('.order-depth')!).paddingLeft,
+      lane: getComputedStyle(root).getPropertyValue('--order-lane-content-width'),
+      depth: getComputedStyle(root).getPropertyValue('--order-depth-content-width') };
+  });
+}
+
+test('주문창 반응형 간격은 중앙 5열과 전체 숫자를 유지하고 좁은 창에서만 사다리를 스크롤한다', async ({ page }, testInfo) => {
+  const { window, ws, commands } = await setup(page);
+  await ws.waitForSubscribe('005930');
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(), fill_strength_pct: 134.2,
+    trades: Array.from({ length: 9 }, (_, i) => ({ price: i % 2 ? 67100 : 67200, qty: i % 2 ? 85 : 850, side: i % 2 ? -1 : 1 })) });
+  await expect(window.locator('.order-trade')).toHaveCount(9);
+  await page.evaluate(() => document.fonts.ready);
+  for (const width of [800, 696, 576, 559, 504, 440, 409, 360]) {
+    await window.evaluate((root, width) => { root.style.width = `${width}px`; }, width);
+    await expect(window.locator('.order-depth').first()).toHaveCSS('padding-left', width >= 696 ? '6px' : width >= 560 ? '4px' : '2px');
+    await expect(async () => {
+      const m = await orderColumnMetrics(window);
+      expect(m.fits).toBe(true);
+      expect(m.widths[0]).toBeGreaterThanOrEqual(48);
+      expect(m.widths[0]).toBeCloseTo(m.widths[4], 1);
+      expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
+      expect(m.centered).toBeLessThan(1);
+      expect(m.heights).toEqual(Array(20).fill(24));
+      if (width >= 409) expect(m.scroll).toBe(false);
+      if (width === 360) expect(m.scroll).toBe(true);
+      for (const row of m.trades) expect(row).toEqual(m.trades[0]);
+    }).toPass();
+    expect(await window.evaluate(root => root.scrollWidth > root.clientWidth + 1)).toBe(false);
+    if (width === 409) await window.screenshot({ path: testInfo.outputPath('order-fluid-409.png') });
+  }
+  await expect(window.locator('.order-estimate .order-field-value')).toHaveCSS('justify-content', 'flex-end');
+  expect(commands).toHaveLength(0);
+});
+
+test('긴 주문·합계·잔량·체결 수량은 생략하지 않고 계좌와 종목의 관측 폭을 유지한다', async ({ page }, testInfo) => {
+  const order = { ...mkOrder('large', '67200', '0'), quantity: '123456789' };
+  const { window, ws, commands } = await setup(page, [order]);
+  await ws.waitForSubscribe('005930');
+  await window.evaluate(root => { root.style.width = '409px'; });
+  const frame = { kind: 'ob', venue: 'UN', t_ms: Date.now(),
+    asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 12345678 + i })),
+    bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 87654321 + i })),
+    total_ask_qty: 123456789, total_bid_qty: 987654321 };
+  ws.pushLive('005930', frame);
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(), fill_strength_pct: 134.234,
+    trades: Array.from({ length: 9 }, (_, i) => ({ price: i % 2 ? 67100 : 67200, qty: 123456789, side: 1 })) });
+  await expect(window.locator('.order-trade')).toHaveCount(9);
+  await expect(window.locator('.order-ask').first()).toContainText('12,345,687');
+  await expect(async () => {
+    const m = await orderColumnMetrics(window);
+    expect(m.fits).toBe(true); expect(m.scroll).toBe(true);
+    expect(m.widths[0]).toBeCloseTo(m.widths[4], 1);
+    expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
+  }).toPass();
+  const large = await orderColumnMetrics(window);
+  await expect(window.locator('.order-quantity')).toHaveText('123,456,789');
+  await expect(window.locator('.order-total.order-buy')).toHaveText('123,456,789(1)');
+  await expect(window.locator('.order-quantity')).toHaveCSS('text-align', 'right');
+  ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + 100, asks: frame.asks.map(l => ({ ...l, qty: 100 })), bids: frame.bids.map(l => ({ ...l, qty: 100 })) });
+  await expect(window.locator('.order-ask').first().locator('.order-depth-qty')).toHaveText('100');
+  await expect.poll(async () => window.locator('.book-qty-delta').count()).toBe(0);
+  expect((await orderColumnMetrics(window)).depth).toBe(large.depth);
+  expect((await orderColumnMetrics(window)).lane).toBe(large.lane);
+  await window.locator('.order-scroll').evaluate(el => { el.scrollLeft = el.scrollWidth; });
+  await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeInViewport();
+  await window.screenshot({ path: testInfo.outputPath('order-fluid-long-figures.png') });
+  expect(commands).toHaveLength(0);
+});

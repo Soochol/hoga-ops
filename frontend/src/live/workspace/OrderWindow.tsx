@@ -9,6 +9,7 @@ import { GripIcon } from '../../ui/RailActionIcons';
 import { useTextTooltip } from '../../ui/useTextTooltip';
 import { BookPriceAmount } from './BookPriceAmount';
 import { useBookPriceLayout } from './useBookPriceLayout';
+import { useOrderColumnLayout } from './useOrderColumnLayout';
 import { priceDirClass } from '../../ui/priceDir';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
@@ -557,6 +558,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const recentTrades = useMemo(() => recentBookTrades(live.trade, 9), [live.trade]);
   const trades = activeSinglePrice !== null ? singlePriceFills.slice(0, 9) : recentTrades;
   const lastPrice = activeSinglePrice !== null ? (afterHoursBook.data?.cur_price ?? null) : (recentTrades[0]?.price ?? null);
+  const { setProbe, samples, style: columnStyle } = useOrderColumnLayout(`${account}:${code}`,
+    prices.map(level => level.qty), deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [],
+    trades, summary.fillStrengthPct,
+    [...groups.values()].map(group => group.reduce((sum, order) => sum + orderRemainder(order), 0))
+      .concat([sideOrders.SELL, sideOrders.BUY].map(list => list.reduce((sum, order) => sum + orderRemainder(order), 0))),
+    Math.max(sideOrders.SELL.length, sideOrders.BUY.length), orders.some(order => !editableOrder(order) || pending(order)));
+
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
@@ -573,7 +581,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   return <div ref={rootRef}
     onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={e => endDrag(e, true)}
     onLostPointerCapture={e => { if (e.target === drag.current?.element) endDrag(e, true); }}
-    style={priceLayout} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
+    style={{ ...priceLayout, ...columnStyle }} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => {
       if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; }
       else if (e.detail === 1) suppressDoubleClick.current = false;
@@ -699,6 +707,15 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     <div className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
+        <span ref={setProbe} aria-hidden="true" className="order-column-sizer">
+          {['+', '−'].map(sign => <span key={sign} data-depth-probe className="order-depth-probe">
+            <span className="text-2xs" data-figure={`${sign}${samples.delta}`} /><span data-figure={samples.qty} />
+          </span>)}
+          <span data-depth-probe className="order-info-probe"><span data-trade-price-probe data-figure={samples.price} /><span data-figure={samples.trade} /></span>
+          <span data-depth-probe className="order-info-probe"><span className="order-meta" data-figure="체결강도" /><span data-figure={samples.strength} /></span>
+          <span data-lane-probe className="order-lane-probe" data-figure={samples.order} />
+          <span data-lane-probe className="order-total-probe" data-figure={samples.total} />
+        </span>
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : Array.from({ length: 20 }, (_, slot) => {
           const isAsk = slot < 10;
           const index = slot - (10 - asks.length);
@@ -708,7 +725,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           const key = `${isAsk ? 'ask' : 'bid'}-${slot}`;
           const trade = bidIndex > 0 ? trades[bidIndex - 1] : undefined;
           const tradePriceColor = trade && baseline != null && baseline > 0 ? priceDirClass(trade.price - baseline) : 'text-fg-dim';
-          const info = <div className="order-info"><span className={firstBid ? 'order-meta' : tradePriceColor}>{firstBid ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? priceDirClass(trade.side) : undefined}>{firstBid ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>;
+          const info = <div className={`order-info ${firstBid ? 'order-strength' : 'order-trade'}`}><span className={firstBid ? 'order-meta' : tradePriceColor}>{firstBid ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? priceDirClass(trade.side) : undefined}>{firstBid ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>;
           // Empty slots preserve the center without becoming order/drag targets.
           // Recent fills still occupy their fixed slots beside the bid ladder.
           if (!level) return <div className={`order-row order-empty ${firstBid ? 'order-divider' : ''}`} key={key}
