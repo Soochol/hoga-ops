@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { BreakoutParams, DepthPeakParams, DepthPeakPeriodParams, DepthRenewalParams, PeriodParams } from '../api/screener';
 import { CandleSettings } from './CandleSettings';
-import { ConditionFields, QuickValues } from './ConditionControls';
+import { ConditionFields } from './ConditionControls';
 import { RENEWAL_MIN_HHMM, RENEWAL_MAX_HHMM, hhmmToTimeValue, timeValueToHhmm } from './paramFormsHelpers';
 
 export function SectionLabel({ children }: { children: ReactNode }) {
@@ -46,7 +46,6 @@ export function BreakoutForm({ params, onChange }: { params: BreakoutParams; onC
       <Num label="신고 비교 기간" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000}
         value={params.period} onChange={n => onChange({ ...params, period: n ?? 1 })} />
     </ConditionFields>
-    <QuickValues values={[20, 60, 200]} unit="봉" onChange={period => onChange({ ...params, period })} />
   </CandleSettings>;
 }
 
@@ -54,7 +53,6 @@ export function PeriodForm({ params, onChange }: { params: PeriodParams; onChang
   return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
     <Num label="신고 비교 기간 · 최신 봉 기준" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000}
       value={params.period} onChange={n => onChange({ ...params, period: n ?? 1 })} />
-    <QuickValues values={[20, 60, 200]} unit="봉" onChange={period => onChange({ ...params, period })} />
   </CandleSettings>;
 }
 
@@ -66,7 +64,6 @@ export function DepthPeakForm({ params, onChange }: { params: DepthPeakParams; o
       <Num label="과거 peak 대비" suffix="% 이상" min={1}
         value={params.threshold_pct} onChange={n => onChange({ ...params, threshold_pct: n ?? 100 })} />
     </ConditionFields>
-    <QuickValues values={[100, 120, 150]} unit="%" onChange={threshold_pct => onChange({ ...params, threshold_pct })} />
   </div>;
 }
 
@@ -80,7 +77,6 @@ export function DepthPeakPeriodForm({ params, onChange }: { params: DepthPeakPer
     </ConditionFields>
     <Num label="과거 peak 대비" ariaLabel="과거 peak 대비(%)" suffix="% 이상" min={1}
       value={params.threshold_pct} onChange={n => onChange({ ...params, threshold_pct: n ?? 100 })} />
-    <QuickValues values={[100, 120, 150]} unit="%" onChange={threshold_pct => onChange({ ...params, threshold_pct })} />
   </div>;
 }
 
@@ -103,6 +99,5 @@ export function DepthRenewalForm({ params, onChange }: { params: DepthRenewalPar
       <Num label="기준시각 이전 최대 대비" ariaLabel="이전 최대 대비" suffix="% 이상" min={1} value={params.threshold_pct}
         onChange={n => onChange({ ...params, threshold_pct: n ?? 100 })} />
     </ConditionFields>
-    <QuickValues values={[100, 101, 120]} unit="%" onChange={threshold_pct => onChange({ ...params, threshold_pct })} />
   </div>;
 }

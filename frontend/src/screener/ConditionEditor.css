@@ -76,6 +76,8 @@
   padding-top: var(--space-md); border-top: 1px solid var(--border);
 }
 .condition-timeframe > .condition-field { flex: 1 0 100%; }
+.condition-timeframe > .condition-choice { flex-shrink: 0; flex-wrap: nowrap; }
+.condition-timeframe > .condition-choice button { white-space: nowrap; }
 .condition-choice {
   display: inline-flex; flex-wrap: wrap; gap: var(--space-2xs); width: fit-content; max-width: 100%;
   padding: var(--space-2xs); background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
@@ -86,10 +88,3 @@
 }
 .condition-choice button[aria-pressed='true'] { background: var(--bg-input-hover); color: var(--accent); }
 .condition-choice button:hover { background: var(--bg-input-hover); }
-.condition-presets { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); font-size: var(--text-xs); }
-.condition-presets > span { color: var(--fg-dim); }
-.condition-presets button {
-  padding: var(--space-xs) var(--space-sm); border: 0; border-radius: 4px;
-  background: var(--bg-subtle); color: var(--fg); cursor: pointer; font-variant-numeric: tabular-nums;
-}
-.condition-presets button:hover { color: var(--accent); background: var(--bg-input-hover); }

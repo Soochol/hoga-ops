@@ -41,12 +41,12 @@ describe('ConditionRow', () => {
         : type === 'ask_depth_renewal' || type === 'bid_depth_renewal' ? 'threshold_pct' : 'lookback']: 17 } });
   });
 
-  it('fast entry preserves independent candle settings and saved policy', () => {
+  it('manual entry preserves independent candle settings and saved policy', () => {
     const onChange = vi.fn();
     render(<ConditionRow leaf={{ id: 'amount', type: 'trade_value', params: {
       min_eok: 123, timeframe: 'W', include_open_bar: false,
     } }} onChange={onChange} onRemove={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: '500억' }));
+    fireEvent.change(screen.getByLabelText('최소 거래대금(억)'), { target: { value: '500' } });
     expect(onChange).toHaveBeenLastCalledWith({ id: 'amount', type: 'trade_value', params: {
       min_eok: 500, timeframe: 'W', include_open_bar: false,
     } });
