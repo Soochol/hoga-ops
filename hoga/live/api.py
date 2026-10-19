@@ -158,6 +158,7 @@ _CODE_RE = re.compile(CODE_PATTERN)
 # 정본은 hoga.util.timeenc.KST 하나다 — 벤더별로 다른 값이 아니다.
 _KST = KST
 _INVESTOR_ESTIMATE_MAX_CODES_PER_DAY = 256
+_INVESTOR_ESTIMATE_RESPONSE_WAIT_SECONDS = 5.0
 # 추정 수급 행의 값 필드 — 수량 3 + 금액 3. 관측시각 판정·저장·직렬화가 모두 이
 # 목록을 돈다. 축을 추가하면 여기 한 곳만 늘린다.
 _INVESTOR_ESTIMATE_VALUE_FIELDS = (
@@ -807,6 +808,7 @@ InvestorEstimateWarningReason = Literal[
     "rate_limit_upstream",
     "api_error",
     "parse_error",
+    "request_pending",
 ]
 
 
@@ -1203,10 +1205,22 @@ class LiveInvestorEstimateFetcher:
                 self._fetch_uncached(client, code, trading_day, run_call=run_call)
             )
             self._inflight[key] = task
-            task.add_done_callback(lambda _t, k=key: self._inflight.pop(k, None))
+            task.add_done_callback(lambda completed, k=key: self._finish_fetch(k, completed))
         # shield: 대기자 취소가 공유 태스크로 전파되면 같은 키에 올라탄 다른
         # 대기자까지 CancelledError로 죽는다 (live_candle_backfill과 동일 규약).
         return await asyncio.shield(task)
+
+    def _finish_fetch(
+        self,
+        key: tuple[str, str],
+        task: asyncio.Task[LiveInvestorTrendEstimateResponse],
+    ) -> None:
+        self._inflight.pop(key, None)
+        # All HTTP waiters may have timed out or switched symbols. Retrieve a
+        # late exception too, so a failed shared task never becomes unobserved.
+        if not task.cancelled() and (exc := task.exception()) is not None:
+            log.warning("investor estimate shared fetch failed for %s", key[1],
+                        exc_info=(type(exc), exc, exc.__traceback__))
 
     async def _fetch_uncached(
         self,
@@ -2770,24 +2784,36 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                 scheduler,
                 key=("investor-trend-estimate", code, axis),
                 api_id="ka10064",
-                priority="background",
+                priority="user_visible",
                 client=est_client,
                 fetch_fn=fetch,
             )
 
+        deadline = asyncio.timeout(_INVESTOR_ESTIMATE_RESPONSE_WAIT_SECONDS)
         try:
-            return await asyncio.wait_for(
-                asyncio.shield(
-                    _investor_estimate_fetcher.fetch(est_client, code, run_call=_run_axis_call),
-                ),
-                timeout=1.5,
+            async with deadline:
+                # fetch() shields the shared upstream task itself. Cancel this
+                # waiter at the deadline, leaving one task for follow-up reads.
+                return await _investor_estimate_fetcher.fetch(
+                    est_client, code, run_call=_run_axis_call,
+                )
+        except TimeoutError:
+            if not deadline.expired():
+                raise
+            log.info("investor estimate %s still pending; retaining rows for follow-up read", code)
+            return _investor_estimate_fetcher._error_response(
+                code,
+                _investor_estimate_fetcher._today_fn(),
+                "request_pending",
+                "investor estimate is still being fetched; retry joins the same request",
             )
-        except (TimeoutError, KiwoomCapacityOverloaded):
+        except KiwoomCapacityOverloaded as exc:
+            log.warning("investor estimate %s delayed by capacity: %s", code, exc)
             return _investor_estimate_fetcher._error_response(
                 code,
                 _investor_estimate_fetcher._today_fn(),
                 "rate_limit_upstream",
-                "kiwoom capacity scheduler unavailable",
+                str(exc),
             )
 
     cache_instance: PastCandlesCache | None = (

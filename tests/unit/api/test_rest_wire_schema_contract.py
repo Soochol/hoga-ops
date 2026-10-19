@@ -50,6 +50,7 @@ from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, Prog
 from hoga.live import flow_receipts, futures_runtime, market_overview
 from hoga.live.api import (
     AfterHoursBookResponse,
+    InvestorEstimateWarningReason,
     LiveCandleRow,
     LiveDailyProgramTradeResponse,
     LiveIndexCandlesResponse,
@@ -511,6 +512,10 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "InvestorEstimateWarningReason": (
+        frozenset(get_args(InvestorEstimateWarningReason)),
+        "frontend/src/api/liveInvestorTrendEstimate.ts",
+    ),
     "LiveIndexId": (frozenset(get_args(LiveIndexId)), "frontend/src/live/liveInstrument.ts"),
     "UsExchange": (frozenset(get_args(UsExchange)), "frontend/src/live/liveInstrument.ts"),
     "UsDailyStatus": (frozenset(get_args(UsDailyStatus)), "frontend/src/api/usDailyCandles.ts"),
