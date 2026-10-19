@@ -103,12 +103,9 @@ function SectorButton({
       onFocus={() => onPreview(sectorIdentityKey(sector.folder_id))}
       onBlur={() => onPreview(null)}
       onClick={() => onPin(sectorIdentityKey(sector.folder_id))}
-      className="grid w-full items-center text-left"
+      className="sector-ranking-row grid w-full items-center text-left"
       style={{
-        gridTemplateColumns: '1.5rem minmax(0, 1fr) 4rem',
-        gap: 'var(--space-sm)',
         minHeight: 30,
-        padding: 'var(--space-xs) var(--space-sm)',
         border: active ? '1px solid var(--accent)' : '1px solid transparent',
         background: active ? 'var(--tint-selection)' : 'transparent',
         color: 'var(--fg)',
@@ -139,12 +136,9 @@ function StockButton({
       type="button"
       aria-label={stockButtonLabel(stock)}
       onClick={(e) => onOpenStock(stock.code, stock.name, e)}
-      className="grid w-full items-center text-left"
+      className="sector-ranking-row grid w-full items-center text-left"
       style={{
-        gridTemplateColumns: '1.5rem minmax(0, 1fr) 4rem',
-        gap: 'var(--space-sm)',
         minHeight: 30,
-        padding: 'var(--space-xs) var(--space-sm)',
         color: 'var(--fg)',
       }}
     >
@@ -241,40 +235,44 @@ export function IndexSectorRankingPane({
         data-detail={showStocks}
       >
         <div className="sector-ranking-sectors min-h-0 overflow-auto" style={{ borderRight: '1px solid var(--border)' }}>
-          <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs text-fg-dim">
-            {sectors.every(sector => sector.change_pct == null) ? '등락 데이터 없음 · 섹터 목록' : '섹터 · 등락률'}
-          </div>
-          {sectors.map((sector, index) => {
-            return (
-              <SectorButton
-                key={sector.folder_id ?? `sector-${index}`}
-                sector={sector}
-                rank={index + 1}
-                active={sectorIdentityKey(sector.folder_id) === activeSectorId}
-                onPreview={(sectorKey) => dispatch({ type: 'preview_sector', sectorKey })}
-                onPin={(sectorKey) => {
-                  // breakpoint는 CSS가 소유한다. 좁은 창에서만 상세로 이동하고
-                  // 포커스를 넘긴다(넓은 창의 hover-preview를 blur로 지우지 않는다).
-                  const narrow = backRef.current != null && getComputedStyle(backRef.current).display === 'block';
-                  if (!narrow || state.pinnedSectorKey !== sectorKey) dispatch({ type: 'toggle_sector_pin', sectorKey });
-                  setShowStocks(true);
-                  if (narrow) requestAnimationFrame(() => backRef.current?.focus());
-                }}
-              />
-            );
-          })}
+          <div className="sector-ranking-list">
+            <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs text-fg-dim">
+              {sectors.every(sector => sector.change_pct == null) ? '등락 데이터 없음 · 섹터 목록' : '섹터 · 등락률'}
+            </div>
+            {sectors.map((sector, index) => {
+              return (
+                <SectorButton
+                  key={sector.folder_id ?? `sector-${index}`}
+                  sector={sector}
+                  rank={index + 1}
+                  active={sectorIdentityKey(sector.folder_id) === activeSectorId}
+                  onPreview={(sectorKey) => dispatch({ type: 'preview_sector', sectorKey })}
+                  onPin={(sectorKey) => {
+                    // breakpoint는 CSS가 소유한다. 좁은 창에서만 상세로 이동하고
+                    // 포커스를 넘긴다(넓은 창의 hover-preview를 blur로 지우지 않는다).
+                    const narrow = backRef.current != null && getComputedStyle(backRef.current).display === 'block';
+                    if (!narrow || state.pinnedSectorKey !== sectorKey) dispatch({ type: 'toggle_sector_pin', sectorKey });
+                    setShowStocks(true);
+                    if (narrow) requestAnimationFrame(() => backRef.current?.focus());
+                  }}
+                />
+              );
+            })}
+            </div>
         </div>
 
         <div className="sector-ranking-stocks min-h-0 overflow-auto">
-          <button ref={backRef} type="button" className="sector-ranking-back w-full px-2 py-1.5 text-left text-xs text-accent"
-            onClick={() => {
-              setShowStocks(false);
-              requestAnimationFrame(() => paneRef.current?.querySelector<HTMLButtonElement>('.sector-ranking-sectors [aria-pressed="true"]')?.focus());
-            }}>← 섹터 목록</button>
-          <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs font-medium text-fg" title={activeSector?.folder_name}>{activeSector?.folder_name}</div>
-          {(activeSector?.stocks ?? []).map((stock, index) => (
-            <StockButton key={stock.code} stock={stock} rank={index + 1} onOpenStock={onOpenStock} />
-          ))}
+          <div className="sector-ranking-list">
+            <button ref={backRef} type="button" className="sector-ranking-back w-full px-2 py-1.5 text-left text-xs text-accent"
+              onClick={() => {
+                setShowStocks(false);
+                requestAnimationFrame(() => paneRef.current?.querySelector<HTMLButtonElement>('.sector-ranking-sectors [aria-pressed="true"]')?.focus());
+              }}>← 섹터 목록</button>
+            <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs font-medium text-fg" title={activeSector?.folder_name}>{activeSector?.folder_name}</div>
+            {(activeSector?.stocks ?? []).map((stock, index) => (
+              <StockButton key={stock.code} stock={stock} rank={index + 1} onOpenStock={onOpenStock} />
+            ))}
+          </div>
         </div>
       </div>
     );

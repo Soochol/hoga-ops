@@ -91,6 +91,26 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   return { window, commands, ws, stateRequests };
 }
 
+async function showInfoPage(page: Page, panel: Locator, target: 1 | 2 = 2) {
+  let summary = panel.getByTestId('book-summary');
+  const popup = page.getByRole('dialog', { name: '종목 상세 정보', exact: true });
+  if (!await summary.isVisible()) {
+    const info = panel.getByRole('button', { name: '종목 상세 정보', exact: true });
+    if (await info.getAttribute('aria-expanded') !== 'true') {
+      if (await popup.isVisible()) await page.keyboard.press('Escape');
+      await info.click();
+    }
+    summary = popup.getByTestId('book-summary');
+  } else if (await popup.isVisible()) {
+    await page.keyboard.press('Escape');
+  }
+  if (await summary.getAttribute('data-page') !== String(target)) {
+    await summary.getByRole('button', { name: /다음 정보 페이지로 전환/ }).click();
+  }
+  await expect(summary).toHaveAttribute('data-page', String(target));
+  return summary;
+}
+
 async function setSettingSwitch(control: Locator, checked: boolean) {
   if (await control.getAttribute('aria-checked') !== String(checked)) await control.click();
   await expect(control).toHaveAttribute('aria-checked', String(checked));
@@ -933,7 +953,7 @@ test('576px 압축형은 숫자만 있는 보유 정보와 주문 입력을 분�
   await expect.poll(() => window.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   await expect(window).toHaveClass(/order-expanded/);
   await expect(window.getByRole('button', { name: '종목 상세 정보', exact: true })).toHaveCount(0);
-  await expect(window.getByTestId('book-summary').getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
+  await expect((await showInfoPage(page, window)).getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
   const settings = (await window.getByRole('button', { name: '주문 설정', exact: true }).boundingBox())!;
   const buyingPower = window.getByLabel('매수 가능 금액');
   const cash = (await buyingPower.boundingBox())!;
@@ -1396,7 +1416,9 @@ test('공통 수량·환산 금액·상단 보유 종목 매입 정보', async (
   const summary = window.getByTestId('book-summary');
   await expect(summary.getByText('매수 가능', { exact: true })).toHaveCount(0);
   await expect(summary.getByText('매도 가능', { exact: true })).toHaveCount(0);
-  for (const label of ['KRX종가', '상승VI', '하강VI', '250일']) await expect(summary.getByText(label, { exact: true })).toBeVisible();
+  await expect(summary.getByText('KRX종가', { exact: true })).toBeVisible();
+  await showInfoPage(page, window);
+  for (const label of ['상승VI', '하강VI', '250일']) await expect(summary.getByText(label, { exact: true })).toBeVisible();
   await buy.dblclick();
   await expect(window.getByLabel('매수 67,200원 주문', { exact: true })).toHaveText('50');
   expect(commands[0]).toMatchObject({ side: 'BUY', quantity: 50 });
@@ -1990,26 +2012,26 @@ for (const venue of ['KRX', 'NXT', 'UN'] as const) {
     const expected = { kind: 'expected', venue, t_ms, expected_price: 121100, expected_qty: 5152 };
     ws.pushLive('005930', expected);
     for (const panel of [window, book]) {
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가121,100원');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가121,100원');
     }
     ws.pushLive('005930', { kind: 'ob', venue, t_ms: t_ms + 1,
       asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
       total_ask_qty: 100, total_bid_qty: 200,
     });
     for (const panel of [window, book]) {
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가121,100원');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가121,100원');
     }
     ws.pushLive('005930', { ...expected, venue: venue === 'KRX' ? 'NXT' : 'KRX', t_ms: t_ms + 2,
       expected_price: 999999, expected_qty: 999 });
     ws.pushLive('005930', { ...expected, t_ms: t_ms + 3, expected_price: 121200, expected_qty: 6000 });
     for (const panel of [window, book]) {
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가121,200원');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가121,200원');
     }
     ws.pushLive('005930', { kind: 'trade', venue, t_ms: t_ms + 4,
       trades: [{ price: 121100, qty: 1, side: 1 }] });
-    for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+    for (const panel of [window, book]) await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveCount(0);
     ws.pushLive('005930', expected);
-    for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+    for (const panel of [window, book]) await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveCount(0);
     expect(commands).toHaveLength(0);
   });
 }
@@ -2024,14 +2046,14 @@ for (const venue of ['KRX', 'UN'] as const) {
     const expected = { kind: 'expected', venue, t_ms, expected_price: 1241000, expected_qty: 3 };
     ws.pushLive('005930', expected);
     for (const panel of panels) {
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가1,241,000원');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가1,241,000원');
     }
     const frame = { kind: 'ob', venue, t_ms,
       asks: [{ price: 1240000, qty: 100 }], bids: [{ price: 1239000, qty: 200 }],
       total_ask_qty: 55619, total_bid_qty: 18449, expected_price: 1240000, expected_qty: 363789 };
     ws.pushLive('005930', frame);
     for (const panel of panels) {
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가1,240,000원예상 체결량363,789');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가1,240,000원예상 체결량363,789');
     }
     for (const offset of [0, 1000]) {
       ws.pushLive('005930', { ...expected, t_ms: t_ms + offset });
@@ -2040,18 +2062,18 @@ for (const venue of ['KRX', 'UN'] as const) {
         total_ask_qty: 55620 + offset });
       await expect(book.getByTestId('book-total-strip')).toContainText((55620 + offset).toLocaleString('ko-KR'));
       for (const panel of panels) {
-        await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가1,240,000원예상 체결량363,789');
+        await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가1,240,000원예상 체결량363,789');
       }
     }
     // Small, genuine expected quantities and decreases remain valid.
     ws.pushLive('005930', { ...frame, t_ms: t_ms + 2000, expected_price: 1239000, expected_qty: 1 });
     for (const panel of panels) {
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가1,239,000원예상 체결량1');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가1,239,000원예상 체결량1');
     }
     await book.screenshot({ path: testInfo.outputPath('expected-quantity-source.png') });
     ws.pushLive('005930', { kind: 'trade', venue, t_ms: t_ms + 3000,
       trades: [{ price: 1239000, qty: 1, side: 1 }] });
-    for (const panel of panels) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+    for (const panel of panels) await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveCount(0);
     expect(commands).toHaveLength(0);
   });
 }
@@ -2069,7 +2091,7 @@ for (const venue of ['KRX', 'NXT', 'UN'] as const) {
       total_ask_qty: 303, total_bid_qty: 603, expected_price: 67200, expected_qty: 323557 };
     ws.pushLive('005930', frame);
     for (const panel of panels) {
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가67,200원예상 체결량323,557');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가67,200원예상 체결량323,557');
       await expect(panel.locator('.book-qty-delta')).toHaveCount(0);
     }
     const changed = { ...frame,
@@ -2082,15 +2104,15 @@ for (const venue of ['KRX', 'NXT', 'UN'] as const) {
     for (const panel of panels) {
       await expect(panel.locator('.book-qty-delta').getByText('+25', { exact: true })).toBeVisible();
       await expect(panel.locator('.book-qty-delta').getByText('−40', { exact: true })).toBeVisible();
-      await expect(panel.getByTestId('book-expected-fill')).toHaveText('예상 체결가67,200원예상 체결량323,557');
+      await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveText('예상 체결가67,200원예상 체결량323,557');
     }
     await book.screenshot({ path: testInfo.outputPath('auction-quantity-deltas.png') });
     expect(commands).toHaveLength(0);
   });
 }
 
-test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시되고 빈 호가는 제거된다', async ({ page }, testInfo) => {
-  const { window, ws, commands } = await setup(page);
+test('예상 체결가·체결량은 두 창의 정보 1페이지에 표시되고 빈 호가는 제거된다', async ({ page }, testInfo) => {
+  const { window, ws, commands } = await setup(page, false, false);
   const book = page.locator('.book-panel'); // 기본 배치의 10호가창과 비교
   await expect(book).toHaveCount(1);
   await ws.waitForSubscribe('005930');
@@ -2100,7 +2122,7 @@ test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시�
     total_ask_qty: 400, total_bid_qty: 600, expected_price: 241000, expected_qty: 6140 };
   ws.pushLive('005930', frame);
   for (const panel of [window, book]) {
-    const banner = panel.getByTestId('book-expected-fill');
+    const banner = (await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill');
     await expect(banner).toHaveText('예상 체결가241,000원예상 체결량6,140');
     await expect(banner).toBeVisible();
   }
@@ -2111,17 +2133,19 @@ test('예상 체결가·체결량은 10호가창과 주문창에 함께 표시�
   await expect(window.locator('[data-order-price="0"]')).toHaveCount(0);
   for (const width of [640, 360]) {
     await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; el.scrollLeft = 0; }, width);
-    const banner = window.getByTestId('book-expected-fill');
+    if (width < 560) await expect(window).not.toHaveClass(/order-expanded/);
+    else await expect(window).toHaveClass(/order-expanded/);
+    const banner = (await showInfoPage(page, window, 1)).getByTestId('book-expected-fill');
     await expect(banner.getByText('241,000원', { exact: true })).toBeInViewport();
     await expect(banner.getByText('6,140', { exact: true })).toBeInViewport();
     expect(await banner.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
   }
   await window.screenshot({ path: testInfo.outputPath('order-expected-fill.png') });
   ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + 1, expected_price: 0, expected_qty: 0 });
-  for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toBeVisible();
+  for (const panel of [window, book]) await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toBeVisible();
   ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: frame.t_ms + 2,
     trades: [{ price: 241000, qty: 1, side: 1 }] });
-  for (const panel of [window, book]) await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+  for (const panel of [window, book]) await expect((await showInfoPage(page, panel, 1)).getByTestId('book-expected-fill')).toHaveCount(0);
   expect(commands).toHaveLength(0);
 });
 
@@ -2177,10 +2201,10 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
     if (width >= 560 && usableWidth >= 560) {
       await expect(window).toHaveClass(/order-expanded/);
       await expect(info).toHaveCount(0);
-      const summary = window.getByTestId('book-summary');
+      const summary = await showInfoPage(page, window);
       await expect(summary.getByText('250일', { exact: true })).toBeVisible();
       await expect(summary.getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
-      expect(await summary.evaluate(el => [...el.querySelectorAll('.book-summary > div:not(.book-summary-extra), .book-summary-extra > div')].every(row => {
+      expect(await summary.evaluate(el => [...el.querySelectorAll('.book-summary-row')].every(row => {
         const spans = [...row.children].map(child => child.getBoundingClientRect());
         const r = row.getBoundingClientRect();
         return spans.length === 2 && spans[0].right <= spans[1].left && spans[1].right <= r.right + 0.5;
@@ -2200,6 +2224,7 @@ test('넓은 창은 상세 정보를 직접 표시하고 기본·압축·스크�
     await expect(window.getByTestId('book-summary')).toHaveCount(0);
     await info.click();
     const popup = page.getByRole('dialog', { name: '종목 상세 정보', exact: true });
+    await showInfoPage(page, window);
     await expect(popup.getByTestId('book-summary').getByText('250일', { exact: true })).toBeVisible();
     await expect(popup.getByRole('button', { name: '종목 정보 닫기' })).toBeFocused();
     const rect = (await popup.boundingBox())!;
@@ -2513,7 +2538,7 @@ test('기본 576px에서도 7자리 가격·긴 상세 값·폰트를 유지하�
   await page.evaluate(() => document.fonts.ready);
   await expect(window).toHaveClass(/order-expanded/);
   await expect(window.getByRole('button', { name: '종목 상세 정보', exact: true })).toHaveCount(0);
-  await expect(window.getByTestId('book-summary').getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
+  await expect((await showInfoPage(page, window)).getByText('1,578,000/1,425,000', { exact: true })).toBeVisible();
   const priceFont = await window.locator('.order-price > span').first().evaluate(el => getComputedStyle(el).fontSize);
   const detailFont = await window.getByTestId('book-summary').getByText('1,578,000/1,425,000', { exact: true }).evaluate(el => getComputedStyle(el).fontSize);
   expect(await window.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -2658,25 +2683,67 @@ test('호가주문 고정 열은 자릿수·부호·금액과 % 전환에도 상
   expect(commands).toHaveLength(0);
 });
 
-test('호가주문 예상 체결가·체결량의 자릿수 변경은 배치를 유지한다', async ({ page }) => {
-  const { window, ws, commands } = await setup(page);
-  await ws.waitForSubscribe('005930');
-  const frame = { kind: 'ob', venue: 'UN', t_ms: Date.now(),
-    asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 100 }],
-    total_ask_qty: 100, total_bid_qty: 100, expected_price: 1, expected_qty: 1 };
-  const banner = window.getByTestId('book-expected-fill');
-  let sequence = 0;
-  for (const width of [800, 360]) {
-    await window.evaluate((el, width) => { (el as HTMLElement).style.width = `${width}px`; }, width);
-    ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + sequence++ });
-    await expect(banner).toHaveText('예상 체결가1원예상 체결량1');
-    const fields = [banner, banner.locator('span > .font-data').nth(0), banner.locator('span > .font-data').nth(1)];
-    const before = await Promise.all(fields.map(field => field.boundingBox()));
-    ws.pushLive('005930', { ...frame, t_ms: frame.t_ms + sequence++, expected_price: 9999999, expected_qty: 999999999 });
-    await expect(banner).toHaveText('예상 체결가9,999,999원예상 체결량999,999,999');
-    expect(await Promise.all(fields.map(field => field.boundingBox()))).toEqual(before);
-    expect(await banner.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+test('정보 영역 전체 클릭·키보드 전환과 예상 체결값 갱신은 두 창의 호가 위치를 유지한다', async ({ page }, testInfo) => {
+  const { window, ws, commands } = await setup(page, false, false);
+  const book = page.locator('.book-panel');
+  for (const [panel, left, width] of [[book, 0, 680], [window, 700, 576]] as const) {
+    await page.locator('[data-win]').filter({ has: panel }).evaluate((el, rect) => {
+      Object.assign((el as HTMLElement).style, { left: `${rect.left}px`, top: '0px', width: `${rect.width}px`, height: '720px' });
+    }, { left, width });
   }
+  const geometry = (panel: Locator) => panel.locator('.book-panel-grid, .order-ladder').evaluate(el => ({
+    rows: (el.classList.contains('book-panel-grid') ? [...el.children[1].children] : [...el.querySelectorAll('.order-row')]).map(row => {
+      const r = row.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height };
+    }),
+  }));
+  await expect(window).toHaveClass(/order-expanded/);
+  await ws.waitForSubscribe('005930');
+  const before = await Promise.all([book, window].map(geometry));
+  for (const panel of [book, window]) {
+    const summary = panel.getByTestId('book-summary');
+    await expect(summary).toHaveAttribute('data-page', '1');
+    await expect(summary.locator('.book-summary-pages')).toHaveText('');
+    await expect(summary.locator('.book-summary-dot')).toHaveCount(2);
+    const background = await summary.evaluate(el => getComputedStyle(el).backgroundColor);
+    await summary.hover();
+    await expect(summary).toHaveCSS('background-color', background);
+    const heading = summary.getByRole('button', { name: /다음 정보 페이지로 전환/ });
+    const headingBackground = await heading.evaluate(el => getComputedStyle(el).backgroundColor);
+    await heading.hover();
+    await expect(heading).toHaveCSS('background-color', headingBackground);
+    await summary.getByText('시작', { exact: true }).click();
+    await expect(summary).toHaveAttribute('data-page', '2');
+    await expect(summary.locator('.book-summary-dot').nth(1)).toHaveClass(/is-active/);
+    await expect(summary.getByText('상한가', { exact: true })).toBeVisible();
+    await summary.click({ position: { x: 5, y: (await summary.boundingBox())!.height - 4 } });
+    await expect(summary).toHaveAttribute('data-page', '1');
+    await summary.getByRole('button', { name: /다음 정보 페이지로 전환/ }).focus();
+    await page.keyboard.press('Enter');
+    await expect(summary).toHaveAttribute('data-page', '2');
+    await page.keyboard.press('Space');
+    await expect(summary).toHaveAttribute('data-page', '1');
+  }
+  const at = Date.now();
+  for (const [index, price, qty] of [[0, 1, 1], [1, 9999999, 999999999]] as const) {
+    ws.pushLive('005930', { kind: 'ob', venue: 'UN', t_ms: at + index,
+      asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 100 + i })),
+      bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 200 + i })),
+      total_ask_qty: 1000, total_bid_qty: 2000,
+      expected_price: price, expected_qty: qty });
+    for (const panel of [book, window]) {
+      const summary = panel.getByTestId('book-summary');
+      await expect(summary.getByTestId('book-expected-fill')).toHaveText(`예상 체결가${price.toLocaleString('ko-KR')}원예상 체결량${qty.toLocaleString('ko-KR')}`);
+      await expect(panel.locator(':scope > .book-expected-fill')).toHaveCount(0);
+    }
+    expect(await Promise.all([book, window].map(geometry))).toEqual(before);
+  }
+  await page.screenshot({ path: testInfo.outputPath('book-information-pages.png') });
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: at + 2, trades: [{ price: 67200, qty: 1, side: 1 }] });
+  for (const panel of [book, window]) {
+    await expect(panel.getByTestId('book-expected-fill')).toHaveCount(0);
+    await expect(panel.getByTestId('book-summary').getByText('시작', { exact: true })).toBeVisible();
+  }
+  expect(await Promise.all([book, window].map(geometry))).toEqual(before);
   expect(commands).toHaveLength(0);
 });
 

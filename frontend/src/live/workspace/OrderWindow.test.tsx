@@ -487,21 +487,27 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('매입평단가')).not.toHaveTextContent('호가 범위 밖');
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it('10호가창과 같은 예상 체결가·체결량을 사다리 위에 표시하고 갱신한다', () => {
+  it('예상 체결가·체결량을 상단 배너 대신 정보 1페이지에서 갱신한다', () => {
     mock.expectedPrice = 241_000; mock.expectedQty = 6_140;
     const view = show();
+    expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
     const banner = screen.getByTestId('book-expected-fill');
     expect(banner).toHaveTextContent('예상 체결가241,000원');
     expect(banner).toHaveTextContent('예상 체결량6,140');
-    const ladder = screen.getByRole('region', { name: '실시간 호가 주문 사다리' });
-    expect(banner.nextElementSibling).toBe(ladder);
+    expect(banner.closest('[data-testid="book-summary"]')).toHaveAttribute('data-page', '1');
+    expect(screen.getByTestId('order-window').querySelector(':scope > .book-expected-fill')).toBeNull();
+    expect(screen.getByText('시작')).toBeInTheDocument();
     mock.expectedQty = 0;
     view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
     expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
   });
-  it('예상 체결가·체결량을 제공하지 않으면 배너를 표시하지 않는다', () => {
+  it('예상 체결값이 없어도 정보 2페이지의 다른 항목은 유지한다', () => {
     show();
+    fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+    expect(screen.getByText('상한가')).toBeInTheDocument();
   });
   it('호가에 예상값이 없는 장중에도 0H 오버레이를 두 창에 표시하고 종료 시 지운다', () => {
     const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
@@ -518,6 +524,7 @@ describe('호가 주문', () => {
     try {
       mock.expectedPrice = 121100; mock.expectedQty = null;
       const view = render(content());
+      fireEvent.click(within(screen.getByTestId('order-window')).getByRole('button', { name: '종목 상세 정보' }));
       const banners = screen.getAllByTestId('book-expected-fill');
       expect(banners).toHaveLength(2);
       banners.forEach(banner => {
@@ -1103,10 +1110,12 @@ describe('호가 주문', () => {
     const summaryContent = within(summary);
     expect(summaryContent.queryByText('매수 가능')).not.toBeInTheDocument();
     expect(summaryContent.queryByText('매도 가능')).not.toBeInTheDocument();
-    for (const label of ['KRX종가', '상한가', '하한가', '상승VI', '하강VI', '250일']) expect(summaryContent.getByText(label)).toBeInTheDocument();
+    expect(summaryContent.getByText('KRX종가')).toBeInTheDocument();
     expect(summaryContent.getByText('833만')).toBeInTheDocument();
     expect(summaryContent.getByText('184.55%')).toBeInTheDocument();
     expect(summaryContent.getByText('12조 2,908억')).toBeInTheDocument();
+    fireEvent.click(summaryContent.getByText('833만'));
+    for (const label of ['상한가', '하한가', '상승VI', '하강VI', '250일']) expect(summaryContent.getByText(label)).toBeInTheDocument();
     expect(summaryContent.getByText('70,000/50,000')).toBeInTheDocument();
   });
   it('가격이나 유효 수량이 없으면 예상 금액을 계산하지 않고 잘못된 수량은 전송하지 않는다', () => {

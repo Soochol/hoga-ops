@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { WindowFrame, type WindowFrameProps } from './WindowFrame';
 import { useMajorIndices } from './useMajorIndices';
 import { indexPercentAt, type IndexPercentPoint } from './majorIndicesModel';
@@ -43,6 +43,8 @@ function linePath(points: readonly IndexPercentPoint[], x: (t: number) => number
 
 function MajorIndicesChart({ model }: { model: Overview }) {
   const container = useRef<HTMLDivElement>(null);
+  const axisLabels = useRef<SVGGElement>(null);
+  const [axisWidth, setAxisWidth] = useState(52);
   const [size, setSize] = useState({ width: 600, height: 174 });
   // Fraction of the full regular session. Pointer movement only rerenders this
   // small SVG, not the query observers or the rest of the workspace.
@@ -60,7 +62,7 @@ function MajorIndicesChart({ model }: { model: Overview }) {
     return () => observer.disconnect();
   }, []);
   const { width, height } = size;
-  const left = 5, right = Math.max(left + 10, width - 52), top = 20, bottom = Math.max(top + 15, height - 21);
+  const left = 5, right = Math.max(left + 10, width - axisWidth), top = 20, bottom = Math.max(top + 15, height - 21);
   const open = regularSessionOpenMs(model.date), close = regularSessionCloseMs(model.date);
   const values = model.series.flatMap(s => s.points.map(p => p.percent));
   const low = Math.min(0, ...values), high = Math.max(0, ...values);
@@ -73,6 +75,24 @@ function MajorIndicesChart({ model }: { model: Overview }) {
   const ticks: number[] = [];
   for (let value = min; value <= max + tickStep / 100; value += tickStep) ticks.push(Math.abs(value) < tickStep / 100 ? 0 : value);
   const decimals = tickStep >= 0.1 ? 1 : 2;
+  useLayoutEffect(() => {
+    const labels = Array.from(axisLabels.current?.querySelectorAll('text') ?? []);
+    const measure = () => {
+      const fontSize = (labels[0] && parseFloat(getComputedStyle(labels[0]).fontSize)) || 10.5;
+      const next = Math.ceil(Math.max(52 * fontSize / 10.5, ...labels.map(label =>
+        (typeof label.getComputedTextLength === 'function' ? label.getComputedTextLength() : label.getBoundingClientRect().width) + 14)));
+      setAxisWidth(old => old === next ? old : next);
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
+    labels.forEach(label => observer.observe(label));
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [min, max, tickStep, decimals]);
   const cursorTime = hover === null ? null : open + hover * (close - open);
   const hovered = model.series.map(s => ({ ...s, at: cursorTime === null ? null : indexPercentAt(s.points, cursorTime) }));
   const hasData = values.length > 0;
@@ -87,10 +107,10 @@ function MajorIndicesChart({ model }: { model: Overview }) {
       onClick={event => { if (pinned) { setPinned(false); setHover(null); } else { move(event); setPinned(true); } }}>
       <defs><clipPath id={clipId}><rect x={left} y={top - 3} width={right - left + 3} height={bottom - top + 6} /></clipPath></defs>
       <text x={width - 5} y={12} textAnchor="end">등락률 %</text>
-      {ticks.map((value, i) => <g key={i}>
+      <g ref={axisLabels} data-testid="major-indices-axis-labels">{ticks.map((value, i) => <g key={i}>
         <line x1={left} x2={right} y1={y(value)} y2={y(value)} className={value === 0 ? 'major-indices-zero' : 'major-indices-grid'} />
         <text x={right + 7} y={y(value) + 3.5}>{value > 0 ? '+' : ''}{value.toFixed(decimals)}%</text>
-      </g>)}
+      </g>)}</g>
       <line x1={right} x2={right} y1={top} y2={bottom} className="major-indices-grid" />
       <text x={left} y={height - 5}>09:00</text>
       {width >= 300 && <text x={x(open + 3 * 3600_000)} y={height - 5} textAnchor="middle">12:00</text>}

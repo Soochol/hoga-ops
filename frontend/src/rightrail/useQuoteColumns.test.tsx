@@ -38,4 +38,19 @@ describe('useQuoteColumns scope', () => {
     rerender({ row: { ...small, price: null, change_pct: null }, scope: 'condition-b' });
     expect(result.current.samples.price).toEqual(['—', '88']);
   });
+
+  it('retains ranked detail figures during refresh and resets them for a new ranking scope', () => {
+    const { result, rerender } = renderHook(({ detail, scope }) =>
+      useQuoteColumns([small.code], values([small]), scrollRef, scope, { rank: ['8888'], detail }),
+    { initialProps: { detail: ['+123,456.78억', '-123,456.78억'], scope: 'program:all' } });
+    expect(result.current.samples.rank).toContain('8888');
+    expect(result.current.samples.detail).toContain('-888,888.88억');
+    rerender({ detail: ['+1.00억'], scope: 'program:all' });
+    expect(result.current.samples.detail).toContain('-888,888.88억');
+    rerender({ detail: [], scope: 'program:all' });
+    expect(result.current.samples.detail).toContain('+888,888.88억');
+    rerender({ detail: ['+1.00억'], scope: 'foreign:all' });
+    expect(result.current.samples.detail).toEqual(['+8.88억']);
+    expect(result.current.samples.rank).toContain('8888');
+  });
 });

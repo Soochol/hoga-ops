@@ -43,6 +43,8 @@ import type {
 import { CandleThumb } from './CandleThumb';
 import { PatternMatchRowMenu } from './PatternMatchRowMenu';
 import { SimilarityStrip } from './SimilarityStrip';
+import '../ui/ResponsiveList.css';
+import './PatternColumns.css';
 import {
   DEFAULT_FILTERS,
   DEFAULT_LENGTH,
@@ -413,7 +415,7 @@ function MatchRow({
       data-exclusion-key={exclusionKey(row)}
       aria-keyshortcuts="Delete"
       aria-current={selected ? 'true' : undefined}
-      className="grid w-full cursor-pointer grid-cols-[1fr_5.25rem_3.5rem] items-center gap-sm border-b border-grid px-md py-xs text-left outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
+      className="pattern-match-row grid w-full cursor-pointer items-center border-b border-grid py-xs text-left outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover"
       style={{
         // 선택 표식은 **배경 틴트만** — 좌측 accent 바를 다시 넣지 말 것(DESIGN.md 의
         // 리스트 행 규칙, 2026-07-23 우측 레일 전체 통일). `QuoteRow` 가 기준이다.
@@ -454,7 +456,7 @@ function MatchRow({
         )}
       </span>
       <CandleThumb bars={row.bars} tail={row.tail} ma={row.ma} maPeriods={maPeriods} height={34} />
-      <span className="flex flex-col items-end gap-[3px]">
+      <span className="pattern-match-figures flex flex-col items-end gap-[3px] font-data tabular-nums">
         <span className="font-data text-xs font-semibold text-fg" title={`유사도(상관계수) ${row.corr.toFixed(3)} · 1에 가까울수록 비슷한 모양`}>{row.corr.toFixed(3)}</span>
         {mode === 'history' ? (
           <span
@@ -767,7 +769,7 @@ export function PatternDrawer() {
   );
 
   return (
-    <RailDrawer id="right-rail-pattern-panel" testId="pattern-drawer" ariaLabel="봉 패턴 검색">
+    <RailDrawer id="right-rail-pattern-panel" testId="pattern-drawer" ariaLabel="봉 패턴 검색" className="responsive-list-panel">
       <RailDrawerHeader title="패턴" />
 
       {showSaves ? (
@@ -1113,7 +1115,7 @@ export function PatternDrawer() {
                       : '조건에 맞는 매치가 없다.'}
               </RailState>
             ) : (
-              shown.map(({ row, length: matchLen }) => {
+              <div className="pattern-results responsive-list-body">{shown.map(({ row, length: matchLen }) => {
                 const key = rowKey(row, matchLen);
                 return (
                 <MatchRow
@@ -1135,7 +1137,7 @@ export function PatternDrawer() {
                   maPeriods={result.ma_periods}
                 />
                 );
-              })
+              })}</div>
             )}
           </RailDrawerBody>
           {rowMenu && (

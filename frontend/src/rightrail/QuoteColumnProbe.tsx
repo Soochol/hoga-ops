@@ -6,7 +6,9 @@ import './QuoteColumns.css';
  * keeps measurement samples out of text queries and the accessibility tree. */
 export const QuoteColumnProbe = memo(function QuoteColumnProbe({ probe, samples }: Pick<ReturnType<typeof useQuoteColumns>, 'probe' | 'samples'>) {
   return <span ref={probe} className="quote-column-probe font-data tabular-nums" aria-hidden="true">
-    {[400, 500].flatMap(weight => samples.price.map(value => <span key={`${weight}:${value}`} data-quote-measure="price" data-figure={value} className="text-sm leading-tight" style={{ fontWeight: weight }} />))}
-    {[400, 500].flatMap(weight => samples.percent.map(value => <span key={`${weight}:${value}`} data-quote-measure="percent" data-figure={value} className="text-xs leading-tight" style={{ fontWeight: weight }} />))}
+    {(['price', 'percent', 'rank', 'detail'] as const).flatMap(column => [400, 500].flatMap(weight =>
+      samples[column].map(value => <span key={`${column}:${weight}:${value}`} data-quote-measure={column} data-figure={value}
+        className={`${column === 'price' ? 'text-sm' : 'text-xs'} leading-tight`} style={{ fontWeight: weight }} />),
+    ))}
   </span>;
 });

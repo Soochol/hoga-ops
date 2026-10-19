@@ -1,0 +1,57 @@
+.heatmap-flow { height: 100%; overflow-y: auto; min-width: 0; color: var(--fg); padding: 0 var(--space-sm) var(--space-md); }
+.heatmap-flow-header, .heatmap-flow-toolbar, .heatmap-flow-selection, .heatmap-flow-picker-header, .heatmap-flow-timeline, .heatmap-flow-footer { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-sm); }
+.heatmap-flow-header { justify-content: space-between; padding: var(--space-md) 0; }
+.heatmap-flow-header h1 { margin: 0; font-size: var(--text-md); font-weight: 600; }
+.heatmap-flow-header p { margin-top: var(--space-xs); font-size: var(--text-sm); color: var(--fg-dim); }
+.heatmap-flow-toolbar { justify-content: space-between; padding: var(--space-sm) 0; border-bottom: 1px solid var(--border); }
+.heatmap-flow-toolbar .ui-segmented { flex-wrap: wrap; }
+.heatmap-flow-selection { padding: var(--space-sm) 0; }
+.heatmap-flow-chip { display: inline-flex; align-items: center; gap: var(--space-xs); padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-md); background: var(--bg-input-hover); color: var(--fg); font-size: var(--text-sm); max-width: 100%; overflow-wrap: anywhere; }
+.heatmap-flow-chip:hover { background: var(--bg-subtle); }
+.heatmap-flow-dot { display: inline-block; width: .4375rem; height: .4375rem; border-radius: 50%; flex: none; }
+.heatmap-flow-picker { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-sm); margin-bottom: var(--space-sm); }
+.heatmap-flow-picker-header { justify-content: space-between; }
+.heatmap-flow-picker-header label { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--text-sm); }
+.heatmap-flow-picker input[type='search'] { background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-xs); min-width: 0; width: 11rem; max-width: 100%; }
+.heatmap-flow-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: var(--space-sm); max-height: 14rem; overflow-y: auto; padding: var(--space-sm) 0; }
+.heatmap-flow-options label { display: flex; gap: var(--space-sm); align-items: center; font-size: var(--text-sm); overflow-wrap: anywhere; }
+.heatmap-flow input { accent-color: var(--accent); }
+.heatmap-flow-options label:has(input:disabled) { color: var(--fg-dim); }
+.heatmap-flow-main { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: var(--space-md); }
+.heatmap-flow-readout { min-width: 0; padding-right: var(--space-md); border-right: 1px solid var(--border); }
+.heatmap-flow-readout-header, .heatmap-flow-column-labels, .heatmap-flow-value-numbers, .heatmap-flow-chart-heading { display: flex; justify-content: space-between; gap: var(--space-xs); align-items: center; }
+.heatmap-flow-readout-header { padding: var(--space-sm) 0; }
+.heatmap-flow-readout-header strong { font-size: var(--text-lg); font-weight: 500; }
+.heatmap-flow-readout-header span, .heatmap-flow-column-labels, .heatmap-flow-chart-heading, .heatmap-flow-footer { font-size: var(--text-sm); color: var(--fg-dim); }
+.heatmap-flow-column-labels { padding: var(--space-xs) 0; border-bottom: 1px solid var(--border); }
+.heatmap-flow-value-row { border-bottom: 1px solid var(--border); padding: var(--space-md) 0; font-size: var(--text-sm); }
+.heatmap-flow-value-row > div:first-child { display: flex; align-items: center; gap: var(--space-xs); overflow-wrap: anywhere; }
+.heatmap-flow-value-numbers { padding: var(--space-xs) 0 0 .75rem; }
+.heatmap-flow-value-numbers strong { font-size: var(--text-md); font-weight: 500; }
+.heatmap-flow-value-numbers span { color: var(--fg-dim); }
+.heatmap-flow-plot { min-width: 0; }
+.heatmap-flow-chart-heading { padding: var(--space-sm) 0; flex-wrap: wrap; }
+.heatmap-flow-chart { height: clamp(24rem, 55vh, 42rem); min-width: 0; }
+.heatmap-flow-chart svg { display: block; width: 100%; height: 100%; touch-action: pan-y; }
+.heatmap-flow-chart text { font-family: var(--font-data); font-size: var(--text-sm); fill: var(--fg-dim); font-variant-numeric: tabular-nums; }
+.heatmap-flow-chart .flow-grid { stroke: var(--grid); stroke-width: 1; }
+.heatmap-flow-chart .flow-zero { stroke: var(--border-strong); stroke-width: 1; }
+.heatmap-flow-chart .flow-cursor { stroke: var(--fg-dim); stroke-width: 1; stroke-dasharray: 3 3; }
+.heatmap-flow-chart .flow-cursor-label { fill: var(--fg); }
+.heatmap-flow-timeline { border-top: 1px solid var(--border); padding: var(--space-sm) 0; }
+.heatmap-flow-timeline label { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--text-sm); }
+.heatmap-flow-timeline input { flex: 1; min-width: 6rem; }
+.heatmap-flow-footer { justify-content: space-between; padding: var(--space-xs) 0; }
+.heatmap-flow-notice { display: flex; gap: var(--space-sm); align-items: center; flex-wrap: wrap; font-size: var(--text-sm); color: var(--error); }
+@media (max-width: 850px) {
+  .heatmap-flow-main { grid-template-columns: 11rem minmax(0, 1fr); gap: var(--space-sm); }
+  .heatmap-flow-readout { padding-right: var(--space-sm); }
+}
+@media (max-width: 600px) {
+  .heatmap-flow-main { display: flex; flex-direction: column; }
+  .heatmap-flow-plot { order: 0; }
+  .heatmap-flow-readout { order: 1; border-right: 0; padding-right: 0; }
+  .heatmap-flow-chart { height: 22rem; }
+  .heatmap-flow-value-row { padding: var(--space-sm) 0; }
+  .heatmap-flow-picker-header label { width: 100%; }
+}

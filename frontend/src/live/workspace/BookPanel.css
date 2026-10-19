@@ -29,8 +29,15 @@
 .book-info-popover { padding:8px; max-height:calc(100vh - 16px); overflow-y:auto; background:var(--bg-card); color:var(--fg); border:1px solid var(--border); border-radius:var(--radius-sm); box-shadow:var(--shadow-overlay); font-size:var(--live-text-data,var(--text-sm)); }
 .book-info-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 8px 8px; }
 
-/* Twelve summary items fit ten ask rows; bid bars stay aligned. */
-.book-summary { --book-summary-row-height: calc(220px / 12); }
+/* Both pages stay inside the existing ten ask rows, including the heading. */
+.book-summary { --book-summary-row-height:22px; cursor:pointer; }
+.book-summary-heading { display:flex; flex-shrink:0; align-items:center; justify-content:space-between; gap:0.5rem; height:var(--book-summary-row-height); padding:0 var(--book-side-padding,0.5rem); border:0; background:transparent; color:var(--fg-dim); font:inherit; font-size:var(--live-text-meta,var(--text-xs)); cursor:pointer; }
+.book-summary-pages { display:flex; align-items:center; gap:0.5rem; padding-inline:0.125rem; }
+.book-summary-dot { width:5px; height:5px; border-radius:50%; background:var(--fg-dimmer); }
+.book-summary-dot.is-active { width:7px; height:7px; background:var(--accent); box-shadow:0 0 0 2px var(--tint-selection); }
+.book-summary-heading:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.book-summary-page { flex:1; min-height:0; }
+.book-summary [data-testid="book-expected-fill"] .book-summary-row > span:last-child { display:block; flex:1; min-width:0; overflow-x:auto; scrollbar-width:none; text-align:right; }
 /* The detail popover uses z=70; its portaled price tooltip must sit above it. */
 .book-price-tooltip { z-index:80; }
 .book-price-tooltip.text-price-up { color:var(--price-up); }

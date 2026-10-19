@@ -7,8 +7,8 @@
  *     [체결강도·체결]  [ 가격+등락률 ]  [매수 잔량 바]
  *
  * 중앙 가격축을 좌우 4개 블록이 둘러싼다. 매도·매수는 각 10행 공간을 확보해
- * 유효 호가가 줄어도 경계를 중앙에 유지한다. 우측 매도 영역에는 요약 12항목을
- * 펼치고, 창이 좁으면 정보 버튼으로 상세를 연다.
+ * 유효 호가가 줄어도 경계를 중앙에 유지한다. 우측 매도 영역에는 시세 정보를
+ * 두 정보 페이지로 나누고, 창이 좁으면 정보 버튼으로 상세를 연다.
  *
  * **전체 패널 소비처는 `DataWindow` 하나다.** 총잔량 스트립은 `OrderWindow`도 공유한다. 한때 `/study` 의 BookContent 와 공유하는 단일
  * 표면이었으나 그 페이지는 2026-08-23 에 삭제됐다 — 이 파일 곳곳의 주석이 아직
@@ -164,6 +164,8 @@ export default function BookPanel({
     snapshot ? [...snapshot.ask, ...snapshot.bid].filter(level => level.price > 0).map(level => level.qty) : [],
     deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [], trades.slice(0, 9), summary.fillStrengthPct);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [infoPage, setInfoPage] = useState<0 | 1>(0);
+  const nextInfoPage = () => setInfoPage(page => page === 0 ? 1 : 0);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const infoId = useId();
   const closeInfo = useCallback(() => {
@@ -248,6 +250,8 @@ export default function BookPanel({
   const summaryHeight = ROW_H * SUMMARY_ROWS;
   const askPadding = ROW_H * Math.max(0, SUMMARY_ROWS - asksDesc.length);
   const bidPadding = ROW_H * Math.max(0, SUMMARY_ROWS - bids.length);
+  const summaryExpectedFill = expectedFill === undefined
+    ? { price: snapshot.exp_price ?? 0, qty: snapshot.exp_qty ?? 0 } : expectedFill;
   const maxQty = Math.max(
     1,
     ...asksDesc.map((l) => l.qty),
@@ -256,13 +260,6 @@ export default function BookPanel({
 
   return (
     <div className="book-panel flex h-full flex-col bg-bg-card" style={sideStyle}>
-      {/* 실시간 0D/0H 예상 표본 또는 커서·시간외 스냅샷. 없으면 높이를 차지하지 않는다. */}
-      <ExpectedFillBanner
-        price={expectedFill === undefined ? snapshot.exp_price ?? 0 : expectedFill?.price ?? 0}
-        qty={expectedFill === undefined ? snapshot.exp_qty ?? 0 : expectedFill?.qty ?? null}
-        baselinePrice={baselinePrice}
-        dimClass={staleDim}
-      />
       {/* 컨테이너 폭으로 요약만 팝오버로 옮긴다. 압축 하한 아래는 가로 스크롤하며
           가격·등락률·잔량·체결의 폰트와 행 정렬을 유지한다. */}
       <BookScrollArea>
@@ -363,7 +360,10 @@ export default function BookPanel({
             <div className="book-summary-slot" style={{ height: summaryHeight }}>
               <div className="book-inline-summary">
                 <BookSummary summary={summary} baselinePrice={baselinePrice}
-                  limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={summaryHeight} />
+                  limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={summaryHeight}
+                  page={infoPage} onNextPage={nextInfoPage}
+                  expectedFill={summaryExpectedFill}
+                  expectedDimClass={staleDim} />
               </div>
               <div className="book-compact-info">
                 <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog"
@@ -389,7 +389,10 @@ export default function BookPanel({
       {infoOpen && createPortal(<div ref={infoRef} id={infoId} role="dialog" aria-label="종목 상세 정보" className="book-info-popover font-data" style={infoStyle}>
         <div className="book-info-heading"><span>종목 상세 정보</span><button type="button" aria-label="상세 정보 닫기" onClick={closeInfo}>닫기</button></div>
         <BookSummary summary={summary} baselinePrice={baselinePrice}
-          limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={264} />
+          limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={264}
+          page={infoPage} onNextPage={nextInfoPage}
+          expectedFill={summaryExpectedFill}
+          expectedDimClass={staleDim} />
       </div>, document.body)}
       {/* 총잔량은 **출처가 둘**이라 딤 조건도 둘이다. 시간외(0E·ka10087) 값이면
           커서 스팟 경로를 타지 않으므로 흐리지 않는다 — 사다리가 낡았다는 말이
@@ -412,6 +415,7 @@ export default function BookPanel({
 export function BookSummary({
   summary, baselinePrice, limits = null, krxClose = null, krxPreviousClose = null, vi = null,
   height = ROW_H * SUMMARY_ROWS,
+  page, onNextPage, expectedFill = null, expectedDimClass = '',
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
@@ -420,42 +424,57 @@ export function BookSummary({
   krxPreviousClose?: number | null;
   vi?: LiveViEvent | null;
   height?: number;
+  page: 0 | 1;
+  onNextPage: () => void;
+  expectedFill?: { price: number; qty: number | null } | null;
+  expectedDimClass?: string;
 }) {
   return (
-    <div className="book-summary flex flex-col" data-testid="book-summary" style={{ height, '--book-summary-row-height': `${height / 12}px` } as React.CSSProperties}>
-      <SummaryRow
-        label="시작"
-        value={fmtOr(summary.dayOpen)}
-        tooltipPrice={summary.dayOpen}
-        tooltipBaseline={krxPreviousClose}
-      />
-      <SummaryRow
-        label="최고"
-        value={fmtOr(summary.dayHigh)}
-        tooltipPrice={summary.dayHigh}
-        tooltipBaseline={krxPreviousClose}
-        color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
-      />
-      <SummaryRow
-        label="최저"
-        value={fmtOr(summary.dayLow)}
-        tooltipPrice={summary.dayLow}
-        tooltipBaseline={krxPreviousClose}
-        color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
-      />
-      <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
-      {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
-          620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
-      {/* 순서 = 거래량 → 어제보다(그 거래량의 전일 대비) → 거래대금
-          (사용자 지정 2026-07-21) — 어제보다가 거래량 바로 아래 붙어야
-          수식 관계가 읽힌다. */}
-      <SummaryRow label="거래량" value={fmtVolumeKo(summary.cumVolume)} divider />
-      <SummaryRow
-        label="어제보다"
-        value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
-      />
-      <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
-      <div className="book-summary-extra">
+    <div className="book-summary flex flex-col" data-testid="book-summary" data-page={page + 1}
+      onClick={onNextPage}
+      style={{ height, '--book-summary-row-height': `${height / SUMMARY_ROWS}px` } as React.CSSProperties}>
+      <button type="button" className="book-summary-heading" aria-label={`정보 ${page + 1}페이지, 다음 정보 페이지로 전환`}>
+        <span>정보</span>
+        <span className="book-summary-pages" aria-hidden="true">
+          {[0, 1].map(index => <span key={index} className={`book-summary-dot${page === index ? ' is-active' : ''}`} />)}
+        </span>
+      </button>
+      {page === 0 ? <div className="book-summary-page">
+        <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
+          baselinePrice={baselinePrice} dimClass={expectedDimClass} />
+        <SummaryRow
+          label="시작"
+          value={fmtOr(summary.dayOpen)}
+          tooltipPrice={summary.dayOpen}
+          tooltipBaseline={krxPreviousClose}
+        />
+        <SummaryRow
+          label="최고"
+          value={fmtOr(summary.dayHigh)}
+          tooltipPrice={summary.dayHigh}
+          tooltipBaseline={krxPreviousClose}
+          color={summary.dayHigh !== null ? dirClass(summary.dayHigh, baselinePrice) : undefined}
+        />
+        <SummaryRow
+          label="최저"
+          value={fmtOr(summary.dayLow)}
+          tooltipPrice={summary.dayLow}
+          tooltipBaseline={krxPreviousClose}
+          color={summary.dayLow !== null ? dirClass(summary.dayLow, baselinePrice) : undefined}
+        />
+        <SummaryRow label="KRX종가" value={fmtOr(krxClose)} />
+        {/* 평균가(VWAP) 행은 사용자 요청으로 거래대금과 교체(2026-07-21) —
+            620 은 파서·저장에 계속 남아 차트 지표 승격 등으로 복귀 가능. */}
+        {/* 순서 = 거래량 → 어제보다(그 거래량의 전일 대비) → 거래대금
+            (사용자 지정 2026-07-21) — 어제보다가 거래량 바로 아래 붙어야
+            수식 관계가 읽힌다. */}
+        <SummaryRow label="거래량" value={fmtVolumeKo(summary.cumVolume)} divider />
+        <SummaryRow
+          label="어제보다"
+          value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
+        />
+        <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
+      </div> : <div className="book-summary-page">
         {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
         <SummaryRow
           label="상한가"
@@ -477,7 +496,7 @@ export function BookSummary({
         {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
             라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 표시한다. */}
         <SummaryRow label="250일" value={fmtHighLow(limits)} />
-      </div>
+      </div>}
     </div>
   );
 }
@@ -488,10 +507,10 @@ function dirClass(price: number, baselinePrice: number | null): string {
   return priceDirClass(price - baselinePrice);
 }
 
-/** 예상체결가·량(키움 0D/0H 또는 시간외 조회) — 호가창 전폭 상단 배너, 중앙 정렬.
+/** 예상체결가·량(키움 0D/0H 또는 시간외 조회) — 정보 1페이지의 요약 행.
  *  qty=null은 수량 미제공인 가격 전용 표본이다. 0·불량 수량인 쌍은 숨긴다.
  *  가격은 전일종가 대비 방향색이다. */
-export function ExpectedFillBanner({
+function ExpectedFillRows({
   price,
   qty,
   baselinePrice,
@@ -508,21 +527,11 @@ export function ExpectedFillBanner({
   const color = dirClass(price, baselinePrice);
   return (
     <div
-      className={`book-expected-fill flex shrink-0 flex-wrap items-baseline justify-center gap-x-6 gap-y-1.5 bg-bg-card px-3 py-1.5 ${dimClass}`}
+      className={dimClass}
       data-testid="book-expected-fill"
     >
-      <span className="flex items-baseline gap-1.5 whitespace-nowrap">
-        <span className="text-xs text-fg-dim">예상 체결가</span>
-        <span className={`font-data text-sm tabular-nums ${color}`}>
-          {price.toLocaleString('ko-KR')}원
-        </span>
-      </span>
-      {qty !== null && <span className="flex items-baseline gap-1.5 whitespace-nowrap">
-        <span className="text-xs text-fg-dim">예상 체결량</span>
-        <span className="font-data text-sm tabular-nums text-fg">
-          {qty.toLocaleString('ko-KR')}
-        </span>
-      </span>}
+      <SummaryRow label="예상 체결가" value={`${price.toLocaleString('ko-KR')}원`} color={color} />
+      {qty !== null && <SummaryRow label="예상 체결량" value={qty.toLocaleString('ko-KR')} />}
     </div>
   );
 }

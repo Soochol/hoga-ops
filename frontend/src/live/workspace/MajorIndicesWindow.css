@@ -9,7 +9,8 @@
 .major-indices-quote { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; }
 .major-indices-name { display: inline-flex; align-items: center; gap: 3px; }
 .major-indices-name i, .major-indices-tooltip i { width: 7px; height: 3px; border-radius: 2px; flex-shrink: 0; }
-.major-indices-value { font-weight: 500; }
+.major-indices-value { font-weight: 500; text-align:right; }
+.major-indices-percent { text-align:right; }
 .major-indices-percent, .major-indices-status { color: var(--fg-dim); }
 .major-indices-status { flex-shrink: 0; white-space: nowrap; font-size: var(--text-xs); }
 .major-indices-chart { position: relative; height: 100%; min-height: 0; margin-inline: 3px; }
@@ -19,22 +20,20 @@
 .major-indices-zero { stroke: var(--fg-dimmer); stroke-width: 1; }
 .major-indices-cursor { stroke: var(--fg-dim); stroke-width: 1; opacity: .6; }
 .major-indices-tooltip { position: absolute; top: 20px; min-width: 118px; padding: 5px 7px; background: var(--bg-card); color: var(--fg); border: 1px solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-panel); pointer-events: none; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
-.major-indices-tooltip > div { display: flex; align-items: center; gap: 5px; margin-top: 3px; }
-.major-indices-tooltip > div > span:last-child { margin-left: auto; }
+.major-indices-tooltip > div { display:grid; grid-template-columns:7px minmax(3em, 1fr) max-content; align-items:center; gap:0.25rem; margin-top:3px; }
+.major-indices-tooltip > div > span:last-child { text-align:right; white-space:nowrap; }
 .major-indices-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg-dim); font-size: var(--text-xs); pointer-events: none; }
-@container (max-width: 620px) {
+@container (max-width: 38.75rem) {
   .major-indices-header { flex-wrap: wrap; gap: 2px 6px; }
   .major-indices-title { flex: 1; }
   .major-indices-status { order: 1; }
-  .major-indices-legend { order: 2; flex-basis: 100%; }
+  .major-indices-legend { order: 2; flex-basis: 100%; gap:0.25rem; overflow-x:auto; }
+  .major-indices-quote { gap:0.125rem; flex-shrink:0; }
 }
-@container (max-width: 420px) {
-  .major-indices-legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-  .major-indices-quote { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
-  .major-indices-name { width: 100%; }
+@container (max-width: 26.25rem) {
+  .major-indices-legend { display:grid; grid-template-columns:minmax(max-content, 1fr) max-content max-content; column-gap:0.25rem; row-gap:0.125rem; }
+  .major-indices-quote { display:grid; grid-template-columns:subgrid; grid-column:1 / -1; }
 }
-@container (max-width: 280px) {
-  .major-indices-legend { grid-template-columns: minmax(0, 1fr); }
-  .major-indices-quote { display: flex; flex-wrap: wrap; gap: 0 3px; }
-  .major-indices-name { width: auto; }
+@container (max-width: 17.5rem) {
+  .major-indices-legend { column-gap:0.125rem; }
 }

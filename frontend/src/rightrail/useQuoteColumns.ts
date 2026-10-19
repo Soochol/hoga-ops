@@ -1,15 +1,17 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
 import type { LiveQuote } from '../api/liveQuotes';
 
-type Figures = { price: string[]; percent: string[] };
+const COLUMNS = ['price', 'percent', 'rank', 'detail'] as const;
+type Figures = Record<typeof COLUMNS[number], string[]>;
+type ExtraFigures = Partial<Record<'rank' | 'detail', readonly string[]>>;
 type QuoteColumnValue = Pick<LiveQuote, 'change_pct' | 'expected_price' | 'expected_change_pct'> & { price: number | null };
-const initialFigures = (): Figures => ({ price: ['—'], percent: ['+88.88%', '-88.88%'] });
+const initialFigures = (): Figures => ({ price: ['—'], percent: ['+88.88%', '-88.88%'], rank: [], detail: [] });
 const patterns = (values: string[]) => [...new Set(values.map(value => value.replace(/\d/g, '8')))];
 
 /** The unfiltered list includes collapsed groups and actual/expected figures.
  * Keep observed patterns while open so ticks/search do not move column edges.
  * There is one probe and observer for the panel, never one per row. */
-export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<string, QuoteColumnValue>, scrollRef: RefObject<HTMLDivElement | null>, scopeKey?: string | null) {
+export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<string, QuoteColumnValue>, scrollRef: RefObject<HTMLDivElement | null>, scopeKey?: string | null, extraFigures?: ExtraFigures) {
   const [budget, setBudget] = useState(() => ({ scopeKey: scopeKey ?? null, figures: initialFigures() }));
   const next = useMemo(() => {
     // A temporarily empty/loading result does not end the current scope. Only
@@ -30,14 +32,17 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
         }
       }
     }
-    const next = { price: patterns(price), percent: patterns(percent) };
-    return key === budget.scopeKey && next.price.length === retained.price.length && next.percent.length === retained.percent.length
-      ? budget : { scopeKey: key, figures: next };
-  }, [codes, quotes, budget, scopeKey]);
+    const figures = { price: patterns(price), percent: patterns(percent),
+      rank: patterns([...retained.rank, ...(extraFigures?.rank ?? [])]),
+      detail: patterns([...retained.detail, ...(extraFigures?.detail ?? [])]),
+    };
+    return key === budget.scopeKey && COLUMNS.every(column => figures[column].length === retained[column].length)
+      ? budget : { scopeKey: key, figures };
+  }, [codes, quotes, budget, scopeKey, extraFigures]);
   if (next !== budget) setBudget(next);
   const samples = next.figures;
   const probe = useRef<HTMLSpanElement>(null);
-  const [metrics, setMetrics] = useState({ price: 0, percent: 0, tier: 1 });
+  const [metrics, setMetrics] = useState({ price: 0, percent: 0, rank: 0, detail: 0, tier: 1 });
   const measure = useCallback(() => {
     if (!probe.current || !scrollRef.current) return;
     const width = scrollRef.current.clientWidth;
@@ -45,8 +50,8 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
     const widest = (column: keyof Figures) => Math.ceil(Math.max(0, ...Array.from(
       probe.current!.querySelectorAll(`[data-quote-measure="${column}"]`), node => node.getBoundingClientRect().width,
     )));
-    const next = { price: widest('price'), percent: widest('percent'), tier: width > 20 * rem ? 0 : width > 16.25 * rem ? 1 : 2 };
-    setMetrics(old => old.price === next.price && old.percent === next.percent && old.tier === next.tier ? old : next);
+    const next = { price: widest('price'), percent: widest('percent'), rank: widest('rank'), detail: widest('detail'), tier: width > 20 * rem ? 0 : width > 16.25 * rem ? 1 : 2 };
+    setMetrics(old => COLUMNS.every(column => old[column] === next[column]) && old.tier === next.tier ? old : next);
   }, [scrollRef]);
   useLayoutEffect(() => {
     measure();
@@ -65,6 +70,8 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
   const layout = useMemo(() => ({
     '--quote-price-width': metrics.price ? `${metrics.price}px` : '4.75rem',
     '--quote-percent-width': metrics.percent ? `${metrics.percent}px` : '3.5rem',
+    '--quote-rank-width': `${metrics.rank}px`,
+    '--quote-detail-width': `${metrics.detail}px`,
     '--quote-column-gap': ['0.5rem', '0.25rem', '0.125rem'][metrics.tier],
     '--quote-right-padding': ['0.75rem', '0.5rem', '0.25rem'][metrics.tier],
   }) as CSSProperties, [metrics]);
