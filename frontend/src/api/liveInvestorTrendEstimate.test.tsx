@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as client from './client';
 import {
@@ -47,6 +47,7 @@ const RESPONSE_000660: LiveInvestorTrendEstimateResponse = {
 };
 
 describe('useLiveInvestorTrendEstimate', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.mocked(isKrxRegularSessionNow).mockReturnValue(false);
@@ -119,7 +120,60 @@ describe('useLiveInvestorTrendEstimate', () => {
     expect(sameCodeOptions.placeholderData(RESPONSE_005930)).toBe(RESPONSE_005930);
     expect(differentCodeOptions.placeholderData(RESPONSE_005930)).toBeUndefined();
   });
+
+  it('recovers pending HTTP 200 data before the minute poll, even outside session', async () => {
+    vi.useFakeTimers();
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce(pending()).mockResolvedValue(RESPONSE_005930);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, unmount } = renderHook(() => useLiveInvestorTrendEstimate('005930'), { wrapper: wrap(qc) });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.data).toBeUndefined();
+    await act(() => vi.advanceTimersByTimeAsync(1_010));
+    expect(result.current.data?.status).toBe('ok');
+    expect(spy).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+    expect(spy).toHaveBeenCalledTimes(2);
+    unmount(); qc.clear();
+  });
+
+  it('bounds persistent pending responses to three attempts and keeps prior rows while waiting', async () => {
+    vi.useFakeTimers();
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(pending());
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(['live', 'investor-trend-estimate', '005930'], RESPONSE_005930, { updatedAt: 1 });
+    const { result, unmount } = renderHook(() => useLiveInvestorTrendEstimate('005930'), { wrapper: wrap(qc) });
+    await act(() => vi.advanceTimersByTimeAsync(1_010));
+    expect(result.current.data?.rows).toEqual(RESPONSE_005930.rows);
+    expect(result.current.isFetching).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(2_010));
+    expect(result.current.data?.data_warning?.reason).toBe('request_pending');
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(spy).toHaveBeenCalledTimes(3);
+    unmount(); qc.clear();
+  });
+
+  it('cancels follow-up timers when the code changes', async () => {
+    vi.useFakeTimers();
+    const spy = vi.spyOn(client, 'apiCall').mockResolvedValueOnce(pending()).mockResolvedValue(RESPONSE_000660);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result, rerender, unmount } = renderHook(({ code }) => useLiveInvestorTrendEstimate(code), {
+      wrapper: wrap(qc), initialProps: { code: '005930' },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    const oldSignal = spy.mock.calls[0][1]?.signal;
+    rerender({ code: '000660' });
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(oldSignal?.aborted).toBe(true);
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(result.current.data?.code).toBe('000660');
+    unmount(); qc.clear();
+  });
 });
+
+function pending(): LiveInvestorTrendEstimateResponse {
+  return { ...RESPONSE_005930, status: 'error', data_warning: { reason: 'request_pending', msg: 'still fetching' } };
+}
 
 describe('liveInvestorTrendEstimateQueryOptions', () => {
   beforeEach(() => {
@@ -145,4 +199,13 @@ describe('liveInvestorTrendEstimateQueryOptions', () => {
     vi.mocked(isKrxRegularSessionNow).mockReturnValue(false);
     expect(options.refetchInterval()).toBe(false);
   });
+
+  it.each(['credentials_missing', 'rest_bypassed', 'rate_limit_upstream', 'api_error', 'parse_error'] as const)(
+    'does not fast retry %s', async reason => {
+      const response = { ...pending(), data_warning: { reason, msg: reason } };
+      const spy = vi.spyOn(client, 'apiCall').mockResolvedValue(response);
+      expect(await liveInvestorTrendEstimateQueryOptions('005930').queryFn({})).toEqual(response);
+      expect(spy).toHaveBeenCalledTimes(1);
+    },
+  );
 });

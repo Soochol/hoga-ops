@@ -24,8 +24,12 @@ export interface LiveInvestorTrendEstimateRow {
   sum_amt_mwon: number | null;
 }
 
+export type InvestorEstimateWarningReason =
+  | 'credentials_missing' | 'rest_bypassed' | 'rate_limit_upstream'
+  | 'api_error' | 'parse_error' | 'request_pending';
+
 export interface LiveInvestorTrendEstimateWarning {
-  reason: 'credentials_missing' | 'rate_limit_upstream' | 'api_error' | 'parse_error';
+  reason: InvestorEstimateWarningReason;
   msg: string;
 }
 
@@ -47,10 +51,7 @@ export function liveInvestorTrendEstimateQueryOptions(code: string | null) {
       if (!code) {
         throw new Error('live investor trend estimate requires a code');
       }
-      return apiCall<LiveInvestorTrendEstimateResponse>(
-        `/api/live/investor-trend-estimate?code=${code}`,
-        { signal },
-      );
+      return fetchEstimate(code, signal);
     },
     enabled: !!code,
     staleTime: 60_000,
@@ -58,6 +59,37 @@ export function liveInvestorTrendEstimateQueryOptions(code: string | null) {
     placeholderData: (prev: LiveInvestorTrendEstimateResponse | undefined) =>
       prev && prev.code === code ? prev : undefined,
   };
+}
+
+async function fetchEstimate(code: string, signal?: AbortSignal): Promise<LiveInvestorTrendEstimateResponse> {
+  // Only the server's unfinished shared task gets fast follow-up reads.
+  // Vendor errors / rate limits / missing credentials keep the normal cadence.
+  // One query owns at most three HTTP attempts, also outside market hours.
+  for (let attempt = 0; ; attempt++) {
+    signal?.throwIfAborted();
+    const response = await apiCall<LiveInvestorTrendEstimateResponse>(
+      `/api/live/investor-trend-estimate?code=${code}`, { signal },
+    );
+    if (response.status !== 'error' || response.data_warning?.reason !== 'request_pending' || attempt >= 2) {
+      return response;
+    }
+    await waitForEstimate(1_000 * (attempt + 1), signal);
+  }
+}
+
+function waitForEstimate(ms: number, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', abort, { once: true });
+  });
 }
 
 export function useLiveInvestorTrendEstimate(code: string | null) {
