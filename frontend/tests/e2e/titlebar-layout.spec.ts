@@ -32,7 +32,7 @@ for (const width of [320, 500]) {
 }
 
 for (const width of [320, 500, 700, 1000]) {
-  test(`chart header keeps its columns during historical loading at ${width}px`, async ({ page }, info) => {
+  test(`chart header keeps quote spacing and metadata position at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width: 1200, height: 500 });
     await page.route(url => url.pathname === '/', route => route.fulfill({
       contentType: 'text/html',
@@ -52,24 +52,35 @@ for (const width of [320, 500, 700, 1000]) {
       ] as const) {
         header.update(date, price, pct);
         await frame();
-        result.push(Object.fromEntries(['current-price', 'change', 'heatmap-group'].map(name => {
+        const identity = document.querySelector('.live-symbol-identity')!.getBoundingClientRect();
+        const cells = Object.fromEntries(['current-price', 'change', 'heatmap-group'].map(name => {
           const el = document.querySelector(`[data-testid="titlebar-${name}"]`)!;
           const box = el.getBoundingClientRect();
-          return [name, { x: box.x, width: box.width, visible: getComputedStyle(el).display !== 'none' }];
-        })));
+          return [name, { x: box.x, right: box.right, width: box.width, visible: getComputedStyle(el).display !== 'none' }];
+        }));
+        result.push({ identityRight: identity.right, cells });
       }
       header.update('20260501', 1551000, 29.99);
       await frame();
       return result;
     }, width);
     await info.attach('header-positions', { body: JSON.stringify(samples), contentType: 'application/json' });
-    for (const sample of samples) expect(sample).toEqual(samples[0]);
+    for (const { identityRight, cells } of samples) {
+      expect(cells['heatmap-group']).toEqual(samples[0].cells['heatmap-group']);
+      if (cells['current-price'].visible) {
+        expect(cells['current-price'].x - identityRight).toBeCloseTo(8, 1);
+      }
+      if (cells.change.visible) {
+        expect(cells.change.x - cells['current-price'].right).toBeCloseTo(4, 1);
+      }
+    }
     await expect(page.getByTestId('titlebar-current-price')).toHaveText('1,551,000');
-    await expect(page.getByTestId('past-backfill-progress-chip')).toBeVisible();
+    if (width > 320) await expect(page.getByTestId('past-backfill-progress-chip')).toBeVisible();
+    else await expect(page.getByTestId('past-backfill-progress-chip')).toBeHidden();
     await expect(page.getByTestId('past-backfill-progress-chip')).toHaveAttribute('title', /05\/01까지 로드됨/);
     for (const name of ['titlebar-current-price', 'titlebar-change', 'past-backfill-progress-chip']) {
       const fits = await page.getByTestId(name).evaluate(el => el.scrollWidth <= el.clientWidth);
-      expect(fits, `${name} must fit its reserved slot`).toBe(true);
+      expect(fits, `${name} must fit without clipping`).toBe(true);
     }
     await page.screenshot({ path: info.outputPath('header-loading.png') });
     await page.evaluate(async () => {

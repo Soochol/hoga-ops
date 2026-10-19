@@ -55,8 +55,8 @@
 .live-symbol-name { font-size: var(--live-text-data); font-weight: 600; }
 .live-symbol-code { flex-shrink: 0; font-size: var(--live-text-meta); color: var(--fg-dim); }
 /* Quotes follow the code; spare width stays before the right-hand metadata. */
-.live-symbol-price { flex: 0 0 10ch; width: 10ch; text-align: left; font-size: var(--live-text-data); font-weight: 600; }
-.live-symbol-change { flex: 0 0 8ch; width: 8ch; text-align: left; font-size: var(--live-text-data); }
+.live-symbol-price { flex: 0 0 auto; margin-left: var(--space-xs); text-align: left; font-size: var(--live-text-data); font-weight: 600; }
+.live-symbol-change { flex: 0 0 auto; text-align: left; font-size: var(--live-text-meta); font-weight: 400; }
 .live-symbol-sector { flex: 0 1 9rem; max-width: 9rem; margin-left: auto; font-size: var(--live-text-meta); color: var(--fg-dim); }
 .live-data-title { flex: 1; overflow: hidden; }
 .live-data-title-kind { color: var(--fg-dim); font-weight: 400; }
