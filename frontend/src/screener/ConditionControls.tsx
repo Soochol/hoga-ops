@@ -16,28 +16,17 @@ export function ConditionChoice<T extends string>({ label, value, options, onCha
   </div>;
 }
 
-export function ConditionTimeframe({ value, onChange, label = '봉 주기' }: {
-  value: ScreenerTimeframe; onChange: (value: ScreenerTimeframe) => void; label?: string;
+export function ConditionTimeframe({ value, onChange, label = '봉 주기', children }: {
+  value: ScreenerTimeframe; onChange: (value: ScreenerTimeframe) => void; label?: string; children?: ReactNode;
 }) {
   const minute = value.endsWith('m');
   return <div className="condition-timeframe">
-    <span className="condition-field-label">봉 주기</span>
+    {children}
     <ConditionChoice label={label} value={minute ? 'minute' : value}
       options={[[ 'minute', '분' ], ['D', '일'], ['W', '주'], ['M', '월']]}
       onChange={next => onChange(next === 'minute' ? '5m' : next as ScreenerTimeframe)} />
     {minute && <Select label="분봉 간격" value={value}
       options={[1, 3, 5, 10, 15, 30, 60].map(n => [`${n}m` as ScreenerTimeframe, `${n}분`])}
       onChange={onChange} />}
-  </div>;
-}
-
-export function QuickValues({ values, unit, onChange }: {
-  values: readonly number[]; unit: string; onChange: (value: number) => void;
-}) {
-  return <div className="condition-presets" role="group" aria-label={`빠른 입력 · ${unit}`}>
-    <span>빠른 입력</span>
-    {values.map(value => <button key={value} type="button" onClick={() => onChange(value)}>
-      {value.toLocaleString('ko-KR')}{unit}
-    </button>)}
   </div>;
 }

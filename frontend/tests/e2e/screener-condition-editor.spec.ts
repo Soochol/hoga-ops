@@ -78,7 +78,7 @@ test('all 16 editors keep predicates through collapse, keyboard editing, reorder
   const toggle = amount.getByRole('button', { name: '거래대금 펼치기' });
   await toggle.focus();
   await page.keyboard.press('Enter');
-  await amount.getByRole('button', { name: '500억', exact: true }).click();
+  await amount.getByLabel('최소 거래대금(억)').fill('500');
   await expect(amount.getByLabel('최소 거래대금(억)')).toHaveValue('500');
   await amount.getByRole('button', { name: '거래대금 접기' }).click();
 
@@ -114,6 +114,13 @@ test('all 16 editors keep predicates through collapse, keyboard editing, reorder
           .some(node => { const box = node.getBoundingClientRect(); return box.left < boundary.left - 1 || box.right > boundary.right + 1; });
       });
       expect(overflow, `${label} at ${size}px`).toBe(false);
+      if (label === '기간내 거래대금' || label === '기간내 신고거래량') {
+        const buttons = ['최근 N봉', '날짜 범위', '분', '일', '주', '월'];
+        const boxes = await Promise.all(buttons.map(name => card.getByRole('button', { name, exact: true }).boundingBox()));
+        expect(boxes.every(box => box !== null)).toBe(true);
+        const firstTop = boxes[0]!.y;
+        expect(boxes.every(box => Math.abs(box!.y - firstTop) <= 1), `${label} choices share a row at ${size}px`).toBe(true);
+      }
     }
     await amount.scrollIntoViewIfNeeded();
     const amountInput = amount.getByLabel('최소 거래대금(억)');

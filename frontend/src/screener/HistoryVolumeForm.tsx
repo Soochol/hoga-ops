@@ -17,21 +17,22 @@ export function HistoryVolumeForm({ params, onChange }: {
       record_period: { unit: 'bars', value: params.record_period.unit === 'bars' ? params.record_period.value : 250 } });
   };
   return <div className="condition-form">
-    <ConditionTimeframe label="거래량 주기" value={timeframe} onChange={changeTimeframe} />
-    <ConditionChoice label="거래량 검색 기간" value={historical ? 'date_range' : 'recent'}
-      onChange={value => onChange(value === 'recent' ? { lookback: 60,
-        period: historical && params.record_period.unit === 'bars' ? params.record_period.value : 250,
-        timeframe, include_open_bar: includeOpenBar }
-        : timeframe === 'D' ? {
-          mode: 'date_range', start_date: '2019-01-01', end_date: '2022-12-31',
-          record_period: { unit: 'years', value: 2 },
-        } : {
-          mode: 'date_range', start_date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }),
-          end_date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }),
-          timeframe, include_open_bar: includeOpenBar,
-          record_period: { unit: 'bars', value: !historical ? params.period : 250 },
-        })}
-      options={[[ 'recent', '최근 N봉' ], ['date_range', '날짜 범위']]} />
+    <ConditionTimeframe label="거래량 주기" value={timeframe} onChange={changeTimeframe}>
+      <ConditionChoice label="거래량 검색 기간" value={historical ? 'date_range' : 'recent'}
+        onChange={value => onChange(value === 'recent' ? { lookback: 60,
+          period: historical && params.record_period.unit === 'bars' ? params.record_period.value : 250,
+          timeframe, include_open_bar: includeOpenBar }
+          : timeframe === 'D' ? {
+            mode: 'date_range', start_date: '2019-01-01', end_date: '2022-12-31',
+            record_period: { unit: 'years', value: 2 },
+          } : {
+            mode: 'date_range', start_date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }),
+            end_date: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }),
+            timeframe, include_open_bar: includeOpenBar,
+            record_period: { unit: 'bars', value: !historical ? params.period : 250 },
+          })}
+        options={[[ 'recent', '최근 N봉' ], ['date_range', '날짜 범위']]} />
+    </ConditionTimeframe>
     {historical ? <>
       <ConditionFields>
         <HistoryDateRangeFields label="거래량" start={params.start_date} end={params.end_date}

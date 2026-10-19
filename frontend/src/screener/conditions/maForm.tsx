@@ -1,7 +1,7 @@
 import type { MaParams, MaSource } from '../../api/screener';
 import { CandleSettings } from '../CandleSettings';
 import { Num, Select } from '../paramForms';
-import { ConditionChoice, ConditionFields, QuickValues } from '../ConditionControls';
+import { ConditionChoice, ConditionFields } from '../ConditionControls';
 
 
 const PRICE_SOURCE_OPTIONS: [MaSource, string][] = [
@@ -26,6 +26,5 @@ export function MaForm({ params, onChange }: { params: MaParams; onChange: (p: M
     </ConditionFields>
     <ConditionChoice label="이평선 관계" value={params.relation} onChange={relation => onChange({ ...params, relation })}
       options={[['above', '이평선 이상 ≥'], ['below', '이평선 이하 ≤']]} />
-    <QuickValues values={[5, 20, 60, 120]} unit="봉" onChange={period => onChange({ ...params, period })} />
   </CandleSettings>;
 }
