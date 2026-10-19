@@ -94,6 +94,19 @@ describe('typeAwareCollision — 차트 위 억제', () => {
 });
 
 describe('precisePanelCollision — sticky header after scrolling', () => {
+  it('folder dragging uses the pointer and live header, not a distant group centre or block rect', () => {
+    const folder = container('f_a', 'folder', {}, rectAt(0, 300));
+    const node = document.createElement('div');
+    const header = document.createElement('div');
+    header.dataset.panelGroupId = 'f_a';
+    header.getBoundingClientRect = () => new DOMRect(0, 100, 100, 36);
+    node.append(header);
+    folder.node.current = node;
+    expect(callCollision({ precise: true, activeType: 'folder', pointer: { x: 50, y: 110 }, containers: [folder] }).map(h => h.id)).toEqual(['f_a']);
+    expect(callCollision({ precise: true, activeType: 'folder', pointer: { x: 50, y: 200 }, containers: [folder] })).toEqual([]);
+    expect(callCollision({ precise: true, activeType: 'folder', pointer: { x: 50, y: 30 }, containers: [folder] })).toEqual([]);
+  });
+
   it('uses the visible header instead of a row underneath its stale cached rect', () => {
     const header = container('header:f_a', 'entry-target', { folderId: 'f_a', header: true }, rectAt(-180, 20));
     const node = document.createElement('div');

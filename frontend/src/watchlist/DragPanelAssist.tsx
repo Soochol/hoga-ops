@@ -20,7 +20,12 @@ export function DragPanelAssist({ collapsed, onExpand, pointRef, scrollSelector 
     if (!activeId) return;
     const el = document.querySelector<HTMLElement>(scrollSelector);
     if (!el) return;
-    const trackPointer = (event: PointerEvent) => { pointRef.current = { x: event.clientX, y: event.clientY }; };
+    const startY = pointRef.current?.y;
+    let allowGroupScroll = activeType !== 'folder';
+    const trackPointer = (event: PointerEvent) => {
+      pointRef.current = { x: event.clientX, y: event.clientY };
+      if (startY !== undefined && Math.abs(event.clientY - startY) > 5) allowGroupScroll = true;
+    };
     document.addEventListener('pointermove', trackPointer, true);
     let raf = 0;
     let last = performance.now();
@@ -29,9 +34,18 @@ export function DragPanelAssist({ collapsed, onExpand, pointRef, scrollSelector 
       const r = el.getBoundingClientRect();
       const zone = 48;
       let velocity = 0;
-      if (point && point.x >= r.left && point.x <= r.right && point.y >= r.top && point.y <= r.bottom) {
-        if (point.y < r.top + zone && el.scrollTop > 0) velocity = -Math.pow(1 - (point.y - r.top) / zone, 2) * 650;
-        if (point.y > r.bottom - zone && el.scrollTop + el.clientHeight < el.scrollHeight) velocity = Math.pow(1 - (r.bottom - point.y) / zone, 2) * 650;
+      if (allowGroupScroll && point && point.x >= r.left && point.x <= r.right && point.y >= r.top && point.y <= r.bottom) {
+        let canScrollUp = el.scrollTop > 0;
+        let canScrollDown = el.scrollTop + el.clientHeight < el.scrollHeight;
+        if (activeType === 'folder') {
+          const headers = el.querySelectorAll<HTMLElement>('[data-panel-group-id]');
+          // 원래 자리를 유지하기 위한 공백으로는 스크롤하지 않는다. 접힌 그룹이
+          // 실제로 화면 밖에 있을 때만, 커서를 위아래로 움직인 뒤 스크롤한다.
+          canScrollUp &&= !!headers.length && headers[0].getBoundingClientRect().top < r.top;
+          canScrollDown &&= !!headers.length && headers[headers.length - 1].getBoundingClientRect().bottom > r.bottom;
+        }
+        if (point.y < r.top + zone && canScrollUp) velocity = -Math.pow(1 - (point.y - r.top) / zone, 2) * 650;
+        if (point.y > r.bottom - zone && canScrollDown) velocity = Math.pow(1 - (r.bottom - point.y) / zone, 2) * 650;
       }
       const next = velocity ? { edge: velocity < 0 ? 'up' as const : 'down' as const,
         top: velocity < 0 ? r.top : r.bottom, left: r.left, width: r.width } : null;
@@ -45,7 +59,7 @@ export function DragPanelAssist({ collapsed, onExpand, pointRef, scrollSelector 
       cancelAnimationFrame(raf);
       document.removeEventListener('pointermove', trackPointer, true);
     };
-  }, [activeId, pointRef, scrollSelector]);
+  }, [activeId, activeType, pointRef, scrollSelector]);
   if (!active || !hint) return null;
   return <div role="status" className="pointer-events-none fixed z-50 bg-tint-selection py-1 text-center text-xs text-accent"
     style={{ top: hint.top, left: hint.left, width: hint.width, transform: hint.edge === 'down' ? 'translateY(-100%)' : undefined }}>

@@ -52,7 +52,17 @@ export const createPanelCollision = (scrollSelector: string): CollisionDetection
   const panel = document.querySelector(scrollSelector)?.getBoundingClientRect();
   if (p && panel && (p.x < panel.left || p.x > panel.right || p.y < panel.top || p.y > panel.bottom)) return [];
   const type = args.active.data.current?.type;
-  if (type === 'folder' || !p) return typeAwareCollision(args);
+  if (!p) return typeAwareCollision(args);
+  if (type === 'folder') {
+    const folders = args.droppableContainers.filter((c) => c.data.current?.type === 'folder');
+    const droppableRects = new Map(args.droppableRects);
+    for (const folder of folders) {
+      const header = folder.node.current?.querySelector<HTMLElement>('[data-panel-group-id]');
+      if (header) droppableRects.set(folder.id, header.getBoundingClientRect());
+    }
+    // 패널 안의 공백도 취소 영역이다. 최근접 그룹으로 끌어당기지 않는다.
+    return pointerWithin({ ...args, droppableRects, droppableContainers: folders }).slice(0, 1);
+  }
   const candidates = args.droppableContainers.filter((c) => {
     const t = c.data.current?.type;
     if (type === 'memo') return ROW_TYPES.has(String(t)) && c.data.current?.folderId === args.active.data.current?.folderId;

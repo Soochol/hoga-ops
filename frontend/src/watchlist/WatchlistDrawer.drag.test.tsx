@@ -181,6 +181,8 @@ describe('WatchlistDrawer drag wiring', () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    vi.spyOn(screen.getByTestId('watchlist-scroll'), 'getBoundingClientRect').mockReturnValue(new DOMRect(800, 200, 300, 500));
+    vi.spyOn(screen.getAllByTestId('watchlist-group-header')[1], 'getBoundingClientRect').mockReturnValue(new DOMRect(800, 280, 300, 36));
     drop({
       active: { id: 'f_0000000a', data: { current: { type: 'folder' } } },
       over: { id: 'f_0000000b', data: { current: { type: 'folder' } } },
@@ -188,18 +190,18 @@ describe('WatchlistDrawer drag wiring', () => {
     await waitFor(() => expect(spy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
   });
 
-  it("folder-drag over an entry row resolves to that row's folder", async () => {
+  it('folder-drag over a stale row event in blank space does not reorder', async () => {
     const spy = vi.spyOn(watchlistApi, 'reorderFolders').mockResolvedValue();
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc) });
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
-    // f_0000000a 폴더를 f_0000000b 소속 행 위로 드롭 → over.folderId=f_0000000b로 정규화.
-    // (DATA의 ENTRIES는 둘 다 f_0000000a이므로, over 이벤트의 folderId를 직접 지정한다.)
+    // 헤더가 실제 포인터 아래 없으면 과거 over 이벤트의 folderId로 목적지를 추론하지 않는다.
     drop({
       active: { id: 'f_0000000a', data: { current: { type: 'folder' } } },
       over: { id: '999999', data: { current: { type: 'entry', folderId: 'f_0000000b' } } },
     });
-    await waitFor(() => expect(spy).toHaveBeenCalledWith(['f_0000000b', 'f_0000000a']));
+    await Promise.resolve();
+    expect(spy).not.toHaveBeenCalled();
   });
 
   // 차트 드롭-타깃 seam: LiveWorkarea가 등록하는 히트테스트 술어를 가짜로 등록해 테스트한다 —

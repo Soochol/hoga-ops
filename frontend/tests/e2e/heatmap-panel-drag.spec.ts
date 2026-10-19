@@ -15,7 +15,8 @@ async function setup(page: Page, initial: Record<string, string[]> = {
   [A]: [code('005930'), code('000660')], [B]: [code('035420'), code('051910')],
 }) {
   await installLiveMocks(page);
-  let folders = [A, B];
+  let folders = Object.keys(initial);
+  const folderRequests: string[][] = [];
   let items = structuredClone(initial);
   const requests: HeatmapFolderEntriesChange[][] = [];
   let fail = false;
@@ -23,7 +24,7 @@ async function setup(page: Page, initial: Record<string, string[]> = {
   const json = (body: unknown) => ({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   await page.route(apiPrefix('live/quotes'), (r) => r.fulfill(json({ phase: 'open', quotes: [] })));
   await page.route(apiExact('heatmap'), (r) => r.fulfill(json({
-    folders: folders.map((id, order) => ({ id, order, name: id === A ? '스윙' : '반도체' })),
+    folders: folders.map((id, order) => ({ id, order, name: id === A ? '스윙' : id === B ? '반도체' : '배당' })),
     entries: Object.entries(items).flatMap(([folder_id, refs]) => refs.map((code, order) => ({
       code, name: names[code] ?? code, folder_id, order,
     }))), capture_markers: {}, next_run_at_ms: 0,
@@ -40,12 +41,13 @@ async function setup(page: Page, initial: Record<string, string[]> = {
   });
   await page.route(apiExact('heatmap/folders/order'), async (r) => {
     folders = r.request().postDataJSON().ordered_ids;
+    folderRequests.push([...folders]);
     return r.fulfill({ status: 204, body: '' });
   });
   await page.goto('/live');
   await page.getByRole('button', { name: /히트맵 패널 토글/ }).click();
   await expect(group(page, A)).toBeVisible();
-  return { requests, hold: () => { let release!: () => void; saveGate = new Promise<void>((resolve) => { release = resolve; }); return release; }, items: () => items, folders: () => folders, fail: () => { fail = true; },
+  return { requests, folderRequests, hold: () => { let release!: () => void; saveGate = new Promise<void>((resolve) => { release = resolve; }); return release; }, items: () => items, folders: () => folders, fail: () => { fail = true; },
     change: (id: string, refs: string[]) => { items[id] = refs; } };
 }
 async function point(locator: Locator, fraction = 0.5) {
@@ -186,7 +188,7 @@ test('그룹 헤더로 순서를 옮기고 드롭 후 목록이 돌아온다', a
   const state = await setup(page);
   await start(page, group(page, A).getByTestId('heatmap-group-header'));
   await expect(row(page, A, '005930')).toBeHidden();
-  await over(page, group(page, B));
+  await over(page, group(page, B).getByTestId('heatmap-group-header'), 0.8);
   await page.mouse.up();
   await expect.poll(state.folders).toEqual([B, A]);
   await expect(row(page, A, '005930')).toBeVisible();
@@ -220,6 +222,7 @@ for (const scenario of [
     if (scenario.count === 30) expect(await panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
     const rows = page.locator('[data-testid^="heatmap-drawer-row-"]');
     const rowCount = await rows.count();
+    const savedScroll = await panel.evaluate((el) => el.scrollTop);
     const savedCollapse = await page.evaluate(() => localStorage.getItem('heatmapDrawer.collapsed'));
     // Grab away from the centre to verify the original grab point, not a snap-to-centre.
     const grab = { x: rect.width * 0.37, y: rect.height * 0.75 };
@@ -232,6 +235,10 @@ for (const scenario of [
       await page.mouse.move(cursor.x, cursor.y, { steps: 4 });
       await expect(ghost).toBeVisible();
       await expect(rows).toHaveCount(0);
+      if (delta.x === 7 && delta.y === 0) {
+        await expect.poll(async () => Math.abs((await header.boundingBox())!.y - rect.y)).toBeLessThan(1);
+        await expect(page.locator('[data-panel-group-drop]')).toHaveCount(0);
+      }
       await expect.poll(async () => {
         const box = await ghost.boundingBox();
         if (!box) return Infinity;
@@ -249,9 +256,77 @@ for (const scenario of [
     }
     await expect(ghost).toHaveCount(0);
     await expect(rows).toHaveCount(rowCount);
+    if (!scenario.drop) expect(await panel.evaluate((el) => el.scrollTop)).toBe(savedScroll);
     expect(await page.evaluate(() => localStorage.getItem('heatmapDrawer.collapsed'))).toBe(savedCollapse);
   });
 }
+
+for (const release of ['바로 놓기', '위쪽 빈 공간', '아래쪽 빈 공간', 'Esc']) {
+  test(`그룹 드래그 취소는 저장하지 않는다: ${release}`, async ({ page }) => {
+    const C = 'f_0000000c';
+    const state = await setup(page, {
+      [A]: Array.from({ length: 8 }, (_, i) => code(String(100000 + i))),
+      [B]: [code('035420')], [C]: [code('051910')],
+    });
+    await start(page, group(page, B).getByTestId('heatmap-group-header'));
+    await expect(page.locator('[data-panel-group-drop]')).toHaveCount(0);
+    if (release === '바로 놓기') await page.screenshot({ path: '/tmp/hoga-heatmap-anchored-groups.png' });
+    if (release !== '바로 놓기') {
+      await over(page, group(page, A).getByTestId('heatmap-group-header'), 0.2);
+      await expect(group(page, A).locator('[data-panel-group-drop="before"]')).toBeVisible();
+      if (release !== 'Esc') {
+        const panel = (await page.getByTestId('heatmap-drawer-scroll').boundingBox())!;
+        const top = (await group(page, A).getByTestId('heatmap-group-header').boundingBox())!;
+        const bottom = (await group(page, C).getByTestId('heatmap-group-header').boundingBox())!;
+        const y = release === '위쪽 빈 공간' ? (panel.y + top.y) / 2 : bottom.y + bottom.height + 16;
+        expect(y).toBeGreaterThan(panel.y);
+        expect(y).toBeLessThan(panel.y + panel.height);
+        await page.mouse.move(panel.x + panel.width / 2, y, { steps: 8 });
+        await expect(page.locator('[data-panel-group-drop]')).toHaveCount(0);
+      }
+    }
+    if (release === 'Esc') await page.keyboard.press('Escape');
+    else await page.mouse.up();
+    await expect(page.getByTestId('heatmap-drag-ghost')).toHaveCount(0);
+    expect(state.folders()).toEqual([A, B, C]);
+    expect(state.folderRequests).toHaveLength(0);
+    await expect(row(page, B, '035420')).toBeVisible();
+  });
+}
+
+for (const side of ['before', 'after'] as const) {
+  test(`그룹 헤더의 ${side} 삽입선에 놓은 위치로 저장한다`, async ({ page }) => {
+    const C = 'f_0000000c';
+    const state = await setup(page, { [A]: [code('005930')], [B]: [code('035420')], [C]: [code('051910')] });
+    await start(page, group(page, C).getByTestId('heatmap-group-header'));
+    await over(page, group(page, A).getByTestId('heatmap-group-header'), side === 'before' ? 0.2 : 0.8);
+    await expect(group(page, A).locator(`[data-panel-group-drop="${side}"]`)).toBeVisible();
+    await page.mouse.up();
+    await expect.poll(state.folders).toEqual(side === 'before' ? [C, A, B] : [A, C, B]);
+    expect(state.folderRequests).toHaveLength(1);
+  });
+}
+
+test('그룹이 많아도 원래 슬롯을 유지하고 화면 밖 그룹으로 스크롤할 수 있다', async ({ page }) => {
+  const ids = [A, B, ...Array.from({ length: 28 }, (_, i) => `f_${(i + 100).toString(16).padStart(8, '0')}`)];
+  const state = await setup(page, Object.fromEntries(ids.map((id, i) => [id, [code(String(100000 + i))]])));
+  const panel = page.getByTestId('heatmap-drawer-scroll');
+  const header = group(page, ids[20]).getByTestId('heatmap-group-header');
+  await header.hover();
+  const rect = (await header.boundingBox())!;
+  const savedScroll = await panel.evaluate((el) => el.scrollTop);
+  await start(page, header);
+  await expect.poll(async () => Math.abs((await header.boundingBox())!.y - rect.y)).toBeLessThan(1);
+  const compactScroll = await panel.evaluate((el) => el.scrollTop);
+  expect(compactScroll).toBeGreaterThan(0);
+  const bounds = (await panel.boundingBox())!;
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height - 12, { steps: 8 });
+  await expect.poll(() => panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(compactScroll + 10);
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('heatmap-drag-ghost')).toHaveCount(0);
+  expect(state.folderRequests).toHaveLength(0);
+  expect(await panel.evaluate((el) => el.scrollTop)).toBe(savedScroll);
+});
 
 test('가장자리에서 자동 스크롤하며 멀어지면 멈춘다', async ({ page }) => {
   await setup(page, { [A]: [code('005930'), ...Array.from({ length: 50 }, (_, i) => code(String(100000 + i)))], [B]: [] });

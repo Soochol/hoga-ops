@@ -51,6 +51,7 @@ import { folderItems, planTransfer, planMembershipRemoval, type TransferSource }
 import { useWatchlistTransfer, WATCHLIST_TRANSFER_NOTICE_MS } from './useWatchlistTransfer';
 import { WatchlistTransferToast } from './WatchlistTransferToast';
 import { RailDragOverlay, type RailDragOverlayRect } from '../rightrail/RailDragOverlay';
+import { keepPanelGroupSlots, usePanelGroupDrag } from '../rightrail/usePanelGroupDrag';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS, useCombinedRefs, useNodeRef } from '@dnd-kit/utilities';
@@ -63,7 +64,7 @@ import {
 // resolveDrag(코드 전용 재배열)는 이제 편집 모달만 쓴다 — 패널은 메모를 함께 옮기므로
 // mergePanelRows + toItemRefs 로 표시 순서 전체를 만든다.
 import {
-  resolveFolderDrag, entrySortableId, memoSortableId, parseItemSortableId, folderDroppableId,
+  entrySortableId, memoSortableId, parseItemSortableId, folderDroppableId,
 } from './dragHandlers';
 import { useEntryDragStore, isPointOnChart, dropPoint, resolveDropOnChart } from '../state/entryDrag';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailState } from '../ui/RailShell';
@@ -240,6 +241,7 @@ function GroupHeader(props: {
     <div
       ref={(node) => { menuRef.current = node; setHeaderDropRef(node); props.dragHandle?.setActivatorNodeRef(node); }}
       data-testid="watchlist-group-header"
+      data-panel-group-id={props.folderId ?? '__uncat__'}
       data-draggable={props.dragHandle && !props.busy ? '' : undefined}
       role="group" tabIndex={props.onRename ? 0 : undefined}
       aria-label={`${props.label} 그룹`} aria-haspopup={props.onRename ? 'menu' : undefined}
@@ -359,9 +361,10 @@ type GroupDragHandle = {
 /** 폴더(그룹)의 sortable 단위 = 그룹 블록 전체(헤더 + 종목들). setNodeRef/transform은
  *  컨테이너 div에, listeners는 children render-prop으로 헤더 전체에 전달한다 —
  *  헤더를 잡으면 그룹이 통째로 움직인다. data.type='folder'로 태깅. */
-function SortableGroup({ folderId, children, disabled }: {
+function SortableGroup({ folderId, children, disabled, dropSide }: {
   folderId: string;
   disabled?: boolean;
+  dropSide?: 'before' | 'after';
   children: (handle: GroupDragHandle) => React.ReactNode;
 }) {
   const [headerRef, setHeaderNodeRef] = useNodeRef();
@@ -370,7 +373,7 @@ function SortableGroup({ folderId, children, disabled }: {
     useSortable({ id: folderId, disabled, data: { type: 'folder', getOverlayRect } });
   const setHeaderRef = useCombinedRefs(setActivatorNodeRef, setHeaderNodeRef);
   return (
-    <div ref={setNodeRef} data-testid={`watchlist-group-${folderId}`}
+    <div ref={setNodeRef} data-testid={`watchlist-group-${folderId}`} className="relative"
       style={{
         transform: CSS.Transform.toString(transform), transition,
         // zIndex 는 **이웃 그룹의 sticky 헤더보다 위**여야 한다. 비드래그 그룹 div 는
@@ -382,6 +385,8 @@ function SortableGroup({ folderId, children, disabled }: {
         // 겹치지 않는 루트 레벨 값이다.
         ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 30 } : {}),
       }}>
+      {dropSide && <span data-panel-group-drop={dropSide} aria-hidden="true"
+        className={`pointer-events-none absolute inset-x-0 z-30 h-0.5 bg-accent ${dropSide === 'before' ? 'top-0' : 'bottom-0'}`} />}
       {children({ listeners, attributes, setActivatorNodeRef: setHeaderRef, isDragging })}
     </div>
   );
@@ -686,6 +691,7 @@ export function WatchlistDrawer() {
   const searchText = query.trim().toLocaleLowerCase();
   const searching = searchText.length > 0;
   const scrollRef = useRef<HTMLDivElement>(null);
+  const groupDrag = usePanelGroupDrag(scrollRef);
   const unfilteredScroll = useRef(0);
   const [searchCollapsed, setSearchCollapsed] = useState<Set<string>>(() => new Set());
   const changeQuery = (next: string) => {
@@ -1181,8 +1187,8 @@ export function WatchlistDrawer() {
    * **저장된 접힘 상태(`collapsed`)는 건드리지 않는다** — 렌더 시점 오버라이드다.
    * 드래그가 끝나면 사용자가 펼쳐 두었던 그룹이 그대로 돌아온다.
    *
-   * 접힌 뒤에는 아래쪽 그룹 위치와 scrollTop이 바뀐다. 고스트의 시작 rect는
-   * onDragStart에서 접히기 전 헤더를 측정해 고정하므로 커서를 벗어나지 않는다.
+   * 접힌 목록은 groupDrag가 위쪽 여백과 스크롤을 조정해 잡은 슬롯을 같은 높이에 둔다.
+   * 고스트 역시 onDragStart에서 접히기 전 헤더를 측정해 잡은 지점을 유지한다.
    * 접힘에 트랜지션을 걸면 드롭 타깃 재측정과 경합하므로 즉시 접는다.
    */
   const folderDragActive = dragGhost?.kind === 'folder';
@@ -1262,6 +1268,7 @@ export function WatchlistDrawer() {
         // 이 콜백의 상태 변경이 커밋되기 전, sticky 헤더의 실제 위치를 한 번 읽는다.
         // 그룹 블록 rect는 스크롤로 화면 위에 숨을 수 있어 헤더 좌표를 대신할 수 없다.
         const rect = d.getOverlayRect?.() as DOMRect | undefined;
+        groupDrag.start(String(ev.active.id), rect);
         setDragGhost({ kind: 'folder', label: g.label, count: g.count, sortMode: g.sortMode,
           initialRect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : undefined });
         return;
@@ -1270,6 +1277,10 @@ export function WatchlistDrawer() {
     setDragGhost(null);
   };
   const onDragMove = (ev: DragMoveEvent) => {
+    if (ev.active.data.current?.type === 'folder') {
+      groupDrag.update(realFolderIds, String(ev.active.id), dragPointRef.current ?? dropPoint(ev));
+      return;
+    }
     // 메모 행은 차트 드롭 대상이 아니다 — 'entry' 타입만 오버레이를 띄운다.
     if (ev.active.data.current?.type !== 'entry') return;
     const next = getEntryDestination(ev);
@@ -1288,6 +1299,7 @@ export function WatchlistDrawer() {
     cancelDragPointFlush();
     setIsDragging(false);
     setDragGhost(null);
+    groupDrag.finish();
     setDestination(null);
     setExpandedDuringDrag(new Set());
     endEntryDrag();
@@ -1299,6 +1311,7 @@ export function WatchlistDrawer() {
     const wasEntry = activeType === 'entry';
     const target = getEntryDestination(ev);
     const endPoint = dragPointRef.current ?? dropPoint(ev);
+    const folderDrop = activeType === 'folder' ? groupDrag.resolve(realFolderIds, String(ev.active.id), endPoint) : null;
     // 낙하 애니메이션 여부를 **지우기 전에** 확정한다. finishDrag() 안의 endEntryDrag()
     // 가 store 의 overChart 를 false 로 되돌리는데, 그 갱신은 dnd-kit 의 active→null 과
     // 같은 커밋에 착지한다 — store 를 그대로 읽으면 차트에 성공적으로 떨궈도 항상
@@ -1311,6 +1324,10 @@ export function WatchlistDrawer() {
     if (externalDrop) setGhostDroppedOnChart(true);
     finishDrag();
     if (externalDrop) return;
+    if (activeType === 'folder') {
+      if (folderDrop) reorderFoldersM.mutate(folderDrop.orderedIds);
+      return;
+    }
     // 종목 행을 차트 위에 드롭 → 종목 교체(재정렬 대신). 창 위 드롭이면 그 창 그룹 교체
     // (정밀 드롭, #711), 창 밖(캔버스 여백)이면 활성 그룹 교체(onPick, /live 위라 navigate no-op).
     // 메모는 이 분기를 타지 않는다 — 차트에 실을 종목이 없다.
@@ -1325,20 +1342,6 @@ export function WatchlistDrawer() {
       return;
     }
     if (!ev.over) return;
-    if (ev.active.data.current?.type === 'folder') {
-      // 현재 typeAwareCollision이 폴더 드래그의 over를 항상 폴더 컨테이너로 보장하므로
-      // 정상 경로에선 over가 폴더 id다. over.folderId fallback과 null 가드는 collision
-      // 전략이 바뀔 때를 대비한 defense-in-depth(미분류는 useSortable 노드가 아니라
-      // over로 등장하지 않음).
-      const over = ev.over.data.current;
-      const overFolderId = over?.type === 'folder'
-        ? String(ev.over.id)
-        : ((over?.folderId ?? null) as string | null);
-      if (overFolderId == null) return;
-      const fr = resolveFolderDrag(realFolderIds, String(ev.active.id), overFolderId);
-      if (fr.kind === 'reorder') reorderFoldersM.mutate(fr.orderedIds);
-      return;
-    }
     if (wasEntry) {
       if (target && ev.active.data.current?.folderId === null) {
         const d = ev.active.data.current;
@@ -1431,18 +1434,18 @@ export function WatchlistDrawer() {
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (
           <RailState>관심종목이 없습니다</RailState>
         )}
-        <DndContext sensors={sensors} collisionDetection={precisePanelCollision} autoScroll={false}
+        <DndContext sensors={sensors} collisionDetection={precisePanelCollision} autoScroll={{ enabled: false, layoutShiftCompensation: false }}
           onDragStart={onDragStart} onDragMove={onDragMove} onDragOver={onDragMove} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
           <RemeasureOnCollapse active={folderDragActive || expandedDuringDrag.size > 0} />
           <DragPanelAssist collapsed={collapsed} onExpand={expandDuringDrag} pointRef={dragPointRef} />
-          <SortableContext items={realFolderIds} strategy={verticalListSortingStrategy}>
+          <SortableContext items={realFolderIds} strategy={keepPanelGroupSlots}>
+            <div data-panel-group-list style={groupDrag.style}>
             {filteredGroups.map((g) => {
               const gi = renderGroups.findIndex((item) => item.key === g.key);
               const { key, label, folder, rows, rowDragEnabled } = g;
               if (g.count === 0 && folder === null) return null; // 빈 미분류는 숨김
               // 그룹 드래그 중에는 전 그룹을 헤더만 남긴다(folderDragActive 주석 참조).
-              // 미분류도 포함한다 — 폴더 sortable 대상은 아니지만, 중간에 긴 블록이
-              // 하나라도 남으면 "균일 높이 리스트" 라는 전제가 그대로 깨진다.
+              // 미분류도 접어 종목 목록이 그룹 이름들을 가리지 않게 한다.
               const isCollapsed = (shownCollapsed.has(key) && !expandedDuringDrag.has(key)) || folderDragActive;
               const entriesList = !isCollapsed && (
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
@@ -1515,7 +1518,8 @@ export function WatchlistDrawer() {
               );
               return folder ? (
                 <GroupDropZone key={key} folderId={folder.id}>
-                  <SortableGroup folderId={folder.id} disabled={busy || searching}>
+                  <SortableGroup folderId={folder.id} disabled={busy || searching}
+                    dropSide={groupDrag.target?.folderId === folder.id ? groupDrag.target.side : undefined}>
                     {(dragHandle) => (<>{renderHeader(dragHandle)}{entriesList}</>)}
                   </SortableGroup>
                 </GroupDropZone>
@@ -1523,6 +1527,7 @@ export function WatchlistDrawer() {
                 <div key={key}>{renderHeader()}{entriesList}</div>
               );
             })}
+            </div>
           </SortableContext>
           {/* 커서를 따라오는 고스트(P1) — 포털·낙하 애니메이션 결정은 공용 껍데기가 갖는다. */}
           <RailDragOverlay droppedOnChart={ghostDroppedOnChart} fitContentHeight={folderDragActive}
