@@ -1,0 +1,101 @@
+{
+  "recordedAtKst": "2026-10-19T14:17:19.486181+09:00",
+  "implementationCommit": "03b6a0eae412d842a8a4288b016595abd31a134f",
+  "baseCommit": "86e892dfa7eca547f9fe200ad7fad43c64bf5f5b",
+  "scope": "Local affected-area validation; subsequent documentation-only commit reuses identical implementation and verification inputs. Real-user measurements and screenshots stay local and are not included in this record.",
+  "inputFingerprints": {
+    "frontend": {
+      "files": 1678,
+      "sha256": "1b7fe39d5d4b627d8be7e0d711d3cfb740fed61284249ed8a1b78ceee726d1e6",
+      "gitPathspecs": [
+        "frontend/src",
+        "frontend/tests",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/playwright.config.ts",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/tsconfig.node.json",
+        "frontend/vitest.config.ts"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    },
+    "backend": {
+      "files": 756,
+      "sha256": "7f21bccbc822c55c477cf5324b062583209c983fed639159c82187ee0223063c",
+      "gitPathspecs": [
+        "hoga",
+        "tests",
+        "scripts/benchmark_live_cold_paths.py",
+        "pyproject.toml",
+        "uv.lock",
+        "ruff.toml",
+        ".python-version"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    }
+  },
+  "tools": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "playwright": "Version 1.60.0",
+    "typescript": "Version 6.0.3"
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed, app/unit/E2E TS projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/api/range.test.tsx src/api/client.test.ts src/live/useLiveBundle.test.tsx src/live/useLiveSidecars.test.tsx src/live/LiveChartRoot.test.tsx src/live/workspace/InvestorDailyWindow.test.tsx",
+      "result": "470 passed / 6 files"
+    },
+    {
+      "command": ".venv/bin/ruff check .",
+      "result": "all checks passed"
+    },
+    {
+      "command": ".venv/bin/pytest -q tests/unit/live/test_live_investor_net_backfill.py tests/unit/live/test_daily_program_trade.py tests/unit/live/test_kiwoom_capacity.py tests/unit/live/test_batched_daily_walkback.py",
+      "result": "79 passed"
+    },
+    {
+      "command": "cd frontend && HOGA_RUN_COLD_BENCHMARK=1 HOGA_COLD_BENCH_LABEL=render-loop-fixed HOGA_COLD_BENCH_OUTPUT=/tmp/hoga-real-fixed-benchmark.json npx playwright test live-cold-switch-benchmark live-smoke live-viewport-preservation --reporter=list",
+      "result": "15 passed, including benchmark requiring zero update-depth warnings"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "build": "Playwright webServer npx vite build succeeded for final E2E run.",
+  "regressionEvidence": [
+    "Cache timestamp test first failed because restoration rewrote the original fetchedAt; corrected publication preserves the original stamp.",
+    "Temporarily restoring background priority made the real-scheduler queue test fail with capture before visible history; final user_visible cases pass for investor and program histories.",
+    "Controlled benchmark now fails on any Maximum update depth exceeded warning; final run has zero warnings and zero unhandled page errors."
+  ],
+  "controlledBenchmark": {
+    "samples": 9,
+    "pageErrors": 0,
+    "updateWarnings": 0,
+    "scope": "synthetic transport delays; empty auxiliary cards; public book only; not real vendor/server load"
+  },
+  "logSha256": {
+    "typecheck": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+    "frontend": "f7e864ec8f109fda4829d5be8761080b59ae6075d373e0c87a6fd5a2dfcd08f2",
+    "backend": "58c581e38ac7e08be4dfceaa9c3a8f796dcf63d22bbd7f1ee8b4d0ebbf32bbe9",
+    "e2e": "dfa717722c8b33fd36928f07e34a33571fa095e25c5777667486943a420b3f16",
+    "priorityRed": "513c0790d37ba37912a2c89fc1ddbc1e92ffb62d5e8e52be8b52fb4df08da4bb"
+  },
+  "isolation": {
+    "backendPort": 20023,
+    "frontendPort": 21023,
+    "realDataFrontendPort": 5174,
+    "userServerRestarted": false,
+    "realBackendPriorityChangesApplied": false,
+    "credentials": "E2E blank overrides; no secondary credentialed backend"
+  },
+  "remainingWork": "Real-server effect of history priorities needs normal merge/pull deployment. This verification does not claim improved vendor latency."
+}
