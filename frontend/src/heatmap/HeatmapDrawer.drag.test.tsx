@@ -208,6 +208,8 @@ describe('HeatmapDrawer 행 드래그 이동 wiring', () => {
   it('그룹 헤더(folder) 드래그는 기존대로 reorderHeatmapFolders (행 이동과 분리)', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByTestId('heatmap-drawer-row-000001');
+    vi.spyOn(screen.getByTestId('heatmap-drawer-scroll'), 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 800, 600));
+    vi.spyOn(screen.getAllByTestId('heatmap-group-header')[0], 'getBoundingClientRect').mockReturnValue(new DOMRect(400, 20, 200, 20));
     completeDrag({
       active: { id: 'f2', data: { current: { type: 'folder' } } },
       over: { id: 'f1', data: { current: { type: 'folder' } } },
