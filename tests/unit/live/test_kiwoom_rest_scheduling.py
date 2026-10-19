@@ -345,3 +345,47 @@ async def test_ready_selection_preserves_per_account_spacing(monkeypatch, priori
         await asyncio.gather(*tasks)
     finally:
         await stop(scheduler, tasks)
+
+
+@pytest.mark.parametrize("phase", ["token", "admission", "http"])
+def test_slow_phase_reports_only_stage_not_sensitive_exception(monkeypatch, caplog, phase):
+    from hoga.live import kiwoom_rest
+
+    ticks = iter([10.0, 10.5])
+    monkeypatch.setattr(kiwoom_rest, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    with pytest.raises(ValueError, match="private-token-and-body"), kiwoom_rest._observe_phase("ka10064", phase):
+        raise ValueError("private-token-and-body")
+    assert f"api_id=ka10064 phase={phase} duration_ms=500.0" in caplog.text
+    assert "private-token-and-body" not in caplog.text
+
+
+def test_fast_phase_does_not_log(monkeypatch, caplog):
+    from hoga.live import kiwoom_rest
+
+    ticks = iter([10.0, 10.1])
+    monkeypatch.setattr(kiwoom_rest, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
+    with kiwoom_rest._observe_phase("ka10064", "http"):
+        pass
+    assert "slow_phase" not in caplog.text
+
+
+async def test_slow_queue_reports_public_metadata_without_request_key(monkeypatch, caplog):
+    scheduler = KiwoomCapacityScheduler(workers=1, rate_per_sec=1e9)
+    original = scheduler._make
+
+    def old_request(*args):
+        req = original(*args)
+        req.queued_at = time.monotonic() - 10
+        return req
+
+    monkeypatch.setattr(scheduler, "_make", old_request)
+    try:
+        assert await scheduler.submit(
+            key="private-account-and-body", api_id="ka10064", priority="user_visible",
+            call=lambda _: asyncio.sleep(0, result="ready"),
+        ) == "ready"
+        assert "slow_queue pid=" in caplog.text
+        assert "api_id=ka10064 priority=user_visible account=0" in caplog.text
+        assert "private-account-and-body" not in caplog.text
+    finally:
+        await scheduler.aclose()
