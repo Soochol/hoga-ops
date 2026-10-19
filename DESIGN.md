@@ -288,6 +288,8 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 - 2026-10-19 사용자 승인: 프로그램 체결 창도 일반 체결과 같은 공통 열·반응형 간격을 사용한다. 시간·현재가·순매수 증감의 한 줄 구조를 유지하고 시간 폭은 4rem→3.5rem→3.25rem, 열 간격은 0.5rem→0.25rem→0.125rem, 바깥 여백은 0.625rem→0.375rem으로 조절한다(40/30rem 경계). 증감은 +·− 부호의 실제 폭까지 확보하고 같은 종목·거래소·날짜에서 관측한 최대 가격·증감 자릿수 폭을 유지해 큰 값의 버퍼 이탈이나 빈 데이터로 열이 줄어들지 않는다. 초 단위 시간·전체 숫자·기존 글자 크기·헤더 고정·방향색·누락 현재가의 — 표기·최신순·과거 조회는 유지하며 최소 폭 이하에서만 가로 스크롤한다.
 
+- 2026-10-19 사용자 미리보기 승인: 10호가의 중앙 가격축·좌우 대칭·22px 행 높이·매도/매수 각 10행을 유지하면서 주변 여백을 압축한다. 본문 531px 이상/400~530px/400px 미만에서 잔량 셀 좌우 여백은 0.5rem→0.25rem→0.125rem, 잔량·증감 간격은 0.375rem→0.25rem→0.125rem, 요약 라벨·값 간격은 0.75rem→0.375rem→0.25rem이다. 좁은 창의 좌우 최소 폭은 고정 112px 대신 실제 글꼴로 측정한 잔량·양/음 증감·최근 체결 가격/수량·체결강도의 공통 폭을 사용한다. 같은 종목에서 관측한 자릿수 폭은 유지하고 종목 변경 시 초기화하며, 증감은 기본 네 자릿수와 부호를 예약해 순간 배지가 없어져도 폭이 줄지 않는다. 최근 체결 9건은 공통 가격 폭과 오른쪽 정렬을 사용하고 수량·증감 말줄임은 제거한다. 넓은 창의 좌우 184px 하한과 531px에서 요약을 정보 팝오버로 옮기는 동작은 유지한다. 중앙의 아이콘–가격 4px·가격–등락률 2px·양쪽 최소 8px 및 글자 크기는 유지하며 내재 최소 폭 이하에서 가로 스크롤한다. 상세 팝오버의 요약은 4px 여백·간격으로 표시하고 주문창의 배치는 유지한다.
+
 - **Base unit:** 4px (base intent = rendered, since the dial is 1.0× as of 2026-08-07; was 4.5px rendered at 1.125×)
 - **Density:** Bloomberg-leaning — the dial sits at base intent (1.0×). Density is a spectrum, not a fixed point: the token system holds the whole ladder and the dial picks a rung. Looser rungs (1.125×, 1.25×) have both shipped as defaults before.
 - **Scale (rem-based, single dial):**

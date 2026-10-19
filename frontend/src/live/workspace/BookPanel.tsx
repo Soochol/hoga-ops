@@ -33,7 +33,7 @@ import { viExpectedDown, viExpectedUp } from '../krxTick';
 import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters';
 import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
 import { otherBookSessionMode } from '../bookSessionMode';
-import { BOOK_PANEL_COMPACT_GRID_COLS, BOOK_PANEL_COMPACT_MIN_W, BOOK_PANEL_GRID_COLS, BOOK_PANEL_MIN_W } from './bookPanelMetrics';
+import { useBookSideLayout } from './useBookSideLayout';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
@@ -160,6 +160,9 @@ export default function BookPanel({
   stale = false,
 }: Props) {
   const priceLayout = useBookPriceLayout(snapshot ? [...snapshot.ask, ...snapshot.bid] : [], symbol, false, baselinePrice);
+  const { setProbe, samples: sideSamples, style: sideStyle } = useBookSideLayout(symbol,
+    snapshot ? [...snapshot.ask, ...snapshot.bid].filter(level => level.price > 0).map(level => level.qty) : [],
+    deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [], trades.slice(0, 9), summary.fillStrengthPct);
   const [infoOpen, setInfoOpen] = useState(false);
   const infoButtonRef = useRef<HTMLButtonElement>(null);
   const infoId = useId();
@@ -252,7 +255,7 @@ export default function BookPanel({
   );
 
   return (
-    <div className="book-panel flex h-full flex-col bg-bg-card">
+    <div className="book-panel flex h-full flex-col bg-bg-card" style={sideStyle}>
       {/* 실시간 0D/0H 예상 표본 또는 커서·시간외 스냅샷. 없으면 높이를 차지하지 않는다. */}
       <ExpectedFillBanner
         price={expectedFill === undefined ? snapshot.exp_price ?? 0 : expectedFill?.price ?? 0}
@@ -263,11 +266,17 @@ export default function BookPanel({
       {/* 컨테이너 폭으로 요약만 팝오버로 옮긴다. 압축 하한 아래는 가로 스크롤하며
           가격·등락률·잔량·체결의 폰트와 행 정렬을 유지한다. */}
       <BookScrollArea>
+        <span ref={setProbe} aria-hidden="true" className="book-side-sizer font-data text-sm">
+          {['+', '−'].map(sign => <span key={sign} className="book-side-quantity-probe">
+            <span className="text-2xs" data-figure={`${sign}${sideSamples.delta}`} />
+            <span data-figure={sideSamples.qty} />
+          </span>)}
+          <span className="book-side-trade-probe"><span data-book-trade-price data-figure={sideSamples.price} /><span data-figure={sideSamples.trade} /></span>
+          <span className="book-side-strength-probe"><span className="text-xs" data-figure="체결강도" /><span data-figure={sideSamples.strength} /></span>
+        </span>
         <div
           className="book-panel-grid grid font-data"
-          style={{ '--book-wide-min-w': `${BOOK_PANEL_MIN_W}px`, '--book-wide-cols': BOOK_PANEL_GRID_COLS,
-            '--book-compact-min-w': `${BOOK_PANEL_COMPACT_MIN_W}px`, '--book-compact-cols': BOOK_PANEL_COMPACT_GRID_COLS,
-            ...priceLayout } as React.CSSProperties}
+          style={priceLayout}
         >
           {/* 좌: 매도 잔량 바 → 체결강도 → 체결 리스트 */}
           <div className="flex flex-col" style={{ paddingTop: askPadding }}>
@@ -287,7 +296,7 @@ export default function BookPanel({
                 C안: strong→border 한 단계 완화, 격자는 잔향만). */}
             <div
               data-book-divider=""
-              className="flex items-center justify-between border-t border-border px-2"
+              className="book-strength-row flex items-center justify-between border-t border-border"
               style={{ height: ROW_H }}
             >
               <span className="text-xs text-fg-dim">체결강도</span>
@@ -303,15 +312,15 @@ export default function BookPanel({
             </div>
             {/* 체결은 최신 9건을 유지한다. 매수 호가가 적어도 체결 내역은 자르지 않는다. */}
             {trades.slice(0, 9).map((t, i) => (
-              <div key={i} className="book-trade-row flex items-center justify-between gap-1 px-2" style={{ height: ROW_H }}>
+              <div key={i} className="book-trade-row grid items-center" style={{ height: ROW_H }}>
                 <span
-                  className={`shrink-0 font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
+                  className={`text-right font-data text-sm tabular-nums ${dirClass(t.price, baselinePrice)}`}
                 >
                   {t.price.toLocaleString('ko-KR')}
                 </span>
                 <span
                   title={t.qty.toLocaleString('ko-KR')}
-                  className={`min-w-0 truncate font-data text-sm tabular-nums ${
+                  className={`text-right font-data text-sm tabular-nums ${
                     t.side > 0 ? 'text-price-up' : t.side < 0 ? 'text-price-down' : 'text-fg-dim'
                   }`}
                 >
@@ -652,7 +661,7 @@ function QtyBar({
       {/* 뱃지는 잔량과 같은 flex 안에 둔다(#746 절대배치 겹침 교훈). 가격축 반대편에
           붙여 잔량 숫자가 항상 가격 쪽에 남게 한다. */}
       <span
-        className={`relative flex w-full items-baseline gap-1.5 px-2 font-data text-sm tabular-nums ${
+        className={`book-quantity-content relative flex w-full items-baseline font-data text-sm tabular-nums ${
           isAsk ? '' : 'flex-row-reverse'
         }`}
       >
@@ -752,7 +761,7 @@ function SummaryRow({
   const tip = useTextTooltip(tooltipText, 500, `book-price-tooltip ${priceDirClass(pct ?? 0)}`);
   return (
     <div
-      className={`flex items-center justify-between gap-3 px-2 ${
+      className={`book-summary-row flex items-center justify-between gap-3 px-2 ${
         divider ? 'border-t border-border' : ''
       } ${highlight ? 'bg-bg-subtle' : ''}`}
       style={{ height: 'var(--book-summary-row-height, 22px)' }}
