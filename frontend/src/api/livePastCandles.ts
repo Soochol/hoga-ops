@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { trimRetainedLiveCaches, useLiveCacheConsumer } from './liveCachePolicy';
 
 import { apiCall } from './client';
 import { createDeltaResponseMerger } from './deltaResponseMerger';
@@ -435,6 +436,7 @@ export function useLivePastCandles(
   todayFirst: boolean = false,
 ) {
   const queryClient = useQueryClient();
+  useLiveCacheConsumer(queryClient, mergedPastCandlesKey(code, to, venue, bucketMs), !!code);
   const mergedRef = useRef<{ identity: string; data: LivePastCandlesResponse } | null>(null);
   const [, bumpMergedVersion] = useReducer((x: number) => x + 1, 0);
   const identity = responseIdentity(code, to, venue, bucketMs);
@@ -558,6 +560,7 @@ export function useLivePastCandles(
     const cached = queryClient.getQueryCache().find({ queryKey: key, exact: true });
     if (cached) cached.setOptions({ ...cached.options, structuralSharing: false });
     queryClient.setQueryData(key, data);
+    trimRetainedLiveCaches(queryClient);
   }, [data, query.data, query.isPlaceholderData, queryClient, code, to, venue, bucketMs]);
 
   // 오늘 seed를 보여주는 동안 원래 요청 창은 아직 로딩 중이다. 이 신호가 없으면

@@ -6,6 +6,38 @@ from datetime import date, datetime
 from unittest.mock import patch
 
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
+
+
+def test_batch_and_bar_limits_bound_one_code_without_evicting_other_codes():
+    cache = PastDailyCandlesCache(max_batches_per_key=2, max_bars_per_key=3)
+    day = date(2024, 1, 1)
+    cache.append_batch("000660", day, day, [_bar(1)])
+    cache.append_batch("005930", day, day, [_bar(1)])
+    cache.append_batch("005930", day, day, [_bar(2), _bar(3)])
+    cache.append_batch("005930", day, day, [_bar(4), _bar(5)])
+    assert [batch[2] for batch in cache.list_batches("005930")] == [[_bar(4), _bar(5)]]
+    assert cache.list_batches("000660")
+    assert cache.stats_snapshot()["batches"]["evictions"] == 2
+
+
+def test_empty_daily_batches_also_consume_the_batch_budget():
+    cache = PastDailyCandlesCache(max_batches_per_key=2)
+    for day in range(1, 5):
+        cache.append_batch("005930", date(2024, 1, day), date(2024, 1, day), [])
+    assert [batch[0].day for batch in cache.list_batches("005930")] == [3, 4]
+
+
+def test_global_daily_bar_budget_evicts_least_recently_used_code():
+    cache = PastDailyCandlesCache(max_past_bars=2)
+    day = date(2024, 1, 1)
+    cache.append_batch("005930", day, day, [_bar(1)])
+    cache.append_batch("000660", day, day, [_bar(2)])
+    assert cache.list_batches("005930")
+    cache.append_batch("035720", day, day, [_bar(3)])
+    assert cache.list_batches("000660") == []
+    assert cache.stats_snapshot()["batches"]["bars"] == 2
+    cache.clear_batches()
+    assert cache.stats_snapshot()["batches"]["bars"] == 0
 from hoga.util.timeenc import KST
 
 

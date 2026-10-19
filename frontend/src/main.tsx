@@ -8,6 +8,7 @@ import App from './App';
 import { LivePage } from './live/LivePage';
 import AppErrorBoundary from './ui/AppErrorBoundary';
 import DesktopConfigGate from './ui/DesktopConfigGate';
+import { liveCacheStats } from './api/liveCachePolicy';
 import { LandingPage, Heatmap, Inventory, Screener, Capture, Sentiment, Market, StudyBookmarkRedirect } from './mainRoutes';
 
 // `/settings` **페이지는 없다** — 설정은 앱 전역 드로어 하나이고(`App` 소유), 트리거는
@@ -54,6 +55,7 @@ qc.setQueryDefaults(['live', 'range-merged'], { gcTime: 2 * 60 * 60_000 });
 // (`import.meta.env.DEV` 가 상수 false 로 접히며 분기째 제거된다). 감시는 스토어
 // `subscribe` 뿐이라 동작을 바꾸지 않는다 — 근거는 `updateLoopWatch.ts` 머리말.
 if (import.meta.env.DEV && import.meta.env.MODE !== 'test') {
+  Object.assign(window, { __liveCacheStats: () => liveCacheStats(qc) });
   void import('./state/updateLoopWatch').then((m) => m.installUpdateLoopWatch());
 }
 

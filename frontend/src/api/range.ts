@@ -19,6 +19,8 @@ import { useEffectiveVenue } from '../live/useEffectiveVenue';
 import { useOrderflowSourcePref } from '../state/sourcePreference';
 import type { SourcePreference } from '../state/sourcePreference';
 import { useLivePromotionStore } from '../state/livePromotion';
+import { isLiveCacheProtected, liveCacheLastUsed, recordLiveCacheIdentityEviction, trimRetainedLiveCaches, useLiveCacheConsumer } from './liveCachePolicy';
+export { codeFromMergedLiveRangeKey } from './liveCachePolicy';
 
 export { buildRangeBundleRequest, rangePlaceholderData };
 export type { RangeBundleRequest, RangeBundleRequestInput, RangeQueryKey, RangeRequestOptions } from './rangeRequest';
@@ -258,30 +260,6 @@ export function publishRangeSnapshot(
 }
 
 /**
- * canonical 병합본 키에서 종목코드를 복원한다 — 축출(useLiveRangeCacheEviction)용.
- *
- * identity 는 실키 배열의 JSON 이라 code 는 인덱스 1 에 그대로 있다(RangeQueryKey
- * 규약). 이 지식을 여기 가둬 두어 축출 쪽이 JSON 형식을 알 필요가 없게 한다.
- *
- * 모르면 **null** 을 준다. 호출부는 null 을 "판별 불가 → 보존"으로 다뤄야 한다 —
- * 축출은 되돌릴 수 없으니 애매하면 남기는 쪽이 안전하다.
- */
-export function codeFromMergedLiveRangeKey(queryKey: QueryKey): string | null {
-  if (!Array.isArray(queryKey)) return null;
-  if (queryKey[0] !== 'live' || queryKey[1] !== 'range-merged') return null;
-  const identity = queryKey[2];
-  if (typeof identity !== 'string') return null;
-  try {
-    const parsed: unknown = JSON.parse(identity);
-    if (!Array.isArray(parsed)) return null;
-    const code: unknown = parsed[1];
-    return typeof code === 'string' ? code : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * `['range', …]` 실키에서 bucket_ms(=봉)를 복원한다 — 축출용(#801).
  *
  * `RangeQueryKey` 규약상 인덱스 4 가 bucketMs 다. `codeFromMergedLiveRangeKey` 와
@@ -347,51 +325,11 @@ function removeDominatedLiveRangeCopies(
   });
 }
 
-/**
- * `['live','range-merged']` 병합본 개수 상한 — identity 축 LRU.
- *
- * 기존 축출(`useLiveRangeCacheEviction`)은 **종목 축만** 본다: 열린 창 어디에도 없는
- * 종목의 캐시를 지운다. 그래서 **열려 있는 종목**의 사본은 몇 벌이 쌓이든 남는다.
- * identity 는 code·to·bucketMs·mode·지표 옵션의 JSON 이라, 지표를 토글하거나 봉을
- * 바꿀 때마다 **새 identity = 새 병합본**이 생기고 옛 것은 아무도 안 지운다.
- *
- * 그리고 이 네임스페이스는 `main.tsx` 에서 **gcTime 2시간**으로 승격돼 있다("점심 후
- * 복귀" 복원용, 의도된 설계). 즉 고아가 두 시간을 버틴다. 2026-08-16 성능 감사가
- * 실측한 크기가 1분봉 7일 **2.4MB** · 2개월 **23.6MB** 라, 2개월 창에서 토글 몇 번이면
- * 23MB 급 고아가 여러 벌 상주한다.
- *
- * **처방은 gcTime 축소가 아니다**(그러면 복원이라는 설계 의도를 죽인다). 개수에 상한을
- * 두고 오래된 쪽부터 회수한다 — 감사의 결론이 그것이다.
- *
- * ## 12 인 근거
- *
- * 동시 작업 집합은 **차트 창당 2개**다(`mode=hoga` + `mode=sidecar`). 공장 기본 배치의
- * 차트 창 수 + 사용자가 늘리는 몫을 넉넉히 잡아 6개를 살아 있는 집합으로 보고, 그
- * 2배를 상한으로 둔다. 상한이 작업 집합에 가까우면 **정상 사용이 계속 축출을 유발**해
- * 복원 대신 재-워크백이 돈다 — 이 캐시가 애초에 막으려던 것이다.
- *
- * **`mode=candles` 가 세 번째로 합류했는데(2026-08-23) 상한은 12 를 유지한다.** 셋을
- * 다 드는 것은 hogaplay 저장 데이터 소스를 켠 창뿐이고(그 모드에서만 캔들이 디스크에서
- * 온다), 그 병합본은 hoga 보다 **한 자릿수 작다**(3분봉 22거래일 284KB 대 1분봉 7일
- * 2.4MB) — 상한이 지키는 것은 개수가 아니라 상주 바이트다. 게다가 회수가 **최근 갱신
- * 순**이라 지금 보고 있는 창은 상한에 닿아도 살아남는다. 올리는 것은 성능 감사의
- * 결론을 되무는 일이므로, 실사용에서 churn 이 관측되면 그때 **측정과 함께** 바꾼다.
- */
+/** Count backstop beside the shared byte budget. Retain at most twelve
+ * merged indicator identities unless mounted consumers need more. */
 export const MERGED_LIVE_RANGE_MAX_ENTRIES = 12;
 
-/**
- * 병합본이 상한을 넘으면 **최근 갱신 순으로** 남기고 나머지를 회수한다.
- *
- * 가드 둘:
- *  - **상한 안쪽은 옵저버 여부와 무관하게 남긴다** — 최신이 곧 작업 집합이다.
- *  - **상한 밖이라도 옵저버가 붙었으면 안 지운다.** 옵저버가 남은 쿼리를 지우면 RQ 가
- *    즉시 재생성·재요청해 요청 폭주가 된다(`removeDominatedLiveRangeCopies` ·
- *    `useLiveRangeCacheEviction` 과 같은 함정). 이 키엔 설계상 옵저버가 없지만
- *    (`setQueryData` 만 쓴다), 나중에 누가 `useQuery` 를 달면 조용히 폭주하므로 남긴다.
- *
- * `dataUpdatedAt` 이 같으면 순서는 미정이다 — 상한 근처의 동률은 어느 쪽이 남아도
- * 정보 손실이 아니라 재요청 한 번 차이다.
- */
+/** Evict inactive identities by last actual use, protecting mounted charts. */
 export function evictExcessMergedLiveRanges(
   queryClient: QueryClient,
   cap: number = MERGED_LIVE_RANGE_MAX_ENTRIES,
@@ -399,11 +337,15 @@ export function evictExcessMergedLiveRanges(
   const queries = queryClient.getQueryCache().findAll({ queryKey: ['live', 'range-merged'] });
   if (queries.length <= cap) return;
   const byRecency = [...queries].sort(
-    (a, b) => (b.state.dataUpdatedAt ?? 0) - (a.state.dataUpdatedAt ?? 0),
+    (a, b) => liveCacheLastUsed(queryClient, b) - liveCacheLastUsed(queryClient, a),
   );
-  for (const query of byRecency.slice(cap)) {
-    if (query.getObserversCount() > 0) continue;
+  let remaining = queries.length;
+  for (const query of byRecency.reverse()) {
+    if (remaining <= cap) break;
+    if (isLiveCacheProtected(queryClient, query)) continue;
     queryClient.removeQueries({ queryKey: query.queryKey, exact: true });
+    recordLiveCacheIdentityEviction(queryClient);
+    remaining--;
   }
 }
 
@@ -876,6 +818,7 @@ function useLiveRangeDelta(
   // 복원 우선순위: 같은 마운트 mergedRef → canonical 병합본(O(1), gcTime 2h) →
   // 실키 스캔(구버전 캐시·동시 창 폴백). canonical 이 리마운트·/study 왕복·gcTime
   // 초과를 커버하는 주 경로다.
+  useLiveCacheConsumer(queryClient, mergedLiveRangeKey(identity), !!baseInput.code);
   const cachedPrevious = merged && merged.identity === identity
     ? merged
     : restoredLiveRangeMerged(queryClient, identity)
@@ -959,7 +902,7 @@ function useLiveRangeDelta(
     mergedRef.current = { identity: plan.identity, data, updatedAtMs };
     publishRangeSnapshot(queryClient, buildRangeBundleRequest(baseInput).queryKey, data);
     // canonical 병합본 재발행 → 다음 리마운트·탭 복귀의 복원 소스(gcTime 2h). 이
-    // 키엔 옵저버(useQuery)가 없어 setQueryData 가 재렌더를 유발하지 않는다. 위
+    // 키의 수명 옵저버는 React 렌더를 구독하지 않아 재렌더를 유발하지 않는다. 위
     // 가드가 mergedRef 와 canonical 을 동기 유지하므로(둘 다 이 effect 에서만 쓰기)
     // 캔들의 별도 publishedRef 는 불필요 — range.ts 는 렌더 단계 pin 이 없다.
     publishRangeSnapshot(queryClient, mergedLiveRangeKey(plan.identity), data);
@@ -968,6 +911,7 @@ function useLiveRangeDelta(
     // identity 축 상한. 위 회수는 **같은 identity 안의** 중복만 걷으므로, 지표 토글·봉
     // 전환이 만든 **다른 identity** 의 고아는 그대로 남는다(gcTime 2h). 여기서 걷는다.
     evictExcessMergedLiveRanges(queryClient);
+    trimRetainedLiveCaches(queryClient);
     if (plan.forceRerenderAfterMerge) forceRerender();
   }, [baseInput, data, queryClient, query.dataUpdatedAt, query.isPlaceholderData, plan.identity, plan.forceRerenderAfterMerge]);
 
