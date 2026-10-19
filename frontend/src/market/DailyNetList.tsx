@@ -5,7 +5,7 @@ import { priceDirClass } from '../ui/priceDir';
 
 type DailyRow = { date: string; values: (number | null)[] };
 
-/** The scroll viewport keeps the header and period totals visible in both cards. */
+/** Only data rows scroll, so the header and totals never cover a date row. */
 export function DailyNetList({ label, columns, rows, compact = false, todayProvisional = false }: {
   label: string; columns: string[]; rows: DailyRow[]; compact?: boolean; todayProvisional?: boolean;
 }) {
@@ -16,9 +16,8 @@ export function DailyNetList({ label, columns, rows, compact = false, todayProvi
   const cell = (value: number | null | undefined) => <span className={value == null || !Number.isFinite(value) ? 'text-fg-dim' : priceDirClass(value)}>
     {value == null || !Number.isFinite(value) ? '—' : fmtSigned(value)}
   </span>;
-  return <div className={`daily-net-list ${compact ? 'daily-net-list-compact' : ''}`} tabIndex={0}
-    role="region" aria-label={`${label} 목록 스크롤`}>
-    <div role="table" aria-label={`${label} · 단위 억원`} className="font-data text-sm tabular-nums"
+  return <div className={`daily-net-list ${compact ? 'daily-net-list-compact' : ''}`}>
+    <div role="table" aria-label={`${label} · 단위 억원`} className="daily-net-table font-data text-sm tabular-nums"
       style={{ '--daily-columns': `minmax(4.5rem, 1fr) repeat(${columns.length}, minmax(0, 1fr))` } as CSSProperties}>
       <div role="rowgroup" className="daily-net-heading">
         <div role="row" className="daily-net-row text-2xs text-fg-dim">
@@ -26,13 +25,15 @@ export function DailyNetList({ label, columns, rows, compact = false, todayProvi
           {columns.map(name => <span key={name} role="columnheader" className="text-right">{name}</span>)}
         </div>
       </div>
-      <div role="rowgroup" className="daily-net-rows">
-        {sorted.map(row => <div role="row" key={row.date} className="daily-net-row">
-          <span role="rowheader" className="text-fg-dim">
-            {formatMarketDate(row.date)}{todayProvisional && row.date.slice(0, 8) === today && <span className="ml-2xs text-2xs">잠정</span>}
-          </span>
-          {columns.map((name, i) => <span role="cell" key={name} className="text-right">{cell(row.values[i])}</span>)}
-        </div>)}
+      <div className="daily-net-scroll" tabIndex={0} role="region" aria-label={`${label} 목록 스크롤`}>
+        <div role="rowgroup" className="daily-net-rows">
+          {sorted.map(row => <div role="row" key={row.date} className="daily-net-row">
+            <span role="rowheader" className="text-fg-dim">
+              {formatMarketDate(row.date)}{todayProvisional && row.date.slice(0, 8) === today && <span className="ml-2xs text-2xs">잠정</span>}
+            </span>
+            {columns.map((name, i) => <span role="cell" key={name} className="text-right">{cell(row.values[i])}</span>)}
+          </div>)}
+        </div>
       </div>
       <div role="rowgroup" className="daily-net-total">
         <div role="row" className="daily-net-row">

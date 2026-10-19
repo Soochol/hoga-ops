@@ -20,7 +20,5 @@ export function ChangePctForm({ params, onChange }: { params: ChangePctParams; o
         value={params.hi} onChange={hi => onChange({ ...params, hi })} />
     </ConditionFields> : <Num label="등락률" ariaLabel="등락률(%)" suffix="%"
       value={params.pct} onChange={pct => onChange({ ...params, pct })} />}
-    <p className="condition-help">최신 선택 봉의 종가 기준입니다. 전일 종가는 해당 봉 마지막 거래일의 직전 거래일 종가이며,
-      직전 봉은 선택 주기의 바로 앞 봉입니다. 진행 중에는 충족 여부가 바뀔 수 있습니다.</p>
   </CandleSettings>;
 }

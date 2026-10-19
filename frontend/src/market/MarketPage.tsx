@@ -592,6 +592,7 @@ export function ProgramCard() {
                   ) : isIntraday ? (
                     <>
                       <SessionLinesChart
+                        className="market-context-chart"
                         names={['차익', '비차익']}
                         sessionStartSec={startSec}
                         sessionEndSec={endSec}
@@ -604,7 +605,6 @@ export function ProgramCard() {
                         height={96}
                       />
                       <SessionAxisLabels startSec={startSec} endSec={endSec} />
-                      <span className="text-2xs text-fg-dim">표본 {asc.length}개 · {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}</span>
                     </>
                   ) : (
                     <>
@@ -762,6 +762,7 @@ export function FundsCard() {
       ) : (
         <>
           <CumLinesChart
+            className="market-context-chart"
             series={[
               { color: SERIES_COLORS.deposit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.deposit_won))), observed: series.map((r) => r.deposit_won != null) },
               { color: SERIES_COLORS.credit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.credit_won))), observed: series.map((r) => r.credit_won != null) },

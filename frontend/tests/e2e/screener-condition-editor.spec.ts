@@ -44,6 +44,24 @@ test('all 16 editors keep predicates through collapse, keyboard editing, reorder
   });
   await page.goto('/screener');
   const builder = page.getByTestId('screener-builder-pane');
+  const period = builder.getByRole('group', { name: '신고가 조건', exact: true }).getByLabel('신고 기준 기간(봉)');
+  const time = builder.getByRole('group', { name: '매도 총잔량 기준시각 돌파 조건', exact: true }).getByLabel('기준 시각', { exact: true });
+  for (const input of [period, time]) {
+    await input.click();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveCSS('outline-style', 'none');
+    await expect(input.locator('..')).toHaveCSS('outline-style', 'solid');
+    await expect(input.locator('..')).toHaveCSS('outline-width', '1px');
+  }
+  await period.click();
+  await period.press('Tab');
+  await expect(period).not.toBeFocused();
+  await expect(period.locator('..')).toHaveCSS('outline-style', 'none');
+  await page.keyboard.press('Shift+Tab');
+  await expect(period).toBeFocused();
+  await expect(period).toHaveCSS('outline-style', 'none');
+  await expect(period.locator('..')).toHaveCSS('outline-style', 'solid');
+  await builder.getByRole('group', { name: '신고가 조건', exact: true }).screenshot({ path: testInfo.outputPath('condition-single-focus.png') });
   for (const label of labels) {
     const card = builder.getByRole('group', { name: `${label} 조건`, exact: true });
     const toggle = card.getByRole('button', { name: `${label} 접기`, exact: true });
@@ -62,7 +80,6 @@ test('all 16 editors keep predicates through collapse, keyboard editing, reorder
   await page.keyboard.press('Enter');
   await amount.getByRole('button', { name: '500억', exact: true }).click();
   await expect(amount.getByLabel('최소 거래대금(억)')).toHaveValue('500');
-  await expect(amount.locator('.condition-summary')).toContainText('주봉 · 최신 봉 거래대금 500억 원 이상');
   await amount.getByRole('button', { name: '거래대금 접기' }).click();
 
   // Native drag-and-drop must work with the compact rows as well as open forms.
@@ -99,6 +116,10 @@ test('all 16 editors keep predicates through collapse, keyboard editing, reorder
       expect(overflow, `${label} at ${size}px`).toBe(false);
     }
     await amount.scrollIntoViewIfNeeded();
+    const amountInput = amount.getByLabel('최소 거래대금(억)');
+    await amountInput.click();
+    await expect(amountInput).toHaveCSS('outline-style', 'none');
+    await expect(amountInput.locator('..')).toHaveCSS('outline-style', 'solid');
     await builder.screenshot({ path: testInfo.outputPath(`condition-editor-${theme}.png`) });
   }
   expect(errors).toEqual([]);

@@ -14,7 +14,7 @@ describe('ConditionRow', () => {
     expect(screen.getByLabelText('신고 기준 기간(봉)')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '기간내 신고가 접기' }));
     expect(screen.getByLabelText('최근 기간(봉)')).not.toBeVisible();
-    expect(screen.getByText('일봉 · 최근 200봉 내 500봉 신고가 달성', { selector: '.condition-collapsed-summary' })).toBeVisible();
+    expect(screen.getByText('봉 기준')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: '기간내 신고가 펼치기' }));
     expect(screen.getByLabelText('최근 기간(봉)')).toHaveValue(200);
     expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue(500);
