@@ -23,6 +23,20 @@ describe('TradeTickTable', () => {
     expect(screen.getByText('체결 데이터 없음')).toBeInTheDocument();
   });
 
+  it('retains observed figure widths through eviction and empty filters, resetting on remount', () => {
+    const large = view({ ticks: [{ tMs: OPEN_MS, price: 1234567, qty: 123456789, side: 1, key: 'large' }] });
+    const rendered = render(<TradeTickTable view={large} />);
+    rendered.rerender(<TradeTickTable view={view()} />);
+    expect(rendered.container.querySelector('.trade-tick-sizer > span:first-child')).toHaveAttribute('data-figure', '1,234,567');
+    expect(rendered.container.querySelector('.trade-tick-sizer > span:last-child')).toHaveAttribute('data-figure', '123,456,789');
+    rendered.rerender(<TradeTickTable view={view({ ticks: [] })} />);
+    rendered.rerender(<TradeTickTable view={view()} />);
+    expect(rendered.container.querySelector('.trade-tick-sizer > span:last-child')).toHaveAttribute('data-figure', '123,456,789');
+    rendered.unmount();
+    const next = render(<TradeTickTable view={view()} />);
+    expect(next.container.querySelector('.trade-tick-sizer > span:last-child')).toHaveAttribute('data-figure', '40');
+  });
+
   it('시각·체결가·체결량 3열을 렌더한다 (구분 열 없음)', () => {
     render(<TradeTickTable view={view()} />);
     expect(screen.getByText('09:00:02')).toBeInTheDocument();
