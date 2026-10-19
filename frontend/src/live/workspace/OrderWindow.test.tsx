@@ -106,7 +106,7 @@ describe('호가 주문', () => {
     expect(buy).toHaveAttribute('aria-disabled', 'false');
   });
 
-  it.each(['loading', 'unconfigured', 'account-error', 'state-error', 'unknown-result'] as const)('%s에서 신규 주문 불가 사유는 주문 시도에만 토스트로 안내한다', reason => {
+  it.each(['loading', 'unconfigured', 'account-error', 'state-error', 'unknown-result'] as const)('%s에서 주문 차단 사유는 하단 상태줄로 안내한다', reason => {
     mock.accountsLoading = reason === 'loading';
     mock.configured = reason !== 'unconfigured';
     mock.accountError = reason === 'account-error' ? new Error('계좌 인증에 실패했습니다') : null;
@@ -116,7 +116,8 @@ describe('호가 주문', () => {
     const text = { loading: '계좌 확인 중', unconfigured: '계좌 연결 필요', 'account-error': '계좌 인증에 실패했습니다',
       'state-error': '주문 내역을 조회할 수 없습니다', 'unknown-result': '주문 결과 확인 필요' }[reason]!;
     expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
-    expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
+    if (reason === 'unknown-result') expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent(text);
+    else expect(screen.queryByRole('alert', { name: '주문 알림' })).not.toBeInTheDocument();
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent(text);
     expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
@@ -175,7 +176,7 @@ describe('호가 주문', () => {
     const toast = await screen.findByRole('alert', { name: '주문 알림' });
     expect(toast).toHaveTextContent(code === 'order-outcome-unknown' ? '취소 결과 확인 필요' : '취소 접수 불가');
     expect(toast).toHaveTextContent('취소 미접수 1건');
-    expect(toast.querySelector('.toast-progress') != null).toBe(code !== 'order-outcome-unknown');
+    expect(toast.querySelector('.toast-progress')).toBeNull();
     expect(screen.queryByRole('button', { name: '같은 요청 다시 확인' })).not.toBeInTheDocument();
     expect(mock.command).toHaveBeenCalledOnce();
   });
@@ -197,12 +198,33 @@ describe('호가 주문', () => {
       expect(screen.queryByLabelText('신규 주문 상태')).not.toBeInTheDocument();
       fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
       expect(mock.command).toHaveBeenCalledOnce();
+      fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
       fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
       await act(async () => {});
       expect(mock.command).toHaveBeenCalledTimes(2);
       expect(mock.command.mock.calls[1]).toEqual(mock.command.mock.calls[0]);
       expect(screen.getByRole('status', { name: '주문 접수 알림' })).toHaveTextContent('주문 요청 접수됨');
     } finally { vi.useRealTimers(); }
+  });
+
+  it('결과 불명확 확인 절차는 상태줄 상세에서만 열고 확인 기록 후에도 상태줄을 유지한다', async () => {
+    mock.unresolved = ['unknown-command'];
+    const view = show();
+    const bar = screen.getByTestId('order-status-bar');
+    expect(bar).toHaveTextContent('결과가 불명확한 요청');
+    expect(view.container.querySelector('.order-editor')).toBeNull();
+    expect(screen.queryByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    const details = screen.getByRole('dialog', { name: '주문 알림 상세' });
+    const confirm = within(details).getByRole('button', { name: '요청 unknown- 확인 완료' });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(within(details).getByRole('checkbox', { name: '해당 증권사의 실제 주문·체결 여부를 확인했습니다' }));
+    fireEvent.click(confirm);
+    await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
+    expect(mock.command).toHaveBeenCalledWith('/commands/unknown-command/review', expect.objectContaining({ command_id: 'unknown-command', confirmed: true }), 'live');
+    fireEvent.click(within(details).getByRole('button', { name: '주문 알림 상세 닫기' }));
+    expect(screen.getByTestId('order-status-bar')).toBe(bar);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it.each([
@@ -377,6 +399,7 @@ describe('호가 주문', () => {
     fireEvent.doubleClick(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ }));
     await screen.findByText('주문 처리 결과 확인 필요');
     expect(notifyOrderReceiptAccepted).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
     fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
     await screen.findByText('주문 요청 접수됨');
     expect(mock.command.mock.calls[1]).toEqual(mock.command.mock.calls[0]);
@@ -1329,6 +1352,7 @@ describe('호가 주문', () => {
     await waitFor(() => expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('주문 처리 결과 확인 필요'));
     expect(screen.queryByRole('group', { name: '주문 확인' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '주문 접수' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
     fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
     await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(2));
     expect(mock.command.mock.calls[1]).toEqual(mock.command.mock.calls[0]);

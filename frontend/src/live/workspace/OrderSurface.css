@@ -16,11 +16,6 @@
 .order-surface-segment button[aria-pressed=true] { background:var(--bg-card); color:var(--fg); box-shadow:var(--shadow); }
 .order-surface-segment button:hover:not(:disabled) { color:var(--fg); }
 .order-tooltip { border-radius:var(--radius-lg); padding:0.375rem 0.625rem; border-color:var(--border-strong); box-shadow:var(--shadow-overlay); }
-.order-toast .toast-card { border-radius:var(--radius-lg); border-color:var(--border-strong); box-shadow:var(--shadow-overlay); }
-.order-toast button { font:inherit; color:var(--fg-dim); padding:0.1875rem 0.375rem; border:0; border-radius:var(--radius-md); background:transparent; }
-.order-toast button:hover { color:var(--fg); background:var(--bg-input-hover); }
-
-.order-toast .toast-card[role=alert] { border-color:var(--error); }
 
 /* Same header / navigation / detail / footer hierarchy as the chart editors.
  * Keep these anchored so the order ladder remains available beside the panel. */

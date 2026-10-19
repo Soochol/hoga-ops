@@ -18,7 +18,7 @@ interface NewOrderInput {
   brokerBlocked?: string | null;
 }
 
-/** Block invalid commands and report the reason through the order toast. */
+/** Block invalid commands and report the reason through the order status bar. */
 export function newOrderIssue(input: NewOrderInput): OrderNotice | null {
   if (input.accountsLoading) return { title: '계좌 확인 중', message: '주문 계좌를 불러오고 있습니다.', tone: 'neutral' };
   const error = input.accountError ?? input.stateError;

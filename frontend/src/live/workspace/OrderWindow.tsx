@@ -40,13 +40,17 @@ import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
 import { useOrderQuantity } from './useOrderQuantity';
 import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
-import { OrderNoticeToast, type OrderReceipt } from './OrderNoticeToast';
+import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
 const accountDisplayLabel = (label?: string) => label?.replace(' · 실전 ·', ' ·') ?? '계좌 연결 대기';
 const EMPTY_ORDERS: TossOrder[] = [];
+const UNRESOLVED_NOTICE: OrderNotice = {
+  title: '주문 결과 확인 필요', message: '결과가 불명확한 요청이 있습니다. 해당 증권사의 주문·체결 내역을 확인하세요.',
+  tone: 'error', persistent: true,
+};
 const mode = 'live' as const;
 type Action = {
   type: 'create' | 'modify' | 'cancel' | 'bulk' | 'group';
@@ -569,7 +573,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       {accounts.data && accounts.data.accounts.length > 1 ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || dragInProgress}
         onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
           if (next) onAccountChange(next.account_seq);
-          closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); }}>
+          closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); reviewUnknown(false); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
       </select> : <span className="order-account-label text-fg-dim" title={accountDisplayLabel(activeAccount?.label)}>{accountDisplayLabel(activeAccount?.label)}</span>}
       {routes && <span className="text-fg-dim" aria-label="주문 경로">시세 {venue} · 주문 {activeAccount?.order_enabled === false ? '검증 대기' : orderRoute}</span>}
@@ -669,10 +673,6 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings} scope="이 호가 주문창에 적용">주문 설정</OrderSurfaceHeading>
       <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
     </div>, document.body)}
-    {!!state.data?.unresolved_commands.length && <div className="order-editor"><span role="alert" className="text-error">결과가 불명확한 요청이 있습니다.</span>
-      <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />해당 증권사의 실제 주문·체결 여부를 확인했습니다</label>
-      {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
-    </div>}
     <ExpectedFillBanner
       price={storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0}
       qty={storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? null}
@@ -761,8 +761,13 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       </div>
       </div>
     </ModalShell></div>, document.body)}
-    <OrderNoticeToast key={`order-notice:${account}`} notice={notice} receipt={receipt} busy={busy}
+    <OrderStatusBar key={`order-notice:${account}`} notice={notice ?? (!receipt && state.data?.unresolved_commands.length ? UNRESOLVED_NOTICE : null)} receipt={receipt} busy={busy}
       onDismiss={() => setNotice(null)} onExpireReceipt={() => setReceipt(null)}
-      onRetry={() => { if (failedRequest) void submit(failedRequest.action, failedRequest.high); }} />
+      onRetry={() => { if (failedRequest) void submit(failedRequest.action, failedRequest.high); }}>
+      {!!state.data?.unresolved_commands.length && <>
+        <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />해당 증권사의 실제 주문·체결 여부를 확인했습니다</label>
+        {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}
+      </>}
+    </OrderStatusBar>
   </div>;
 }

@@ -8,7 +8,7 @@
 .order-window button:hover { background:var(--bg-input-hover); }
 .order-window button:disabled { opacity:.5; cursor:default; }
 .order-window button[aria-disabled=true] { opacity:.5; cursor:default; }
-.order-controls,.order-editor { padding:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.order-controls { padding:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .order-controls { border-bottom:1px solid var(--border); }
 .order-window > .order-account-controls,.order-window > .order-overview-controls,.order-window > .order-quantity-controls { min-width:0; }
 .order-account-controls { padding:1px 0.625rem; border-bottom:0; gap:2px 0.5rem; }
@@ -54,7 +54,7 @@
 /* The auction banner uses the same price/quantity slots for every update. */
 .order-window > .book-expected-fill > span > .font-data { display:inline-block; width:12ch; text-align:left; }
 .order-window > .book-expected-fill > span:nth-child(2) > .font-data { width:14ch; }
-.order-controls label,.order-editor label { display:flex; align-items:center; gap:0.25rem; }
+.order-controls label { display:flex; align-items:center; gap:0.25rem; }
 .order-scroll { --order-fixed-width:160px; --order-depth-min:128px; --order-columns:72px minmax(128px,1fr) var(--book-price-width) minmax(128px,1fr) 72px; display:flex; flex-direction:column; flex:1; min-height:160px; overflow:auto; }
 .order-ladder { position:relative; flex:1 0 auto; min-width:max(var(--order-min-w),calc(var(--order-fixed-width) + 2 * var(--order-depth-min) + var(--book-price-width))); min-height:244px; padding:4px 8px 0; }
 /* Twenty fixed slots; the top spacer balances the 24px cancellation row
@@ -111,8 +111,6 @@
 .order-bid { color:var(--price-up); }
 .order-bid::before { left:3px; right:auto; background:var(--bar-bid); }
 .order-cancel-active { outline:1px dashed var(--error); outline-offset:-1px; }
-.order-editor { margin:0 8px 6px; background:var(--bg-subtle); border-radius:4px; }
-.order-editor input[type=number] { width:100px; padding:3px; }
 .order-window .order-submit { color:var(--accent); border-color:var(--accent); }
 .order-notice { padding:4px 8px; overflow-wrap:anywhere; font-size:var(--live-text-meta,var(--text-xs)); }
 .order-info-popover { padding:0; max-height:calc(100vh - 1rem); overflow-y:auto; }
