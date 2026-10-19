@@ -2,7 +2,7 @@
 .market-page { container: market / inline-size; }
 .market-indices-five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .market-indices-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.market-main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+.market-main { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: stretch; }
 .market-context { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
 .market-pair { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .market-ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -10,7 +10,7 @@
 .market-desk .market-card-header h2 { font-size: var(--text-base); }
 .market-context .market-trade-body { grid-template-columns: minmax(0, 1fr); }
 /* Share the trade-value plot height across all three cards and density settings. */
-.market-context-chart { height: 7rem; }
+.market-context-chart { height: 9rem; }
 .market-context-chart > svg { height: 100%; }
 .market-context-chart > svg :is(path, line) { vector-effect: non-scaling-stroke; }
 .market-program-body > .ui-segmented, .market-context .market-card > .ui-segmented,
@@ -48,6 +48,8 @@
   align-items: start;
 }
 .market-switch-card h2 > span { display: block; min-height: 1.25em; }
+.market-program-card .market-card-header h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-program-card h2 > span { display: inline; min-height: 0; }
 .market-investor-body { height: calc(128px + 14rem); }
 .market-program-body { flex: 1 0 auto; height: calc(96px + 14rem); }
 .market-investor-body, .market-program-body { overflow-y: auto; flex-shrink: 0; }
@@ -97,3 +99,68 @@
 .market-program-daily .daily-net-list { flex: 1; min-height: 0; height: auto; }
 
 .market-investor-body details[open] { max-height: 6rem; overflow-y: auto; }
+
+/* Six shared tracks align headers, controls, summaries, plots, axes and footers.
+   Subgrid measures wrapped text across a row instead of guessing pixel offsets. */
+.market-context {
+  grid-auto-rows: auto minmax(1.5rem, auto) minmax(2.75rem, auto) 9rem minmax(1rem, auto) minmax(2.5rem, auto);
+}
+.market-context-card {
+  display: grid;
+  grid-template-rows: auto minmax(1.5rem, auto) minmax(2.75rem, auto) 9rem minmax(1rem, auto) minmax(2.5rem, auto);
+  row-gap: var(--space-sm);
+}
+.market-context > .market-context-card {
+  grid-row: span 6;
+  grid-template-rows: subgrid;
+}
+.market-context-card > .market-card-header { grid-row: 1; align-self: stretch; }
+.market-context-controls { grid-row: 2; align-self: start; min-width: 0; }
+.market-context-card > .market-context-summary { grid-row: 3; }
+.market-context-card > .market-context-chart { grid-row: 4; }
+.market-context-card > .market-context-axis { grid-row: 5; }
+.market-context-footer { grid-row: 6; }
+.market-context-card > p { grid-row: 3 / -1; align-self: start; }
+.market-fund-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-sm); }
+.market-fund-values > div { white-space: nowrap; }
+.market-context-card .market-context-summary { min-height: 0; align-self: start; }
+.market-context .market-program-body,
+.market-trade-body {
+  display: grid;
+  grid-row: 2 / -1;
+  grid-template-rows: subgrid;
+  min-height: 0;
+  height: auto;
+  overflow: visible;
+  row-gap: var(--space-sm);
+}
+.market-trade-body { grid-row: 3 / -1; }
+.market-program-body > .market-context-controls { grid-row: 1; }
+.market-context .market-program-body > .market-context-series:not([hidden]) {
+  display: grid;
+  grid-row: 2 / -1;
+  grid-template-rows: subgrid;
+  min-height: 0;
+}
+.market-trade-body > .market-context-series:not([hidden]),
+.market-program-content,
+.market-trade-tile {
+  display: grid;
+  grid-row: 1 / -1;
+  grid-template-rows: subgrid;
+  min-height: 0;
+  row-gap: var(--space-sm);
+}
+.market-context-series .market-context-summary { grid-row: 1; }
+.market-context-series :is(.market-context-chart, .market-context-plot) { grid-row: 2; }
+.market-context-series .market-context-axis { grid-row: 3; }
+.market-program-body > p { grid-row: 2 / -1; align-self: start; }
+.market-program-content > p { grid-row: 2 / -1; align-self: start; }
+.market-program-content > .daily-net-list { grid-row: 2 / -1; height: auto; min-height: 0; contain: size; }
+
+/* The investor card determines the paired row height. Keep industry rows inside
+   the remaining space, including after toggling the complete industry list. */
+@container market (min-width: 60.001rem) {
+  .market-main > .market-sector-card { min-height: 0; }
+  .market-main .market-sector-table { flex: 1; min-height: 0; max-height: none; contain: size; }
+}

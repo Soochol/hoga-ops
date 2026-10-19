@@ -58,6 +58,13 @@
 이어진 사용자 요청에 따라 카드의 기준일·조회/수신 시각·정상 수집 상태·저장 표본과
 일별 목록 위 요청/제공 기간·단위 안내 문장을 제거한다. 업종의 수급/등락 기준일 행도
 상시 표시하지 않는다. 조회 실패·수신 지연·파생 단위 미확정은 해당 상태일 때 표시한다.
+추가 요청으로 업종 표 하단의 시세·수급 우선순위 설명도 제거한다. 프로그램 카드의
+제목과 당일/일별·억원 표시는 한 줄로 배치한다.
+2026-10-20 사용자 승인: 거래와 자금 세 카드는 헤더·필터·요약·차트·축·하단 정보의
+공통 행으로 정렬한다. 차트는 7rem에서 9rem으로 키우고 카드 내부의 남는 공간을
+줄인다. 주변 자금은 최신 잔고를 차트 위, 기간 증감을 아래의 3열 요약으로 배치한다.
+투자자 수급·업종이 나란히 놓일 때 카드 하단선을 맞추고 업종 목록은 남는 높이를
+채워 내부 스크롤한다. 좁은 화면의 세로 배치와 프로그램 일별 합계의 하단 고정은 유지한다.
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.

@@ -520,7 +520,7 @@ export function ProgramCard() {
   const [days, setDays] = useState<'5' | '20' | '60'>('20');
   const markets = program.data?.markets ?? {};
   return (
-    <MarketCard className="market-switch-card flex flex-col gap-sm p-sm">
+    <MarketCard className="market-switch-card market-program-card market-context-card flex flex-col gap-sm p-md">
       <CardHeader
         title="프로그램"
         hint={axis === 'intraday' ? '당일 누적 · 억원' : '일별 · 억원'}
@@ -537,13 +537,12 @@ export function ProgramCard() {
         }
       />
       <div className="market-program-body flex flex-col gap-sm">
-        <ModeSwitch value={market} onChange={setMarket} options={[
-          ['KOSPI', '코스피'], ['KOSDAQ', '코스닥'],
-        ]} label="프로그램 시장" />
-        <DataStatus hasData={program.data !== undefined} error={program.isError} />
-        {axis === 'daily' && <ModeSwitch value={days} onChange={setDays} label="프로그램 일별 기간" options={[
-          ['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일'],
-        ]} />}
+        <div className="market-context-controls flex flex-wrap items-center gap-sm">
+          <ModeSwitch value={market} onChange={setMarket} options={[
+            ['KOSPI', '코스피'], ['KOSDAQ', '코스닥'],
+          ]} label="프로그램 시장" />
+          <DataStatus hasData={program.data !== undefined} error={program.isError} />
+        </div>
         {Object.keys(markets).length === 0 ? (
           <EmptyNote>{program.isLoading ? '프로그램 매매 데이터를 불러오는 중입니다.' : '프로그램 매매 데이터를 받지 못했습니다.'}</EmptyNote>
         ) : (
@@ -569,21 +568,26 @@ export function ProgramCard() {
             const startSec = Math.min(9 * 3600, ...seconds);
             const endSec = Math.max(15.5 * 3600, ...seconds);
             return (
-              <div key={label} hidden={label !== market} className={isIntraday ? undefined : 'market-program-daily'}>
-                <div className="flex flex-col gap-2xs">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
-                    <span className="text-xs font-semibold text-fg-dim">
-                      {MARKET_LABELS[label] ?? label}{' '}
-                      <span className={`font-data tabular-nums ${total === null ? 'text-fg-dim' : priceDirClass(total)}`}>
-                        {fmtSigned(total)}
+              <div key={label} hidden={label !== market} className={isIntraday ? 'market-program-intraday market-context-series' : 'market-program-daily market-context-series'}>
+                <div className="market-program-content flex flex-col gap-2xs">
+                  <div className="market-context-summary flex flex-col gap-xs">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
+                      <span className="text-xs font-semibold text-fg-dim">
+                        {MARKET_LABELS[label] ?? label}{' '}
+                        <span className={`font-data tabular-nums ${total === null ? 'text-fg-dim' : priceDirClass(total)}`}>
+                          {fmtSigned(total)}
+                        </span>
                       </span>
-                    </span>
-                    {isIntraday && <span className="flex items-center gap-md font-data text-2xs tabular-nums">
-                      <LegendItem color={SERIES_COLORS.arb} label="차익" />
-                      <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
-                    </span>}
+                      {isIntraday && <span className="flex items-center gap-md font-data text-2xs tabular-nums">
+                        <LegendItem color={SERIES_COLORS.arb} label="차익" />
+                        <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
+                      </span>}
+                    </div>
+                    {isIntraday && <p role="note" className="text-2xs text-fg-dim">제공 구간 {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')} · {asc.length}개 표본{program.data?.truncated?.[label] ? ' · 조회 상한 도달' : ''}{seconds[0] > 9 * 3600 + 60 ? ' · 장 초반 구간 미포함' : ' · 제공 표본만 표시'}</p>}
+                    {!isIntraday && <ModeSwitch value={days} onChange={setDays} label="프로그램 일별 기간" options={[
+                      ['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일'],
+                    ]} />}
                   </div>
-                  {isIntraday && <p role="note" className="text-2xs text-fg-dim">제공 구간 {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')} · {asc.length}개 표본{program.data?.truncated?.[label] ? ' · 조회 상한 도달' : ''}{seconds[0] > 9 * 3600 + 60 ? ' · 장 초반 구간 미포함' : ' · 제공 표본만 표시'}</p>}
                   {!hasValues && isIntraday ? (
                     <EmptyNote>프로그램 값이 아직 없습니다.</EmptyNote>
                   ) : isIntraday ? (
@@ -601,7 +605,7 @@ export function ProgramCard() {
                         ]}
                         height={96}
                       />
-                      <SessionAxisLabels startSec={startSec} endSec={endSec} />
+                      <div className="market-context-axis"><SessionAxisLabels startSec={startSec} endSec={endSec} /></div>
                     </>
                   ) : (
                     <>
@@ -737,8 +741,13 @@ export function FundsCard() {
   // 잔고(스톡) 지표라 "기간" = 시작 대비 증감의 창이다 — 토글이 곧 해석의 창.
   const series = (data?.series ?? []).slice(-Number(span));
   const last = series[series.length - 1];
+  const balances = [
+    { label: '고객예탁금', color: SERIES_COLORS.deposit, won: last?.deposit_won, change: fundChange(series.map(r => r.deposit_won)) },
+    { label: '신용융자', color: SERIES_COLORS.credit, won: last?.credit_won, change: fundChange(series.map(r => r.credit_won)) },
+    { label: 'CMA', color: SERIES_COLORS.cma, won: last?.cma_won, change: fundChange(series.map(r => r.cma_won)) },
+  ];
   return (
-    <MarketCard className="flex flex-col gap-xs p-sm">
+    <MarketCard className="market-context-card market-funds-card flex flex-col gap-sm p-md">
       <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
         <h2 className="text-sm font-semibold text-fg">
           증시 주변 자금{' '}
@@ -748,13 +757,22 @@ export function FundsCard() {
         </h2>
         <ModeSwitch value={span} onChange={setSpan} options={FUND_SPANS} label="자금 집계 기간" />
       </div>
-      <DataStatus hasData={funds.data !== undefined} error={funds.isError} status="공시 기준 · 실시간 자료 아님" />
+      <div className="market-context-controls"><DataStatus hasData={funds.data !== undefined} error={funds.isError} status="공시 기준 · 실시간 자료 아님" /></div>
       {data?.unavailable === 'credentials_missing' ? (
         <EmptyNote>KOFIA 인증키가 설정되지 않았습니다(.env: KOFIA_API_KEY).</EmptyNote>
       ) : series.length === 0 ? (
         <EmptyNote>자금 데이터를 받지 못했습니다.</EmptyNote>
       ) : (
         <>
+          <div className="market-context-summary flex flex-col gap-xs" aria-label="최신 잔고 · 조원">
+            <span className="text-2xs text-fg-dim">최신 잔고</span>
+            <div className="market-fund-values">
+              {balances.map(({ label, color, won }) => <div key={label} className="min-w-0">
+                <LegendItem color={color} label={label} />
+                <div className="font-data text-sm font-semibold text-fg tabular-nums">{won == null ? '—' : `${(won / 1e12).toFixed(1)}조`}</div>
+              </div>)}
+            </div>
+          </div>
           <CumLinesChart
             className="market-context-chart"
             series={[
@@ -767,29 +785,18 @@ export function FundsCard() {
             names={['고객예탁금', '신용융자', 'CMA']}
             unit="조원"
           />
-          <div className="flex justify-between font-data text-2xs text-fg-dim tabular-nums">
+          <div className="market-context-axis flex justify-between font-data text-2xs text-fg-dim tabular-nums">
             <span>{series[0] ? `${series[0].date.slice(4, 6)}/${series[0].date.slice(6)}` : ''}</span>
             <span>{last ? `${last.date.slice(4, 6)}/${last.date.slice(6)}` : ''}</span>
           </div>
-          <div className="flex flex-col">
-            <div className="grid grid-cols-[minmax(0,1fr)_4rem_4rem] gap-sm text-right text-2xs text-fg-dim">
-              <span /><span>최신 잔고</span><span>기간 증감</span>
+          <div className="market-context-footer flex flex-col gap-xs" aria-label="기간 증감 · 조원">
+            <span className="text-2xs text-fg-dim">기간 증감</span>
+            <div className="market-fund-values">
+              {balances.map(({ label, change }) => <div key={label} className="min-w-0">
+                <span className="text-2xs text-fg-dim">{label}</span>
+                <div className={`font-data text-sm tabular-nums ${change == null ? 'text-fg-dim' : priceDirClass(change)}`}>{change == null ? '—' : `${change > 0 ? '+' : ''}${(change / 1e12).toFixed(1)}조`}</div>
+              </div>)}
             </div>
-            {(
-              [
-                ['고객예탁금', SERIES_COLORS.deposit, last?.deposit_won, fundChange(series.map((r) => r.deposit_won))],
-                ['신용융자', SERIES_COLORS.credit, last?.credit_won, fundChange(series.map((r) => r.credit_won))],
-                ['CMA', SERIES_COLORS.cma, last?.cma_won, fundChange(series.map((r) => r.cma_won))],
-              ] as const
-            ).map(([label, color, won, change]) => (
-              <div key={label} className="grid grid-cols-[minmax(0,1fr)_4rem_4rem] items-center gap-sm border-b border-grid py-2xs last:border-b-0">
-                <LegendItem color={color} label={label} />
-                <span className="text-right font-data text-sm font-semibold text-fg tabular-nums">
-                  {won == null ? '—' : `${(won / 1e12).toFixed(1)}조`}
-                </span>
-                <span className={`text-right font-data text-sm tabular-nums ${change == null ? 'text-fg-dim' : priceDirClass(change)}`}>{change == null ? '—' : `${change > 0 ? '+' : ''}${(change / 1e12).toFixed(1)}조`}</span>
-              </div>
-            ))}
           </div>
         </>
       )}
