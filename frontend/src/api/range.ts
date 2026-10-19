@@ -325,9 +325,9 @@ function removeDominatedLiveRangeCopies(
   });
 }
 
-/** Count backstop beside the shared byte budget. Retain at most twelve
+/** Count backstop beside the shared byte budget. Retain at most twenty-four
  * merged indicator identities unless mounted consumers need more. */
-export const MERGED_LIVE_RANGE_MAX_ENTRIES = 12;
+export const MERGED_LIVE_RANGE_MAX_ENTRIES = 24;
 
 /** Evict inactive identities by last actual use, protecting mounted charts. */
 export function evictExcessMergedLiveRanges(
