@@ -1,0 +1,1206 @@
+{
+  "schema": 1,
+  "browser": "155.0.8059.84",
+  "workload": {
+    "codes": 64,
+    "sessions": 20,
+    "first": "20260921",
+    "last": "20261019",
+    "requestDelayMs": 35,
+    "depthLevelsPerSide": 10,
+    "timeframes": [
+      "1m",
+      "3m"
+    ],
+    "revisitOrder": "reverse",
+    "viewport": "fit requested history",
+    "fixtureSha256": "a1098fa7e7f6f26ff94c573c00d58371a54f8ea6c76cd1a1e1b49d00ead22539",
+    "scope": "isolated real /live page with deterministic synthetic API data; dev build; no vendor latency or multi-hour soak"
+  },
+  "method_notes": [
+    "20 synthetic weekdays, not an exchange holiday calendar; 64 codes, alternating 1m/3m, quote ratio + fill strength + 10-level depth, one chart fitted to requested history.",
+    "Each configuration uses a fresh browser context. Initial chart mount precedes the cold stage; the first revisit repeats the current code. Two runs reverse configuration order. Each visit waits for the expected candle and both indicator histories, then two animation frames.",
+    "Times are observed development-build results with fixed 35ms mock API delay; no vendor network/WS load, low-memory device test, cache-expiry revisit, or multi-hour soak. Each context revisits before the 30min raw-range GC.",
+    "Heap is renderer JS heap only. Peak is the largest per-visit sample, not a continuous maximum. Retained heap is sampled after explicit GC outside timings. Raw and canonical estimates share objects and must not be added.",
+    "Pointer metric means pointer event to next animation frame, not full end-to-end tooltip paint. Cold-stage pointer samples are absent; raw output uses zero, summary uses null.",
+    "GC numbers are trace-event durations (MajorGC/MinorGC), not a guaranteed stop-the-world pause measurement. Runtime test assertions check chart completion and unhandled JS exceptions; console warnings are recorded, not a passing performance budget.",
+    "fixtureSha256 hashes seed parameters only; the generator and executable sources are covered by inputs.json.gz."
+  ],
+  "unhandled_js_exception_count": 0,
+  "console_warning_counts": {
+    "baseline-32-32-512": 18,
+    "expanded-64-128-512": 14,
+    "memory-64-128-384": 23,
+    "memory-64-128-256": 21,
+    "memory-64-128-128": 19,
+    "count-64-64-512": 20,
+    "count-32-128-512": 23
+  },
+  "console_warning_types": {
+    "Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.%s ": 136,
+    "Warning: Maximum update depth exceeded. This can happen when a component calls setState inside useEffect, but useEffect either doesn't have a dependency array, or one of the dependencies changes on every render.": 2
+  },
+  "observed_peak_js_heap_gib": 2.381,
+  "decision": {
+    "applied": {
+      "recent_closed_codes": 64,
+      "indicator_merged_entries": 128,
+      "estimated_payload_mib": 512
+    },
+    "interpretation": [
+      "Keep the requested configuration for this trial. It reduced historical candle requests from 47 to 12 per revisit sweep versus baseline, with pooled p95 349.4ms to 314.5ms.",
+      "Reducing the budget to 128MiB changed post-GC JS heap from ~696MiB to ~677MiB while increasing history requests to 77. In this short-revisit workload, raw range caches retain shared data outside the canonical budget.",
+      "A 64-entry indicator cap had fewer candle requests but relies on raw indicator restoration before its 30min GC. These results do not establish the best limit for later revisits.",
+      "Prioritize accounting for and reclaiming raw range copies alongside canonical retention, then measure again before selecting smaller limits. Existing baseline and expanded configurations both emitted React maximum-update-depth warnings; long-term stability is not certified."
+    ]
+  },
+  "configurations": [
+    {
+      "configuration": {
+        "name": "baseline-32-32-512",
+        "codes": 32,
+        "entries": 32,
+        "mib": 512
+      },
+      "phases": {
+        "cold": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 1099.8,
+          "pooled_p95_ms": 1484.6,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 1128.4,
+              "p95_ms": 1457.2,
+              "retained_js_heap_mib": 668.83,
+              "observed_peak_js_heap_mib": 1760.51,
+              "history_request_attempts": 789,
+              "today_request_attempts": 64,
+              "request_categories": {
+                "live/past-candles:candles:history": 107,
+                "range:hoga:history": 342,
+                "range:sidecar:history": 340,
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1
+              },
+              "canonical_estimated_mib": 161.01,
+              "raw_range_estimated_mib": 997.03,
+              "canonical_entries": 65,
+              "raw_range_entries": 799,
+              "cumulative_evictions": {
+                "recentCodes": 31,
+                "bytes": 0,
+                "identities": 98
+              },
+              "frame_p95_ms": 83.4,
+              "frame_max_ms": 316.7,
+              "long_task_count": 284,
+              "long_task_max_ms": 312,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 829,
+                "majorEvents": 12,
+                "totalMs": 3459.049,
+                "maxMs": 249.548
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 1069.9,
+              "p95_ms": 1523.1,
+              "retained_js_heap_mib": 671.45,
+              "observed_peak_js_heap_mib": 1832.6,
+              "history_request_attempts": 820,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 113,
+                "range:hoga:history": 355,
+                "range:sidecar:history": 352,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 161.01,
+              "raw_range_estimated_mib": 997.05,
+              "canonical_entries": 65,
+              "raw_range_entries": 812,
+              "cumulative_evictions": {
+                "recentCodes": 31,
+                "bytes": 0,
+                "identities": 98
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 566.7,
+              "long_task_count": 172,
+              "long_task_max_ms": 485,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 819,
+                "majorEvents": 13,
+                "totalMs": 3248.057,
+                "maxMs": 209.484
+              }
+            }
+          ]
+        },
+        "revisit": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 270.45,
+          "pooled_p95_ms": 349.4,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 279,
+              "p95_ms": 349.4,
+              "retained_js_heap_mib": 685.3,
+              "observed_peak_js_heap_mib": 2350.22,
+              "history_request_attempts": 47,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "live/past-candles:candles:history": 47
+              },
+              "canonical_estimated_mib": 161.7,
+              "raw_range_estimated_mib": 1040.34,
+              "canonical_entries": 65,
+              "raw_range_entries": 839,
+              "cumulative_evictions": {
+                "recentCodes": 62,
+                "bytes": 0,
+                "identities": 194
+              },
+              "frame_p95_ms": 100.1,
+              "frame_max_ms": 533.3,
+              "long_task_count": 210,
+              "long_task_max_ms": 519,
+              "pointer_to_next_frame_p95_ms": 31.6,
+              "gc_trace_events": {
+                "events": 456,
+                "majorEvents": 3,
+                "totalMs": 2230.896,
+                "maxMs": 225.598
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 262.7,
+              "p95_ms": 309.8,
+              "retained_js_heap_mib": 688.88,
+              "observed_peak_js_heap_mib": 2371.22,
+              "history_request_attempts": 47,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 47
+              },
+              "canonical_estimated_mib": 161.7,
+              "raw_range_estimated_mib": 1066.34,
+              "canonical_entries": 65,
+              "raw_range_entries": 876,
+              "cumulative_evictions": {
+                "recentCodes": 62,
+                "bytes": 0,
+                "identities": 194
+              },
+              "frame_p95_ms": 100,
+              "frame_max_ms": 483.3,
+              "long_task_count": 129,
+              "long_task_max_ms": 482,
+              "pointer_to_next_frame_p95_ms": 29.2,
+              "gc_trace_events": {
+                "events": 452,
+                "majorEvents": 3,
+                "totalMs": 1917.763,
+                "maxMs": 221.746
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "configuration": {
+        "name": "expanded-64-128-512",
+        "codes": 64,
+        "entries": 128,
+        "mib": 512
+      },
+      "phases": {
+        "cold": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 1102.1,
+          "pooled_p95_ms": 1429.4,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 1113.6,
+              "p95_ms": 1458.5,
+              "retained_js_heap_mib": 681.85,
+              "observed_peak_js_heap_mib": 1621.95,
+              "history_request_attempts": 773,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 103,
+                "range:hoga:history": 335,
+                "range:sidecar:history": 335,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 510.4,
+              "raw_range_estimated_mib": 997.03,
+              "canonical_entries": 166,
+              "raw_range_entries": 795,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 28,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 350,
+              "long_task_count": 265,
+              "long_task_max_ms": 315,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 819,
+                "majorEvents": 12,
+                "totalMs": 3220.056,
+                "maxMs": 146.94
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 1029.7,
+              "p95_ms": 1420.3,
+              "retained_js_heap_mib": 683.28,
+              "observed_peak_js_heap_mib": 1821.11,
+              "history_request_attempts": 810,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 111,
+                "range:hoga:history": 350,
+                "range:sidecar:history": 349,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 510.4,
+              "raw_range_estimated_mib": 997.04,
+              "canonical_entries": 166,
+              "raw_range_entries": 810,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 28,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.2,
+              "frame_max_ms": 366.6,
+              "long_task_count": 168,
+              "long_task_max_ms": 366,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 860,
+                "majorEvents": 12,
+                "totalMs": 3008.833,
+                "maxMs": 73.43
+              }
+            }
+          ]
+        },
+        "revisit": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 250.05,
+          "pooled_p95_ms": 314.5,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 248,
+              "p95_ms": 289,
+              "retained_js_heap_mib": 695.99,
+              "observed_peak_js_heap_mib": 2357.53,
+              "history_request_attempts": 12,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 12
+              },
+              "canonical_estimated_mib": 504.67,
+              "raw_range_estimated_mib": 1023.01,
+              "canonical_entries": 162,
+              "raw_range_entries": 819,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 58,
+                "identities": 0
+              },
+              "frame_p95_ms": 100.1,
+              "frame_max_ms": 466.7,
+              "long_task_count": 129,
+              "long_task_max_ms": 441,
+              "pointer_to_next_frame_p95_ms": 26,
+              "gc_trace_events": {
+                "events": 439,
+                "majorEvents": 3,
+                "totalMs": 1986.053,
+                "maxMs": 213.892
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 251.9,
+              "p95_ms": 314.5,
+              "retained_js_heap_mib": 695.73,
+              "observed_peak_js_heap_mib": 2359.48,
+              "history_request_attempts": 12,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 12
+              },
+              "canonical_estimated_mib": 507.22,
+              "raw_range_estimated_mib": 1053.34,
+              "canonical_entries": 163,
+              "raw_range_entries": 862,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 57,
+                "identities": 0
+              },
+              "frame_p95_ms": 116.6,
+              "frame_max_ms": 533.4,
+              "long_task_count": 173,
+              "long_task_max_ms": 519,
+              "pointer_to_next_frame_p95_ms": 27.7,
+              "gc_trace_events": {
+                "events": 447,
+                "majorEvents": 3,
+                "totalMs": 1955.996,
+                "maxMs": 250.052
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "configuration": {
+        "name": "memory-64-128-384",
+        "codes": 64,
+        "entries": 128,
+        "mib": 384
+      },
+      "phases": {
+        "cold": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 1095.2,
+          "pooled_p95_ms": 1562.9,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 1063.6,
+              "p95_ms": 1354.5,
+              "retained_js_heap_mib": 676.54,
+              "observed_peak_js_heap_mib": 1784.41,
+              "history_request_attempts": 833,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 115,
+                "range:hoga:history": 360,
+                "range:sidecar:history": 358,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 382.1,
+              "raw_range_estimated_mib": 997.06,
+              "canonical_entries": 125,
+              "raw_range_entries": 817,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 69,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 466.7,
+              "long_task_count": 149,
+              "long_task_max_ms": 453,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 850,
+                "majorEvents": 13,
+                "totalMs": 3236.434,
+                "maxMs": 193.003
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 1199.5,
+              "p95_ms": 1612.1,
+              "retained_js_heap_mib": 673.5,
+              "observed_peak_js_heap_mib": 1734.56,
+              "history_request_attempts": 785,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 106,
+                "range:hoga:history": 340,
+                "range:sidecar:history": 339,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 378.51,
+              "raw_range_estimated_mib": 997.03,
+              "canonical_entries": 123,
+              "raw_range_entries": 800,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 71,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.4,
+              "frame_max_ms": 433.4,
+              "long_task_count": 368,
+              "long_task_max_ms": 394,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 832,
+                "majorEvents": 13,
+                "totalMs": 3781.787,
+                "maxMs": 212.006
+              }
+            }
+          ]
+        },
+        "revisit": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 255.25,
+          "pooled_p95_ms": 352.6,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 248.8,
+              "p95_ms": 298.1,
+              "retained_js_heap_mib": 689.63,
+              "observed_peak_js_heap_mib": 2388.98,
+              "history_request_attempts": 33,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 33
+              },
+              "canonical_estimated_mib": 376.38,
+              "raw_range_estimated_mib": 1079.34,
+              "canonical_entries": 121,
+              "raw_range_entries": 893,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 140,
+                "identities": 0
+              },
+              "frame_p95_ms": 100,
+              "frame_max_ms": 483.2,
+              "long_task_count": 118,
+              "long_task_max_ms": 473,
+              "pointer_to_next_frame_p95_ms": 27.3,
+              "gc_trace_events": {
+                "events": 457,
+                "majorEvents": 3,
+                "totalMs": 1861.776,
+                "maxMs": 221.624
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 290.5,
+              "p95_ms": 356.8,
+              "retained_js_heap_mib": 691.9,
+              "observed_peak_js_heap_mib": 2413.15,
+              "history_request_attempts": 35,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 35
+              },
+              "canonical_estimated_mib": 373.83,
+              "raw_range_estimated_mib": 1027.35,
+              "canonical_entries": 120,
+              "raw_range_entries": 830,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 143,
+                "identities": 0
+              },
+              "frame_p95_ms": 116.6,
+              "frame_max_ms": 416.7,
+              "long_task_count": 204,
+              "long_task_max_ms": 373,
+              "pointer_to_next_frame_p95_ms": 32.5,
+              "gc_trace_events": {
+                "events": 458,
+                "majorEvents": 3,
+                "totalMs": 2570.989,
+                "maxMs": 382.738
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "configuration": {
+        "name": "memory-64-128-256",
+        "codes": 64,
+        "entries": 128,
+        "mib": 256
+      },
+      "phases": {
+        "cold": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 1030.2,
+          "pooled_p95_ms": 1390.8,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 1007.4,
+              "p95_ms": 1346.9,
+              "retained_js_heap_mib": 670.24,
+              "observed_peak_js_heap_mib": 1869.93,
+              "history_request_attempts": 805,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 111,
+                "range:hoga:history": 347,
+                "range:sidecar:history": 347,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 251.26,
+              "raw_range_estimated_mib": 997.04,
+              "canonical_entries": 83,
+              "raw_range_entries": 805,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 111,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 350,
+              "long_task_count": 168,
+              "long_task_max_ms": 348,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 816,
+                "majorEvents": 12,
+                "totalMs": 2924.086,
+                "maxMs": 135.271
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 1057.5,
+              "p95_ms": 1415.6,
+              "retained_js_heap_mib": 669.83,
+              "observed_peak_js_heap_mib": 1708.22,
+              "history_request_attempts": 822,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 114,
+                "range:hoga:history": 354,
+                "range:sidecar:history": 354,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 251.26,
+              "raw_range_estimated_mib": 997.05,
+              "canonical_entries": 83,
+              "raw_range_entries": 811,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 111,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 349.9,
+              "long_task_count": 182,
+              "long_task_max_ms": 340,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 828,
+                "majorEvents": 12,
+                "totalMs": 3174.813,
+                "maxMs": 188.031
+              }
+            }
+          ]
+        },
+        "revisit": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 283.7,
+          "pooled_p95_ms": 334,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 277,
+              "p95_ms": 324.4,
+              "retained_js_heap_mib": 684.25,
+              "observed_peak_js_heap_mib": 2419.27,
+              "history_request_attempts": 54,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 54
+              },
+              "canonical_estimated_mib": 255.96,
+              "raw_range_estimated_mib": 1057.67,
+              "canonical_entries": 80,
+              "raw_range_entries": 861,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 223,
+                "identities": 0
+              },
+              "frame_p95_ms": 100,
+              "frame_max_ms": 550,
+              "long_task_count": 174,
+              "long_task_max_ms": 521,
+              "pointer_to_next_frame_p95_ms": 28.7,
+              "gc_trace_events": {
+                "events": 457,
+                "majorEvents": 3,
+                "totalMs": 2226.881,
+                "maxMs": 277.062
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 288.5,
+              "p95_ms": 334,
+              "retained_js_heap_mib": 684.99,
+              "observed_peak_js_heap_mib": 2377.49,
+              "history_request_attempts": 54,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 54
+              },
+              "canonical_estimated_mib": 255.96,
+              "raw_range_estimated_mib": 1070.67,
+              "canonical_entries": 80,
+              "raw_range_entries": 879,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 223,
+                "identities": 0
+              },
+              "frame_p95_ms": 100,
+              "frame_max_ms": 483.3,
+              "long_task_count": 201,
+              "long_task_max_ms": 468,
+              "pointer_to_next_frame_p95_ms": 32.1,
+              "gc_trace_events": {
+                "events": 463,
+                "majorEvents": 3,
+                "totalMs": 2156.256,
+                "maxMs": 219.905
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "configuration": {
+        "name": "memory-64-128-128",
+        "codes": 64,
+        "entries": 128,
+        "mib": 128
+      },
+      "phases": {
+        "cold": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 1042.0,
+          "pooled_p95_ms": 1514.3,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 1048.1,
+              "p95_ms": 1521.6,
+              "retained_js_heap_mib": 660.98,
+              "observed_peak_js_heap_mib": 1637.65,
+              "history_request_attempts": 774,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 104,
+                "range:hoga:history": 335,
+                "range:sidecar:history": 335,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 127.25,
+              "raw_range_estimated_mib": 997.02,
+              "canonical_entries": 40,
+              "raw_range_entries": 793,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 154,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 316.7,
+              "long_task_count": 284,
+              "long_task_max_ms": 311,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 820,
+                "majorEvents": 13,
+                "totalMs": 3506.933,
+                "maxMs": 162.451
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 997.7,
+              "p95_ms": 1429.9,
+              "retained_js_heap_mib": 659.23,
+              "observed_peak_js_heap_mib": 1559.72,
+              "history_request_attempts": 798,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 109,
+                "range:hoga:history": 345,
+                "range:sidecar:history": 344,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 127.25,
+              "raw_range_estimated_mib": 997.04,
+              "canonical_entries": 40,
+              "raw_range_entries": 802,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 154,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 433.3,
+              "long_task_count": 167,
+              "long_task_max_ms": 370,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 825,
+                "majorEvents": 12,
+                "totalMs": 2974.253,
+                "maxMs": 156.762
+              }
+            }
+          ]
+        },
+        "revisit": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 258.1,
+          "pooled_p95_ms": 322.2,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 258.3,
+              "p95_ms": 321,
+              "retained_js_heap_mib": 678.43,
+              "observed_peak_js_heap_mib": 2358.12,
+              "history_request_attempts": 77,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "live/past-candles:candles:history": 77,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1
+              },
+              "canonical_estimated_mib": 127.02,
+              "raw_range_estimated_mib": 1027.34,
+              "canonical_entries": 40,
+              "raw_range_entries": 821,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 307,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 399.9,
+              "long_task_count": 130,
+              "long_task_max_ms": 390,
+              "pointer_to_next_frame_p95_ms": 27.7,
+              "gc_trace_events": {
+                "events": 462,
+                "majorEvents": 3,
+                "totalMs": 2239.518,
+                "maxMs": 216.667
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 257.5,
+              "p95_ms": 337.6,
+              "retained_js_heap_mib": 676.15,
+              "observed_peak_js_heap_mib": 2351.09,
+              "history_request_attempts": 77,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "live/past-candles:candles:history": 77,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1
+              },
+              "canonical_estimated_mib": 126.16,
+              "raw_range_estimated_mib": 1044.68,
+              "canonical_entries": 39,
+              "raw_range_entries": 848,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 308,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 266.6,
+              "long_task_count": 115,
+              "long_task_max_ms": 220,
+              "pointer_to_next_frame_p95_ms": 27.2,
+              "gc_trace_events": {
+                "events": 464,
+                "majorEvents": 3,
+                "totalMs": 2084.389,
+                "maxMs": 207.122
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "configuration": {
+        "name": "count-64-64-512",
+        "codes": 64,
+        "entries": 64,
+        "mib": 512
+      },
+      "phases": {
+        "cold": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 1091.45,
+          "pooled_p95_ms": 1519.5,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 972.3,
+              "p95_ms": 1452,
+              "retained_js_heap_mib": 687.6,
+              "observed_peak_js_heap_mib": 1799.56,
+              "history_request_attempts": 836,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 116,
+                "range:hoga:history": 362,
+                "range:sidecar:history": 358,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 321.32,
+              "raw_range_estimated_mib": 997.06,
+              "canonical_entries": 128,
+              "raw_range_entries": 819,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 0,
+                "identities": 66
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 350.1,
+              "long_task_count": 185,
+              "long_task_max_ms": 347,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 854,
+                "majorEvents": 12,
+                "totalMs": 3081.245,
+                "maxMs": 185.469
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 1178.5,
+              "p95_ms": 1557,
+              "retained_js_heap_mib": 685.35,
+              "observed_peak_js_heap_mib": 1595.65,
+              "history_request_attempts": 782,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "range:hoga:history": 340,
+                "range:sidecar:history": 338,
+                "live/past-candles:candles:history": 104,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 321.32,
+              "raw_range_estimated_mib": 997.03,
+              "canonical_entries": 128,
+              "raw_range_entries": 801,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 0,
+                "identities": 66
+              },
+              "frame_p95_ms": 83.4,
+              "frame_max_ms": 733.2,
+              "long_task_count": 330,
+              "long_task_max_ms": 610,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 854,
+                "majorEvents": 11,
+                "totalMs": 3905.235,
+                "maxMs": 332.424
+              }
+            }
+          ]
+        },
+        "revisit": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 226.3,
+          "pooled_p95_ms": 320.8,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 186.7,
+              "p95_ms": 294.5,
+              "retained_js_heap_mib": 703.55,
+              "observed_peak_js_heap_mib": 2437.68,
+              "history_request_attempts": 0,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 321.32,
+              "raw_range_estimated_mib": 1079.35,
+              "canonical_entries": 128,
+              "raw_range_entries": 895,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 0,
+                "identities": 130
+              },
+              "frame_p95_ms": 116.6,
+              "frame_max_ms": 433.3,
+              "long_task_count": 132,
+              "long_task_max_ms": 417,
+              "pointer_to_next_frame_p95_ms": 25.2,
+              "gc_trace_events": {
+                "events": 454,
+                "majorEvents": 3,
+                "totalMs": 1992.154,
+                "maxMs": 226.83
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 221.6,
+              "p95_ms": 351.6,
+              "retained_js_heap_mib": 703.85,
+              "observed_peak_js_heap_mib": 2391.73,
+              "history_request_attempts": 0,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1
+              },
+              "canonical_estimated_mib": 321.32,
+              "raw_range_estimated_mib": 1023.02,
+              "canonical_entries": 128,
+              "raw_range_entries": 827,
+              "cumulative_evictions": {
+                "recentCodes": 0,
+                "bytes": 0,
+                "identities": 130
+              },
+              "frame_p95_ms": 116.7,
+              "frame_max_ms": 616.6,
+              "long_task_count": 164,
+              "long_task_max_ms": 596,
+              "pointer_to_next_frame_p95_ms": 33.8,
+              "gc_trace_events": {
+                "events": 448,
+                "majorEvents": 3,
+                "totalMs": 2283.243,
+                "maxMs": 276.265
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "configuration": {
+        "name": "count-32-128-512",
+        "codes": 32,
+        "entries": 128,
+        "mib": 512
+      },
+      "phases": {
+        "cold": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 1083.9,
+          "pooled_p95_ms": 1459.6,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 1073.2,
+              "p95_ms": 1368.1,
+              "retained_js_heap_mib": 672.19,
+              "observed_peak_js_heap_mib": 1634.49,
+              "history_request_attempts": 803,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 110,
+                "range:hoga:history": 347,
+                "range:sidecar:history": 346,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 303.74,
+              "raw_range_estimated_mib": 997.04,
+              "canonical_entries": 99,
+              "raw_range_entries": 804,
+              "cumulative_evictions": {
+                "recentCodes": 95,
+                "bytes": 0,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.3,
+              "frame_max_ms": 350,
+              "long_task_count": 193,
+              "long_task_max_ms": 316,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 840,
+                "majorEvents": 12,
+                "totalMs": 3362.286,
+                "maxMs": 146.578
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 1110.9,
+              "p95_ms": 1540.3,
+              "retained_js_heap_mib": 668.97,
+              "observed_peak_js_heap_mib": 1598.11,
+              "history_request_attempts": 806,
+              "today_request_attempts": 63,
+              "request_categories": {
+                "live/past-candles:candles:history": 110,
+                "range:hoga:history": 349,
+                "range:sidecar:history": 347,
+                "live/past-candles:candles:today": 63
+              },
+              "canonical_estimated_mib": 303.74,
+              "raw_range_estimated_mib": 997.05,
+              "canonical_entries": 99,
+              "raw_range_entries": 809,
+              "cumulative_evictions": {
+                "recentCodes": 95,
+                "bytes": 0,
+                "identities": 0
+              },
+              "frame_p95_ms": 83.4,
+              "frame_max_ms": 333.2,
+              "long_task_count": 300,
+              "long_task_max_ms": 331,
+              "pointer_to_next_frame_p95_ms": null,
+              "gc_trace_events": {
+                "events": 846,
+                "majorEvents": 12,
+                "totalMs": 3397.48,
+                "maxMs": 172.21
+              }
+            }
+          ]
+        },
+        "revisit": {
+          "pooled_visits": 128,
+          "pooled_median_ms": 292.05,
+          "pooled_p95_ms": 374.2,
+          "per_run": [
+            {
+              "repeat": 0,
+              "lower_quantile_p50_ms": 279.8,
+              "p95_ms": 380.6,
+              "retained_js_heap_mib": 688.62,
+              "observed_peak_js_heap_mib": 2353.92,
+              "history_request_attempts": 47,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 47
+              },
+              "canonical_estimated_mib": 313.08,
+              "raw_range_estimated_mib": 1049.01,
+              "canonical_entries": 99,
+              "raw_range_entries": 854,
+              "cumulative_evictions": {
+                "recentCodes": 188,
+                "bytes": 0,
+                "identities": 0
+              },
+              "frame_p95_ms": 100,
+              "frame_max_ms": 533.4,
+              "long_task_count": 180,
+              "long_task_max_ms": 531,
+              "pointer_to_next_frame_p95_ms": 30.6,
+              "gc_trace_events": {
+                "events": 469,
+                "majorEvents": 3,
+                "totalMs": 2420.104,
+                "maxMs": 230.282
+              }
+            },
+            {
+              "repeat": 1,
+              "lower_quantile_p50_ms": 303.6,
+              "p95_ms": 371.2,
+              "retained_js_heap_mib": 688.37,
+              "observed_peak_js_heap_mib": 2417.46,
+              "history_request_attempts": 47,
+              "today_request_attempts": 65,
+              "request_categories": {
+                "live/past-candles:candles:today": 63,
+                "range:hoga:today": 1,
+                "range:sidecar:today": 1,
+                "live/past-candles:candles:history": 47
+              },
+              "canonical_estimated_mib": 313.08,
+              "raw_range_estimated_mib": 1049.02,
+              "canonical_entries": 99,
+              "raw_range_entries": 857,
+              "cumulative_evictions": {
+                "recentCodes": 188,
+                "bytes": 0,
+                "identities": 0
+              },
+              "frame_p95_ms": 116.6,
+              "frame_max_ms": 499.9,
+              "long_task_count": 237,
+              "long_task_max_ms": 498,
+              "pointer_to_next_frame_p95_ms": 35.7,
+              "gc_trace_events": {
+                "events": 474,
+                "majorEvents": 3,
+                "totalMs": 2456.744,
+                "maxMs": 264.682
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "artifacts": {
+    "measurements.json.gz": "63f5f3cec9cfb9b167f77cbf75e3933bd69b920b84bc6201d944188f057047ce",
+    "inputs.json.gz": "3296a052348693b43578c3677dae418aab4e393b5a40702941d89bf753fa220b"
+  }
+}

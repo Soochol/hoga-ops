@@ -130,3 +130,28 @@ Locator: getByText('관심종목을 선택해주세요')   ← 프로덕션 코�
 
 남은 공백: `/live` 틱 채널은 아직 모킹할 수 없다(`helpers/liveMocks.ts` 의
 `TODO(ws-migration)` — `page.routeWebSocket` 으로 복구 가능).
+
+## 캐시 용량 비교 실험
+
+`live-cache-benchmark.spec.ts`는 기본 실행에서 건너뛰는 진단용 실험이다.
+`frontend/`에서 다음과 같이 실행한다.
+
+```bash
+HOGA_RUN_CACHE_BENCHMARK=1 HOGA_CACHE_BENCH_OUTPUT=/tmp/live-cache-benchmark.json \
+  npx playwright test tests/e2e/live-cache-benchmark.spec.ts --reporter=list
+```
+
+64종목 × 합성 평일 20일의 1·3분봉, 호가 양쪽 10단, 응답 지연 35ms를 사용한다.
+20일 이력을 화면에 유지하며 순방향 방문 후 역방향으로 재방문한다. 7개 제한 조합을
+독립 브라우저 컨텍스트에서 두 번 실행하고 두 번째 순서는 뒤집는다. 테스트가 서빙하는
+Vite 상수만 교체하며 제품의 런타임 설정이나 사용자 서버는 바꾸지 않는다.
+
+`HOGA_CACHE_BENCH_VARIANTS`(쉼표 구분 이름), `HOGA_CACHE_BENCH_CODES`,
+`HOGA_CACHE_BENCH_REPEATS`로 실행 범위를 줄일 수 있다. 출력에는 종목별 시간,
+과거/당일 요청, 캐시 회수 사유, GC 추적 이벤트, 프레임·long task·포인터 후 프레임 시간,
+관측 JS heap 최고치와 강제 GC 뒤 heap, 콘솔 경고가 포함된다. 강제 GC는 시간 측정 밖에서
+실행한다. 원본 range와 병합본의 추정 크기는 객체를 공유하므로 합산하지 않는다.
+개발 빌드의 비교 자료이며 실벤더 지연·전체 프로세스 메모리·장시간 안정성을 보증하거나
+실행 시간으로 통과/실패를 판정하는 테스트가 아니다.
+원본 range의 30분 GC 이전에 재방문하므로, 병합본을 줄인 결과를 장시간 복귀 성능으로
+일반화하지 않는다. 더 작은 병합본도 이 원본에서 복원될 수 있다.
