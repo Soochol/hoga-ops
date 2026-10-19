@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
   type OrderPresets, type OrderWindowSettings } from '../../state/orderWindowSettings';
 import { playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
@@ -10,20 +10,18 @@ const SECTIONS = [
   { id: 'sound', label: '주문 알림' },
 ] as const;
 
-export function OrderSettingsSection({ id, title, description, children }: { id: string; title: string; description: string; children: ReactNode }) {
-  return <section id={id} className="order-settings-section" aria-labelledby={`${id}-heading`}>
-    <h3 id={`${id}-heading`} className="order-settings-section-title">{title}</h3>
-    <p className="order-surface-description">{description}</p>
+function OrderSettingsSection({ id, title, hidden, children }: { id: string; title: string; hidden: boolean; children: ReactNode }) {
+  return <section id={id} hidden={hidden} className="order-settings-section" aria-labelledby={`${id}-heading`}>
+    <h3 id={`${id}-heading`} className="sr-only">{title}</h3>
     <div className="order-settings-section-fields">{children}</div>
   </section>;
 }
 
-export function OrderSettingsCheckboxRow({ label, description, icon, checked, onChange, disabled = false }: {
-  label: string; description?: string; icon?: ReactNode; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean;
+function OrderSettingsCheckboxRow({ label, icon, checked, onChange, disabled = false }: {
+  label: string; icon?: ReactNode; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean;
 }) {
   return <label className="order-settings-option">
-    <span><span className="order-settings-option-name">{icon}{label}</span>
-      {description && <span className="order-settings-option-description">{description}</span>}</span>
+    <span className="order-settings-option-name">{icon}{label}</span>
     <input type="checkbox" aria-label={label} checked={checked} disabled={disabled} onChange={e => onChange(e.target.checked)} />
   </label>;
 }
@@ -31,63 +29,45 @@ export function OrderSettingsCheckboxRow({ label, description, icon, checked, on
 function PresetInputs({ label, suffix, max, values, onChange, disabled }: {
   label: string; suffix: string; max: number; values: OrderPresets; onChange: (values: OrderPresets) => void; disabled: boolean;
 }) {
-  return <fieldset><legend>{label}</legend>
+  return <fieldset><legend>{label.startsWith('수량') ? '수량' : '금액'} · {suffix}</legend>
     <div className="order-settings-presets">{values.map((value, index) => <label key={index}>
       <input type="number" aria-label={`${label} ${index + 1}`} min="1" max={max} step="1" disabled={disabled} value={Number.isNaN(value) ? '' : value}
         onChange={e => onChange(values.map((n, i) => i === index ? e.target.value === '' ? NaN : Number(e.target.value) : n) as OrderPresets)} />
-      <span className="order-preset-unit" aria-hidden="true">{suffix}</span>
     </label>)}</div>
   </fieldset>;
 }
 
 /** Incomplete number edits stay local; valid changes are saved by the order window. */
-export function OrderSettingsForm({ draft, onChange, onClose, busy }: {
+export function OrderSettingsForm({ draft, onChange, busy }: {
   draft: OrderWindowSettings; onChange: (settings: OrderWindowSettings) => void;
-  onClose: () => void; busy: boolean;
+  busy: boolean;
 }) {
   const valid = validOrderSettings(draft);
   const [previewFailed, setPreviewFailed] = useState(false);
   const navigationId = useId();
-  const bodyRef = useRef<HTMLDivElement>(null);
   const [activeSection, setActiveSection] = useState<string>('input');
   return <form className="order-settings-form" onSubmit={e => e.preventDefault()}>
     <div className="order-surface-body">
       <nav aria-label="주문 설정 목차" className="order-surface-nav">
-        <span className="order-surface-nav-label">설정</span>
         {SECTIONS.map(section => <button key={section.id} type="button" className="order-surface-nav-item"
           aria-current={activeSection === section.id ? 'true' : undefined} aria-controls={`${navigationId}-${section.id}`}
-          onClick={() => {
-            setActiveSection(section.id);
-            document.getElementById(`${navigationId}-${section.id}`)?.scrollIntoView({ block: 'start' });
-          }}>{section.label}</button>)}
+          onClick={() => setActiveSection(section.id)}>{section.label}</button>)}
       </nav>
-      <div className="order-settings-body" ref={bodyRef} onScroll={() => {
-        const body = bodyRef.current;
-        if (!body) return;
-        const top = body.getBoundingClientRect().top;
-        let next: string = 'input';
-        for (const section of SECTIONS) {
-          const element = document.getElementById(`${navigationId}-${section.id}`);
-          if (element && element.getBoundingClientRect().top <= top + 32) next = section.id;
-        }
-        if (body.scrollHeight - body.scrollTop - body.clientHeight < 2) next = 'sound';
-        setActiveSection(current => current === next ? current : next);
-      }}>
-      <OrderSettingsSection id={`${navigationId}-input`} title="주문 입력" description="자주 쓰는 수량과 금액을 미리 정합니다.">
+      <div className="order-settings-body">
+      <OrderSettingsSection id={`${navigationId}-input`} title="주문 입력" hidden={activeSection !== 'input'}>
         <PresetInputs label="수량 프리셋" suffix="주" max={MAX_ORDER_QUANTITY} values={draft.quantityPresets} disabled={busy}
           onChange={quantityPresets => onChange({ ...draft, quantityPresets })} />
         <PresetInputs label="금액 프리셋" suffix="백만원" max={MAX_AMOUNT_MILLIONS} values={draft.amountPresets} disabled={busy}
           onChange={amountPresets => onChange({ ...draft, amountPresets })} />
         <OrderSettingsCheckboxRow label="종목별 주문수량 기억"
-          description="다른 종목을 봤다가 돌아오면 마지막 입력한 수량을 불러옵니다. 같은 창·계좌에서 창을 열어둔 동안만 기억합니다."
           checked={draft.rememberQuantity} disabled={busy} onChange={rememberQuantity => onChange({ ...draft, rememberQuantity })} />
       </OrderSettingsSection>
-      <OrderSettingsSection id={`${navigationId}-display`} title="호가 표시" description="호가창에 표시할 정보를 선택합니다.">
-        <OrderSettingsCheckboxRow label="내 평단가 표시" description="평단가에 빨간 점을 표시합니다."
+      <OrderSettingsSection id={`${navigationId}-display`} title="호가 표시" hidden={activeSection !== 'display'}>
+        <OrderSettingsCheckboxRow label="내 평단가 표시"
           icon={<span className="order-settings-average-dot" aria-hidden="true" />}
           checked={draft.showAveragePrice} disabled={busy} onChange={showAveragePrice => onChange({ ...draft, showAveragePrice })} />
       </OrderSettingsSection>
-      <OrderSettingsSection id={`${navigationId}-sound`} title="주문 알림" description="매수·매도 주문접수를 소리로 알립니다.">
+      <OrderSettingsSection id={`${navigationId}-sound`} title="주문 알림" hidden={activeSection !== 'sound'}>
         <OrderSettingsCheckboxRow label="주문접수 소리" checked={draft.orderReceiptSound} disabled={busy}
           onChange={orderReceiptSound => {
             if (orderReceiptSound) prepareOrderReceiptSound();
@@ -103,10 +83,6 @@ export function OrderSettingsForm({ draft, onChange, onClose, busy }: {
       </OrderSettingsSection>
       </div>
     </div>
-    <div className="order-surface-footer">
-      {valid ? <span className="order-surface-footer-note">변경 사항이 자동 저장됩니다.</span>
-        : <span role="alert" className="order-settings-error">프리셋은 허용 범위의 양의 정수만 저장됩니다.</span>}
-      <button type="button" onClick={onClose}>닫기</button>
-    </div>
+    {!valid && <p role="alert" className="order-settings-error">프리셋은 허용 범위의 양의 정수만 저장됩니다.</p>}
   </form>;
 }
