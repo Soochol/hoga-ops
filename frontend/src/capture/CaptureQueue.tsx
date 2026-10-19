@@ -5,7 +5,7 @@ import { ADD_ITEMS_MUTATION_KEY, useCaptureQueue } from './useCaptureQueue';
 import { useSymbols } from './useSymbols';
 import { CaptureQueueRow } from './CaptureQueueRow';
 import { GROUP_ORDER, getPhase } from './phase';
-import { useStockDates } from '../api/stock-dates';
+import { useCaptureCounts } from '../api/captureCounts';
 import type { EnqueueResponse, QueueItem } from '../api/types';
 import { EmptyState, InlineState } from '../ui/DataSurface';
 import { ToolbarButton } from '../ui/PageShell';
@@ -24,22 +24,11 @@ export function CaptureQueue({ onPickSymbol }: CaptureQueueProps = {}) {
     queue, isError, refetchQueue, cancelItem, cancelAll, dismissDone, resumeQueue, retryItems,
   } = useCaptureQueue();
   const { data: symbolsResp } = useSymbols();
-  const { data: stockDates } = useStockDates();
   const nameByCode = useMemo(() => {
     const m = new Map<string, string>();
     (symbolsResp?.symbols ?? []).forEach((s) => m.set(s.code, s.name));
     return m;
   }, [symbolsResp]);
-  // Lookup Full Capture Count by (code, date) for each queue row.
-  // Returns `null` when no prior meta.json exists (a brand-new capture);
-  // returns the persisted counter (incl. legacy null) when meta.json
-  // is present on disk. SSE inventory_added invalidates the underlying
-  // query, so done rows refresh to the post-increment value within ~ms.
-  const fullCaptureCountByKey = useMemo(() => {
-    const m = new Map<string, number | null>();
-    (stockDates ?? []).forEach((sd) => m.set(`${sd.code}|${sd.date}`, sd.full_capture_count));
-    return m;
-  }, [stockDates]);
 
   const [cancelAllArmed, setCancelAllArmed] = useState(false);
   const cancelAllTimerRef = useRef<number | null>(null);
@@ -219,37 +208,34 @@ export function CaptureQueue({ onPickSymbol }: CaptureQueueProps = {}) {
           ? <VirtualList
               rows={allRows}
               nameByCode={nameByCode}
-              fullCaptureCountByKey={fullCaptureCountByKey}
               onCancel={cancelItem.mutate}
               onRetry={onRetry}
               onPickSymbol={onPickSymbol}
             />
-          : allRows.map((row) => (
-              <CaptureQueueRow
-                key={row.item_id}
-                item={row}
-                symbolName={nameByCode.get(row.code) ?? '—'}
-                fullCaptureCount={fullCaptureCountByKey.get(`${row.code}|${row.date}`)}
-                onCancel={cancelItem.mutate}
-                onRetry={onRetry}
-                onPickSymbol={onPickSymbol}
-              />
-            ))}
+          : <QueueRows rows={allRows} nameByCode={nameByCode} onCancel={cancelItem.mutate}
+              onRetry={onRetry} onPickSymbol={onPickSymbol} />}
       </div>
     </div>
   );
 }
 
-function VirtualList({
-  rows, nameByCode, fullCaptureCountByKey, onCancel, onRetry, onPickSymbol,
-}: {
+type RowListProps = {
   rows: QueueItem[];
   nameByCode: Map<string, string>;
-  fullCaptureCountByKey: Map<string, number | null>;
   onCancel: (itemId: string) => void;
   onRetry: (item: QueueItem) => void;
   onPickSymbol?: (code: string) => void;
-}) {
+};
+
+function QueueRows({ rows, nameByCode, onCancel, onRetry, onPickSymbol }: RowListProps) {
+  const counts = useCaptureCounts(rows);
+  return rows.map(row => <CaptureQueueRow key={row.item_id} item={row}
+    symbolName={nameByCode.get(row.code) ?? '—'}
+    fullCaptureCount={counts.data?.get(`${row.code}|${row.date}`)}
+    onCancel={onCancel} onRetry={onRetry} onPickSymbol={onPickSymbol} />);
+}
+
+function VirtualList({ rows, nameByCode, onCancel, onRetry, onPickSymbol }: RowListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const v = useVirtualizer({
     count: rows.length,
@@ -260,6 +246,8 @@ function VirtualList({
     estimateSize: () => 36,
     overscan: 8,
   });
+  const visible = v.getVirtualItems();
+  const counts = useCaptureCounts(visible.map(item => rows[item.index]));
   return (
     // testid: 가상화가 켜지면 **실제 스크롤 컨테이너가 여기**다 — 바깥
     // `queue-list` 는 껍데기가 되어 scrollHeight 가 안 늘어난다(실측 701=701, 안쪽은
@@ -267,7 +255,7 @@ function VirtualList({
     <div ref={parentRef} data-testid="queue-virtual-scroller"
       style={{ height: '100%', overflowY: 'auto' }}>
       <div style={{ height: v.getTotalSize(), position: 'relative' }}>
-        {v.getVirtualItems().map((vr) => {
+        {visible.map((vr) => {
           const row = rows[vr.index];
           return (
             <div
@@ -284,7 +272,7 @@ function VirtualList({
               <CaptureQueueRow
                 item={row}
                 symbolName={nameByCode.get(row.code) ?? '—'}
-                fullCaptureCount={fullCaptureCountByKey.get(`${row.code}|${row.date}`)}
+                fullCaptureCount={counts.data?.get(`${row.code}|${row.date}`)}
                 onCancel={onCancel}
                 onRetry={onRetry}
                 onPickSymbol={onPickSymbol}

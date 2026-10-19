@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from pathlib import Path
@@ -28,6 +29,9 @@ from hoga.api.invariants import indicator_session_bounds
 from hoga.api.models import (
     BrokerSeriesResponse,
     CandlesResponse,
+    CaptureCount,
+    CaptureCountsRequest,
+    CaptureCountsResponse,
     GapRange,
     GapRangesResponse,
     Meta,
@@ -40,6 +44,7 @@ from hoga.api.models import (
 from hoga.api.params import CODE_PATTERN, Code, StockDate
 from hoga.api.queries import QueryEngine, StockDateNotFound
 from hoga.api.sources import SourceName, resolve_source_result
+from hoga.api.stock_dates_snapshot import StockDatesSnapshot
 from hoga.tables import brokers as brokers_tbl, candles as candles_tbl, snapshots as snapshots_tbl
 from hoga.util.timeenc import (
     hhmmssms_to_unix_ms,
@@ -505,10 +510,31 @@ async def _run_range_bundle(
 
 def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문장 분할이 설계에 반한다
     engine: QueryEngine, *, compute: ComputePools | None = None,
+    inventory_revision: Callable[[], int | None] = lambda: None,
 ) -> APIRouter:
     router = APIRouter(prefix="/api")
     # 요청 경로 CPU 작업이 도는 자리(ADR-0169). 안 넘기면 스레드 두 벌 — 종전 동작.
     pools: ComputePools = compute if compute is not None else thread_pools()
+    inventory_snapshot = StockDatesSnapshot()
+
+    @router.post("/capture-counts", response_model=CaptureCountsResponse)
+    def capture_counts(body: CaptureCountsRequest) -> CaptureCountsResponse:
+        # Visible queue rows only. Read the same winning metadata as inventory,
+        # without listing the parquet tree or querying candle files.
+        items = []
+        for item in body.items:
+            path = engine._find_winning_meta(engine.data_dir / "parquet" / item.date / item.code)
+            count = None
+            if path is not None:
+                try:
+                    metadata = json.loads(path.read_text())
+                    value = metadata.get("full_capture_count") if isinstance(metadata, dict) else None
+                    if type(value) is int and value >= 0:
+                        count = value
+                except (OSError, ValueError):
+                    log.warning("capture_count.metadata_unavailable code=%s date=%s", item.code, item.date)
+            items.append(CaptureCount(code=item.code, date=item.date, full_capture_count=count))
+        return CaptureCountsResponse(items=items)
 
     @router.get("/stock-dates", response_model=list[StockDateModel])
     async def stock_dates() -> list[StockDateModel]:
@@ -518,10 +544,21 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         # `_fail_streaks` 는 인프로세스 상태라 **부모가 스냅샷을 떠서** 넘긴다.
         from hoga.api import captures  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
-        payload = await compute_jobs.run_job(
-            pools.wide, compute_jobs.stock_dates_job,
-            str(engine.data_dir), dict(captures._fail_streaks),
-        )
+        def revision():
+            stamp = inventory_revision()
+            return None if stamp is None else (stamp, dict(captures._fail_streaks))
+
+        async def load():
+            return await compute_jobs.run_job(
+                pools.wide, compute_jobs.stock_dates_job,
+                str(engine.data_dir), dict(captures._fail_streaks),
+                admitted=True,
+            )
+
+        # Each waiting HTTP request still owns its admission budget (ADR-0169),
+        # even though its shared computation occupies only one worker slot.
+        async with compute_jobs.admit_request(pools.wide):
+            payload = await inventory_snapshot.get(revision, load)
         return Response(content=payload, media_type="application/json")  # type: ignore[return-value]
 
     @router.get("/meta", response_model=Meta)

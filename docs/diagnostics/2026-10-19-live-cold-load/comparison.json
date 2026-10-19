@@ -1,0 +1,104 @@
+{
+  "dateKst": "2026-10-19",
+  "baseCommit": "83aedf349a2333449c6d4ae229837fcd9113d71e",
+  "implementation": [
+    "Inventory requests share one computation; events and fail counters invalidate the snapshot, with a 2s missed-event safety TTL. Changes during an active read trigger one trailing refresh instead of repeated aborts. Per-HTTP-request compute admission remains enforced for coalesced waiters.",
+    "Capture queue fetches only visible Stock-Date counts in batches of at most 200 using the inventory metadata source priority; it no longer observes the full inventory query.",
+    "Collector state transmits changed peak keys. First/overwritten/desired-version-change frames recover with full snapshots; sequence gaps fail closed and late RPC replies cannot rewind newer state.",
+    "Closed views keep at most 64 compact timestamped ladders, restorable only within 30s of the snapshot. Subscriptions and indicator history still release immediately; code/date/venue/freshness/order gates stay in place.",
+    "After candles settle, hoga and sidecars share a 200ms reveal budget. Existing viewport positioning, two animation frames and 160ms fade remain; pending indicators have a status label. View identity prevents spent-budget leakage.",
+    "Candle/indicator cache policy remains 64 codes / 128 snapshots / 512MiB."
+  ],
+  "browserComparison": {
+    "browser": "155.0.8059.84",
+    "layoutWindows": 7,
+    "coldSamplesPerVariant": 6,
+    "revisitSamplesPerVariant": 3,
+    "method": "Browser performance.now around real workspace symbol replacement; per-rAF checks require the new code candle close plus cover fade completion, and a matching public book price. Fixture last response completion timestamps are measured separately.",
+    "baseline": "Exact test-only legacy policy overrides matching base 83aedf349: 700ms sidecar-only budget, unbounded hoga wait, and no retained ladder restoration. No production override exists.",
+    "workload": {
+      "legacy": false,
+      "sevenWindows": true,
+      "candleMs": 80,
+      "hogaMs": 900,
+      "sidecarMs": 1400,
+      "latestBookAfterSubscribeMs": 1000,
+      "scope": "synthetic transport delays; empty auxiliary cards; public book only; not real vendor/server load"
+    },
+    "metrics": [
+      {
+        "phase": "cold",
+        "metric": "chartMs",
+        "beforeMedianMs": 1769.0,
+        "afterMedianMs": 537.0,
+        "reductionPercent": 69.6
+      },
+      {
+        "phase": "cold",
+        "metric": "bookMs",
+        "beforeMedianMs": 1190.5,
+        "afterMedianMs": 1185.5,
+        "reductionPercent": 0.4
+      },
+      {
+        "phase": "cold",
+        "metric": "allResponsesMs",
+        "beforeMedianMs": 2959.0,
+        "afterMedianMs": 2948.5,
+        "reductionPercent": 0.4
+      },
+      {
+        "phase": "revisit",
+        "metric": "chartMs",
+        "beforeMedianMs": 323,
+        "afterMedianMs": 309,
+        "reductionPercent": 4.3
+      },
+      {
+        "phase": "revisit",
+        "metric": "bookMs",
+        "beforeMedianMs": 1189,
+        "afterMedianMs": 67,
+        "reductionPercent": 94.4
+      },
+      {
+        "phase": "revisit",
+        "metric": "allResponsesMs",
+        "beforeMedianMs": 1189,
+        "afterMedianMs": 309,
+        "reductionPercent": 74.0
+      }
+    ],
+    "interpretation": "Cold first chart becomes usable sooner; fixed upstream response completion stays effectively unchanged. Revisits restore a recent ladder without waiting for the next mocked subscription frame.",
+    "limitations": [
+      "Synthetic API delays and candles; auxiliary investor cards lack vendor data, so allResponsesMs is completion of the instrumented candle/range/series fixture responses, not full 7-window market-data completeness.",
+      "Private balances, orders and trading readiness are excluded. A restored ladder is not proof of a new market tick.",
+      "The benchmark still logs pre-existing Maximum update depth warnings (legacy 32, improved 6) on its synthetic/incomplete setup. Unhandled page errors were zero; this is not a claim of a warning-free live workload.",
+      "Small samples: medians describe this workload, not a production p95 or a guaranteed improvement percentage."
+    ]
+  },
+  "backendComparison": {
+    "inventoryConcurrentRequests": 32,
+    "serializationComputationsBefore": 32,
+    "serializationComputationsAfter": 1,
+    "collectorCodes": 64,
+    "changedCodesPerFrame": 1,
+    "collectorFrames": 30,
+    "collectorBytesBefore": 26868522,
+    "collectorBytesAfter": 1304450,
+    "collectorByteReductionPercent": 95.1,
+    "limitations": "Offline Pydantic serialization/IPC CPU+bytes experiment. Excludes filesystem scan, socket scheduling and real vendor traffic. Real API server GC/latency changes were not measured after deployment."
+  },
+  "validationFile": "verification.json",
+  "deployment": "This task only changes its worktree. It did not restart or modify user localhost:5173/8000 servers or the primary checkout.",
+  "artifacts": [
+    "before-controlled.json",
+    "after-controlled.json",
+    "backend-comparison.json"
+  ],
+  "artifactSha256": {
+    "before-controlled.json": "6e0d87736499afdab9be7666fe60202f76828dd67252f23f5fae7b484e9d8042",
+    "after-controlled.json": "43c60cca2268daa0566174efe068fe643f0f80f875706eb8738ae0305f1b0599",
+    "backend-comparison.json": "9d45ff34027284ba0595c572b7ce473ff1cd4edeb2b6902ab076cb8e501082ea"
+  }
+}

@@ -84,6 +84,10 @@ from hoga.trading import contracts as broker_contracts, models as trading_models
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
+    "CaptureCountKey": frozenset({"code", "date"}),
+    "CaptureCountsRequest": frozenset({"items"}),
+    "CaptureCount": frozenset({"code", "date", "full_capture_count"}),
+    "CaptureCountsResponse": frozenset({"items"}),
     "CaptureCountsInfo": frozenset({"status"}),
     "SymbolHit": frozenset({"code", "name", "market", "security_type", "nxt_enabled", "captured_count",
                              "captured_breakdown", "capture_counts_status"}),

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient, type QueryClient, type QueryFilters } from '@tanstack/react-query';
 import { STOCK_DATES_QUERY_KEY } from './stock-dates';
+import { CAPTURE_COUNTS_QUERY_KEY } from './captureCounts';
 import { WATCHLIST_KEY } from '../watchlist/watchlistKeys';
 import { HEATMAP_DEPENDENT_KEYS } from '../heatmap/heatmapKeys';
 import { SCREENER_SAVES_KEY } from '../screener/screenerKeys';
@@ -82,6 +83,8 @@ export function useEventStream(): void {
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
     let needsReconnectSync = false;
     let disposed = false;
+    let inventoryRefreshing = false;
+    let inventoryDirty = false;
     const refreshAfterReconnect = (filters: QueryFilters): void => {
       void qc.cancelQueries(filters).then(() => {
         if (!disposed) void qc.invalidateQueries(filters);
@@ -91,9 +94,25 @@ export function useEventStream(): void {
       if (timers.has(axis)) return;  // 이미 예약됨 — 창이 끝날 때 한 번만 돈다
       timers.set(axis, setTimeout(() => { timers.delete(axis); run(); }, ms));
     };
+    const refreshInventory = (): void => {
+      if (inventoryRefreshing) { inventoryDirty = true; return; }
+      inventoryRefreshing = true;
+      // The initial useQuery read may predate this event as well. Joining that
+      // read is safe only if its completion is followed by one fresh read.
+      inventoryDirty = qc.isFetching({ queryKey: STOCK_DATES_QUERY_KEY, type: 'active' }) > 0;
+      // Do not repeatedly abort a 32MB scan before the client can receive it.
+      // A change during the request schedules one trailing refresh instead.
+      const finished = () => {
+        inventoryRefreshing = false;
+        if (!disposed && inventoryDirty) coalesce('inventory', INVENTORY_INVALIDATE_COALESCE_MS, refreshInventory);
+      };
+      void Promise.resolve(qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY }, { cancelRefetch: false }))
+        .then(finished, finished);
+    };
     const invalidateInventoryCoalesced = (): void => {
       coalesce('inventory', INVENTORY_INVALIDATE_COALESCE_MS, () => {
-        qc.invalidateQueries({ queryKey: STOCK_DATES_QUERY_KEY });
+        refreshInventory();
+        qc.invalidateQueries({ queryKey: CAPTURE_COUNTS_QUERY_KEY });
       });
     };
 
@@ -133,6 +152,7 @@ export function useEventStream(): void {
         // Drop unfinished reads from the old connection before refreshing. This
         // also handles initial reads with no cached data (invalidate alone doesn't).
         refreshAfterReconnect({ queryKey: STOCK_DATES_QUERY_KEY });
+        refreshAfterReconnect({ queryKey: CAPTURE_COUNTS_QUERY_KEY });
         refreshAfterReconnect({ queryKey: ['capture', 'queue'] });
         // A backend restart starts a fresh auxiliary count job. Do not retain
         // the previous ready catalog for the query's one-day stale window.

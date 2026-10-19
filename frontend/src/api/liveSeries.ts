@@ -126,8 +126,9 @@ export function useLiveSeries(code: string, venue: LiveVenueOption): LiveSeriesD
   const effective = useEffectiveVenue(code, venue);
   const initial = useQuery({
     queryKey: ['live', 'series', code, date, effective],
-    queryFn: () => apiCall<LiveSeriesResponse>(
+    queryFn: ({ signal }) => apiCall<LiveSeriesResponse>(
       `/api/live/series?code=${encodeURIComponent(code)}&date=${date}&venue=${effective}`,
+      { signal },
     ),
     enabled: !!code,
     staleTime: 60_000,

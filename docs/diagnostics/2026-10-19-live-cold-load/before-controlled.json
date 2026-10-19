@@ -1,0 +1,97 @@
+{
+  "label": "legacy-controlled",
+  "browser": "155.0.8059.84",
+  "workload": {
+    "legacy": true,
+    "sevenWindows": true,
+    "candleMs": 80,
+    "hogaMs": 900,
+    "sidecarMs": 1400,
+    "latestBookAfterSubscribeMs": 1000,
+    "scope": "synthetic transport delays; empty auxiliary cards; public book only; not real vendor/server load"
+  },
+  "results": [
+    {
+      "repeat": 0,
+      "code": "000660",
+      "phase": "cold",
+      "chartMs": 1780,
+      "bookMs": 1192,
+      "allResponsesMs": 2971,
+      "requests": 11
+    },
+    {
+      "repeat": 0,
+      "code": "035420",
+      "phase": "cold",
+      "chartMs": 1758,
+      "bookMs": 1185,
+      "allResponsesMs": 2943,
+      "requests": 11
+    },
+    {
+      "repeat": 0,
+      "code": "000660",
+      "phase": "revisit",
+      "chartMs": 323,
+      "bookMs": 1187,
+      "allResponsesMs": 1187,
+      "requests": 2
+    },
+    {
+      "repeat": 1,
+      "code": "000660",
+      "phase": "cold",
+      "chartMs": 1784,
+      "bookMs": 1192,
+      "allResponsesMs": 2979,
+      "requests": 11
+    },
+    {
+      "repeat": 1,
+      "code": "035420",
+      "phase": "cold",
+      "chartMs": 1741,
+      "bookMs": 1183,
+      "allResponsesMs": 2951,
+      "requests": 11
+    },
+    {
+      "repeat": 1,
+      "code": "000660",
+      "phase": "revisit",
+      "chartMs": 304,
+      "bookMs": 1189,
+      "allResponsesMs": 1189,
+      "requests": 2
+    },
+    {
+      "repeat": 2,
+      "code": "000660",
+      "phase": "cold",
+      "chartMs": 1779,
+      "bookMs": 1193,
+      "allResponsesMs": 2967,
+      "requests": 11
+    },
+    {
+      "repeat": 2,
+      "code": "035420",
+      "phase": "cold",
+      "chartMs": 1759,
+      "bookMs": 1189,
+      "allResponsesMs": 2949,
+      "requests": 11
+    },
+    {
+      "repeat": 2,
+      "code": "000660",
+      "phase": "revisit",
+      "chartMs": 339,
+      "bookMs": 1195,
+      "allResponsesMs": 1195,
+      "requests": 2
+    }
+  ],
+  "errors": []
+}

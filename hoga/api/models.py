@@ -65,6 +65,23 @@ class StockDateVenue(BaseModel):
     file_size_bytes: int = 0
 
 
+class CaptureCountKey(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
+    date: str = Field(pattern=r"^\d{8}$")
+
+
+class CaptureCountsRequest(BaseModel):
+    items: list[CaptureCountKey] = Field(max_length=200)
+
+
+class CaptureCount(CaptureCountKey):
+    full_capture_count: int | None = None
+
+
+class CaptureCountsResponse(BaseModel):
+    items: list[CaptureCount]
+
+
 class StockDate(BaseModel):
     """Inventory entry: one captured Stock-Date with its boundaries.
 

@@ -247,6 +247,7 @@ class CaptureProcessSession:
                 raise ValueError("old collector state epoch")
             if state["sequence"] <= self._state_sequence:
                 raise ValueError("collector state sequence regression")
+            gap = state["sequence"] - self._state_sequence - 1
             self._state_sequence = state["sequence"]
             # Old desired versions retain current-epoch connection evidence only.
             if (state["desired_version"] > self.version
@@ -254,7 +255,14 @@ class CaptureProcessSession:
                 continue
             self._state = state
             if state["desired_version"] == self.version and state["sequence"] > self._peak_sequence_floor:
-                self._peaks = state["peaks"]
+                if state.get("peaks_full", True):
+                    self._peaks = state["peaks"]
+                else:
+                    if gap:
+                        raise ValueError("collector peak delta without recovery snapshot")
+                    self._peaks.update(state["peaks"])
+                    for key in state.get("peaks_removed", []):
+                        self._peaks.pop(key, None)
             self._received_at = time.monotonic()
             self._finish_sync()
 
@@ -394,8 +402,12 @@ class CaptureProcessSession:
         if not self.fresh():
             raise ConnectionError("collector state unavailable")
         result = await self.peer.call("peaks", {"code": code, "venue": venue, "date": date})
-        self._peaks = result["values"]
-        self._peak_sequence_floor = result["state_sequence"]
+        # State and RPC use separate ordered sockets. A newer state delta may
+        # arrive before this full RPC reply; replacing it would lose unchanged
+        # keys indefinitely. That newer state already includes the seeded key.
+        if result["state_sequence"] >= max(self._state_sequence, self._peak_sequence_floor):
+            self._peaks = result["values"]
+            self._peak_sequence_floor = result["state_sequence"]
 
     async def seconds_snapshot(self, code, venue, date=None):
         if not self.fresh():

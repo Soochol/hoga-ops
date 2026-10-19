@@ -2203,7 +2203,7 @@ describe('LiveChartRoot', () => {
     // 그 전제가 뒤에 반박됐다(콜드 5거래일 4.68s, 한 달 창 11.7s) → 2026-08-19 캡 복원.
     // 근거 전문은 LiveChartRoot 의 SIDECAR_REVEAL_CAP_MS 주석.
     //
-    // 못 보는 것: 캡 **값**(700ms)이 적절한지는 이 테스트가 말하지 않는다. 캡 이전에
+    // 못 보는 것: 캡 **값**의 적절성은 이 테스트가 말하지 않는다. 캡 이전에
     // 홀드하고 이후에 열린다는 **분기**만 고정한다.
     useLivePageStore.setState({ historicalFromDate: null });
     render(
@@ -2223,7 +2223,7 @@ describe('LiveChartRoot', () => {
     // 캡 이전: 사이드카를 기다리며 홀드 — 빠른 경로의 "한 장면 등장" 이 여기서 성립한다.
     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('1');
     // 캡 경과: 사이드카는 **여전히 loading 인 채**로 커버가 걷혀야 한다.
-    // 벽시계 상수로 단언하지 않는다 — 캡(700ms) 소진은 실타이머로 흘려보내되,
+    // 벽시계 상수로 단언하지 않는다 — 캡 소진은 실타이머로 흘려보내되,
     // 이후 rAF 2틱이 필요한 reveal 은 waitFor 로 기다린다.
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, SIDECAR_REVEAL_CAP_MS + 100));
@@ -2234,6 +2234,20 @@ describe('LiveChartRoot', () => {
     // 캡으로 열렸으므로 지표 문구도 함께 사라진다(!chartReady 가드) — 걷힌 차트 위에
     // "지표 불러오는 중…" 이 남으면 안 된다.
     expect(screen.queryByTestId('hoga-loading-note')).toBeNull();
+    expect(screen.getByTestId('indicator-loading-status')).toHaveTextContent('지표 불러오는 중');
+  });
+
+  it.each([0, 100])('bounds hoga waiting with %i candles and shows pending status for usable candles', async (count) => {
+    useLivePageStore.setState({ historicalFromDate: null });
+    const props = { code: '005930', timeframe: '1m' as const, bundle: makeBundleWithCandles(count),
+      clampEngaged: false, captureFloorEngaged: false, isPastCandlesLoading: false };
+    const { rerender } = render(<LiveChartRoot {...props} isHogaLoading />, { wrapper });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, SIDECAR_REVEAL_CAP_MS + 100)); });
+    await waitFor(() => expect(screen.getByTestId('chart-reveal-cover').style.opacity).toBe('0'));
+    if (count) expect(screen.getByTestId('indicator-loading-status')).toBeInTheDocument();
+    else expect(screen.queryByTestId('indicator-loading-status')).toBeNull();
+    rerender(<LiveChartRoot {...props} isHogaLoading={false} />);
+    expect(screen.queryByTestId('indicator-loading-status')).toBeNull();
   });
 
   it('캡은 viewKey 마다 리셋된다 — 이전 뷰의 소진이 새 종목을 조기 공개하지 않는다', async () => {

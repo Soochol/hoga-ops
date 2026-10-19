@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { StrictMode } from 'react';
 import * as client from './client';
 import { useLiveSeries, type LiveSeriesResponse } from './liveSeries';
-import { hydrateLiveSeries, readLiveSeries, subscribeLiveSeries, LIVE_FLUSH_MS } from './sharedLiveSeries';
+import { hydrateLiveSeries, readLiveSeries, subscribeLiveSeries, LIVE_FLUSH_MS, RETAINED_BOOK_MS, __resetRetainedBooksForTests } from './sharedLiveSeries';
 import { LiveSnapshotBuffer } from '../live/liveSnapshotBuffer';
 import { fakeSockets, installFakeWebSocket } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
@@ -49,7 +49,41 @@ it('keeps coalesced latest book out of the indicator history', async () => {
 afterEach(() => {
   cleanup();
   for (const stop of cleanups.splice(0)) stop();
+  __resetRetainedBooksForTests();
   resetWs(); vi.useRealTimers(); vi.restoreAllMocks();
+});
+
+it('restores a recent latest ladder on revisit without retaining history or subscriptions', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-05T10:00:00+09:00'));
+  const stop = subscribe();
+  const sock = await socket();
+  const book = { t_ms: Date.now(), kind: 'ob', venue: 'KRX', asks: [{ price: 70000, qty: 2 }], bids: [] };
+  sock.message({ ch: 'live_batch', code: CODE, data: [], latest: [book], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  stop();
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb).toBeUndefined();
+  subscribe();
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb).toEqual(book);
+  expect(readLiveSeries(CODE, DATE, 'KRX').ob).toEqual([]);
+  expect(readLiveSeries(CODE, DATE, 'NXT').latestOb).toBeUndefined();
+  hydrateLiveSeries(CODE, DATE, 'KRX', body());
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb).toEqual(book);
+});
+
+it('expires the retained ladder and never transfers it across dates', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-09-05T10:00:00+09:00'));
+  const stop = subscribe();
+  const sock = await socket();
+  sock.message({ ch: 'live_batch', code: CODE, data: [], latest: [{ t_ms: Date.now(), kind: 'ob', venue: 'KRX' }], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  stop();
+  subscribe('20260906');
+  expect(readLiveSeries(CODE, '20260906', 'KRX').latestOb).toBeUndefined();
+  await vi.advanceTimersByTimeAsync(RETAINED_BOOK_MS + 1);
+  subscribe();
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb).toBeUndefined();
 });
 
 it('retains usable ladders through empty resets and never rewinds on delayed WS or REST frames', async () => {

@@ -66,6 +66,58 @@ async function settleFrame(page: Page) {
   await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
 }
 
+test('late hoga fills indicators after reveal without moving the candle viewport', async ({ page }) => {
+  await setup(page);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  await page.route(apiExact('range'), async route => {
+    const url = new URL(route.request().url());
+    const from = url.searchParams.get('from')!;
+    const to = url.searchParams.get('to')!;
+    const bucket = Number(url.searchParams.get('bucket_ms') ?? 180000);
+    const hoga = url.searchParams.get('mode') === 'hoga';
+    if (hoga) await gate;
+    const bars = candles(from, to, bucket);
+    await route.fulfill({ json: {
+      code: '098460', from_date: from, to_date: to, bucket_ms: bucket,
+      segments: days.filter(ms => ymd(ms) >= from && ymd(ms) <= to).map(ms => ({
+        date: ymd(ms), session_open_ms: ms, session_close_ms: ms + 23400000, source: 'kiwoom_live',
+      })), candles: [],
+      quote_ratio: { bucket_ms: bucket, points: hoga ? bars.map(b => ({
+        t: b.t_ms, bid_total: 2000, ask_total: 1000, bid_max: 200, ask_max: 100,
+        imb_max_bid: 0, imb_max_ask: 0, band_pct: .5, tick: 10,
+      })) : [] },
+      fill_strength: { bucket_ms: bucket, points: hoga ? bars.map(b => ({ t: b.t_ms, buy_qty: 200, sell_qty: 100 })) : [] },
+      volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+      volume_profile_by_day: [], volume_distributions: [], investorPoints: [], ask_peaks: [], bid_peaks: [],
+      trade_volume_pocs: [], broker_late_entries: [], excluded_dates: [], missing_dates: [], data_warnings: [],
+    } });
+  });
+  await page.goto('/live?code=098460');
+  const id = await page.evaluate(async () => {
+    const path = '/src/state/workspace.ts';
+    const indicatorsPath = '/src/state/livePage.ts';
+    const [{ useWorkspaceStore: store }, { useLivePageStore: indicators }] = await Promise.all([import(path), import(indicatorsPath)]);
+    const win = store.getState().windows.find((w: WorkspaceWindow) => w.kind === 'chart');
+    store.getState().applyWorkspaceSnapshot({ windows: [{ ...win, rect: { x: 0, y: 0, w: 1, h: 1 } }],
+      zOrder: [win.id], maximizedId: null });
+    store.getState().setChartTimeframe(win.id, '3m');
+    indicators.getState().patchIndicatorsScoped({ windowKey: `live:${win.id}` }, '3m', { ratioEnabled: true, fillStrengthEnabled: true });
+    return win.id as string;
+  });
+  await expect(page.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
+  await expect(page.getByTestId('indicator-loading-status')).toBeVisible();
+  const before = (await snapshot(page, id))!;
+  expect(before.count).toBeGreaterThan(0);
+  release();
+  await expect(page.getByTestId('indicator-loading-status')).toHaveCount(0);
+  await settleFrame(page);
+  const after = (await snapshot(page, id, before.lastClose))!;
+  expect(after.span).toBeCloseTo(before.span, 5);
+  expect(after.spacing).toBeCloseTo(before.spacing, 5);
+  expect(Math.abs(after.x! - before.latestX!)).toBeLessThan(1);
+});
+
 for (const timeframe of ['1m', '15m'] as const) {
   test(`${timeframe}: watchlist today seed stays at latest through history loading`, async ({ page }) => {
     await setup(page);

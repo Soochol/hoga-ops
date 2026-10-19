@@ -612,7 +612,8 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
         HealthResponse.model_validate(body)
         return JSONResponse(body, status_code=503 if degraded else 200)
 
-    app.include_router(build_router(engine, compute=pools))
+    app.include_router(build_router(engine, compute=pools,
+                                    inventory_revision=lambda: bus.inventory_revision if observer.is_alive() else None))
     app.include_router(build_second_trade_router(data_dir=data_dir))
     app.include_router(build_program_trade_tape_router(data_dir=data_dir))
     app.include_router(build_trade_history_router(data_dir=data_dir))
