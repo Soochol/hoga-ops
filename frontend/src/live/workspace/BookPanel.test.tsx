@@ -305,7 +305,7 @@ describe('BookPanel', () => {
     expect(grid.querySelectorAll('[data-book-divider]')).toHaveLength(3);
   });
 
-  it('요약 12항목을 매도 10행의 220px 높이에 담고 상단 빈 행을 두지 않는다', () => {
+  it('정보 페이지는 기존 매도 10행 높이 안에서 전환하고 점만 표시한다', () => {
     const { container } = renderPanel();
     const [left, center, right] = Array.from(container.querySelector('.book-panel-grid')!.children);
     expect(left.children[0]).toHaveTextContent('109');
@@ -313,8 +313,19 @@ describe('BookPanel', () => {
     const summary = screen.getByTestId('book-summary');
     expect(summary).toHaveStyle({ height: '220px' });
     expect(right.children[0]).toHaveStyle({ height: '220px' });
-    expect(summary.querySelectorAll('div[style*="--book-summary-row-height"]')).toHaveLength(12);
-    expect(summary.style.getPropertyValue('--book-summary-row-height')).toBe(`${220 / 12}px`);
+    expect(summary.querySelectorAll('.book-summary-row')).toHaveLength(7);
+    expect(summary.style.getPropertyValue('--book-summary-row-height')).toBe('22px');
+    expect(summary.querySelector('.book-summary-pages')).toHaveTextContent('');
+    expect(summary.querySelectorAll('.book-summary-dot')).toHaveLength(2);
+    expect(summary.querySelectorAll('.book-summary-dot')[0]).toHaveClass('is-active');
+    fireEvent.click(within(summary).getByText('시작'));
+    expect(summary).toHaveAttribute('data-page', '2');
+    expect(summary).toHaveStyle({ height: '220px' });
+    expect(summary.querySelectorAll('.book-summary-dot')[1]).toHaveClass('is-active');
+    expect(within(summary).getByText('상한가')).toBeInTheDocument();
+    fireEvent.click(summary); // Blank space also turns the page.
+    expect(summary).toHaveAttribute('data-page', '1');
+    expect(within(summary).getByText('시작')).toBeInTheDocument();
   });
 
   it('3열 공통 경계선을 한 줄 × 3열 = 3개 그린다 — 한 줄로 이어져야 한다', () => {
@@ -445,12 +456,14 @@ describe('BookPanel', () => {
     expect(screen.getByText('104.42%')).toBeInTheDocument();  // 어제보다
     expect(screen.getByText('4,668만')).toBeInTheDocument();  // 거래량(만 단위 절사)
     expect(screen.getByText('824억')).toBeInTheDocument();    // 거래대금(억 절사)
+    fireEvent.click(screen.getByTestId('book-summary'));
     // limits 미로드 시 상한가·하한가·250일 3행은 대시(VI 행은 시가 기반 계산값).
     expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(3);
   });
 
   it('VI 예상 발동가를 시가 기준으로 계산해 표시한다', () => {
     renderPanel(); // dayOpen 245,500 → ±10% 틱 반올림(절사/올림)
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.getByText('270,000')).toBeInTheDocument(); // 270,050 → tick 500 절사
     expect(screen.getByText('221,000')).toBeInTheDocument(); // 220,950 → tick 500 올림
   });
@@ -460,6 +473,7 @@ describe('BookPanel', () => {
       summary: EMPTY_TRADE_SUMMARY,
       limits: { base_price: 245_500, upper_limit: null, lower_limit: null, high_250: null, low_250: null },
     });
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.getByText('270,000')).toBeInTheDocument();
     expect(screen.getByText('221,000')).toBeInTheDocument();
   });
@@ -472,6 +486,7 @@ describe('BookPanel', () => {
 
   it('VI 발동 중이면 해당 방향 행을 발동가로 강조한다', () => {
     renderPanel({ vi: VI_UP_ACTIVE });
+    fireEvent.click(screen.getByTestId('book-summary'));
     const active = screen.getByText('251,900 발동');
     expect(active.className).toContain('text-price-up');
     // 반대 방향(하강)은 예상가 유지 — 기준가는 발동가 근사(251,900×0.9=226,710→227,000 (tick 500 올림)).
@@ -480,6 +495,7 @@ describe('BookPanel', () => {
 
   it('VI 해제 후엔 발동가를 기준가 근사로 써서 예상가를 갱신한다', () => {
     renderPanel({ vi: { ...VI_UP_ACTIVE, released_at: '101750', active: false } });
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.queryByText(/발동/)).toBeNull();
     // 251,900×1.1=277,090 → tick 500 절사 = 277,000.
     expect(screen.getByText('277,000')).toBeInTheDocument();
@@ -492,6 +508,7 @@ describe('BookPanel', () => {
     renderPanel({
       limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: 388_500, low_250: 143_700 },
     });
+    fireEvent.click(screen.getByTestId('book-summary'));
     const upper = screen.getByText('331,500');
     const lower = screen.getByText('178,500');
     expect(upper.className).toContain('text-price-up');
@@ -504,6 +521,7 @@ describe('BookPanel', () => {
     renderPanel({
       limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: null, low_250: null },
     });
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.getByText('331,500')).toBeInTheDocument();
     expect(screen.queryByText(/\//)).toBeNull(); // 반쪽짜리 "− / −" 금지
   });
@@ -519,6 +537,7 @@ describe('BookPanel', () => {
     renderPanel({
       limits: { base_price: 255_000, upper_limit: 331_500, lower_limit: 178_500, high_250: 304_000, low_250: 181_100 },
     });
+    fireEvent.click(screen.getByTestId('book-summary'));
     const value = screen.getByText('304,000/181,100');
     expect(value.className).toContain('whitespace-nowrap');
     const label = screen.getByText('250일');
@@ -586,7 +605,9 @@ describe('BookPanel', () => {
   it('요약이 전부 비면 대시만 남고 사다리는 그대로 그린다', () => {
     renderPanel({ summary: EMPTY_TRADE_SUMMARY });
     expect(screen.getByText('256,000')).toBeInTheDocument();
-    expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(9);
+    expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(7);
+    fireEvent.click(screen.getByTestId('book-summary'));
+    expect(screen.getAllByText('−').length).toBeGreaterThanOrEqual(5);
   });
 
   it('총잔량 바는 마스크 시 비율을 숨긴다', () => {
@@ -767,9 +788,13 @@ describe('BookPanel', () => {
     expect(screen.queryByText('+0.39%')).toBeNull();
   });
 
-  it('예상체결가·량이 있으면(동시호가) 상단 배너에 풀 라벨로 그린다', () => {
-    renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 12_345 } });
+  it('예상체결가·량은 상단 배너 없이 정보 2페이지에 표시한다', () => {
+    const { container } = renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 12_345 } });
+    expect(screen.queryByTestId('book-expected-fill')).toBeNull();
+    expect(container.querySelector('.book-panel')?.firstElementChild).not.toHaveClass('book-expected-fill');
+    fireEvent.click(screen.getByTestId('book-summary'));
     const cell = screen.getByTestId('book-expected-fill');
+    expect(cell.closest('[data-testid="book-summary"]')).toHaveAttribute('data-page', '2');
     expect(cell).toHaveTextContent('예상 체결가');
     expect(cell).toHaveTextContent('265,500원');
     expect(cell).toHaveTextContent('예상 체결량');
@@ -778,15 +803,18 @@ describe('BookPanel', () => {
 
   it('평시(예상체결 0/미제공)엔 예상체결 셀을 그리지 않는다', () => {
     renderPanel(); // snap() 은 exp_price/exp_qty 미포함
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
     // 한쪽만 값이 있어도(반쪽 프레임) 숨긴다.
     renderPanel({ snapshot: { ...snap(), exp_price: 265_500, exp_qty: 0 } });
+    fireEvent.click(screen.getAllByTestId('book-summary')[1]);
     expect(screen.queryByTestId('book-expected-fill')).toBeNull();
   });
 
   it('실시간 예상 표본의 종료는 호가에 남은 예전 예상값보다 우선한다', () => {
     const snapshot = { ...snap(), exp_price: 265500, exp_qty: 12345 };
     const view = renderPanel({ snapshot, expectedFill: { price: 121100, qty: 5152 } });
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원예상 체결량5,152');
     view.rerender(<BookPanel snapshot={snapshot} baselinePrice={PREV_CLOSE} summary={SUMMARY}
       trades={[]} maskRatio={false} lastPrice={null} expectedFill={null} />);
@@ -796,6 +824,7 @@ describe('BookPanel', () => {
   it('수량 미제공 표본은 예상가만 표시하고 호가에 남은 수량을 섞지 않는다', () => {
     renderPanel({ snapshot: { ...snap(), exp_price: 265500, exp_qty: 12345 },
       expectedFill: { price: 121100, qty: null } });
+    fireEvent.click(screen.getByTestId('book-summary'));
     expect(screen.getByTestId('book-expected-fill')).toHaveTextContent('예상 체결가121,100원');
     expect(screen.queryByText('예상 체결량')).not.toBeInTheDocument();
     expect(screen.queryByText('12,345')).not.toBeInTheDocument();

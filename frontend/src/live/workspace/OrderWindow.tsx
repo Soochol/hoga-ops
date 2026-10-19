@@ -33,7 +33,7 @@ import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
 import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
-import { BookDayMarker, BookQtyDelta, BookSummary, ExpectedFillBanner, TotalQtyStrip } from './BookPanel';
+import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
 import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
 import { bookDayMarkers } from './bookDayMarkers';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
@@ -167,6 +167,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const [expanded, setExpanded] = useState(false);
   const [spacious, setSpacious] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [infoPage, setInfoPage] = useState<0 | 1>(0);
   const infoId = useId();
   const closeInfo = useCallback(() => {
     setInfoOpen(false);
@@ -568,7 +569,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
-    vi={vi.data?.vi} height={height} />;
+    vi={vi.data?.vi} height={height} page={infoPage} onNextPage={() => setInfoPage(page => page === 0 ? 1 : 0)}
+    expectedFill={{
+      price: storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0,
+      qty: storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? null,
+    }} />;
   function saveSettingsEdits(next: OrderWindowSettings) {
     if (busy) return;
     setSettingsDraft(next);
@@ -700,10 +705,6 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     }}>
       <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
     </div>, document.body)}
-    <ExpectedFillBanner
-      price={storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0}
-      qty={storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? null}
-      baselinePrice={baseline} />
     <div className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
