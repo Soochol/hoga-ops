@@ -204,3 +204,96 @@ async def test_daily_fallback_does_not_move_live_minute_predicates_to_yesterday(
     assert seen and all(now.date() == dt.date(2026, 10, 20) for now in seen)
     assert all(any(event.condition_id == "minute" and event.date == "2026-10-20"
                    for event in row.occurrences) for row in result.rows)
+
+
+async def test_auto_before_open_reports_confirmed_cutoff_even_with_no_matches(corpus, vendor):
+    result = await run_screener_scan(data_dir=corpus,
+        req=request("new_high_today", {"period": 4}, basis="auto"), now=clock())
+    assert not result.rows and vendor.calls == 0
+    assert result.basis_at_ms == int(clock("2026-10-19", "15:30").timestamp() * 1000)
+    assert result.fallback_basis_at_ms is None
+    assert not result.warnings  # A normal pre-open scan is not a failed live request.
+
+
+async def test_auto_live_reports_cached_quote_time_and_partial_confirmed_cutoff(corpus, vendor):
+    vendor.quotes = [quote(fresh=True)]
+    req = request("price_range", {"min": 200000}, basis="auto")
+    first = await run_screener_scan(data_dir=corpus, req=req, now=clock(time="10:00:05"))
+    second = await run_screener_scan(data_dir=corpus, req=req, now=clock(time="10:00:10"))
+    assert vendor.calls == 1
+    assert first.basis_at_ms == second.basis_at_ms == int(clock(time="10:00:05").timestamp() * 1000)
+    assert second.fallback_basis_at_ms == int(clock("2026-10-19", "15:30").timestamp() * 1000)
+    assert {row.price_date for row in second.rows} == {"2026-10-19", "2026-10-20"}
+
+
+@pytest.mark.parametrize("confirmed_today", [False, True])
+async def test_auto_after_close_prefers_confirmed_today_but_keeps_final_quote_until_ready(
+    corpus, vendor, confirmed_today,
+):
+    vendor.quotes = [quote(fresh=True), quote(OTHER, fresh=True)]
+    if confirmed_today:
+        path = corpus / "screener/daily_adjusted.parquet"
+        data = pl.read_parquet(path)
+        today = data.filter(pl.col("date") == dt.date(2026, 10, 19)).with_columns(
+            pl.lit(dt.date(2026, 10, 20)).alias("date"))
+        pl.concat([data, today]).write_parquet(path)
+    result = await run_screener_scan(data_dir=corpus,
+        req=request("price_range", {"min": 200000}, basis="auto"), now=clock(time="21:00"))
+    assert {row.price_date for row in result.rows} == {"2026-10-20"}
+    cutoff = "15:30" if confirmed_today else "21:00"
+    assert result.basis_at_ms == int(clock(time=cutoff).timestamp() * 1000)
+    assert result.fallback_basis_at_ms is None
+    assert vendor.calls == (0 if confirmed_today else 1)
+
+
+@pytest.mark.parametrize("day", ["2026-10-22", "2026-10-24"])
+async def test_auto_unknown_calendar_and_weekend_use_confirmed_data(corpus, vendor, day):
+    result = await run_screener_scan(data_dir=corpus,
+        req=request("price_range", {"min": 200000}, basis="auto"), now=clock(day, "12:00"))
+    assert vendor.calls == 0
+    assert {row.price_date for row in result.rows} == {"2026-10-19"}
+    assert result.basis_at_ms == int(clock("2026-10-19", "15:30").timestamp() * 1000)
+
+
+async def test_auto_keeps_current_quotes_during_krx_evening_session(corpus, vendor):
+    vendor.quotes = [quote(fresh=True), quote(OTHER, fresh=True)]
+    path = corpus / "screener/daily_adjusted.parquet"
+    data = pl.read_parquet(path)
+    today = data.filter(pl.col("date") == dt.date(2026, 10, 19)).with_columns(
+        pl.lit(dt.date(2026, 10, 20)).alias("date"))
+    pl.concat([data, today]).write_parquet(path)
+    result = await run_screener_scan(data_dir=corpus,
+        req=request("price_range", {"min": 200000}, basis="auto"), now=clock(time="17:00"))
+    assert vendor.calls == 1 and all(row.price == 249000 for row in result.rows)
+    assert result.basis_at_ms == int(clock(time="17:00").timestamp() * 1000)
+
+
+async def test_auto_live_quote_failure_reports_confirmed_cutoff(corpus, vendor):
+    vendor.quotes = []
+    result = await run_screener_scan(data_dir=corpus,
+        req=request("price_range", {"min": 200000}, basis="auto"), now=clock(time="10:00"))
+    assert len(result.rows) == 2
+    assert result.basis_at_ms == int(clock("2026-10-19", "15:30").timestamp() * 1000)
+    assert result.fallback_basis_at_ms is None
+    assert "intraday_fallback_eod" in result.warnings
+
+
+async def test_auto_http_response_keeps_actual_cutoff_separate_from_completion(corpus, vendor, monkeypatch):
+    from fastapi import FastAPI
+    from httpx import ASGITransport, AsyncClient
+
+    from hoga.api import screener_runner
+    from hoga.api.screener import build_router
+
+    monkeypatch.setattr(screener_runner, "now_kst", clock)
+    app = FastAPI()
+    app.include_router(build_router(data_dir=corpus))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/screener/scan",
+            json=request("new_high_today", {"period": 4}, basis="auto").model_dump())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rows"] == []
+    assert body["basis_at_ms"] == int(clock("2026-10-19", "15:30").timestamp() * 1000)
+    assert body["basis_at_ms"] != body["scanned_at_ms"]
+    assert body["fallback_basis_at_ms"] is None

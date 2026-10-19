@@ -2178,7 +2178,7 @@ class ScreenerUniverse(BaseModel):
     # 하위호환. 스크리너 실시간 모니터링의 리소스 절감 축(intraday fetch 유니버스 축소).
     scopes: list[Literal["watchlist", "heatmap"]] = Field(default_factory=list)
 
-ScanBasis = Literal["eod", "intraday"]
+ScanBasis = Literal["eod", "intraday", "auto"]
 
 #: ``POST /api/screener/update`` 가 "작업 없음" 으로 끝난 사유.
 #:
@@ -2423,6 +2423,10 @@ class ScreenerResponse(BaseModel):
     # limit+1건을 확인해 정확히 limit건인 결과와 잘린 결과를 구별한다.
     has_more: bool = False
     scanned_at_ms: int | None = None
+    # Actual evaluation cutoff, distinct from request completion time. A partial
+    # overlay may also evaluate some codes with an older confirmed snapshot.
+    basis_at_ms: int | None = None
+    fallback_basis_at_ms: int | None = None
     #: 상태 태그의 평평한 목록 — 장중 오버레이·depth·ETF 필터가 한 평면에 섞이므로
     #: 접두(`intraday_` 등)가 네임스페이스 역할을 한다.
     warnings: list[str] = Field(default_factory=list)

@@ -28,7 +28,7 @@ export interface UseScreenerMonitorArgs {
   /** 화면에 보여줄 스캔 결과가 이미 있는지. false(시작 시 초기화 직후·TTL 만료)면
    *  장마감·탭 비가시 게이트를 건너뛰고 조회한다 — 게이트의 전제는 "옛 결과라도 보여줄
    *  게 있다"이고, 비어 있을 땐 그 전제가 깨져 사용자가 영구 빈 화면을 보게 된다.
-   *  마감 후 스캔은 intraday_fallback_eod 로 전일 확정 데이터를 준다. */
+   *  마감 후 스캔도 서버가 적용 가능한 최신 데이터와 기준 시각을 결정한다. */
   hasResults: boolean;
   /** 1회 조회 + 결과 처리. 성공 true. 드로어의 수동 조회와 공유하는 단일 seam. */
   scanOnce: () => Promise<boolean>;

@@ -62,12 +62,16 @@ async function refreshResults() {
   if (!before || !requestJson) return;
   const generation = ++refreshGeneration;
   try {
-    const response = await runScan(JSON.parse(requestJson));
+    const request = { ...JSON.parse(requestJson), basis: 'auto' as const };
+    const response = await runScan(request);
     if (generation !== refreshGeneration || useScreenerPanelStore.getState().lastScan !== before) return;
-    store.setLastScan({ ...before, interactionStartedAtMs: before.interactionStartedAtMs ?? before.scannedAtMs, rows: response.rows, scanStatus: response.status,
+    store.setLastScan({ ...before, basis: 'auto', requestJson: JSON.stringify(request),
+      scanKey: before.scanKey === null ? null : JSON.stringify(request),
+      interactionStartedAtMs: before.interactionStartedAtMs ?? before.scannedAtMs, rows: response.rows, scanStatus: response.status,
       warnings: response.warnings, hasMore: response.has_more,
       historyCoverage: response.history_coverage, barCoverage: response.bar_coverage, depthValues: response.depth_values ?? null,
-      intradayFailure: response.intraday_failure, scannedAtMs: response.scanned_at_ms ?? Date.now(), dataStale: false });
+      intradayFailure: response.intraday_failure, scannedAtMs: response.scanned_at_ms ?? Date.now(),
+      basisAtMs: response.basis_at_ms, fallbackBasisAtMs: response.fallback_basis_at_ms, dataStale: false });
   } catch (error) {
     if (useScreenerPanelStore.getState().lastScan === before) store.markLastScanDataStale();
     throw error;

@@ -201,16 +201,18 @@ describe('ScreenerDrawer', () => {
 
   it('defaults selection to the first save and 시작 scans with its conditions', async () => {
     vi.spyOn(savesApi, 'listSaves').mockResolvedValue({ schema_version: 1, saves: [SAVE] });
-    const scan = vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [] });
+    const scan = vi.spyOn(screenerApi, 'runScan').mockResolvedValue({ status: 'ok', rows: ROWS, warnings: [],
+      basis_at_ms: Date.UTC(2026, 9, 19, 6, 30) });
     render(<ScreenerDrawer />, { wrapper: wrap(qc(), '/live') });
     await waitFor(() => expect(useScreenerPanelStore.getState().selectedSavedId).toBe('s1'));
     fireEvent.click(screen.getByTestId('screener-monitor-toggle'));   // 시작 = 즉시 조회
     await waitFor(() => expect(scan).toHaveBeenCalledWith({
       conditions: SAVE.conditions,
       universe: SAVE.universe,
-      basis: 'intraday',
+      basis: 'auto',
     }));
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
+    expect(screen.getByTestId('screener-drawer-basis-time')).toHaveTextContent('2026-10-19 15:30 기준');
   });
 
   it('시작 버튼: 모니터링을 켜고 즉시 1회 조회한다', async () => {

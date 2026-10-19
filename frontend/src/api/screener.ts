@@ -118,7 +118,7 @@ export interface ScreenerUniverse {
   scopes?: ScreenerScope[];
 }
 
-export type ScanBasis = 'eod' | 'intraday';
+export type ScanBasis = 'eod' | 'intraday' | 'auto';
 
 export interface ScanRequest {
   /** A/B/C reference the conditions array; omitted/null means all AND. */
@@ -176,6 +176,9 @@ export interface DepthPeakValue {
 }
 
 export interface ScreenerResponse {
+  /** Actual evaluation cutoff(s), not the request completion time. */
+  basis_at_ms?: number | null;
+  fallback_basis_at_ms?: number | null;
   bar_coverage?: BarVolumeCoverage | null;
   history_coverage?: HistoryCoverage | null;
   scanned_at_ms?: number | null;

@@ -1,4 +1,5 @@
 import { BarVolumeCoverage } from './BarVolumeCoverage';
+import { scanBasisLabel } from './scanBasisLabel';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { InlineState } from '../ui/DataSurface';
@@ -26,7 +27,6 @@ import { useScreener } from './useScreener';
 import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from './useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
-import { StalenessChip } from './StalenessChip';
 import { intradayDegradationText } from './intradayDegradation';
 import { resultLimitText } from './resultLimitText';
 import { QuoteRow } from '../rightrail/QuoteRow';
@@ -45,7 +45,7 @@ import { SavedConditionSelect } from './SavedConditionSelect';
 
 const SCREENER_ENTRY_TYPE = 'screener-entry';
 const SCREENER_DRAG_SENSOR_OPTIONS = { activationConstraint: { distance: 5 } };
-const DRAWER_SCAN_BASIS: ScanBasis = 'intraday';
+const DRAWER_SCAN_BASIS: ScanBasis = 'auto';
 
 function screenerDraggableId(code: string): string {
   return `${SCREENER_ENTRY_TYPE}:${code}`;
@@ -229,6 +229,8 @@ export function ScreenerDrawer() {
           barCoverage: res.bar_coverage,
         depthValues: res.depth_values ?? null,
         scannedAtMs: res.scanned_at_ms ?? Date.now(),
+        basisAtMs: res.basis_at_ms,
+        fallbackBasisAtMs: res.fallback_basis_at_ms,
         basis: DRAWER_SCAN_BASIS,
         dataStale: false,
       });
@@ -346,7 +348,7 @@ export function ScreenerDrawer() {
     >
       <QuoteColumnProbe probe={columns.probe} samples={columns.samples} />
       {/* Header: label + freshness chip */}
-      <RailDrawerHeader title="스크리너" actions={<StalenessChip status={status} />} />
+      <RailDrawerHeader title="스크리너" />
 
       {/* Controls: dropdown + 조회 */}
       <RailDrawerSection className="flex flex-col gap-sm">
@@ -465,6 +467,9 @@ export function ScreenerDrawer() {
             <ScreenerResultSortControl mode={sortMode} onChange={handleSortChange} disabled={lastScan.rows.length === 0} />
           </div>
         )}
+        {lastScan && <div data-testid="screener-drawer-basis-time" className="font-data text-xs tabular-nums text-fg-dim">
+          {scanBasisLabel(lastScan)}
+        </div>}
       </RailDrawerSection>
 
       <RailDrawerSection className="empty:hidden"><OccurrenceExclusionToolbar controller={occurrenceController} /></RailDrawerSection>

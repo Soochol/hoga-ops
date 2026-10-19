@@ -47,6 +47,8 @@ export interface PanelScan {
   barCoverage?: ScreenerResponse['bar_coverage'];
   depthValues: Record<string, DepthPeakValue> | null;
   scannedAtMs: number;
+  basisAtMs?: number | null;
+  fallbackBasisAtMs?: number | null;
   /** 제외/복원 재조회 동안 결과 검색·선택·펼침 상태를 유지하는 조회 세션. */
   interactionStartedAtMs?: number;
   basis: ScanBasis;
@@ -173,7 +175,7 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
   if (typeof value !== 'object' || value === null) return null;
   const raw = value as Record<string, unknown>;
   if (raw.scanStatus !== 'ok' && raw.scanStatus !== 'not_seeded' && raw.scanStatus !== 'building') return null;
-  if (raw.basis !== 'intraday' && raw.basis !== 'eod') return null;
+  if (raw.basis !== 'intraday' && raw.basis !== 'eod' && raw.basis !== 'auto') return null;
   if (!Array.isArray(raw.rows) || !raw.rows.every(isScreenerRow)) return null;
   if (!Array.isArray(raw.warnings) || !raw.warnings.every((w) => typeof w === 'string')) return null;
   if (typeof raw.scannedAtMs !== 'number' || !Number.isFinite(raw.scannedAtMs)) return null;
@@ -219,6 +221,10 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     barCoverage: raw.barCoverage as PanelScan['barCoverage'],
     depthValues,
     scannedAtMs: raw.scannedAtMs,
+    basisAtMs: typeof raw.basisAtMs === 'number' && Number.isFinite(raw.basisAtMs) ? raw.basisAtMs
+      : raw.basisAtMs === null ? null : undefined,
+    fallbackBasisAtMs: typeof raw.fallbackBasisAtMs === 'number' && Number.isFinite(raw.fallbackBasisAtMs)
+      ? raw.fallbackBasisAtMs : raw.fallbackBasisAtMs === null ? null : undefined,
     interactionStartedAtMs: typeof raw.interactionStartedAtMs === 'number' ? raw.interactionStartedAtMs : undefined,
     basis: raw.basis,
     dataStale: raw.dataStale,

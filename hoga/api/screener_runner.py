@@ -7,6 +7,7 @@ from pathlib import Path
 
 from hoga.api import (
     screener_bar_volume,
+    screener_basis,
     screener_depth,
     screener_exclusions,
     screener_history_coverage,
@@ -34,6 +35,7 @@ async def run_screener_scan(
     warnings: list[str] = []
     intraday_failure: dict | None = None
     intraday_rows = None
+    overlay_at = None
     now_value = now or now_kst()
     now_value = now_value.astimezone(KST) if now_value.tzinfo else now_value.replace(tzinfo=KST)
 
@@ -54,8 +56,12 @@ async def run_screener_scan(
         warnings.append("etf_filter_stale_master_unavailable")
 
     conditions = active_conditions(req.conditions, req.expression)
+    codes = await asyncio.to_thread(screener_universe.codes_for_universe,
+        sdir / "stocks.parquet", req.universe, scope=scope, etf_codes=etf_codes)
+    confirmed_at = await asyncio.to_thread(screener_basis.confirmed_timestamp, sdir, codes)
+    basis = screener_basis.choose_basis(req.basis, now_value, confirmed_at, data_dir)
     history = screener_history_coverage.history_leaves(conditions)
-    needs_overlay = req.basis == "intraday" and (not conditions or any(
+    needs_overlay = basis == "intraday" and (not conditions or any(
         screener_bar_volume.needs_daily_overlay(leaf, now_value.date().isoformat()) for leaf in conditions))
     if needs_overlay:
         if screener_intraday.intraday_overlay_bypassed(data_dir):
@@ -64,19 +70,13 @@ async def run_screener_scan(
                 "intraday_fallback_eod",
             ])
         else:
-            codes = await asyncio.to_thread(
-                screener_universe.codes_for_universe,
-                sdir / "stocks.parquet",
-                req.universe,
-                scope=scope,
-                etf_codes=etf_codes,
-            )
             overlay = await screener_intraday.build_intraday_overlay(
                 data_dir=data_dir,
                 codes=codes,
                 now_ms=int(now_value.timestamp() * 1000),
             )
             intraday_rows = overlay.rows
+            overlay_at = overlay.fetched_at_ms if overlay.rows.height else None
             warnings.extend(overlay.warnings)
             # 사유는 상태 태그와 갈라 실어 보낸다(ADR-0143) — 접두 없이, kind 동반.
             intraday_failure = overlay.failure
@@ -85,20 +85,13 @@ async def run_screener_scan(
 
     depth_eval = None
     if screener_depth.has_depth_conditions(conditions):
-        universe_codes = set(await asyncio.to_thread(
-            screener_universe.codes_for_universe,
-            sdir / "stocks.parquet",
-            req.universe,
-            scope=scope,
-            etf_codes=etf_codes,
-        ))
         depth_eval = await asyncio.to_thread(
             screener_depth.evaluate,
             data_dir=data_dir,
             sdir=sdir,
             conditions=conditions,
-            universe_codes=universe_codes,
-            basis=req.basis,
+            universe_codes=set(codes),
+            basis=basis,
             today=now_value.strftime("%Y%m%d"),
         )
         warnings.extend(depth_eval.warnings)
@@ -109,19 +102,13 @@ async def run_screener_scan(
     )
     history_eval = None
     if history:
-        codes = await asyncio.to_thread(
-            screener_universe.codes_for_universe, sdir / "stocks.parquet", req.universe,
-            scope=scope, etf_codes=etf_codes)
         history_eval = await asyncio.to_thread(
             screener_history_coverage.evaluate, data_dir, conditions, codes)
     bar_eval = None
     if screener_bar_volume.leaves(conditions):
-        codes = await asyncio.to_thread(
-            screener_universe.codes_for_universe, sdir / "stocks.parquet", req.universe,
-            scope=scope, etf_codes=etf_codes)
         live_codes = set(intraday_rows["code"].to_list()) if intraday_rows is not None else set()
         bar_eval = await screener_bar_volume.evaluate(
-            data_dir=data_dir, conditions=conditions, codes=codes, basis=req.basis,
+            data_dir=data_dir, conditions=conditions, codes=codes, basis=basis,
             now=now_value, overlay=intraday_rows,
             daily_fallback_codes=set(codes) - live_codes if needs_overlay else None)
         if bar_eval.coverage.incomplete:
@@ -152,6 +139,11 @@ async def run_screener_scan(
         bar_coverage=bar_eval.coverage if bar_eval else None,
         status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
         scanned_at_ms=int(time.time() * 1000),
+        **screener_basis.evaluation_times(confirmed_at, now_value,
+            live_conditions=basis == "intraday" and (depth_eval is not None or any(
+                getattr(leaf.params, "timeframe", "D").endswith("m") for leaf in conditions)),
+            overlay_at=overlay_at,
+            partial=needs_overlay and (intraday_rows is None or intraday_rows.height < len(codes))),
         intraday_failure=intraday_failure,
         depth_coverage=depth_eval.coverage if depth_eval is not None else None,
         depth_values=depth_eval.values if depth_eval is not None else None,

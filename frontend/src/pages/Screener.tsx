@@ -15,7 +15,6 @@ import { ConditionBuilder } from '../screener/ConditionBuilder';
 import { expressionError } from '../screener/conditionExpression';
 import { ScreenerResults } from '../screener/ScreenerResults';
 import { SavedConditionSelect } from '../screener/SavedConditionSelect';
-import { StalenessChip } from '../screener/StalenessChip';
 import { useSavedScreenerEditor } from '../screener/useSavedScreenerEditor';
 import { useSavedScreeners } from '../screener/useSavedScreeners';
 import { useScreenerRowsLive } from '../screener/useScreenerRowsLive';
@@ -23,7 +22,7 @@ import { useScreenerPanelStore, useExpireScreenerScan } from '../state/screenerP
 import { DataSection, EmptyState, InlineState } from '../ui/DataSurface';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { ModalShell } from '../ui/ModalShell';
-import { ControlBar, PanelCard, SegmentedControl, ToolbarButton } from '../ui/PageShell';
+import { ControlBar, PanelCard, ToolbarButton } from '../ui/PageShell';
 import { ScreenerResultSortControl } from '../screener/ScreenerResultSortControl';
 import { DepthCoverageBanner } from '../screener/DepthCoverageBanner';
 import { intradayDegradationText } from '../screener/intradayDegradation';
@@ -32,7 +31,7 @@ import { suggestSaveName } from '../screener/suggestName';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { useLiveSettings } from '../api/liveSettings';
-import type { ScanBasis } from '../api/screener';
+import { scanBasisLabel } from '../screener/scanBasisLabel';
 import type { SavedScreener } from '../api/savedScreeners';
 
 type NameDialogMode = 'save-new' | 'save-as' | 'rename';
@@ -138,7 +137,6 @@ export function Screener() {
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
-  const [basis, setBasis] = useState<ScanBasis>(() => lastScan?.basis ?? 'intraday');
   useExpireScreenerScan();
 
   const screener = useScreener();
@@ -172,9 +170,9 @@ export function Screener() {
   const hasConditions = editor.conditions.length > 0;
   const invalidExpression = expressionError(editor.expression, editor.conditions.length);
   const scanBody = useMemo(
-    () => ({ conditions: editor.conditions, universe: editor.universe, basis,
+    () => ({ conditions: editor.conditions, universe: editor.universe, basis: 'auto' as const,
       ...(editor.expression != null ? { expression: editor.expression } : {}) }),
-    [editor.conditions, editor.expression, editor.universe, basis],
+    [editor.conditions, editor.expression, editor.universe],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
@@ -182,7 +180,7 @@ export function Screener() {
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
   // 강등 사유별 문구 — 유량 초과·자격증명 부재·파싱 오류의 처방이 각각 다르다(ADR-0137).
   const intradayDegradation =
-    lastScan?.basis === 'intraday' ? intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure) : null;
+    lastScan?.basis !== 'eod' ? intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure) : null;
   const limitNotice = resultLimitText(rows.length, lastScan?.hasMore);
   const scopeUniverseEmpty = (lastScan?.warnings ?? []).includes('scope_universe_empty');
   // 심볼 마스터 미로드 → ETF 판정이 stocks.parquet(수동 시드, 낡을 수 있음)으로 강등.
@@ -221,7 +219,9 @@ export function Screener() {
           barCoverage: res.bar_coverage,
         depthValues: res.depth_values ?? null,
           scannedAtMs: res.scanned_at_ms ?? Date.now(),
-          basis,
+          basisAtMs: res.basis_at_ms,
+          fallbackBasisAtMs: res.fallback_basis_at_ms,
+          basis: 'auto',
           dataStale: false,
         });
         setSortMode('default');
@@ -266,10 +266,6 @@ export function Screener() {
     statusFlags.push({ key: 'etf-stale', text: '종목 마스터 없음 · ETF 제외가 오래된 목록 기준입니다' });
   }
   const [bannerFlag, ...chipFlags] = statusFlags;
-
-  const scannedAtLabel = lastScan
-    ? new Date(lastScan.scannedAtMs).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
-    : null;
 
   return (
     <PageContainer centered className="grid gap-md min-h-0 !pb-0"
@@ -329,20 +325,6 @@ export function Screener() {
         <div className="feature-pane-header p-md">
           <ControlBar className="flex-wrap">
             <div className="min-w-0 flex-1" />
-            <SegmentedControl aria-label="스크리너 기준">
-              {(['intraday', 'eod'] as const).map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => setBasis(value)}
-                  aria-pressed={basis === value}
-                  title={value === 'intraday' ? '조건검색 실행 시 오늘 키움 시세를 일봉 위에 임시 반영합니다' : undefined}
-                  className={`px-3 py-[7px] text-sm ${basis === value ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
-                >
-                  {value === 'intraday' ? '오늘 장중' : '전일 확정'}
-                </button>
-              ))}
-            </SegmentedControl>
             <ToolbarButton tone="primary" onClick={runScan}
               disabled={screener.isPending || notSeeded || !hasConditions || !!invalidExpression}
               title={invalidExpression ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
@@ -388,8 +370,7 @@ export function Screener() {
                 <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
                   발생 <span className="font-semibold">{rows.reduce((n, row) => n + (row.occurrences?.length || 1), 0).toLocaleString('ko-KR')}</span>건 · {lastScan.hasMore && '상위 '}{rows.length.toLocaleString('ko-KR')}종목
                   <span className="text-fg-dim">
-                    {' '}· {lastScan.basis === 'intraday' ? '오늘 장중' : '전일 확정'}
-                    {scannedAtLabel && ` · ${scannedAtLabel} 조회`}
+                    {' '}· <span data-testid="screener-basis-time" title="조건 평가 기준 시각 (한국 시간)">{scanBasisLabel(lastScan)}</span>
                   </span>
                 </span>
               ) : (
@@ -402,18 +383,9 @@ export function Screener() {
               </StatusChip>
             ))}
             <span className="min-w-0 flex-1" />
-            {lastScan?.basis === 'intraday' && (
-              <span
-                className="inline-flex items-center gap-1.5 font-data text-xs tabular-nums text-fg-dim"
-                title="조건검색 실행 시 오늘 키움 시세를 일봉 위에 임시 반영합니다"
-              >
-                오늘 장중: 키움 시세 반영
-              </span>
-            )}
             <BarVolumeCoverage coverage={lastScan?.barCoverage} />
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
             <ScreenerUpdateProgress updating={status?.updating} />
-            <StalenessChip status={status} />
           </div>
 
           {notSeeded ? (

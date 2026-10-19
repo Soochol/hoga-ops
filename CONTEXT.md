@@ -662,7 +662,7 @@ A component-local health state on KIS REST supervisor loops such as `LiveRestPol
 _Avoid_: using component `degraded` status to mean `account_health.is_rest_degraded(account_id)`, changing scheduler account selection from a supervisor status field.
 
 **Screener**:
-`/screener` 페이지·기능 — 전 시장 일봉 코퍼스를 사용자가 **빌트인 조건 카탈로그**(거래대금·신고가·신고거래량·등락률·현재가 범위·이동평균)에서 고른 **조건**들을 A·B·C로 참조하는 **AND/OR·괄호 조합식**으로 걸러 캡처할 가치가 있는 **Code** 를 찾는다. 이 조합은 이름 붙여 **저장된 조건검색(SavedScreener)** 으로 저장/조회한다(2026-05-31 Saved Screener spec). 조회 연산은 동사 **scan**(`run_scan`); 결과 클릭은 **activeCode** 를 설정해 `/live` 호가 차트로 점프한다(Watchlist Panel 과 같은 jump-to-chart 패턴). 데이터는 `<data_dir>/screener/` 하위의 전 시장 일봉-OHLCV 코퍼스 — **원주가 아카이브**(`daily_unadjusted.parquet`, append-only 진실원천; dev-tradingview TimescaleDB 1회 시드 + KIS 일봉 append)와 거기서 split-보정으로 파생한 **수정주가 store**(`daily_adjusted.parquet`, scan 대상). 기본 API basis 는 `eod`; 풀페이지 `/screener` 의 `basis="intraday"` 는 KIS `intstock-multprice` 에서 만든 당일 OHLCV row 를 query-time overlay 로 `daily_adjusted` 위에 얹어 조건을 오늘 기준으로 평가한다(실패 시 EOD fallback warning). per-Stock-Date 캡처 산출물과 구별된다 — Screener 코퍼스는 전역·일봉 입도·다년·읽기전용 scan 대상이고, **Source**(hogaplay/kis_live) 분류 밖이다. 수정주가 SSOT 는 KIS 공식 수정주가(`FID_ORG_ADJ_PRC=0`, /live 와 동일) — 오프라인 보정의 의심 종목만 KIS 값으로 교차검증·교체한다.
+`/screener` 페이지·기능 — 전 시장 일봉 코퍼스를 사용자가 **빌트인 조건 카탈로그**(거래대금·신고가·신고거래량·등락률·현재가 범위·이동평균)에서 고른 **조건**들을 A·B·C로 참조하는 **AND/OR·괄호 조합식**으로 걸러 캡처할 가치가 있는 **Code** 를 찾는다. 이 조합은 이름 붙여 **저장된 조건검색(SavedScreener)** 으로 저장/조회한다(2026-05-31 Saved Screener spec). 조회 연산은 동사 **scan**(`run_scan`); 결과 클릭은 **activeCode** 를 설정해 `/live` 호가 차트로 점프한다(Watchlist Panel 과 같은 jump-to-chart 패턴). 데이터는 `<data_dir>/screener/` 하위의 전 시장 일봉-OHLCV 코퍼스 — **원주가 아카이브**(`daily_unadjusted.parquet`, append-only 진실원천; dev-tradingview TimescaleDB 1회 시드 + KIS 일봉 append)와 거기서 split-보정으로 파생한 **수정주가 store**(`daily_adjusted.parquet`, scan 대상). 기본 API basis 는 `eod`로 호환을 유지하며, 풀페이지·드로어의 `basis="auto"`는 서버가 최신 적용 가능한 기준을 선택한다. 장중에는 키움 `ka10095`의 OHLCV row를 query-time overlay로 `daily_adjusted` 위에 얹고, 실제 기준 시각을 응답한다(시세 실패 시 확정 데이터 대체). per-Stock-Date 캡처 산출물과 구별된다 — Screener 코퍼스는 전역·일봉 입도·다년·읽기전용 scan 대상이고, **Source**(hogaplay/kis_live) 분류 밖이다. 수정주가 SSOT 는 KIS 공식 수정주가(`FID_ORG_ADJ_PRC=0`, /live 와 동일) — 오프라인 보정의 의심 종목만 KIS 값으로 교차검증·교체한다.
 _Avoid_: "scanner" (dev-tradingview 차용어 — hoga 는 **Screener** + 동사 **scan**); 원주가 store 를 "raw" 로 (이미 `raw/{date}/{code}` = 파싱 전 hogaplay Page 의미와 충돌 — **원주가/unadjusted** 사용); 상태 파일을 `meta.json` 으로 (Stock-Date 캡처 meta.json 과 충돌 — Screener 는 `status.json`); `ohlcv_daily` (Timescale 테이블명 누수 — `daily_unadjusted`/`daily_adjusted`).
 
 **Lookback Window (N)** / **Record Period (M)**:
@@ -716,6 +716,18 @@ _Avoid_: 분봉 가격 보정을 페이지별 `base_dt`의 벤더 수정 옵션�
 백그라운드 달력 갱신은 장 시작에 재확인하고, 장중 오늘이 미확인이면 1분 간격으로
 확인될 때까지 갱신한다. 확인 후 기본 6시간 간격으로 돌아가며 조회 경로에 벤더 호출을 추가하지 않는다.
 _Avoid_: 자정 이후 전날 OHLCV를 새 날짜 봉으로 추가; 시세 일부 누락을 주·월봉 조건 미충족으로 처리.
+
+**스크리너 자동 조회 기준**:
+화면의 기준 선택은 제거하며 페이지·드로어·감시·제외 후 재조회는 `basis="auto"`를 쓴다.
+서버가 장전·휴장·달력 미확인에는 확정 데이터, 장중(KRX 재개장 포함)에는 시세를 고른다.
+장 종료 후 당일 확정 코퍼스가 준비되면 확정 데이터를 쓰고, 준비 전에는 마지막 당일 시세를 유지한다.
+API의 기존 `eod` 기본값과 명시적 `intraday`는 호환을 위해 유지한다.
+`basis_at_ms`는 실제 평가 기준 시각이며 확정 일봉은 해당 거래일 15:30, 장중 시세는
+실제 취득 시각(TTL 재사용 시 최초 취득 시각), 분봉/총잔량은 평가 시각이다.
+일부 종목에 확정 데이터를 쓰면 `fallback_basis_at_ms`도 전달하고 화면은 두 시각을 범위로 표시한다.
+기준은 조회 유니버스에서 구하므로 빈 결과에서도 제공하며, 일봉 아카이브 최신일·조회 완료
+시각(`scanned_at_ms`)·과거 조건 발생일과 구별한다. 오래된 저장 결과는 기록된 날짜만
+표시하고 시각을 만들어 넣지 않는다. CSV·결과 저장·발생 제외 후 재조회도 같은 기준을 보존한다.
 
 **주기별 거래대금·기간내 거래대금·등락률**:
 `trade_value`·`trade_value_period`·`change_pct`에도 조건별 주기와 진행 중 봉 포함을
