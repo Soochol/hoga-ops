@@ -1,0 +1,43 @@
+{
+  "implementationCommit": "6f5184328",
+  "verifiedHead": "de43ebacdbc6b58ca05fc833098f9e09e0012606",
+  "baseCommit": "989da3415b8337dcb5a3568d80a7aebc6e55fc1d",
+  "tools": {
+    "python": "3.14.7 (main, Sep 29 2026, 15:01:40) [Clang 22.1.3 ]",
+    "pytest": "9.0.3",
+    "ruff": "ruff 0.15.13"
+  },
+  "inputFingerprint": {
+    "pathspecs": [
+      "hoga",
+      "tests",
+      "pyproject.toml",
+      "uv.lock",
+      "ruff.toml",
+      ".python-version"
+    ],
+    "files": 757,
+    "sha256": "3596be5f5b0e97c97c968cb7838bbb42c2467db21134be18588ef835ea7a9f19",
+    "algorithm": "SHA256(sorted path + NUL + SHA256(bytes))"
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q tests/unit/live/test_kiwoom_cached_token_admission.py tests/unit/live/test_kiwoom_runtime.py tests/unit/live/test_token_failure_classification.py tests/unit/live/test_kiwoom_capacity.py tests/unit/live/test_kiwoom_rest_scheduling.py tests/unit/live/test_kiwoom_rest_runtime_accounts.py tests/unit/live/test_kiwoom_governor_snapshot_wire.py tests/unit/live/test_kiwoom_rest_seam.py tests/unit/live/test_kiwoom_access_seam_coverage.py tests/unit/live/test_kiwoom_trading_events.py tests/unit/live/test_kiwoom_trading_design_evidence.py tests/unit/live/test_live_candle_backfill.py tests/unit/live/test_live_daily_candle_backfill.py tests/unit/live/test_live_investor_net_backfill.py tests/unit/live/test_kiwoom_investor.py tests/unit/live/test_daily_program_trade.py tests/unit/live/test_api.py tests/unit/api/test_broker_trading.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "428 passed in 40.82s"
+    },
+    {
+      "command": ".venv/bin/python -m ruff check .",
+      "result": "passed after integrating current main"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "regressionEvidence": "New cached-token admission test fails on e410e9610 with queued=0 instead of1 after a deterministic executor scheduling gap; passes with this patch. Expiry/refresh, invalidation, disk-only miss, held provider lock and off-thread fallback covered.",
+  "mainIntegration": "Current main2155..2159 changes frontend/design only. Full backend input diff6f5184328..HEAD empty; reuse428 passes. This PR has no UI or API/wire change. Real before/after browser checks use agent frontend pinned to e410e9610, restored after measurements.",
+  "limitations": [
+    "Reproducing the timing mechanism with a synthetic competing read burst is distinct from proving the precise cause of the earlier historical5.1-second live event.",
+    "No quota/headroom/deadline/private-write behavior or retry count changed. Raw live logs, measurements and payloads stay local."
+  ]
+}
