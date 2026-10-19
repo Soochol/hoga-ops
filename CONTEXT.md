@@ -593,9 +593,9 @@ _Avoid_: "rollup" (collides with frontend aggregation like StockDateGroup rollup
 
 **Live Merged Cache (라이브 병합 캐시)**:
 브라우저 React Query에 보관하는 국내 분봉·범위 지표의 병합 이력. 종목 전환 후에도
-최근 사용한 최대 6개 닫힌 종목을 재사용하며, 공용 추정 payload 예산은 128MiB다.
+최근 사용한 최대 32개 닫힌 종목을 재사용하며, 공용 추정 payload 예산은 512MiB다.
 열린 차트가 소비 중인 identity는 용량 회수와 idle GC에서 보호한다. 사용이 끝나면
-기존 2시간 gcTime이 적용되고, 지표 병합본은 최대 24개를 보관한다(현재 소비 중인
+기존 2시간 gcTime이 적용되고, 지표 병합본은 최대 32개를 보관한다(현재 소비 중인
 항목은 예외). 용량은 배열 표본 기반 추정이며 브라우저 전체 heap 상한이 아니다.
 갱신 주기와 보관 수명은 별개이며 새로고침을 건너뛰는 영속 저장은 하지 않는다.
 개발 모드 `window.__liveCacheStats()`로 추정 크기·보호 항목 수·회수 사유를 확인한다.
