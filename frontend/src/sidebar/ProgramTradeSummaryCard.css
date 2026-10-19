@@ -1,0 +1,45 @@
+.program-daily-table {
+  --program-date-width: 4.5rem;
+  --program-cell-padding: 0.25rem;
+  table-layout: auto;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.program-daily-table :is(th, td) {
+  padding-inline: var(--program-cell-padding);
+  white-space: nowrap;
+}
+.program-daily-table .program-daily-date-column,
+.program-daily-table .program-daily-date { width: var(--program-date-width); }
+.program-daily-table .program-daily-date {
+  min-width: var(--program-date-width);
+  padding-left: 0.375rem;
+  padding-right: 0.25rem;
+}
+.program-daily-table td > span[title] { display: block; }
+@container live-data-table (max-width: 39.999rem) {
+  .program-daily-table {
+    --program-date-width: 3.5rem;
+    --program-cell-padding: 0.0625rem;
+  }
+}
+@container live-data-table (max-width: 29.999rem) {
+  .program-daily-table { --program-date-width: 3rem; }
+}
+
+.program-trade-card { container: program-trade / inline-size; }
+.program-trade-content { padding-inline: 0.75rem; }
+.program-metric-strip {
+  width: 100%;
+  min-width: max-content;
+  grid-template-columns: repeat(3, minmax(max-content, 1fr));
+}
+.program-metric { padding-inline: 0.5rem; }
+@container program-trade (max-width: 39.999rem) {
+  .program-trade-content { padding-inline: 0.5rem; }
+  .program-metric { padding-inline: 0.25rem; }
+}
+@container program-trade (max-width: 29.999rem) {
+  .program-trade-content { padding-inline: 0.375rem; }
+  .program-metric { padding-inline: 0.0625rem; }
+}

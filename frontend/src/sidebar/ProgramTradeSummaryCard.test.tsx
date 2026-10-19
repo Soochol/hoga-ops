@@ -20,6 +20,10 @@ beforeEach(() => {
 });
 const T0 = Date.UTC(2026, 6, 21, 0, 0, 0); // = KST 09:00
 
+function expectDailyCells(row: HTMLElement, values: string[]) {
+  expect(within(row).getAllByRole('cell').map(cell => cell.textContent)).toEqual(values);
+}
+
 function point(
   t: number,
   net_amount: number | null,
@@ -245,7 +249,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
     const row = screen.getByTestId('program-daily-row-20260721');
     expect(row).toHaveClass('bg-tint-selection');
     expect(row).toHaveTextContent('07-21');
-    expect(row).toHaveTextContent('+9·203·194');
+    expectDailyCells(row, ['+9', '203', '194']);
     expect(row.querySelector('td')).not.toHaveClass('border-l');
     expect(screen.getByText('누적 1일')).toBeInTheDocument();
     expect(screen.getAllByTitle('총매수 203,000주')).toHaveLength(2);
@@ -286,12 +290,12 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expect(screen.getByRole('button', { name: '금액' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('button', { name: 'K 단위' })).not.toBeInTheDocument();
     const row = screen.getByTestId('program-daily-row-20260721');
-    expect(row).toHaveTextContent('-1·2·3');
+    expectDailyCells(row, ['-1', '2', '3']);
     expect(screen.getByText('단위: 억원')).toBeInTheDocument();
     expect(screen.getByText('단위: 억원').closest('.responsive-data-controls')).toContainElement(screen.getByRole('button', { name: '일별' }));
     expect(screen.getByRole('table')).not.toHaveTextContent(/[K억]/);
     const foot = screen.getByRole('rowheader', { name: '누적 2일' }).closest('tr')!;
-    expect(foot).toHaveTextContent('+1·5·4');
+    expectDailyCells(foot, ['+1', '5', '4']);
 
     for (const [label, value, total] of [['순매수', '-1', '+1'], ['총매수', '2', '5'], ['총매도', '3', '4']]) {
       fireEvent.click(screen.getByRole('button', { name: label }));
@@ -300,16 +304,16 @@ describe('ProgramTradeSummaryCard — render states', () => {
     }
     fireEvent.click(screen.getByRole('button', { name: '모두' }));
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
-    expect(row).toHaveTextContent('−1·2·3');
+    expectDailyCells(row, ['−1', '2', '3']);
     expect(screen.getByText('단위: 천 주')).toBeInTheDocument();
-    expect(foot).toHaveTextContent('+1·5·4');
+    expectDailyCells(foot, ['+1', '5', '4']);
     fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
-    expect(row).toHaveTextContent('-1,000·2,000·3,000');
+    expectDailyCells(row, ['-1,000', '2,000', '3,000']);
     expect(screen.getByText('단위: 주')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '당일 누적' }));
     expect(screen.getByRole('button', { name: '수량' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '일별' }));
-    expect(screen.getByTestId('program-daily-row-20260721')).toHaveTextContent('-1,000·2,000·3,000');
+    expectDailyCells(screen.getByTestId('program-daily-row-20260721'), ['-1,000', '2,000', '3,000']);
     expect(localStorage.getItem('live.programTradeDisplay.v1')).toContain('"measure":"qty"');
   });
 
@@ -322,12 +326,12 @@ describe('ProgramTradeSummaryCard — render states', () => {
     ]} />);
     const row = screen.getByTestId('program-daily-row-20260721');
     expect(within(row).getAllByText('—')).toHaveLength(3);
-    expect(screen.getByTestId('program-daily-row-20260720')).toHaveTextContent('0·0·0');
+    expectDailyCells(screen.getByTestId('program-daily-row-20260720'), ['0', '0', '0']);
     const foot = screen.getByRole('rowheader', { name: '누적 2일' }).closest('tr')!;
     expect(within(foot).getAllByText('—')).toHaveLength(3);
     fireEvent.click(screen.getByRole('button', { name: '수량' }));
-    expect(row).toHaveTextContent('+1·2·1');
-    expect(foot).toHaveTextContent('+1·2·1');
+    expectDailyCells(row, ['+1', '2', '1']);
+    expectDailyCells(foot, ['+1', '2', '1']);
   });
 
   it('keeps both controls available while daily data loads, fails or is empty', () => {

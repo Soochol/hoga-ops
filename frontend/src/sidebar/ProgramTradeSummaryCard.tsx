@@ -9,9 +9,11 @@ import type { DailyProgramTradePoint } from '../api/liveDailyProgramTrade';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
 import { InvestorDailySummaryCell } from '../live/workspace/InvestorDailySummaryCell';
+import { InvestorDailyNumber } from '../live/workspace/InvestorDailyNumber';
 import { formatAmount } from './InvestorTrendEstimateCardHelpers';
 import { useProgramTradeDisplayStore, type ProgramTradeMeasure, type ProgramDailyDisplay } from '../state/programTradeDisplay';
 import { type SparkPoint, buildTimeGapSegments, pickProgramTradePoint } from './ProgramTradeSummaryCardHelpers';
+import './ProgramTradeSummaryCard.css';
 
 
 /** 스파크라인 점선(관측 공백) 판정 임계. 수집 주기(program_trade_collector
@@ -117,23 +119,25 @@ export default function ProgramTradeSummaryCard({
   const anchorT = point?.t ?? effectiveCursor ?? latest?.t ?? 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-3 py-2 font-data text-xs">
-      <div className="min-h-0 flex-1 overflow-auto">
+    <div className="program-trade-card flex h-full min-h-0 flex-col py-2 font-data text-xs">
+      <div className="program-trade-content min-h-0 flex-1 overflow-auto">
         <div className="flex h-full min-h-[132px] flex-col">
           <ProgramTradeControls view="intraday" onSelect={setView} />
+          <div className="shrink-0 overflow-x-auto" aria-label="프로그램 누적 요약">
           <div
             data-testid="program-metric-strip"
-            className="mt-1 grid grid-cols-3 divide-x divide-border py-1 tabular-nums"
+            className="program-metric-strip mt-1 grid divide-x divide-border py-1 tabular-nums"
           >
             {(['net', 'buy', 'sell'] as const).map((candidate) => {
               const value = programValue(point, candidate, measure);
-              return <div key={candidate} className="min-w-0 px-2 text-center first:pl-0 last:pr-0">
-                <span className="block truncate text-xs text-fg-dim">{METRIC_LABELS[candidate]}</span>
-                <span className={`mt-0.5 block truncate ${candidate === 'net' ? 'font-semibold' : 'font-normal'} ${programValueClass(candidate, value)}`}>
+              return <div key={candidate} className="program-metric whitespace-nowrap text-center first:pl-0 last:pr-0">
+                <span className="block text-xs text-fg-dim">{METRIC_LABELS[candidate]}</span>
+                <span className={`mt-0.5 block ${candidate === 'net' ? 'font-semibold' : 'font-normal'} ${programValueClass(candidate, value)}`}>
                   {formatProgramValue(value, candidate, measure)}
                 </span>
               </div>;
             })}
+          </div>
           </div>
           <ProgramTradeSparkline
             points={points}
@@ -230,19 +234,19 @@ function ProgramDailySummary({
     return {
       date: realMsToYyyymmdd(row.t_ms),
       cells: <>
-        <th scope="row" className="sticky left-0 z-10 whitespace-nowrap bg-bg-card px-1.5 py-1 text-left font-normal text-fg-dim">
+        <th scope="row" className="program-daily-date sticky left-0 z-10 bg-bg-card py-1 text-left font-normal text-fg-dim">
           {formatDailyDate(row.t_ms)}
         </th>
         {display === 'all'
-          ? <InvestorDailySummaryCell values={values} unit={unit} useK={useK} divided={false} showUnitSuffix={false} />
-          : <ProgramDailyValueCell value={values[display]} side={display} format={format} />}
+          ? <InvestorDailySummaryCell values={values} unit={unit} useK={useK} divided={false} showUnitSuffix={false} separateColumns />
+          : <ProgramDailyValueCell value={values[display]} side={display} format={format} amount={measure === 'amount'} />}
       </>,
     };
   }), [rows, display, measure, unit, useK, format]);
   const totalCells = useMemo(() => display === 'all'
-    ? <InvestorDailySummaryCell values={totals} unit={unit} useK={useK} foot divided={false} showUnitSuffix={false} />
-    : <ProgramDailyValueCell value={totals[display]} side={display} format={format} foot />,
-  [display, totals, unit, useK, format]);
+    ? <InvestorDailySummaryCell values={totals} unit={unit} useK={useK} foot divided={false} showUnitSuffix={false} separateColumns />
+    : <ProgramDailyValueCell value={totals[display]} side={display} format={format} amount={measure === 'amount'} foot />,
+  [display, totals, unit, useK, format, measure]);
   useEffect(() => {
     if (!followCursor || cursorDate === null) return;
     const targetKey = `${span}:${cursorDate}`;
@@ -299,15 +303,18 @@ function ProgramDailySummary({
       {error ? <SidebarState>일별 프로그램 조회 실패</SidebarState>
         : loading && rows.length === 0 ? <SidebarState>일별 프로그램 조회 중</SidebarState>
           : rows.length === 0 ? <SidebarState>일별 프로그램 데이터 없음</SidebarState>
-            : <table className="w-full border-collapse font-data text-xs tabular-nums">
+            : <table className="program-daily-table w-full font-data text-xs tabular-nums">
+              <colgroup><col className="program-daily-date-column" /><col span={display === 'all' ? 3 : 1} /></colgroup>
               <thead className="sticky top-0 z-20 text-fg-dim"><tr>
-                <th className="sticky left-0 z-10 whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-left font-medium">날짜</th>
-                <th className="whitespace-nowrap border-b border-border bg-bg-card px-1.5 py-1 text-center font-medium">프로그램 {display === 'all' ? <span className="ml-1 font-normal">순·매수·매도</span> : labels[display]}</th>
+                <th scope="col" className="program-daily-date sticky left-0 z-10 border-b border-border bg-bg-card py-1 text-left font-medium">날짜</th>
+                {(display === 'all' ? ['net', 'buy', 'sell'] as const : [display]).map(side => (
+                  <th key={side} scope="col" className="border-b border-border bg-bg-card py-1 text-right font-medium">{labels[side]}</th>
+                ))}
               </tr></thead>
               <tbody>{rowContents.map(({ date, cells }) => <ProgramDailyRow key={date} date={date}
                 isCursor={followCursor && cursorDate === date} cells={cells} />)}</tbody>
               <tfoot className="sticky bottom-0 z-20"><tr>
-                <th scope="row" className="sticky left-0 z-10 whitespace-nowrap border-t border-border bg-bg-card px-1.5 py-1 text-left font-medium">
+                <th scope="row" className="program-daily-date sticky left-0 z-10 border-t border-border bg-bg-card py-1 text-left font-medium">
                   누적 {rows.length}일
                 </th>
                 {totalCells}
@@ -348,16 +355,17 @@ function programDailyValues(row: DailyProgramTradePoint, measure: ProgramTradeMe
 }
 
 
-function ProgramDailyValueCell({ value, side, format, foot = false }: {
+function ProgramDailyValueCell({ value, side, format, amount, foot = false }: {
   value: number | null;
   side: ProgramTradeMetric;
   format: (value: number | null) => string;
+  amount: boolean;
   foot?: boolean;
 }) {
-  return <td className={`whitespace-nowrap px-1.5 py-1 text-right ${
+  return <td className={`whitespace-nowrap py-1 text-right ${
     foot ? 'border-t border-border bg-bg-card font-medium' : ''
   } ${programValueClass(side, value)}`}>
-    {formatProgramDailyValue(value, side, format)}
+    <InvestorDailyNumber text={formatProgramDailyValue(value, side, format)} amount={amount} />
   </td>;
 }
 
