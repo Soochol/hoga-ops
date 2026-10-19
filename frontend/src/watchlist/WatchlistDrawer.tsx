@@ -50,10 +50,10 @@ import { DragPanelAssist } from './DragPanelAssist';
 import { folderItems, planTransfer, planMembershipRemoval, type TransferSource } from './transferItems';
 import { useWatchlistTransfer, WATCHLIST_TRANSFER_NOTICE_MS } from './useWatchlistTransfer';
 import { WatchlistTransferToast } from './WatchlistTransferToast';
-import { RailDragOverlay } from '../rightrail/RailDragOverlay';
+import { RailDragOverlay, type RailDragOverlayRect } from '../rightrail/RailDragOverlay';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+import { CSS, useCombinedRefs, useNodeRef } from '@dnd-kit/utilities';
 import type { WatchlistEntry, WatchlistMemo } from '../api/watchlist';
 import { WATCHLIST_MEMO_MAX_LEN } from '../api/watchlist';
 import { MemoRow } from './MemoRow';
@@ -364,8 +364,11 @@ function SortableGroup({ folderId, children, disabled }: {
   disabled?: boolean;
   children: (handle: GroupDragHandle) => React.ReactNode;
 }) {
+  const [headerRef, setHeaderNodeRef] = useNodeRef();
+  const getOverlayRect = useCallback(() => headerRef.current?.getBoundingClientRect(), [headerRef]);
   const { setNodeRef, setActivatorNodeRef, transform, transition, listeners, attributes, isDragging } =
-    useSortable({ id: folderId, disabled, data: { type: 'folder' } });
+    useSortable({ id: folderId, disabled, data: { type: 'folder', getOverlayRect } });
+  const setHeaderRef = useCombinedRefs(setActivatorNodeRef, setHeaderNodeRef);
   return (
     <div ref={setNodeRef} data-testid={`watchlist-group-${folderId}`}
       style={{
@@ -379,7 +382,7 @@ function SortableGroup({ folderId, children, disabled }: {
         // 겹치지 않는 루트 레벨 값이다.
         ...(isDragging ? { opacity: 0.6, position: 'relative', zIndex: 30 } : {}),
       }}>
-      {children({ listeners, attributes, setActivatorNodeRef, isDragging })}
+      {children({ listeners, attributes, setActivatorNodeRef: setHeaderRef, isDragging })}
     </div>
   );
 }
@@ -572,7 +575,7 @@ type DragGhost =
       expectedPrice: number | null; expectedPct: number | null;
     }
   | { kind: 'memo'; text: string }
-  | { kind: 'folder'; label: string; count: number };
+  | { kind: 'folder'; label: string; count: number; sortMode: QuoteSortMode; initialRect?: RailDragOverlayRect };
 
 const GHOST_NOOP = () => {};
 
@@ -601,7 +604,7 @@ const GHOST_NOOP = () => {};
  * 그래서 폴더 고스트는 **블록 클론이 아니라 헤더 한 줄짜리 칩**이다. 클론이 아닌 이유는
  * 크기가 아니라 정보다: 22종목 그룹의 클론은 패널 높이의 93%(실측 579/622px)를 가리면서
  * 정작 "무엇을 잡았나"는 이름 한 줄로 충분하다. 칩으로 좁히려면 래퍼의 rect 도 같이
- * 좁혀야 하므로 `fitContent` 를 켠다(그 prop 주석 참조).
+ * 좁혀야 하므로 드래그 시작 직전 헤더의 rect를 오버레이에 넘긴다.
  */
 function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
   if (ghost.kind === 'entry' && ghost.bulk) return (
@@ -612,9 +615,15 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
     // 한다. `<li>` 인 이유는 래퍼가 `wrapperElement="ul"` 이기 때문(행 고스트와 동일).
     return (
       <li data-testid="watchlist-drag-ghost"
-        className="flex items-baseline gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim">
-        <span className="truncate">{ghost.label}</span>
-        <span className="flex-none text-xs font-normal text-fg-dim">{ghost.count}</span>
+        className="flex h-full items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim">
+        <span className="grid h-6 w-6 shrink-0 place-items-center"><ChevronIcon collapsed /></span>
+        <span className="flex-1 min-w-0 flex items-baseline gap-1.5">
+          <span className="truncate">{ghost.label}</span>
+          <span className="flex-none text-xs font-normal text-fg-dim">{ghost.count}</span>
+        </span>
+        <span className={`grid h-6 w-6 shrink-0 place-items-center ${ghost.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
+          <QuoteSortIcon mode={ghost.sortMode} />
+        </span>
       </li>
     );
   }
@@ -1166,22 +1175,15 @@ export function WatchlistDrawer() {
    * 그룹(폴더) 드래그가 진행 중인가 — 진행 중이면 **모든 그룹을 헤더만 남기고 접어**
    * 렌더한다(아래 `isCollapsed`).
    *
-   * **왜**: 그룹 블록은 높이가 제각각이다(실측 129·154·179·204·579px, 패널 뷰포트는
-   * 622px). `verticalListSortingStrategy` + `closestCenter` 는 **균일 높이 리스트**를
-   * 전제로 중심점 거리를 재므로, 129px 그룹을 579px 그룹 위로 보내려면 중심이 만날
-   * 때까지 ~500px 을 끄는 동안 화면에 아무 변화가 없다가 한 번에 733px 이 점프한다.
-   * 전부 접으면 모든 항목이 헤더 높이 하나로 균일해지고(29px × N), 5개 그룹이 145px 에
-   * 들어와 스크롤·오토스크롤 없이 **재배치 결과 전체가 한눈에** 보인다. dnd-kit 공식
-   * sortable-tree 예제가 같은 이유로 드래그 중 하위를 접는다.
+   * 그룹 블록은 높이가 제각각이고 긴 종목 목록이 다른 그룹을 가린다. 전부 접으면
+   * 그룹 이름과 순서가 한눈에 보여 이동할 위치를 고르기 쉽다.
    *
    * **저장된 접힘 상태(`collapsed`)는 건드리지 않는다** — 렌더 시점 오버라이드다.
    * 드래그가 끝나면 사용자가 펼쳐 두었던 그룹이 그대로 돌아온다.
    *
-   * **비용(알고 넣는 것)**: 드래그 시작 순간 리스트가 접히면서, 아래쪽 그룹을 잡았을
-   * 경우 커서가 짧아진 리스트 **바깥**에 남는다. 고스트 칩은 커서에 붙어 있고 충돌
-   * 판정도 그 칩 기준이라(=보이는 것이 겨냥되는 것) 조작은 성립하지만, 시작 시점의
-   * 점프는 남는다. 접힘에 트랜지션을 걸지 않는 이유도 같다 — 행을 언마운트해야
-   * 드롭 타깃 rect 가 새로 측정되므로, 높이 애니메이션은 측정과 경합만 한다.
+   * 접힌 뒤에는 아래쪽 그룹 위치와 scrollTop이 바뀐다. 고스트의 시작 rect는
+   * onDragStart에서 접히기 전 헤더를 측정해 고정하므로 커서를 벗어나지 않는다.
+   * 접힘에 트랜지션을 걸면 드롭 타깃 재측정과 경합하므로 즉시 접는다.
    */
   const folderDragActive = dragGhost?.kind === 'folder';
   // 직전 드롭이 차트 위였는가 — true 면 낙하 애니메이션을 끈다(onDragEnd 주석 참조).
@@ -1257,7 +1259,11 @@ export function WatchlistDrawer() {
     if (d?.type === 'folder') {
       const g = renderGroups.find((x) => x.folder?.id === String(ev.active.id));
       if (g) {
-        setDragGhost({ kind: 'folder', label: g.label, count: g.count });
+        // 이 콜백의 상태 변경이 커밋되기 전, sticky 헤더의 실제 위치를 한 번 읽는다.
+        // 그룹 블록 rect는 스크롤로 화면 위에 숨을 수 있어 헤더 좌표를 대신할 수 없다.
+        const rect = d.getOverlayRect?.() as DOMRect | undefined;
+        setDragGhost({ kind: 'folder', label: g.label, count: g.count, sortMode: g.sortMode,
+          initialRect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : undefined });
         return;
       }
     }
@@ -1519,7 +1525,8 @@ export function WatchlistDrawer() {
             })}
           </SortableContext>
           {/* 커서를 따라오는 고스트(P1) — 포털·낙하 애니메이션 결정은 공용 껍데기가 갖는다. */}
-          <RailDragOverlay droppedOnChart={ghostDroppedOnChart} fitContentHeight={folderDragActive}>
+          <RailDragOverlay droppedOnChart={ghostDroppedOnChart} fitContentHeight={folderDragActive}
+            initialRect={dragGhost?.kind === 'folder' ? dragGhost.initialRect : undefined}>
             {dragGhost && <WatchlistDragGhost ghost={dragGhost} />}
           </RailDragOverlay>
         </DndContext>
