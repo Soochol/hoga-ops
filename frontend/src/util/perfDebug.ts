@@ -9,8 +9,8 @@ export function livePerfDebugEnabled(): boolean {
 
 export function livePerfLog(event: string, payload: Record<string, unknown>): void {
   if (!livePerfDebugEnabled()) return;
-  console.info(`[hoga-perf] ${event}`, {
+  console.info(`[hoga-perf] ${event} ${JSON.stringify({
     ts: new Date().toISOString(),
     ...payload,
-  });
+  })}`);
 }

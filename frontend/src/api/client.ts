@@ -77,6 +77,7 @@ export async function apiCall<T>(path: string, init?: RequestInit): Promise<T> {
   const perfEnabled = livePerfDebugEnabled();
   const t0 = perfEnabled ? performance.now() : 0;
   try {
+    if (perfEnabled) livePerfLog('api_call_start', { method: init?.method ?? 'GET', path });
     const r = await fetch(url, init);
     if (!r.ok) throw await buildApiError(r, path);
     const out = await r.json() as T;

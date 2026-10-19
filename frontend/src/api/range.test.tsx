@@ -2584,6 +2584,39 @@ describe('useRangeSidecarDelta — 창이 좁아지면 **어느 경로로 나오
 
 describe('range history during interaction', () => {
   beforeEach(() => { vi.restoreAllMocks(); useLiveVenueStore.setState({ venue: 'KRX' }); });
+  it.each(['hoga', 'sidecar'] as const)('restores %s without inventing a fetch timestamp on parent renders', async (mode) => {
+    const today = '20260706';
+    const nowMs = Date.UTC(2026, 6, 6, 1);
+    const now = vi.spyOn(Date, 'now').mockReturnValue(nowMs);
+    const fetchedAt = nowMs - 1000;
+    const options = { mode };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedSymbolMaster(qc);
+    const identity = planSidecarRangeDelta({ code: '005930', from: '20260629', to: today,
+      timeframe: '1m', todayKst: today, sourcePref: 'kiwoom_live', venue: 'KRX', options }).identity;
+    const key = mergedLiveRangeKey(identity);
+    const bundle = { ...fakeBundle, code: '005930', from_date: '20260629', to_date: today };
+    qc.setQueryData(key, bundle, { updatedAt: fetchedAt });
+    const calls = vi.spyOn(client, 'apiCall');
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    let renders = 0;
+    const { result, rerender, unmount } = renderHook(() => {
+      renders++;
+      if (renders > 100) throw new Error('restored range render loop');
+      return (mode === 'hoga' ? useRangeHogaDelta : useRangeSidecarDelta)(
+        '005930', '20260629', today, '1m', undefined, today, options, 'kiwoom_live');
+    }, { wrapper });
+    await waitFor(() => expect(result.current.data).toBe(bundle));
+    for (let i = 1; i <= 10; i++) {
+      now.mockReturnValue(nowMs + i * 1000);
+      rerender();
+    }
+    expect(qc.getQueryState(key)?.dataUpdatedAt).toBe(fetchedAt);
+    expect(calls).not.toHaveBeenCalled();
+    expect(renders).toBeLessThan(25);
+    unmount(); qc.clear();
+  });
+
   it.each(['hoga', 'sidecar'] as const)('keeps %s history stable during parent renders after a today refresh', async (mode) => {
     const today = '20260706';
     const now = vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 6, 6, 1));

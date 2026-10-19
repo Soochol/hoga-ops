@@ -89,7 +89,9 @@ class LiveInvestorNetBackfill:
                     # 축이 키에 든다 — 빠지면 두 축의 같은 구간이 서로를 중복제거한다.
                     key=("live-investor-net", self._axis, self._trade_side, code_, from_s, to_s, page_idx),
                     api_id="ka10059",
-                    priority="background",
+                    # This walk is requested by an open chart/data window.
+                    # Polling/capture traffic must yield while the user waits.
+                    priority="user_visible",
                     client=client,
                     fetch_fn=fetch_fn,
                 )
