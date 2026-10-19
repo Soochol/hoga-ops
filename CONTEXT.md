@@ -662,7 +662,7 @@ A component-local health state on KIS REST supervisor loops such as `LiveRestPol
 _Avoid_: using component `degraded` status to mean `account_health.is_rest_degraded(account_id)`, changing scheduler account selection from a supervisor status field.
 
 **Screener**:
-`/screener` 페이지·기능 — 전 시장 일봉 코퍼스를 사용자가 **빌트인 조건 카탈로그**(거래대금·신고가·신고거래량·등락률·현재가 범위·이동평균)에서 고른 **조건**들의 **AND 조합**으로 걸러 캡처할 가치가 있는 **Code** 를 찾는다. 이 조합은 이름 붙여 **저장된 조건검색(SavedScreener)** 으로 저장/조회한다(2026-05-31 Saved Screener spec). 조회 연산은 동사 **scan**(`run_scan`); 결과 클릭은 **activeCode** 를 설정해 `/live` 호가 차트로 점프한다(Watchlist Panel 과 같은 jump-to-chart 패턴). 데이터는 `<data_dir>/screener/` 하위의 전 시장 일봉-OHLCV 코퍼스 — **원주가 아카이브**(`daily_unadjusted.parquet`, append-only 진실원천; dev-tradingview TimescaleDB 1회 시드 + KIS 일봉 append)와 거기서 split-보정으로 파생한 **수정주가 store**(`daily_adjusted.parquet`, scan 대상). 기본 API basis 는 `eod`; 풀페이지 `/screener` 의 `basis="intraday"` 는 KIS `intstock-multprice` 에서 만든 당일 OHLCV row 를 query-time overlay 로 `daily_adjusted` 위에 얹어 조건을 오늘 기준으로 평가한다(실패 시 EOD fallback warning). per-Stock-Date 캡처 산출물과 구별된다 — Screener 코퍼스는 전역·일봉 입도·다년·읽기전용 scan 대상이고, **Source**(hogaplay/kis_live) 분류 밖이다. 수정주가 SSOT 는 KIS 공식 수정주가(`FID_ORG_ADJ_PRC=0`, /live 와 동일) — 오프라인 보정의 의심 종목만 KIS 값으로 교차검증·교체한다.
+`/screener` 페이지·기능 — 전 시장 일봉 코퍼스를 사용자가 **빌트인 조건 카탈로그**(거래대금·신고가·신고거래량·등락률·현재가 범위·이동평균)에서 고른 **조건**들을 A·B·C로 참조하는 **AND/OR·괄호 조합식**으로 걸러 캡처할 가치가 있는 **Code** 를 찾는다. 이 조합은 이름 붙여 **저장된 조건검색(SavedScreener)** 으로 저장/조회한다(2026-05-31 Saved Screener spec). 조회 연산은 동사 **scan**(`run_scan`); 결과 클릭은 **activeCode** 를 설정해 `/live` 호가 차트로 점프한다(Watchlist Panel 과 같은 jump-to-chart 패턴). 데이터는 `<data_dir>/screener/` 하위의 전 시장 일봉-OHLCV 코퍼스 — **원주가 아카이브**(`daily_unadjusted.parquet`, append-only 진실원천; dev-tradingview TimescaleDB 1회 시드 + KIS 일봉 append)와 거기서 split-보정으로 파생한 **수정주가 store**(`daily_adjusted.parquet`, scan 대상). 기본 API basis 는 `eod`; 풀페이지 `/screener` 의 `basis="intraday"` 는 KIS `intstock-multprice` 에서 만든 당일 OHLCV row 를 query-time overlay 로 `daily_adjusted` 위에 얹어 조건을 오늘 기준으로 평가한다(실패 시 EOD fallback warning). per-Stock-Date 캡처 산출물과 구별된다 — Screener 코퍼스는 전역·일봉 입도·다년·읽기전용 scan 대상이고, **Source**(hogaplay/kis_live) 분류 밖이다. 수정주가 SSOT 는 KIS 공식 수정주가(`FID_ORG_ADJ_PRC=0`, /live 와 동일) — 오프라인 보정의 의심 종목만 KIS 값으로 교차검증·교체한다.
 _Avoid_: "scanner" (dev-tradingview 차용어 — hoga 는 **Screener** + 동사 **scan**); 원주가 store 를 "raw" 로 (이미 `raw/{date}/{code}` = 파싱 전 hogaplay Page 의미와 충돌 — **원주가/unadjusted** 사용); 상태 파일을 `meta.json` 으로 (Stock-Date 캡처 meta.json 과 충돌 — Screener 는 `status.json`); `ohlcv_daily` (Timescale 테이블명 누수 — `daily_unadjusted`/`daily_adjusted`).
 
 **Lookback Window (N)** / **Record Period (M)**:
@@ -703,7 +703,8 @@ _Avoid_: N/M을 주기와 무관하게 거래일로 해석; 일봉 거래량 보
 분봉은 KRX 정규장 원주가를 받아 모든 과거 페이지에 동일한 최신 기준일의 수정계수를
 적용하고, 분봉 거래량은 원본을 유지한다. 계수 미확인 구간은 가격 비교에 사용하지 않는다.
 가격 발생의 `bar_price_match`에는 주기·기준가격·평가값·비교값·창 시작·진행 상태·조회 시각을
-보존하며 CSV와 봉별 제외에도 전달한다. 조건 간 AND는 종목 교집합이고 발생 시각 일치는 요구하지 않는다.
+보존하며 CSV와 봉별 제외에도 전달한다. 조건 간 AND는 종목 교집합, OR는 종목 합집합이며 발생 시각 일치는 요구하지 않는다.
+조합식 미지정은 기존 전체 AND다. 괄호가 먼저, AND가 OR보다 우선하며 미참조 조건은 평가하지 않는다.
 _Avoid_: 분봉 가격 보정을 페이지별 `base_dt`의 벤더 수정 옵션으로 대체;
 분봉 거래량에 가격 계수를 적용; 고가 근접도를 종가 근접도로 변경; 진행 중 이평 충족을 영구 발생으로 고정.
 
@@ -739,7 +740,7 @@ Screener 의 신고 사건 — 어떤 날의 값이 직전 **Record Period** 최
 _Avoid_: 일반 개념을 "신고가" 단독으로 (거래량도 포함 — **Breakout**); strict `>` 해석(동점 포함 `>=`); **거래대금**(가격×거래량)을 Breakout 으로 (그건 임계값 가족 — **거래대금** 참조).
 
 **Condition (조건)** / **빌트인 조건 카탈로그**:
-Screener 가 제공하는 **빌트인 조건 타입**의 파라미터화된 인스턴스. 카탈로그 9종 — `trade_value`(거래대금), `trade_value_period`(기간내 거래대금), `new_high_today`(신고가/당일), `new_high`(기간내 신고가), `new_high_vol_today`(신고거래량/당일), `new_high_vol`(기간내 신고거래량), `change_pct`(등락률), `price_range`(현재가 범위), `ma`(이동평균). 사용자는 같은 타입을 **중복 추가**할 수 있고(기간내 신고가 200·500 AND 20·60), 전부 **AND** 로 조합한다(v1; OR/그룹은 backlog). 평가 기준은 **수정주가**·**거래일**. `basis=eod` 에서는 수정주가 store 의 최신 거래일 행이 기준이고, `basis=intraday` 에서는 당일 KIS OHLCV overlay row 가 있으면 그 row 가 최신 거래일처럼 참여한다. 대부분 조건은 **최신 거래일 행**에 대해 평가하지만, **돌파 가족**(신고가/신고거래량)은 **Lookback Window** 내 **Breakout** 이력으로, **`trade_value_period`** 는 최근 N거래일 또는 시작일·종료일을 지정한 날짜 범위 내 임계값 도달 이력으로 평가한다. 최근 거래일 방식에서는 "당일"=N=1 과 "기간내"=N≥1 두 변형을 갖는다. 백엔드는 조건별 **Code**·실제 발생일을 보존하고 제외된 발생 건을 제거한 `cond_i` CTE를 SEMI JOIN(=AND)한다. 모든 조건에 발생 건이 남은 종목만 결과 상한에 포함하며, `occurrences`에는 남은 전체 발생일을 반환한다. **전역 사전필터**(시장·ETF제외·거래정지제외)는 조건이 아니라 코퍼스를 제한하는 별도 축이며, intraday overlay KIS fetch 전에 먼저 적용된다.
+Screener 가 제공하는 **빌트인 조건 타입**의 파라미터화된 인스턴스. 카탈로그 9종 — `trade_value`(거래대금), `trade_value_period`(기간내 거래대금), `new_high_today`(신고가/당일), `new_high`(기간내 신고가), `new_high_vol_today`(신고거래량/당일), `new_high_vol`(기간내 신고거래량), `change_pct`(등락률), `price_range`(현재가 범위), `ma`(이동평균). 사용자는 같은 타입을 **중복 추가**할 수 있고(기간내 신고가 200·500 AND 20·60), A·B·C 문자와 **AND/OR·괄호 조합식**으로 결합한다(미지정은 전체 AND). 평가 기준은 **수정주가**·**거래일**. `basis=eod` 에서는 수정주가 store 의 최신 거래일 행이 기준이고, `basis=intraday` 에서는 당일 KIS OHLCV overlay row 가 있으면 그 row 가 최신 거래일처럼 참여한다. 대부분 조건은 **최신 거래일 행**에 대해 평가하지만, **돌파 가족**(신고가/신고거래량)은 **Lookback Window** 내 **Breakout** 이력으로, **`trade_value_period`** 는 최근 N거래일 또는 시작일·종료일을 지정한 날짜 범위 내 임계값 도달 이력으로 평가한다. 최근 거래일 방식에서는 "당일"=N=1 과 "기간내"=N≥1 두 변형을 갖는다. 백엔드는 조건별 **Code**·실제 발생일을 보존하고 제외된 발생 건을 제거한 `cond_i` CTE의 종목 존재 여부를 조합식으로 결합한다(기존 미지정 AND는 SEMI JOIN 유지). 조합식이 참인 종목만 결과 상한에 포함하며, `occurrences`에는 남은 전체 발생일을 반환한다. **전역 사전필터**(시장·ETF제외·거래정지제외)는 조건이 아니라 코퍼스를 제한하는 별도 축이며, intraday overlay KIS fetch 전에 먼저 적용된다.
 _Avoid_: 시장/ETF/정지 필터를 "조건" 으로 (그건 **전역 사전필터**); "factor"·"지표" 같은 모호어 (— **Condition** + type 키); 라벨 "신고가"/"신고거래량"(=당일, N=1) 과 "기간내 …"(N≥1) 혼동.
 
 **전역 사전필터 (Universe) / 약칭 "사전필터"**:

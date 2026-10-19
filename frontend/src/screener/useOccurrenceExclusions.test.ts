@@ -26,6 +26,19 @@ const excluded: ScreenerExclusion = { id: '1', condition_key: 'value', code: '00
   date: '2026-09-09', condition: { id: 'old-id', type: 'trade_value_period', params: { lookback: 3, min_eok: 1 } }, created_at_ms: 1 };
 
 describe('cached/in-flight occurrence filtering', () => {
+  it('keeps an OR match when another branch loses its final occurrence', () => {
+    const request = { conditions: [
+      { id: 'v', type: 'trade_value_period', params: { lookback: 3, min_eok: 1 } },
+      { id: 'h', type: 'new_high', params: { lookback: 3, period: 2 } },
+    ], expression: 'A OR B' };
+    const input = { ...scan, requestJson: JSON.stringify(request) };
+    const remaining = pruneExcludedRows(input, [excluded, { ...excluded, date: '2026-09-08' }]);
+    expect(remaining.rows).toHaveLength(1);
+    expect(remaining.rows[0].occurrences?.map(o => o.condition_id)).toEqual(['h']);
+    expect(pruneExcludedRows(remaining, [{ ...excluded, condition_key: 'high' }]).rows).toEqual([]);
+    expect(pruneExcludedRows({ ...input, requestJson: JSON.stringify({ ...request, expression: 'A AND B' }) },
+      [excluded, { ...excluded, date: '2026-09-08' }]).rows).toEqual([]);
+  });
   it('removes only the matching date/meaning and exports the remaining evidence', () => {
     const result = pruneExcludedRows(scan, [excluded]);
     expect(result.rows[0].occurrences).toEqual(scan.rows[0].occurrences!.slice(1));

@@ -4,6 +4,7 @@ import type { SavedScreener } from '../api/savedScreeners';
 import { persistScreenerDraft, readScreenerDraft } from './screenerDraft';
 import { persistJson, readJsonObject } from '../state/persist';
 import { includeOpenBars } from './candlePolicy';
+import { reconcileExpression } from './conditionExpression';
 
 // 마지막으로 앵커된 저장 조건검색 id — 페이지 재진입 시 자동 로드의 씨앗.
 // screenerDraft.v1(라이브 빌더 미러)과 달리 마지막 "비-null 앵커"만 기억한다:
@@ -23,6 +24,8 @@ function persistAnchorId(id: string): void {
 }
 
 export interface SaveAnchor {
+  expression: string | null;
+  editExpression: (expression: string) => void;
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
   anchorId: string | null;
@@ -61,6 +64,7 @@ export interface SaveAnchor {
 export function useSaveAnchor(): SaveAnchor {
   // 마운트 시 1회 localStorage 하이드레이션 — 라우트 왕복/새로고침 후 조건 입력값 복원.
   const [seed] = useState(readScreenerDraft);
+  const [expression, setExpression] = useState<string | null>(seed.expression ?? null);
   const [conditions, setConditions] = useState<ConditionLeaf[]>(seed.conditions);
   const [universe, setUniverse] = useState<ScreenerUniverse>(seed.universe);
   const [anchorId, setAnchorId] = useState<string | null>(seed.anchorId);
@@ -72,20 +76,24 @@ export function useSaveAnchor(): SaveAnchor {
 
   // 빌더 상태가 바뀔 때마다 영속(조건 편집은 keystroke 가 아닌 discrete op 라 write 빈도 낮음).
   useEffect(() => {
-    persistScreenerDraft({ conditions, universe, anchorId, anchorName, dirty, ...(isNewDraft ? { isNewDraft: true } : {}) });
-  }, [conditions, universe, anchorId, anchorName, dirty, isNewDraft]);
+    persistScreenerDraft({ conditions, universe, ...(expression !== null ? { expression } : {}), anchorId, anchorName, dirty, ...(isNewDraft ? { isNewDraft: true } : {}) });
+  }, [conditions, expression, universe, anchorId, anchorName, dirty, isNewDraft]);
 
   const loadSave = (s: SavedScreener) => {
     setIsNewDraft(false);
     setConditions(includeOpenBars(s.conditions));
+    setExpression(s.expression ?? null);
     setUniverse(s.universe);
     setAnchorId(s.id);
     setAnchorName(s.name);
     setDirty(false);
     persistAnchorId(s.id);
   };
-  const newDraft = () => { setIsNewDraft(true); setConditions([]); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
-  const editConditions = (c: ConditionLeaf[]) => { editGen.current += 1; setConditions(includeOpenBars(c)); setDirty(true); };
+  const newDraft = () => { setIsNewDraft(true); setConditions([]); setExpression(null); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
+  const editConditions = (c: ConditionLeaf[]) => {
+    const nextExpression = reconcileExpression(expression, conditions, c);
+    editGen.current += 1; setExpression(nextExpression); setConditions(includeOpenBars(c)); setDirty(true); };
+  const editExpression = (value: string) => { editGen.current += 1; setExpression(value); setDirty(true); };
   const editUniverse = (u: ScreenerUniverse) => { editGen.current += 1; setUniverse(u); setDirty(true); };
   const beginSave = () => { pendingSaveGen.current = editGen.current; };
   const settleAnchor = (id: string | null, name?: string | null) => {
@@ -101,5 +109,5 @@ export function useSaveAnchor(): SaveAnchor {
     pendingSaveGen.current = null;
   };
 
-  return { conditions, universe, anchorId, anchorName, dirty, isNewDraft, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
+  return { conditions, expression, editExpression, universe, anchorId, anchorName, dirty, isNewDraft, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
 }

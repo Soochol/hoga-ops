@@ -209,6 +209,7 @@ export function ScreenerDrawer() {
     try {
       const request = {
         conditions: sel.conditions, universe: sel.universe, basis: DRAWER_SCAN_BASIS,
+        ...(sel.expression != null ? { expression: sel.expression } : {}),
       };
       const requestJson = JSON.stringify(request);
       const res = await screener.mutateAsync(request);

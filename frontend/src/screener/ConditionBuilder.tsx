@@ -6,14 +6,35 @@ import { UniverseFilterButton } from './UniverseFilterButton';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { CONDITION_GROUPS } from './ConditionBuilderHelpers';
+import { ConditionExpressionEditor } from './ConditionExpressionEditor';
+import { conditionLabel, defaultExpression, expressionError, MAX_EXPRESSION_LENGTH } from './conditionExpression';
 
 
-export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange, children }: {
+export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange, expression, onExpressionChange, children }: {
   children?: ReactNode;
+  expression?: string | null;
+  onExpressionChange?: (value: string) => void;
   conditions: ConditionLeaf[]; universe: ScreenerUniverse;
   onConditionsChange: (c: ConditionLeaf[]) => void; onUniverseChange: (u: ScreenerUniverse) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const expressionInput = useRef<HTMLTextAreaElement>(null);
+  const invalidExpression = !!expressionError(expression, conditions.length);
+  const insert = (token: string) => {
+    const value = expression ?? defaultExpression(conditions.length);
+    const input = expressionInput.current;
+    const start = input?.selectionStart ?? value.length;
+    const end = input?.selectionEnd ?? start;
+    const left = value.slice(0, start), right = value.slice(end);
+    const text = `${left && !/[\s(]$/.test(left) && token !== ')' ? ' ' : ''}${token}${right && !/^[\s)]/.test(right) && token !== '(' ? ' ' : ''}`;
+    const next = left + text + right;
+    if (next.length > MAX_EXPRESSION_LENGTH) return;
+    onExpressionChange?.(next);
+    requestAnimationFrame(() => {
+      input?.focus();
+      input?.setSelectionRange(start + text.length, start + text.length);
+    });
+  };
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -31,11 +52,11 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
     if (next && btnRef.current) setAnchorRect(btnRef.current.getBoundingClientRect());
     setMenuOpen(next);
   };
-  const add = (t: ConditionType) => { onConditionsChange([...conditions, makeLeaf(t)]); setMenuOpen(false); };
+  const add = (t: ConditionType) => { if (invalidExpression) return; onConditionsChange([...conditions, makeLeaf(t)]); setMenuOpen(false); };
   const replace = (id: string, next: ConditionLeaf) => onConditionsChange(conditions.map((c) => c.id === id ? next : c));
-  const remove = (id: string) => onConditionsChange(conditions.filter((c) => c.id !== id));
+  const remove = (id: string) => { if (!invalidExpression) onConditionsChange(conditions.filter((c) => c.id !== id)); };
   const moveTo = (targetId: string) => {
-    if (!draggingId || draggingId === targetId) return;
+    if (invalidExpression || !draggingId || draggingId === targetId) return;
     const from = conditions.findIndex((c) => c.id === draggingId);
     const to = conditions.findIndex((c) => c.id === targetId);
     if (from < 0 || to < 0) return;
@@ -61,7 +82,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
           UniverseFilterModal 로 이동(빌더 카드 정리). */}
       <div className="flex gap-sm items-stretch">
         <div ref={wrapRef} className="relative flex-1">
-          <button ref={btnRef} type="button" aria-label="조건 추가" aria-expanded={menuOpen} onClick={toggleMenu}
+          <button ref={btnRef} type="button" aria-label="조건 추가" aria-expanded={menuOpen} disabled={invalidExpression} onClick={toggleMenu}
             className="w-full border border-dashed border-border-strong rounded-md text-fg-dim text-sm py-2 hover:bg-bg-input-hover">
             ＋ 조건 추가 ▾
           </button>
@@ -86,12 +107,14 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
         <UniverseFilterButton universe={universe} onChange={onUniverseChange} />
       </div>
 
-      {conditions.length > 0 && (
-        <div className="text-2xs text-fg-dim text-center">모두 충족 · AND</div>
-      )}
-      {conditions.map((leaf) => (
-        <ConditionRow key={leaf.id} leaf={leaf}
-          draggable={conditions.length > 1}
+      {conditions.length > 0 && onExpressionChange && <ConditionExpressionEditor
+        conditions={conditions} expression={expression} onChange={onExpressionChange}
+        inputRef={expressionInput} onInsert={insert} />}
+      {conditions.map((leaf, index) => (
+        <ConditionRow key={leaf.id} leaf={leaf} letter={conditionLabel(index)}
+          onInsertLetter={onExpressionChange ? () => insert(conditionLabel(index)) : undefined}
+          structureDisabled={invalidExpression}
+          draggable={!invalidExpression && conditions.length > 1}
           dragging={draggingId === leaf.id}
           onDragStart={(event) => handleDragStart(leaf.id, event)}
           onDragOver={handleDragOver}

@@ -4,13 +4,15 @@ import type { ConditionLeaf, ScreenerUniverse } from './screener';
 export interface SavedScreener {
   id: string;
   name: string;
+  /** Positional A/B/C expression; legacy saves default to all AND. */
+  expression?: string | null;
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
   created_at_ms: number;
   updated_at_ms: number;
 }
 export interface SavedScreenerListResponse { schema_version: number; saves: SavedScreener[] }
-export interface SaveWriteRequest { name: string; conditions: ConditionLeaf[]; universe: ScreenerUniverse }
+export interface SaveWriteRequest { expression?: string | null; name: string; conditions: ConditionLeaf[]; universe: ScreenerUniverse }
 
 const J = (body: unknown): RequestInit => ({
   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

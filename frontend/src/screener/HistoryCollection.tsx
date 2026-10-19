@@ -4,6 +4,7 @@ import { apiCall } from '../api/client';
 import type { HistoryCoverage, HistoryJob, ScanRequest } from '../api/screener';
 import { isHistoricalCondition, screenerRequestKey } from '../api/screenerRequest';
 import { ToolbarButton } from '../ui/PageShell';
+import { referencedConditions } from './conditionExpression';
 
 const running = (job?: HistoryJob | null) => !!job && ['queued', 'collecting', 'deriving'].includes(job.status);
 const labels: Record<string, string> = { queued: '대기', collecting: '일봉 수집', deriving: '디스크 저장',
@@ -24,7 +25,7 @@ export function HistoryCollection({ request, coverage, onComplete }: {
   request: ScanRequest; coverage?: HistoryCoverage | null; onComplete: () => void;
 }) {
   const client = useQueryClient();
-  const enabled = request.conditions.some(isHistoricalCondition);
+  const enabled = referencedConditions(request.conditions, request.expression).some(isHistoricalCondition);
   const query = useQuery({ queryKey: ['screener-history-job'], enabled,
     queryFn: () => apiCall<HistoryJob | null>('/api/screener/history/jobs/current'),
     refetchInterval: q => running(q.state.data) ? 2000 : false });

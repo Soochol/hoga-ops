@@ -53,7 +53,7 @@ export function OccurrenceAction({ code, name, occurrence, controller }: {
     {confirm && createPortal(<ModalShell title="제외 영향 확인" ariaLabel="제외 영향 확인" onClose={() => setConfirm(false)} width="w-[480px]">
       <div className="p-md text-sm">
         <p>{name} · {occurrenceTimeLabel(occurrence)} · {label}</p>
-        <p className="py-sm">이 조건의 마지막 발생 건입니다. 제외하면 AND 조건을 충족하지 못해 이 종목의 다른 발생 {controller.affectedOtherRows(code, occurrence)}건도 결과에서 빠집니다. 다른 발생 건 자체는 제외 기록에 저장되지 않습니다.</p>
+        <p className="py-sm">이 조건의 마지막 발생 건입니다. 제외하면 조건 조합식을 충족하지 못해 이 종목의 다른 발생 {controller.affectedOtherRows(code, occurrence)}건도 결과에서 빠집니다. 다른 발생 건 자체는 제외 기록에 저장되지 않습니다.</p>
         <div className="flex justify-end gap-sm"><ToolbarButton onClick={() => setConfirm(false)}>취소</ToolbarButton>
           <ToolbarButton disabled={controller.busy} onClick={remove}>이 발생 건 제외</ToolbarButton></div>
       </div>

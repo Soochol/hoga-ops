@@ -46,6 +46,7 @@ export const screenerRequestKey = (request: ScanRequest) => JSON.stringify(canon
   conditions: request.conditions.map(leaf => ({ ...leaf, params: conditionParams(leaf) })),
   universe: { markets: request.universe?.markets ?? [], exclude_etf: request.universe?.exclude_etf ?? true,
     exclude_halted: request.universe?.exclude_halted ?? false, scopes: request.universe?.scopes ?? [] },
+  ...(request.expression != null ? { expression: request.expression } : {}),
   basis: request.basis ?? 'eod', limit: request.limit ?? 1000 }));
 
 export function isHistoricalCondition(leaf: ConditionLeaf): boolean {

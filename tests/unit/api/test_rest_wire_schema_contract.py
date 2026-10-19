@@ -120,6 +120,12 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
         "active", "queued", "done", "paused", "max_concurrent", "queue_owned",
         "persistence_degraded", "last_persisted_at_ms", "persistence_epoch", "persistence_revision",
     }),
+    "ScreenerConditionExpression": frozenset({"conditions", "expression"}),
+    "ScanRequest": frozenset({"conditions", "expression", "universe", "limit", "basis"}),
+    "ScreenerSaveWriteRequest": frozenset({"conditions", "expression", "universe", "name"}),
+    "SavedScreener": frozenset({"conditions", "expression", "universe", "name", "id",
+                                 "created_at_ms", "updated_at_ms"}),
+    "SavedScreenersFile": frozenset({"schema_version", "saves"}),
     "ScreenerResponse": frozenset({
         "status", "rows", "has_more", "scanned_at_ms", "warnings", "intraday_failure", "depth_coverage", "depth_values",
         "history_coverage", "bar_coverage",

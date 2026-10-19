@@ -14,6 +14,7 @@ const STORAGE_KEY = 'screenerDraft.v1';
  * 이유가 없다(스키마 드리프트 시 이중 유지보수만 늘 뿐).
  */
 export interface ScreenerDraft {
+  expression?: string | null;
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
   anchorId: string | null;
@@ -46,6 +47,7 @@ export function readScreenerDraft(): ScreenerDraft {
   return {
     conditions: includeOpenBars(raw.conditions),
     universe: raw.universe,
+    ...(typeof raw.expression === 'string' ? { expression: raw.expression } : {}),
     anchorId: typeof raw.anchorId === 'string' ? raw.anchorId : null,
     anchorName: typeof raw.anchorName === 'string' ? raw.anchorName : null,
     dirty: raw.dirty === true,

@@ -10,6 +10,8 @@ import type { SavedScreener } from '../api/savedScreeners';
 // beginSave→mutate→settleAnchor race guard internally, so consumers (the page,
 // the saved-list view) never orchestrate it. See ADR-0052 / CONTEXT.md SavedScreener.
 export interface SavedScreenerEditor {
+  expression: string | null;
+  editExpression: (value: string) => void;
   conditions: ConditionLeaf[];
   universe: ScreenerUniverse;
   anchorId: string | null;
@@ -57,7 +59,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   const saveAsNew = (name: string) => {
     anchor.beginSave();
     create.mutate(
-      { name, conditions: anchor.conditions, universe: anchor.universe },
+      { name, conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) },
       { onSuccess: (created) => anchor.settleAnchor(created.id, created.name) },
     );
   };
@@ -65,7 +67,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
     if (anchor.anchorId && anchor.anchorName) {
       anchor.beginSave();
       update.mutate(
-        { id: anchor.anchorId, body: { name: anchor.anchorName, conditions: anchor.conditions, universe: anchor.universe } },
+        { id: anchor.anchorId, body: { name: anchor.anchorName, conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) } },
         { onSuccess: () => anchor.settleAnchor(anchor.anchorId, anchor.anchorName) },
       );
       return;
@@ -76,18 +78,18 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   const overwrite = (s: SavedScreener) => {
     anchor.beginSave();
     update.mutate(
-      { id: s.id, body: { name: s.name, conditions: anchor.conditions, universe: anchor.universe } },
+      { id: s.id, body: { name: s.name, conditions: anchor.conditions, universe: anchor.universe, ...(anchor.expression !== null ? { expression: anchor.expression } : {}) } },
       { onSuccess: () => anchor.settleAnchor(s.id, s.name) },
     );
   };
   const duplicate = (s: SavedScreener) => {
-    create.mutate({ name: `${s.name} 복사`, conditions: s.conditions, universe: s.universe });
+    create.mutate({ name: `${s.name} 복사`, conditions: s.conditions, universe: s.universe, ...(s.expression != null ? { expression: s.expression } : {}) });
   };
   // rename carries the SAVE's own conditions/universe (NOT the live builder) and
   // does NOT re-anchor — mirrors the prior commitRename.
   const rename = (s: SavedScreener, name: string) => {
     update.mutate(
-      { id: s.id, body: { name, conditions: s.conditions, universe: s.universe } },
+      { id: s.id, body: { name, conditions: s.conditions, universe: s.universe, ...(s.expression != null ? { expression: s.expression } : {}) } },
       { onSuccess: () => { if (s.id === anchor.anchorId) anchor.settleAnchor(s.id, name); } },
     );
   };
@@ -97,7 +99,7 @@ export function useSavedScreenerEditor(): SavedScreenerEditor {
   };
 
   return {
-    conditions: anchor.conditions, universe: anchor.universe,
+    conditions: anchor.conditions, universe: anchor.universe, expression: anchor.expression, editExpression: anchor.editExpression,
     anchorId: anchor.anchorId, anchorName: anchor.anchorName, dirty: anchor.dirty,
     isSaving: create.isPending || update.isPending || remove.isPending,
     saveError: (create.error ?? update.error) instanceof Error ? (create.error ?? update.error) as Error : null,

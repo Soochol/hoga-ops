@@ -30,6 +30,19 @@ const wrapper = ({ children }: { children: ReactNode }) =>
 beforeEach(() => { vi.clearAllMocks(); localStorage.clear(); });
 
 describe('useSavedScreenerEditor', () => {
+  it('carries expressions through create, update, duplicate and rename', async () => {
+    const saved = { ...SAVE, expression: 'A OR A' };
+    const { result } = renderHook(() => useSavedScreenerEditor(), { wrapper });
+    act(() => result.current.load(saved));
+    act(() => result.current.saveCurrent());
+    await waitFor(() => expect(api.updateSave).toHaveBeenCalledWith(saved.id, expect.objectContaining({ expression: 'A OR A' })));
+    act(() => result.current.saveAsNew('복사'));
+    await waitFor(() => expect(api.createSave).toHaveBeenCalledWith(expect.objectContaining({ expression: 'A OR A' })));
+    act(() => result.current.duplicate(saved));
+    act(() => result.current.rename(saved, '새 이름'));
+    await waitFor(() => expect(api.updateSave).toHaveBeenCalledWith(saved.id, expect.objectContaining({ name: '새 이름', expression: 'A OR A' })));
+    expect(vi.mocked(api.createSave).mock.calls.every(([body]) => body.expression === 'A OR A')).toBe(true);
+  });
   it('saveAsNew with no mid-flight edit re-anchors to the created id and goes clean', async () => {
     vi.mocked(api.createSave).mockResolvedValueOnce(
       { id: 's-new', name: '새이름', conditions: [], universe: {}, created_at_ms: 2, updated_at_ms: 2 });
