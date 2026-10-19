@@ -449,6 +449,21 @@ Quiet Trading Terminal migration completed across app shell, route surfaces, rai
 
 ## Components — Design Tokens for Specific Patterns
 
+### 스크리너 조건 편집 (2026-10-19 사용자 승인)
+
+`/screener`의 16개 조건에 공통 편집 구조를 적용한다. 조건명·범위 배지·접기 버튼을
+헤더에 두고, 펼친 영역은 봉 주기 → 라벨/숫자/단위를 분리한 입력 → 빠른 입력 →
+도움말 → 한 문장 요약으로 구성한다. 처음에는 펼쳐 두며, 접어도 조건은 활성 상태이고
+파라미터를 보존한다. 접힌 행에는 조건명과 요약을 표시하고 드래그 핸들·제거 버튼은
+접힘과 독립적으로 유지한다. 접힘 상태는 검색·저장 모델에 추가하지 않는다.
+
+분·일·주·월, 최근 N봉/날짜 범위, 비교 연산은 짧은 버튼 선택기로 표시한다.
+기간내 조건은 발생 검색 범위와 신고/peak 비교 기간을 서로 다른 라벨로 구분한다.
+숫자 입력은 `base`·500·데이터 글꼴, 조건명과 선택기는 `sm`, 필드 라벨·배지·도움말은
+`xs`를 쓴다. 입력 배경·선택 틴트·중성 경계·4/6px 모서리는 기존 테마 토큰을 따른다.
+빠른 입력은 해당 숫자만 바꾸며 조건별 주기·진행 중 봉 정책·날짜 모드는 보존한다.
+기존 23rem 빌더 폭, 16개 조건 타입, 기본값·범위·평가 방식·저장 형식·AND 결합은 유지한다.
+
 > **Scale note:** All px values in this section are **1.0× base intent**.
 > Default rendering = × 1.0 as of 2026-08-07, so these px values *are* what ships
 > today. That equality is a property of the current dial, not a permanent fact —

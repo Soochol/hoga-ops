@@ -15,12 +15,12 @@ function Editor() {
 it('adds inclusive dates while preserving the amount when switching period modes', () => {
   render(<Editor />);
   expect(screen.getByLabelText('최근 기간(봉)')).toHaveValue(60);
-  fireEvent.change(screen.getByRole('combobox', { name: '거래대금 검색 기간' }), { target: { value: 'date_range' } });
+  fireEvent.click(screen.getByRole('button', { name: '날짜 범위' }));
   expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(2500);
   expect(screen.getByLabelText('거래대금 발생 시작일')).toHaveValue('2019-01-01');
   fireEvent.change(screen.getByLabelText('거래대금 발생 종료일'), { target: { value: '2021-12-31' } });
   expect(screen.getByRole('status')).toHaveTextContent('2019-01-01~2021-12-31 내 ≥2500억');
-  fireEvent.change(screen.getByRole('combobox', { name: '거래대금 검색 기간' }), { target: { value: 'recent' } });
+  fireEvent.click(screen.getByRole('button', { name: '최근 N봉' }));
   expect(screen.getByLabelText('최근 기간(봉)')).toHaveValue(60);
   expect(screen.getByLabelText('최소 거래대금(억)')).toHaveValue(2500);
 });

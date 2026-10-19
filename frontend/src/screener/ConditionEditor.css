@@ -1,0 +1,78 @@
+.screener-condition {
+  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-panel);
+}
+.screener-condition[data-dragging='true'] { opacity: .6; }
+.condition-header { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-sm); }
+.condition-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-sm);
+  background: transparent; border: 0; text-align: left; padding: var(--space-xs);
+  color: var(--fg); cursor: pointer;
+}
+.condition-heading { flex: 1; min-width: 0; display: grid; gap: var(--space-2xs); }
+.condition-name { font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
+.condition-collapsed-summary { color: var(--fg-dim); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.condition-scope { flex-shrink: 0; padding: var(--space-2xs) var(--space-xs); border-radius: 2px; background: var(--bg-subtle); color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-icon-button {
+  flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  width: var(--space-xl); height: var(--space-xl); border: 0; border-radius: 4px;
+  background: transparent; color: var(--fg-dim); cursor: pointer;
+}
+.condition-icon-button:hover, .condition-toggle:hover { background: var(--bg-input-hover); }
+.condition-drag-handle { cursor: grab; }
+.condition-drag-handle:active { cursor: grabbing; }
+.condition-drag-handle:disabled { cursor: default; opacity: .5; }
+.condition-editor-body { padding: 0 var(--space-md) var(--space-md); }
+.condition-form { display: grid; gap: var(--space-md); }
+.condition-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); align-items: start; }
+.condition-field { display: grid; align-content: start; gap: var(--space-xs); min-width: 0; }
+.condition-field-label { color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-input-wrap {
+  display: flex; align-items: center; gap: var(--space-xs); min-width: 0;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; padding: 0 var(--space-sm);
+}
+.condition-input-wrap:focus-within { outline: 1px solid var(--accent); outline-offset: 1px; }
+.condition-input-wrap input {
+  min-width: 0; width: 100%; min-height: var(--space-2xl); padding: var(--space-sm) 0;
+  background: transparent; border: 0; color: var(--fg); font-size: var(--text-base); font-weight: 500;
+}
+.condition-input-wrap input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+.condition-input-wrap input::-webkit-inner-spin-button { appearance: none; }
+.condition-unit { flex-shrink: 0; color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-select {
+  min-width: 0; width: 100%; min-height: var(--space-2xl); padding: var(--space-sm);
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--fg); color-scheme: var(--color-scheme); font-size: var(--text-sm);
+}
+.condition-timeframe {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm);
+  padding-top: var(--space-md); border-top: 1px solid var(--border);
+}
+.condition-timeframe > .condition-field { flex: 1 0 100%; }
+.condition-choice {
+  display: inline-flex; flex-wrap: wrap; gap: var(--space-2xs); width: fit-content; max-width: 100%;
+  padding: var(--space-2xs); background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
+}
+.condition-choice button {
+  min-height: var(--space-xl); padding: var(--space-xs) var(--space-sm); border: 0; border-radius: 2px;
+  background: transparent; color: var(--fg-dim); font-size: var(--text-sm); cursor: pointer;
+}
+.condition-choice button[aria-pressed='true'] { background: var(--bg-input-hover); color: var(--accent); }
+.condition-choice button:hover { background: var(--bg-input-hover); }
+.condition-presets { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-sm); font-size: var(--text-xs); }
+.condition-presets > span { color: var(--fg-dim); }
+.condition-presets button {
+  padding: var(--space-xs) var(--space-sm); border: 0; border-radius: 4px;
+  background: var(--bg-subtle); color: var(--fg); cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.condition-presets button:hover { color: var(--accent); background: var(--bg-input-hover); }
+.condition-help { margin: 0; font-size: var(--text-xs); line-height: 1.65; color: var(--fg-dim); }
+.condition-summary {
+  margin: 0; padding: var(--space-sm) var(--space-md); background: var(--bg-subtle);
+  border-top: 1px solid var(--border); font-size: var(--text-sm); color: var(--fg); overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}

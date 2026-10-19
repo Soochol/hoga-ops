@@ -1,4 +1,4 @@
-import { candleSummary } from '../CandleSettings';
+import { candleSummary } from '../candleLabels';
 import type { HighOffPeakSide } from '../../api/screener';
 import type { CatalogEntry } from './types';
 import { HighOffPeakForm } from './high_off_peakForm';

@@ -4,6 +4,8 @@ import type { ScanRequest, VolumeParams } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 
+const timeframeNames: Record<string, string> = { minute: '분', D: '일', W: '주', M: '월' };
+
 test('volume timeframe, candle counts and open-bar policy survive save/reload and scan', async ({ page }, testInfo) => {
   await installLiveMocks(page);
   let saved = { id: 'bar-volume', name: '봉수 거래량', universe: {}, created_at_ms: 1, updated_at_ms: 1,
@@ -36,8 +38,8 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   await panel.getByRole('button', { name: '종료', exact: true }).click();
   await page.getByRole('button', { name: '스크리너 패널 토글' }).click();
   await page.goto('/screener');
-  await expect(page.getByLabel('거래량 주기')).toHaveValue('D');
-  await page.getByLabel('거래량 주기').selectOption('minute');
+  await expect(page.getByRole('group', { name: '거래량 주기', exact: true }).getByRole('button', { name: '일', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('group', { name: '거래량 주기', exact: true }).getByRole('button', { name: '분', exact: true }).click();
   await page.getByLabel('분봉 간격').selectOption('5m');
   await page.getByLabel('최근 기간(봉)').fill('3');
   await page.getByLabel('신고 기준 기간(봉)').fill('2');
@@ -60,7 +62,7 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   expect(csv).toContain('5m');
   await page.screenshot({ path: testInfo.outputPath('bar-volume-wide.png'), fullPage: true });
   for (const timeframe of ['W', 'M', 'D']) {
-    await page.getByLabel('거래량 주기').selectOption(timeframe);
+    await page.getByRole('group', { name: '거래량 주기', exact: true }).getByRole('button', { name: timeframeNames[timeframe], exact: true }).click();
     await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('3');
     await page.getByRole('button', { name: '조회', exact: true }).click();
     await expect.poll(() => scans.at(-1)?.conditions[0].params).toMatchObject({ timeframe, lookback: 3, period: 2 });

@@ -1,5 +1,6 @@
 import type { CatalogEntry } from './types';
-import { HistoryVolumeForm, volumeTimeframeLabel } from '../HistoryVolumeForm';
+import { HistoryVolumeForm } from '../HistoryVolumeForm';
+import { volumeTimeframeLabel } from '../candleLabels';
 
 export const new_high_vol: CatalogEntry<'new_high_vol'> = {
   label: '기간내 신고거래량', defaultParams: { lookback: 60, period: 250 }, ParamForm: HistoryVolumeForm,

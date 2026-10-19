@@ -1,4 +1,4 @@
-import { candleSummary } from '../CandleSettings';
+import { candleSummary } from '../candleLabels';
 import type { MaParams, MaSource } from '../../api/screener';
 import type { CatalogEntry } from './types';
 import { MaForm } from './maForm';
