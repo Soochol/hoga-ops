@@ -11,6 +11,7 @@ vi.mock('./DataWindow', () => ({ DataWindow: () => <div>data</div> }));
 // 타이틀바 종목 행은 전역 quote 훅(QueryClient)을 쓴다 — 이 테스트엔 provider 가
 // 없고 관심사도 아니므로 stub 한다(ChartWindow mock 과 동일 취지).
 vi.mock('./TitleBarSymbolRow', () => ({ TitleBarSymbolRow: () => <div>sym</div> }));
+vi.mock('../useEffectiveVenue', () => ({ useNxtEnabledResolver: () => () => undefined }));
 
 function chart(id: string, group: number, rect: WorkspaceWindow['rect']): WorkspaceWindow {
   return { id, kind: 'chart', group, rect, chart: { timeframe: '1m' } };

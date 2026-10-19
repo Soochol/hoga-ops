@@ -9,7 +9,7 @@ import { publishWindowWarnings } from '../../../src/live/workspace/windowWarning
 import { liveQuotesQueryKey } from '../../../src/api/liveQuotes';
 
 /** Production header, CSS, fonts and stores; no chart or vendor connection. */
-export function mount(width: number) {
+export function mount(width: number, kind: 'chart' | 'book' | 'order' = 'chart', nxtEnabled?: boolean | null) {
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
   const quotesKey = liveQuotesQueryKey(['005930'], 'KRX');
   client.setQueryData(quotesKey, { phase: 'open', quotes: [] });
@@ -23,7 +23,7 @@ export function mount(width: number) {
   const root = createRoot(host);
   const noop = () => {};
   flushSync(() => root.render(<QueryClientProvider client={client}>
-    <WindowFrame id="layout" kind="chart" group={1} rect={{ x: 0, y: 0, w: width, h: 180 }}
+    <WindowFrame id="layout" kind={kind} nxtEnabled={nxtEnabled} group={1} rect={{ x: 0, y: 0, w: width, h: 180 }}
       zIndex={1} focused symbolLabel="LIG디펜스앤에어로스페이스" symbolCode="005930" paletteOpen={false}
       onHandleDown={noop} onFocus={noop} onClose={noop} onTogglePalette={noop} onPickGroup={noop}
       onToggleAlwaysOnTop={noop} onToggleMaximize={noop} onTogglePin={noop}>

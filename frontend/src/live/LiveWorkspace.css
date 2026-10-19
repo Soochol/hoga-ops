@@ -57,6 +57,11 @@
 .live-symbol-sector { flex: 0 1 9rem; max-width: 9rem; margin-left: var(--space-xs); font-size: var(--live-text-meta); color: var(--fg-dim); }
 .live-data-title { flex: 1; overflow: hidden; }
 .live-data-title-kind { color: var(--fg-dim); font-weight: 400; }
+.live-window-titlebar > .live-data-title-with-venues { flex-basis: 12rem; }
+.live-data-title-identity { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-xs); }
+.live-symbol-venue-badges { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-xs); }
+.live-symbol-venue-badge { padding: 0 var(--space-xs); border-radius: var(--radius-sm); background: var(--tint-neutral); color: var(--fg-dim); font-size: var(--live-text-meta); font-weight: 500; white-space: nowrap; }
+.live-symbol-venue-badge[data-supported] { background: var(--tint-success); color: var(--success); }
 .live-window .live-window-actions-menu { display: none; }
 .live-window .live-window-actions-menu[data-has-settings] { display: inline-flex; }
 /* Always reserve the progress slot, including while idle. Date text is MM/DD. */
@@ -106,6 +111,7 @@
   .live-symbol-price, .live-symbol-backfill { display: none; }
   .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title { flex-wrap: wrap; gap: 0 !important; line-height: 1.15; }
   .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title-kind { width: 100%; font-size: var(--live-text-meta); }
+  .live-data-title-with-venues .live-data-title-identity { flex-basis: 100%; }
 }
 
 .live-top-nav [aria-label^="현재 시각"] { font-weight: 400; color: var(--fg-dim); }
