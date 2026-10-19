@@ -1,0 +1,72 @@
+{
+  "recordedAtKst": "2026-10-19T15:06:35.734128+09:00",
+  "implementationCommit": "77ea8e970820ecf589b4c98f9d4ff9269efefb8d",
+  "baseCommit": "6b96c0ccf878d7642f6169ad35bed1e5dfdd36dd",
+  "scope": "Backend scheduler concurrency/admission. Main UI PR #2145 integrated before the controlled baseline; before/after measurement uses identical frontend source. Backend checks from 9e29d30ee reused on 77ea8e970 because all backend inputs are unchanged. Frontend and E2E checks rerun after main integration. Raw user measurements/payloads remain local and excluded from Git.",
+  "tools": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "playwright": "1.60.0",
+    "typescript": "6.0.3"
+  },
+  "inputFingerprints": {
+    "frontend": {
+      "files": 1694,
+      "sha256": "8c96952dfe346c65338d7a969c1019a9b560b3ec9471890558a0523d021bfcda",
+      "gitPathspecs": [
+        "frontend/src",
+        "frontend/tests",
+        "frontend/package.json",
+        "frontend/package-lock.json",
+        "frontend/vite.config.ts",
+        "frontend/playwright.config.ts",
+        "frontend/tsconfig.app.json",
+        "frontend/tsconfig.test.json",
+        "frontend/tsconfig.e2e.json",
+        "frontend/tsconfig.node.json"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    },
+    "backend": {
+      "files": 756,
+      "sha256": "1cbe941eaf1ac4238d8ab82c5e28ba5190aea4a0d64d10ebc5402985f70c58f5",
+      "gitPathspecs": [
+        "hoga",
+        "tests",
+        "pyproject.toml",
+        "uv.lock",
+        "ruff.toml",
+        ".python-version"
+      ],
+      "algorithm": "SHA256 of sorted path + NUL + SHA256(file bytes)"
+    }
+  },
+  "backendTestedCommit": "9e29d30ee18fd5b22f91f88b2c71d88f1c8d80d5",
+  "checks": [
+    {
+      "command": ".venv/bin/python -m pytest -q tests/unit/live/test_kiwoom_capacity.py tests/unit/live/test_kiwoom_rest_scheduling.py tests/unit/live/test_kiwoom_rest_runtime_accounts.py tests/unit/live/test_kiwoom_governor_snapshot_wire.py tests/unit/live/test_kiwoom_rest_seam.py tests/unit/live/test_kiwoom_access_seam_coverage.py tests/unit/live/test_live_candle_backfill.py tests/unit/live/test_live_daily_candle_backfill.py tests/unit/live/test_live_investor_net_backfill.py tests/unit/live/test_daily_program_trade.py tests/unit/live/test_api.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "304 passed; backend inputs identical after main UI integration"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed, app/unit/E2E TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/api/client.test.ts src/api/livePastCandles.test.tsx src/api/livePastInvestorNet.test.tsx src/live/workspace/InvestorDailyWindow.test.tsx src/live/workspace/useOrderColumnLayout.test.ts",
+      "result": "100 passed / 5 files"
+    },
+    {
+      "command": "cd frontend && npx playwright test live-smoke investor-daily-scroll live-viewport-preservation live-orders --reporter=list",
+      "result": "107 passed; one worker; blank credentials; backend 20023/frontend 21023; data /tmp/hoga-e2e-data-23; dist /tmp/hoga-e2e-dist-23; production Vite build passed"
+    },
+    {
+      "command": ".venv/bin/python -m ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ]
+}

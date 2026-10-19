@@ -237,10 +237,11 @@ async def test_transient_auth_failover_is_bounded_and_preserves_tokens(second_fa
         await scheduler.aclose()
 
 
-async def test_ready_selection_preserves_per_account_spacing(monkeypatch):
+@pytest.mark.parametrize("priority,workers", [("background", 4), ("user_visible", 12)])
+async def test_ready_selection_preserves_per_account_spacing(monkeypatch, priority, workers):
     now = [100.0]
     monkeypatch.setattr(kiwoom_capacity, "time", SimpleNamespace(monotonic=lambda: now[0]))
-    scheduler = KiwoomCapacityScheduler(workers=4)
+    scheduler = KiwoomCapacityScheduler(workers=workers)
     scheduler.set_clients([0, 1])
     sent = []
 
@@ -248,15 +249,17 @@ async def test_ready_selection_preserves_per_account_spacing(monkeypatch):
         sent.append((client, now[0]))
 
     tasks = [asyncio.create_task(scheduler.submit(
-        key=i, api_id="ka10080", priority="background", call=fetch,
-    )) for i in range(4)]
+        key=i, api_id="ka10080", priority=priority, call=fetch,
+    )) for i in range(12)]
     try:
         await settle()
         assert sent == [(0, 100.0), (1, 100.0)]
-        now[0] = 100.25
-        scheduler._wake.set()
-        await settle()
-        assert sent == [(0, 100.0), (1, 100.0), (0, 100.25), (1, 100.25)]
+        for step in range(1, 6):
+            now[0] = 100 + step * .25
+            scheduler._wake.set()
+            await settle()
+            assert sent == [(account, 100 + tick * .25)
+                            for tick in range(step + 1) for account in range(2)]
         await asyncio.gather(*tasks)
     finally:
         await stop(scheduler, tasks)

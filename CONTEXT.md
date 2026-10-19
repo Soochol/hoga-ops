@@ -613,6 +613,8 @@ _Avoid_: "rollup" (collides with frontend aggregation like StockDateGroup rollup
 
 현재 키움 분봉의 수정계수(수정/원 일봉)는 각각 거버너 대기표를 얻은 뒤 동시에 조회하며, 같은 종목의 여러 창은 완성된 계수 테이블을 공유한다. 일별 투자자 조회는 최신 과거 gap에 당일을 함께 요청해 별도 당일 왕복을 줄인다. 당일 행은 과거 배치에서 제외하고 기존 60초 TTL에만 저장하며, 긴 walk에서는 첫 페이지 시점부터 나이를 계산해 필요하면 다시 갱신한다. 캘린더가 확실히 휴장일로 아는 gap은 빈 커버리지로 캐시하고, 달력이 모르는 날짜는 계속 조회한다. 선행 워밍은 추가하지 않는다(ADR-0103).
 
+키움 REST 거버너의 HTTP 실행 상한은 기본 12개이며, 그중 background 실행은 최대 4개로 제한한다. 기존 폴링의 동시성을 유지하면서 종목 전환의 `user_visible` 조회가 사용할 슬롯 8개를 확보한다. 초과 background는 워커 안에서 기다리지 않고 공용 우선순위 큐에 남는다. 대기 요청의 승격·중복 병합, 준비된 다른 TR 통과, `(앱키, TR)`별 발사 간격은 기존과 같다. 12는 유량 상한이 아닌 HTTP 동시성 상한이며 벤더 제한을 우회하지 않는다. 화면 조회가 계속되면 background가 기다릴 수 있다는 기존 우선순위 정책도 유지한다.
+
 둘 다 **Live Capture** (10초 폴링으로 snapshot/trade/broker raw 이벤트 수집) 와 다른 호출 — KIS 의 *pre-aggregated candle* endpoint 만 사용하는 on-demand 호출. 두 캐시는 서로 독립 (한쪽이 분봉, 다른쪽이 일봉이라 같은 데이터가 양쪽에 중복될 수 없음). `/api/range` 의 promoted Parquet 호출과도 독립 — promoted Parquet 은 snapshots/trades/brokers 만 담고 candle 은 안 담기 때문. ADR-0040 (분봉) + ADR-0048 (일봉) 두 결정으로 둘 다 *별도 cache + 별도 endpoint* 를 갖는다. 두 endpoint 모두 KIS 가 `EGW00201` ("초당 거래건수 초과") 을 반환하면 **KisClient** 가 (1s, 2s, 4s) 지수 backoff 으로 자동 재시도 — handler 까지 `KisRateLimitError` 가 도달하면 그건 이미 client retry 가 exhausted 됐다는 신호이고 해당 (date | gap batch) 만 `kis_rate_limit` warning 으로 surface (ADR-0050).
 _Avoid_: "past candles" 단독 (소스를 잃음 — KIS-specific), "historical candles" (replay candle wire 와 중첩), "candle backfill" 단독 ("Live" 페이지 scope 누락), treating a known non-trading Stock-Date as missing data.
 

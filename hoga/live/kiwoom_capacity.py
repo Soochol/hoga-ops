@@ -144,16 +144,21 @@ class KiwoomCapacityScheduler:
 
     워커 수는 HTTP 동시 실행 상한이고 **실제 게이트는 TR별 버킷**이다. 호출 가능
     시각을 기다리는 요청은 큐에 남겨 다른 TR의 준비된 요청이 먼저 실행되게 한다.
+    Background는 별도의 실행 상한을 지켜, 이미 시작한 폴링이 화면 조회의 슬롯을
+    전부 점유하지 않는다. 남는 슬롯은 user_visible 요청만 사용할 수 있다.
     """
 
     def __init__(
         self,
         *,
-        workers: int = 4,
+        workers: int = 12,
+        background_workers: int = 4,
         max_queued: int = 512,
         rate_per_sec: float = DEFAULT_TR_RATE_PER_SEC,
         tr_rates: dict[str, float] | None = None,
     ) -> None:
+        if workers < 1 or background_workers < 1:
+            raise ValueError("worker limits must be positive")
         self._rate = rate_per_sec
         self._tr_rates = {"usa10099": 5 / 60, **(tr_rates or {})}
         # 버킷 키가 (앱키, TR) 인 이유는 ADR-0138 실측이다: 유량은 TR별인 **동시에**
@@ -167,10 +172,12 @@ class KiwoomCapacityScheduler:
         self._inflight: dict[Hashable, asyncio.Future] = {}
         self._queued_priority: dict[Hashable, Priority] = {}
         self._started: set[Hashable] = set()
+        self._started_background: set[Hashable] = set()
         self._workers: list[asyncio.Task] = []
         # 워커가 붙어 있는 루프. 바뀌면 큐·inflight 를 통째로 버린다(_ensure_started).
         self._loop: asyncio.AbstractEventLoop | None = None
         self._n_workers = workers
+        self._n_background_workers = min(background_workers, workers)
         self._max_queued = max_queued
         self._seq = 0
         self.background_deferred_due_to_user_visible = 0
@@ -300,6 +307,7 @@ class KiwoomCapacityScheduler:
         self._inflight.clear()
         self._queued_priority.clear()
         self._started.clear()
+        self._started_background.clear()
         self._queue = asyncio.PriorityQueue()
         self._wake.clear()
 
@@ -361,6 +369,11 @@ class KiwoomCapacityScheduler:
     def _pending_count(self) -> int:
         return sum(key not in self._started for key in self._inflight)
 
+    def _mark_started(self, req: _Request) -> None:
+        self._started.add(req.key)
+        if req.priority == "background":
+            self._started_background.add(req.key)
+
     async def _next_ready(self) -> tuple[_Request, int]:
         """Pick a ready request without reserving sleeping slots in a TR bucket.
 
@@ -381,7 +394,12 @@ class KiwoomCapacityScheduler:
                         or req.key in self._started
                         or req.priority != self._queued_priority.get(req.key)):
                     continue
-                if chosen is not None:
+                # Keep excess background work queued: a semaphore inside the
+                # call would occupy a worker while waiting and defeat the
+                # reservation. Admission and ownership are atomic (no await).
+                background_full = (req.priority == "background"
+                                   and len(self._started_background) >= self._n_background_workers)
+                if chosen is not None or background_full:
                     blocked.append(req)
                     continue
                 account = self._pick_account(req.api_id)
@@ -400,7 +418,7 @@ class KiwoomCapacityScheduler:
                         if waiting.priority == "background" and not waiting.deferred:
                             waiting.deferred = True
                             self.background_deferred_due_to_user_visible += 1
-                self._started.add(req.key)
+                self._mark_started(req)
                 return req, account
             if next_at is None:
                 await self._wake.wait()
@@ -433,6 +451,7 @@ class KiwoomCapacityScheduler:
             self._inflight.clear()
             self._queued_priority.clear()
             self._started.clear()
+            self._started_background.clear()
             self._workers = []
         self._loop = loop
         self._workers = [t for t in self._workers if not t.done()]
@@ -618,6 +637,7 @@ class KiwoomCapacityScheduler:
 
     def _cleanup(self, req: _Request) -> None:
         self._started.discard(req.key)
+        self._started_background.discard(req.key)
         self._wake.set()
         # 되큐된 요청은 **아직 살아 있다** — inflight 를 떨어뜨리면 같은 key 의 새 요청이
         # 조인할 future 를 잃고 중복 호출이 된다(기계 ②가 뚫린다).
