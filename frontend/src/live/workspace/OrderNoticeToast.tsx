@@ -5,7 +5,7 @@ import { ToastViewport } from '../../ui/toast/ToastViewport';
 import { useToastTimer } from '../../ui/toast/useToastTimer';
 import type { OrderNotice } from './orderFeedback';
 
-export interface OrderReceipt { text: string; sending: boolean; commandId: string; soundFailed?: boolean }
+export interface OrderReceipt { text: string; commandId: string; soundFailed?: boolean }
 
 function OrderToastPortal({ children }: { children: ReactNode }) {
   const [host] = useState(() => document.getElementById('toast-viewport'));
@@ -22,13 +22,13 @@ export function OrderNoticeToast({ notice, receipt, busy, onDismiss, onExpireRec
   if (incoming && incoming !== shown) setShown(incoming);
   const content = incoming ?? shown;
   const isNotice = content != null && 'message' in content;
-  const durationMs = isNotice ? content.persistent ? null : 8000 : content?.sending ? null : 4000;
+  const durationMs = isNotice ? content.persistent ? null : 8000 : 4000;
   const timer = useToastTimer({ visible: !!incoming, durationMs, resetKey: incoming,
     onExpire: notice ? onDismiss : onExpireReceipt });
   // Resolve the shared portal only after the app has mounted its viewport.
   // Retain it after dismissal so the common exit transition can finish.
   if (!content) return null;
-  return <OrderToastPortal><ToastCard visible={!!incoming} variant={isNotice ? content.tone : content.sending ? 'neutral' : content.soundFailed ? 'warn' : 'success'}
+  return <OrderToastPortal><ToastCard visible={!!incoming} variant={isNotice ? content.tone : content.soundFailed ? 'warn' : 'success'}
     role={isNotice ? 'alert' : 'status'} ariaLabel={isNotice ? '주문 알림' : '주문 접수 알림'}
     title={isNotice ? content.title : content?.text} onDismiss={isNotice ? onDismiss : undefined} dismissLabel="주문 알림 닫기"
     progress={timer.progress} {...timer.interactionProps}
