@@ -110,14 +110,32 @@ class KiwoomTokenProvider:
     def close(self) -> None:
         self._client.close()
 
+    def _memory_token(self) -> str | None:
+        """Caller holds _lock; share the existing ten-minute refresh boundary."""
+        if (self._token and self._token_expires_at
+                and datetime.now(KIWOOM_KST) < self._token_expires_at - timedelta(minutes=10)):
+            return self._token
+        return None
+
+    def peek_token(self) -> str | None:
+        """Read only a valid memory token, without waiting, disk IO or issuance.
+
+        Async market callers can reserve their ready read gate without first
+        yielding to the shared executor. A busy issuer/invalidation falls back
+        to the existing off-thread get_token(), never blocking the event loop.
+        """
+        if not self._lock.acquire(blocking=False):
+            return None
+        try:
+            return self._memory_token()
+        finally:
+            self._lock.release()
+
     def get_token(self) -> str:
         with self._lock:
-            if (
-                self._token
-                and self._token_expires_at
-                and datetime.now(KIWOOM_KST) < self._token_expires_at - timedelta(minutes=10)
-            ):
-                return self._token
+            memory_token = self._memory_token()
+            if memory_token is not None:
+                return memory_token
             cached = self._read_cache()
             if cached:
                 self._token, self._token_expires_at = cached

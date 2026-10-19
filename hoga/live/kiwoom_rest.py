@@ -458,9 +458,13 @@ class KiwoomRestClient:
         from hoga.live.kiwoom_token_provider import KiwoomAuthTransient  # noqa: PLC0415 — provider 경계
 
         try:
-            # **to_thread 필수.** `get_token()` 은 캐시 히트일 땐 lock-and-return 이지만,
-            # miss 면 lock 을 쥔 채 동기 httpx POST 를 한다(timeout 10s). async 경로에서
-            # 직접 부르면 발급 한 번에 이벤트 루프가 최대 10초 멈춘다.
+            peek = getattr(self._provider, "peek_token", None)
+            cached = peek() if peek is not None else None
+            if isinstance(cached, str) and cached:
+                return cached
+            # A miss/busy lock still requires to_thread: get_token() may wait
+            # for issuance, read disk, or make a synchronous ten-second POST.
+            # Never call that blocking method directly on the event loop.
             return await asyncio.to_thread(self._provider.get_token)
         except KiwoomAuthTransient as exc:
             raise KiwoomAuthTransientError(f"token temporarily unavailable: {exc}") from exc
