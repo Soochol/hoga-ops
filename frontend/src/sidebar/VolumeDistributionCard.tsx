@@ -137,8 +137,13 @@ export function VolumeDistributionCard({
   return (
     <div
       data-testid="volume-distribution-card"
-      className="flex h-full min-h-0 flex-col gap-1 px-2 py-2 text-xs"
+      className="volume-distribution-card flex h-full min-h-0 flex-col gap-1 px-3 py-2 font-data text-xs"
+      style={{ '--volume-distribution-color': color, '--volume-distribution-max-color': maxColor } as CSSProperties}
     >
+      <div className="volume-distribution-legend" aria-label="매물대 범례">
+        <span><i className="volume-distribution-max-swatch" aria-hidden="true" />최대 거래량 구간</span>
+        {closePath && <span><i className="volume-distribution-price-swatch" aria-hidden="true" />가격</span>}
+      </div>
       <div className="flex min-h-0 flex-1 gap-1">
         <div className="relative min-h-0 min-w-0 flex-1">
           {markerVisible && (
@@ -169,20 +174,11 @@ export function VolumeDistributionCard({
               <path
                 d={closePath}
                 fill="none"
-                stroke="var(--bg-card)"
+                stroke="var(--fg-dim)"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth="3.5"
-                vectorEffect="non-scaling-stroke"
-              />
-              <path
-                d={closePath}
-                fill="none"
-                stroke="var(--fg)"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeOpacity="0.92"
-                strokeWidth="1.5"
+                strokeOpacity="0.8"
+                strokeWidth="1.25"
                 vectorEffect="non-scaling-stroke"
               />
             </svg>
@@ -190,12 +186,12 @@ export function VolumeDistributionCard({
           {closeEnd && (
             <div
               data-testid="volume-distribution-close-dot"
-              className="pointer-events-none absolute z-10 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+              className="pointer-events-none absolute z-10 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full"
               style={{
                 left: `${closeEnd[0]}%`,
                 top: `${closeEnd[1]}%`,
-                background: 'var(--fg)',
-                border: '1.5px solid var(--bg-card)',
+                background: 'var(--fg-dim)',
+                opacity: 0.8,
               }}
             />
           )}
@@ -231,12 +227,11 @@ export function VolumeDistributionCard({
                   <div
                     data-testid="volume-distribution-track"
                     className="h-full overflow-hidden rounded-sm"
-                    style={{ background: 'var(--grid)' }}
                   >
                     <div
                       data-testid={isMax ? 'volume-distribution-max-bar' : 'volume-distribution-bar'}
-                      className="h-full rounded-sm"
-                      style={{ width, backgroundColor: isMax ? maxColor : color, opacity: isMax ? 1 : 0.78 }}
+                      className={`h-full rounded-sm ${isMax ? 'volume-distribution-max-bar' : 'volume-distribution-bar'}`}
+                      style={{ width }}
                     />
                   </div>
                 </div>
@@ -267,7 +262,7 @@ export function VolumeDistributionCard({
               data-testid="volume-distribution-poc-label"
               title={`최대 거래량 가격 · ${formatPrice((pocBin.price_low + pocBin.price_high) / 2)}원`}
               className="volume-distribution-poc-label absolute right-0 -translate-y-1/2 font-medium"
-              style={{ '--volume-poc-position': `${pocPct}%`, color: maxColor } as CSSProperties}
+              style={{ '--volume-poc-position': `${pocPct}%` } as CSSProperties}
             >
               {formatPrice((pocBin.price_low + pocBin.price_high) / 2)}
             </span>
