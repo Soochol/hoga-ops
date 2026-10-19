@@ -45,9 +45,9 @@ describe('10호가·호가주문 종목 지원 배지', () => {
 
     act(() => seedSymbolMaster(client, [symbolHit('005930', true)]));
     await waitFor(() => expect(book.getByLabelText('NXT 거래 지원')).toBeInTheDocument());
-    expect(order.getByLabelText('NXT 거래 지원')).toBeInTheDocument();
-    expect(book.getByLabelText('KRX 거래 지원')).toHaveTextContent('KRX ✓');
-    expect(order.getByLabelText('KRX 거래 지원')).toHaveTextContent('KRX ✓');
+    expect(order.getByLabelText('NXT 거래 지원')).toHaveTextContent('NXT 지원');
+    expect(book.queryByLabelText('KRX 거래 지원')).not.toBeInTheDocument();
+    expect(order.queryByLabelText('KRX 거래 지원')).not.toBeInTheDocument();
 
     act(() => seedSymbolMaster(client, [symbolHit('005930', false)]));
     await waitFor(() => expect(book.getByLabelText('NXT 거래 미지원')).toBeInTheDocument());
@@ -61,7 +61,7 @@ describe('10호가·호가주문 종목 지원 배지', () => {
     expect(order.getByLabelText('NXT 거래 미지원')).toBeInTheDocument();
 
     act(() => useLiveVenueStore.setState({ venue: 'NXT' }));
-    expect(book.getByLabelText('NXT 거래 지원')).toHaveTextContent('NXT ✓');
+    expect(book.getByLabelText('NXT 거래 지원')).toHaveTextContent('NXT 지원');
     expect(order.getByLabelText('NXT 거래 미지원')).toHaveTextContent('NXT 미지원');
     expect(book.queryByRole('button', { name: 'NXT' })).not.toBeInTheDocument();
     expect(book.getByLabelText('NXT 거래 지원').tagName).toBe('SPAN');
@@ -74,8 +74,8 @@ describe('10호가·호가주문 종목 지원 배지', () => {
   it('종목 없는 창과 지수 창에는 국내 종목 지원 배지를 표시하지 않는다', () => {
     setup();
     act(() => useWorkspaceStore.setState({ groupSymbols: {} }));
-    expect(screen.queryByLabelText('종목 지원 거래소')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^NXT /)).not.toBeInTheDocument();
     act(() => useWorkspaceStore.getState().setGroupSymbol(1, { kind: 'index', code: 'KOSPI', name: '코스피' }));
-    expect(screen.queryByLabelText('종목 지원 거래소')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^NXT /)).not.toBeInTheDocument();
   });
 });

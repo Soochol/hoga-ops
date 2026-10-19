@@ -14,7 +14,7 @@ for (const width of [320, 500]) {
         mount(width, kind, false);
         await document.fonts.ready;
       }, { width, kind });
-      await expect(page.getByLabel('KRX 거래 지원', { exact: true })).toBeVisible();
+      await expect(page.getByLabel('KRX 거래 지원', { exact: true })).toHaveCount(0);
       const nxt = page.getByLabel('NXT 거래 미지원', { exact: true });
       await expect(nxt).toHaveText('NXT 미지원');
       await expect.poll(() => nxt.evaluate(el => {

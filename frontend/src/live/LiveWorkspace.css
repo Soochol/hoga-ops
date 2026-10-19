@@ -59,8 +59,7 @@
 .live-data-title-kind { color: var(--fg-dim); font-weight: 400; }
 .live-window-titlebar > .live-data-title-with-venues { flex-basis: 12rem; }
 .live-data-title-identity { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-xs); }
-.live-symbol-venue-badges { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-xs); }
-.live-symbol-venue-badge { padding: 0 var(--space-xs); border-radius: var(--radius-sm); background: var(--tint-neutral); color: var(--fg-dim); font-size: var(--live-text-meta); font-weight: 500; white-space: nowrap; }
+.live-symbol-venue-badge { flex-shrink: 0; padding: 0 var(--space-xs); border-radius: var(--radius-sm); background: var(--tint-neutral); color: var(--fg-dim); font-size: var(--live-text-meta); font-weight: 500; white-space: nowrap; }
 .live-symbol-venue-badge[data-supported] { background: var(--tint-success); color: var(--success); }
 .live-window .live-window-actions-menu { display: none; }
 .live-window .live-window-actions-menu[data-has-settings] { display: inline-flex; }
