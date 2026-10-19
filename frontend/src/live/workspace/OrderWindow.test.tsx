@@ -548,7 +548,7 @@ describe('호가 주문', () => {
     expect(screen.getByText('시작')).toBeInTheDocument();
     mock.expectedQty = 0;
     view.rerender(<QueryClientProvider client={new QueryClient()}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>);
-    expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+    expect(screen.getByTestId('book-expected-fill')).toHaveTextContent(/^예상 체결가예상 체결량$/);
   });
   it('예상 체결값이 없어도 정보 2페이지의 다른 항목은 유지한다', () => {
     show();
@@ -576,12 +576,13 @@ describe('호가 주문', () => {
       const banners = screen.getAllByTestId('book-expected-fill');
       expect(banners).toHaveLength(2);
       banners.forEach(banner => {
-        expect(banner).toHaveTextContent('예상 체결가121,100원');
-        expect(banner).not.toHaveTextContent('예상 체결량');
+        expect(banner).toHaveTextContent(/^예상 체결가121,100원예상 체결량$/);
       });
       mock.expectedPrice = 0; mock.expectedQty = 0;
       view.rerender(content());
-      expect(screen.queryByTestId('book-expected-fill')).not.toBeInTheDocument();
+      screen.getAllByTestId('book-expected-fill').forEach(banner => {
+        expect(banner).toHaveTextContent(/^예상 체결가예상 체결량$/);
+      });
       expect(mock.command).not.toHaveBeenCalled();
     } finally {
       vi.mocked(useLiveSeries).mockImplementation(originalSeries);
@@ -1163,8 +1164,9 @@ describe('호가 주문', () => {
     expect(summaryContent.getByText('184.55%')).toBeInTheDocument();
     expect(summaryContent.getByText('12조 2,908억')).toBeInTheDocument();
     fireEvent.click(summaryContent.getByText('833만'));
-    for (const label of ['상한가', '하한가', '상승VI', '하강VI', '250일']) expect(summaryContent.getByText(label)).toBeInTheDocument();
-    expect(summaryContent.getByText('70,000/50,000')).toBeInTheDocument();
+    for (const label of ['상한가', '하한가', '상승VI', '하강VI']) expect(summaryContent.getByText(label)).toBeInTheDocument();
+    expect(summaryContent.queryByText('250일')).not.toBeInTheDocument();
+    expect(summaryContent.queryByText('70,000/50,000')).not.toBeInTheDocument();
   });
   it('가격이나 유효 수량이 없으면 예상 금액을 계산하지 않고 잘못된 수량은 전송하지 않는다', () => {
     mock.quotePrice = null; show();

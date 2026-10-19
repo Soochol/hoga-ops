@@ -475,14 +475,13 @@ export function BookSummary({
         />
         <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
       </div> : <div className="book-summary-page">
-        {/* 상한가·하한가·250일 = ka10001(stock-limits). */}
+        {/* 상한가·하한가 = ka10001(stock-limits). */}
         <SummaryRow
           label="상한가"
           value={fmtOr(limits?.upper_limit ?? null)}
           color={
             limits?.upper_limit != null ? dirClass(limits.upper_limit, baselinePrice) : undefined
           }
-          divider
         />
         <SummaryRow
           label="하한가"
@@ -493,9 +492,6 @@ export function BookSummary({
         />
         <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
         <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
-        {/* 키움은 52주가 아니라 250거래일 기준(ka10001 250hgst/250lwst)이라
-            라벨도 250일로 정직하게 쓴다. 최고/최저를 한 행에 표시한다. */}
-        <SummaryRow label="250일" value={fmtHighLow(limits)} />
       </div>}
     </div>
   );
@@ -508,8 +504,8 @@ function dirClass(price: number, baselinePrice: number | null): string {
 }
 
 /** 예상체결가·량(키움 0D/0H 또는 시간외 조회) — 정보 1페이지의 요약 행.
- *  qty=null은 수량 미제공인 가격 전용 표본이다. 0·불량 수량인 쌍은 숨긴다.
- *  가격은 전일종가 대비 방향색이다. */
+ *  라벨은 항상 유지하고 미수신·종료·불량 표본은 숫자만 비운다.
+ *  qty=null은 가격 전용 표본이므로 체결량 숫자만 비운다. */
 function ExpectedFillRows({
   price,
   qty,
@@ -522,16 +518,16 @@ function ExpectedFillRows({
   /** stale 딤 — `exp_price`/`exp_qty` 는 스냅샷 필드라 사다리와 함께 흐려진다. */
   dimClass?: string;
 }) {
-  if (!Number.isFinite(price) || price <= 0
-    || (qty !== null && (!Number.isFinite(qty) || qty <= 0))) return null;
-  const color = dirClass(price, baselinePrice);
+  const valid = Number.isFinite(price) && price > 0
+    && (qty === null || (Number.isFinite(qty) && qty > 0));
+  const color = valid ? dirClass(price, baselinePrice) : undefined;
   return (
     <div
       className={dimClass}
       data-testid="book-expected-fill"
     >
-      <SummaryRow label="예상 체결가" value={`${price.toLocaleString('ko-KR')}원`} color={color} />
-      {qty !== null && <SummaryRow label="예상 체결량" value={qty.toLocaleString('ko-KR')} />}
+      <SummaryRow label="예상 체결가" value={valid ? `${price.toLocaleString('ko-KR')}원` : ''} color={color} />
+      <SummaryRow label="예상 체결량" value={valid && qty !== null ? qty.toLocaleString('ko-KR') : ''} />
     </div>
   );
 }
@@ -991,16 +987,6 @@ function fmtOr(n: number | null): string {
   return n === null ? '−' : n.toLocaleString('ko-KR');
 }
 
-/** 250일 최고/최저 한 행 표기. 둘 다 없으면 대시 하나(dim 판정과 일치).
- *  슬래시 양옆 공백 없음 — 6자리 고가 종목("304,000/181,100" 15자)이 우측 열
- *  190px 하한에 들어가기 위한 폭 예산이다(공백 2개 ≈ 10px 차이가 경계를 가른다). */
-function fmtHighLow(limits: BookStockLimits | null): string {
-  const hi = limits?.high_250 ?? null;
-  const lo = limits?.low_250 ?? null;
-  if (hi === null && lo === null) return '−';
-  return `${fmtOr(hi)}/${fmtOr(lo)}`;
-}
-
 /** 46,689,105 → "4,668만" (좁은 열에서 줄바꿈되지 않도록 만 단위 절사). */
 function fmtVolumeKo(n: number | null): string {
   if (n === null) return '−';
@@ -1009,8 +995,7 @@ function fmtVolumeKo(n: number | null): string {
 }
 
 /** 거래대금(원) → "824억" · "1조 2,345억" (거래량 만 단위 포맷과 대칭인 억/조 절사).
- *  1억 미만 초저유동성 종목은 만 단위로 강등 — 최장 "1조 2,345억"(8자)이라
- *  250일 행(15자)보다 짧아 우측 열 폭 예산(#776) 안이다. */
+ *  1억 미만 초저유동성 종목은 만 단위로 강등한다. */
 function fmtAmountKo(won: number | null): string {
   if (won === null) return '−';
   const eok = Math.floor(won / 100_000_000);
