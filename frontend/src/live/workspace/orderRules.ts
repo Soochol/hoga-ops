@@ -1,4 +1,5 @@
 import type { TossOrder } from '../../api/trading';
+import { krxTickSize } from '../krxTick';
 
 export const ORDER_ROW_HEIGHT = 24;
 export const HIGH_VALUE_WON = 100_000_000;
@@ -18,7 +19,8 @@ function exactHoldingCost(quantity: number | null, averagePrice: string | null |
   return { amount: cost * BigInt(quantity), scale, quantity: BigInt(quantity) };
 }
 
-/** Compare the original decimal cost; ties select the lower displayed price. */
+/** Compare the original decimal cost; ties select the lower displayed price.
+ * Only mark a displayed price within one tick toward the actual average. */
 export function holdingBookMarker(quantity: number | null, averagePrice: string | null | undefined, prices: Iterable<number>) {
   const hidden = { price: null, outside: false };
   const cost = exactHoldingCost(quantity, averagePrice);
@@ -39,7 +41,11 @@ export function holdingBookMarker(quantity: number | null, averagePrice: string 
   }
   if (min === null || max === null) return hidden;
   const outside = cost.amount < min || cost.amount > max;
-  return { price: outside ? null : nearest, outside };
+  if (outside) return { price: null, outside };
+  if (nearest === null || distance === null) return hidden;
+  // At a band boundary the next lower price uses the lower band's tick.
+  const tick = krxTickSize(cost.amount < BigInt(nearest) * scale ? nearest - 1 : nearest);
+  return { price: distance <= BigInt(tick) * scale ? nearest : null, outside: false };
 }
 
 function ceilWon(amount: bigint, scale: bigint): number | null {
