@@ -145,7 +145,7 @@
 .order-cancel-menu-item:hover:not(:disabled) { background:var(--bg-input-hover); color:var(--error); }
 .order-settings-surface { font-size:var(--live-text-data,var(--text-sm)); color:var(--fg); }
 .order-modal { max-height:calc(100vh - 2rem); overflow-y:auto; }
-.order-settings-popover { display:flex; flex-direction:column; max-height:calc(100vh - 1rem); overflow:hidden; }
+.order-settings-popover { display:flex; flex-direction:column; max-height:calc(100dvh - 1rem); overflow:hidden; }
 .order-settings-popover > .order-surface-heading { flex-shrink:0; }
 .order-confirm-body { padding:0.75rem; display:flex; flex-direction:column; gap:0.75rem; }
 .order-confirm-row { display:flex; align-items:center; justify-content:space-between; gap:0.75rem; font-variant-numeric:tabular-nums; }

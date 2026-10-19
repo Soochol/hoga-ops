@@ -1,4 +1,4 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useId, useRef, useState, type ReactNode } from 'react';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
   type OrderPresets, type OrderWindowSettings } from '../../state/orderWindowSettings';
 import { playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
@@ -10,9 +10,11 @@ const SECTIONS = [
   { id: 'sound', label: '주문 알림' },
 ] as const;
 
-function OrderSettingsSection({ id, title, hidden, children }: { id: string; title: string; hidden: boolean; children: ReactNode }) {
-  return <section id={id} hidden={hidden} className="order-settings-section" aria-labelledby={`${id}-heading`}>
-    <h3 id={`${id}-heading`} className="sr-only">{title}</h3>
+type SectionId = (typeof SECTIONS)[number]['id'];
+
+function OrderSettingsSection({ id, title, active, children }: { id: string; title: string; active: boolean; children: ReactNode }) {
+  return <section id={id} data-current={active} className="order-settings-section" aria-labelledby={`${id}-heading`}>
+    <h3 id={`${id}-heading`} className="order-settings-section-title">{title}</h3>
     <div className="order-settings-section-fields">{children}</div>
   </section>;
 }
@@ -45,16 +47,41 @@ export function OrderSettingsForm({ draft, onChange, busy }: {
   const valid = validOrderSettings(draft);
   const [previewFailed, setPreviewFailed] = useState(false);
   const navigationId = useId();
-  const [activeSection, setActiveSection] = useState<string>('input');
+  const [activeSection, setActiveSection] = useState<SectionId>('input');
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const scrollTop = useRef(0);
+  function jump(id: SectionId) {
+    const body = bodyRef.current;
+    const section = document.getElementById(`${navigationId}-${id}`);
+    if (body && section) {
+      body.scrollTop += section.getBoundingClientRect().top - body.getBoundingClientRect().top - 12;
+      // Keep the clicked item selected even when the target is near the end
+      // and the browser clamps the requested scroll position.
+      scrollTop.current = body.scrollTop;
+    }
+    setActiveSection(id);
+  }
   return <form className="order-settings-form" onSubmit={e => e.preventDefault()}>
     <div className="order-surface-body">
       <nav aria-label="주문 설정 목차" className="order-surface-nav">
         {SECTIONS.map(section => <button key={section.id} type="button" className="order-surface-nav-item"
           aria-current={activeSection === section.id ? 'true' : undefined} aria-controls={`${navigationId}-${section.id}`}
-          onClick={() => setActiveSection(section.id)}>{section.label}</button>)}
+          onClick={() => jump(section.id)}>{section.label}</button>)}
       </nav>
-      <div className="order-settings-body">
-      <OrderSettingsSection id={`${navigationId}-input`} title="주문 입력" hidden={activeSection !== 'input'}>
+      <div className="order-settings-body" ref={bodyRef} onScroll={event => {
+        const body = event.currentTarget;
+        if (body.scrollTop === scrollTop.current) return;
+        scrollTop.current = body.scrollTop;
+        const top = body.getBoundingClientRect().top + 16;
+        let next: SectionId = 'input';
+        for (const section of SECTIONS) {
+          const element = document.getElementById(`${navigationId}-${section.id}`);
+          if (element && element.getBoundingClientRect().top <= top) next = section.id;
+        }
+        if (body.scrollTop > 0 && body.scrollHeight - body.scrollTop - body.clientHeight < 2) next = 'sound';
+        setActiveSection(next);
+      }}>
+      <OrderSettingsSection id={`${navigationId}-input`} title="주문 입력" active={activeSection === 'input'}>
         <PresetInputs label="수량 프리셋" suffix="주" max={MAX_ORDER_QUANTITY} values={draft.quantityPresets} disabled={busy}
           onChange={quantityPresets => onChange({ ...draft, quantityPresets })} />
         <PresetInputs label="금액 프리셋" suffix="백만원" max={MAX_AMOUNT_MILLIONS} values={draft.amountPresets} disabled={busy}
@@ -62,12 +89,12 @@ export function OrderSettingsForm({ draft, onChange, busy }: {
         <OrderSettingsCheckboxRow label="종목별 주문수량 기억"
           checked={draft.rememberQuantity} disabled={busy} onChange={rememberQuantity => onChange({ ...draft, rememberQuantity })} />
       </OrderSettingsSection>
-      <OrderSettingsSection id={`${navigationId}-display`} title="호가 표시" hidden={activeSection !== 'display'}>
+      <OrderSettingsSection id={`${navigationId}-display`} title="호가 표시" active={activeSection === 'display'}>
         <OrderSettingsCheckboxRow label="내 평단가 표시"
           icon={<span className="order-settings-average-dot" aria-hidden="true" />}
           checked={draft.showAveragePrice} disabled={busy} onChange={showAveragePrice => onChange({ ...draft, showAveragePrice })} />
       </OrderSettingsSection>
-      <OrderSettingsSection id={`${navigationId}-sound`} title="주문 알림" hidden={activeSection !== 'sound'}>
+      <OrderSettingsSection id={`${navigationId}-sound`} title="주문 알림" active={activeSection === 'sound'}>
         <OrderSettingsCheckboxRow label="주문접수 소리" checked={draft.orderReceiptSound} disabled={busy}
           onChange={orderReceiptSound => {
             if (orderReceiptSound) prepareOrderReceiptSound();
