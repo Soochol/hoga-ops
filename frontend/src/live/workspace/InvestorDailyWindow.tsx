@@ -48,22 +48,22 @@ import { SegmentedControl } from '../../ui/SegmentedControl';
  * 존재하는 이유가 그것이고, 표시 단위도 주/억으로 같다(`formatAmount` 가 백만원을
  * 억으로 접는다).
  *
- * ## 가로 스크롤이 `table-fixed` 대신인 이유
+ * ## 고정 트랙과 내용 기반 최소 폭을 함께 사용하는 이유
  *
- * 12개 값 컬럼은 어떤 창 폭에도 다 안 들어간다. `table-fixed` 로 두면 폭이
- * 재분배되지 않고 **컬럼이 조용히 잘린다** — 스크롤바조차 안 생겨 눈으로만 잡히는
- * 실패다(`state/workspace.ts` 의 investor 폭 주석이 같은 사고를 기록한다).
- * 대신 컬럼마다 최소 폭을 주고 넘치면 가로로 흐르게 하며, 날짜 컬럼과 헤더는
- * sticky 로 붙잡는다.
+ * 숫자 열은 같은 폭으로 배분하되, 본문·누적의 가장 긴 표기로 표 전체의 최소
+ * 폭을 먼저 확보한다. 고정 레이아웃만 쓰면 긴 숫자가 잘리므로 둘은 함께 바뀐다.
+ * 넘치는 폭은 가로 스크롤하고 날짜 컬럼과 헤더는 sticky 로 붙잡는다.
  */
 import { InvestorDailySummaryCell } from './InvestorDailySummaryCell';
-import { formatInvestorK, investorDailySummary } from '../investorDailySummary';
+import { investorDailySummary } from '../investorDailySummary';
+import { formatInvestorDailyNumber, investorDailyTableLayout } from './investorDailyNumbers';
+import { InvestorDailyNumber } from './InvestorDailyNumber';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
 import { useInvestorDailyHistory } from '../useInvestorDailyHistory';
 import type { InvestorNetUnit, InvestorTradeSide } from '../../api/types';
-import { formatAmount, formatQty, qtyClass } from '../../sidebar/InvestorTrendEstimateCardHelpers';
+import { qtyClass } from '../../sidebar/InvestorTrendEstimateCardHelpers';
 import { useInvestorDailySpanStore } from '../../state/investorDailySpan';
 import {
   useInvestorDailyDisplayStore,
@@ -174,13 +174,37 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     };
   }, [buyQuery.data, sellQuery.data, code, dataUnit, table.rows]);
 
+  const allValues = !showDetails && compactDisplay === 'all';
+  const layout = useMemo(() => {
+    const values: string[] = [];
+    const add = (value: number | null, side: InvestorTradeSide) => {
+      values.push(formatInvestorDailyNumber(value, dataUnit, side, !showDetails && useK));
+    };
+    for (const column of columns) {
+      for (const row of table.rows) {
+        add(row.values[column.key], dataSide);
+        if (allValues) {
+          add(summary.buy.value(row.date, column.key), 'buy');
+          add(summary.sell.value(row.date, column.key), 'sell');
+        }
+      }
+      add(table.totals[column.key], dataSide);
+      if (allValues) {
+        add(summary.buy.total(column.key), 'buy');
+        add(summary.sell.total(column.key), 'sell');
+      }
+    }
+    const dateLabel = `누적${span === 0 ? ` ${table.rows.length}일` : ''}${table.missingBreakdown ? ` −${table.missingBreakdown}일` : ''}`;
+    return investorDailyTableLayout(values, columns.length, allValues, dataUnit !== 'qty_shares', dateLabel);
+  }, [columns, table, dataUnit, dataSide, showDetails, useK, allValues, summary, span]);
+
   // Cursor highlighting and follow timers do not invalidate numeric cell contents.
   const rowContents = useMemo(() => table.rows.map((row) => ({
     date: row.date,
     cells: <>
       <DateCell date={row.date} isToday={row.date === today} />
       {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-        <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} values={{
+        <InvestorDailySummaryCell aligned key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} values={{
           net: dataSide === 'net' ? row.values[column.key] : null,
           buy: summary.buy.value(row.date, column.key),
           sell: summary.sell.value(row.date, column.key),
@@ -191,7 +215,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
           dataSide={dataSide}
           compact={!showDetails}
           useK={useK}
-          className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
+          className={index === TOP_COLUMN_COUNT ? 'border-l border-border !pl-4' : undefined}
         />
       ))}
     </>,
@@ -199,7 +223,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
   const totalCells = useMemo(() => (<>
     {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-      <InvestorDailySummaryCell key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} foot values={{
+      <InvestorDailySummaryCell aligned key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} foot values={{
         net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
         buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
       }} /> : <ValueCell
@@ -210,7 +234,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         compact={!showDetails}
         useK={useK}
         foot
-        className={index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
+        className={index === TOP_COLUMN_COUNT ? 'border-l border-border !pl-4' : undefined}
       />
     ))}
   </>), [columns, showDetails, compactDisplay, dataUnit, useK, dataSide, table, summary]);
@@ -386,10 +410,15 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
               때마다 표가 사라지면 비교가 끊기고, 그대로 두면 안 바뀐 것처럼 보인다. */}
           <table
             data-axis-pending={axisPending || undefined}
-            className={`w-full border-collapse font-data text-xs tabular-nums transition-opacity ${
+            style={{ minWidth: layout.minWidth }}
+            className={`w-full table-fixed border-collapse font-data text-xs tabular-nums transition-opacity ${
               axisPending ? 'opacity-40' : ''
             }`}
           >
+            <colgroup>
+              <col style={{ width: layout.dateWidth }} />
+              {columns.map(column => <col key={column.key} />)}
+            </colgroup>
             {/* 헤더는 **한 줄이다.** 종전엔 위에 그룹 라벨 줄(「상위 주체 · 합 0」·
                 「기관 세부 · 합 = 기관계」)이 하나 더 있었는데 2026-08-31 사용자
                 결정으로 걷어냈다 — 항등식은 코드와 테스트가 지키는 성질이지 표가
@@ -400,9 +429,9 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                 <HeadCell sticky className="text-left">날짜</HeadCell>
                 {columns.map((column, index) => (
                   <HeadCell
-                    center={!showDetails}
+                    center={allValues}
                     key={column.key}
-                    className={!showDetails || index === TOP_COLUMN_COUNT ? 'border-l border-border' : undefined}
+                    className={index === TOP_COLUMN_COUNT ? 'border-l border-border !pl-4' : !showDetails ? 'border-l border-border' : undefined}
                   >
                     <span>{column.label}</span>
                     {!showDetails && compactDisplay === 'all' && <span className="ml-1 text-xs font-normal text-fg-dim">순·매수·매도</span>}
@@ -503,7 +532,7 @@ function HeadCell({
   return (
     <th
       scope="col"
-      className={`whitespace-nowrap ${edge} border-border bg-bg-card px-1.5 py-1 font-medium ${center ? 'text-center' : 'text-right'} ${
+      className={`whitespace-nowrap ${edge} border-border bg-bg-card px-2 py-1 font-medium ${center ? 'text-center' : sticky ? 'text-left' : 'text-right'} ${
         sticky ? 'sticky left-0 z-10' : ''
       } ${className}`}
     >
@@ -516,7 +545,7 @@ function DateCell({ date, isToday }: { date: string; isToday: boolean }) {
   return (
     <th
       scope="row"
-      className="sticky left-0 z-10 whitespace-nowrap bg-bg-card px-1.5 py-1 text-left font-normal text-fg-dim"
+      className="sticky left-0 z-10 whitespace-nowrap bg-bg-card px-2 py-1 text-left font-normal text-fg-dim"
     >
       {`${date.slice(4, 6)}-${date.slice(6)}`}
       {isToday && (
@@ -551,24 +580,15 @@ function ValueCell({
   // 헷갈리지 않지만, 표 전체가 '-' 로 덮이면 노이즈라 흐린 색으로 눕힌다.
   return (
     <td
-      className={`whitespace-nowrap px-1.5 py-1 text-right ${
+      className={`whitespace-nowrap px-2 py-1 text-right ${
         foot ? 'border-t border-border bg-bg-card font-medium' : ''
       } ${qtyClass(value === null || dataSide === 'net' ? value : dataSide === 'sell' ? -value : value)} ${className}`}
     >
-      {value === null ? '' : dataUnit === 'qty_shares' && compact && useK
-        ? formatInvestorK(value, dataSide === 'net').replace(/K$/, '')
-        : dataSide === 'net' ? formatCell(value, dataUnit) : formatCell(value, dataUnit).replace(/^\+/, '')}
+      {value === null ? '' : <InvestorDailyNumber
+        text={formatInvestorDailyNumber(value, dataUnit, dataSide, compact && useK)}
+        amount={dataUnit !== 'qty_shares'} />}
     </td>
   );
-}
-
-/** 단위별 포맷 분기 SSOT. `amt_eok`(지수 경로)는 이 창에 오지 않지만 union 이
- *  하나라 남겨 둔다 — 억원 값을 백만원 포맷터에 넣으면 100배 작아진다. */
-function formatCell(value: number, dataUnit: InvestorNetUnit): string {
-  if (dataUnit === 'qty_shares') return formatQty(value);
-  if (dataUnit === 'amt_mwon') return formatAmount(value).replace(/억$/, '');
-  // amt_eok — 이미 억이므로 백만원으로 되돌린 뒤 같은 포맷터를 태운다.
-  return formatAmount(value * 100).replace(/억$/, '');
 }
 
 /** 단위 칩 — 잠정투자자 카드와 **같은 스토어**를 쓴다(위 도크스트링).
