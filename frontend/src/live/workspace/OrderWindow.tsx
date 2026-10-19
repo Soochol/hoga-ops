@@ -5,6 +5,7 @@ import { nanoid } from 'nanoid';
 import { createPortal } from 'react-dom';
 import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
+import { GripIcon } from '../../ui/RailActionIcons';
 import { useTextTooltip } from '../../ui/useTextTooltip';
 import { BookPriceAmount } from './BookPriceAmount';
 import { useBookPriceLayout } from './useBookPriceLayout';
@@ -61,11 +62,12 @@ type Action = {
   order?: TossOrder;
   operation?: 'modify' | 'cancel';
   batch?: { order: TossOrder; base: TradingCommand }[];
+  keepOrderList?: boolean;
 };
 const changesPrice = (action: Action) => action.type === 'create' || action.type === 'modify' || (action.type === 'group' && action.operation === 'modify');
 type Drag = { orders: TossOrder[]; list: HTMLElement | null; cancelOnly: boolean; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
 
-export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }: {
+export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSymbol }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
 }) {
   const [selectedAccount, selectAccount] = useState<TradingAccountId | null>(null);
@@ -84,15 +86,15 @@ export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }
     if (quantitySlot >= 0) setQuantity(next.quantityPresets[quantitySlot]);
     setLocalSettings(next); onSettingsChange?.(next);
   }
-  return <OrderWindowContent key={code} code={code}
+  return <OrderWindowContent key={code} code={code} name={name}
     preferences={preferences} quantity={quantity} onQuantityChange={setQuantity} onApplySettings={applySettings}
     profitAsPercent={profitAsPercent} onToggleProfitDisplay={() => setProfitAsPercent(value => !value)}
     accounts={accounts} account={account} onAccountChange={selectAccount} onSelectSymbol={onSelectSymbol} />;
 }
 
-function OrderWindowContent({ code, accounts, account, onAccountChange, onSelectSymbol,
+function OrderWindowContent({ code, name, accounts, account, onAccountChange, onSelectSymbol,
   preferences, quantity, onQuantityChange, onApplySettings, profitAsPercent, onToggleProfitDisplay }: {
-  code: string;
+  code: string; name: string;
   accounts: ReturnType<typeof useTradingAccounts>; account: TradingAccountId; onAccountChange: (account: TradingAccountId) => void; preferences: OrderWindowSettings;
   quantity: number | null; onQuantityChange: (quantity: number | null) => void;
   onApplySettings: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
@@ -136,7 +138,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     setSettingsDraft(null);
     settingsButtonRef.current?.focus({ preventScroll: true });
   }, []);
-  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 640);
+  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 420);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
@@ -316,7 +318,8 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const highValue = !!action && changesPrice(action) && action.price * actionQty >= HIGH_VALUE_WON;
 
   function base(): TradingCommand { return { account_seq: account, code, command_id: nanoid() }; }
-  function closeAction() { setAction(null); closeMenu(); confirmHigh(false); }
+  function resetAction() { setAction(null); confirmHigh(false); }
+  function closeAction() { resetAction(); closeMenu(); }
   function pending(order: TossOrder) {
     const replacement = pendingIds[order.orderId];
     // Keep the old order disabled until it leaves OPEN, or a reject is confirmed.
@@ -396,13 +399,17 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
           setPending(prev => ({ ...prev, [next.order!.orderId]: response.order_id }));
         }
       }
-      closeAction();
+      resetAction();
+      if (!next.keepOrderList) closeMenu();
       setReceipt(accepted ? { text: `${label} 요청 접수됨`, commandId: next.base.command_id } : null);
     } catch (error) {
       setReceipt(null);
       const failure = groupFailure ?? orderFailure(error, label);
       setNotice(failure);
-      if (next.type === 'group') closeAction();
+      if (next.type === 'group') {
+        resetAction();
+        if (!next.keepOrderList) closeMenu();
+      }
       // A failure never opens the removed new-order editor. Retry retains its ID.
       setFailedRequest(failure.retry ? { action: retryAction, high } : null);
     } finally {
@@ -412,12 +419,13 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   }
 
   function request(next: Action) {
-    closeMenu(); confirmHigh(false);
+    if (!next.keepOrderList) closeMenu();
+    confirmHigh(false);
     const qty = next.quantity ?? (next.order ? orderRemainder(next.order) : 0);
     const high = changesPrice(next) && next.price * qty >= HIGH_VALUE_WON;
     setFailedRequest(null); setNotice(null);
     if (high) setAction(next);
-    else { closeAction(); void submit(next); }
+    else { resetAction(); void submit(next); }
   }
   async function reviewCommand(commandId: string) {
     if (!reviewedUnknown || busyRef.current) return;
@@ -508,9 +516,10 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     const operation = d.cancel ? 'cancel' : d.price && d.price !== Number(targets[0].price) ? 'modify' : null;
     if (!operation) return;
     const price = operation === 'cancel' ? 0 : d.price!;
-    if (targets.length === 1) request({ type: operation, base: base(), side: targets[0].side, price, quantity: null, order: targets[0] });
+    const keepOrderList = !!d.list && operation === 'cancel';
+    if (targets.length === 1) request({ type: operation, base: base(), side: targets[0].side, price, quantity: null, order: targets[0], keepOrderList });
     else request({ type: 'group', operation, base: base(), side: targets[0].side, price,
-      quantity: targets.reduce((sum, order) => sum + orderRemainder(order), 0), batch: targets.map(order => ({ order, base: base() })) });
+      quantity: targets.reduce((sum, order) => sum + orderRemainder(order), 0), batch: targets.map(order => ({ order, base: base() })), keepOrderList });
   }
 
   function orderCell(side: TradingSide, price: number, rowKey: string) {
@@ -608,7 +617,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       </div>
     </div>
     <AccountTradingPanel key={account} account={account} orderEnabled={!!activeAccount && activeAccount.order_enabled !== false} accountLabel={activeAccount?.label ?? '계좌 연결 대기'}
-      tab={accountTab} anchorRef={accountAnchor} onTabChange={setAccountTab} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
+      tab={accountTab} anchorRef={accountAnchor} onClose={closeAccountPanel} onSelectSymbol={onSelectSymbol} />
     <div className="order-controls order-overview-controls">
       <div className="order-holdings-summary" role="group" aria-label="보유 종목 정보">
         <button type="button" className="order-field order-holding-quantity" aria-label="매입수량" aria-describedby={quantityTip.id}
@@ -678,11 +687,11 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
       {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}
     </div>, document.body)}
-    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover order-surface order-editor-surface font-data" onKeyDown={e => {
+    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover order-surface font-data" onKeyDown={e => {
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
     }}>
-      <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings} scope="이 호가 주문창에 적용">주문 설정</OrderSurfaceHeading>
-      <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
+      <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings}>주문 설정</OrderSurfaceHeading>
+      <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />
     </div>, document.body)}
     <ExpectedFillBanner
       price={storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0}
@@ -752,21 +761,20 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}
       onSelectSessionMode={selectSessionMode} />}
     {contextMenu?.side ? <PanelContextMenu point={contextMenu}
-      label={`${orderSideLabel(contextMenu.side)} ${contextMenu.price == null ? '전체 접수' : `${fmt(contextMenu.price)}원`} 주문 목록`} showLabel={false} onClose={closeMenu} className="order-surface order-context-surface">
-      <OrderSurfaceHeading closeLabel="가격별 주문 목록 닫기" onClose={closeMenu}><span className={contextMenu.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(contextMenu.side)}</span> · {contextMenu.price == null ? '전체 접수' : `${fmt(contextMenu.price)}원`}</OrderSurfaceHeading>
+      label={`${orderSideLabel(contextMenu.side)} ${contextMenu.price == null ? '전체 접수' : `${fmt(contextMenu.price)}원`} 주문 목록`} showLabel={false} onClose={closeMenu} className="order-surface order-context-surface order-list-surface">
+      <OrderSurfaceHeading closeLabel="주문 목록 닫기" onClose={closeMenu}><span className={contextMenu.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(contextMenu.side)}</span><span>{name || code}</span></OrderSurfaceHeading>
       <div data-order-list className="order-list font-data">
-        <div className="order-list-summary"><span>{contextOrders.length}건</span><span>총 {fmt(contextOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}</span></div>
         {contextOrders.map((order, index) => <div key={order.orderId} className="order-list-row">
           <button key={order.orderId} type="button" role="menuitem"
             className={`order-list-item ${order.side === 'BUY' ? 'order-buy' : 'order-sell'} ${draggingOrderId === order.orderId ? 'order-chip-dragging' : ''}`}
             aria-label={`주문 ${index + 1} · ${fmt(orderRemainder(order))}주`}
             disabled={!ready || !editableOrder(order) || pending(order)}
             onPointerDown={e => beginDrag(e, [order], true)}>
-            <span>{contextMenu.price == null ? order.price == null ? '시장가' : `${fmt(order.price)}원` : `주문 ${index + 1}`}</span><strong>{fmt(orderRemainder(order))}</strong>
+            <span className="order-list-grip" aria-hidden="true"><GripIcon /></span><span>{order.price == null ? '시장가' : fmt(order.price)}</span><strong>{fmt(orderRemainder(order))}</strong>
           </button>
           <button type="button" className="order-list-cancel" aria-label={`주문 ${index + 1} 개별 취소`}
             disabled={!ready || !editableOrder(order) || pending(order)}
-            onClick={() => request({ type: 'cancel', base: base(), side: order.side, price: 0, quantity: null, order })}>취소</button>
+            onClick={() => request({ type: 'cancel', base: base(), side: order.side, price: 0, quantity: null, order, keepOrderList: true })}>취소</button>
         </div>)}
         {!contextOrders.length && <p className="order-list-hint">미체결 주문 없음</p>}
       </div>
