@@ -30,7 +30,6 @@ type ClosePoint = {
 };
 
 const EMPTY_CLOSE_POINTS: readonly ClosePoint[] = [];
-const PRICE_AXIS_WIDTH_PX = 48;
 // bar 행 슬롯(= 컨테이너 높이 / bin 수) 중 간격이 차지하는 비율. 옛 고정 치수
 // (트랙 8px + gap 4px)의 밀도감을 그대로 옮긴 값이다. px 이 아닌 비율이라야
 // 좌표가 순수 백분율로 닫히고(가격축과 같은 단위), 창이 작아져도 간격이 트랙을
@@ -137,14 +136,14 @@ export function VolumeDistributionCard({
   return (
     <div
       data-testid="volume-distribution-card"
-      className="volume-distribution-card flex h-full min-h-0 flex-col gap-1 px-3 py-2 font-data text-xs"
+      className="volume-distribution-card flex h-full min-h-0 flex-col gap-1 py-2 font-data text-xs"
       style={{ '--volume-distribution-color': color, '--volume-distribution-max-color': maxColor } as CSSProperties}
     >
       <div className="volume-distribution-legend" aria-label="매물대 범례">
         <span><i className="volume-distribution-max-swatch" aria-hidden="true" />최대 거래량 구간</span>
         {closePath && <span><i className="volume-distribution-price-swatch" aria-hidden="true" />가격</span>}
       </div>
-      <div className="flex min-h-0 flex-1 gap-1">
+      <div className="volume-distribution-chart-grid min-h-0 flex-1">
         <div className="relative min-h-0 min-w-0 flex-1">
           {markerVisible && (
             <div
@@ -243,8 +242,13 @@ export function VolumeDistributionCard({
           ref={setAxisElement}
           data-testid="volume-distribution-price-axis"
           className="relative shrink-0 font-data text-2xs leading-none tabular-nums text-fg-dim"
-          style={{ width: PRICE_AXIS_WIDTH_PX }}
         >
+          {/* Absolute ticks do not contribute intrinsic width. Reserve every bin
+              midpoint too so moving the POC cannot move the price/time axes. */}
+          <span className="volume-distribution-axis-budget font-medium" aria-hidden="true">
+            {[...new Set([profile.price_min, profile.price_max, ...profile.bins.map(bin => (bin.price_low + bin.price_high) / 2)]
+              .map(value => formatPrice(value).replace(/\d/g, '8')))].map(value => <span key={value} data-figure={value} />)}
+          </span>
           {priceTicks.map(({ pct, label }) => (
             <span
               key={pct}
@@ -268,19 +272,19 @@ export function VolumeDistributionCard({
             </span>
           )}
         </div>
-      </div>
-      <div
-        data-testid="volume-distribution-time-axis"
-        style={{ paddingRight: PRICE_AXIS_WIDTH_PX + 4 }}
-      >
-        <div className="relative h-4 border-t border-border/70 font-data text-2xs leading-4 tabular-nums text-fg-dim">
-          {timeTicks && (
-            <>
-              <span className="absolute left-0 top-0">{timeTicks[0]}</span>
-              <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
-              <span className="absolute right-0 top-0">{timeTicks[2]}</span>
-            </>
-          )}
+        <div
+          data-testid="volume-distribution-time-axis"
+          className="volume-distribution-time-axis"
+        >
+          <div className="relative h-4 border-t border-border/70 font-data text-2xs leading-4 tabular-nums text-fg-dim">
+            {timeTicks && (
+              <>
+                <span className="absolute left-0 top-0">{timeTicks[0]}</span>
+                <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
+                <span className="absolute right-0 top-0">{timeTicks[2]}</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>

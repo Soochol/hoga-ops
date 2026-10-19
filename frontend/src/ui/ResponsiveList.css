@@ -1,0 +1,9 @@
+/* Opt-in list density: keep the row structure and full numeric figures. */
+.responsive-list-panel { container: responsive-list / inline-size; }
+.responsive-list-body { --list-gap: 0.5rem; --list-padding: 0.75rem; }
+@container responsive-list (max-width: 20rem) {
+  .responsive-list-body { --list-gap: 0.25rem; --list-padding: 0.5rem; }
+}
+@container responsive-list (max-width: 16.25rem) {
+  .responsive-list-body { --list-gap: 0.125rem; --list-padding: 0.25rem; }
+}

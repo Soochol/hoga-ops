@@ -13,6 +13,8 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { TrashIcon } from '../ui/TrashIcon';
 import { groupSignalAlertsByCode, type SignalAlertGroup } from './groupAlerts';
 import { useSignalAlertInboxStore } from '../state/signalAlertInbox';
+import '../ui/ResponsiveList.css';
+import './SignalAlertColumns.css';
 import {
   RailDrawer,
   RailDrawerBody,
@@ -94,6 +96,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
       id="right-rail-signal-alerts-panel"
       testId="signal-alerts-drawer"
       ariaLabel="시그널 알림"
+      className="responsive-list-panel"
     >
       <RailDrawerHeader
         title="시그널 알림"
@@ -147,7 +150,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
         {isError && <RailState tone="error">알림 내역을 불러오지 못했습니다</RailState>}
         {!isLoading && !isError && groups.length === 0 && <RailState>{rule?.enabled === false ? '알림이 꺼져 있습니다 · 알림 설정에서 켤 수 있습니다' : '오늘 알림이 없습니다'}</RailState>}
         {!isLoading && !isError && groups.length > 0 && (
-          <ul className="divide-y divide-border">
+          <ul className="signal-alert-list responsive-list-body divide-y divide-border">
             {groups.map((group) => (
               <SignalAlertRow key={group.key} group={group} />
             ))}
@@ -168,14 +171,14 @@ function SignalAlertRow({ group }: { group: SignalAlertGroup }) {
       <button
         type="button"
         aria-label={`${group.name} ${group.code}${repeated ? ` 갱신 ${group.count}회` : ''} 기준 대비 ${group.peakRatioPct.toFixed(1)}% 차트 열기`}
-        className="grid w-full grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 px-md py-sm text-left hover:bg-bg-input-hover"
+        className="signal-alert-row grid w-full items-center gap-y-0.5 py-sm text-left hover:bg-bg-input-hover"
         onClick={() => {
           markPanelSeen();
           jumpToLive(group.code, group.name);
         }}
       >
         {/* 좌: 시각 · 종목명 · 코드 (· ×N 반복 배지) */}
-        <div className="flex min-w-0 items-center gap-2 text-sm text-fg">
+        <div className="signal-alert-identity flex min-w-0 items-center text-sm text-fg">
           <span className="shrink-0 tabular-nums text-xs text-fg-dim">{formatTime(group.latestTMs)}</span>
           <span className="min-w-0 truncate">{group.name}</span>
           {repeated && (
@@ -189,8 +192,8 @@ function SignalAlertRow({ group }: { group: SignalAlertGroup }) {
           {group.peakRatioPct.toFixed(1)}%
         </span>
         {/* 좌 아래: 매도 총잔량(최신) — 부차 정보 */}
-        <div className="col-start-1 text-xs text-fg-dim tabular-nums">
-          매도 총잔량 {group.latestValue.toLocaleString()}
+        <div className="signal-alert-quantity col-start-1 font-data text-xs text-fg-dim tabular-nums">
+          <span>매도 총잔량</span><span>{group.latestValue.toLocaleString()}</span>
         </div>
       </button>
     </li>
