@@ -2784,7 +2784,10 @@ async function orderColumnMetrics(window: Locator) {
     const fits = [...root.querySelectorAll('.order-depth-values, .order-info, .order-lane')].every(cell => {
       const bounds = cell.getBoundingClientRect();
       const spans = cell.children.length ? [...cell.children] : [cell];
-      return spans.every(span => { const text = textBox(span); return text.left >= bounds.left - 1 && text.right <= bounds.right + 1; });
+      return spans.every(span => {
+        if (!span.textContent?.trim()) return true;
+        const text = textBox(span); return text.left >= bounds.left - 1 && text.right <= bounds.right + 1;
+      });
     });
     const trades = [...root.querySelectorAll('.order-trade')].map(row => [...row.children].map(span => textBox(span).right));
     return { fits, trades, widths: cells.map(cell => cell.width),
@@ -2855,6 +2858,16 @@ test('긴 주문·합계·잔량·체결 수량은 생략하지 않고 계좌와
   await expect.poll(async () => window.locator('.book-qty-delta').count()).toBe(0);
   expect((await orderColumnMetrics(window)).depth).toBe(large.depth);
   expect((await orderColumnMetrics(window)).lane).toBe(large.lane);
+  for (const size of [14, 24, 16]) {
+    await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, size);
+    await expect(async () => {
+      const m = await orderColumnMetrics(window);
+      expect(m.fits).toBe(true);
+      expect(m.widths[0]).toBeCloseTo(m.widths[4], 1);
+      expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
+      expect(m.heights).toEqual(Array(20).fill(24));
+    }).toPass();
+  }
   await window.locator('.order-scroll').evaluate(el => { el.scrollLeft = el.scrollWidth; });
   await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeInViewport();
   await window.screenshot({ path: testInfo.outputPath('order-fluid-long-figures.png') });
