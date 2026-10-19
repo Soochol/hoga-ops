@@ -1,0 +1,118 @@
+/* Trading Desk chrome shared by feature pages. Keep layout and data colors
+   owned by each page; these rules only apply to the selected theme. */
+[data-theme='trading-desk'] .app-top-nav {
+  border-bottom: 1px solid var(--border);
+}
+
+[data-theme='trading-desk'] .app-brand-mark {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  color: var(--accent);
+  background: transparent;
+  font-weight: 600;
+}
+
+[data-theme='trading-desk'] .app-brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: var(--space-xs) calc(-1 * var(--space-xs));
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-full);
+  transform: rotate(-30deg);
+  opacity: .6;
+  pointer-events: none;
+}
+
+[data-theme='trading-desk'] .app-brand-name { font-weight: 600; }
+
+[data-theme='trading-desk'] .app-top-nav a[aria-current='page'] {
+  color: var(--accent);
+  box-shadow: inset 0 -2px var(--accent);
+  font-weight: 500;
+}
+
+[data-theme='trading-desk'] .feature-page .ui-panel-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-window);
+  box-shadow: inset 0 0 0 1px var(--border), var(--shadow-panel);
+}
+
+[data-theme='trading-desk'] .feature-page .ui-panel-card header,
+[data-theme='trading-desk'] .feature-page .feature-pane-header {
+  background: var(--bg-subtle);
+  color: var(--fg);
+}
+
+[data-theme='trading-desk'] .feature-page .market-card-header {
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+[data-theme='trading-desk'] .feature-page .market-card-header h2 {
+  font-weight: 500;
+}
+
+/* Compact raised groups keep the board's existing column widths and row sizes.
+   Drop rings stay owned by dnd-kit/Tailwind; do not replace their box-shadow. */
+[data-theme='trading-desk'] .feature-page [data-heatmap-drop-folder] {
+  border-left-color: var(--border-strong);
+  border-radius: var(--radius-lg);
+}
+
+[data-theme='trading-desk'] .feature-page [data-heatmap-drop-folder]:not([data-drop-intent]):not(.bg-tint-success) {
+  background-color: var(--bg-card);
+}
+
+[data-theme='trading-desk'] .feature-page .ui-segmented {
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+[data-theme='trading-desk'] .feature-page .ui-segmented > button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-fg);
+  font-weight: 500;
+}
+
+[data-theme='trading-desk'] .feature-page .ui-toolbar-action {
+  border-radius: var(--radius-md);
+}
+
+[data-theme='trading-desk'] .feature-page .ui-toolbar-action[data-tone='primary'] {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 500;
+}
+
+[data-theme='trading-desk'] .feature-page :where(input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']), select, textarea) {
+  background-color: var(--bg-input);
+  color: var(--fg);
+  border-radius: var(--radius-md);
+}
+
+[data-theme='trading-desk'] .feature-page :where(input, select, textarea):not([aria-invalid='true']) {
+  border-color: var(--border-strong);
+}
+
+[data-theme='trading-desk'] .feature-page :where(input[type='checkbox'], input[type='radio']) {
+  accent-color: var(--accent);
+}
+
+[data-theme='trading-desk'] .feature-page thead {
+  background: var(--bg-subtle);
+  color: var(--fg-dim);
+}
+
+[data-theme='trading-desk'] .feature-page th { font-weight: 500; }
+
+[data-theme='trading-desk'] .feature-page .daily-net-heading,
+[data-theme='trading-desk'] .feature-page .daily-net-total {
+  background: var(--bg-card);
+}
+
+[data-theme='trading-desk'] .feature-page .heatmap-flow-picker {
+  border-radius: var(--radius-window);
+  background: var(--bg-subtle);
+}

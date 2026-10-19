@@ -25,6 +25,15 @@
 행 높이, 주문·정정·취소, 창 연결·고정·프리셋은 기존 구현을 유지한다.
 브랜드의 궤도선만 허용하고 차트 위 배경 장식·상시 발광·동작 애니메이션은 추가하지 않는다.
 
+**Trading Desk 피처 페이지 확장 (2026-10-19, 사용자 승인):** `/heatmap`·`/market`·
+`/screener`·`/sentiment`·`/inventory`·`/capture`도 같은 브랜드·패널·조작 스타일을
+사용한다. 공통 상단 메뉴는 라임 활성 밑줄과 궤도 마크를 공유하고, 피처 카드에는
+`bg-card`·`border`·`radius-window`·짧은 그림자로 경계를 만든다. 기존 중앙 고정 폭,
+열 배치, 표 행 높이와 가상 목록, 스크롤·키보드·드래그 계약을 유지한다.
+히트맵 그룹의 온도 틴트와 옵션의 콜/풋 색 의미는 보존한다. 선택 버튼은 라임,
+표 헤더와 필터는 올리브 보조 배경을 사용한다. 페이지 이름이나 테마 이름을 별도
+장식 라벨로 반복하지 않는다. 다른 테마의 평면 스타일은 유지한다.
+
 ## Product Context
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.

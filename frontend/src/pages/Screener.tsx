@@ -269,7 +269,7 @@ export function Screener() {
     <PageContainer centered className="grid gap-md min-h-0 !pb-0"
       style={{ gridTemplateColumns: '23rem minmax(0, 1fr)' }}>
       <PanelCard borderless flat data-testid="screener-builder-pane" className="flex min-h-0 flex-col overflow-hidden">
-        <div className="flex flex-col gap-sm p-md pb-0">
+        <div className="feature-pane-header flex flex-col gap-sm p-md pb-0">
           <div className="flex items-center gap-1.5">
             <span className="text-2xs font-semibold uppercase text-fg-dim">조건검색</span>
             <button type="button" aria-label="새 조건검색" title="새 조건검색"
@@ -319,7 +319,7 @@ export function Screener() {
       </PanelCard>
 
       <PanelCard borderless flat data-testid="screener-results-pane" className="flex min-h-0 flex-col overflow-hidden">
-        <div className="p-md">
+        <div className="feature-pane-header p-md">
           <ControlBar className="flex-wrap">
             <div className="min-w-0 flex-1" />
             <SegmentedControl aria-label="스크리너 기준">
@@ -328,6 +328,7 @@ export function Screener() {
                   key={value}
                   type="button"
                   onClick={() => setBasis(value)}
+                  aria-pressed={basis === value}
                   title={value === 'intraday' ? '조건검색 실행 시 오늘 키움 시세를 일봉 위에 임시 반영합니다' : undefined}
                   className={`px-3 py-[7px] text-sm ${basis === value ? 'bg-tint-selection text-accent' : 'text-fg-dim hover:bg-bg-input-hover'}`}
                 >

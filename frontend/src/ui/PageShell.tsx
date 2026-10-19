@@ -37,7 +37,7 @@ export function PanelCard({ as = 'div', className = '', style, borderless = fals
   return (
     <Tag
       {...props}
-      className={`${bgClass} ${borderClass} rounded-lg min-w-0 ${shadowClass} ${className}`.replace(/\s+/g, ' ').trim()}
+      className={`ui-panel-card ${bgClass} ${borderClass} rounded-lg min-w-0 ${shadowClass} ${className}`.replace(/\s+/g, ' ').trim()}
       style={style}
     >
       {children}
@@ -74,8 +74,9 @@ export function ToolbarButton({
     <button
       type="button"
       {...props}
+      data-tone={tone}
       style={destructiveStyle}
-      className={`px-3 py-[7px] rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_TONE_CLASS[tone]} ${className}`.trim()}
+      className={`ui-toolbar-action px-3 py-[7px] rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed ${BUTTON_TONE_CLASS[tone]} ${className}`.trim()}
     />
   );
 }

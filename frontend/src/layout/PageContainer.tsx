@@ -72,7 +72,7 @@ export const PageContainer = forwardRef<
   return (
     <div
       ref={ref}
-      className={`p-md h-full min-h-0 ${widthClass} ${className}`.replace(/\s+/g, ' ').trim()}
+      className={`feature-page p-md h-full min-h-0 ${widthClass} ${className}`.replace(/\s+/g, ' ').trim()}
       style={style}
     >
       {children}

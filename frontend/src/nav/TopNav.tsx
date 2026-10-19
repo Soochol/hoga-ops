@@ -32,7 +32,7 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
   return (
     <nav
       aria-label="주요 메뉴"
-      className={`h-top-nav min-w-0 bg-bg px-lg ${isLive ? 'live-top-nav' : ''}`}
+      className={`app-top-nav h-top-nav min-w-0 bg-bg px-lg ${isLive ? 'live-top-nav' : ''}`}
     >
       {/* 3열 대칭 그리드 — **시계를 상단바 정중앙에 앉히기 위한 구조다**.
           양옆이 같은 `1fr` 이므로 가운데 `auto` 열의 중심 = 상단바의 중심이 된다.
@@ -57,11 +57,11 @@ export default function TopNav({ onOpenSettings }: { onOpenSettings: () => void 
           <Link to="/" title="홈으로 이동" aria-label="Ticklane 홈" className="inline-flex shrink-0 items-center gap-sm whitespace-nowrap">
             <span
               aria-hidden="true"
-              className="live-brand-mark grid h-[22px] w-[22px] place-items-center rounded bg-fg text-bg text-xs font-extrabold leading-none"
+              className="app-brand-mark grid h-[22px] w-[22px] place-items-center rounded bg-fg text-bg text-xs font-extrabold leading-none"
             >
               T
             </span>
-            <span className="live-brand-name text-lg font-extrabold leading-none text-fg">Ticklane</span>
+            <span className="app-brand-name text-lg font-extrabold leading-none text-fg">Ticklane</span>
           </Link>
 
           {WORKSPACE_NAV_ITEMS.map((item) => (

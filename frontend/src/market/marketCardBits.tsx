@@ -64,7 +64,7 @@ export function MarketCard({ className = '', children }: { className?: string; c
  * DESIGN.md 상 일탈이 아니다 — `--border` 는 "카드 프레임이 아니라 카드 **내부**
  * 구분선" 용도로 명시돼 있다.
  */
-export const CARD_HEADER_RULE = 'border-b border-border pb-2xs';
+export const CARD_HEADER_RULE = 'market-card-header border-b border-border pb-2xs';
 
 
 export function CardHeader({ title, hint, right }: { title: string; hint?: string; right?: React.ReactNode }) {
