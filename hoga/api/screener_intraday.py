@@ -8,11 +8,13 @@ from pathlib import Path
 
 import polars as pl
 
+from hoga.api import trading_days
 from hoga.live import kiwoom_access, kiwoom_multi_quote, kiwoom_rest_runtime, settings as live_settings
 from hoga.live.data_warnings import make_data_warning
 from hoga.live.error_policy import LiveErrorPolicy, classify_live_error
 from hoga.live.kiwoom_rest import KiwoomRestClient
 from hoga.live.quote_models import Quote
+from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
 
@@ -67,8 +69,11 @@ def intraday_overlay_bypassed(data_dir: Path) -> bool:
     return live_settings.rest_bypass_enabled(data_dir)
 
 
-def _date(yyyymmdd: str) -> dt.date:
-    return dt.datetime.strptime(yyyymmdd, "%Y%m%d").date()
+def _session_warning(data_dir: Path, now: dt.datetime) -> str | None:
+    session = trading_days.is_trading_day(now.strftime("%Y%m%d"), data_dir)
+    if now.hour < 9 or now.weekday() >= 5 or session is False:  # noqa: PLR2004 — KRX 09:00, weekdays
+        return "intraday_session_closed"
+    return "intraday_calendar_unavailable" if session is None else None
 
 
 def _has_valid_price_ohlc(q) -> bool:
@@ -142,7 +147,6 @@ async def build_intraday_overlay(
     *,
     data_dir: Path,
     codes: list[str],
-    today: str,
     now_ms: int,
     ttl_ms: int = 15_000,
 ) -> IntradayDailyOverlay:
@@ -152,6 +156,13 @@ async def build_intraday_overlay(
     if not unique_codes or intraday_overlay_bypassed(data_dir):
         warnings = ["rest_bypassed_intraday_overlay_skipped"] if unique_codes else None
         return _empty(warnings)
+    # ka10095 has no trading date: before the KRX open it still returns the
+    # previous session's OHLCV. Never label that snapshot as a new daily bar.
+    # Gate before cache/client access, including midnight, weekends and holidays.
+    now = dt.datetime.fromtimestamp(now_ms / 1000, KST)
+    today = now.strftime("%Y%m%d")
+    if warning := _session_warning(data_dir, now):
+        return _empty([warning])
     key = (data_dir, today, unique_codes)
     cached = _CACHE.get(key)
     cached_at = _CACHE_AT.get(key)
@@ -197,7 +208,7 @@ async def build_intraday_overlay(
         rows = []
         invalid = False
         volume_unavailable = False
-        d = _date(today)
+        d = now.date()
         for q in quotes:
             if not _has_valid_price_ohlc(q):
                 invalid = True

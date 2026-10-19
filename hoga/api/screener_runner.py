@@ -18,6 +18,7 @@ from hoga.api import (
 from hoga.api.models import ScanRequest, ScreenerResponse
 from hoga.api.screener_expression import active_conditions
 from hoga.collector.orchestrator import now_kst
+from hoga.util.timeenc import KST
 
 
 async def run_screener_scan(
@@ -34,6 +35,7 @@ async def run_screener_scan(
     intraday_failure: dict | None = None
     intraday_rows = None
     now_value = now or now_kst()
+    now_value = now_value.astimezone(KST) if now_value.tzinfo else now_value.replace(tzinfo=KST)
 
     # 유니버스 스코프(관심∪히트맵) 1회 해석 — intraday overlay·depth·run_scan 세 경로가
     # 공유한다. None = 무제한(전체 시장). 빈 set = 스코프는 켰으나 대상 0종목 → 조건
@@ -53,8 +55,9 @@ async def run_screener_scan(
 
     conditions = active_conditions(req.conditions, req.expression)
     history = screener_history_coverage.history_leaves(conditions)
-    if req.basis == "intraday" and (not conditions or any(screener_bar_volume.needs_daily_overlay(
-            leaf, now_value.date().isoformat()) for leaf in conditions)):
+    needs_overlay = req.basis == "intraday" and (not conditions or any(
+        screener_bar_volume.needs_daily_overlay(leaf, now_value.date().isoformat()) for leaf in conditions))
+    if needs_overlay:
         if screener_intraday.intraday_overlay_bypassed(data_dir):
             warnings.extend([
                 "rest_bypassed_intraday_overlay_skipped",
@@ -71,8 +74,7 @@ async def run_screener_scan(
             overlay = await screener_intraday.build_intraday_overlay(
                 data_dir=data_dir,
                 codes=codes,
-                today=now_value.strftime("%Y%m%d"),
-                now_ms=int(time.time() * 1000),
+                now_ms=int(now_value.timestamp() * 1000),
             )
             intraday_rows = overlay.rows
             warnings.extend(overlay.warnings)
@@ -117,9 +119,11 @@ async def run_screener_scan(
         codes = await asyncio.to_thread(
             screener_universe.codes_for_universe, sdir / "stocks.parquet", req.universe,
             scope=scope, etf_codes=etf_codes)
+        live_codes = set(intraday_rows["code"].to_list()) if intraday_rows is not None else set()
         bar_eval = await screener_bar_volume.evaluate(
             data_dir=data_dir, conditions=conditions, codes=codes, basis=req.basis,
-            now=now_value, overlay=intraday_rows)
+            now=now_value, overlay=intraday_rows,
+            daily_fallback_codes=set(codes) - live_codes if needs_overlay else None)
         if bar_eval.coverage.incomplete:
             warnings.append("bar_volume_partial")
     excluded = screener_exclusions.exclusion_keys(
