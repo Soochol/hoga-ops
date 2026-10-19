@@ -9,6 +9,7 @@ import type { Edge, Rect } from '../../workspace/snapEngine';
 vi.mock('./ChartWindow', () => ({ ChartWindow: () => <div>chart</div> }));
 vi.mock('./DataWindow', () => ({ DataWindow: () => <div>data</div> }));
 vi.mock('./TitleBarSymbolRow', () => ({ TitleBarSymbolRow: () => <div>symbol</div> }));
+vi.mock('../useEffectiveVenue', () => ({ useNxtEnabledResolver: () => () => undefined }));
 
 const CANVAS = { w: 1000, h: 800 };
 const ORIGIN: Rect = { x: 300, y: 250, w: 240, h: 200 };

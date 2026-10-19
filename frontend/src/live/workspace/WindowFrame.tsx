@@ -34,6 +34,8 @@ export interface WindowFrameProps {
   /** 그룹→종목명. 없으면 "그룹 N" 로 표시(PR-A 스캐폴딩). */
   symbolLabel: string | null;
   symbolCode: string | null;
+  /** Current master capability; null/missing is unknown, independent of the selected venue. */
+  nxtEnabled?: boolean | null;
   /** 지수 종목 여부 — 타이틀바 종목 행에서 현재가/등락률/히트맵/수집점을 숨긴다. */
   isIndex?: boolean;
   paletteOpen: boolean;
@@ -93,6 +95,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
     lifting,
     symbolLabel,
     symbolCode,
+    nxtEnabled,
     isIndex = false,
     paletteOpen,
     maximized = false,
@@ -114,6 +117,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
   } = props;
 
   const marketWide = kind === 'market-indices';
+  const showVenueSupport = (kind === 'book' || kind === 'order') && !!symbolCode && !isIndex;
   const title = marketWide ? KIND_LABEL[kind] : symbolLabel ?? `그룹 ${group}`;
   const hasSettings = kind === 'trade' && !!onTradeMinAmountChange;
   const { actionsRef, compact } = useWindowActionsCompact(hasSettings, title);
@@ -151,9 +155,19 @@ function WindowFrameImpl(props: WindowFrameProps) {
             <TitleBarSymbolRow name={symbolLabel} code={symbolCode} isIndex={isIndex} windowId={id} />
           ) : (
             <>
-              <span className="live-data-title flex min-w-0 items-center gap-1 text-sm font-medium text-fg" title={`${KIND_LABEL[kind]} · ${title}${symbolCode ? ` (${symbolCode})` : ''}`} tabIndex={0}>
+              <span className={`live-data-title flex min-w-0 items-center gap-1 text-sm font-medium text-fg${showVenueSupport ? ' live-data-title-with-venues' : ''}`} title={`${KIND_LABEL[kind]} · ${title}${symbolCode ? ` (${symbolCode})` : ''}`} tabIndex={0}>
                 {kind !== 'chart' && <span className="live-data-title-kind shrink-0">{KIND_LABEL[kind]} ·</span>}
-                <span className="live-symbol-name truncate">{title}</span>
+                {showVenueSupport ? <span className="live-data-title-identity">
+                  <span className="live-symbol-name truncate">{title}</span>
+                  <span className="live-symbol-venue-badges" aria-label="종목 지원 거래소">
+                  <span className="live-symbol-venue-badge" data-supported aria-label="KRX 거래 지원" title="KRX 거래 지원">KRX ✓</span>
+                  <span className="live-symbol-venue-badge" data-supported={nxtEnabled === true ? '' : undefined}
+                    aria-label={nxtEnabled === true ? 'NXT 거래 지원' : nxtEnabled === false ? 'NXT 거래 미지원' : 'NXT 지원 여부 미확인'}
+                    title={nxtEnabled === true ? 'NXT 거래 지원' : nxtEnabled === false ? 'NXT 거래 미지원' : 'NXT 지원 여부 미확인'}>
+                    {nxtEnabled === true ? 'NXT ✓' : nxtEnabled === false ? 'NXT 미지원' : 'NXT 미확인'}
+                  </span>
+                  </span>
+                </span> : <span className="live-symbol-name truncate">{title}</span>}
               </span>
             </>
           )}

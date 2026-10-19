@@ -1,5 +1,36 @@
 import { test, expect } from '@playwright/test';
 
+for (const width of [320, 500]) {
+  for (const kind of ['book', 'order'] as const) {
+    test(`${kind} header keeps venue badges readable at ${width}px`, async ({ page }, info) => {
+      await page.route(url => url.pathname === '/', route => route.fulfill({
+        contentType: 'text/html',
+        body: '<html><body style="margin:0"><script>window.$RefreshSig$=()=>type=>type;window.$RefreshReg$=()=>{};window.__vite_plugin_react_preamble_installed=true;</script></body></html>',
+      }));
+      await page.goto('/');
+      await page.evaluate(async ({ width, kind }) => {
+        const path = '/tests/e2e/helpers/titlebarLayoutHarness.tsx';
+        const { mount } = await import(path);
+        mount(width, kind, false);
+        await document.fonts.ready;
+      }, { width, kind });
+      await expect(page.getByLabel('KRX 거래 지원', { exact: true })).toBeVisible();
+      const nxt = page.getByLabel('NXT 거래 미지원', { exact: true });
+      await expect(nxt).toHaveText('NXT 미지원');
+      await expect.poll(() => nxt.evaluate(el => {
+        const badge = el.getBoundingClientRect();
+        const title = el.closest('.live-data-title')!.getBoundingClientRect();
+        return badge.left >= title.left && badge.right <= title.right + 1;
+      })).toBe(true);
+      await expect(page.getByRole('button', { name: 'NXT', exact: true })).toHaveCount(0);
+      const maximize = page.getByRole('button', { name: '창 최대화', exact: true });
+      const more = page.getByRole('button', { name: '창 옵션', exact: true });
+      await expect.poll(async () => (await maximize.isVisible()) || (await more.isVisible())).toBe(true);
+      await page.screenshot({ path: info.outputPath(`${kind}-venue-support.png`) });
+    });
+  }
+}
+
 for (const width of [320, 500, 700, 1000]) {
   test(`chart header keeps its columns during historical loading at ${width}px`, async ({ page }, info) => {
     await page.setViewportSize({ width: 1200, height: 500 });

@@ -446,8 +446,8 @@ export interface SymbolHit {
   security_type?: 'stock' | 'etf' | 'etn';
   /** NXT 상장 여부. `false` = 미상장, `null`/부재 = **모름**(판별 불가) — 둘을 합치면
    *  안 된다(ADR-0140 §4). 백엔드는 처음부터 이 필드를 보냈으나 이 미러가 빠뜨려
-   *  프론트에서 소비가 불가능했다. 용도는 `effectiveLiveVenue` 하나다: 미상장 종목의
-   *  통합(UN) 선택을 KRX 로 해석해 실시간 표면이 비지 않게 한다. */
+   *  프론트에서 소비가 불가능했다. `effectiveLiveVenue` 는 미상장 종목의 통합(UN)
+   *  선택을 KRX 로 해석하고, 10호가·호가주문 제목은 이 값으로 지원 배지를 표시한다. */
   nxt_enabled?: boolean | null;
   captured_count: number;                              // complete-only headline
   capture_counts_status?: CaptureCountsStatus;

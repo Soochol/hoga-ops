@@ -13,6 +13,7 @@ vi.mock('./DataWindow', () => ({
   },
 }));
 vi.mock('./TitleBarSymbolRow', () => ({ TitleBarSymbolRow: () => <div>sym</div> }));
+vi.mock('../useEffectiveVenue', () => ({ useNxtEnabledResolver: () => () => undefined }));
 
 const CANVAS = 1000;
 function stubCanvasSize() {

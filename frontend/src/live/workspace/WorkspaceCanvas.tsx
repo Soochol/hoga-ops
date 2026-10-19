@@ -18,6 +18,7 @@ import { WindowFrame, type WindowFrameProps } from './WindowFrame';
 import { useEntryDragStore } from '../../state/entryDrag';
 import { ChartWindow } from './ChartWindow';
 import { DataWindow } from './DataWindow';
+import { useNxtEnabledResolver, type NxtEnabledResolver } from '../useEffectiveVenue';
 import ChartErrorBoundary from '../../chart/ChartErrorBoundary';
 import {
   useWorkspaceStore,
@@ -34,6 +35,7 @@ const MajorIndicesWindow = lazy(() => import('./MajorIndicesWindow').then(module
 /** 창 항목들이 공유하는 /live 컨텍스트 — useMemo 로 안정화해 코어에 주입한다. */
 interface LiveItemCtx {
   groupSymbols: Partial<Record<GroupId, GroupSymbol>>;
+  resolveNxtEnabled: NxtEnabledResolver;
   paletteId: string | null;
   maximizedId: string | null;
   onToggleMaximize: (id: string) => void;
@@ -65,6 +67,7 @@ export function WorkspaceCanvas() {
   }, [maximizedId, toggleMaximize]);
   const zOrder = useWorkspaceStore((s) => s.zOrder);
   const groupSymbols = useWorkspaceStore((s) => s.groupSymbols);
+  const resolveNxtEnabled = useNxtEnabledResolver();
   const closeWindow = useWorkspaceStore((s) => s.closeWindow);
   const focusWindow = useWorkspaceStore((s) => s.focusWindow);
   const setWindowRects = useWorkspaceStore((s) => s.setWindowRects);
@@ -254,6 +257,7 @@ export function WorkspaceCanvas() {
   const itemCtx = useMemo<LiveItemCtx>(
     () => ({
       groupSymbols,
+      resolveNxtEnabled,
       paletteId: palette,
       maximizedId,
       onToggleMaximize: toggleMaximize,
@@ -262,7 +266,7 @@ export function WorkspaceCanvas() {
       onPickGroup,
       onTogglePin,
     }),
-    [groupSymbols, palette, maximizedId, toggleMaximize, closeWindow, onTogglePalette, onPickGroup, onTogglePin],
+    [groupSymbols, resolveNxtEnabled, palette, maximizedId, toggleMaximize, closeWindow, onTogglePalette, onPickGroup, onTogglePin],
   );
 
   return (
@@ -291,10 +295,12 @@ export function WorkspaceCanvas() {
 function LiveWindowItem({
   win, rect, zIndex, focused, lifting, onHandleDown, onFocus, ctx,
 }: WindowItemProps<WorkspaceWindow, LiveItemCtx>) {
+  const symbol = windowSymbolOf({ groupSymbols: ctx.groupSymbols }, win);
   return (
     <WorkspaceWindowItem
       win={win}
-      symbol={windowSymbolOf({ groupSymbols: ctx.groupSymbols }, win)}
+      symbol={symbol}
+      nxtEnabled={symbol ? ctx.resolveNxtEnabled(symbol.code) : undefined}
       rect={rect}
       zIndex={zIndex}
       focused={focused}
@@ -321,11 +327,12 @@ function LiveWindowItem({
  * 재렌더된다 — win 객체는 스토어 배열 원소라 드래그 중(로컬 프리뷰) 안정.
  */
 const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
-  win, symbol, rect, zIndex, focused, lifting, paletteOpen, maximized, onToggleMaximize,
+  win, symbol, nxtEnabled, rect, zIndex, focused, lifting, paletteOpen, maximized, onToggleMaximize,
   onHandleDown, onFocus, onClose, onTogglePalette, onPickGroup, onTogglePin,
 }: {
   win: WorkspaceWindow;
   symbol: GroupSymbol | null;
+  nxtEnabled: boolean | null | undefined;
   rect: Rect;
   zIndex: number;
   focused: boolean;
@@ -348,6 +355,7 @@ const WorkspaceWindowItem = memo(function WorkspaceWindowItem({
   const frameProps: Omit<WindowFrameProps, 'children'> = {
     id: win.id, kind: win.kind, group: win.group, rect, zIndex, focused, lifting,
     symbolLabel: symbol?.name ?? null, symbolCode: symbol?.code ?? null,
+    nxtEnabled,
     isIndex: symbol?.kind === 'index' || symbol?.kind === 'us_stock', paletteOpen, alwaysOnTop: win.alwaysOnTop,
     onToggleAlwaysOnTop: toggleAlwaysOnTop, maximized, onToggleMaximize,
     pinned: win.pinned != null, canPin, onHandleDown, onFocus, onClose,
