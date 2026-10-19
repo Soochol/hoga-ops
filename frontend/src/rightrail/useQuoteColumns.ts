@@ -7,7 +7,7 @@ const patterns = (values: string[]) => [...new Set(values.map(value => value.rep
 /** The unfiltered list includes collapsed groups and actual/expected figures.
  * Keep observed patterns while open so ticks/search do not move column edges.
  * There is one probe and observer for the panel, never one per row. */
-export function useWatchlistColumns(codes: readonly string[], quotes: ReadonlyMap<string, LiveQuote>, scrollRef: RefObject<HTMLDivElement | null>) {
+export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<string, LiveQuote>, scrollRef: RefObject<HTMLDivElement | null>) {
   const [retained, setRetained] = useState<Figures>({ price: ['—'], percent: ['+88.88%', '-88.88%'] });
   const samples = useMemo(() => {
     const price = [...retained.price], percent = [...retained.percent];
@@ -35,7 +35,7 @@ export function useWatchlistColumns(codes: readonly string[], quotes: ReadonlyMa
     const width = scrollRef.current.clientWidth;
     const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
     const widest = (column: keyof Figures) => Math.ceil(Math.max(0, ...Array.from(
-      probe.current!.querySelectorAll(`[data-watchlist-measure="${column}"]`), node => node.getBoundingClientRect().width,
+      probe.current!.querySelectorAll(`[data-quote-measure="${column}"]`), node => node.getBoundingClientRect().width,
     )));
     const next = { price: widest('price'), percent: widest('percent'), tier: width > 20 * rem ? 0 : width > 16.25 * rem ? 1 : 2 };
     setMetrics(old => old.price === next.price && old.percent === next.percent && old.tier === next.tier ? old : next);
@@ -43,10 +43,16 @@ export function useWatchlistColumns(codes: readonly string[], quotes: ReadonlyMa
   useLayoutEffect(() => {
     measure();
     if (typeof ResizeObserver === 'undefined' || !probe.current || !scrollRef.current) return;
-    const observer = new ResizeObserver(measure);
+    // Apply resize-driven React updates in the next frame so a changed column
+    // minimum/scrollbar cannot feed layout back into the same observer delivery.
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
     observer.observe(scrollRef.current);
-    probe.current.querySelectorAll('[data-watchlist-measure]').forEach(node => observer.observe(node));
-    return () => observer.disconnect();
+    probe.current.querySelectorAll('[data-quote-measure]').forEach(node => observer.observe(node));
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [samples, measure, scrollRef]);
   const layout = useMemo(() => ({
     '--quote-price-width': metrics.price ? `${metrics.price}px` : '4.75rem',

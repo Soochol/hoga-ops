@@ -1,0 +1,133 @@
+import { test, expect, type Locator } from '@playwright/test';
+import { installLiveMocks } from './helpers/liveMocks';
+import { apiExact, apiPrefix } from './helpers/apiRoutes';
+
+test.use({ viewport: { width: 1600, height: 1000 } });
+const folder = { id: 'f_0000000a', name: '열 정렬', order: 0 };
+const otherFolder = { id: 'f_0000000b', name: '다른 그룹', order: 1 };
+const entries = [
+  { code: '005930', name: '삼성전자', order: 0 },
+  { code: '000660', name: 'SK하이닉스', order: 1 },
+].map(entry => ({ ...entry, folder_id: entry.order ? otherFolder.id : folder.id }));
+
+async function geometry(row: Locator) {
+  return row.evaluate(element => {
+    const origin = element.getBoundingClientRect();
+    const read = (selector: string) => {
+      const node = element.querySelector<HTMLElement>(selector)!;
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { left: box.left - origin.left, right: box.right - origin.left, width: box.width,
+        full: node.scrollWidth <= node.clientWidth + 1, align: style.textAlign, whiteSpace: style.whiteSpace };
+    };
+    return { name: read('.quote-row-name'), price: read('.quote-row-price'), percent: read('.quote-row-percent'),
+      gap: parseFloat(getComputedStyle(element).columnGap), padding: parseFloat(getComputedStyle(element).paddingRight),
+      height: origin.height };
+  });
+}
+
+for (const fontSize of [16, 20]) {
+  test(`히트맵 공통 숫자·그룹 평균 정렬·반응형 여백·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
+    await installLiveMocks(page);
+    await page.route(apiExact('heatmap'), route => route.fulfill({ json: { folders: [folder, otherFolder], entries, capture_markers: {} } }));
+    let price = 123456, percent = -1.23;
+    let expectedPrice: number | undefined;
+    await page.route(apiPrefix('live/quotes'), route => route.fulfill({ json: {
+      phase: 'open', quotes: entries.map((entry, index) => ({ code: entry.code,
+        price: index ? price : 1234, change_pct: index ? percent : 2.34, change_won: 0,
+        ...(index && expectedPrice != null ? { expected_price: expectedPrice, expected_change_pct: percent } : {}) })),
+    } }));
+    await page.goto('/live?code=098460');
+    await page.addStyleTag({ content: `:root { font-size: ${fontSize}px !important; }` });
+    const panel = page.getByTestId('heatmap-panel');
+    if (!(await panel.isVisible())) await page.getByRole('button', { name: /히트맵 패널 토글/ }).click();
+    const first = panel.getByTestId('heatmap-drawer-row-005930'), second = panel.getByTestId('heatmap-drawer-row-000660');
+    await expect(second.locator('.quote-row-price')).toHaveText('123,456');
+    await first.click();
+    await expect(first).toHaveAttribute('aria-current', 'true');
+    const scale = fontSize / 16;
+    for (const [width, gap, padding] of [[360, 8, 12], [280, 4, 8], [240, 2, 4]]) {
+      await page.addStyleTag({ content: `:root { --watchlist-panel-w: ${width / 16}rem !important; }` });
+      await expect.poll(() => geometry(first).then(value => value.gap)).toBe(gap * scale);
+      const [a, b] = await Promise.all([geometry(first), geometry(second)]);
+      expect(a.padding).toBe(padding * scale);
+      expect(a.name.left).toBe(40 * scale);
+      expect(a.price.right).toBeCloseTo(b.price.right, 3);
+      expect(a.percent.right).toBeCloseTo(b.percent.right, 3);
+      expect(a.price.width).toBeCloseTo(b.price.width, 3);
+      for (const value of [a.price, a.percent, b.price, b.percent]) {
+        expect(value.full).toBe(true);
+        expect(value.align).toBe('right');
+        expect(value.whiteSpace).toBe('nowrap');
+      }
+      for (const header of await panel.getByTestId('heatmap-group-header').all()) {
+        const average = header.locator('.heatmap-group-percent');
+        expect(await average.evaluate(node => getComputedStyle(node).textAlign)).toBe('right');
+        const averageBounds = await average.boundingBox();
+        const percentBounds = await first.locator('.quote-row-percent').boundingBox();
+        expect(averageBounds!.x + averageBounds!.width).toBeCloseTo(percentBounds!.x + percentBounds!.width, 3);
+        expect(averageBounds!.width).toBeCloseTo(a.percent.width, 3);
+      }
+      if (width === 280) await panel.screenshot({ path: `/tmp/hoga-heatmap-columns-default-${fontSize}.png` });
+      expect(a.height).toBeLessThanOrEqual(26 * scale);
+      expect(await panel.getByTestId('heatmap-drawer-scroll').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    }
+    await panel.getByRole('button', { name: '종목 정렬', exact: true }).click();
+    await panel.getByRole('button', { name: '그룹 정렬', exact: true }).click();
+    expect((await geometry(first)).price.width).toBe((await geometry(second)).price.width);
+    // Real query refreshes grow and then shrink the displayed figures. The
+    // retained budget must survive shrink, search and group collapse.
+    price = 123456789; percent = -1234.56; expectedPrice = 1234567890;
+    await page.clock.fastForward(11_000);
+    await expect(second.locator('.quote-row-price')).toHaveText('1,234,567,890');
+    await expect(second.getByTestId('heatmap-drawer-row-000660-expected-marker')).toBeVisible();
+    await expect(second.locator('.quote-row-percent')).toHaveText('-1234.56%');
+    await expect.poll(() => geometry(second).then(value => value.price.full && value.percent.full)).toBe(true);
+    const wide = await geometry(first);
+    const scroll = panel.getByTestId('heatmap-drawer-scroll');
+    await page.addStyleTag({ content: ':root { --watchlist-panel-w: 10rem !important; }' });
+    await expect.poll(() => scroll.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+    expect((await geometry(second)).price.full).toBe(true);
+    await page.addStyleTag({ content: ':root { --watchlist-panel-w: 15rem !important; }' });
+    price = 12; percent = 1; expectedPrice = undefined;
+    await page.clock.fastForward(11_000);
+    await expect(second.locator('.quote-row-price')).toHaveText('12');
+    await expect(second.getByTestId('heatmap-drawer-row-000660-expected-marker')).toHaveCount(0);
+    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    expect((await geometry(first)).percent.width).toBe(wide.percent.width);
+    const search = panel.getByRole('textbox', { name: '종목·그룹 검색' });
+    await search.fill('삼성');
+    await expect(second).toHaveCount(0);
+    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    await search.fill('');
+    await panel.getByRole('button', { name: '전체 접기' }).click();
+    await expect(first).toHaveCount(0);
+    await panel.getByRole('button', { name: '전체 펼치기' }).click();
+    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    expect((await geometry(first)).percent.width).toBe(wide.percent.width);
+    // Group drag keeps the same average column in the body-portal ghost.
+    const header = panel.getByTestId('heatmap-group-header').filter({ hasText: folder.name });
+    const headerBounds = await header.boundingBox();
+    const averageBefore = await header.locator('.heatmap-group-percent').boundingBox();
+    await panel.getByRole('button', { name: '그룹 정렬', exact: true }).click();
+    await panel.getByRole('button', { name: '그룹 정렬', exact: true }).click();
+    const box = await header.boundingBox();
+    await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box!.x + box!.width / 2 + 8, box!.y + box!.height / 2, { steps: 3 });
+    const ghost = page.getByTestId('heatmap-drag-ghost');
+    await expect(ghost).toBeVisible();
+    const ghostBounds = await ghost.boundingBox();
+    const averageGhost = await ghost.locator('.heatmap-group-percent').boundingBox();
+    expect(averageGhost!.width).toBeCloseTo(averageBefore!.width, 3);
+    expect(averageGhost!.x + averageGhost!.width - ghostBounds!.x).toBeCloseTo(averageBefore!.x + averageBefore!.width - headerBounds!.x, 3);
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(ghost).toHaveCount(0);
+    await panel.screenshot({ path: `/tmp/hoga-heatmap-columns-${fontSize}.png` });
+    expect(pageErrors).toEqual([]);
+  });
+}
