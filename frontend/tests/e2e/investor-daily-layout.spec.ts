@@ -50,9 +50,8 @@ for (const width of [320, 560, 1000]) {
     await setting(page, '순매수');
     const columns = await table.locator('thead').getByRole('columnheader').evaluateAll(headers => headers.map(h => h.getBoundingClientRect().width));
     expect(columns).toHaveLength(5);
-    expect(columns[0]).toBe(80);
-    columns.slice(1).forEach(w => expect(w).toBeCloseTo(columns[1], 1));
-    if (width === 560) expect(columns[1]).toBe(120);
+    expect(columns[0]).toBe(width < 480 ? 48 : width < 640 ? 56 : 72);
+    columns.slice(1).forEach(w => expect(w).toBeGreaterThan(0));
     await expectNumbersFit(page);
     await setting(page, '기관 상세 펼치기');
     await expect(table.locator('thead').getByRole('columnheader')).toHaveCount(13);
@@ -60,7 +59,7 @@ for (const width of [320, 560, 1000]) {
       const cells = row.querySelectorAll('td');
       return [getComputedStyle(cells[3]).paddingRight, getComputedStyle(cells[4]).paddingLeft];
     });
-    expect(padding).toEqual(['8px', '16px']);
+    expect(padding).toEqual(width < 480 ? ['1px', '1px'] : width < 640 ? ['1px', '3px'] : ['4px', '6px']);
     await expectNumbersFit(page);
     const date = table.locator('tbody th').first();
     const left = (await date.boundingBox())!.x;
@@ -93,4 +92,35 @@ test('long raw quantities and cumulative totals keep their reserved tracks', asy
   await expectNumbersFit(page);
   await setting(page, '기관 상세 펼치기');
   await expectNumbersFit(page);
+});
+
+test('resizing the same window adjusts density and preserves one row per date', async ({ page }, info) => {
+  await mount(page, 720);
+  const samples = [];
+  for (const width of [720, 560, 360, 720]) {
+    await page.locator('.live-window').evaluate((host, width) => { (host as HTMLElement).style.width = `${width}px`; }, width);
+    const expectedDate = width < 480 ? '48px' : width < 640 ? '56px' : '72px';
+    await expect.poll(() => page.locator('tbody th').first().evaluate(el => getComputedStyle(el).minWidth)).toBe(expectedDate);
+    const sample = await page.getByRole('table').evaluate(table => {
+      const scroller = table.closest('[aria-label="일별 투자자 내역"]')!;
+      return {
+        rowHeights: Array.from(table.querySelectorAll('tbody tr')).map(row => row.getBoundingClientRect().height),
+        cellCounts: Array.from(table.querySelectorAll('tbody tr')).map(row => row.children.length),
+        font: getComputedStyle(table.querySelector('td')!).fontSize,
+        padding: getComputedStyle(table.querySelector('td:nth-child(3)')!).paddingRight,
+        scroll: scroller.scrollWidth > scroller.clientWidth + 1,
+      };
+    });
+    expect(sample.cellCounts).toEqual([13, 13, 13]);
+    expect(sample.padding).toBe(width < 640 ? '1px' : '4px');
+    if (width >= 560) expect(sample.scroll).toBe(false);
+    await expectNumbersFit(page);
+    samples.push(sample);
+    if (width === 560) await page.screenshot({ path: info.outputPath('daily-fluid-560.png') });
+  }
+  for (const sample of samples) {
+    expect(sample.rowHeights).toEqual(samples[0].rowHeights);
+    expect(sample.font).toBe(samples[0].font);
+  }
+  await info.attach('resize-density', { body: JSON.stringify(samples), contentType: 'application/json' });
 });

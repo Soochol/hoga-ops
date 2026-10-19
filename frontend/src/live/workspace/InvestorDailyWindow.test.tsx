@@ -450,7 +450,7 @@ it('조회한 구간에 없는 날짜는 건너뛰거나 계속 조회하지 않
 });
 
 
-it('접힌 표는 날짜 한 줄·투자자 한 셀에 세 값을 K주로 표시한다', () => {
+it('접힌 표는 날짜 한 줄·투자자별 세 숫자 열을 K주로 표시한다', () => {
   useLivePastInvestorNet.mockImplementation((code, _from, _to, _axis, side) => ({
     data: { code, unit: 'qty_shares', trade_side: side, points: [{
       ...point('20260803'), foreign_net: side === 'net' ? 85200 : side === 'buy' ? 285400 : 200200,
@@ -458,17 +458,19 @@ it('접힌 표는 날짜 한 줄·투자자 한 셀에 세 값을 K주로 표시
   }));
   render(<InvestorDailyWindow code="005930" cursorDate={null} />);
   const row = screen.getByTestId('investor-daily-row-20260803');
-  expect(within(row).getAllByRole('cell')).toHaveLength(4);
-  const foreign = within(row).getAllByRole('cell')[1];
-  expect(foreign).toHaveTextContent('+85·285·200');
-  expect(within(foreign).getByTitle('총매수 285,400주')).toBeInTheDocument();
+  expect(within(row).getAllByRole('cell')).toHaveLength(12);
+  const foreign = () => within(row).getAllByRole('cell').slice(3, 6);
+  expect(foreign().map(cell => cell.textContent)).toEqual(['+85', '285', '200']);
+  expect(within(foreign()[1]).getByTitle('총매수 285,400주')).toBeInTheDocument();
+  expect(screen.getByLabelText('숫자 표시 순서')).toHaveTextContent('각 주체: 순매수 · 매수 · 매도');
   expect(screen.queryByRole('group', { name: '매매 기준' })).toBeNull();
   expect(screen.getByRole('group', { name: '표기 방법' })).toBeInTheDocument();
   expect(screen.getByText('단위: 천 주')).toBeInTheDocument();
   expect(screen.getByText('단위: 천 주').closest('.responsive-data-controls')).toContainElement(screen.getByRole('button', { name: '5일' }));
-  expect(row.closest('table')?.querySelector('tfoot')).toHaveTextContent('+85·285·200');
+  expect(within(row.closest('table')!.querySelector('tfoot')!).getAllByRole('cell').slice(3, 6)
+    .map(cell => cell.textContent)).toEqual(['+85', '285', '200']);
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
-  expect(foreign).toHaveTextContent('+85,200·285,400·200,200');
+  expect(foreign().map(cell => cell.textContent)).toEqual(['+85,200', '285,400', '200,200']);
   expect(screen.getByText('단위: 주')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'K 단위' }));
   fireEvent.click(screen.getByRole('button', { name: '총매수' }));
@@ -477,8 +479,7 @@ it('접힌 표는 날짜 한 줄·투자자 한 셀에 세 값을 K주로 표시
   expect(screen.queryByText('순매수', { selector: 'span.font-semibold' })).toBeNull();
   fireEvent.click(within(screen.getByRole('group', { name: '표기 방법' }))
     .getByRole('button', { name: '모두' }));
-  expect(within(screen.getByTestId('investor-daily-row-20260803')).getAllByRole('cell')[1])
-    .toHaveTextContent('+85·285·200');
+  expect(foreign().map(cell => cell.textContent)).toEqual(['+85', '285', '200']);
   fireEvent.click(screen.getByRole('button', { name: '기관 상세 펼치기' }));
   expect(screen.getByRole('group', { name: '매매 기준' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: '총매도' }));

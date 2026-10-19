@@ -1,5 +1,6 @@
 import { ResponsiveDataControls } from '../../ui/ResponsiveDataControls';
 import { SegmentedControl } from '../../ui/SegmentedControl';
+import './InvestorDailyWindow.css';
 /**
  * 일별 투자자 창 — `ka10059` 순매수·총매수·총매도를 주체 13종으로 펼친 표.
  *
@@ -48,15 +49,15 @@ import { SegmentedControl } from '../../ui/SegmentedControl';
  * 존재하는 이유가 그것이고, 표시 단위도 주/억으로 같다(`formatAmount` 가 백만원을
  * 억으로 접는다).
  *
- * ## 고정 트랙과 내용 기반 최소 폭을 함께 사용하는 이유
+ * ## 날짜당 한 줄과 창 너비에 반응하는 숫자 열
  *
- * 숫자 열은 같은 폭으로 배분하되, 본문·누적의 가장 긴 표기로 표 전체의 최소
- * 폭을 먼저 확보한다. 고정 레이아웃만 쓰면 긴 숫자가 잘리므로 둘은 함께 바뀐다.
- * 넘치는 폭은 가로 스크롤하고 날짜 컬럼과 헤더는 sticky 로 붙잡는다.
+ * 숫자를 실제 table 컬럼에 나눠 본문·누적의 자릿수로 폭을 배분한다. 창을 좁히면
+ * 날짜 폭과 셀 여백만 줄이고 글자 크기·한 줄 구조를 유지한다. 숫자의 최소 폭보다
+ * 좁아지면 가로 스크롤하고 날짜 컬럼과 헤더는 sticky 로 붙잡는다.
  */
 import { InvestorDailySummaryCell } from './InvestorDailySummaryCell';
 import { investorDailySummary } from '../investorDailySummary';
-import { formatInvestorDailyNumber, investorDailyTableLayout } from './investorDailyNumbers';
+import { formatInvestorDailyNumber } from './investorDailyNumbers';
 import { InvestorDailyNumber } from './InvestorDailyNumber';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
@@ -175,28 +176,6 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
   }, [buyQuery.data, sellQuery.data, code, dataUnit, table.rows]);
 
   const allValues = !showDetails && compactDisplay === 'all';
-  const layout = useMemo(() => {
-    const values: string[] = [];
-    const add = (value: number | null, side: InvestorTradeSide) => {
-      values.push(formatInvestorDailyNumber(value, dataUnit, side, !showDetails && useK));
-    };
-    for (const column of columns) {
-      for (const row of table.rows) {
-        add(row.values[column.key], dataSide);
-        if (allValues) {
-          add(summary.buy.value(row.date, column.key), 'buy');
-          add(summary.sell.value(row.date, column.key), 'sell');
-        }
-      }
-      add(table.totals[column.key], dataSide);
-      if (allValues) {
-        add(summary.buy.total(column.key), 'buy');
-        add(summary.sell.total(column.key), 'sell');
-      }
-    }
-    const dateLabel = `누적${span === 0 ? ` ${table.rows.length}일` : ''}${table.missingBreakdown ? ` −${table.missingBreakdown}일` : ''}`;
-    return investorDailyTableLayout(values, columns.length, allValues, dataUnit !== 'qty_shares', dateLabel);
-  }, [columns, table, dataUnit, dataSide, showDetails, useK, allValues, summary, span]);
 
   // Cursor highlighting and follow timers do not invalidate numeric cell contents.
   const rowContents = useMemo(() => table.rows.map((row) => ({
@@ -204,7 +183,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     cells: <>
       <DateCell date={row.date} isToday={row.date === today} />
       {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-        <InvestorDailySummaryCell aligned key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} values={{
+        <InvestorDailySummaryCell separateColumns key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} values={{
           net: dataSide === 'net' ? row.values[column.key] : null,
           buy: summary.buy.value(row.date, column.key),
           sell: summary.sell.value(row.date, column.key),
@@ -215,7 +194,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
           dataSide={dataSide}
           compact={!showDetails}
           useK={useK}
-          className={index === TOP_COLUMN_COUNT ? 'border-l border-border !pl-4' : undefined}
+          className={!showDetails || index === TOP_COLUMN_COUNT ? 'investor-daily-group-start border-l border-border' : undefined}
         />
       ))}
     </>,
@@ -223,7 +202,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
   const totalCells = useMemo(() => (<>
     {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-      <InvestorDailySummaryCell aligned key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} foot values={{
+      <InvestorDailySummaryCell separateColumns key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} foot values={{
         net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
         buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
       }} /> : <ValueCell
@@ -234,7 +213,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
         compact={!showDetails}
         useK={useK}
         foot
-        className={index === TOP_COLUMN_COUNT ? 'border-l border-border !pl-4' : undefined}
+        className={!showDetails || index === TOP_COLUMN_COUNT ? 'investor-daily-group-start border-l border-border' : undefined}
       />
     ))}
   </>), [columns, showDetails, compactDisplay, dataUnit, useK, dataSide, table, summary]);
@@ -369,6 +348,9 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
           }} />
       </ResponsiveDataControls>
 
+      {allValues && <div className="shrink-0 px-2 pb-1 text-xs text-fg-dim" aria-label="숫자 표시 순서">
+        각 주체: 순매수 · 매수 · 매도
+      </div>}
       {!showDetails && compactDisplay === 'all'
         && (buyQuery.isLoading || sellQuery.isLoading || buyQuery.error || sellQuery.error)
         && <div className="flex shrink-0 flex-wrap items-center gap-x-2 px-2.5 pb-1 text-2xs text-fg-dim">
@@ -410,15 +392,16 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
               때마다 표가 사라지면 비교가 끊기고, 그대로 두면 안 바뀐 것처럼 보인다. */}
           <table
             data-axis-pending={axisPending || undefined}
-            style={{ minWidth: layout.minWidth }}
-            className={`w-full table-fixed border-collapse font-data text-xs tabular-nums transition-opacity ${
+            className={`investor-daily-table w-full font-data text-xs tabular-nums transition-opacity ${
               axisPending ? 'opacity-40' : ''
             }`}
           >
             <colgroup>
-              <col style={{ width: layout.dateWidth }} />
-              {columns.map(column => <col key={column.key} />)}
+              <col className="investor-daily-date-column" />
             </colgroup>
+            {columns.map(column => <colgroup key={column.key}>
+              <col span={allValues ? 3 : 1} />
+            </colgroup>)}
             {/* 헤더는 **한 줄이다.** 종전엔 위에 그룹 라벨 줄(「상위 주체 · 합 0」·
                 「기관 세부 · 합 = 기관계」)이 하나 더 있었는데 2026-08-31 사용자
                 결정으로 걷어냈다 — 항등식은 코드와 테스트가 지키는 성질이지 표가
@@ -430,11 +413,11 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                 {columns.map((column, index) => (
                   <HeadCell
                     center={allValues}
+                    colSpan={allValues ? 3 : 1}
                     key={column.key}
-                    className={index === TOP_COLUMN_COUNT ? 'border-l border-border !pl-4' : !showDetails ? 'border-l border-border' : undefined}
+                    className={!showDetails || index === TOP_COLUMN_COUNT ? 'investor-daily-group-start border-l border-border' : undefined}
                   >
                     <span>{column.label}</span>
-                    {!showDetails && compactDisplay === 'all' && <span className="ml-1 text-xs font-normal text-fg-dim">순·매수·매도</span>}
                   </HeadCell>
                 ))}
               </tr>
@@ -519,21 +502,24 @@ function HeadCell({
   sticky = false,
   foot = false,
   center = false,
+  colSpan = 1,
 }: {
   children?: React.ReactNode;
   center?: boolean;
   className?: string;
   sticky?: boolean;
   foot?: boolean;
+  colSpan?: number;
 }) {
   // 배경을 tr/thead 가 아니라 셀마다 주는 이유: border-collapse 표에서는 그 배경이
   // sticky 헤더를 따라오지 않아 스크롤되는 행이 뒤로 비친다(잠정투자자 표와 동일).
   const edge = foot ? 'border-t' : 'border-b';
   return (
     <th
-      scope="col"
+      scope={colSpan > 1 ? 'colgroup' : 'col'}
+      colSpan={colSpan}
       className={`whitespace-nowrap ${edge} border-border bg-bg-card px-2 py-1 font-medium ${center ? 'text-center' : sticky ? 'text-left' : 'text-right'} ${
-        sticky ? 'sticky left-0 z-10' : ''
+        sticky ? 'investor-daily-date sticky left-0 z-10' : ''
       } ${className}`}
     >
       {children}
@@ -545,7 +531,7 @@ function DateCell({ date, isToday }: { date: string; isToday: boolean }) {
   return (
     <th
       scope="row"
-      className="sticky left-0 z-10 whitespace-nowrap bg-bg-card px-2 py-1 text-left font-normal text-fg-dim"
+      className="investor-daily-date sticky left-0 z-10 whitespace-nowrap bg-bg-card px-2 py-1 text-left font-normal text-fg-dim"
     >
       {`${date.slice(4, 6)}-${date.slice(6)}`}
       {isToday && (
