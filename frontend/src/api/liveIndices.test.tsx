@@ -9,6 +9,7 @@ import {
   type LiveIndexCandlesResponse,
 } from './liveIndices';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
+import * as venuePolicy from '../live/liveVenuePolicy';
 import * as client from './client';
 
 function wrap() {
@@ -176,15 +177,23 @@ describe('useLiveIndices', () => {
   // "돌 수 있는 창"은 그 함수와 같은 값인지로만 검증한다(벽시계 flake 방지).
   describe('indexCandlesRefetchInterval', () => {
     const today = '20260729';
+    beforeEach(() => vi.spyOn(venuePolicy, 'liveVenueRefetchInterval').mockReturnValue(60_000));
 
     it('polls a minute timeframe whose window includes today', () => {
       expect(indexCandlesRefetchInterval('1m', today, today)).toBe(liveVenueRefetchInterval('KRX'));
     });
 
-    it('does not poll calendar timeframes — the daily cache has no today TTL yet', () => {
+    it('polls the current calendar periods with the same venue gate', () => {
       for (const tf of ['D', 'W', 'M'] as const) {
-        expect(indexCandlesRefetchInterval(tf, today, today)).toBe(false);
+        expect(indexCandlesRefetchInterval(tf, today, today)).toBe(liveVenueRefetchInterval('KRX'));
       }
+    });
+
+    it('keeps the current week/month mutable when to precedes today', () => {
+      expect(indexCandlesRefetchInterval('W', '20260727', today)).toBe(liveVenueRefetchInterval('KRX'));
+      expect(indexCandlesRefetchInterval('M', '20260701', today)).toBe(liveVenueRefetchInterval('KRX'));
+      expect(indexCandlesRefetchInterval('W', '20260726', today)).toBe(false);
+      expect(indexCandlesRefetchInterval('M', '20260630', today)).toBe(false);
     });
 
     it('does not poll a past-only window', () => {
@@ -193,6 +202,11 @@ describe('useLiveIndices', () => {
 
     it('does not poll without a range', () => {
       expect(indexCandlesRefetchInterval('1m', null, today)).toBe(false);
+    });
+
+    it('does not poll calendar candles outside the KRX session', () => {
+      vi.mocked(venuePolicy.liveVenueRefetchInterval).mockReturnValue(false);
+      expect(indexCandlesRefetchInterval('D', today, today)).toBe(false);
     });
   });
 

@@ -80,3 +80,11 @@ write / corrupt file handling / "operator deletes cache file to refresh" 같은
   optional disk persistence 추가 (본 ADR 의 trade-off 재평가).
 - `/replay` 페이지가 KIS daily candle 을 필요로 함 → unified path 필요성 강화.
 - per-batch overlap 이 메모리 사용량에서 의미있는 비중을 차지 (~10 MB 이상 / code).
+
+## 2026-10-19 보완 — 보관 예산
+
+조회 기간에 캡을 두지 않는 결정은 유지한다. 메모리 보관은 별도로 제한한다:
+`PastDailyCandlesCache`는 키당 최대 128배치·10,000행, 전체 최대 512,000행을
+보관한다. 키 수 LRU와 오늘 60초 TTL은 유지한다. 오래된 배치/키를 회수해도
+이번 요청에서 받은 행은 응답하며, 다음 요청은 비어 있는 구간만 다시 조회한다.
+캔들 외에 이 프리미티브를 공유하는 일별 투자자 데이터에도 같은 예산이 적용된다.

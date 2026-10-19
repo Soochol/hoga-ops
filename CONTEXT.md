@@ -591,6 +591,15 @@ The conversion step that turns Live Capture JSONL artifacts (`<data_dir>/live/{d
 Both variants make the Stock-Date readable through `/api/range` with `source=kis_live` once they complete. Invariant: the two variants are responsibility-disjoint by date — Today Promotion handles today only, Daily Promotion's loop skips today. Midnight handoff is atomic via `shutil.move` and the next sleep cycle of Today Promotion picks up the new today_kst. Promotion produces snapshots/trades/fills/brokers Parquets only — never candles; the candle dimension of the `kis_live` Source is served by **Live Candle Backfill** through a separate cache (see below and ADR-0040). **Encoding contract**: Live Snapshot `t_ms` (Unix ms per ADR-0003) is converted to HHMMSSmmm packed-decimal at Promotion write time and stored in the `ts_ms` column, so kis_live promoted Parquet honors the same on-disk encoding invariant that hogaplay Parquet does (ADR-0010 — series-builder SQL decodes HHMMSSmmm via `hhmmssms_to_intra_ms_sql("ts_ms")`; ADR-0049 — writer-side normalization).
 _Avoid_: "rollup" (collides with frontend aggregation like StockDateGroup rollup), "compaction" (suggests merging multiple Parquet files — Promotion is JSONL→Parquet, not Parquet→Parquet), "finalization" (overloaded with capture COMPLETE phase), "archival" (suggests data is being moved offline — Promoted Parquet is the *active* artifact), bare "promote" alone in domain prose (qualify as Daily Promotion or Today Promotion since the side-effects differ).
 
+**Live Merged Cache (라이브 병합 캐시)**:
+브라우저 React Query에 보관하는 국내 분봉·범위 지표의 병합 이력. 종목 전환 후에도
+최근 사용한 최대 6개 닫힌 종목을 재사용하며, 공용 추정 payload 예산은 96MiB다.
+열린 차트가 소비 중인 identity는 용량 회수와 idle GC에서 보호한다. 사용이 끝나면
+기존 2시간 gcTime이 적용되고, 지표 병합본의 12개 상한도 유지한다(현재 소비 중인
+항목은 예외). 용량은 배열 표본 기반 추정이며 브라우저 전체 heap 상한이 아니다.
+갱신 주기와 보관 수명은 별개이며 새로고침을 건너뛰는 영속 저장은 하지 않는다.
+개발 모드 `window.__liveCacheStats()`로 추정 크기·보호 항목 수·회수 사유를 확인한다.
+
 **Live Candle Backfill**:
 `/live` 페이지가 KIS REST 를 직접 호출해서 받아온 OHLCV 캔들. 두 KIS endpoint 를 사용한다:
 - **분봉** (1m/3m/5m/10m/15m/30m timeframe): `GET /api/live/past-candles` → KIS `inquire-time-dailychartprice` (TR_ID `FHKST03010230`). 응답은 1분봉, 백엔드가 **KIS Candle Cache** 에 임시 보관한다. 250-day hard cap (payload 보호 — 1년치 일봉을 분봉으로 보내면 ~5MB). 프론트는 3m/5m/.../30m 을 1분봉에서 client-aggregate. 분봉의 cache hit/fetch fanout/AUTO venue merge/rate-limit warning orchestration 은 `hoga/live/live_candle_backfill.py` 의 `LiveMinuteCandleBackfill` 이 소유하고, FastAPI route 는 request validation + wire envelope 만 맡는다.

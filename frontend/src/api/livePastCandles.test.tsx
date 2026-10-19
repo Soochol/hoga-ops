@@ -18,6 +18,7 @@ import {
 import * as client from './client';
 import type { LiveWarningKind } from './dataWarnings';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
+import { useLiveRangeCacheEviction } from '../live/useLiveRangeCacheEviction';
 
 function wrap(qc: QueryClient) {
   return ({ children }: { children: React.ReactNode }) => (
@@ -45,6 +46,28 @@ const BLOCKED: LivePastCandlesResponse = {
     date: '20260501', reason: 'capacity_overloaded', kind: 'deferred', msg: 'x', is_failure: true,
   }],
 };
+
+it('restores merged candles without a new request after A → B → A', async () => {
+  const calls = vi.spyOn(client, 'apiCall').mockImplementation(url => {
+    const code = new URL(String(url), 'http://local').searchParams.get('code');
+    return Promise.resolve({ ...RESPONSE, code }) as never;
+  });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result, rerender, unmount } = renderHook(({ code }) => {
+    const data = useLivePastCandles(code, RESPONSE.from, RESPONSE.to, 'KRX', '20260601');
+    useLiveRangeCacheEviction(code);
+    return data;
+  }, { wrapper: wrap(qc), initialProps: { code: '005930' } });
+  await waitFor(() => expect(result.current.data?.code).toBe('005930'));
+  rerender({ code: '000660' });
+  await waitFor(() => expect(result.current.data?.code).toBe('000660'));
+  rerender({ code: '005930' });
+  await waitFor(() => expect(result.current.data?.code).toBe('005930'));
+  expect(calls).toHaveBeenCalledTimes(2);
+  unmount();
+  qc.clear();
+  calls.mockRestore();
+});
 
 describe('sorted candle merge', () => {
   const candle = (t_ms: number, close = t_ms) => ({ t_ms, open: close, high: close, low: close, close, volume: 1 });

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -7,6 +8,7 @@ from typing import TypeAlias
 
 from hoga.live.candle_fetch_result import DailyInvariantViolation, IndexCandleFetchResult
 from hoga.live.candle_models import IndexCandlePoint
+from hoga.live.single_flight import SingleFlight
 from hoga.util.cache_stats import CacheStats
 from hoga.util.timeenc import KST
 
@@ -29,19 +31,37 @@ class IndexCandleCacheHit:
 # 배치는 러닝 일수만큼 쌓인다. 캡 초과 시 oldest 드랍 — 커버리지 구멍은
 # covered()가 None을 돌려 해당 구간만 재fetch되므로 정확성 불변.
 DEFAULT_MAX_BATCHES_PER_KEY = 128
+TODAY_TTL_SECONDS = 60.0
+
+
+def mutable_period_start(today: date, timeframe: str) -> date:
+    if timeframe == "W":
+        return today - timedelta(days=today.weekday())
+    if timeframe == "M":
+        return today.replace(day=1)
+    return today
 
 
 class IndexCandlesCache:
-    def __init__(self, *, max_batches_per_key: int = DEFAULT_MAX_BATCHES_PER_KEY) -> None:
+    def __init__(
+        self, *, max_batches_per_key: int = DEFAULT_MAX_BATCHES_PER_KEY,
+        today_ttl_seconds: float = TODAY_TTL_SECONDS,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
         self._max_batches_per_key = max(1, int(max_batches_per_key))
         self._per_key: dict[
             IndexCandleCacheKey,
             list[IndexCandleCacheBatch],
         ] = {}
         self._stats = CacheStats()
+        # Current D/W/M periods never enter the immutable history tier.
+        self._mutable: dict[IndexCandleCacheKey, tuple[IndexCandleCacheBatch, float]] = {}
+        self._today_ttl = today_ttl_seconds
+        self._clock = monotonic
+        self._inflight = SingleFlight()
 
     def stats_snapshot(self) -> dict[str, int | float | None]:
-        total_batches = sum(len(b) for b in self._per_key.values())
+        total_batches = sum(len(b) for b in self._per_key.values()) + len(self._mutable)
         return self._stats.snapshot(size=total_batches)
 
     def append_batch(
@@ -65,7 +85,11 @@ class IndexCandlesCache:
         self,
         key: IndexCandleCacheKey,
     ) -> list[IndexCandleCacheBatch]:
-        return list(self._per_key.get(key, []))
+        batches = list(self._per_key.get(key, []))
+        if key in self._mutable:
+            # Cache-only/bypass reads may still show the last successful window.
+            batches.append(self._mutable[key][0])
+        return batches
 
     def covered(
         self,
@@ -202,6 +226,52 @@ async def collect_index_candles_with_cache(
     from_s: str,
     to_s: str,
     fetch_batch: Callable[[str, str], Awaitable[IndexCandleFetchResult]],
+    *,
+    today: date | None = None,
+) -> IndexCandleFetchResult:
+    today = today or datetime.now(KST).date()
+    frm, to = _parse_yyyymmdd(from_s), _parse_yyyymmdd(to_s)
+    boundary = mutable_period_start(today, key[1])
+    async with cache._inflight.acquire(key):
+        if to < boundary:
+            return await _collect_past_candles(cache, key, from_s, to_s, fetch_batch)
+        past = IndexCandleFetchResult(candles=[], violations=[])
+        if frm < boundary:
+            past = await _collect_past_candles(
+                cache, key, from_s, _fmt(boundary - date.resolution), fetch_batch,
+            )
+        tail_from = max(frm, boundary)
+        entry = cache._mutable.get(key)
+        if (
+            entry is not None and cache._clock() - entry[1] < cache._today_ttl
+            and entry[0][0] >= boundary and entry[0][0] <= tail_from and entry[0][1] >= to
+        ):
+            cache._stats.record_hit()
+            batch = entry[0]
+            tail = IndexCandleFetchResult(
+                candles=_filter_dedupe_points(batch[2], tail_from, to),
+                violations=_filter_violations(batch[3], tail_from, to),
+            )
+        else:
+            cache._stats.record_miss()
+            tail = await fetch_batch(_fmt(tail_from), to_s)
+            if not tail.violations:
+                cache._mutable[key] = (
+                    (tail_from, to, list(tail.candles), []), cache._clock(),
+                )
+                cache._stats.record_store()
+        return IndexCandleFetchResult(
+            candles=_filter_dedupe_points([*past.candles, *tail.candles], frm, to),
+            violations=[*past.violations, *tail.violations],
+        )
+
+
+async def _collect_past_candles(
+    cache: IndexCandlesCache,
+    key: IndexCandleCacheKey,
+    from_s: str,
+    to_s: str,
+    fetch_batch: Callable[[str, str], Awaitable[IndexCandleFetchResult]],
 ) -> IndexCandleFetchResult:
     frm = _parse_yyyymmdd(from_s)
     to = _parse_yyyymmdd(to_s)
@@ -209,7 +279,9 @@ async def collect_index_candles_with_cache(
     if hit is not None:
         return IndexCandleFetchResult(candles=hit.candles, violations=hit.violations or [])
 
-    existing = cache.list_batches(key)
+    # A prior day's mutable row is not a verified closing value. Re-fetch it
+    # after rollover instead of treating the cache-only fallback as history.
+    existing = list(cache._per_key.get(key, []))
     fetch_ranges = _missing_ranges(existing, frm, to)
 
     violations = []

@@ -104,23 +104,17 @@ function mapIndex(row: LiveIndexWire): LiveIndexEntry {
   };
 }
 
-/** 지수 캔들 폴링 주기 — 장중 **오늘 창의 분봉**만 돈다(그 외 false).
- *
- * 종전엔 staleTime 만 있고 타이머가 없어, 사용자가 탭을 만지지 않는 한 지수 차트가
- * 첫 로드 시점에 얼어붙었다(백엔드 index_minute_candles_cache 의 TTL 부재와 한 쌍 —
- * 서버만 만료시켜도 아무도 다시 묻지 않으면 새 봉은 붙지 않는다).
- *
- * - **분봉 한정**: D/W/M 은 백엔드 일봉 캐시(index_candles_cache)에 아직 오늘 TTL 이
- *   없어 재요청해도 같은 응답이 온다 — 폴링해봐야 헛 요청만 는다.
- * - **venue=KRX 고정**: 지수는 KRX 정규장에서만 산출된다(NXT/UN 세션에는 지수가 없다).
- * - `to < todayKst` 인 과거 전용 창은 불변이라 돌 이유가 없다.
- */
+/** Match the backend's mutable D/W/M boundary. Completed periods never poll. */
 export function indexCandlesRefetchInterval(
   timeframe: LiveTimeframe,
   to: string | null,
   todayKst: string = todayKstYyyymmdd(),
 ): 60_000 | false {
-  if (!to || !isMinuteTimeframe(timeframe) || to < todayKst) return false;
+  const day = new Date(`${todayKst.slice(0, 4)}-${todayKst.slice(4, 6)}-${todayKst.slice(6, 8)}T00:00:00Z`);
+  if (timeframe === 'W') day.setUTCDate(day.getUTCDate() - (day.getUTCDay() + 6) % 7);
+  if (timeframe === 'M') day.setUTCDate(1);
+  const boundary = day.toISOString().slice(0, 10).replaceAll('-', '');
+  if (!to || to < boundary) return false;
   return liveVenueRefetchInterval('KRX');
 }
 

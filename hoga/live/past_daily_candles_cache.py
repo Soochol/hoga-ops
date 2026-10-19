@@ -12,6 +12,7 @@ artifacts, not runtime cache.
 from __future__ import annotations
 
 import time
+from collections import OrderedDict
 from datetime import date, datetime
 from typing import Literal, TypeAlias
 
@@ -32,6 +33,9 @@ def _monotonic() -> float:
 TODAY_TTL_SECONDS = 60.0
 DEFAULT_PAST_KEY_MAX_ENTRIES = 256
 DEFAULT_TODAY_KEY_MAX_ENTRIES = 256
+DEFAULT_MAX_BATCHES_PER_KEY = 128
+DEFAULT_MAX_BARS_PER_KEY = 10_000
+DEFAULT_MAX_PAST_BARS = 512_000
 
 TodayState = Literal["hit", "miss", "negative"]
 
@@ -62,8 +66,15 @@ class PastDailyCandlesCache:
         today_ttl_seconds: float = TODAY_TTL_SECONDS,
         max_past_keys: int = DEFAULT_PAST_KEY_MAX_ENTRIES,
         max_today_keys: int = DEFAULT_TODAY_KEY_MAX_ENTRIES,
+        max_batches_per_key: int = DEFAULT_MAX_BATCHES_PER_KEY,
+        max_bars_per_key: int = DEFAULT_MAX_BARS_PER_KEY,
+        max_past_bars: int = DEFAULT_MAX_PAST_BARS,
     ) -> None:
         self._batch_stats = CacheStats()
+        self._max_batches_per_key = max(0, max_batches_per_key)
+        self._max_bars_per_key = max(0, max_bars_per_key)
+        self._max_past_bars = max(0, max_past_bars)
+        self._past_weights: OrderedDict[tuple[Venue, str], int] = OrderedDict()
         self._today_stats = CacheStats()
         # Dual-horizon primitives (ADR-0092). `_per_key` / `_today_mem` names are
         # kept so existing introspection (`key in cache._per_key`) and the
@@ -80,8 +91,10 @@ class PastDailyCandlesCache:
         )
 
     def stats_snapshot(self) -> dict[str, dict[str, int | float | None]]:
+        batches = self._batch_stats.snapshot(size=len(self._per_key))
+        batches.update(bars=sum(self._past_weights.values()), max_bars=self._max_past_bars)
         return {
-            "batches": self._batch_stats.snapshot(size=len(self._per_key)),
+            "batches": batches,
             "today": self._today_stats.snapshot(size=len(self._today_mem)),
         }
 
@@ -144,6 +157,8 @@ class PastDailyCandlesCache:
         batches = self._per_key.get(key, [])
         if key in self._per_key:
             self._per_key.move_to_end(key)
+            if key in self._past_weights:
+                self._past_weights.move_to_end(key)
             self._batch_stats.record_hit()
         else:
             self._batch_stats.record_miss()
@@ -161,6 +176,7 @@ class PastDailyCandlesCache:
         **전역으로 하나**(오늘)라 부분 무효화할 축이 없기 때문이다.
         """
         self._per_key.clear()
+        self._past_weights.clear()
 
     def append_batch(
         self, *args, violations: list | None = None,
@@ -181,9 +197,29 @@ class PastDailyCandlesCache:
         self._per_key.setdefault(key, list).append(
             self._normalize_batch(frm, to, bars, list(violations or []))
         )
+        batches = self._per_key.get(key)
+        assert batches is not None
+        bar_count = sum(len(batch[2]) for batch in batches)
+        while batches and (
+            len(batches) > self._max_batches_per_key or bar_count > self._max_bars_per_key
+        ):
+            bar_count -= len(batches.pop(0)[2])
+            self._batch_stats.record_eviction()
+        if not batches:
+            self._per_key.pop(key)
         self._per_key.move_to_end(key)
         self._batch_stats.record_store()
         self._per_key.trim()
+        self._past_weights[key] = bar_count
+        self._past_weights.move_to_end(key)
+        for gone in [k for k in self._past_weights if k not in self._per_key]:
+            del self._past_weights[gone]
+        total_bars = sum(self._past_weights.values())
+        while self._past_weights and total_bars > self._max_past_bars:
+            oldest, weight = self._past_weights.popitem(last=False)
+            total_bars -= weight
+            self._per_key.pop(oldest)
+            self._batch_stats.record_eviction()
 
     # --- today ---
 

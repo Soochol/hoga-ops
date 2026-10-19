@@ -63,7 +63,7 @@ describe('liveOpenCodesKey', () => {
 });
 
 describe('useLiveRangeCacheEviction', () => {
-  it('열린 창에 없는 종목의 canonical 병합본을 축출한다', () => {
+  it('열린 창에서 빠져도 최근 종목의 canonical 병합본은 보관한다', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(mergedRangeKey('005930'), { code: '005930' });
     queryClient.setQueryData(mergedRangeKey('000660'), { code: '000660' });
@@ -73,7 +73,7 @@ describe('useLiveRangeCacheEviction', () => {
     });
 
     expect(queryClient.getQueryData(mergedRangeKey('005930'))).toBeDefined();
-    expect(queryClient.getQueryData(mergedRangeKey('000660'))).toBeUndefined();
+    expect(queryClient.getQueryData(mergedRangeKey('000660'))).toBeDefined();
   });
 
   it('past-candles 는 청크와 병합본의 코드 위치가 달라도 각각 옳게 읽는다', () => {
@@ -98,9 +98,9 @@ describe('useLiveRangeCacheEviction', () => {
     // 열린 종목의 병합 캔들까지 날아간다 — 이 단언이 그 회귀를 잡는다.
     expect(queryClient.getQueryData(openMerged)).toBeDefined();
     expect(queryClient.getQueryData(openChunk)).toBeDefined();
-    expect(queryClient.getQueryData(goneMerged)).toBeUndefined();
+    expect(queryClient.getQueryData(goneMerged)).toBeDefined();
     expect(queryClient.getQueryData(goneChunk)).toBeUndefined();
-    expect(queryClient.getQueryData(goneOtherTf)).toBeUndefined();
+    expect(queryClient.getQueryData(goneOtherTf)).toBeDefined();
   });
 
   it("/study 와 공유하는 ['range'] 청크는 건드리지 않는다", () => {
@@ -150,7 +150,7 @@ describe('useLiveRangeCacheEviction', () => {
     expect(queryClient.getQueryData(mergedRangeKey('005930'))).toBeDefined();
   });
 
-  it('열린 종목이 바뀌면 새로 빠진 종목을 축출한다', () => {
+  it('열린 종목이 바뀌어도 최근 병합 이력은 남긴다', () => {
     const queryClient = new QueryClient();
     queryClient.setQueryData(mergedRangeKey('005930'), { code: '005930' });
     queryClient.setQueryData(mergedRangeKey('000660'), { code: '000660' });
@@ -164,6 +164,6 @@ describe('useLiveRangeCacheEviction', () => {
     rerender({ codes: '005930' });
 
     expect(queryClient.getQueryData(mergedRangeKey('005930'))).toBeDefined();
-    expect(queryClient.getQueryData(mergedRangeKey('000660'))).toBeUndefined();
+    expect(queryClient.getQueryData(mergedRangeKey('000660'))).toBeDefined();
   });
 });

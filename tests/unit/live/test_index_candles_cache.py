@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime
 
 import pytest
@@ -12,6 +13,84 @@ from hoga.live.index_candles_cache import (
     collect_index_candles_with_cache,
 )
 from hoga.util.timeenc import KST
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tf", "boundary", "historical"), [
+    ("D", "20261021", "20261020"),
+    ("W", "20261019", "20261018"),
+    ("M", "20261001", "20260930"),
+])
+async def test_current_period_expires_without_refetching_completed_history(tf, boundary, historical):
+    clock = [0.0]
+    cache = IndexCandlesCache(monotonic=lambda: clock[0])
+    calls = []
+
+    async def fetch(frm, to):
+        calls.append((frm, to))
+        day = boundary if frm == boundary else "20260901"
+        return IndexCandleFetchResult(candles=[point(day, len(calls))])
+
+    async def collect():
+        return await collect_index_candles_with_cache(
+            cache, ("KOSPI", tf), "20260901", "20261021", fetch, today=date(2026, 10, 21),
+        )
+
+    first = await collect()
+    assert calls == [("20260901", historical), (boundary, "20261021")]
+    clock[0] = 59.9
+    assert (await collect()).candles == first.candles
+    clock[0] = 60.0
+    updated = await collect()
+    assert calls[-1] == (boundary, "20261021")
+    assert len(calls) == 3
+    assert updated.candles[-1].close == 3
+
+
+@pytest.mark.asyncio
+async def test_current_period_rollover_refetches_yesterday_and_keeps_last_good_on_failure():
+    cache = IndexCandlesCache()
+    calls = []
+    fail = False
+
+    async def fetch(frm, to):
+        calls.append((frm, to))
+        if fail:
+            raise RuntimeError("temporary failure")
+        return IndexCandleFetchResult(candles=[point(frm)])
+
+    await collect_index_candles_with_cache(
+        cache, ("KOSPI", "D"), "20261020", "20261020", fetch, today=date(2026, 10, 20),
+    )
+    await collect_index_candles_with_cache(
+        cache, ("KOSPI", "D"), "20261020", "20261021", fetch, today=date(2026, 10, 21),
+    )
+    assert calls == [("20261020", "20261020"), ("20261020", "20261020"), ("20261021", "20261021")]
+    fail = True
+    cache._today_ttl = 0
+    with pytest.raises(RuntimeError, match="temporary failure"):
+        await collect_index_candles_with_cache(
+            cache, ("KOSPI", "D"), "20261021", "20261021", fetch, today=date(2026, 10, 21),
+        )
+    assert cache.list_batches(("KOSPI", "D"))[-1][2] == [point("20261021")]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_current_period_requests_share_one_fetch():
+    cache = IndexCandlesCache()
+    calls = []
+
+    async def fetch(frm, to):
+        calls.append((frm, to))
+        await asyncio.sleep(0)
+        return IndexCandleFetchResult(candles=[point(frm)])
+
+    await asyncio.gather(*[
+        collect_index_candles_with_cache(
+            cache, ("KOSPI", "D"), "20261021", "20261021", fetch, today=date(2026, 10, 21),
+        ) for _ in range(3)
+    ])
+    assert len(calls) == 1
 
 
 def point(day: str, close: float = 1.0) -> IndexCandlePoint:
