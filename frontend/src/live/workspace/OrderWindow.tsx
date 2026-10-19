@@ -27,7 +27,6 @@ import { useLiveKrxClose } from '../../api/liveKrxClose';
 import { useLiveKrxPreviousClose } from '../../api/liveKrxPreviousClose';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { useLiveVenueStore } from '../../state/liveVenue';
-import type { OrderbookSnapshot } from '../../api/types';
 import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary } from '../liveSidebarAdapters';
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
@@ -123,9 +122,9 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   });
   const vi = useLiveViStatus(code, effectiveVenue);
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
-  const [lockedBook, lockBook] = useState<OrderbookSnapshot | null>(null);
-  const book = lockedBook ?? snapshot;
-  const deltaBadges = useOrderbookDeltaBadges(live.ob, !lockedBook && !storedLadder);
+  const [dragInProgress, setDragInProgress] = useState(false);
+  const book = snapshot;
+  const deltaBadges = useOrderbookDeltaBadges(live.ob, !storedLadder);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const settingsId = useId();
@@ -213,7 +212,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     if (current?.element.hasPointerCapture(current.pointer)) current.element.releasePointerCapture(current.pointer);
     suppressClick.current = current?.active ?? false;
     if (current?.active) suppressDoubleClick.current = true;
-    lockBook(null); setDragTarget(null); setDragCancel(false); setDraggingOrders([]);
+    setDragInProgress(false); setDragTarget(null); setDragCancel(false); setDraggingOrders([]);
   }, []);
   const displayKey = `${venue}:${effectiveVenue}:${sessionMode}:${activeSinglePrice !== null}`;
   const previousDisplayKey = useRef(displayKey);
@@ -237,7 +236,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
     unresolved: !!state.data?.unresolved_commands.length, settingsOpen: !!settingsDraft,
-    locked: !!lockedBook, stored: storedLadder, singlePrice: activeSinglePrice !== null,
+    locked: dragInProgress, stored: storedLadder, singlePrice: activeSinglePrice !== null,
     hasBook: !!snapshot, fresh, quantity,
     brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
       : activeAccount?.order_enabled === false ? activeAccount.blocked_reason ?? '이 계좌의 주문 경로를 확인하세요.' : null,
@@ -435,18 +434,14 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     if (e.button !== 0 || !targets.length || !ready) return;
     e.stopPropagation();
     drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
-    lockBook(snapshot ?? null); e.currentTarget.setPointerCapture(e.pointerId);
+    setDragInProgress(true); e.currentTarget.setPointerCapture(e.pointerId);
   }
-  function moveDrag(e: PointerEvent<HTMLElement>) {
+  const updateDragTarget = useCallback(() => {
     const d = drag.current;
-    if (!d || d.pointer !== e.pointerId) return;
-    if (!d.active && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
-    if (!d.active) { d.active = true; setDraggingOrders(d.orders); }
-    d.cursorX = e.clientX; d.cursorY = e.clientY;
-    positionDragPreview();
+    if (!d?.active) return;
     if (d.list) {
       const bounds = d.list.getBoundingClientRect();
-      if (e.clientX >= bounds.left && e.clientX <= bounds.right && e.clientY >= bounds.top && e.clientY <= bounds.bottom) {
+      if (d.cursorX >= bounds.left && d.cursorX <= bounds.right && d.cursorY >= bounds.top && d.cursorY <= bounds.bottom) {
         d.cancel = false; d.price = null;
         setDragTarget(null); setDragCancel(false);
         return;
@@ -459,17 +454,34 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     // The outer window also clips the ladder when its fixed columns are horizontally scrolled.
     const left = Math.max(rect.left, viewport.left, windowBounds.left), right = Math.min(rect.right, viewport.right, windowBounds.right);
     const top = Math.max(rect.top, viewport.top, windowBounds.top), bottom = Math.min(rect.bottom, viewport.bottom, windowBounds.bottom);
-    d.cancel = e.clientX < left || e.clientX > right || e.clientY < top || e.clientY > bottom;
-    const hit = document.elementFromPoint(e.clientX, e.clientY);
+    d.cancel = d.cursorX < left || d.cursorX > right || d.cursorY < top || d.cursorY > bottom;
+    const hit = document.elementFromPoint(d.cursorX, d.cursorY);
     const row = hit?.closest<HTMLElement>('[data-order-price]')
       ?? (hit?.closest('.order-summary-layer') && ladder.current?.contains(hit)
         ? [...ladder.current.querySelectorAll<HTMLElement>('[data-order-price]')].find(row => {
           const bounds = row.getBoundingClientRect();
-          return e.clientY >= bounds.top && e.clientY < bounds.bottom;
+          return d.cursorY >= bounds.top && d.cursorY < bounds.bottom;
         }) : null);
     const lane = hit?.closest<HTMLElement>('[data-order-side]');
     d.price = !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.orders[0].side) ? Number(row.dataset.orderPrice) : null;
     setDragTarget(d.price); setDragCancel(d.cancel);
+  }, []);
+  useLayoutEffect(updateDragTarget, [book, updateDragTarget]);
+  function moveDrag(e: PointerEvent<HTMLElement>) {
+    const d = drag.current;
+    if (!d || d.pointer !== e.pointerId) return;
+    if (!d.active && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+    if (!d.active) {
+      d.active = true; setDraggingOrders(d.orders);
+      // Keep capture alive even if a live update removes the original price slot.
+      if (rootRef.current) {
+        d.element = rootRef.current;
+        d.element.setPointerCapture(d.pointer);
+      }
+    }
+    d.cursorX = e.clientX; d.cursorY = e.clientY;
+    positionDragPreview();
+    updateDragTarget();
   }
   function endDrag(e?: PointerEvent<HTMLElement>, aborted = false) {
     if (e && !aborted) moveDrag(e);
@@ -509,9 +521,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         if (!group.length) return;
         e.preventDefault(); e.stopPropagation();
         if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY, side, price });
-      }}
-      onPointerMove={moveDrag} onPointerUp={endDrag}
-      onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
+      }}>
       {group.length > 0 && <span className={`order-quantity ${!canDrag ? 'order-quantity-blocked' : ''} ${draggingOrders.some(order => group.some(item => item.orderId === order.orderId)) ? 'order-chip-dragging' : ''}`}
         aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ' 합계' : ''}`}
         data-drag-order={group.some(order => editableOrder(order) && !pending(order)) ? group.map(order => order.orderId).join(',') : undefined}>
@@ -536,7 +546,10 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       amountPresets: next.amountPresets.map((value, index) => validOrderInput(value, 'amount') ? value : preferences.amountPresets[index]) as OrderWindowSettings['amountPresets'],
     });
   }
-  return <div ref={rootRef} style={priceLayout} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
+  return <div ref={rootRef}
+    onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={e => endDrag(e, true)}
+    onLostPointerCapture={e => { if (e.target === drag.current?.element) endDrag(e, true); }}
+    style={priceLayout} className={`order-window font-data ${compact ? 'order-compact' : ''} ${expanded ? 'order-expanded' : ''} ${spacious ? 'order-spacious' : ''} ${draggingOrderId ? 'order-dragging' : ''} ${dragCancel ? 'order-drag-canceling' : ''}`} data-testid="order-window" onPointerDownCapture={() => { suppressClick.current = false; }}
     onClickCapture={e => {
       if (suppressClick.current) { e.preventDefault(); e.stopPropagation(); suppressClick.current = false; }
       else if (e.detail === 1) suppressDoubleClick.current = false;
@@ -553,30 +566,30 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     }}>
     <div className="order-controls order-account-controls">
       <div className="order-account-group" ref={accountAnchor}>
-      {accounts.data && accounts.data.accounts.length > 1 ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || !!lockedBook}
+      {accounts.data && accounts.data.accounts.length > 1 ? <select className="order-account-select" aria-label="주문 계좌" value={account} disabled={busy || dragInProgress}
         onChange={e => { const next = accounts.data?.accounts.find(item => String(item.account_seq) === e.target.value);
           if (next) onAccountChange(next.account_seq);
           closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
       </select> : <span className="order-account-label text-fg-dim" title={accountDisplayLabel(activeAccount?.label)}>{accountDisplayLabel(activeAccount?.label)}</span>}
       {routes && <span className="text-fg-dim" aria-label="주문 경로">시세 {venue} · 주문 {activeAccount?.order_enabled === false ? '검증 대기' : orderRoute}</span>}
-      {routes && routes.length > 1 && <select aria-label="주문 거래소" value={orderRoute} disabled={busy || !!lockedBook}
+      {routes && routes.length > 1 && <select aria-label="주문 거래소" value={orderRoute} disabled={busy || dragInProgress}
         onChange={e => { chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>
         {routes.map(route => <option key={route} value={route}>{route}</option>)}
       </select>}
       {(['orders', 'holdings'] as const).map(tab => <button key={tab} type="button" aria-haspopup="dialog" aria-expanded={accountTab === tab}
-        disabled={!account || !!lockedBook || busy} onClick={() => { closeAction(); setSettingsDraft(null); setAccountTab(accountTab === tab ? null : tab); }}>
+        disabled={!account || dragInProgress || busy} onClick={() => { closeAction(); setSettingsDraft(null); setAccountTab(accountTab === tab ? null : tab); }}>
         {tab === 'orders' ? '미체결 주문' : '보유종목'}
       </button>)}
       </div>
       <div className="order-settings-group">
       <button ref={settingsButtonRef} type="button" aria-label="주문 설정" aria-haspopup="dialog" aria-expanded={!!settingsDraft} aria-controls={settingsDraft ? settingsId : undefined}
-        disabled={busy || !!lockedBook} onClick={() => {
+        disabled={busy || dragInProgress} onClick={() => {
           if (settingsDraft) { closeSettings(); return; }
           closeAction(); setAccountTab(null); setInfoOpen(false); setSettingsDraft(normalizeOrderSettings(preferences));
         }}>설정</button>
       {!showInlineSummary && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
-        disabled={!!lockedBook} onClick={() => setInfoOpen(open => !open)}>정보</button>}
+        disabled={dragInProgress} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
     </div>
     <AccountTradingPanel key={account} account={account} orderEnabled={!!activeAccount && activeAccount.order_enabled !== false} accountLabel={activeAccount?.label ?? '계좌 연결 대기'}
@@ -622,7 +635,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     <div className="order-controls order-quantity-controls">
       <div className="order-input-controls" role="group" aria-label="공통 주문 수량">
         <div className="order-input-mode order-surface-segment" role="group" aria-label="빠른 입력 방식">
-          {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || !!lockedBook}
+          {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || dragInProgress}
             onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
         </div>
         <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="1" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
@@ -664,7 +677,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
       price={storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0}
       qty={storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? null}
       baselinePrice={baseline} />
-    <div className="order-scroll" role="region" aria-label="실시간 호가 주문 사다리">
+    <div className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
         {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : Array.from({ length: 20 }, (_, slot) => {
@@ -702,7 +715,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
             className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'}`}
             aria-label={`${orderSideLabel(side)} 주문 취소`}
             title={`현재 종목의 ${orderSideLabel(side)} 미체결 주문 모두 취소`}
-            disabled={!ready || !!lockedBook || !!settingsDraft || !!action || !orders.some(order => order.side === side && editableOrder(order) && !pending(order) && orderRemainder(order) > 0)}
+            disabled={!ready || dragInProgress || !!settingsDraft || !!action || !orders.some(order => order.side === side && editableOrder(order) && !pending(order) && orderRemainder(order) > 0)}
             onClick={() => request({ type: 'bulk', base: base(), side, price: 0, quantity: null })}>주문 취소</button>)}
         </div>
       </div>
@@ -720,8 +733,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
             className={`order-list-item ${order.side === 'BUY' ? 'order-buy' : 'order-sell'} ${draggingOrderId === order.orderId ? 'order-chip-dragging' : ''}`}
             aria-label={`주문 ${index + 1} · ${fmt(orderRemainder(order))}주`}
             disabled={!ready || !editableOrder(order) || pending(order)}
-            onPointerDown={e => beginDrag(e, [order], true)} onPointerMove={moveDrag} onPointerUp={endDrag}
-            onPointerCancel={() => endDrag(undefined, true)} onLostPointerCapture={() => endDrag(undefined, true)}>
+            onPointerDown={e => beginDrag(e, [order], true)}>
             <span>주문 {index + 1}</span><strong>{fmt(orderRemainder(order))}</strong>
           </button>)}
         {!(groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length) && <p className="order-list-hint">미체결 주문 없음</p>}
