@@ -12,6 +12,7 @@ import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { RefreshIcon } from '../../ui/RefreshIcon';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { useAccountOrderColumns } from './useAccountOrderColumns';
+import { useHoldingColumnMemory, useHoldingColumns } from './useHoldingColumns';
 import { editableOrder, holdingProfitPercent, holdingProfitWon, orderRemainder, orderSideLabel, orderStatusLabel } from './orderRules';
 import './AccountTradingPanel.css';
 
@@ -26,29 +27,49 @@ function holdingValue(quantity: string, price: number | undefined): number | nul
   return Number.isSafeInteger(value) ? value : null;
 }
 
-function HoldingsTable({ holdings, onSelect }: { holdings: TradingHolding[]; onSelect?: (code: string, name: string) => void }) {
+function HoldingsTable({ holdings, onSelect, columnMemory }: { holdings: TradingHolding[];
+  onSelect?: (code: string, name: string) => void; columnMemory: ReturnType<typeof useHoldingColumnMemory> }) {
   const venue = useLiveVenueStore(s => s.venue);
   const codes = useMemo(() => holdings.map(holding => holding.code), [holdings]);
   const quotes = useQuoteByCode(codes, venue);
-  return <table className="account-holdings-table">
-    <colgroup><col /><col /><col /><col /><col /></colgroup>
-    <thead><tr><th>종목</th><th>수량</th><th>평단</th><th>평가금액</th><th>손익</th></tr></thead>
-    <tbody>{holdings.map(holding => {
-      const price = quotes.get(holding.code)?.price;
-      const profitAmount = holdingProfitWon(Number(holding.quantity), price ?? null, holding.average_purchase_price);
-      const profitPercent = holdingProfitPercent(Number(holding.quantity), price ?? null, holding.average_purchase_price);
-      const profitDirection = profitAmount || profitPercent || 0;
-      return <tr key={holding.code}>
-        <td><button type="button" className="account-stock-link" disabled={!onSelect} onClick={() => onSelect?.(holding.code, holding.name)}>{holding.name}</button></td>
-        <td data-label="수량">{fmt(holding.quantity)}</td><td data-label="평단">{fmt(holding.average_purchase_price, 0)}</td>
-        <td data-label="평가금액">{fmt(holdingValue(holding.quantity, price), 0)}</td>
-        <td data-label="손익" className={`account-holding-profit ${profitDirection > 0 ? 'text-price-up' : profitDirection < 0 ? 'text-price-down' : ''}`}>
-          <span>{profitAmount == null ? '—' : `${profitAmount > 0 ? '+' : ''}${fmt(profitAmount, 0)}원`}</span>
-          <span className="account-holding-profit-percent">{profitPercent == null ? '—' : `${profitPercent > 0 ? '+' : ''}${profitPercent.toFixed(2)}%`}</span>
-        </td>
-      </tr>;
-    })}</tbody>
-  </table>;
+  const rows = holdings.map(holding => {
+    const price = quotes.get(holding.code)?.price;
+    return { holding, profitAmount: holdingProfitWon(Number(holding.quantity), price ?? null, holding.average_purchase_price),
+      profitPercent: holdingProfitPercent(Number(holding.quantity), price ?? null, holding.average_purchase_price),
+      value: holdingValue(holding.quantity, price) };
+  });
+  const { setProbe, samples, style } = useHoldingColumns(columnMemory, {
+    quantity: rows.map(({ holding }) => fmt(holding.quantity)), average: rows.map(({ holding }) => fmt(holding.average_purchase_price, 0)),
+    value: rows.map(({ value }) => fmt(value, 0)),
+    profit: rows.flatMap(({ profitAmount }) => profitAmount == null ? ['—'] : [`+${fmt(Math.abs(profitAmount), 0)}원`, `-${fmt(Math.abs(profitAmount), 0)}원`]),
+    percent: rows.flatMap(({ profitPercent }) => profitPercent == null ? ['—'] : [`+${Math.abs(profitPercent).toFixed(2)}%`, `-${Math.abs(profitPercent).toFixed(2)}%`]),
+  });
+  return <>
+    <span ref={setProbe} aria-hidden="true" className="account-holdings-sizer">
+      {(['quantity', 'average', 'value', 'profit', 'percent'] as const).map(column => <span key={column}>
+        {column !== 'percent' && <span data-holding-measure={column} className="account-holding-heading-probe"
+          data-figure={{ quantity: '수량', average: '평단', value: '평가금액', profit: '손익' }[column]} />}
+        {samples[column].map(value => <span key={value} data-holding-measure={column}
+          className={column === 'percent' ? 'account-holding-profit-percent' : undefined} data-figure={value} />)}
+      </span>)}
+    </span>
+    <table className="account-holdings-table" style={style}>
+      <colgroup><col /><col /><col /><col /><col /></colgroup>
+      <thead><tr><th>종목</th><th>수량</th><th>평단</th><th>평가금액</th><th>손익</th></tr></thead>
+      <tbody>{rows.map(({ holding, profitAmount, profitPercent, value }) => {
+        const profitDirection = profitAmount || profitPercent || 0;
+        return <tr key={holding.code}>
+          <td><button type="button" className="account-stock-link" disabled={!onSelect} onClick={() => onSelect?.(holding.code, holding.name)}>{holding.name}</button></td>
+          <td data-label="수량">{fmt(holding.quantity)}</td><td data-label="평단">{fmt(holding.average_purchase_price, 0)}</td>
+          <td data-label="평가금액">{fmt(value, 0)}</td>
+          <td data-label="손익" className={`account-holding-profit ${profitDirection > 0 ? 'text-price-up' : profitDirection < 0 ? 'text-price-down' : ''}`}>
+            <span>{profitAmount == null ? '—' : `${profitAmount > 0 ? '+' : ''}${fmt(profitAmount, 0)}원`}</span>
+            <span className="account-holding-profit-percent">{profitPercent == null ? '—' : `${profitPercent > 0 ? '+' : ''}${profitPercent.toFixed(2)}%`}</span>
+          </td>
+        </tr>;
+      })}</tbody>
+    </table>
+  </>;
 }
 
 export const AccountTradingPanel = memo(function AccountTradingPanel({ account, accountLabel, orderEnabled = true, tab, anchorRef, onClose, onSelectSymbol }: {
@@ -97,6 +118,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
       resume();
     }
   }
+  const holdingColumnMemory = useHoldingColumnMemory(account);
   const allOrders = orders.data?.orders ?? [];
   const { setProbe, samples, style: columnStyle } = useAccountOrderColumns(account,
     allOrders.map(order => fmt(order.price)), allOrders.map(order => fmt(orderRemainder(order))));
@@ -105,7 +127,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
   const query = tab === 'orders' ? orders : holdings;
   const displayedOrders = allOrders.filter(order => side === null || order.side === side);
   const title = tab === 'orders' ? '미체결 주문' : '보유종목';
-  return createPortal(<div ref={ref} style={{ ...style, ...columnStyle }} role="dialog" aria-label="계좌 목록" aria-description={accountLabel} className={`account-trading-panel order-surface font-data ${tab === 'orders' ? 'account-trading-orders' : ''}`}>
+  return createPortal(<div ref={ref} style={{ ...style, ...columnStyle }} role="dialog" aria-label="계좌 목록" aria-description={accountLabel} className={`account-trading-panel order-surface font-data ${tab === 'orders' ? 'account-trading-orders' : 'account-trading-holdings'}`}>
     <OrderSurfaceHeading closeLabel="계좌 목록 닫기" onClose={dismiss} actions={<>
       {tab === 'orders' && <div role="group" aria-label="주문 방향 필터" className="account-trading-filters order-surface-segment">
         {([null, 'BUY', 'SELL'] as const).map(value => <button key={value ?? 'all'} type="button" aria-pressed={side === value}
@@ -146,7 +168,7 @@ export const AccountTradingPanel = memo(function AccountTradingPanel({ account, 
             <td><button type="button" className="account-cancel" aria-label={`${name} ${orderSideLabel(order.side)} 주문 ${index + 1} ${label}`} disabled={disabled} onClick={() => void cancel(order, !!record?.error)}>{label}</button></td>
           </tr>;
         })}</tbody>
-      </table> : <HoldingsTable holdings={holdings.data?.holdings ?? []} onSelect={onSelectSymbol ? select : undefined} />}
+      </table> : <HoldingsTable holdings={holdings.data?.holdings ?? []} columnMemory={holdingColumnMemory} onSelect={onSelectSymbol ? select : undefined} />}
       {!query.isPending && !query.isError && (tab === 'orders' ? displayedOrders.length === 0 : holdings.data?.holdings.length === 0)
         && <p className="account-trading-message">{tab === 'orders' ? '미체결 주문 없음' : '보유종목 없음'}</p>}
     </div>

@@ -10,11 +10,19 @@
 .account-trading-filters button[aria-pressed=true] { background:var(--bg-input-hover); box-shadow:none; }
 .account-trading-scroll { min-height:0; overflow:auto; padding:0 10px 4px; }
 .account-trading-panel table { table-layout:fixed; width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
-.account-holdings-table col:nth-child(1) { width:18%; }
-.account-holdings-table col:nth-child(2) { width:16%; }
-.account-holdings-table col:nth-child(3) { width:18%; }
-.account-holdings-table col:nth-child(4),.account-holdings-table col:nth-child(5) { width:24%; }
-.account-holding-profit > span { display:block; line-height:14px; }
+.account-trading-holdings .account-trading-scroll { --account-holding-cell-padding:4px; padding-inline:10px; }
+.account-trading-panel .account-holdings-table { min-width:calc(6em + var(--account-holding-quantity-width) + var(--account-holding-average-width) + var(--account-holding-value-width) + max(var(--account-holding-profit-width),var(--account-holding-percent-width)) + 10 * var(--account-holding-cell-padding)); }
+.account-holdings-table col:nth-child(2) { width:calc(var(--account-holding-quantity-width) + 2 * var(--account-holding-cell-padding)); }
+.account-holdings-table col:nth-child(3) { width:calc(var(--account-holding-average-width) + 2 * var(--account-holding-cell-padding)); }
+.account-holdings-table col:nth-child(4) { width:calc(var(--account-holding-value-width) + 2 * var(--account-holding-cell-padding)); }
+.account-holdings-table col:nth-child(5) { width:calc(max(var(--account-holding-profit-width),var(--account-holding-percent-width)) + 2 * var(--account-holding-cell-padding)); }
+.account-trading-panel .account-holdings-table th,.account-trading-panel .account-holdings-table td { padding-inline:var(--account-holding-cell-padding); }
+.account-holdings-sizer { position:absolute; visibility:hidden; pointer-events:none; width:max-content; display:flex; flex-direction:column; align-items:flex-start; font-variant-numeric:tabular-nums; }
+.account-holdings-sizer > span { display:flex; flex-direction:column; align-items:flex-start; }
+.account-holdings-sizer [data-holding-measure] { display:block; width:max-content; white-space:nowrap; }
+.account-holdings-sizer [data-figure]::before { content:attr(data-figure); }
+.account-holdings-sizer .account-holding-heading-probe { font-size:10px; }
+.account-holding-profit > span { display:block; line-height:14px; text-align:right; }
 .account-holding-profit-percent { font-size:10px; }
 .account-trading-orders .account-trading-scroll { --account-order-cell-padding:4px; padding-inline:10px; }
 .account-trading-panel .account-orders-table { min-width:calc(6em + var(--account-order-side-width) + var(--account-order-price-width) + var(--account-order-quantity-width) + var(--account-order-cancel-width) + 10 * var(--account-order-cell-padding)); }
@@ -32,9 +40,11 @@
 .account-order-cancel-probe { padding:3px 5px; }
 @container (width < 480px) {
   .account-trading-orders .account-trading-scroll { --account-order-cell-padding:2px; padding-inline:6px; }
+  .account-trading-holdings .account-trading-scroll { --account-holding-cell-padding:2px; padding-inline:6px; }
 }
 @container (width < 400px) {
   .account-trading-orders .account-trading-scroll { --account-order-cell-padding:1px; padding-inline:4px; }
+  .account-trading-holdings .account-trading-scroll { --account-holding-cell-padding:1px; padding-inline:4px; }
 }
 .account-trading-panel th { position:sticky; top:0; z-index:1; background:var(--bg-card); color:var(--fg-dim); font-weight:400; font-size:10px; }
 .account-trading-panel th,.account-trading-panel td { height:36px; padding:3px 4px; text-align:right; white-space:nowrap; box-shadow:inset 0 -1px var(--border); }
@@ -52,15 +62,6 @@
 .account-trading-message { margin:0; padding:8px 10px; color:var(--fg-dim); font-size:11px; }
 .account-row-error { display:block; color:var(--error); overflow-wrap:anywhere; font-size:10px; }
 .account-trading-message.text-error { color:var(--error); }
-@container(max-width:479px) {
-  .account-trading-panel .account-holdings-table { display:block; }
-  .account-holdings-table colgroup,.account-holdings-table thead { display:none; }
-  .account-holdings-table tbody { display:block; width:100%; }
-  .account-holdings-table tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); width:100%; padding:6px 0; gap:4px 12px; box-shadow:inset 0 -1px var(--border); }
-  .account-trading-panel .account-holdings-table td { height:auto; min-width:0; padding:0 4px; box-shadow:none; white-space:normal; overflow-wrap:anywhere; }
-  .account-holdings-table td:first-child { grid-column:1 / -1; padding-bottom:2px; }
-  .account-holdings-table td[data-label]::before { content:attr(data-label); display:block; text-align:left; color:var(--fg-dim); font-size:10px; }
-}
 @media(pointer:coarse) {
   .account-trading-panel button { min-height:32px; }
 }
