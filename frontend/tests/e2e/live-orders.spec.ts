@@ -2794,6 +2794,7 @@ async function orderColumnMetrics(window: Locator) {
     });
     const trades = [...root.querySelectorAll('.order-trade')].map(row => [...row.children].map(span => textBox(span).right));
     return { fits: overflows.length === 0, overflows, trades, widths: cells.map(cell => cell.width),
+      tracks: getComputedStyle(row).gridTemplateColumns.split(' ').map(parseFloat),
       centered: Math.abs((cells[2].left + cells[2].right - bounds.left - bounds.right) / 2),
       heights: [...root.querySelectorAll('.order-row')].map(row => row.getBoundingClientRect().height),
       scroll: scroll.scrollWidth > scroll.clientWidth + 1,
@@ -2816,7 +2817,8 @@ test('주문창 반응형 간격은 중앙 5열과 전체 숫자를 유지하고
     await expect(async () => {
       const m = await orderColumnMetrics(window);
       expect(m.fits, JSON.stringify(m.overflows)).toBe(true);
-      expect(m.widths[0]).toBeGreaterThanOrEqual(48);
+      expect(m.tracks[0]).toBeGreaterThanOrEqual(48);
+      expect(m.widths[0]).toBeGreaterThanOrEqual(42); // Existing 3px margins on both sides.
       expect(m.widths[0]).toBeCloseTo(m.widths[4], 1);
       expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
       expect(m.centered).toBeLessThan(1);
