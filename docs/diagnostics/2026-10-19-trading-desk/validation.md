@@ -72,3 +72,11 @@
   "frontend/tests/e2e/trading-themes.spec.ts": "4cc3226fe21a137cfe945c8a9239b2583de80ae35ff46d9a06de4607fa56c0cc"
 }
 ```
+
+## 후속 요청: 상단 테마 라벨 제거 (2026-10-19)
+
+- 워크스페이스 툴바의 ‘트레이딩 데스크’ 텍스트·장식 점과 전용 CSS를 제거했다. 거래소 선택·창 목록·창 추가·프리셋·단축키·캡처 상태는 유지한다.
+- 기준 HEAD / origin/main: `f4c10325759e4be9c3be0b4e10ea389f00fc0ee6`. PR 전 fetch 후 동일함 확인. 위 기록과 같은 입력 경로/해시 방식의 SHA-256: `b6e02d87896dd81d55ed4645f6987f589a052458cccee5c3275ed9d82d845910`. 의존성·도구 버전은 위 검사와 동일하다.
+- `cd frontend && npx vitest run src/live/LiveToolbar.test.tsx`: 1개 파일 / 16개 테스트 통과. 로그: `/tmp/hoga-remove-desk-label-pr-test.log`. 표시 요소와 미사용 CSS 삭제에 맞춰 기존 툴바 테스트를 재실행했으며 새 테스트는 추가하지 않았다.
+- 실제 Chrome `/live`에서 상단 라벨 DOM이 0개이고 나머지 툴바 조작 요소가 표시됨을 확인했다. 서버 재시작 없이 반영했다.
+- 화면: `/home/dev/.codex/visualizations/2026/10/19/01a153b0-ec8a-7aa2-aa99-d7bcaa2efa37/trading-desk-label-removed.png`.

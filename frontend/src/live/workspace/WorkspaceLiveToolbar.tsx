@@ -53,7 +53,6 @@ function CaptureHealthIndicator({ health }: { health: CaptureHealthView }) {
 export function WorkspaceLiveToolbar({ captureHealth }: Props) {
   return (
     <WorkspaceToolbar testId="workspace-live-toolbar" className="flex-nowrap">
-      <span className="live-workspace-label" aria-hidden="true">트레이딩 데스크</span>
       {/* 거래소 — 툴바 맨 앞. venue 는 창이 아니라 앱 전역(관심종목·히트맵·타이틀바가
           같은 값을 읽는다)이라 창 관련 항목보다 앞이다. 설정 모달의 「거래소」 라디오는
           그대로 남는다 — 그쪽은 /study 도 렌더하고 거기엔 이 툴바가 없다. */}
