@@ -63,7 +63,7 @@ type Action = {
   batch?: { order: TossOrder; base: TradingCommand }[];
 };
 const changesPrice = (action: Action) => action.type === 'create' || action.type === 'modify' || (action.type === 'group' && action.operation === 'modify');
-type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
+type Drag = { orders: TossOrder[]; list: HTMLElement | null; cancelOnly: boolean; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
 
 export function OrderWindow({ code, settings, onSettingsChange, onSelectSymbol }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
@@ -231,6 +231,13 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
   const latestOrders = useRef(orders);
   useLayoutEffect(() => { latestOrders.current = orders; }, [orders]);
   const groups = useMemo(() => groupPriceOrders(orders), [orders]);
+  const sideOrders = useMemo(() => {
+    const active = orders.filter(order => order.symbol === code && orderRemainder(order) > 0);
+    return { SELL: active.filter(order => order.side === 'SELL'), BUY: active.filter(order => order.side === 'BUY') };
+  }, [orders, code]);
+  const contextOrders = contextMenu?.side
+    ? contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
+    : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
   const ready = !!account && !!activeAccount && !!state.data && !state.isError && !busy && activeAccount.order_enabled !== false;
@@ -433,11 +440,11 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
     request({ type: 'create', base: { ...base(), ...(typeof account === 'string' ? { route: orderRoute } : {}) }, side, price, quantity });
   }
 
-  function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false) {
+  function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false, cancelOnly = false) {
     const targets = candidates.filter(order => editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
-    if (e.button !== 0 || !targets.length || !ready) return;
+    if (e.button !== 0 || !targets.length || !ready || settingsDraft || action || drag.current) return;
     e.stopPropagation();
-    drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
+    drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, cancelOnly, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
     setDragInProgress(true); e.currentTarget.setPointerCapture(e.pointerId);
   }
   const updateDragTarget = useCallback(() => {
@@ -467,7 +474,7 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
           return d.cursorY >= bounds.top && d.cursorY < bounds.bottom;
         }) : null);
     const lane = hit?.closest<HTMLElement>('[data-order-side]');
-    d.price = !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.orders[0].side) ? Number(row.dataset.orderPrice) : null;
+    d.price = !d.cancelOnly && !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.orders[0].side) ? Number(row.dataset.orderPrice) : null;
     setDragTarget(d.price); setDragCancel(d.cancel);
   }, []);
   useLayoutEffect(updateDragTarget, [book, updateDragTarget]);
@@ -532,6 +539,10 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
         {fmt(group.reduce((sum, order) => sum + orderRemainder(order), 0))}{group.some(order => !editableOrder(order) || pending(order)) ? ' · 처리 중' : ''}
       </span>}
     </button>;
+  }
+
+  function openSideOrders(side: TradingSide, point: { x: number; y: number }) {
+    if (!drag.current && !action && !settingsDraft && !busy) setContextMenu({ ...point, side });
   }
 
   const recentTrades = useMemo(() => recentBookTrades(live.trade, 9), [live.trade]);
@@ -710,34 +721,54 @@ function OrderWindowContent({ code, accounts, account, onAccountChange, onSelect
           </div>;
         })}
         {showInlineSummary && <div className="order-summary-layer">{renderSummary(240)}</div>}
-        <div className="order-cancel-row" role="group" aria-label="방향별 주문 취소">
-          {(['SELL', 'BUY'] as const).map(side => <button key={side} type="button"
-            className={`order-lane ${side === 'BUY' ? 'order-buy' : 'order-sell'}`}
-            aria-label={`${orderSideLabel(side)} 주문 취소`}
-            title={`현재 종목의 ${orderSideLabel(side)} 미체결 주문 모두 취소`}
-            disabled={!ready || dragInProgress || !!settingsDraft || !!action || !orders.some(order => order.side === side && editableOrder(order) && !pending(order) && orderRemainder(order) > 0)}
-            onClick={() => request({ type: 'bulk', base: base(), side, price: 0, quantity: null })}>주문 취소</button>)}
+        <div className="order-total-row" role="group" aria-label="방향별 총 접수 주문">
+          {(['SELL', 'BUY'] as const).map(side => {
+            const list = sideOrders[side];
+            const canDrag = ready && !settingsDraft && !action && list.some(order => editableOrder(order) && !pending(order));
+            return <button key={side} type="button"
+              className={`order-lane order-total ${side === 'BUY' ? 'order-buy' : 'order-sell'}`}
+              aria-label={`${orderSideLabel(side)} 총 접수 주문`}
+              title="미체결 잔여 수량(접수 건수) · 우클릭: 개별 주문 · 드래그 아웃: 일괄 취소"
+              aria-haspopup="menu" aria-expanded={contextMenu?.side === side && contextMenu.price == null}
+              aria-disabled={!canDrag} data-order-total={side}
+              onPointerDown={e => beginDrag(e, list, false, true)}
+              onContextMenu={e => {
+                e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
+                openSideOrders(side, { x: e.clientX, y: e.clientY });
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) {
+                  e.preventDefault(); const bounds = e.currentTarget.getBoundingClientRect();
+                  openSideOrders(side, { x: bounds.left, y: bounds.bottom });
+                }
+              }}>
+              {fmt(list.reduce((sum, order) => sum + orderRemainder(order), 0))}({list.length})
+            </button>;
+          })}
         </div>
       </div>
     </div>
     {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={displayTotals} maskRatio={displayTotals.ask + displayTotals.bid === 0}
       afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}
       onSelectSessionMode={selectSessionMode} />}
-    {contextMenu?.side && contextMenu.price != null ? <PanelContextMenu point={contextMenu}
-      label={`${orderSideLabel(contextMenu.side)} ${fmt(contextMenu.price)}원 주문 목록`} showLabel={false} onClose={closeMenu} className="order-surface order-context-surface">
-      <OrderSurfaceHeading closeLabel="가격별 주문 목록 닫기" onClose={closeMenu}><span className={contextMenu.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(contextMenu.side)}</span> · {fmt(contextMenu.price)}원</OrderSurfaceHeading>
+    {contextMenu?.side ? <PanelContextMenu point={contextMenu}
+      label={`${orderSideLabel(contextMenu.side)} ${contextMenu.price == null ? '전체 접수' : `${fmt(contextMenu.price)}원`} 주문 목록`} showLabel={false} onClose={closeMenu} className="order-surface order-context-surface">
+      <OrderSurfaceHeading closeLabel="가격별 주문 목록 닫기" onClose={closeMenu}><span className={contextMenu.side === 'BUY' ? 'text-price-up' : 'text-price-down'}>{orderSideLabel(contextMenu.side)}</span> · {contextMenu.price == null ? '전체 접수' : `${fmt(contextMenu.price)}원`}</OrderSurfaceHeading>
       <div data-order-list className="order-list font-data">
-        <div className="order-list-summary"><span>{groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length ?? 0}건</span><span>총 {fmt((groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? []).reduce((sum, order) => sum + orderRemainder(order), 0))}</span></div>
-        {(groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? []).map((order, index) =>
+        <div className="order-list-summary"><span>{contextOrders.length}건</span><span>총 {fmt(contextOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}</span></div>
+        {contextOrders.map((order, index) => <div key={order.orderId} className="order-list-row">
           <button key={order.orderId} type="button" role="menuitem"
             className={`order-list-item ${order.side === 'BUY' ? 'order-buy' : 'order-sell'} ${draggingOrderId === order.orderId ? 'order-chip-dragging' : ''}`}
             aria-label={`주문 ${index + 1} · ${fmt(orderRemainder(order))}주`}
             disabled={!ready || !editableOrder(order) || pending(order)}
             onPointerDown={e => beginDrag(e, [order], true)}>
-            <span>주문 {index + 1}</span><strong>{fmt(orderRemainder(order))}</strong>
-          </button>)}
-        {!(groups.get(`${contextMenu.side}:${contextMenu.price}`)?.length) && <p className="order-list-hint">미체결 주문 없음</p>}
-        <p className="order-list-hint">개별 주문을 밖으로 드래그하면 해당 주문 취소</p>
+            <span>{contextMenu.price == null ? order.price == null ? '시장가' : `${fmt(order.price)}원` : `주문 ${index + 1}`}</span><strong>{fmt(orderRemainder(order))}</strong>
+          </button>
+          <button type="button" className="order-list-cancel" aria-label={`주문 ${index + 1} 개별 취소`}
+            disabled={!ready || !editableOrder(order) || pending(order)}
+            onClick={() => request({ type: 'cancel', base: base(), side: order.side, price: 0, quantity: null, order })}>취소</button>
+        </div>)}
+        {!contextOrders.length && <p className="order-list-hint">미체결 주문 없음</p>}
       </div>
     </PanelContextMenu> : contextMenu && <PanelContextMenu point={contextMenu} label="주문 취소" showLabel={false} onClose={closeMenu} className="order-surface order-context-surface">
       <OrderSurfaceHeading closeLabel="주문 취소 메뉴 닫기" onClose={closeMenu}>주문 취소</OrderSurfaceHeading>
