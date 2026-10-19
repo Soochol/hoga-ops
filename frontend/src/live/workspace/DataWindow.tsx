@@ -455,9 +455,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 시간외 단일가 사다리는 스팟 경로가 아니다 — 그쪽이 사다리를 통째로 대체하고
   // 있으면 스팟 조회의 신선도는 화면에 그려진 것과 무관하다.
   const bookStale = !useSinglePrice && spotOrderbookStale;
-  const bookContextMode = bookStale
-    ? '커서 조회 중 · 이전 호가'
-    : scope.kind === 'second-cursor' ? '저장 호가' : null;
+  // 조회 중에는 안내 행을 추가하지 않아 호가 사다리의 위치를 유지한다.
+  const bookContextMode = scope.kind === 'second-cursor' ? '저장 호가' : null;
   // 스팟 조회 실패는 **패널을 대체한다**(칩으로 얹지 않는다). `useSpot` 이 실패분을
   // 비우므로 사다리는 `undefined` 로 떨어져 "커서 위치 불러오는 중…" 을 그리는데,
   // 그 위에 실패 칩을 얹으면 한 화면이 "실패했다" 와 "불러오는 중" 을 동시에
