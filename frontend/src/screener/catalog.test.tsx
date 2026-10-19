@@ -23,9 +23,9 @@ describe('catalog', () => {
     expect(makeLeaf('high_off_peak').params).toEqual({ period: 250, pct: 30, side: 'within' });
     expect(CONDITION_CATALOG.high_off_peak.label).toBe('신고가 대비 고가');
     expect(CONDITION_CATALOG.high_off_peak.summarize({ period: 250, pct: 30, side: 'within' }))
-      .toBe('250일·−30%이내');
+      .toBe('일봉 · 250봉·−30%이내');
     expect(CONDITION_CATALOG.high_off_peak.summarize({ period: 250, pct: 30, side: 'outside' }))
-      .toBe('250일·−30%이외');
+      .toBe('일봉 · 250봉·−30%이외');
   });
   it('총잔량 신고 조건: 기본 파라미터 + 요약', () => {
     expect(makeLeaf('ask_depth_new_high').params).toEqual({ lookback: 20, threshold_pct: 100 });
@@ -81,12 +81,12 @@ describe('catalog', () => {
     expect(a.id).not.toBe(b.id);
   });
   it('summarize renders sublabels', () => {
-    expect(CONDITION_CATALOG.new_high.summarize({ lookback: 200, period: 500 })).toBe('200·500');
+    expect(CONDITION_CATALOG.new_high.summarize({ lookback: 200, period: 500 })).toBe('일봉 · 200·500');
     expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte', pct: 5 })).toBe('≥ 5%');
-    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above' })).toBe('종가 ≥ MA20');
-    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'below' })).toBe('종가 ≤ MA20');
-    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above', source: 'open' })).toBe('시가 ≥ MA20');
-    expect(CONDITION_CATALOG.new_high_today.summarize({ period: 200 })).toBe('200일');
+    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above' })).toBe('일봉 · 종가 ≥ MA20');
+    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'below' })).toBe('일봉 · 종가 ≤ MA20');
+    expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above', source: 'open' })).toBe('일봉 · 시가 ≥ MA20');
+    expect(CONDITION_CATALOG.new_high_today.summarize({ period: 200 })).toBe('일봉 · 최신 · 200봉 신고');
     expect(CONDITION_CATALOG.trade_value_period.summarize({ lookback: 60, min_eok: 1000 })).toBe('60일내 ≥1000억');
   });
   it('price_range default is a valid single bound', () => {

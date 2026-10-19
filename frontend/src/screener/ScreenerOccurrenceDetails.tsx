@@ -1,3 +1,4 @@
+import { BarMatchEvidence } from './BarMatchEvidence';
 import { occurrenceTimeLabel } from './occurrenceTime';
 import { createPortal } from 'react-dom';
 import { useMemo } from 'react';
@@ -28,9 +29,7 @@ export function ScreenerOccurrenceDetails({ row, controller, onClose }: {
           <div className="min-w-0 flex-1">
             <div className="font-data text-sm">{occurrenceTimeLabel(event)}</div>
             <OccurrenceLabel occurrence={event} controller={controller} />
-            {event.bar_match && <div className="font-data text-xs text-fg-dim">
-              {event.bar_match.volume.toLocaleString('ko-KR')}주 · {event.bar_match.is_open ? '진행 중' : '완료'}
-            </div>}
+            <BarMatchEvidence event={event} />
           </div>
           <OccurrenceAction code={row.code} name={row.name} occurrence={event} controller={controller} />
         </li>)}

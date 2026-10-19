@@ -1,4 +1,4 @@
-"""Candle-count volume records, with bounded, memory-only minute history.
+"""Candle-count price/volume predicates with bounded, memory-only minute history.
 
 Calendar bars use the screener's adjusted daily corpus; minute bars retain the
 vendor's original volume, as the chart does. Minute scope is KRX regular session.
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_exclusions, trading_days
+from hoga.api import screener_bar_price, screener_exclusions, trading_days
 from hoga.api.models import (
     BarVolumeCoverage,
     BarVolumeCoverageItem,
@@ -26,6 +26,7 @@ from hoga.api.models import (
     HistoryDateRangeParams,
     ScreenerOccurrence,
 )
+from hoga.api.screener_bar_policy import CANDLE_TYPES, VOLUME_TYPES, lookback, needs_bars
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR
 from hoga.api.screener_write_lock import screener_read_lock
 from hoga.live import kiwoom_access, kiwoom_minute_candles, kiwoom_rest_runtime, settings
@@ -43,14 +44,11 @@ WEEKEND_START = 5
 
 
 def leaves(conditions):
-    return [leaf for leaf in conditions if leaf.type == "new_high_vol"
-            and (isinstance(leaf.params, BarVolumeRangeParams)
-                 or getattr(leaf.params, "timeframe", "D") != "D"
-                 or not getattr(leaf.params, "include_open_bar", True))]
+    return [leaf for leaf in conditions if needs_bars(leaf)]
 
 
 def needs_daily_overlay(leaf, today: str) -> bool:
-    if leaf.type == "new_high_vol" and getattr(leaf.params, "timeframe", "D").endswith("m"):
+    if leaf.type in CANDLE_TYPES and getattr(leaf.params, "timeframe", "D").endswith("m"):
         return False
     if isinstance(leaf.params, HistoryDateRangeParams):
         return isinstance(leaf.params, BarVolumeRangeParams) and leaf.params.end_date >= today
@@ -63,6 +61,10 @@ class VolumeBar:
     volume: int
     is_open: bool = False
     valid: bool = True
+    open: float | None = None
+    high: float | None = None
+    low: float | None = None
+    close: float | None = None
 
 
 @dataclass
@@ -73,14 +75,16 @@ class Evaluation:
 
 def records(leaf, bars: list[VolumeBar], *, fetched_at_ms: int):
     """Each event uses its own trailing window; later bars never alter history."""
+    if leaf.type not in VOLUME_TYPES:
+        return screener_bar_price.records(leaf, bars, fetched_at_ms=fetched_at_ms)
     p = leaf.params
     bars = [bar for bar in bars if p.include_open_bar or not bar.is_open]
     period = p.record_period.value if isinstance(p, BarVolumeRangeParams) else p.period
-    start = max(0, len(bars) - p.lookback) if hasattr(p, "lookback") else 0
+    start = max(0, len(bars) - lookback(leaf)) if not isinstance(p, BarVolumeRangeParams) else 0
     peaks: deque[int] = deque()
     invalid: deque[int] = deque()
     events = []
-    complete = bool(bars) and (not hasattr(p, "lookback") or len(bars) >= p.lookback + p.period - 1)
+    complete = bool(bars) and (isinstance(p, BarVolumeRangeParams) or len(bars) >= lookback(leaf) + p.period - 1)
     key = screener_exclusions.condition_key(leaf)
     for i, bar in enumerate(bars):
         left = i - period + 1
@@ -130,7 +134,7 @@ def _stamp(day: dt.date, hour=9, minute=0) -> int:
     return int(dt.datetime.combine(day, dt.time(hour, minute), KST).timestamp() * 1000)
 
 
-def calendar_bars(values: dict[dt.date, int], days: list[dt.date], *, timeframe: str,
+def calendar_bars(values: dict[dt.date, int | VolumeBar], days: list[dt.date], *, timeframe: str,
                   as_of: dt.datetime, windows=None) -> list[VolumeBar]:
     if not values:
         return []
@@ -141,7 +145,14 @@ def calendar_bars(values: dict[dt.date, int], days: list[dt.date], *, timeframe:
         if expected[-1] < first_day:
             continue
         valid = calendar_valid and all(day in values for day in expected)
-        out.append(VolumeBar(_stamp(expected[0]), sum(values.get(day, 0) for day in expected), is_open, valid))
+        volume = sum((values[day].volume if isinstance(values[day], VolumeBar) else values[day])
+                     for day in expected if day in values)
+        rows = [values[day] for day in expected if day in values]
+        prices = {}
+        if rows and all(isinstance(row, VolumeBar) and screener_bar_price.valid_prices(row) for row in rows):
+            prices = dict(open=rows[0].open, high=max(row.high for row in rows),
+                          low=min(row.low for row in rows), close=rows[-1].close)
+        out.append(VolumeBar(_stamp(expected[0]), volume, is_open, valid, **prices))
     return out
 
 
@@ -179,7 +190,7 @@ def _required_windows(leaf, days, as_of):
         candidates = [i for i, (expected, _, _) in enumerate(windows)
                       if p.start_date <= expected[0].isoformat() <= p.end_date]
         return windows[max(0, candidates[0] - p.record_period.value + 1):candidates[-1] + 1] if candidates else []
-    needed = p.lookback + p.period - 1 + (not p.include_open_bar)
+    needed = lookback(leaf) + p.period - 1 + (not p.include_open_bar)
     return windows[-needed:]
 
 
@@ -192,15 +203,20 @@ def _daily_values(data_dir, codes, overlay, as_of, selected):
         data = (pl.scan_parquet(data_dir / "screener/daily_adjusted.parquet")
                 .filter(pl.col("code").is_in(codes) & (pl.col("date") <= as_of.date())
                         & (pl.col("date") >= lower))
-                .select("code", "date", "volume").collect())
+                .select("code", "date", "volume", "open", "high", "low", "close").collect())
     values = defaultdict(dict)
     for row in data.iter_rows(named=True):
-        values[row["code"]][row["date"]] = row["volume"]
+        values[row["code"]][row["date"]] = _daily_bar(row)
     if overlay is not None:
         for row in overlay.iter_rows(named=True):
             if row["date"] <= as_of.date():
-                values[row["code"]][row["date"]] = row["volume"]
+                values[row["code"]][row["date"]] = _daily_bar(row)
     return values, days
+
+
+def _daily_bar(row):
+    return VolumeBar(_stamp(row["date"]), row["volume"],
+                     **{source: row.get(source) for source in screener_bar_price.PRICE_FIELDS})
 
 
 @dataclass
@@ -252,7 +268,9 @@ async def _fetch_minutes(data_dir: Path, code: str, timeframe: str, needed: int,
                 continue
             close_ms = min(candle.t_ms + int(scope) * 60_000, _stamp(stamp.date(), 15, 30))
             bars_by_ms[candle.t_ms] = VolumeBar(candle.t_ms, candle.volume,
-                                               int(as_of.timestamp() * 1000) < close_ms)
+                                               int(as_of.timestamp() * 1000) < close_ms,
+                                               **{source: getattr(candle, source)
+                                                  for source in screener_bar_price.PRICE_FIELDS})
         ordered = sorted(bars_by_ms)
         enough = (len(ordered) >= needed if lower is None else bool(ordered)
                   and dt.datetime.fromtimestamp(ordered[0] / 1000, KST).date() < lower
@@ -344,7 +362,7 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None) -> 
         async def one(leaf, code):
             p = leaf.params
             lower = dt.date.fromisoformat(p.start_date) if isinstance(p, BarVolumeRangeParams) else None
-            needed = (p.record_period.value if lower else p.period + p.lookback - 1) + (not p.include_open_bar)
+            needed = (p.record_period.value if lower else p.period + lookback(leaf) - 1) + (not p.include_open_bar)
             cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
                       if lower else as_of)
             key = (data_dir, code, p.timeframe, needed, lower, cutoff.date())
@@ -356,11 +374,21 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None) -> 
                 async with asyncio.timeout(20):
                     async with sem:
                         snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff)
+                        data, adjustment_reason = snapshot.bars, None
+                        if leaf.type not in VOLUME_TYPES:
+                            # Pages contain more bars than requested. Only the actual
+                            # predicate window needs factors; today's window is factor 1.
+                            data = [bar for bar in data if p.include_open_bar or not bar.is_open]
+                            data = data[-(p.period + lookback(leaf) - 1):]
+                            data, adjustment_reason = await screener_bar_price.adjusted_minutes(
+                                data_dir, code, data, (now.astimezone(KST) if now.tzinfo else
+                                                       now.replace(tzinfo=KST)).strftime("%Y%m%d"))
             except TimeoutError:
                 return leaf, code, [], False, "fetch_timeout"
-            events, complete = await asyncio.to_thread(records, leaf, snapshot.bars,
+            events, complete = await asyncio.to_thread(records, leaf, data,
                                                        fetched_at_ms=snapshot.fetched_at_ms)
-            return leaf, code, events, complete and snapshot.reason is None, snapshot.reason
+            reason = snapshot.reason or adjustment_reason
+            return leaf, code, events, complete and reason is None, reason
 
         evaluations = await asyncio.gather(*(one(leaf, code) for leaf in minute_leaves for code in codes))
         for leaf, code, events, complete, reason in evaluations:

@@ -1875,7 +1875,16 @@ class TradeValuePeriodParams(BaseModel):                # 최근 N거래일 중 
     lookback: int = Field(ge=1)
     min_eok: float = Field(ge=0)
 
-class BreakoutParams(BaseModel):                       # 신고가/신고거래량 공용 (구 BreakoutFilter)
+ScreenerTimeframe = Literal["1m", "3m", "5m", "10m", "15m", "30m", "60m", "D", "W", "M"]
+
+
+class CandleParams(BaseModel):
+    model_config = {"extra": "forbid"}
+    timeframe: ScreenerTimeframe = "D"
+    include_open_bar: bool = True
+
+
+class BreakoutParams(CandleParams):                    # 신고가/신고거래량 공용 (구 BreakoutFilter)
     lookback: int = Field(ge=1)                        # N: Lookback Window
     period: int = Field(ge=1)                          # M: Record Period
 
@@ -1921,13 +1930,8 @@ class HistoryVolumeParams(HistoryDateRangeParams):
         return self
 
 
-ScreenerTimeframe = Literal["1m", "3m", "5m", "10m", "15m", "30m", "60m", "D", "W", "M"]
-
-
 class VolumeBreakoutParams(BreakoutParams):
-    model_config = {"extra": "forbid"}
-    timeframe: ScreenerTimeframe = "D"
-    include_open_bar: bool = True
+    pass
 
 
 class BarRecordPeriod(BaseModel):
@@ -1946,7 +1950,7 @@ class HistoryTradeValueParams(HistoryDateRangeParams):
     min_eok: float = Field(ge=0, allow_inf_nan=False)
 
 
-class PeriodParams(BaseModel):                         # 당일 신고가/신고거래량 — 단일 윈도우
+class PeriodParams(CandleParams):                      # 최신 선택 봉 — 단일 비교 윈도우
     period: int = Field(ge=1)
 
 class ChangePctParams(BaseModel):
@@ -1978,13 +1982,16 @@ class PriceRangeParams(BaseModel):
             raise ValueError("min must be <= max")
         return self
 
-class MaParams(BaseModel):
+MaSource = Literal["open", "high", "low", "close"]
+
+
+class MaParams(CandleParams):
     period: int = Field(ge=1)
     relation: Literal["above", "below"]                # source >= SMA(source) / source <= SMA(source)
-    source: Literal["open", "high", "low", "close"] = "close"
+    source: MaSource = "close"
 
-class HighOffPeakParams(BaseModel):                    # 신고가 대비 고가 위치 (52주 고점 근접도)
-    period: int = Field(ge=1)                          # N: peak 산출 거래일 수 (52주≈250)
+class HighOffPeakParams(CandleParams):                  # 신고가 대비 고가 위치
+    period: int = Field(ge=1)                          # N: 선택 주기의 고가 비교 봉수
     pct: float = Field(ge=0)                           # 고점 대비 하락 허용폭(%). 양수, 라벨에 "−" 표기
     side: Literal["within", "outside"] = "within"      # within: 고점 −pct% 이내 / outside: 이외
 
@@ -2239,6 +2246,16 @@ class BarVolumeMatch(BaseModel):
     fetched_at_ms: int
 
 
+class BarPriceMatch(BaseModel):
+    timeframe: ScreenerTimeframe
+    source: MaSource
+    value: float
+    reference: float
+    window_start_ms: int
+    is_open: bool
+    fetched_at_ms: int
+
+
 class BarVolumeCoverageItem(BaseModel):
     code: str
     condition_id: str
@@ -2258,6 +2275,7 @@ class ScreenerOccurrence(BaseModel):
     history_match: HistoryMatch | HistoryTradeValueMatch | None = None
     bar_start_ms: int | None = None
     bar_match: BarVolumeMatch | None = None
+    bar_price_match: BarPriceMatch | None = None
 
 
 class ScreenerExclusionWrite(BaseModel):
@@ -2276,8 +2294,9 @@ class ScreenerExclusionWrite(BaseModel):
                 raise ValueError("봉 시작 시각이 허용 범위를 벗어납니다") from exc
             if day != self.date:
                 raise ValueError("봉 시작 시각과 발생 날짜가 다릅니다")
-            if self.condition.type != "new_high_vol":
-                raise ValueError("봉 시각은 기간내 신고거래량 조건에서만 사용합니다")
+            if self.condition.type not in {"new_high_vol", "new_high_vol_today", "new_high", "new_high_today",
+                                           "high_off_peak", "ma"}:
+                raise ValueError("봉 시각은 주기별 가격·거래량 조건에서만 사용합니다")
         return self
 
 

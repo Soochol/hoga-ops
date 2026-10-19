@@ -1,17 +1,22 @@
 import type { ConditionLeaf, ScanRequest } from './screener';
 
+function candleDefaults<T extends object>(input: T) {
+  const { timeframe, include_open_bar, ...params } = input as T & { timeframe?: string; include_open_bar?: boolean };
+  return { ...params, ...(timeframe && timeframe !== 'D' ? { timeframe } : {}),
+    ...(include_open_bar === false ? { include_open_bar } : {}) };
+}
+
 // Backend models reorder keys and materialize omitted defaults on a round trip.
 // Normalize those differences before associating a server job with the editor.
 function conditionParams(leaf: ConditionLeaf) {
   switch (leaf.type) {
     case 'new_high_vol': {
       if ('mode' in leaf.params && leaf.params.record_period.unit !== 'bars') return leaf.params;
-      const { timeframe, include_open_bar, ...params } = leaf.params as typeof leaf.params & { timeframe?: string; include_open_bar?: boolean };
-      return { ...params, ...(timeframe && timeframe !== 'D' ? { timeframe } : {}),
-        ...(include_open_bar === false ? { include_open_bar } : {}) };
+      return candleDefaults(leaf.params);
     }
-    case 'ma': return { ...leaf.params, source: leaf.params.source ?? 'close' };
-    case 'high_off_peak': return { ...leaf.params, side: leaf.params.side ?? 'within' };
+    case 'new_high': case 'new_high_today': case 'new_high_vol_today': return candleDefaults(leaf.params);
+    case 'ma': return candleDefaults({ ...leaf.params, source: leaf.params.source ?? 'close' });
+    case 'high_off_peak': return candleDefaults({ ...leaf.params, side: leaf.params.side ?? 'within' });
     case 'ask_depth_new_high': case 'bid_depth_new_high':
     case 'ask_depth_new_high_period': case 'bid_depth_new_high_period':
       return { ...leaf.params, threshold_pct: leaf.params.threshold_pct ?? 100 };

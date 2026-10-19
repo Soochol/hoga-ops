@@ -26,8 +26,8 @@ export function ConditionRow({
   const entry = catalogEntry(leaf.type);
   const ParamForm = entry.ParamForm;
   return (
-    <div onDragOver={onDragOver} onDrop={onDrop}
-      className={`border border-border bg-bg-subtle rounded-md overflow-hidden ${dragging ? 'opacity-60 border-border-strong' : ''}`}>
+    <div role="group" aria-label={`${entry.label} 조건`} onDragOver={onDragOver} onDrop={onDrop}
+      className={`shrink-0 border border-border bg-bg-subtle rounded-md overflow-hidden ${dragging ? 'opacity-60 border-border-strong' : ''}`}>
       <div className="flex items-center gap-2 px-2.5 py-1.5">
         <button type="button" aria-label="조건 순서 변경" title="조건 순서 변경"
           draggable={draggable}

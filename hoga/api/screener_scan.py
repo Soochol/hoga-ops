@@ -7,7 +7,6 @@ import polars as pl
 
 from hoga.api import screener_depth, screener_universe
 from hoga.api.models import (
-    BarVolumeRangeParams,
     BreakoutParams,
     ConditionLeaf,
     HistoryDateRangeParams,
@@ -15,6 +14,7 @@ from hoga.api.models import (
     ScreenerRow,
     ScreenerUniverse,
 )
+from hoga.api.screener_bar_policy import needs_bars
 from hoga.api.screener_exclusions import condition_key
 from hoga.api.screener_trade_value import TRADE_VALUE_SQL as _TV, WON_PER_EOK as _WON_PER_EOK
 from hoga.duck import connect_bounded
@@ -149,12 +149,8 @@ _DAILY_EXCLUSION_FIELDS = 3
 
 
 def _condition_source(con, leaf, i, *, bar_events, history_pass, depth_pass, occurrence_dates):
-    needs_bars = leaf.type == "new_high_vol" and (
-        isinstance(leaf.params, BarVolumeRangeParams)
-        or getattr(leaf.params, "timeframe", "D") != "D"
-        or not getattr(leaf.params, "include_open_bar", True))
-    if needs_bars and leaf.id not in bar_events:
-        raise ValueError("주기별 거래량 조건은 봉 이력 평가가 필요합니다")
+    if needs_bars(leaf) and leaf.id not in bar_events:
+        raise ValueError("주기별 조건은 봉 이력 평가가 필요합니다")
     if leaf.id in bar_events:
         rel = f"event_src_{i}"
         con.register(rel, pl.DataFrame([(code, event.date) for code, event in bar_events[leaf.id]],

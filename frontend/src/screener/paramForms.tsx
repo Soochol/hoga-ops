@@ -1,4 +1,5 @@
 import type { BreakoutParams, DepthPeakParams, DepthPeakPeriodParams, DepthRenewalParams, PeriodParams } from '../api/screener';
+import { CandleSettings } from './CandleSettings';
 import { RENEWAL_MIN_HHMM, RENEWAL_MAX_HHMM, hhmmToTimeValue, timeValueToHhmm } from './paramFormsHelpers';
 
 
@@ -42,38 +43,30 @@ export function Num({ value, onChange, label, ariaLabel, w = 'w-20', min, max }:
   );
 }
 
-export function Select<T extends string>({ value, onChange, options, label }: {
-  value: T; onChange: (v: T) => void; options: [T, string][]; label: string;
-}) {
-  return (
-    <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value as T)}
-      className="bg-bg-input border border-border-strong rounded-md px-2 py-1 text-sm text-fg">
-      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-    </select>
-  );
-}
+export { Select } from './Select';
 
 
 /** (lookback N, period M) 돌파 폼 — new_high / new_high_vol 공용. 문장형:
  *  "최근 [N]일 내 [M]일 신고" — 신고가/신고거래량 어느 쪽인지는 조건 행 라벨이 말한다. */
 export function BreakoutForm({ params, onChange }: { params: BreakoutParams; onChange: (p: BreakoutParams) => void }) {
-  return <div className="flex items-center gap-2 flex-wrap">
-    <span className="text-sm text-fg-dim">최근</span>
-    <Num ariaLabel="최근 기간(일)" w="w-16" min={1} max={1000}
-      value={params.lookback} onChange={(n) => onChange({ ...params, lookback: n ?? 1 })} />
-    <span className="text-sm text-fg-dim">일 내</span>
-    <Num ariaLabel="신고 기준 기간(일)" w="w-16" min={1} max={1000}
-      value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} />
-    <span className="text-sm text-fg-dim">일 신고</span></div>;
+  return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
+    <div className="flex items-center gap-2 flex-wrap text-sm text-fg-dim">
+      최근 <Num ariaLabel="최근 기간(봉)" w="w-16" min={1} max={1000}
+        value={params.lookback} onChange={n => onChange({ ...params, lookback: n ?? 1 })} />봉 내
+      <Num ariaLabel="신고 기준 기간(봉)" w="w-16" min={1} max={1000}
+        value={params.period} onChange={n => onChange({ ...params, period: n ?? 1 })} />봉 신고
+    </div>
+  </CandleSettings>;
 }
 
-
-/** (period M)일 폼 — new_high_today / new_high_vol_today(당일) 공용. */
+/** Latest selected candle; the comparison window includes the candidate. */
 export function PeriodForm({ params, onChange }: { params: PeriodParams; onChange: (p: PeriodParams) => void }) {
-  return <div className="flex items-center gap-2">
-    <Num ariaLabel="신고 기준 기간(일)" min={1} max={1000}
-      value={params.period} onChange={(n) => onChange({ period: n ?? 1 })} />
-    <span className="text-sm text-fg-dim">일</span></div>;
+  return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
+    <div className="flex items-center gap-2 text-sm text-fg-dim">
+      최신 봉 · <Num ariaLabel="신고 기준 기간(봉)" min={1} max={1000}
+        value={params.period} onChange={n => onChange({ ...params, period: n ?? 1 })} />봉 신고
+    </div>
+  </CandleSettings>;
 }
 
 
