@@ -4,6 +4,86 @@ import { apiExact } from './helpers/apiRoutes';
 import type { ScanRequest } from '../../src/api/screener';
 import type { SavedScreener } from '../../src/api/savedScreeners';
 
+test('Ctrl+Z and redo share typing, presets and token edits without crossing condition scopes', async ({ page }) => {
+  await installLiveMocks(page);
+  const conditions: SavedScreener['conditions'] = [
+    { id: 'amount', type: 'trade_value', params: { min_eok: 100 } },
+    { id: 'high', type: 'new_high_today', params: { period: 20 } },
+  ];
+  const saves: SavedScreener[] = [
+    { id: 'undo-one', name: '첫 조건', conditions, universe: {}, created_at_ms: 1, updated_at_ms: 1 },
+    { id: 'undo-two', name: '다른 조건', conditions: [...conditions].reverse(), expression: 'B',
+      universe: {}, created_at_ms: 1, updated_at_ms: 1 },
+  ];
+  await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok', warnings: [] } }));
+  await page.route(apiExact('screener/saves'), route => route.fulfill({ json: { schema_version: 1, saves } }));
+  await page.goto('/screener');
+  const builder = page.getByTestId('screener-builder-pane');
+  const input = builder.getByRole('textbox', { name: '조건 조합식' });
+  const run = page.getByRole('button', { name: '조회', exact: true });
+  await expect(input).toHaveValue('A AND B');
+  await input.focus();
+  await input.press('ControlOrMeta+A');
+  await input.pressSequentially('A OR B');
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('A AND B');
+  await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([0, 7]);
+  await input.press('ControlOrMeta+Shift+z');
+  await expect(input).toHaveValue('A OR B');
+  await input.press('ControlOrMeta+z');
+  await input.press('Control+y');
+  await expect(input).toHaveValue('A OR B');
+
+  // Presets work even when the button, rather than the textarea, has keyboard focus.
+  const allAnd = builder.getByRole('button', { name: '모두 AND', exact: true });
+  await allAnd.click();
+  await allAnd.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('A OR B');
+  await input.press('ControlOrMeta+Shift+z');
+  await expect(input).toHaveValue('A AND B');
+  await input.press('ControlOrMeta+A');
+  await builder.getByRole('group', { name: '거래대금 조건', exact: true })
+    .getByRole('button', { name: 'A 거래대금 조합식에 입력' }).click();
+  await expect(input).toHaveValue('A');
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('A AND B');
+  await input.press('ControlOrMeta+Shift+z');
+  await expect(input).toHaveValue('A');
+
+  // An invalid expression can be undone, enabling scan again; a new edit discards redo.
+  await input.press('End');
+  await input.pressSequentially(' OR ');
+  await expect(run).toBeDisabled();
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('A');
+  await expect(run).toBeEnabled();
+  await input.press('End');
+  await input.pressSequentially(' AND B');
+  await input.press('ControlOrMeta+Shift+z');
+  await expect(input).toHaveValue('A AND B');
+  await builder.getByLabel('최소 거래대금(억)').fill('300');
+  await builder.getByLabel('최소 거래대금(억)').press('ControlOrMeta+z');
+  await expect(input).toHaveValue('A AND B');
+
+  // Reorder remaps A to B. Undo must never restore the old letter's different meaning.
+  await input.fill('A');
+  for (const label of ['거래대금', '신고가']) {
+    await builder.getByRole('button', { name: `${label} 접기`, exact: true }).click();
+  }
+  await builder.getByRole('group', { name: '신고가 조건', exact: true }).getByRole('button', { name: '조건 순서 변경' })
+    .dragTo(builder.getByRole('group', { name: '거래대금 조건', exact: true }).getByRole('button', { name: '조건 순서 변경' }));
+  await expect(input).toHaveValue('B');
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('B');
+  await input.fill('A');
+  await input.fill('B');
+  await builder.getByRole('button', { name: '저장한 조건검색 선택' }).click();
+  await page.getByRole('option', { name: '다른 조건', exact: true }).click();
+  await page.getByRole('dialog', { name: '미저장 변경 확인' }).getByRole('button', { name: '변경 버리고 이동' }).click();
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('B');
+});
+
 test('expression editing, validation, reorder, persistence and drawer use the same logic', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));

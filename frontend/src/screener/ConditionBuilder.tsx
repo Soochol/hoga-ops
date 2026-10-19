@@ -8,17 +8,23 @@ import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
 import { CONDITION_GROUPS } from './ConditionBuilderHelpers';
 import { ConditionExpressionEditor } from './ConditionExpressionEditor';
 import { conditionLabel, defaultExpression, expressionError, MAX_EXPRESSION_LENGTH } from './conditionExpression';
+import { useExpressionUndo } from './useExpressionUndo';
 
 
-export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange, expression, onExpressionChange, children }: {
+export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange, expression, onExpressionChange,
+  expressionScope, children }: {
   children?: ReactNode;
   expression?: string | null;
   onExpressionChange?: (value: string) => void;
+  expressionScope?: string | null;
   conditions: ConditionLeaf[]; universe: ScreenerUniverse;
   onConditionsChange: (c: ConditionLeaf[]) => void; onUniverseChange: (u: ScreenerUniverse) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const expressionInput = useRef<HTMLTextAreaElement>(null);
+  const undo = useExpressionUndo(expression ?? defaultExpression(conditions.length),
+    JSON.stringify([expressionScope ?? null, conditions.map(c => c.id)]),
+    value => onExpressionChange?.(value), expressionInput);
   const invalidExpression = !!expressionError(expression, conditions.length);
   const insert = (token: string) => {
     const value = expression ?? defaultExpression(conditions.length);
@@ -29,11 +35,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
     const text = `${left && !/[\s(]$/.test(left) && token !== ')' ? ' ' : ''}${token}${right && !/^[\s)]/.test(right) && token !== '(' ? ' ' : ''}`;
     const next = left + text + right;
     if (next.length > MAX_EXPRESSION_LENGTH) return;
-    onExpressionChange?.(next);
-    requestAnimationFrame(() => {
-      input?.focus();
-      input?.setSelectionRange(start + text.length, start + text.length);
-    });
+    undo.change(next, { start: start + text.length, end: start + text.length });
   };
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -108,8 +110,9 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
       </div>
 
       {conditions.length > 0 && onExpressionChange && <ConditionExpressionEditor
-        conditions={conditions} expression={expression} onChange={onExpressionChange}
-        inputRef={expressionInput} onInsert={insert} />}
+        conditions={conditions} expression={expression} onChange={undo.change}
+        inputRef={expressionInput} onInsert={insert} onTextChange={undo.onTextChange}
+        onKeyDown={undo.onKeyDown} onSelectionChange={undo.rememberSelection} />}
       {conditions.map((leaf, index) => (
         <ConditionRow key={leaf.id} leaf={leaf} letter={conditionLabel(index)}
           onInsertLetter={onExpressionChange ? () => insert(conditionLabel(index)) : undefined}

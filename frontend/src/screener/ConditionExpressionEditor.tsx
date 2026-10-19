@@ -1,21 +1,25 @@
-import { useId, type RefObject } from 'react';
+import { useId, type ChangeEventHandler, type KeyboardEventHandler, type RefObject } from 'react';
 import type { ConditionLeaf } from '../api/screener';
 import { catalogEntry } from './catalog';
 import { conditionLabel, defaultExpression, expressionError, MAX_EXPRESSION_LENGTH, parseExpression } from './conditionExpression';
 import './ConditionEditor.css';
 
-export function ConditionExpressionEditor({ conditions, expression, onChange, inputRef, onInsert }: {
+export function ConditionExpressionEditor({ conditions, expression, onChange, inputRef, onInsert,
+  onTextChange, onKeyDown, onSelectionChange }: {
   conditions: ConditionLeaf[];
   expression?: string | null;
   onChange: (value: string) => void;
   inputRef: RefObject<HTMLTextAreaElement>;
   onInsert: (token: string) => void;
+  onTextChange: ChangeEventHandler<HTMLTextAreaElement>;
+  onKeyDown: KeyboardEventHandler<HTMLElement>;
+  onSelectionChange: () => void;
 }) {
   const id = useId();
   const error = expressionError(expression, conditions.length);
   const used = new Set(error ? [] : parseExpression(expression, conditions.length));
   const unused = conditions.map((_, i) => i).filter(i => !used.has(i));
-  return <section className="condition-expression" aria-label="조건 조합">
+  return <section className="condition-expression" aria-label="조건 조합" onKeyDown={onKeyDown}>
     <div className="condition-expression-heading">
       <label htmlFor={id}>조건 조합</label>
       <button type="button" onClick={() => onChange(defaultExpression(conditions.length))}
@@ -25,7 +29,8 @@ export function ConditionExpressionEditor({ conditions, expression, onChange, in
     </div>
     <textarea ref={inputRef} id={id} aria-label="조건 조합식" value={expression ?? defaultExpression(conditions.length)}
       aria-invalid={!!error} aria-describedby={`${id}-help${error ? ` ${id}-error` : ''}`}
-      onChange={event => onChange(event.target.value)} maxLength={MAX_EXPRESSION_LENGTH}
+      onChange={onTextChange} onSelect={onSelectionChange} maxLength={MAX_EXPRESSION_LENGTH}
+      aria-keyshortcuts="Control+Z Meta+Z Control+Shift+Z Meta+Shift+Z Control+Y"
       rows={2} spellCheck={false} autoCapitalize="characters" placeholder="A AND (B OR C)"
       className="condition-expression-input font-data" />
     <div className="condition-expression-tools" aria-label="조합식 빠른 입력">
