@@ -276,6 +276,8 @@ with its label folded at narrow widths, rather than inside the More popup.
 
 ## Spacing
 
+- 2026-10-19 사용자 승인: 잠정투자자 표는 차수·시각 5.5rem과 동일 폭의 외국인·기관·합산 세 열을 사용한다. 숫자 열은 최소 6.5rem이며 두 단위의 가장 긴 표기와 합산의 여백을 모두 수용한다. 외국인↔기관 간격은 최소 1rem, 기관↔합산은 최소 1.5rem, 오른쪽 끝은 0.625rem이다. 합산 숫자는 500 굵기로 강조한다. 단위 전환 시 열 위치를 유지하고 좁은 창에서는 축약 없이 가로 스크롤한다.
+
 - **Base unit:** 4px (base intent = rendered, since the dial is 1.0× as of 2026-08-07; was 4.5px rendered at 1.125×)
 - **Density:** Bloomberg-leaning — the dial sits at base intent (1.0×). Density is a spectrum, not a fixed point: the token system holds the whole ladder and the dial picks a rung. Looser rungs (1.125×, 1.25×) have both shipped as defaults before.
 - **Scale (rem-based, single dial):**
