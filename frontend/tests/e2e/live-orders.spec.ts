@@ -712,6 +712,54 @@ test('주문 한 건이 있는 칸의 가장자리도 드래그 정정하고 드
   expect(commands).toHaveLength(2);
 });
 
+for (const side of ['BUY', 'SELL'] as const) {
+  test(`${side} 드래그 중 호가·잔량을 갱신하고 원래 칸이 사라져도 현재 커서의 가격으로 정정한다`, async ({ page }) => {
+    const sourcePrice = side === 'BUY' ? 67200 : 67300;
+    const targetPrice = side === 'BUY' ? 67000 : 67500;
+    const nextPrice = targetPrice + 100;
+    const label = side === 'BUY' ? '매수' : '매도';
+    const { window, commands, ws } = await setup(page, [{ ...mkOrder('old', String(sourcePrice)), side }]);
+    await ws.waitForSubscribe('005930');
+    const source = (await window.getByLabel(`${label} ${sourcePrice.toLocaleString('ko-KR')}원 주문`, { exact: true }).boundingBox())!;
+    const target = (await window.getByRole('button', { name: new RegExp(`${label} ${targetPrice.toLocaleString('ko-KR')}원 주문 추가`) }).boundingBox())!;
+    const preview = page.getByRole('status', { name: '주문 드래그 미리보기' });
+    await page.mouse.move(source.x + source.width / 2, source.y + source.height / 2);
+    await page.mouse.down();
+    try {
+      await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 12 });
+      await expect(preview).toHaveText('70');
+      const timestamp = Date.now();
+      const frame = { kind: 'ob', venue: 'UN', t_ms: timestamp,
+        asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + i * 100, qty: 900 + i })),
+        bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: 900 + i })),
+        total_ask_qty: 9000, total_bid_qty: 9100 };
+      ws.pushLive('005930', frame);
+      await expect(window.locator(`[data-order-price="${targetPrice}"] .order-depth-qty`)).toHaveText('902');
+      await expect(window.getByLabel('매수총잔량 9,100')).toBeVisible();
+      // Keep the mouse still while the source cells disappear, then prices shift.
+      ws.pushLive('005930', { ...frame, t_ms: timestamp + 1,
+        [side === 'BUY' ? 'bids' : 'asks']: Array.from({ length: 10 }, () => ({ price: 0, qty: 0 })) });
+      await expect(window.locator(side === 'BUY' ? '.order-bid' : '.order-ask')).toHaveCount(0);
+      await expect(preview).toHaveText('70');
+      expect(commands).toHaveLength(0);
+      ws.pushLive('005930', { ...frame, t_ms: timestamp + 2,
+        asks: frame.asks.map(level => ({ ...level, price: level.price + 100 })),
+        bids: frame.bids.map(level => ({ ...level, price: level.price + 100 })) });
+      const destination = window.getByRole('button', { name: new RegExp(`${label} ${nextPrice.toLocaleString('ko-KR')}원 주문 추가`) });
+      await expect(destination).toHaveClass(/order-drag-destination/);
+      await expect(window.locator(`[data-order-price="${nextPrice}"] .order-depth-qty`)).toHaveText('902');
+      await expect(preview).toHaveText('70');
+      await page.mouse.up();
+      await expect.poll(() => commands.length).toBe(1);
+      expect(commands[0]).toMatchObject({ price: nextPrice, quantity: null });
+      await expect(preview).toHaveCount(0);
+    } finally {
+      await page.keyboard.press('Escape');
+      await page.mouse.up();
+    }
+  });
+}
+
 test('오른쪽 가장자리 주문 취소 메뉴는 실시간 갱신 중에도 화면 안에서 안정적으로 열린다', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
