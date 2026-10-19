@@ -29,12 +29,12 @@ beforeEach(() => {
   useLiveVenueStore.setState({ venue: 'KRX' });
 });
 function show(tab: 'orders' | 'holdings' = 'orders') {
-  const onClose = vi.fn(), onSelectSymbol = vi.fn(), onTabChange = vi.fn();
+  const onClose = vi.fn(), onSelectSymbol = vi.fn();
   const client = new QueryClient();
   const anchorRef = { current: document.createElement('div') };
   const view = render(<QueryClientProvider client={client}><AccountTradingPanel account={1} accountLabel="계좌 1" tab={tab}
-    anchorRef={anchorRef} onClose={onClose} onTabChange={onTabChange} onSelectSymbol={onSelectSymbol} /></QueryClientProvider>);
-  return { ...view, onClose, onSelectSymbol, onTabChange };
+    anchorRef={anchorRef} onClose={onClose} onSelectSymbol={onSelectSymbol} /></QueryClientProvider>);
+  return { ...view, onClose, onSelectSymbol };
 }
 it('filters order sides and cancels the other symbol only once while a response is pending', async () => {
   let release!: (value: { order_id: string }) => void;
@@ -71,7 +71,7 @@ it('shows holding names without codes and values the full holding at the selecte
   show('holdings');
   const table = screen.getByRole('table');
   expect(within(table).getAllByRole('columnheader').map(header => header.textContent))
-    .toEqual(['종목', '보유 · 주', '평단가 · 원', '평가금액 · 원', '수익']);
+    .toEqual(['종목', '수량', '평단', '평가금액', '손익']);
   const cells = within(within(table).getAllByRole('row')[1]).getAllByRole('cell');
   expect(cells.map(cell => cell.textContent)).toEqual(['SK하이닉스', '22', '180,000', '4,070,000', '+110,000원+2.78%']);
   expect(cells[4]).toHaveClass('text-price-up');
@@ -104,14 +104,11 @@ it('does not subscribe to holding quotes while viewing orders', () => {
   show();
   expect(mock.quoteSubscription).not.toHaveBeenCalled();
 });
-it('moves between account tabs with the keyboard without sending a trading command', () => {
-  const { onTabChange } = show();
-  const ordersTab = screen.getByRole('tab', { name: '미체결 주문' });
-  const holdingsTab = screen.getByRole('tab', { name: '보유종목' });
-  ordersTab.focus();
-  fireEvent.keyDown(ordersTab, { key: 'ArrowRight' });
-  expect(onTabChange).toHaveBeenCalledWith('holdings');
-  expect(holdingsTab).toHaveFocus();
-  expect(ordersTab).toHaveAttribute('aria-controls', screen.getByRole('tabpanel').id);
+it('shows one compact heading and keeps the list accessible without duplicate navigation', () => {
+  show();
+  expect(screen.getByRole('heading', { name: '미체결 주문' })).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: '미체결 주문 목록' })).toBeInTheDocument();
+  expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+  expect(screen.queryByText('취소 요청은 즉시 전송됩니다.')).not.toBeInTheDocument();
   expect(mock.command).not.toHaveBeenCalled();
 });

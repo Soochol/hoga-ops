@@ -309,6 +309,7 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   const checkbox = dialog.getByRole('checkbox', { name: '주문접수 소리', exact: true });
   await settings.click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
   await expect(checkbox).not.toBeChecked();
   await expect(dialog.getByRole('slider')).toHaveCount(0);
   await dialog.getByRole('button', { name: '소리 들어보기', exact: true }).click();
@@ -317,12 +318,13 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   expect(commands).toHaveLength(0);
   await checkbox.check();
   await dialog.screenshot({ path: testInfo.outputPath('order-sound-settings.png') });
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
 
   await page.reload();
   await settings.click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
   await expect(checkbox).toBeChecked();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   expect(await soundStates()).toEqual([]);
 
   let accept!: () => void, attempts = 0;
@@ -363,8 +365,9 @@ test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 �
   await expect.poll(soundStates).toEqual(['running', 'running']);
 
   await settings.click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
   await checkbox.uncheck();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   const response = page.waitForResponse(response => new URL(response.url()).pathname === '/api/trading/orders');
   await buy.dblclick();
   await response;
@@ -393,8 +396,9 @@ test('오디오 재생 거절은 주문 접수를 유지하고 복구 후 다음
   const { window, commands } = await setup(page);
   await window.getByRole('button', { name: '주문 설정', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '주문 알림', exact: true }).click();
   await dialog.getByRole('checkbox', { name: '주문접수 소리', exact: true }).check();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   const buy = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await buy.dblclick();
   const receipt = page.getByRole('status', { name: '주문 접수 알림' });
@@ -434,7 +438,7 @@ test('계좌 목록은 열 때만 조회하고 다른 종목 주문을 취소하
   expect(commands).toHaveLength(1); expect(commands[0]).toMatchObject({ code: '000660', account_seq: 1 });
   await panel.getByRole('button', { name: '전체', exact: true }).click();
   await expect(panel.getByRole('button', { name: '삼성전자', exact: true })).toBeVisible();
-  await panel.getByRole('tab', { name: '보유종목', exact: true }).click();
+  await window.getByRole('button', { name: '보유종목', exact: true }).click();
   await expect(panel.getByRole('cell', { name: '22', exact: true })).toBeVisible();
   await panel.screenshot({ path: testInfo.outputPath('account-holdings-panel.png') });
   await panel.getByRole('button', { name: 'SK하이닉스', exact: true }).click();
@@ -461,12 +465,12 @@ test('종목별 주문수량 기억은 즉시 저장하고 계좌별로 복원�
   const remember = dialog.getByRole('checkbox', { name: '종목별 주문수량 기억', exact: true });
   await expect(remember).not.toBeChecked();
   await remember.check();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await settings.click();
   await expect(remember).toBeChecked();
   await remember.check();
   await dialog.screenshot({ path: testInfo.outputPath('remember-quantity-settings.png') });
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await quantity.fill('30');
   await account.selectOption('2');
   await expect(quantity).toHaveValue('');
@@ -529,7 +533,7 @@ test('계좌 전환 후 늦게 도착한 이전 보유 목록은 새 계좌를 �
     await expect(panel.getByRole('cell', { name: '33', exact: true })).toBeVisible();
     release();
     await expect(panel.getByRole('cell', { name: '22', exact: true })).toHaveCount(0);
-    await expect(panel.getByText('토스증권 · ****5678', { exact: true })).toBeVisible();
+    await expect(panel).toHaveAttribute('aria-description', '토스증권 · ****5678');
     await page.keyboard.press('Escape'); await expect(panel).toHaveCount(0);
   } finally { release(); }
 });
@@ -554,7 +558,7 @@ test('계좌 목록의 처리 중 취소는 중복 전송하지 않고 닫혀 �
     release();
     await expect.poll(() => commands.length).toBe(1);
     await expect(panel.getByRole('cell', { name: '22', exact: true })).toBeVisible();
-    await panel.getByRole('tab', { name: '미체결 주문', exact: true }).click();
+    await window.getByRole('button', { name: '미체결 주문', exact: true }).click();
     await expect(panel.getByRole('button', { name: '삼성전자', exact: true })).toHaveCount(0);
     await panel.getByRole('button', { name: '계좌 목록 닫기', exact: true }).click();
     await expect(panel).toHaveCount(0);
@@ -1455,20 +1459,20 @@ test('압축형 주·금액 전환은 수량 한 칸을 유지하고 금액 버�
   expect(commands[0]).toMatchObject({ price: 68200, quantity: 14 });
 });
 
-test('압축형 팝오버는 다크 테마에서도 표시하고 키보드 탭 이동·닫기 포커스를 유지한다', async ({ page }, testInfo) => {
+test('압축형 팝오버는 다크 테마에서도 표시하고 키보드 전환·닫기 포커스를 유지한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, [mkOrder('old')], false);
   await page.evaluate(() => { document.documentElement.dataset.theme = 'toss-dark'; });
   const trigger = window.getByRole('button', { name: '미체결 주문', exact: true });
   await trigger.click();
   const panel = page.getByRole('dialog', { name: '계좌 목록' });
-  const ordersTab = panel.getByRole('tab', { name: '미체결 주문' });
-  await ordersTab.focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(panel.getByRole('tab', { name: '보유종목' })).toHaveAttribute('aria-selected', 'true');
+  await window.getByRole('button', { name: '보유종목', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(panel.getByRole('heading', { name: '보유종목', exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'SK하이닉스', exact: true })).toBeVisible();
   await panel.screenshot({ path: testInfo.outputPath('account-holdings-dark.png') });
-  await page.keyboard.press('ArrowLeft');
-  await expect(ordersTab).toHaveAttribute('aria-selected', 'true');
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  await expect(panel.getByRole('heading', { name: '미체결 주문', exact: true })).toBeVisible();
   await panel.screenshot({ path: testInfo.outputPath('account-orders-dark.png') });
   await page.keyboard.press('Escape');
   await expect(panel).toHaveCount(0);
@@ -1503,10 +1507,15 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
     expect(panel.y).toBeCloseTo(anchor.y + anchor.height + 4, 0);
     expect(panel.x + panel.width).toBeCloseTo(anchor.x + anchor.width, 0);
     await dialog.screenshot({ path: testInfo.outputPath(`order-settings-${theme}.png`) });
+    expect(panel.width).toBe(420);
+    expect(panel.height).toBeLessThan(240);
     const navigation = dialog.getByRole('navigation', { name: '주문 설정 목차' });
+    expect((await navigation.boundingBox())!.width).toBe(84);
     await navigation.getByRole('button', { name: '주문 알림', exact: true }).click();
+    await expect(navigation.getByRole('button', { name: '주문 알림', exact: true })).toHaveAttribute('aria-current', 'true');
+    await expect(dialog.getByRole('spinbutton')).toHaveCount(0);
     await expect(dialog.getByRole('button', { name: '소리 들어보기' })).toBeInViewport();
-    await expect(dialog.getByRole('button', { name: '닫기', exact: true })).toBeInViewport();
+    await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeInViewport();
     await navigation.getByRole('button', { name: '주문 입력', exact: true }).click();
     await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toBeInViewport();
     await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('29');
@@ -1540,10 +1549,15 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
       && input.scrollWidth <= input.clientWidth;
   }));
   expect(layout).toEqual(Array(6).fill(true));
+  const navBounds = (await dialog.getByRole('navigation', { name: '주문 설정 목차' }).boundingBox())!;
+  const bodyBounds = (await dialog.locator('.order-settings-body').boundingBox())!;
+  expect(navBounds.width).toBe(84);
+  expect(navBounds.x + navBounds.width).toBeCloseTo(bodyBounds.x, 0);
+  expect(navBounds.y).toBe(bodyBounds.y);
   await page.screenshot({ path: testInfo.outputPath('order-settings-anchored-narrow.png') });
   await page.setViewportSize({ width: 320, height: 360 });
-  await expect(dialog.getByRole('button', { name: '닫기', exact: true })).toBeInViewport();
-  await expect.poll(() => dialog.locator('.order-settings-body').evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeInViewport();
+  await expect(dialog.getByRole('navigation', { name: '주문 설정 목차' })).toBeInViewport();
   await dialog.screenshot({ path: testInfo.outputPath('order-settings-short-viewport.png') });
   await dialog.getByRole('button', { name: '주문 설정 닫기' }).click();
   await expect(dialog).toHaveCount(0);
@@ -1551,7 +1565,7 @@ test('주문 설정은 즉시 저장하고 버튼 앵커·바깥 클릭·재클�
   expect(commands).toHaveLength(0);
 });
 
-test('계좌 편집기 탐색·목록·푸터는 테마와 화면 폭에 맞춰 표시된다', async ({ page }, testInfo) => {
+test('컴팩트 계좌 목록은 테마와 화면 폭에 맞춰 표시된다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, [mkOrder('old')]);
   await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: {
     phase: 'open', quotes: (new URL(route.request().url()).searchParams.get('codes') ?? '').split(',')
@@ -1565,16 +1579,16 @@ test('계좌 편집기 탐색·목록·푸터는 테마와 화면 폭에 맞춰 
       await trigger.scrollIntoViewIfNeeded();
       await trigger.click();
       const panel = page.getByRole('dialog', { name: '계좌 목록' });
-      await expect(panel.getByRole('heading', { name: '계좌 목록', exact: true })).toBeVisible();
-      await expect(panel.getByRole('heading', { name: '미체결 주문 1건' })).toBeVisible();
-      await expect(panel.getByText('취소 요청은 즉시 전송됩니다.', { exact: true })).toBeInViewport();
-      const tabs = panel.getByRole('tablist', { name: '계좌 목록 종류' });
-      await expect(tabs).toHaveAttribute('aria-orientation', width < 560 ? 'horizontal' : 'vertical');
+      await expect(panel.getByRole('heading', { name: '미체결 주문', exact: true })).toBeVisible();
+      await expect(panel.getByRole('tablist')).toHaveCount(0);
+      await expect(panel.getByText('취소 요청은 즉시 전송됩니다.', { exact: true })).toHaveCount(0);
+      expect((await panel.boundingBox())!.width).toBe(Math.min(520, width - 8));
+      expect((await panel.boundingBox())!.height).toBeLessThan(160);
       await panel.screenshot({ path: testInfo.outputPath(`order-editor-orders-${theme}-${width}.png`) });
-      await panel.getByRole('tab', { name: '보유종목', exact: true }).click();
-      await expect(panel.getByRole('heading', { name: '보유종목 1종목' })).toBeVisible();
+      await window.getByRole('button', { name: '보유종목', exact: true }).click();
+      await expect(panel.getByRole('heading', { name: '보유종목', exact: true })).toBeVisible();
       await expect(panel.getByRole('button', { name: 'SK하이닉스', exact: true })).toBeVisible();
-      await expect(panel.getByRole('columnheader', { name: '수익', exact: true })).toBeVisible();
+      if (width > 520) await expect(panel.getByRole('columnheader', { name: '손익', exact: true })).toBeVisible();
       const profit = panel.getByRole('row').filter({ hasText: 'SK하이닉스' }).getByRole('cell').nth(4);
       await expect(profit).toHaveText('+110,000원+2.78%');
       await expect(profit).toHaveClass(/text-price-up/);
@@ -1587,7 +1601,7 @@ test('계좌 편집기 탐색·목록·푸터는 테마와 화면 폭에 맞춰 
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(800);
       if (width === 390) {
-        expect(await panel.getByRole('tabpanel').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+        expect(await panel.locator('.account-trading-scroll').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       }
       await panel.screenshot({ path: testInfo.outputPath(`order-editor-holdings-${theme}-${width}.png`) });
       await page.keyboard.press('Escape');
@@ -1609,10 +1623,10 @@ test('주문 설정은 즉시 저장하고 잘못된 입력은 제외하며 금�
   await expect(dialog.getByRole('radio')).toHaveCount(0);
   await expect(dialog.getByText(/^프리셋 [123]$/)).toHaveCount(0);
   await expect(dialog.getByText(/100만원|500만원|1,000만원/)).toHaveCount(0);
-  await expect(dialog.getByText('주', { exact: true })).toHaveCount(3);
-  await expect(dialog.getByText('백만원', { exact: true })).toHaveCount(3);
+  await expect(dialog.getByText('수량 · 주', { exact: true })).toHaveCount(1);
+  await expect(dialog.getByText('금액 · 백만원', { exact: true })).toHaveCount(1);
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('25');
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
   await settings.click();
   await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('25');
@@ -1620,10 +1634,10 @@ test('주문 설정은 즉시 저장하고 잘못된 입력은 제외하며 금�
   for (const [index, value] of [2, 6, 12].entries()) await dialog.getByRole('spinbutton', { name: `금액 프리셋 ${index + 1}`, exact: true }).fill(String(value));
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('1.5');
   await expect(dialog.getByRole('alert')).toContainText('양의 정수만 저장');
-  await expect(dialog.getByRole('button', { name: '닫기', exact: true })).toBeEnabled();
+  await expect(dialog.getByRole('button', { name: '주문 설정 닫기', exact: true })).toBeEnabled();
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
   await page.screenshot({ path: testInfo.outputPath('order-settings-dialog.png') });
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(settings).toBeFocused();
   await window.getByRole('button', { name: '금액', exact: true }).click();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
@@ -1654,6 +1668,7 @@ test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에�
   const checkbox = dialog.getByRole('checkbox', { name: '내 평단가 표시', exact: true });
   await expect(first.locator('.order-average-marker')).toHaveCount(1);
   await settings.click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
   await expect(checkbox).toBeChecked();
   for (const theme of ['toss-light', 'toss-dark']) {
     await page.evaluate(value => { document.documentElement.dataset.theme = value; }, theme);
@@ -1663,31 +1678,35 @@ test('평단가 표시 체크박스는 즉시 저장하며 다른 주문 창에�
   await page.keyboard.press('Space');
   await expect(checkbox).not.toBeChecked();
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await settings.click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
   await expect(checkbox).not.toBeChecked();
   await checkbox.uncheck();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
   await expect(first.getByLabel('매입평단가')).toContainText('67,001');
   await page.reload();
   await expect(first.getByLabel('매입평단가')).toContainText('67,001');
   await expect(first.locator('.order-average-marker')).toHaveCount(0);
   await settings.click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
   await expect(checkbox).not.toBeChecked();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
   const second = page.getByTestId('order-window').nth(1);
   await expect(second.locator('.order-average-marker')).toHaveCount(1);
   await second.getByRole('button', { name: '주문 설정', exact: true }).click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
   await expect(checkbox).toBeChecked();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await page.locator('[data-win]').filter({ has: page.getByTestId('order-window') }).nth(1)
     .getByRole('button', { name: '삼성전자 호가 주문 창 닫기', exact: true }).click();
   await settings.click();
+  await dialog.getByRole('navigation', { name: '주문 설정 목차' }).getByRole('button', { name: '호가 표시', exact: true }).click();
   await checkbox.check();
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(first.locator('.order-average-marker')).toHaveCount(1);
   expect(commands).toHaveLength(0);
 });
@@ -1699,7 +1718,7 @@ test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 �
   const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('25');
   await dialog.getByRole('spinbutton', { name: '금액 프리셋 1', exact: true }).fill('2');
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await page.reload();
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('25');
   await expect(window.getByRole('button', { name: '200만', exact: true })).toBeVisible();
@@ -1709,7 +1728,7 @@ test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 �
   await expect(dialog.getByRole('radio')).toHaveCount(0);
   await expect(window.getByRole('button', { name: '금액', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true })).toHaveValue('25');
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   const restore = page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '원래 크기로 복원', exact: true });
   if (await restore.count()) await restore.click();
   await page.getByTestId('workspace-add-menu-button').click();
@@ -1719,7 +1738,7 @@ test('빠른 입력 방식·프리셋은 새로고침 후 유지하고 다른 �
   await expect(page.getByTestId('order-window').first().getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('29');
   await second.getByRole('button', { name: '주문 설정', exact: true }).click();
   await dialog.getByRole('spinbutton', { name: '수량 프리셋 1', exact: true }).fill('30');
-  await dialog.getByRole('button', { name: '닫기', exact: true }).click();
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
   await expect(second.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('30');
   await expect(page.getByTestId('order-window').first().getByRole('button', { name: '200만', exact: true })).toBeVisible();
 });
@@ -2193,7 +2212,7 @@ for (const side of ['BUY', 'SELL'] as const) {
     expect(commands).toHaveLength(3);
     expect(commands.every(body => !('price' in body) && body.code === '005930')).toBe(true);
   });
-  test(`${side} 총 접수 우클릭 메뉴에서 개별 취소하고 남은 주문을 호가로 드래그 정정한다`, async ({ page }) => {
+  test(`${side} 총 접수 우클릭 메뉴에서 개별 취소하고 남은 주문을 호가로 드래그 정정한다`, async ({ page }, testInfo) => {
     const { window, commands } = await setup(page, [
       { ...mkOrder('one'), side }, { ...mkOrder('two', '67100'), side }, { ...mkOrder('outside', '70000'), side },
     ]);
@@ -2201,12 +2220,19 @@ for (const side of ['BUY', 'SELL'] as const) {
     await total.click({ button: 'right' });
     const menu = page.getByRole('menu', { name: `${label} 전체 접수 주문 목록` });
     await expect(menu.getByRole('menuitem')).toHaveCount(3);
-    await expect(menu).toContainText('70,000원');
+    await expect(menu).toContainText('70,000');
+    await expect(menu.locator('.order-list-summary')).toHaveCount(0);
+    await expect(menu.getByRole('heading')).toHaveText(`${label}삼성전자`);
+    const bounds = (await menu.boundingBox())!;
+    expect(bounds.width).toBeCloseTo(288, 0);
+    const firstRow = (await menu.locator('.order-list-row').first().boundingBox())!;
+    expect(firstRow.height).toBeCloseTo(36, 0);
+    await menu.screenshot({ path: testInfo.outputPath(`order-aligned-popover-${side}.png`) });
     await menu.getByRole('button', { name: '주문 1 개별 취소', exact: true }).click();
-    await expect(menu).toHaveCount(0);
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('menuitem')).toHaveCount(2);
     await expect(total).toHaveText('140(2)');
     expect(commands).toHaveLength(1);
-    await total.click({ button: 'right' });
     const destinationPrice = side === 'BUY' ? 66300 : 68200;
     await drag(page, menu.getByRole('menuitem', { name: '주문 1 · 70주', exact: true }),
       window.getByRole('button', { name: new RegExp(`${label} ${destinationPrice.toLocaleString('ko-KR')}원 주문 추가`) }));
@@ -2302,8 +2328,8 @@ for (const side of ['BUY', 'SELL'] as const) {
     await cell.click({ button: 'right', position: { x: cellBox.width - 1, y: cellBox.height - 1 } });
     const menu = page.getByRole('menu', { name: `${label} ${price.toLocaleString('ko-KR')}원 주문 목록` });
     const first = menu.getByRole('menuitem', { name: '주문 1 · 70주', exact: true });
-    await expect(menu.getByRole('menuitem')).toHaveText(['주문 170', '주문 270']);
-    await expect(menu).toContainText('총 140');
+    await expect(menu.getByRole('menuitem')).toHaveText([`${price.toLocaleString('ko-KR')}70`, `${price.toLocaleString('ko-KR')}70`]);
+    await expect(menu.locator('.order-list-summary')).toHaveCount(0);
     // Staying inside the list or returning to the original price sends no command.
     await drag(page, first, menu.getByRole('menuitem', { name: '주문 2 · 70주', exact: true }));
     await expect(menu).toBeVisible();
@@ -2322,7 +2348,7 @@ for (const side of ['BUY', 'SELL'] as const) {
   });
 }
 
-test('가격 칸의 우클릭 목록에서 한 주문을 호가 밖으로 드래그하면 그 주문만 취소한다', async ({ page }, testInfo) => {
+test('가격 칸의 우클릭 목록에서 드래그 취소 후 목록을 유지하고 남은 주문도 연속 취소한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67100')], false);
   const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await cell.click({ button: 'right' });
@@ -2332,20 +2358,26 @@ test('가격 칸의 우클릭 목록에서 한 주문을 호가 밖으로 드래
   await first.click();
   expect(commands).toHaveLength(0);
   await page.screenshot({ path: testInfo.outputPath('order-price-list.png') });
-  await expect(menu.getByRole('menuitem')).toHaveText(['주문 170', '주문 270']);
-  await expect(menu).toContainText('총 140');
+  await expect(menu.getByRole('menuitem')).toHaveText(['67,20070', '67,20070']);
+  await expect(menu.locator('.order-list-summary')).toHaveCount(0);
   // Releasing outside both the list and the ladder cancels only this order.
   await drag(page, first, window.getByRole('button', { name: '주문 설정', exact: true }));
-  await expect(menu).toHaveCount(0);
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole('menuitem')).toHaveCount(1);
   await expect(cell).toHaveText('70');
   await expect(window.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveText('70');
   expect(commands).toHaveLength(1);
   expect(commands[0]).toEqual({ account_seq: 1, code: '005930', command_id: expect.any(String) });
-  await cell.click({ button: 'right' });
-  await expect(page.getByRole('menuitem', { name: '주문 1 · 70주', exact: true })).toBeVisible();
+  await menu.getByRole('button', { name: '주문 1 개별 취소', exact: true }).click();
+  await expect(menu).toBeVisible();
+  await expect(menu).toContainText('미체결 주문 없음');
+  await expect(menu.getByRole('menuitem')).toHaveCount(0);
+  await expect(cell).toBeEmpty();
+  await expect(window.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveText('70');
+  expect(commands).toHaveLength(2);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
-  expect(commands).toHaveLength(1);
+  expect(commands).toHaveLength(2);
 });
 
 test('하단의 호가 밖 주문 뱃지는 숨기고 미체결 주문 목록에서 조회·취소한다', async ({ page }) => {
@@ -2621,7 +2653,7 @@ for (const tab of ['orders', 'holdings'] as const) {
         const cells = row.querySelectorAll('td');
         return numericColumns.every(column => cells[column].scrollWidth <= cells[column].clientWidth + 1);
       }), numericColumns)).toBe(true);
-      if (width === 390) expect(await panel.getByRole('tabpanel').evaluate(el => el.scrollWidth > el.clientWidth)).toBe(true);
+      if (width === 390) expect(await panel.locator('.account-trading-scroll').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
       await panel.screenshot({ path: testInfo.outputPath(`stable-${tab}-${width}.png`) });
       await setDigits(false);
       expect(await headers()).toEqual(before);
