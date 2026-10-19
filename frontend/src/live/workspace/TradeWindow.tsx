@@ -54,7 +54,7 @@ function TradeContent({ code, venue, date, minAmountManwon, onClearFilter }: {
   const highlight = useMemo(() => highlightEnabled
     ? { thresholdWon: thresholdManwon * 10_000, color: highlightColor } : null,
   [highlightEnabled, thresholdManwon, highlightColor]);
-  return <div data-testid="trade-window" className="flex h-full flex-col bg-bg-card">
+  return <div data-testid="trade-window" className="flex h-full flex-col bg-bg-card [container:trade-tape/inline-size]">
     <div ref={scroll} aria-label="체결 목록" className="min-h-0 flex-1 overflow-auto" onScroll={onScroll} onWheel={onWheel}>
       <TradeTickTable view={view} highlight={highlight} emptyText={!connected ? '실시간 연결 확인 중 · 체결 수신 대기'
         : minAmountManwon > 0 ? `${formatTradeMinAmount(minAmountManwon)} 이상 체결 없음 · 새 체결 수신 대기`

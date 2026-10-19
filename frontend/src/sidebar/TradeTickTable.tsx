@@ -24,10 +24,8 @@ import { priceDirClass } from '../ui/priceDir';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
 import type { TradeTick, TradeTickView } from '../live/tradeTicks';
-
-/** 3열 트랙 SSOT — 헤더와 본문이 어긋나면 표가 아니라 목록이 된다. */
-// Resolve the time column against the shared data size, independently of header typography.
-const COLS = 'grid-cols-[calc(var(--text-sm)*6.2)_1fr_1fr]';
+import { useState } from 'react';
+import './TradeTickTable.css';
 
 /** 강조 배경 알파(hex 2자리, ≈35%) — 저장 색은 6자리 hex 이므로 렌더 시 얹는다.
  *  불투명 배경은 다크/라이트 양 테마에서 글자색(매수/매도)을 잡아먹는다. */
@@ -50,21 +48,36 @@ export default function TradeTickTable({
   /** null = 강조 비활성(설정 토글 OFF). */
   highlight?: TradeHighlightConfig | null;
 }) {
+  let price = 0, qty = 0;
+  for (const tick of view.ticks) {
+    price = Math.max(price, tick.price);
+    qty = Math.max(qty, tick.qty);
+  }
+  const [reserved, setReserved] = useState(() => ({ price, qty }));
+  // TradeContent remounts on code/venue/date changes. Within that scope, retain
+  // observed maxima even when rows leave the visible buffer or a filter hides them.
+  if (price > reserved.price || qty > reserved.qty) {
+    setReserved({ price: Math.max(price, reserved.price), qty: Math.max(qty, reserved.qty) });
+  }
   if (view.ticks.length === 0) {
     return <SidebarState>{emptyText}</SidebarState>;
   }
   return (
-    <div role="table" aria-label="체결 내역" className="font-data text-sm tabular-nums">
+    <div role="table" aria-label="체결 내역" className="trade-tick-table grid font-data text-sm tabular-nums">
+      <div aria-hidden="true" className="trade-tick-sizer">
+        <span data-figure={reserved.price.toLocaleString('ko-KR')} />
+        <span className="trade-quantity" data-figure={reserved.qty.toLocaleString('ko-KR')} />
+      </div>
       {/* 헤더는 선이 아니라 톤 밴드로 분리한다(DESIGN.md "구분선 최소화", 2026-07-22).
           bg-bg-card 였을 땐 창 배경과 같은 값이라 밴드가 보이지 않았고, sticky 는
           행이 비쳐 보이는 것만 막고 있었다. */}
       <div
         role="row"
-        className={`sticky top-0 z-10 grid ${COLS} gap-2 bg-bg-subtle px-2.5 py-1 text-2xs text-fg-dim`}
+        className="trade-tick-row trade-tick-header sticky top-0 z-10 bg-bg-subtle py-1 text-2xs text-fg-dim"
       >
         <span role="columnheader">시각</span>
         <span role="columnheader" className="text-right">체결가(원)</span>
-        <span role="columnheader" className="text-right">체결량(주)</span>
+        <span role="columnheader" className="trade-quantity text-right">체결량(주)</span>
       </div>
       {view.ticks.map((t) => (
         <Row key={t.key} tick={t} prevClose={view.prevClose} highlight={highlight} />
@@ -89,13 +102,13 @@ function Row({
     : priceDirClass(side);
   const highlighted = highlight !== null && price * qty >= highlight.thresholdWon;
   return (
-    <div role="row" data-tape-event={tick.key} className={`grid ${COLS} gap-2 px-2.5 py-0.5`}>
+    <div role="row" data-tape-event={tick.key} className="trade-tick-row py-0.5">
       <span role="cell" className="text-fg-dim">{unixMsToKSTClock(tMs)}</span>
       <span role="cell" className={`text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       <span
         role="cell"
         data-testid={highlighted ? 'trade-qty-highlighted' : undefined}
-        className={`-mx-1 rounded-sm px-1 text-right ${priceDirClass(side)}`}
+        className={`trade-quantity rounded-sm text-right ${priceDirClass(side)}`}
         style={highlighted ? { background: `${highlight.color}${HIGHLIGHT_ALPHA_HEX}` } : undefined}
       >
         {qty.toLocaleString('ko-KR')}
