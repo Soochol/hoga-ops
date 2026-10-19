@@ -25,7 +25,7 @@ import {
   ThemeSection,
 } from './settings/AppInfoSections';
 import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
-import { SettingsEditor } from './settings/SettingsEditor';
+import { SettingsEditor, SettingsEditorNavItem } from './settings/SettingsEditor';
 import { useSettingsUndo } from './settings/useSettingsUndo';
 import { readAppSettings, restoreAppSettings, subscribeAppSettings } from './settings/editorSnapshots';
 import SettingsTransferSection from './settings/SettingsTransferSection';
@@ -316,20 +316,14 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
           {navIds.map((id, index) => (
             <Fragment key={id}>
             {(index === 0 || id === 'data-source' || id === 'symbols') && <div className="settings-editor-nav-group">{index === 0 ? '화면' : id === 'data-source' ? '환경' : '관리'}</div>}
-            <button
+            <SettingsEditorNavItem
               key={id}
-              type="button"
               data-testid={`settings-nav-${id}`}
-              aria-current={active === id ? 'true' : undefined}
+              active={active === id}
               onClick={() => jump(id)}
-              className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-sm transition-colors ${
-                active === id
-                  ? 'bg-tint-selection font-medium text-fg'
-                  : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'
-              }`}
             >
               {LABEL[id]}
-            </button>
+            </SettingsEditorNavItem>
             </Fragment>
           ))}
         </div>

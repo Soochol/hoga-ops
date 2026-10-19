@@ -687,11 +687,10 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
       {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}
     </div>, document.body)}
-    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover order-surface font-data" onKeyDown={e => {
+    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover ui-popover" onKeyDown={e => {
       e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
     }}>
-      <OrderSurfaceHeading closeLabel="주문 설정 닫기" onClose={closeSettings}>주문 설정</OrderSurfaceHeading>
-      <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />
+      <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
     </div>, document.body)}
     <ExpectedFillBanner
       price={storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0}
