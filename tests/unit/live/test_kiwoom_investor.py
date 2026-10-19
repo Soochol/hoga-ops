@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import asyncio
 import json
 
 import httpx
@@ -493,3 +494,88 @@ async def test_daily_gross_trade_side_uses_vendor_totals(axis, side, vendor_side
     assert point.breakdown.individual == 200
     assert point.breakdown.fin_invest == 80
     assert not result.violations
+
+
+async def test_estimate_axes_overlap_and_merge_in_stable_order():
+    client = _estimate_client()
+    both_started, amount_done = asyncio.Event(), asyncio.Event()
+    started = []
+
+    async def run_call(fetch, axis):
+        started.append(axis)
+        if len(started) == 2:
+            both_started.set()
+        await both_started.wait()
+        # Reverse completion order must not swap units or change slot order.
+        if axis == "2":
+            await amount_done.wait()
+        page = await fetch(client)
+        if axis == "1":
+            amount_done.set()
+        return page
+
+    try:
+        rows = await asyncio.wait_for(fetch_investor_trend_estimate(
+            client, "005930", run_call=run_call,
+        ), 1)
+        assert sorted(started) == ["1", "2"]
+        assert [r.slot for r in rows] == ["090000", "143100"]
+        assert rows[1].foreign_qty == -912_000
+        assert rows[1].foreign_amt_mwon == -212_372
+    finally:
+        await client.aclose()
+
+
+async def test_estimate_axis_failure_cancels_and_drains_sibling():
+    from hoga.live.kiwoom_errors import KiwoomRateLimitError
+
+    client = _estimate_client()
+    amount_started, amount_cancelled = asyncio.Event(), asyncio.Event()
+    failure = KiwoomRateLimitError("synthetic quota", api_id="ka10064")
+
+    async def run_call(fetch, axis):
+        if axis == "2":
+            await amount_started.wait()
+            raise failure
+        amount_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            amount_cancelled.set()
+
+    try:
+        with pytest.raises(KiwoomRateLimitError) as error:
+            await fetch_investor_trend_estimate(client, "005930", run_call=run_call)
+        assert error.value is failure
+        assert amount_cancelled.is_set()
+    finally:
+        await client.aclose()
+
+
+async def test_estimate_caller_cancellation_drains_both_axes():
+    client = _estimate_client()
+    both_started = asyncio.Event()
+    started, cancelled = set(), set()
+
+    async def run_call(fetch, axis):
+        started.add(axis)
+        if len(started) == 2:
+            both_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            cancelled.add(axis)
+
+    task = asyncio.create_task(fetch_investor_trend_estimate(
+        client, "005930", run_call=run_call,
+    ))
+    try:
+        await asyncio.wait_for(both_started.wait(), 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        assert cancelled == {"1", "2"}
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await client.aclose()

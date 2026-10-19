@@ -56,6 +56,7 @@ KIS 는 내국인대우외국인(`natfor`)을 외국인에 **합산**하고 키�
 """
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from functools import partial
@@ -392,14 +393,33 @@ async def fetch_investor_trend_estimate(
     runner = run_call if run_call is not None else partial(_direct_call, client=client)
     by_slot: dict[str, dict[str, int]] = {}
     order: list[str] = []
-    for axis, keys in _ESTIMATE_AXES.items():
-        page = await runner(
+
+    async def fetch_axis(axis: str) -> Page:
+        return await runner(
             lambda c, axis=axis: c.call("ka10064", {
                 "stk_cd": code, "mrkt_tp": "000",
                 "amt_qty_tp": axis, "trde_tp": _TRDE_TP_ALL,
             }),
             axis,
         )
+
+    # Both independent axes retain their own capacity key/admission. Overlap
+    # the HTTP waits instead of holding up amount behind the quantity response.
+    axes = list(_ESTIMATE_AXES.items())
+    tasks = [asyncio.create_task(fetch_axis(axis)) for axis, _ in axes]
+    try:
+        pages = await asyncio.gather(*tasks)
+    finally:
+        # Keep the original domain exception and drain/cancel siblings, as in
+        # the adjusted/raw candle pair. A failed pair never publishes half rows.
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Merge in axis order, regardless of completion order: preserve slot order,
+    # quantity/amount units, and None for slots missing from one response.
+    for (_, keys), page in zip(axes, pages, strict=True):
         for row in page.rows:
             slot = str(row.get("tm") or "").strip()
             if not slot:
