@@ -1,0 +1,40 @@
+/* Respond to the card's width independently of the browser and sibling windows. */
+.investor-estimate-card { container: investor-estimate / inline-size; }
+.investor-estimate-table {
+  --investor-estimate-round-width: 5.5rem;
+  --investor-estimate-padding: 0.5rem;
+  --investor-estimate-sum-gap: 0.5rem;
+  --investor-estimate-edge: 0.625rem;
+  table-layout: auto;
+}
+.investor-estimate-table :is(th, td) {
+  padding-inline: var(--investor-estimate-padding);
+  white-space: nowrap;
+}
+.investor-estimate-table .investor-estimate-round-column,
+.investor-estimate-table .investor-estimate-round {
+  width: var(--investor-estimate-round-width);
+}
+.investor-estimate-table .investor-estimate-round {
+  min-width: var(--investor-estimate-round-width);
+  padding-left: var(--investor-estimate-edge);
+}
+.investor-estimate-table .investor-estimate-sum {
+  padding-left: calc(var(--investor-estimate-padding) + var(--investor-estimate-sum-gap));
+  padding-right: var(--investor-estimate-edge);
+}
+@container investor-estimate (max-width: 39.999rem) {
+  .investor-estimate-table {
+    --investor-estimate-round-width: 5rem;
+    --investor-estimate-padding: 0.25rem;
+    --investor-estimate-sum-gap: 0.25rem;
+    --investor-estimate-edge: 0.375rem;
+  }
+}
+@container investor-estimate (max-width: 29.999rem) {
+  .investor-estimate-table {
+    --investor-estimate-round-width: 4.5rem;
+    --investor-estimate-padding: 0.0625rem;
+    --investor-estimate-sum-gap: 0.125rem;
+  }
+}
