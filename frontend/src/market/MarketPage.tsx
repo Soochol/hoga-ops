@@ -1,4 +1,3 @@
-import { sectorCategory } from './sectorCategory';
 import { DailyNetList } from './DailyNetList';
 /** 시장 종합 — 지수 커맨드센터 (#1102).
  *
@@ -38,7 +37,6 @@ import {
   type StreakRow,
 } from '../api/market';
 import { useLiveRankings } from '../api/liveRankings';
-import { heatBg } from '../heatmap/heat';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { todayKstYyyymmdd } from '../live/liveDateTime';
 import type { LiveIndexId } from '../live/liveInstrument';
@@ -508,62 +506,16 @@ function IndexCard({
 
 // ── 섹터 온도 (KRX 업종) ─────────────────────────────────────────────────
 
+/** 기존 업종 등락 진입점도 같은 표와 필터를 사용한다. */
 export function SectorCard() {
-  const sectors = useMarketSectors();
-  const [sort, setSort] = useState<'default' | 'up' | 'down'>('default');
-  const [category, setCategory] = useState<'all' | 'industry' | 'index' | 'unknown'>('all');
-  const [showAll, setShowAll] = useState(false);
-  const kospi = sectors.data?.markets['0']?.sectors ?? [];
-  const kosdaq = sectors.data?.markets['1']?.sectors ?? [];
-  return (
-    <MarketCard className="flex flex-col gap-sm p-md">
-      <CardHeader title="업종 온도" hint="KRX 업종지수 등락률" right={
-        <ModeSwitch value={sort} onChange={setSort} label="업종 등락 정렬" options={[
-          ['default', '기본순'], ['up', '상승순'], ['down', '하락순'],
-        ] as const} />
-      } />
-      <DataStamp fetchedAt={sectors.dataUpdatedAt} error={sectors.isError} />
-      <div className="flex flex-wrap items-center justify-between gap-sm">
-        <ModeSwitch value={category} onChange={setCategory} label="업종 지수 유형" options={[
-          ['all', '전체'], ['industry', '업종'], ['index', '규모·대표지수'], ['unknown', '미분류'],
-        ]} />
-        <button type="button" className="text-xs text-accent" aria-expanded={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? '12개씩 보기' : '전체 보기'}</button>
-      </div>
-      {kospi.length === 0 && kosdaq.length === 0 ? (
-        <EmptyNote>업종 데이터를 받지 못했습니다.</EmptyNote>
-      ) : (
-        <div className="grid grid-cols-2 gap-x-md">
-          {[kospi, kosdaq].map((source, i) => {
-            const list = source.filter(s => category === 'all' || sectorCategory(s.code) === category);
-            return (
-            <div key={i} className="flex flex-col gap-2xs">
-              <span className="text-xs font-semibold text-fg-dim">{i === 0 ? '코스피' : '코스닥'} · {showAll ? list.length : Math.min(12, list.length)}/{list.length}개</span>
-              {(sort === 'default' ? list : [...list].sort((a, b) => {
-                if (a.change_pct == null) return b.change_pct == null ? 0 : 1;
-                if (b.change_pct == null) return -1;
-                return sort === 'up' ? b.change_pct - a.change_pct : a.change_pct - b.change_pct;
-              })).slice(0, showAll ? undefined : 12).map((s) => (
-                <div
-                  key={s.code}
-                  className="grid grid-cols-[1fr_auto] items-center gap-sm rounded-sm px-sm py-2xs"
-                  style={{ background: heatBg(s.change_pct) }}
-                >
-                  <span className="min-w-0 truncate text-sm text-fg" title={s.name}>{s.name}</span>
-                  <PctText pct={s.change_pct} className="w-[3.8rem] text-right text-sm" />
-                </div>
-              ))}
-            </div>
-          ); })}
-        </div>
-      )}
-    </MarketCard>
-  );
+  return <SectorFlowCard initialSort="default" />;
 }
 
 // ── 프로그램 매매 ────────────────────────────────────────────────────────
 
 export function ProgramCard() {
   const [axis, setAxis] = useState<ProgramAxis>('intraday');
+  const [market, setMarket] = useState<MarketName>('KOSPI');
   const program = useMarketProgram(axis);
   const [days, setDays] = useState<'5' | '20' | '60'>('20');
   const markets = program.data?.markets ?? {};
@@ -585,9 +537,12 @@ export function ProgramCard() {
         }
       />
       <div className="market-program-body flex flex-col gap-sm">
+        <ModeSwitch value={market} onChange={setMarket} options={[
+          ['KOSPI', '코스피'], ['KOSDAQ', '코스닥'],
+        ]} label="프로그램 시장" />
         <DataStamp fetchedAt={program.dataUpdatedAt} error={program.isError}
-          date={axis === 'daily' ? Object.values(markets).flat().map((p) => p.t).map((t) => t.slice(0, 8)).filter((t) => /^\d{8}$/.test(t)).sort().at(-1) : undefined}
-          status={axis === 'intraday' ? '시간별 누적' : Object.values(markets).flat().some(p => p.t.slice(0, 8) === todayKstYyyymmdd()) ? '일별 · 오늘 잠정 포함' : '일별'} />
+          date={axis === 'daily' ? (markets[market] ?? []).map((p) => p.t.slice(0, 8)).filter((t) => /^\d{8}$/.test(t)).sort().at(-1) : undefined}
+          status={axis === 'intraday' ? '시간별 누적' : (markets[market] ?? []).some(p => p.t.slice(0, 8) === todayKstYyyymmdd()) ? '일별 · 오늘 잠정 포함' : '일별'} />
         {axis === 'daily' && <ModeSwitch value={days} onChange={setDays} label="프로그램 일별 기간" options={[
           ['5', '5거래일'], ['20', '20거래일'], ['60', '60거래일'],
         ]} />}
@@ -595,7 +550,9 @@ export function ProgramCard() {
         {Object.keys(markets).length === 0 ? (
           <EmptyNote>{program.isLoading ? '프로그램 매매 데이터를 불러오는 중입니다.' : '프로그램 매매 데이터를 받지 못했습니다.'}</EmptyNote>
         ) : (
-          Object.entries(markets).map(([label, points]) => {
+          <>
+          {!markets[market]?.length && <EmptyNote>{MARKET_LABELS[market]} 프로그램 매매 데이터를 받지 못했습니다.</EmptyNote>}
+          {Object.entries(markets).map(([label, points]) => {
             // 벤더가 최신 우선 역순으로 준다 — 시간축으로 그리려면 뒤집는다.
             // 일별은 최근 20거래일을 표로 표시한다.
             const ordered = [...points].sort((a, b) => a.t.localeCompare(b.t));
@@ -615,51 +572,54 @@ export function ProgramCard() {
             const startSec = Math.min(9 * 3600, ...seconds);
             const endSec = Math.max(15.5 * 3600, ...seconds);
             return (
-              <div key={label} className="flex flex-col gap-2xs">
-                <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
-                  <span className="text-xs font-semibold text-fg-dim">
-                    {MARKET_LABELS[label] ?? label}{' '}
-                    <span className={`font-data tabular-nums ${total === null ? 'text-fg-dim' : priceDirClass(total)}`}>
-                      {fmtSigned(total)}
+              <div key={label} hidden={label !== market}>
+                <div className="flex flex-col gap-2xs">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-sm">
+                    <span className="text-xs font-semibold text-fg-dim">
+                      {MARKET_LABELS[label] ?? label}{' '}
+                      <span className={`font-data tabular-nums ${total === null ? 'text-fg-dim' : priceDirClass(total)}`}>
+                        {fmtSigned(total)}
+                      </span>
                     </span>
-                  </span>
-                  {isIntraday && <span className="flex items-center gap-md font-data text-2xs tabular-nums">
-                    <LegendItem color={SERIES_COLORS.arb} label="차익" />
-                    <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
-                  </span>}
+                    {isIntraday && <span className="flex items-center gap-md font-data text-2xs tabular-nums">
+                      <LegendItem color={SERIES_COLORS.arb} label="차익" />
+                      <LegendItem color={SERIES_COLORS.nonArb} label="비차익" />
+                    </span>}
+                  </div>
+                  {isIntraday && <p role="note" className="text-2xs text-fg-dim">제공 구간 {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')} · {asc.length}개 표본{program.data?.truncated?.[label] ? ' · 조회 상한 도달' : ''}{seconds[0] > 9 * 3600 + 60 ? ' · 장 초반 구간 미포함' : ' · 제공 표본만 표시'}</p>}
+                  {!hasValues && isIntraday ? (
+                    <EmptyNote>프로그램 값이 아직 없습니다.</EmptyNote>
+                  ) : isIntraday ? (
+                    <>
+                      <SessionLinesChart
+                        names={['차익', '비차익']}
+                        sessionStartSec={startSec}
+                        sessionEndSec={endSec}
+                        series={[
+                          { color: SERIES_COLORS.arb,
+                            points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.arb_net_eok })) },
+                          { color: SERIES_COLORS.nonArb,
+                            points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.non_arb_net_eok })) },
+                        ]}
+                        height={96}
+                      />
+                      <SessionAxisLabels startSec={startSec} endSec={endSec} />
+                      <span className="text-2xs text-fg-dim">표본 {asc.length}개 · {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}</span>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-2xs text-fg-dim">요청 {days}거래일 · 제공 {asc.length}거래일 · {asc[0]?.t.slice(0, 8)}–{asc.at(-1)?.t.slice(0, 8)}</p>
+                      <DailyNetList compact todayProvisional label={`${MARKET_LABELS[label] ?? label} 프로그램 일별 수급`}
+                        columns={['차익', '비차익', '합계']}
+                        rows={asc.map(p => ({ date: p.t, values: [p.arb_net_eok, p.non_arb_net_eok, p.total_net_eok] }))} />
+                      <span className="text-2xs text-fg-dim">표본 {asc.length}거래일</span>
+                    </>
+                  )}
                 </div>
-                {isIntraday && <p role="note" className="text-2xs text-fg-dim">제공 구간 {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')} · {asc.length}개 표본{program.data?.truncated?.[label] ? ' · 조회 상한 도달' : ''}{seconds[0] > 9 * 3600 + 60 ? ' · 장 초반 구간 미포함' : ' · 제공 표본만 표시'}</p>}
-                {!hasValues && isIntraday ? (
-                  <EmptyNote>프로그램 값이 아직 없습니다.</EmptyNote>
-                ) : isIntraday ? (
-                  <>
-                    <SessionLinesChart
-                      names={['차익', '비차익']}
-                      sessionStartSec={startSec}
-                      sessionEndSec={endSec}
-                      series={[
-                        { color: SERIES_COLORS.arb,
-                          points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.arb_net_eok })) },
-                        { color: SERIES_COLORS.nonArb,
-                          points: asc.map((p, i) => ({ sec: secOf(p.t, i), v: p.non_arb_net_eok })) },
-                      ]}
-                      height={96}
-                    />
-                    <SessionAxisLabels startSec={startSec} endSec={endSec} />
-                    <span className="text-2xs text-fg-dim">표본 {asc.length}개 · {asc[0]?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}–{asc.at(-1)?.t.replace(/^(\d{2})(\d{2}).*/, '$1:$2')}</span>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-2xs text-fg-dim">요청 {days}거래일 · 제공 {asc.length}거래일 · {asc[0]?.t.slice(0, 8)}–{asc.at(-1)?.t.slice(0, 8)}</p>
-                    <DailyNetList compact todayProvisional label={`${MARKET_LABELS[label] ?? label} 프로그램 일별 수급`}
-                      columns={['차익', '비차익', '합계']}
-                      rows={asc.map(p => ({ date: p.t, values: [p.arb_net_eok, p.non_arb_net_eok, p.total_net_eok] }))} />
-                    <span className="text-2xs text-fg-dim">표본 {asc.length}거래일</span>
-                  </>
-                )}
               </div>
             );
-          })
+          })}
+          </>
         )}
       </div>
     </MarketCard>
@@ -686,28 +646,23 @@ const MARKET_KEY = 'market.actorNetMarket.v1';
 
 /** 주체 하나의 연속 매매 상위 — 시장·방향을 카드마다 따로 고른다.
  *
- *  **카드를 늘리지 않고 토글로 간 이유**는 레이아웃이다. 좌측 2×2 그리드가 우측 열
- *  (업종 온도 + 업종 수급) 높이에 맞춰져 있어(아래 `MarketPage` 주석) 카드를 더하면
- *  그 균형이 통째로 깨진다. 축이 둘로 늘어난 지금은 더 그렇다 — 조합이 4개라 카드로
- *  펼치면 8장이 된다.
- *
- *  두 축을 **카드별로** 두는 것은 지수 카드(현물/선물)와 같은 규율이다 — 외국인 코스피
- *  순매도 옆에 기관 코스닥 순매수를 놓고 보는 것이 이 페이지에서 자연스러운 비교다.
- *  둘이 같은 조합이면 쿼리 키가 같아 벤더 콜도 한 벌이다.
+ *  종목 탐색에서 주체를 바꿔도 각 주체의 시장·방향은 독립적으로 유지한다.
+ *  두 주체가 같은 조합이면 쿼리 키가 같아 벤더 콜도 한 벌이다.
  *
  *  **정렬은 벤더 순서 그대로다**(모든 조합 동일). 벤더 `rank` 는 연속 금액이 아니라
  *  **당일 순매매 대금** 순이라(2026-08-10 실측: 193432 · 185256 · 135670 … 단조감소)
  *  화면의 금액 열과 순서가 어긋나 보이는데, 이건 순매수 카드가 원래 갖고 있던 성질
  *  이다. 한쪽만 재정렬하면 조합마다 서로 다른 질문에 답하게 된다. */
-export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
+export function ActorNetCard({ actor, embedded = false }: { actor: '외국인' | '기관'; embedded?: boolean }) {
   const jump = useJumpToLive();
   const [market, setMarket] = useCardPref<MarketName>(MARKET_KEY, actor, 'KOSPI');
   const [direction, setDirection] = useCardPref<StreakDirection>(DIRECTION_KEY, actor, 'buy');
   const streaks = useMarketStreaks(market, direction);
   const rows = (streaks.data?.[actor] ?? []) as StreakRow[];
   const accent = actor === '외국인' ? SERIES_COLORS.foreign : SERIES_COLORS.institution;
+  const Frame = embedded ? 'div' : MarketCard;
   return (
-    <MarketCard className="flex flex-col gap-xs p-sm">
+    <Frame className={`flex flex-col gap-xs ${embedded ? '' : 'p-sm'}`}>
       {/* 토글이 둘이라 좁은 폭에서는 헤더가 줄바꿈된다(`flex-wrap`) — 잘리는 대신
           높이를 내주는 쪽이 맞다. 읽는 순서대로 시장 → 방향. */}
       <div className={`flex flex-wrap items-center justify-between gap-x-sm gap-y-2xs ${CARD_HEADER_RULE}`}>
@@ -767,7 +722,7 @@ export function ActorNetCard({ actor }: { actor: '외국인' | '기관' }) {
           ))}
         </ol>
       )}
-    </MarketCard>
+    </Frame>
   );
 }
 
@@ -853,17 +808,21 @@ export function RankCard({
   title,
   kind,
   direction,
+  embedded = false,
 }: {
   title: string;
+  embedded?: boolean;
   kind: 'change' | 'value';
   direction: 'up' | 'down';
 }) {
   const jump = useJumpToLive();
   const q = useLiveRankings({ kind, market: 'all', direction, excludeEtf: true });
   const rows = q.data?.rows ?? [];
+  const Frame = embedded ? 'div' : MarketCard;
+  const hint = `${q.data?.venue === 'UN' ? '통합' : q.data?.venue ?? '—'} · 코스피+코스닥 · ${q.data?.etfFilterUnavailable ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`;
   return (
-    <MarketCard className="flex flex-col gap-xs p-md">
-      <CardHeader title={title} hint={`${q.data?.venue === 'UN' ? '통합' : q.data?.venue ?? '—'} · 코스피+코스닥 · ${q.data?.etfFilterUnavailable ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
+    <Frame className={`flex flex-col gap-xs ${embedded ? '' : 'p-md'}`}>
+      {embedded ? <p className="text-2xs text-fg-dim">{hint}</p> : <CardHeader title={title} hint={hint} />}
       <DataStamp fetchedAt={q.data?.fetchedAtMs} error={q.isError} status={q.data ? (q.data.marketOpen ? '장중' : '장 외') : undefined} />
       <div className="grid grid-cols-[1.2rem_minmax(0,1fr)_5.5rem_4.2rem] gap-sm text-2xs text-fg-dim">
         <span>#</span><span>종목</span><span className="text-right">{kind === 'value' ? '거래대금(억)' : '현재가(원)'}</span><span className="text-right">등락률</span>
@@ -891,45 +850,62 @@ export function RankCard({
           ))}
         </ol>
       )}
-    </MarketCard>
+    </Frame>
   );
 }
 
+const RANK_VIEWS = [['value', '거래대금'], ['up', '상승률'], ['down', '하락률']] as const;
+type RankView = typeof RANK_VIEWS[number][0];
+
+export function RankExplorer() {
+  const [view, setView] = useState<RankView>('value');
+  const title = (key: RankView) => key === 'value' ? '거래대금 상위' : key === 'up' ? '상승률 상위' : '하락률 상위';
+  // The selector stays mounted and focused while all three query subscriptions stay active.
+  return <MarketCard className="flex flex-col gap-sm p-md">
+    <CardHeader title={title(view)} right={<ModeSwitch value={view} onChange={setView} options={RANK_VIEWS} label="종목 순위 기준" />} />
+    {RANK_VIEWS.map(([key]) => <div key={key} hidden={view !== key}>
+      <RankCard title={title(key)} embedded kind={key === 'value' ? 'value' : 'change'} direction={key === 'down' ? 'down' : 'up'} />
+    </div>)}
+  </MarketCard>;
+}
+
+export function StreakExplorer() {
+  const [actor, setActor] = useState<'외국인' | '기관'>('외국인');
+  // Each actor keeps its own persisted market/direction and its existing query.
+  return <MarketCard className="flex flex-col gap-sm p-md">
+    <CardHeader title="연속 매매" right={<ModeSwitch value={actor} onChange={setActor} options={[
+      ['외국인', '외국인'], ['기관', '기관'],
+    ]} label="연속 매매 주체" />} />
+    {(['외국인', '기관'] as const).map(key => <div key={key} hidden={actor !== key}>
+      <ActorNetCard actor={key} embedded />
+    </div>)}
+  </MarketCard>;
+}
+
 export function MarketPage() {
-  // 레이아웃 = 중앙 고정 폭(1680px) + 행 재균형 — 초광폭에서 카드가 무한 확장돼
-  // 차트가 납작해지던 문제의 답(프로토타입 A 승자, 2026-08-05 사용자 확정.
-  // 3변형은 prototype/market-layout-variants-2026-08-05 브랜치 보존).
-  // 업종 온도(세로로 긴 리스트)는 우측 열, 좌측은 수급 + 보조 2×2 로 높이를 맞춘다.
   return (
     <PageContainer className="market-page">
-      {/* 간격도 분리 수단이다 — 이전 `gap-xs`(4.5px)는 헤더 밑줄과 함께 써도 카드가
-          붙어 보였다. 카드 사이 `md`, 성격이 다른 좌우 열 사이만 `xl`
-          (DESIGN.md 가 "Major section dividers" 로 정의한 그 값). */}
-      <div className={`mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
+      <div className={`market-desk mx-auto flex h-full min-h-0 w-full ${PAGE_MAX_W} flex-col gap-md overflow-y-auto`}>
         <IndexCards />
-        <div className="market-main grid gap-x-xl gap-y-md">
-          <div className="min-w-0 flex flex-col gap-md">
-            <InvestorCard />
-            <div className="market-pair grid gap-md">
-              <ProgramCard />
-              <FundsCard />
-              <ActorNetCard actor="외국인" />
-              <ActorNetCard actor="기관" />
-            </div>
+        <section className="market-main grid gap-md" aria-label="시장 흐름">
+          <InvestorCard />
+          <SectorFlowCard />
+        </section>
+        <section className="market-context grid gap-md" aria-label="거래와 자금">
+          <ProgramCard />
+          <TradeValueCard />
+          <FundsCard />
+        </section>
+        <section className="market-exploration flex flex-col gap-sm" aria-labelledby="market-exploration-title">
+          <div className="flex flex-wrap items-baseline justify-between gap-sm px-xs pt-sm">
+            <h2 id="market-exploration-title" className="text-md font-semibold text-fg">종목 탐색</h2>
+            <span className="text-xs text-fg-dim">시장 순위와 연속 매매</span>
           </div>
-          <div className="min-w-0 flex flex-col gap-md">
-            <SectorCard />
-            <SectorFlowCard />
+          <div className="market-ranks grid gap-md">
+            <RankExplorer />
+            <StreakExplorer />
           </div>
-        </div>
-        {/* 좌우 그리드 **밖**이다 — 안에 넣으면 열 높이 균형(위 주석)이 깨진다.
-            전폭이라 120일 라인에 가장 유리하기도 하다. */}
-        <TradeValueCard />
-        <div className="market-ranks grid gap-md">
-          <RankCard title="상승률 상위" kind="change" direction="up" />
-          <RankCard title="하락률 상위" kind="change" direction="down" />
-          <RankCard title="거래대금 상위" kind="value" direction="up" />
-        </div>
+        </section>
       </div>
     </PageContainer>
   );

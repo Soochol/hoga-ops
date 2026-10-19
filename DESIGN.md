@@ -36,6 +36,15 @@
 
 ## Product Context
 
+**시장 종합 흐름 중심 배치 (2026-10-19, 사용자 승인):** `/market`은 지수 →
+투자자 수급·업종 등락/수급 → 프로그램·거래대금·주변 자금 → 종목 탐색 순서로 읽는다.
+기존 열 배치 유지 규칙은 이 페이지에서 새 승인 배치로 대체한다. 수급의 세 주체는
+차트 위 요약 숫자로, 업종 등락과 세 주체 순매수는 한 표로 표시한다. 업종의 시장·
+분류·정렬·전체 보기와 수급 미제공 행을 보존하고 두 데이터의 조회 기준을 구분한다.
+순위 세 종류와 연속 매매 두 주체는 카드 안에서 전환하며 각 주체의 저장된 시장·방향을
+유지한다. 중앙 최대 폭 1680px, 기존 테마·데이터 색상·기간·세션·결측값 의미는 유지한다.
+좁은 폭에서는 행을 순서대로 쌓고 숫자 표만 내부 가로 스크롤한다.
+
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.
 - **Space/industry:** Financial market microstructure analysis — KRX cash equities, orderbook replay.
