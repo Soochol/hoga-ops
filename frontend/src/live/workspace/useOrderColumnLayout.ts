@@ -19,7 +19,7 @@ export function useOrderColumnLayout(key: string, quantities: number[], deltas: 
     qty: Math.max(budget.qty, required.qty), delta: Math.max(budget.delta, required.delta),
     price: Math.max(budget.price, required.price), trade: Math.max(budget.trade, required.trade),
     order: Math.max(budget.order, required.order), count: Math.max(budget.count, required.count),
-    pending: budget.pending || pending,
+    pending,
     strength: required.strength.length > budget.strength.length ? required.strength : budget.strength };
   if (Object.keys(next).some(k => next[k as keyof Budget] !== budget[k as keyof Budget])) setBudget(next);
   const node = useRef<HTMLSpanElement | null>(null);

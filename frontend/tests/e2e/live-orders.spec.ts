@@ -2781,16 +2781,19 @@ async function orderColumnMetrics(window: Locator) {
     const cells = [...row.children].map(cell => cell.getBoundingClientRect());
     const bounds = row.getBoundingClientRect(), scroll = root.querySelector('.order-scroll')!;
     const textBox = (node: Element) => { const r = document.createRange(); r.selectNodeContents(node); return r.getBoundingClientRect(); };
-    const fits = [...root.querySelectorAll('.order-depth-values, .order-info, .order-lane')].every(cell => {
+    const overflows = [...root.querySelectorAll('.order-depth-values, .order-info, .order-lane')].flatMap(cell => {
       const bounds = cell.getBoundingClientRect();
       const spans = cell.children.length ? [...cell.children] : [cell];
-      return spans.every(span => {
-        if (!span.textContent?.trim()) return true;
-        const text = textBox(span); return text.left >= bounds.left - 1 && text.right <= bounds.right + 1;
+      return spans.flatMap(span => {
+        if (!span.textContent?.trim()) return [];
+        const text = textBox(span);
+        return text.left >= bounds.left - 1 && text.right <= bounds.right + 1 ? [] : [{
+          className: cell.className, text: span.textContent,
+          textLeft: text.left, textRight: text.right, left: bounds.left, right: bounds.right }];
       });
     });
     const trades = [...root.querySelectorAll('.order-trade')].map(row => [...row.children].map(span => textBox(span).right));
-    return { fits, trades, widths: cells.map(cell => cell.width),
+    return { fits: overflows.length === 0, overflows, trades, widths: cells.map(cell => cell.width),
       centered: Math.abs((cells[2].left + cells[2].right - bounds.left - bounds.right) / 2),
       heights: [...root.querySelectorAll('.order-row')].map(row => row.getBoundingClientRect().height),
       scroll: scroll.scrollWidth > scroll.clientWidth + 1,
@@ -2812,7 +2815,7 @@ test('주문창 반응형 간격은 중앙 5열과 전체 숫자를 유지하고
     await expect(window.locator('.order-depth').first()).toHaveCSS('padding-left', width >= 696 ? '6px' : width >= 560 ? '4px' : '2px');
     await expect(async () => {
       const m = await orderColumnMetrics(window);
-      expect(m.fits).toBe(true);
+      expect(m.fits, JSON.stringify(m.overflows)).toBe(true);
       expect(m.widths[0]).toBeGreaterThanOrEqual(48);
       expect(m.widths[0]).toBeCloseTo(m.widths[4], 1);
       expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
@@ -2821,7 +2824,7 @@ test('주문창 반응형 간격은 중앙 5열과 전체 숫자를 유지하고
       if (width >= 480) expect(m.scroll).toBe(false);
       if (width === 360) expect(m.scroll).toBe(true);
       for (const row of m.trades) expect(row).toEqual(m.trades[0]);
-    }).toPass();
+    }).toPass({ timeout: 5000 });
     expect(await window.evaluate(root => root.scrollWidth > root.clientWidth + 1)).toBe(false);
     if (width === 480) await window.screenshot({ path: testInfo.outputPath('order-fluid-480.png') });
   }
@@ -2845,10 +2848,10 @@ test('긴 주문·합계·잔량·체결 수량은 생략하지 않고 계좌와
   await expect(window.locator('.order-ask').first()).toContainText('12,345,687');
   await expect(async () => {
     const m = await orderColumnMetrics(window);
-    expect(m.fits).toBe(true); expect(m.scroll).toBe(true);
+    expect(m.fits, JSON.stringify(m.overflows)).toBe(true); expect(m.scroll).toBe(true);
     expect(m.widths[0]).toBeCloseTo(m.widths[4], 1);
     expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
-  }).toPass();
+  }).toPass({ timeout: 5000 });
   const large = await orderColumnMetrics(window);
   await expect(window.locator('.order-quantity')).toHaveText('123,456,789');
   await expect(window.locator('.order-total.order-buy')).toHaveText('123,456,789(1)');
@@ -2862,11 +2865,11 @@ test('긴 주문·합계·잔량·체결 수량은 생략하지 않고 계좌와
     await page.evaluate(size => { document.documentElement.style.fontSize = `${size}px`; }, size);
     await expect(async () => {
       const m = await orderColumnMetrics(window);
-      expect(m.fits).toBe(true);
+      expect(m.fits, JSON.stringify(m.overflows)).toBe(true);
       expect(m.widths[0]).toBeCloseTo(m.widths[4], 1);
       expect(m.widths[1]).toBeCloseTo(m.widths[3], 1);
       expect(m.heights).toEqual(Array(20).fill(24));
-    }).toPass();
+    }).toPass({ timeout: 5000 });
   }
   await window.locator('.order-scroll').evaluate(el => { el.scrollLeft = el.scrollWidth; });
   await expect(window.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toBeInViewport();

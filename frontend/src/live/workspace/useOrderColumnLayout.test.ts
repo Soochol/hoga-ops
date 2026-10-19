@@ -26,13 +26,13 @@ describe('useOrderColumnLayout', () => {
     expect(result.current.samples).toEqual(small);
   });
 
-  it('reserves pending text and total count space after the status disappears', () => {
+  it('releases transient status text while retaining the numeric and total count budget', () => {
     const { result, rerender } = renderHook(({ pending, key }) => useOrderColumnLayout(key,
       [], [], [], null, [123456789], 123, pending), { initialProps: { pending: true, key: 'a' } });
     expect(result.current.samples.order).toBe('888,888,888 · 처리 중');
     expect(result.current.samples.total).toBe('888,888,888(888)');
     rerender({ pending: false, key: 'a' });
-    expect(result.current.samples.order).toContain(' · 처리 중');
+    expect(result.current.samples.order).toBe('888,888,888');
     rerender({ pending: false, key: 'b' });
     expect(result.current.samples.order).toBe('888,888,888');
   });
