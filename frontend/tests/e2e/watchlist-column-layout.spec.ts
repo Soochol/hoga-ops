@@ -1,0 +1,98 @@
+import { test, expect, type Locator } from '@playwright/test';
+import { installLiveMocks } from './helpers/liveMocks';
+import { apiExact, apiPrefix } from './helpers/apiRoutes';
+
+test.use({ viewport: { width: 1600, height: 1000 } });
+const folder = { id: 'f_0000000a', name: '열 정렬', order: 0 };
+const entries = [
+  { code: '005930', name: '삼성전자', order: 0 },
+  { code: '000660', name: 'SK하이닉스', order: 1 },
+].map(entry => ({ ...entry, folder_id: folder.id, registered_at_kst_date: '20261019', last_success_date: null }));
+
+async function geometry(row: Locator) {
+  return row.evaluate(element => {
+    const origin = element.getBoundingClientRect();
+    const read = (selector: string) => {
+      const node = element.querySelector<HTMLElement>(selector)!;
+      const box = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      return { left: box.left - origin.left, right: box.right - origin.left, width: box.width,
+        full: node.scrollWidth <= node.clientWidth + 1, align: style.textAlign, whiteSpace: style.whiteSpace };
+    };
+    return { name: read('.quote-row-name'), price: read('.quote-row-price'), percent: read('.quote-row-percent'),
+      gap: parseFloat(getComputedStyle(element).columnGap), padding: parseFloat(getComputedStyle(element).paddingRight),
+      height: origin.height };
+  });
+}
+
+for (const fontSize of [16, 20]) {
+  test(`관심종목 공통 숫자 폭·반응형 여백·전체 숫자·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
+    await installLiveMocks(page);
+    await page.route(apiExact('watchlist'), route => route.fulfill({ json: { folders: [folder], entries, memos: [], next_run_at_ms: 0 } }));
+    let price = 123456, percent = -1.23;
+    let expectedPrice: number | undefined;
+    await page.route(apiPrefix('live/quotes'), route => route.fulfill({ json: {
+      phase: 'open', quotes: entries.map((entry, index) => ({ code: entry.code,
+        price: index ? price : 1234, change_pct: index ? percent : 2.34, change_won: 0,
+        ...(index && expectedPrice != null ? { expected_price: expectedPrice, expected_change_pct: percent } : {}) })),
+    } }));
+    await page.goto('/live?code=098460');
+    await page.addStyleTag({ content: `:root { font-size: ${fontSize}px !important; }` });
+    const panel = page.getByTestId('watchlist-panel');
+    if (!(await panel.isVisible())) await page.getByRole('button', { name: /관심종목 패널 토글/ }).click();
+    const first = panel.getByTestId('watchlist-row-005930'), second = panel.getByTestId('watchlist-row-000660');
+    await expect(second.locator('.quote-row-price')).toHaveText('123,456');
+    await first.click();
+    await expect(first).toHaveAttribute('aria-current', 'true');
+    const scale = fontSize / 16;
+    for (const [width, gap, padding] of [[360, 8, 12], [280, 4, 8], [240, 2, 4]]) {
+      await page.addStyleTag({ content: `:root { --watchlist-panel-w: ${width / 16}rem !important; }` });
+      await expect.poll(() => geometry(first).then(value => value.gap)).toBe(gap * scale);
+      const [a, b] = await Promise.all([geometry(first), geometry(second)]);
+      expect(a.padding).toBe(padding * scale);
+      expect(a.name.left).toBe(40 * scale);
+      expect(a.price.right).toBeCloseTo(b.price.right, 3);
+      expect(a.percent.right).toBeCloseTo(b.percent.right, 3);
+      expect(a.price.width).toBeCloseTo(b.price.width, 3);
+      for (const value of [a.price, a.percent, b.price, b.percent]) {
+        expect(value.full).toBe(true);
+        expect(value.align).toBe('right');
+        expect(value.whiteSpace).toBe('nowrap');
+      }
+      expect(a.height).toBeLessThanOrEqual(26 * scale);
+      expect(await panel.getByTestId('watchlist-scroll').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    }
+    // Real query refreshes grow and then shrink the displayed figures. The
+    // retained budget must survive shrink, search and group collapse.
+    price = 123456789; percent = -1234.56; expectedPrice = 1234567890;
+    await page.clock.fastForward(11_000);
+    await expect(second.locator('.quote-row-price')).toHaveText('1,234,567,890');
+    await expect(second.getByTestId('watchlist-row-000660-expected-marker')).toBeVisible();
+    await expect(second.locator('.quote-row-percent')).toHaveText('-1234.56%');
+    await expect.poll(() => geometry(second).then(value => value.price.full && value.percent.full)).toBe(true);
+    const wide = await geometry(first);
+    const scroll = panel.getByTestId('watchlist-scroll');
+    await page.addStyleTag({ content: ':root { --watchlist-panel-w: 10rem !important; }' });
+    await expect.poll(() => scroll.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+    expect((await geometry(second)).price.full).toBe(true);
+    await page.addStyleTag({ content: ':root { --watchlist-panel-w: 15rem !important; }' });
+    price = 12; percent = 1; expectedPrice = undefined;
+    await page.clock.fastForward(11_000);
+    await expect(second.locator('.quote-row-price')).toHaveText('12');
+    await expect(second.getByTestId('watchlist-row-000660-expected-marker')).toHaveCount(0);
+    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    expect((await geometry(first)).percent.width).toBe(wide.percent.width);
+    const search = panel.getByRole('textbox', { name: '종목·그룹 검색' });
+    await search.fill('삼성');
+    await expect(second).toHaveCount(0);
+    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    await search.fill('');
+    await panel.getByRole('button', { name: '전체 접기' }).click();
+    await expect(first).toHaveCount(0);
+    await panel.getByRole('button', { name: '전체 펼치기' }).click();
+    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    expect((await geometry(first)).percent.width).toBe(wide.percent.width);
+    await panel.screenshot({ path: `/tmp/hoga-watchlist-columns-${fontSize}.png` });
+  });
+}

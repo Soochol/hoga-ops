@@ -1,3 +1,5 @@
+import './WatchlistColumns.css';
+import { useWatchlistColumns } from './useWatchlistColumns';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
 import { usePanelRowSelection } from '../rightrail/usePanelRowSelection';
 import { ModalShell } from '../ui/ModalShell';
@@ -460,6 +462,7 @@ function RemeasureOnCollapse({ active }: { active: boolean }) {
  *  콜백을 행마다 새로 만들면 memo 는 그냥 무효다. 콜백은 `entry` 를 인자로 받는 폴더
  *  단위 안정 참조이고, 트레일링은 여기서 조립한다. 이 계약을 깨는 prop 을 추가하지 말 것. */
 const SortableQuoteRow = memo(function SortableQuoteRow(props: {
+  columnLayout: React.CSSProperties;
   entry: WatchlistEntry;
   price: number | null; pct: number | null; changeWon: number | null;
   expectedPrice?: number | null; expectedPct?: number | null;
@@ -490,6 +493,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
     : undefined;
   return (
     <QuoteRow
+      columnLayout={props.columnLayout}
       name={entry.name} code={entry.code}
       nameTooltip=""
       price={props.price}
@@ -611,7 +615,7 @@ const GHOST_NOOP = () => {};
  * 정작 "무엇을 잡았나"는 이름 한 줄로 충분하다. 칩으로 좁히려면 래퍼의 rect 도 같이
  * 좁혀야 하므로 드래그 시작 직전 헤더의 rect를 오버레이에 넘긴다.
  */
-function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
+function WatchlistDragGhost({ ghost, columnLayout }: { ghost: DragGhost; columnLayout: React.CSSProperties }) {
   if (ghost.kind === 'entry' && ghost.bulk) return (
     <li data-testid="watchlist-drag-ghost" className="px-md py-1 text-sm font-semibold text-accent">{ghost.name}</li>
   );
@@ -645,6 +649,7 @@ function WatchlistDragGhost({ ghost }: { ghost: DragGhost }) {
   }
   return (
     <QuoteRow
+      columnLayout={columnLayout}
       name={ghost.name}
       nameTooltip=""
       price={ghost.price}
@@ -811,6 +816,7 @@ export function WatchlistDrawer() {
   const venue = useLiveVenueStore((s) => s.venue);
   const liveQuoteByCode = useQuoteByCode(codes, venue);
   const quoteByCode = useFrozenWhileDragging(liveQuoteByCode, isDragging);
+  const columns = useWatchlistColumns(codes, quoteByCode, scrollRef);
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusRaw } = useLiveStatus();
@@ -1383,6 +1389,10 @@ export function WatchlistDrawer() {
           || (event.target as HTMLElement).closest('[role="dialog"]')) return;
         if (selectedRows.size) { event.preventDefault(); event.stopPropagation(); clearSelection(); }
       }}>
+      <span ref={columns.probe} className="watchlist-column-probe font-data tabular-nums" aria-hidden="true">
+        {[400, 500].flatMap(weight => columns.samples.price.map(value => <span key={`${weight}:${value}`} data-watchlist-measure="price" data-figure={value} className="text-sm leading-tight" style={{ fontWeight: weight }} />))}
+        {[400, 500].flatMap(weight => columns.samples.percent.map(value => <span key={`${weight}:${value}`} data-watchlist-measure="percent" data-figure={value} className="text-xs leading-tight" style={{ fontWeight: weight }} />))}
+      </span>
       <RailDrawerHeader
         title="관심종목"
         actions={(
@@ -1473,6 +1483,7 @@ export function WatchlistDrawer() {
                       const collection = collectionByRow.get(rowId);
                       return (
                         <SortableQuoteRow
+                          columnLayout={columns.layout}
                           key={rowId}
                           entry={entry}
                           price={q?.price ?? null}
@@ -1532,7 +1543,7 @@ export function WatchlistDrawer() {
           {/* 커서를 따라오는 고스트(P1) — 포털·낙하 애니메이션 결정은 공용 껍데기가 갖는다. */}
           <RailDragOverlay droppedOnChart={ghostDroppedOnChart} fitContentHeight={folderDragActive}
             initialRect={dragGhost?.kind === 'folder' ? dragGhost.initialRect : undefined}>
-            {dragGhost && <WatchlistDragGhost ghost={dragGhost} />}
+            {dragGhost && <WatchlistDragGhost ghost={dragGhost} columnLayout={columns.layout} />}
           </RailDragOverlay>
         </DndContext>
       </RailDrawerBody>
