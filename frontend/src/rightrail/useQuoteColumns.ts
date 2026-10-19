@@ -2,14 +2,20 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProper
 import type { LiveQuote } from '../api/liveQuotes';
 
 type Figures = { price: string[]; percent: string[] };
+type QuoteColumnValue = Pick<LiveQuote, 'change_pct' | 'expected_price' | 'expected_change_pct'> & { price: number | null };
+const initialFigures = (): Figures => ({ price: ['—'], percent: ['+88.88%', '-88.88%'] });
 const patterns = (values: string[]) => [...new Set(values.map(value => value.replace(/\d/g, '8')))];
 
 /** The unfiltered list includes collapsed groups and actual/expected figures.
  * Keep observed patterns while open so ticks/search do not move column edges.
  * There is one probe and observer for the panel, never one per row. */
-export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<string, LiveQuote>, scrollRef: RefObject<HTMLDivElement | null>) {
-  const [retained, setRetained] = useState<Figures>({ price: ['—'], percent: ['+88.88%', '-88.88%'] });
-  const samples = useMemo(() => {
+export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<string, QuoteColumnValue>, scrollRef: RefObject<HTMLDivElement | null>, scopeKey?: string | null) {
+  const [budget, setBudget] = useState(() => ({ scopeKey: scopeKey ?? null, figures: initialFigures() }));
+  const next = useMemo(() => {
+    // A temporarily empty/loading result does not end the current scope. Only
+    // an actual result with a different condition identity starts a new budget.
+    const key = scopeKey ?? budget.scopeKey;
+    const retained = key === budget.scopeKey ? budget.figures : initialFigures();
     const price = [...retained.price], percent = [...retained.percent];
     for (const code of codes) {
       const quote = quotes.get(code);
@@ -25,9 +31,11 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
       }
     }
     const next = { price: patterns(price), percent: patterns(percent) };
-    return next.price.length === retained.price.length && next.percent.length === retained.percent.length ? retained : next;
-  }, [codes, quotes, retained]);
-  if (samples !== retained) setRetained(samples);
+    return key === budget.scopeKey && next.price.length === retained.price.length && next.percent.length === retained.percent.length
+      ? budget : { scopeKey: key, figures: next };
+  }, [codes, quotes, budget, scopeKey]);
+  if (next !== budget) setBudget(next);
+  const samples = next.figures;
   const probe = useRef<HTMLSpanElement>(null);
   const [metrics, setMetrics] = useState({ price: 0, percent: 0, tier: 1 });
   const measure = useCallback(() => {

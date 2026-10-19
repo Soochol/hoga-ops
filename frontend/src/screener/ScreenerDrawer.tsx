@@ -1,3 +1,5 @@
+import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
+import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { InlineState } from '../ui/DataSurface';
 import { catalogEntry } from './catalog';
 import { useOccurrenceExclusions } from './useOccurrenceExclusions';
@@ -65,7 +67,9 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
   flash,
   onActivate,
   onOpenMenu,
+  columnLayout,
 }: {
+  columnLayout: React.CSSProperties;
   row: ScreenerRowLive;
   active: boolean;
   flash: boolean;
@@ -81,6 +85,7 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
   return (
     <QuoteRow
+      columnLayout={columnLayout}
       name={row.name} code={row.code}
       price={row.price}
       pct={row.change_pct}
@@ -106,12 +111,17 @@ const DraggableScreenerRow = memo(function DraggableScreenerRow({
 });
 
 /** 고스트에 그릴 행 — 리스트 행과 같은 QuoteRow 라 손에 든 것이 그대로 보인다. */
-function ScreenerDragGhost({ ghost }: {
+function ScreenerDragGhost({ ghost, row, columnLayout }: {
+  columnLayout: React.CSSProperties;
+  row?: ScreenerRowLive;
   ghost: { name: string; price: number | null; pct: number | null };
 }) {
   return (
     <QuoteRow
+      columnLayout={columnLayout}
       name={ghost.name}
+      expectedPrice={row?.expected_price}
+      expectedPct={row?.expected_change_pct}
       price={ghost.price}
       pct={ghost.pct}
       changeWon={null}
@@ -132,6 +142,7 @@ function ScreenerDragGhost({ ghost }: {
  * screenerPanel store so they survive close/reopen; cleared on full reload.
  */
 export function ScreenerDrawer() {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const activeCode = useLivePageStore((s) => s.activeCode);
   const { pathname } = useLocation();
   const openLive = useJumpToLive();
@@ -305,6 +316,11 @@ export function ScreenerDrawer() {
   // 착지하는데 가격·등락률 정렬이 걸려 있으면 그때마다 순서가 갈리고, 모니터링 중이면
   // 재조회가 행을 통째로 갈아 끼운다.
   const sortedLiveRows = useFrozenWhileDragging(sortedLiveRowsLive, drag.isDragging);
+  const columnScope = useFrozenWhileDragging(lastScan ? JSON.stringify([
+    lastScan.savedId, lastScan.requestJson ?? lastScan.scanKey ?? lastScan.savedUpdatedAtMs, lastScan.basis,
+  ]) : null, drag.isDragging);
+  const columnQuotes = useMemo(() => new Map(sortedLiveRows.map(row => [row.code, row])), [sortedLiveRows]);
+  const columns = useQuoteColumns(resultCodes, columnQuotes, scrollRef, columnScope);
 
   const onDragStart = (ev: DragStartEvent) => {
     const code = String((ev.active.data.current as { code?: string } | undefined)?.code ?? '');
@@ -325,6 +341,7 @@ export function ScreenerDrawer() {
       id="right-rail-screener-panel"
       testId="screener-panel"
     >
+      <QuoteColumnProbe probe={columns.probe} samples={columns.samples} />
       {/* Header: label + freshness chip */}
       <RailDrawerHeader title="스크리너" actions={<StalenessChip status={status} />} />
 
@@ -450,7 +467,7 @@ export function ScreenerDrawer() {
       <RailDrawerSection className="empty:hidden"><OccurrenceExclusionToolbar controller={occurrenceController} /></RailDrawerSection>
 
       {/* Results */}
-      <RailDrawerBody testId="screener-scroll" quoteNav>
+      <RailDrawerBody testId="screener-scroll" scrollRef={scrollRef} quoteNav>
         {screener.isError ? (
           <RailState tone="error">
             <div className="font-semibold" style={{ color: 'var(--error)' }}>조회 실패</div>
@@ -492,6 +509,7 @@ export function ScreenerDrawer() {
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
                   {sortedLiveRows.map((r) => (
                     <DraggableScreenerRow key={r.code}
+                      columnLayout={columns.layout}
                       row={r}
                       active={r.code === activeCode}
                       flash={monitoringActive && flashCodes.has(r.code)}
@@ -502,7 +520,7 @@ export function ScreenerDrawer() {
                 </ul>
                 {/* 커서를 따라오는 고스트 — 패널 밖(차트 창)까지 손에 든 것이 보인다. */}
                 <RailDragOverlay droppedOnChart={drag.droppedOnChart}>
-                  {drag.ghost && <ScreenerDragGhost ghost={drag.ghost} />}
+                  {drag.ghost && <ScreenerDragGhost ghost={drag.ghost} row={sortedLiveRows.find(row => row.code === drag.ghost?.code)} columnLayout={columns.layout} />}
                 </RailDragOverlay>
               </DndContext>
             )}
