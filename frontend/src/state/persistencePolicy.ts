@@ -76,6 +76,13 @@ export interface PersistenceDecl {
 
 export const NON_DEFAULT_PERSISTENCE: readonly PersistenceDecl[] = [
   {
+    key: 'heatmap.flowComparison.v1',
+    module: 'state/heatmapFlowPrefs.ts',
+    policy: 'shared-synced',
+    hydrator: { module: 'state/heatmapFlowPrefs.ts', method: 'hydrateFromStorage' },
+    note: '흐름 비교의 마지막 그룹 선택과 비교 기준을 진입 시 복원하고, 열린 비교 화면에서도 다른 탭의 마지막 선택을 반영한다.',
+  },
+  {
     key: 'ui.themePreference.v1',
     module: 'state/themePrefs.ts',
     policy: 'shared-synced',
