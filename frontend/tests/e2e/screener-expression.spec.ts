@@ -1,8 +1,109 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
 import type { ScanRequest } from '../../src/api/screener';
 import type { SavedScreener } from '../../src/api/savedScreeners';
+
+// Native text selection/double-click need real pointer events, not setSelectionRange.
+async function textPoint(input: Locator, offset: number) {
+  return input.evaluate((element: HTMLTextAreaElement, offset) => {
+    const style = getComputedStyle(element), rect = element.getBoundingClientRect();
+    const context = document.createElement('canvas').getContext('2d')!;
+    context.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    return {
+      x: rect.left + element.clientLeft + parseFloat(style.paddingLeft)
+        + context.measureText(element.value.slice(0, Math.floor(offset))).width
+        + context.measureText(element.value[Math.floor(offset)] ?? '').width * (offset % 1),
+      y: rect.top + element.clientTop + parseFloat(style.paddingTop) + parseFloat(style.lineHeight) / 2,
+    };
+  }, offset);
+}
+
+test('mouse selection groups safely, double-click toggles operators, and bracket highlights follow scrolling', async ({ page }, testInfo) => {
+  await installLiveMocks(page);
+  const saved: SavedScreener = { id: 'mouse-expression', name: '마우스 조합식', conditions: [
+    { id: 'amount', type: 'trade_value', params: { min_eok: 100 } },
+    { id: 'high', type: 'new_high_today', params: { period: 20 } },
+    { id: 'volume', type: 'new_high_vol_today', params: { period: 20 } },
+  ], expression: 'A AND B OR C', universe: {}, created_at_ms: 1, updated_at_ms: 1 };
+  await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok', warnings: [] } }));
+  await page.route(apiExact('screener/saves'), route => route.fulfill({ json: { schema_version: 1, saves: [saved] } }));
+  await page.goto('/screener');
+  const builder = page.getByTestId('screener-builder-pane');
+  const input = builder.getByRole('textbox', { name: '조건 조합식' });
+  const group = builder.getByRole('button', { name: '() 묶기', exact: true });
+  await expect(input).toHaveValue('A AND B OR C');
+  await expect(group).toBeDisabled();
+  await expect(builder.getByRole('button', { name: '( 조합식에 입력', exact: true })).toHaveCount(0);
+  await expect(builder.getByRole('button', { name: ') 조합식에 입력', exact: true })).toHaveCount(0);
+  await input.scrollIntoViewIfNeeded();
+  const from = await textPoint(input, 0), to = await textPoint(input, 7);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd)))
+    .toBe('A AND B');
+  await expect(builder.getByRole('region', { name: '조건 조합', exact: true })
+    .getByRole('button', { name: 'A 거래대금 조합식에 입력' })).toBeDisabled();
+  await expect(builder.getByRole('group', { name: '거래대금 조건', exact: true })
+    .getByRole('button', { name: 'A 거래대금 조합식에 입력' })).toBeDisabled();
+  await expect(builder.getByRole('button', { name: 'OR 조합식에 입력', exact: true })).toBeDisabled();
+  await expect(input).toHaveValue('A AND B OR C');
+  await group.click();
+  await expect(input).toHaveValue('(A AND B) OR C');
+  await expect(input).toBeFocused();
+  await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => [element.selectionStart, element.selectionEnd])).toEqual([1, 8]);
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('A AND B OR C');
+  await input.press('ControlOrMeta+Shift+z');
+  await expect(input).toHaveValue('(A AND B) OR C');
+
+  const operator = await textPoint(input, 4);
+  await page.mouse.dblclick(operator.x, operator.y);
+  await expect(input).toHaveValue('(A OR B) OR C');
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue('(A AND B) OR C');
+  await input.press('ControlOrMeta+Shift+z');
+  await expect(input).toHaveValue('(A OR B) OR C');
+  await page.mouse.dblclick(operator.x, operator.y);
+  await expect(input).toHaveValue('(A AND B) OR C');
+  const condition = await textPoint(input, 1.5);
+  await page.mouse.dblclick(condition.x, condition.y);
+  await expect(input).toHaveValue('(A AND B) OR C');
+
+  await input.fill('A AND (B OR C)');
+  await input.press('Home');
+  await input.press('Shift+ArrowRight');
+  await input.press('Shift+ArrowRight');
+  await input.press('Shift+ArrowRight');
+  await expect(group).toBeDisabled();
+  await input.press('Home');
+  const highlight = builder.locator('.condition-expression-group');
+  for (const [theme, size] of [['trading-desk', 16], ['ledger-studio', 20]] as const) {
+    await page.evaluate(({ theme, size }) => {
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.style.fontSize = `${size}px`;
+    }, { theme, size });
+    await input.press('Home');
+    for (let i = 0; i < 6; i++) await input.press('ArrowRight');
+    await expect(highlight).toHaveText('(B OR C)');
+    await expect(highlight.locator('.condition-expression-bracket')).toHaveCount(2);
+    await builder.getByRole('region', { name: '조건 조합', exact: true })
+      .screenshot({ path: testInfo.outputPath(`expression-group-${theme}.png`) });
+  }
+  // Native soft wrapping and vertical scrolling must align with the highlight mirror.
+  await input.fill(Array.from({ length: 35 }, () => '(A OR B)').join(' AND '));
+  await input.press('ControlOrMeta+End');
+  await expect(highlight).toHaveText('(A OR B)');
+  await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => {
+    const mirror = element.parentElement!.querySelector('.condition-expression-mirror')!;
+    return { scrolled: element.scrollTop > 0, sameScroll: mirror.scrollTop === element.scrollTop,
+      sameWidth: mirror.clientWidth === element.clientWidth, sameHeight: mirror.clientHeight === element.clientHeight };
+  })).toEqual({ scrolled: true, sameScroll: true, sameWidth: true, sameHeight: true });
+  await input.press('Tab');
+  await expect(highlight).toHaveCount(0);
+});
 
 test('Ctrl+Z and redo share typing, presets and token edits without crossing condition scopes', async ({ page }) => {
   await installLiveMocks(page);
@@ -42,15 +143,17 @@ test('Ctrl+Z and redo share typing, presets and token edits without crossing con
   await input.press('ControlOrMeta+Shift+z');
   await expect(input).toHaveValue('A AND B');
   await input.press('ControlOrMeta+A');
-  await builder.getByRole('group', { name: '거래대금 조건', exact: true })
-    .getByRole('button', { name: 'A 거래대금 조합식에 입력' }).click();
-  await expect(input).toHaveValue('A');
+  await expect(builder.getByRole('group', { name: '거래대금 조건', exact: true })
+    .getByRole('button', { name: 'A 거래대금 조합식에 입력' })).toBeDisabled();
+  await builder.getByRole('button', { name: '() 묶기', exact: true }).click();
+  await expect(input).toHaveValue('(A AND B)');
   await input.press('ControlOrMeta+z');
   await expect(input).toHaveValue('A AND B');
   await input.press('ControlOrMeta+Shift+z');
-  await expect(input).toHaveValue('A');
+  await expect(input).toHaveValue('(A AND B)');
 
   // An invalid expression can be undone, enabling scan again; a new edit discards redo.
+  await input.fill('A');
   await input.press('End');
   await input.pressSequentially(' OR ');
   await expect(run).toBeDisabled();
@@ -124,13 +227,15 @@ test('expression editing, validation, reorder, persistence and drawer use the sa
   await formula.fill('A AND (B OR C)');
   await expect(run).toBeEnabled();
 
-  // The badge inserts into the selected text, preserving keyboard focus and the surrounding expression.
+  // Selecting a formula protects it from both row badges and quick-input buttons.
   await formula.focus();
   await formula.press('ControlOrMeta+A');
-  await builder.getByRole('group', { name: '거래대금 조건', exact: true })
-    .getByRole('button', { name: 'A 거래대금 조합식에 입력', exact: true }).click();
-  await expect(formula).toHaveValue('A');
+  await expect(builder.getByRole('group', { name: '거래대금 조건', exact: true })
+    .getByRole('button', { name: 'A 거래대금 조합식에 입력', exact: true })).toBeDisabled();
+  await expect(builder.getByRole('button', { name: 'AND 조합식에 입력', exact: true })).toBeDisabled();
+  await expect(formula).toHaveValue('A AND (B OR C)');
   await expect(formula).toBeFocused();
+  await formula.fill('A');
   await expect(builder.getByText('검색에 사용하지 않는 조건: B, C')).toBeVisible();
   await formula.fill('A AND (B OR C)');
 
