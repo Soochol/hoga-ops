@@ -8,12 +8,12 @@ import { ConditionChoice, ConditionFields } from '../ConditionControls';
 export function HighOffPeakForm({ params, onChange }: { params: HighOffPeakParams; onChange: (p: HighOffPeakParams) => void }) {
   return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
     <ConditionFields>
-    <Num label="최고 고가 검색 기간" ariaLabel="기간(봉)" suffix="봉" min={1} max={1000}
+    <Num label="기간" ariaLabel="기간(봉)" suffix="봉" min={1} max={1000}
       value={params.period} onChange={(n) => onChange({ ...params, period: n ?? 1 })} />
-    <Num label="고점 대비 하락 폭" ariaLabel="고점 대비(%)" suffix="%" min={0} max={100}
+    <Num label="하락" ariaLabel="고점 대비(%)" suffix="%" min={0} max={100}
       value={params.pct} onChange={n => onChange({ ...params, pct: n ?? 0 })} />
     </ConditionFields>
-    <ConditionChoice label="이내/이외" value={params.side}
+    <ConditionChoice label="이내/이외" caption="범위" value={params.side}
       onChange={(side) => onChange({ ...params, side })}
       options={[['within', '이내'], ['outside', '이외']]} />
   </CandleSettings>;

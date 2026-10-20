@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { ConditionLeaf, ConditionType, ScanRequest, ScreenerOccurrence } from '../api/screener';
 import { screenerRequestKey } from '../api/screenerRequest';
@@ -9,8 +9,6 @@ import { occurrenceTimeLabel } from './occurrenceTime';
 
 const kinds = ['new_high_today', 'new_high', 'new_high_vol_today', 'high_off_peak', 'ma', 'trade_value', 'trade_value_period', 'change_pct'] as const;
 
-const choice = (label: string, name: string) => within(screen.getByRole('group', { name: label })).getByRole('button', { name });
-const timeframeNames: Record<string, string> = { minute: '분', D: '일', W: '주', M: '월' };
 
 function Editor({ kind }: { kind: ConditionType }) {
   const [leaf, setLeaf] = useState(() => makeLeaf(kind));
@@ -26,16 +24,13 @@ describe.each(kinds)('%s candle editor', kind => {
   it('retains predicate parameters and open policy across minute/day/week/month changes', () => {
     render(<Editor kind={kind} />);
     const original = JSON.parse(screen.getByRole('status').textContent!);
-    expect(choice('봉 주기', '일')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('combobox', { name: '봉 주기' })).toHaveValue('D');
     expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
-    for (const value of ['minute', 'W', 'M', 'D']) {
-      fireEvent.click(choice('봉 주기', timeframeNames[value]));
-      if (value === 'minute') {
-        fireEvent.change(screen.getByLabelText('분봉 간격'), { target: { value: '15m' } });
-      }
+    for (const value of ['15m', 'W', 'M', 'D']) {
+      fireEvent.change(screen.getByRole('combobox', { name: '봉 주기' }), { target: { value } });
       const current = JSON.parse(screen.getByRole('status').textContent!);
       expect(current).toMatchObject({ ...original,
-        timeframe: value === 'minute' ? '15m' : value });
+        timeframe: value });
       expect(current.include_open_bar ?? true).toBe(true);
     }
     if (kind === 'ma') {
@@ -44,7 +39,7 @@ describe.each(kinds)('%s candle editor', kind => {
         source: 'low', timeframe: 'D' });
     }
     if (kind === 'high_off_peak') {
-      fireEvent.click(choice('이내/이외', '이외'));
+      fireEvent.change(screen.getByRole('combobox', { name: '이내/이외' }), { target: { value: 'outside' } });
       expect(JSON.parse(screen.getByRole('status').textContent!)).toMatchObject({
         side: 'outside', timeframe: 'D' });
     }

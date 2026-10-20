@@ -15,7 +15,7 @@ describe('Bollinger breakout settings', () => {
     }
     render(<Editor />);
     fireEvent.change(screen.getByLabelText('돌파 비교가격'), { target: { value: 'high' } });
-    fireEvent.click(screen.getByRole('button', { name: '하단 하향돌파' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '돌파 밴드' }), { target: { value: 'lower' } });
     fireEvent.change(screen.getByLabelText('볼린저 최근 기간'), { target: { value: '7' } });
     fireEvent.change(screen.getByLabelText('표준편차 배수'), { target: { value: '2.5' } });
     fireEvent.change(screen.getByLabelText('밴드 계산가격'), { target: { value: 'low' } });

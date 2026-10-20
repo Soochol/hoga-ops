@@ -4,7 +4,6 @@ import type { ScanRequest, VolumeParams } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 
-const timeframeNames: Record<string, string> = { minute: '분', D: '일', W: '주', M: '월' };
 
 test('volume timeframe, candle counts and open-bar policy survive save/reload and scan', async ({ page }, testInfo) => {
   await installLiveMocks(page);
@@ -38,9 +37,8 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   await panel.getByRole('button', { name: '종료', exact: true }).click();
   await page.getByRole('button', { name: '스크리너 패널 토글' }).click();
   await page.goto('/screener');
-  await expect(page.getByRole('group', { name: '거래량 주기', exact: true }).getByRole('button', { name: '일', exact: true })).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('group', { name: '거래량 주기', exact: true }).getByRole('button', { name: '분', exact: true }).click();
-  await page.getByLabel('분봉 간격').selectOption('5m');
+  await expect(page.getByRole('combobox', { name: '거래량 주기', exact: true })).toHaveValue('D');
+  await page.getByRole('combobox', { name: '거래량 주기', exact: true }).selectOption('5m');
   await page.getByLabel('최근 기간(봉)').fill('3');
   await page.getByLabel('신고 기준 기간(봉)').fill('2');
   await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
@@ -48,7 +46,7 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   await expect.poll(() => saved.conditions[0].params).toMatchObject({ timeframe: '5m', lookback: 3, period: 2, include_open_bar: true });
   await expect(page.getByRole('button', { name: '저장본으로 되돌리기', exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByLabel('분봉 간격')).toHaveValue('5m');
+  await expect(page.getByRole('combobox', { name: '거래량 주기', exact: true })).toHaveValue('5m');
   await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('3');
   await expect(page.getByLabel('신고 기준 기간(봉)')).toHaveValue('2');
   await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
@@ -62,7 +60,7 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   expect(csv).toContain('5m');
   await page.screenshot({ path: testInfo.outputPath('bar-volume-wide.png'), fullPage: true });
   for (const timeframe of ['W', 'M', 'D']) {
-    await page.getByRole('group', { name: '거래량 주기', exact: true }).getByRole('button', { name: timeframeNames[timeframe], exact: true }).click();
+    await page.getByRole('combobox', { name: '거래량 주기', exact: true }).selectOption(timeframe);
     await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('3');
     await page.getByRole('button', { name: '조회', exact: true }).click();
     await expect.poll(() => scans.at(-1)?.conditions[0].params).toMatchObject({ timeframe, lookback: 3, period: 2 });

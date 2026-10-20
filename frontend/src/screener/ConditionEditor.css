@@ -8,7 +8,7 @@
 }
 .screener-condition[data-dragging='true'] { opacity: .6; }
 .condition-letter {
-  flex-shrink: 0; min-width: var(--space-xl); padding: var(--space-xs);
+  flex-shrink: 0; min-width: var(--space-xl); padding: var(--space-2xs);
   border: 1px solid var(--border); border-radius: 4px; background: var(--tint-selection);
   color: var(--accent); font-size: var(--text-sm); font-weight: 500; cursor: pointer;
 }
@@ -29,62 +29,43 @@
 .condition-expression-input[aria-invalid='true'] { border-color: var(--error); }
 .condition-expression-help { color: var(--fg-dim); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .condition-expression-error { color: var(--error); font-size: var(--text-xs); overflow-wrap: anywhere; }
-.condition-header { display: flex; align-items: center; gap: var(--space-xs); padding: var(--space-sm); }
-.condition-toggle {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-sm);
-  background: transparent; border: 0; text-align: left; padding: var(--space-xs);
-  color: var(--fg); cursor: pointer;
-}
-.condition-heading { flex: 1; min-width: 0; display: grid; gap: var(--space-2xs); }
-.condition-name { font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
-.condition-scope { flex-shrink: 0; padding: var(--space-2xs) var(--space-xs); border-radius: 2px; background: var(--bg-subtle); color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-header { display: flex; align-items: center; gap: var(--space-2xs); padding: var(--space-xs) var(--space-sm); }
+.condition-heading { flex: 1; min-width: 0; }
+.condition-name { color: var(--fg); font-size: var(--text-sm); font-weight: 600; overflow-wrap: anywhere; }
 .condition-icon-button {
   flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
   width: var(--space-xl); height: var(--space-xl); border: 0; border-radius: 4px;
   background: transparent; color: var(--fg-dim); cursor: pointer;
 }
-.condition-icon-button:hover, .condition-toggle:hover { background: var(--bg-input-hover); }
+.condition-icon-button:hover { background: var(--bg-input-hover); }
 .condition-drag-handle { cursor: grab; }
 .condition-drag-handle:active { cursor: grabbing; }
 .condition-drag-handle:disabled { cursor: default; opacity: .5; }
-.condition-editor-body { padding: 0 var(--space-md) var(--space-md); }
-.condition-form { display: grid; gap: var(--space-md); }
-.condition-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-md); align-items: start; }
-.condition-field { display: grid; align-content: start; gap: var(--space-xs); min-width: 0; }
-.condition-field-label { color: var(--fg-dim); font-size: var(--text-xs); }
+.condition-editor-body { padding: 0 var(--space-sm) var(--space-sm); }
+.condition-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs) var(--space-sm); }
+.condition-field {
+  display: inline-flex; align-items: center; gap: var(--space-xs); max-width: 100%; min-width: 0;
+}
+.condition-field-label { flex-shrink: 0; color: var(--fg-dim); font-size: var(--text-xs); }
 .condition-input-wrap {
-  display: flex; align-items: center; gap: var(--space-xs); min-width: 0;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; padding: 0 var(--space-sm);
+  display: inline-flex; align-items: center; gap: var(--space-2xs); min-width: 0; max-width: 100%;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px; padding: 0 var(--space-xs);
 }
 .condition-input-wrap:focus-within { outline: 1px solid var(--accent); outline-offset: 1px; }
 .condition-input-wrap input {
-  min-width: 0; width: 100%; min-height: var(--space-2xl); padding: var(--space-sm) 0;
+  min-width: 0; width: 7ch; min-height: var(--space-xl); padding: var(--space-2xs) 0;
   background: transparent; border: 0; color: var(--fg); font-size: var(--text-base); font-weight: 500;
 }
+.condition-input-wrap input:placeholder-shown { width: 9ch; }
+.condition-input-wrap input[type='time'] { width: auto; }
 /* The wrapper includes the unit and owns the single visible focus indicator. */
 .condition-input-wrap input:focus-visible { outline: none; }
 .condition-input-wrap input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
 .condition-input-wrap input::-webkit-inner-spin-button { appearance: none; }
 .condition-unit { flex-shrink: 0; color: var(--fg-dim); font-size: var(--text-xs); }
 .condition-select {
-  min-width: 0; width: 100%; min-height: var(--space-2xl); padding: var(--space-sm);
+  min-width: 0; max-width: 100%; min-height: var(--space-xl); padding: var(--space-2xs) var(--space-xs);
   background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
   color: var(--fg); color-scheme: var(--color-scheme); font-size: var(--text-sm);
 }
-.condition-timeframe {
-  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm);
-  padding-top: var(--space-md); border-top: 1px solid var(--border);
-}
-.condition-timeframe > .condition-field { flex: 1 0 100%; }
-.condition-timeframe > .condition-choice { flex-shrink: 0; flex-wrap: nowrap; }
-.condition-timeframe > .condition-choice button { white-space: nowrap; }
-.condition-choice {
-  display: inline-flex; flex-wrap: wrap; gap: var(--space-2xs); width: fit-content; max-width: 100%;
-  padding: var(--space-2xs); background: var(--bg-input); border: 1px solid var(--border); border-radius: 4px;
-}
-.condition-choice button {
-  min-height: var(--space-xl); padding: var(--space-xs) var(--space-sm); border: 0; border-radius: 2px;
-  background: transparent; color: var(--fg-dim); font-size: var(--text-sm); cursor: pointer;
-}
-.condition-choice button[aria-pressed='true'] { background: var(--bg-input-hover); color: var(--accent); }
-.condition-choice button:hover { background: var(--bg-input-hover); }
+.condition-date-field { flex-wrap: wrap; }

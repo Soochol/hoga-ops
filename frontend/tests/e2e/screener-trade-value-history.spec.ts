@@ -41,7 +41,7 @@ test('historical trade value collects, rescans, and exports dated amount evidenc
   } }));
   await page.goto('/screener');
   await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('60');
-  await page.getByRole('group', { name: '거래대금 검색 기간', exact: true }).getByRole('button', { name: '날짜 범위' }).click();
+  await page.getByRole('combobox', { name: '거래대금 검색 기간', exact: true }).selectOption('date_range');
   await expect(page.getByLabel('거래대금 발생 시작일')).toHaveValue('2019-01-01');
   await expect(page.getByLabel('거래대금 발생 종료일')).toHaveValue('2022-12-31');
   await page.getByRole('button', { name: '조회', exact: true }).click();
