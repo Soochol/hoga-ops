@@ -27,6 +27,7 @@ async function open(page: Page, id: string) {
   await page.locator(`[data-win="${id}"]`).getByRole('button', { name: '차트 설정', exact: true }).click();
   const panel = page.getByRole('dialog', { name: '차트 설정', exact: true });
   await expect(panel.getByText('이 차트에 적용', { exact: true })).toBeVisible();
+  await panel.getByLabel('차트 거꾸로 보기 세부 설정').click();
   return panel;
 }
 
@@ -65,13 +66,13 @@ async function scaleFixtures(page: Page) {
     code: new URL(route.request().url()).searchParams.get('code'), from: '20260527', to: '20260528',
     candles: [10_000, 20_000, 40_000, 60_000, 80_000].map((price, i) => ({
       t_ms: Date.UTC(2026, 4, 27, 0, i), open: price, high: price + 500,
-      low: price - 500, close: price + 200, volume: 1000 + i,
+      low: price - 500, close: price + (i % 2 ? -200 : 200), volume: 1000 + i,
     })), cached_dates: ['20260527'], fresh_dates: [], data_warnings: [],
   } }));
 }
 
 for (const timeframe of ['1m', 'D', 'W', 'M']) {
-  test(`${timeframe}: 로그·반전 네 조합의 좌표, 가격 지표·드로잉, 하단 축과 가로 범위를 보존한다`, async ({ page }, info) => {
+  test(`${timeframe}: 로그·반전·색상 교환 조합의 좌표, 가격 지표·드로잉, 하단 축과 가로 범위를 보존한다`, async ({ page }, info) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await setup(page, timeframe);
@@ -94,15 +95,27 @@ for (const timeframe of ['1m', 'D', 'W', 'M']) {
     await page.evaluate(async () => {
       const chart = (window as ChartsWindow).__liveCharts!.get('a')!;
       const candle = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick')!;
+      const volume = chart.panes()[1].getSeries().find(s => s.seriesType() === 'Histogram')!;
+      const other = (window as ChartsWindow).__liveCharts!.get('b')!;
       chart.timeScale().setVisibleLogicalRange({ from: -1, to: candle.data().length + 2 });
       // LWC applies setVisibleLogicalRange during paint; capture the rendered range.
       await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-      Object.assign(window, { __scaleBefore: { chart, candle, data: candle.data(),
+      Object.assign(window, { __scaleBefore: { chart, candle, data: candle.data(), volume, volumeData: volume.data(),
+        otherData: other.panes().flatMap(p => p.getSeries()).filter(s => ['Candlestick', 'Histogram'].includes(s.seriesType())).map(s => s.data()),
         range: chart.timeScale().getVisibleLogicalRange(), spacing: chart.timeScale().options().barSpacing,
         width: chart.timeScale().width(), scroll: chart.timeScale().scrollPosition() } });
     });
-    for (const [log, invert] of [[false, false], [true, false], [true, true], [false, true]]) {
+    for (const [log, invert, swapColors] of [
+      [false, false, true], [false, true, false], [false, true, true], [false, false, false],
+      [true, false, false], [true, true, false], [true, true, true], [true, false, true],
+    ]) {
       const panel = await open(page, 'a');
+      const colorToggle = panel.getByRole('switch', { name: '반전 시 캔들·거래량 색상 교환', exact: true });
+      if (await colorToggle.getAttribute('aria-checked') !== String(swapColors)) {
+        const invertToggle = panel.getByRole('switch', { name: '차트 거꾸로 보기', exact: true });
+        if (await invertToggle.getAttribute('aria-checked') === 'false') await invertToggle.click();
+        await colorToggle.click();
+      }
       for (const [name, value] of [['로그 스케일', log], ['차트 거꾸로 보기', invert]] as const) {
         const toggle = panel.getByRole('switch', { name, exact: true });
         if (await toggle.getAttribute('aria-checked') !== String(value)) await toggle.click();
@@ -115,20 +128,36 @@ for (const timeframe of ['1m', 'D', 'W', 'M']) {
       await page.keyboard.press('Escape');
       await expectPriceScale(page, 'a', log, invert);
       await expectPriceScale(page, 'b', false, false);
-      const state = await page.evaluate(({ log }) => {
+      const state = await page.evaluate(({ log, invert, swapColors }) => {
         const chart = (window as ChartsWindow).__liveCharts!.get('a')!;
         const candle = chart.panes()[0].getSeries().find(s => s.seriesType() === 'Candlestick') as ISeriesApi<'Candlestick'>;
+        const volume = chart.panes()[1].getSeries().find(s => s.seriesType() === 'Histogram') as ISeriesApi<'Histogram'>;
         const rows = candle.data().filter(r => 'close' in r);
         const low = Math.min(...rows.map(r => r.low)), high = Math.max(...rows.map(r => r.high));
         const mid = log ? Math.sqrt(low * high) : (low + high) / 2;
         const yLow = candle.priceToCoordinate(low)!, yHigh = candle.priceToCoordinate(high)!;
         const yMid = candle.priceToCoordinate(mid)!;
         const before = (window as unknown as { __scaleBefore: { chart: IChartApi; candle: ISeriesApi<'Candlestick'>;
-          data: unknown; range: { from: number; to: number }; spacing: number; width: number; scroll: number } }).__scaleBefore;
+          data: unknown; volume: ISeriesApi<'Histogram'>; volumeData: unknown; otherData: unknown;
+          range: { from: number; to: number }; spacing: number; width: number; scroll: number } }).__scaleBefore;
+        const beforeCandles = (before.data as ReturnType<typeof candle.data>).filter(r => 'close' in r);
+        const { upColor: up, downColor: down } = candle.options();
+        const flip = (color: string | undefined) => invert && swapColors
+          ? color === up ? down : color === down ? up : color : color;
+        const expectedCandles = beforeCandles.map(row => ({ ...row,
+          color: flip(row.color), borderColor: flip(row.borderColor), wickColor: flip(row.wickColor) }));
+        const expectedVolume = (before.volumeData as ReturnType<typeof volume.data>).map(row =>
+          'value' in row ? { ...row, color: flip(row.color) } : row);
+        const other = (window as ChartsWindow).__liveCharts!.get('b')!;
         const bounds = chart.chartElement().getBoundingClientRect();
         return {
           sameChart: chart === before.chart, sameSeries: candle === before.candle,
-          sameData: JSON.stringify(candle.data()) === JSON.stringify(before.data),
+          sameColors: JSON.stringify(rows) === JSON.stringify(expectedCandles),
+          sameVolume: volume === before.volume && JSON.stringify(volume.data()) === JSON.stringify(expectedVolume),
+          otherUnchanged: JSON.stringify(other.panes().flatMap(p => p.getSeries())
+            .filter(s => ['Candlestick', 'Histogram'].includes(s.seriesType())).map(s => s.data())) === JSON.stringify(before.otherData),
+          sameData: JSON.stringify(rows.map(({ color, borderColor, wickColor, ...row }) => row))
+            === JSON.stringify(beforeCandles.map(({ color, borderColor, wickColor, ...row }) => row)),
           range: chart.timeScale().getVisibleLogicalRange(), beforeRange: before.range,
           // Longer log-axis tick labels may grow the gutter. Preserve bar pitch
           // and the right anchor; the left edge then follows the plot width.
@@ -144,9 +173,9 @@ for (const timeframe of ['1m', 'D', 'W', 'M']) {
             .map(s => { const o = s.priceScale().options(); return [o.mode, o.invertScale]; }),
           hit: { x: bounds.x + 75, y: bounds.y + candle.priceToCoordinate(35_000)! },
         };
-      }, { log });
+      }, { log, invert, swapColors });
       expect(state).toMatchObject({ sameChart: true, sameSeries: true, sameData: true,
-        sameSpacing: true, inverted: invert });
+        sameColors: true, sameVolume: true, otherUnchanged: true, sameSpacing: true, inverted: invert });
       expect(state.range!.from).toBeCloseTo(state.expectedFrom, 6);
       expect(state.range!.to).toBeCloseTo(state.beforeRange.to, 6);
       expect(state.scroll).toBeCloseTo(state.beforeScroll, 6);
@@ -163,7 +192,7 @@ for (const timeframe of ['1m', 'D', 'W', 'M']) {
       await page.mouse.up();
       await expect(page.locator('[data-win="a"]').getByTestId('drawing-property-panel')).toBeVisible();
       await page.keyboard.press('Escape');
-      if (log && invert) await page.screenshot({ path: info.outputPath(`${timeframe}-log-inverted.png`) });
+      if (log && invert && swapColors) await page.screenshot({ path: info.outputPath(`${timeframe}-log-inverted.png`) });
     }
     expect(errors).toEqual([]);
   });

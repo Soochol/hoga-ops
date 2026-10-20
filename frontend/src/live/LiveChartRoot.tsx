@@ -733,6 +733,8 @@ export function LiveChartRoot({
   const candleSeries = paneSeries.get('candle');
   const candleLogScale = useActivePrefs(p => p.candleLogScale);
   const candleInvertScale = useActivePrefs(p => p.candleInvertScale);
+  const candleInvertColors = useActivePrefs(p => p.candleInvertColors);
+  const swapCandleColors = candleInvertScale && candleInvertColors;
   useEffect(() => {
     // Target the candle's current pane/scale, including after timeframe or pane
     // changes. Chart-wide rightPriceScale options would also change lower panes.
@@ -2053,8 +2055,9 @@ export function LiveChartRoot({
     ],
   );
   const candlePaneContext = useMemo<CandlePaneContext>(
-    () => ({ muteAuctionCandles: !isUsWorkareaCode(code) && candleVenue === 'KRX', ...(isUsWorkareaCode(code) ? { decimalPrices: true } : {}) }),
-    [candleVenue, code],
+    () => ({ muteAuctionCandles: !isUsWorkareaCode(code) && candleVenue === 'KRX', swapColors: swapCandleColors,
+      ...(isUsWorkareaCode(code) ? { decimalPrices: true } : {}) }),
+    [candleVenue, code, swapCandleColors],
   );
   const volumeFillStrengthCumulative = useActivePrefs((p) => p.volumeFillStrengthCumulative);
 

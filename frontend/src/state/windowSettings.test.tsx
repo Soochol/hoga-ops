@@ -17,6 +17,15 @@ beforeEach(() => {
 });
 
 describe('typed window settings lifecycle', () => {
+  it('migrates missing color-swap settings to on and preserves an explicit off setting through presets', () => {
+    expect(normalizeChartDisplayPrefs({ candleInvertScale: true }).candleInvertColors).toBe(true);
+    expect(normalizeChartDisplayPrefs({ candleInvertColors: 'invalid' }).candleInvertColors).toBe(true);
+    useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertScale: true, candleInvertColors: false });
+    const payload = capturePresetPayload();
+    useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertColors: true });
+    applyPresetPayload(payload, null);
+    expect(useWindowSettingsStore.getState().byWindow.a.chart?.candleInvertColors).toBe(false);
+  });
   it('defaults old and invalid scale settings to off, preserving explicit choices in presets', () => {
     expect(normalizeChartDisplayPrefs({ candleTooltipEnabled: true })).toMatchObject({
       candleLogScale: false, candleInvertScale: false,

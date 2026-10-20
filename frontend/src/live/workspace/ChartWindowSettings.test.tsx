@@ -10,6 +10,16 @@ beforeEach(() => {
 });
 
 describe('chart title-bar scale status', () => {
+  it('explains whether candle/volume colors are swapped only while inverted', () => {
+    render(<ChartWindowSettings windowId="a" />);
+    const settings = screen.getByRole('button', { name: '차트 설정' });
+    act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertScale: true }));
+    expect(settings.title).toContain('캔들/거래량 색상 교환 켜짐');
+    act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertColors: false }));
+    expect(settings.title).toContain('캔들/거래량 색상 교환 꺼짐');
+    act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertScale: false }));
+    expect(settings.title).toBe('차트 설정');
+  });
   it('keeps the normal header free of inactive badges', () => {
     render(<ChartWindowSettings windowId="a" />);
     expect(screen.queryByRole('button', { name: /차트 축 상태/ })).not.toBeInTheDocument();

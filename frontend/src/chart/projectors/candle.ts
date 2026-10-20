@@ -20,6 +20,7 @@ const TOKEN_SPEC = {
 export type CandlePaneContext = {
   muteAuctionCandles: boolean;
   decimalPrices?: boolean;
+  swapColors?: boolean;
 };
 
 const DEFAULT_CONTEXT: CandlePaneContext = { muteAuctionCandles: true };
@@ -66,7 +67,8 @@ function projectCandleRows(
   for (const c of candles) {
     const { contained, inAuction, virtual } = candlePosition(c, axis);
     if (!contained) continue;
-    const color = ctx.muteAuctionCandles && inAuction ? muted : c.close >= c.open ? up : down;
+    const color = ctx.muteAuctionCandles && inAuction ? muted
+      : (c.close >= c.open) !== !!ctx.swapColors ? up : down;
     out.push({
       time: (virtual / 1000) as UTCTimestamp,
       open: c.open,
