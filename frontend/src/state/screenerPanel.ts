@@ -32,7 +32,7 @@ export interface PanelScan {
   // 풀페이지 Screener 의 내용 기반 staleness 판정용(요청 바디 직렬화). 드로어는 신원
   // 기반(savedId/savedUpdatedAtMs)이라 null 로 둔다.
   scanKey: string | null;
-  /** 실행 때의 요청 원문. 편집 중인 조건/저장본을 CSV에 섞지 않는다. */
+  /** 실행 때의 요청 원문. 현재 편집 중인 조건과 구별한다. */
   requestJson?: string;
   rows: ScreenerRow[];
   /** undefined는 상한 여부를 제공하지 않던 서버/저장 상태. */
@@ -49,7 +49,7 @@ export interface PanelScan {
   scannedAtMs: number;
   basisAtMs?: number | null;
   fallbackBasisAtMs?: number | null;
-  /** 제외/복원 재조회 동안 결과 검색·선택·펼침 상태를 유지하는 조회 세션. */
+  /** 제외/복원 재조회 동안 결과 검색·시세 보기 상태를 유지하는 조회 세션. */
   interactionStartedAtMs?: number;
   basis: ScanBasis;
   dataStale: boolean;

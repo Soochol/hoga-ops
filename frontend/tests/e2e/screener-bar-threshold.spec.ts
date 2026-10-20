@@ -1,10 +1,9 @@
-import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import type { ConditionLeaf, ScanRequest } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 
-test('turnover, period turnover and referenced change preserve independent candle settings and CSV evidence', async ({ page }, testInfo) => {
+test('turnover, period turnover and referenced change preserve independent candle settings', async ({ page }, testInfo) => {
   await installLiveMocks(page);
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -64,12 +63,6 @@ test('turnover, period turnover and referenced change preserve independent candl
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect(page.getByText('봉수 기준 평가 가능 1/1종목')).toBeVisible();
   expect(scans.at(-1)?.conditions).toEqual(saved.conditions);
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '검색 결과 CSV', exact: true }).click();
-  const csv = await readFile((await (await download).path())!, 'utf8');
-  for (const field of ['bar_trade_value_match', 'daily_estimate_sum', 'ohlcv_estimate', 'bar_change_match', 'previous_bar']) {
-    expect(csv).toContain(field);
-  }
   await period.getByRole('combobox', { name: '거래대금 검색 기간', exact: true }).selectOption('date_range');
   await period.getByLabel('거래대금 발생 시작일').fill('2026-07-01');
   await period.getByLabel('거래대금 발생 종료일').fill('2026-07-30');

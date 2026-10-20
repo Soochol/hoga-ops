@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ScreenerResults } from './ScreenerResults';
-import * as csv from './exportResults';
 import type { PanelScan } from '../state/screenerPanel';
 import type { ScreenerRowLive } from './useScreenerRowsLive';
 
@@ -43,34 +42,24 @@ describe('조회 결과 활용', () => {
     expect(screen.getByText(/거래대금: 조회 당시 추정치/)).toBeInTheDocument();
   });
 
-  it('검색어로 숨겨진 선택도 보존하고 선택 CSV와 검색 결과 CSV의 범위를 구별한다', () => {
-    const download = vi.spyOn(csv, 'downloadResultsCsv').mockImplementation(() => {});
+  it('선택·CSV UI 없이 종목명과 코드로 검색하고 결과 행을 연다', () => {
     const activate = mount();
-    const samsung = screen.getByRole('checkbox', { name: '삼성전자 005930 선택' });
-    fireEvent.click(samsung);
-    fireEvent.keyDown(samsung, { key: ' ' });
-    expect(activate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /CSV|선택 해제/ })).not.toBeInTheDocument();
     const search = screen.getByRole('searchbox', { name: '결과 내 종목 검색' });
     fireEvent.change(search, { target: { value: 'sk 하이닉스' } });
-    expect(screen.getByText(/선택 1종목 \(숨김 1종목 포함\)/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox', { name: '검색 결과 전체 선택' }));
-    fireEvent.click(screen.getByRole('button', { name: '선택 CSV' }));
-    expect(download).toHaveBeenLastCalledWith(scan, ['000660', '005930'], live);
-    fireEvent.click(screen.getByRole('button', { name: '검색 결과 CSV' }));
-    expect(download).toHaveBeenLastCalledWith(scan, ['000660'], live);
-    fireEvent.click(screen.getByRole('checkbox', { name: '검색 결과 전체 선택' }));
-    expect(screen.getByText(/선택 1종목 \(숨김 1종목 포함\)/)).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: /호가창 열기/ })).toHaveLength(1);
+    expect(screen.getByRole('status')).toHaveTextContent('표시 1 / 2종목');
+    expect(activate).not.toHaveBeenCalled();
     fireEvent.change(search, { target: { value: '005930' } });
-    expect(screen.getByRole('checkbox', { name: '삼성전자 005930 선택' })).toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: '선택 해제' }));
-    expect(screen.getByRole('button', { name: '선택 CSV' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '삼성전자 005930 호가창 열기' }));
+    expect(activate).toHaveBeenCalledWith('005930', '삼성전자', expect.anything());
   });
 
   it('결과 내 검색 0건은 스캔 0건과 구별하고 검색어만 지워 복구한다', () => {
     mount();
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: '없는종목' } });
     expect(screen.getByText('검색어에 맞는 결과가 없습니다')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '검색 결과 CSV' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '검색어 지우기' }));
     expect(screen.getAllByRole('button', { name: /호가창 열기/ })).toHaveLength(2);
   });

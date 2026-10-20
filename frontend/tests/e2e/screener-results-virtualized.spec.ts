@@ -9,7 +9,6 @@
 // 2. **가상화가 실제로 걸린다.** 유계가 아니면 가상화기가 "전부 보인다"고 판단해
 //    1,000행을 그대로 그린다(실측). 즉 ①이 ②의 전제다 — 둘을 함께 봐야 의미가 있다.
 import { test, expect, type Route } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 
 const N = 1000;
@@ -24,7 +23,7 @@ const SCAN = {
 
 test.use({ channel: 'chrome' });
 
-test('1,000행 가상 결과의 검색·선택·CSV와 조회 당시 값이 유지된다', async ({ page }, testInfo) => {
+test('1,000행 가상 결과의 검색·정렬과 조회 당시 값이 유지된다', async ({ page }, testInfo) => {
   const measurementWarnings: string[] = [];
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -78,45 +77,36 @@ test('1,000행 가상 결과의 검색·선택·CSV와 조회 당시 값이 유�
     shell.scrollTop = shell.scrollHeight;
   });
   await expect(page.getByRole('button', { name: /종목999 100999 호가창 열기/ })).toBeVisible();
-  await page.getByRole('checkbox', { name: '종목999 100999 선택', exact: true }).check();
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /CSV|선택 해제/ })).toHaveCount(0);
   await expect(page).toHaveURL(/\/screener$/);
-  await page.getByRole('searchbox', { name: '결과 내 종목 검색' }).fill('종목0');
-  await expect(page.getByText(/숨김 1종목 포함/)).toBeVisible();
-  await page.getByRole('checkbox', { name: '검색 결과 전체 선택' }).check();
+  const search = page.getByRole('searchbox', { name: '결과 내 종목 검색' });
+  await search.fill('종목0');
+  await expect(box).toHaveAttribute('data-virtualized', 'false');
+  await expect(rows).toHaveCount(1);
   await page.getByRole('button', { name: '조회 당시', exact: true }).click();
   await expect(page.getByRole('button', { name: '종목0 100000 호가창 열기' })).toContainText('10,000 (-10.00%)');
   await expect(page.getByText('2026-09-07', { exact: true })).toBeVisible();
 
-  const selectedDownload = page.waitForEvent('download');
-  await page.getByRole('button', { name: '선택 CSV', exact: true }).click();
-  const selectedFile = await selectedDownload;
-  expect(selectedFile.suggestedFilename()).toMatch(/^screener-\d{14}\.csv$/);
-  const selectedPath = testInfo.outputPath('selected.csv');
-  await selectedFile.saveAs(selectedPath);
-  const selectedCsv = await readFile(selectedPath, 'utf8');
-  expect(selectedCsv).toContain('"\'100000"');
-  expect(selectedCsv).toContain('"\'100999"');
-  expect(selectedCsv.trim().split('\r\n')).toHaveLength(3);
-  expect(selectedCsv).toContain('""min_eok"":1');
-
-  // 전체 선택은 DOM의 수십 행이 아니라 필터를 통과한 1,000행에 적용된다.
-  await page.getByRole('searchbox').fill('');
-  await page.getByRole('checkbox', { name: '검색 결과 전체 선택' }).check();
-  const allDownload = page.waitForEvent('download');
-  await page.getByRole('button', { name: '선택 CSV', exact: true }).click();
-  const allPath = testInfo.outputPath('all.csv');
-  await (await allDownload).saveAs(allPath);
-  expect((await readFile(allPath, 'utf8')).trim().split('\r\n')).toHaveLength(1001);
+  await search.fill('');
+  await expect(box).toHaveAttribute('data-virtualized', 'true');
+  await page.getByRole('button', { name: '코드 정렬', exact: true }).click();
+  await expect(rows.first()).toHaveAccessibleName('종목0 100000 호가창 열기');
+  await page.getByRole('button', { name: '코드 정렬', exact: true }).click();
+  await expect(rows.first()).toHaveAccessibleName('종목999 100999 호가창 열기');
+  await page.getByRole('button', { name: '코드 정렬', exact: true }).click();
   expect(await rows.count()).toBeLessThan(100);
   expect(measurementWarnings).toEqual([]);
 
   await page.screenshot({ path: testInfo.outputPath('results-wide.png') });
   await page.setViewportSize({ width: 944, height: 624 });
-  await expect(page.getByRole('button', { name: '선택 CSV', exact: true })).toBeInViewport();
+  await expect(search).toBeInViewport();
+  await expect(page.getByRole('button', { name: '조회 당시', exact: true })).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('results-compact.png') });
   await page.reload();
   await page.getByRole('button', { name: '조회 당시', exact: true }).click();
   await expect(page.getByRole('button', { name: '종목0 100000 호가창 열기' })).toContainText('10,000 (-10.00%)');
-  await expect(page.getByRole('button', { name: '선택 CSV', exact: true })).toBeDisabled();
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /CSV|선택 해제/ })).toHaveCount(0);
   expect(pageErrors).toEqual([]);
 });
