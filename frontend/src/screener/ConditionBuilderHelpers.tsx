@@ -13,5 +13,6 @@ export const CONDITION_GROUPS: Array<[string, ConditionType[]]> = [
     'ask_depth_new_high_period', 'bid_depth_new_high_period',
     'ask_depth_renewal', 'bid_depth_renewal']],
   ['이동평균', ['ma']],
+  ['볼린저밴드', ['bollinger_breakout_today', 'bollinger_breakout']],
   ['등락률', ['change_pct']],
 ];

@@ -9,6 +9,7 @@ import { new_high_vol } from './conditions/new_high_vol';
 import { high_off_peak } from './conditions/high_off_peak';
 import { change_pct } from './conditions/change_pct';
 import { price_range } from './conditions/price_range';
+import { bollinger_breakout, bollinger_breakout_today } from './conditions/bollinger';
 import { ma } from './conditions/ma';
 import { ask_depth_new_high } from './conditions/ask_depth_new_high';
 import { bid_depth_new_high } from './conditions/bid_depth_new_high';
@@ -23,6 +24,7 @@ import type { CatalogEntry } from './conditions/types';
 // 빠뜨려도 테스트가 통과해 조건이 메뉴에서 사라지는 일이 있었다(#1021). 렌더에 쓰이지
 // 않는 두 번째 순서 목록은 두지 않는다.
 export const CONDITION_CATALOG: { [T in ConditionType]: CatalogEntry<T> } = {
+  bollinger_breakout, bollinger_breakout_today,
   trade_value, trade_value_period, new_high_today, new_high,
   new_high_vol_today, new_high_vol, high_off_peak, ask_depth_new_high, bid_depth_new_high,
   ask_depth_new_high_period, bid_depth_new_high_period,

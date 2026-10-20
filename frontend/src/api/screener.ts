@@ -77,6 +77,11 @@ export interface HighOffPeakParams extends CandleOptions { period: number; pct: 
 export type MaRelation = 'above' | 'below';
 export type MaSource = 'open' | 'high' | 'low' | 'close';
 export interface MaParams extends CandleOptions { period: number; relation: MaRelation; source?: MaSource }
+export type BollingerBand = 'upper' | 'lower';
+export interface BollingerBreakoutParams extends CandleOptions {
+  period: number; multiplier: number; source: MaSource; band_source: MaSource; band: BollingerBand;
+}
+export interface BollingerBreakoutPeriodParams extends BollingerBreakoutParams { lookback: number }
 // 매도/매수 총잔량 분봉 peak 신고: 당일 peak ≥ (threshold_pct/100) × 지난 N일 peak.
 export interface DepthPeakParams { lookback: number; threshold_pct: number }
 // 기간내 매도/매수 총잔량 peak: 최근 lookback 거래일 중 **어느 하루 d 라도**
@@ -100,6 +105,8 @@ export type ConditionLeaf =
   | { id: string; type: 'change_pct'; params: ChangePctParams }
   | { id: string; type: 'price_range'; params: PriceRangeParams }
   | { id: string; type: 'ma'; params: MaParams }
+  | { id: string; type: 'bollinger_breakout_today'; params: BollingerBreakoutParams }
+  | { id: string; type: 'bollinger_breakout'; params: BollingerBreakoutPeriodParams }
   | { id: string; type: 'ask_depth_new_high'; params: DepthPeakParams }
   | { id: string; type: 'bid_depth_new_high'; params: DepthPeakParams }
   | { id: string; type: 'ask_depth_new_high_period'; params: DepthPeakPeriodParams }

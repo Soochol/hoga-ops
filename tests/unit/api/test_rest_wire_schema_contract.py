@@ -532,6 +532,7 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     "ChangeReference": (frozenset(get_args(m.ChangeReference)), "frontend/src/api/screener.ts"),
     "TradeValueMethod": (frozenset(get_args(m.TradeValueMethod)), "frontend/src/api/screener.ts"),
+    "BollingerBand": (frozenset(get_args(m.BollingerBand)), "frontend/src/api/screener.ts"),
     "MaSource": (frozenset(get_args(m.MaSource)), "frontend/src/api/screener.ts"),
     "ScreenerTimeframe": (frozenset(get_args(m.ScreenerTimeframe)), "frontend/src/api/screener.ts"),
     "InvestorEstimateWarningReason": (

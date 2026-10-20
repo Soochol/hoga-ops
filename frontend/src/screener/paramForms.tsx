@@ -8,9 +8,9 @@ export function SectionLabel({ children }: { children: ReactNode }) {
   return <div className="text-2xs font-semibold uppercase text-fg-dim">{children}</div>;
 }
 
-export function Num({ value, onChange, label, ariaLabel, suffix, placeholder, min, max }: {
+export function Num({ value, onChange, label, ariaLabel, suffix, placeholder, min, max, step }: {
   value: number | undefined; onChange: (n: number | undefined) => void;
-  label?: string; ariaLabel?: string; suffix?: string; placeholder?: string; min?: number; max?: number;
+  label?: string; ariaLabel?: string; suffix?: string; placeholder?: string; min?: number; max?: number; step?: number;
 }) {
   // Keep typing unrestricted; clamp only on blur. These bounds mirror the server.
   const commit = (raw: string) => {
@@ -28,7 +28,7 @@ export function Num({ value, onChange, label, ariaLabel, suffix, placeholder, mi
   return <label className="condition-field">
     <span className="condition-field-label">{label ?? ariaLabel}</span>
     <span className="condition-input-wrap">
-      <input type="number" inputMode="decimal" aria-label={ariaLabel ?? label} min={min} max={max}
+      <input type="number" inputMode="decimal" aria-label={ariaLabel ?? label} min={min} max={max} step={step}
         value={value ?? ''} placeholder={placeholder} onChange={e => commit(e.target.value)}
         onBlur={e => clampOnBlur(e.target.value)} className="font-data" />
       {suffix && <span className="condition-unit">{suffix}</span>}

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_bar_price, screener_bar_threshold, screener_exclusions, trading_days
+from hoga.api import screener_bar_price, screener_bar_threshold, screener_bollinger, screener_exclusions, trading_days
 from hoga.api.models import (
     BarVolumeCoverage,
     BarVolumeCoverageItem,
@@ -28,6 +28,7 @@ from hoga.api.models import (
     ScreenerOccurrence,
 )
 from hoga.api.screener_bar_policy import (
+    BOLLINGER_TYPES,
     CANDLE_TYPES,
     RANGE_PARAMS,
     TRADE_VALUE_TYPES,
@@ -85,12 +86,17 @@ class Evaluation:
     events: dict[str, list[tuple[str, ScreenerOccurrence]]] = field(default_factory=dict)
 
 
+_SPECIAL_RECORDS = {
+    **dict.fromkeys(BOLLINGER_TYPES, screener_bollinger.records),
+    **dict.fromkeys(TRADE_VALUE_TYPES, screener_bar_threshold.turnover_records),
+    "change_pct": screener_bar_threshold.change_records,
+}
+
+
 def records(leaf, bars: list[VolumeBar], *, fetched_at_ms: int):
     """Each event uses its own trailing window; later bars never alter history."""
-    if leaf.type in TRADE_VALUE_TYPES:
-        return screener_bar_threshold.turnover_records(leaf, bars, fetched_at_ms=fetched_at_ms)
-    if leaf.type == "change_pct":
-        return screener_bar_threshold.change_records(leaf, bars, fetched_at_ms=fetched_at_ms)
+    if handler := _SPECIAL_RECORDS.get(leaf.type):
+        return handler(leaf, bars, fetched_at_ms=fetched_at_ms)
     if leaf.type not in VOLUME_TYPES:
         return screener_bar_price.records(leaf, bars, fetched_at_ms=fetched_at_ms)
     p = leaf.params

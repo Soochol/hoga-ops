@@ -2002,6 +2002,21 @@ class MaParams(CandleParams):
     relation: Literal["above", "below"]                # source >= SMA(source) / source <= SMA(source)
     source: MaSource = "close"
 
+BollingerBand = Literal["upper", "lower"]
+
+
+class BollingerBreakoutParams(CandleParams):
+    period: int = Field(default=20, ge=2, le=1000)
+    multiplier: float = Field(default=2.0, ge=0.1, le=10, allow_inf_nan=False)
+    source: MaSource = "close"
+    band_source: MaSource = "close"
+    band: BollingerBand = "upper"
+
+
+class BollingerBreakoutPeriodParams(BollingerBreakoutParams):
+    lookback: int = Field(default=5, ge=1, le=1000)
+
+
 class HighOffPeakParams(CandleParams):                  # 신고가 대비 고가 위치
     period: int = Field(ge=1)                          # N: 선택 주기의 고가 비교 봉수
     pct: float = Field(ge=0)                           # 고점 대비 하락 허용폭(%). 양수, 라벨에 "−" 표기
@@ -2113,6 +2128,18 @@ class MaLeaf(BaseModel):
     id: str
     params: MaParams
 
+class BollingerBreakoutTodayLeaf(BaseModel):
+    type: Literal["bollinger_breakout_today"] = "bollinger_breakout_today"
+    id: str
+    params: BollingerBreakoutParams
+
+
+class BollingerBreakoutLeaf(BaseModel):
+    type: Literal["bollinger_breakout"] = "bollinger_breakout"
+    id: str
+    params: BollingerBreakoutPeriodParams
+
+
 class HighOffPeakLeaf(BaseModel):
     type: Literal["high_off_peak"] = "high_off_peak"
     id: str
@@ -2149,7 +2176,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -2339,7 +2366,8 @@ class ScreenerExclusionWrite(BaseModel):
             if day != self.date:
                 raise ValueError("봉 시작 시각과 발생 날짜가 다릅니다")
             if self.condition.type not in {"new_high_vol", "new_high_vol_today", "new_high", "new_high_today",
-                                           "high_off_peak", "ma", "trade_value", "trade_value_period", "change_pct"}:
+                                           "high_off_peak", "ma", "trade_value", "trade_value_period", "change_pct",
+                                           "bollinger_breakout_today", "bollinger_breakout"}:
                 raise ValueError("봉 시각은 주기별 가격·거래량 조건에서만 사용합니다")
         return self
 
