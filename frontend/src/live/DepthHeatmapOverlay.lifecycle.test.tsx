@@ -7,12 +7,12 @@ import { createVirtualAxis } from '../util/virtualAxis';
 import type { PaneSeriesMap } from '../chart/drawing/chartCoordinates';
 
 const mocks = vi.hoisted(() => ({
-  setCells: vi.fn(), register: vi.fn(), unregister: vi.fn(),
-  prefs: { depthHeatmapIntraMax: false, depthHeatmapPerPriceMax: false, depthHeatmapTopLevelsOnly: false, depthHeatmapTopLevelCount: 1 },
+  setCells: vi.fn(), setZOrder: vi.fn(), register: vi.fn(), unregister: vi.fn(),
+  prefs: { depthHeatmapAboveCandles: false, depthHeatmapIntraMax: false, depthHeatmapPerPriceMax: false, depthHeatmapTopLevelsOnly: false, depthHeatmapTopLevelCount: 1 },
   indicators: { depthHeatmapEnabled: true, depthHeatmapHidden: false, depthHeatmapBidColor: '#F04452', depthHeatmapAskColor: '#3485FA', depthHeatmapMaxOpacity: 1 },
 }));
 vi.mock('../chart/DepthHeatmapPrimitive', () => ({
-  DepthHeatmapPrimitive: class { setCells = mocks.setCells; },
+  DepthHeatmapPrimitive: class { setCells = mocks.setCells; setZOrder = mocks.setZOrder; },
 }));
 vi.mock('../state/chartPrefs', () => ({ useActivePrefs: (selector: (p: typeof mocks.prefs) => unknown) => selector(mocks.prefs) }));
 vi.mock('./workspace/windowView', () => ({
@@ -56,6 +56,7 @@ function makeChart(initial: { from: number; to: number } | null) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.prefs.depthHeatmapAboveCandles = false;
   mocks.indicators.depthHeatmapEnabled = true;
   mocks.indicators.depthHeatmapHidden = false;
   frames = new Map(); frameId = 0;
@@ -65,6 +66,30 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('DepthHeatmapOverlay viewport lifecycle', () => {
+  it('캔들 앞뒤 전환은 기존 primitive와 셀·가시범위를 유지하고 새 시리즈에도 적용한다', () => {
+    const api = makeChart({ from: 120, to: 240 });
+    const points = [point(180_000, 600)];
+    const view = render(<DepthHeatmapOverlay chart={api.chart} paneSeries={paneSeries} axis={axis} points={points} />);
+    flushFrame();
+    expect(mocks.setZOrder).toHaveBeenLastCalledWith('bottom');
+    const cells = mocks.setCells.mock.lastCall![0];
+    mocks.setCells.mockClear();
+    mocks.prefs.depthHeatmapAboveCandles = true;
+    // The mocked selector has no subscription; change a prop identity to pass memo.
+    view.rerender(<DepthHeatmapOverlay chart={api.chart} paneSeries={new Map(paneSeries)} axis={axis} points={points} />);
+    expect(mocks.setZOrder).toHaveBeenLastCalledWith('normal');
+    expect(paneSeries.get('candle')!.attachPrimitive).toHaveBeenCalledTimes(1);
+    expect(paneSeries.get('candle')!.detachPrimitive).not.toHaveBeenCalled();
+    expect(mocks.setCells).not.toHaveBeenCalled();
+    expect(frames.size).toBe(0);
+
+    const next = { attachPrimitive: vi.fn(), detachPrimitive: vi.fn() };
+    view.rerender(<DepthHeatmapOverlay chart={api.chart} paneSeries={new Map([['candle', next as never]])} axis={axis} points={points} />);
+    expect(next.attachPrimitive).toHaveBeenCalledTimes(1);
+    expect(mocks.setZOrder).toHaveBeenLastCalledWith('normal');
+    expect(mocks.setCells).toHaveBeenLastCalledWith(cells);
+  });
+
   it('첫 프레임에는 전체 셀을 만들지 않고, 범위를 읽은 뒤 화면 안 잔량으로 정규화한다', () => {
     const points = [point(60_000, 9000), point(180_000, 600)];
     const api = makeChart({ from: 120, to: 240 });

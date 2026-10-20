@@ -71,6 +71,75 @@ async function scaleFixtures(page: Page) {
   } }));
 }
 
+test('잔량 히트맵 앞뒤 전환이 실제 겹친 픽셀에 반영되고 캔들 우선 설정·다른 창과 독립적이다', async ({ page }, info) => {
+  await setup(page);
+  await scaleFixtures(page);
+  const start = Date.UTC(2026, 4, 27, 0);
+  const candles = Array.from({ length: 5 }, (_, i) => ({
+    t_ms: start + i * 60_000, open: 35_000, high: 35_150, low: 34_950, close: 35_100, volume: 1000,
+  }));
+  await page.route(apiExact('live/past-candles'), route => route.fulfill({ json: {
+    code: '098460', from: '20260527', to: '20260528', candles,
+    cached_dates: ['20260527'], fresh_dates: [], data_warnings: [],
+  } }));
+  await page.route(apiExact('range'), route => route.fulfill({ json: {
+    code: '098460', from_date: '20260527', to_date: '20260527', bucket_ms: 60_000,
+    segments: [{ date: '20260527', session_open_ms: start, session_close_ms: start + 23_400_000, source: 'hogaplay' }],
+    candles: [], quote_ratio: { bucket_ms: 60_000, points: [] }, fill_strength: { bucket_ms: 60_000, points: [] },
+    volume_profile_range: { bin_count: 0, price_min: 0, price_max: 0, bin_width: 0, bins: [] },
+    volume_profile_by_day: [], excluded_dates: [], data_warnings: [],
+    depth_heatmap: candles.map(c => ({ t_ms: c.t_ms, asks: [[35_050, 900]], bids: [[35_000, 500]] })),
+  } }));
+  await page.goto('/live');
+  await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts?.size)).toBe(2);
+  await page.evaluate(async () => {
+    const path = '/src/state/livePage.ts';
+    const { useLivePageStore } = await import(path);
+    for (const id of ['a', 'b']) useLivePageStore.getState().patchIndicatorsScoped({ windowKey: `live:${id}` }, '1m', {
+      depthHeatmapEnabled: true, depthHeatmapHidden: false, depthHeatmapMaxOpacity: 1,
+      depthHeatmapAskColor: '#3485FA', depthHeatmapBidColor: '#F04452',
+    });
+  });
+
+  const pixel = (id: string) => page.evaluate(id => {
+    const chart = (window as ChartsWindow).__liveCharts?.get(id);
+    const candle = chart?.panes()[0]?.getSeries().find(s => s.seriesType() === 'Candlestick');
+    const row = candle?.data()[2];
+    if (!chart || !candle || !row) return null;
+    const x = chart.timeScale().timeToCoordinate(row.time), y = candle.priceToCoordinate(35_050);
+    if (x === null || y === null) return null;
+    const canvas = chart.takeScreenshot();
+    const rect = chart.chartElement().getBoundingClientRect();
+    return [...canvas.getContext('2d')!.getImageData(
+      Math.round(x * canvas.width / rect.width), Math.round(y * canvas.height / rect.height), 1, 1,
+    ).data].slice(0, 3);
+  }, id);
+  const blue = [52, 133, 250];
+  for (const onTop of [false, true]) {
+    let panel = await open(page, 'a');
+    const candleToggle = panel.getByRole('switch', { name: '캔들이 항상 위', exact: true });
+    if (await candleToggle.getAttribute('aria-checked') !== String(onTop)) await candleToggle.click();
+    await page.keyboard.press('Escape');
+    await expect.poll(() => page.evaluate(() => (window as ChartsWindow).__liveCharts?.get('a')?.panes()[0]?.getSeries()
+      .find(s => s.seriesType() === 'Candlestick')?.data().length)).toBe(5);
+    await page.evaluate(() => {
+      for (const chart of (window as ChartsWindow).__liveCharts!.values()) chart.timeScale().setVisibleLogicalRange({ from: -2, to: 7 });
+    });
+    await expect.poll(() => pixel('a')).not.toEqual(blue);
+    panel = await open(page, 'a');
+    const heatmap = panel.getByRole('switch', { name: '잔량 히트맵을 캔들 위에', exact: true });
+    await expect(heatmap).toHaveAttribute('aria-checked', 'false');
+    await heatmap.click();
+    await expect.poll(() => pixel('a')).toEqual(blue);
+    await expect.poll(() => pixel('b')).not.toEqual(blue);
+    if (onTop) await page.screenshot({ path: info.outputPath('heatmap-above-candles-settings.png') });
+    await panel.getByRole('button', { name: '되돌리기', exact: true }).click();
+    await expect(heatmap).toHaveAttribute('aria-checked', 'false');
+    await expect.poll(() => pixel('a')).not.toEqual(blue);
+    await page.keyboard.press('Escape');
+  }
+});
+
 for (const timeframe of ['1m', 'D', 'W', 'M']) {
   test(`${timeframe}: 로그·반전·색상 교환 조합의 좌표, 가격 지표·드로잉, 하단 축과 가로 범위를 보존한다`, async ({ page }, info) => {
     const errors: string[] = [];

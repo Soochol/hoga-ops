@@ -32,7 +32,14 @@ export const CHART_DISPLAY_TOGGLES = [
   {
     key: 'candleAlwaysOnTop',
     label: '캔들이 항상 위',
-    description: '이동평균선 등 보조지표 위에 캔들을 그립니다.',
+    description: '이동평균선 등 보조지표 위에 캔들을 그립니다. 잔량 히트맵과의 순서는 아래 설정을 따릅니다.',
+    default: false,
+    group: 'candle',
+  },
+  {
+    key: 'depthHeatmapAboveCandles',
+    label: '잔량 히트맵을 캔들 위에',
+    description: '호가 잔량 히트맵을 캔들보다 앞에 표시합니다.',
     default: false,
     group: 'candle',
   },

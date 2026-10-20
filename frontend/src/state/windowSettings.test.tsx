@@ -17,6 +17,18 @@ beforeEach(() => {
 });
 
 describe('typed window settings lifecycle', () => {
+  it('defaults old heatmap layer settings to off and restores explicit choices through presets', () => {
+    expect(normalizeChartDisplayPrefs({}).depthHeatmapAboveCandles).toBe(false);
+    expect(normalizeChartDisplayPrefs({ depthHeatmapAboveCandles: 'true' }).depthHeatmapAboveCandles).toBe(false);
+    seedSettingsForWindow(chart('a'));
+    seedSettingsForWindow(chart('b'));
+    useWindowSettingsStore.getState().patch('a', 'chart', { depthHeatmapAboveCandles: true });
+    const payload = capturePresetPayload();
+    useWindowSettingsStore.getState().patch('a', 'chart', { depthHeatmapAboveCandles: false });
+    applyPresetPayload(payload, null);
+    expect(useWindowSettingsStore.getState().byWindow.a.chart?.depthHeatmapAboveCandles).toBe(true);
+    expect(useWindowSettingsStore.getState().byWindow.b.chart?.depthHeatmapAboveCandles).toBe(false);
+  });
   it('migrates missing color-swap settings to on and preserves an explicit off setting through presets', () => {
     expect(normalizeChartDisplayPrefs({ candleInvertScale: true }).candleInvertColors).toBe(true);
     expect(normalizeChartDisplayPrefs({ candleInvertColors: 'invalid' }).candleInvertColors).toBe(true);
