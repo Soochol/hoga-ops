@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { WINDOW_KIND_LABEL } from '../../src/live/workspace/windowKindLabels';
+import { CHART_DISPLAY_TOGGLES } from '../../src/state/chartDisplayPrefs';
 
 async function resize(page: Page, frame: Locator, width: number) {
   const bounds = (await frame.boundingBox())!;
@@ -21,7 +22,7 @@ async function expectHeaderFits(frame: Locator) {
     const headerBounds = header.getBoundingClientRect();
     const actions = header.querySelector('.live-window-direct-actions')!.getBoundingClientRect();
     const close = header.lastElementChild!.getBoundingClientRect();
-    const buttons = Array.from(header.querySelectorAll('button'));
+    const buttons = Array.from(header.querySelectorAll('button')).filter(button => button.getBoundingClientRect().width > 0);
     const bounds = buttons.map(button => button.getBoundingClientRect()).sort((a, b) => a.left - b.left);
     return close.left - actions.right <= 4.1 && bounds.every((box, index) => box.width >= 20 && box.left >= headerBounds.left && box.right <= headerBounds.right
       && (index === 0 || box.left >= bounds[index - 1].right - 1)
@@ -126,6 +127,52 @@ test('체결 설정과 긴 금액 필터도 제목보다 아이콘 공간을 우
   await expect.poll(async () => (await frame.boundingBox())!.x).toBeGreaterThan(before.x + 20);
 });
 
+test('차트 헤더의 축 상태는 설정을 열고 최소 폭에서도 설정 버튼으로 확인된다', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.addInitScript(() => sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
+    windows: [{ id: 'scale-status', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: 0.5, h: 0.6 } }],
+    zOrder: ['scale-status'], groupSymbols: { 1: { code: '098460', name: '긴종목이름테스트삼성에스디에스' } },
+  })));
+  await installLiveMocks(page);
+  await page.goto('/live');
+  const frame = page.locator('[data-win="scale-status"]');
+  const header = frame.locator('.live-window-titlebar');
+  const settings = header.getByRole('button', { name: '차트 설정', exact: true });
+  const badge = header.locator('.live-chart-scale-status');
+  const dialog = page.getByRole('dialog', { name: '차트 설정', exact: true });
+  await expect(badge).toHaveCount(0);
+  await settings.click();
+  await dialog.getByRole('switch', { name: '로그 스케일', exact: true }).click();
+  await dialog.getByRole('switch', { name: '차트 거꾸로 보기', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(badge).toHaveText('로그반전');
+  const before = await frame.boundingBox();
+  await badge.click();
+  await expect(dialog).toBeVisible();
+  expect(await frame.boundingBox()).toEqual(before);
+  await page.keyboard.press('Escape');
+  for (const width of [420, 280, 240, 200, 160]) {
+    await resize(page, frame, width);
+    if (width > 240) await expect(badge).toBeVisible();
+    else await expect(badge).toBeHidden();
+    await expect(settings).toBeVisible();
+    await expect(settings).toHaveAttribute('title', '차트 설정 · 로그 스케일 켜짐 · 가격축 반전 켜짐');
+    await expectHeaderFits(frame);
+    if (width === 420 || width === 160) await frame.screenshot({ path: testInfo.outputPath(`scale-status-${width}.png`) });
+  }
+  await settings.click();
+  await expect(dialog.getByRole('switch', { name: '로그 스케일', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await dialog.getByRole('switch', { name: '로그 스케일', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await resize(page, frame, 420);
+  await expect(badge).toHaveText('반전');
+  await settings.click();
+  await dialog.getByRole('switch', { name: '차트 거꾸로 보기', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await expect(badge).toHaveCount(0);
+  await expect(settings).toHaveAttribute('title', '차트 설정');
+});
+
 test('차트 설정은 제목줄에서 열리고 각 창에 독립적으로 저장된다', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1100, height: 700 });
   await page.addInitScript(() => {
@@ -144,7 +191,7 @@ test('차트 설정은 제목줄에서 열리고 각 창에 독립적으로 저�
   const dialog = page.getByRole('dialog', { name: '차트 설정', exact: true });
   await settings.click();
   await expect(dialog.getByText('이 차트에 적용')).toBeVisible();
-  await expect(dialog.getByRole('switch')).toHaveCount(6);
+  await expect(dialog.getByRole('switch')).toHaveCount(CHART_DISPLAY_TOGGLES.length);
   const scale = dialog.getByRole('switch', { name: '캔들 기준 Y축', exact: true });
   await expect(scale).toHaveAttribute('aria-checked', 'false');
   await scale.click();

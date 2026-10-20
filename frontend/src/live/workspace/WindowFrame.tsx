@@ -16,7 +16,7 @@ import { WINDOW_KIND_LABEL as KIND_LABEL } from './windowKindLabels';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
 import { WindowSettingsPopover } from './WindowSettingsPopover';
 import { WindowHeaderActionsContext } from './WindowHeaderAction';
-import { ChartDisplaySettings } from './ChartDisplaySettings';
+import { ChartWindowSettings } from './ChartWindowSettings';
 import { TradeWindowSettings } from './TradeWindowSettings';
 import { formatTradeMinAmount } from '../../state/tradeWindowSettings';
 
@@ -173,8 +173,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
             aria-label={`체결금액 ${formatTradeMinAmount(tradeMinAmountManwon)} 이상 표시`}>{formatTradeMinAmount(tradeMinAmountManwon)} 이상</span>}
           <div className="live-window-direct-actions">
             <span ref={setHeaderActions} className="live-window-header-actions-slot" />
-            {kind === 'chart' && <WindowSettingsPopover title="차트 설정" scope="이 차트에 적용" width={380}
-              render={() => <ChartDisplaySettings windowId={id} />} />}
+            {kind === 'chart' && <ChartWindowSettings windowId={id} />}
             {kind === 'trade' && onTradeMinAmountChange && <WindowSettingsPopover title="체결창 설정"
               render={close => <TradeWindowSettings minAmountManwon={tradeMinAmountManwon}
                 onApply={amount => { onTradeMinAmountChange(amount); close(); }} />} />}

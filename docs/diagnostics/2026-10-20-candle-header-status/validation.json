@@ -1,0 +1,80 @@
+{
+  "validated_at_kst": "2026-10-20T20:15:54.164876+09:00",
+  "head_sha": "049cfa664257c0bf4b55855b12b0df1beec4e54a",
+  "base_sha": "049cfa664257c0bf4b55855b12b0df1beec4e54a",
+  "state": "Uncommitted working tree over HEAD; fetched origin/main matches HEAD.",
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed: app, unit-test and E2E projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/workspace/ChartWindowSettings.test.tsx src/live/workspace/WindowFrame.test.tsx src/live/workspace/WindowFrame.pin.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx src/state/windowSettings.test.tsx src/live/workspace/WorkspaceCanvas.resize.test.tsx src/live/workspace/WorkspaceCanvas.errorBoundary.test.tsx",
+      "result": "7 files / 59 tests passed"
+    },
+    {
+      "command": "cd frontend && npm run build",
+      "result": "passed; existing large-chunk warning remains"
+    },
+    {
+      "command": "cd frontend && npx playwright test chart-window-settings.spec.ts live-window-actions.spec.ts titlebar-layout.spec.ts --grep '축 상태|차트 설정|chart:|로그·반전|표시 옵션|워크스페이스 메뉴|chart header' --reporter=list",
+      "result": "13 passed; system Chrome, workers=1"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "Active-only log/inversion badges in chart window title bar, four states and window independence",
+    "Badge opens its own settings without moving the window; immediate status update and undo",
+    "1m/D/W/M, new-window copy, reload/new-tab restoration, subject/timeframe changes and presets",
+    "420/280px badges; 240/200/160px settings highlight and tooltip, all window actions reachable",
+    "Existing chart price-axis/candle/drawing behavior and 320/500/700/1000px title quote spacing"
+  ],
+  "visual_review": "Inspected 420px and 160px chart screenshots. Badges sit beside the settings button; the narrow header retains its highlighted settings and action buttons.",
+  "screenshots": [
+    "scale-status-420.png",
+    "scale-status-160.png"
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 155.0.8059.84",
+    "e2e_backend_port": 20151,
+    "e2e_frontend_port": 21151,
+    "vendor_credentials": "Blank values from Playwright config"
+  },
+  "fingerprint_recipe": "Sorted existing git ls-files --cached --others --exclude-standard files under each scope; SHA256 of UTF-8 newline-joined path + NUL + file SHA256 hex, no trailing newline. Includes new source and test files.",
+  "input_fingerprints": {
+    "frontend": {
+      "file_count": 1774,
+      "sha256": "46a3d2a42e778410eae6cde4ff8a38552ee2853d6aae9e321730f57504afc1fb"
+    },
+    "backend": {
+      "file_count": 290,
+      "sha256": "a813d7b2df622ed43828963baf1474b2c569df6e2190884f9b2dd58fd64eb866"
+    },
+    "fixtures": {
+      "file_count": 26,
+      "sha256": "c5f9bbd6c6128e7ce7dd9a51b8c995d95affd0c1f0bec29be45a3ea301ca799c"
+    },
+    "python_dependencies": {
+      "file_count": 3,
+      "sha256": "89415a907ab0b81d1e4d1bfa650cc553e016d044fcbc843def6e4b764d094262"
+    }
+  },
+  "changed_file_sha256": {
+    "DESIGN.md": "b7a7adf89bc386d215dad58d42070fff95b8c5adf5d1b39cb7f25aefa7b1eb8e",
+    "docs/agents/window-settings.md": "07dd009c0a009e8c8b943e501731e58a26e266dbeaad42825f22614a7e5526db",
+    "frontend/src/live/LiveWorkspace.css": "751473e043bcd5efd28aed37c5321b41f40cdb2d5a602956433c3b3d8f907e59",
+    "frontend/src/live/workspace/ChartWindowSettings.test.tsx": "cf24a571327c4f02fc4adf3736b98b59e9565d6ced53856eb3623b093c2adfe5",
+    "frontend/src/live/workspace/ChartWindowSettings.tsx": "4d7312cc8d8328ec534e43c52442f379b1bafc9d8fb8a46b2fcb9801904238a5",
+    "frontend/src/live/workspace/WindowFrame.tsx": "8f4f1738aa4b74ac6f0d8d6e6a8458589dcc76319dab058a27a93cab0d22c431",
+    "frontend/src/live/workspace/WindowSettingsPopover.tsx": "79117eeec6540f4dfefff60f5d22d01fe42162a75ec68e50cc5dd0418ee94890",
+    "frontend/tests/e2e/chart-window-settings.spec.ts": "f191669ad5bb2c3ee98e85518f1220d8479edf75e71f7d7b2fe57d4f78641073",
+    "frontend/tests/e2e/live-window-actions.spec.ts": "cb144d5bd175607acaa144a2f36db4bc10f5b43865b08b0cb9fda343d8c2b9ad"
+  },
+  "scope": "Header state UI only; candle/volume color behavior unchanged. No backend/API/dependency changes."
+}

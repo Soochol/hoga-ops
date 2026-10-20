@@ -48,6 +48,11 @@
 .live-window-titlebar > .live-symbol-row,
 .live-window-titlebar > .major-indices-header { flex: 1 1 0; min-width: 0; overflow: hidden; }
 .live-window-title-meta { flex: 0 1 auto; min-width: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-chart-header-settings { display: inline-flex; align-items: center; gap: var(--space-xs); }
+.live-chart-header-settings > .live-chart-scale-status { display: inline-flex; width: auto; height: auto; align-items: center; gap: var(--space-2xs); padding: 0; white-space: nowrap; }
+.live-chart-scale-badge { border-radius: var(--radius-sm); padding: 0 var(--space-xs); font-size: var(--live-text-meta); color: var(--fg-dim); background: var(--tint-neutral); }
+.live-chart-scale-badge[data-inverted] { color: var(--accent); background: var(--tint-selection); }
+.live-chart-header-settings[data-active] > .live-window-settings { color: var(--accent); background: var(--tint-selection); }
 .live-window-titlebar > span:first-child { flex-shrink: 0; }
 .live-window-chart .live-window-titlebar { min-height: 2rem; padding-block: var(--space-xs); }
 .live-symbol-row { display: flex; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; align-items: center; gap: var(--space-xs); }
@@ -121,6 +126,8 @@
   .live-window .live-window-titlebar > button,
   .live-window-direct-actions button { width: 1.25rem; height: 1.25rem; }
   .live-window-direct-actions { gap: 0; }
+  .live-chart-header-settings { gap: 0; }
+  .live-chart-header-settings > .live-chart-scale-status { display: none; }
   .live-window-title-meta { display: none; }
 }
 @container (max-width: 180px) {
