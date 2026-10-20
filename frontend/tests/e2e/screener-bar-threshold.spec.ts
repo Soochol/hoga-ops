@@ -43,11 +43,11 @@ test('turnover, period turnover and referenced change preserve independent candl
   const amount = page.getByRole('group', { name: '거래대금 조건', exact: true });
   const period = page.getByRole('group', { name: '기간내 거래대금 조건', exact: true });
   const change = page.getByRole('group', { name: '등락률 조건', exact: true });
-  await amount.getByRole('group', { name: '봉 주기', exact: true }).getByRole('button', { name: '분', exact: true }).click();
+  await amount.getByRole('combobox', { name: '봉 주기', exact: true }).selectOption('5m');
   await amount.getByLabel('최소 거래대금(억)').fill('1.5');
-  await period.getByRole('group', { name: '봉 주기', exact: true }).getByRole('button', { name: '주', exact: true }).click();
+  await period.getByRole('combobox', { name: '봉 주기', exact: true }).selectOption('W');
   await period.getByLabel('최근 기간(봉)').fill('4');
-  await change.getByRole('group', { name: '봉 주기', exact: true }).getByRole('button', { name: '월', exact: true }).click();
+  await change.getByRole('combobox', { name: '봉 주기', exact: true }).selectOption('M');
   await change.getByLabel('등락률 비교 기준').selectOption('previous_bar');
   await change.getByLabel('등락률(%)').fill('80');
   await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
@@ -56,8 +56,8 @@ test('turnover, period turnover and referenced change preserve independent candl
     include_open_bar: true, change_reference: 'previous_bar' });
   await expect(page.getByRole('button', { name: '저장본으로 되돌리기', exact: true })).toHaveCount(0);
   await page.reload();
-  await expect(amount.getByLabel('분봉 간격')).toHaveValue('5m');
-  await expect(period.getByRole('group', { name: '봉 주기', exact: true }).getByRole('button', { name: '주', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(amount.getByRole('combobox', { name: '봉 주기', exact: true })).toHaveValue('5m');
+  await expect(period.getByRole('combobox', { name: '봉 주기', exact: true })).toHaveValue('W');
   await expect(period.getByLabel('최근 기간(봉)')).toHaveValue('4');
   await expect(change.getByLabel('등락률 비교 기준')).toHaveValue('previous_bar');
   await expect(change.getByLabel('등락률(%)')).toHaveValue('80');
@@ -70,13 +70,13 @@ test('turnover, period turnover and referenced change preserve independent candl
   for (const field of ['bar_trade_value_match', 'daily_estimate_sum', 'ohlcv_estimate', 'bar_change_match', 'previous_bar']) {
     expect(csv).toContain(field);
   }
-  await period.getByRole('group', { name: '거래대금 검색 기간', exact: true }).getByRole('button', { name: '날짜 범위', exact: true }).click();
+  await period.getByRole('combobox', { name: '거래대금 검색 기간', exact: true }).selectOption('date_range');
   await period.getByLabel('거래대금 발생 시작일').fill('2026-07-01');
   await period.getByLabel('거래대금 발생 종료일').fill('2026-07-30');
-  await period.getByRole('group', { name: '봉 주기', exact: true }).getByRole('button', { name: '월', exact: true }).click();
+  await period.getByRole('combobox', { name: '봉 주기', exact: true }).selectOption('M');
   await expect(period.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   await change.getByLabel('등락률 비교 기준').selectOption('bar_open');
-  await change.getByRole('group', { name: '등락률 연산', exact: true }).getByRole('button', { name: '범위', exact: true }).click();
+  await change.getByRole('combobox', { name: '등락률 연산', exact: true }).selectOption('between');
   await change.getByLabel('등락률 하한(%)').fill('50');
   await change.getByLabel('등락률 상한(%)').fill('150');
   await page.getByRole('button', { name: '조회', exact: true }).click();
@@ -87,7 +87,7 @@ test('turnover, period turnover and referenced change preserve independent candl
   await page.screenshot({ path: testInfo.outputPath('bar-threshold-wide.png'), fullPage: true });
   await page.setViewportSize({ width: 768, height: 1000 });
   for (const card of [amount, period, change]) {
-    const input = card.getByRole('group', { name: '봉 주기', exact: true });
+    const input = card.getByRole('combobox', { name: '봉 주기', exact: true });
     await input.scrollIntoViewIfNeeded();
     await expect(input).toBeVisible();
     const bounds = await card.boundingBox();

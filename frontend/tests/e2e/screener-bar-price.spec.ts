@@ -4,7 +4,6 @@ import type { ConditionLeaf, ScanRequest } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
 import { installLiveMocks } from './helpers/liveMocks';
 
-const timeframeNames: Record<string, string> = { minute: '분', D: '일', W: '주', M: '월' };
 
 test('five candle conditions preserve independent timeframes, counts and policy after save/reload', async ({ page }, testInfo) => {
   await installLiveMocks(page);
@@ -41,12 +40,11 @@ test('five candle conditions preserve independent timeframes, counts and policy 
         })) }] } });
   });
   await page.goto('/screener');
-  await expect(page.getByRole('group', { name: '봉 주기', exact: true })).toHaveCount(5);
-  for (const [index, value] of ['minute', 'W', 'minute', 'M', 'D'].entries()) {
-    await page.getByRole('group', { name: '봉 주기', exact: true }).nth(index).getByRole('button', { name: timeframeNames[value], exact: true }).click();
+  await expect(page.getByRole('combobox', { name: '봉 주기', exact: true })).toHaveCount(5);
+  for (const [index, value] of ['5m', 'W', '3m', 'M', 'D'].entries()) {
+    await page.getByRole('combobox', { name: '봉 주기', exact: true }).nth(index).selectOption(value);
     await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   }
-  await page.getByLabel('분봉 간격').nth(1).selectOption('3m');
   await page.getByLabel('최근 기간(봉)').fill('4');
   await page.getByLabel('신고 기준 기간(봉)').nth(0).fill('12');
   await page.getByLabel('MA 기준가격').selectOption('low');
@@ -54,8 +52,8 @@ test('five candle conditions preserve independent timeframes, counts and policy 
   await expect.poll(() => saved.conditions[0].params).toMatchObject({ timeframe: '5m', period: 12, include_open_bar: true });
   await expect(page.getByRole('button', { name: '저장본으로 되돌리기', exact: true })).toHaveCount(0);
   await page.reload();
-  for (const [index, value] of ['minute', 'W', 'minute', 'M', 'D'].entries()) {
-    await expect(page.getByRole('group', { name: '봉 주기', exact: true }).nth(index).getByRole('button', { name: timeframeNames[value], exact: true })).toHaveAttribute('aria-pressed', 'true');
+  for (const [index, value] of ['5m', 'W', '3m', 'M', 'D'].entries()) {
+    await expect(page.getByRole('combobox', { name: '봉 주기', exact: true }).nth(index)).toHaveValue(value);
     await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   }
   await expect(page.getByLabel('최근 기간(봉)')).toHaveValue('4');
@@ -74,7 +72,7 @@ test('five candle conditions preserve independent timeframes, counts and policy 
   await page.setViewportSize({ width: 768, height: 1000 });
   for (const label of ['신고가', '기간내 신고가', '신고거래량', '신고가 대비 고가', '이동평균']) {
     const card = page.getByRole('group', { name: `${label} 조건`, exact: true });
-    const control = card.getByRole('group', { name: '봉 주기', exact: true });
+    const control = card.getByRole('combobox', { name: '봉 주기', exact: true });
     await control.scrollIntoViewIfNeeded();
     await expect(control).toBeVisible();
     const bounds = await card.boundingBox();

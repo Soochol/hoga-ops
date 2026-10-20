@@ -1,8 +1,7 @@
-import { useId, useState, type DragEvent } from 'react';
+import type { DragEvent } from 'react';
 import type { ConditionLeaf } from '../api/screener';
-import { ChevronIcon } from '../ui/ChevronIcon';
+import { useTextTooltip } from '../ui/useTextTooltip';
 import { catalogEntry } from './catalog';
-import { conditionScope } from './conditionScope';
 import './ConditionEditor.css';
 
 export function ConditionRow({
@@ -34,8 +33,7 @@ export function ConditionRow({
 }) {
   const entry = catalogEntry(leaf.type);
   const ParamForm = entry.ParamForm;
-  const [expanded, setExpanded] = useState(true);
-  const editorId = useId();
+  const help = useTextTooltip(entry.help ?? '');
   return (
     <div role="group" aria-label={`${entry.label} 조건`} onDragOver={onDragOver} onDrop={onDrop}
       className="screener-condition" data-dragging={dragging || undefined}>
@@ -51,23 +49,19 @@ export function ConditionRow({
           disabled={!draggable}>
           ⋮⋮
         </button>
-        <button type="button" className="condition-toggle" aria-expanded={expanded}
-          aria-controls={editorId} aria-label={`${entry.label} ${expanded ? '접기' : '펼치기'}`}
-          onClick={() => setExpanded(value => !value)}>
-          <span className="condition-heading">
-            <span className="condition-name">{entry.label}</span>
-          </span>
-          <span className="condition-scope">{conditionScope(leaf)}</span>
-          <ChevronIcon collapsed={!expanded} />
-        </button>
+        <span className="condition-heading"><span className="condition-name">{entry.label}</span></span>
+        {entry.help && <button type="button" className="condition-icon-button"
+          aria-label={`${entry.label} 도움말`} aria-describedby={help.id}
+          onMouseEnter={e => help.show(e.currentTarget)} onMouseLeave={help.hide}
+          onFocus={e => help.showOnFocus(e.currentTarget)} onBlur={help.hide}
+          onClick={e => help.show(e.currentTarget)}>ⓘ</button>}
         <button type="button" aria-label="조건 제거" disabled={structureDisabled} onClick={onRemove}
           className="condition-icon-button">×</button>
       </div>
-      <div id={editorId} hidden={!expanded}>
-        <div className="condition-editor-body">
-          <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => onChange({ ...leaf, params } as ConditionLeaf)} />
-        </div>
+      <div className="condition-editor-body">
+        <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => onChange({ ...leaf, params } as ConditionLeaf)} />
       </div>
+      {help.tooltip}
     </div>
   );
 }

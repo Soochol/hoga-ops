@@ -19,13 +19,15 @@ const conditions: ConditionLeaf[] = [
   { id: 'time-ask', type: 'ask_depth_renewal', params: { start_hhmm: 1200, threshold_pct: 101 } },
   { id: 'time-bid', type: 'bid_depth_renewal', params: { start_hhmm: 1330, threshold_pct: 120 } },
   { id: 'ma', type: 'ma', params: { source: 'low', period: 20, relation: 'below', timeframe: '5m' } },
+  { id: 'bb-today', type: 'bollinger_breakout_today', params: { source: 'high', band_source: 'close', band: 'upper', period: 20, multiplier: 2 } },
+  { id: 'bb-period', type: 'bollinger_breakout', params: { source: 'low', band_source: 'close', band: 'lower', period: 20, multiplier: 2, lookback: 5 } },
   { id: 'rate', type: 'change_pct', params: { op: 'between', lo: -5, hi: 150, change_reference: 'bar_open' } },
 ];
 const labels = ['현재가 범위', '거래대금', '기간내 거래대금', '신고가', '기간내 신고가', '신고거래량', '기간내 신고거래량',
   '신고가 대비 고가', '매도 총잔량 peak', '매수 총잔량 peak', '기간내 매도 총잔량 peak', '기간내 매수 총잔량 peak',
-  '매도 총잔량 기준시각 돌파', '매수 총잔량 기준시각 돌파', '이동평균', '등락률'];
+  '매도 총잔량 기준시각 돌파', '매수 총잔량 기준시각 돌파', '이동평균', '볼린저밴드 돌파', '기간내 볼린저밴드 돌파', '등락률'];
 
-test('all 16 editors keep predicates through collapse, keyboard editing, reorder and scan', async ({ page }, testInfo) => {
+test('all 18 compact editors stay editable through keyboard editing, reorder and scan', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await installLiveMocks(page);
@@ -64,38 +66,47 @@ test('all 16 editors keep predicates through collapse, keyboard editing, reorder
   await builder.getByRole('group', { name: '신고가 조건', exact: true }).screenshot({ path: testInfo.outputPath('condition-single-focus.png') });
   for (const label of labels) {
     const card = builder.getByRole('group', { name: `${label} 조건`, exact: true });
-    const toggle = card.getByRole('button', { name: `${label} 접기`, exact: true });
-    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    await toggle.click();
-    await expect(card.getByRole('spinbutton')).toHaveCount(0);
-    await expect(card.getByRole('button', { name: `${label} 펼치기`, exact: true })).toHaveAttribute('aria-expanded', 'false');
+    await expect(card.getByRole('spinbutton').first()).toBeVisible();
+    await expect(card.getByRole('button', { name: /접기|펼치기/ })).toHaveCount(0);
   }
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect.poll(() => scans.length).toBe(1);
   expect(scans[0].conditions).toEqual(conditions);
 
   const amount = builder.getByRole('group', { name: '거래대금 조건', exact: true });
-  const toggle = amount.getByRole('button', { name: '거래대금 펼치기' });
-  await toggle.focus();
-  await page.keyboard.press('Enter');
   await amount.getByLabel('최소 거래대금(억)').fill('500');
   await expect(amount.getByLabel('최소 거래대금(억)')).toHaveValue('500');
-  await amount.getByRole('button', { name: '거래대금 접기' }).click();
 
   // Native drag-and-drop must work with the compact rows as well as open forms.
-  await amount.getByRole('button', { name: '조건 순서 변경' }).dragTo(
-    builder.getByRole('group', { name: '현재가 범위 조건', exact: true }).getByRole('button', { name: '조건 순서 변경' }));
+  const handle = amount.getByRole('button', { name: '조건 순서 변경' });
+  const target = builder.getByRole('group', { name: '현재가 범위 조건', exact: true })
+    .getByRole('button', { name: '조건 순서 변경' });
+  // Reveal both handles before mouse-down: scrolling a clipped target mid-drag
+  // cancels Chromium's native drag gesture in the long, independently scrolling list.
+  await target.scrollIntoViewIfNeeded();
+  await handle.scrollIntoViewIfNeeded();
+  await handle.dragTo(target);
+  await expect(builder.getByRole('group', { name: '거래대금 조건', exact: true })
+    .getByRole('button', { name: 'A 거래대금 조합식에 입력' })).toBeVisible();
   await page.getByRole('button', { name: '저장', exact: true }).click();
   const expected = [
     { ...conditions[1], params: { ...conditions[1].params, min_eok: 500 } },
     conditions[0], ...conditions.slice(2),
   ];
   await expect.poll(() => saved.conditions).toEqual(expected);
+  await expect(page.getByRole('button', { name: '저장본으로 되돌리기', exact: true })).toHaveCount(0);
   await page.reload();
   await expect(amount.getByLabel('최소 거래대금(억)')).toHaveValue('500');
   await page.getByRole('button', { name: '조회', exact: true }).click();
   // Hydration may replay the previous scan before the explicit, edited request.
   await expect.poll(() => scans.at(-1)?.conditions).toEqual(expected);
+
+  const breakout = builder.getByRole('group', { name: '기간내 볼린저밴드 돌파 조건', exact: true });
+  await breakout.getByRole('button', { name: '기간내 볼린저밴드 돌파 도움말' }).click();
+  await expect(page.getByRole('tooltip')).toContainText('최신 봉을 포함한 기간');
+  await expect(breakout.getByLabel('볼린저 기간')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
 
   // Each editor's controls must fit its actual 23rem builder at both density scales.
   for (const [theme, size] of [['trading-desk', 16], ['ledger-studio', 20]] as const) {
@@ -114,13 +125,26 @@ test('all 16 editors keep predicates through collapse, keyboard editing, reorder
           .some(node => { const box = node.getBoundingClientRect(); return box.left < boundary.left - 1 || box.right > boundary.right + 1; });
       });
       expect(overflow, `${label} at ${size}px`).toBe(false);
-      if (label === '기간내 거래대금' || label === '기간내 신고거래량') {
-        const buttons = ['최근 N봉', '날짜 범위', '분', '일', '주', '월'];
-        const boxes = await Promise.all(buttons.map(name => card.getByRole('button', { name, exact: true }).boundingBox()));
-        expect(boxes.every(box => box !== null)).toBe(true);
-        const firstTop = boxes[0]!.y;
-        expect(boxes.every(box => Math.abs(box!.y - firstTop) <= 1), `${label} choices share a row at ${size}px`).toBe(true);
-      }
+      const height = (await card.boundingBox())!.height;
+      // Density changes scale the rows while their controls remain fully editable.
+      expect(height / size, `${label} has compact rows`).toBeLessThan(12);
+
+    }
+    for (const [name, modeLabel] of [['기간내 거래대금', '거래대금 검색 기간'], ['기간내 신고거래량', '거래량 검색 기간']]) {
+      const card = builder.getByRole('group', { name: `${name} 조건`, exact: true });
+      await card.getByRole('combobox', { name: modeLabel, exact: true }).selectOption('date_range');
+      const dateLabel = name === '기간내 거래대금' ? '거래대금' : '거래량';
+      await expect(card.getByLabel(`${dateLabel} 발생 시작일`)).toBeVisible();
+      await expect(card.getByLabel(`${dateLabel} 발생 종료일`)).toBeVisible();
+      const datesFit = await card.evaluate(element => {
+        const boundary = element.getBoundingClientRect();
+        return [...element.querySelectorAll<HTMLInputElement>('input[type="date"]')].every(input => {
+          const box = input.getBoundingClientRect();
+          return box.width > 0 && box.left >= boundary.left && box.right <= boundary.right;
+        });
+      });
+      expect(datesFit, `${name} date fields at ${size}px`).toBe(true);
+      await card.screenshot({ path: testInfo.outputPath(`${name}-${theme}.png`) });
     }
     await amount.scrollIntoViewIfNeeded();
     const amountInput = amount.getByLabel('최소 거래대금(억)');

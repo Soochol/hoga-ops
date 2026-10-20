@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import type { VolumeParams } from '../api/screener';
 import { screenerRequestKey } from '../api/screenerRequest';
 import { HistoryVolumeForm } from './HistoryVolumeForm';
 import { CONDITION_CATALOG } from './catalog';
 
-const choice = (label: string, name: string) => within(screen.getByRole('group', { name: label })).getByRole('button', { name });
-const timeframeNames: Record<string, string> = { minute: '분', D: '일', W: '주', M: '월' };
 
 function Editor({ initial = { lookback: 60, period: 250 } }: { initial?: VolumeParams }) {
   const [params, setParams] = useState(initial);
@@ -16,13 +14,12 @@ function Editor({ initial = { lookback: 60, period: 250 } }: { initial?: VolumeP
 
 it('changes minute/day/week/month without changing the candle counts', () => {
   render(<Editor />);
-  expect(choice('거래량 주기', '일')).toHaveAttribute('aria-pressed', 'true');
-  for (const timeframe of ['W', 'M', 'minute', 'D']) {
-    fireEvent.click(choice('거래량 주기', timeframeNames[timeframe]));
+  expect(screen.getByRole('combobox', { name: '거래량 주기' })).toHaveValue('D');
+  for (const timeframe of ['W', 'M', '3m', 'D']) {
+    fireEvent.change(screen.getByRole('combobox', { name: '거래량 주기' }), { target: { value: timeframe } });
     expect(screen.getByLabelText('최근 기간(봉)')).toHaveValue(60);
     expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue(250);
-    if (timeframe === 'minute') {
-      fireEvent.change(screen.getByLabelText('분봉 간격'), { target: { value: '3m' } });
+    if (timeframe === '3m') {
       expect(screen.getByRole('status')).toHaveTextContent('"timeframe":"3m"');
     }
   }
@@ -32,7 +29,7 @@ it('changes minute/day/week/month without changing the candle counts', () => {
 it('preserves date bounds when converting old daily history to candle counts', () => {
   render(<Editor initial={{ mode: 'date_range', start_date: '2019-01-01', end_date: '2022-12-31',
     record_period: { unit: 'years', value: 2 } }} />);
-  fireEvent.click(choice('거래량 주기', '월'));
+  fireEvent.change(screen.getByRole('combobox', { name: '거래량 주기' }), { target: { value: 'M' } });
   expect(screen.getByLabelText('거래량 발생 시작일')).toHaveValue('2019-01-01');
   expect(screen.getByRole('status')).toHaveTextContent('"unit":"bars"');
   expect(screen.getByLabelText('거래량 비교 기간')).toHaveValue(250);
@@ -51,11 +48,11 @@ describe('saved conditions', () => {
 
 it('keeps the open-bar policy and comparison count when switching the search window', () => {
   render(<Editor initial={{ lookback: 3, period: 12, timeframe: '5m', include_open_bar: true }} />);
-  fireEvent.click(choice('거래량 검색 기간', '날짜 범위'));
+  fireEvent.change(screen.getByRole('combobox', { name: '거래량 검색 기간' }), { target: { value: 'date_range' } });
   expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
   expect(screen.getByLabelText('거래량 비교 기간')).toHaveValue(12);
-  fireEvent.click(choice('거래량 검색 기간', '최근 N봉'));
+  fireEvent.change(screen.getByRole('combobox', { name: '거래량 검색 기간' }), { target: { value: 'recent' } });
   expect(screen.queryByLabelText('진행 중 봉 포함')).not.toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('"include_open_bar":true');
   expect(screen.getByLabelText('신고 기준 기간(봉)')).toHaveValue(12);

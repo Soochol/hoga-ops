@@ -170,9 +170,6 @@ test('Ctrl+Z and redo share typing, presets and token edits without crossing con
 
   // Reorder remaps A to B. Undo must never restore the old letter's different meaning.
   await input.fill('A');
-  for (const label of ['거래대금', '신고가']) {
-    await builder.getByRole('button', { name: `${label} 접기`, exact: true }).click();
-  }
   await builder.getByRole('group', { name: '신고가 조건', exact: true }).getByRole('button', { name: '조건 순서 변경' })
     .dragTo(builder.getByRole('group', { name: '거래대금 조건', exact: true }).getByRole('button', { name: '조건 순서 변경' }));
   await expect(input).toHaveValue('B');
@@ -240,9 +237,6 @@ test('expression editing, validation, reorder, persistence and drawer use the sa
   await formula.fill('A AND (B OR C)');
 
   // Moving the volume condition to the top must keep the same leaf IDs in the expression.
-  for (const label of ['거래대금', '신고가', '신고거래량']) {
-    await builder.getByRole('button', { name: `${label} 접기`, exact: true }).click();
-  }
   const volume = builder.getByRole('group', { name: '신고거래량 조건', exact: true });
   const amount = builder.getByRole('group', { name: '거래대금 조건', exact: true });
   await volume.getByRole('button', { name: '조건 순서 변경' }).dragTo(amount.getByRole('button', { name: '조건 순서 변경' }));

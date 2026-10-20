@@ -17,18 +17,17 @@ function BollingerFields({ params, onChange }: {
   params: BollingerBreakoutParams; onChange: (patch: Partial<BollingerBreakoutParams>) => void;
 }) {
   return <>
-    <Select label="돌파 비교가격" value={params.source} onChange={source => onChange({ source })} options={PRICES} />
-    <ConditionChoice label="돌파 밴드" value={params.band} onChange={band => onChange({ band })}
+    <Select label="돌파 비교가격" caption="가격" value={params.source} onChange={source => onChange({ source })} options={PRICES} />
+    <ConditionChoice label="돌파 밴드" caption="밴드" value={params.band} onChange={band => onChange({ band })}
       options={[[ 'upper', '상단 상향돌파' ], [ 'lower', '하단 하향돌파' ]]} />
     <ConditionFields>
-      <Num label="볼린저 기간" step={1} min={2} max={1000} suffix="봉" value={params.period}
+      <Num label="기간" ariaLabel="볼린저 기간" step={1} min={2} max={1000} suffix="봉" value={params.period}
         onChange={period => onChange({ period: period ?? 20 })} />
-      <Num label="표준편차 배수" step={0.1} min={0.1} max={10} suffix="배" value={params.multiplier}
+      <Num label="편차" ariaLabel="표준편차 배수" step={0.1} min={0.1} max={10} suffix="배" value={params.multiplier}
         onChange={multiplier => onChange({ multiplier: multiplier ?? 2 })} />
     </ConditionFields>
-    <Select label="밴드 계산가격" value={params.band_source}
+    <Select label="밴드 계산가격" caption="계산" value={params.band_source}
       onChange={band_source => onChange({ band_source })} options={PRICES} />
-    <p className="text-xs text-fg-dim">직전 봉의 선택 가격이 밴드 안쪽·경계에 있다가 이번 봉에서 바깥으로 넘어간 경우만 충족합니다. 각 봉 시점의 밴드와 비교합니다.</p>
   </>;
 }
 
@@ -36,7 +35,6 @@ function BollingerTodayForm({ params, onChange }: {
   params: BollingerBreakoutParams; onChange: (p: BollingerBreakoutParams) => void;
 }) {
   return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
-    <p className="text-xs text-fg-dim">최신 봉에서 발생한 돌파</p>
     <BollingerFields params={params} onChange={patch => onChange({ ...params, ...patch })} />
   </CandleSettings>;
 }
@@ -46,19 +44,20 @@ function BollingerPeriodForm({ params, onChange }: {
 }) {
   const daily = (params.timeframe ?? 'D') === 'D';
   return <CandleSettings params={params} onChange={patch => onChange({ ...params, ...patch })}>
-    <Num label="발생 검색 범위" ariaLabel="볼린저 최근 기간" suffix={daily ? '거래일 이내' : '봉 이내'}
+    <Num label="최근" ariaLabel="볼린저 최근 기간" suffix={daily ? '거래일 이내' : '봉 이내'}
       step={1} min={1} max={1000} value={params.lookback} onChange={lookback => onChange({ ...params, lookback: lookback ?? 1 })} />
-    <p className="text-xs text-fg-dim">최신 봉을 포함한 기간에 한 번 이상 돌파</p>
     <BollingerFields params={params} onChange={patch => onChange({ ...params, ...patch })} />
   </CandleSettings>;
 }
 
 export const bollinger_breakout_today: CatalogEntry<'bollinger_breakout_today'> = {
+  help: '최신 봉에서 발생한 돌파를 찾습니다. 직전 봉의 선택 가격이 밴드 안쪽·경계에 있다가 이번 봉에서 바깥으로 넘어간 경우만 충족하며 각 봉 시점의 밴드와 비교합니다.',
   label: '볼린저밴드 돌파', defaultParams: DEFAULTS, ParamForm: BollingerTodayForm,
   summarize: p => candleSummary(p, `최신 · ${summary(p)}`),
 };
 
 export const bollinger_breakout: CatalogEntry<'bollinger_breakout'> = {
+  help: '최신 봉을 포함한 기간에 한 번 이상 발생한 돌파를 찾습니다. 직전 봉의 선택 가격이 밴드 안쪽·경계에 있다가 이번 봉에서 바깥으로 넘어간 경우만 충족하며 각 봉 시점의 밴드와 비교합니다.',
   label: '기간내 볼린저밴드 돌파', defaultParams: { ...DEFAULTS, lookback: 5 }, ParamForm: BollingerPeriodForm,
   summarize: p => candleSummary(p, `${p.lookback}봉내 · ${summary(p)}`),
 };

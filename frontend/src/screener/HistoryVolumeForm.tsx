@@ -18,7 +18,7 @@ export function HistoryVolumeForm({ params, onChange }: {
   };
   return <div className="condition-form">
     <ConditionTimeframe label="거래량 주기" value={timeframe} onChange={changeTimeframe}>
-      <ConditionChoice label="거래량 검색 기간" value={historical ? 'date_range' : 'recent'}
+      <ConditionChoice label="거래량 검색 기간" caption="검색" value={historical ? 'date_range' : 'recent'}
         onChange={value => onChange(value === 'recent' ? { lookback: 60,
           period: historical && params.record_period.unit === 'bars' ? params.record_period.value : 250,
           timeframe, include_open_bar: includeOpenBar }
@@ -39,7 +39,7 @@ export function HistoryVolumeForm({ params, onChange }: {
           onChange={dates => onChange({ ...params, ...dates })} />
       </ConditionFields>
       <ConditionFields>
-        <Num label="신고 비교 기간" ariaLabel="거래량 비교 기간" suffix={legacyHistory ? undefined : '봉'}
+        <Num label="비교" ariaLabel="거래량 비교 기간" suffix={legacyHistory ? undefined : '봉'}
           min={1} max={params.record_period.unit === 'years' ? 20 : 1000}
           value={params.record_period.value} onChange={value => onChange({ ...params,
             record_period: { ...params.record_period, value: value ?? 1 } } as VolumeParams)} />
@@ -53,9 +53,9 @@ export function HistoryVolumeForm({ params, onChange }: {
           options={[[ 'years', '년' ], ['trading_days', '거래일'], ['bars', '봉']]} />}
       </ConditionFields>
     </> : <ConditionFields>
-      <Num label="발생 검색 범위" ariaLabel="최근 기간(봉)" suffix="봉 이내" min={1} max={1000} value={params.lookback}
+      <Num label="최근" ariaLabel="최근 기간(봉)" suffix="봉 이내" min={1} max={1000} value={params.lookback}
         onChange={value => onChange({ ...params, lookback: value ?? 1 })} />
-      <Num label="신고 비교 기간" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000} value={params.period}
+      <Num label="비교" ariaLabel="신고 기준 기간(봉)" suffix="봉" min={1} max={1000} value={params.period}
         onChange={value => onChange({ ...params, period: value ?? 1 })} />
     </ConditionFields>}
   </div>;

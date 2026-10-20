@@ -32,7 +32,7 @@ test('Bollinger conditions can be added, configured, saved, reloaded and scanned
   await today.getByLabel('표준편차 배수').fill('2.5');
   await recent.getByLabel('볼린저 최근 기간').fill('7');
   await recent.getByLabel('돌파 비교가격').selectOption('low');
-  await recent.getByRole('button', { name: '하단 하향돌파', exact: true }).click();
+  await recent.getByRole('combobox', { name: '돌파 밴드', exact: true }).selectOption('lower');
   await recent.getByLabel('볼린저 기간', { exact: true }).fill('10');
   await page.getByRole('button', { name: '저장', exact: true }).click();
   await expect.poll(() => saved.conditions.length).toBe(2);
@@ -43,7 +43,7 @@ test('Bollinger conditions can be added, configured, saved, reloaded and scanned
   await expect(today.getByLabel('돌파 비교가격')).toHaveValue('high');
   await expect(today.getByLabel('표준편차 배수')).toHaveValue('2.5');
   await expect(recent.getByLabel('볼린저 최근 기간')).toHaveValue('7');
-  await expect(recent.getByRole('button', { name: '하단 하향돌파', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(recent.getByRole('combobox', { name: '돌파 밴드', exact: true })).toHaveValue('lower');
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect.poll(() => scans.length).toBe(1);
   expect(scans[0].conditions).toEqual(saved.conditions);
@@ -51,7 +51,7 @@ test('Bollinger conditions can be added, configured, saved, reloaded and scanned
   await page.screenshot({ path: testInfo.outputPath('bollinger-wide.png'), fullPage: true });
   await page.setViewportSize({ width: 768, height: 1000 });
   for (const card of [today, recent]) {
-    const band = card.getByRole('group', { name: '돌파 밴드', exact: true });
+    const band = card.getByRole('combobox', { name: '돌파 밴드', exact: true });
     await band.scrollIntoViewIfNeeded();
     await expect(band).toBeVisible();
     const parent = await card.boundingBox();
