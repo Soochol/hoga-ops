@@ -28,6 +28,7 @@ class HistoryEvidence(BaseModel):
     vendor_checked_from: dt.date | None = None
     vendor_checked_to: dt.date | None = None
     vendor_dates: set[dt.date] = Field(default_factory=set)
+    vendor_absent_dates: set[dt.date] = Field(default_factory=set)
 
 
 class EvidenceFile(BaseModel):
@@ -61,8 +62,7 @@ def missing_reasons(days: list[dt.date], evidence: HistoryEvidence | None):
                 reason = "trading_suspended"
             elif day in evidence.vendor_dates:
                 reason = "collection_missing"
-            elif (evidence.vendor_checked_from and evidence.vendor_checked_to
-                  and evidence.vendor_checked_from <= day <= evidence.vendor_checked_to):
+            elif day in evidence.vendor_absent_dates:
                 reason = "vendor_history_unavailable"
         grouped[reason].append(day)
     return dict(grouped)

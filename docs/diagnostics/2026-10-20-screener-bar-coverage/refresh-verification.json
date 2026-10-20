@@ -1,5 +1,5 @@
 {
-  "verified_at": "2026-10-20T13:36:14.617877+00:00",
+  "verified_at": "2026-10-20T13:39:00.855762+00:00",
   "base_commit": "0aeb5605aac1960c21b1bf8386b5facb769c6cc8",
   "branch": "codex/screener-history-coverage",
   "python": "3.14.7",
@@ -7,13 +7,12 @@
   "backend": {
     "inputs": {
       "files": 744,
-      "sha256": "1c9105630839a276c36b2952bb4ff0ad625d2906a4c29598951de21dc9a9aa1b"
+      "sha256": "2171d2f573c09420602a5c6764c6c36e6ed77e5018867d75e24f9f60841f9815"
     },
     "ruff": ".venv/bin/ruff check . — passed",
-    "tests": ".venv/bin/pytest -q -m 'not wallclock' $(rg --files tests | rg '(screener|bollinger|kiwoom_master|symbols).*\\.py$') tests/unit/api/test_rest_wire_schema_contract.py — 839 passed; after adding one HTTP integration test, tests/api/test_screener_refresh.py — 11 passed (840 unique tests covered)",
+    "tests": ".venv/bin/pytest -q -m 'not wallclock' $(rg --files tests | rg '(screener|bollinger|kiwoom_master|symbols).*\\.py$') tests/unit/api/test_rest_wire_schema_contract.py — 840 passed",
     "logs": [
-      "/tmp/hoga-refresh-backend-final.log",
-      "/tmp/hoga-refresh-http.log"
+      "/tmp/hoga-refresh-backend-final.log"
     ]
   },
   "frontend": {
@@ -35,7 +34,8 @@
     "logs": [
       "/tmp/hoga-refresh-e2e-final.log",
       "/tmp/hoga-refresh-build-final.log"
-    ]
+    ],
+    "reuse": "Frontend inputs unchanged after its 434-unit/6-E2E/typecheck/build passes; latest change only reduces backend evidence storage."
   },
   "deployment": {
     "target": "/home/dev/code/hoga-ops",

@@ -133,7 +133,12 @@ def _record_evidence(data_dir: Path, master: list[SymbolHit], pairs=(), accepted
                 checked_at=now, sources=["kiwoom:ka10081:raw+adjusted"])
             record.checked_at = now
             record.vendor_checked_from, record.vendor_checked_to = target.start, target.end
-            record.vendor_dates = set(raw["date"])
+            observed = set(raw["date"])
+            # The corpus already stores all successful observations. Keep evidence
+            # only for unresolved dates, so scan metadata never duplicates decades
+            # of OHLCV dates for thousands of symbols.
+            record.vendor_absent_dates = target.missing - observed
+            record.vendor_dates = target.missing & observed if target.code not in accepted else set()
             if target.code in accepted:
                 record.prefix_checked_from = target.start
             record.sources = list(dict.fromkeys([*record.sources, "kiwoom:ka10081:raw+adjusted"]))

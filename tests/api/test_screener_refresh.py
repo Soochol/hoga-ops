@@ -70,6 +70,7 @@ async def test_current_global_date_still_repairs_internal_gaps_and_new_symbol_hi
         "000001", "000002", "000003", "000099"}
     facts = evidence.load(tmp_path)
     assert facts["000002"].listing_date == DAYS[1]
+    assert facts["000002"].vendor_dates == facts["000002"].vendor_absent_dates == set()
     calls.clear()
     again = await refresh.run_refresh(tmp_path, progress=lambda *_: None, fetch=fetch)
     assert again.written_rows == 0 and calls == []
