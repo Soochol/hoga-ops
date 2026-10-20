@@ -2,7 +2,7 @@ import { useId, useLayoutEffect, useRef, useState, type ChangeEventHandler, type
 import type { ConditionLeaf } from '../api/screener';
 import { catalogEntry } from './catalog';
 import { conditionLabel, defaultExpression, expressionError, MAX_EXPRESSION_LENGTH, parseExpression } from './conditionExpression';
-import { groupExpression, matchingExpressionPair, toggleExpressionOperator, type ExpressionSelection } from './expressionEditing';
+import { groupExpression, matchingExpressionPair, toggleExpressionOperator, ungroupExpression, type ExpressionSelection } from './expressionEditing';
 import './ConditionEditor.css';
 
 export function ConditionExpressionEditor({ conditions, expression, onChange, inputRef, onInsert,
@@ -24,6 +24,7 @@ export function ConditionExpressionEditor({ conditions, expression, onChange, in
   const mirror = useRef<HTMLDivElement>(null);
   const pair = focused ? matchingExpressionPair(value, selection) : null;
   const grouped = groupExpression(value, selection, conditions.length);
+  const ungrouped = ungroupExpression(value, selection, conditions.length);
   // Match native textarea wrapping, scrollbar width, scrolling and user resizing.
   useLayoutEffect(() => {
     const input = inputRef.current, overlay = mirror.current;
@@ -86,9 +87,13 @@ export function ConditionExpressionEditor({ conditions, expression, onChange, in
         title={grouped ? '선택한 범위를 괄호로 묶기' : rangeSelected ? '완전한 조건이나 조합식을 선택해 주세요.' : '묶을 범위를 선택하세요.'}
         onMouseDown={event => event.preventDefault()}
         onClick={() => { if (grouped) onChange(grouped.text, grouped); }}>() 묶기</button>
+      <button type="button" className="condition-expression-button" disabled={!ungrouped}
+        title={ungrouped ? '바깥 괄호 한 쌍만 제거하기' : '묶인 그룹 전체나 그룹의 내용 전체를 선택하세요.'}
+        onMouseDown={event => event.preventDefault()}
+        onClick={() => { if (ungrouped) onChange(ungrouped.text, ungrouped); }}>() 묶기 해제</button>
     </div>
     <p id={`${id}-help`} className="condition-expression-help">{rangeSelected
-      ? grouped ? '조건을 추가하려면 선택을 해제하고 입력 위치를 클릭하세요.' : '묶을 완전한 조건이나 조합식을 선택하세요.'
+      ? grouped || ungrouped ? '조건을 추가하려면 선택을 해제하고 입력 위치를 클릭하세요.' : '묶거나 해제할 완전한 조건이나 그룹을 선택하세요.'
       : '범위를 선택해 () 묶기 · AND/OR 더블클릭으로 전환'}</p>
     {error && <p id={`${id}-error`} role="alert" className="condition-expression-error">{error}</p>}
     {!error && unused.length > 0 && <p role="status" className="condition-expression-help">

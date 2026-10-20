@@ -1,10 +1,45 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { useState } from 'react';
+import type { ConditionLeaf } from '../api/screener';
 import { ConditionBuilder } from './ConditionBuilder';
 
 const base = { conditions: [], universe: {} };
 
 describe('ConditionBuilder', () => {
+  it('keeps restored selections protected and immediately enables ungrouping without native select events', () => {
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+    const conditions: ConditionLeaf[] = [
+      { id: 'a', type: 'trade_value', params: { min_eok: 100 } },
+      { id: 'b', type: 'new_high_today', params: { period: 20 } },
+    ];
+    function Editor() {
+      const [expression, setExpression] = useState('A AND B');
+      return <ConditionBuilder conditions={conditions} universe={{}} expression={expression}
+        onExpressionChange={setExpression} onConditionsChange={vi.fn()} onUniverseChange={vi.fn()} />;
+    }
+    try {
+      render(<Editor />);
+      const input = screen.getByRole('textbox', { name: '조건 조합식' }) as HTMLTextAreaElement;
+      input.focus();
+      input.setSelectionRange(0, 7);
+      fireEvent.select(input);
+      fireEvent.click(screen.getByRole('button', { name: '() 묶기' }));
+      expect(input).toHaveValue('(A AND B)');
+      expect(screen.getByRole('button', { name: '() 묶기 해제' })).toBeEnabled();
+      expect(screen.getAllByRole('button', { name: 'A 거래대금 조합식에 입력' }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: '() 묶기 해제' }));
+      expect(input).toHaveValue('A AND B');
+      expect([input.selectionStart, input.selectionEnd]).toEqual([0, 7]);
+      expect(screen.getByRole('button', { name: '() 묶기 해제' })).toBeDisabled();
+      fireEvent.keyDown(input, { key: 'z', ctrlKey: true });
+      expect(input).toHaveValue('(A AND B)');
+      expect(screen.getByRole('button', { name: '() 묶기 해제' })).toBeEnabled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('adds a condition from the catalog menu', () => {
     const onConditions = vi.fn();
     render(<ConditionBuilder {...base} onConditionsChange={onConditions} onUniverseChange={vi.fn()} />);

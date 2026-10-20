@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode, type DragEvent } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type DragEvent } from 'react';
 import type { ConditionLeaf, ConditionType, ScreenerUniverse } from '../api/screener';
 import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { ConditionRow } from './ConditionRow';
@@ -32,13 +32,19 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
   const undo = useExpressionUndo(expressionValue,
     selectionScope,
     value => onExpressionChange?.(value), expressionInput);
-  const rememberSelection = () => {
-    undo.rememberSelection();
+  const syncSelection = useCallback(() => {
     const input = expressionInput.current;
     if (!input) return;
     const next = { text: input.value, scope: selectionScope, start: input.selectionStart, end: input.selectionEnd };
     setSelection(previous => previous.text === next.text && previous.scope === next.scope
       && previous.start === next.start && previous.end === next.end ? previous : next);
+  }, [selectionScope]);
+  // Native onSelect can skip programmatic restores when its cached offsets match.
+  // The undo hook restores the DOM selection in its earlier layout effect.
+  useLayoutEffect(syncSelection, [expressionValue, syncSelection]);
+  const rememberSelection = () => {
+    undo.rememberSelection();
+    syncSelection();
   };
   const invalidExpression = !!expressionError(expression, conditions.length);
   const insert = (token: string) => {

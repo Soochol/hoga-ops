@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupExpression, matchingExpressionPair, toggleExpressionOperator } from './expressionEditing';
+import { groupExpression, matchingExpressionPair, toggleExpressionOperator, ungroupExpression } from './expressionEditing';
 import { MAX_EXPRESSION_LENGTH } from './conditionExpression';
 
 describe('groupExpression', () => {
@@ -19,6 +19,39 @@ describe('groupExpression', () => {
 
   it('does not exceed the expression length limit', () => {
     expect(groupExpression('A' + ' '.repeat(MAX_EXPRESSION_LENGTH - 2), { start: 0, end: 1 }, 1)).toBeNull();
+  });
+});
+
+describe('ungroupExpression', () => {
+  it('removes only the selected outer pair and keeps nested groups and the rest of the expression', () => {
+    const text = 'A OR (B AND (C OR D))';
+    expect(ungroupExpression(text, { start: 5, end: text.length }, 4))
+      .toEqual({ text: 'A OR B AND (C OR D)', start: 5, end: 19 });
+    expect(ungroupExpression('((A AND B))', { start: 0, end: 11 }, 2))
+      .toEqual({ text: '(A AND B)', start: 0, end: 9 });
+  });
+
+  it('also accepts the exact contents kept selected after grouping', () => {
+    const edit = groupExpression('A AND B OR C', { start: 0, end: 7 }, 3)!;
+    expect(ungroupExpression(edit.text, edit, 3))
+      .toEqual({ text: 'A AND B OR C', start: 0, end: 7 });
+    expect(ungroupExpression(' ( A AND B ) ', { start: 3, end: 10 }, 2))
+      .toEqual({ text: '  A AND B  ', start: 1, end: 10 });
+  });
+
+  it('preserves whitespace around a selected group and separates tokens when needed', () => {
+    expect(ungroupExpression('A OR  (B AND C)  ', { start: 4, end: 17 }, 3))
+      .toEqual({ text: 'A OR  B AND C  ', start: 6, end: 13 });
+    expect(ungroupExpression('A AND(B OR C)OR A', { start: 5, end: 13 }, 3))
+      .toEqual({ text: 'A AND B OR C OR A', start: 6, end: 12 });
+  });
+
+  it('rejects empty, partial, unmatched and multiple independent groups', () => {
+    for (const [text, start, end] of [
+      ['(A AND B)', 0, 0], ['(A AND B)', 1, 2], ['(A AND B)', 0, 4],
+      ['(A AND B', 0, 8], ['(A AND B)', 3, 8], ['(A) AND (B)', 0, 11],
+      ['( )', 1, 2], ['()', 0, 2], ['A AND B', 0, 7],
+    ] as const) expect(ungroupExpression(text, { start, end }, 2)).toBeNull();
   });
 });
 
