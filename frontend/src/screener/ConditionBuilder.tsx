@@ -22,17 +22,33 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const expressionInput = useRef<HTMLTextAreaElement>(null);
-  const undo = useExpressionUndo(expression ?? defaultExpression(conditions.length),
-    JSON.stringify([expressionScope ?? null, conditions.map(c => c.id)]),
+  const expressionValue = expression ?? defaultExpression(conditions.length);
+  const selectionScope = JSON.stringify([expressionScope ?? null, conditions.map(c => c.id)]);
+  const [selection, setSelection] = useState({ text: expressionValue, scope: selectionScope,
+    start: expressionValue.length, end: expressionValue.length });
+  const currentSelection = selection.text === expressionValue && selection.scope === selectionScope
+    ? selection : { start: expressionValue.length, end: expressionValue.length };
+  const rangeSelected = currentSelection.start !== currentSelection.end;
+  const undo = useExpressionUndo(expressionValue,
+    selectionScope,
     value => onExpressionChange?.(value), expressionInput);
+  const rememberSelection = () => {
+    undo.rememberSelection();
+    const input = expressionInput.current;
+    if (!input) return;
+    const next = { text: input.value, scope: selectionScope, start: input.selectionStart, end: input.selectionEnd };
+    setSelection(previous => previous.text === next.text && previous.scope === next.scope
+      && previous.start === next.start && previous.end === next.end ? previous : next);
+  };
   const invalidExpression = !!expressionError(expression, conditions.length);
   const insert = (token: string) => {
-    const value = expression ?? defaultExpression(conditions.length);
+    const value = expressionValue;
     const input = expressionInput.current;
     const start = input?.selectionStart ?? value.length;
     const end = input?.selectionEnd ?? start;
+    if (start !== end) return;
     const left = value.slice(0, start), right = value.slice(end);
-    const text = `${left && !/[\s(]$/.test(left) && token !== ')' ? ' ' : ''}${token}${right && !/^[\s)]/.test(right) && token !== '(' ? ' ' : ''}`;
+    const text = `${left && !/[\s(]$/.test(left) ? ' ' : ''}${token}${right && !/^[\s)]/.test(right) ? ' ' : ''}`;
     const next = left + text + right;
     if (next.length > MAX_EXPRESSION_LENGTH) return;
     undo.change(next, { start: start + text.length, end: start + text.length });
@@ -112,10 +128,11 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
       {conditions.length > 0 && onExpressionChange && <ConditionExpressionEditor
         conditions={conditions} expression={expression} onChange={undo.change}
         inputRef={expressionInput} onInsert={insert} onTextChange={undo.onTextChange}
-        onKeyDown={undo.onKeyDown} onSelectionChange={undo.rememberSelection} />}
+        selection={currentSelection}
+        onKeyDown={undo.onKeyDown} onSelectionChange={rememberSelection} />}
       {conditions.map((leaf, index) => (
         <ConditionRow key={leaf.id} leaf={leaf} letter={conditionLabel(index)}
-          onInsertLetter={onExpressionChange ? () => insert(conditionLabel(index)) : undefined}
+          onInsertLetter={onExpressionChange && !rangeSelected ? () => insert(conditionLabel(index)) : undefined}
           structureDisabled={invalidExpression}
           draggable={!invalidExpression && conditions.length > 1}
           dragging={draggingId === leaf.id}
