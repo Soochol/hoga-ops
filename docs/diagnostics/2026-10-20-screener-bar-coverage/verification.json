@@ -1,0 +1,42 @@
+{
+  "verified_at": "2026-10-20T22:16:12.572645+09:00",
+  "base_commit": "d0798a77d6b6ad62818c8f44e0da88bf59497e18",
+  "branch": "codex/screener-history-coverage",
+  "working_tree": "uncommitted task changes; input digests identify tested content",
+  "python": "3.14.7",
+  "node": "v24.13.1",
+  "backend": {
+    "inputs": {
+      "file_count": 742,
+      "sha256": "43ba50cb0be4c80493f076683669d8d9dc045d08fece57f1320ac7227df075ad"
+    },
+    "ruff": "uv run ruff check . — passed",
+    "tests": "uv run pytest -q tests/api/test_screener_bar_coverage_reasons.py tests/api/test_screener_gap_repair.py tests/api/test_screener_bar_volume.py tests/api/test_screener_bar_price.py tests/api/test_screener_bar_threshold.py tests/api/test_screener_bollinger.py tests/api/test_screener_history.py tests/api/test_screener_history_recovery.py tests/api/test_screener_history_read_consistency.py tests/unit/api/test_rest_wire_schema_contract.py",
+    "result": "245 passed"
+  },
+  "frontend": {
+    "inputs": {
+      "file_count": 1774,
+      "sha256": "7f2486f7c2062c6cdbf2d026bda85958ed9cf4d0aca4ee9f460ff8651da3eab8"
+    },
+    "typecheck": "npm run typecheck — passed",
+    "tests": "npx vitest run src/screener/BarVolumeCoverage.test.tsx src/screener/ScreenerResults.test.tsx src/pages/Screener.test.tsx — 41 passed",
+    "build": "npx vite build — passed",
+    "e2e": "npx playwright test tests/e2e/screener-bollinger.spec.ts tests/e2e/screener-bar-volume.spec.ts tests/e2e/screener-bar-price.spec.ts tests/e2e/screener-bar-threshold.spec.ts — 5 passed",
+    "isolation": "blank vendor credentials, workers=1, backend 20419/frontend 21419/data /tmp/hoga-e2e-data-419"
+  },
+  "production": {
+    "server_restarted": false,
+    "source_files_replaced": false,
+    "shared_corpus_repaired": true,
+    "existing_observations_changed": 0,
+    "original_71_missing_rows_added": 257,
+    "additional_new_listing_rows_added": 1,
+    "scan_complete": 2754,
+    "scan_total": 2815,
+    "classified_reasons": {
+      "delisted": 51,
+      "pre_listing_history": 10
+    }
+  }
+}

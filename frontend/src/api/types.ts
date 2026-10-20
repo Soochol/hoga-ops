@@ -1,3 +1,4 @@
+import type { ScreenerRefreshSummary } from './screener';
 import type { SectorTickEvent } from './sectorTickOverlay';
 import type { SignalAlertEvent } from './signalAlerts';
 
@@ -346,8 +347,8 @@ export type PushEvent =
   | { type: 'study_views_changed' }
   | { type: 'live_layout_presets_changed' }
   | { type: 'study_layout_presets_changed' }
-  | { type: 'screener_update_progress'; done: number; total: number }
-  | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null }
+  | { type: 'screener_update_progress'; done: number; total: number; phase?: string }
+  | { type: 'screener_update_finished'; updated: number; total: number; reason: string | null; refresh?: ScreenerRefreshSummary }
   // 키움 표시(온디맨드) 슬롯 만석 — 이 탭의 구독이 보류됐다(hoga/api/ws.py).
   // 등록은 보류 상태로 장부에 남아 슬롯이 반환되면 watchdog 이 자동 배정하므로,
   // 사용자에게는 "지금 실시간이 안 오는 이유 + 창을 닫으면 풀린다"만 알리면 된다.
@@ -449,6 +450,7 @@ export interface SymbolHit {
    *  프론트에서 소비가 불가능했다. `effectiveLiveVenue` 는 미상장 종목의 통합(UN)
    *  선택을 KRX 로 해석하고, 10호가·호가주문 제목은 이 값으로 지원 배지를 표시한다. */
   nxt_enabled?: boolean | null;
+  listing_date?: string | null;
   captured_count: number;                              // complete-only headline
   capture_counts_status?: CaptureCountsStatus;
   captured_breakdown: {

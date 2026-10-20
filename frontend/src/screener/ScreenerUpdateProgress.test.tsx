@@ -34,3 +34,9 @@ describe('ScreenerUpdateProgress', () => {
     expect(bar.style.width).toBe('0%');
   });
 });
+
+it('shows preparation phase without a misleading 0/0 count', () => {
+  render(<ScreenerUpdateProgress updating={{ done: 0, total: 0, started_ms: 1, phase: '종목 목록 확인 중' }} />);
+  expect(screen.getByTestId('screener-update-progress')).toHaveTextContent('종목 목록 확인 중');
+  expect(screen.getByTestId('screener-update-progress')).not.toHaveTextContent('0/0');
+});

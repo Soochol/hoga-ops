@@ -32,6 +32,7 @@ fetch 는 `500061` 을 주어 검색 결과가 이원화된다(기존 캐시에 
 """
 from __future__ import annotations
 
+import datetime as dt
 from pathlib import Path
 from typing import Any, Literal, NamedTuple
 
@@ -39,6 +40,7 @@ SecurityType = Literal["stock", "etf", "etn"]
 Market = Literal["KOSPI", "KOSDAQ"]
 
 API_ID = "ka10099"
+_DATE_LENGTH = 8
 
 # 요청이 시장을 정한다(함정 ①).
 MARKET_PARAM: dict[Market, str] = {"KOSPI": "0", "KOSDAQ": "10"}
@@ -64,6 +66,7 @@ class MasterRow(NamedTuple):
     #: 단정 금지" 를 요구하고, 거래일 달력이 커버리지 밖을 ``None`` 으로 두는 것과 같은
     #: 규율이다. 구 시드(schema 3, 4-tuple)를 읽으면 여기가 ``None`` 이 된다.
     nxt_enabled: bool | None = None
+    listing_date: dt.date | None = None
 
 
 class KiwoomMasterFetchError(Exception):
@@ -93,9 +96,15 @@ def parse_row(row: dict[str, Any], market: Market) -> MasterRow | None:
     # 중 4개만 썼다). 값 도메인은 'Y'/'N' 실측(전체 606/4,295, ETF·ETN 은 전량 N).
     raw_nxt = row.get("nxtEnable")
     nxt_enabled = None if raw_nxt is None else str(raw_nxt).strip() == "Y"
+    # Official ka10099 sample names regDay as 상장일. Missing/invalid values stay unknown.
+    try:
+        raw_date = str(row.get("regDay", "")).strip()
+        listing_date = dt.datetime.strptime(raw_date, "%Y%m%d").date() if len(raw_date) == _DATE_LENGTH else None
+    except ValueError:
+        listing_date = None
     return MasterRow(
         code=code, name=name, market=market, security_type=security_type,
-        nxt_enabled=nxt_enabled,
+        nxt_enabled=nxt_enabled, listing_date=listing_date,
     )
 
 

@@ -56,7 +56,7 @@ for (const position of [false, true]) {
     await page.getByRole('button', { name: '조회', exact: true }).click();
     await expect.poll(() => scans.length).toBe(1);
     expect(scans[0].conditions).toEqual(saved.conditions);
-    await expect(page.getByText('봉수 기준 평가 가능 1/1종목')).toBeVisible();
+    await expect(page.getByText('봉 이력 충분 1/1종목')).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`bollinger-${family}-wide.png`), fullPage: true });
     await page.setViewportSize({ width: 768, height: 1000 });
     for (const card of [today, recent]) {

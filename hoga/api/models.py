@@ -814,6 +814,7 @@ class SymbolHit(BaseModel):
     #: 안 된다(ADR-0140 §4). 프론트가 "이 시장에 없음"을 표시하려면 이 값이 필요하다
     #: (#1132) — 없으면 빈 시세와 수집 장애를 구분할 수 없다.
     nxt_enabled: bool | None = None
+    listing_date: str | None = None  # YYYY-MM-DD, ka10099 regDay; null means unknown
     captured_count: int                 # complete only — headline number (spec §11 Q18)
     captured_breakdown: dict[str, int]  # {"complete": N, "source_partial": M, "client_incomplete": K, "invalid": J}
     capture_counts_status: CaptureCountsStatus = "ready"
@@ -2227,6 +2228,18 @@ ScanBasis = Literal["eod", "intraday", "auto"]
 #: 멎었다**는 신호다. 둘 다 재시도로 풀리지 않으므로 안내도 달라야 한다.
 #: (PR-H·#1044 이전에는 원격 조회라 "일시 장애 → 잠시 후 재시도" 가 맞았다.
 #: 지금은 조회 경로에 벤더가 없어 그 사건 자체가 없다 — `hoga/api/trading_days.py`.)
+class ScreenerRefreshSummary(BaseModel):
+    master_refreshed: bool = False
+    symbols_added: int = 0
+    written_rows: int = 0
+    checked: int = 0
+    total: int = 0
+    failed: int = 0
+    unavailable: int = 0
+    completed_ms: int | None = None
+    reason: str | None = None
+
+
 ScreenerUpdateSkipReason = Literal[
     "no_gap",
     "not_seeded",
@@ -2341,6 +2354,10 @@ class BarVolumeCoverageItem(BaseModel):
     code: str
     condition_id: str
     reason: str
+    missing_days: int | None = None
+    required_from: str | None = None
+    required_to: str | None = None
+    name: str | None = None
 
 
 class BarVolumeCoverage(BaseModel):

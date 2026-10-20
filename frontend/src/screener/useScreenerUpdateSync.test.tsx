@@ -6,6 +6,7 @@ import {
   useScreenerUpdateSync,
   useScreenerUpdateFeedback,
   finishedMessage,
+  visibleUpdateFeedback,
   SKIP_REASON_MESSAGES,
 } from './useScreenerUpdateSync';
 import { useScreenerUpdate } from './useScreenerUpdate';
@@ -192,5 +193,31 @@ describe('새 실행이 시작되면 지난 결과를 버린다', () => {
     fireEvent_({ type: 'screener_update_progress', done: 0, total: 4335 } as PushEvent);
 
     expect(useScreenerUpdateFeedback.getState().feedback).toEqual(monitor);
+  });
+});
+
+describe('manual history refresh feedback', () => {
+  const refresh: screenerApi.ScreenerRefreshSummary = {
+    master_refreshed: true, symbols_added: 2, written_rows: 258,
+    checked: 20, total: 20, failed: 1, unavailable: 3, completed_ms: 1000, reason: 'partial',
+  };
+  it('reports actual rows and residual problems when no global date was added', () => {
+    const feedback = finishedMessage({ updated: 0, reason: 'partial', refresh });
+    expect(feedback.message).toContain('일봉 258개 보충');
+    expect(feedback.message).toContain('신규 2종목');
+    expect(feedback.message).toContain('실패 1종목');
+    expect(feedback.message).toContain('공급자 이력 미확인 3종목');
+    expect(feedback.tone).toBe('warn');
+  });
+  it('restores missed completion from persisted REST summary', () => {
+    expect(visibleUpdateFeedback(null, false, refresh)?.message).toContain('일봉 258개 보충');
+    expect(visibleUpdateFeedback(null, true, refresh)).toBeNull();
+  });
+  it('marks stored scans stale after history-only repair', () => {
+    const qc = new QueryClient();
+    useScreenerPanelStore.setState({ lastScan: { ...SCAN } });
+    renderHook(() => useScreenerUpdateSync(), { wrapper: makeWrapper(qc) });
+    fireEvent_({ type: 'screener_update_finished', updated: 0, total: 20, reason: 'partial', refresh });
+    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
   });
 });

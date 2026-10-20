@@ -102,7 +102,7 @@ def _candles_frame(code, candles, start, end):
     return pl.DataFrame(rows, schema=_DAILY_PL_SCHEMA).sort("date")
 
 
-async def fetch_pair(data_dir: Path, code: str, start: dt.date, end: dt.date):
+async def fetch_pair(data_dir: Path, code: str, start: dt.date, end: dt.date, *, allow_empty=False):
     from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime  # noqa: PLC0415 — runtime import
 
     client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
@@ -123,7 +123,8 @@ async def fetch_pair(data_dir: Path, code: str, start: dt.date, end: dt.date):
         if result.violations:
             raise ValueError("vendor_invalid_rows")
         frames.append(_candles_frame(code, result.candles, start, end))
-    verified_factors(*frames)
+    if not (allow_empty and all(frame.is_empty() for frame in frames)):
+        verified_factors(*frames)
     return tuple(frames)
 
 
