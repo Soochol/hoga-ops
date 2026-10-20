@@ -15,6 +15,33 @@ export function groupExpression(text: string, { start, end }: ExpressionSelectio
   return { text: next, start: start + 1, end: end + 1 };
 }
 
+/** Accept a whole group or its exact contents (the selection left by grouping). */
+export function ungroupExpression(text: string, { start, end }: ExpressionSelection, count: number): ExpressionEdit | null {
+  if (start === end) return null;
+  const selected = text.slice(start, end);
+  if (!selected.trim()) return null;
+  let open = start + selected.length - selected.trimStart().length;
+  let close = end - (selected.length - selected.trimEnd().length) - 1;
+  const selectedPair = matchingExpressionPair(text, { start: open, end: open });
+  if (text[open] !== '(' || selectedPair?.[1] !== close) {
+    // Ignore only whitespace between the selection and its enclosing brackets.
+    const before = /\(\s*$/.exec(text.slice(0, open));
+    const after = /^\s*\)/.exec(text.slice(close + 1));
+    if (!before || !after) return null;
+    open = before.index;
+    close += after[0].length;
+    if (matchingExpressionPair(text, { start: open, end: open })?.[1] !== close) return null;
+  }
+  if (expressionError(text.slice(open, close + 1), count)) return null;
+  const before = text.slice(0, open), inside = text.slice(open + 1, close), after = text.slice(close + 1);
+  // Brackets can separate tokens without spaces: AND(A OR B)OR C must stay valid.
+  const prefix = before + (/[a-z]$/i.test(before) && /^[a-z]/i.test(inside) ? ' ' : '');
+  const suffix = (/[a-z]$/i.test(inside) && /^[a-z]/i.test(after) ? ' ' : '') + after;
+  const next = prefix + inside + suffix;
+  if (expressionError(next, count)) return null;
+  return { text: next, start: prefix.length, end: prefix.length + inside.length };
+}
+
 /** Native textarea double-click selects a word, sometimes including trailing whitespace. */
 export function toggleExpressionOperator(text: string, { start, end }: ExpressionSelection): ExpressionEdit | null {
   const selected = text.slice(start, end);
