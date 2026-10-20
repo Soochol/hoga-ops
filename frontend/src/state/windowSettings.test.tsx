@@ -17,6 +17,25 @@ beforeEach(() => {
 });
 
 describe('typed window settings lifecycle', () => {
+  it('defaults old and invalid scale settings to off, preserving explicit choices in presets', () => {
+    expect(normalizeChartDisplayPrefs({ candleTooltipEnabled: true })).toMatchObject({
+      candleLogScale: false, candleInvertScale: false,
+    });
+    expect(normalizeChartDisplayPrefs({ candleLogScale: 'true', candleInvertScale: 1 })).toMatchObject({
+      candleLogScale: false, candleInvertScale: false,
+    });
+    seedSettingsForWindow(chart('a'));
+    useWindowSettingsStore.getState().patch('a', 'chart', { candleLogScale: true, candleInvertScale: true });
+    const payload = capturePresetPayload();
+    useWindowSettingsStore.getState().patch('a', 'chart', { candleLogScale: false, candleInvertScale: false });
+    applyPresetPayload(payload, null);
+    expect(useWindowSettingsStore.getState().byWindow.a.chart).toMatchObject({
+      candleLogScale: true, candleInvertScale: true,
+    });
+    expect(useWindowSettingsStore.getState().byWindow.b.chart).toMatchObject({
+      candleLogScale: false, candleInvertScale: false,
+    });
+  });
   it('migrates legacy values once, clones them per window and persists immediately', () => {
     useChartPrefsStore.getState().setToggle('horizontalGridLinesEnabled', false);
     seedSettingsForWindow(chart('a'));

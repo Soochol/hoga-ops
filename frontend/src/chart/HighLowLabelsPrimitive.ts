@@ -262,10 +262,10 @@ function wallAvoidRects(
 class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
   private readonly _source: HighLowLabelsPrimitive;
   private readonly readExtremes = createVisibleExtremesReader();
-  private previous = new Map<ExtremeLabelPlace, { time: number; anchorX: number; label: ClearExtremeLabel }>();
+  private previous = new Map<'high' | 'low', { time: number; anchorX: number; label: ClearExtremeLabel }>();
   private timeAxis: VirtualAxis | null = null;
   private candleTimes = new WeakMap<Candle, number | null>();
-  private textByPlace = new Map<ExtremeLabelPlace, {
+  private textByExtreme = new Map<'high' | 'low', {
     price: number; pct: number; time: number; axis: VirtualAxis; code?: string;
     full: string; short: string; detail: string;
   }>();
@@ -345,14 +345,18 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
         }
       }
 
+      const inverted = series.priceScale().options().invertScale;
       const items: {
+        side: 'high' | 'low';
         e: (typeof ex)['high'];
         color: string;
         place: ExtremeLabelPlace;
         line: LevelLineStyle;
       }[] = [
-        { e: ex.high, color: tokens.up, place: 'above', line: snap.levelLines.high },
-        { e: ex.low, color: tokens.down, place: 'below', line: snap.levelLines.low },
+        { side: 'high', e: ex.high, color: tokens.up,
+          place: inverted ? 'below' : 'above', line: snap.levelLines.high },
+        { side: 'low', e: ex.low, color: tokens.down,
+          place: inverted ? 'above' : 'below', line: snap.levelLines.low },
       ];
 
       for (const item of items) {
@@ -379,26 +383,26 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
 
         if (xc === null) continue;
 
-        let textInfo = this.textByPlace.get(item.place);
+        let textInfo = this.textByExtreme.get(item.side);
         if (!textInfo || textInfo.price !== item.e.price || textInfo.pct !== item.e.pct
           || textInfo.time !== item.e.virtualSec || textInfo.axis !== snap.axis || textInfo.code !== snap.code) {
           const full = formatExtremeLabel(item.e.price, item.e.pct, snap.code);
           textInfo = {
             price: item.e.price, pct: item.e.pct, time: item.e.virtualSec, axis: snap.axis, code: snap.code,
             full, short: formatInstrumentPrice(item.e.price, snap.code),
-            detail: `${item.place === 'above' ? '최고가' : '최저가'} ${full} · ${isUsWorkareaCode(snap.code) ? new Date(snap.axis.toReal(item.e.virtualSec * 1000)).toISOString().slice(0, 10) : extremeTimeFormat.format(snap.axis.toReal(item.e.virtualSec * 1000))}`,
+            detail: `${item.side === 'high' ? '최고가' : '최저가'} ${full} · ${isUsWorkareaCode(snap.code) ? new Date(snap.axis.toReal(item.e.virtualSec * 1000)).toISOString().slice(0, 10) : extremeTimeFormat.format(snap.axis.toReal(item.e.virtualSec * 1000))}`,
           };
-          this.textByPlace.set(item.place, textInfo);
+          this.textByExtreme.set(item.side, textInfo);
         }
         const fullText = textInfo.full;
         const shortText = textInfo.short;
-        const prev = this.previous.get(item.place);
+        const prev = this.previous.get(item.side);
         const label = chooseClearExtremeLabel({
           place: item.place, x: xc, y: yc, paneWidth, paneHeight,
           full: { text: fullText, width: labelBoxWidth(measureTextCached(ctx, fullText)) },
           short: { text: shortText, width: labelBoxWidth(measureTextCached(ctx, shortText)) },
           candles: candleRects, obstacles: avoidRects,
-          previous: prev?.time === item.e.virtualSec
+          previous: prev?.time === item.e.virtualSec && prev.label.place === item.place
             ? { ...prev.label, x: prev.label.x + xc - prev.anchorX } : undefined,
         });
         const detail = {
@@ -406,7 +410,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
           color: item.color,
         };
         if (label === null) {
-          this.previous.delete(item.place);
+          this.previous.delete(item.side);
           // No opaque chip when space is exhausted. A four-pixel tick just
           // outside the extreme keeps the detail discoverable on hover.
           const mx = Math.max(2, Math.min(paneWidth - 2, xc));
@@ -418,7 +422,7 @@ class HighLowLabelsRenderer implements IPrimitivePaneRenderer {
           details.push({ ...detail, rect: { left: mx - 6, right: mx + 6, top: my - 6, bottom: my + 6 } });
           continue;
         }
-        this.previous.set(item.place, { time: item.e.virtualSec, anchorX: xc, label });
+        this.previous.set(item.side, { time: item.e.virtualSec, anchorX: xc, label });
         const text = label.text;
         const boxWidth = label.width;
         const labelRect = extremeLabelRect(label, boxWidth);

@@ -2,6 +2,20 @@
 export const CHART_DISPLAY_TOGGLES = [
   // ── 차트 › 캔들 · 지표 ─────────────────────────────────────────────
   {
+    key: 'candleLogScale',
+    label: '로그 스케일',
+    description: '같은 가격 변화율을 같은 세로 간격으로 표시합니다. 캔들과 가격 지표에 적용합니다.',
+    default: false,
+    group: 'candle',
+  },
+  {
+    key: 'candleInvertScale',
+    label: '차트 거꾸로 보기',
+    description: '가격축을 위아래로 뒤집어 높은 가격을 아래에 표시합니다. 상승·하락 색상은 유지합니다.',
+    default: false,
+    group: 'candle',
+  },
+  {
     key: 'candlePaneCandleOnlyScale',
     label: '캔들 기준 Y축',
     description: '캔들 고가·저가에 맞춰 가격축을 조절합니다. 보조지표는 제외합니다.',

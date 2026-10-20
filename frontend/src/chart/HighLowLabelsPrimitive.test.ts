@@ -93,6 +93,7 @@ function makeTarget(context: CanvasRenderingContext2D, width = 760, height = 300
 }
 
 type Stubs = {
+  invertScale?: boolean;
   visibleRange?: { from: number; to: number } | null;
   timeToCoordinate?: (t: number) => number | null;
   priceToCoordinate?: (price: number) => number | null;
@@ -101,6 +102,7 @@ type Stubs = {
 /** 축 스텁은 **가변**이다 — 팬을 흉내 내려면 두 draw 사이에 값만 바꾼다(재부착 없이). */
 function makeAxisStubs(init: Stubs = {}) {
   const state = {
+    invertScale: init.invertScale ?? false,
     visibleRange: init.visibleRange ?? { from: OPEN / 1000, to: CLOSE / 1000 },
     timeToCoordinate: init.timeToCoordinate ?? (() => 100),
     priceToCoordinate: init.priceToCoordinate ?? (() => 150),
@@ -114,6 +116,7 @@ function makeAxisStubs(init: Stubs = {}) {
   } as unknown as IChartApi;
   const series = {
     priceToCoordinate: (price: number) => state.priceToCoordinate(price),
+    priceScale: () => ({ options: () => ({ invertScale: state.invertScale }) }),
   } as unknown as ISeriesApi<SeriesType>;
   return { state, chart, series };
 }
@@ -149,6 +152,29 @@ function texts(c: ReturnType<typeof makeCanvasSpy>): { text: string; x: number; 
 }
 
 describe('HighLowLabelsPrimitive', () => {
+  it('flips label placement with the price axis while keeping high/low hover meanings', () => {
+    const normalY = (price: number) => (40_000 - price) / 12;
+    const stubs = makeAxisStubs({
+      timeToCoordinate: t => t === (OPEN + 120_000) / 1000 ? 200 : 450,
+      priceToCoordinate: normalY,
+    });
+    const { prim } = attach(stubs, () => snapshot());
+    const c = makeCanvasSpy();
+    draw(prim, c);
+    const normal = texts(c);
+    expect(normal[0].y).toBeLessThan(normalY(38_800));
+    expect(normal[1].y).toBeGreaterThan(normalY(36_750));
+
+    stubs.state.invertScale = true;
+    stubs.state.priceToCoordinate = p => 300 - normalY(p);
+    c.fillText.mockClear();
+    draw(prim, c);
+    const inverted = texts(c);
+    expect(inverted[0].y).toBeGreaterThan(300 - normalY(38_800));
+    expect(inverted[1].y).toBeLessThan(300 - normalY(36_750));
+    expect(prim.detailAt(inverted[0].x, inverted[0].y)?.text).toContain('최고가 38,800원');
+    expect(prim.detailAt(inverted[1].x, inverted[1].y)?.text).toContain('최저가 36,750원');
+  });
   it('reuses immutable candle times while pan coordinates and a new tail stay live', () => {
     const contains = vi.fn(axis.contains);
     const toVirtual = vi.fn(axis.toVirtual);
