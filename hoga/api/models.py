@@ -2140,6 +2140,18 @@ class BollingerBreakoutLeaf(BaseModel):
     params: BollingerBreakoutPeriodParams
 
 
+class BollingerPositionTodayLeaf(BaseModel):
+    type: Literal["bollinger_position_today"] = "bollinger_position_today"
+    id: str
+    params: BollingerBreakoutParams  # Shared band settings; predicate is selected by leaf type.
+
+
+class BollingerPositionLeaf(BaseModel):
+    type: Literal["bollinger_position"] = "bollinger_position"
+    id: str
+    params: BollingerBreakoutPeriodParams
+
+
 class HighOffPeakLeaf(BaseModel):
     type: Literal["high_off_peak"] = "high_off_peak"
     id: str
@@ -2176,7 +2188,7 @@ class BidDepthRenewalLeaf(BaseModel):
     params: DepthRenewalParams
 
 ConditionLeaf = Annotated[
-    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
+    BollingerBreakoutTodayLeaf | BollingerBreakoutLeaf | BollingerPositionTodayLeaf | BollingerPositionLeaf | TradeValueLeaf | TradeValuePeriodLeaf | NewHighTodayLeaf | NewHighLeaf | NewHighVolTodayLeaf | NewHighVolLeaf | HighOffPeakLeaf | ChangePctLeaf | PriceRangeLeaf | MaLeaf | AskDepthNewHighLeaf | BidDepthNewHighLeaf | AskDepthNewHighPeriodLeaf | BidDepthNewHighPeriodLeaf | AskDepthRenewalLeaf | BidDepthRenewalLeaf,  # noqa: E501 — 줄바꿈이 오히려 읽기 어려운 자리(정렬 표·URL·긴 한글 주석)
     Field(discriminator="type"),
 ]
 
@@ -2367,7 +2379,8 @@ class ScreenerExclusionWrite(BaseModel):
                 raise ValueError("봉 시작 시각과 발생 날짜가 다릅니다")
             if self.condition.type not in {"new_high_vol", "new_high_vol_today", "new_high", "new_high_today",
                                            "high_off_peak", "ma", "trade_value", "trade_value_period", "change_pct",
-                                           "bollinger_breakout_today", "bollinger_breakout"}:
+                                           "bollinger_breakout_today", "bollinger_breakout",
+                                           "bollinger_position_today", "bollinger_position"}:
                 raise ValueError("봉 시각은 주기별 가격·거래량 조건에서만 사용합니다")
         return self
 

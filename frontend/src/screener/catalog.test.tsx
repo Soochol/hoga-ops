@@ -3,11 +3,11 @@ import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { CONDITION_GROUPS } from './ConditionBuilderHelpers';
 
 describe('catalog', () => {
-  it('covers all 18 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
+  it('covers all 20 types incl. 당일/기간내 변형 + 총잔량 신고·돌파 + 신고가 대비 고가', () => {
     expect(Object.keys(CONDITION_CATALOG).sort()).toEqual(
       ['ask_depth_new_high', 'ask_depth_new_high_period', 'ask_depth_renewal',
        'bid_depth_new_high', 'bid_depth_new_high_period', 'bid_depth_renewal',
-       'bollinger_breakout', 'bollinger_breakout_today', 'change_pct', 'high_off_peak', 'ma', 'new_high',
+       'bollinger_breakout', 'bollinger_breakout_today', 'bollinger_position', 'bollinger_position_today', 'change_pct', 'high_off_peak', 'ma', 'new_high',
        'new_high_today', 'new_high_vol', 'new_high_vol_today', 'price_range',
        'trade_value', 'trade_value_period']);
   });

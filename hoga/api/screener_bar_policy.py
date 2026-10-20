@@ -1,7 +1,8 @@
 """Shared selection policy for candle conditions and the SQL boundary."""
 from hoga.api.models import BarTradeValueRangeParams, BarVolumeRangeParams
 
-BOLLINGER_TYPES = frozenset({"bollinger_breakout_today", "bollinger_breakout"})
+BOLLINGER_POSITION_TYPES = frozenset({"bollinger_position_today", "bollinger_position"})
+BOLLINGER_TYPES = BOLLINGER_POSITION_TYPES | frozenset({"bollinger_breakout_today", "bollinger_breakout"})
 
 CANDLE_TYPES = BOLLINGER_TYPES | frozenset({"new_high", "new_high_today", "new_high_vol", "new_high_vol_today",
                           "high_off_peak", "ma", "trade_value", "trade_value_period", "change_pct"})
@@ -24,6 +25,8 @@ def lookback(leaf) -> int:
 
 
 def comparison_period(leaf) -> int:
+    if leaf.type in BOLLINGER_POSITION_TYPES:
+        return leaf.params.period
     if leaf.type in BOLLINGER_TYPES:
         return leaf.params.period + 1  # Both current and previous bands need a full window.
     if leaf.type == "change_pct":

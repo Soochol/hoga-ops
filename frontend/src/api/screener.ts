@@ -107,6 +107,8 @@ export type ConditionLeaf =
   | { id: string; type: 'ma'; params: MaParams }
   | { id: string; type: 'bollinger_breakout_today'; params: BollingerBreakoutParams }
   | { id: string; type: 'bollinger_breakout'; params: BollingerBreakoutPeriodParams }
+  | { id: string; type: 'bollinger_position_today'; params: BollingerBreakoutParams }
+  | { id: string; type: 'bollinger_position'; params: BollingerBreakoutPeriodParams }
   | { id: string; type: 'ask_depth_new_high'; params: DepthPeakParams }
   | { id: string; type: 'bid_depth_new_high'; params: DepthPeakParams }
   | { id: string; type: 'ask_depth_new_high_period'; params: DepthPeakPeriodParams }

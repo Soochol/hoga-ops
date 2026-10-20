@@ -1,4 +1,4 @@
-"""Outward Bollinger crossings using each candle's own trailing population SD."""
+"""Bollinger crossings and outside positions using each candle's own trailing population SD."""
 from __future__ import annotations
 
 import datetime as dt
@@ -6,7 +6,7 @@ import math
 
 from hoga.api import screener_bar_price, screener_exclusions
 from hoga.api.models import BarPriceMatch, ScreenerOccurrence
-from hoga.api.screener_bar_policy import lookback
+from hoga.api.screener_bar_policy import BOLLINGER_POSITION_TYPES, comparison_period, lookback
 from hoga.util.timeenc import KST
 
 
@@ -53,7 +53,8 @@ def records(leaf, bars, *, fetched_at_ms):
     bars = [bar for bar in bars if p.include_open_bar or not bar.is_open]
     count, period = lookback(leaf), p.period
     start = max(0, len(bars) - count)
-    complete = len(bars) >= count + period
+    position = leaf.type in BOLLINGER_POSITION_TYPES
+    complete = len(bars) >= count + comparison_period(leaf) - 1
     valid = [bar.valid and screener_bar_price.valid_prices(bar) for bar in bars]
     values = [getattr(bar, p.band_source) if valid[i] else 0.0 for i, bar in enumerate(bars)]
     events = []
@@ -63,14 +64,15 @@ def records(leaf, bars, *, fetched_at_ms):
         bar = bars[i]
         previous = bands[i - 1] if i else None
         reference = bands[i]
-        if previous is None or reference is None:
+        if reference is None or (not position and previous is None):
             complete = False
             continue
         value = getattr(bar, p.source)
-        old_value = getattr(bars[i - 1], p.source)
-        crossed = (old_value <= previous and value > reference if p.band == "upper"
-                   else old_value >= previous and value < reference)
-        if crossed:
+        outside = value > reference if p.band == "upper" else value < reference
+        if not position:
+            old_value = getattr(bars[i - 1], p.source)
+            outside = outside and (old_value <= previous if p.band == "upper" else old_value >= previous)
+        if outside:
             events.append(ScreenerOccurrence(condition_id=leaf.id, condition_key=key,
                 date=dt.datetime.fromtimestamp(bar.start_ms / 1000, KST).date().isoformat(),
                 bar_start_ms=bar.start_ms,
