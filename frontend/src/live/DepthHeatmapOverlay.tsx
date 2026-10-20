@@ -40,6 +40,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
   const bidColor = useWindowIndicator((s) => s.depthHeatmapBidColor);
   const askColor = useWindowIndicator((s) => s.depthHeatmapAskColor);
   const maxOpacity = useWindowIndicator((s) => s.depthHeatmapMaxOpacity);
+  const aboveCandles = useActivePrefs((p) => p.depthHeatmapAboveCandles);
   const intraMax = useActivePrefs((p) => p.depthHeatmapIntraMax);
   const perPriceMax = useActivePrefs((p) => p.depthHeatmapPerPriceMax);
   // 두 토글 → 소스 하나. 셀·halfTick·강도 정규화·레전드가 **이 값 하나**를 나눠 쓴다.
@@ -73,6 +74,12 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
       primitiveRef.current = null;
     };
   }, [series]);
+
+  useEffect(() => {
+    // normal draws after the attached candle, while keeping the crosshair above it.
+    // This pair's order is independent of candleAlwaysOnTop's series ordering.
+    primitiveRef.current?.setZOrder(aboveCandles ? 'normal' : 'bottom');
+  }, [series, aboveCandles]);
 
   // 가시범위 구독: 팬/줌(visible logical range 변경)을 rAF 로 coalesce 해 재정규화.
   // logical range 를 쓰는 이유는 HighLowLabelsPrimitive 와 동일 — time range 는 팬 중
@@ -116,7 +123,7 @@ function DepthHeatmapOverlay({ chart, paneSeries, axis, points }: Props) {
 
   useEffect(() => {
     primitiveRef.current?.setCells(enabled && !hidden ? cells : []);
-  }, [enabled, hidden, cells]);
+  }, [series, enabled, hidden, cells]);
 
   // 레전드 값 provider — 커서 시각(없으면 최신)의 스냅샷에서 매수/매도 최대 잔량
   // 레벨을 "가격, 수량"으로. 소스는 그리기와 **같은 `sourceKind`** 를 따른다 —

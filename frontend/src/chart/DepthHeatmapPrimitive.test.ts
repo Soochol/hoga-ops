@@ -15,6 +15,25 @@ describe('DepthHeatmapPrimitive', () => {
     expect(prim.zOrder()).toBe('bottom');
   });
 
+  it('그리기 순서를 바꾸면 기존 pane view와 셀을 유지하고 다시 그리기를 요청한다', () => {
+    const prim = new DepthHeatmapPrimitive();
+    const requestUpdate = vi.fn();
+    prim.attached({ chart: {}, series: {}, requestUpdate } as never);
+    const cells: DepthHeatmapCell[] = [{ time: 100 as never, price: 1000, halfTick: 5, fillColor: 'rgba(1,2,3,0.5)' }];
+    prim.setCells(cells);
+    requestUpdate.mockClear();
+    const view = prim.paneViews()[0];
+    prim.setZOrder('normal');
+    expect(view.zOrder?.()).toBe('normal');
+    expect(prim.cellsData()).toBe(cells);
+    expect(requestUpdate).toHaveBeenCalledTimes(1);
+    prim.setZOrder('normal');
+    expect(requestUpdate).toHaveBeenCalledTimes(1);
+    prim.setZOrder('bottom');
+    expect(view.zOrder?.()).toBe('bottom');
+    expect(requestUpdate).toHaveBeenCalledTimes(2);
+  });
+
   it('draw가 컬럼별 x·가격별 y 좌표 변환을 프레임 내 1회로 캐시한다', () => {
     const timeToCoordinate = vi.fn((t: number) => t);
     const priceToCoordinate = vi.fn((p: number) => p);

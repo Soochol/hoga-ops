@@ -166,6 +166,11 @@ fixed canvas axis/primitive sizes remain governed by the canvas exceptions above
 캔들 몸통·꼬리 및 거래량 봉의 상승·하락 색상을 교환한다. 동시호가 회색과 실제
 가격·등락률·거래량 수치는 유지한다. 이 결정은 위의 반전 시 색상 유지 규칙을 대체한다.
 헤더의 반전 상태 툴팁은 캔들/거래량 색상 교환의 켜짐·꺼짐도 함께 안내한다.
+2026-10-20 사용자 승인: `캔들 · 지표`의 `캔들이 항상 위` 바로 아래에
+`잔량 히트맵을 캔들 위에` 토글을 추가한다. 기본은 끔(캔들이 위)이며 켜면
+호가 잔량 히트맵을 캔들 앞에 기존 불투명도로 그린다. 두 항목 사이의 순서는
+이 토글이 우선하며 `캔들이 항상 위` 설명에 별도 설정임을 명시한다.
+기존 행·설명·스위치와 창별 저장·되돌리기·프리셋을 공유한다.
 The calendar-chart “분봉으로” action sits directly after “그리기” in the toolbar,
 with its label folded at narrow widths, rather than inside the More popup.
 

@@ -103,7 +103,7 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
   private series: ISeriesApi<SeriesType> | null = null;
   private requestUpdate?: () => void;
   private readonly paneView: DepthHeatmapPaneView;
-  private readonly paneZOrder: PrimitivePaneViewZOrder;
+  private paneZOrder: PrimitivePaneViewZOrder;
 
   constructor(options: DepthHeatmapPrimitiveOptions = {}) {
     this.paneZOrder = options.zOrder ?? 'bottom';
@@ -132,6 +132,12 @@ export class DepthHeatmapPrimitive implements ISeriesPrimitive<Time> {
 
   setCells(cells: readonly DepthHeatmapCell[]): void {
     this.cells = cells;
+    this.requestUpdate?.();
+  }
+
+  setZOrder(zOrder: PrimitivePaneViewZOrder): void {
+    if (this.paneZOrder === zOrder) return;
+    this.paneZOrder = zOrder;
     this.requestUpdate?.();
   }
 

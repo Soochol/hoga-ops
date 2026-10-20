@@ -1,0 +1,69 @@
+{
+  "date_kst": "2026-10-20",
+  "head_sha": "d0798a77d6b6ad62818c8f44e0da88bf59497e18",
+  "base_sha": "d0798a77d6b6ad62818c8f44e0da88bf59497e18",
+  "base_check": "git fetch origin main; HEAD and origin/main matched before validation",
+  "scope": "Candle-window heatmap layer preference, renderer update, window persistence and presets",
+  "input_fingerprint": {
+    "algorithm": "sha256(path + NUL + sha256(file bytes)), sorted tracked paths",
+    "paths": [
+      "frontend/**",
+      "hoga/**",
+      "tests/**",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version"
+    ],
+    "sha256": "5de5ba138ed47fb95db3e9a833288c38a2debbef28c953af7d559abb8308ec98"
+  },
+  "changed_file_sha256": {
+    "DESIGN.md": "26ae87ee559252ce46699dec3eae4986ba5e7eff394f2fcb640edeab7344d091",
+    "docs/agents/window-settings.md": "0c614923e78f3e323512564c7e4aabe0d29a8796ee387f47901d628776631944",
+    "frontend/src/chart/DepthHeatmapPrimitive.test.ts": "d1ac28e09928d61553113190ec887f9d62af178a5ca933ecca91272b59e074a3",
+    "frontend/src/chart/DepthHeatmapPrimitive.ts": "68aa064fca3522e85b6b8fda906b1f28edeeeac32fe3729fd00fe7b8f6703f5a",
+    "frontend/src/live/DepthHeatmapOverlay.lifecycle.test.tsx": "571fae24c8752ccae368b4ac780ccc81ee0829ef6ad9e718388de44c95522db7",
+    "frontend/src/live/DepthHeatmapOverlay.tsx": "06dfedd25fce4a1ad2cda3450ce27d96cbcd5fd82246f346c03e5ff093656895",
+    "frontend/src/state/chartDisplayPrefs.ts": "d515585b51ac6acdbf2288cb625e9f63db467bf8eb701a2009d279405ececbd0",
+    "frontend/src/state/windowSettings.test.tsx": "8167abe7678ecec08ecfedc9e3ab9a2349bfa73db206a39206ad0971b54285db",
+    "frontend/tests/e2e/chart-window-settings.spec.ts": "dc9e568c475ef1c33e6ae7b3bd23b79b691fa624e2ec3e9fb8f1cbf7ab31449d"
+  },
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "browser": "Google Chrome 155.0.8059.84",
+    "workers": 1,
+    "e2e_ports": [
+      20376,
+      21376
+    ],
+    "e2e_data": "/tmp/hoga-e2e-data-376",
+    "credentials": "Empty vendor environment overrides from unchanged playwright.config.ts"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed (app, unit tests, E2E)"
+    },
+    {
+      "command": "npx vitest run src/chart/DepthHeatmapPrimitive.test.ts src/live/DepthHeatmapOverlay.lifecycle.test.tsx src/live/DepthHeatmapOverlay.test.ts src/state/windowSettings.test.tsx src/live/workspace/ChartDisplaySettings.test.tsx src/state/chartPrefs.test.ts src/state/chartPrefs.windowScope.test.tsx src/live/indicators/candleOverlayOrder.test.tsx",
+      "cwd": "frontend",
+      "result": "8 files / 111 tests passed"
+    },
+    {
+      "command": "npx playwright test chart-window-settings.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "7 tests passed (34.6s); includes vite production build via webServer"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "browser_evidence": "Actual overlapping candle/heatmap RGB sampled from chart.takeScreenshot(): toggles to ask color [52,133,250] in front, restores candle on undo, with candleAlwaysOnTop both false and true. Other chart stays behind. Existing suite checks reload, cross-tab, timeframe/symbol changes, new-window copy and presets.",
+  "limitations": "Fixture-driven local Chrome checks; no deployment or production server changes."
+}
