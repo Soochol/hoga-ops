@@ -120,7 +120,7 @@ export function MemoRow({
             if (e.key === 'Enter') { e.preventDefault(); commit(); }
             else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
           }}
-          className="flex-1 min-w-0 bg-transparent text-xs text-fg leading-tight outline-none border-b border-accent"
+          className="flex-1 min-w-0 bg-transparent text-xs text-fg leading-tight focus-visible:outline-none border-b border-accent"
         />
       </li>
     );

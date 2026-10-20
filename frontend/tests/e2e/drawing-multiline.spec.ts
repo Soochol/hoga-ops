@@ -29,6 +29,8 @@ test('text drawing supports Shift+Enter, multiline re-editing and reload persist
   await page.mouse.click(x, y);
   const editor = page.getByRole('textbox', { name: '텍스트 그리기' });
   await expect(editor).toBeFocused();
+  await expect(editor).toHaveCSS('outline-color', 'rgba(0, 0, 0, 0)');
+  await expect(editor).toHaveCSS('border-style', 'solid');
   await editor.pressSequentially('가나다라');
   await editor.press('Shift+Enter');
   await editor.pressSequentially('마바사아');

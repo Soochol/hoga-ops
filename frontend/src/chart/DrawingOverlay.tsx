@@ -1454,7 +1454,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
             e.stopPropagation();
           }}
           placeholder="텍스트…"
-          className="absolute z-30 resize-none rounded border border-accent bg-bg-card px-1 py-0 text-fg outline-none"
+          className="absolute z-30 resize-none rounded border border-accent bg-bg-card px-1 py-0 text-fg focus-visible:outline-none"
           style={{
             // Positioned by transform, not left/top: `syncTextEditorPosition`
             // rewrites it every lwc frame so the box tracks its anchor during a

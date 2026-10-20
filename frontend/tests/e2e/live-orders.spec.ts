@@ -946,6 +946,32 @@ test('다른 탭의 venue 전환은 드래그를 중단하고 입력 수량과 �
   await sibling.close();
 });
 
+test('주문 수량 입력은 클릭과 Tab 이동에서 바깥 테두리 하나로 포커스를 표시한다', async ({ page }, testInfo) => {
+  const { window } = await setup(page, false, false);
+  const input = window.getByRole('spinbutton', { name: '신규 주문 수량', exact: true });
+  const field = input.locator('..');
+  for (const theme of ['trading-desk', 'toss-light']) {
+    await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
+    await input.click();
+    await input.press('Tab');
+    const border = await field.evaluate(el => getComputedStyle(el).borderColor);
+    await input.click();
+    await expect(input).toBeFocused();
+    await expect(input).toHaveCSS('outline-style', 'none');
+    await expect(field).not.toHaveCSS('border-color', border);
+    await input.press('Tab');
+    await expect(input).not.toBeFocused();
+    await expect(field).toHaveCSS('border-color', border);
+    await page.keyboard.press('Shift+Tab');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveCSS('outline-style', 'none');
+    await expect(field).not.toHaveCSS('border-color', border);
+    await field.screenshot({ path: testInfo.outputPath(`order-quantity-single-focus-${theme}.png`) });
+  }
+  await input.fill('25');
+  await expect(input).toHaveValue('25');
+});
+
 test('576px 압축형은 숫자만 있는 보유 정보와 주문 입력을 분리하고 호가 밀도를 유지한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, false, false);
   const frame = page.locator('[data-win]').filter({ has: window });

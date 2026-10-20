@@ -139,6 +139,8 @@ test.describe('Watchlist Panel — 메모(빈칸) 행', () => {
 
     const input = page.getByTestId('watchlist-memo-m_0000000c-input');
     await expect(input).toBeFocused();           // 진입과 동시에 포커스가 옮겨간다
+    await expect(input).toHaveCSS('outline-color', 'rgba(0, 0, 0, 0)');
+    await expect(input).toHaveCSS('border-bottom-style', 'solid');
     await page.keyboard.type('키보드로 입력');
     await page.keyboard.press('Enter');
 

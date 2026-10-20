@@ -252,7 +252,7 @@ export function PresetMenu<P>({
             onChange={(e) => setSaveAsName(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') confirmSaveAs(); }}
             placeholder="프리셋 이름"
-            className="h-7 min-w-0 flex-1 rounded border border-border bg-bg-input px-2 text-xs text-fg outline-none focus:border-accent"
+            className="h-7 min-w-0 flex-1 rounded border border-border bg-bg-input px-2 text-xs text-fg focus-visible:outline-none focus:border-accent"
           />
           <button
             type="button"
