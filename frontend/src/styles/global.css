@@ -32,8 +32,9 @@ body {
 /* 키보드 포커스 링 — DESIGN.md 색 규율에서 focus ring 은 --accent 소유인데,
    지금까지 컴포넌트별 focus-visible 이 8곳뿐이라 나머지 표면은 브라우저 기본
    아웃라인에 의존했다. 전역 한 곳에서 계약을 이행한다.
-   - :focus 가 아니라 :focus-visible — 마우스 클릭에는 링을 그리지 않는다(브라우저
-     휴리스틱). 밀도 높은 터미널에서 클릭마다 링이 번쩍이는 것을 막는다.
+   - :focus 가 아니라 :focus-visible — 버튼은 보통 키보드 조작 때만 링을 그린다.
+     텍스트·숫자 입력은 브라우저 휴리스틱상 마우스 클릭에도 적용되므로, 래퍼에
+     focus-within 표시가 있으면 내부 입력의 outline을 명시적으로 꺼야 한다.
    - outline-offset 음수(inset) — 드로어·리스트의 overflow-hidden 조상 아래에서
      바깥 링은 잘린다. 안쪽 링은 어디서나 온전히 보인다.
    - 자체 포커스 처리를 가진 컴포넌트(focus:outline-none + ring)는 유틸리티

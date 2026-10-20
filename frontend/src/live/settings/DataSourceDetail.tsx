@@ -277,6 +277,7 @@ function LiveVenueRadio({ value }: { value: LiveVenueOption }) {
       <input
         type="radio"
         name="live-kis-venue"
+        className="focus-visible:outline-none"
         value={value}
         checked={checked}
         onChange={() => setVenue(value)}

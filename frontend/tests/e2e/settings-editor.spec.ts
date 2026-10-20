@@ -19,6 +19,49 @@ async function setup(page: Page) {
   return patches;
 }
 
+test('프리셋 이름은 클릭과 Tab 이동에서 포커스 표시가 겹치지 않는다', async ({ page }) => {
+  await page.route(apiExact('live-layout-presets'), route => route.fulfill({ json: { schema_version: 1, presets: [] } }));
+  await setup(page);
+  await page.getByTestId('layout-preset-button').click();
+  await page.getByTestId('layout-preset-save-as-open').click();
+  const name = page.getByTestId('layout-preset-save-as-input');
+  await name.press('Tab');
+  const border = await name.evaluate(el => getComputedStyle(el).borderColor);
+  await name.click();
+  await expect(name).toBeFocused();
+  await expect(name).toHaveCSS('outline-color', 'rgba(0, 0, 0, 0)');
+  await expect(name).not.toHaveCSS('border-color', border);
+  await name.press('Tab');
+  await expect(name).toHaveCSS('border-color', border);
+  await page.keyboard.press('Shift+Tab');
+  await expect(name).toBeFocused();
+  await expect(name).toHaveCSS('outline-color', 'rgba(0, 0, 0, 0)');
+  await expect(name).not.toHaveCSS('border-color', border);
+});
+
+test('거래소 라디오는 방향키와 Tab 이동에서 포커스 표시가 겹치지 않는다', async ({ page }) => {
+  await setup(page);
+  await page.getByRole('button', { name: '설정', exact: true }).first().click();
+  const editor = page.getByTestId('settings-shell');
+  await editor.getByTestId('settings-nav-data-source').click();
+  const krx = editor.getByTestId('live-venue-KRX');
+  const nxt = editor.getByTestId('live-venue-NXT');
+  await krx.click();
+  await expect(krx).toBeChecked();
+  await krx.press('ArrowRight');
+  await expect(nxt).toBeFocused();
+  await expect(nxt).toBeChecked();
+  await expect(nxt).toHaveCSS('outline-color', 'rgba(0, 0, 0, 0)');
+  await expect(nxt.locator('..')).toHaveCSS('outline-style', 'solid');
+  await expect(nxt.locator('..')).toHaveCSS('outline-width', '2px');
+  await nxt.press('Tab');
+  await expect(nxt.locator('..')).toHaveCSS('outline-style', 'none');
+  await page.keyboard.press('Shift+Tab');
+  await expect(nxt).toBeFocused();
+  await expect(nxt).toHaveCSS('outline-color', 'rgba(0, 0, 0, 0)');
+  await expect(nxt.locator('..')).toHaveCSS('outline-style', 'solid');
+});
+
 for (const theme of ['toss-light', 'toss-dark']) {
   test(`${theme}: 헤더 설정에서 전역·서버 변경을 되돌리고 검색과 목차를 유지한다`, async ({ page }, testInfo) => {
     await page.addInitScript(theme => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
