@@ -5,7 +5,7 @@ import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
 import { isMinuteTimeframe, type LiveMAConfig, type LiveTimeframe } from '../../state/livePage';
-import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
+import { useActivePrefs } from '../../state/chartPrefs';
 import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import type { LiveVenueOption } from '../../state/liveVenue';
 import { createDailyMovingAverageProjection } from '../../chart/projectors/maProjection';
@@ -57,7 +57,7 @@ function DailyMovingAverageOverlay({ chart, bundle, axis, code, timeframe, venue
   const storeConfigs = useWindowIndicator((s) => s.dailyMovingAverages);
   const configs = override?.configs ?? storeConfigs;
   const theme = useThemePrefsStore(s => s.themePreference);
-  const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
+  const candleOnlyScale = useActivePrefs((s) => s.candlePaneCandleOnlyScale);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
   const projectRef = useRef<ReturnType<typeof createDailyMovingAverageProjection> | null>(null);

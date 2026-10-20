@@ -4,6 +4,7 @@ import {
   CHART_NUMERIC_PREFS,
   CHART_TOGGLES,
   CHART_TOGGLE_GROUPS,
+  CHART_DISPLAY_GROUP_IDS,
   TRADE_HIGHLIGHT_COLOR_DEFAULT,
   categoryOf,
   gatedByOf,
@@ -46,7 +47,7 @@ import SettingsTransferSection from './settings/SettingsTransferSection';
  *
  * 차트·체결창 섹션은 `CHART_TOGGLES` 레지스트리 주도이고 소그룹도 레지스트리가
  * 소유한다(`group` 필드 + `CHART_TOGGLE_GROUPS` — 순서가 곧 화면 순서).
- * 'indicator-modal' 카테고리는 제외(그건 「지표」 모달 소관). 나머지는 아래 고정
+ * 'indicator-modal' 카테고리와 캔들 헤더 팝오버 전용 그룹은 제외한다. 나머지는 아래 고정
  * 섹션이다. 토글/pref 추가는 여전히 레지스트리 한 줄.
  *
  * 원래 설정 표면이 **둘**이었다 — 여기(차트 드로어)와 `pages/Settings` 의 앱 설정
@@ -106,7 +107,7 @@ type FilterUnit = {
 function buildFilterUnits(): FilterUnit[] {
   return CHART_TOGGLES.flatMap((t) => {
     const group = groupOf(t);
-    if (group === undefined || gatedByOf(t) !== undefined) return [];
+    if (group === undefined || CHART_DISPLAY_GROUP_IDS.includes(group) || gatedByOf(t) !== undefined) return [];
     const children = CHART_TOGGLES.filter((c) => gatedByOf(c) === t.key);
     const numerics = CHART_NUMERIC_PREFS.filter((n) => 'enabledBy' in n && n.enabledBy === t.key);
     const lines = CHART_LINE_STYLES.filter((l) => l.enabledBy === t.key);

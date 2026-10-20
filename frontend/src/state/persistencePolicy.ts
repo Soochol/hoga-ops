@@ -124,6 +124,12 @@ export const NON_DEFAULT_PERSISTENCE: readonly PersistenceDecl[] = [
     note: '같은 「지표」 드로어의 나머지 절반. 둘 다 동기화하지 않으면 한 드로어 안에서 일부 행만 따라온다.',
   },
   {
+    key: 'hoga.window.settings.v1',
+    module: 'state/windowSettings.ts',
+    policy: 'shared-synced',
+    note: '창 id별 표시·동작 설정. 같은 창을 복원한 새 탭도 동일한 값을 읽되, 서로 다른 창 id는 독립적이다.',
+  },
+  {
     key: 'live.settings.ping.v1',
     module: 'api/liveSettings.ts',
     policy: 'signal',

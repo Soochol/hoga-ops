@@ -14,6 +14,7 @@ import {
 import { useLiveCursorStore } from '../useLiveCursorStore';
 import { useLiveOrderbookAtCursor } from '../../api/useLiveCursor';
 import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useWindowSettingsStore } from '../../state/windowSettings';
 import { useQuoteByCode, type LiveQuote } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveViStatus } from '../../api/liveViStatus';
@@ -515,6 +516,7 @@ describe('DataWindow — 10호가 동시호가 마스크 (ADR-0119 PR-D2)', () =
     __resetGroupChartLinksForTests();
     useLiveCursorStore.getState().resetCursor();
     useChartPrefsStore.getState().setToggle('auctionWindowMask', toggle);
+    useWindowSettingsStore.setState({ byWindow: {} });
     publishGroupChartLink(chartLink({ bundle: bundleWithSession() }));
     useLiveCursorStore.getState().setSidebarCursor(cursorMs, {
       windowId: 'cw1', group: 1, code: '005930', timeframe: '1m',
@@ -539,6 +541,21 @@ describe('DataWindow — 10호가 동시호가 마스크 (ADR-0119 PR-D2)', () =
     setup(AUCTION_MS, false);
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByText('mask:false')).toBeInTheDocument();
+  });
+
+  it('링크 기준 차트의 창별 설정을 구독하고 다른 차트나 전역값을 따르지 않는다', () => {
+    setup(AUCTION_MS, false);
+    useWindowSettingsStore.getState().patch('cw1', 'chart', { auctionWindowMask: true });
+    useWindowSettingsStore.getState().patch('cw2', 'chart', { auctionWindowMask: false });
+    renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
+    expect(screen.getByText('mask:true')).toBeInTheDocument();
+    act(() => useWindowSettingsStore.getState().patch('cw1', 'chart', { auctionWindowMask: false }));
+    expect(screen.getByText('mask:false')).toBeInTheDocument();
+    act(() => {
+      useWindowSettingsStore.getState().patch('cw2', 'chart', { auctionWindowMask: true });
+      publishGroupChartLink(chartLink({ windowId: 'cw2', bundle: bundleWithSession() }));
+    });
+    expect(screen.getByText('mask:true')).toBeInTheDocument();
   });
 
   it('정규장 커서 → 마스킹 안 함', () => {

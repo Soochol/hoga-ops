@@ -1,5 +1,5 @@
 import type { Candle, QuoteRatioPoint } from '../api/types';
-import { isCalendarTimeframe, type LiveTimeframe } from '../state/livePage';
+import { isCalendarTimeframe, isSecondTimeframe, type LiveTimeframe } from '../state/livePage';
 
 export interface CandleTooltipModel {
   tsMs: number;
@@ -43,7 +43,8 @@ function kstLabels(
   if (isCalendarTimeframe(timeframe)) {
     return { dateLabel: ymd, timeLabel: null };
   }
-  return { dateLabel: ymd, timeLabel: `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}` };
+  const time = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  return { dateLabel: ymd, timeLabel: isSecondTimeframe(timeframe) ? `${time}:${pad(d.getUTCSeconds())}` : time };
 }
 
 export function formatTooltipQtyK(qty: number): string {

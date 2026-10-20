@@ -40,6 +40,8 @@ import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
+import { WindowHeaderAction } from './WindowHeaderAction';
+import { WindowSettingsPopover } from './WindowSettingsPopover';
 import { useOrderQuantity } from './useOrderQuantity';
 import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
@@ -133,13 +135,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const book = snapshot;
   const deltaBadges = useOrderbookDeltaBadges(live.ob, !storedLadder);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
-  const settingsButtonRef = useRef<HTMLButtonElement>(null);
-  const settingsId = useId();
   const closeSettings = useCallback(() => {
     setSettingsDraft(null);
-    settingsButtonRef.current?.focus({ preventScroll: true });
   }, []);
-  const { ref: settingsRef, style: settingsStyle } = useAnchoredPopover<HTMLDivElement>(!!settingsDraft, settingsButtonRef, closeSettings, 520);
   const [action, setAction] = useState<Action | null>(null);
   const [confirmedHigh, confirmHigh] = useState(false);
   const [reviewedUnknown, reviewUnknown] = useState(false);
@@ -620,11 +618,6 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       </button>)}
       </div>
       <div className="order-settings-group">
-      <button ref={settingsButtonRef} type="button" aria-label="주문 설정" aria-haspopup="dialog" aria-expanded={!!settingsDraft} aria-controls={settingsDraft ? settingsId : undefined}
-        disabled={busy || dragInProgress} onClick={() => {
-          if (settingsDraft) { closeSettings(); return; }
-          closeAction(); setAccountTab(null); setInfoOpen(false); setSettingsDraft(normalizeOrderSettings(preferences));
-        }}>설정</button>
       {!showInlineSummary && <button ref={infoButtonRef} type="button" aria-label="종목 상세 정보" aria-haspopup="dialog" aria-expanded={infoOpen} aria-controls={infoOpen ? infoId : undefined}
         disabled={dragInProgress} onClick={() => setInfoOpen(open => !open)}>정보</button>}
       </div>
@@ -700,11 +693,17 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       className={`order-drag-preview font-data ${draggedOrder.side === 'BUY' ? 'order-buy' : 'order-sell'} ${dragCancel ? 'order-drag-preview-cancel' : ''}`}>
       {fmt(draggingOrders.reduce((sum, order) => sum + orderRemainder(order), 0))}
     </div>, document.body)}
-    {settingsDraft && createPortal(<div ref={settingsRef} id={settingsId} style={settingsStyle} role="dialog" aria-label="주문 설정" className="order-settings-popover ui-popover" onKeyDown={e => {
-      e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); closeSettings(); }
-    }}>
-      <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} onClose={closeSettings} />
-    </div>, document.body)}
+    <WindowHeaderAction>
+      <WindowSettingsPopover title="주문 설정" scope="이 창에 적용" width={380}
+        open={!!settingsDraft} disabled={busy || dragInProgress}
+        onOpenChange={open => {
+          if (!open) { closeSettings(); return; }
+          if (busy || dragInProgress) return;
+          closeAction(); setAccountTab(null); setInfoOpen(false);
+          setSettingsDraft(normalizeOrderSettings(preferences));
+        }}
+        render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
+    </WindowHeaderAction>
     <div className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>

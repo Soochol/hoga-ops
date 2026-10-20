@@ -56,7 +56,7 @@ function order(id = 'a'): TossOrder {
 function show() { return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><OrderWindow code="005930" name="삼성전자" /></QueryClientProvider>); }
 function enableReceiptSound() {
   fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-  fireEvent.click(screen.getByRole('button', { name: '주문 알림' }));
+
   fireEvent.click(screen.getByRole('switch', { name: '주문접수 소리' }));
   fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
 }
@@ -346,11 +346,11 @@ describe('호가 주문', () => {
   it('소리 들어보기는 설정을 바꾸지 않고 소리 토글은 즉시 저장한다', async () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '주문 알림' }));
+
     const checkbox = screen.getByRole('switch', { name: '주문접수 소리' });
     expect(checkbox).not.toBeChecked();
     expect(screen.queryByRole('slider')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '주문 알림' }));
+
     fireEvent.click(screen.getByRole('button', { name: '소리 들어보기' }));
     await waitFor(() => expect(playOrderReceiptSound).toHaveBeenCalledOnce());
     expect(checkbox).not.toBeChecked();
@@ -358,14 +358,14 @@ describe('호가 주문', () => {
     fireEvent.click(checkbox);
     fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '주문 알림' }));
+
     expect(screen.getByRole('switch', { name: '주문접수 소리' })).toBeChecked();
   });
   it('미리듣기 차단을 설정 안에서 안내한다', async () => {
     vi.mocked(playOrderReceiptSound).mockResolvedValue(false);
     show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '주문 알림' }));
+
     fireEvent.click(screen.getByRole('button', { name: '소리 들어보기' }));
     await screen.findByText('소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.');
     expect(mock.command).not.toHaveBeenCalled();
@@ -959,19 +959,19 @@ describe('호가 주문', () => {
     fireEvent.click(settings);
     expect(screen.queryByRole('button', { name: '적용' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '취소' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '호가 표시' }));
+
     fireEvent.click(screen.getByRole('switch', { name: '내 평단가 표시' }));
     expect(marker()).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
     fireEvent.click(settings);
-    fireEvent.click(screen.getByRole('button', { name: '호가 표시' }));
+
     expect(screen.getByRole('switch', { name: '내 평단가 표시' })).not.toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: '호가 표시' }));
+
     fireEvent.click(screen.getByRole('switch', { name: '내 평단가 표시' }));
     expect(marker()).not.toBeNull();
     fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
     fireEvent.click(settings);
-    fireEvent.click(screen.getByRole('button', { name: '호가 표시' }));
+
     expect(screen.getByRole('switch', { name: '내 평단가 표시' })).toBeChecked();
     fireEvent.click(settings);
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('67,001');
@@ -982,32 +982,28 @@ describe('호가 주문', () => {
     show();
     expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
-    fireEvent.click(screen.getByRole('button', { name: '호가 표시' }));
+
     fireEvent.click(screen.getByRole('switch', { name: '내 평단가 표시' }));
     fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
     expect(screen.queryByText('호가 범위 밖')).not.toBeInTheDocument();
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('66,000');
   });
-  it('설정 목차를 이동해도 오른쪽의 모든 설정과 편집 중인 값은 계속 표시한다', () => {
+  it('차트와 같은 단일 본문에 모든 설정과 즉시 저장 안내를 표시한다', () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
     const dialog = screen.getByRole('dialog', { name: '주문 설정' });
-    const navigation = within(dialog).getByRole('navigation', { name: '주문 설정 목차' });
+    expect(within(dialog).queryByRole('navigation')).not.toBeInTheDocument();
+    expect(within(dialog).getByText('이 창에 적용')).toBeVisible();
+    expect(within(dialog).getByRole('status')).toHaveTextContent('변경 즉시 반영');
     const quantity = within(dialog).getByRole('spinbutton', { name: '수량 프리셋 1' });
     fireEvent.change(quantity, { target: { value: '25' } });
-    for (const name of ['주문 알림', '호가 표시', '주문 입력']) {
-      const button = within(navigation).getByRole('button', { name });
-      fireEvent.click(button);
-      expect(button).toHaveAttribute('aria-current', 'true');
-      for (const section of ['주문 입력', '호가 표시', '주문 알림']) {
-        expect(within(dialog).getByRole('region', { name: section })).toBeVisible();
-        expect(within(dialog).getByRole('heading', { name: section })).toBeVisible();
-      }
-      expect(quantity).toBeVisible();
-      expect(quantity).toHaveValue(25);
-      expect(within(dialog).getByRole('switch', { name: '내 평단가 표시' })).toBeVisible();
-      expect(within(dialog).getByRole('switch', { name: '주문접수 소리' })).toBeVisible();
+    for (const section of ['주문 입력', '호가 표시', '주문 알림']) {
+      expect(within(dialog).getByRole('region', { name: section })).toBeVisible();
+      expect(within(dialog).getByRole('heading', { name: section })).toBeVisible();
     }
+    expect(quantity).toHaveValue(25);
+    expect(within(dialog).getByRole('switch', { name: '내 평단가 표시' })).toBeVisible();
+    expect(within(dialog).getByRole('switch', { name: '주문접수 소리' })).toBeVisible();
     expect(mock.command).not.toHaveBeenCalled();
   });
 
@@ -1027,7 +1023,7 @@ describe('호가 주문', () => {
       expect(within(dialog).getByRole('alert')).toBeInTheDocument();
     }
     for (const [i, value] of [25, 75, 250].entries()) fireEvent.change(screen.getByLabelText(`수량 프리셋 ${i + 1}`), { target: { value: String(value) } });
-    fireEvent.click(screen.getByRole('button', { name: '호가 표시' }));
+
     fireEvent.click(screen.getByRole('switch', { name: '내 평단가 표시' }));
     expect(view.container.querySelector('.order-average-marker')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
@@ -1035,9 +1031,9 @@ describe('호가 주문', () => {
     edit();
     expect(screen.getByLabelText('금액 프리셋 1')).toHaveValue(1);
     expect(screen.getByLabelText('수량 프리셋 2')).toHaveValue(75);
-    fireEvent.click(screen.getByRole('button', { name: '호가 표시' }));
+
     expect(screen.getByRole('switch', { name: '내 평단가 표시' })).not.toBeChecked();
-    fireEvent.click(screen.getByRole('button', { name: '주문 입력' }));
+
     fireEvent.change(screen.getByLabelText('금액 프리셋 1'), { target: { value: '2' } });
     fireEvent.keyDown(screen.getByRole('dialog', { name: '주문 설정' }), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: '75주' }));

@@ -1,3 +1,5 @@
+import { CHART_DISPLAY_TOGGLES, isChartDisplayPrefKey, normalizeChartDisplayPrefs, type ChartDisplayPrefs } from './chartDisplayPrefs';
+import { useWindowSettingsStore, WindowSettingsScope } from './windowSettings';
 /**
  * Declarative registry of boolean chart toggles. Each entry surfaces in the
  * ⚙️ Settings modal OR (for `category: 'indicator-modal'` entries) the 「지표」
@@ -36,50 +38,7 @@ import {
 } from './peakWallFamilyPrefs';
 
 export const CHART_TOGGLES = [
-  // ── 차트 › 캔들 · 지표 ─────────────────────────────────────────────
-  {
-    key: 'candlePaneCandleOnlyScale',
-    label: '캔들 기준 Y축',
-    description: '캔들 고가·저가에 맞춰 가격축을 조절합니다. 보조지표는 제외합니다.',
-    default: false,
-    group: 'candle',
-  },
-  {
-    key: 'candleAlwaysOnTop',
-    label: '캔들이 항상 위',
-    description: '이동평균선 등 보조지표 위에 캔들을 그립니다.',
-    default: false,
-    group: 'candle',
-  },
-  {
-    key: 'auctionWindowMask',
-    label: '동시호가 구간 지표 숨김',
-    description: '마감 동시호가 구간의 호가비·총잔량·체결강도를 숨깁니다. 캔들·거래량은 유지합니다.',
-    default: true,
-    group: 'candle',
-  },
-  {
-    key: 'candleTooltipEnabled',
-    label: '캔들 정보 툴팁',
-    description: '캔들에 마우스를 올리면 가격·등락·거래량 정보를 표시합니다.',
-    default: false,
-    group: 'candle',
-  },
-  // ── 차트 › 격자 · 구분선 ───────────────────────────────────────────
-  {
-    key: 'horizontalGridLinesEnabled',
-    label: '가로 구분선',
-    description: '가격을 따라 가로 격자선을 표시합니다.',
-    default: true,
-    group: 'grid',
-  },
-  {
-    key: 'verticalGridLinesEnabled',
-    label: '세로 구분선',
-    description: '시간을 따라 세로 격자선을 표시합니다.',
-    default: true,
-    group: 'grid',
-  },
+  ...CHART_DISPLAY_TOGGLES,
   {
     key: 'ratioOutlierFilterEnabled',
     label: '호가비 극단값 필터',
@@ -295,6 +254,9 @@ export const CHART_TOGGLE_GROUPS = [
 ] as const;
 
 export type ChartToggleGroupId = (typeof CHART_TOGGLE_GROUPS)[number]['id'];
+
+/** These groups appear only in the candle chart title-bar settings popover. */
+export const CHART_DISPLAY_GROUP_IDS: readonly ChartToggleGroupId[] = ['candle', 'grid'];
 
 /** Resolve a CHART_TOGGLES entry's settings-modal subgroup, or undefined for
  *  entries that don't render as top-level settings rows (indicator-modal
@@ -652,7 +614,7 @@ export function resolveIndicatorModalPrefs(
   return out as Partial<ChartViewPrefs>;
 }
 
-import { useContext } from 'react';
+import { useContext, useMemo } from 'react';
 import { create } from 'zustand';
 import {
   profileKeyForTimeframe,
@@ -1001,7 +963,22 @@ export function useActivePrefs<T>(selector: (prefs: ChartViewPrefs) => T): T {
   const draft = useContext(IndicatorEditorDraftContext);
   const tf = useWindowPrefsTimeframe();
   const scope = useWindowPrefsScope();
-  return useChartPrefsStore((s) => selector(draft?.prefs ?? (tf ? prefsForScope(s, scope, tf) : s)));
+  const display = useWindowDisplayPrefs();
+  return useChartPrefsStore((s) => {
+    const prefs = draft?.prefs ?? (tf ? prefsForScope(s, scope, tf) : s);
+    return selector(display ? { ...prefs, ...display } : prefs);
+  });
+}
+
+function useDisplayWindowId(): string | null {
+  const explicitId = useContext(WindowSettingsScope);
+  const view = useContext(WindowViewContext);
+  return explicitId ?? view?.windowId ?? null;
+}
+
+function useWindowDisplayPrefs(): ChartDisplayPrefs | undefined {
+  const id = useDisplayWindowId();
+  return useWindowSettingsStore(state => id ? state.byWindow[id]?.chart : undefined);
 }
 
 /** 창 스코프로 resolve 된 prefs 전체 — 드로어의 설정 행처럼 여러 키를 한꺼번에
@@ -1010,7 +987,9 @@ export function useScopedChartPrefs(): ChartViewPrefs {
   const draft = useContext(IndicatorEditorDraftContext);
   const tf = useWindowPrefsTimeframe();
   const scope = useWindowPrefsScope();
-  return useChartPrefsStore((s) => draft?.prefs ?? (tf ? prefsForScope(s, scope, tf) : s));
+  const display = useWindowDisplayPrefs();
+  const prefs = useChartPrefsStore((s) => draft?.prefs ?? (tf ? prefsForScope(s, scope, tf) : s));
+  return useMemo(() => display ? { ...prefs, ...display } : prefs, [prefs, display]);
 }
 
 /** 창 스코프 편집 표면 — 대상 창의 봉 버킷에 기록한다(`useIndicatorActions` 의
@@ -1022,6 +1001,7 @@ export function useChartPrefActions(): {
 } {
   const tf = useWindowPrefsTimeframe();
   const scope = useWindowPrefsScope();
+  const displayWindowId = useDisplayWindowId();
   // 스토어 액션은 생성 시 1회 만들어지는 안정 참조 — 매 렌더 새 클로저를 만들어도
   // 대상 봉만 다르므로, useMemo 없이도 의미가 흔들리지 않는다. 다만 봉이 바뀌면
   // 새 클로저가 새 버킷을 향해야 하므로 클로저 캡처는 tf 로 유지한다.
@@ -1029,10 +1009,14 @@ export function useChartPrefActions(): {
   const draft = useContext(IndicatorEditorDraftContext);
   if (draft) return { setToggle: draft.setPref, setNumericPref: draft.setPref, resetIndicatorModalBucket: draft.resetPrefs };
   return {
-    setToggle: (key, value) =>
-      tf
-        ? store.getState().setPrefScoped(scope, tf, key, value)
-        : store.getState().setToggle(key, value),
+    setToggle: (key, value) => {
+      if (displayWindowId && isChartDisplayPrefKey(key)) {
+        const settings = useWindowSettingsStore.getState();
+        settings.seed(displayWindowId, { chart: normalizeChartDisplayPrefs(store.getState()) });
+        settings.patch(displayWindowId, 'chart', { [key]: value });
+      } else if (tf) store.getState().setPrefScoped(scope, tf, key, value);
+      else store.getState().setToggle(key, value);
+    },
     setNumericPref: (key, value) =>
       tf
         ? store.getState().setPrefScoped(scope, tf, key, value)

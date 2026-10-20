@@ -1,6 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, fireEvent } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { WindowFrame } from './WindowFrame';
+import { WindowHeaderAction } from './WindowHeaderAction';
+import { WindowSettingsPopover } from './WindowSettingsPopover';
 import { MAX_GROUP, MIN_GROUP } from '../../state/workspace';
 import type { WindowKind } from '../../state/workspace';
 
@@ -40,6 +43,38 @@ function paletteOf() {
   if (!palette) throw new Error('palette not found');
   return palette as HTMLElement;
 }
+
+it('본문 소유 설정 액션은 자기 창 헤더에만 연결되고 처리 상태와 닫기를 유지한다', () => {
+  function Content({ name }: { name: string }) {
+    const [busy, setBusy] = useState(false);
+    const [open, setOpen] = useState(false);
+    return <div data-testid={`${name}-body`}>
+      <button onClick={() => setBusy(value => !value)}>처리 상태 {name}</button>
+      <WindowHeaderAction><WindowSettingsPopover title={`${name} 설정`} scope="이 창에 적용"
+        open={open} onOpenChange={setOpen} disabled={busy} render={() => <input aria-label={`${name} 입력`} />} /></WindowHeaderAction>
+    </div>;
+  }
+  const props = { kind: 'order' as const, group: 1 as const, rect: { x: 0, y: 0, w: 320, h: 240 },
+    zIndex: 1, focused: false, symbolLabel: '삼성전자', symbolCode: '005930', paletteOpen: false,
+    onHandleDown: vi.fn(), onFocus: vi.fn(), onClose: vi.fn(), onTogglePalette: vi.fn(), onPickGroup: vi.fn(), onToggleMaximize: vi.fn() };
+  const view = render(<>{['첫째', '둘째'].map(name => <WindowFrame key={name} {...props} id={name}><Content name={name} /></WindowFrame>)}</>);
+  for (const name of ['첫째', '둘째']) {
+    const body = screen.getByTestId(`${name}-body`);
+    const header = view.container.querySelector(`[data-win="${name}"] .live-window-titlebar`)!;
+    const trigger = within(header as HTMLElement).getByRole('button', { name: `${name} 설정` });
+    expect(within(body).queryByRole('button', { name: `${name} 설정` })).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    const input = screen.getByRole('textbox', { name: `${name} 입력` });
+    fireEvent.change(input, { target: { value: '유지' } });
+    fireEvent.click(screen.getByRole('button', { name: `처리 상태 ${name}` }));
+    expect(trigger).toBeDisabled();
+    expect(input).toHaveValue('유지');
+    fireEvent.click(screen.getByRole('button', { name: `처리 상태 ${name}` }));
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  }
+});
 
 describe('WindowFrame 링크 그룹 팔레트', () => {
   it('열리면 MIN_GROUP..MAX_GROUP 전부를 버튼으로 낸다', () => {

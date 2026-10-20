@@ -4,7 +4,7 @@ import { memo, useEffect, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
+import { useActivePrefs } from '../../state/chartPrefs';
 import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import { createMovingAverageProjection } from '../../chart/projectors/maProjection';
 import { maskIntradayLineGaps } from '../../chart/intradayWhitespace';
@@ -36,7 +36,7 @@ const priceFormat = {
 function MovingAverageOverlay({ chart, bundle, axis }: Props) {
   const configs = useWindowIndicator((s) => s.movingAverages);
   const theme = useThemePrefsStore(s => s.themePreference);
-  const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
+  const candleOnlyScale = useActivePrefs((s) => s.candlePaneCandleOnlyScale);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const seriesByIdRef = useRef<Map<string, LineApi>>(new Map());
   const projectRef = useRef<ReturnType<typeof createMovingAverageProjection> | null>(null);

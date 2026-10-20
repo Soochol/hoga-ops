@@ -71,8 +71,8 @@ export function LayoutPresetMenu() {
       labels={{
         buttonFallback: '레이아웃',
         ariaLabel: '레이아웃 프리셋',
-        applyHint: '적용 시 창 배치·지표가 교체됩니다 — 보고 있는 종목은 유지',
-        applyTitle: '이 배치로 교체 — 창·지표가 대체되고 종목은 그대로입니다',
+        applyHint: '적용 시 창 배치·지표·창 설정이 교체됩니다 — 보고 있는 종목은 유지',
+        applyTitle: '이 배치로 교체 — 창·지표·창 설정이 대체되고 종목은 그대로입니다',
         saveCurrent: '현재 배치 저장',
         reset: '기본 배치로 초기화',
       }}

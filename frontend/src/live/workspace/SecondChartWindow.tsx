@@ -2,8 +2,8 @@
  * A separate pipeline prevents minute vendor requests and slower indicator
  * interpolation from silently pretending to be second-resolution data.
  */
-import { useEffect, useMemo, useRef } from 'react';
-import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CandlestickSeries, HistogramSeries, LineSeries, createChart, type IChartApi, type ISeriesApi, type SeriesType, type AutoscaleInfoProvider, type Time } from 'lightweight-charts';
 import { useSecondHistory, SECOND_INITIAL_BARS } from '../../api/secondHistory';
 import { createVirtualAxis, type VirtualAxis } from '../../util/virtualAxis';
 import { useLiveVenueStore } from '../../state/liveVenue';
@@ -26,6 +26,10 @@ import { bucketSeconds, type SecondTimeframe } from '../../state/livePage';
 import { CHART_LAYOUT_OPTIONS } from '../../util/chartScale';
 import { captureSecondViewport, restoreSecondViewport, type SecondChartViewport } from './secondChartViewport';
 import { createPersistentCrosshairChart } from '../../chart/persistentCrosshair';
+import { useActivePrefs } from '../../state/chartPrefs';
+import CandleTooltip from '../CandleTooltip';
+import type { PaneSeriesMap } from '../../chart/drawing/chartCoordinates';
+import type { PaneId } from '../../chart/drawing/types';
 
 const kstTimeFormatter = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const kstTime = (value: number) => kstTimeFormatter.format(value * 1000);
@@ -51,6 +55,14 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
   const midnight = new Date(`${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}T00:00:00+09:00`).getTime();
   const seconds = bucketSeconds(timeframe) as 1 | 5 | 10 | 30;
   const regularSessionOnly = win.chart?.regularSessionOnly ?? false;
+  const horizontalGrid = useActivePrefs(p => p.horizontalGridLinesEnabled);
+  const verticalGrid = useActivePrefs(p => p.verticalGridLinesEnabled);
+  const candleOnlyScale = useActivePrefs(p => p.candlePaneCandleOnlyScale);
+  const candlesOnTop = useActivePrefs(p => p.candleAlwaysOnTop);
+  const tooltipEnabled = useActivePrefs(p => p.candleTooltipEnabled);
+  const gridRef = useRef({ horizontalGrid, verticalGrid });
+  gridRef.current = { horizontalGrid, verticalGrid };
+  const [tooltipChart, setTooltipChart] = useState<{ chart: IChartApi; paneSeries: PaneSeriesMap } | null>(null);
   const query = useSecondHistory(code, venue, date, seconds, regularSessionOnly);
   const bars = query.bars;
   const { hasNextPage, isFetchingNextPage, fetchNextPage } = query;
@@ -116,7 +128,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     const chart = createPersistentCrosshairChart(createChart(container.current, {
       width: container.current.clientWidth, height: container.current.clientHeight,
       layout: { ...CHART_LAYOUT_OPTIONS, attributionLogo: false, background: { color: color('--bg-card', '#ffffff') }, textColor: color('--fg-dim', '#64748b') },
-      grid: { vertLines: { visible: false }, horzLines: { color: color('--border', '#e2e8f0') } },
+      grid: { vertLines: { visible: gridRef.current.verticalGrid, color: color('--border', '#e2e8f0') },
+        horzLines: { visible: gridRef.current.horizontalGrid, color: color('--border', '#e2e8f0') } },
       timeScale: { timeVisible: true, secondsVisible: true, tickMarkFormatter: (t: Time) => typeof t === 'number' ? `${isoDate(realMsToYyyymmdd(axisRef.current.toReal(t * 1000))).slice(5)} ${kstTime(axisRef.current.toReal(t * 1000) / 1000)}` : '' },
       localization: { timeFormatter: (t: Time) => typeof t === 'number' ? `${isoDate(realMsToYyyymmdd(axisRef.current.toReal(t * 1000)))} ${kstTime(axisRef.current.toReal(t * 1000) / 1000)}` : '' },
     }));
@@ -159,6 +172,7 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
     chart.subscribeCrosshairMove(onCursor);
     chartRef.current = chart;
     seriesRef.current = { candles, ma, volume };
+    setTooltipChart({ chart, paneSeries: new Map<PaneId, ISeriesApi<SeriesType>>([['candle', candles], ['volume', volume]]) });
     writeSeries.current = createSecondChartSeriesWriter({ candles, ma, volume }, chart);
     userGesture.current = false;
     wheelGestureUntil.current = 0;
@@ -179,6 +193,19 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
       writeSeries.current = null;
     };
   }, [code, venue, midnight, win.id, win.group, timeframe]);
+
+  useEffect(() => {
+    const chart = chartRef.current, series = seriesRef.current;
+    if (!chart || !series) return;
+    chart.applyOptions({ grid: { horzLines: { visible: horizontalGrid }, vertLines: { visible: verticalGrid } } });
+    const autoscaleInfoProvider: AutoscaleInfoProvider = original => candleOnlyScale ? null : original();
+    series.ma.applyOptions({ autoscaleInfoProvider });
+    series.candles.setSeriesOrder(candlesOnTop ? 1 : 0);
+  }, [horizontalGrid, verticalGrid, candleOnlyScale, candlesOnTop, code, venue, midnight, win.id, win.group, timeframe]);
+
+  const tooltipBundle = useMemo(() => ({ code: code ?? '', candles: tooltipEnabled ? bars.map(bar => ({
+    ts_ms: bar.t_ms, open: bar.open, high: bar.high, low: bar.low, close: bar.close, vol_a: bar.volume, vol_b: 0,
+  })) : [] }), [code, bars, tooltipEnabled]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -229,6 +256,8 @@ function SecondChartContent({ win, symbol, code, venue, date, timeframe, today }
         onPointerCancel={() => { userGesture.current = false; }}
         onWheel={() => { wheelGestureUntil.current = performance.now() + 200; }} />
       <div className="absolute top-2 left-2 text-fg-dim pointer-events-none text-xs">MA 20 · 거래량</div>
+      {tooltipEnabled && tooltipChart && <CandleTooltip chart={tooltipChart.chart} paneSeries={tooltipChart.paneSeries}
+        bundle={tooltipBundle} axis={axis} timeframe={timeframe} />}
       {(!bars.length || !code) && <div className="absolute inset-0 flex items-center justify-center text-fg-dim bg-bg-card/80">
         {!code ? '주식 종목을 선택해주세요' : query.isError ? '초봉을 불러오지 못했습니다' : query.isPending ? '초봉 불러오는 중' : '선택한 날짜에 저장된 초봉이 없습니다'}
       </div>}

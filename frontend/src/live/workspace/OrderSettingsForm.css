@@ -1,28 +1,20 @@
-.order-settings-popover > .order-settings-editor { height:auto; flex:1; }
-.order-settings-editor .settings-editor-heading { min-height:44px; padding-block:0.5rem; }
-.order-settings-editor .settings-editor-sidebar { overflow-y:auto; }
-.order-settings-nav { display:flex; flex-direction:column; gap:0.125rem; min-height:0; }
-.order-settings-body { margin:0; padding-block:12px; container-type:inline-size; scroll-padding-top:12px; }
-.order-settings-section { min-width:0; }
-.order-settings-section + .order-settings-section { margin-top:12px; }
-.order-settings-section-title { margin:0 0 6px; font-size:14px; line-height:1.2; font-weight:500; }
-.order-settings-editor .settings-row { min-height:36px; padding-block:4px; }
-.order-settings-editor .order-settings-presets-row { flex-wrap:nowrap; gap:8px; }
+.order-settings-body { margin:0; container-type:inline-size; }
+.order-settings-editor .order-settings-presets-row { flex-wrap:nowrap; gap:var(--space-sm); }
 .order-settings-presets-row > div:first-child { flex:0 0 72px; }
 .order-settings-presets-row > .settings-row-control { flex:1; width:auto; min-width:0; max-width:none; }
-.order-settings-editor .order-settings-presets-wide { flex-wrap:wrap; gap:4px; }
+.order-settings-editor .order-settings-presets-wide { flex-wrap:wrap; gap:var(--space-xs); }
 .order-settings-presets-wide > div:first-child { flex:1 0 100%; }
-.order-settings-presets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
-.order-settings-presets input { width:100%; padding-inline:6px; text-align:right; appearance:textfield; }
+.order-settings-presets { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-xs); }
+.order-settings-presets input { width:100%; padding-inline:var(--space-xs); text-align:right; appearance:textfield; }
 .order-settings-presets input::-webkit-inner-spin-button,.order-settings-presets input::-webkit-outer-spin-button { appearance:none; margin:0; }
-.order-settings-toggle-controls { display:flex; align-items:center; gap:8px; }
+.order-settings-toggle-controls { display:flex; align-items:center; gap:var(--space-sm); }
 .order-settings-action-row > .settings-row-control { max-width:none; }
 .order-settings-average-dot { width:0.5rem; height:0.5rem; flex-shrink:0; border-radius:50%; background:var(--price-up); }
 @container(max-width:200px) {
-  .order-settings-editor .order-settings-presets-row { flex-wrap:wrap; gap:4px; }
+  .order-settings-editor .order-settings-presets-row { flex-wrap:wrap; gap:var(--space-xs); }
   .order-settings-presets-row > div:first-child { flex:1 0 100%; }
   .order-settings-presets { grid-template-columns:1fr; }
-  .order-settings-toggle-controls { gap:4px; }
+  .order-settings-toggle-controls { gap:var(--space-xs); }
   .order-settings-action-row > .settings-row-control { margin-left:auto; }
 }
 @media(pointer:coarse) {

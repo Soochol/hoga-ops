@@ -16,7 +16,7 @@
  * (view.code=null·instrument=index, 파이프라인의 activeIndexId 분기 재사용).
  * 창 내 봉 컨트롤(TimeframeControl→setChartTimeframe) + 포커스 창의 상태바 발행.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { LiveChartRoot } from '../LiveChartRoot';
 import { isSecondTimeframe } from '../../state/livePage';
 import { SecondChartWindow } from './SecondChartWindow';
@@ -111,6 +111,7 @@ import { useMaSeriesRegistry } from '../indicators/maSeriesRegistry';
 import { useDailyMaSeriesRegistry } from '../indicators/dailyMaSeriesRegistry';
 import { usePaneLegendRegistry } from '../indicators/paneLegendRegistry';
 import type { TabViewport } from '../viewportAnchor';
+import { seedSettingsForWindow } from '../../state/windowSettingsLifecycle';
 
 /** 빈 캔들 폴백 — **모듈 상수여야 한다.** 인라인 `[]` 는 매 렌더 새 배열이라
  *  아래 저장뷰 `useMemo` 들이 캔들이 안 왔을 때 매번 재계산된다. */
@@ -132,6 +133,7 @@ export function ChartWindow({ win, symbol }: { win: WorkspaceWindow; symbol: Gro
   // 이 창에 자기 지표 세트가 있는지 보장한다(ADR-0152) — `addWindow` 가 안 거친
   // 경로(업그레이드 직후의 기존 창·프리셋 적용·딥링크 탭)의 안전망. 멱등이다.
   useSeedWindowIndicatorScope(win.id, isIndex ? 'index' : 'stock');
+  useLayoutEffect(() => seedSettingsForWindow(win), [win.id]);
 
   const view: WindowViewValue = useMemo(
     () => ({
@@ -799,7 +801,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
     <div className="flex h-full w-full flex-col">
       {/* 창 헤더 — 이 창의 차트 조작 진입로를 모두 소유한다(#758).
           봉은 창 소유(#708)였고, 여기에 그리기(레일 폐기분)와 보조지표가
-          합류했다. 설정(⚙)은 편집 값이 앱 전역이라 전역 툴바에 남는다(#759). */}
+          합류했다. 캔들·격자 설정(⚙)은 창 제목줄에서 열며 이 창에만 적용한다. */}
       <div
         ref={headerRef}
         data-testid="chart-window-header"
