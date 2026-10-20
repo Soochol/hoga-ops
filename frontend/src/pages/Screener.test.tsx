@@ -76,6 +76,12 @@ import { useScreenerPanelStore } from '../state/screenerPanel';
 // 테스트로 새면 스캔 없이 이전 rows 가 복원돼 격리가 깨지므로, 매 테스트 전에 스토어와
 // localStorage(빌더 draft 포함)를 초기화한다.
 beforeEach(() => {
+  // jsdom has no layout observer; expression-editor sizing is covered by browser tests.
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
   localStorage.clear();
   useScreenerPanelStore.setState({
     selectedSavedId: null,
@@ -87,6 +93,7 @@ beforeEach(() => {
 // 오버레이 테스트가 주입한 quote 가 다음 테스트로 새지 않도록 매 테스트 후 기본 map 복구.
 // persist 된 anchor id(screenerEditor.v1)도 지워 자동 로드가 테스트 간 새지 않게 한다.
 afterEach(() => {
+  vi.unstubAllGlobals();
   vi.mocked(useQuoteByCode).mockReturnValue(defaultQuoteMap());
   activateLiveCode.mockClear();
   openLiveInNewTab.mockClear();
@@ -233,18 +240,18 @@ it('조회 중 편집해도 실행 당시 요청과 서버 조회시각을 보�
   expect(screen.getByText('2026-09-07')).toBeInTheDocument();
 });
 
-it('시세 보기·정렬에서는 선택을 유지하고 새 조회 완료 후 선택을 초기화한다', async () => {
+it('시세 보기·정렬에서는 검색어를 유지하고 새 조회 완료 후 검색어를 초기화한다', async () => {
   await renderPageReady();
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
-  fireEvent.click(await screen.findByRole('checkbox', { name: '삼성전자 005930 선택' }));
+  const search = await screen.findByRole('searchbox', { name: '결과 내 종목 검색' });
+  fireEvent.change(search, { target: { value: '삼성' } });
   fireEvent.click(screen.getByRole('button', { name: '조회 당시' }));
   fireEvent.click(screen.getByRole('button', { name: '종목명 정렬' }));
-  expect(screen.getByRole('checkbox', { name: '삼성전자 005930 선택' })).toBeChecked();
+  expect(search).toHaveValue('삼성');
   const before = useScreenerPanelStore.getState().lastScan;
   fireEvent.click(screen.getByRole('button', { name: '조회' }));
   await waitFor(() => expect(useScreenerPanelStore.getState().lastScan).not.toBe(before));
-  expect(screen.getByRole('checkbox', { name: '삼성전자 005930 선택' })).not.toBeChecked();
-  expect(screen.getByRole('button', { name: '선택 CSV' })).toBeDisabled();
+  expect(screen.getByRole('searchbox', { name: '결과 내 종목 검색' })).toHaveValue('');
 });
 
 it('uses shared action styling in the save dialog', async () => {

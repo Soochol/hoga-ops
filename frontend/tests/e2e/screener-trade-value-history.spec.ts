@@ -1,10 +1,9 @@
-import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
 import type { HistoryJob, ScanRequest } from '../../src/api/screener';
 
-test('historical trade value collects, rescans, and exports dated amount evidence', async ({ page }, testInfo) => {
+test('historical trade value collects and rescans historical results', async ({ page }, testInfo) => {
   await installLiveMocks(page);
   await page.route(apiExact('screener/saves'), r => r.fulfill({ json: { saves: [{
     id: 'money', name: '거래대금 검색', conditions: [{ id: 'tv', type: 'trade_value_period',
@@ -52,11 +51,5 @@ test('historical trade value collects, rescans, and exports dated amount evidenc
   await expect(page.getByRole('button', { name: '삼성전자 005930 호가창 열기', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /삼성전자 발생/ })).toHaveCount(0);
   await expect(page.getByText('전체 기간 평가 가능 1종목', { exact: false })).toBeVisible();
-  const downloaded = page.waitForEvent('download');
-  await page.getByRole('button', { name: '검색 결과 CSV', exact: true }).click();
-  const file = await downloaded;
-  const csv = await readFile((await file.path())!, 'utf8');
-  expect(csv).toContain('과거 거래대금 조건 충족 기록');
-  expect(csv).toContain('tv: 2020-03-19 150000000000원 (추정)');
   await page.screenshot({ path: testInfo.outputPath('trade-value-history.png'), fullPage: true });
 });

@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import type { ConditionLeaf, ScanRequest } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
@@ -62,12 +61,6 @@ test('five candle conditions preserve independent timeframes, counts and policy 
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect(page.getByText('봉수 기준 평가 가능 1/1종목')).toBeVisible();
   expect(scans.at(-1)?.conditions).toEqual(saved.conditions);
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '검색 결과 CSV', exact: true }).click();
-  const csv = await readFile((await (await download).path())!, 'utf8');
-  expect(csv).toContain('bar_price_match');
-  expect(csv).toContain('low');
-  expect(csv).toContain('3m');
   await page.screenshot({ path: testInfo.outputPath('bar-price-wide.png'), fullPage: true });
   await page.setViewportSize({ width: 768, height: 1000 });
   for (const label of ['신고가', '기간내 신고가', '신고거래량', '신고가 대비 고가', '이동평균']) {

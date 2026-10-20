@@ -1,12 +1,11 @@
-import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { apiExact, apiPrefix } from './helpers/apiRoutes';
 import type { ConditionLeaf, ScreenerExclusion, ScanRequest } from '../../src/api/screener';
 
 // #1859 removed the per-stock occurrence expander. Existing exclusions still
-// have a supported restore UI; verify its rescan, persistence and CSV evidence.
+// have a supported restore UI; verify its rescan and persistence.
 for (const [total, andCase] of [[1, false], [300, false], [300, true]] as const) {
-  test(`${total}종목 결과에서 제외 기록 복원·재조회·CSV${andCase ? ' · AND 종목 복귀' : ''}`, async ({ page }, testInfo) => {
+  test(`${total}종목 결과에서 제외 기록 복원·재조회${andCase ? ' · AND 종목 복귀' : ''}`, async ({ page }, testInfo) => {
     const condition: ConditionLeaf = { id: 'v', type: 'trade_value_period', params: { lookback: 3, min_eok: 1 } };
     let excluded: ScreenerExclusion[] = [{ id: 'excluded-v', condition, code: '005930', stock_name: '삼성전자',
       date: '2026-09-09', condition_key: 'trade-key', created_at_ms: 1 }];
@@ -51,7 +50,6 @@ for (const [total, andCase] of [[1, false], [300, false], [300, true]] as const)
     await expect(samsung).toHaveCount(andCase ? 0 : 1);
     if (total === 300) await expect(page.getByTestId('screener-result-rows')).toHaveAttribute('data-virtualized', 'true');
     await page.getByRole('searchbox', { name: '결과 내 종목 검색' }).fill('삼성');
-    if (!andCase) await page.getByRole('checkbox', { name: '삼성전자 005930 선택', exact: true }).check();
     await page.getByRole('button', { name: '제외한 발생 건 1', exact: true }).click();
     const dialog = page.getByRole('dialog', { name: '제외한 발생 건', exact: true });
     const restore = dialog.getByRole('button', { name: '삼성전자 2026-09-09 복원', exact: true });
@@ -72,12 +70,6 @@ for (const [total, andCase] of [[1, false], [300, false], [300, true]] as const)
     await dialog.getByRole('button', { name: '닫기', exact: true }).click();
     await expect(samsung).toBeVisible();
     await expect(page.getByRole('searchbox', { name: '결과 내 종목 검색' })).toHaveValue('삼성');
-    if (!andCase) await expect(page.getByRole('checkbox', { name: '삼성전자 005930 선택', exact: true })).toBeChecked();
-    const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: '검색 결과 CSV', exact: true }).click();
-    const csv = await readFile((await (await download).path())!, 'utf8');
-    expect(csv).toContain('2026-09-09');
-    expect(csv).toContain(andCase ? '""condition_key"":""high-key""' : '2026-09-08');
     await page.screenshot({ path: testInfo.outputPath('restored-occurrences.png'), fullPage: true });
     await page.reload();
     await expect(samsung).toBeVisible();

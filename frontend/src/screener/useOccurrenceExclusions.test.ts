@@ -7,7 +7,6 @@ import { useScreenerPanelStore } from '../state/screenerPanel';
 import { pruneExcludedRows, scanConditions, useOccurrenceExclusions } from './useOccurrenceExclusions';
 import type { PanelScan } from '../state/screenerPanel';
 import type { ScreenerExclusion } from '../api/screener';
-import { resultsCsv } from './exportResults';
 
 const scan: PanelScan = {
   savedId: null, savedName: null, savedUpdatedAtMs: null, scanKey: null,
@@ -39,15 +38,12 @@ describe('cached/in-flight occurrence filtering', () => {
     expect(pruneExcludedRows({ ...input, requestJson: JSON.stringify({ ...request, expression: 'A AND B' }) },
       [excluded, { ...excluded, date: '2026-09-08' }]).rows).toEqual([]);
   });
-  it('removes only the matching date/meaning and exports the remaining evidence', () => {
+  it('removes only the matching date/meaning and preserves the remaining evidence', () => {
     const result = pruneExcludedRows(scan, [excluded]);
     expect(result.rows[0].occurrences).toEqual(scan.rows[0].occurrences!.slice(1));
     expect(result.rows[0].history_matches).toEqual([]);
     expect(result.dataStale).toBe(true);
     expect(scan.rows[0].occurrences).toHaveLength(3);
-    const csv = resultsCsv(result, result.rows.map(row => row.code), [], 1);
-    expect(csv).toContain('2026-09-08');
-    expect(csv).not.toContain('100000000원 (추정)');
   });
   it('removes the stock when one required condition has no remaining occurrences', () => {
     expect(pruneExcludedRows(scan, [excluded, { ...excluded, id: '2', date: '2026-09-08' }]).rows).toEqual([]);

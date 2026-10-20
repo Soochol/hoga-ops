@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import type { ScanRequest, VolumeParams } from '../../src/api/screener';
 import { apiExact } from './helpers/apiRoutes';
@@ -53,11 +52,6 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   await page.getByRole('button', { name: '조회', exact: true }).click();
   await expect(page.getByText('봉수 기준 평가 가능 1/2종목')).toBeVisible();
   expect(scans.at(-1)?.conditions[0].params).toMatchObject({ timeframe: '5m', lookback: 3, period: 2, include_open_bar: true });
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: '검색 결과 CSV', exact: true }).click();
-  const csv = await readFile((await (await download).path())!, 'utf8');
-  expect(csv).toContain('bar_start_ms');
-  expect(csv).toContain('5m');
   await page.screenshot({ path: testInfo.outputPath('bar-volume-wide.png'), fullPage: true });
   for (const timeframe of ['W', 'M', 'D']) {
     await page.getByRole('combobox', { name: '거래량 주기', exact: true }).selectOption(timeframe);

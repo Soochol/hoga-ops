@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiExact } from './helpers/apiRoutes';
@@ -78,13 +77,6 @@ for (const editWhileCollecting of [false, true]) {
       await page.getByRole('button', { name: '조회', exact: true }).click();
     }
     await expect(page.getByRole('button', { name: '삼성전자 005930 호가창 열기', exact: true })).toBeVisible();
-    // #1859 intentionally removed occurrence details from stock rows. Evidence
-    // remains available in CSV; checking it also detects a lost history payload.
-    const download = page.waitForEvent('download');
-    await page.getByRole('button', { name: '검색 결과 CSV', exact: true }).click();
-    const csv = await readFile((await (await download).path())!, 'utf8');
-    expect(csv).toContain('2020-03-19');
-    expect(csv).toContain('10000000');
     await expect(page.getByRole('button', { name: /삼성전자 발생/ })).toHaveCount(0);
     expect(scans).toHaveLength(2);
     expect(scans[1].conditions[0].params).toMatchObject({
