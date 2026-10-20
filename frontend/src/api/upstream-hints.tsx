@@ -32,7 +32,7 @@ export const symbolSearchHints: Record<UpstreamCode, ReactNode> = {
   symbol_master_not_initialized: (
     <>
       종목 목록이 아직 다운로드되지 않았습니다 —{' '}
-      <strong>설정 → Symbol Master → Update Now</strong>를 누르거나, 6자리 코드를 직접 입력해 진행할 수 있습니다
+      검색창의 <strong>갱신</strong>을 누르거나, 6자리 코드를 직접 입력해 진행할 수 있습니다
     </>
   ),
   disk_write_failed: (
@@ -40,8 +40,8 @@ export const symbolSearchHints: Record<UpstreamCode, ReactNode> = {
   ),
   master_fetch_failed: (
     <>
-      KIS 종목 마스터(.mst) 다운로드에 실패했습니다 — 네트워크를 확인하고 잠시 후{' '}
-      <strong>Refresh</strong>를 시도하세요
+      키움 종목 목록을 가져오지 못했습니다 — 네트워크·인증 설정을 확인하고{' '}
+      종목 검색창의 <strong>갱신</strong>을 다시 시도하세요
     </>
   ),
 };
@@ -62,12 +62,12 @@ export const calendarHints: Record<UpstreamCode, ReactNode> = {
   hogaplay_http_error: <>hogaplay 일시 오류 — 캡처 가능 여부가 정확하지 않을 수 있습니다</>,
   symbol_master_not_initialized: (
     <>
-      종목 목록이 아직 다운로드되지 않았습니다 — 휴일 표시는 정상이지만 종목 검색 기능을 사용하려면 설정에서 Update하세요
+      종목 목록이 아직 다운로드되지 않았습니다 — 휴일 표시는 정상이지만 종목 검색 기능을 사용하려면 종목 검색창에서 갱신하세요
     </>
   ),
   disk_write_failed: <>디스크 쓰기 오류 — 저장 공간 또는 권한을 확인하세요</>,
   master_fetch_failed: (
-    <>종목 목록 다운로드 실패 — 휴일 표시는 정상이지만 종목 검색을 쓰려면 설정에서 다시 받으세요.</>
+    <>종목 목록 다운로드 실패 — 휴일 표시는 정상이지만 종목 검색창에서 갱신해 다시 받으세요.</>
   ),
 };
 
@@ -103,7 +103,7 @@ export const enqueueErrorHints: Record<UpstreamCode, ReactNode> = {
   hogaplay_http_error: <>범위 캡처 시작 실패 — hogaplay 응답 오류. 잠시 후 재시도하세요</>,
   symbol_master_not_initialized: (
     <>
-      범위 캡처 시작에는 종목 목록이 필요합니다 — 설정에서 Update Symbol Master 후 재시도하세요
+      범위 캡처 시작에는 종목 목록이 필요합니다 — 종목 검색창에서 갱신한 후 재시도하세요
     </>
   ),
   disk_write_failed: <>캡처 시작 실패 — 디스크 쓰기 오류. 저장 공간 또는 권한을 확인하세요</>,
@@ -121,7 +121,7 @@ export const captureFinishedHints: Record<UpstreamCode, ReactNode> = {
   cookie_missing: <>캡처 실패 — hogaplay 쿠키 미설정.</>,
   hogaplay_http_error: <>캡처 실패 — hogaplay 응답 오류.</>,
   symbol_master_not_initialized: (
-    <>캡처 실패 — Symbol Master 미초기화. 설정에서 Update.</>
+    <>캡처 실패 — 종목 목록이 준비되지 않았습니다. 종목 검색창에서 갱신하세요.</>
   ),
   disk_write_failed: <>캡처 실패 — 디스크 쓰기 오류. 저장 공간 또는 권한을 확인하세요</>,
   master_fetch_failed: <>캡처 실패 — 종목 마스터 다운로드 오류.</>,
@@ -149,7 +149,7 @@ export const symbolMasterSettingsHints: Record<UpstreamCode, ReactNode> = {
   ),
   symbol_master_not_initialized: (
     <>
-      종목 목록이 아직 다운로드되지 않았습니다 — 아래 <strong>Update Now</strong> 버튼을 누르세요(KIS .mst 다운로드, 수 초 소요).
+      종목 목록이 아직 다운로드되지 않았습니다 — 종목 검색창의 <strong>갱신</strong>으로 다시 받을 수 있습니다.
     </>
   ),
   disk_write_failed: (
@@ -157,8 +157,8 @@ export const symbolMasterSettingsHints: Record<UpstreamCode, ReactNode> = {
   ),
   master_fetch_failed: (
     <>
-      KIS 종목 마스터(.mst) 다운로드에 실패했습니다 — 네트워크를 확인하고 다시
-      시도하세요. 기존 디스크 파일은 보존되었습니다
+      키움 종목 목록을 가져오지 못했습니다 — 네트워크·인증 설정을 확인하고 다시
+      시도하세요. 기존 종목 목록은 보존되었습니다
     </>
   ),
 };

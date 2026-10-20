@@ -47,7 +47,8 @@ describe('AppInfoSections — Symbol Master', () => {
 
     expect(await screen.findByText('0')).toBeInTheDocument(); // count
     expect(screen.getByText(/아직 다운로드되지 않았습니다/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Update Now/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /Update Now/i })).toBeNull();
+    expect(screen.getByText('종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.')).toBeInTheDocument();
   });
 
   it('renders fresh state', async () => {
@@ -66,27 +67,7 @@ describe('AppInfoSections — Symbol Master', () => {
     expect(screen.getByText('fresh')).toBeInTheDocument();
   });
 
-  it('clicking Update Now calls refreshSymbols and invalidates', async () => {
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
-    });
-    const refreshSpy = vi
-      .spyOn(symbolsApi, 'refreshSymbols')
-      .mockResolvedValue({ symbols: [], status: 'fresh', fetched_at_ms: Date.now(), reason: null });
-
-    renderWithQuery(<SymbolMasterSection />);
-    // 마운트와 함께 symbols 쿼리가 시작된다 — 해소되어 버튼이 열릴 때까지 기다린 뒤
-    // 누른다(disabled 버튼은 클릭을 조용히 삼킨다).
-    const btn = await screen.findByRole('button', { name: /Update Now/i });
-    await waitFor(() => expect(btn).toBeEnabled());
-    fireEvent.click(btn);
-
-    await waitFor(() => {
-      expect(refreshSpy).toHaveBeenCalledOnce();
-    });
-  });
-
-  it('renders loading state (Update in flight): button label still shows Update Now (local updating drives label change)', async () => {
+  it('renders loading state without a separate update action', async () => {
     vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
       count: 0,
       fetched_at_ms: null,
@@ -99,11 +80,11 @@ describe('AppInfoSections — Symbol Master', () => {
     await waitFor(() => {
       expect(screen.getByText('loading')).toBeInTheDocument();
     });
-    // Wire status='loading' does NOT auto-disable the button — local updating state does.
-    expect(screen.getByRole('button', { name: /Update Now/i })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: /Update Now/i })).toBeNull();
+    expect(screen.getByText('종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.')).toBeInTheDocument();
   });
 
-  it('renders stale state: cache preserved, reason hint visible, button still actionable', async () => {
+  it('renders stale state: cache preserved, reason hint visible, unified update guidance visible', async () => {
     const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
     // master_fetch_failed is the only fetch-failure reason the symbols backend
     // actually emits on this surface — an impossible mock would leave the
@@ -121,8 +102,9 @@ describe('AppInfoSections — Symbol Master', () => {
       expect(screen.getByText('6,012')).toBeInTheDocument();
     });
     expect(screen.getByText('stale')).toBeInTheDocument();
-    expect(screen.getByText(/KIS 종목 마스터.*다운로드에 실패/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Update Now/i })).toBeEnabled();
+    expect(screen.getByText(/키움 종목 목록을 가져오지 못했습니다/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Update Now/i })).toBeNull();
+    expect(screen.getByText('종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.')).toBeInTheDocument();
   });
 
   it('does not render force retry capture defaults', async () => {
