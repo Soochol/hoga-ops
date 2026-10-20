@@ -40,15 +40,15 @@
 }
 .live-window .live-window-titlebar[data-focused] { background: var(--bg-subtle); }
 .live-window .live-window-titlebar > button,
-.live-window-direct-actions > button { width: 1.5rem; height: 1.5rem; }
-.live-window-direct-actions { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-xs); width: max-content; }
-/* Keep the full group measurable so folding never changes its width budget. */
-.live-window-direct-actions[data-compact] { position: absolute; visibility: hidden; pointer-events: none; }
-.live-window .live-window-direct-actions[data-compact] ~ .live-window-actions-menu { display: inline-flex; }
-/* Reserve a short title; longer names truncate before actions fold. */
+.live-window-direct-actions button { width: 1.5rem; height: 1.5rem; }
+.live-window-direct-actions { display: inline-flex; flex-shrink: 0; align-items: center; gap: var(--space-xs); width: max-content; margin-left: auto; }
+.live-window .live-window-titlebar > button:last-child { margin-left: 0; }
+/* All window kinds surrender text space before the action group. */
 .live-window-titlebar > .live-data-title,
 .live-window-titlebar > .live-symbol-row,
-.live-window-titlebar > .major-indices-header { flex: 1 1 4.5rem; }
+.live-window-titlebar > .major-indices-header { flex: 1 1 0; min-width: 0; overflow: hidden; }
+.live-window-title-meta { flex: 0 1 auto; min-width: 0; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.live-window-titlebar > span:first-child { flex-shrink: 0; }
 .live-window-chart .live-window-titlebar { min-height: 2rem; padding-block: var(--space-xs); }
 .live-symbol-row { display: flex; flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; align-items: center; gap: var(--space-xs); }
 .live-symbol-identity { display: flex; flex: 0 1 auto; align-items: center; gap: var(--space-xs); min-width: 0; overflow: hidden; }
@@ -64,8 +64,6 @@
 .live-data-title-identity { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-xs); }
 .live-symbol-venue-badge { flex-shrink: 0; padding: 0 var(--space-xs); border-radius: var(--radius-sm); background: var(--tint-neutral); color: var(--fg-dim); font-size: var(--live-text-meta); font-weight: 500; white-space: nowrap; }
 .live-symbol-venue-badge[data-supported] { background: var(--tint-success); color: var(--success); }
-.live-window .live-window-actions-menu { display: none; }
-.live-window .live-window-actions-menu[data-has-settings] { display: inline-flex; }
 /* Always reserve the progress slot, including while idle. Date text is MM/DD. */
 .live-symbol-backfill { display: inline-flex; flex: 0 0 8ch; width: 8ch; align-items: center; justify-content: center; gap: var(--space-xs); }
 .live-chart-toolbar { --live-chart-control-height: 1.5rem; padding: 2px var(--space-sm); gap: var(--space-xs); min-height: 2rem; }
@@ -116,6 +114,34 @@
   .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title-kind { width: 100%; font-size: var(--live-text-meta); }
   .live-data-title-with-venues .live-data-title-identity { flex-basis: 100%; }
 }
+/* Keep settings, maximize, on-top, pin and close reachable at MIN_W (160px).
+   Only spacing and button boxes tighten; icon and text sizes stay unchanged. */
+@container (max-width: 240px) {
+  .live-window .live-window-titlebar { gap: var(--space-2xs); }
+  .live-window .live-window-titlebar > button,
+  .live-window-direct-actions button { width: 1.25rem; height: 1.25rem; }
+  .live-window-direct-actions { gap: 0; }
+  .live-window-title-meta { display: none; }
+}
+@container (max-width: 180px) {
+  .live-window-titlebar > .live-data-title,
+  .live-window-titlebar > .live-symbol-row,
+  .live-window-titlebar > .major-indices-header { display: none; }
+}
+
+.live-window-header-actions-slot { display: contents; }
+.live-window-settings:disabled { opacity: .45; cursor: not-allowed; }
+.window-settings-popover { display: flex; flex-direction: column; max-height: calc(100dvh - 8px); overflow: hidden; }
+.window-settings-heading { display: flex; flex-shrink: 0; align-items: center; gap: var(--space-sm); padding: var(--space-sm) var(--space-lg); border-bottom: 1px solid var(--border); }
+.window-settings-heading h2 { margin: 0; font-size: var(--text-base); font-weight: 500; }
+.window-settings-heading > span { margin-left: auto; color: var(--fg-dim); font-size: var(--text-xs); }
+.window-settings-heading > button { margin-left: auto; }
+.window-settings-heading > span + button { margin-left: 0; }
+.window-settings-content { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.window-settings-editor.settings-editor { height: auto; min-height: 0; border-radius: 0; flex-shrink: 1; }
+.window-settings-editor .settings-editor-content { padding: 0 var(--space-lg); }
+.window-settings-editor .settings-editor-footer { padding-inline: var(--space-lg); }
+.window-settings-editor .settings-editor-group { padding-block: var(--space-md); }
 
 .live-top-nav [aria-label^="현재 시각"] { font-weight: 400; color: var(--fg-dim); }
 .live-data-controls { column-gap: var(--space-xs); }

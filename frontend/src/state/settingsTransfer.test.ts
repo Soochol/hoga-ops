@@ -2,12 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { applySettings, exportSettings, parseSettingsArchive, type SettingsArchive } from './settingsTransfer';
 import { snapshotWorkspace, WORKSPACE_SCHEMA_VERSION } from './workspace';
 import { INDICATORS_V2_STORAGE_KEY, normalizeIndicatorsV2 } from './indicatorSettingsV2';
+import { WINDOW_SETTINGS_KEY } from './windowSettings';
+import { DEFAULT_CHART_DISPLAY_PREFS } from './chartDisplayPrefs';
 
 function archive(entries: Record<string, unknown>): SettingsArchive {
   return { format: 'hoga-user-settings', version: 1, origin: 'http://old-server:8000', appVersion: '0.16.6.0', createdAt: new Date().toISOString(), entries };
 }
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.restoreAllMocks(); });
 describe('settings transfer boundary', () => {
+  it('roundtrips window settings while preserving explicitly disabled options', () => {
+    const entry = { schema_version: 1, byWindow: { a: { chart: { ...DEFAULT_CHART_DISPLAY_PREFS, auctionWindowMask: false } } } };
+    applySettings(localStorage, archive({ [WINDOW_SETTINGS_KEY]: entry }));
+    expect(exportSettings(localStorage, 'http://new-server:8000', '0.16.6.0').entries[WINDOW_SETTINGS_KEY]).toEqual(entry);
+  });
   it.each(['obsidian-pro', 'ledger-studio'])('roundtrips the %s theme', (themePreference) => {
     const input = archive({ 'ui.themePreference.v1': { themePreference } });
     applySettings(localStorage, parseSettingsArchive(JSON.stringify(input)));

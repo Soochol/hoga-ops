@@ -38,12 +38,7 @@ async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty
 }
 
 async function openTradeSettings(page: Page) {
-  const direct = page.getByRole('button', { name: '체결창 설정', exact: true });
-  if (await direct.isVisible()) await direct.click();
-  else {
-    await page.getByRole('button', { name: '창 옵션', exact: true }).click();
-    await page.getByRole('dialog', { name: '창 옵션', exact: true }).getByRole('button', { name: '설정', exact: true }).click();
-  }
+  await page.getByRole('button', { name: '체결창 설정', exact: true }).click();
   return page.getByRole('dialog', { name: '체결창 설정', exact: true });
 }
 
@@ -86,7 +81,7 @@ test('헤더 메뉴 설정은 넓은 창에서도 접근하며 금액 경계·�
   await openTradeSettings(page);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog', { name: '체결창 설정' })).toBeHidden();
-  await expect(page.getByRole('button', { name: /^(창 옵션|체결창 설정)$/ })).toBeFocused();
+  await expect(page.getByRole('button', { name: '체결창 설정', exact: true })).toBeFocused();
 });
 
 test('일치 없는 과거 페이지도 휠로 이어 조회하며 빈 결과에서 전체 표시로 복귀한다', async ({ page }) => {

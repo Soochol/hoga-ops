@@ -25,6 +25,8 @@ import { isLiveIndexId, isUsIndexId, usChartTimeframe } from '../live/liveInstru
 import { BOOK_WINDOW_DEFAULT_W } from '../live/workspace/bookPanelMetrics';
 import { normalizeOrderSettings, validOrderSettings, type OrderWindowSettings } from './orderWindowSettings';
 import { isTradeMinAmountManwon } from './tradeWindowSettings';
+import { seedSettingsForWindow } from './windowSettingsLifecycle';
+import { useWindowSettingsStore } from './windowSettings';
 
 /**
  * `/live` 멀티창 워크스페이스 상태 (ADR-0119, 스펙 #715).
@@ -813,6 +815,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     // 규칙과 같은 이유로 여기서 없앤다. (set 콜백 **밖**에서 부른다 — 다른 스토어를
     // 그 안에서 갱신하지 않기 위해.)
     if (kind === 'chart') seedIndicatorScopeForWindow(id, indicatorSourceId);
+    seedSettingsForWindow({ id, kind }, indicatorSourceId);
     return id;
   },
 
@@ -830,6 +833,7 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     // 창별 지표 설정은 전역 저장소에 있어 창과 함께 사라지지 않는다 — 창 id 는
     // 재사용되지 않으므로 여기서 회수하지 않으면 닿을 수 없는 쓰레기가 된다.
     dropIndicatorScopesForWindows([id]);
+    useWindowSettingsStore.getState().drop([id]);
   },
 
   focusWindow: (id) => {
@@ -1258,8 +1262,15 @@ export const useWorkspaceStore = create<Store>((set, get) => ({
     // 같은 이유로 창별 지표 스코프도 고아가 된다. 새로 등장한 창의 시드는 그 창이
     // 마운트될 때 안전망(`useSeedWindowIndicatorScope`)이 페이지 세트로 채운다.
     dropIndicatorScopesForRemovedWindows(before, get().windows);
+    const survivingIds = new Set(get().windows.map(win => win.id));
+    useWindowSettingsStore.getState().drop(before.filter(win => !survivingIds.has(win.id)).map(win => win.id));
+    get().windows.forEach(win => seedSettingsForWindow(win));
   },
 }));
+
+// Migrate existing/restored windows before their first render. Settings live in
+// shared storage; the tab-local workspace continues to hold only window identity.
+useWorkspaceStore.getState().windows.forEach(win => seedSettingsForWindow(win));
 
 /** 현재 워크스페이스를 프리셋 스냅샷으로 캡처한다(뷰포트·런타임 제외).
  *  스토어 내부 참조를 잡지 않도록 창·rect·chart 값까지 새 객체로 복제한다 —

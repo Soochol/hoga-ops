@@ -5,6 +5,7 @@ import SettingsSections from './SettingsSections';
 import { useLiveVenueStore } from '../state/liveVenue';
 import {
   CHART_TOGGLES,
+  CHART_DISPLAY_GROUP_IDS,
   categoryOf,
   gatedByOf,
   groupOf,
@@ -66,24 +67,24 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
 
   it('실제로 변경한 전역 설정만 되돌리고 다른 설정은 보존한다', async () => {
     renderSettings();
-    const row = screen.getByTestId('settings-toggle-candleAlwaysOnTop');
-    const old = useChartPrefsStore.getState().candleAlwaysOnTop;
+    const row = screen.getByTestId('settings-toggle-cursorSyncCrossSymbol');
+    const old = useChartPrefsStore.getState().cursorSyncCrossSymbol;
     fireEvent.click(row.querySelector('button')!);
     const undo = screen.getByRole('button', { name: '되돌리기' });
     await waitFor(() => expect(undo).toBeEnabled());
     act(() => useLiveVenueStore.getState().setVenue('UN'));
     fireEvent.click(undo);
-    await waitFor(() => expect(useChartPrefsStore.getState().candleAlwaysOnTop).toBe(old));
+    await waitFor(() => expect(useChartPrefsStore.getState().cursorSyncCrossSymbol).toBe(old));
     expect(useLiveVenueStore.getState().venue).toBe('UN');
     expect(undo).toBeDisabled();
   });
   it('외부에서 같은 설정이 변경되면 오래된 되돌리기를 비활성화한다', async () => {
     renderSettings();
-    const old = useChartPrefsStore.getState().candleAlwaysOnTop;
-    fireEvent.click(screen.getByTestId('settings-toggle-candleAlwaysOnTop').querySelector('button')!);
+    const old = useChartPrefsStore.getState().cursorSyncCrossSymbol;
+    fireEvent.click(screen.getByTestId('settings-toggle-cursorSyncCrossSymbol').querySelector('button')!);
     const undo = screen.getByRole('button', { name: '되돌리기' });
     await waitFor(() => expect(undo).toBeEnabled());
-    act(() => useChartPrefsStore.getState().setToggle('candleAlwaysOnTop', old));
+    act(() => useChartPrefsStore.getState().setToggle('cursorSyncCrossSymbol', old));
     expect(undo).toBeDisabled();
   });
   it('서버 설정 저장 성공 후 되돌리기는 바뀐 필드만 다시 PATCH한다', async () => {
@@ -163,7 +164,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(screen.queryByRole('region', { name: '체결창' })).toBeNull();
   });
 
-  it('레지스트리 가드 — 설정 카테고리의 최상위 토글은 전부 group 을 갖고, 각각 정확히 한 번 렌더된다', () => {
+  it('레지스트리 가드 — 앱 설정 토글은 한 번 렌더되고 캔들 헤더 전용 그룹은 제외된다', () => {
     // `SettingsSections` 는 그룹 순회로만 렌더하므로 group 없는 최상위 토글은
     // **조용히 사라진다** — 이 가드가 그 누락을 빨갛게 만든다(막는 방향: 토글 추가
     // 시 group 누락. 못 보는 것: 잘못된 그룹에 넣는 것 — 그건 육안 몫이다).
@@ -174,16 +175,23 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     });
     expect(topLevel.length).toBeGreaterThan(0);
     for (const t of topLevel) {
-      expect(groupOf(t), `${t.key} 에 group 이 없다`).toBeDefined();
+      const group = groupOf(t);
+      expect(group, `${t.key} 에 group 이 없다`).toBeDefined();
+      if (group && CHART_DISPLAY_GROUP_IDS.includes(group)) {
+        expect(screen.queryByTestId(`settings-toggle-${t.key}`)).toBeNull();
+        continue;
+      }
       expect(screen.getAllByTestId(`settings-toggle-${t.key}`)).toHaveLength(1);
     }
   });
 
-  it('차트 섹션에 소그룹 헤더 4개 + 체결창에 1개', () => {
+  it('차트 섹션에 동기화·가격 표시와 체결창의 강조 소그룹만 남는다', () => {
     renderSettings();
-    for (const label of ['캔들 · 지표', '격자 · 구분선', '창 간 동기화', '가격 표시', '체결 강조']) {
+    for (const label of ['창 간 동기화', '가격 표시', '체결 강조']) {
       expect(screen.getByText(label)).toBeTruthy();
     }
+    expect(screen.queryByText('캔들 · 지표')).toBeNull();
+    expect(screen.queryByText('격자 · 구분선')).toBeNull();
   });
 
   it('체결창 — 토글·기준 금액·배경색 피커가 문서에 보인다', () => {
@@ -233,20 +241,27 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
 
   it('토글 클릭이 chartPrefs 스토어에 반영된다', () => {
     renderSettings();
-    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(true);
+    expect(useChartPrefsStore.getState().cursorSyncCrossSymbol).toBe(true);
     // ToggleRow 는 testId 를 **바깥 wrapper** 에 단다 — 핸들러는 안쪽 role="switch"
     // 버튼에 있으므로 파고들어 눌러야 한다(누르는 시늉만 하면 조용히 통과한다).
-    const row = screen.getByTestId('settings-toggle-auctionWindowMask');
+    const row = screen.getByTestId('settings-toggle-cursorSyncCrossSymbol');
     fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
-    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(false);
+    expect(useChartPrefsStore.getState().cursorSyncCrossSymbol).toBe(false);
   });
 
-  it('캔들 기준 Y축 토글 클릭이 chartPrefs 스토어에 반영된다', () => {
-    renderSettings();
-    expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(false);
-    const row = screen.getByTestId('settings-toggle-candlePaneCandleOnlyScale');
-    fireEvent.click(row.querySelector('[role="switch"]') as HTMLElement);
+  it.each(['live', 'study'] as const)('%s 앱 설정에서 이전한 6개 항목은 검색해도 나오지 않고 저장값은 유지한다', variant => {
+    const labels = ['캔들 기준 Y축', '캔들이 항상 위', '동시호가 구간 지표 숨김', '캔들 정보 툴팁', '가로 구분선', '세로 구분선'];
+    useChartPrefsStore.getState().setToggle('candlePaneCandleOnlyScale', true);
+    useChartPrefsStore.getState().setToggle('auctionWindowMask', false);
+    renderSettings({ variant });
+    for (const label of labels) {
+      expect(screen.queryByRole('switch', { name: label })).toBeNull();
+      fireEvent.change(screen.getByLabelText('설정 필터'), { target: { value: label } });
+      expect(screen.getByText(/에 맞는 설정이 없습니다/)).toBeTruthy();
+      expect(screen.queryByRole('switch', { name: label })).toBeNull();
+    }
     expect(useChartPrefsStore.getState().candlePaneCandleOnlyScale).toBe(true);
+    expect(useChartPrefsStore.getState().auctionWindowMask).toBe(false);
   });
 
   // ── 목차(스크롤 스파이) ───────────────────────────────────────────────
@@ -277,22 +292,22 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
 
   it('필터 — 일치하는 행만 남고 정보 섹션·소그룹 헤더는 숨는다', () => {
     renderSettings();
-    fireEvent.change(screen.getByLabelText('설정 필터'), { target: { value: '격자' } });
+    fireEvent.change(screen.getByLabelText('설정 필터'), { target: { value: '동기화' } });
 
-    expect(screen.getByTestId('settings-toggle-horizontalGridLinesEnabled')).toBeTruthy();
-    expect(screen.getByTestId('settings-toggle-verticalGridLinesEnabled')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-cursorSyncCrossSymbol')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-rangeSyncEnabled')).toBeTruthy();
     expect(screen.queryByTestId('settings-toggle-auctionWindowMask')).toBeNull();
     expect(screen.queryByRole('region', { name: '알림' })).toBeNull();
     // 필터 중에는 소그룹 헤더를 걷는다 — 남은 행이 곧 답이라 층위가 소음이 된다.
-    expect(screen.queryByText('격자 · 구분선')).toBeNull();
+    expect(screen.queryByText('창 간 동기화')).toBeNull();
   });
 
   it('필터 — 라벨의 일치 구간이 표시된다', () => {
     renderSettings();
-    fireEvent.change(screen.getByLabelText('설정 필터'), { target: { value: '가로 구분선' } });
+    fireEvent.change(screen.getByLabelText('설정 필터'), { target: { value: '기간 동기화' } });
 
-    const row = screen.getByTestId('settings-toggle-horizontalGridLinesEnabled');
-    expect(row.querySelector('mark')?.textContent).toBe('가로 구분선');
+    const row = screen.getByTestId('settings-toggle-rangeSyncEnabled');
+    expect(row.querySelector('mark')?.textContent).toBe('기간 동기화');
   });
 
   it('필터는 유닛 단위다 — 하위 행이 걸리면 부모째 남는다', () => {
@@ -322,7 +337,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
 
     expect(input.value).toBe('');
     // 행이 돌아온다 — 필터가 실제로 해제됐다.
-    expect(screen.getByTestId('settings-toggle-auctionWindowMask')).toBeTruthy();
+    expect(screen.getByTestId('settings-toggle-cursorSyncCrossSymbol')).toBeTruthy();
   });
 
   it('필터 중 목차 클릭 → 필터를 해제하고 그 섹션으로 간다', () => {

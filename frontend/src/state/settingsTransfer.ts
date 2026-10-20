@@ -7,13 +7,14 @@ import { normalizeWorkspaceSnapshot, WORKSPACE_SCHEMA_VERSION } from './workspac
 import { WORKSPACE_STORAGE_KEY } from './workspaceKeys';
 import { normalizeItems } from '../chart/drawing/persistence';
 import { THEME_PREFERENCE_OPTIONS } from './themePrefs';
+import { WINDOW_SETTINGS_KEY, normalizeWindowSettingsSnapshot } from './windowSettings';
 
 export const SETTINGS_FILE_LIMIT = 4 * 1024 * 1024;
 export interface SettingsArchive {
   format: 'hoga-user-settings'; version: 1; origin: string; appVersion: string;
   createdAt: string; entries: Record<string, unknown>;
 }
-const FIXED_KEYS = new Set([WORKSPACE_STORAGE_KEY, INDICATORS_V2_STORAGE_KEY, CHART_PREFS_KEY, 'ui.themePreference.v1']);
+const FIXED_KEYS = new Set([WORKSPACE_STORAGE_KEY, INDICATORS_V2_STORAGE_KEY, CHART_PREFS_KEY, WINDOW_SETTINGS_KEY, 'ui.themePreference.v1']);
 const DRAWING_KEY = /^replay\.drawings\.v2\.[A-Za-z0-9._-]{1,80}\|(seconds|minute|D|W|M)$/;
 function object(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === 'object' && !Array.isArray(value); }
 function finite(value: unknown): value is number { return typeof value === 'number' && Number.isFinite(value); }
@@ -39,6 +40,10 @@ function normalizeEntry(key: string, value: unknown): unknown {
       windows: normalized.windows.map(({ order: _order, ...window }) => window), groupSymbols: {} };
   }
   if (key === INDICATORS_V2_STORAGE_KEY) return normalizeIndicatorsV2(value);
+  if (key === WINDOW_SETTINGS_KEY) {
+    if (value.schema_version !== 1) throw new Error('지원하지 않는 창 설정 버전입니다.');
+    return normalizeWindowSettingsSnapshot(value);
+  }
   if (key === CHART_PREFS_KEY) return { ...mergePrefs(value), indicatorModalByTimeframe: mergeIndicatorModalByTimeframe(value), indicatorModalByWindow: mergeIndicatorModalByWindow(value) };
   if (key === 'ui.themePreference.v1') {
     if (!THEME_PREFERENCE_OPTIONS.some(option => option === value.themePreference)) throw new Error('알 수 없는 테마입니다.');

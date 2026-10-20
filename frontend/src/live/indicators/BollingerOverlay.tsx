@@ -3,7 +3,7 @@ import { memo, useEffect, useMemo, useRef } from 'react';
 import { LineSeries, type AutoscaleInfoProvider, type IChartApi, type ISeriesApi, type Time } from 'lightweight-charts';
 import type { RangeBundle } from '../../api/types';
 import type { VirtualAxis } from '../../util/virtualAxis';
-import { useActivePrefs, useChartPrefsStore } from '../../state/chartPrefs';
+import { useActivePrefs } from '../../state/chartPrefs';
 import { keepCandlesOnTop } from '../../chart/candleSeriesOrder';
 import { drawnCandleIndex } from '../../chart/drawnCandleIndex';
 import { maskIntradayLineGaps } from '../../chart/intradayWhitespace';
@@ -31,7 +31,7 @@ function BollingerOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: R
   const middle = useWindowIndicator((s) => s.bollingerMiddleColor);
   const lower = useWindowIndicator((s) => s.bollingerLowerColor);
   const lineWidth = useWindowIndicator((s) => s.bollingerLineWidth);
-  const candleOnlyScale = useChartPrefsStore((s) => s.candlePaneCandleOnlyScale);
+  const candleOnlyScale = useActivePrefs((s) => s.candlePaneCandleOnlyScale);
   const candleAlwaysOnTop = useActivePrefs((s) => s.candleAlwaysOnTop);
   const scope = useWindowScopeId();
   const seriesRef = useRef<ISeriesApi<'Line'>[]>([]);

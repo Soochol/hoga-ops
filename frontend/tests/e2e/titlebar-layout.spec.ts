@@ -24,8 +24,7 @@ for (const width of [320, 500]) {
       })).toBe(true);
       await expect(page.getByRole('button', { name: 'NXT', exact: true })).toHaveCount(0);
       const maximize = page.getByRole('button', { name: '창 최대화', exact: true });
-      const more = page.getByRole('button', { name: '창 옵션', exact: true });
-      await expect.poll(async () => (await maximize.isVisible()) || (await more.isVisible())).toBe(true);
+      await expect(maximize).toBeVisible();
       await page.screenshot({ path: info.outputPath(`${kind}-venue-support.png`) });
     });
   }

@@ -59,6 +59,7 @@ import { useScreenerDailyCandles, prevCloseBeforeDate } from '../../api/screener
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { useEffectiveVenue } from '../useEffectiveVenue';
 import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useWindowSettingsStore } from '../../state/windowSettings';
 import { isSecondTimeframe, isMinuteTimeframe, type LiveTimeframe } from '../../state/livePage';
 import { TIMEFRAME_TO_MS, type RangeSegment, type Timeframe } from '../../api/types';
 import { isClosingAuction, type SessionSegment } from '../../util/sessionTime';
@@ -356,11 +357,12 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const krxPreviousClose = useLiveKrxPreviousClose(isSpot ? null : code, quoteDate);
   // VI 이벤트 상태(키움 1h) — 예상 발동가의 기준가 갱신 + 발동 중 강조.
   const viStatus = useLiveViStatus(code, effectiveVenue);
-  // 동시호가 마스크(PR-D2): 스팟 커서가 종가 동시호가 구간(마감 10분)에 있고 전역
-  // auctionWindowMask 토글이 켜져 있으면 매수/매도 비율을 마스킹한다. 판정은 링크
+  // 동시호가 마스크: 링크 기준 차트 창의 표시 설정을 따른다. 판정은 링크
   // 차트 창 번들의 세션 세그먼트로 — 전역 axis store 는 멀티창 last-writer-wins 라
   // 부정확. 링크 부재/비스팟이면 마스크 없음(latest 는 레거시도 비활성).
-  const auctionWindowMask = useChartPrefsStore((s) => s.auctionWindowMask);
+  const legacyAuctionMask = useChartPrefsStore((s) => s.auctionWindowMask);
+  const auctionWindowMask = useWindowSettingsStore(state =>
+    (link ? state.byWindow[link.windowId]?.chart?.auctionWindowMask : undefined) ?? legacyAuctionMask);
   const maskRatio = !!(
     auctionWindowMask &&
     isSpot &&

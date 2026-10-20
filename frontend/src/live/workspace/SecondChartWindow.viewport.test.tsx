@@ -3,6 +3,7 @@ import { expect, it, vi, beforeEach } from 'vitest';
 import type { WorkspaceWindow } from '../../state/workspace';
 import { SecondChartWindow } from './SecondChartWindow';
 import { useLiveCursorStore } from '../useLiveCursorStore';
+import { WindowSettingsScope, useWindowSettingsStore } from '../../state/windowSettings';
 
 const fixture = vi.hoisted(() => {
   const bars = Array.from({ length: 300 }, (_, i) => ({ t_ms: 1_790_816_400_000 + i * 30_000,
@@ -11,6 +12,7 @@ const fixture = vi.hoisted(() => {
     isPending: false, isError: false, fetchNextPage: vi.fn() },
     range: { from: 0, to: 239 }, spacing: 6,
     setRange: vi.fn(), setData: vi.fn(), update: vi.fn(), applyOptions: vi.fn(),
+    chartCreate: vi.fn(), chartOptions: vi.fn(), seriesOptions: vi.fn(), setOrder: vi.fn(),
     onRange: null as ((range: { from: number; to: number }) => void) | null,
     onCursor: null as ((event: { time?: number }) => void) | null };
 });
@@ -19,8 +21,13 @@ vi.mock('../../api/secondHistory', () => ({ SECOND_INITIAL_BARS: 240, useSecondH
 vi.mock('../useEffectiveVenue', () => ({ useEffectiveVenue: () => 'KRX' }));
 vi.mock('lightweight-charts', () => ({
   CandlestickSeries: 'candles', HistogramSeries: 'volume', LineSeries: 'ma',
-  createChart: () => ({
-    addSeries: () => ({ setData: fixture.setData, update: fixture.update, options: () => ({ upColor: 'red', downColor: 'blue' }) }),
+  createChart: () => {
+    fixture.chartCreate();
+    return {
+    addSeries: (kind: string) => ({ setData: fixture.setData, update: fixture.update,
+      applyOptions: (options: unknown) => fixture.seriesOptions(kind, options), setSeriesOrder: fixture.setOrder,
+      options: () => ({ upColor: 'red', downColor: 'blue' }) }),
+    applyOptions: fixture.chartOptions,
     panes: () => [{ setStretchFactor: vi.fn() }, { setStretchFactor: vi.fn() }],
     timeScale: () => ({
       options: () => ({ barSpacing: fixture.spacing }),
@@ -38,12 +45,34 @@ vi.mock('lightweight-charts', () => ({
     }),
     subscribeCrosshairMove: (handler: (event: { time?: number }) => void) => { fixture.onCursor = handler; },
     unsubscribeCrosshairMove: vi.fn(), resize: vi.fn(), remove: vi.fn(),
-  }),
+    };
+  },
 }));
 
 beforeEach(() => {
   fixture.query = { ...fixture.query, bars: fixture.bars, hasNextPage: false, isFetchingNextPage: false, catalogPending: false, isPending: false };
   vi.clearAllMocks();
+});
+
+it('applies this seconds window’s grid, candle order and candle-only scale without recreating the chart', () => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  useWindowSettingsStore.getState().patch('seconds-settings', 'chart', {
+    horizontalGridLinesEnabled: false, verticalGridLinesEnabled: false, candleAlwaysOnTop: true, candlePaneCandleOnlyScale: true,
+  });
+  const win: WorkspaceWindow = { id: 'seconds-settings', kind: 'chart', group: 1, rect: { x: 0, y: 0, w: .5, h: .5 } };
+  const view = render(<WindowSettingsScope.Provider value={win.id}>
+    <SecondChartWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} timeframe="30s" />
+  </WindowSettingsScope.Provider>);
+  expect(fixture.chartOptions).toHaveBeenLastCalledWith({ grid: { horzLines: { visible: false }, vertLines: { visible: false } } });
+  expect(fixture.setOrder).toHaveBeenLastCalledWith(1);
+  const provider = fixture.seriesOptions.mock.calls.findLast(([kind]) => kind === 'ma')![1].autoscaleInfoProvider;
+  expect(provider(() => ({ priceRange: { minValue: 1, maxValue: 2 } }))).toBeNull();
+  act(() => useWindowSettingsStore.getState().patch(win.id, 'chart', { horizontalGridLinesEnabled: true, candleAlwaysOnTop: false }));
+  expect(fixture.chartOptions).toHaveBeenLastCalledWith({ grid: { horzLines: { visible: true }, vertLines: { visible: false } } });
+  expect(fixture.setOrder).toHaveBeenLastCalledWith(0);
+  expect(fixture.chartCreate).toHaveBeenCalledTimes(1);
+  view.unmount();
+  vi.unstubAllGlobals();
 });
 
 it('retains user zoom and time anchor across an empty loading page and a session-filter round trip', () => {

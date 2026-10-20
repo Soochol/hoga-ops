@@ -5,6 +5,8 @@ import {
   restoreIndicatorScopesFromPayload,
 } from '../../state/indicatorScopeGc';
 import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
+import { captureSettingsForWindow, restoreSettingsFromPayload } from '../../state/windowSettingsLifecycle';
+import type { WindowSettings } from '../../state/windowSettings';
 
 /**
  * 레이아웃 프리셋의 캡처·적용 (ADR-0119 PR-E, #713 §5, ADR-0159).
@@ -43,7 +45,7 @@ import type { LiveLayoutPresetPayload } from '../../api/liveLayoutPresets';
  *  가 읽어 적용 시점의 표시 종목으로 물질화한다. */
 type PresetWindow = ReturnType<typeof snapshotWorkspace>['windows'][number]
   & ReturnType<typeof captureIndicatorPayloadForWindow>
-  & { wasPinned?: true };
+  & { wasPinned?: true; windowSettings: WindowSettings };
 
 /** 현재 워크스페이스를 프리셋 payload 로 캡처한다(창·배치 + 차트 창의 지표 + 핀 여부).
  *  `groupSymbols` 는 **빈 객체를 명시적으로 보낸다** — 필드 자체는 백엔드 모델이
@@ -60,6 +62,7 @@ export function capturePresetPayload(): LiveLayoutPresetPayload {
     // 적용 시 심을 곳도 없다(`restoreIndicatorScopesFromPayload` 가 kind 로 거른다).
     ...(w.kind === 'chart' ? { ...w, ...captureIndicatorPayloadForWindow(w.id) } : w),
     ...(pinnedIds.has(w.id) ? { wasPinned: true as const } : {}),
+    windowSettings: captureSettingsForWindow(w),
   }));
   return { windows, zOrder: snapshot.zOrder, groupSymbols: {} };
 }
@@ -88,6 +91,7 @@ function pinFlaggedIds(rawWindows: readonly unknown[]): string[] {
 export function applyPresetPayload(payload: LiveLayoutPresetPayload, presetId: string | null): void {
   useWorkspaceStore.getState().applyWorkspaceSnapshot(payload);
   restoreIndicatorScopesFromPayload(useWorkspaceStore.getState().windows, payload.windows);
+  restoreSettingsFromPayload(useWorkspaceStore.getState().windows, payload.windows);
   useWorkspaceStore.getState().pinWindows(pinFlaggedIds(payload.windows));
   useLiveLayoutStore.getState().setLastAppliedPresetId(presetId);
 }

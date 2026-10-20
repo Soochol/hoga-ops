@@ -8,6 +8,7 @@ import { subscribeToInvestorEstimateUnitStorage } from './investorEstimateUnit';
 import { subscribeToIndicatorsStorage } from './livePage';
 import { subscribeToLiveVenueStorage } from './liveVenue';
 import { subscribeToThemePreferenceStorage } from './themePrefs';
+import { subscribeToWindowSettingsStorage } from './windowSettings';
 
 /**
  * 탭 전역 설정의 **단 하나의 구독 지점**.
@@ -42,6 +43,7 @@ export function useCrossTabSync(): void {
   // 이루므로 둘 다 동기화하지 않으면 같은 드로어 안에서 일부 행만 따라온다.
   useEffect(() => subscribeToIndicatorsStorage(), []);
   useEffect(() => subscribeToChartPrefsStorage(useChartPrefsStore), []);
+  useEffect(() => subscribeToWindowSettingsStorage(), []);
   useEffect(
     () =>
       subscribeToLiveSettingsPing(() => {

@@ -21,8 +21,8 @@ type Hover = { source: 'pointer' | 'sync'; tsMs: number; left: number; top: numb
 
 type Props = {
   chart: IChartApi;
-  bundle: RangeBundle;
-  quoteBundle?: RangeBundle | null;
+  bundle: Pick<RangeBundle, 'code' | 'candles'> & Partial<Pick<RangeBundle, 'quote_ratio'>>;
+  quoteBundle?: Partial<Pick<RangeBundle, 'quote_ratio'>> | null;
   axis: VirtualAxis;
   paneSeries: PaneSeriesMap;
   timeframe: LiveTimeframe;

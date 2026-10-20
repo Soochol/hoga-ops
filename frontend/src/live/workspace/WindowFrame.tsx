@@ -5,7 +5,7 @@
  * 이 컴포넌트는 /live 전용 헤더 — 링크 그룹 뱃지·팔레트·종목 제목 — 만 구성해
  * 주입한다. prop 표면은 일반화 이전과 동일하다(소비자·테스트 무변경).
  */
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { ResizeMode } from '../../workspace/snapEngine';
 import { WindowFrameCore, type WindowRectPx } from '../../workspace/WindowFrame';
 import { LiveGroupBadge } from './LiveGroupBadge';
@@ -14,10 +14,11 @@ import type { GroupId, WindowKind } from '../../state/workspace';
 // (windowKindLabels 의 SSOT 취지). 여기에 사본을 두면 그 약속이 조용히 깨진다.
 import { WINDOW_KIND_LABEL as KIND_LABEL } from './windowKindLabels';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
-import { WindowActionsMenu } from './WindowActionsMenu';
+import { WindowSettingsPopover } from './WindowSettingsPopover';
+import { WindowHeaderActionsContext } from './WindowHeaderAction';
+import { ChartDisplaySettings } from './ChartDisplaySettings';
 import { TradeWindowSettings } from './TradeWindowSettings';
 import { formatTradeMinAmount } from '../../state/tradeWindowSettings';
-import { useWindowActionsCompact } from './useWindowActionsCompact';
 
 export type { WindowRectPx };
 
@@ -119,11 +120,10 @@ function WindowFrameImpl(props: WindowFrameProps) {
   const marketWide = kind === 'market-indices';
   const showVenueSupport = (kind === 'book' || kind === 'order') && !!symbolCode && !isIndex;
   const title = marketWide ? KIND_LABEL[kind] : symbolLabel ?? `그룹 ${group}`;
-  const hasSettings = kind === 'trade' && !!onTradeMinAmountChange;
-  const { actionsRef, compact } = useWindowActionsCompact(hasSettings, title);
+  const [headerActions, setHeaderActions] = useState<HTMLSpanElement | null>(null);
 
   return (
-    <WindowFrameCore
+    <WindowHeaderActionsContext.Provider value={headerActions}><WindowFrameCore
       id={id}
       rect={rect}
       zIndex={zIndex}
@@ -168,10 +168,16 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </span>
             </>
           )}
-          {/* 제목이 여유 공간을 흡수하고, 액션은 실제로 공간이 부족할 때만 접는다. */}
-          {kind === 'trade' && tradeMinAmountManwon > 0 && <span className="shrink-0 rounded-sm bg-tint-selection px-1 text-xs text-accent font-data"
+          {/* 제목과 보조 정보가 먼저 줄어들고, 창 조작 버튼은 최소 창 폭까지 유지한다. */}
+          {kind === 'trade' && tradeMinAmountManwon > 0 && <span className="live-window-title-meta rounded-sm bg-tint-selection px-1 text-xs text-accent font-data"
             aria-label={`체결금액 ${formatTradeMinAmount(tradeMinAmountManwon)} 이상 표시`}>{formatTradeMinAmount(tradeMinAmountManwon)} 이상</span>}
-          <div ref={actionsRef} className="live-window-direct-actions" data-compact={compact ? '' : undefined}>
+          <div className="live-window-direct-actions">
+            <span ref={setHeaderActions} className="live-window-header-actions-slot" />
+            {kind === 'chart' && <WindowSettingsPopover title="차트 설정" scope="이 차트에 적용" width={380}
+              render={() => <ChartDisplaySettings windowId={id} />} />}
+            {kind === 'trade' && onTradeMinAmountChange && <WindowSettingsPopover title="체결창 설정"
+              render={close => <TradeWindowSettings minAmountManwon={tradeMinAmountManwon}
+                onApply={amount => { onTradeMinAmountChange(amount); close(); }} />} />}
             {onToggleMaximize && (
               <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
                 aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
@@ -229,20 +235,11 @@ function WindowFrameImpl(props: WindowFrameProps) {
               </>
             )}
           </div>
-          <WindowActionsMenu maximized={maximized} alwaysOnTop={alwaysOnTop} pinned={pinned} canPin={canPin} compact={compact}
-            onMaximize={onToggleMaximize ? () => onToggleMaximize(id) : undefined}
-            onAlwaysOnTop={onToggleAlwaysOnTop ? () => onToggleAlwaysOnTop(id) : undefined}
-            onPin={!marketWide && onTogglePin ? () => onTogglePin(id) : undefined}
-            settings={kind === 'trade' && onTradeMinAmountChange ? {
-              title: '체결창 설정',
-              render: close => <TradeWindowSettings minAmountManwon={tradeMinAmountManwon}
-                onApply={amount => { onTradeMinAmountChange(amount); close(); }} />,
-            } : undefined} />
         </>
       }
     >
       {children}
-    </WindowFrameCore>
+    </WindowFrameCore></WindowHeaderActionsContext.Provider>
   );
 }
 

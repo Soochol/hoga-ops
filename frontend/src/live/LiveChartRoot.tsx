@@ -49,7 +49,7 @@ import { viewedDateOf } from './viewedDate';
 import type { StudySavedRangeMarks } from '../studyViews/studyDailyContext';
 import { type CalendarTimeframe, type LiveMAConfig, type LiveTimeframe, isMinuteTimeframe, isCalendarTimeframe } from '../state/livePage';
 import { WindowViewContext, useHistoricalRangeActions, useIndicatorActions, useWindowIndicator, useWindowPaneAxisMode, useWindowPaneGroups, useWindowPaneGroupStretch, useWindowPaneStretch, useWindowScopeId, useWindowViewGuard } from './workspace/windowView';
-import { useActivePrefs, useChartPrefsStore } from '../state/chartPrefs';
+import { useActivePrefs } from '../state/chartPrefs';
 import type { LiveVenueOption } from '../state/liveVenue';
 import { type AskPeak, type BidPeak, type RangeBundle, type RangeMissingDate, type DepthHeatmapPointWire } from '../api/types';
 import { PAST_CANDLES_MAX_DAYS, realMsToYyyymmdd } from './liveDateTime';
@@ -960,6 +960,8 @@ export function LiveChartRoot({
   chartRef.current = chart;
   const horizontalGridLinesEnabled = useActivePrefs((prefs) => prefs.horizontalGridLinesEnabled);
   const verticalGridLinesEnabled = useActivePrefs((prefs) => prefs.verticalGridLinesEnabled);
+  const gridPrefsRef = useRef({ horizontalGridLinesEnabled, verticalGridLinesEnabled });
+  gridPrefsRef.current = { horizontalGridLinesEnabled, verticalGridLinesEnabled };
 
   // Viewport capture (ADR-0069 A안): read the live chart's visible range + zoom
   // and pin them to a real-time anchor. The remaining caller is the saved-view
@@ -1724,7 +1726,7 @@ export function LiveChartRoot({
     // infers `unknown` and the IHorzScaleBehavior<Time> instance no longer
     // matches. The behavior's options() override (TimeChartOptions) is what
     // makes timeScale.tickMarkFormatter typecheck below.
-    const gridPrefs = useChartPrefsStore.getState();
+    const gridPrefs = gridPrefsRef.current;
     const nativeChart = createChartEx<Time, ReturnType<typeof createKstHorzScaleBehavior>>(
       el,
       createKstHorzScaleBehavior(axisRef),

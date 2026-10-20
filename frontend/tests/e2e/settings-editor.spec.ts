@@ -69,13 +69,20 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await page.getByRole('button', { name: '설정', exact: true }).first().click();
     const editor = page.getByTestId('settings-shell');
     await expect(editor.getByText('앱 전체에 적용', { exact: true })).toBeVisible();
-    const toggle = editor.getByRole('switch', { name: '캔들이 항상 위', exact: true });
+    const movedLabels = ['캔들 기준 Y축', '캔들이 항상 위', '동시호가 구간 지표 숨김', '캔들 정보 툴팁', '가로 구분선', '세로 구분선'];
+    for (const name of movedLabels) await expect(editor.getByRole('switch', { name, exact: true })).toHaveCount(0);
+    await expect(editor.getByRole('heading', { name: '캔들 · 지표', exact: true })).toHaveCount(0);
+    await expect(editor.getByRole('heading', { name: '격자 · 구분선', exact: true })).toHaveCount(0);
+    const toggle = editor.getByRole('switch', { name: '크로스헤어 동기화 — 다른 종목까지', exact: true });
     const old = await toggle.getAttribute('aria-checked');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-checked', old === 'true' ? 'false' : 'true');
     await editor.getByRole('button', { name: '되돌리기' }).click();
     await expect(toggle).toHaveAttribute('aria-checked', old!);
     const search = editor.getByRole('textbox', { name: '설정 필터' });
+    await search.fill('가로 구분선');
+    await expect(editor.getByText(/에 맞는 설정이 없습니다/)).toBeVisible();
+    await expect(editor.getByRole('switch')).toHaveCount(0);
     await search.fill('이전일 고가선');
     await expect(editor.getByTestId('settings-linestyle-highLowPriorHighLine')).toBeVisible();
     await search.press('Escape');
@@ -98,6 +105,9 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await editor.screenshot({ path: testInfo.outputPath(`settings-editor-${theme}.png`) });
     await page.keyboard.press('Escape');
     await expect(editor).toHaveCount(0);
+    await page.getByRole('button', { name: '차트 설정', exact: true }).first().click();
+    const popover = page.getByRole('dialog', { name: '차트 설정', exact: true });
+    for (const name of movedLabels) await expect(popover.getByRole('switch', { name, exact: true })).toBeVisible();
   });
 }
 

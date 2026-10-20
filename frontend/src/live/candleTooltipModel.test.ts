@@ -15,6 +15,9 @@ const bars: Candle[] = [
 ];
 
 describe('buildCandleTooltip', () => {
+  it('초봉은 같은 분 안의 봉을 구분할 수 있도록 초까지 표시한다', () => {
+    expect(buildCandleTooltip([C(baseMs + 5000, 100, 105, 99, 102, 10)], 0, '5s')!.timeLabel).toBe('09:00:05');
+  });
   it('index 범위 밖이면 null', () => {
     expect(buildCandleTooltip(bars, -1, '1m')).toBeNull();
     expect(buildCandleTooltip(bars, 3, '1m')).toBeNull();
