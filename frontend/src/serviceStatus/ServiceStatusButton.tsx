@@ -81,7 +81,7 @@ export function ServiceStatusButton() {
     <button ref={trigger} type="button" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
       aria-label={`서비스 상태${count ? ` · 문제 ${count}건` : ''}`}
       onClick={() => { if (open) dismiss(); else { setView('current'); show(); } }}
-      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded border border-border px-2 py-1 text-sm font-semibold text-fg-dim hover:bg-bg-input-hover hover:text-fg">
+      className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded px-2 py-1 text-sm font-semibold text-fg-dim hover:bg-bg-input-hover hover:text-fg">
       <StatusDot />
       상태 {count > 0 && <span className="rounded bg-tint-warn px-1 text-xs text-warn">{count}</span>}
       {!count && notice && <span className="text-xs text-warn">공지</span>}

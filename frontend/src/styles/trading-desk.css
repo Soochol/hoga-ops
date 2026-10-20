@@ -1,9 +1,5 @@
 /* Trading Desk chrome shared by feature pages. Keep layout and data colors
    owned by each page; these rules only apply to the selected theme. */
-[data-theme='trading-desk'] .app-top-nav {
-  border-bottom: 1px solid var(--border);
-}
-
 [data-theme='trading-desk'] .app-brand-mark {
   position: relative;
   border: 1px solid var(--border-strong);
