@@ -32,15 +32,15 @@ describe('ConditionRow', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...initial,
       params: { ...initial.params, [type === 'price_range' ? 'min'
         : type === 'trade_value' ? 'min_eok'
-        : type === 'new_high_today' || type === 'new_high_vol_today' || type === 'high_off_peak' || type === 'ma' || type === 'bollinger_breakout_today' ? 'period'
+        : type === 'new_high_today' || type === 'new_high_vol_today' || type === 'high_off_peak' || type === 'ma' || type === 'bollinger_breakout_today' || type === 'bollinger_position_today' ? 'period'
         : type === 'change_pct' ? 'pct'
         : type === 'ask_depth_renewal' || type === 'bid_depth_renewal' ? 'threshold_pct' : 'lookback']: 17 } });
   });
 
-  it('opens the breakout explanation without hiding any of its settings', () => {
-    render(<ConditionRow leaf={makeLeaf('bollinger_breakout')} onChange={vi.fn()} onRemove={vi.fn()} />);
-    const source = screen.getByRole('combobox', { name: '돌파 비교가격' });
-    fireEvent.click(screen.getByRole('button', { name: '기간내 볼린저밴드 돌파 도움말' }));
+  it.each(['bollinger_breakout', 'bollinger_position'] as const)('opens the %s explanation without hiding settings', type => {
+    render(<ConditionRow leaf={makeLeaf(type)} onChange={vi.fn()} onRemove={vi.fn()} />);
+    const source = screen.getByRole('combobox', { name: type === 'bollinger_position' ? '비교가격' : '돌파 비교가격' });
+    fireEvent.click(screen.getByRole('button', { name: `${CONDITION_CATALOG[type].label} 도움말` }));
     expect(screen.getByRole('tooltip')).toHaveTextContent('최신 봉을 포함한 기간');
     expect(source).toBeVisible();
     expect(screen.getByLabelText('볼린저 기간')).toBeVisible();

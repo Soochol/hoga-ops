@@ -22,12 +22,14 @@ const conditions: ConditionLeaf[] = [
   { id: 'bb-today', type: 'bollinger_breakout_today', params: { source: 'high', band_source: 'close', band: 'upper', period: 20, multiplier: 2 } },
   { id: 'bb-period', type: 'bollinger_breakout', params: { source: 'low', band_source: 'close', band: 'lower', period: 20, multiplier: 2, lookback: 5 } },
   { id: 'rate', type: 'change_pct', params: { op: 'between', lo: -5, hi: 150, change_reference: 'bar_open' } },
+  { id: 'bb-position', type: 'bollinger_position_today', params: { source: 'high', band_source: 'close', band: 'upper', period: 20, multiplier: 2 } },
+  { id: 'bb-period-position', type: 'bollinger_position', params: { source: 'low', band_source: 'close', band: 'lower', period: 20, multiplier: 2, lookback: 5 } },
 ];
 const labels = ['현재가 범위', '거래대금', '기간내 거래대금', '신고가', '기간내 신고가', '신고거래량', '기간내 신고거래량',
   '신고가 대비 고가', '매도 총잔량 peak', '매수 총잔량 peak', '기간내 매도 총잔량 peak', '기간내 매수 총잔량 peak',
-  '매도 총잔량 기준시각 돌파', '매수 총잔량 기준시각 돌파', '이동평균', '볼린저밴드 돌파', '기간내 볼린저밴드 돌파', '등락률'];
+  '매도 총잔량 기준시각 돌파', '매수 총잔량 기준시각 돌파', '이동평균', '볼린저밴드 돌파', '기간내 볼린저밴드 돌파', '등락률', '볼린저밴드 위·아래', '기간내 볼린저밴드 위·아래'];
 
-test('all 18 compact editors stay editable through keyboard editing, reorder and scan', async ({ page }, testInfo) => {
+test('all 20 compact editors stay editable through keyboard editing, reorder and scan', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await installLiveMocks(page);
@@ -101,12 +103,17 @@ test('all 18 compact editors stay editable through keyboard editing, reorder and
   // Hydration may replay the previous scan before the explicit, edited request.
   await expect.poll(() => scans.at(-1)?.conditions).toEqual(expected);
 
-  const breakout = builder.getByRole('group', { name: '기간내 볼린저밴드 돌파 조건', exact: true });
-  await breakout.getByRole('button', { name: '기간내 볼린저밴드 돌파 도움말' }).click();
-  await expect(page.getByRole('tooltip')).toContainText('최신 봉을 포함한 기간');
-  await expect(breakout.getByLabel('볼린저 기간')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  for (const label of ['기간내 볼린저밴드 돌파', '기간내 볼린저밴드 위·아래']) {
+    const card = builder.getByRole('group', { name: `${label} 조건`, exact: true });
+    const help = card.getByRole('button', { name: `${label} 도움말` });
+    await help.scrollIntoViewIfNeeded();
+    await expect(help).toBeInViewport();
+    await help.press('Enter');
+    await expect(page.getByRole('tooltip')).toContainText('최신 봉을 포함한 기간');
+    await expect(card.getByLabel('볼린저 기간')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+  }
 
   // Each editor's controls must fit its actual 23rem builder at both density scales.
   for (const [theme, size] of [['trading-desk', 16], ['ledger-studio', 20]] as const) {

@@ -15,8 +15,9 @@ from hoga.api.screener_runner import run_screener_scan
 from hoga.util.timeenc import KST
 
 
-def leaf(*, recent=None, **params):
-    kind = "bollinger_breakout_today" if recent is None else "bollinger_breakout"
+def leaf(*, recent=None, position=False, **params):
+    family = "bollinger_position" if position else "bollinger_breakout"
+    kind = f"{family}_today" if recent is None else family
     return TypeAdapter(ConditionLeaf).validate_python({"id": kind, "type": kind,
         "params": {"period": 3, "multiplier": 1, **({"lookback": recent} if recent is not None else {}), **params}})
 
@@ -81,13 +82,14 @@ def test_invalid_parameters_are_rejected(patch):
         leaf(recent=2, **patch)
 
 
+@pytest.mark.parametrize("position", [False, True])
 @pytest.mark.parametrize("timeframe", ["1m", "5m", "D", "W", "M"])
-def test_models_and_exclusion_identity(timeframe):
-    condition = leaf(recent=2, timeframe=timeframe)
+def test_models_and_exclusion_identity(timeframe, position):
+    condition = leaf(recent=2, timeframe=timeframe, position=position)
     assert TypeAdapter(ConditionLeaf).validate_json(condition.model_dump_json()) == condition
     assert screener_exclusions.condition_key(condition) == screener_exclusions.condition_key(
-        leaf(recent=10, timeframe=timeframe))
-    assert bars.leaves([condition]) == [condition]  # Daily also requires both full band windows.
+        leaf(recent=10, timeframe=timeframe, position=position))
+    assert bars.leaves([condition]) == [condition]  # Daily Bollinger conditions also use the candle evaluator.
 
 
 @pytest.fixture
@@ -106,7 +108,8 @@ def corpus(tmp_path, monkeypatch):
     return tmp_path
 
 
-async def test_daily_http_scan_save_exclusion_and_latest_vs_recent(corpus):
+@pytest.mark.parametrize("position", [False, True])
+async def test_daily_http_scan_save_exclusion_and_latest_vs_recent(corpus, position):
     app = FastAPI()
 
     @app.post("/scan", response_model=ScreenerResponse)
@@ -114,7 +117,7 @@ async def test_daily_http_scan_save_exclusion_and_latest_vs_recent(corpus):
         return await run_screener_scan(data_dir=corpus, req=req, now=dt.datetime(2026, 7, 24, 17, tzinfo=KST))
 
     app.include_router(screener_exclusions.build_router(corpus))
-    condition = leaf(recent=2)
+    condition = leaf(recent=2, position=position)
     saved = await screener_saves.create_save(corpus, req=ScreenerSaveWriteRequest(
         name="볼린저 돌파", conditions=[condition]), id="bb", now_ms=1)
     assert screener_saves.load_saves(corpus).saves[0] == saved
@@ -125,26 +128,32 @@ async def test_daily_http_scan_save_exclusion_and_latest_vs_recent(corpus):
         result = response.json()
         assert result["bar_coverage"]["complete"] == 1
         row = result["rows"][0]
+        assert [e["date"] for e in row["occurrences"]] == (
+            ["2026-07-23", "2026-07-24"] if position else ["2026-07-23"])
         event = row["occurrences"][0]
         assert event["date"] == "2026-07-23"
         assert event["bar_price_match"]["source"] == "close"
         expected = statistics.mean([100, 100, 110]) + statistics.pstdev([100, 100, 110])
         assert event["bar_price_match"]["reference"] == pytest.approx(expected)
-        latest = await client.post("/scan", json={"conditions": [leaf().model_dump()], "basis": "eod"})
-        assert latest.status_code == 200 and latest.json()["rows"] == []
-        excluded = await client.put("/exclusions", json={"condition": condition.model_dump(), "code": row["code"],
-            "stock_name": row["name"], "date": event["date"], "bar_start_ms": event["bar_start_ms"]})
-        assert excluded.status_code == 200
+        latest = await client.post("/scan", json={"conditions": [leaf(position=position).model_dump()], "basis": "eod"})
+        assert latest.status_code == 200
+        assert bool(latest.json()["rows"]) is position
+        for event in row["occurrences"]:
+            excluded = await client.put("/exclusions", json={"condition": condition.model_dump(), "code": row["code"],
+                "stock_name": row["name"], "date": event["date"], "bar_start_ms": event["bar_start_ms"]})
+            assert excluded.status_code == 200
         assert (await client.post("/scan", json=payload)).json()["rows"] == []
 
 
-def test_direct_scan_requires_precomputed_bands(corpus):
+@pytest.mark.parametrize("position", [False, True])
+def test_direct_scan_requires_precomputed_bands(corpus, position):
     with pytest.raises(ValueError, match="봉 이력 평가"):
         screener_scan.run_scan(corpus / "screener/daily_adjusted.parquet", corpus / "screener/stocks.parquet",
-            conditions=[leaf()], universe=ScreenerUniverse())
+            conditions=[leaf(position=position)], universe=ScreenerUniverse())
 
 
-async def test_minute_fetch_includes_previous_band_window(tmp_path, monkeypatch):
+@pytest.mark.parametrize("position, needed", [(False, 4), (True, 3)])
+async def test_minute_fetch_includes_required_band_window(tmp_path, monkeypatch, position, needed):
     data = series([100, 100, 100, 110])
     anchor = data[0].start_ms
     data = [replace(b, start_ms=anchor + i * 300_000) for i, b in enumerate(data)]
@@ -155,16 +164,17 @@ async def test_minute_fetch_includes_previous_band_window(tmp_path, monkeypatch)
         return bars.MinuteSnapshot(data, 123)
 
     monkeypatch.setattr(bars, "minute_snapshot", snapshot)
-    condition = leaf(timeframe="5m")
+    condition = leaf(timeframe="5m", position=position)
     result = await bars.evaluate(data_dir=tmp_path, conditions=[condition], codes=["005930"],
         basis="intraday", now=dt.datetime(2026, 7, 20, 10, tzinfo=KST))
-    assert requested == [4] and result.coverage.complete == 1
+    assert requested == [needed] and result.coverage.complete == 1
     assert result.events[condition.id][0][1].bar_start_ms == data[-1].start_ms
     assert result.events[condition.id][0][1].bar_price_match.fetched_at_ms == 123
 
 
-async def test_live_daily_overlay_can_enter_and_leave_crossing(corpus):
-    condition = leaf()
+@pytest.mark.parametrize("position", [False, True])
+async def test_live_daily_overlay_can_enter_and_leave_condition(corpus, position):
+    condition = leaf(position=position)
     now = dt.datetime(2026, 7, 23, 10, tzinfo=KST)
     overlay = pl.DataFrame({"code": ["005930"], "date": [now.date()], "open": [100.0],
                            "high": [111.0], "low": [99.0], "close": [110.0], "volume": [100]})
@@ -186,3 +196,45 @@ def test_large_price_centered_variance_matches_independent_population_reference(
         window = values[i - 19:i + 1]
         expected = statistics.mean(window) + 2 * statistics.pstdev(window)
         assert actual[i] == pytest.approx(expected, abs=0.000001, rel=0)
+
+
+@pytest.mark.parametrize("source", ["open", "high", "low", "close"])
+@pytest.mark.parametrize("band, values", [("upper", [100, 100, 100, 110, 120]),
+                                         ("lower", [100, 100, 100, 90, 80])])
+def test_position_keeps_every_outside_bar_and_latest_without_new_crossing(source, band, values):
+    data = [replace(b, high=b.close, low=b.close) for b in series(values)]
+    args = dict(position=True, source=source, band=band)
+    events, complete = bars.records(leaf(recent=2, **args), data, fetched_at_ms=17)
+    assert complete and [e.bar_start_ms for e in events] == [b.start_ms for b in data[-2:]]
+    for i, event in enumerate(events, start=3):
+        window = values[i - 2:i + 1]
+        expected = statistics.mean(window) + (1 if band == "upper" else -1) * statistics.pstdev(window)
+        assert event.bar_price_match.reference == pytest.approx(expected)
+        assert event.bar_price_match.value == values[i]
+    latest, complete = bars.records(leaf(**args), data, fetched_at_ms=17)
+    assert complete and len(latest) == 1
+    assert latest[0].bar_price_match == events[-1].bar_price_match
+    # A historical outside position still counts when the latest bar is back inside.
+    data.append(replace(data[-1], start_ms=data[-1].start_ms + 86_400_000, open=100, high=100, low=100, close=100))
+    assert bars.records(leaf(**args), data, fetched_at_ms=17) == ([], True)
+    assert bars.records(leaf(recent=2, **args), data, fetched_at_ms=17) == (events[-1:], True)
+
+
+@pytest.mark.parametrize("band, source, outside", [("upper", "high", 110), ("lower", "low", 90)])
+def test_position_current_window_equality_and_independent_price_sources(band, source, outside):
+    data = [replace(b, open=100, high=100, low=100, close=100) for b in series([100] * 3)]
+    condition = leaf(position=True, band=band, source=source, multiplier=2)
+    assert bars.records(condition, data, fetched_at_ms=0) == ([], True)  # Equality is excluded.
+    data[-1] = replace(data[-1], **{source: outside})
+    events, complete = bars.records(condition, data, fetched_at_ms=0)
+    assert complete and events[0].bar_price_match.reference == 100
+    assert events[0].bar_price_match.window_start_ms == data[0].start_ms
+    assert bars.records(leaf(position=True, band=band), data, fetched_at_ms=0) == ([], True)
+    assert bars.records(leaf(position=True, band=band, source=source, band_source=source, multiplier=2),
+                        data, fetched_at_ms=0) == ([], True)
+    assert bars.records(condition, data[1:], fetched_at_ms=0) == ([], False)
+    invalid = [replace(data[0], valid=False), *data[1:]]
+    assert bars.records(condition, invalid, fetched_at_ms=0) == ([], False)
+    opened = [*data[:-1], replace(data[-1], is_open=True)]
+    assert bars.records(condition, opened, fetched_at_ms=0)[0][0].bar_price_match.is_open
+    assert bars.records(leaf(position=True, include_open_bar=False), opened, fetched_at_ms=0) == ([], False)

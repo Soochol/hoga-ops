@@ -25,7 +25,7 @@ def condition_key(leaf: ConditionLeaf) -> str:
     # These fields select the search window, not the predicate on a given day.
     for key in ("mode", "start_date", "end_date"):
         params.pop(key, None)
-    if leaf.type in {"bollinger_breakout", "new_high", "new_high_vol", "trade_value_period",
+    if leaf.type in {"bollinger_breakout", "bollinger_position", "new_high", "new_high_vol", "trade_value_period",
                      "ask_depth_new_high_period", "bid_depth_new_high_period"}:
         params.pop("lookback", None)
     record_period = params.get("record_period")
