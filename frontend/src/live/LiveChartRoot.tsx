@@ -11,7 +11,7 @@ import { basePaneId } from '../chart/paneOrder';
 import type { SeriesType } from 'lightweight-charts';
 import { barPitchPx } from '../chart/drawing/chartCoordinates';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react';
-import { createChartEx, TickMarkType, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
+import { createChartEx, PriceScaleMode, TickMarkType, type IChartApi, type ISeriesApi, type Time, type UTCTimestamp } from 'lightweight-charts';
 import { createKstHorzScaleBehavior } from '../util/kstHorzScaleBehavior';
 import { resolveTokensThemed, currentThemeKey } from '../util/tokens';
 import { useThemeChangeRerender } from '../state/themePrefs';
@@ -730,6 +730,19 @@ export function LiveChartRoot({
   // focused on chart bootstrap, viewport policy, and overlay mounts.
   const { paneSeries, registerPaneSeries, unregisterPaneSeries } =
     useDrawingHost(chart, drawingScope);
+  const candleSeries = paneSeries.get('candle');
+  const candleLogScale = useActivePrefs(p => p.candleLogScale);
+  const candleInvertScale = useActivePrefs(p => p.candleInvertScale);
+  useEffect(() => {
+    // Target the candle's current pane/scale, including after timeframe or pane
+    // changes. Chart-wide rightPriceScale options would also change lower panes.
+    // Updating this scale keeps price overlays aligned without rebuilding data
+    // or resetting the horizontal viewport.
+    candleSeries?.priceScale().applyOptions({
+      mode: candleLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
+      invertScale: candleInvertScale,
+    });
+  }, [candleSeries, candleLogScale, candleInvertScale]);
   // Stable per-(un)register callbacks so RangeSeriesPane's React.memo (Phase B)
   // can skip candle/volume panes on an SSE tick. RangeSeriesPane passes the
   // pane name back, so one callback serves all panes (vs a per-pane closure that

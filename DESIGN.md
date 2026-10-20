@@ -153,6 +153,10 @@ fixed canvas axis/primitive sizes remain governed by the canvas exceptions above
 또한 이 여섯 항목과 두 소그룹은 기존 앱
 설정의 본문·검색에서 제거하고 캔들 차트 헤더 팝오버에서만 표시한다. 체결창 설정도
 같은 제목줄 버튼 위치를 사용한다.
+2026-10-20 사용자 승인: `캔들 · 지표`에 기본값이 꺼짐인 `로그 스케일`과
+`차트 거꾸로 보기` 토글을 추가한다. 분·일·주·월에서 함께 사용할 수 있고 기존과
+같이 창별로 저장한다. 캔들 가격축과 같은 축을 쓰는 가격 지표·드로잉에 적용하며
+거래량·하단 지표의 축, 실제 가격·등락률과 상승·하락 색상은 유지한다.
 The calendar-chart “분봉으로” action sits directly after “그리기” in the toolbar,
 with its label folded at narrow widths, rather than inside the More popup.
 

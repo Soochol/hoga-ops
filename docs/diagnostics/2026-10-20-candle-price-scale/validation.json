@@ -1,0 +1,90 @@
+{
+  "validated_at_kst": "2026-10-20T20:00:58.751297+09:00",
+  "head_sha": "1dff940fed7c13d164f0deee072516c8d922a1f8",
+  "base_sha": "1dff940fed7c13d164f0deee072516c8d922a1f8",
+  "state": "Uncommitted working tree over HEAD; origin/main fetched and identical to HEAD.",
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed (app, unit-test and E2E TypeScript projects)"
+    },
+    {
+      "command": "cd frontend && npx vitest run",
+      "result": "671 files / 8698 tests passed"
+    },
+    {
+      "command": "cd frontend && npm run build",
+      "result": "passed; existing large-chunk warning remains"
+    },
+    {
+      "command": "cd frontend && npx playwright test chart-window-settings.spec.ts price-axis-width.spec.ts drawing-high-body.spec.ts --reporter=list",
+      "result": "8 passed; system Chrome; workers=1"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "1m/D/W/M: linear, logarithmic, inverted linear, inverted logarithmic; numeric geometry and coordinate round-trips",
+    "Same chart/series and OHLC/color data retained; price overlays follow candle scale; lower-pane scales remain linear and non-inverted",
+    "Horizontal bar pitch, right logical anchor and scroll position retained; left visible edge accounts for wider axis text",
+    "Drawing hit selection at transformed price; high/low label placement and hover meanings on inversion",
+    "Independent windows; timeframe and subject changes; new-window copy; reload and new-tab hydration; layout preset restore; per-field undo; legacy/invalid defaults",
+    "Existing volume-axis width and day-high drawing browser regressions"
+  ],
+  "visual_review": "Inspected settings and side-by-side daily charts. Inverted high/low labels follow screen direction and retain their semantic labels.",
+  "screenshots": [
+    "1m-log-inverted.png",
+    "D-log-inverted.png",
+    "M-log-inverted.png",
+    "W-log-inverted.png",
+    "scale-settings.png"
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 155.0.8059.84",
+    "frontend_dependencies": "Independent npm ci in this worktree; package-lock unchanged",
+    "e2e": {
+      "backend_port": 20151,
+      "frontend_port": 21151,
+      "data": "/tmp/hoga-e2e-data-151",
+      "dist": "/tmp/hoga-e2e-dist-151",
+      "vendor_credentials": "Blank values from Playwright config",
+      "env_file_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "fingerprint_recipe": "For sorted tracked existing files under the listed paths, SHA256 of UTF-8 newline-joined path + NUL + file SHA256 hex. No trailing newline.",
+  "input_fingerprints": {
+    "frontend": {
+      "file_count": 1772,
+      "sha256": "95c27b5d9dbbdbcecc877c438322bb6a4672f8d6d82e582d87b43f0407d82c59"
+    },
+    "backend": {
+      "file_count": 290,
+      "sha256": "a813d7b2df622ed43828963baf1474b2c569df6e2190884f9b2dd58fd64eb866"
+    },
+    "fixtures": {
+      "file_count": 26,
+      "sha256": "c5f9bbd6c6128e7ce7dd9a51b8c995d95affd0c1f0bec29be45a3ea301ca799c"
+    },
+    "python_dependencies": {
+      "file_count": 3,
+      "sha256": "89415a907ab0b81d1e4d1bfa650cc553e016d044fcbc843def6e4b764d094262"
+    }
+  },
+  "changed_file_sha256": {
+    "DESIGN.md": "a4013014996adc55dde78313df1ddada9d78461f3af786b2d0886a376e5f9e53",
+    "docs/agents/window-settings.md": "81b6ce51d632b935fb7b6f7d954d04e33c47d4641cdeec927640215115c54876",
+    "frontend/src/chart/HighLowLabelsPrimitive.test.ts": "8ad62dbeafed5770725d3ff6c216427915f5d496b91ffaeb353481d9c67daf19",
+    "frontend/src/chart/HighLowLabelsPrimitive.ts": "9946ed1ea189b5858f43dda24759b2bf8dd7b9709b1ce817eda0d249f1d7f3af",
+    "frontend/src/live/LiveChartRoot.tsx": "5a5de9393c6b55e7593ac5aa44eb0e350f258c29e7feb22149242d7a038617b4",
+    "frontend/src/live/workspace/ChartDisplaySettings.test.tsx": "4ef9014df145399e751490397e890d09c2c21a5462cd8391f82350c96ba29eaa",
+    "frontend/src/state/chartDisplayPrefs.ts": "8feaf65ac832325e34d60f430211989a2df9320f5b49366935de2a1ec67aadc1",
+    "frontend/src/state/windowSettings.test.tsx": "95d281a122ffe07ee5696e2895708e75c2bb81f7ff815740278f856c5fef0b03",
+    "frontend/tests/e2e/chart-window-settings.spec.ts": "5046ec701ed83df8b3c69e371ddb00c15864384ee0745a948768591c41aede93"
+  },
+  "backend_validation": "No backend/API changes; exercised isolated backend fixture setup through E2E. Full Python suite not required for this frontend change."
+}

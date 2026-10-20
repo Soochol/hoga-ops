@@ -1,15 +1,18 @@
 # 창별 설정
 
-창의 표시·동작 설정을 추가할 때 적용한다. 차트 표시 설정 6개는 첫 소비자다.
+창의 표시·동작 설정을 추가할 때 적용한다. 차트 표시 설정은 첫 소비자다.
 지표의 봉별 프로필은 ADR-0152, 프리셋 전달은 ADR-0159의 기존 경로를 유지한다.
 
 ## 소유권과 저장
 
 - 정본은 `state/windowSettings.ts`의 `byWindow[windowId]`다. `hoga.window.settings.v1`
   localStorage에 즉시 저장한다. 값은 창별이며 종목·봉·링크 그룹에 따라 갈리지 않는다.
-- 설정은 종류별 section으로 나눈다. 현재 `chart` section은 6개 boolean의 완전한 값이다.
+- 설정은 종류별 section으로 나눈다. 현재 `chart` section은 8개 boolean의 완전한 값이다.
   새 종류는 `WINDOW_SETTINGS_REGISTRY`에 창 kind와 순수 정규화 함수를 등록한다.
   `WindowSettings` 타입은 레지스트리에서 파생된다. UI에 별도 저장 사본을 만들지 않는다.
+- `candleLogScale`·`candleInvertScale`은 기본값이 false이며 분·일·주·월에서 함께 쓴다.
+  캔들 시리즈의 현재 가격축에만 적용한다. 차트 전체 `rightPriceScale`에 적용하면
+  거래량·하단 지표까지 바뀐다. 고저 라벨은 화면상 위·아래와 최고·최저의 의미를 구분한다.
 - 기존 호가 주문·체결 창의 저장 구조는 이번에 이전하지 않았다. 이후 이전 시 기존
   저장값을 읽는 이관 절차와 하위호환 테스트를 함께 추가한다.
 - 탭별 sessionStorage 워크스페이스에는 설정 내용을 넣지 않는다. 같은 창 id는

@@ -10,10 +10,10 @@ beforeEach(() => useWindowSettingsStore.setState({ byWindow: {} }));
 afterEach(() => useChartPrefsStore.setState(initial, true));
 
 describe('chart display settings', () => {
-  it('edits the six window prefs without changing global values and undoes only the last changed field', async () => {
+  it('edits window prefs without changing global values and undoes only the last changed field', async () => {
     render(<ChartDisplaySettings windowId="a" />);
     const definitions = CHART_DISPLAY_TOGGLES;
-    expect(screen.getAllByRole('switch')).toHaveLength(6);
+    expect(screen.getAllByRole('switch')).toHaveLength(definitions.length);
     for (const def of definitions) {
       const original = useWindowSettingsStore.getState().byWindow.a.chart![def.key];
       fireEvent.click(screen.getByRole('switch', { name: def.label }));
@@ -34,6 +34,23 @@ describe('chart display settings', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
     act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candlePaneCandleOnlyScale: initial.candlePaneCandleOnlyScale }));
     await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeDisabled());
+  });
+
+  it('combines log and inverted scales and undoes only the last scale edit', async () => {
+    render(<ChartDisplaySettings windowId="a" />);
+    const log = screen.getByRole('switch', { name: '로그 스케일' });
+    const invert = screen.getByRole('switch', { name: '차트 거꾸로 보기' });
+    expect(log).toHaveAttribute('aria-checked', 'false');
+    expect(invert).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(log);
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    fireEvent.click(invert);
+    expect(log).toHaveAttribute('aria-checked', 'true');
+    expect(invert).toHaveAttribute('aria-checked', 'true');
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    await waitFor(() => expect(invert).toHaveAttribute('aria-checked', 'false'));
+    expect(log).toHaveAttribute('aria-checked', 'true');
   });
 
   it('keeps undo local to the edited window and discards history when the target changes', async () => {
