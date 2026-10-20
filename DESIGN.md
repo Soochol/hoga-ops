@@ -157,6 +157,10 @@ fixed canvas axis/primitive sizes remain governed by the canvas exceptions above
 `차트 거꾸로 보기` 토글을 추가한다. 분·일·주·월에서 함께 사용할 수 있고 기존과
 같이 창별로 저장한다. 캔들 가격축과 같은 축을 쓰는 가격 지표·드로잉에 적용하며
 거래량·하단 지표의 축, 실제 가격·등락률과 상승·하락 색상은 유지한다.
+같은 날 사용자 후속 요청: 캔들 차트 제목 헤더의 설정 버튼 옆에 활성 상태인
+`로그`·`반전` 배지를 표시한다. 배지를 누르면 해당 창의 차트 설정을 연다.
+240px 이하에서는 한 줄 헤더와 창 조작 아이콘을 유지하기 위해 배지를 접고,
+설정 아이콘의 선택 틴트와 툴팁으로 활성 상태를 안내한다.
 The calendar-chart “분봉으로” action sits directly after “그리기” in the toolbar,
 with its label folded at narrow widths, rather than inside the More popup.
 

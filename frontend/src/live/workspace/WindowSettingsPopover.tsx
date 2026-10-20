@@ -3,8 +3,9 @@ import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 
 /** Shared title-bar settings button. Window actions stay visible at every width. */
-export function WindowSettingsPopover({ title, scope, width = 320, render, open: controlledOpen, onOpenChange, disabled = false }: {
+export function WindowSettingsPopover({ title, buttonTitle, scope, width = 320, render, open: controlledOpen, onOpenChange, disabled = false }: {
   title: string;
+  buttonTitle?: string;
   scope?: string;
   width?: number;
   render: (onClose: () => void) => ReactNode;
@@ -31,7 +32,7 @@ export function WindowSettingsPopover({ title, scope, width = 320, render, open:
 
   return <>
     <button ref={anchor} type="button" className="live-window-settings live-icon-button"
-      aria-label={title} title={title} aria-haspopup="dialog" aria-expanded={open}
+      aria-label={title} title={buttonTitle ?? title} aria-haspopup="dialog" aria-expanded={open}
       aria-controls={open ? dialogId : undefined}
       disabled={disabled} onPointerDown={event => event.stopPropagation()} onClick={() => setOpen(!open)}>
       <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">

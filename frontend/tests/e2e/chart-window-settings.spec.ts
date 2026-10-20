@@ -44,6 +44,9 @@ async function expectPriceScale(page: Page, id: string, log: boolean, invert: bo
     const opts = candle?.priceScale().options();
     return opts ? [opts.mode, opts.invertScale] : null;
   }, id)).toEqual([log ? 1 : 0, invert]);
+  const header = page.locator(`[data-win="${id}"] .live-window-titlebar`);
+  await expect(header.getByText('로그', { exact: true })).toHaveCount(log ? 1 : 0);
+  await expect(header.getByText('반전', { exact: true })).toHaveCount(invert ? 1 : 0);
 }
 
 async function scaleFixtures(page: Page) {
@@ -182,6 +185,8 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   await expectGrid(page, 'b', true, true);
   await expectPriceScale(page, 'a', true, true);
   await expectPriceScale(page, 'b', false, false);
+  // Scale options update before LWC paints its new axis width and coordinates.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
   const hover = await page.evaluate(() => {
     const chart = (window as ChartsWindow).__liveCharts!.get('a')!;
     const candle = chart.panes()[0].getSeries().find(series => series.seriesType() === 'Candlestick') as ISeriesApi<'Candlestick'>;
