@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { loadConfig, type AppConfig } from '../../config';
 import { apiCall } from '../../api/client';
-import { getSymbolMasterInfo, refreshSymbols } from '../../api/symbols';
-import { SYMBOLS_QUERY_KEY } from '../../capture/useSymbols';
+import { getSymbolMasterInfo } from '../../api/symbols';
 import { symbolMasterSettingsHints } from '../../api/upstream-hints';
-import { DefinitionRow, SegmentedControl, ToolbarButton } from '../../ui/PageShell';
+import { DefinitionRow, SegmentedControl } from '../../ui/PageShell';
 import { THEME_PREFERENCE_OPTIONS, useThemePrefsStore, type ThemePreference } from '../../state/themePrefs';
 
 /**
@@ -113,24 +112,11 @@ export function ThemeSection() {
 }
 
 export function SymbolMasterSection() {
-  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: SYMBOLS_INFO_QUERY_KEY,
     queryFn: getSymbolMasterInfo,
     refetchOnWindowFocus: false,
   });
-  const [updating, setUpdating] = useState(false);
-
-  const handleUpdate = async () => {
-    setUpdating(true);
-    try {
-      await refreshSymbols();
-      await queryClient.invalidateQueries({ queryKey: SYMBOLS_INFO_QUERY_KEY });
-      await queryClient.invalidateQueries({ queryKey: SYMBOLS_QUERY_KEY });
-    } finally {
-      setUpdating(false);
-    }
-  };
 
   return (
     <section className="space-y-2">
@@ -140,14 +126,9 @@ export function SymbolMasterSection() {
       {data?.reason && (
         <div className="text-xs text-error">{symbolMasterSettingsHints[data.reason]}</div>
       )}
-      <ToolbarButton
-        type="button"
-        onClick={handleUpdate}
-        disabled={updating || isLoading}
-        className="mt-2"
-      >
-        {updating ? 'Updating… (~30-120s)' : 'Update Now'}
-      </ToolbarButton>
+      <p className="text-xs text-fg-dim">
+        종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.
+      </p>
     </section>
   );
 }

@@ -69,6 +69,10 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await page.getByRole('button', { name: '설정', exact: true }).first().click();
     const editor = page.getByTestId('settings-shell');
     await expect(editor.getByText('앱 전체에 적용', { exact: true })).toBeVisible();
+    await editor.getByTestId('settings-nav-symbols').click();
+    await expect(editor.getByText('종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.')).toBeVisible();
+    await expect(editor.getByRole('button', { name: 'Update Now', exact: true })).toHaveCount(0);
+    await editor.getByTestId('settings-nav-chart').click();
     const movedLabels = ['캔들 기준 Y축', '캔들이 항상 위', '동시호가 구간 지표 숨김', '캔들 정보 툴팁', '가로 구분선', '세로 구분선'];
     for (const name of movedLabels) await expect(editor.getByRole('switch', { name, exact: true })).toHaveCount(0);
     await expect(editor.getByRole('heading', { name: '캔들 · 지표', exact: true })).toHaveCount(0);

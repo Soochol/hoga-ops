@@ -18,7 +18,14 @@ from pathlib import Path
 
 import polars as pl
 
-from hoga.api import screener_bar_price, screener_bar_threshold, screener_bollinger, screener_exclusions, trading_days
+from hoga.api import (
+    screener_bar_price,
+    screener_bar_threshold,
+    screener_bollinger,
+    screener_exclusions,
+    screener_history_evidence,
+    trading_days,
+)
 from hoga.api.models import (
     BarVolumeCoverage,
     BarVolumeCoverageItem,
@@ -349,22 +356,57 @@ async def _load_minutes(key, data_dir, code, timeframe, needed, lower, as_of):
     return result
 
 
-def _evaluate_calendar(result, selected, codes, values, days, as_of):
+def _evaluate_calendar(result, selected, codes, values, days, as_of, data_dir=None):
+    evidence = screener_history_evidence.load(data_dir) if data_dir is not None else {}
     incomplete = set()
     windows = {leaf.id: _required_windows(leaf, days, as_of) for leaf in selected}
     for leaf in selected:
+        expected = sorted({day for window in windows[leaf.id] for day in window[0]})
+        calendar_complete = _calendar_complete(leaf, windows[leaf.id], days, as_of)
         for code in codes:
             bars = calendar_bars(values.get(code, {}), days, timeframe=leaf.params.timeframe,
                                  as_of=as_of, windows=windows[leaf.id])
             events, complete = records(leaf, bars, fetched_at_ms=int(time.time() * 1000))
             result.events[leaf.id].extend((code, event) for event in events)
-            required_end = (dt.date.fromisoformat(leaf.params.end_date)
-                            if isinstance(leaf.params, RANGE_PARAMS) else as_of.date())
-            if not complete or not days or days[-1] < required_end:
+            if not complete or not calendar_complete:
+                reasons = {}
+                if not calendar_complete:
+                    reasons["calendar_unavailable"] = []
+                observations = values.get(code, {})
+                fact = evidence.get(code)
+                missing = [day for day in expected if day not in observations]
+                reasons.update(screener_history_evidence.missing_reasons(missing, fact))
+                if any(not screener_bar_price.valid_prices(observations[day])
+                       for day in expected if day in observations) \
+                        and leaf.type not in VOLUME_TYPES:
+                    reasons["invalid_daily_rows"] = []
+                if not reasons:
+                    reasons["insufficient_history"] = []
                 incomplete.add(code)
-                result.coverage.incomplete.append(BarVolumeCoverageItem(
-                    code=code, condition_id=leaf.id, reason="missing_history"))
+                for reason, absent in reasons.items():
+                    result.coverage.incomplete.append(BarVolumeCoverageItem(
+                        code=code, condition_id=leaf.id, reason=reason,
+                        missing_days=len(absent) if absent else None,
+                        required_from=(absent or expected)[0].isoformat() if absent or expected else None,
+                        required_to=(absent or expected)[-1].isoformat() if absent or expected else None,
+                        name=fact.name if fact and fact.name else None))
     return incomplete
+
+
+def _calendar_complete(leaf, windows, days, as_of):
+    if not days or any(not window[2] for window in windows):
+        return False
+    historical = isinstance(leaf.params, RANGE_PARAMS)
+    end = dt.date.fromisoformat(leaf.params.end_date) if historical else as_of.date()
+    # A known Friday also covers the immediately following weekend.
+    while end.weekday() >= WEEKEND_START:
+        end -= dt.timedelta(days=1)
+    if days[-1] < end:
+        return False
+    if historical:
+        return dt.date.fromisoformat(leaf.params.start_date) >= days[0]
+    needed = lookback(leaf) + comparison_period(leaf) - 1 + (not leaf.params.include_open_bar)
+    return len(windows) >= needed
 
 
 async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
@@ -391,7 +433,7 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
         values, days = await asyncio.to_thread(
             _daily_values, data_dir, group, daily_overlay, cutoff, calendar_leaves)
         incomplete.update(await asyncio.to_thread(
-            _evaluate_calendar, result, calendar_leaves, group, values, days, cutoff))
+            _evaluate_calendar, result, calendar_leaves, group, values, days, cutoff, data_dir))
     minute_leaves = [leaf for leaf in selected if leaf.params.timeframe.endswith("m")]
     if minute_leaves:
         # Rotate the bounded REST batch so repeated monitoring covers the whole
@@ -442,6 +484,6 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
             if not complete:
                 incomplete.add(code)
                 result.coverage.incomplete.append(BarVolumeCoverageItem(
-                    code=code, condition_id=leaf.id, reason=reason or "missing_history"))
+                    code=code, condition_id=leaf.id, reason=reason or "insufficient_minute_history"))
     result.coverage.complete = len(codes) - len(incomplete)
     return result

@@ -150,7 +150,7 @@ export function Screener() {
   // 버튼 라벨·비활성·결과 라벨 게이트가 **하나의 식**을 본다. 갈라 두면 버튼은
   // 「갱신 중…」인데 옆에 지난 실행의 「갱신 실패」가 붙는다(2026-09-03 신고).
   const isUpdating = update.isPending || serverUpdating;
-  const visibleFeedback = visibleUpdateFeedback(updateFeedback, isUpdating);
+  const visibleFeedback = visibleUpdateFeedback(updateFeedback, isUpdating, status?.last_refresh);
 
   const saves = savesData?.saves ?? [];
   const anchorSave = editor.anchorId != null
@@ -333,7 +333,7 @@ export function Screener() {
             </ToolbarButton>
             {!notSeeded && (
               <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
-                disabled={isUpdating}>
+                disabled={isUpdating} title="최신 종목 목록을 반영하고 종목별 빠진 과거 일봉을 보충합니다">
                 {isUpdating ? '갱신 중…' : '갱신'}
               </ToolbarButton>
             )}

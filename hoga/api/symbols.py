@@ -408,6 +408,7 @@ def _load_from_disk(path: Path) -> tuple[list[SymbolHit], int, int] | None:
                 # 구 캐시엔 이 키가 없다 → **모름**(None). `False`(미상장)로 읽으면
                 # 캐시 하나가 "전 종목 NXT 미상장"이라 거짓 증언한다.
                 nxt_enabled=e.get("nxt_enabled"),
+                listing_date=e.get("listing_date"),
                 captured_count=0,
                 captured_breakdown={"complete": 0, "source_partial": 0, "client_incomplete": 0, "invalid": 0},
             )
@@ -439,7 +440,8 @@ def _write_to_disk(path: Path, entries: list[SymbolHit], fetched_at_ms: int) -> 
         "source": "kiwoom_ka10099",
         "entries": [
             {"code": e.code, "name": e.name, "market": e.market,
-             "security_type": e.security_type, "nxt_enabled": e.nxt_enabled}
+             "security_type": e.security_type, "nxt_enabled": e.nxt_enabled,
+             "listing_date": e.listing_date}
             for e in entries
         ],
     }
@@ -455,6 +457,7 @@ def _rows_to_hits(rows) -> list[SymbolHit]:
             market=r.market,  # type: ignore[arg-type]
             security_type=r.security_type,
             nxt_enabled=r.nxt_enabled,
+            listing_date=r.listing_date.isoformat() if r.listing_date else None,
             captured_count=0,
             captured_breakdown=dict(empty),
         )

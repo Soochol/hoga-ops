@@ -4,7 +4,6 @@ import { useSymbols, useSymbolSearch, SYMBOLS_QUERY_KEY } from './useSymbols';
 import { useCombobox } from '../util/useCombobox';
 import { symbolSearchHints } from '../api/upstream-hints';
 import { refreshCaptureCounts, refreshSymbols } from '../api/symbols';
-import { requestSettingsModal } from '../live/settingsModalControls';
 import type { SymbolHit, SymbolsCacheStatus } from '../api/types';
 
 const STALE_NUDGE_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
@@ -188,7 +187,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
       )}
       {/* `showRefresh` 는 `stale` 도 포함하는데 이 블록이 `unavailable` 일 때만 렌더돼서
           **stale 에서 그 조건이 죽어 있었다** — "오래됨" 뱃지를 본 사용자에게 갱신 경로가
-          없었다(검색 결과가 0건일 때 뜨는 "설정에서 갱신" 이 유일한 우회로였다).
+          없었다(검색 결과가 0건일 때 뜨는 갱신 안내가 유일한 우회로였다).
 
           `hint` 는 unavailable 전용 문구다("종목 목록 미가용 — 6자리 코드 입력 후 Enter")
           — stale 은 목록이 있으니 그 문장이 거짓이라, 버튼만 낸다. 상태 설명은 옆의
@@ -219,10 +218,8 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
                 <div className="mt-2 text-xs text-fg-dim">
                   Symbol Master가 {formatRelativeShort(fetchedAtMs)} 업데이트되었습니다 —
                   신규 상장 종목이 누락되었을 수 있습니다.{' '}
-                  {/* 예전엔 raw `<a href="/settings">` 라 **전체 페이지 리로드**였다
-                      (router Link 도 아니었다). 이제 드로어를 그 자리에서 연다. */}
-                  <button type="button" onClick={requestSettingsModal} className="underline">
-                    설정에서 갱신
+                  <button type="button" onClick={handleRefresh} className="underline">
+                    종목 목록 갱신
                   </button>
                 </div>
               )}

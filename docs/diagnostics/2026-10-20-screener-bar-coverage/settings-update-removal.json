@@ -1,0 +1,33 @@
+{
+  "verified_at": "2026-10-20T13:45:32.740549+00:00",
+  "base_commit": "7661dc42e789a794c059b8cb955c38069fc5ab7d",
+  "origin_main": "0aeb5605aac1960c21b1bf8386b5facb769c6cc8",
+  "change": "Remove Settings catalog update action; keep catalog diagnostics, Screener refresh, and direct SymbolSearch recovery. Redirect stale-catalog nudge and recovery copy away from removed Settings action.",
+  "frontend_inputs": {
+    "files": 1774,
+    "sha256": "130ed9a6e806c1f9f34da25c2ad57383a8e3c6a8870c557faba43c0a2dae94c8"
+  },
+  "node": "v24.13.1",
+  "checks": {
+    "typecheck": "npm run typecheck (app + unit + E2E) — passed",
+    "unit": "npx vitest run src/live/settings/AppInfoSections.test.tsx src/live/SettingsSections.test.tsx src/capture/SymbolSearch.test.tsx src/api/upstream-hints.test.tsx src/screener/useScreenerUpdateSync.test.tsx — 119 passed",
+    "e2e": "npx playwright test tests/e2e/settings-editor.spec.ts tests/e2e/screener-refresh.spec.ts --grep '헤더 설정|refresh shows' --reporter=line — 3 passed",
+    "build": "npx vite build — passed",
+    "ruff": ".venv/bin/ruff check . — passed"
+  },
+  "logs": [
+    "/tmp/hoga-settings-typecheck.log",
+    "/tmp/hoga-settings-unit.log",
+    "/tmp/hoga-settings-e2e.log",
+    "/tmp/hoga-settings-build.log"
+  ],
+  "backend_reuse": "No backend code, tests, contracts or dependencies changed; reuse 840 passes recorded in refresh-verification.json.",
+  "e2e_isolation": {
+    "backend": 20419,
+    "frontend": 21419,
+    "data": "/tmp/hoga-e2e-data-419",
+    "workers": 1,
+    "vendor_credentials": "blank"
+  },
+  "deployment_record": "/home/dev/.local/share/hoga-ops/data/screener/maintenance/2026-10-20-bar-coverage/settings-update-deployment.json"
+}

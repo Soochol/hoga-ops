@@ -86,3 +86,16 @@ def test_needs_boot_refresh_fires_for_seed_boot(tmp_path: Path) -> None:
         assert symbols.needs_boot_refresh() is False
     finally:
         symbols.reset_state_for_tests()
+
+
+def test_listing_date_survives_master_and_disk_roundtrip(tmp_path):
+    import datetime as dt
+
+    from hoga.api.kiwoom_master import MasterRow
+
+    row = MasterRow("000001", "신규", "KOSPI", "stock", True, dt.date(2026, 10, 20))
+    hits = symbols._rows_to_hits([row])
+    assert hits[0].listing_date == "2026-10-20"
+    path = tmp_path / "master.json"
+    symbols._write_to_disk(path, hits, 123)
+    assert symbols._load_from_disk(path)[0][0].listing_date == "2026-10-20"

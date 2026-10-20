@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SymbolSearch } from './SymbolSearch';
+import * as symbolsApi from '../api/symbols';
 import type { ReactNode } from 'react';
 import type { SymbolsAllResponse } from '../api/types';
 
@@ -239,7 +240,7 @@ describe('SymbolSearch reason-aware empty state', () => {
       <SymbolSearch value={null} onChange={() => {}} />,
       { symbols: [], status: 'unavailable', fetched_at_ms: null, reason: 'master_fetch_failed' },
     ));
-    expect(screen.getByText(/KIS 종목 마스터.*다운로드에 실패/)).toBeTruthy();
+    expect(screen.getByText(/키움 종목 목록을 가져오지 못했습니다/)).toBeTruthy();
   });
 
   it('shows Refresh button when status is unavailable', () => {
@@ -277,7 +278,9 @@ describe('SymbolSearch — empty-result staleness nudge', () => {
     return <QueryClientProvider client={qc}>{ui}</QueryClientProvider>;
   }
 
-  it('renders nudge when catalog is older than 7 days and search has no hits', () => {
+  it('refreshes an old catalog directly when search has no hits', async () => {
+    setup();
+    const refresh = vi.spyOn(symbolsApi, 'refreshSymbols').mockResolvedValue({ symbols: [], status: 'fresh', fetched_at_ms: Date.now(), reason: null });
     const TEN_DAYS_AGO = Date.now() - 10 * 24 * 60 * 60 * 1000;
     render(wrapWithData(
       <SymbolSearch value={null} onChange={() => {}} />,
@@ -302,6 +305,8 @@ describe('SymbolSearch — empty-result staleness nudge', () => {
 
     expect(screen.getByText(/검색 결과가 없습니다/)).toBeInTheDocument();
     expect(screen.getByText(/Symbol Master.*업데이트되었습니다/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '종목 목록 갱신' }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
   });
 
   it('does NOT render nudge when catalog is younger than 7 days', () => {

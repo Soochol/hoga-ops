@@ -195,8 +195,8 @@ def test_manual_update_route_delegates_to_start_update(tmp_path: Path, monkeypat
 
     calls = []
 
-    async def fake_start_update(data_dir, *, bus=None):
-        calls.append((data_dir, bus))
+    async def fake_start_update(data_dir, *, bus=None, repair_history=False):
+        calls.append((data_dir, bus, repair_history))
         return {"running": True, "done": 0, "total": 5}
 
     monkeypatch.setattr(screener_mod, "start_update", fake_start_update)
@@ -209,7 +209,7 @@ def test_manual_update_route_delegates_to_start_update(tmp_path: Path, monkeypat
 
     assert resp.status_code == 200
     assert resp.json() == {"running": True, "done": 0, "total": 5}
-    assert calls == [(tmp_path, None)]
+    assert calls == [(tmp_path, None, True)]
 
 
 async def test_trigger_update_fetches_daily_rows_through_capacity_scheduler(tmp_path: Path, monkeypatch):
@@ -395,7 +395,7 @@ def test_status_route_exposes_updating(tmp_path: Path, monkeypatch):
                         _screener_mod._UpdateProgress(done=3, total=10, started_ms=123))
     with TestClient(app) as client:
         body = client.get("/api/screener/status").json()
-    assert body["updating"] == {"done": 3, "total": 10, "started_ms": 123}
+    assert body["updating"] == {"done": 3, "total": 10, "started_ms": 123, "phase": None}
 
     monkeypatch.setattr(_screener_mod, "_progress", None)
     with TestClient(app) as client:

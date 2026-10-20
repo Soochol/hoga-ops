@@ -445,29 +445,32 @@ def merge_roster_from_master(
     ``master_rows`` 가 ``None``(마스터 미로드)이면 아무것도 하지 않는다 — 빈
     목록으로 오해해 로스터를 건드리면 안 된다(``symbols.all_listed_rows`` 참고).
     """
-    if not master_rows:
-        return 0
-    if not stocks_path.exists():
-        return 0
-    df = pl.read_parquet(stocks_path)
-    have = set(df["code"].to_list())
-    fresh = [r for r in master_rows if r[0] not in have]
-    if not fresh:
-        return 0
-    added = pl.DataFrame(
-        {
-            "code": [r[0] for r in fresh],
-            "name": [r[1] for r in fresh],
-            "market": [r[2] for r in fresh],
-            "is_etf": [r[3] for r in fresh],
-            "is_halted": [False] * len(fresh),
-        },
-        schema={
-            "code": pl.Utf8, "name": pl.Utf8, "market": pl.Utf8,
-            "is_etf": pl.Boolean, "is_halted": pl.Boolean,
-        },
-    )
-    # 열 순서·타입을 기존 파일에 맞춘다 — concat 이 스키마 불일치로 죽지 않게.
-    atomic_write_parquet_df(stocks_path, pl.concat([df, added.select(df.columns)]))
-    log.info("screener roster: added %d newly listed codes", len(fresh))
-    return len(fresh)
+    from hoga.api.screener_write_lock import screener_write_lock  # noqa: PLC0415
+
+    with screener_write_lock(stocks_path.parent):
+        if not master_rows:
+            return 0
+        if not stocks_path.exists():
+            return 0
+        df = pl.read_parquet(stocks_path)
+        have = set(df["code"].to_list())
+        fresh = [r for r in master_rows if r[0] not in have]
+        if not fresh:
+            return 0
+        added = pl.DataFrame(
+            {
+                "code": [r[0] for r in fresh],
+                "name": [r[1] for r in fresh],
+                "market": [r[2] for r in fresh],
+                "is_etf": [r[3] for r in fresh],
+                "is_halted": [False] * len(fresh),
+            },
+            schema={
+                "code": pl.Utf8, "name": pl.Utf8, "market": pl.Utf8,
+                "is_etf": pl.Boolean, "is_halted": pl.Boolean,
+            },
+        )
+        # 열 순서·타입을 기존 파일에 맞춘다 — concat 이 스키마 불일치로 죽지 않게.
+        atomic_write_parquet_df(stocks_path, pl.concat([df, added.select(df.columns)]))
+        log.info("screener roster: added %d newly listed codes", len(fresh))
+        return len(fresh)

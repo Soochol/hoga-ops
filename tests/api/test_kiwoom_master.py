@@ -142,3 +142,11 @@ def test_seed_contains_a_known_symbol() -> None:
     assert by_code["005930"].name == "삼성전자"
     assert by_code["005930"].market == "KOSPI"
     assert by_code["005930"].security_type == "stock"
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("20261020", "2026-10-20"), (None, None), ("", None), ("20260230", None), ("2026102", None),
+])
+def test_reg_day_is_preserved_as_sourced_listing_date(value, expected):
+    row = km.parse_row({**ROW_STOCK, "regDay": value}, "KOSPI")
+    assert (row.listing_date.isoformat() if row.listing_date else None) == expected

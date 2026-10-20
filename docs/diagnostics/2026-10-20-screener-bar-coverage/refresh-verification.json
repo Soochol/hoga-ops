@@ -1,0 +1,47 @@
+{
+  "verified_at": "2026-10-20T13:39:00.855762+00:00",
+  "base_commit": "0aeb5605aac1960c21b1bf8386b5facb769c6cc8",
+  "branch": "codex/screener-history-coverage",
+  "python": "3.14.7",
+  "node": "v24.13.1",
+  "backend": {
+    "inputs": {
+      "files": 744,
+      "sha256": "2171d2f573c09420602a5c6764c6c36e6ed77e5018867d75e24f9f60841f9815"
+    },
+    "ruff": ".venv/bin/ruff check . — passed",
+    "tests": ".venv/bin/pytest -q -m 'not wallclock' $(rg --files tests | rg '(screener|bollinger|kiwoom_master|symbols).*\\.py$') tests/unit/api/test_rest_wire_schema_contract.py — 840 passed",
+    "logs": [
+      "/tmp/hoga-refresh-backend-final.log"
+    ]
+  },
+  "frontend": {
+    "inputs": {
+      "files": 1774,
+      "sha256": "def57d40b456453b23fd9216980eb713b8c528118ef923bd2d9f808439bcc617"
+    },
+    "typecheck": "npm run typecheck — passed (app, unit, E2E)",
+    "tests": "npx vitest run src/screener src/pages/Screener.test.tsx src/api/symbols.test.ts src/api/eventStream.test.ts — 434 passed (45 files)",
+    "build": "npx vite build — passed",
+    "e2e": "screener-refresh, screener-bar-price, screener-bar-threshold, screener-bar-volume, screener-bollinger — 6 passed",
+    "e2e_isolation": {
+      "backend": 20419,
+      "frontend": 21419,
+      "data": "/tmp/hoga-e2e-data-419",
+      "workers": 1,
+      "vendor_credentials": "blank"
+    },
+    "logs": [
+      "/tmp/hoga-refresh-e2e-final.log",
+      "/tmp/hoga-refresh-build-final.log"
+    ],
+    "reuse": "Frontend inputs unchanged after its 434-unit/6-E2E/typecheck/build passes; latest change only reduces backend evidence storage."
+  },
+  "deployment": {
+    "target": "/home/dev/code/hoga-ops",
+    "desktop_profile": "local-vite, http://localhost:5173, API http://localhost:8000",
+    "runtime_verification_record": "/home/dev/.local/share/hoga-ops/data/screener/maintenance/2026-10-20-bar-coverage/app-deployment.json",
+    "native_window_verification": "unavailable: /browse skill absent and orca-ide command not found; browser flows verified in isolated E2E"
+  },
+  "listing_date_source": "https://github.com/Kiwoom-Securities/Kiwoom-REST-API/blob/main/examples/%EA%B5%AD%EB%82%B4%EC%A3%BC%EC%8B%9D/%EC%A2%85%EB%AA%A9%EC%A0%95%EB%B3%B4/list_domestic_stocks.py"
+}

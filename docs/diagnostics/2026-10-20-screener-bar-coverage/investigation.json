@@ -1,0 +1,3157 @@
+{
+  "investigated_at": "2026-10-20T22:12:13.933501+09:00",
+  "original_coverage": {
+    "complete": 2743,
+    "total": 2814,
+    "incomplete": 71
+  },
+  "original_71_conclusions": {
+    "delisted": 51,
+    "collection_gap_resolved": 11,
+    "new_listing_insufficient_bars_after_repair": 9
+  },
+  "repair": {
+    "original_codes_repaired": 20,
+    "original_missing_rows_added": 257,
+    "additional_new_listing_code": "0158S0",
+    "additional_rows_added": 1,
+    "storage_integrity": {
+      "daily_unadjusted.parquet": {
+        "existing_rows_changed": 0,
+        "rows_added": 258
+      },
+      "daily_adjusted.parquet": {
+        "existing_rows_changed": 0,
+        "rows_added": 258
+      }
+    },
+    "backup_path": "/home/dev/.local/share/hoga-ops/data/screener/maintenance/2026-10-20-bar-coverage/backup"
+  },
+  "current_coverage": {
+    "total": 2815,
+    "complete": 2754,
+    "incomplete": [
+      {
+        "code": "005030",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 6,
+        "required_from": "2026-10-13",
+        "required_to": "2026-10-20",
+        "name": "부산주공"
+      },
+      {
+        "code": "005110",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 3,
+        "required_from": "2026-10-16",
+        "required_to": "2026-10-20",
+        "name": "한창"
+      },
+      {
+        "code": "006380",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 19,
+        "required_from": "2026-09-18",
+        "required_to": "2026-10-20",
+        "name": "카프로"
+      },
+      {
+        "code": "008290",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 17,
+        "required_from": "2026-09-22",
+        "required_to": "2026-10-20",
+        "name": "원풍물산"
+      },
+      {
+        "code": "012510",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "더존비즈온"
+      },
+      {
+        "code": "028080",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 1,
+        "required_from": "2026-10-20",
+        "required_to": "2026-10-20",
+        "name": "휴맥스홀딩스"
+      },
+      {
+        "code": "031440",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "신세계푸드"
+      },
+      {
+        "code": "032980",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "바이온"
+      },
+      {
+        "code": "043090",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 10,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-29",
+        "name": "더테크놀로지"
+      },
+      {
+        "code": "046070",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 17,
+        "required_from": "2026-09-22",
+        "required_to": "2026-10-20",
+        "name": "코다코"
+      },
+      {
+        "code": "057050",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "현대홈쇼핑"
+      },
+      {
+        "code": "060240",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "스타코링크"
+      },
+      {
+        "code": "082640",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "동양생명"
+      },
+      {
+        "code": "082660",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 17,
+        "required_from": "2026-09-22",
+        "required_to": "2026-10-20",
+        "name": "코스나인"
+      },
+      {
+        "code": "084180",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 11,
+        "required_from": "2026-10-02",
+        "required_to": "2026-10-20",
+        "name": "수성웹툰"
+      },
+      {
+        "code": "091990",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "셀트리온헬스케어"
+      },
+      {
+        "code": "096610",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "알에프세미"
+      },
+      {
+        "code": "101390",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "아이엠"
+      },
+      {
+        "code": "106520",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "노블엠앤비"
+      },
+      {
+        "code": "121850",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 22,
+        "required_from": "2026-09-15",
+        "required_to": "2026-10-20",
+        "name": "코이즈"
+      },
+      {
+        "code": "138490",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "코오롱ENP"
+      },
+      {
+        "code": "139050",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "BF랩스"
+      },
+      {
+        "code": "140910",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "에이리츠"
+      },
+      {
+        "code": "152550",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "한국ANKOR유전"
+      },
+      {
+        "code": "196490",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 9,
+        "required_from": "2026-10-07",
+        "required_to": "2026-10-20",
+        "name": "디에이테크놀로지"
+      },
+      {
+        "code": "204210",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "JK리버스톤리츠"
+      },
+      {
+        "code": "217620",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "선샤인푸드"
+      },
+      {
+        "code": "227100",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "프로브잇"
+      },
+      {
+        "code": "230360",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "에코마케팅"
+      },
+      {
+        "code": "230980",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "비유테크놀러지"
+      },
+      {
+        "code": "269620",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "시스웍"
+      },
+      {
+        "code": "299900",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "위지윅스튜디오"
+      },
+      {
+        "code": "451700",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "엔에이치스팩29호"
+      },
+      {
+        "code": "452440",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "VITA 밸류알파액티브"
+      },
+      {
+        "code": "452670",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "상상인제4호스팩"
+      },
+      {
+        "code": "452980",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "신한제11호스팩"
+      },
+      {
+        "code": "455310",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "한화플러스제4호스팩"
+      },
+      {
+        "code": "457630",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "대신밸런스제16호스팩"
+      },
+      {
+        "code": "462020",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "에이치엠씨제6호스팩"
+      },
+      {
+        "code": "464440",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "한국제13호스팩"
+      },
+      {
+        "code": "464680",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "KB제27호스팩"
+      },
+      {
+        "code": "465320",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 21,
+        "required_from": "2026-09-16",
+        "required_to": "2026-10-20",
+        "name": "교보15호스팩"
+      },
+      {
+        "code": "466910",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "엔에이치스팩30호"
+      },
+      {
+        "code": "467930",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "IBKS제23호스팩"
+      },
+      {
+        "code": "469880",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "하나30호스팩"
+      },
+      {
+        "code": "469900",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 5,
+        "required_from": "2026-10-14",
+        "required_to": "2026-10-20",
+        "name": "하나31호스팩"
+      },
+      {
+        "code": "471050",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "대신밸런스제17호스팩"
+      },
+      {
+        "code": "472220",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "신영스팩10호"
+      },
+      {
+        "code": "472230",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 6,
+        "required_from": "2026-10-13",
+        "required_to": "2026-10-20",
+        "name": "SK증권제11호스팩"
+      },
+      {
+        "code": "473050",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 6,
+        "required_from": "2026-10-13",
+        "required_to": "2026-10-20",
+        "name": "유안타제15호스팩"
+      },
+      {
+        "code": "495710",
+        "condition_id": "gLmwOXI2",
+        "reason": "delisted",
+        "missing_days": 23,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-20",
+        "name": "BNK 26-06 특수채(AAA이상)액티브"
+      },
+      {
+        "code": "0010S0",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 7,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-22",
+        "name": "와이즈플래닛컴퍼니"
+      },
+      {
+        "code": "0035S0",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 9,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-28",
+        "name": "빅웨이브로보틱스"
+      },
+      {
+        "code": "0161M0",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 5,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-18",
+        "name": "네오사피엔스"
+      },
+      {
+        "code": "0200G0",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 6,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-21",
+        "name": "한국제17호스팩"
+      },
+      {
+        "code": "0209J0",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 6,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-21",
+        "name": "KB제34호스팩"
+      },
+      {
+        "code": "266690",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 10,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-29",
+        "name": "덕산넵코어스"
+      },
+      {
+        "code": "468670",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 11,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-30",
+        "name": "브릴스"
+      },
+      {
+        "code": "486510",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 9,
+        "required_from": "2026-09-14",
+        "required_to": "2026-09-28",
+        "name": "글로벌테크놀로지"
+      },
+      {
+        "code": "179880",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 19,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-14",
+        "name": "멜콘"
+      },
+      {
+        "code": "0158S0",
+        "condition_id": "gLmwOXI2",
+        "reason": "pre_listing_history",
+        "missing_days": 22,
+        "required_from": "2026-09-14",
+        "required_to": "2026-10-19",
+        "name": "엘리스"
+      }
+    ]
+  },
+  "why_universe_grew": "0158S0 엘리스: 조사 중 종목 목록에 추가된 2026-10-20 신규 상장 종목",
+  "limitations": [
+    "최초 관측일을 상장일로 사용하지 않음",
+    "신규 10종목의 남은 부족분은 공식 상장일 이전이므로 채우지 않음",
+    "10종목의 기존 2026-09-18/21 관측값과 재조회값의 차이는 기존값 보존; 누락 날짜만 추가",
+    "실행 중인 기본 체크아웃 서버는 재시작하거나 코드를 교체하지 않음; 원인별 문구는 현재 워크트리 구현"
+  ],
+  "stocks": [
+    {
+      "code": "005030",
+      "name": "부산주공",
+      "halted": false,
+      "total": 6846,
+      "first": "1999-01-04",
+      "last": "2026-10-12",
+      "missing": 6,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 6846,
+      "stored_from_after": "1999-01-04",
+      "coverage_after": [
+        {
+          "code": "005030",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 6,
+          "required_from": "2026-10-13",
+          "required_to": "2026-10-20",
+          "name": "부산주공"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "부산주공",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-12",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "005110",
+      "name": "한창",
+      "halted": false,
+      "total": 677,
+      "first": "2024-01-02",
+      "last": "2026-10-15",
+      "missing": 3,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 677,
+      "stored_from_after": "2024-01-02",
+      "coverage_after": [
+        {
+          "code": "005110",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 3,
+          "required_from": "2026-10-16",
+          "required_to": "2026-10-20",
+          "name": "한창"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "한창",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-15",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "006380",
+      "name": "카프로",
+      "halted": false,
+      "total": 661,
+      "first": "2024-01-02",
+      "last": "2026-09-17",
+      "missing": 19,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 661,
+      "stored_from_after": "2024-01-02",
+      "coverage_after": [
+        {
+          "code": "006380",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 19,
+          "required_from": "2026-09-18",
+          "required_to": "2026-10-20",
+          "name": "카프로"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "카프로",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-17",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "008290",
+      "name": "원풍물산",
+      "halted": false,
+      "total": 663,
+      "first": "2024-01-02",
+      "last": "2026-09-21",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 663,
+      "stored_from_after": "2024-01-02",
+      "coverage_after": [
+        {
+          "code": "008290",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 17,
+          "required_from": "2026-09-22",
+          "required_to": "2026-10-20",
+          "name": "원풍물산"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "원풍물산",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-21",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "012510",
+      "name": "더존비즈온",
+      "halted": false,
+      "total": 6788,
+      "first": "1999-01-04",
+      "last": "2026-07-14",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 6788,
+      "stored_from_after": "1999-01-04",
+      "coverage_after": [
+        {
+          "code": "012510",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "더존비즈온"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "더존비즈온",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-15",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "028080",
+      "name": "휴맥스홀딩스",
+      "halted": false,
+      "total": 679,
+      "first": "2024-01-02",
+      "last": "2026-10-19",
+      "missing": 1,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 679,
+      "stored_from_after": "2024-01-02",
+      "coverage_after": [
+        {
+          "code": "028080",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 1,
+          "required_from": "2026-10-20",
+          "required_to": "2026-10-20",
+          "name": "휴맥스홀딩스"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "휴맥스홀딩스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-19",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "031440",
+      "name": "신세계푸드",
+      "halted": false,
+      "total": 6175,
+      "first": "2001-07-31",
+      "last": "2026-08-11",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 6175,
+      "stored_from_after": "2001-07-31",
+      "coverage_after": [
+        {
+          "code": "031440",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "신세계푸드"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "신세계푸드",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-08-11",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "032980",
+      "name": "바이온",
+      "halted": false,
+      "total": 289,
+      "first": "2025-04-22",
+      "last": "2026-06-30",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 289,
+      "stored_from_after": "2025-04-22",
+      "coverage_after": [
+        {
+          "code": "032980",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "바이온"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "바이온",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-01",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "043090",
+      "name": "더테크놀로지",
+      "halted": false,
+      "total": 6139,
+      "first": "2001-10-11",
+      "last": "2026-10-20",
+      "missing": 10,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 6139,
+      "stored_from_after": "2001-10-11",
+      "coverage_after": [
+        {
+          "code": "043090",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 10,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-29",
+          "name": "더테크놀로지"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "더테크놀로지",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-08-10",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "046070",
+      "name": "코다코",
+      "halted": false,
+      "total": 663,
+      "first": "2024-01-02",
+      "last": "2026-09-21",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 663,
+      "stored_from_after": "2024-01-02",
+      "coverage_after": [
+        {
+          "code": "046070",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 17,
+          "required_from": "2026-09-22",
+          "required_to": "2026-10-20",
+          "name": "코다코"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "코다코",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-21",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "057050",
+      "name": "현대홈쇼핑",
+      "halted": false,
+      "total": 3896,
+      "first": "2010-09-13",
+      "last": "2026-07-16",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 3896,
+      "stored_from_after": "2010-09-13",
+      "coverage_after": [
+        {
+          "code": "057050",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "현대홈쇼핑"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "현대홈쇼핑",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-20",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "060240",
+      "name": "스타코링크",
+      "halted": false,
+      "total": 6056,
+      "first": "2002-01-04",
+      "last": "2026-07-23",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 6056,
+      "stored_from_after": "2002-01-04",
+      "coverage_after": [
+        {
+          "code": "060240",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "스타코링크"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "스타코링크",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-24",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "082640",
+      "name": "동양생명",
+      "halted": false,
+      "total": 4160,
+      "first": "2009-10-08",
+      "last": "2026-08-31",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 4160,
+      "stored_from_after": "2009-10-08",
+      "coverage_after": [
+        {
+          "code": "082640",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "동양생명"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "동양생명",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-08-31",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "082660",
+      "name": "코스나인",
+      "halted": false,
+      "total": 5172,
+      "first": "2005-10-05",
+      "last": "2026-09-21",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 5172,
+      "stored_from_after": "2005-10-05",
+      "coverage_after": [
+        {
+          "code": "082660",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 17,
+          "required_from": "2026-09-22",
+          "required_to": "2026-10-20",
+          "name": "코스나인"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "코스나인",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-21",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "084180",
+      "name": "수성웹툰",
+      "halted": false,
+      "total": 5126,
+      "first": "2005-12-16",
+      "last": "2026-10-01",
+      "missing": 11,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 5126,
+      "stored_from_after": "2005-12-16",
+      "coverage_after": [
+        {
+          "code": "084180",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 11,
+          "required_from": "2026-10-02",
+          "required_to": "2026-10-20",
+          "name": "수성웹툰"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "수성웹툰",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-01",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "091990",
+      "name": "셀트리온헬스케어",
+      "halted": true,
+      "total": 1587,
+      "first": "2017-07-28",
+      "last": "2024-01-11",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 1587,
+      "stored_from_after": "2017-07-28",
+      "coverage_after": [
+        {
+          "code": "091990",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "셀트리온헬스케어"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "셀트리온헬스케어",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2024-01-12",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "096610",
+      "name": "알에프세미",
+      "halted": false,
+      "total": 4632,
+      "first": "2007-11-20",
+      "last": "2026-09-03",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 4632,
+      "stored_from_after": "2007-11-20",
+      "coverage_after": [
+        {
+          "code": "096610",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "알에프세미"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "알에프세미",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-03",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "101390",
+      "name": "아이엠",
+      "halted": false,
+      "total": 4423,
+      "first": "2008-07-23",
+      "last": "2026-06-30",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 4423,
+      "stored_from_after": "2008-07-23",
+      "coverage_after": [
+        {
+          "code": "101390",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "아이엠"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "아이엠",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-01",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "106520",
+      "name": "노블엠앤비",
+      "halted": false,
+      "total": 3428,
+      "first": "2012-07-13",
+      "last": "2026-06-30",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 3428,
+      "stored_from_after": "2012-07-13",
+      "coverage_after": [
+        {
+          "code": "106520",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "노블엠앤비"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "노블엠앤비",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-01",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "121850",
+      "name": "코이즈",
+      "halted": false,
+      "total": 3427,
+      "first": "2012-09-27",
+      "last": "2026-09-14",
+      "missing": 22,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 3427,
+      "stored_from_after": "2012-09-27",
+      "coverage_after": [
+        {
+          "code": "121850",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 22,
+          "required_from": "2026-09-15",
+          "required_to": "2026-10-20",
+          "name": "코이즈"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "코이즈",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-14",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "138490",
+      "name": "코오롱ENP",
+      "halted": true,
+      "total": 3648,
+      "first": "2011-06-15",
+      "last": "2026-04-15",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 3648,
+      "stored_from_after": "2011-06-15",
+      "coverage_after": [
+        {
+          "code": "138490",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "코오롱ENP"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "코오롱ENP",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-04-16",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "139050",
+      "name": "BF랩스",
+      "halted": true,
+      "total": 3630,
+      "first": "2011-07-29",
+      "last": "2026-05-07",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 3630,
+      "stored_from_after": "2011-07-29",
+      "coverage_after": [
+        {
+          "code": "139050",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "BF랩스"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "BF랩스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-05-08",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "140910",
+      "name": "에이리츠",
+      "halted": false,
+      "total": 3662,
+      "first": "2011-07-14",
+      "last": "2026-06-09",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 3662,
+      "stored_from_after": "2011-07-14",
+      "coverage_after": [
+        {
+          "code": "140910",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "에이리츠"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "에이리츠",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-10",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "152550",
+      "name": "한국ANKOR유전",
+      "halted": true,
+      "total": 3476,
+      "first": "2012-03-08",
+      "last": "2026-04-30",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 3476,
+      "stored_from_after": "2012-03-08",
+      "coverage_after": [
+        {
+          "code": "152550",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "한국ANKOR유전"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "한국ANKOR유전",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-05-04",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "196490",
+      "name": "디에이테크놀로지",
+      "halted": false,
+      "total": 2914,
+      "first": "2014-11-19",
+      "last": "2026-10-06",
+      "missing": 9,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 2914,
+      "stored_from_after": "2014-11-19",
+      "coverage_after": [
+        {
+          "code": "196490",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 9,
+          "required_from": "2026-10-07",
+          "required_to": "2026-10-20",
+          "name": "디에이테크놀로지"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "디에이테크놀로지",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-07",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "204210",
+      "name": "스타에스엠리츠",
+      "halted": false,
+      "total": 2383,
+      "first": "2016-09-22",
+      "last": "2026-06-11",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 2383,
+      "stored_from_after": "2016-09-22",
+      "coverage_after": [
+        {
+          "code": "204210",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "JK리버스톤리츠"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "JK리버스톤리츠",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-12",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "217620",
+      "name": "선샤인푸드",
+      "halted": true,
+      "total": 2677,
+      "first": "2015-06-10",
+      "last": "2026-05-07",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 2677,
+      "stored_from_after": "2015-06-10",
+      "coverage_after": [
+        {
+          "code": "217620",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "선샤인푸드"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "선샤인푸드",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-05-08",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "227100",
+      "name": "프로브잇",
+      "halted": false,
+      "total": 1870,
+      "first": "2018-11-15",
+      "last": "2026-06-30",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 1870,
+      "stored_from_after": "2018-11-15",
+      "coverage_after": [
+        {
+          "code": "227100",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "프로브잇"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "프로브잇",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-01",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "230360",
+      "name": "에코마케팅",
+      "halted": false,
+      "total": 2424,
+      "first": "2016-08-08",
+      "last": "2026-06-29",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 2424,
+      "stored_from_after": "2016-08-08",
+      "coverage_after": [
+        {
+          "code": "230360",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "에코마케팅"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "에코마케팅",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-30",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "230980",
+      "name": "비유테크놀러지",
+      "halted": false,
+      "total": 2516,
+      "first": "2016-03-02",
+      "last": "2026-06-04",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 2516,
+      "stored_from_after": "2016-03-02",
+      "coverage_after": [
+        {
+          "code": "230980",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "비유테크놀러지"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "비유테크놀러지",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-05",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "269620",
+      "name": "시스웍",
+      "halted": false,
+      "total": 2123,
+      "first": "2017-12-26",
+      "last": "2026-08-24",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 2123,
+      "stored_from_after": "2017-12-26",
+      "coverage_after": [
+        {
+          "code": "269620",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "시스웍"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "시스웍",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-08-25",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "299900",
+      "name": "위지윅스튜디오",
+      "halted": false,
+      "total": 1877,
+      "first": "2018-12-20",
+      "last": "2026-08-14",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 1877,
+      "stored_from_after": "2018-12-20",
+      "coverage_after": [
+        {
+          "code": "299900",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "위지윅스튜디오"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "위지윅스튜디오",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-08-18",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "451700",
+      "name": "엔에이치스팩29호",
+      "halted": false,
+      "total": 719,
+      "first": "2023-06-23",
+      "last": "2026-06-09",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 719,
+      "stored_from_after": "2023-06-23",
+      "coverage_after": [
+        {
+          "code": "451700",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "엔에이치스팩29호"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "엔에이치스팩29호",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-10",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "452440",
+      "name": "VITA 밸류알파액티브",
+      "halted": false,
+      "total": 795,
+      "first": "2023-02-21",
+      "last": "2026-05-28",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 795,
+      "stored_from_after": "2023-02-21",
+      "coverage_after": [
+        {
+          "code": "452440",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "VITA 밸류알파액티브"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "VITA 밸류알파액티브",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://spn.stockplus.com/news/api/v1/disclosure_views/koscom/470183",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-05-29",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "452670",
+      "name": "상상인제4호스팩",
+      "halted": true,
+      "total": 629,
+      "first": "2023-09-14",
+      "last": "2026-04-20",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 629,
+      "stored_from_after": "2023-09-14",
+      "coverage_after": [
+        {
+          "code": "452670",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "상상인제4호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "상상인제4호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-04-21",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "452980",
+      "name": "신한제11호스팩",
+      "halted": true,
+      "total": 629,
+      "first": "2023-10-04",
+      "last": "2026-05-06",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 629,
+      "stored_from_after": "2023-10-04",
+      "coverage_after": [
+        {
+          "code": "452980",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "신한제11호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "신한제11호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-05-07",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "455310",
+      "name": "한화플러스제4호스팩",
+      "halted": true,
+      "total": 630,
+      "first": "2023-09-07",
+      "last": "2026-04-14",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 630,
+      "stored_from_after": "2023-09-07",
+      "coverage_after": [
+        {
+          "code": "455310",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "한화플러스제4호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "한화플러스제4호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-04-15",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "457630",
+      "name": "대신밸런스제16호스팩",
+      "halted": true,
+      "total": 633,
+      "first": "2023-09-04",
+      "last": "2026-04-14",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 633,
+      "stored_from_after": "2023-09-04",
+      "coverage_after": [
+        {
+          "code": "457630",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "대신밸런스제16호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "대신밸런스제16호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-04-15",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "462020",
+      "name": "에이치엠씨제6호스팩",
+      "halted": false,
+      "total": 631,
+      "first": "2023-10-13",
+      "last": "2026-05-18",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 631,
+      "stored_from_after": "2023-10-13",
+      "coverage_after": [
+        {
+          "code": "462020",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "에이치엠씨제6호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "에이치엠씨제6호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-05-19",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "464440",
+      "name": "한국제13호스팩",
+      "halted": false,
+      "total": 630,
+      "first": "2023-11-13",
+      "last": "2026-06-17",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 630,
+      "stored_from_after": "2023-11-13",
+      "coverage_after": [
+        {
+          "code": "464440",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "한국제13호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "한국제13호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-18",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "464680",
+      "name": "KB제27호스팩",
+      "halted": false,
+      "total": 629,
+      "first": "2023-11-03",
+      "last": "2026-06-08",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 629,
+      "stored_from_after": "2023-11-03",
+      "coverage_after": [
+        {
+          "code": "464680",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "KB제27호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "KB제27호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-09",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "465320",
+      "name": "교보15호스팩",
+      "halted": false,
+      "total": 676,
+      "first": "2023-12-05",
+      "last": "2026-09-15",
+      "missing": 21,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 676,
+      "stored_from_after": "2023-12-05",
+      "coverage_after": [
+        {
+          "code": "465320",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 21,
+          "required_from": "2026-09-16",
+          "required_to": "2026-10-20",
+          "name": "교보15호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "교보15호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-15",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "466910",
+      "name": "엔에이치스팩30호",
+      "halted": false,
+      "total": 596,
+      "first": "2023-12-01",
+      "last": "2026-05-18",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 596,
+      "stored_from_after": "2023-12-01",
+      "coverage_after": [
+        {
+          "code": "466910",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "엔에이치스팩30호"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "엔에이치스팩30호",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-05-19",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "467930",
+      "name": "IBKS제23호스팩",
+      "halted": false,
+      "total": 628,
+      "first": "2023-12-22",
+      "last": "2026-07-27",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 628,
+      "stored_from_after": "2023-12-22",
+      "coverage_after": [
+        {
+          "code": "467930",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "IBKS제23호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "IBKS제23호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-28",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "469880",
+      "name": "하나30호스팩",
+      "halted": false,
+      "total": 631,
+      "first": "2023-12-22",
+      "last": "2026-07-30",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 631,
+      "stored_from_after": "2023-12-22",
+      "coverage_after": [
+        {
+          "code": "469880",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "하나30호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "하나30호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-07-31",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "469900",
+      "name": "하나31호스팩",
+      "halted": false,
+      "total": 633,
+      "first": "2024-03-05",
+      "last": "2026-10-13",
+      "missing": 5,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 633,
+      "stored_from_after": "2024-03-05",
+      "coverage_after": [
+        {
+          "code": "469900",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 5,
+          "required_from": "2026-10-14",
+          "required_to": "2026-10-20",
+          "name": "하나31호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "하나31호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-13",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "471050",
+      "name": "대신밸런스제17호스팩",
+      "halted": false,
+      "total": 633,
+      "first": "2024-01-24",
+      "last": "2026-09-01",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 633,
+      "stored_from_after": "2024-01-24",
+      "coverage_after": [
+        {
+          "code": "471050",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "대신밸런스제17호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "대신밸런스제17호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-01",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "472220",
+      "name": "신영스팩10호",
+      "halted": false,
+      "total": 632,
+      "first": "2024-02-06",
+      "last": "2026-09-11",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 632,
+      "stored_from_after": "2024-02-06",
+      "coverage_after": [
+        {
+          "code": "472220",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "신영스팩10호"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "신영스팩10호",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-09-11",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "472230",
+      "name": "에스케이증권제11호스팩",
+      "halted": false,
+      "total": 633,
+      "first": "2024-03-04",
+      "last": "2026-10-12",
+      "missing": 6,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 633,
+      "stored_from_after": "2024-03-04",
+      "coverage_after": [
+        {
+          "code": "472230",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 6,
+          "required_from": "2026-10-13",
+          "required_to": "2026-10-20",
+          "name": "SK증권제11호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "SK증권제11호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-12",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "473050",
+      "name": "유안타제15호스팩",
+      "halted": false,
+      "total": 634,
+      "first": "2024-02-29",
+      "last": "2026-10-12",
+      "missing": 6,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 634,
+      "stored_from_after": "2024-02-29",
+      "coverage_after": [
+        {
+          "code": "473050",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 6,
+          "required_from": "2026-10-13",
+          "required_to": "2026-10-20",
+          "name": "유안타제15호스팩"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "유안타제15호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-10-12",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "495710",
+      "name": "BNK 26-06 특수채(AAA이상)액티브",
+      "halted": false,
+      "total": 365,
+      "first": "2024-12-03",
+      "last": "2026-06-08",
+      "missing": 23,
+      "invalid": 0,
+      "added_rows": 0,
+      "stored_rows_after": 365,
+      "stored_from_after": "2024-12-03",
+      "coverage_after": [
+        {
+          "code": "495710",
+          "condition_id": "gLmwOXI2",
+          "reason": "delisted",
+          "missing_days": 23,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-20",
+          "name": "BNK 26-06 특수채(AAA이상)액티브"
+        }
+      ],
+      "conclusion": "delisted",
+      "verified_facts": {
+        "name": "BNK 26-06 특수채(AAA이상)액티브",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/external/2026/06/05/000564/20260605001393/68051.htm",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": "2026-06-09",
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0220W0",
+      "name": "한화머시너리앤서비스홀딩스",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 16,
+      "stored_rows_after": 37,
+      "stored_from_after": "2026-08-25",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "한화머시너리앤서비스홀딩스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-25",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0220WL",
+      "name": "한화머시너리앤서비스홀딩스3우B",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 16,
+      "stored_rows_after": 37,
+      "stored_from_after": "2026-08-25",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "한화머시너리앤서비스홀딩스3우B",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-25",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0155E0",
+      "name": "해치텍",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 16,
+      "stored_rows_after": 37,
+      "stored_from_after": "2026-08-25",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "해치텍",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-25",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0197V0",
+      "name": "엔에이치스팩34호",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 4,
+      "stored_rows_after": 25,
+      "stored_from_after": "2026-09-10",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "엔에이치스팩34호",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-10",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "282620",
+      "name": "기도산업",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 18,
+      "stored_rows_after": 39,
+      "stored_from_after": "2026-08-21",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "기도산업",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-21",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "386380",
+      "name": "스카이랩스",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 8,
+      "stored_rows_after": 29,
+      "stored_from_after": "2026-09-04",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "스카이랩스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-04",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "417030",
+      "name": "니어스랩",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 17,
+      "stored_rows_after": 38,
+      "stored_from_after": "2026-08-24",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "니어스랩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-24",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "483350",
+      "name": "딜리셔스",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 24,
+      "stored_rows_after": 45,
+      "stored_from_after": "2026-08-12",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "딜리셔스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-12",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "487400",
+      "name": "케이앤에스아이앤씨",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 23,
+      "stored_rows_after": 44,
+      "stored_from_after": "2026-08-13",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "케이앤에스아이앤씨",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-13",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "950260",
+      "name": "인제니아테라퓨틱스(Reg.S)",
+      "halted": false,
+      "total": 21,
+      "first": "2026-09-16",
+      "last": "2026-10-20",
+      "missing": 2,
+      "invalid": 0,
+      "added_rows": 21,
+      "stored_rows_after": 42,
+      "stored_from_after": "2026-08-18",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "인제니아테라퓨틱스(Reg.S)",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-08-18",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0010S0",
+      "name": "와이즈플래닛컴퍼니",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 10,
+      "stored_rows_after": 16,
+      "stored_from_after": "2026-09-23",
+      "coverage_after": [
+        {
+          "code": "0010S0",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 7,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-22",
+          "name": "와이즈플래닛컴퍼니"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "와이즈플래닛컴퍼니",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-23",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0035S0",
+      "name": "빅웨이브로보틱스",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 8,
+      "stored_rows_after": 14,
+      "stored_from_after": "2026-09-29",
+      "coverage_after": [
+        {
+          "code": "0035S0",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 9,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-28",
+          "name": "빅웨이브로보틱스"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "빅웨이브로보틱스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-29",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0161M0",
+      "name": "네오사피엔스",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 12,
+      "stored_rows_after": 18,
+      "stored_from_after": "2026-09-21",
+      "coverage_after": [
+        {
+          "code": "0161M0",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 5,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-18",
+          "name": "네오사피엔스"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "네오사피엔스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-21",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0200G0",
+      "name": "한국제17호스팩",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 11,
+      "stored_rows_after": 17,
+      "stored_from_after": "2026-09-22",
+      "coverage_after": [
+        {
+          "code": "0200G0",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 6,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-21",
+          "name": "한국제17호스팩"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "한국제17호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-22",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0209J0",
+      "name": "KB제34호스팩",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 11,
+      "stored_rows_after": 17,
+      "stored_from_after": "2026-09-22",
+      "coverage_after": [
+        {
+          "code": "0209J0",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 6,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-21",
+          "name": "KB제34호스팩"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "KB제34호스팩",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-22",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "266690",
+      "name": "덕산넵코어스",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 7,
+      "stored_rows_after": 13,
+      "stored_from_after": "2026-09-30",
+      "coverage_after": [
+        {
+          "code": "266690",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 10,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-29",
+          "name": "덕산넵코어스"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "덕산넵코어스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-30",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "468670",
+      "name": "브릴스",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 6,
+      "stored_rows_after": 12,
+      "stored_from_after": "2026-10-01",
+      "coverage_after": [
+        {
+          "code": "468670",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 11,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-30",
+          "name": "브릴스"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "브릴스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-10-01",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "486510",
+      "name": "글로벌테크놀로지",
+      "halted": false,
+      "total": 6,
+      "first": "2026-10-13",
+      "last": "2026-10-20",
+      "missing": 17,
+      "invalid": 0,
+      "added_rows": 8,
+      "stored_rows_after": 14,
+      "stored_from_after": "2026-09-29",
+      "coverage_after": [
+        {
+          "code": "486510",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 9,
+          "required_from": "2026-09-14",
+          "required_to": "2026-09-28",
+          "name": "글로벌테크놀로지"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "글로벌테크놀로지",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-09-29",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "179880",
+      "name": "멜콘",
+      "halted": false,
+      "total": 3,
+      "first": "2026-10-16",
+      "last": "2026-10-20",
+      "missing": 20,
+      "invalid": 0,
+      "added_rows": 1,
+      "stored_rows_after": 4,
+      "stored_from_after": "2026-10-15",
+      "coverage_after": [
+        {
+          "code": "179880",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 19,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-14",
+          "name": "멜콘"
+        }
+      ],
+      "conclusion": "new_listing_insufficient_bars_after_repair",
+      "verified_facts": {
+        "name": "멜콘",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": "2026-10-15",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "250030",
+      "name": "진코스텍",
+      "halted": false,
+      "total": 3,
+      "first": "2026-10-16",
+      "last": "2026-10-20",
+      "missing": 20,
+      "invalid": 0,
+      "added_rows": 20,
+      "stored_rows_after": 23,
+      "stored_from_after": "2026-09-14",
+      "coverage_after": [],
+      "conclusion": "collection_gap_resolved",
+      "verified_facts": {
+        "name": "진코스텍",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20260801:20261020"
+        ],
+        "listing_date": null,
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    },
+    {
+      "code": "0158S0",
+      "name": "엘리스",
+      "added_rows": 1,
+      "stored_rows_after": 1,
+      "stored_from_after": "2026-10-20",
+      "coverage_after": [
+        {
+          "code": "0158S0",
+          "condition_id": "gLmwOXI2",
+          "reason": "pre_listing_history",
+          "missing_days": 22,
+          "required_from": "2026-09-14",
+          "required_to": "2026-10-19",
+          "name": "엘리스"
+        }
+      ],
+      "conclusion": "new_listing_during_investigation",
+      "verified_facts": {
+        "name": "엘리스",
+        "checked_at": "2026-10-20T22:09:03.753480+09:00",
+        "sources": [
+          "https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain",
+          "kiwoom:ka10081:KRX:20261020:20261020"
+        ],
+        "listing_date": "2026-10-20",
+        "delisting_date": null,
+        "suspended_from": null,
+        "suspended_to": null
+      }
+    }
+  ],
+  "root_causes": [
+    {
+      "cause": "historical_universe_entries",
+      "evidence": "stocks.parquet의 과거 종목이 검색 대상에 남아 있음. 현재 마스터 부재만으로는 제거하지 않는 정책. 51종목의 종료 원인은 거래소 폐지 자료로 별도 확인."
+    },
+    {
+      "cause": "global_daily_update_cursor",
+      "evidence": "hoga/api/screener.py:_plan_update는 원주가 전체의 최종일 기준으로 갱신 범위를 잡음. 신규 편입 코드별 과거 결손을 계획하지 않아 최초 수집일 이전 일봉은 자동 보충되지 않음."
+    },
+    {
+      "cause": "existing_observation_conflict",
+      "evidence": "10종목의 2026-09-18/21 기존 관측값과 재조회값이 달라 일반 이력 수집은 adjusted_volume_mismatch로 거부. 벤더 쌍 검증과 기존 수정주가 완전 재현을 확인한 누락 전용 보충으로 해결. 값 차이의 최초 발생 경로는 미확인."
+    }
+  ],
+  "runtime_evidence_file": "/home/dev/.local/share/hoga-ops/data/screener/history_evidence.json"
+}

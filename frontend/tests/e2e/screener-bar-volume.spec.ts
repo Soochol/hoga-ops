@@ -50,7 +50,7 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   await expect(page.getByLabel('신고 기준 기간(봉)')).toHaveValue('2');
   await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   await page.getByRole('button', { name: '조회', exact: true }).click();
-  await expect(page.getByText('봉수 기준 평가 가능 1/2종목')).toBeVisible();
+  await expect(page.getByText('봉 이력 충분 1/2종목')).toBeVisible();
   expect(scans.at(-1)?.conditions[0].params).toMatchObject({ timeframe: '5m', lookback: 3, period: 2, include_open_bar: true });
   await page.screenshot({ path: testInfo.outputPath('bar-volume-wide.png'), fullPage: true });
   for (const timeframe of ['W', 'M', 'D']) {

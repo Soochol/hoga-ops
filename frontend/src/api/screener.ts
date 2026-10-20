@@ -23,7 +23,11 @@ export interface BarPriceMatch {
   timeframe: ScreenerTimeframe; source: MaSource; value: number; reference: number;
   window_start_ms: number; is_open: boolean; fetched_at_ms: number;
 }
-export interface BarVolumeCoverageItem { code: string; condition_id: string; reason: string }
+export interface BarVolumeCoverageItem {
+  code: string; condition_id: string; reason: string;
+  missing_days?: number | null; required_from?: string | null; required_to?: string | null;
+  name?: string | null;
+}
 export interface BarVolumeCoverage { total: number; complete: number; incomplete: BarVolumeCoverageItem[] }
 export interface HistoryVolumeParams {
   mode: 'date_range'; start_date: string; end_date: string;
@@ -205,10 +209,24 @@ export interface ScreenerResponse {
 }
 
 /** 진행 중인 갱신 job — WS 이벤트가 없어도(재진입/재연결) 서버가 복원해 준다. */
+/** Mirrors hoga/api/models.py::ScreenerRefreshSummary. */
+export interface ScreenerRefreshSummary {
+  master_refreshed: boolean;
+  symbols_added: number;
+  written_rows: number;
+  checked: number;
+  total: number;
+  failed: number;
+  unavailable: number;
+  completed_ms: number | null;
+  reason: string | null;
+}
+
 export interface ScreenerUpdating {
   done: number;
   total: number;
   started_ms: number;
+  phase?: string | null;
 }
 
 export interface ScreenerStatus {
@@ -217,6 +235,7 @@ export interface ScreenerStatus {
   universe_size?: number;
   days_behind?: number | null;
   updating?: ScreenerUpdating | null;
+  last_refresh?: ScreenerRefreshSummary | null;
 }
 
 /** 손 미러 — 정본은 `hoga/api/models.py::ScreenerUpdateSkipReason` 이다.

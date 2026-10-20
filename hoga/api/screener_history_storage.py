@@ -69,7 +69,8 @@ def _verify_code(raw: pl.DataFrame, adjusted: pl.DataFrame, existing: pl.DataFra
     return merged, verified_factors(merged, adjusted)
 
 
-def _merge_batch(base: pl.DataFrame, factors: pl.DataFrame | None, batch: list[DailyPair]):
+def _merge_batch(base: pl.DataFrame, factors: pl.DataFrame | None, batch: list[DailyPair],
+                 *, existing_adjusted: pl.DataFrame | None = None):
     result = CommitResult()
     codes = [raw["code"][0] for raw, _ in batch]
     # Partition only the selected slice once, rather than scan the corpus per code.
@@ -78,7 +79,25 @@ def _merge_batch(base: pl.DataFrame, factors: pl.DataFrame | None, batch: list[D
     for (raw, adjusted), code in zip(batch, codes, strict=True):
         existing = selected.get((code,), base.head(0))
         try:
-            merged, fresh = _verify_code(raw, adjusted, existing)
+            if existing_adjusted is None:
+                merged, fresh = _verify_code(raw, adjusted, existing)
+            else:
+                # Gap repair may preserve older observations that differ from a
+                # fresh vendor response. Verify the unmodified vendor pair first,
+                # then require its factors to reproduce EVERY stored adjusted row.
+                # Never relabel an altered vendor frame as verified evidence.
+                fresh = verified_factors(raw, adjusted)
+                if not existing.is_empty() and (
+                    existing["date"].min() < raw["date"].min()
+                    or existing["date"].max() > raw["date"].max()
+                ):
+                    raise ValueError("gap_repair_requires_full_existing_range")
+                stored = existing_adjusted.filter(pl.col("code") == code).sort("date")
+                derived = screener_factors.apply_factors(existing, fresh).sort("date")
+                if not derived.equals(stored.select(derived.columns)):
+                    raise ValueError("gap_repair_would_change_existing_adjustment")
+                merged = pl.concat([raw, existing]).unique(
+                    subset=["code", "date"], keep="last").sort("date")
         except HistoryCorpusExtended as exc:
             result.extensions[code] = exc
             continue
@@ -100,11 +119,26 @@ def _merge_batch(base: pl.DataFrame, factors: pl.DataFrame | None, batch: list[D
 
 def commit_verified(data_dir: Path, batch: list[DailyPair]) -> CommitResult:
     """Reject bad codes individually; publication/I/O failures still fail the batch."""
+    return _commit(data_dir, batch)
+
+
+def commit_verified_gaps(data_dir: Path, batch: list[DailyPair]) -> CommitResult:
+    """Append verified missing dates while preserving existing raw AND adjusted values.
+
+    Used by explicit gap repair and manual refresh. Fetch outside the lock;
+    rejected pairs never alter the stored corpus.
+    """
+    return _commit(data_dir, batch, gaps_only=True)
+
+
+def _commit(data_dir: Path, batch: list[DailyPair], *, gaps_only=False) -> CommitResult:
     sdir = data_dir / "screener"
     with screener_write_lock(sdir):
         up, fp = sdir / "daily_unadjusted.parquet", sdir / "factors.parquet"
         base = pl.read_parquet(up) if up.exists() else pl.DataFrame(schema=_DAILY_PL_SCHEMA)
-        result, merged, factors = _merge_batch(base, screener_factors.read_factors(fp), batch)
+        adjusted = pl.read_parquet(sdir / "daily_adjusted.parquet") if gaps_only else None
+        result, merged, factors = _merge_batch(
+            base, screener_factors.read_factors(fp), batch, existing_adjusted=adjusted)
         if merged is None:
             return result
         with tempfile.TemporaryDirectory(prefix="history-stage-", dir=sdir) as directory:

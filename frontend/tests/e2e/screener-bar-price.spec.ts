@@ -59,7 +59,7 @@ test('five candle conditions preserve independent timeframes, counts and policy 
   await expect(page.getByLabel('신고 기준 기간(봉)').nth(0)).toHaveValue('12');
   await expect(page.getByLabel('MA 기준가격')).toHaveValue('low');
   await page.getByRole('button', { name: '조회', exact: true }).click();
-  await expect(page.getByText('봉수 기준 평가 가능 1/1종목')).toBeVisible();
+  await expect(page.getByText('봉 이력 충분 1/1종목')).toBeVisible();
   expect(scans.at(-1)?.conditions).toEqual(saved.conditions);
   await page.screenshot({ path: testInfo.outputPath('bar-price-wide.png'), fullPage: true });
   await page.setViewportSize({ width: 768, height: 1000 });

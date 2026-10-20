@@ -427,7 +427,7 @@ def test_write_strips_captured_breakdown(tmp_path):
     assert "captured_count" not in payload["entries"][0]
     assert "captured_breakdown" not in payload["entries"][0]
     assert set(payload["entries"][0].keys()) == {
-        "code", "name", "market", "security_type", "nxt_enabled",
+        "code", "name", "market", "security_type", "nxt_enabled", "listing_date",
     }
 
 

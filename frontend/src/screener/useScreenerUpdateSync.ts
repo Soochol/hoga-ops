@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { subscribeToScreenerUpdateEvents } from '../api/eventStream';
-import type { ScreenerStatus, ScreenerUpdateSkipReason } from '../api/screener';
+import type { ScreenerRefreshSummary, ScreenerStatus, ScreenerUpdateSkipReason } from '../api/screener';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 
 export interface ScreenerUpdateFeedback {
@@ -50,7 +50,12 @@ export const useScreenerUpdateFeedback = create<{
 export function visibleUpdateFeedback(
   feedback: ScreenerUpdateFeedback | null,
   isUpdating: boolean,
+  refresh?: ScreenerRefreshSummary | null,
 ): ScreenerUpdateFeedback | null {
+  if (refresh?.completed_ms != null && (feedback === null
+      || (feedback.source === 'update' && refresh.completed_ms > feedback.atMs))) {
+    feedback = finishedMessage({ updated: 0, reason: refresh.reason, refresh });
+  }
   if (feedback === null) return null;
   return isUpdating && feedback.source === 'update' ? null : feedback;
 }
@@ -65,9 +70,22 @@ export const SKIP_REASON_MESSAGES: Record<ScreenerUpdateSkipReason, string> = {
   calendar_coverage_behind: '거래일 달력이 오늘까지 밀리지 않음 — 스케줄러를 확인하세요',
 };
 
-export function finishedMessage(e: { updated: number; reason: string | null }): ScreenerUpdateFeedback {
+export function finishedMessage(e: { updated: number; reason: string | null; refresh?: ScreenerRefreshSummary }): ScreenerUpdateFeedback {
   const atMs = Date.now();
   const source = 'update' as const;
+  if (e.refresh) {
+    const r = e.refresh;
+    const parts = [r.master_refreshed ? '종목 목록 반영' : '종목 목록 갱신 실패',
+      `신규 ${r.symbols_added.toLocaleString()}종목`, `일봉 ${r.written_rows.toLocaleString()}개 보충`];
+    if (r.failed) parts.push(`실패 ${r.failed.toLocaleString()}종목`);
+    if (r.unavailable) parts.push(`공급자 이력 미확인 ${r.unavailable.toLocaleString()}종목`);
+    if (r.reason === 'cancelled') parts.push('갱신 중단됨');
+    else if (r.reason === 'calendar_coverage_behind') parts.push(SKIP_REASON_MESSAGES.calendar_coverage_behind);
+    else if (r.reason === 'calendar_source_missing') parts.push(SKIP_REASON_MESSAGES.calendar_source_missing);
+    else if (r.reason === 'error') parts.push('갱신 실패');
+    return { message: parts.join(' · '), tone: r.reason ? 'warn' : 'info',
+      atMs: r.completed_ms ?? atMs, source };
+  }
   if (e.reason === 'error') return { message: '갱신 실패', tone: 'error', atMs, source };
   if (e.reason === 'cancelled') return { message: '갱신 중단됨', tone: 'warn', atMs, source };
   if (e.updated > 0) return { message: `${e.updated}거래일 추가됨`, tone: 'info', atMs, source };
@@ -97,13 +115,15 @@ export function useScreenerUpdateSync(): void {
                   done: e.done,
                   total: e.total,
                   started_ms: prev.updating?.started_ms ?? Date.now(),
+                  phase: e.phase,
                 },
               }
             : prev);
       } else if (e.type === 'screener_update_finished') {
         useScreenerUpdateFeedback.getState().setFeedback(finishedMessage(e));
-        if (e.updated > 0) useScreenerPanelStore.getState().markLastScanDataStale();
+        if (e.updated > 0 || (e.refresh?.written_rows ?? 0) > 0 || (e.refresh?.symbols_added ?? 0) > 0) useScreenerPanelStore.getState().markLastScanDataStale();
         qc.invalidateQueries({ queryKey: ['screener-status'] });
+        if (e.refresh?.master_refreshed) qc.invalidateQueries({ queryKey: ['symbols'] });
       } else if (e.type === 'disconnected') {
         // WS 드롭 중 완료된 갱신이 진행바를 박제하지 않도록 서버 진실 재조회.
         qc.invalidateQueries({ queryKey: ['screener-status'] });

@@ -49,6 +49,15 @@ Transport reconnection invalidates the catalog query once so a running browser
 observes a restarted backend's pending counts rather than retaining yesterday's
 ready snapshot for its one-day stale window.
 
+### Amendment — unified screener refresh (2026-10-20, user request)
+
+The Settings `Update Now` action in rule 4 is removed. Settings retains catalog
+count, fetch time and status, and points to Screener refresh, which refreshes the
+master before repairing per-symbol daily history. SymbolSearch retains its direct
+catalog-only recovery action so search can recover even before Screener seeding.
+Its stale-catalog nudge refreshes directly instead of opening Settings. The current
+upstream is Kiwoom `ka10099` (ADR-0136), and the existing symbol refresh API remains.
+
 ## Context
 
 The predecessor spec (`2026-05-22-krx-env-symbol-design.md`) added `.env` discovery and reason-aware recovery UX but kept pykrx as a boot dependency: `ensure_cache_warm` ran at startup, and `get_all()` lazily fetched when the cache was empty or stale. T15 happy-path validation surfaced a pykrx 1.2.8 column drift (`get_market_cap` no longer returns `종목명`), but the deeper structural issue is that *any* pykrx fragility (login rejection, KRX rate-limit, schema change, transient network failure) cascades into broken first-time UX for every user, every boot.
