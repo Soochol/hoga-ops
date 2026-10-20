@@ -36,7 +36,7 @@ describe('ConditionRow', () => {
     expect(onChange).toHaveBeenLastCalledWith({ ...initial,
       params: { ...initial.params, [type === 'price_range' ? 'min'
         : type === 'trade_value' ? 'min_eok'
-        : type === 'new_high_today' || type === 'new_high_vol_today' || type === 'high_off_peak' || type === 'ma' ? 'period'
+        : type === 'new_high_today' || type === 'new_high_vol_today' || type === 'high_off_peak' || type === 'ma' || type === 'bollinger_breakout_today' ? 'period'
         : type === 'change_pct' ? 'pct'
         : type === 'ask_depth_renewal' || type === 'bid_depth_renewal' ? 'threshold_pct' : 'lookback']: 17 } });
   });
