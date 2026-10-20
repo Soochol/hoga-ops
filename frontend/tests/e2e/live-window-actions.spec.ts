@@ -156,7 +156,7 @@ test('차트 헤더의 축 상태는 설정을 열고 최소 폭에서도 설정
     if (width > 240) await expect(badge).toBeVisible();
     else await expect(badge).toBeHidden();
     await expect(settings).toBeVisible();
-    await expect(settings).toHaveAttribute('title', '차트 설정 · 로그 스케일 켜짐 · 가격축 반전 켜짐');
+    await expect(settings).toHaveAttribute('title', '차트 설정 · 로그 스케일 켜짐 · 가격축 반전 켜짐 · 캔들/거래량 색상 교환 켜짐');
     await expectHeaderFits(frame);
     if (width === 420 || width === 160) await frame.screenshot({ path: testInfo.outputPath(`scale-status-${width}.png`) });
   }
@@ -191,7 +191,7 @@ test('차트 설정은 제목줄에서 열리고 각 창에 독립적으로 저�
   const dialog = page.getByRole('dialog', { name: '차트 설정', exact: true });
   await settings.click();
   await expect(dialog.getByText('이 차트에 적용')).toBeVisible();
-  await expect(dialog.getByRole('switch')).toHaveCount(CHART_DISPLAY_TOGGLES.length);
+  await expect(dialog.getByRole('switch', { includeHidden: true })).toHaveCount(CHART_DISPLAY_TOGGLES.length);
   const scale = dialog.getByRole('switch', { name: '캔들 기준 Y축', exact: true });
   await expect(scale).toHaveAttribute('aria-checked', 'false');
   await scale.click();

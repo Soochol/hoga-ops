@@ -10,8 +10,28 @@ beforeEach(() => useWindowSettingsStore.setState({ byWindow: {} }));
 afterEach(() => useChartPrefsStore.setState(initial, true));
 
 describe('chart display settings', () => {
+  it('defaults color swapping on, gates it by inversion and preserves the choice when inversion is off', async () => {
+    render(<ChartDisplaySettings windowId="a" />);
+    fireEvent.click(screen.getByLabelText('차트 거꾸로 보기 세부 설정'));
+    const swap = screen.getByRole('switch', { name: '반전 시 캔들·거래량 색상 교환' });
+    const invert = screen.getByRole('switch', { name: '차트 거꾸로 보기' });
+    expect(swap).toBeDisabled();
+    expect(swap).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(invert);
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    expect(swap).toBeEnabled();
+    fireEvent.click(swap);
+    expect(swap).toHaveAttribute('aria-checked', 'false');
+    await waitFor(() => expect(screen.getByRole('button', { name: '되돌리기' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '되돌리기' }));
+    await waitFor(() => expect(swap).toHaveAttribute('aria-checked', 'true'));
+    fireEvent.click(invert);
+    expect(swap).toBeDisabled();
+    expect(swap).toHaveAttribute('aria-checked', 'true');
+  });
   it('edits window prefs without changing global values and undoes only the last changed field', async () => {
     render(<ChartDisplaySettings windowId="a" />);
+    fireEvent.click(screen.getByLabelText('차트 거꾸로 보기 세부 설정'));
     const definitions = CHART_DISPLAY_TOGGLES;
     expect(screen.getAllByRole('switch')).toHaveLength(definitions.length);
     for (const def of definitions) {

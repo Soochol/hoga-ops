@@ -1,0 +1,90 @@
+{
+  "validated_at_kst": "2026-10-20T20:28:02.051987+09:00",
+  "head_sha": "ccfb22a7979e0b6591962a9c4b660803679945aa",
+  "base_sha": "ccfb22a7979e0b6591962a9c4b660803679945aa",
+  "state": "Uncommitted working tree over HEAD; latest fetched origin/main matches HEAD.",
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed: app, unit-test and E2E projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run --maxWorkers=8",
+      "result": "673 files / 8707 tests passed"
+    },
+    {
+      "command": "cd frontend && npm run build",
+      "result": "passed; existing large-chunk warning remains"
+    },
+    {
+      "command": "cd frontend && npx playwright test chart-window-settings.spec.ts live-window-actions.spec.ts --grep '로그·반전|표시 옵션|워크스페이스 메뉴|축 상태|차트 설정' --reporter=list",
+      "result": "8 passed; system Chrome; workers=1"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "coverage": [
+    "1m/D/W/M x 8 log/inversion/swap combinations: candle body/border/wick and volume colors; original OHLC, volume and time values retained",
+    "Same chart, candle and volume series retained; bar spacing, scroll and right anchor unchanged; other window data unaffected",
+    "Normal colors when inversion is off or swap disabled; reversed palette only when both are on; doji retains the existing up-category convention",
+    "Past/today cache recoloring, incremental live-tail updates, restore normal palette, preserved closing-auction gray",
+    "Default-on migration and invalid-input fallback; explicit off preserved through presets; dependent toggle gating, immediate save and undo",
+    "Reload/new tab/new window/timeframe/subject/preset lifecycle; header tooltip includes swap enabled/disabled and narrow window actions remain usable"
+  ],
+  "visual_review": "Inspected daily side-by-side log/inverted/swapped and regular charts, and the dependent setting. Candle/volume colors match the selected rule while actual price/legend colors remain unchanged.",
+  "screenshots": [
+    "1m-log-inverted.png",
+    "D-log-inverted.png",
+    "M-log-inverted.png",
+    "W-log-inverted.png",
+    "scale-settings.png"
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 155.0.8059.84",
+    "e2e_backend_port": 20151,
+    "e2e_frontend_port": 21151,
+    "vendor_credentials": "Blank values from Playwright config"
+  },
+  "fingerprint_recipe": "Sorted existing git ls-files --cached --others --exclude-standard files under each scope; SHA256 of UTF-8 newline-joined path + NUL + file SHA256 hex, no trailing newline. Includes new source/test files.",
+  "input_fingerprints": {
+    "frontend": {
+      "file_count": 1775,
+      "sha256": "404c6853dc108162a1307dc725b5becb9e718f9f5bce9695430ab37f3815dc58"
+    },
+    "backend": {
+      "file_count": 290,
+      "sha256": "a813d7b2df622ed43828963baf1474b2c569df6e2190884f9b2dd58fd64eb866"
+    },
+    "fixtures": {
+      "file_count": 26,
+      "sha256": "c5f9bbd6c6128e7ce7dd9a51b8c995d95affd0c1f0bec29be45a3ea301ca799c"
+    },
+    "python_dependencies": {
+      "file_count": 3,
+      "sha256": "89415a907ab0b81d1e4d1bfa650cc553e016d044fcbc843def6e4b764d094262"
+    }
+  },
+  "changed_file_sha256": {
+    "DESIGN.md": "94f01d57c712adfd8c8b2c7fbd129eadc040ccaf4571dc15824310d1923a4670",
+    "docs/agents/window-settings.md": "9297d94d7a0a6d10bfcde9b157b7be4c5221fa4777e3681d5c4af0e032a50ded",
+    "frontend/src/chart/projectors/candle.ts": "f8fed90db082a06a016dce5b978a7bb1143556f94a0c0878356fb7e64da5ec14",
+    "frontend/src/chart/projectors/invertedColors.test.ts": "f1ed62ff9d23683cfec42ef0284f80d5f697078e8a1aa2081568c286d2413bfb",
+    "frontend/src/chart/projectors/volume.ts": "2c24adb6ecf10959c320099d2e33c8a98a771cb6952206582e38100991b98e21",
+    "frontend/src/live/LiveChartRoot.paneToggles.test.tsx": "40c5d6f7e3db930e7b6bad8473315886553a2453eab12cb70071828a65b706c3",
+    "frontend/src/live/LiveChartRoot.tsx": "b47781fc1541a7e2d38ecec77d3a9b77c1b19d682e40fda2a8310bc77bb6ebdc",
+    "frontend/src/live/workspace/ChartDisplaySettings.test.tsx": "36475959e42fcfdf74696528c5b372476f15424cb894438897dd36081aef9ee7",
+    "frontend/src/live/workspace/ChartWindowSettings.test.tsx": "19ab0ad6e7530858d632e53c016afa158ff3c006829aaba513060ca777cad24f",
+    "frontend/src/live/workspace/ChartWindowSettings.tsx": "f4d6154e4f269a54c6c238bc8680a66fd1806f162312c7361c1aa233b0a3093b",
+    "frontend/src/state/chartDisplayPrefs.ts": "76b6cc5466c0339fc0de55174219dbc0689cbc5b200cf47ecf49ade0ce814231",
+    "frontend/src/state/windowSettings.test.tsx": "ca2c85f27110e7c8667248af67422f1c64a14ae4a39cfe96ddb1bf4de47efbf6",
+    "frontend/tests/e2e/chart-window-settings.spec.ts": "693deaaba12e93bf9bf3b221ebf6b4be910f55133503f5883abc87858a6d2315",
+    "frontend/tests/e2e/live-window-actions.spec.ts": "e80ce26a6da7273096068d1b59789c7184f57f3ada0571c47688d0e8011887cc"
+  },
+  "validation_reuse": "Final full type/unit checks include the updated context expectation and header tooltip test. Build and E2E inputs are unchanged by those two unit-test-only additions after the successful build/E2E run.",
+  "backend_validation": "No backend/API/dependency changes; isolated backend exercised through browser fixtures. Full Python suite not required."
+}

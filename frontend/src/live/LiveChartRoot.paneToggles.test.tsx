@@ -334,6 +334,7 @@ describe('LiveChartRoot — pane 토글 배선 (store → 마운트된 pane 집�
     renderAt('1m', props);
     expect(paneContexts.find((pane) => pane.name === 'candle')?.contextOverride).toEqual({
       muteAuctionCandles: mute,
+      swapColors: false,
     });
   });
 

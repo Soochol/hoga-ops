@@ -161,6 +161,11 @@ fixed canvas axis/primitive sizes remain governed by the canvas exceptions above
 `로그`·`반전` 배지를 표시한다. 배지를 누르면 해당 창의 차트 설정을 연다.
 240px 이하에서는 한 줄 헤더와 창 조작 아이콘을 유지하기 위해 배지를 접고,
 설정 아이콘의 선택 틴트와 툴팁으로 활성 상태를 안내한다.
+같은 날 사용자 후속 승인: `차트 거꾸로 보기`의 세부 설정에 기본값이 켬인
+`반전 시 캔들·거래량 색상 교환`을 추가한다. 반전과 이 옵션이 함께 켜졌을 때
+캔들 몸통·꼬리 및 거래량 봉의 상승·하락 색상을 교환한다. 동시호가 회색과 실제
+가격·등락률·거래량 수치는 유지한다. 이 결정은 위의 반전 시 색상 유지 규칙을 대체한다.
+헤더의 반전 상태 툴팁은 캔들/거래량 색상 교환의 켜짐·꺼짐도 함께 안내한다.
 The calendar-chart “분봉으로” action sits directly after “그리기” in the toolbar,
 with its label folded at narrow widths, rather than inside the More popup.
 

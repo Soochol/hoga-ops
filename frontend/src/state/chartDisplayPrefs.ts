@@ -11,9 +11,16 @@ export const CHART_DISPLAY_TOGGLES = [
   {
     key: 'candleInvertScale',
     label: '차트 거꾸로 보기',
-    description: '가격축을 위아래로 뒤집어 높은 가격을 아래에 표시합니다. 상승·하락 색상은 유지합니다.',
+    description: '가격축을 위아래로 뒤집어 높은 가격을 아래에 표시합니다.',
     default: false,
     group: 'candle',
+  },
+  {
+    key: 'candleInvertColors',
+    label: '반전 시 캔들·거래량 색상 교환',
+    description: '거꾸로 볼 때 캔들 몸통·꼬리와 거래량 봉의 상승·하락 색상을 서로 바꿉니다. 실제 가격·등락률은 유지합니다.',
+    default: true,
+    enabledBy: 'candleInvertScale',
   },
   {
     key: 'candlePaneCandleOnlyScale',
