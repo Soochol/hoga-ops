@@ -105,6 +105,70 @@ test('mouse selection groups safely, double-click toggles operators, and bracket
   await expect(highlight).toHaveCount(0);
 });
 
+test('ungroup removes one outer pair with mouse or keyboard and shares undo history', async ({ page }) => {
+  await installLiveMocks(page);
+  const original = '(A AND (B OR C)) OR A';
+  const saved: SavedScreener = { id: 'ungroup-expression', name: '괄호 해제', conditions: [
+    { id: 'amount', type: 'trade_value', params: { min_eok: 100 } },
+    { id: 'high', type: 'new_high_today', params: { period: 20 } },
+    { id: 'volume', type: 'new_high_vol_today', params: { period: 20 } },
+  ], expression: original, universe: {}, created_at_ms: 1, updated_at_ms: 1 };
+  await page.route(apiExact('screener/status'), route => route.fulfill({ json: { status: 'ok', warnings: [] } }));
+  await page.route(apiExact('screener/saves'), route => route.fulfill({ json: { schema_version: 1, saves: [saved] } }));
+  await page.goto('/screener');
+  const builder = page.getByTestId('screener-builder-pane');
+  const input = builder.getByRole('textbox', { name: '조건 조합식' });
+  const group = builder.getByRole('button', { name: '() 묶기', exact: true });
+  const ungroup = builder.getByRole('button', { name: '() 묶기 해제', exact: true });
+  await expect(input).toHaveValue(original);
+  await expect(ungroup).toBeDisabled();
+  await input.scrollIntoViewIfNeeded();
+  const from = await textPoint(input, 0), to = await textPoint(input, original.indexOf(' OR A'));
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  await page.mouse.up();
+  await expect(ungroup).toBeEnabled();
+  await ungroup.click();
+  await expect(input).toHaveValue('A AND (B OR C) OR A');
+  await expect(input).toBeFocused();
+  await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd)))
+    .toBe('A AND (B OR C)');
+  await input.press('ControlOrMeta+z');
+  await expect(input).toHaveValue(original);
+  await expect.poll(() => input.evaluate((element: HTMLTextAreaElement) => element.value.slice(element.selectionStart, element.selectionEnd)))
+    .toBe('(A AND (B OR C))');
+  await input.press('ControlOrMeta+Shift+z');
+  await expect(input).toHaveValue('A AND (B OR C) OR A');
+  // The selection kept after grouping can be immediately ungrouped without another drag.
+  await group.click();
+  await expect(input).toHaveValue(original);
+  await ungroup.click();
+  await expect(input).toHaveValue('A AND (B OR C) OR A');
+
+  await input.fill('(A) AND (B)');
+  await input.press('ControlOrMeta+A');
+  await expect(ungroup).toBeDisabled();
+  await input.fill('(A AND B)');
+  await input.press('Home');
+  await input.press('ArrowRight');
+  await input.press('Shift+ArrowRight'); // Only A, not the group's entire contents.
+  await expect(ungroup).toBeDisabled();
+
+  await input.fill('((A AND B))');
+  await input.press('ControlOrMeta+A');
+  await input.press('Tab'); // Selected ranges disable all quick-input letters/operators.
+  await expect(group).toBeFocused();
+  await group.press('Tab');
+  await expect(ungroup).toBeFocused();
+  await ungroup.press('Enter');
+  await expect(input).toHaveValue('(A AND B)');
+  await expect(input).toBeFocused();
+  await ungroup.click();
+  await expect(input).toHaveValue('A AND B');
+  await expect(ungroup).toBeDisabled();
+});
+
 test('Ctrl+Z and redo share typing, presets and token edits without crossing condition scopes', async ({ page }) => {
   await installLiveMocks(page);
   const conditions: SavedScreener['conditions'] = [
