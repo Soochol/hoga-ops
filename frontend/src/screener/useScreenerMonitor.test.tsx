@@ -8,6 +8,13 @@ import {
   type UseScreenerMonitorArgs,
 } from './useScreenerMonitor';
 import * as liveQuotes from '../api/liveQuotes';
+import * as ws from '../api/ws';
+import type { PushEvent } from '../api/types';
+
+let push: (event: PushEvent) => void;
+const volumeConditions: UseScreenerMonitorArgs['conditions'] = [
+  { id: 'volume', type: 'new_high_vol', params: { timeframe: '1m', lookback: 5, period: 100 } },
+];
 
 function mockPhase(phase: 'pre_open' | 'open' | 'closed' | undefined) {
   // 저수준 `useQuotes` 가 아니라 `useLiveQuoteOverlay` 를 모킹한다 — 훅이 그쪽으로
@@ -39,6 +46,10 @@ describe('useScreenerMonitor', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockPhase('open');
+    vi.spyOn(ws, 'subscribeEvents').mockImplementation(listener => {
+      push = listener;
+      return vi.fn();
+    });
     setHidden(false);
   });
   afterEach(() => {
@@ -144,5 +155,50 @@ describe('useScreenerMonitor', () => {
     expect(scanOnce).toHaveBeenCalledTimes(1);
     await act(async () => { rerender(baseArgs({ scanOnce, selectedId: 's2' })); await Promise.resolve(); });
     expect(scanOnce).toHaveBeenCalledTimes(2);            // 재앵커 즉시 조회
+  });
+
+  it('거래량 도달 푸시는 30초를 기다리지 않고 모아서 조회한다', async () => {
+    const scanOnce = vi.fn().mockResolvedValue(true);
+    renderHook(() => useScreenerMonitor(baseArgs({ scanOnce, conditions: volumeConditions })));
+    await act(async () => { await Promise.resolve(); });
+    act(() => {
+      push({ type: 'screener_volume_changed', condition_ids: ['other'] });
+      push({ type: 'screener_volume_changed', condition_ids: ['volume'] });
+      push({ type: 'screener_volume_changed', condition_ids: ['volume'] });
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(scanOnce).toHaveBeenCalledTimes(2);
+  });
+
+  it('장마감 위상 전환 직후의 종가 체결 도달 신호는 최종 조회한다', async () => {
+    mockPhase('closed');
+    const scanOnce = vi.fn().mockResolvedValue(true);
+    renderHook(() => useScreenerMonitor(baseArgs({ scanOnce, conditions: volumeConditions })));
+    expect(scanOnce).not.toHaveBeenCalled();
+    act(() => { push({ type: 'screener_volume_changed', condition_ids: ['volume'] }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(scanOnce).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(scanOnce).toHaveBeenCalledTimes(1);
+  });
+
+  it('조회 도중 푸시와 탭 복귀가 겹쳐도 동시 요청 없이 후속 조회 하나만 수행한다', async () => {
+    let finish!: (value: boolean) => void;
+    const scanOnce = vi.fn().mockImplementationOnce(() => new Promise<boolean>(resolve => { finish = resolve; }))
+      .mockResolvedValue(true);
+    const { unmount } = renderHook(() => useScreenerMonitor(baseArgs({ scanOnce, conditions: volumeConditions })));
+    act(() => {
+      push({ type: 'screener_volume_changed', condition_ids: ['volume'] });
+      setHidden(false);
+      push({ type: 'screener_volume_changed', condition_ids: ['volume'] });
+    });
+    expect(scanOnce).toHaveBeenCalledTimes(1);
+    await act(async () => { finish(true); await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+    expect(scanOnce).toHaveBeenCalledTimes(2);
+    unmount();
+    act(() => { push({ type: 'screener_volume_changed', condition_ids: ['volume'] }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(scanOnce).toHaveBeenCalledTimes(2);
   });
 });

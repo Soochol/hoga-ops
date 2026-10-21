@@ -27,6 +27,7 @@ async def run_screener_scan(
     data_dir: Path,
     req: ScanRequest,
     now: dt.datetime | None = None,
+    volume_runtime=None,
 ) -> ScreenerResponse:
     sdir = data_dir / "screener"
     if not (sdir / "status.json").exists():
@@ -110,6 +111,7 @@ async def run_screener_scan(
         bar_eval = await screener_bar_volume.evaluate(
             data_dir=data_dir, conditions=conditions, codes=codes, basis=basis,
             now=now_value, overlay=intraday_rows,
+            volume_runtime=volume_runtime,
             daily_fallback_codes=set(codes) - live_codes if needs_overlay else None)
         if bar_eval.coverage.incomplete:
             warnings.append("bar_volume_partial")

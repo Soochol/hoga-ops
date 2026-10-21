@@ -27,6 +27,7 @@ from hoga.api import (
     trading_days,
 )
 from hoga.api.models import (
+    BarRealtimeCoverage,
     BarVolumeCoverage,
     BarVolumeCoverageItem,
     BarVolumeMatch,
@@ -409,8 +410,60 @@ def _calendar_complete(leaf, windows, days, as_of):
     return len(windows) >= needed
 
 
+async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetch_codes, sem, volume_runtime):
+    p = leaf.params
+    lower = dt.date.fromisoformat(p.start_date) if isinstance(p, RANGE_PARAMS) else None
+    needed = comparison_period(leaf) + (0 if lower else lookback(leaf) - 1) + (not p.include_open_bar)
+    cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
+              if lower else as_of)
+    key = (data_dir, code, p.timeframe, needed, lower, cutoff.date())
+    cached = _CACHE.get(key)
+    realtime = (volume_runtime if basis == "intraday" and volume_runtime
+                and volume_runtime.supports(leaf) else None)
+    live = realtime.snapshot(leaf, code, int(time.time() * 1000)) if realtime else None
+    lower_bounds = set()
+    if not live and code not in fetch_codes and (cached is None
+            or int(time.time() * 1000) - cached.fetched_at_ms >= MINUTE_TTL_MS):
+        return leaf, code, [], False, "fetch_budget_exhausted"
+    try:
+        async with asyncio.timeout(20):
+            async with sem:
+                if live:
+                    data, received_ms, lower_bounds = live
+                    snapshot = MinuteSnapshot(data, received_ms)
+                else:
+                    snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff)
+                    if realtime:
+                        realtime.seed(leaf, code, snapshot, int(time.time() * 1000))
+                        merged = realtime.snapshot(leaf, code, int(time.time() * 1000))
+                        if merged:
+                            data, received_ms, lower_bounds = merged
+                            snapshot = MinuteSnapshot(data, received_ms)
+                data, adjustment_reason = snapshot.bars, None
+                if leaf.type not in VOLUME_TYPES:
+                    # Pages contain more bars than requested. Only the actual
+                    # predicate window needs factors; today's window is factor 1.
+                    data = [bar for bar in data if p.include_open_bar or not bar.is_open]
+                    if lower is None:
+                        data = data[-(comparison_period(leaf) + lookback(leaf) - 1):]
+                    data, adjustment_reason = await screener_bar_threshold.prepare_minutes(
+                        leaf, data, data_dir, code, (now.astimezone(KST) if now.tzinfo else
+                                               now.replace(tzinfo=KST)).strftime("%Y%m%d"))
+    except TimeoutError:
+        return leaf, code, [], False, "fetch_timeout"
+    events, complete = await asyncio.to_thread(records, leaf, data,
+                                               fetched_at_ms=snapshot.fetched_at_ms)
+    for event in events:
+        if event.bar_match and event.bar_start_ms in lower_bounds:
+            event.bar_match.volume_is_lower_bound = True
+    reason = snapshot.reason or adjustment_reason
+    if not reason and not complete and lower_bounds and any(not bar.valid for bar in data):
+        reason = "live_bar_unconfirmed"
+    return leaf, code, events, complete and reason is None, reason
+
+
 async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
-                   daily_fallback_codes: set[str] | None = None) -> Evaluation:
+                   daily_fallback_codes: set[str] | None = None, volume_runtime=None) -> Evaluation:
     selected = leaves(conditions)
     result = Evaluation(BarVolumeCoverage(total=len(codes), complete=0),
                         {leaf.id: [] for leaf in selected})
@@ -446,39 +499,9 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
             _CURSORS.popitem(last=False)
         sem = asyncio.Semaphore(4)
 
-        async def one(leaf, code):
-            p = leaf.params
-            lower = dt.date.fromisoformat(p.start_date) if isinstance(p, RANGE_PARAMS) else None
-            needed = comparison_period(leaf) + (0 if lower else lookback(leaf) - 1) + (not p.include_open_bar)
-            cutoff = (min(as_of, dt.datetime.combine(dt.date.fromisoformat(p.end_date), dt.time(15, 30), KST))
-                      if lower else as_of)
-            key = (data_dir, code, p.timeframe, needed, lower, cutoff.date())
-            cached = _CACHE.get(key)
-            if code not in fetch_codes and (cached is None
-                    or int(time.time() * 1000) - cached.fetched_at_ms >= MINUTE_TTL_MS):
-                return leaf, code, [], False, "fetch_budget_exhausted"
-            try:
-                async with asyncio.timeout(20):
-                    async with sem:
-                        snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff)
-                        data, adjustment_reason = snapshot.bars, None
-                        if leaf.type not in VOLUME_TYPES:
-                            # Pages contain more bars than requested. Only the actual
-                            # predicate window needs factors; today's window is factor 1.
-                            data = [bar for bar in data if p.include_open_bar or not bar.is_open]
-                            if lower is None:
-                                data = data[-(comparison_period(leaf) + lookback(leaf) - 1):]
-                            data, adjustment_reason = await screener_bar_threshold.prepare_minutes(
-                                leaf, data, data_dir, code, (now.astimezone(KST) if now.tzinfo else
-                                                       now.replace(tzinfo=KST)).strftime("%Y%m%d"))
-            except TimeoutError:
-                return leaf, code, [], False, "fetch_timeout"
-            events, complete = await asyncio.to_thread(records, leaf, data,
-                                                       fetched_at_ms=snapshot.fetched_at_ms)
-            reason = snapshot.reason or adjustment_reason
-            return leaf, code, events, complete and reason is None, reason
-
-        evaluations = await asyncio.gather(*(one(leaf, code) for leaf in minute_leaves for code in codes))
+        evaluations = await asyncio.gather(*(_evaluate_minute_leaf(leaf, code, data_dir=data_dir, as_of=as_of, now=now,
+            basis=basis, fetch_codes=fetch_codes, sem=sem, volume_runtime=volume_runtime)
+            for leaf in minute_leaves for code in codes))
         for leaf, code, events, complete, reason in evaluations:
             result.events[leaf.id].extend((code, event) for event in events)
             if not complete:
@@ -486,4 +509,7 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
                 result.coverage.incomplete.append(BarVolumeCoverageItem(
                     code=code, condition_id=leaf.id, reason=reason or "insufficient_minute_history"))
     result.coverage.complete = len(codes) - len(incomplete)
+    if volume_runtime and basis == "intraday" and any(volume_runtime.supports(leaf) for leaf in selected):
+        prepared, receiving = volume_runtime.counts(selected, codes, int(time.time() * 1000))
+        result.coverage.realtime = BarRealtimeCoverage(prepared=prepared, receiving=receiving)
     return result

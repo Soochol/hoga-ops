@@ -81,7 +81,7 @@ describe('catalog', () => {
     expect(a.id).not.toBe(b.id);
   });
   it('summarize renders sublabels', () => {
-    expect(CONDITION_CATALOG.new_high.summarize({ lookback: 200, period: 500 })).toBe('일봉 · 200·500');
+    expect(CONDITION_CATALOG.new_high.summarize({ lookback: 200, period: 500 })).toBe('일봉 · 최근 200봉 이내 · 500봉 신고가');
     expect(CONDITION_CATALOG.change_pct.summarize({ op: 'gte', pct: 5 })).toBe('일봉 · 전일 종가 대비 ≥ 5%');
     expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'above' })).toBe('일봉 · 종가 ≥ MA20');
     expect(CONDITION_CATALOG.ma.summarize({ period: 20, relation: 'below' })).toBe('일봉 · 종가 ≤ MA20');

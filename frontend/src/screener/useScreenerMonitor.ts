@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useLiveQuoteOverlay } from '../api/liveQuotes';
 import { useLiveVenueStore } from '../state/liveVenue';
+import { subscribeEvents } from '../api/ws';
+import type { ConditionLeaf } from '../api/screener';
 
 /** 스코프 유니버스(관심∪히트맵)면 15초, 전체 시장이면 30초. 서버 intraday overlay TTL
  *  (15초)과 정합 — 그보다 짧으면 같은 캐시를 히트할 뿐이라 낭비. 좁은 스코프는 fetch
@@ -34,6 +36,8 @@ export interface UseScreenerMonitorArgs {
   scanOnce: () => Promise<boolean>;
   /** 연속 MONITOR_FAIL_LIMIT 회 실패 시 호출 — 드로어가 모니터링을 끄고 피드백 표시. */
   onAutoStop: (message: string) => void;
+  conditions?: ConditionLeaf[];
+  startImmediately?: boolean;
 }
 
 export interface ScreenerMonitorStatus {
@@ -73,6 +77,8 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
   hasResultsRef.current = hasResults;
   const onAutoStopRef = useRef(onAutoStop);
   onAutoStopRef.current = onAutoStop;
+  const conditionsRef = useRef(args.conditions);
+  conditionsRef.current = args.conditions;
 
   useEffect(() => {
     if (!active || disabled || selectedId === null) return;
@@ -80,37 +86,69 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
     let timer: number | undefined;
     let cancelled = false;
     let failStreak = 0;
+    let inFlight = false;
+    let queued = false;
+    let stopped = false;
+    let urgent = false;
+    let volumeSignal = false;
 
     const schedule = (ms: number) => {
+      window.clearTimeout(timer);
       timer = window.setTimeout(tick, ms);
     };
 
     const tick = async () => {
-      if (cancelled) return;
+      urgent = false;
+      if (cancelled || stopped) return;
+      if (inFlight) { queued = true; return; }
+      const closingTrade = volumeSignal;
+      volumeSignal = false;
       // 게이트: 탭 숨김·장마감이면 조회를 건너뛰고 나중에 재확인만(무요청 no-op).
       // 단 보여줄 결과가 없으면(시작 시 초기화 직후) 게이트를 통과시킨다 — 안 그러면
       // 마감 후 '시작'이 빈 화면으로 끝난다.
-      if ((document.hidden || phaseRef.current === 'closed') && hasResultsRef.current) {
+      if ((document.hidden || (phaseRef.current === 'closed' && !closingTrade)) && hasResultsRef.current) {
         schedule(periodMs);
         return;
       }
-      const ok = await scanOnceRef.current();
+      inFlight = true;
+      let ok = false;
+      try { ok = await scanOnceRef.current(); } catch { /* same backoff as failed scans */ }
+      inFlight = false;
       if (cancelled) return;
       if (ok) {
         failStreak = 0;
-        schedule(periodMs);
+        schedule(queued ? 250 : periodMs);
+        queued = false;
         return;
       }
       failStreak += 1;
       if (failStreak >= MONITOR_FAIL_LIMIT) {
+        stopped = true;
         onAutoStopRef.current('조회가 반복 실패해 실시간 모니터링을 종료했습니다.');
         return;
       }
       schedule(Math.min(periodMs * 2 ** failStreak, MONITOR_MAX_BACKOFF_MS));
     };
 
+    const releaseEvents = subscribeEvents(event => {
+      if (cancelled || stopped || failStreak > 0 || document.hidden) return;
+      if (phaseRef.current === 'closed' && event.type !== 'screener_volume_changed') return;
+      const ids = (conditionsRef.current ?? []).filter(leaf =>
+        (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
+        && 'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')).map(leaf => leaf.id);
+      if (!ids.length) return;
+      if (event.type !== 'connected' && (event.type !== 'screener_volume_changed'
+        || !event.condition_ids.some(id => ids.includes(id)))) return;
+      // A 15:30 closing-auction trade can arrive after the quote phase changed.
+      // The server volume event already passed the KRX regular-session gate.
+      volumeSignal = event.type === 'screener_volume_changed';
+      if (inFlight) queued = true;
+      else if (!urgent) { urgent = true; schedule(250); }
+    });
+
     // 시작·재앵커 즉시 1회 조회.
-    void tick();
+    if (args.startImmediately !== false) void tick();
+    else schedule(periodMs);
 
     // 탭 복귀 시 대기 타이머를 버리고 즉시 재조회 후 루프 재개.
     const onVisibility = () => {
@@ -122,10 +160,11 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
 
     return () => {
       cancelled = true;
+      releaseEvents();
       window.clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [active, selectedId, periodMs, disabled]);
+  }, [active, selectedId, periodMs, disabled, args.startImmediately]);
 
   return { paused: active && phase === 'closed' ? 'closed' : null };
 }

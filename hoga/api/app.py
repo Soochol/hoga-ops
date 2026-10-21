@@ -630,7 +630,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir, bus=bus))
     app.include_router(build_heatmap_router(data_dir=data_dir, bus=bus, compute=pools))
-    app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools))
+    app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools, live_buffer=live_get_buffer()))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_news_router(data_dir=data_dir))

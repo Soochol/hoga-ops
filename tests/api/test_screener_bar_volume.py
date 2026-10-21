@@ -286,3 +286,65 @@ def test_single_bar_comparison_does_not_claim_the_whole_search_window_is_covered
     condition = leaf(timeframe='5m', lookback=60, period=1)
     events, complete = bars.records(condition, series([10]), fetched_at_ms=0)
     assert len(events) == 1 and not complete
+
+
+def test_http_scan_receives_raw_tick_crossing_through_parent_buffer(corpus, minute_vendor, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from hoga.api import screener, screener_runner
+    from hoga.api.events import EventBus
+    from hoga.api.ws import build_ws_router
+    from hoga.live.buffer import LiveBuffer
+    from hoga.live.snapshot import LiveSnapshot, SnapshotKind
+
+    calls, rows = minute_vendor
+    rows[1]['trde_qty'] = '100'
+    now = dt.datetime(2026, 7, 30, 10, 12, tzinfo=KST)
+    now_ms = int(now.timestamp() * 1000)
+    monkeypatch.setattr(screener_runner, 'now_kst', lambda: now)
+    monkeypatch.setattr(bars.time, 'time', lambda: now_ms / 1000)
+    buffer, bus = LiveBuffer(), EventBus()
+    app = FastAPI()
+    app.include_router(screener.build_router(data_dir=corpus, bus=bus, live_buffer=buffer))
+    app.include_router(build_ws_router(bus, lambda: buffer))
+    request = dict(basis='intraday', conditions=[dict(id='v', type='new_high_vol',
+        params=dict(timeframe='5m', period=3, lookback=1))], universe=dict(exclude_etf=False))
+    with TestClient(app) as client, client.websocket_connect('/api/ws') as socket:
+        first = client.post('/api/screener/scan', json=request).json()
+        assert first['rows'] == []
+        assert first['bar_coverage']['realtime'] == dict(prepared=2, receiving=0)
+        for volume, qty in [(10_000, 1), (10_100, 100)]:
+            snapshot = LiveSnapshot(now_ms, SnapshotKind.TRADE, dict(venue='KRX', cum_volume=volume,
+                trades=[dict(t_ms=now_ms, price=100, qty=qty)]))
+            client.portal.call(lambda s=snapshot: buffer.publish('005930', [s], now_ms=now_ms))
+        assert socket.receive_json() == dict(ch='event', data=dict(
+            type='screener_volume_changed', condition_ids=['v']))
+        result = client.post('/api/screener/scan', json=request).json()
+        assert len(result['rows']) == 1
+        evidence = result['rows'][0]['occurrences'][-1]['bar_match']
+        assert evidence['is_open'] and evidence['volume'] == 130
+        assert evidence['volume_is_lower_bound']
+        assert result['bar_coverage']['realtime'] == dict(prepared=2, receiving=1)
+        assert len(calls) == 2  # one initial REST request per code, no poll waited
+    assert not buffer._trade_observers and not buffer._gap_observers
+
+
+async def test_live_boundary_gap_has_a_specific_coverage_reason(tmp_path, monkeypatch):
+    from hoga.live.screener_volume import ScreenerVolumeRuntime
+
+    condition = leaf(timeframe='5m', period=3, lookback=1)
+    at = stamp(clock='10:15')
+    runtime = ScreenerVolumeRuntime()
+    data = series([10, 20, 10])
+    data[-1] = bars.VolumeBar(data[-1].start_ms, 10, is_open=True)
+    runtime.seed(condition, '005930', bars.MinuteSnapshot(data, at - 100), at - 100)
+    for when, cumulative, qty in [(at - 100, 10_000, 1), (at, 11_000, 1000)]:
+        runtime.ingest('005930', dict(kind='trade', venue='KRX', t_ms=when, cum_volume=cumulative,
+            trades=[dict(t_ms=when, price=100, qty=qty)]), when)
+    monkeypatch.setattr(bars.time, 'time', lambda: at / 1000)
+    result = await bars.evaluate(data_dir=tmp_path, conditions=[condition], codes=['005930'], basis='intraday',
+        now=dt.datetime.fromtimestamp(at / 1000, KST), volume_runtime=runtime)
+    assert result.coverage.complete == 0
+    assert result.coverage.incomplete[0].reason == 'live_bar_unconfirmed'
+    assert result.events['v'] == []
+    runtime.close()

@@ -2319,6 +2319,7 @@ class BarVolumeMatch(BaseModel):
     window_start_ms: int
     is_open: bool
     fetched_at_ms: int
+    volume_is_lower_bound: bool = False
 
 
 class BarPriceMatch(BaseModel):
@@ -2360,10 +2361,16 @@ class BarVolumeCoverageItem(BaseModel):
     name: str | None = None
 
 
+class BarRealtimeCoverage(BaseModel):
+    prepared: int
+    receiving: int
+
+
 class BarVolumeCoverage(BaseModel):
     total: int
     complete: int
     incomplete: list[BarVolumeCoverageItem] = Field(default_factory=list)
+    realtime: BarRealtimeCoverage | None = None
 
 
 class ScreenerOccurrence(BaseModel):
