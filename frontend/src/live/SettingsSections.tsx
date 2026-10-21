@@ -21,8 +21,6 @@ import { highlightLabel } from './settings/SettingsRowHelpers';
 import { DataSourceDetail } from './settings/DataSourceDetail';
 import {
   GeneralSection,
-  RoadmapSection,
-  SymbolMasterSection,
   ThemeSection,
 } from './settings/AppInfoSections';
 import { SettingsEditor, SettingsEditorNavItem } from './settings/SettingsEditor';
@@ -63,21 +61,17 @@ type NavId =
   | ChartToggleCategory
   | 'data-source'
   | 'theme'
-  | 'symbols'
-  | 'general'
-  | 'roadmap';
+  | 'general';
 
 const CATEGORY_ORDER: ChartToggleCategory[] = ['chart', 'trade-window'];
-const INFO_ORDER = ['data-source', 'theme', 'symbols', 'general', 'roadmap'] as const;
+const INFO_ORDER = ['data-source', 'theme', 'general'] as const;
 const LABEL: Record<NavId, string> = {
   chart: '차트',
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'trade-window': '체결창',
   'data-source': '데이터소스',
   theme: '테마',
-  symbols: '종목 목록',
   general: '앱 정보',
-  roadmap: '로드맵',
 };
 
 /** 레지스트리 밖의 손 스타일 행 — 라벨·설명을 여기 상수로 두고
@@ -183,12 +177,8 @@ function InfoSectionBody({ id }: { id: (typeof INFO_ORDER)[number] }) {
       return <DataSourceDetail />;
     case 'theme':
       return <ThemeSection />;
-    case 'symbols':
-      return <SymbolMasterSection />;
     case 'general':
       return <><GeneralSection /><SettingsTransferSection /></>;
-    case 'roadmap':
-      return <RoadmapSection />;
   }
 }
 
@@ -308,7 +298,7 @@ export default function SettingsSections({ variant = 'live', onClose }: { varian
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2 pt-1">
           {navIds.map((id, index) => (
             <Fragment key={id}>
-            {(index === 0 || id === 'data-source' || id === 'symbols') && <div className="settings-editor-nav-group">{index === 0 ? '화면' : id === 'data-source' ? '환경' : '관리'}</div>}
+            {(index === 0 || id === 'data-source' || id === 'general') && <div className="settings-editor-nav-group">{index === 0 ? '화면' : id === 'data-source' ? '환경' : '관리'}</div>}
             <SettingsEditorNavItem
               key={id}
               data-testid={`settings-nav-${id}`}

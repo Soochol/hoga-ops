@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { GeneralSection, SymbolMasterSection, ThemeSection } from './AppInfoSections';
-import * as symbolsApi from '../../api/symbols';
+import { GeneralSection, ThemeSection } from './AppInfoSections';
 import { useThemePrefsStore } from '../../state/themePrefs';
 
 // 이 파일은 `pages/Settings.test.tsx` 에서 이관됐다. 그 페이지(`/settings` 라우트)는
@@ -26,97 +25,6 @@ describe('AppInfoSections — 앱 정보', () => {
   it('설정에서 읽은 API URL 을 보인다', async () => {
     renderWithQuery(<GeneralSection />);
     await waitFor(() => expect(screen.getByText('http://test')).toBeInTheDocument());
-  });
-});
-
-describe('AppInfoSections — Symbol Master', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    localStorage.clear();
-  });
-
-  it('renders unavailable state with hint', async () => {
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 0,
-      fetched_at_ms: null,
-      status: 'unavailable',
-      reason: 'symbol_master_not_initialized',
-    });
-
-    renderWithQuery(<SymbolMasterSection />);
-
-    expect(await screen.findByText('0')).toBeInTheDocument(); // count
-    expect(screen.getByText(/아직 다운로드되지 않았습니다/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Update Now/i })).toBeNull();
-    expect(screen.getByText('종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.')).toBeInTheDocument();
-  });
-
-  it('renders fresh state', async () => {
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 6012,
-      fetched_at_ms: Date.now() - 3600_000, // 1 hour ago
-      status: 'fresh',
-      reason: null,
-    });
-
-    renderWithQuery(<SymbolMasterSection />);
-
-    await waitFor(() => {
-      expect(screen.getByText('6,012')).toBeInTheDocument();
-    });
-    expect(screen.getByText('fresh')).toBeInTheDocument();
-  });
-
-  it('renders loading state without a separate update action', async () => {
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 0,
-      fetched_at_ms: null,
-      status: 'loading',
-      reason: null,
-    });
-
-    renderWithQuery(<SymbolMasterSection />);
-
-    await waitFor(() => {
-      expect(screen.getByText('loading')).toBeInTheDocument();
-    });
-    expect(screen.queryByRole('button', { name: /Update Now/i })).toBeNull();
-    expect(screen.getByText('종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.')).toBeInTheDocument();
-  });
-
-  it('renders stale state: cache preserved, reason hint visible, unified update guidance visible', async () => {
-    const TWO_HOURS_AGO = Date.now() - 2 * 60 * 60 * 1000;
-    // master_fetch_failed is the only fetch-failure reason the symbols backend
-    // actually emits on this surface — an impossible mock would leave the
-    // reachable hint copy untested.
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 6012,
-      fetched_at_ms: TWO_HOURS_AGO,
-      status: 'stale',
-      reason: 'master_fetch_failed',
-    });
-
-    renderWithQuery(<SymbolMasterSection />);
-
-    await waitFor(() => {
-      expect(screen.getByText('6,012')).toBeInTheDocument();
-    });
-    expect(screen.getByText('stale')).toBeInTheDocument();
-    expect(screen.getByText(/키움 종목 목록을 가져오지 못했습니다/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Update Now/i })).toBeNull();
-    expect(screen.getByText('종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.')).toBeInTheDocument();
-  });
-
-  it('does not render force retry capture defaults', async () => {
-    vi.spyOn(symbolsApi, 'getSymbolMasterInfo').mockResolvedValue({
-      count: 0, fetched_at_ms: null, status: 'unavailable', reason: 'symbol_master_not_initialized',
-    });
-
-    renderWithQuery(<SymbolMasterSection />);
-
-    expect(await screen.findByText('0')).toBeInTheDocument();
-    expect(screen.queryByTestId('settings-force-retry-default')).toBeNull();
-    expect(screen.queryByText(/force/i)).toBeNull();
   });
 });
 

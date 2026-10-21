@@ -99,10 +99,10 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(patches[0]).toEqual({ rest_bypass_enabled: true });
     expect(queryClient.getQueryData(liveSettingsApi.LIVE_SETTINGS_KEY)).toEqual(initial);
   });
-  it('통합 목차 7개를 렌더한다 — 차트·체결창 + 앱 스코프 5개', () => {
+  it('통합 목차 5개를 렌더한다 — 차트·체결창 + 앱 스코프 3개', () => {
     renderSettings();
     for (const id of [
-      'chart', 'trade-window', 'data-source', 'theme', 'symbols', 'general', 'roadmap',
+      'chart', 'trade-window', 'data-source', 'theme', 'general',
     ]) {
       expect(screen.getByTestId(`settings-nav-${id}`)).toBeTruthy();
     }
@@ -113,13 +113,12 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(screen.queryByTestId('settings-nav-study-views')).toBeNull();
     expect(screen.queryByTestId('settings-nav-indicators')).toBeNull();
     expect(screen.queryByTestId('settings-nav-surge')).toBeNull();
-    // 「데이터 수집」 은 토글 1개짜리 섹션이라 데이터소스의 「캡처 저장」 으로 흡수됐다.
     expect(screen.queryByTestId('settings-nav-data')).toBeNull();
   });
 
   it('단일 스크롤 — 모든 섹션이 클릭 없이 동시에 문서에 있다', () => {
     renderSettings();
-    for (const name of ['차트', '체결창', '데이터소스', '테마', '종목 목록', '앱 정보', '로드맵']) {
+    for (const name of ['차트', '체결창', '데이터소스', '테마', '앱 정보']) {
       expect(screen.getByRole('region', { name })).toBeTruthy();
     }
   });
@@ -128,7 +127,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     // `variant` 가 가르는 **유일한** 항목이다. 데이터소스가 쓰던 분기는 삭제됐다 —
     // 값이 전역인데 화면마다 숨기면 어느 문으로 들어왔는지에 답이 달라진다.
     renderSettings({ variant: 'study' });
-    for (const id of ['chart', 'data-source', 'theme', 'symbols', 'general', 'roadmap']) {
+    for (const id of ['chart', 'data-source', 'theme', 'general']) {
       expect(screen.getByTestId(`settings-nav-${id}`)).toBeTruthy();
     }
     expect(screen.queryByTestId('settings-nav-trade-window')).toBeNull();
@@ -329,7 +328,6 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(screen.getByTestId('study-candle-source-note')).toBeTruthy();
     expect(screen.getByText('호가·체결 데이터 기준')).toBeTruthy();
     expect(screen.getByText('표시 소스')).toBeTruthy();
-    expect(screen.getByText('캡처 저장')).toBeTruthy();
   });
 
   // 데이터소스 상세 콘텐츠 테스트는 DataSourceDetail.test.tsx로 이관(추출·재사용).

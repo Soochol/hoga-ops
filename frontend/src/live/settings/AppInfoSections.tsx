@@ -2,39 +2,24 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { loadConfig, type AppConfig } from '../../config';
 import { apiCall } from '../../api/client';
-import { getSymbolMasterInfo } from '../../api/symbols';
-import { symbolMasterSettingsHints } from '../../api/upstream-hints';
 import { DefinitionRow, SegmentedControl } from '../../ui/PageShell';
 import { THEME_PREFERENCE_OPTIONS, useThemePrefsStore, type ThemePreference } from '../../state/themePrefs';
 
 /**
- * 앱 스코프 설정 섹션들 — 「앱 정보」·「테마」·「Symbol Master」·「로드맵」.
+ * 앱 스코프 설정 섹션들 — 「앱 정보」·「테마」.
  *
  * `pages/Settings.tsx` 가 자체 마스터-디테일 셸을 들고 있던 시절의 본체다. 설정 표면이
  * 하나로 합쳐지면서(우측 드로어) 셸은 `SettingsSections` 로 단일화됐고, 섹션 본체는
  * 다른 상세들(`DataSourceDetail` 등)과 같은 자리인 여기로 내려왔다. 페이지 프레임
  * (`/settings` 라우트)은 이제 그 통합 컴포넌트를 감싸기만 한다.
- *
- * 옛 「데이터 수집」 섹션은 여기 없다 — 토글 1개짜리 섹션이라 캡처 쓰기 설정이 모여
- * 있는 `DataSourceDetail` 의 「캡처 저장」 그룹으로 흡수됐다.
  */
 
-const SYMBOLS_INFO_QUERY_KEY = ['symbols', 'info'] as const;
 const HEALTH_QUERY_KEY = ['health'] as const;
 
 /** /health 응답 — 리포 루트 VERSION 파일이 버전의 단일 진실(#998)이라 프론트에
  *  버전을 다시 하드코딩하지 않는다(이전의 'v0.1.0' 상수는 실제 0.12.x 와 어긋난
  *  채 표시되고 있었다). commit 은 "지금 뜬 코드가 그 코드인가"에 답한다. */
 type HealthInfo = { status: string; version: string; commit?: string };
-
-function formatRelative(ms: number | null | undefined): string {
-  if (ms === null || ms === undefined) return 'Never';
-  const delta = Date.now() - ms;
-  if (delta < 60_000) return 'just now';
-  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} min ago`;
-  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)} hour ago`;
-  return `${Math.floor(delta / 86_400_000)} days ago`;
-}
 
 export function GeneralSection() {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -108,35 +93,5 @@ export function ThemeSection() {
       </SegmentedControl>
       <p className="text-xs text-fg-dim">{THEME_HINT[themePreference]}</p>
     </section>
-  );
-}
-
-export function SymbolMasterSection() {
-  const { data, isLoading } = useQuery({
-    queryKey: SYMBOLS_INFO_QUERY_KEY,
-    queryFn: getSymbolMasterInfo,
-    refetchOnWindowFocus: false,
-  });
-
-  return (
-    <section className="space-y-2">
-      <DefinitionRow label="Items" value={data ? data.count.toLocaleString() : (isLoading ? '…' : '0')} />
-      <DefinitionRow label="Last fetched" value={formatRelative(data?.fetched_at_ms)} />
-      <DefinitionRow label="Status" value={data?.status ?? '…'} />
-      {data?.reason && (
-        <div className="text-xs text-error">{symbolMasterSettingsHints[data.reason]}</div>
-      )}
-      <p className="text-xs text-fg-dim">
-        종목 목록과 일봉은 스크리너의 갱신에서 함께 업데이트합니다.
-      </p>
-    </section>
-  );
-}
-
-export function RoadmapSection() {
-  return (
-    <p className="text-xs text-fg-dim">
-      편집 가능한 설정은 v1+1에서 `/api/config` 라우트와 함께 제공 예정.
-    </p>
   );
 }
