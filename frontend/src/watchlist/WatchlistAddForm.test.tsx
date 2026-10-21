@@ -63,13 +63,12 @@ describe('WatchlistAddForm', () => {
     const qc = newQc();
     render(<WatchlistAddForm folderId="f_a" onAdded={onAdded} />, { wrapper: wrap(qc) });
     fireEvent.click(screen.getByText('pick'));
-    fireEvent.click(screen.getByRole('button', { name: /추가/ }));
     // resolveAt 미전달 = 맨 아래(기존 계약) — at 자리에 undefined 가 그대로 간다.
     await waitFor(() => expect(add).toHaveBeenCalledWith('f_a', '005930', undefined));
     await waitFor(() => expect(onAdded).toHaveBeenCalledWith({ code: '005930', name: '삼성전자' }));
   });
 
-  it('calls resolveAt at submit time, not when the form renders or a symbol is picked', async () => {
+  it('선택 즉시 현재 삽입 위치를 계산해 추가한다', async () => {
     // 이 순서가 계약의 전부다: 팝오버가 떠 있는 동안 폴링이 order 를 바꾸므로,
     // 열 때 인덱스를 얼리면 엉뚱한 자리에 삽입된다. 렌더·선택 시점 호출은 곧 그 결함이다.
     const add = vi.spyOn(api, 'addMember').mockResolvedValue({} as never);
@@ -79,8 +78,7 @@ describe('WatchlistAddForm', () => {
       { wrapper: wrap(qc) });
     expect(resolveAt).not.toHaveBeenCalled();
     fireEvent.click(screen.getByText('pick'));
-    expect(resolveAt).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /추가/ }));
+    expect(resolveAt).toHaveBeenCalledOnce();
     await waitFor(() => expect(add).toHaveBeenCalledWith('f_a', '005930', 3));
   });
 
@@ -90,7 +88,6 @@ describe('WatchlistAddForm', () => {
     render(<WatchlistAddForm folderId="f_a" resolveAt={() => 0} onAdded={vi.fn()} />,
       { wrapper: wrap(qc) });
     fireEvent.click(screen.getByText('pick'));
-    fireEvent.click(screen.getByRole('button', { name: /추가/ }));
     await waitFor(() => expect(add).toHaveBeenCalledWith('f_a', '005930', 0));
   });
 
@@ -104,8 +101,7 @@ describe('WatchlistAddForm', () => {
       { wrapper: wrap(qc) });
     fireEvent.click(screen.getByText('pick'));
     expect(screen.getByText(/이미 이 그룹에 있습니다/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /추가/ })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: /추가/ }));
+    expect(screen.queryByRole('button', { name: /추가/ })).toBeNull();
     expect(add).not.toHaveBeenCalled();
   });
 
@@ -118,49 +114,9 @@ describe('WatchlistAddForm', () => {
       { wrapper: wrap(qc) });
     fireEvent.click(screen.getByText('pick'));
     expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /추가/ }));
     await waitFor(() => expect(add).toHaveBeenCalledWith('f_a', '005930', 1));
   });
 
-  it('검색 입력과 제출 버튼을 한 줄에 두지 않는다 (좁은 팝오버에서 드롭다운이 짜부라진다)', () => {
-    // 한 줄이면 280px 팝오버에서 검색 입력이 173px 로 눌리고, 드롭다운이 그 폭을
-    // 물려받아 종목명 컬럼이 **한 글자(11px)** 로 붕괴한다(한글의 min-content).
-    // 2줄이면 262px 로 회복된다 — 실측은 도그푸딩.
-    //
-    // ⚠ jsdom 은 레이아웃이 없어 **폭 자체는 못 잰다.** 이 단언은 "세로 배치라는
-    // 결정" 만 고정한다 — 누가 다시 한 줄로 되돌리면 여기서 걸린다.
-    const qc = newQc();
-    const { container } = render(<WatchlistAddForm folderId="f_a" onAdded={vi.fn()} />,
-      { wrapper: wrap(qc) });
-    const form = container.querySelector('form')!;
-    expect(form.className).toContain('flex-col');
-    expect(form.className).not.toContain('items-center');
-  });
-  // P2-3: 2줄(stacked)은 **좁은 팝오버(280px)의 처방**이다 — 거기선 1줄이면 검색
-  // 드롭다운이 173px 로 좁아져 한글 종목명 컬럼이 min-content(한 글자)까지 붕괴한다
-  // (#1379). 그 처방이 넓은 곳까지 따라가 세로를 낭비했다. 호출부가 자기 폭을 아니
-  // 호출부가 정한다 — **컨테이너 쿼리는 쓰지 않는다**(이 리포에 함정이 둘 있다).
-  //
-  // 픽셀은 jsdom 이 못 재므로 방향(flex-col vs flex-row)만 클래스로 못박고, 실제 폭은
-  // 도그푸딩이 쟀다: 모달 inline 은 폼 높이 37px·드롭다운 525px·종목명 컬럼 355px·
-  // 행 35px, 팝오버 stacked 는 종목명 92px·행 35px(#1379 수정값 그대로).
-  it('stacks by default and goes inline only when the caller asks', () => {
-    const { container, unmount } = render(
-      <WatchlistAddForm folderId="f_a" onAdded={() => {}} />, { wrapper: wrap(newQc()) });
-    const stacked = container.querySelector('form')!;
-    expect(stacked).toHaveClass('flex-col');
-    unmount();
-
-    const { container: c2 } = render(
-      <WatchlistAddForm folderId="f_a" layout="inline" onAdded={() => {}} />,
-      { wrapper: wrap(newQc()) });
-    const inline = c2.querySelector('form')!;
-    expect(inline).toHaveClass('flex');
-    expect(inline).not.toHaveClass('flex-col');
-    // `min-w-0` 이 없으면 flex item 의 `min-width:auto` 때문에 검색 래퍼가 내용보다
-    // 좁아지지 않아 버튼을 밀어낸다 — 좁아질 수 있어야 1줄이 성립한다.
-    expect(inline.querySelector('.min-w-0')).not.toBeNull();
-  });
   // 중복 안내는 "있다" 고만 말할 뿐 **어디 있는지** 보여 주지 않았다 — 40행짜리 그룹에서
   // 그 종목이 맨 아래면 화면 밖이라 "없는데 있다고 한다" 로 읽힌다(실측 사례). 호출부가
   // 그 행을 보여 줄 수 있게 **고른 순간** 알린다.
@@ -207,12 +163,8 @@ describe('WatchlistAddForm', () => {
 
     rerender(<WatchlistAddForm folderId="f_b" onAdded={onAdded} />);
 
-    // 고른 것이 남아 있으면 "f_b 에는 없다" 며 추가 버튼이 살아난다 — 그 상태가 사고다.
-    await waitFor(() =>
-      expect(screen.queryByText(/이미 이 그룹에 있습니다/)).not.toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /종목 추가/ })).toBeDisabled();
-
-    fireEvent.submit(screen.getByRole('button', { name: /종목 추가/ }).closest('form')!);
-    await waitFor(() => expect(add).not.toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull());
+    expect(screen.queryByRole('button', { name: /종목 추가/ })).toBeNull();
+    expect(add).not.toHaveBeenCalled();
   });
 });

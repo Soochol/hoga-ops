@@ -37,11 +37,8 @@ import { GroupNameModal } from '../watchlist/GroupNameModal';
 import { QuoteRow } from '../rightrail/QuoteRow';
 import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailState } from '../ui/RailShell';
 import { TrashIcon } from '../ui/TrashIcon';
-import { SymbolSearch } from '../capture/SymbolSearch';
-import type { SymbolHit } from '../api/types';
+import { QuickAddSymbolForm } from '../capture/QuickAddSymbolForm';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
-import { useOptimisticDuplicateGate } from '../util/useOptimisticDuplicateGate';
-import { Banner } from '../ui/Banner';
 import { DUPLICATE_FLASH_MS } from '../watchlist/duplicateFlash';
 import { HeatmapRowMenu } from './HeatmapRowMenu';
 import { useAddToFolder } from './useAddToFolder';
@@ -202,6 +199,7 @@ function GroupHeader(props: {
   canMoveUp?: boolean;
   canMoveDown?: boolean;
   onAddSymbol?: (code: string) => Promise<void>;
+  onUndoAddSymbol: (code: string) => Promise<void>;
   /** 이 그룹에 그 코드가 이미 있는가 / 있으면 그 행을 가리킨다. 드로어가 내려 준다. */
   isDuplicateInGroup?: (code: string) => boolean;
   onDuplicateSymbol?: (code: string) => void;
@@ -213,7 +211,7 @@ function GroupHeader(props: {
   const [menuPoint, setMenuPoint] = useState<{ x: number; y: number } | null>(null);
   const menuOpen = menuPoint !== null;
   const closeMenu = useCallback(() => setMenuPoint(null), []);
-  const [addOpen, setAddOpen] = useState(false);
+  const [addAnchor, setAddAnchor] = useState<{ left: number; top: number } | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
@@ -262,7 +260,12 @@ function GroupHeader(props: {
                   메뉴 언마운트에 딸려 사라지지 않는다). 예전 헤더의 ＋종목 버튼을 이 항목으로 이동. */}
               {props.onAddSymbol && (
                 <button type="button" role="menuitem"
-                  onClick={() => { closeMenu(); setAddOpen(true); }}
+                  onClick={() => {
+                    const rect = menuRef.current?.getBoundingClientRect();
+                    setAddAnchor(rect ? { left: rect.right - POP_W, top: rect.bottom + 4 }
+                      : { left: menuPoint!.x, top: menuPoint!.y });
+                    closeMenu();
+                  }}
                   className={itemClass}>
                   <span className="w-4 grid place-items-center"><PlusIcon /></span> 종목 추가
                 </button>
@@ -292,9 +295,9 @@ function GroupHeader(props: {
               </button>
             </PanelContextMenu>
           )}
-          {addOpen && props.onAddSymbol && (
-            <SymbolAddPopover anchorRef={menuRef} onClose={() => setAddOpen(false)}
-              onAdd={props.onAddSymbol}
+          {addAnchor && props.onAddSymbol && (
+            <SymbolAddPopover anchorRef={menuRef} initialAnchor={addAnchor} onClose={() => setAddAnchor(null)}
+              onAdd={props.onAddSymbol} onUndo={props.onUndoAddSymbol}
               isDuplicate={(code) => !!props.isDuplicateInGroup?.(code)}
               onDuplicate={(code) => props.onDuplicateSymbol?.(code)} />
           )}
@@ -308,13 +311,15 @@ const POP_W = 320;
 
 /** 종목 검색 팝오버 (controlled) — 마운트되면 열린 상태. anchorRef 우하단 기준 우측정렬 후
  *  useClampedFixedPosition 으로 뷰포트 보정, createPortal 로 body 에 fixed(드로어 overflow
- *  탈출). 선택+추가 시 onAdd(code, folderId) 후 onClose; 바깥 클릭·Escape 로도 onClose.
+ *  탈출). 선택 시 onAdd(code, folderId) 후 연속 검색; 바깥 클릭·Escape 로도 onClose.
  *  헤더 "종목 추가"(folders 전달 → 그룹 선택 셀렉트 표시, v3 는 그룹 필수 — ADR-0112)와
  *  그룹 우클릭 메뉴 "종목 추가"(folders 미전달 — 그 그룹으로 고정)가 공유. */
-function SymbolAddPopover({ anchorRef, onClose, onAdd, isDuplicate, onDuplicate, folders }: {
+function SymbolAddPopover({ anchorRef, initialAnchor, onClose, onAdd, onUndo, isDuplicate, onDuplicate, folders }: {
   anchorRef: React.RefObject<HTMLElement | null>;
+  initialAnchor?: { left: number; top: number };
   onClose: () => void;
   onAdd: (code: string, folderId?: string) => Promise<void>;
+  onUndo: (code: string, folderId?: string) => Promise<void>;
   /** 그 그룹에 그 코드가 이미 있는가. **폴더 인자를 받는다** — 헤더 경로는 셀렉트로
    *  대상 그룹이 바뀌므로 판정이 그때마다 달라진다(`undefined` = 우클릭 메뉴의 고정 그룹). */
   isDuplicate: (code: string, folderId?: string) => boolean;
@@ -323,13 +328,14 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, isDuplicate, onDuplicate,
   /** 전달되면 대상 그룹 셀렉트를 보인다(기본값=첫 그룹). 빈 배열이면 추가 불가 안내. */
   folders?: { id: string; name: string }[];
 }) {
-  const [picked, setPicked] = useState<SymbolHit | null>(null);
+  const [pending, setPending] = useState(false);
   const [folderId, setFolderId] = useState<string>(() => folders?.[0]?.id ?? '');
-  const [anchor, setAnchor] = useState({ left: 0, top: 0 });
+  const [anchor, setAnchor] = useState(initialAnchor ?? { left: 0, top: 0 });
   useLayoutEffect(() => {
+    if (initialAnchor) return;
     const r = anchorRef.current?.getBoundingClientRect();
     if (r) setAnchor({ left: r.right - POP_W, top: r.bottom + 4 });
-  }, [anchorRef]);
+  }, [anchorRef, initialAnchor]);
   const { ref: popRef, left, top } = useClampedFixedPosition<HTMLDivElement>(anchor.left, anchor.top);
   useLayoutEffect(() => { popRef.current?.querySelector('input')?.focus(); }, [popRef]);
   useEffect(() => {
@@ -349,45 +355,15 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, isDuplicate, onDuplicate,
   // folders 모드에서 그룹 미선택(빈 배열)이면 추가 불가 — v3 는 그룹 필수(ADR-0112).
   const needsFolder = folders !== undefined;
   const target = needsFolder ? folderId : undefined;
-  // 중복 판정을 **제출 중에는 얼린다** — 히트맵 추가도 낙관적이라 요청을 보내는 순간
-  // 캐시에 행이 들어가고, 파생 판정은 그걸 보고 자기 자신을 고발한다(훅 docstring).
-  //
-  // 판정을 **캐시하지 않는다**: 셀렉트로 그룹을 바꾸면 답이 달라져야 한다. 파생값이라
-  // 배너 해제·버튼 재활성이 공짜로 따라온다.
-  const { duplicate, submitting, run } =
-    useOptimisticDuplicateGate(picked, (hit) => isDuplicate(hit.code, target));
-  const canSubmit = !!picked && !submitting && !duplicate && (!needsFolder || folderId !== '');
-  // 고른 순간 + **그룹을 바꿔 새로 중복이 된 순간**에만 알린다. 선택을 바꾸면 이전
-  // 그룹의 행을 가리키던 하이라이트가 남는데, 새 그룹이 중복이면 그쪽으로 옮겨 가고
-  // 아니면 그대로 사그라진다(2.5s 타이머) — **다른 그룹을 가리킨 채 머무는 것**만 막으면 된다.
-  const pointAtDuplicate = (hit: SymbolHit | null, folder: string | undefined) => {
-    if (hit && isDuplicate(hit.code, folder)) onDuplicate(hit.code, folder);
-  };
-  const submit = async () => {
-    if (!canSubmit || !picked) return;
-    // 성공했을 때만 닫는다 — 실패 시 팝오버를 열어 둬 재시도/다른 종목 선택이 가능하다.
-    // `run` 은 실패해도 정상 반환하므로 닫기가 콜백 **안**에 있어야 한다.
-    await run(async () => {
-      await onAdd(picked.code, target);
-      onClose();
-    });
-  };
   return createPortal(
-    <div ref={popRef} role="dialog" aria-label="종목 추가"
+    <div ref={popRef} role="dialog" aria-label="종목 추가" onMouseDown={event => event.stopPropagation()}
       style={{ position: 'fixed', left, top, width: POP_W }}
-      className="z-30 bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
-      <SymbolSearch value={picked} onChange={(hit) => { setPicked(hit); pointAtDuplicate(hit, target); }} />
-      {/* **위치를 약속하지 않는다** — 이 팝오버는 헤더/⋯ 버튼에 앵커돼 가리킬 리스트를
-          자기가 덮는다(실측: 팝오버 30–208, 그 행 162–187). 관심종목 팝오버는 커서 자리에
-          떠서 그 약속을 지킬 수 있었다 — 표면이 다르면 약속도 달라야 한다. */}
-      {picked && duplicate && (
-        <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다</Banner>
-      )}
+      className="z-30 max-h-[calc(100dvh-16px)] overflow-y-auto bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
       {needsFolder && (folders.length > 0 ? (
         <label className="flex items-center gap-2 text-xs text-fg-dim">
           <span className="flex-none">그룹</span>
-          <select value={folderId}
-            onChange={(e) => { setFolderId(e.target.value); pointAtDuplicate(picked, e.target.value); }}
+          <select value={folderId} disabled={pending}
+            onChange={(e) => setFolderId(e.target.value)}
             aria-label="추가할 그룹"
             className="flex-1 min-w-0 bg-bg-input border border-border rounded px-1.5 py-1 text-fg">
             {folders.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -396,10 +372,12 @@ function SymbolAddPopover({ anchorRef, onClose, onAdd, isDuplicate, onDuplicate,
       ) : (
         <div className="text-xs text-fg-dim">그룹이 없습니다 — 먼저 ＋ 버튼으로 그룹을 만들어 주세요</div>
       ))}
+      <QuickAddSymbolForm key={target ?? 'fixed'} disabled={needsFolder && !folderId}
+        isAdded={code => isDuplicate(code, target)} onDuplicate={code => onDuplicate(code, target)}
+        onAdd={hit => onAdd(hit.code, target)} onUndo={hit => onUndo(hit.code, target)}
+        onPendingChange={setPending} />
       <div className="flex justify-end gap-2">
         <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={onClose}>닫기</button>
-        <button type="button" className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-40"
-          disabled={!canSubmit} onClick={submit}>추가</button>
       </div>
     </div>,
     document.body,
@@ -415,7 +393,7 @@ function HeaderAddButton({ folders, isDuplicate, onDuplicate }: {
   onDuplicate: (code: string, folderId?: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const { addToFolder } = useAddToFolder();
+  const { addToFolder, removeFromFolder } = useAddToFolder();
   const btnRef = useRef<HTMLButtonElement>(null);
   return (
     <>
@@ -427,7 +405,8 @@ function HeaderAddButton({ folders, isDuplicate, onDuplicate }: {
       {open && (
         <SymbolAddPopover anchorRef={btnRef} onClose={() => setOpen(false)}
           folders={folders} isDuplicate={isDuplicate} onDuplicate={onDuplicate}
-          onAdd={async (code, folderId) => { if (folderId) await addToFolder(code, folderId); }} />
+          onAdd={async (code, folderId) => { if (folderId) await addToFolder(code, folderId); }}
+          onUndo={async (code, folderId) => { if (folderId) await removeFromFolder(code, folderId); }} />
       )}
     </>
   );
@@ -542,7 +521,7 @@ export function HeatmapDrawer() {
   // pending 을 내리지 않는 이유: 제출 게이트는 팝오버가 `useOptimisticDuplicateGate` 로
   // 자기 것을 갖는다 — 여기 것을 함께 내리면 게이트가 두 곳으로 갈린다(그 훅이 재는 창이
   // mutation 의 isPending 보다 정확하다는 것이 그 훅의 존재 이유다).
-  const { addToFolder } = useAddToFolder();
+  const { addToFolder, removeFromFolder } = useAddToFolder();
 
   // 접기 상태는 localStorage 영속 — 패널을 닫았다 열어도(언마운트) 유지된다.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => {
@@ -953,6 +932,7 @@ export function HeatmapDrawer() {
                     canMoveUp={canMoveGroups && gi > 0}
                     canMoveDown={canMoveGroups && gi < folderCount - 1}
                     onAddSymbol={(code) => addToFolder(code, folder.id)}
+                    onUndoAddSymbol={(code) => removeFromFolder(code, folder.id)}
                     isDuplicateInGroup={(code) => isDuplicateIn(code, folder.id)}
                     onDuplicateSymbol={(code) => flashDuplicate(folder.id, code)}
                     dragHandle={dragHandle} />

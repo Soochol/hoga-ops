@@ -34,7 +34,13 @@ export function useAddToHeatmapFolder() {
   return useMutation({
     mutationKey: ['heatmap', 'add-to-folder'],
     mutationFn: (v: { code: string; folderId: string }) => addToHeatmapFolder(v.code, v.folderId),
-    onSuccess: () => invalidateHeatmapDependents(qc),
+    onSuccess: (entry) => {
+      qc.setQueryData<HeatmapResponse>(HEATMAP_KEY, old => old ? {
+        ...old,
+        entries: [...old.entries.filter(e => e.folder_id !== entry.folder_id || e.code !== entry.code), entry],
+      } : old);
+      invalidateHeatmapDependents(qc);
+    },
   });
 }
 
@@ -49,7 +55,14 @@ export function useRemoveFromHeatmap() {
       (v.folderId === undefined
         ? removeFromHeatmap(v.code)
         : removeFromHeatmapFolder(v.code, v.folderId)),
-    onSuccess: () => invalidateHeatmapDependents(qc),
+    onSuccess: (_data, target) => {
+      qc.setQueryData<HeatmapResponse>(HEATMAP_KEY, old => old ? {
+        ...old,
+        entries: old.entries.filter(e => e.code !== target.code
+          || (target.folderId !== undefined && e.folder_id !== target.folderId)),
+      } : old);
+      invalidateHeatmapDependents(qc);
+    },
   });
 }
 

@@ -13,7 +13,7 @@ import { ConfirmModal } from '../ui/ConfirmModal';
 import { MoveIcon } from '../ui/MoveIcon';
 import { RefreshIcon } from '../ui/RefreshIcon';
 import { LastSuccessBadge } from './rowFormat';
-import { formatCaughtUpOneMessage, symbolLabel } from './banners';
+import { formatCaughtUpOneMessage } from './banners';
 import { selectVisibleEntries, countOrphansIfRemovedFrom, type Selected } from './grouping';
 import { DUPLICATE_FLASH_MS } from './duplicateFlash';
 import type { WatchlistEntry } from '../api/watchlist';
@@ -236,17 +236,11 @@ export function WatchlistEntryPane({ selected, onOverlayOpenChange }: {
       {/* add form — v3: 실폴더 선택 시에만(미분류 추가 대상 없음) */}
       {selected !== null && (
         <div className="px-3 py-2 border-b border-border">
-          {/* 이 pane 은 638px — 검색 입력이 넉넉해 2줄일 이유가 없다(팝오버와 반대). */}
-          <WatchlistAddForm folderId={selected} layout="inline"
-            onAdded={(hit) => setRecentAction({ kind: 'added', code: hit.code, name: hit.name })}
-            onDuplicate={flashDuplicate} />
+          <WatchlistAddForm folderId={selected} onDuplicate={flashDuplicate} />
         </div>
       )}
 
-      {/* feedback banner (added / caught_up_one) — modal owns this feedback instance */}
-      {recentAction?.kind === 'added' && (
-        <div className="mx-3 mt-2"><Banner kind="success">{`✓ ${symbolLabel(recentAction)} 추가됨`}</Banner></div>
-      )}
+      {/* Collection feedback is separate from the quick-add form's undo notice. */}
       {recentAction?.kind === 'caught_up_one' && (
         <div className="mx-3 mt-2">
           <Banner kind={recentAction.error ? 'error' : 'success'}>{formatCaughtUpOneMessage(recentAction)}</Banner>

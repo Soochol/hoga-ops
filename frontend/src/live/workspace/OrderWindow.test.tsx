@@ -694,7 +694,8 @@ describe('호가 주문', () => {
         expect(screen.getByTestId('compare-order')).toHaveTextContent(`체결강도${index * 50}%`);
         expect(screen.getByTestId('compare-order').querySelectorAll('.order-info')[1]).toHaveTextContent(`${price.toLocaleString('ko-KR')}${index * 7}`);
         expect(screen.getByTestId('compare-book')).toHaveTextContent(price.toLocaleString('ko-KR'));
-        expect(book.getByTestId('book-summary').textContent).toBe(within(orderSummary).getByTestId('book-summary').textContent);
+        expect(book.getByTestId('book-summary').querySelector('.book-summary-page')?.textContent)
+          .toBe(within(orderSummary).getByTestId('book-summary').querySelector('.book-summary-page')?.textContent);
       }
       expect(mock.command).not.toHaveBeenCalled();
       view.unmount();
@@ -1153,6 +1154,7 @@ describe('호가 주문', () => {
     fireEvent.click(screen.getByRole('button', { name: '종목 상세 정보' }));
     const summary = within(screen.getByRole('dialog', { name: '종목 상세 정보' })).getByTestId('book-summary');
     const summaryContent = within(summary);
+    expect(summaryContent.queryByText('정보', { exact: true })).not.toBeInTheDocument();
     expect(summaryContent.queryByText('매수 가능')).not.toBeInTheDocument();
     expect(summaryContent.queryByText('매도 가능')).not.toBeInTheDocument();
     expect(summaryContent.getByText('KRX종가')).toBeInTheDocument();
@@ -1288,6 +1290,18 @@ describe('호가 주문', () => {
     expect(item.textContent).toBe('67,20070');
     fireEvent.keyDown(item, { key: 'Escape' });
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it.each(['BUY', 'SELL'] as const)('%s 주문 칸은 처리 중에도 수량만 표시하고 드래그 잠금은 유지한다', side => {
+    mock.orders = [{ ...order(), side, status: 'PENDING_CANCEL' }];
+    show();
+    const label = side === 'BUY' ? '매수' : '매도';
+    const quantity = screen.getByLabelText(`${label} 67,200원 주문`, { exact: true });
+    expect(quantity).toHaveTextContent(/^70$/);
+    expect(quantity).toHaveClass('order-quantity-blocked');
+    expect(quantity).not.toHaveAttribute('data-drag-order');
+    fireEvent.contextMenu(quantity.closest('button')!, { clientX: 100, clientY: 100 });
+    expect(screen.getByRole('menuitem', { name: '주문 1 · 70주' })).toBeDisabled();
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('키보드 단축키는 주문을 전송하거나 수량·금액 프리셋을 선택하지 않는다', () => {

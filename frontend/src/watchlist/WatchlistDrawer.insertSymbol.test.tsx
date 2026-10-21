@@ -16,7 +16,10 @@ import * as client from '../api/client';
 
 vi.mock('../capture/SymbolSearch', () => ({
   SymbolSearch: ({ onChange }: { onChange: (h: unknown) => void }) => (
+    <>
     <button onClick={() => onChange({ code: '035420', name: '네이버' })}>pick</button>
+    <button onClick={() => onChange({ code: '035720', name: '카카오' })}>pick-next</button>
+    </>
   ),
 }));
 
@@ -59,10 +62,9 @@ async function serverStateChangesTo(qc: QueryClient, data: watchlistApi.Watchlis
   await act(async () => { await qc.refetchQueries({ queryKey: ['watchlist'] }); });
 }
 
-/** 검색 팝오버에서 종목을 고르고 제출한다. */
+/** 검색 결과를 고르면 즉시 추가한다. */
 function pickAndSubmit() {
   fireEvent.click(screen.getByText('pick'));
-  fireEvent.click(screen.getByRole('button', { name: /＋ 종목 추가/ }));
 }
 
 describe('WatchlistDrawer — 행 우클릭으로 자리 지정 종목 추가', () => {
@@ -118,8 +120,40 @@ describe('WatchlistDrawer — 행 우클릭으로 자리 지정 종목 추가', 
     fireEvent.contextMenu(await screen.findByTestId('watchlist-memo-m_0000000a'));
     fireEvent.click(screen.getByTestId('watchlist-menu-memo-fill-symbol'));
     pickAndSubmit();
-    await waitFor(() => expect(screen.getByText('boom')).toBeInTheDocument());
+    expect(await screen.findByRole('alert')).toHaveTextContent('종목을 추가하지 못했습니다. boom');
     expect(removeMemo).not.toHaveBeenCalled();
+  });
+
+  it('빈칸 교체 후 팝오버를 유지하고 다음 종목을 교체한 행 바로 뒤에 추가한다', async () => {
+    let state = structuredClone(DATA);
+    const add = vi.spyOn(watchlistApi, 'addMember').mockImplementation(async (folderId, code, at) => {
+      const position = at ?? state.entries.length;
+      state = {
+        ...state,
+        entries: [...state.entries.map(entry => ({ ...entry, order: entry.order >= position ? entry.order + 1 : entry.order })),
+          { ...ENTRIES[0], folder_id: folderId, code, name: code, order: position }],
+        memos: state.memos.map(memo => ({ ...memo, order: memo.order >= position ? memo.order + 1 : memo.order })),
+      };
+      return state.entries.at(-1)!;
+    });
+    vi.spyOn(watchlistApi, 'removeMemo').mockImplementation(async id => {
+      const removed = state.memos.find(memo => memo.id === id)!;
+      state = { ...state, memos: [], entries: state.entries.map(entry => ({
+        ...entry, order: entry.order > removed.order ? entry.order - 1 : entry.order,
+      })) };
+    });
+    renderPanel();
+    vi.spyOn(watchlistApi, 'getWatchlist').mockImplementation(async () => state);
+    fireEvent.contextMenu(await screen.findByTestId('watchlist-memo-m_0000000a'));
+    fireEvent.click(screen.getByTestId('watchlist-menu-memo-fill-symbol'));
+    pickAndSubmit();
+    await screen.findByRole('button', { name: '실행 취소' });
+    await waitFor(() => expect(screen.queryByTestId('watchlist-memo-m_0000000a')).toBeNull());
+    expect(screen.getByRole('dialog', { name: '종목 추가' })).toBeInTheDocument();
+    fireEvent.click(screen.getByText('pick-next'));
+    await waitFor(() => expect(add).toHaveBeenNthCalledWith(2, 'f_0000000a', '035720', 2));
+    expect(state.entries.sort((a, b) => a.order - b.order).map(entry => entry.code))
+      .toEqual(['005930', '035420', '035720', '000660']);
   });
 
   it('등락률 정렬 그룹에선 삽입 항목이 아예 안 뜬다 — 화면 순서 ≠ 저장 순서', async () => {

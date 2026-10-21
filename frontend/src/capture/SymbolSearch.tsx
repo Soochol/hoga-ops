@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSymbols, useSymbolSearch, SYMBOLS_QUERY_KEY } from './useSymbols';
 import { useCombobox } from '../util/useCombobox';
@@ -18,6 +18,13 @@ function formatRelativeShort(ms: number): string {
 export interface SymbolSearchProps {
   value: SymbolHit | null;
   onChange: (hit: SymbolHit | null) => void;
+  disabled?: boolean;
+  /** Clear the query after an action even if value stayed null in a batched update. */
+  resetKey?: number;
+  optionState?: (hit: SymbolHit) => 'added' | undefined;
+  /** Inspect an existing membership without issuing another add. */
+  onAddedOptionClick?: (hit: SymbolHit) => void;
+  resultsLayout?: 'overlay' | 'inline';
 }
 
 // 상태 뱃지는 **경고일 때만** 뜬다. `fresh`(정상)·`loading`(첫 fetch 동안의 순간 상태)은
@@ -48,7 +55,7 @@ const STATUS_TITLE: Record<SymbolsCacheStatus, string> = {
   unavailable: '사용 불가',
 };
 
-export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
+export function SymbolSearch({ value, onChange, disabled = false, resetKey = 0, optionState, onAddedOptionClick, resultsLayout = 'overlay' }: SymbolSearchProps) {
   const { data } = useSymbols();
   const queryClient = useQueryClient();
   const cacheStatus: SymbolsCacheStatus = data?.status ?? 'loading';
@@ -89,17 +96,25 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     await queryClient.invalidateQueries({ queryKey: SYMBOLS_QUERY_KEY });
   };
   const [text, setText] = useState(value ? `${value.name} ${value.code}` : '');
+  const editedAtResetKey = useRef<number | null>(null);
 
   const query = text.trim();
   const hits = useSymbolSearch(query, 20);
+  const selectableHits = optionState ? hits.filter(hit => optionState(hit) !== 'added') : hits;
 
   // Sync displayed text when parent resets selection (e.g. form reset after Start).
   useEffect(() => {
+    // Typing invalidates the parent's selection, but that null must not erase
+    // the query just entered. An explicit action reset still clears it.
+    const keepQuery = value === null && editedAtResetKey.current === resetKey;
+    editedAtResetKey.current = null;
+    if (keepQuery) return;
     if (value === null) setText('');
     else setText(`${value.name} ${value.code}`);
-  }, [value]);
+  }, [value, resetKey]);
 
   const select = (hit: SymbolHit) => {
+    if (disabled || optionState?.(hit) === 'added') return;
     onChange(hit);
     setText(`${hit.name} ${hit.code}`);
     combo.setOpen(false);
@@ -107,7 +122,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
 
   const combo = useCombobox<SymbolHit>({
     query: text,
-    setQuery: (q) => { setText(q); onChange(null); },
+    setQuery: (q) => { editedAtResetKey.current = resetKey; setText(q); onChange(null); },
     // Gate items to mirror the original `dropdownVisible` Enter guard: an empty
     // query must not let Enter select hits[0] (filterSymbols('') returns all
     // symbols). When unavailable, hits is already [] so no extra gate is needed.
@@ -116,7 +131,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
     // status === 'unavailable' ⇒ empty symbol cache ⇒ hits === [] (see
     // hoga/api/symbols.py; the disk-cache-masking case surfaces as 'stale', not
     // 'unavailable'). If that invariant ever changes, restore the cacheStatus term.
-    items: query.length >= 1 ? hits : [],
+    items: query.length >= 1 && !disabled ? selectableHits : [],
     onSelect: (hit) => select(hit),
     onEnterEmpty: () => promoteUnverifiedCode(),
   });
@@ -152,6 +167,8 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
           ref={inputRef}
           type="text"
           {...combo.inputProps}
+          disabled={disabled}
+          onFocus={() => { if (value === null) combo.inputProps.onFocus(); }}
           placeholder="종목명 또는 6자리 코드"
           // `min-w-0`: input 은 intrinsic width 를 가져서, flex item 의 기본
           // `min-width:auto` 아래선 **부모보다 좁아지지 않는다**. 좁은 컨테이너
@@ -208,7 +225,7 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
         <div
           role="listbox"
           style={{ boxShadow: 'var(--shadow-overlay)' }}
-          className="absolute z-10 top-full left-0 right-0 mt-1 bg-bg-card border-border-strong border rounded-lg max-h-80 overflow-y-auto"
+          className={`${resultsLayout === 'inline' ? 'max-h-48' : 'absolute z-10 top-full left-0 right-0 max-h-80'} mt-1 bg-bg-card border-border-strong border rounded-lg overflow-y-auto`}
         >
           {isEmpty ? (
             // F3: empty state — tells the user the input is processed but matched nothing.
@@ -225,8 +242,10 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
               )}
             </div>
           ) : (
-            hits.map((h, i) => (
-              <SymbolRow key={h.code} hit={h} highlighted={i === combo.highlightedIndex} onClick={() => select(h)} />
+            hits.map((h) => (
+              <SymbolRow key={h.code} hit={h} highlighted={selectableHits[combo.highlightedIndex]?.code === h.code}
+                disabled={disabled || optionState?.(h) === 'added'} added={optionState?.(h) === 'added'}
+                onAddedClick={!disabled && onAddedOptionClick ? () => onAddedOptionClick(h) : undefined} onClick={() => select(h)} />
             ))
           )}
         </div>
@@ -235,7 +254,9 @@ export function SymbolSearch({ value, onChange }: SymbolSearchProps) {
   );
 }
 
-function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted: boolean; onClick: () => void }) {
+function SymbolRow({ hit, highlighted, onClick, disabled, added, onAddedClick }: {
+  hit: SymbolHit; highlighted: boolean; onClick: () => void; disabled?: boolean; added?: boolean; onAddedClick?: () => void;
+}) {
   const countsReady = (hit.capture_counts_status ?? 'ready') === 'ready';
   const breakdown = countsReady
     ? `완결 ${hit.captured_breakdown.complete} · 부분 ${hit.captured_breakdown.source_partial} · 미완결 ${hit.captured_breakdown.client_incomplete} · 손상 ${hit.captured_breakdown.invalid}`
@@ -247,10 +268,11 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
     <div
       role="option"
       aria-selected={highlighted}
+      aria-disabled={disabled || undefined}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       style={{ background: highlighted ? 'var(--tint-selection)' : 'transparent' }}
-      className="grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-sm px-sm cursor-pointer"
+      className={`grid grid-cols-[1fr_auto_auto_auto] gap-2.5 items-center py-sm px-sm ${disabled ? 'opacity-50' : 'cursor-pointer'}`}
     >
       {/* `truncate` + `min-w-0`: 이 행은 grid 이고 종목명만 `1fr` 이라, 좁은
           컨테이너에서 이 컬럼이 min-content 로 붕괴한다. **한글의 min-content 는 한
@@ -267,7 +289,9 @@ function SymbolRow({ hit, highlighted, onClick }: { hit: SymbolHit; highlighted:
         style={{ color: countsReady && hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dim)' }}
         className="font-medium text-xs font-data tabular-nums"
       >
-        {countText}
+        {added && onAddedClick ? <button type="button" aria-disabled={false}
+          aria-label={`${hit.name} 기존 행 보기`} className="underline" onClick={onAddedClick}>추가됨</button>
+          : added ? '추가됨' : countText}
       </span>
     </div>
   );

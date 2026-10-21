@@ -132,6 +132,26 @@ def test_search_name_is_case_insensitive(monkeypatch, tmp_path):
     assert [h.code for h in symbols.search("cj", limit=5)] == ["001040"]
 
 
+@pytest.mark.parametrize(("query", "expected"), [
+    ("0158S0", ["0158S0"]), ("0158s", ["0158S0"]),
+    ("엘리스", ["0158S0"]), ("q500", ["Q500093"]),
+    ("q", ["Q500093", "012345"]), ("missing", []),
+])
+def test_search_alphanumeric_codes_and_english_names(monkeypatch, tmp_path, query, expected):
+    _stub_fetch(monkeypatch, kospi=[("0158S0", "엘리스"), ("Q500093", "테스트 ETN"),
+                                  ("012345", "Q서비스")], kosdaq=[])
+    asyncio.run(symbols.refresh(path=tmp_path / "sm.json", data_dir=tmp_path))
+    assert [h.code for h in symbols.search(query)] == expected
+
+
+def test_search_exact_code_precedes_prefix_and_name_matches(monkeypatch, tmp_path):
+    _stub_fetch(monkeypatch, kospi=[("Q500093", "ETN"), ("000001", "Q50009"),
+                                  ("Q50009", "주식 Q50009")], kosdaq=[])
+    asyncio.run(symbols.refresh(path=tmp_path / "sm.json", data_dir=tmp_path))
+    assert [h.code for h in symbols.search("q50009", limit=1)] == ["Q50009"]
+    assert [h.code for h in symbols.search("q50009")] == ["Q50009", "Q500093", "000001"]
+
+
 def test_search_name_case_insensitive_ordering(monkeypatch, tmp_path):
     """대소문자 무시 시에도 접두사 우선 + 이름 길이순 정렬이 유지된다."""
     _stub_fetch(
