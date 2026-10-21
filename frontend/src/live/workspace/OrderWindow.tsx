@@ -47,6 +47,7 @@ import { useOrderQuantity } from './useOrderQuantity';
 import { newOrderIssue, orderFailure, type OrderNotice } from './orderFeedback';
 import { OrderStatusBar, type OrderReceipt } from './OrderStatusBar';
 import { notifyOrderReceiptAccepted, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
+import { useOrderFillSound } from './useOrderFillSound';
 import './OrderWindow.css';
 
 const fmt = (n: number | string | null | undefined) => n == null ? '—' : Number(n).toLocaleString('ko-KR');
@@ -81,8 +82,8 @@ export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSy
   const account = selectedAccount ?? accounts.data?.accounts[0]?.account_seq ?? 0;
   if (selectedAccount === null && accounts.data?.accounts.length) selectAccount(accounts.data.accounts[0].account_seq);
   useEffect(() => {
-    if (preferences.orderReceiptSound) return subscribeOrderReceiptSoundRecovery();
-  }, [preferences.orderReceiptSound]);
+    if (preferences.orderReceiptSound || preferences.buyFillSound || preferences.sellFillSound) return subscribeOrderReceiptSoundRecovery();
+  }, [preferences.orderReceiptSound, preferences.buyFillSound, preferences.sellFillSound]);
   const [quantity, setQuantity] = useOrderQuantity(code, account, preferences.rememberQuantity, preferences.quantityPresets[0]);
   const [profitAsPercent, setProfitAsPercent] = useState(false);
   function applySettings(next: OrderWindowSettings) {
@@ -106,6 +107,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
 }) {
   const client = useQueryClient();
   const state = useTradingState(account, code, mode);
+  useOrderFillSound(account, code, state.data, preferences.buyFillSound, preferences.sellFillSound);
   const activeAccount = accounts.data?.accounts.find(item => item.account_seq === account);
   const [chosenRoute, chooseRoute] = useState<'SOR' | 'KRX' | 'NXT'>('SOR');
   const routes = activeAccount?.routes;

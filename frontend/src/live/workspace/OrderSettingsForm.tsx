@@ -1,7 +1,7 @@
 import { useId, useState, type ReactNode } from 'react';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
   type OrderPresets, type OrderWindowSettings } from '../../state/orderWindowSettings';
-import { playOrderReceiptSound, prepareOrderReceiptSound } from './orderReceiptSound';
+import { playOrderReceiptSound, playOrderSound, prepareOrderReceiptSound } from './orderReceiptSound';
 import '../settings/SettingsEditor.css';
 import { SettingsRow, ToggleSwitch } from '../settings/SettingsRow';
 import './OrderSettingsForm.css';
@@ -69,6 +69,19 @@ export function OrderSettingsForm({ draft, onChange, busy }: {
             setPreviewFailed(!await playOrderReceiptSound());
           }}>소리 들어보기</button>
           } />
+        {(['BUY', 'SELL'] as const).map(side => {
+          const key = side === 'BUY' ? 'buyFillSound' : 'sellFillSound';
+          const label = side === 'BUY' ? '매수 체결 소리' : '매도 체결 소리';
+          return <OrderSettingsToggleRow key={key} label={label} checked={draft[key]} disabled={busy}
+            onChange={enabled => {
+              if (enabled) prepareOrderReceiptSound();
+              onChange({ ...draft, [key]: enabled });
+            }} actions={<button type="button" className="ui-choice" disabled={busy} aria-label={`${label} 들어보기`}
+              title={side === 'BUY' ? '소프트 코드 · 0.5초' : '레이더 · 0.5초'} onClick={async () => {
+                setPreviewFailed(false);
+                setPreviewFailed(!await playOrderSound(side === 'BUY' ? 'buy-fill' : 'sell-fill'));
+              }}>소리 들어보기</button>} />;
+        })}
         {previewFailed && <p role="status" className="text-xs text-fg-dim">소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.</p>}
       </OrderSettingsSection>
       {!valid && <p role="alert" className="mt-3 text-xs text-error">프리셋은 허용 범위의 양의 정수만 저장됩니다.</p>}

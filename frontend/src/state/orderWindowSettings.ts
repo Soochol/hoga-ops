@@ -7,6 +7,8 @@ export interface OrderWindowSettings {
   amountPresets: OrderPresets;
   showAveragePrice: boolean;
   orderReceiptSound: boolean;
+  buyFillSound: boolean;
+  sellFillSound: boolean;
   rememberQuantity: boolean;
 }
 
@@ -14,7 +16,8 @@ export const MILLION_WON = 1_000_000;
 export const MAX_ORDER_QUANTITY = 1_000_000_000;
 export const MAX_AMOUNT_MILLIONS = 1_000_000;
 export const DEFAULT_ORDER_SETTINGS: OrderWindowSettings = {
-  unit: 'quantity', quantityPresets: [10, 50, 100], amountPresets: [1, 5, 10], showAveragePrice: true, orderReceiptSound: false, rememberQuantity: false,
+  unit: 'quantity', quantityPresets: [10, 50, 100], amountPresets: [1, 5, 10], showAveragePrice: true,
+  orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false,
 };
 
 export const validOrderInput = (value: number, unit: OrderInputUnit) => Number.isSafeInteger(value)
@@ -24,6 +27,8 @@ export function validOrderSettings(value: OrderWindowSettings): boolean {
   return (value.unit === 'quantity' || value.unit === 'amount')
     && typeof value.showAveragePrice === 'boolean'
     && typeof value.orderReceiptSound === 'boolean'
+    && typeof value.buyFillSound === 'boolean'
+    && typeof value.sellFillSound === 'boolean'
     && typeof value.rememberQuantity === 'boolean'
     && value.quantityPresets.length === 3 && value.amountPresets.length === 3
     && value.quantityPresets.every(n => validOrderInput(n, 'quantity'))
@@ -43,6 +48,8 @@ export function normalizeOrderSettings(raw: unknown): OrderWindowSettings {
     amountPresets: presets(value.amountPresets, 'amount', DEFAULT_ORDER_SETTINGS.amountPresets),
     showAveragePrice: typeof value.showAveragePrice === 'boolean' ? value.showAveragePrice : DEFAULT_ORDER_SETTINGS.showAveragePrice,
     orderReceiptSound: typeof value.orderReceiptSound === 'boolean' ? value.orderReceiptSound : DEFAULT_ORDER_SETTINGS.orderReceiptSound,
+    buyFillSound: typeof value.buyFillSound === 'boolean' ? value.buyFillSound : DEFAULT_ORDER_SETTINGS.buyFillSound,
+    sellFillSound: typeof value.sellFillSound === 'boolean' ? value.sellFillSound : DEFAULT_ORDER_SETTINGS.sellFillSound,
     rememberQuantity: typeof value.rememberQuantity === 'boolean' ? value.rememberQuantity : DEFAULT_ORDER_SETTINGS.rememberQuantity,
   };
 }

@@ -52,6 +52,26 @@ function delayedResume(audio: { state: string }, milliseconds: number): () => Pr
 }
 
 describe('주문접수 딩동과 복구', () => {
+  it('매수·매도는 다른 버퍼로 재생하고 같은 체결의 여러 창·후퇴 이벤트를 중복 재생하지 않는다', async () => {
+    const audio = await initialized();
+    sound.notifyOrderFill(1, '005930', 'fill-a', 'BUY', 30);
+    sound.notifyOrderFill(1, '005930', 'fill-a', 'BUY', 30);
+    sound.notifyOrderFill(1, '005930', 'fill-a', 'BUY', 20);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(audio.sources).toHaveLength(1);
+    const buy = audio.sources[0].buffer!;
+    expect(buy.duration).toBeCloseTo(0.5, 3);
+    sound.notifyOrderFill(1, '005930', 'fill-a', 'BUY', 100);
+    sound.notifyOrderFill(1, '005930', 'fill-b', 'SELL', 30);
+    sound.notifyOrderFill(2, '005930', 'fill-a', 'BUY', 30);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(audio.sources).toHaveLength(4);
+    expect(audio.sources[1].buffer).toBe(buy);
+    expect(audio.sources[2].buffer).not.toBe(buy);
+    expect(audio.sources[2].buffer!.duration).toBeCloseTo(0.5, 3);
+    expect(audio.sources[2].buffer!.getChannelData(0)).not.toEqual(buy.getChannelData(0));
+    expect(audio.sources[3].buffer).toBe(buy);
+  });
   it.each(['cold', 'suspended', 'interrupted'])('%s 오디오가 650ms에 준비돼도 첫 접수음을 한 번 재생한다', async state => {
     if (state === 'cold') {
       vi.stubGlobal('AudioContext', class extends FakeAudioContext {
