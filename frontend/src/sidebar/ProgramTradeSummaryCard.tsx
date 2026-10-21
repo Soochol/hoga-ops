@@ -9,7 +9,6 @@ import type { DailyProgramTradePoint } from '../api/liveDailyProgramTrade';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
 import { InvestorDailySummaryCell } from '../live/workspace/InvestorDailySummaryCell';
-import { InvestorDailyNumber } from '../live/workspace/InvestorDailyNumber';
 import { formatAmount } from './InvestorTrendEstimateCardHelpers';
 import { useProgramTradeDisplayStore, type ProgramTradeMeasure, type ProgramDailyDisplay } from '../state/programTradeDisplay';
 import { type SparkPoint, buildTimeGapSegments, pickProgramTradePoint } from './ProgramTradeSummaryCardHelpers';
@@ -238,15 +237,15 @@ function ProgramDailySummary({
           {formatDailyDate(row.t_ms)}
         </th>
         {display === 'all'
-          ? <InvestorDailySummaryCell values={values} unit={unit} useK={useK} divided={false} showUnitSuffix={false} separateColumns />
-          : <ProgramDailyValueCell value={values[display]} side={display} format={format} amount={measure === 'amount'} />}
+          ? <InvestorDailySummaryCell values={values} unit={unit} useK={useK} divided={false} showUnitSuffix={false} separateColumns numberAlignment="right" />
+          : <ProgramDailyValueCell value={values[display]} side={display} format={format} />}
       </>,
     };
   }), [rows, display, measure, unit, useK, format]);
   const totalCells = useMemo(() => display === 'all'
-    ? <InvestorDailySummaryCell values={totals} unit={unit} useK={useK} foot divided={false} showUnitSuffix={false} separateColumns />
-    : <ProgramDailyValueCell value={totals[display]} side={display} format={format} amount={measure === 'amount'} foot />,
-  [display, totals, unit, useK, format, measure]);
+    ? <InvestorDailySummaryCell values={totals} unit={unit} useK={useK} foot divided={false} showUnitSuffix={false} separateColumns numberAlignment="right" />
+    : <ProgramDailyValueCell value={totals[display]} side={display} format={format} foot />,
+  [display, totals, unit, useK, format]);
   useEffect(() => {
     if (!followCursor || cursorDate === null) return;
     const targetKey = `${span}:${cursorDate}`;
@@ -355,17 +354,16 @@ function programDailyValues(row: DailyProgramTradePoint, measure: ProgramTradeMe
 }
 
 
-function ProgramDailyValueCell({ value, side, format, amount, foot = false }: {
+function ProgramDailyValueCell({ value, side, format, foot = false }: {
   value: number | null;
   side: ProgramTradeMetric;
   format: (value: number | null) => string;
-  amount: boolean;
   foot?: boolean;
 }) {
   return <td className={`whitespace-nowrap py-1 text-right ${
     foot ? 'border-t border-border bg-bg-card font-medium' : ''
   } ${programValueClass(side, value)}`}>
-    <InvestorDailyNumber text={formatProgramDailyValue(value, side, format)} amount={amount} />
+    {formatProgramDailyValue(value, side, format)}
   </td>;
 }
 

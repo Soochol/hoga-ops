@@ -34,7 +34,17 @@ async function dailyMetrics(page: Page) {
       heights: rows.map(row => row.getBoundingClientRect().height),
       cells: rows.map(row => row.children.length),
       right: rows.map(row => Array.from(row.querySelectorAll('td')).map(cell => cell.getBoundingClientRect().right)),
-      decimals: rows.map(row => Array.from(row.querySelectorAll('td .inline-grid > span')).map(span => span.getBoundingClientRect().left)),
+      textEdges: rows.map(row => Array.from(row.querySelectorAll('td')).map(cell => {
+        const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+        const nodes: Node[] = [];
+        while (walker.nextNode()) if (walker.currentNode.textContent?.trim()) nodes.push(walker.currentNode);
+        const range = document.createRange();
+        range.setStart(nodes[0], 0);
+        const last = nodes[nodes.length - 1];
+        range.setEnd(last, last.textContent!.length);
+        return { textRight: range.getBoundingClientRect().right,
+          cellRight: cell.getBoundingClientRect().right - parseFloat(getComputedStyle(cell).paddingRight) };
+      })),
       font: getComputedStyle(rows[0].children[1]).fontSize };
   });
 }
@@ -59,14 +69,20 @@ test('daily program keeps one row and shares aligned columns across dates and to
     expect(sample.font).toBe(samples[0].font);
   }
   await page.getByRole('button', { name: '금액', exact: true }).click();
-  await resize(page, 320);
-  for (const display of ['모두', '순매수', '총매수', '총매도']) {
-    await page.getByRole('button', { name: display, exact: true }).click();
-    const sample = await dailyMetrics(page);
-    expect(sample.fits).toBe(true);
-    expect(sample.scroll).toBe(false);
-    expect(sample.decimals[0]).toHaveLength(display === '모두' ? 3 : 1);
-    for (const row of sample.decimals) expect(row).toEqual(sample.decimals[0]);
+  for (const width of [720, 560, 400, 320]) {
+    await resize(page, width);
+    for (const display of ['모두', '순매수', '총매수', '총매도']) {
+      await page.getByRole('button', { name: display, exact: true }).click();
+      const sample = await dailyMetrics(page);
+      expect(sample.fits).toBe(true);
+      expect(sample.scroll).toBe(false);
+      expect(sample.textEdges).toHaveLength(4);
+      for (const row of sample.textEdges) {
+        expect(row).toHaveLength(display === '모두' ? 3 : 1);
+        for (const cell of row) expect(cell.textRight).toBeCloseTo(cell.cellRight, 1);
+      }
+      if (display === '모두') await page.screenshot({ path: info.outputPath(`program-daily-amount-${width}.png`) });
+    }
   }
   await info.attach('resize-metrics', { body: JSON.stringify(samples), contentType: 'application/json' });
 });
