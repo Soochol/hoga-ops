@@ -27,7 +27,7 @@ describe('RailShell primitives', () => {
     // 배경 통일 완결) — 톤 스텝 0이므로 border-l 로 경계를 되살리지 않는다.
     expect(drawer).not.toHaveClass('border-l');
     expect(drawer).toHaveClass('bg-bg');
-    expect(drawer).toHaveStyle({ width: 'var(--active-rail-panel-w, var(--watchlist-panel-w))' });
+    expect(drawer).toHaveStyle({ width: 'var(--watchlist-panel-w)' });
   });
 
   it('renders drawer header, section, and body wrappers', () => {

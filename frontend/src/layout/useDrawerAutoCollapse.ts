@@ -35,8 +35,7 @@ export function useDrawerAutoCollapse(): void {
   useEffect(() => {
     const check = () => {
       const { activePanel, setActivePanel } = useRightRailStore.getState();
-      const widthToken = activePanel === 'watchlist' || activePanel === 'heatmap' ? '--stock-panel-w' : '--watchlist-panel-w';
-      const threshold = readTokenPx('--app-floor-min-w') + readTokenPx(widthToken);
+      const threshold = readTokenPx('--app-floor-min-w') + readTokenPx('--watchlist-panel-w');
       if (window.innerWidth >= threshold) {
         yielded.current = false;
         return;

@@ -28,7 +28,7 @@ export function RailDrawer({
       onKeyDown={onKeyDown}
       data-testid={testId}
       className={`ui-rail-drawer h-full min-w-0 overflow-hidden bg-bg ${className}`.trim()}
-      style={{ width: 'var(--active-rail-panel-w, var(--watchlist-panel-w))' }}
+      style={{ width: 'var(--watchlist-panel-w)' }}
     >
       <div className="flex h-full flex-col">{children}</div>
     </aside>

@@ -53,7 +53,7 @@ for (const fontSize of [16,20]) for (const kind of ['sector','indices','volume',
     }
     if (kind === 'alerts') await expect(page.locator('.signal-alert-row')).toHaveCount(2);
     if (kind === 'indices') await expect(page.locator('.major-indices-value').first()).toHaveText('123,456.78');
-    for (const width of [900,360,280,240]) {
+    for (const width of [900,360,320,280,240]) {
       await page.evaluate(width => (window as unknown as HarnessWindow).panels.resize(width), width * fontSize / 16);
       const selectors:Record<Kind,string> = { sector:'.sector-ranking-sectors .sector-ranking-row > :last-child', indices:'.major-indices-value, .major-indices-percent',
         volume:'[data-testid="volume-distribution-price-axis"] > span:not(.volume-distribution-axis-budget)', pattern:'.pattern-match-figures > span', alerts:'.signal-alert-row > :nth-child(2), .signal-alert-quantity > :last-child' };

@@ -76,7 +76,7 @@ for (const fontSize of [16, 20]) {
     await first.click();
     await expect(first).toHaveAttribute('aria-current', 'true');
     const scale = fontSize / 16;
-    for (const [width, gap, padding] of [[360, 8, 12], [280, 4, 8], [240, 2, 4]]) {
+    for (const [width, gap, padding] of [[360, 8, 12], [320, 4, 8], [280, 4, 8], [240, 2, 4]]) {
       await page.addStyleTag({ content: `:root { --watchlist-panel-w: ${width / 16}rem !important; }` });
       await expect.poll(() => geometry(first).then(value => value.gap)).toBe(gap * scale);
       const [a, b] = await Promise.all([geometry(first), geometry(second)]);
@@ -91,7 +91,7 @@ for (const fontSize of [16, 20]) {
         expect(value.align).toBe('right');
       }
       expect(await panel.getByTestId('ranking-scroll').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-      if (width === 280) await panel.screenshot({ path: `/tmp/hoga-ranking-default-${fontSize}.png` });
+      if (width === 320) await panel.screenshot({ path: `/tmp/hoga-ranking-default-${fontSize}.png` });
     }
     await cloneMatches(page, second);
     await panel.getByRole('button', { name: '등락률 정렬', exact: true }).click();

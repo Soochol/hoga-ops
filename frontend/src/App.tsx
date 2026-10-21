@@ -108,8 +108,7 @@ export default function App() {
   // fixed rail. Keeping this as a nested grid prevents panel content from
   // inflating the chart row and returns the retired side-menu width to main.
   const { pathname } = useLocation();
-  const panelWidth = activePanel === 'watchlist' || activePanel === 'heatmap' ? 'var(--stock-panel-w)' : 'var(--watchlist-panel-w)';
-  const contentCols = `1fr${activePanel ? ' var(--active-rail-panel-w)' : ''} var(--rail-w)`;
+  const contentCols = `1fr${activePanel ? ' var(--watchlist-panel-w)' : ''} var(--rail-w)`;
   const staticTitle = PAGE_OWNED_TITLE_ROUTES.has(pathname)
     ? null
     : STATIC_ROUTE_TITLES.get(pathname) ?? 'Ticklane';
@@ -149,7 +148,6 @@ export default function App() {
       // 셸이 항상 뷰포트보다 넓어진다. 이제 폭은 #root 를 따르고 바닥만 min-width 가 건다.
       className={`grid h-full min-h-app-floor ${['/market', '/heatmap', '/sentiment'].includes(pathname) ? 'responsive-board-shell min-w-0' : 'min-w-app-floor'} ${pathname === '/live' ? 'live-app-shell' : ''} overflow-hidden`}
       style={{
-        ...{ '--active-rail-panel-w': panelWidth },
         // 열 기반 셸(2026-07-15): 우측 패널(드로어+고정 레일)이 화면 상단~하단 full-height
         // 열로 서고, 왼쪽 스택(TopNav/페이지/하단 시장지표 바)이 나머지 1fr 을 세로로 채운다.
         // 상단 헤더는 우측 패널 위 코너를 양보한다(우측 패널이 화면 맨 위까지 올라옴).
