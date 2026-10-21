@@ -107,7 +107,7 @@ describe('RankingDrawer', () => {
     fireEvent.click(await screen.findByRole('button', { name: '51~150위 더 보기' }));
     await screen.findByRole('button', { name: '151~250위 더 보기' });
     expect(screen.getByText('순매수 금액 · 상위 150 · 30초 갱신')).toBeInTheDocument();
-    expect(screen.getAllByText('+10.00억')).toHaveLength(2);
+    expect(screen.getAllByText('+10억')).toHaveLength(2);
     expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=150');
   });
 
@@ -233,7 +233,7 @@ describe('RankingDrawer', () => {
       fireEvent.click(sort);
       fireEvent.click(sort);
       fireEvent.click(screen.getByRole('button', { name: label }));
-      expect(await screen.findByText('+642.60억')).toBeInTheDocument();
+      expect(await screen.findByText('+643억')).toBeInTheDocument();
       expect(screen.getByText('장중 추정 · 순매수 금액 · 상위 100 · 30초 갱신')).toBeInTheDocument();
       expect(screen.getByText('순위: 거래소 지정 미지원 · 시세: 통합')).toBeInTheDocument();
       expect(screen.getAllByRole('button', { name: /차트 열기/ })[0]).toHaveTextContent('HDC현대산업개발');
@@ -244,7 +244,7 @@ describe('RankingDrawer', () => {
       expect(liveNavigate.activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
       act(() => { dnd.onDragStart!(DRAG_START); });
       const ghost = within(screen.getByTestId('ranking-drag-ghost'));
-      expect(ghost.getByTitle(`${label} 순매수 +215.72억`)).toBeInTheDocument();
+      expect(ghost.getByTitle(`${label} 순매수 +216억`)).toBeInTheDocument();
       act(() => { dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } }); });
       fireEvent.change(screen.getByRole('combobox', { name: '시장' }), { target: { value: 'kosdaq' } });
       fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
@@ -253,7 +253,7 @@ describe('RankingDrawer', () => {
       ))).toBe(true));
       fireEvent.click(screen.getByRole('button', { name: '거래량' }));
       await screen.findByText('삼성전자');
-      expect(screen.queryByText('+642.60억')).not.toBeInTheDocument();
+      expect(screen.queryByText('+643억')).not.toBeInTheDocument();
       expect(screen.queryByText(/장중 추정/)).not.toBeInTheDocument();
     },
   );
@@ -271,7 +271,7 @@ describe('RankingDrawer', () => {
     renderDrawer();
     await screen.findByText('삼성전자');
     fireEvent.click(screen.getByRole('button', { name: '프로그램' }));
-    expect(await screen.findByText('+644.99억')).toBeInTheDocument();
+    expect(await screen.findByText('+645억')).toBeInTheDocument();
     expect(screen.getByText('순매수 금액 · 상위 50 · 30초 갱신')).toBeInTheDocument();
     expect(screen.getByText('71,200')).toBeInTheDocument();
     expect(screen.getByText('+5.79%')).toBeInTheDocument();
@@ -279,7 +279,7 @@ describe('RankingDrawer', () => {
     fireEvent.click(screen.getByTestId('ranking-row-005930'));
     expect(liveNavigate.activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
     act(() => { dnd.onDragStart!(DRAG_START); });
-    expect(within(screen.getByTestId('ranking-drag-ghost')).getByText('+634.79억')).toBeInTheDocument();
+    expect(within(screen.getByTestId('ranking-drag-ghost')).getByText('+635억')).toBeInTheDocument();
     act(() => { dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } }); });
     fireEvent.change(screen.getByRole('combobox', { name: '시장' }), { target: { value: 'kosdaq' } });
     await waitFor(() => expect(apiCall.mock.calls.some(([url]) => (
@@ -287,7 +287,7 @@ describe('RankingDrawer', () => {
     ))).toBe(true));
     fireEvent.click(screen.getByRole('button', { name: '거래대금' }));
     await screen.findByText('삼성전자');
-    expect(screen.queryByText('+644.99억')).not.toBeInTheDocument();
+    expect(screen.queryByText('+645억')).not.toBeInTheDocument();
   });
 
   it('resets percent sorting when entering program so net-buy leaders appear first', async () => {
@@ -303,7 +303,7 @@ describe('RankingDrawer', () => {
     expect(screen.getAllByRole('button', { name: /차트 열기/ })[0]).toHaveTextContent('HDC현대산업개발');
     expect(screen.queryByText('등락률 ↑ 낮은 순')).not.toBeInTheDocument();
     // 구버전/결측 금액이 실제 0억원처럼 보이지 않는다.
-    expect(screen.queryByText('+0.00억')).not.toBeInTheDocument();
+    expect(screen.queryByText('+0억')).not.toBeInTheDocument();
     expect(screen.getAllByTitle('프로그램 순매수 —')).toHaveLength(2);
   });
 
