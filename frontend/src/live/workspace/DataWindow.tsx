@@ -23,7 +23,8 @@ import { BrokerScrollArea } from './BrokerScrollArea';
 import { DataContext } from './DataContext';
 import { useOrderbookDeltaBadges } from '../../sidebar/orderbookDeltaBadges';
 import BookPanel from './BookPanel';
-import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
+import { resolveBookBaseline } from './bookDisplay';
+import { useRecentBookTrades } from './useRecentBookTrades';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import { TradeWindow } from './TradeWindow';
@@ -426,9 +427,10 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     () => (isSpot ? EMPTY_TRADE_SUMMARY : fillTradeSummaryFromQuote(latestTradeSummary(venueTrade), quote)),
     [isSpot, venueTrade, quote],
   );
-  // 체결 리스트: 버퍼 엔트리 1건에 체결 여러 개가 실린다. 최신이 위로 오도록
-  // 뒤에서부터 펼치고, 표시분(9행 — BookPanel 3열 바닥 정렬)보다 넉넉히 잡아 자른다.
-  const recentTrades = useMemo(() => isSpot ? [] : recentBookTrades(venueTrade, 24), [isSpot, venueTrade]);
+  // Seed the nine recent executions from the tape's shared REST cache, then
+  // merge the live tail. Current-day history must never leak into a past cursor.
+  const recentTrades = useRecentBookTrades({ code, date: todayKst, venue: effectiveVenue,
+    frames: venueTrade, enabled: !isSpot && activeSinglePrice === null });
   // 시간외 단일가 구간에는 **합성 체결**이 체결창을 채운다. WS 체결(0B)은 16:00 에
   // 끊기므로 `recentTrades` 는 그때부터 15:59 의 화석이고, 그것을 "지금 흐르는 체결"
   // 자리에 두면 시각이 안 보이는 만큼 조용히 거짓이 된다.

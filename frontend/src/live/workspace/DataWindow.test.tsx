@@ -16,6 +16,7 @@ import { useLiveOrderbookAtCursor } from '../../api/useLiveCursor';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 import { useWindowSettingsStore } from '../../state/windowSettings';
 import { useQuoteByCode, type LiveQuote } from '../../api/liveQuotes';
+import { useTradeHistory } from '../../api/tradeHistory';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
@@ -25,8 +26,8 @@ import * as cutoffProfile from '../useVolumeDistributionCutoffProfile';
 vi.mock('../../api/liveKrxPreviousClose', () => ({ useLiveKrxPreviousClose: () => ({ data: undefined }) }));
 vi.mock('../../api/programTradeTicks', () => ({ useProgramTradeHistory: () => ({ data: undefined,
   hasNextPage: false, isFetching: false, isError: false, isFetchNextPageError: false }) }));
-vi.mock('../../api/tradeHistory', () => ({ useTradeHistory: () => ({ data: undefined,
-  hasNextPage: false, isFetching: false, isError: false, isFetchNextPageError: false }) }));
+vi.mock('../../api/tradeHistory', () => ({ useTradeHistory: vi.fn(() => ({ data: undefined,
+  hasNextPage: false, isFetching: false, isError: false, isFetchNextPageError: false })) }));
 
 /** 훅 반환은 값이 아니라 **값 + 신선도**다(`LiveOrderbookSpotResult`). 이 파일의
  *  단언은 값에만 관심이 있으므로 감싸는 일을 한 곳에 모은다 — stale/error 를
@@ -477,6 +478,7 @@ describe('DataWindow — 10호가 스팟 모드 그룹 게이트 (크로스헤�
     });
     expect(screen.queryByTestId('data-window-context')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '실시간으로 복귀' })).not.toBeInTheDocument();
+    expect(vi.mocked(useTradeHistory).mock.lastCall?.[3]).toBe(false);
   });
 
   it.each(['1s', '5s', '10s', '30s'] as const)('같은 그룹 %s 커서 → 최근 저장 호가 조회', (timeframe) => {
@@ -997,6 +999,7 @@ describe('DataWindow 10호가 세션 모드 (갈래 A/B)', () => {
       renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
       expect(screen.getByText('session:toggle/afterHours')).toBeInTheDocument();
       expect(screen.getByText(`snapshot:${AFTER_HOURS_TS}`)).toBeInTheDocument();
+      expect(vi.mocked(useTradeHistory).mock.lastCall?.[3]).toBe(false);
     });
 
     it('정규장을 누르면 **사다리가 15:30 정지본으로 되돌아간다**', () => {

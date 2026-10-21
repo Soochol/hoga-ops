@@ -21,9 +21,10 @@ export interface TradeHistoryResponse {
   prev_close: number | null;
 }
 
-export function useTradeHistory(code: string, date: string, venue: string) {
+export function useTradeHistory(code: string, date: string, venue: string, enabled = true) {
   return useInfiniteQuery({
     queryKey: ['live', 'trade-history', code, date, venue],
+    enabled,
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) => apiCall<TradeHistoryResponse>(
       `/api/live/trades/history?code=${code}&date=${date}&venue=${venue}${pageParam === null ? '' : `&next_key=${encodeURIComponent(pageParam)}`}`, { signal },
