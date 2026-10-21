@@ -210,7 +210,7 @@ it('시세 검증 실패 안내는 숨기고 결과 상한은 재진입해도 �
   fireEvent.click(screen.getByText('조회'));
   expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
   expect(screen.queryByText(/일부 종목 장중 미반영/)).not.toBeInTheDocument();
-  expect(screen.getByTestId('screener-result-meta')).toHaveTextContent('발생 1건 · 상위 1종목');
+  expect(screen.getByTestId('screener-result-meta')).toHaveTextContent('상위 1종목');
   unmount();
   renderPage();
   expect(await screen.findByText(/거래대금 상위 1건만 표시/)).toBeInTheDocument();
@@ -590,7 +590,7 @@ it('조회 전에는 만료·0건과 구분되는 안내를, 조회 후에는 �
   fireEvent.click(screen.getByText('조회'));
   await screen.findByText('삼성전자');
   const meta = screen.getByTestId('screener-result-meta');
-  expect(meta.textContent).toContain('발생 3건 · 3종목');
+  expect(meta.textContent).toContain('3종목');
   // 결과 도착이 스크린리더에도 공지된다 — 메타 줄은 라이브 리전(role=status) 안에 산다.
   expect(meta.closest('[role="status"]')).not.toBeNull();
   expect(screen.queryByText('아직 조회하지 않았습니다')).not.toBeInTheDocument();

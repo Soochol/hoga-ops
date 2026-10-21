@@ -399,7 +399,7 @@ export function Screener() {
                 <span className="text-sm text-fg-dim">조회 중…</span>
               ) : lastScan ? (
                 <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
-                  발생 <span className="font-semibold">{rows.reduce((n, row) => n + (row.occurrences?.length || 1), 0).toLocaleString('ko-KR')}</span>건 · {lastScan.hasMore && '상위 '}{rows.length.toLocaleString('ko-KR')}종목
+                  {lastScan.hasMore && '상위 '}<span className="font-semibold">{rows.length.toLocaleString('ko-KR')}</span>종목
                   <span className="text-fg-dim">
                     {' '}· <span data-testid="screener-basis-time" title="조건 평가 기준 시각 (한국 시간)">{scanBasisLabel(lastScan)}</span>
                   </span>

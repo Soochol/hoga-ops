@@ -36,7 +36,9 @@ test('narrow screener drawer keeps stock rows compact and existing exclusions re
   await expect.poll(async () => (await row.boundingBox())!.height).toBeLessThan(36);
   await expect(row).not.toContainText('2026-09-10');
   await expect(row.getByRole('button', { name: /발생/ })).toHaveCount(0);
-  await expect(panel.getByText('발생 311건', { exact: false })).toBeVisible();
+  await expect(panel.getByText('1종목', { exact: true })).toBeVisible();
+  await expect(panel.getByText('신고가, 거래대금', { exact: true })).toHaveCount(1);
+  await expect(panel.getByText(/^발생 \d+건/)).toHaveCount(0);
   await panel.getByRole('button', { name: '제외한 발생 건 1', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: '제외한 발생 건', exact: true });
   const restore = dialog.getByRole('button', { name: 'SK하이닉스 2026-09-10 복원', exact: true });
@@ -45,7 +47,7 @@ test('narrow screener drawer keeps stock rows compact and existing exclusions re
   await expect(restore).toHaveCount(0);
   expect(exclusions).toEqual([]);
   await dialog.getByRole('button', { name: '닫기', exact: true }).click();
-  await expect(panel.getByText('발생 312건', { exact: false })).toBeVisible();
+  await expect(panel.getByText('1종목', { exact: true })).toBeVisible();
   await expect(row).toHaveCount(1);
   await expect.poll(async () => (await row.boundingBox())!.height).toBeLessThan(36);
   await page.screenshot({ path: testInfo.outputPath('narrow-restored.png') });

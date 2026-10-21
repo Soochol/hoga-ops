@@ -61,7 +61,8 @@ test('turnover, period turnover and referenced change preserve independent candl
   await expect(change.getByLabel('등락률 비교 기준')).toHaveValue('previous_bar');
   await expect(change.getByLabel('등락률(%)')).toHaveValue('80');
   await page.getByRole('button', { name: '조회', exact: true }).click();
-  await expect(page.getByText('봉 이력 충분 1/1종목')).toBeVisible();
+  await expect(page.getByText('표시 1 / 1종목', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^이력 부족/)).toHaveCount(0);
   expect(scans.at(-1)?.conditions).toEqual(saved.conditions);
   await period.getByRole('combobox', { name: '거래대금 검색 기간', exact: true }).selectOption('date_range');
   await period.getByLabel('거래대금 발생 시작일').fill('2026-07-01');
