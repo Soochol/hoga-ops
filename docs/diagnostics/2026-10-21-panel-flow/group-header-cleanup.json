@@ -1,7 +1,7 @@
 {
   "recorded_at": "2026-10-21T06:31:13.846688+00:00",
   "head_sha": "c4cbb58de998ac1539bd9b9b73e6a0a4b7c8756b",
-  "base_sha": "8c07102862a154ee682ee697ef16494816ada33e",
+  "base_sha": "c4cbb58de998ac1539bd9b9b73e6a0a4b7c8756b",
   "working_tree": "Uncommitted group-header presentation change; fingerprint includes all tracked frontend source, tests, fixtures, dependency manifests/lockfile and validation configuration.",
   "input_fingerprint": {
     "scope": "git ls-files frontend, sorted paths and file bytes separated by NUL",
@@ -79,5 +79,57 @@
       "pathWritesDuringQuoteRefresh": 0,
       "payloadBytes": 162377
     }
-  ]
+  ],
+  "origin_main_seen_before_integration": "8c07102862a154ee682ee697ef16494816ada33e",
+  "pr_validation": {
+    "recorded_at": "2026-10-21T06:35:31.422888+00:00",
+    "tested_code_head_sha": "8151e95f9ce6805f2a5365400c4741d28aef8fc7",
+    "integrated_base_sha": "deaeb77be084bd8e24e703e93bf2bb1770ebfd91",
+    "input_fingerprint": {
+      "scope": "git ls-files frontend, sorted paths and file bytes separated by NUL",
+      "files": 1794,
+      "sha256": "3fb299045ce6cf13af5f0536e619426715f461b344ab3296396773dd5002e08b"
+    },
+    "checks": [
+      {
+        "command": "npm run typecheck",
+        "cwd": "frontend",
+        "head_sha": "e7ae41108b5b826834227249861695a7b845aae4",
+        "result": "passed"
+      },
+      {
+        "command": "npx vitest run src/watchlist src/heatmap/HeatmapDrawer.test.tsx src/rightrail/PanelFlowSparkline.test.tsx src/api/panelFlow.test.tsx src/live/workspace/BookPanel.test.tsx src/live/workspace/OrderWindow.test.tsx",
+        "cwd": "frontend",
+        "head_sha": "e7ae41108b5b826834227249861695a7b845aae4",
+        "result": "33 files, 547 tests passed",
+        "log": "/tmp/hoga-panel-header-pr-unit.log"
+      },
+      {
+        "command": "npx playwright test tests/e2e/watchlist-column-layout.spec.ts tests/e2e/heatmap-column-layout.spec.ts tests/e2e/watchlist-panel-drag.spec.ts tests/e2e/heatmap-panel-drag.spec.ts tests/e2e/panel-flow-performance.spec.ts --reporter=line",
+        "cwd": "frontend",
+        "head_sha": "e7ae41108b5b826834227249861695a7b845aae4",
+        "result": "76 passed (2.1m)",
+        "log": "/tmp/hoga-panel-header-pr-e2e.log"
+      },
+      {
+        "command": "npm run typecheck",
+        "cwd": "frontend",
+        "head_sha": "8151e95f9ce6805f2a5365400c4741d28aef8fc7",
+        "result": "passed; app, unit, E2E"
+      },
+      {
+        "command": "npx vitest run src/live/workspace/BookPanel.test.tsx src/live/workspace/OrderWindow.test.tsx",
+        "cwd": "frontend",
+        "head_sha": "8151e95f9ce6805f2a5365400c4741d28aef8fc7",
+        "result": "2 files, 243 tests passed"
+      },
+      {
+        "command": "npx vite build",
+        "cwd": "frontend",
+        "head_sha": "8151e95f9ce6805f2a5365400c4741d28aef8fc7",
+        "result": "passed, 2.44s; existing large-chunk warning"
+      }
+    ],
+    "reuse_basis": "After these checks, main #2220 added a VI-row divider in BookSummary page 2 for OrderWindow. The right-panel sources, tests, fixtures, layouts, shared quote/sparkline/drag dependencies, dependency lockfile and E2E configuration are unchanged. Panel unit and E2E results are reused; the exercised panel paths do not render the changed VI page. Type checking, build and BookPanel/OrderWindow unit tests are rerun on the integrated head. A later validation-record-only commit does not change these inputs."
+  }
 }
