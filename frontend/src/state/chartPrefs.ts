@@ -193,7 +193,7 @@ export const CHART_TOGGLES = [
   {
     key: 'tradeHighlightEnabled',
     label: '대량 체결 강조',
-    description: '기준 금액 이상인 체결의 수량 칸을 강조합니다.',
+    description: '체결창·10호가·호가주문에서 기준 금액 이상인 체결의 수량 칸을 강조합니다.',
     default: true,
     category: 'trade-window',
     group: 'trade',

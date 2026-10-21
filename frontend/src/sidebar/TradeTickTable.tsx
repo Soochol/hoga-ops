@@ -24,19 +24,11 @@ import { priceDirClass } from '../ui/priceDir';
 import { unixMsToKSTClock } from '../util/time';
 import { SidebarState } from './SidebarSurface';
 import type { TradeTick, TradeTickView } from '../live/tradeTicks';
+import { tradeHighlightBackground, type TradeHighlightConfig } from '../live/tradeHighlight';
 import { useState } from 'react';
 import './TradeTickTable.css';
 
-/** 강조 배경 알파(hex 2자리, ≈35%) — 저장 색은 6자리 hex 이므로 렌더 시 얹는다.
- *  불투명 배경은 다크/라이트 양 테마에서 글자색(매수/매도)을 잡아먹는다. */
-const HIGHLIGHT_ALPHA_HEX = '59';
-
-export interface TradeHighlightConfig {
-  /** 원(₩) 단위 임계값 — 설정의 만원 값은 호출부에서 환산해 넘긴다. */
-  thresholdWon: number;
-  /** 6자리 hex. 알파는 이 컴포넌트가 얹는다. */
-  color: string;
-}
+export type { TradeHighlightConfig } from '../live/tradeHighlight';
 
 export default function TradeTickTable({
   view,
@@ -100,16 +92,16 @@ function Row({
   const priceColor = prevClose != null && prevClose > 0
     ? priceDirClass(price - prevClose)
     : priceDirClass(side);
-  const highlighted = highlight !== null && price * qty >= highlight.thresholdWon;
+  const background = tradeHighlightBackground(tick, highlight);
   return (
     <div role="row" data-tape-event={tick.key} className="trade-tick-row py-0.5">
       <span role="cell" className="text-fg-dim">{unixMsToKSTClock(tMs)}</span>
       <span role="cell" className={`text-right ${priceColor}`}>{price.toLocaleString('ko-KR')}</span>
       <span
         role="cell"
-        data-testid={highlighted ? 'trade-qty-highlighted' : undefined}
+        data-testid={background ? 'trade-qty-highlighted' : undefined}
         className={`trade-quantity rounded-sm text-right ${priceDirClass(side)}`}
-        style={highlighted ? { background: `${highlight.color}${HIGHLIGHT_ALPHA_HEX}` } : undefined}
+        style={background ? { background } : undefined}
       >
         {qty.toLocaleString('ko-KR')}
       </span>

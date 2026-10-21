@@ -34,6 +34,7 @@ import type { AfterHoursTotals, LiveTradeSummary } from '../liveSidebarAdapters'
 import type { BookSessionControl, BookSessionMode } from '../bookSessionMode';
 import { otherBookSessionMode } from '../bookSessionMode';
 import { useBookSideLayout } from './useBookSideLayout';
+import { tradeHighlightBackground, useTradeHighlight } from '../tradeHighlight';
 
 /** 체결 리스트 한 줄. */
 export type BookTrade = { price: number; qty: number; side: number };
@@ -159,6 +160,7 @@ export default function BookPanel({
   onSelectSessionMode,
   stale = false,
 }: Props) {
+  const highlight = useTradeHighlight();
   const priceLayout = useBookPriceLayout(snapshot ? [...snapshot.ask, ...snapshot.bid] : [], symbol, false, baselinePrice);
   const { setProbe, samples: sideSamples, style: sideStyle } = useBookSideLayout(symbol,
     snapshot ? [...snapshot.ask, ...snapshot.bid].filter(level => level.price > 0).map(level => level.qty) : [],
@@ -317,7 +319,8 @@ export default function BookPanel({
                 </span>
                 <span
                   title={t.qty.toLocaleString('ko-KR')}
-                  className={`text-right font-data text-sm tabular-nums ${
+                  style={{ background: tradeHighlightBackground(t, highlight) }}
+                  className={`rounded-sm text-right font-data text-sm tabular-nums ${
                     t.side > 0 ? 'text-price-up' : t.side < 0 ? 'text-price-down' : 'text-fg-dim'
                   }`}
                 >
