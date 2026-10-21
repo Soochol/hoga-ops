@@ -1,0 +1,974 @@
+{
+  "started_at": "2026-10-21T11:49:57.955659+09:00",
+  "health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "13ed6fb17"
+  },
+  "before": {
+    "subscribed": 342,
+    "ready": 342,
+    "capture_healthy": true,
+    "capture_reason": "healthy",
+    "collector": {
+      "mode": "process",
+      "epoch": "4f20de173c9b4f1f831204e5de36f8d9",
+      "pid": 2071512,
+      "started_at_ms": 1792550978888,
+      "alive": true,
+      "ready": true,
+      "state_age_ms": 988,
+      "state_reason": "ready",
+      "state_version": 2,
+      "sync_phase": null,
+      "sync_age_ms": null,
+      "desired_version": 2,
+      "acked_version": 2,
+      "restarts": 0,
+      "forced_terminations": 0,
+      "error": null,
+      "storage_errors": [],
+      "display_gaps": 0,
+      "discarded_old_frames": 0,
+      "display": {
+        "messages": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "sent": 14054,
+        "max_messages": 1024,
+        "max_bytes": 8388608
+      },
+      "gc": {
+        "enabled": true,
+        "warn_ms": 250.0,
+        "over_threshold": 0,
+        "thresholds": [
+          50000,
+          50,
+          50
+        ],
+        "current_counts": [
+          46666,
+          4,
+          8
+        ],
+        "by_generation": {
+          "0": {
+            "collections": 3,
+            "total_ms": 18.3,
+            "max_ms": 8.4,
+            "last_ms": 8.4,
+            "last_at_ms": 1792550982642
+          }
+        },
+        "interpreter_stats": [
+          {
+            "collections": 92,
+            "collected": 1654,
+            "uncollectable": 0
+          },
+          {
+            "collections": 8,
+            "collected": 774,
+            "uncollectable": 0
+          },
+          {
+            "collections": 0,
+            "collected": 0,
+            "uncollectable": 0
+          }
+        ]
+      }
+    },
+    "connected_accounts": 6,
+    "registration_incomplete": false
+  },
+  "states": [
+    {
+      "elapsed_seconds": 0.04,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 0,
+      "receiving": 0,
+      "preparing": 342,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": null,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 3.24,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 51,
+      "receiving": 3,
+      "preparing": 291,
+      "recovering": 48,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550998022,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 6.24,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 93,
+      "receiving": 9,
+      "preparing": 249,
+      "recovering": 84,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550998022,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 9.24,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 138,
+      "receiving": 14,
+      "preparing": 204,
+      "recovering": 124,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550998022,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 12.25,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 184,
+      "receiving": 15,
+      "preparing": 158,
+      "recovering": 169,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550998022,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 15.25,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 227,
+      "receiving": 21,
+      "preparing": 115,
+      "recovering": 206,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550998022,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 18.53,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 277,
+      "receiving": 50,
+      "preparing": 65,
+      "recovering": 227,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550998022,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 21.54,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 321,
+      "receiving": 94,
+      "preparing": 21,
+      "recovering": 227,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550998022,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 24.55,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 135,
+      "preparing": 0,
+      "recovering": 207,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792550999281,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 27.55,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 174,
+      "preparing": 0,
+      "recovering": 168,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 30.56,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 215,
+      "preparing": 0,
+      "recovering": 127,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 33.82,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 256,
+      "preparing": 0,
+      "recovering": 86,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 36.82,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 301,
+      "preparing": 0,
+      "recovering": 41,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 39.83,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 42.84,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 45.84,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 49.1,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 52.11,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 55.11,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 58.12,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 61.12,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 64.4,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 67.4,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 70.41,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 73.41,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 76.42,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 79.67,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 82.67,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 85.68,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 88.69,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 91.69,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 94.91,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 97.91,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 100.92,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 103.92,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    {
+      "elapsed_seconds": 106.93,
+      "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    }
+  ],
+  "results": [
+    {
+      "elapsed_seconds": 0.04,
+      "status": "ok",
+      "row_count": 0,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 0,
+        "realtime": {
+          "prepared": 0,
+          "receiving": 0,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 342,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": null
+        },
+        "incomplete_count": 342,
+        "incomplete_reason_counts": {
+          "volume_preparing": 342
+        }
+      },
+      "warnings": [
+        "bar_volume_partial"
+      ]
+    },
+    {
+      "elapsed_seconds": 15.25,
+      "status": "ok",
+      "row_count": 4,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 21,
+        "realtime": {
+          "prepared": 227,
+          "receiving": 21,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 115,
+          "recovering": 206,
+          "unavailable": 0,
+          "last_verified_ms": 1792550998022
+        },
+        "incomplete_count": 321,
+        "incomplete_reason_counts": {
+          "live_bar_unconfirmed": 31,
+          "insufficient_minute_history": 175,
+          "volume_preparing": 115
+        }
+      },
+      "warnings": [
+        "bar_volume_partial"
+      ]
+    },
+    {
+      "elapsed_seconds": 30.56,
+      "status": "ok",
+      "row_count": 8,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 216,
+        "realtime": {
+          "prepared": 342,
+          "receiving": 217,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 125,
+          "unavailable": 0,
+          "last_verified_ms": 1792551000295
+        },
+        "incomplete_count": 126,
+        "incomplete_reason_counts": {
+          "insufficient_minute_history": 126
+        }
+      },
+      "warnings": [
+        "bar_volume_partial"
+      ]
+    },
+    {
+      "elapsed_seconds": 45.84,
+      "status": "ok",
+      "row_count": 9,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 342,
+        "realtime": {
+          "prepared": 342,
+          "receiving": 342,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551000295
+        },
+        "incomplete_count": 0,
+        "incomplete_reason_counts": {}
+      },
+      "warnings": []
+    },
+    {
+      "elapsed_seconds": 61.12,
+      "status": "ok",
+      "row_count": 9,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 342,
+        "realtime": {
+          "prepared": 342,
+          "receiving": 342,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551000295
+        },
+        "incomplete_count": 0,
+        "incomplete_reason_counts": {}
+      },
+      "warnings": []
+    },
+    {
+      "elapsed_seconds": 76.42,
+      "status": "ok",
+      "row_count": 9,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 342,
+        "realtime": {
+          "prepared": 342,
+          "receiving": 342,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551000295
+        },
+        "incomplete_count": 0,
+        "incomplete_reason_counts": {}
+      },
+      "warnings": []
+    },
+    {
+      "elapsed_seconds": 91.69,
+      "status": "ok",
+      "row_count": 9,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 342,
+        "realtime": {
+          "prepared": 342,
+          "receiving": 342,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551000295
+        },
+        "incomplete_count": 0,
+        "incomplete_reason_counts": {}
+      },
+      "warnings": []
+    },
+    {
+      "elapsed_seconds": 106.93,
+      "status": "ok",
+      "row_count": 9,
+      "bar_coverage": {
+        "total": 342,
+        "complete": 342,
+        "realtime": {
+          "prepared": 342,
+          "receiving": 342,
+          "continuous": true,
+          "monitor_error": null,
+          "insufficient": 0,
+          "preparing": 0,
+          "recovering": 0,
+          "unavailable": 0,
+          "last_verified_ms": 1792551000295
+        },
+        "incomplete_count": 0,
+        "incomplete_reason_counts": {}
+      },
+      "warnings": []
+    }
+  ],
+  "matching_events": 253,
+  "initial": {
+    "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+    "total": 342,
+    "prepared": 0,
+    "receiving": 0,
+    "preparing": 342,
+    "recovering": 0,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": null,
+    "error": null
+  },
+  "request": {
+    "basis": "intraday",
+    "universe": {
+      "scopes": [
+        "watchlist",
+        "heatmap"
+      ],
+      "exclude_etf": false
+    },
+    "conditions": [
+      {
+        "id": "deployment-shared-1m",
+        "type": "new_high_vol",
+        "params": {
+          "timeframe": "1m",
+          "period": 100,
+          "lookback": 5,
+          "include_open_bar": true
+        }
+      }
+    ]
+  },
+  "first_all_prepared_seconds": 24.55,
+  "first_all_receiving_seconds": 39.83,
+  "final": {
+    "id": "0cfe47c225a54f4ab8931272d5f7dd37",
+    "total": 342,
+    "prepared": 342,
+    "receiving": 342,
+    "preparing": 0,
+    "recovering": 0,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": 1792551000295,
+    "error": null
+  },
+  "final_result": {
+    "status": "ok",
+    "row_count": 9,
+    "bar_coverage": {
+      "total": 342,
+      "complete": 342,
+      "incomplete": [],
+      "realtime": {
+        "prepared": 342,
+        "receiving": 342,
+        "continuous": true,
+        "monitor_error": null,
+        "insufficient": 0,
+        "preparing": 0,
+        "recovering": 0,
+        "unavailable": 0,
+        "last_verified_ms": 1792551000295
+      }
+    },
+    "warnings": []
+  },
+  "temporary_monitor_deleted": true,
+  "after": {
+    "subscribed": 342,
+    "ready": 342,
+    "capture_healthy": true,
+    "capture_reason": "healthy",
+    "collector": {
+      "mode": "process",
+      "epoch": "4f20de173c9b4f1f831204e5de36f8d9",
+      "pid": 2071512,
+      "started_at_ms": 1792550978888,
+      "alive": true,
+      "ready": true,
+      "state_age_ms": 598,
+      "state_reason": "ready",
+      "state_version": 3,
+      "sync_phase": null,
+      "sync_age_ms": null,
+      "desired_version": 3,
+      "acked_version": 3,
+      "restarts": 0,
+      "forced_terminations": 0,
+      "error": null,
+      "storage_errors": [],
+      "display_gaps": 0,
+      "discarded_old_frames": 7,
+      "display": {
+        "messages": 0,
+        "bytes": 0,
+        "dropped": 0,
+        "sent": 102226,
+        "max_messages": 1024,
+        "max_bytes": 8388608
+      },
+      "gc": {
+        "enabled": true,
+        "warn_ms": 250.0,
+        "over_threshold": 0,
+        "thresholds": [
+          50000,
+          50,
+          50
+        ],
+        "current_counts": [
+          11642,
+          8,
+          8
+        ],
+        "by_generation": {
+          "0": {
+            "collections": 7,
+            "total_ms": 138.0,
+            "max_ms": 41.9,
+            "last_ms": 41.9,
+            "last_at_ms": 1792551079482
+          }
+        },
+        "interpreter_stats": [
+          {
+            "collections": 96,
+            "collected": 62902,
+            "uncollectable": 0
+          },
+          {
+            "collections": 8,
+            "collected": 774,
+            "uncollectable": 0
+          },
+          {
+            "collections": 0,
+            "collected": 0,
+            "uncollectable": 0
+          }
+        ]
+      }
+    },
+    "connected_accounts": 6,
+    "registration_incomplete": false
+  },
+  "finished_at": "2026-10-21T11:51:45.307085+09:00",
+  "restart_reuse": {
+    "start_seconds": 0.013239271997008473,
+    "status": {
+      "id": "6946f02495c943cb86d565f40a2d07c5",
+      "total": 342,
+      "prepared": 342,
+      "receiving": 342,
+      "preparing": 0,
+      "recovering": 0,
+      "unavailable": 0,
+      "insufficient": 0,
+      "last_verified_ms": 1792551000295,
+      "error": null
+    },
+    "result_coverage": [
+      {
+        "prepared": 342,
+        "receiving": 342,
+        "continuous": true,
+        "monitor_error": null,
+        "insufficient": 0,
+        "preparing": 0,
+        "recovering": 0,
+        "unavailable": 0,
+        "last_verified_ms": 1792551000295
+      },
+      {
+        "prepared": 342,
+        "receiving": 342,
+        "continuous": true,
+        "monitor_error": null,
+        "insufficient": 0,
+        "preparing": 0,
+        "recovering": 0,
+        "unavailable": 0,
+        "last_verified_ms": 1792551000295
+      },
+      {
+        "prepared": 342,
+        "receiving": 342,
+        "continuous": true,
+        "monitor_error": null,
+        "insufficient": 0,
+        "preparing": 0,
+        "recovering": 0,
+        "unavailable": 0,
+        "last_verified_ms": 1792551000295
+      }
+    ],
+    "all_complete": true,
+    "temporary_monitor_deleted": true
+  },
+  "deployed_commit": "13ed6fb17ee075288b5e5a9c7d00c5baed68aa6c",
+  "feature_head": "d491967af3834d3cd7a07e7367216b45e926d782",
+  "pull_request": "https://github.com/Soochol/hoga-ops/pull/2205",
+  "operating_checkout": "/home/dev/code/hoga-ops",
+  "frontend_origin": "http://localhost:5173",
+  "api_origin": "http://127.0.0.1:8000",
+  "connection_profile": "local-vite",
+  "server_reload": "Existing single-worker reloader gracefully stopped prior worker and restored the process collector. Existing Vite sent HMR/page reload; fixed Electron launcher/profile unchanged.",
+  "served_frontend_modules": [
+    "/src/screener/continuousClient.ts",
+    "/src/screener/BarVolumeCoverage.tsx"
+  ],
+  "operational_inputs_match_test_manifest": true,
+  "temporary_monitors_deleted": true,
+  "limits": "This is the currently scoped 342-symbol universe, not every exchange-listed symbol. No exact provider-to-browser latency measurement or native desktop visual inspection.",
+  "log": "/tmp/hoga-continuous-postdeploy.log"
+}
