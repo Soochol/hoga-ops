@@ -419,6 +419,7 @@ export function BookSummary({
   summary, baselinePrice, limits = null, krxClose = null, krxPreviousClose = null, vi = null,
   height = ROW_H * SUMMARY_ROWS,
   page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '정보',
+  expectedFillPosition = 'top',
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
@@ -432,7 +433,10 @@ export function BookSummary({
   expectedFill?: { price: number; qty: number | null } | null;
   expectedDimClass?: string;
   headingLabel?: string;
+  expectedFillPosition?: 'top' | 'bottom';
 }) {
+  const expectedRows = <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
+    baselinePrice={baselinePrice} dimClass={expectedDimClass} divider={expectedFillPosition === 'bottom'} />;
   return (
     <div className="book-summary flex flex-col" data-testid="book-summary" data-page={page + 1}
       onClick={onNextPage}
@@ -443,9 +447,8 @@ export function BookSummary({
           {[0, 1].map(index => <span key={index} className={`book-summary-dot${page === index ? ' is-active' : ''}`} />)}
         </span>
       </button>
-      {page === 0 ? <div className="book-summary-page">
-        <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
-          baselinePrice={baselinePrice} dimClass={expectedDimClass} />
+      {page === 0 ? <div className={`book-summary-page${expectedFillPosition === 'bottom' ? ' flex flex-col' : ''}`}>
+        {expectedFillPosition === 'top' ? expectedRows : null}
         <SummaryRow
           label="시작"
           value={fmtOr(summary.dayOpen)}
@@ -478,6 +481,7 @@ export function BookSummary({
           value={summary.vsPrevVolumePct === null ? '−' : `${summary.vsPrevVolumePct.toFixed(2)}%`}
         />
         <SummaryRow label="거래대금" value={fmtAmountKo(summary.cumValue)} />
+        {expectedFillPosition === 'bottom' ? <div className="mt-auto">{expectedRows}</div> : null}
       </div> : <div className="book-summary-page">
         {/* 상한가·하한가 = ka10001(stock-limits). */}
         <SummaryRow
@@ -515,12 +519,14 @@ function ExpectedFillRows({
   qty,
   baselinePrice,
   dimClass = '',
+  divider = false,
 }: {
   price: number;
   qty: number | null;
   baselinePrice: number | null;
   /** stale 딤 — `exp_price`/`exp_qty` 는 스냅샷 필드라 사다리와 함께 흐려진다. */
   dimClass?: string;
+  divider?: boolean;
 }) {
   const valid = Number.isFinite(price) && price > 0
     && (qty === null || (Number.isFinite(qty) && qty > 0));
@@ -530,7 +536,7 @@ function ExpectedFillRows({
       className={dimClass}
       data-testid="book-expected-fill"
     >
-      <SummaryRow label="예상 체결가" value={valid ? `${price.toLocaleString('ko-KR')}원` : ''} color={color} />
+      <SummaryRow label="예상 체결가" value={valid ? `${price.toLocaleString('ko-KR')}원` : ''} color={color} divider={divider} />
       <SummaryRow label="예상 체결량" value={valid && qty !== null ? qty.toLocaleString('ko-KR') : ''} />
     </div>
   );
