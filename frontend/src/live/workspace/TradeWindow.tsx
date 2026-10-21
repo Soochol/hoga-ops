@@ -5,7 +5,7 @@ import { useConnectionLiveness } from '../../api/useConnectionLiveness';
 import { LIVE_STALE_MS } from '../../api/liveness';
 import TradeTickTable from '../../sidebar/TradeTickTable';
 import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
-import { useChartPrefsStore } from '../../state/chartPrefs';
+import { useTradeHighlight } from '../tradeHighlight';
 import { realMsToYyyymmdd } from '../liveDateTime';
 import { useKstDay } from '../../util/useKstDay';
 import { buildTradeTickView, combineTradeHistory, mergeTradeTicks } from '../tradeTicks';
@@ -48,12 +48,7 @@ function TradeContent({ code, venue, date, minAmountManwon, onClearFilter }: {
   const { scroll, end, ticks, onScroll, onWheel, failed } = useTapeScroll(filtered, history,
     { resetKey: minAmountManwon, autoLoad: minAmountManwon === 0 });
   const view = { ticks, prevClose: liveView.prevClose ?? latest?.prev_close ?? null };
-  const highlightEnabled = useChartPrefsStore(s => s.tradeHighlightEnabled);
-  const thresholdManwon = useChartPrefsStore(s => s.tradeHighlightThresholdManwon);
-  const highlightColor = useChartPrefsStore(s => s.tradeHighlightColor);
-  const highlight = useMemo(() => highlightEnabled
-    ? { thresholdWon: thresholdManwon * 10_000, color: highlightColor } : null,
-  [highlightEnabled, thresholdManwon, highlightColor]);
+  const highlight = useTradeHighlight();
   return <div data-testid="trade-window" className="flex h-full flex-col bg-bg-card [container:trade-tape/inline-size]">
     <div ref={scroll} aria-label="체결 목록" className="min-h-0 flex-1 overflow-auto" onScroll={onScroll} onWheel={onWheel}>
       <TradeTickTable view={view} highlight={highlight} emptyText={!connected ? '실시간 연결 확인 중 · 체결 수신 대기'

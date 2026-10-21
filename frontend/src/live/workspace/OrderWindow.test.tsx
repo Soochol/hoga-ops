@@ -13,6 +13,7 @@ import { useLiveViStatus } from '../../api/liveViStatus';
 import { notifyOrderReceiptAccepted, playOrderReceiptSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import type { LiveAfterHoursBookResponse } from '../../api/liveAfterHoursBook';
 import { normalizeOrderSettings } from '../../state/orderWindowSettings';
+import { useChartPrefsStore } from '../../state/chartPrefs';
 
 vi.mock('./orderReceiptSound', () => ({
   notifyOrderReceiptAccepted: vi.fn(), playOrderReceiptSound: vi.fn(), prepareOrderReceiptSound: vi.fn(),
@@ -651,6 +652,53 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('매수 67,200원 주문', { exact: true })).toBeInTheDocument();
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('134,400,000원');
     expect(mock.command).not.toHaveBeenCalled();
+  });
+  it('10호가·호가주문은 대량 체결의 수량 칸만 강조하고 공통 설정 변경을 즉시 반영한다', () => {
+    const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
+    const originalPrefs = useChartPrefsStore.getState();
+    const trade = [{ t_ms: mock.now, trades: [
+      { price: 50_000, qty: 19, side: 1 },
+      { price: 50_000, qty: 20, side: 1 },
+      { price: 50_000, qty: 21, side: -1 },
+      { price: 50_000, qty: 22, side: 0 },
+    ] }];
+    vi.mocked(useLiveSeries).mockImplementation((...args) => ({ ...originalSeries(...args), trade }));
+    useChartPrefsStore.setState({ tradeHighlightEnabled: true, tradeHighlightThresholdManwon: 100, tradeHighlightColor: '#EAB308' });
+    try {
+      const win: WorkspaceWindow = { id: 'book', kind: 'book', group: 1, rect: { x: 0, y: 0, w: 560, h: 640 } };
+      const view = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} />
+        <OrderWindow code="005930" name="삼성전자" />
+      </QueryClientProvider>);
+      const rows = () => ['.book-trade-row', '.order-trade'].map(selector =>
+        [...view.container.querySelectorAll<HTMLElement>(selector)].filter(row => row.lastElementChild?.textContent !== '—'));
+      for (const surface of rows()) {
+        expect(surface).toHaveLength(4);
+        for (const row of surface) {
+          expect(row.style.background).toBe('');
+          expect((row.firstElementChild as HTMLElement).style.background).toBe('');
+          const qty = row.lastElementChild as HTMLElement;
+          expect(qty).toHaveStyle({ background: qty.textContent === '19' ? '' : '#EAB30859' });
+        }
+        expect(surface.find(row => row.lastElementChild?.textContent === '20')?.lastElementChild).toHaveClass('text-price-up');
+        expect(surface.find(row => row.lastElementChild?.textContent === '21')?.lastElementChild).toHaveClass('text-price-down');
+      }
+      act(() => useChartPrefsStore.setState({ tradeHighlightThresholdManwon: 110, tradeHighlightColor: '#22C55E' }));
+      for (const surface of rows()) {
+        for (const row of surface) {
+          const qty = row.lastElementChild as HTMLElement;
+          expect(qty).toHaveStyle({ background: qty.textContent === '22' ? '#22C55E59' : '' });
+        }
+      }
+      act(() => useChartPrefsStore.setState({ tradeHighlightEnabled: false }));
+      for (const surface of rows()) for (const row of surface) {
+        expect((row.lastElementChild as HTMLElement).style.background).toBe('');
+      }
+      view.unmount();
+    } finally {
+      vi.mocked(useLiveSeries).mockImplementation(originalSeries);
+      act(() => useChartPrefsStore.setState(originalPrefs));
+    }
   });
   it('거래소를 바꾸면 10호가창과 주문창의 잔량·체결·체결강도·요약이 함께 바뀐다', () => {
     const originalSeries = vi.mocked(useLiveSeries).getMockImplementation()!;
