@@ -9,8 +9,7 @@ export function scanBasisLabel(scan: Pick<PanelScan, 'basisAtMs' | 'fallbackBasi
   if (scan.basisAtMs != null && Number.isFinite(scan.basisAtMs)) {
     const fallback = scan.fallbackBasisAtMs;
     if (fallback != null && Number.isFinite(fallback) && fallback !== scan.basisAtMs) {
-      const times = [fallback, scan.basisAtMs].sort((a, b) => a - b);
-      return `${stamp(times[0])} ~ ${stamp(times[1])} 기준`;
+      return `${stamp(scan.basisAtMs).slice(-5)} 기준 · 일부 종목 전일 데이터`;
     }
     return `${stamp(scan.basisAtMs)} 기준`;
   }

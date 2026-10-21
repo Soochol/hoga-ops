@@ -42,7 +42,7 @@ test('automatic scans show server cutoff for empty, live and mixed results and r
   await expect(basis).toHaveText('2026-10-20 10:35 기준');
   expect(requests).toHaveLength(2);
   await run.click();
-  await expect(basis).toHaveText('2026-10-19 15:30 ~ 2026-10-20 10:35 기준');
+  await expect(basis).toHaveText('10:35 기준 · 일부 종목 전일 데이터');
   expect(requests.map(request => request.basis)).toEqual(['auto', 'auto', 'auto']);
   await page.screenshot({ path: testInfo.outputPath('automatic-mixed-basis.png') });
 });

@@ -1,5 +1,4 @@
 import { BarVolumeCoverage } from './BarVolumeCoverage';
-import { scanBasisLabel } from './scanBasisLabel';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { InlineState } from '../ui/DataSurface';
@@ -467,19 +466,15 @@ export function ScreenerDrawer() {
         {lastScan && !screener.isError && (
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dim">
             <div className="min-w-0 flex-1 truncate">
-              {lastScan.hasMore && '상위 '}{lastScan.rows.length}종목
               {lastScanStaleReason && (
-                <span className="ml-1 normal-case" style={{ color: 'var(--warn)' }}>
-                  · {lastScanStaleReason} — 시작으로 갱신
+                <span className="normal-case" style={{ color: 'var(--warn)' }}>
+                  {lastScanStaleReason} — 시작으로 갱신
                 </span>
               )}
             </div>
             <ScreenerResultSortControl mode={sortMode} onChange={handleSortChange} disabled={lastScan.rows.length === 0} />
           </div>
         )}
-        {lastScan && <div data-testid="screener-drawer-basis-time" className="font-data text-xs tabular-nums text-fg-dim">
-          {scanBasisLabel(lastScan)}
-        </div>}
       </RailDrawerSection>
 
       <RailDrawerSection className="empty:hidden"><OccurrenceExclusionToolbar controller={occurrenceController} /></RailDrawerSection>
