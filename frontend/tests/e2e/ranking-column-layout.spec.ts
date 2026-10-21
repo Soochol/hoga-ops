@@ -18,6 +18,7 @@ async function geometry(row: Locator) {
     };
     return { name: read('.quote-row-name'), rank: read('.ranking-rank'), price: read('.quote-row-price'), percent: read('.quote-row-percent'),
       net: element.querySelector('.ranking-net-buy') ? read('.ranking-net-buy') : null,
+      trade: element.querySelector('.ranking-trade-value') ? read('.ranking-trade-value') : null,
       detailWidth: parseFloat(getComputedStyle(element).getPropertyValue('--quote-detail-width')),
       gap: parseFloat(getComputedStyle(element).columnGap), padding: parseFloat(getComputedStyle(element).paddingRight) };
   });
@@ -35,6 +36,12 @@ async function cloneMatches(page: Page, row: Locator) {
     expect(after[column].left).toBeCloseTo(before[column].left, 3);
     expect(after[column].width).toBeCloseTo(before[column].width, 3);
   }
+  if (before.trade) {
+    expect(after.trade!.full).toBe(true);
+    expect(after.trade!.right).toBeCloseTo(before.trade.right, 3);
+    expect(after.trade!.width).toBeCloseTo(before.trade.width, 3);
+    await expect(ghost.locator('.ranking-trade-value')).toHaveText((await row.locator('.ranking-trade-value').textContent())!);
+  }
   if (before.net) {
     expect(after.net!.full).toBe(true);
     expect(after.net!.right).toBeCloseTo(before.net.right, 3);
@@ -47,6 +54,75 @@ async function cloneMatches(page: Page, row: Locator) {
 }
 
 for (const fontSize of [16, 20]) {
+  test(`거래대금 4열·320px·고정 제목·금액 갱신·드래그 (${fontSize}px)`, async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
+    await installLiveMocks(page);
+    let amount = 3_119_200_000_000, price = 123456, percent = -1.23;
+    await page.route(apiExact('live/rankings'), route => {
+      const params = new URL(route.request().url()).searchParams;
+      return route.fulfill({ json: {
+        kind: params.get('kind'), market: params.get('market'), direction: params.get('direction'), venue: params.get('venue'),
+        market_open: true, fetched_at_ms: Date.now(), queried_count: 40, has_more: false,
+        rows: Array.from({ length: 40 }, (_, i) => ({
+          rank: i + 1, code: String(100000 + i), name: i === 0 ? '이름이아주긴테스트종목' : `종목${i + 1}`,
+          price: i === 2 ? null : price, change_pct: i === 2 ? null : percent,
+          trade_value_won: i === 2 ? null : i === 3 ? 0 : i === 0 ? 123_456_000_000 : amount,
+        })),
+      } });
+    });
+    await page.goto('/live?code=098460');
+    await page.addStyleTag({ content: `:root { font-size: ${fontSize}px !important; }` });
+    await page.getByRole('button', { name: '순위 패널 토글', exact: true }).click();
+    const panel = page.getByTestId('ranking-panel'), header = panel.getByTestId('ranking-value-columns-header');
+    await expect(header).toHaveCount(0);
+    await expect(panel.locator('.ranking-trade-value')).toHaveCount(0);
+    await panel.getByRole('button', { name: '거래대금', exact: true }).click();
+    await expect(panel).toHaveCSS('width', `${320 * fontSize / 16}px`);
+    await expect(header).toHaveText('종목거래대금(억)가격등락률');
+    const first = panel.getByTestId('ranking-row-100000'), second = panel.getByTestId('ranking-row-100001');
+    await expect(first.locator('.ranking-trade-value')).toHaveText('1,234.6');
+    await expect(second.locator('.ranking-trade-value')).toHaveText('31,192.0');
+    await expect(second.locator('.ranking-trade-value')).toHaveAttribute('title', '3,119,200,000,000원');
+    const missing = panel.getByTestId('ranking-row-100002');
+    for (const selector of ['.ranking-trade-value', '.quote-row-price', '.quote-row-percent']) await expect(missing.locator(selector)).toHaveText('—');
+    await expect(panel.getByTestId('ranking-row-100003').locator('.ranking-trade-value')).toHaveText('0.0');
+    const [a, b, h] = await Promise.all([geometry(first), geometry(second), geometry(header)]);
+    for (const value of [a, b]) {
+      expect(value.name.left).toBe(40 * fontSize / 16);
+      for (const column of ['price', 'percent', 'trade'] as const) {
+        expect(value[column]!.full).toBe(true);
+        expect(value[column]!.align).toBe('right');
+        expect(value[column]!.right).toBeCloseTo(h[column]!.right, 3);
+      }
+    }
+    const scroll = panel.getByTestId('ranking-scroll');
+    expect(await scroll.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+    await panel.screenshot({ path: `/tmp/hoga-ranking-value-${fontSize}.png` });
+    await cloneMatches(page, second);
+    const headerTop = (await header.boundingBox())!.y;
+    await scroll.evaluate(node => { node.scrollTop = 300; });
+    expect((await header.boundingBox())!.y).toBeCloseTo(headerTop, 3);
+    await scroll.evaluate(node => { node.scrollTop = 0; });
+    amount = 123_456_789_012_345; price = 123456789012; percent = -1234.56;
+    await page.clock.fastForward(11_000);
+    await expect(second.locator('.ranking-trade-value')).toHaveText('1,234,567.9');
+    const wide = await geometry(second);
+    expect(wide.trade!.full && wide.price.full && wide.percent.full).toBe(true);
+    await expect.poll(() => scroll.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
+    amount = 100_000_000; price = 12; percent = 1;
+    await page.clock.fastForward(11_000);
+    await expect(second.locator('.ranking-trade-value')).toHaveText('1.0');
+    expect((await geometry(second)).trade!.width).toBe(wide.trade!.width);
+    await panel.getByRole('button', { name: '등락률 정렬', exact: true }).click();
+    await expect(second.getByTestId('ranking-rank')).toHaveText('2');
+    await panel.getByRole('button', { name: 'ETF 제외', exact: true }).click();
+    await expect(second.locator('.ranking-trade-value')).toHaveText('1.0');
+    expect((await geometry(second)).trade!.width).toBe(wide.trade!.width);
+    await panel.getByRole('button', { name: '거래량', exact: true }).click();
+    await expect(header).toHaveCount(0);
+    await expect(panel.locator('.ranking-trade-value')).toHaveCount(0);
+  });
+
   test(`순위 반응형 열·네 자리 번호·순매수 전체 금액·관측 폭 (${fontSize}px)`, async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
