@@ -25,7 +25,6 @@ import {
   SymbolMasterSection,
   ThemeSection,
 } from './settings/AppInfoSections';
-import SignalAlertSettingsSection from '../signalAlerts/SignalAlertSettingsSection';
 import { SettingsEditor, SettingsEditorNavItem } from './settings/SettingsEditor';
 import { useSettingsUndo } from './settings/useSettingsUndo';
 import { readAppSettings, restoreAppSettings, subscribeAppSettings } from './settings/editorSnapshots';
@@ -41,7 +40,7 @@ import SettingsTransferSection from './settings/SettingsTransferSection';
  * 문서처럼 이어지고, 좌측 nav 는 섹션을 갈아 끼우는 스위치가 아니라 **현재 스크롤
  * 위치를 비추는 목차**다 — 클릭하면 그리로 스크롤하고, 스크롤하면 하이라이트가
  * 따라온다. 검색은 화면 전환 없는 **인라인 필터**다: 레지스트리 행만 그 자리에서
- * 걸러 내고, 자유 마크업 섹션(알림·데이터소스 등)은 필터 중 숨긴다(빈 상태 문구가
+ * 걸러 내고, 자유 마크업 섹션(데이터소스 등)은 필터 중 숨긴다(빈 상태 문구가
  * 그 경계를 말한다). A/B/C 프로토타입 판정과 실측(차트 섹션 1,705px vs 뷰포트
  * 807px · 이중 구분선 · 게이트 없는 스타일 행)은 DESIGN.md 결정 로그 참조.
  *
@@ -63,20 +62,18 @@ import SettingsTransferSection from './settings/SettingsTransferSection';
 type NavId =
   | ChartToggleCategory
   | 'data-source'
-  | 'alerts'
   | 'theme'
   | 'symbols'
   | 'general'
   | 'roadmap';
 
 const CATEGORY_ORDER: ChartToggleCategory[] = ['chart', 'trade-window'];
-const INFO_ORDER = ['alerts', 'data-source', 'theme', 'symbols', 'general', 'roadmap'] as const;
+const INFO_ORDER = ['data-source', 'theme', 'symbols', 'general', 'roadmap'] as const;
 const LABEL: Record<NavId, string> = {
   chart: '차트',
   'indicator-modal': '지표', // never rendered — not in CATEGORY_ORDER; kept for Record<NavId> exhaustiveness
   'trade-window': '체결창',
   'data-source': '데이터소스',
-  alerts: '알림',
   theme: '테마',
   symbols: '종목 목록',
   general: '앱 정보',
@@ -169,7 +166,7 @@ function SectionHeading({ id, label }: { id: NavId; label: string }) {
   );
 }
 
-/** 자유 마크업 섹션(알림·데이터소스·테마 …) — 내부 블록 간격은 종전 상세 패널의
+/** 자유 마크업 섹션(데이터소스·테마 …) — 내부 블록 간격은 종전 상세 패널의
  *  `space-y-3` 을 승계한다(각 섹션 본체가 그 간격을 전제로 짜여 있다). */
 function InfoSection({ id, children }: { id: NavId; children: ReactNode }) {
   return (
@@ -182,8 +179,6 @@ function InfoSection({ id, children }: { id: NavId; children: ReactNode }) {
 
 function InfoSectionBody({ id }: { id: (typeof INFO_ORDER)[number] }) {
   switch (id) {
-    case 'alerts':
-      return <SignalAlertSettingsSection />;
     case 'data-source':
       return <DataSourceDetail />;
     case 'theme':
@@ -201,7 +196,7 @@ function InfoSectionBody({ id }: { id: (typeof INFO_ORDER)[number] }) {
 // 차트 창이 봉의 유일한 소유자가 되면서 그 설정이 정할 것이 없어졌다 — 저장뷰는
 // 종목과 구간만 정한다. 근거와 버려진 trade-off 는 그 PR 에 있다.
 
-export default function SettingsSections({ variant = 'live', onClose, initialSection }: { variant?: 'live' | 'study'; onClose?: () => void; initialSection?: 'alerts' }) {
+export default function SettingsSections({ variant = 'live', onClose }: { variant?: 'live' | 'study'; onClose?: () => void }) {
   // 체결창은 /live 워크스페이스 전용 데이터 창 — 복기뷰(study) 설정에는 숨긴다.
   // **컨텍스트로 갈리는 유일한 항목**이다.
   const registryIds = CATEGORY_ORDER.filter((c) => (variant === 'live' || c !== 'trade-window')
@@ -210,14 +205,11 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
 
   const undo = useSettingsUndo({ scopeKey: 'app', read: readAppSettings, restore: restoreAppSettings, subscribe: subscribeAppSettings });
   const [query, setQuery] = useState('');
-  const [active, setActive] = useState<NavId>(initialSection ?? navIds[0]);
+  const [active, setActive] = useState<NavId>(navIds[0]);
   const bodyRef = useRef<HTMLDivElement>(null);
   // 필터 중 TOC 클릭은 「필터 해제 → 점프」다. setState 직후엔 리마운트된 섹션
   // DOM 이 아직 없으므로 대상을 적어 두고 query 가 비워진 뒤의 effect 가 소비한다.
   const pendingJump = useRef<NavId | null>(null);
-  useEffect(() => {
-    if (initialSection) bodyRef.current?.querySelector(`[data-settings-section="${initialSection}"]`)?.scrollIntoView?.({ block: 'start' });
-  }, [initialSection]);
 
   const units = useMemo(() => buildFilterUnits(), []);
   const trimmed = query.trim();
@@ -351,7 +343,7 @@ export default function SettingsSections({ variant = 'live', onClose, initialSec
           ))}
           {filtering && !anyMatch && (
             <div className="mt-6 rounded-lg bg-bg-subtle px-4 py-6 text-center text-xs text-fg-dim">
-              「{trimmed}」 에 맞는 설정이 없습니다 — 알림·데이터소스·테마 등 정보
+              「{trimmed}」 에 맞는 설정이 없습니다 — 데이터소스·테마 등 정보
               섹션은 필터 대상이 아닙니다
             </div>
           )}
