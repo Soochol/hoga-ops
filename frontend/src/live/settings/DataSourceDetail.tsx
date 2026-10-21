@@ -9,7 +9,6 @@ import {
 import { useLiveSettings, usePatchLiveSettings, LIVE_SETTINGS_KEY, type LiveSettings, type LiveSettingsPatch } from '../../api/liveSettings';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRecordSettingsUndo } from './settingsUndoContext';
-import { useLiveStatus } from '../../api/liveStatus';
 import { SettingsRow, ToggleSwitch } from './SettingsRow';
 
 function RoleSourceGroup({
@@ -30,7 +29,7 @@ function RoleSourceGroup({
   );
 }
 
-/** 데이터소스 패널의 상위 구분 — '표시 소스'(읽기)와 '캡처 저장'(쓰기)를 나눈다.
+/** 데이터소스 패널의 상위 구분.
  * RoleSourceGroup 제목(text-sm/medium/fg)보다 조용한 캡션 톤(dimmer/semibold)이라
  * 하위 그룹이 시각적으로 더 도드라진다. */
 function MacroGroupLabel({ children }: { children: ReactNode }) {
@@ -52,7 +51,7 @@ function ScopeNote({ testId, children }: { testId: string; children: ReactNode }
   );
 }
 
-/** 데이터 소스 설정 상세 — 표시 소스(읽기)와 캡처 저장(쓰기)를 나눠 배치.
+/** 데이터 소스 설정 상세 — 캔들·거래소·호가체결의 표시 기준.
  *
  * **컨텍스트 인자가 없다**(옛 `variant: 'live' | 'study'` 삭제). 값이 전부 전역
  * (LiveSettings API + 전역 store)인데 화면마다 컨트롤을 숨기고 있어서, 같은 탭에서도
@@ -71,7 +70,7 @@ function ScopeNote({ testId, children }: { testId: string; children: ReactNode }
  * 설정에서는 성립하지 않는다 — 이 라디오는 `/live`·`/heatmap`·`/screener`·관심종목에
  * 실제로 작동한다. */
 export function DataSourceDetail() {
-  const { data, isLoading, isError } = useLiveSettings();
+  const { data, isError } = useLiveSettings();
   const patch = usePatchLiveSettings();
   const queryClient = useQueryClient();
   const recordUndo = useRecordSettingsUndo();
@@ -89,8 +88,6 @@ export function DataSourceDetail() {
   }
   const restBypassEnabled = data?.rest_bypass_enabled ?? false;
   const krxPreferHogaplay = data?.krx_prefer_hogaplay ?? false;
-  // 기본 False: 스캔은 탐색적 반복 실행이라 묵시적 큐 증가를 막는다(명시적 버튼이 1차 UX).
-  const autoCollect = data?.screener_depth_autocollect ?? false;
   const venue = useLiveVenueStore((s) => s.venue);
 
   return (
@@ -102,7 +99,7 @@ export function DataSourceDetail() {
       {isError && (
         <p className="text-xs text-error">라이브 설정을 불러오지 못했습니다. 백엔드 연결을 확인하세요</p>
       )}
-      {/* 표시 소스(읽기): 차트에 무엇이 그려지는가 — 캔들·거래소·호가체결·스크리너. */}
+      {/* 표시 소스(읽기): 캔들·거래소·호가체결의 표시 기준. */}
       <MacroGroupLabel>표시 소스</MacroGroupLabel>
       <div>
         {/* 캔들 소스는 'REST 우회' 토글이 단독 결정(4옵션 캔들 라디오 폐기). */}
@@ -171,92 +168,8 @@ export function DataSourceDetail() {
             </div>
           )}
         </RoleSourceGroup>
-        <RoleSourceGroup
-          title="스크리너 일봉 데이터"
-          description="조건검색·섹터 랭킹에 사용하는 KIS 일봉입니다."
-        >
-          <div className="text-sm text-fg-dim">
-            스크리너의 데이터 갱신 버튼으로 업데이트합니다.
-          </div>
-        </RoleSourceGroup>
-      </div>
-
-      {/* 캡처 저장(쓰기): 라이브 수신 데이터를 디스크에 어떻게 저장하는가. 표시와 무관.
-          관심종목·히트맵 모두 키움 WS 전담(ADR-0118 — KIS WS 삭제, 호가는 KIS REST로도
-          받지 않는다) — 저장 방식 라디오(storage_policy)는 폐기됐다. */}
-      <MacroGroupLabel>캡처 저장</MacroGroupLabel>
-      <div>
-        {/* 저장 스위치는 폐지(2026-07-21) — 키움 0w push 전환으로 수집 한계비용이 0이
-            되어 거래원(0F)과 동일하게 항시 저장한다. 옛 토글은 KIS REST 폴링 시절
-            쿼터를 아끼려던 잔재였고, 꺼두면 데이터가 조용히 유실됐다. */}
-        <RoleSourceGroup
-          title="프로그램 순매수 저장"
-          description="캡처가 켜진 관심그룹의 프로그램 순매수를 자동 저장합니다."
-        >
-          <div className="text-sm text-fg-dim">항시 저장 중입니다</div>
-        </RoleSourceGroup>
-        <RoleSourceGroup
-          title="키움 실시간 수집"
-          description="관심종목·히트맵의 호가·체결을 실시간 수집합니다. 키움 앱키 설정 시 자동 시작하며, 앱키당 최대 200종목을 수집합니다."
-        >
-          <KiwoomStatusLine />
-        </RoleSourceGroup>
-        {/* 옛 「데이터 수집」 nav(토글 1개짜리 섹션)에서 옮겨 왔다 — 캡처 쓰기 설정이라
-            여기가 제자리이고, 바로 위 「스크리너 일봉 데이터」 와 같은 대상을 다룬다.
-            토글만 `disabled` 를 쓰는 비대칭은 이전 동작 그대로 보존한 것이다. */}
-        <RoleSourceGroup
-          title="스크리너 총잔량 결측 자동 수집"
-          description="총잔량 신고 검색에 필요한 과거 데이터가 없으면 자동 수집합니다. 끄면 결과의 수집 요청 버튼으로 수집합니다."
-        >
-          <SettingsRow label="자동 수집" testId="settings-depth-autocollect-row">
-            <ToggleSwitch
-              label="스크리너 총잔량 결측 자동 수집"
-              checked={autoCollect}
-              disabled={isLoading || patch.isPending}
-              onClick={() => change('screener_depth_autocollect', !autoCollect)}
-            />
-          </SettingsRow>
-        </RoleSourceGroup>
-      </div>
-
-      <div className="text-xs text-fg-dim">
-        차트 상단 배지에서 실제 데이터 출처를 확인할 수 있습니다.
       </div>
     </>
-  );
-}
-
-/** 키움 세션 상태 한 줄 — 항상 표시(활성화 스위치 폐지, ADR-0118). LiveStatus.kiwoom
- * (관측)에서 조립. status 미해결이면 '상태 확인 중', kiwoom=null(앱키 미설정/미배선)이면
- * .env 안내, 킥 감지 시 경고 톤. */
-function KiwoomStatusLine() {
-  const { data } = useLiveStatus();
-  if (data === undefined) {
-    return (
-      <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
-        상태 확인 중…
-      </div>
-    );
-  }
-  const k = data.kiwoom;
-  if (k == null) {
-    return (
-      <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
-        키움 앱키 미설정 — <code>.env</code>에 <code>KIWOOM_APP_KEY</code>를 추가하면 실시간이 활성화됩니다
-      </div>
-    );
-  }
-  const kicked = k.accounts.some((a) => a.kicked_by_peer);
-  return (
-    <div className="mt-1 text-xs text-fg-dim" data-testid="kiwoom-status-line">
-      연결 {k.connected_accounts}/{k.accounts_configured}계정 · 구독 준비 {k.accounts.filter((a) => a.registration_ready === true).length}/{k.accounts_configured}계정 · 수집 {k.subscribed_count}종목
-      {k.collector?.state_reason === 'syncing' && ' · 실시간 설정 반영 중'}
-      {kicked && (
-        <span className="ml-1 text-warn" data-testid="kiwoom-kicked-warning">
-          · 다른 프로세스가 앱키 점유 중
-        </span>
-      )}
-    </div>
   );
 }
 

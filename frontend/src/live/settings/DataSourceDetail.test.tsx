@@ -45,13 +45,12 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     expect(localStorage.getItem('live.venue.v1')).toContain('NXT');
   });
 
-  it('상세를 캔들/호가체결/스크리너 일봉 + 표시/캡처 매크로 그룹으로 구조화한다', async () => {
+  it('상세를 캔들/호가체결 표시 기준으로 구조화한다', async () => {
     vi.spyOn(liveSettingsApi, 'getLiveSettings').mockResolvedValue(SETTINGS);
 
     render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     expect(await screen.findByText('표시 소스')).toBeInTheDocument();
-    expect(screen.getByText('캡처 저장')).toBeInTheDocument();
     expect(screen.getByText('캔들 데이터 기준')).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: '저장 데이터로 캔들 보기' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: '자동' })).toBeNull();
@@ -63,7 +62,6 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     expect(
       screen.getByRole('switch', { name: 'KRX에서 hogaplay 우선' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('스크리너 일봉 데이터')).toBeInTheDocument();
     // 저장 방식 라디오(storage_policy)는 폐지(2026-07-17: 관심종목=KIS WS·히트맵=키움 WS 고정).
     expect(screen.queryByText('데이터 저장 방식')).toBeNull();
     expect(screen.queryByRole('radio', { name: 'WS만 저장' })).toBeNull();
@@ -180,124 +178,6 @@ describe('DataSourceDetail (앱 전역 단일 표면)', () => {
     expect(screen.queryByTestId('krx-prefer-hogaplay-inactive')).toBeNull();
   });
 
-  it('프로그램 순매수 저장은 토글 없이 항시 저장 안내만 보인다 (스위치 폐지 2026-07-21)', async () => {
-    const qc = freshQc();
-    qc.setQueryData(liveSettingsApi.LIVE_SETTINGS_KEY, SETTINGS);
-    vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) =>
-      url.includes('/status')
-        ? Promise.resolve({ running: false, live_set: [], capture_reason: 'offline', kiwoom: null })
-        : Promise.resolve(SETTINGS),
-    );
-
-    render(<DataSourceDetail />, { wrapper: wrap(qc) });
-
-    expect(await screen.findByText('항시 저장 중입니다')).toBeInTheDocument();
-    // 키움 0w push 전환으로 수집 비용이 0 — 거래원(0F)처럼 스위치 자체가 없다.
-    expect(screen.queryByRole('switch', { name: '프로그램 순매수 저장' })).toBeNull();
-  });
-
-  it('키움 상태줄에 연결 계정·수집 종목 수를 보인다 (활성화 스위치 폐지, ADR-0118)', async () => {
-    const qc = freshQc();
-    // 활성화 토글은 없다 — 상태줄은 status.kiwoom 관측에서 항상 조립된다.
-    vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) => {
-      if (url.includes('/status')) {
-        return Promise.resolve({
-          running: true, live_set: [], capture_reason: 'healthy',
-          kiwoom: { enabled: true, accounts_configured: 2, connected_accounts: 1, subscribed_count: 190, last_tick_ms: null, accounts: [] },
-        });
-      }
-      return Promise.resolve({ ...SETTINGS });
-    });
-
-    render(<DataSourceDetail />, { wrapper: wrap(qc) });
-
-    // 상태줄은 처음 '상태 확인 중'으로 뜨고 status 쿼리 해결 후 내용이 채워진다.
-    await waitFor(() =>
-      expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('연결 1/2계정'),
-    );
-    expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('수집 190종목');
-    // 토글 스위치는 더 이상 렌더되지 않는다.
-    expect(screen.queryByRole('switch', { name: /키움/ })).toBeNull();
-  });
-
-  it('키움 앱키 미설정(status.kiwoom=null)이면 .env 안내 문구를 보인다', async () => {
-    const qc = freshQc();
-    vi.spyOn(apiClient, 'apiCall').mockImplementation((url: string) => {
-      if (url.includes('/status')) {
-        return Promise.resolve({
-          running: false, live_set: [], capture_reason: 'offline', kiwoom: null,
-        });
-      }
-      return Promise.resolve({ ...SETTINGS });
-    });
-
-    render(<DataSourceDetail />, { wrapper: wrap(qc) });
-
-    await waitFor(() =>
-      expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('키움 앱키 미설정'),
-    );
-    expect(screen.getByTestId('kiwoom-status-line')).toHaveTextContent('KIWOOM_APP_KEY');
-  });
-});
-
-/** 옛 「데이터 수집」 nav(토글 1개짜리 섹션)에서 이관된 검사들.
- *  캡처 쓰기 설정이라 「캡처 저장」 매크로 그룹이 제자리다. */
-describe('DataSourceDetail — 스크리너 총잔량 결측 자동 수집', () => {
-  const TOGGLE = '스크리너 총잔량 결측 자동 수집';
-
-  afterEach(() => {
-    cleanup();
-    vi.restoreAllMocks();
-    localStorage.clear();
-    useLiveVenueStore.setState({ venue: 'KRX' });
-  });
-
-  it('기본은 꺼짐 — 스캔은 반복 실행이라 묵시적 큐 증가를 막는다', async () => {
-    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS });
-
-    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
-
-    expect(await screen.findByRole('switch', { name: TOGGLE })).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('wire 값이 켜져 있으면 반영한다', async () => {
-    vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS, screener_depth_autocollect: true });
-
-    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
-
-    await waitFor(() =>
-      expect(screen.getByRole('switch', { name: TOGGLE })).toHaveAttribute('aria-checked', 'true'),
-    );
-  });
-
-  it('클릭하면 반전된 값을 PATCH 한다', async () => {
-    const apiCall = vi.spyOn(apiClient, 'apiCall').mockResolvedValue({ ...SETTINGS });
-
-    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
-
-    // ⚠ 이 패널에서 **로딩 중 잠기는 토글은 이것 하나**다(옛 「데이터 수집」 동작을
-    // 그대로 옮겼다 — REST 우회·hogaplay 는 잠기지 않는다). 해소를 기다리지 않으면
-    // disabled 버튼이 클릭을 삼켜 PATCH 가 아예 일어나지 않는다.
-    const toggle = await screen.findByRole('switch', { name: TOGGLE });
-    await waitFor(() => expect(toggle).toBeEnabled());
-    fireEvent.click(toggle);
-
-    await waitFor(() => expect(apiCall).toHaveBeenCalledWith('/api/live/settings', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ screener_depth_autocollect: true }),
-    }));
-  });
-
-  it('설정 로딩 중에는 토글을 잠근다', () => {
-    // 영원히 pending — isLoading 상태를 고정한다.
-    vi.spyOn(apiClient, 'apiCall').mockImplementation(() => new Promise(() => {}));
-
-    render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
-
-    expect(screen.getByRole('switch', { name: TOGGLE })).toBeDisabled();
-  });
-
   it('GET 실패는 패널 상단에 한 번 알리고 토글은 살려 둔다', async () => {
     // PATCH 는 partial 이라 현재값을 몰라도 조작이 안전하다 — 복구 조작을 열어둔다.
     vi.spyOn(apiClient, 'apiCall').mockRejectedValue(new Error('backend down'));
@@ -305,6 +185,6 @@ describe('DataSourceDetail — 스크리너 총잔량 결측 자동 수집', () 
     render(<DataSourceDetail />, { wrapper: wrap(freshQc()) });
 
     expect(await screen.findByText(/라이브 설정을 불러오지 못했습니다/)).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: TOGGLE })).toBeEnabled();
+    expect(screen.getByRole('switch', { name: 'KRX에서 hogaplay 우선' })).toBeEnabled();
   });
 });
