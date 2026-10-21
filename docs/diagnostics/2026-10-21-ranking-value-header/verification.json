@@ -1,0 +1,83 @@
+{
+  "recordedAtKst": "2026-10-21T23:33:25.954791+09:00",
+  "baseCommit": "bf51fcb432f5741ff9e489db5123f82c897dc508",
+  "implementationState": "Uncommitted working-tree changes; source and final test inputs recorded below.",
+  "scope": "Remove the trade-value ranking column-header row to match the program tab; remove title-only width probes and update existing layout checks.",
+  "inputFingerprint": {
+    "sha256": "b67dd57dc93a08c32a34a11e4198bafdafed72322a3997d77c7aaaf18d074748",
+    "files": 2099,
+    "gitPathspecs": [
+      "frontend/src",
+      "frontend/tests",
+      "frontend/public",
+      "frontend/index.html",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/vite.config.ts",
+      "frontend/vitest.config.ts",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.test.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.node.json",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version",
+      "hoga",
+      "tests/fixtures/tiny_tsv_multi"
+    ],
+    "algorithm": "SHA256 of sorted path + NUL + raw SHA256(file bytes)"
+  },
+  "changedSourceSha256": {
+    "frontend/src/rightrail/RankingDrawer.tsx": "032123099925f9fd6c666bfd70cc0caa7613016cb996f9df3b476ecfc1ab4eeb",
+    "frontend/tests/e2e/ranking-column-layout.spec.ts": "d780bbfb26c7feedc4ca05e2c4ad695179c45a4079a8a7a2f57e9dda39d981c4",
+    "DESIGN.md": "e436dd2156e4621d92b8e12293edfbc2d8290e04079dd6794be21cad92e84aff"
+  },
+  "tools": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "python": "3.14.7"
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; app, unit-test and E2E projects. The later test-only screenshot-path change was additionally checked by the E2E TypeScript command below."
+    },
+    {
+      "command": "cd frontend && npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed on final test source"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/rightrail/RankingDrawer.test.tsx",
+      "result": "26 passed; application source unchanged since this run"
+    },
+    {
+      "command": "cd frontend && npx playwright test ranking-column-layout.spec.ts --grep '거래대금 4열' --reporter=list",
+      "result": "2 passed on final source; 16px/20px font sizes, header absent, four-column alignment, amount polling, overflow, sorting and drag ghost verified; screenshot visually confirmed without headers"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed; application source unchanged since this build"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "backendPort": 20379,
+    "frontendPort": 21379,
+    "workers": 1,
+    "credentials": "blank vendor credentials from Playwright configuration",
+    "rankingData": "mocked API responses"
+  },
+  "limits": [
+    "Changes are in this worktree only; the running user checkout was not modified."
+  ]
+}
