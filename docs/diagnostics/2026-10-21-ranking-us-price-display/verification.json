@@ -1,0 +1,64 @@
+{
+  "validated_at": "2026-10-21T23:34:06.315429+09:00",
+  "source_commit": "9002e2059c0c3e43193f4119b6ef57d4af888e97",
+  "base_commit": "bf51fcb432f5741ff9e489db5123f82c897dc508",
+  "input_fingerprint_sha256": "de6cd396205860cdcb9ba049c9b8a9ba1d09fc56a72f6594ba97467f954e9ed0",
+  "input_file_count": 2584,
+  "input_scope": {
+    "tracked_trees": [
+      "frontend",
+      "hoga",
+      "tests"
+    ],
+    "tracked_files": [
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version",
+      "docs/research/2026-10-19-us-index-minute-app-live-probe.json",
+      "docs/research/2026-10-19-us-stock-minute-app-live.json.gz"
+    ],
+    "algorithm": "SHA-256 per file; SHA-256 of sorted compact JSON mapping paths to file hashes"
+  },
+  "versions": {
+    "node": "24.13.1",
+    "python": "3.14.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "react": "18.3.1",
+    "lightweight-charts": "5.2.0"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npx vitest run src/rightrail/RankingDrawer.test.tsx src/rightrail/rankingSort.test.ts src/rightrail/useQuoteColumns.test.tsx src/chart/projectors/candle.test.ts src/live/LiveChartRoot.test.tsx src/live/usDailyIntegration.test.ts src/live/CandleTooltip.test.tsx src/live/PaneLegendOverlay.test.tsx src/live/formatExtremeLabel.test.ts",
+      "cwd": "frontend",
+      "result": "passed",
+      "files": 9,
+      "tests": 346
+    },
+    {
+      "command": "npx playwright test tests/e2e/ranking-column-layout.spec.ts tests/e2e/ranking-pagination.spec.ts tests/e2e/us-daily-candles.spec.ts tests/e2e/us-index-minutes.spec.ts tests/e2e/us-stock-minutes.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "passed",
+      "tests": 25,
+      "workers": 1,
+      "backend_port": 20252,
+      "frontend_port": 21252,
+      "build": "vite production build passed in webServer startup; isolated data and disabled vendor credentials from playwright.config.ts"
+    }
+  ],
+  "live_screen_checks": [
+    "Ranking turnover/program/institution/foreign amounts share one line with integer eok values",
+    "NASDAQ_COMPOSITE, SP500 and SOX Y-axis, tooltip and OHLC show two decimals",
+    "SP500 axis 7,712.57 and NYSE BRKa axis 809,555.00 show grouping separators"
+  ],
+  "scope": "Frontend display and tests only; no backend/API changes.",
+  "metadata_reuse": "Later verification-only commits retain this same input fingerprint."
+}
