@@ -8,7 +8,7 @@ const exactAmount = new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 })
 const labels = { net: '순매수', buy: '총매수', sell: '총매도' };
 const sides = ['net', 'buy', 'sell'] as const;
 
-export function InvestorDailySummaryCell({ values, unit, useK = true, foot = false, divided = true, showUnitSuffix = true, separateColumns = false }: {
+export function InvestorDailySummaryCell({ values, unit, useK = true, foot = false, divided = true, showUnitSuffix = true, separateColumns = false, numberAlignment = 'decimal' }: {
   values: Record<InvestorTradeSide, number | null>;
   unit: InvestorNetUnit;
   useK?: boolean;
@@ -16,6 +16,7 @@ export function InvestorDailySummaryCell({ values, unit, useK = true, foot = fal
   divided?: boolean;
   showUnitSuffix?: boolean;
   separateColumns?: boolean;
+  numberAlignment?: 'right' | 'decimal';
 }) {
   function number(side: InvestorTradeSide) {
     const value = values[side];
@@ -30,7 +31,7 @@ export function InvestorDailySummaryCell({ values, unit, useK = true, foot = fal
     const text = side === 'net' ? shown : shown.replace(/^\+/, '');
     return <span title={`${labels[side]} ${exact}`} aria-label={`${labels[side]} ${exact}`}
       className={value === null ? 'text-fg-dimmer' : side === 'net' ? `font-semibold ${qtyClass(value)}` : 'text-fg-dim'}>
-      {separateColumns && !showUnitSuffix
+      {numberAlignment === 'decimal' && separateColumns && !showUnitSuffix
         ? <InvestorDailyNumber text={text} amount={unit !== 'qty_shares'} /> : text}
     </span>;
   }

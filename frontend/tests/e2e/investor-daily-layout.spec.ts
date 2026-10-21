@@ -69,18 +69,35 @@ for (const width of [320, 560, 1000]) {
   });
 }
 
-test('amount decimal slots align through body and cumulative rows', async ({ page }, info) => {
-  await mount(page, 1000, true);
-  for (const display of ['모두', '순매수'] as const) {
-    await setting(page, display);
-    const slots = await page.getByRole('table').evaluate(table => Array.from(table.querySelectorAll('tbody tr, tfoot tr'))
-      .map(row => Array.from(row.querySelectorAll('td .inline-grid > span')).map(span => span.getBoundingClientRect().left)));
-    expect(slots[0].length).toBe(display === '모두' ? 12 : 4);
-    for (const row of slots) row.forEach((x, i) => expect(x).toBeCloseTo(slots[0][i], 1));
-    await expectNumbersFit(page);
-  }
-  await page.screenshot({ path: info.outputPath('daily-amounts.png') });
-});
+for (const width of [320, 560, 1000]) {
+  test(`amount text ends align through body and cumulative rows at ${width}px`, async ({ page }, info) => {
+    await mount(page, width, true);
+    for (const display of ['모두', '순매수', '기관 상세 펼치기'] as const) {
+      await setting(page, display);
+      const rows = await page.getByRole('table').evaluate(table => Array.from(table.querySelectorAll('tbody tr, tfoot tr'))
+        .map(row => Array.from(row.querySelectorAll('td')).map(cell => {
+          // Measure visible text rather than a wrapper that can include an empty
+          // fractional slot. Integers, decimals and zero share the same edge.
+          const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+          const textNodes: Node[] = [];
+          while (walker.nextNode()) if (walker.currentNode.textContent?.trim()) textNodes.push(walker.currentNode);
+          if (!textNodes.length) return null;
+          const range = document.createRange();
+          range.setStart(textNodes[0], 0);
+          const last = textNodes.at(-1)!;
+          range.setEnd(last, last.textContent!.length);
+          return { textRight: range.getBoundingClientRect().right,
+            cellRight: cell.getBoundingClientRect().right - parseFloat(getComputedStyle(cell).paddingRight) };
+        })));
+      expect(rows[0]).toHaveLength(display === '모두' ? 12 : display === '순매수' ? 4 : 12);
+      for (const row of rows) for (const cell of row) {
+        if (cell) expect(cell.textRight).toBeCloseTo(cell.cellRight, 1);
+      }
+      await expectNumbersFit(page);
+    }
+    await page.screenshot({ path: info.outputPath('daily-amounts.png') });
+  });
+}
 
 test('long raw quantities and cumulative totals keep their reserved tracks', async ({ page }) => {
   await mount(page, 560, false, true);
