@@ -1,0 +1,127 @@
+{
+  "recorded_at": "2026-10-21T11:47:31.594072+09:00",
+  "branch": "codex/screener-live-minute-volume",
+  "base_sha": "89507441cc699f45395e628db727525a42a4a7e8",
+  "workspace_head_before_implementation_commit": "31fecb4018f192184002d7a08e00b82126e0b032",
+  "inputs": {
+    "backend": {
+      "file_count": 784,
+      "sha256": "bc2e04fc971044d49086f2edd265b3a6dd3bf52116cf31f7e7b8d2d903b2c79f"
+    },
+    "frontend": {
+      "file_count": 1789,
+      "sha256": "b23c286f7bfc1df67eefa5b07fc1a9c77e4e0af210d9d0fac2cd90159913e707"
+    }
+  },
+  "manifest": "implementation-inputs.json",
+  "environment": {
+    "python": "3.14.7",
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "uv": "0.11.8",
+    "ruff": "0.15.13",
+    "chrome": "155.0.8059.84",
+    "credentials": "empty worktree .env and blank E2E vendor variables; live shadow uses only existing operational HTTP/WS"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "status": "passed",
+      "log": "/tmp/hoga-continuous-backend-deployment.log",
+      "passed": 6661,
+      "skipped": 2,
+      "deselected": 13,
+      "warnings": 50,
+      "seconds": 317.68
+    },
+    {
+      "command": "npx vitest run --maxWorkers=6",
+      "status": "passed",
+      "files": 676,
+      "passed": 8755,
+      "seconds": 118.42,
+      "log": "/tmp/hoga-continuous-vitest-deployment.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "status": "passed",
+      "scope": "app, unit and E2E TypeScript",
+      "log": "/tmp/hoga-continuous-type-deployment.log"
+    },
+    {
+      "command": "npx vite build",
+      "status": "passed",
+      "seconds": 3.51,
+      "notes": "Existing large-chunk advisory remains",
+      "log": "/tmp/hoga-continuous-build-release.log"
+    },
+    {
+      "command": "npx playwright test screener",
+      "status": "passed",
+      "passed": 25,
+      "log": "/tmp/hoga-continuous-e2e-main-final.log",
+      "reuse": "Before final monitor_id event filter; other screener E2E inputs unchanged. Both impacted volume cases repeated five times on final frontend below."
+    },
+    {
+      "command": "npx playwright test screener-bar-volume --repeat-each=5 --reporter=line",
+      "status": "passed",
+      "passed": 10,
+      "seconds": 30.3,
+      "log": "/tmp/hoga-continuous-critical-repeat.log"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener_continuous.py tests/unit/live/test_volume_state.py tests/unit/live/test_volume_process.py tests/api/test_app_startup_scheduler.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "status": "passed",
+      "passed": 41,
+      "seconds": 27.66,
+      "log": "/tmp/hoga-continuous-last-affected-exact.log"
+    }
+  ],
+  "intraday": {
+    "date": "2026-10-21",
+    "duration_seconds": 240,
+    "existing_subscriptions_before": 342,
+    "existing_subscriptions_after": 342,
+    "sampled_symbols": 8,
+    "final_code_record": "shadow-deployment-input.json",
+    "matched_comparisons": 23,
+    "mismatches": 1,
+    "resolution": "live-one-share-correction.json",
+    "conclusion": "One-share difference persists in REST and independently matches the existing collector WS candle. Cause at provider/exchange is not established. Actual API row corrects the shared history downward and old WS replay cannot undo it. Earlier 16/16 and 23/23 passes are retained as separate runs, not substituted for final-code results.",
+    "result_reads_history_requests": 0
+  },
+  "replay": {
+    "symbols": 338,
+    "conditions": 2,
+    "market_minutes": 390,
+    "checked_evaluations": 263636,
+    "history_calls": 339,
+    "retained_history_bytes": 14130754,
+    "rss_delta_bytes": 29900800,
+    "limitations": "RSS delta is process/run dependent. Synthetic replay excludes ordinary 5-minute audits; history calls are 338 initial + one explicit reconnection repair."
+  },
+  "other_checks": {
+    "ruff": "passed",
+    "diff_whitespace": "passed",
+    "byte_budget_benchmark": "frame-benchmark.json",
+    "native_previous_closing_bars": "previous-closing-bars.json",
+    "visual_review": "Inspected emitted Chrome E2E page/drawer screenshots. No native desktop interaction; missing /browse executable remains a limitation."
+  },
+  "operational_deployed": false,
+  "limitations": [
+    "Fast continuous path requires scoped 1m volume conditions; full-market simultaneous tick monitoring is unsupported.",
+    "WS values are provisional until API audit; external corrections may change matches.",
+    "Mixed predicates preserve their existing freshness; no tick-fresh claim for all fields.",
+    "Prior-day auction data and deterministic tests cover closing behavior; same-day closing auction has not yet occurred.",
+    "No destructive migration, launcher/profile change, broker credential copy or new vendor connection."
+  ],
+  "input_fingerprints_after_checks": "identical to implementation-inputs.json; verified after final backend completion",
+  "merge_preflight": {
+    "origin_main": "89507441cc699f45395e628db727525a42a4a7e8",
+    "overlapping_open_prs": [],
+    "checked_open_prs": [
+      1927,
+      1726
+    ]
+  }
+}

@@ -24,6 +24,7 @@ import { useChartDropDrag } from '../rightrail/useChartDropDrag';
 import { useScreenerPanelStore, useExpireScreenerScan, MONITOR_PERIOD_CHOICES_MS } from '../state/screenerPanel';
 import { useSavedScreeners } from './useSavedScreeners';
 import { useScreener } from './useScreener';
+import { hasContinuousVolume } from './continuousClient';
 import { useScreenerStatus } from './useScreenerStatus';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from './useScreenerUpdateSync';
 import { ScreenerUpdateProgress } from './ScreenerUpdateProgress';
@@ -169,7 +170,6 @@ export function ScreenerDrawer() {
   const { data: savesData, isSuccess: savesLoaded } = useSavedScreeners();
   const saves = useMemo(() => savesData?.saves ?? [], [savesData]);
   const { data: status } = useScreenerStatus();
-  const screener = useScreener();
 
   // Restore/repair selection once saves have loaded: keep the persisted id if it
   // still exists, else fall back to the first save, else none. Gate on
@@ -187,6 +187,9 @@ export function ScreenerDrawer() {
   useExpireScreenerScan();
 
   const selected = saves.find((s) => s.id === selectedSavedId) ?? null;
+  const continuousNeedsScope = !!selected && hasContinuousVolume(selected) && !selected.universe.scopes?.length;
+  const screener = useScreener({ continuous: monitoringActive,
+    anchor: selected ? `${selected.id}:${selected.updated_at_ms}` : '' });
   const notSeeded = status?.status === 'not_seeded' || lastScan?.scanStatus === 'not_seeded';
   // 강등 사유별 문구 — 페이지와 같은 매핑을 쓴다(ADR-0137 R6).
   const intradayDegradation = intradayDegradationText(lastScan?.warnings, lastScan?.intradayFailure);
@@ -256,6 +259,7 @@ export function ScreenerDrawer() {
   const setMonitorPeriodMs = useScreenerPanelStore((s) => s.setMonitorPeriodMs);
   const effectivePeriodMs = monitorPeriodMs ?? (scoped ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS);
   const monitor = useScreenerMonitor({
+    acceptsVolumeEvent: screener.acceptsVolumeEvent,
     active: monitoringActive,
     selectedId: selectedSavedId,
     periodMs: effectivePeriodMs,
@@ -274,8 +278,8 @@ export function ScreenerDrawer() {
 
   // 모니터링 중 시드 없음·선택 해제 등으로 조회 불가가 되면 자동 종료(유령 활성 방지).
   useEffect(() => {
-    if (monitoringActive && (notSeeded || !selected)) setMonitoringActive(false);
-  }, [monitoringActive, notSeeded, selected, setMonitoringActive]);
+    if (monitoringActive && (notSeeded || !selected || continuousNeedsScope)) setMonitoringActive(false);
+  }, [monitoringActive, notSeeded, selected, continuousNeedsScope, setMonitoringActive]);
 
   const handleSortChange = (mode: ScreenerResultSortMode) => {
     setSortMode(mode);
@@ -379,11 +383,14 @@ export function ScreenerDrawer() {
         {/* 대기 = 시작(즉시 1회 조회 + 실시간 유지)만. 별도의 수동 조회 버튼은 두지
             않는다 — 시작이 즉시 조회를 겸한다. 시작 = 새 검색이므로 이전 결과를 먼저
             버린다(옛 리스트가 조회 왕복 동안 새 결과인 척 남지 않게). */}
+        {continuousNeedsScope && <p className="text-xs text-fg-dim">
+          1분봉 실시간 감시는 조건검색의 사전필터에서 관심종목·히트맵 범위를 선택하세요.
+        </p>}
         {!monitoringActive ? (
           <ToolbarButton
             tone="primary"
             onClick={() => { clearLastScan(); setMonitoringActive(true); }}
-            disabled={notSeeded || !selected}
+            disabled={notSeeded || !selected || continuousNeedsScope}
             className="w-full py-1.5"
             aria-pressed={false}
             data-testid="screener-monitor-toggle"

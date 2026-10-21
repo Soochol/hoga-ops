@@ -1,0 +1,53 @@
+backend-deployment
+tests/unit/api/test_pattern_saves.py::test_conditions_carry_the_whole_question_not_the_answer
+  /home/dev/.codex/worktrees/75db/hoga-ops/tests/unit/api/test_pattern_saves.py:111: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
+    fields = set(req.conditions.model_fields)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=== 6661 passed, 2 skipped, 13 deselected, 50 warnings in 317.68s (0:05:17) ====
+
+vitest-deployment
+
+ Test Files  676 passed (676)
+      Tests  8755 passed (8755)
+   Start at  11:42:51
+   Duration  118.42s (transform 19.54s, setup 24.17s, import 78.85s, tests 183.10s, environment 340.90s)
+
+
+type-deployment
+
+> frontend@0.0.0 typecheck
+> tsc -b && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.e2e.json --noEmit
+
+
+build-release
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 700 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 3.51s
+
+e2e-main-final
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:57848 - "GET /api/screener/exclusions HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     connection closed
+
+[1A[2K  25 passed (1.1m)
+
+critical-repeat
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:54012 - "GET /api/heatmap/group-flow?venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:54012 - "GET /api/screener/exclusions HTTP/1.1" 200 OK
+
+[1A[2K  10 passed (30.3s)
+
+last-affected-exact
+tests/unit/live/test_volume_state.py ...........                         [ 63%]
+tests/unit/live/test_volume_process.py .                                 [ 65%]
+tests/api/test_app_startup_scheduler.py ..                               [ 70%]
+tests/unit/api/test_rest_wire_schema_contract.py ............            [100%]
+
+============================= 41 passed in 27.66s ==============================

@@ -2364,6 +2364,13 @@ class BarVolumeCoverageItem(BaseModel):
 class BarRealtimeCoverage(BaseModel):
     prepared: int
     receiving: int
+    continuous: bool = False
+    monitor_error: str | None = None
+    insufficient: int = 0
+    preparing: int = 0
+    recovering: int = 0
+    unavailable: int = 0
+    last_verified_ms: int | None = None
 
 
 class BarVolumeCoverage(BaseModel):

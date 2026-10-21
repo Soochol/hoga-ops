@@ -857,3 +857,16 @@ def start_trading_calendar_refresher(
             await asyncio.sleep(_trading_calendar_refresh_delay(data_dir, interval_s))
 
     return asyncio.create_task(loop(), name="trading-calendar-refresher")
+
+
+async def set_screener_volume_targets(codes) -> None:
+    """Only consumes existing subscriptions. Does not create a broker connection."""
+    session = _state.kiwoom_session
+    if session is not None and hasattr(session, 'set_volume_targets'):
+        await session.set_volume_targets(codes)
+    else:
+        from .volume_state import manager_generations  # noqa: PLC0415 — pure health adapter
+        _buffer.volume_source.configure(codes)
+        _buffer.volume_source.health(manager_generations(session, _now_ms()), _now_ms())
+        for frame in _buffer.volume_source.frames(_now_ms()):
+            _buffer.volume_replica.apply(frame)

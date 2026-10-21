@@ -312,7 +312,9 @@ def test_http_scan_receives_raw_tick_crossing_through_parent_buffer(corpus, minu
     with TestClient(app) as client, client.websocket_connect('/api/ws') as socket:
         first = client.post('/api/screener/scan', json=request).json()
         assert first['rows'] == []
-        assert first['bar_coverage']['realtime'] == dict(prepared=2, receiving=0)
+        assert first['bar_coverage']['realtime']['prepared'] == 2
+        assert first['bar_coverage']['realtime']['receiving'] == 0
+        assert not first['bar_coverage']['realtime']['continuous']
         for volume, qty in [(10_000, 1), (10_100, 100)]:
             snapshot = LiveSnapshot(now_ms, SnapshotKind.TRADE, dict(venue='KRX', cum_volume=volume,
                 trades=[dict(t_ms=now_ms, price=100, qty=qty)]))
@@ -324,7 +326,8 @@ def test_http_scan_receives_raw_tick_crossing_through_parent_buffer(corpus, minu
         evidence = result['rows'][0]['occurrences'][-1]['bar_match']
         assert evidence['is_open'] and evidence['volume'] == 130
         assert evidence['volume_is_lower_bound']
-        assert result['bar_coverage']['realtime'] == dict(prepared=2, receiving=1)
+        assert result['bar_coverage']['realtime']['prepared'] == 2
+        assert result['bar_coverage']['realtime']['receiving'] == 1
         assert len(calls) == 2  # one initial REST request per code, no poll waited
     assert not buffer._trade_observers and not buffer._gap_observers
 

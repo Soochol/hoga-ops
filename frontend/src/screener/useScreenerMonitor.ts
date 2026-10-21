@@ -38,6 +38,7 @@ export interface UseScreenerMonitorArgs {
   onAutoStop: (message: string) => void;
   conditions?: ConditionLeaf[];
   startImmediately?: boolean;
+  acceptsVolumeEvent?: (monitorId?: string) => boolean;
 }
 
 export interface ScreenerMonitorStatus {
@@ -79,6 +80,8 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
   onAutoStopRef.current = onAutoStop;
   const conditionsRef = useRef(args.conditions);
   conditionsRef.current = args.conditions;
+  const acceptsVolumeEventRef = useRef(args.acceptsVolumeEvent);
+  acceptsVolumeEventRef.current = args.acceptsVolumeEvent;
 
   useEffect(() => {
     if (!active || disabled || selectedId === null) return;
@@ -141,6 +144,8 @@ export function useScreenerMonitor(args: UseScreenerMonitorArgs): ScreenerMonito
         || !event.condition_ids.some(id => ids.includes(id)))) return;
       // A 15:30 closing-auction trade can arrive after the quote phase changed.
       // The server volume event already passed the KRX regular-session gate.
+      if (event.type === 'screener_volume_changed' && acceptsVolumeEventRef.current
+        && !acceptsVolumeEventRef.current(event.monitor_id)) return;
       volumeSignal = event.type === 'screener_volume_changed';
       if (inFlight) queued = true;
       else if (!urgent) { urgent = true; schedule(250); }

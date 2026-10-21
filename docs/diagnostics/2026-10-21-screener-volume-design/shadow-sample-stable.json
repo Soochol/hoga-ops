@@ -1,0 +1,134 @@
+{
+  "started_ms": 1792548743551,
+  "finished_ms": 1792548923610,
+  "duration_seconds": 180,
+  "production_health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "89507441c"
+  },
+  "requested": 342,
+  "existing_ready": 342,
+  "sampled_codes": [
+    "005930",
+    "000660",
+    "006400",
+    "035420",
+    "012450",
+    "373220",
+    "005490",
+    "011200"
+  ],
+  "already_ready": 8,
+  "coverage": {
+    "id": "45f40c77c2f144fab5024efa755f2817",
+    "total": 8,
+    "prepared": 8,
+    "receiving": 8,
+    "preparing": 0,
+    "recovering": 0,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": 1792548780244,
+    "error": null
+  },
+  "first_all_prepared_ms": 4081,
+  "metrics": {
+    "condition_events": 32,
+    "max_prepared": 8,
+    "max_receiving": 8,
+    "trade_frames": 7865,
+    "history_http_requests": 40,
+    "history_requests_from_result_reads": 0
+  },
+  "comparisons": [
+    {
+      "code": "005930",
+      "start_ms": 1792548780000,
+      "ws_volume": 10648,
+      "api_volume": 10484,
+      "equal": false
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792548780000,
+      "ws_volume": 5346,
+      "api_volume": 5196,
+      "equal": false
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792548780000,
+      "ws_volume": 405,
+      "api_volume": 399,
+      "equal": false
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792548780000,
+      "ws_volume": 303,
+      "api_volume": 281,
+      "equal": false
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792548780000,
+      "ws_volume": 62,
+      "api_volume": 62,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792548780000,
+      "ws_volume": 157,
+      "api_volume": 152,
+      "equal": false
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792548780000,
+      "ws_volume": 95,
+      "api_volume": 94,
+      "equal": false
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792548780000,
+      "ws_volume": 625,
+      "api_volume": 625,
+      "equal": true
+    }
+  ],
+  "matched_comparisons": 2,
+  "mismatches": 6,
+  "local_ipc_delivery_ms": {
+    "p50": 0,
+    "p95": 1,
+    "p99": 1
+  },
+  "history_http_seconds_max": 0.9804288599989377,
+  "internal_outbox": {
+    "messages": 0,
+    "bytes": 0,
+    "dropped": 0,
+    "sent": 717,
+    "max_messages": 1024,
+    "max_bytes": 8388608
+  },
+  "subscription_count_before": 342,
+  "subscription_count_after": 342,
+  "limitations": "Shadow uses the existing production public WS; it adds no second vendor connection. The public WS may report gaps. New absolute state IPC and monitor histories are isolated. Only sampled completed bars are compared. Local IPC timing excludes provider and browser latency. Production code is unchanged during this run.",
+  "source_sha256_before": {
+    "hoga/live/volume_state.py": "3d7d550b0dc435336d5eef17d26b8eb6f59b50dc18e95d461f2816fa64ae218d",
+    "hoga/api/screener_continuous.py": "7ab10e7370834deb0034451f44778f8470340741209dd4d2f0983e7cccc4623d",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  },
+  "unchanged_sources": true,
+  "source_sha256": {
+    "hoga/live/volume_state.py": "3d7d550b0dc435336d5eef17d26b8eb6f59b50dc18e95d461f2816fa64ae218d",
+    "hoga/api/screener_continuous.py": "7ab10e7370834deb0034451f44778f8470340741209dd4d2f0983e7cccc4623d",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  }
+}

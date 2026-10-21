@@ -1,0 +1,29 @@
+{
+  "kind": "synthetic representation sizing; excludes actual IPC, live workload, indexes and other process memory",
+  "symbols": 338,
+  "bars_per_symbol": 104,
+  "bars": 35152,
+  "example_python_retained_and_peak_bytes": 5219334,
+  "serialized_full_bytes": 915018,
+  "serialized_64_symbol_chunks_bytes": [
+    173300,
+    173300,
+    173300,
+    173300,
+    173300,
+    48778
+  ],
+  "serialized_current_only_bytes": 12896,
+  "display_frame_limit_bytes": 262144,
+  "control_frame_limit_bytes": 8388608,
+  "head": "8d9e9e42c252dfc5d617ad3897e3f0f349f62227",
+  "source_sha256": {
+    "hoga/live/screener_volume.py": "9bf7043138a528a640c01161f907b59a1274645eadff643e20ce314056d5ae65",
+    "hoga/live/collector_ipc.py": "4de30fa5d9be6b530ab08d8d2ed53b0b67b1c210b77ad1505e258d28d4a45190",
+    "hoga/live/collector_process.py": "c15a871a81d982ab36e5916f4cccc91960e83adf1e254f4269518aa6b094023c",
+    "hoga/live/minute_candle_agg.py": "1050a80b25a1e431b39f6e754abdc7cffbe53652a1bd721a3467680cbdca62c9",
+    "hoga/api/screener_bar_volume.py": "c90d85fa5bd15a6ddc417621856bb36ebd3873e1fc7748e71d3f85aac127294e",
+    "docs/diagnostics/2026-10-21-screener-volume-design/test_design_probes.py": "f728b97f319a626d735d393508b756b7484a4b836d178168db398dadde1f95c5"
+  },
+  "elapsed_s": 0.0491
+}

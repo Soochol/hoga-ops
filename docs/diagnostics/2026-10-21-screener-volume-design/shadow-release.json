@@ -1,0 +1,190 @@
+{
+  "started_ms": 1792549761447,
+  "finished_ms": 1792550001478,
+  "duration_seconds": 240,
+  "production_health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "89507441c"
+  },
+  "requested": 342,
+  "existing_ready": 342,
+  "sampled_codes": [
+    "005930",
+    "000660",
+    "006400",
+    "035420",
+    "012450",
+    "373220",
+    "005490",
+    "011200"
+  ],
+  "already_ready": 8,
+  "coverage": {
+    "id": "9f1150f6d31a4e30a47e2e3b4d421467",
+    "total": 8,
+    "prepared": 8,
+    "receiving": 8,
+    "preparing": 0,
+    "recovering": 0,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": 1792549830396,
+    "error": null
+  },
+  "first_all_prepared_ms": 2027,
+  "metrics": {
+    "condition_events": 33,
+    "max_prepared": 8,
+    "max_receiving": 8,
+    "history_http_requests": 72,
+    "trade_frames": 10338,
+    "history_requests_from_result_reads": 0
+  },
+  "comparisons": [
+    {
+      "code": "005930",
+      "start_ms": 1792549800000,
+      "ws_volume": 15013,
+      "api_volume": 15013,
+      "equal": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792549800000,
+      "ws_volume": 7487,
+      "api_volume": 7487,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792549800000,
+      "ws_volume": 586,
+      "api_volume": 586,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792549800000,
+      "ws_volume": 537,
+      "api_volume": 537,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792549800000,
+      "ws_volume": 211,
+      "api_volume": 211,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792549800000,
+      "ws_volume": 857,
+      "api_volume": 857,
+      "equal": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792549800000,
+      "ws_volume": 721,
+      "api_volume": 721,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792549800000,
+      "ws_volume": 8732,
+      "api_volume": 8732,
+      "equal": true
+    },
+    {
+      "code": "005930",
+      "start_ms": 1792549860000,
+      "ws_volume": 12789,
+      "api_volume": 12789,
+      "equal": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792549860000,
+      "ws_volume": 6437,
+      "api_volume": 6437,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792549860000,
+      "ws_volume": 389,
+      "api_volume": 389,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792549860000,
+      "ws_volume": 297,
+      "api_volume": 297,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792549860000,
+      "ws_volume": 464,
+      "api_volume": 464,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792549860000,
+      "ws_volume": 310,
+      "api_volume": 310,
+      "equal": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792549860000,
+      "ws_volume": 73,
+      "api_volume": 73,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792549860000,
+      "ws_volume": 1245,
+      "api_volume": 1245,
+      "equal": true
+    }
+  ],
+  "matched_comparisons": 16,
+  "mismatches": 0,
+  "local_ipc_delivery_ms": {
+    "p50": 0,
+    "p95": 1,
+    "p99": 1
+  },
+  "history_http_seconds_max": 1.6283697430008033,
+  "internal_outbox": {
+    "messages": 0,
+    "bytes": 0,
+    "dropped": 0,
+    "sent": 955,
+    "max_messages": 1024,
+    "max_bytes": 8388608
+  },
+  "subscription_count_before": 342,
+  "subscription_count_after": 342,
+  "limitations": "Shadow uses the existing production public WS; it adds no second vendor connection. The public WS may report gaps. New absolute state IPC and monitor histories are isolated. Only sampled completed bars are compared. Local IPC timing excludes provider and browser latency. Production code is unchanged during this run.",
+  "source_sha256_before": {
+    "hoga/live/volume_state.py": "dabe74d98d27a0ae36d581c7069b4a6919a57de7bc4318187a362ef168938a6e",
+    "hoga/api/screener_continuous.py": "07fdcf278f202b3561effc0031331419ae362302383b26dc66cfc37caf7bcfd7",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  },
+  "unchanged_sources": true,
+  "source_sha256": {
+    "hoga/live/volume_state.py": "dabe74d98d27a0ae36d581c7069b4a6919a57de7bc4318187a362ef168938a6e",
+    "hoga/api/screener_continuous.py": "07fdcf278f202b3561effc0031331419ae362302383b26dc66cfc37caf7bcfd7",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  }
+}

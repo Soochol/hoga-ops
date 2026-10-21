@@ -29,7 +29,15 @@ export interface BarVolumeCoverageItem {
   missing_days?: number | null; required_from?: string | null; required_to?: string | null;
   name?: string | null;
 }
-export interface BarRealtimeCoverage { prepared: number; receiving: number }
+export interface BarRealtimeCoverage {
+  prepared: number; receiving: number; continuous?: boolean; monitor_error?: string | null; insufficient?: number;
+  preparing?: number; recovering?: number; unavailable?: number; last_verified_ms?: number | null;
+}
+export interface ContinuousStatus {
+  id: string; total: number; prepared: number; receiving: number;
+  preparing: number; recovering: number; unavailable: number; insufficient: number;
+  last_verified_ms: number | null; error: string | null;
+}
 export interface BarVolumeCoverage {
   total: number; complete: number; incomplete: BarVolumeCoverageItem[];
   realtime?: BarRealtimeCoverage | null;
@@ -260,18 +268,20 @@ export type ScreenerUpdateResponse =
 
 // All scan entry points share this revision, including page and drawer scans.
 let exclusionRevision = 0;
-export async function runScan(body: ScanRequest): Promise<ScreenerResponse> {
+async function stableExclusions(fetchResult: () => Promise<ScreenerResponse>): Promise<ScreenerResponse> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const revision = exclusionRevision;
-    const result = await apiCall<ScreenerResponse>('/api/screener/scan', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const result = await fetchResult();
     if (revision === exclusionRevision) return result;
   }
   throw new Error('제외 목록이 변경되었습니다. 다시 조회해 주세요.');
 }
+
+export const runScan = (body: ScanRequest): Promise<ScreenerResponse> => stableExclusions(() =>
+  apiCall<ScreenerResponse>('/api/screener/scan', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+export const readContinuousResult = (id: string): Promise<ScreenerResponse> => stableExclusions(() =>
+  apiCall<ScreenerResponse>(`/api/screener/monitors/${id}/result`));
 
 export const getScreenerStatus = () => apiCall<ScreenerStatus>('/api/screener/status');
 export const triggerScreenerUpdate = () =>

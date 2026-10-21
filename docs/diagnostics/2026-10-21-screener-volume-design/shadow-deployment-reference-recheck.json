@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-10-21T11:41:29.636564+09:00",
+  "rows": [
+    {
+      "code": "005930",
+      "start_ms": 1792550220000,
+      "ws_volume": 12932,
+      "api_volume": 12931,
+      "equal": false,
+      "fresh_api_volume": 12931.0,
+      "fresh_equal": false
+    }
+  ]
+}

@@ -140,7 +140,6 @@ export function Screener() {
   const setSortMode = useScreenerPanelStore((s) => s.setSortMode);
   useExpireScreenerScan();
 
-  const screener = useScreener();
   const [volumeRefreshStopped, setVolumeRefreshStopped] = useState(false);
   const { data: liveSettings } = useLiveSettings();
   const { data: savesData } = useSavedScreeners();
@@ -177,6 +176,7 @@ export function Screener() {
     [editor.conditions, editor.expression, editor.universe],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
+  const screener = useScreener({ continuous: !volumeRefreshStopped, anchor: scanKey });
   // 내용 기반 staleness: 저장된 scanKey 와 현재 빌더 key 가 다르면 "다시 조회 필요".
   // 드로어 스캔은 scanKey null → 비교 불가 시 stale 판정하지 않는다.
   const resultsStale = lastScan?.scanKey != null && lastScan.scanKey !== scanKey;
@@ -236,10 +236,11 @@ export function Screener() {
       return false;
     }
   };
-  const liveVolume = editor.conditions.some(leaf =>
+  const liveVolume = !!editor.universe.scopes?.length && editor.conditions.some(leaf =>
     (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
     && 'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m'));
   useScreenerMonitor({
+    acceptsVolumeEvent: screener.acceptsVolumeEvent,
     active: liveVolume && lastScan?.scanKey === scanKey && !volumeRefreshStopped,
     selectedId: scanKey,
     disabled: notSeeded || !!invalidExpression,
@@ -344,6 +345,10 @@ export function Screener() {
             expression={editor.expression} onExpressionChange={editor.editExpression} expressionScope={editor.anchorId}>
             {!invalidExpression && <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />}
           </ConditionBuilder>
+          {!editor.universe.scopes?.length && editor.conditions.some(leaf =>
+            (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
+            && 'timeframe' in leaf.params && leaf.params.timeframe === '1m') &&
+            <p className="text-xs text-fg-dim">전체 시장은 수동 조회만 지원합니다. 실시간 감시는 관심종목·히트맵 범위를 선택하세요.</p>}
         </div>
       </PanelCard>
 
