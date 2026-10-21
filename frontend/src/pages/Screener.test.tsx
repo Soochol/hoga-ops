@@ -40,6 +40,7 @@ const { defaultQuoteMap } = vi.hoisted(() => ({
   ]),
 }));
 vi.mock('../api/liveQuotes', () => ({
+  useLiveQuoteOverlay: vi.fn(() => ({ quoteByCode: new Map(), phase: 'open', dataUpdatedAt: 0 })),
   useQuoteByCode: vi.fn(() => defaultQuoteMap()),
   isStaleLiveQuote: vi.fn((quote: { stale?: boolean } | undefined) => quote?.stale === true),
 }));

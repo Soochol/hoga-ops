@@ -18,6 +18,7 @@ export type VolumeParams = VolumeBreakoutParams | HistoryVolumeParams | BarVolum
 export interface BarVolumeMatch {
   timeframe: ScreenerTimeframe; volume: number; maximum: number;
   window_start_ms: number; is_open: boolean; fetched_at_ms: number;
+  volume_is_lower_bound?: boolean;
 }
 export interface BarPriceMatch {
   timeframe: ScreenerTimeframe; source: MaSource; value: number; reference: number;
@@ -28,7 +29,11 @@ export interface BarVolumeCoverageItem {
   missing_days?: number | null; required_from?: string | null; required_to?: string | null;
   name?: string | null;
 }
-export interface BarVolumeCoverage { total: number; complete: number; incomplete: BarVolumeCoverageItem[] }
+export interface BarRealtimeCoverage { prepared: number; receiving: number }
+export interface BarVolumeCoverage {
+  total: number; complete: number; incomplete: BarVolumeCoverageItem[];
+  realtime?: BarRealtimeCoverage | null;
+}
 export interface HistoryVolumeParams {
   mode: 'date_range'; start_date: string; end_date: string;
   record_period: { unit: 'years' | 'trading_days'; value: number };

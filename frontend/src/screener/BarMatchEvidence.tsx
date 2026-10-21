@@ -20,7 +20,7 @@ export function BarMatchEvidence({ event }: { event: ScreenerOccurrence }) {
   if (!match) return null;
   return <span className="font-data text-xs text-fg-dim">{price
     ? `${PRICE[price.source]} ${won(price.value)}원 · 비교값 ${won(price.reference)}원`
-    : `${event.bar_match!.volume.toLocaleString('ko-KR')}주`}
+    : `${event.bar_match!.volume_is_lower_bound ? '최소 ' : ''}${event.bar_match!.volume.toLocaleString('ko-KR')}주`}
     {' · '}{match.is_open ? '진행 중' : '완료'}
   </span>;
 }

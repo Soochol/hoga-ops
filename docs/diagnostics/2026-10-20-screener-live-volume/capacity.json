@@ -1,0 +1,32 @@
+{
+  "master_markets": {
+    "KOSDAQ": 1821,
+    "KOSPI": 917
+  },
+  "master_stocks": 2738,
+  "current_venue_registrations": 3952,
+  "minimum_accounts_current_venues": 21,
+  "minimum_accounts_krx_only": 15,
+  "max_watches": 512,
+  "max_bars": 250000,
+  "synthetic": [
+    {
+      "codes": 512,
+      "ticks": 100000,
+      "elapsed_s": 0.3705,
+      "ticks_per_second": 269906,
+      "processed_ticks": 100000,
+      "ignored_ticks": 0,
+      "prepared": 512
+    },
+    {
+      "codes": 5000,
+      "ticks": 100000,
+      "elapsed_s": 0.0593,
+      "ticks_per_second": 1687556,
+      "processed_ticks": 10240,
+      "ignored_ticks": 89760,
+      "prepared": 512
+    }
+  ]
+}

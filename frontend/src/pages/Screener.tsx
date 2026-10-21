@@ -7,6 +7,7 @@ import { useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
 import { useJumpToLive } from '../live/useJumpToLive';
 import { useScreener } from '../screener/useScreener';
+import { useScreenerMonitor, MONITOR_PERIOD_FULL_MS, MONITOR_PERIOD_SCOPED_MS } from '../screener/useScreenerMonitor';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
 import { useScreenerUpdate } from '../screener/useScreenerUpdate';
 import { useScreenerUpdateFeedback, visibleUpdateFeedback } from '../screener/useScreenerUpdateSync';
@@ -140,6 +141,7 @@ export function Screener() {
   useExpireScreenerScan();
 
   const screener = useScreener();
+  const [volumeRefreshStopped, setVolumeRefreshStopped] = useState(false);
   const { data: liveSettings } = useLiveSettings();
   const { data: savesData } = useSavedScreeners();
   const { data: status } = useScreenerStatus();
@@ -193,41 +195,65 @@ export function Screener() {
     if (editor.dirty) { setPendingSwitch({ save, restore }); return; }
     if (save) editor.load(save); else editor.newDraft();
   };
-  const runScan = () => {
-    if (invalidExpression) return;
+  const runScan = async (background = false): Promise<boolean> => {
+    if (invalidExpression || screener.isPending) return false;
+    if (!background) setVolumeRefreshStopped(false);
     const requestJson = JSON.stringify(scanBody);
     const anchored = !editor.dirty && editor.anchorId != null;
     const saved = anchored ? savesData?.saves.find((s) => s.id === editor.anchorId) ?? null : null;
     const savedId = anchored ? editor.anchorId : null;
     const savedName = anchored ? editor.anchorName : null;
-    return screener.mutate(scanBody, {
-      onSuccess: (res) => {
-        // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
-        // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
-        setLastScan({
-          savedId,
-          savedName,
-          savedUpdatedAtMs: saved?.updated_at_ms ?? null,
-          scanKey,
-          requestJson,
-          rows: res.rows,
-          hasMore: res.has_more,
-          scanStatus: res.status,
-          intradayFailure: res.intraday_failure,
-          warnings: res.warnings,
-          historyCoverage: res.history_coverage,
-          barCoverage: res.bar_coverage,
-        depthValues: res.depth_values ?? null,
-          scannedAtMs: res.scanned_at_ms ?? Date.now(),
-          basisAtMs: res.basis_at_ms,
-          fallbackBasisAtMs: res.fallback_basis_at_ms,
-          basis: 'auto',
-          dataStale: false,
-        });
-        setSortMode('default');
-      },
-    });
+    try {
+      await screener.mutateAsync(scanBody, {
+        onSuccess: (res) => {
+          // 저장본을 로드해 수정 없이 조회한 경우에만 저장본 신원을 붙인다 — dirty/미저장이면
+          // null(임시 조건). 드로어의 신원 기반 staleness 를 오염시키지 않기 위함.
+          setLastScan({
+            savedId,
+            savedName,
+            savedUpdatedAtMs: saved?.updated_at_ms ?? null,
+            scanKey,
+            requestJson,
+            rows: res.rows,
+            hasMore: res.has_more,
+            scanStatus: res.status,
+            intradayFailure: res.intraday_failure,
+            warnings: res.warnings,
+            historyCoverage: res.history_coverage,
+            barCoverage: res.bar_coverage,
+            depthValues: res.depth_values ?? null,
+            scannedAtMs: res.scanned_at_ms ?? Date.now(),
+            basisAtMs: res.basis_at_ms,
+            fallbackBasisAtMs: res.fallback_basis_at_ms,
+            basis: 'auto',
+            dataStale: false,
+          });
+          if (!background) setSortMode('default');
+        },
+      });
+      return true;
+    } catch {
+      return false;
+    }
   };
+  const liveVolume = editor.conditions.some(leaf =>
+    (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')
+    && 'timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m'));
+  useScreenerMonitor({
+    active: liveVolume && lastScan?.scanKey === scanKey && !volumeRefreshStopped,
+    selectedId: scanKey,
+    disabled: notSeeded || !!invalidExpression,
+    periodMs: editor.universe.scopes?.length ? MONITOR_PERIOD_SCOPED_MS : MONITOR_PERIOD_FULL_MS,
+    resultCodes: rows.map(row => row.code),
+    hasResults: lastScan !== null,
+    conditions: editor.conditions,
+    startImmediately: false,
+    scanOnce: () => runScan(true),
+    onAutoStop: message => {
+      setVolumeRefreshStopped(true);
+      useScreenerUpdateFeedback.getState().setFeedback({ tone: 'error', message, atMs: Date.now(), source: 'monitor' });
+    },
+  });
   const submitNameDialog = (name: string) => {
     if (invalidExpression && nameDialog !== 'rename') return;
     if (nameDialog === 'save-new') editor.saveCurrent(name);
@@ -325,7 +351,7 @@ export function Screener() {
         <div className="feature-pane-header p-md">
           <ControlBar className="flex-wrap">
             <div className="min-w-0 flex-1" />
-            <ToolbarButton tone="primary" onClick={runScan}
+            <ToolbarButton tone="primary" onClick={() => { void runScan(); }}
               disabled={screener.isPending || notSeeded || !hasConditions || !!invalidExpression}
               title={invalidExpression ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
               className="px-lg py-sm text-base">

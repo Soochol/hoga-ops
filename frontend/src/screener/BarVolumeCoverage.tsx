@@ -6,6 +6,7 @@ const REASONS: Record<string, string> = {
   missing_history: '비교할 봉 이력 부족 · 원인 미확인',
   insufficient_history: '비교할 봉 수 부족',
   insufficient_minute_history: '비교할 분봉 수 부족',
+  live_bar_unconfirmed: '체결 수신 공백 · 분봉 재조회로 확인 필요',
   calendar_unavailable: '거래일 달력 범위 부족',
   pre_listing_history: '상장 전 구간 포함 · 비교할 봉 수 부족',
   delisted: '상장폐지 이후 구간 · 일봉 없음',
@@ -26,7 +27,11 @@ export function BarVolumeCoverage({ coverage }: { coverage?: Coverage | null }) 
   const reasons = [...new Set(coverage.incomplete.map(item => item.reason))];
   const incompleteCount = new Set(coverage.incomplete.map(item => item.code)).size;
   return <div className="text-xs text-fg-dim" role="status">
-    봉 이력 충분 {coverage.complete}/{coverage.total}종목
+    <span>봉 이력 충분 {coverage.complete}/{coverage.total}종목</span>
+    {coverage.realtime && <div>
+      장중 체결 반영 {coverage.realtime.receiving}/{coverage.total}종목
+      {coverage.realtime.receiving < coverage.total && ' · 나머지는 분봉 재조회'}
+    </div>}
     {reasons.length > 0 && <details>
       <summary>전체 이력 판정 불가 {incompleteCount}종목 · 확인된 충족 기록만 표시</summary>
       <ul>{reasons.map(reason => {

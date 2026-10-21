@@ -43,8 +43,12 @@ def test_app_startup_scheduler_does_not_spawn_catchup_by_default(
     monkeypatch.setattr(app_mod, "start_today_promoter", start_today_promoter)
     monkeypatch.setattr(asyncio, "create_task", tracking_create_task)
 
+    buffer = app_mod.live_get_buffer()
+    observers_before = len(buffer._trade_observers)
     with TestClient(app_mod.create_app(tmp_path)) as client:
         assert client.get("/health").status_code == 200
+        assert len(buffer._trade_observers) == observers_before + 1
+    assert len(buffer._trade_observers) == observers_before
 
     assert start_live_stream.await_count == 0
     assert "watchlist-daily-loop" in task_names

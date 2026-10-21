@@ -344,6 +344,7 @@ export type PushEvent =
   // `startsWith('screener_update')` 로 거르므로, 갱신 job 진행률 소비처(드로어·칩)에
   // 저장 목록 신호가 새어 들어가 판별 유니온을 헛돌게 한다.
   | { type: 'screener_saves_changed' }
+  | { type: 'screener_volume_changed'; condition_ids: string[] }
   | { type: 'study_views_changed' }
   | { type: 'live_layout_presets_changed' }
   | { type: 'study_layout_presets_changed' }

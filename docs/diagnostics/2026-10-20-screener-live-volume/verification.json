@@ -1,0 +1,118 @@
+{
+  "base_sha": "1509d2a04cd440f9c47572ce01e9b28ac7c3ead5",
+  "branch": "codex/screener-live-minute-volume",
+  "fingerprints": {
+    "backend": {
+      "files": 778,
+      "sha256": "5e4d03d112d0d8ea12574f5ab0bd896ecd0f3ac0340befeed489f7304d630f8a"
+    },
+    "frontend": {
+      "files": 1780,
+      "sha256": "2dce25d605cfc3c6f175d30c24782502040e299a5f58cffdda1ec00aba048899"
+    }
+  },
+  "environment": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "ruff": "ruff 0.15.13",
+    "chrome": "Google Chrome 155.0.8059.84"
+  },
+  "vendor_live_validation": false,
+  "production_deployed": false,
+  "credentials": "isolated worktree with empty .env; E2E retains blank vendor credentials",
+  "e2e_resources": {
+    "backend": 20260,
+    "frontend": 21260,
+    "data_dir": "/tmp/hoga-e2e-data-260"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/api/test_screener*.py tests/unit/live/test_screener_volume.py tests/unit/live/test_buffer.py tests/unit/test_screener_no_kis_dependency.py tests/api/test_app_startup_scheduler.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/api/test_frontend_static.py tests/unit/api/test_wire_schema_contract.py",
+      "result": "passed",
+      "tests": 640,
+      "seconds": 16.96,
+      "scope": "Final merged base, including new coverage reasons, refresh, runtime, lifecycle, wire and frontend static guards"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed",
+      "scope": "app, unit tests and E2E TypeScript projects"
+    },
+    {
+      "command": "npx vitest run --reporter=dot",
+      "result": "passed",
+      "files": 675,
+      "tests": 8738,
+      "seconds": 64.87,
+      "scope": "Merged base. Subsequent one-line live_bar_unconfirmed label addition verified by selected coverage and monitor tests."
+    },
+    {
+      "command": "npx vitest run src/screener/BarVolumeCoverage.test.tsx src/screener/useScreenerMonitor.test.tsx --reporter=dot",
+      "result": "passed",
+      "tests": 14
+    },
+    {
+      "command": "npx playwright test screener --reporter=line",
+      "result": "passed",
+      "tests": 25,
+      "seconds": 59.0,
+      "scope": "Final merged source; build performed by E2E startup. Blank vendor credentials, one worker, Chrome. Includes refresh and coverage UI integration.",
+      "diagnostics": "ResizeObserver loop notifications appeared in Vite logs; no clean-console claim."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "fingerprint_algorithm": "Sorted Git tracked and non-ignored new source paths: UTF-8 path + NUL + raw SHA256(content), then SHA256 of concatenation. Backend hoga/tests plus pyproject.toml, uv.lock, .python-version, ruff.toml; frontend all non-ignored frontend paths.",
+  "backend_full_suite": {
+    "result": "not_claimed_passed",
+    "attempts": [
+      {
+        "base": "0aeb5605a",
+        "result": "6590 passed, 2 skipped, 1 failed: screener static KIS dependency boundary. Fixed by injecting the buffer at the app assembly point. The guard and lifecycle/HTTP paths subsequently passed."
+      },
+      {
+        "base": "0aeb5605a",
+        "result": "Retry process ended with signal 15 / exit 143 before a final summary, around 54 percent. Cause not established. Not reused as a passing run."
+      }
+    ],
+    "final_scope": "640 related backend tests passed after merging current main; no whole-backend pass claimed."
+  },
+  "production_read_only_observation": {
+    "url": "http://127.0.0.1:8000/api/live/status",
+    "accounts_configured": 6,
+    "connected_accounts": 0,
+    "planned_stock_count": 337,
+    "connection_allowed": false,
+    "collector_mode": "process",
+    "interpretation": "Outside the connection window; planned stocks do not establish active live coverage. No broker connection or token was created."
+  },
+  "capacity_sources": [
+    "https://openapi2.kiwoom.com/intro?dummyVal=0",
+    "https://openapi.kiwoom.com/m/guide/apiguide?dummyVal=0",
+    "https://download.kiwoom.com/hero4_help_doc/KiwoomHero4_AdvancedSearch.pdf"
+  ],
+  "limits": [
+    "Only already received KRX trades are observed; this change does not expand broker subscriptions.",
+    "512 watch entries / 250000 bars; all-market lossless live detection not supported in the current setup.",
+    "Mid-bar seeding is a conservative lower bound; closed incomplete bars require REST reconciliation.",
+    "Broker-side condition search exists but matching semantics and its 100-result cap have not been live validated.",
+    "Live-market provider latency, full-market operational load and production deployment remain unverified."
+  ],
+  "benchmark_script_sha256": "a5804df9d40a6cbfe5a95ff396c15a8592bc0237a541b0867bfe80571cf37377",
+  "deployment_preflight": {
+    "date": "2026-10-21",
+    "origin_main_sha": "1509d2a04cd440f9c47572ce01e9b28ac7c3ead5",
+    "source_fingerprints_match": true,
+    "checks_reused": "Recorded passing checks have unchanged source, dependencies and configuration. Ruff and diff whitespace rechecked. No overlapping open PRs.",
+    "runtime_target": "/home/dev/code/hoga-ops; Vite 5173 / uvicorn reload 8000, Ticklane local-vite profile",
+    "desktop_ui_automation": "Unavailable: orca-ide skills get computer-use exited 127 (command not found)."
+  }
+}

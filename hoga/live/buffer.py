@@ -58,7 +58,7 @@ import math
 import os
 import time
 from collections import OrderedDict, deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from hoga.util.retained_size import retained_size
 
@@ -188,6 +188,18 @@ class LiveBuffer:
         self._subscriber_drops = 0
         self._outboxes: set[LiveOutbox] = set()
         self._high_water_entries = 0
+        self._trade_observers: set[Callable] = set()
+        self._gap_observers: set[Callable] = set()
+
+    def observe_trades(self, listener: Callable, on_gap: Callable) -> Callable:
+        """Parent-side consumers also see collector-process delivery and gaps."""
+        self._trade_observers.add(listener)
+        self._gap_observers.add(on_gap)
+
+        def release():
+            self._trade_observers.discard(listener)
+            self._gap_observers.discard(on_gap)
+        return release
 
     def subscribe(self, code: str, *, batch: bool = False) -> asyncio.Queue[dict] | LiveDelivery:
         """Subscribe to publishes for `code`. Returns a queue.
@@ -255,6 +267,7 @@ class LiveBuffer:
 
         # Notify subscribers AFTER releasing the lock so slow consumers don't
         # block the publisher. Bounded queues drop on overflow.
+        self._notify_trades(code, entries, now_ms)
         subs = self._subscribers.get(code)
         if subs:
             for index, entry in enumerate(entries):
@@ -272,6 +285,12 @@ class LiveBuffer:
                         # blocking. Subscribers can recover via get_series() if
                         # they need the missing data.
                         self._subscriber_drops += 1
+
+    def _notify_trades(self, code, entries, now_ms):
+        for entry in entries:
+            if entry["kind"] == "trade":
+                for listener in tuple(self._trade_observers):
+                    listener(code, entry, now_ms)
 
     def _remove_head(self, key: tuple[str, str]) -> None:
         d = self._buf[key]
@@ -308,6 +327,8 @@ class LiveBuffer:
 
     async def mark_delivery_gap(self, codes: set[str]) -> None:
         """A bounded display IPC dropped history; never claim that history is complete."""
+        for listener in tuple(self._gap_observers):
+            listener(codes)
         async with self._lock:
             for code in codes:
                 self._budget_evictions_by_code[code] = self._budget_evictions_by_code.get(code, 0) + 1

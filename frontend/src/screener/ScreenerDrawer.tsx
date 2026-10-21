@@ -263,6 +263,7 @@ export function ScreenerDrawer() {
     resultCodes,
     hasResults: lastScan !== null,
     scanOnce,
+    conditions: selected?.conditions,
     onAutoStop: (message) => {
       setMonitoringActive(false);
       useScreenerUpdateFeedback.getState().setFeedback({

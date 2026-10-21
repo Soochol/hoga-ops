@@ -42,7 +42,7 @@ describe('saved conditions', () => {
     expect(screenerRequestKey(old)).toBe(screenerRequestKey(request({ lookback: 60, period: 250,
       timeframe: 'D', include_open_bar: true })));
     expect(screenerRequestKey(old)).not.toBe(screenerRequestKey(request({ lookback: 60, period: 250, timeframe: 'W' })));
-    expect(CONDITION_CATALOG.new_high_vol.summarize({ lookback: 60, period: 250, timeframe: '5m' })).toBe('5분봉 · 60·250');
+    expect(CONDITION_CATALOG.new_high_vol.summarize({ lookback: 60, period: 250, timeframe: '5m' })).toBe('5분봉 · 최근 60봉 이내 · 250봉 신고거래량');
   });
 });
 
