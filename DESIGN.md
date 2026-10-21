@@ -75,6 +75,10 @@
 시장 카드의 안쪽 여백은 md, 주요 영역과 포함된 순위·연속 매매 본문의 간격은 sm으로
 공통화한다. 헤더의 가로 간격은 sm, 줄바꿈 간격과 구분선 위 여백은 xs를 사용한다.
 표 행 높이·숫자 크기·차트 9rem 높이·일별 합계의 하단 고정은 유지한다.
+2026-10-21 사용자 승인: 투자자 수급 제목 바로 오른쪽에 단위를 xs 간격으로 한 줄에
+표시한다. 코스피·코스닥의 당일·일별에는 항상 `억원`을 표시하며, 파생은 금액 단위가
+확정되면 `억원`, 미확정이면 `계약 · 단위 미확정`을 표시한다. 단위의 작은 보조색
+글씨를 유지하고, 좁은 폭에서는 제목·단위를 함께 둔 채 우측 조작부만 다음 줄로 옮긴다.
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.

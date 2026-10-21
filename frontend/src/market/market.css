@@ -46,6 +46,9 @@
   align-items: start;
 }
 .market-switch-card h2 > span { display: block; min-height: 1.25em; }
+.market-investor-card > .market-card-header { display: flex; align-items: center; }
+.market-investor-card .market-card-header h2 { display: inline-flex; align-items: baseline; gap: var(--space-xs); flex-shrink: 0; white-space: nowrap; }
+.market-investor-card h2 > span { display: inline; min-height: 0; }
 .market-program-card .market-card-header h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .market-program-card h2 > span { display: inline; min-height: 0; }
 .market-investor-body { height: calc(128px + 14rem); }

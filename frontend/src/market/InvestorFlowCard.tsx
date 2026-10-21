@@ -160,7 +160,7 @@ export function InvestorCard() {
   const units = deriv.data?.units;
   const derivEok = deriv.data?.unit === 'amt_eok';
 
-  const hint = stockSel ? undefined : derivEok ? '억원' : '계약 · 단위 미확정';
+  const hint = stockSel || derivEok ? '억원' : '계약 · 단위 미확정';
 
   return (
     <MarketCard className="market-switch-card market-investor-card">

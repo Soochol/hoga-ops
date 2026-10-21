@@ -55,8 +55,8 @@ async function marketMocks(page: Page, populated = false) {
   } }));
 }
 
-async function expectProgramHeaderSingleLine(page: Page) {
-  const bounds = await page.locator('.market-program-card .market-card-header h2').evaluate(el => {
+async function expectCardHeaderSingleLine(page: Page, card = '.market-program-card') {
+  const bounds = await page.locator(`${card} .market-card-header h2`).evaluate(el => {
     const title = document.createRange();
     title.selectNodeContents(el.firstChild!);
     const titleRect = title.getBoundingClientRect();
@@ -114,7 +114,7 @@ async function expectContextLayout(page: Page) {
 }
 
 async function expectContextChartHeights(page: Page) {
-  await expectProgramHeaderSingleLine(page);
+  await expectCardHeaderSingleLine(page);
   const charts = page.locator('.market-context-chart').filter({ visible: true });
   await expect(charts).toHaveCount(3);
   const heights = await charts.evaluateAll(elements => elements.map(el => ({
@@ -220,6 +220,20 @@ for (const width of [1440, 800, 600]) {
     await page.goto('/market');
     const market = page.locator('.market-page');
     await expect(market.getByText('93.5조', { exact: true })).toBeVisible();
+    const investor = market.locator('.market-investor-card');
+    const picker = investor.getByRole('group', { name: '수급 대상', exact: true });
+    const modes = investor.getByRole('group', { name: '수급 표시 구간', exact: true });
+    for (const stock of ['코스피', '코스닥']) {
+      await picker.getByRole('button', { name: stock, exact: true }).click();
+      for (const mode of ['당일', '일별']) {
+        await modes.getByRole('button', { name: mode, exact: true }).click();
+        await expect(investor.getByRole('heading')).toHaveText('투자자 수급 억원');
+        await expectCardHeaderSingleLine(page, '.market-investor-card');
+      }
+    }
+    await picker.getByRole('button', { name: '선물', exact: true }).click();
+    await expect(investor.getByRole('heading')).toHaveText('투자자 수급 계약 · 단위 미확정');
+    await expectCardHeaderSingleLine(page, '.market-investor-card');
     await expect(market.getByText('거래대금(억)')).toHaveCount(1);
     const metrics = await market.evaluate((el) => ({
       right: el.getBoundingClientRect().right,
@@ -312,7 +326,7 @@ for (const [width, fontSize] of [[1440, 16], [800, 16], [600, 20], [1440, 24]]) 
     const table = page.getByRole('table', { name: `${label} · 단위 억원` });
     const viewport = page.getByRole('region', { name: `${label} 목록 스크롤` });
     await expect(viewport.getByRole('row').first()).toContainText('08/20');
-    if (modeLabel === '프로그램 표시 구간') await expectProgramHeaderSingleLine(page);
+    if (modeLabel === '프로그램 표시 구간') await expectCardHeaderSingleLine(page);
     expect(await viewport.evaluate(el => el.scrollHeight - el.clientHeight)).toBeGreaterThan(1);
     expect(await body.evaluate(el => el.closest('.market-card')!.getBoundingClientRect().height)).toBeCloseTo(cardHeight, 1);
     await viewport.scrollIntoViewIfNeeded();
@@ -392,7 +406,7 @@ test('investor flow refreshes every ten seconds after 15:30 and recovers from AP
   const card = page.locator('.market-switch-card').filter({ has: page.getByRole('heading', { name: /투자자 수급/ }) });
   const summary = card.getByLabel('투자자별 순매수 · 억원');
   await expect(summary).toContainText('-20');
-  await expect(card.getByRole('heading')).toHaveText('투자자 수급');
+  await expect(card.getByRole('heading')).toHaveText('투자자 수급 억원');
   count = 3;
   await page.clock.fastForward(10_000);
   await expect(summary).toContainText('-30');
