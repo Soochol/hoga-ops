@@ -411,9 +411,8 @@ function HeaderAddButton({ folders, isDuplicate, onDuplicate }: {
  * 닫으면 리셋 — 필터는 일시적 조회 보조이지 저장 설정이 아니다).
  *
  * 전체 접기는 **드로어 전용** 관심사다(/heatmap 페이지엔 접기 개념 자체가 없다). 페이지와
- * 공유되는 정렬 토글과 영속 축이 다르므로 검색 오른쪽에 두고 정렬은 다음 줄에 둔다. 저장뷰 드로어는 같은 버튼을 테두리 박스
- * (RailToolbarIconButton)로 쓰지만, 여기 정렬 칩이 테두리 없는 고밀도 표기라 그 문법에
- * 맞춰 무테 아이콘 버튼으로 둔다(ui/SortCycleButton 이 히트맵을 예외로 둔 것과 같은 근거).
+ * 공유되는 정렬 토글과 영속 축이 다르므로 검색 오른쪽에 두고 정렬은 다음 줄에 둔다.
+ * 관심종목·저장뷰와 같은 GroupToggleButton의 무테 미니멀 아이콘을 사용한다.
  */
 function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDisabled, selection }: {
   selection: React.ReactNode;

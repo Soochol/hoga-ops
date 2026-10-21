@@ -22,8 +22,8 @@ import { useLivePageStore } from '../state/livePage';
 import { savedRangeFocusFromView } from './savedRangeFocus';
 import { openSavedViewInNewTab } from './studyDeepLink';
 import { useStudyViewMutations, useStudyViews } from './useStudyViews';
-import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailGroupHeader, RailState, RailToolbarIconButton, RailTreeRow } from '../ui/RailShell';
-import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
+import { RailDrawer, RailDrawerBody, RailDrawerHeader, RailDrawerSection, RailGroupHeader, RailState, RailTreeRow } from '../ui/RailShell';
+import { GroupToggleButton } from '../ui/GroupToggleButton';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { SortCycleButton } from '../ui/SortCycleButton';
 import { resolveStudyViewTreeDrag, studyViewGroupDndId, studyViewRowDndId, studyViewTreeCollision } from './studyViewTreeDnd';
@@ -524,11 +524,9 @@ export function StudyViewsDrawer() {
                 </button>
               )}
             </div>
-            <RailToolbarIconButton className="shrink-0" onClick={toggleVisibleGroups} disabled={searching || visibleGroups.length === 0}
-              aria-label={visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}
-              title={searching ? '검색 해제 후 전체 접기 사용' : visibleGroupsCollapsed ? '전체 펼치기' : '전체 접기'}>
-              {visibleGroupsCollapsed ? <ExpandAllIcon className="h-4 w-4" /> : <CollapseAllIcon className="h-4 w-4" />}
-            </RailToolbarIconButton>
+            <GroupToggleButton testId="saved-views-toggle-all" allCollapsed={visibleGroupsCollapsed}
+              onToggle={toggleVisibleGroups} disabled={searching || visibleGroups.length === 0}
+              title={searching ? '검색 해제 후 전체 접기 사용' : undefined} />
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
             <RailSelectionControl active={selecting} count={selectedRows.length}
