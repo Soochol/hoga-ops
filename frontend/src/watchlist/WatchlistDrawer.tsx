@@ -128,15 +128,15 @@ const ADD_POPOVER_W = 280;
 function WatchlistSymbolAddPopover({
   anchorRef, point, folderId, resolveAt, onAdded, onDuplicate, onMoveHere, onClose,
 }: {
-  /** 우클릭 메뉴 경로 — 이 버튼의 우하단에 정렬한다. `point` 와 배타적이다. */
+  /** 그룹 헤더 앵커. `point`가 있으면 메뉴를 닫기 전에 캡처한 좌표를 우선한다. */
   anchorRef?: React.RefObject<HTMLElement | null>;
-  /** 행 우클릭 경로 — 커서 좌표에 그대로 띄운다(컨텍스트 메뉴가 있던 자리). */
+  /** 행 우클릭의 커서 좌표 또는 그룹 헤더에서 미리 캡처한 위치. */
   point?: { x: number; y: number };
   folderId: string;
   /** 삽입 위치(WatchlistAddForm 참조) — 미전달이면 폴더 맨 아래. */
   resolveAt?: () => number | undefined;
-  /** 추가 성공 후. 미전달이면 닫기만 한다(우클릭 메뉴 경로의 기존 동작). */
-  onAdded?: () => void;
+  /** 추가 성공 후 부가 동작. 연속 추가를 위해 팝오버는 유지한다. */
+  onAdded?: (hit: { code: string; name: string }) => void;
   /** 이미 이 그룹에 있는 종목을 골랐을 때 — 리스트에서 그 행을 가리킨다.
    *  **팝오버는 안 닫는다**: 사용자가 다른 종목을 이어서 고르는 것이 자연스러운 흐름이고,
    *  닫으면 방금 본 안내 문구까지 함께 사라진다. */
@@ -171,12 +171,15 @@ function WatchlistSymbolAddPopover({
   }, [anchorRef, popRef, onClose]);
   return createPortal(
     <div ref={popRef} role="dialog" aria-label="종목 추가"
-      data-testid="watchlist-group-add-popover"
+      data-testid="watchlist-group-add-popover" onMouseDown={event => event.stopPropagation()}
       style={{ position: 'fixed', left, top, width: ADD_POPOVER_W }}
-      className="z-30 bg-bg-card border border-border-strong rounded p-2 shadow-lg">
+      className="z-30 max-h-[calc(100dvh-16px)] overflow-y-auto bg-bg-card border border-border-strong rounded p-2 shadow-lg">
       <WatchlistAddForm folderId={folderId} resolveAt={resolveAt}
-        onAdded={() => (onAdded ? onAdded() : onClose())}
+        onAdded={onAdded}
         onDuplicate={onDuplicate} onMoveHere={onMoveHere} />
+      <div className="mt-2 flex justify-end">
+        <button type="button" className="text-xs px-2 py-1 text-fg-dim" onClick={onClose}>닫기</button>
+      </div>
     </div>,
     document.body,
   );
@@ -218,7 +221,7 @@ function GroupHeader(props: {
   const menuOpen = menuPoint !== null;
   const closeMenu = useCallback(() => setMenuPoint(null), []);
   // "종목 추가" 팝오버 — 메뉴와 별개 레이어라 메뉴 언마운트에 딸려 사라지지 않는다(히트맵과 동일).
-  const [addOpen, setAddOpen] = useState(false);
+  const [addPoint, setAddPoint] = useState<{ x: number; y: number } | null>(null);
   const sortDescriptionId = useId();
   const menuRef = useRef<HTMLDivElement | null>(null);
   const itemClass =
@@ -298,7 +301,12 @@ function GroupHeader(props: {
             <PanelContextMenu point={menuPoint!} label={props.label} onClose={closeMenu}>
               {props.folderId && (
                 <button type="button" role="menuitem"
-                  onClick={() => { closeMenu(); setAddOpen(true); }}
+                  onClick={() => {
+                    // Capture before the menu update detaches the header's callback ref.
+                    const rect = menuRef.current?.getBoundingClientRect();
+                    setAddPoint(rect ? { x: rect.right - ADD_POPOVER_W, y: rect.bottom + 4 } : menuPoint);
+                    closeMenu();
+                  }}
                   className={itemClass}>
                   <span className="w-4 grid place-items-center"><PlusIcon /></span> 종목 추가
                 </button>
@@ -336,10 +344,10 @@ function GroupHeader(props: {
               </button>
             </PanelContextMenu>
           )}
-          {addOpen && props.folderId && (
-            <WatchlistSymbolAddPopover anchorRef={menuRef} folderId={props.folderId}
+          {addPoint && props.folderId && (
+            <WatchlistSymbolAddPopover anchorRef={menuRef} point={addPoint} folderId={props.folderId}
               onDuplicate={(code) => props.onDuplicateSymbol?.(props.folderId!, code)}
-              onClose={() => setAddOpen(false)} />
+              onClose={() => setAddPoint(null)} />
           )}
         </>
       )}
@@ -744,7 +752,7 @@ export function WatchlistDrawer() {
   // 엉뚱한 자리를 가리킨다. 실제 인덱스는 submit 시점에 resolveInsertAt 이 다시 읽는다.
   const [symbolInsert, setSymbolInsert] = useState<{
     x: number; y: number; folderId: string;
-    anchor: { kind: 'entry'; code: string } | { kind: 'memo'; id: string };
+    anchor: { kind: 'entry'; code: string; after?: boolean } | { kind: 'memo'; id: string };
   } | null>(null);
   // 추가 팝오버가 "이미 이 그룹에 있습니다" 를 띄울 때 **그 행을 가리킨다**(편집 모달
   // 우측 pane 과 같은 계약 · 공용 `.row-flash`). 코드만으로는 부족하다 — 같은 종목이
@@ -1128,9 +1136,9 @@ export function WatchlistDrawer() {
   const resolveInsertAt = useCallback((): number | undefined => {
     if (!symbolInsert) return undefined;
     const { folderId, anchor } = symbolInsert;
-    return anchor.kind === 'entry'
-      ? data?.entries.find((e) => e.folder_id === folderId && e.code === anchor.code)?.order
-      : data?.memos.find((m) => m.folder_id === folderId && m.id === anchor.id)?.order;
+    if (anchor.kind === 'memo') return data?.memos.find(m => m.folder_id === folderId && m.id === anchor.id)?.order;
+    const order = data?.entries.find(e => e.folder_id === folderId && e.code === anchor.code)?.order;
+    return order === undefined ? undefined : order + (anchor.after ? 1 : 0);
   }, [symbolInsert, data]);
 
   /** 「그 행을 여기로 이동」 — 고른 종목이 이미 이 그룹에 있을 때의 대안 행동.
@@ -1163,7 +1171,8 @@ export function WatchlistDrawer() {
       const at = without.findIndex((r) => (anchor.kind === 'entry'
         ? r.kind === 'entry' && r.entry.code === anchor.code
         : r.kind === 'memo' && r.memo.id === anchor.id));
-      without.splice(at >= 0 ? at : without.length, 0, target);
+      const insertAt = at >= 0 ? at + (anchor.kind === 'entry' && anchor.after ? 1 : 0) : without.length;
+      without.splice(insertAt, 0, target);
       reorderItemsM.mutate({ folderId, orderedItems: toItemRefs(without) });
       // 빈칸 경로는 **이동 뒤에** 그 빈칸을 지운다 = 교체. 추가 경로와 같은 순서다:
       // 먼저 지우면 재정렬이 실패했을 때 자리도 내용도 사라진다. 앵커를 못 찾았으면
@@ -1678,9 +1687,11 @@ export function WatchlistDrawer() {
           // 빈칸 경로는 **추가 성공 후에** 그 빈칸을 지운다 = "교체". 순서가 중요하다:
           // 먼저 지우면 추가가 실패했을 때 자리도 내용도 사라진다(되돌릴 근거가 없다).
           // 반대 순서의 실패는 "종목은 들어갔고 빈칸이 남았다" 라 눈에 보이고 지울 수 있다.
-          onAdded={() => {
+          onAdded={(hit) => {
             if (symbolInsert.anchor.kind === 'memo') removeMemoMutate(symbolInsert.anchor.id);
-            setSymbolInsert(null);
+            if (symbolInsert.anchor.kind === 'memo' || symbolInsert.anchor.after) {
+              setSymbolInsert({ ...symbolInsert, anchor: { kind: 'entry', code: hit.code, after: true } });
+            }
           }}
           onClose={() => setSymbolInsert(null)} />
       )}

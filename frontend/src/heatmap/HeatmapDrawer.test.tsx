@@ -252,7 +252,6 @@ describe('HeatmapDrawer', () => {
     await screen.findByRole('button', { name: '2차전지 2' });
     fireEvent.click(screen.getByTestId('heatmap-header-add'));
     fireEvent.click(screen.getByTestId('pick'));
-    fireEvent.click(screen.getByRole('button', { name: '추가' }));
     await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f1'));
   });
 
@@ -260,20 +259,19 @@ describe('HeatmapDrawer', () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '2차전지 2' });
     fireEvent.click(screen.getByTestId('heatmap-header-add'));
-    fireEvent.click(screen.getByTestId('pick'));
     fireEvent.change(screen.getByRole('combobox', { name: '추가할 그룹' }), { target: { value: 'f2' } });
-    fireEvent.click(screen.getByRole('button', { name: '추가' }));
+    fireEvent.click(screen.getByTestId('pick'));
     await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f2'));
   });
 
-  it('그룹이 없으면 header 종목 추가는 안내를 보이고 추가 버튼이 비활성', async () => {
+  it('그룹이 없으면 header 종목 추가는 안내를 보이고 추가 요청을 막는다', async () => {
     api.getHeatmap.mockResolvedValue({ folders: [], entries: [], capture_markers: {}, next_run_at_ms: 0 });
     wrap(<HeatmapDrawer />);
     await screen.findByText('히트맵이 비어 있습니다');
     fireEvent.click(screen.getByTestId('heatmap-header-add'));
     expect(screen.getByText(/그룹이 없습니다/)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('pick'));
-    expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '추가' })).toBeNull();
     expect(api.addToHeatmapFolder).not.toHaveBeenCalled();
   });
 
@@ -286,7 +284,6 @@ describe('HeatmapDrawer', () => {
     // 메뉴는 닫히고 검색 팝오버(dialog) 가 뜬다
     const dialog = screen.getByRole('dialog', { name: '종목 추가' });
     fireEvent.click(within(dialog).getByTestId('pick'));
-    fireEvent.click(within(dialog).getByRole('button', { name: '추가' }));
     await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f1'));
   });
 

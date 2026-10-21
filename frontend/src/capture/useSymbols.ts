@@ -34,19 +34,23 @@ export function filterSymbols(hits: SymbolHit[], q: string, limit: number): Symb
   if (/^\d+$/.test(norm)) {
     return hits.filter((h) => h.code.startsWith(norm)).slice(0, limit);
   }
+  // Match alphanumeric KRX/ETN codes without losing English name matches.
+  const upper = norm.toUpperCase();
+  const codeMatches = hits.filter((h) => h.code.startsWith(upper));
+  codeMatches.sort((a, b) => Number(b.code === upper) - Number(a.code === upper));
   // Name match (case-insensitive): prefix-matches first, then substring matches; secondary sort by name length.
   // Lowercase each name once (not per sort comparison) to match the backend's key= semantics.
   const lower = norm.toLowerCase();
   const matches = hits
     .map((h) => ({ h, nameLower: h.name.toLowerCase() }))
-    .filter((m) => m.nameLower.includes(lower));
+    .filter((m) => m.nameLower.includes(lower) && !m.h.code.startsWith(upper));
   matches.sort((a, b) => {
     const ap = a.nameLower.startsWith(lower) ? 0 : 1;
     const bp = b.nameLower.startsWith(lower) ? 0 : 1;
     if (ap !== bp) return ap - bp;
     return a.h.name.length - b.h.name.length;
   });
-  return matches.map((m) => m.h).slice(0, limit);
+  return [...codeMatches, ...matches.map((m) => m.h)].slice(0, limit);
 }
 
 export function useSymbolSearch(query: string, limit = 20): SymbolHit[] {

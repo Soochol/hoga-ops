@@ -624,7 +624,8 @@ test('느린 주문 상태 조회 중에도 접수 응답을 표시하고 기존
     await drag(page, cell, orderSettingsButton(window));
     await expect(page.getByRole('status', { name: '주문 접수 알림' })).toHaveText('취소 요청 접수됨');
     await expect(orderSettingsButton(window)).toBeEnabled();
-    await expect(cell).toHaveText('70 · 처리 중');
+    await expect(cell).toHaveText('70');
+    await expect(cell.locator('.order-quantity')).toHaveClass(/order-quantity-blocked/);
     await cell.click({ button: 'right' });
     await expect(page.getByRole('menuitem', { name: '주문 1 · 70주', exact: true })).toBeDisabled();
     await page.keyboard.press('Escape');
@@ -664,16 +665,19 @@ for (const timing of ['before', 'after'] as const) {
       await expect.poll(() => entered).toBe(true);
       ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 100, order: replacement });
       ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 101, order: { ...mkOrder('old'), status: 'PENDING_REPLACE' } });
-      await expect(to).toHaveText('70 · 처리 중');
+      await expect(to).toHaveText('70');
+      await expect(to.locator('.order-quantity')).toHaveClass(/order-quantity-blocked/);
       const completed = { type: 'trading_order', mode: 'live', account_seq: 1, revision: 102, order: { ...replacement, status: 'PENDING' } };
       if (timing === 'before') {
         ws.pushEvent(completed);
-        await expect(to).toHaveText('70 · 처리 중');
+        await expect(to).toHaveText('70');
+        await expect(to.locator('.order-quantity')).toHaveClass(/order-quantity-blocked/);
       }
       releaseAck();
       await expect(page.getByRole('status', { name: '주문 접수 알림' })).toHaveText('정정 요청 접수됨');
       if (timing === 'after') {
-        await expect(to).toHaveText('70 · 처리 중');
+        await expect(to).toHaveText('70');
+        await expect(to.locator('.order-quantity')).toHaveClass(/order-quantity-blocked/);
         ws.pushEvent(completed);
       }
       await expect(to).toHaveText('70');

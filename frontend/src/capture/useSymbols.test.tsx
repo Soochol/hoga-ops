@@ -32,6 +32,26 @@ describe('filterSymbols', () => {
   it('name substring match', () => {
     expect(filterSymbols(HITS, '삼성', 10).map((h) => h.code)).toEqual(['005930', '005935']);
   });
+  it.each([
+    ['0158S0', ['0158S0']], ['0158s', ['0158S0']], ['엘리스', ['0158S0']],
+    ['q500', ['Q500093']], ['q', ['Q500093', '012345']], ['missing', []],
+  ] as const)('matches alphanumeric codes and names: %s', (query, expected) => {
+    const hits: SymbolHit[] = [
+      { ...HITS[0], code: '0158S0', name: '엘리스' },
+      { ...HITS[0], code: 'Q500093', name: '테스트 ETN' },
+      { ...HITS[0], code: '012345', name: 'Q서비스' },
+    ];
+    expect(filterSymbols(hits, query, 20).map((h) => h.code)).toEqual(expected);
+  });
+  it('prioritizes exact codes, deduplicates name matches and applies the limit', () => {
+    const hits = [
+      { ...HITS[0], code: 'Q500093', name: 'ETN' },
+      { ...HITS[0], code: '000001', name: 'Q50009' },
+      { ...HITS[0], code: 'Q50009', name: '주식 Q50009' },
+    ];
+    expect(filterSymbols(hits, 'q50009', 20).map((h) => h.code)).toEqual(['Q50009', 'Q500093', '000001']);
+    expect(filterSymbols(hits, 'q50009', 1).map((h) => h.code)).toEqual(['Q50009']);
+  });
   it('prefix matches sort before substring matches', () => {
     const extra: SymbolHit[] = [
       { code: '111111', name: '미래에셋삼성', market: 'KOSPI', captured_count: 0,

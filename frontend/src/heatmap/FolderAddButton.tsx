@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { SymbolSearch } from '../capture/SymbolSearch';
-import type { SymbolHit } from '../api/types';
+import { QuickAddSymbolForm } from '../capture/QuickAddSymbolForm';
 import { useAddToFolder } from './useAddToFolder';
 import { useClampedFixedPosition } from '../util/useClampedFixedPosition';
-import { useOptimisticDuplicateGate } from '../util/useOptimisticDuplicateGate';
-import { Banner } from '../ui/Banner';
 
 // w-64 = 16rem = 256px @ 16px root(2026-08-07 다이얼 1.0×; 그전 18px 에선 288px).
 // 우측 정렬용 **초기 추정폭**이라 다이얼과 함께 안 움직여도 무해하다 —
@@ -14,7 +11,7 @@ import { Banner } from '../ui/Banner';
 const POP_W = 320;
 
 /** 폴더 헤더의 ＋종목: SymbolSearch 팝오버 → useAddToFolder(code, folderId).
- *  성공 시 닫고 선택 초기화. 무거운 편집(삭제·이동·재정렬)은 관심종목 드로어.
+ *  결과 선택 즉시 추가하고 검색을 비워 연속 입력한다.
  *  팝오버는 createPortal 로 body 에 fixed 로 띄운다 — 폴더 카드의 overflow-hidden(둥근
  *  모서리·multicol 패킹용)과 CSS multicolumn 단편화가 absolute 팝오버를 잘라먹던 버그를
  *  카드 경계 밖으로 탈출시켜 해소(특히 1~2종목짜리 짧은 폴더에서 아래·왼쪽이 잘렸다).
@@ -37,13 +34,8 @@ export function FolderAddButton({ folderId, isDuplicate, onDuplicate, autoOpen, 
   // autoOpen 은 **초기값으로만** 읽는다. effect 로 열면 리렌더가 한 번 더 돌고, 무엇보다
   // 아래 앵커 측정이 그 커밋에서야 일어나 스크롤/레이아웃과 순서가 엇갈린다.
   const [open, setOpen] = useState(!!autoOpen);
-  const [picked, setPicked] = useState<SymbolHit | null>(null);
-  const { addToFolder } = useAddToFolder();
-  // 중복 판정을 **제출 중에는 얼린다** — `useAddToHeatmapFolder` 는 낙관적이라 요청을
-  // 보내는 순간 캐시에 행이 들어가고, 파생 판정은 그걸 보고 **자기 자신을 고발한다**
-  // (훅 docstring). 관심종목 추가 폼과 같은 규율을 같은 훅으로 쓴다.
-  const { duplicate, submitting, run } =
-    useOptimisticDuplicateGate(picked, (hit) => isDuplicate(hit.code));
+  const [anchorVersion, setAnchorVersion] = useState(0);
+  const { addToFolder, removeFromFolder } = useAddToFolder();
   const btnRef = useRef<HTMLButtonElement>(null);
 
   // 버튼 rect → 팝오버 raw 앵커(버튼 우하단). 열릴 때 측정; 클램프가 오버플로를 보정.
@@ -59,10 +51,12 @@ export function FolderAddButton({ folderId, isDuplicate, onDuplicate, autoOpen, 
     btnRef.current?.scrollIntoView?.({ block: autoOpen ? 'center' : 'nearest' });
     const r = btnRef.current?.getBoundingClientRect();
     if (r) setAnchor({ left: r.right - POP_W, top: r.bottom + 4 });
-  }, [open, autoOpen]);
+  }, [open, autoOpen, anchorVersion]);
   const { ref: popRef, left, top } = useClampedFixedPosition<HTMLDivElement>(anchor.left, anchor.top);
 
-  const close = useCallback(() => { setOpen(false); setPicked(null); }, []);
+  const close = useCallback(() => {
+    setOpen(false);
+  }, []);
 
   // 자동 열기 1회 소비 통지 — 마운트 때 열렸으면 페이지의 표식을 태운다.
   useEffect(() => { if (autoOpen) onAutoOpened?.(); }, [autoOpen, onAutoOpened]);
@@ -94,44 +88,22 @@ export function FolderAddButton({ folderId, isDuplicate, onDuplicate, autoOpen, 
     };
   }, [open, close, popRef]);
 
-  const submit = async () => {
-    if (!picked || duplicate) return;
-    // 실패하면 팝오버를 열어 둬 재시도/다른 종목 선택을 가능케 한다
-    // (GroupNameModal.submit·EntryPane.doMove 패턴). 실패를 삼키는 것은 이제 `run` 이
-    // 하므로 여기서 다시 try 하지 않는다 — 대신 **성공했을 때만** 닫아야 하니 닫기를
-    // 콜백 **안** 에 둔다(`run` 은 실패해도 정상 반환한다).
-    await run(async () => {
-      await addToFolder(picked.code, folderId);
-      close();
-    });
-  };
-
   return (
     <div className="relative">
       <button ref={btnRef} aria-label="종목 추가" className="text-xs text-fg-dim hover:text-accent"
-        onClick={() => setOpen((v) => !v)}>＋종목</button>
+        onClick={() => { if (open) close(); else setOpen(true); }}>＋종목</button>
       {open && createPortal(
+        // Keep the inline list mounted until its sibling action gets the click;
+        // collapsing it on mousedown moves Undo/Close out from under the pointer.
         <div ref={popRef} role="dialog" aria-label="종목 추가"
+          onMouseDown={event => event.stopPropagation()}
           style={{ position: 'fixed', left, top, width: POP_W }}
-          className="z-30 bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
-          {/* 고른 **그 순간** 알린다 — 파생값을 effect 로 감시하면 폴링 리페치마다
-              재발화해 하이라이트 타이머가 계속 되살아난다(관심종목과 같은 계약). */}
-          <SymbolSearch value={picked} onChange={(hit) => {
-            setPicked(hit);
-            if (hit && isDuplicate(hit.code)) onDuplicate(hit.code);
-          }} />
-          {/* **위치를 약속하지 않는다.** 관심종목 팝오버는 커서 자리에 뜨므로 "아래에
-              표시했습니다" 를 지킬 수 있지만, 이 팝오버는 카드 헤더 바로 아래에 앵커돼
-              **가리킬 그 리스트를 자기가 덮는다**(실측: 팝오버 124–269, 그 행 145–164 —
-              완전히 가려진다). 지킬 수 없는 약속 대신 사실만 말하고, 하이라이트는
-              가려지지 않는 경우(행이 많은 카드)를 위한 덤으로 남긴다. */}
-          {picked && duplicate && (
-            <Banner kind="error">{picked.name}은(는) 이미 이 그룹에 있습니다</Banner>
-          )}
+          className="z-30 max-h-[calc(100dvh-16px)] overflow-y-auto bg-bg-card border border-border-strong rounded p-2 flex flex-col gap-2 shadow-lg">
+          <QuickAddSymbolForm key={folderId} isAdded={isDuplicate} onDuplicate={onDuplicate}
+            onAdd={async hit => { await addToFolder(hit.code, folderId); setAnchorVersion(v => v + 1); }}
+            onUndo={async hit => { await removeFromFolder(hit.code, folderId); setAnchorVersion(v => v + 1); }} />
           <div className="flex justify-end gap-2">
             <button className="text-xs px-2 py-1 text-fg-dim" onClick={close}>닫기</button>
-            <button className="text-xs px-2 py-1 rounded bg-accent text-accent-fg disabled:opacity-40"
-              disabled={!picked || submitting || duplicate} onClick={submit}>추가</button>
           </div>
         </div>,
         document.body,
