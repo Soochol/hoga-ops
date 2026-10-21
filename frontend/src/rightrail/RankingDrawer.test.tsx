@@ -83,6 +83,28 @@ afterEach(() => {
 });
 
 describe('RankingDrawer', () => {
+  it.each([
+    ['등락률', { change_won: -1200 }, '-1,200원', '전일대비 -1,200원', '0원'],
+    ['거래량 급증', { volume_surge_pct: 1842.37 }, '1,842.37%', '1분 기준 급증률 1,842.37%', '0%'],
+    ['거래량', { volume: 12345678 }, '1,235만주', '당일 거래량 12,345,678주', '0주'],
+  ] as const)('%s shows its metric and units in the row and drag ghost', async (label, metric, text, title, zero) => {
+    const field = Object.keys(metric)[0];
+    vi.spyOn(client, 'apiCall').mockResolvedValue({ ...OPEN_RESPONSE,
+      rows: OPEN_RESPONSE.rows.map((row, i) => ({ ...row, ...metric,
+        [field]: i === 0 ? 0 : Object.values(metric)[0] })),
+    } as never);
+    renderDrawer();
+    await screen.findByText('삼성전자');
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(await screen.findByTitle(title)).toHaveTextContent(text);
+    expect(screen.getByTestId('ranking-row-294870').querySelector('.ranking-metric')).toHaveTextContent(zero);
+    expect(screen.getByTestId('ranking-row-005930').querySelector('.quote-row-price')).toHaveTextContent('71,200');
+    expect(screen.queryByTestId('ranking-value-columns-header')).not.toBeInTheDocument();
+    act(() => { dnd.onDragStart!(DRAG_START); });
+    expect(within(screen.getByTestId('ranking-drag-ghost')).getByTitle(title)).toHaveTextContent(text);
+    act(() => { dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } }); });
+  });
+
   const expandableResponse = {
     ...OPEN_RESPONSE, queried_count: 100, has_more: true, venue: 'KRX',
   };

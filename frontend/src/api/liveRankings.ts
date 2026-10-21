@@ -24,6 +24,9 @@ export interface RankingRow {
   trade_value_won: number | null;
   program_net_buy_won?: number | null;
   investor_net_buy_won?: number | null;
+  change_won?: number | null;
+  volume?: number | null;
+  volume_surge_pct?: number | null;
 }
 
 interface RankingsResponseWire {

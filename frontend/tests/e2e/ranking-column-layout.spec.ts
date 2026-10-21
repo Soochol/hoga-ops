@@ -17,6 +17,7 @@ async function geometry(row: Locator) {
         align: style.textAlign };
     };
     return { name: read('.quote-row-name'), rank: read('.ranking-rank'), price: read('.quote-row-price'), percent: read('.quote-row-percent'),
+      metric: element.querySelector('.ranking-metric') ? read('.ranking-metric') : null,
       net: element.querySelector('.ranking-net-buy') ? read('.ranking-net-buy') : null,
       trade: element.querySelector('.ranking-trade-value') ? read('.ranking-trade-value') : null,
       detailWidth: parseFloat(getComputedStyle(element).getPropertyValue('--quote-detail-width')),
@@ -47,6 +48,13 @@ async function cloneMatches(page: Page, row: Locator) {
     expect(after.net!.right).toBeCloseTo(before.net.right, 3);
     await expect(ghost.locator('.ranking-net-buy')).toHaveText((await row.locator('.ranking-net-buy').textContent())!);
   }
+  if (before.metric) {
+    expect(after.metric!.full).toBe(true);
+    expect(after.metric!.right).toBeCloseTo(before.metric.right, 3);
+    expect(after.metric!.width).toBeCloseTo(before.metric.width, 3);
+    await expect(ghost.locator('.ranking-metric')).toHaveText((await row.locator('.ranking-metric').textContent())!);
+    await expect(ghost.locator('.ranking-metric')).toHaveAttribute('title', (await row.locator('.ranking-metric').getAttribute('title'))!);
+  }
   await page.keyboard.press('Escape');
   await page.mouse.up();
   await expect(ghost).toHaveCount(0);
@@ -54,6 +62,60 @@ async function cloneMatches(page: Page, row: Locator) {
 }
 
 for (const fontSize of [16, 20]) {
+  test(`등락금액·급증률·거래량 열의 한 줄 정렬과 드래그 (${fontSize}px)`, async ({ page }, info) => {
+    await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
+    await installLiveMocks(page);
+    let large = false;
+    await page.route(apiExact('live/rankings'), route => {
+      const params = new URL(route.request().url()).searchParams;
+      return route.fulfill({ json: {
+        kind: params.get('kind'), market: params.get('market'), direction: params.get('direction'), venue: params.get('venue'),
+        market_open: true, fetched_at_ms: Date.now(), queried_count: 4, has_more: false,
+        rows: [0, 1, 2, 3].map(i => ({ rank: i + 1, code: String(100000 + i), name: `종목${i + 1}`,
+          price: 71200, change_pct: 5.79,
+          change_won: i === 3 ? null : i === 2 ? 0 : i === 0 ? 1200 : large ? -123456789 : -1200,
+          volume_surge_pct: i === 3 ? null : i === 2 ? 0 : i === 0 ? 18.42 : large ? 1234567.89 : 1842.37,
+          volume: i === 3 ? null : i === 2 ? 0 : i === 0 ? 9999 : large ? 123456789012 : 12345678,
+        })),
+      } });
+    });
+    await page.goto('/live?code=098460');
+    await page.addStyleTag({ content: `:root { font-size: ${fontSize}px !important; }` });
+    await page.getByRole('button', { name: '순위 패널 토글', exact: true }).click();
+    const panel = page.getByTestId('ranking-panel');
+    const first = panel.getByTestId('ranking-row-100000'), second = panel.getByTestId('ranking-row-100001');
+    for (const [kind, label, text, title, zero, wideText] of [
+      ['change', '등락률', '-1,200원', '전일대비 -1,200원', '0원', '-123,456,789원'],
+      ['surge', '거래량 급증', '1,842.37%', '1분 기준 급증률 1,842.37%', '0%', '1,234,567.89%'],
+      ['volume', '거래량', '1,235만주', '당일 거래량 12,345,678주', '0주', '12,345,679만주'],
+    ]) {
+      large = false;
+      await panel.getByRole('button', { name: label, exact: true }).click();
+      await expect(second.locator('.ranking-metric')).toHaveText(text);
+      await expect(second.locator('.ranking-metric')).toHaveAttribute('title', title);
+      await expect(panel.getByTestId('ranking-row-100002').locator('.ranking-metric')).toHaveText(zero);
+      await expect(panel.getByTestId('ranking-row-100003').locator('.ranking-metric')).toHaveText('—');
+      await expect(panel.locator('.quote-columns-header')).toHaveCount(0);
+      const [a, b] = await Promise.all([geometry(first), geometry(second)]);
+      expect(a.metric!.right).toBeCloseTo(b.metric!.right, 3);
+      expect(b.metric!.left).toBeGreaterThanOrEqual(b.name.right);
+      expect(b.price.left).toBeGreaterThanOrEqual(b.metric!.right);
+      expect(b.metric!.top + b.metric!.height / 2).toBeCloseTo(b.name.top + b.name.height / 2, 3);
+      expect(b.metric!.full && b.price.full && b.percent.full).toBe(true);
+      await cloneMatches(page, second);
+      await panel.screenshot({ path: info.outputPath(`${kind}.png`) });
+      large = true;
+      await page.clock.fastForward(11_000);
+      await expect(second.locator('.ranking-metric')).toHaveText(wideText);
+      const wide = await geometry(second);
+      expect(wide.metric!.full && wide.price.full && wide.percent.full).toBe(true);
+      large = false;
+      await page.clock.fastForward(11_000);
+      await expect(second.locator('.ranking-metric')).toHaveText(text);
+      expect((await geometry(second)).metric!.width).toBe(wide.metric!.width);
+    }
+  });
+
   test(`거래대금 4열·320px·열 제목 없음·금액 갱신·드래그 (${fontSize}px)`, async ({ page }, info) => {
     await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
     await installLiveMocks(page);

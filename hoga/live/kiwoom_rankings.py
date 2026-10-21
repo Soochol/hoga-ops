@@ -98,7 +98,7 @@ class KiwoomRankingsError(RuntimeError):
 
 @dataclass(frozen=True)
 class RankingRow:
-    """공유 순위 행. 거래대금은 시장 종합에서 소비하며 드로어 열은 그대로 둔다."""
+    """공유 순위 행. 수량은 주, 가격차는 원, 급증률은 공급자 원본 퍼센트다."""
 
     rank: int
     code: str
@@ -108,6 +108,9 @@ class RankingRow:
     trade_value_won: int | None = None
     program_net_buy_won: int | None = None
     investor_net_buy_won: int | None = None
+    change_won: int | None = None
+    volume: int | None = None
+    volume_surge_pct: float | None = None
 
 
 @dataclass(frozen=True)
@@ -194,6 +197,40 @@ def _net_buy_won(raw: object) -> int | None:
     return int(value * 1_000_000) if value.is_finite() else None
 
 
+def _signed_integer(raw: object) -> int | None:
+    if not isinstance(raw, str):
+        return None
+    value = raw.strip().replace(",", "")
+    if value.startswith("--"):
+        value = value[1:]
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _change_won(item: dict) -> int | None:
+    value = _signed_integer(item.get("pred_pre"))
+    if value is None:
+        return None
+    # Some responses carry an unsigned magnitude plus the direction code.
+    if item.get("pred_pre_sig") in ("4", "5"):
+        return -abs(value)
+    if item.get("pred_pre_sig") in ("1", "2"):
+        return abs(value)
+    return value
+
+
+def _volume(raw: object) -> int | None:
+    value = _signed_integer(raw)
+    return value if value is not None and value >= 0 else None
+
+
+def _surge_pct(raw: object) -> float | None:
+    value = _signed_float(raw)
+    return value if value is not None and math.isfinite(value) else None
+
+
 def parse_rankings(kind: RankingKind, body: dict) -> tuple[RankingRow, ...]:
     """순위 TR 응답 body → RankingRow 튜플. 순위는 응답 순서(1-기반)."""
     spec = _KIND_SPEC[kind]
@@ -228,6 +265,9 @@ def parse_rankings(kind: RankingKind, body: dict) -> tuple[RankingRow, ...]:
                 if kind == "program" else None,
                 investor_net_buy_won=_net_buy_won(item.get("netslmt"))
                 if kind in _INVESTOR_KINDS else None,
+                change_won=_change_won(item) if kind == "change" else None,
+                volume=_volume(item.get("trde_qty")) if kind == "volume" else None,
+                volume_surge_pct=_surge_pct(item.get("sdnin_rt")) if kind == "surge" else None,
             )
         )
     return tuple(rows)
