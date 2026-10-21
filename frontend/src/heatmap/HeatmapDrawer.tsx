@@ -1,3 +1,5 @@
+import { panelFlowRevision, usePanelFlow, type PanelGroupFlow } from '../api/panelFlow';
+import { PanelFlowNotice, PanelGroupSparkline } from '../rightrail/PanelFlowSparkline';
 import './HeatmapColumns.css';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
@@ -88,6 +90,7 @@ type GroupDragHandle = {
 };
 
 type GroupDragGhost = {
+  flow: PanelGroupFlow | null;
   count: number;
   avg: number | null;
   initialRect?: RailDragOverlayRect;
@@ -191,6 +194,7 @@ function GroupHeader(props: {
   folderId: string; busy: boolean;
   label: string; count: number; collapsed: boolean;
   avg?: number | null;
+  flow: PanelGroupFlow | null;
   onToggle: () => void;
   onRename?: () => void;
   onDelete?: () => void;
@@ -244,6 +248,7 @@ function GroupHeader(props: {
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
+      <PanelGroupSparkline flow={props.flow} name={props.label} />
       {/* 그룹 평균 등락률(비가중, 시세 도착 종목만; 전부 결측이면 미표시). 방향색만 —
           배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 같은 avgPct 지만 **라이브
           시세**로 계산한다 — 그룹 순서를 정하는 쪽은 SORT_THROTTLE_MS 로 스로틀된 시세를
@@ -550,7 +555,11 @@ export function HeatmapDrawer() {
   const codes = useMemo(() => [...new Set(data?.entries.map((e) => e.code) ?? [])], [data]);
   const venue = useLiveVenueStore((s) => s.venue);
   const quoteByCode = useQuoteByCode(codes, venue);
-  const columns = useQuoteColumns(codes, quoteByCode, scrollRef);
+  const columns = useQuoteColumns(codes, quoteByCode, scrollRef, undefined, undefined, true);
+  const flowRevision = useMemo(() => panelFlowRevision(data?.entries ?? []), [data]);
+  const flowQuery = usePanelFlow('heatmap', venue, flowRevision, !!data?.entries.length);
+  const stockFlows = useFrozenWhileDragging(flowQuery.byCode, ghost !== null);
+  const groupFlows = useFrozenWhileDragging(flowQuery.byFolder, ghost !== null);
 
   const toggle = (key: string) => {
     clearSelection();
@@ -778,7 +787,7 @@ export function HeatmapDrawer() {
       // 그룹 블록은 스크롤로 화면 위에 숨을 수 있어 헤더 위치를 대신할 수 없다.
       const rect = d?.getOverlayRect?.() as DOMRect | undefined;
       groupDrag.start(String(ev.active.id), rect);
-      setGroupGhost({ count: group?.entries.length ?? 0, avg: group ? avgPct(group.entries, pctOf) : null,
+      setGroupGhost({ flow: groupFlows.get(String(ev.active.id)) ?? null, count: group?.entries.length ?? 0, avg: group ? avgPct(group.entries, pctOf) : null,
         initialRect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : undefined });
       setGhost(group?.folder.name ?? '그룹');
       return;
@@ -893,6 +902,7 @@ export function HeatmapDrawer() {
       </div> : null} query={query} onQuery={changeQuery}
         allCollapsed={allCollapsed} onToggleAll={toggleAll} toggleAllDisabled={toggleAllDisabled} />
 
+      <PanelFlowNotice failed={flowQuery.isError} refreshing={flowQuery.isFetching} retry={() => { void flowQuery.refetch(); }} />
       <RailDrawerBody testId="heatmap-drawer-scroll" scrollRef={scrollRef} quoteNav>
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">히트맵을 불러올 수 없습니다</RailState>}
@@ -923,6 +933,7 @@ export function HeatmapDrawer() {
               const renderGroup = (dragHandle?: GroupDragHandle) => (
                 <>
                   <GroupHeader columnLayout={columns.layout} folderId={folder.id} busy={busy} label={folder.name} count={g.entries.length} collapsed={isCollapsed}
+                    flow={groupFlows.get(folder.id) ?? null}
                     avg={avgPct(g.entries, pctOf)}
                     onToggle={() => toggle(key)}
                     onRename={() => setRenameTarget({ id: folder.id, name: folder.name })}
@@ -945,6 +956,7 @@ export function HeatmapDrawer() {
                           return (
                             <QuoteRow
                               columnLayout={columns.layout}
+                              flow={stockFlows.get(entry.code) ?? null}
                               name={entry.name} code={entry.code}
                               nameTooltip=""
                               price={q?.price ?? null}
@@ -1027,6 +1039,7 @@ export function HeatmapDrawer() {
                   <span className="truncate">{ghost}</span>
                   <span className="flex-none text-xs font-normal text-fg-dim">{groupGhost.count}</span>
                 </span>
+                <PanelGroupSparkline flow={groupGhost.flow} name={String(ghost)} />
                 <span className={`heatmap-group-percent flex-none text-xs font-normal font-data tabular-nums ${groupGhost.avg == null ? 'text-fg-dim' : priceDirClass(groupGhost.avg)}`}>
                   {groupGhost.avg == null ? null : `${groupGhost.avg > 0 ? '+' : ''}${groupGhost.avg.toFixed(2)}%`}
                 </span>

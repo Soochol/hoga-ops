@@ -45,6 +45,7 @@ from hoga.api.live_layout_preset_routes import (
 from hoga.api.market_routes import build_router as build_market_router
 from hoga.api.news_routes import build_router as build_news_router
 from hoga.api.origin_guard import OriginGuardMiddleware
+from hoga.api.panel_flow import build_router as build_panel_flow_router
 from hoga.api.prune import disk_headroom
 from hoga.api.queries import QueryEngine
 from hoga.api.request_timing import RequestTimingMiddleware
@@ -630,6 +631,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     calendar_module.set_data_dir(data_dir)
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir, bus=bus))
+    app.include_router(build_panel_flow_router(data_dir=data_dir, compute=pools))
     app.include_router(build_heatmap_router(data_dir=data_dir, bus=bus, compute=pools))
     app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools, live_buffer=live_get_buffer(),
         volume_targets=set_screener_volume_targets))

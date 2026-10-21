@@ -173,7 +173,7 @@ describe('WatchlistDrawer', () => {
     expect(screen.getByTestId('watchlist-row-000660').getAttribute('aria-current')).toBe('true');
   });
 
-  it('renders live price and change percent on one line from useQuotes', async () => {
+  it('replaces live price with flow while keeping live percent on one line', async () => {
     vi.spyOn(watchlistApi, 'getWatchlist').mockResolvedValue(DATA);
     vi.spyOn(client, 'apiCall').mockResolvedValue({
       phase: 'open',
@@ -184,10 +184,11 @@ describe('WatchlistDrawer', () => {
     });
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(<WatchlistDrawer />, { wrapper: wrap(qc, '/inventory') });
-    // 가격/% 분리 컬럼, 원 접미사 제거.
-    await waitFor(() => expect(screen.getByText('72,400')).toBeInTheDocument());
+    await screen.findByTestId('watchlist-row-005930');
+    expect(screen.queryByText('72,400')).toBeNull();
+    expect(screen.getByTestId('watchlist-row-005930').querySelector('.quote-row-flow')).not.toBeNull();
     expect(screen.getByText('+1.20%')).toBeInTheDocument();
-    expect(screen.getByText('183,500')).toBeInTheDocument();
+    expect(screen.queryByText('183,500')).toBeNull();
     expect(screen.getByText('-0.80%')).toBeInTheDocument();
     expect(screen.queryByText('+850원 (1.20%)')).not.toBeInTheDocument();
   });
@@ -738,7 +739,7 @@ describe('WatchlistDrawer', () => {
     await waitFor(() => expect(screen.getByText('삼성전자')).toBeInTheDocument());
 
     expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('삼성전자');
-    expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('—');
+    expect(screen.getByTestId('watchlist-row-005930')).toHaveTextContent('흐름 없음');
     expect(screen.getByTestId('watchlist-row-005930')).not.toHaveTextContent('KIS WS 저장 중');
     expect(screen.getByTestId('watchlist-row-035420')).not.toHaveTextContent('대기');
     expect(screen.getByTestId('watchlist-row-051910')).not.toHaveTextContent('저장 제외');

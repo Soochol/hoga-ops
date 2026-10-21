@@ -8,6 +8,8 @@
 }
 .quote-row-fluid > .quote-row-name { min-width: var(--quote-name-min, calc(6 * var(--text-xs))); }
 .quote-row-fluid > .quote-row-price { width: var(--quote-price-width); white-space: nowrap; }
+.panel-flow-group-header { padding-right: var(--quote-right-padding); }
+.quote-row-flow { width: 64px; height: 16px; }
 .quote-row-fluid > .quote-row-percent { width: var(--quote-percent-width); white-space: nowrap; }
 .quote-column-probe {
   position: fixed;

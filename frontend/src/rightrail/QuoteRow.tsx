@@ -7,6 +7,8 @@ import {
   type DropIndicator,
 } from '../ui/sortableDragVisuals';
 import { moveToAdjacentQuoteRow } from './quoteRowNav';
+import type { PanelStockFlow } from '../api/panelFlow';
+import { PanelStockSparkline } from './PanelFlowSparkline';
 
 /** 관심종목·스크리너 드로어 공용 행: 종목명(좌) │ 현재가(+등락률)(우) │ (선택) 트레일링 액션.
  *  ScreenerResultRow 의 시각/키보드 계약을 그대로 가져오고 quote 셀을 우측에 둔다.
@@ -22,6 +24,8 @@ export interface QuoteRowProps {
   name: string;
   code?: string;
   price: number | null;
+  /** undefined preserves price cells elsewhere; null opts into empty flow. */
+  flow?: PanelStockFlow | null;
   pct: number | null;
   changeWon: number | null;
   /** 동시호가 예상체결가/등락률(LiveQuote.expected_*). 값이 있으면 가격·등락% 셀을
@@ -93,7 +97,7 @@ function formatPct(pct: number | null): string {
 }
 
 export function QuoteRow({
-  name, code, price, pct, changeWon: _changeWon, expectedPrice, expectedPct,
+  name, code, price, flow, pct, changeWon: _changeWon, expectedPrice, expectedPct,
   active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, columnLayout, nameTooltip, nameDetail,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
@@ -212,9 +216,9 @@ export function QuoteRow({
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
-      <span title={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
+      {flow !== undefined ? <PanelStockSparkline flow={flow} name={name} /> : <span title={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
-      </span>
+      </span>}
       <span className={`quote-row-percent flex-none ${compact ? 'w-[3rem]' : 'w-[3.5rem]'} text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
         {shownPct != null ? formatPct(shownPct) : ''}
       </span>

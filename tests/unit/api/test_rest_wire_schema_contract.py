@@ -47,6 +47,7 @@ from typing import Literal, get_args, get_origin
 from hoga.api import events, models as m, sources
 from hoga.api.error_codes import ComputeErrorCode
 from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, ProgramResponse
+from hoga.api.panel_flow import PanelFlowResponse, PanelFlowSource, PanelGroupFlow, PanelStockFlow
 from hoga.api.screener_continuous import ContinuousStatus
 from hoga.live import flow_receipts, futures_runtime, market_overview
 from hoga.live.api import (
@@ -371,6 +372,9 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    PanelStockFlow: frozenset({"code", "venue", "pct", "last_observed_ms", "missing_reason"}),
+    PanelGroupFlow: frozenset({"folder_id", "pct", "counts", "total"}),
+    PanelFlowResponse: frozenset({"date", "venue", "bucket_ms", "t_base_ms", "as_of_ms", "stocks", "groups"}),
     ContinuousStatus: frozenset({"id", "total", "prepared", "receiving", "preparing", "recovering",
         "unavailable", "insufficient", "last_verified_ms", "error"}),
     broker_contracts.BrokerState: frozenset({"account_ref", "code", "buying_power", "buyable_quantity",
@@ -539,6 +543,7 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "PanelFlowSource": (frozenset(get_args(PanelFlowSource)), "frontend/src/api/panelFlow.ts"),
     "ChangeReference": (frozenset(get_args(m.ChangeReference)), "frontend/src/api/screener.ts"),
     "TradeValueMethod": (frozenset(get_args(m.TradeValueMethod)), "frontend/src/api/screener.ts"),
     "BollingerBand": (frozenset(get_args(m.BollingerBand)), "frontend/src/api/screener.ts"),

@@ -11,7 +11,7 @@ const patterns = (values: string[]) => [...new Set(values.map(value => value.rep
 /** The unfiltered list includes collapsed groups and actual/expected figures.
  * Keep observed patterns while open so ticks/search do not move column edges.
  * There is one probe and observer for the panel, never one per row. */
-export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<string, QuoteColumnValue>, scrollRef: RefObject<HTMLDivElement | null>, scopeKey?: string | null, extraFigures?: ExtraFigures) {
+export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<string, QuoteColumnValue>, scrollRef: RefObject<HTMLDivElement | null>, scopeKey?: string | null, extraFigures?: ExtraFigures, flow = false) {
   const [budget, setBudget] = useState(() => ({ scopeKey: scopeKey ?? null, figures: initialFigures() }));
   const next = useMemo(() => {
     // A temporarily empty/loading result does not end the current scope. Only
@@ -22,7 +22,7 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
     for (const code of codes) {
       const quote = quotes.get(code);
       if (!quote) continue;
-      for (const value of [quote.price, quote.expected_price]) {
+      for (const value of flow ? [] : [quote.price, quote.expected_price]) {
         if (value != null) price.push(value.toLocaleString('ko-KR'));
       }
       for (const value of [quote.change_pct, quote.expected_change_pct]) {
@@ -38,7 +38,7 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
     };
     return key === budget.scopeKey && COLUMNS.every(column => figures[column].length === retained[column].length)
       ? budget : { scopeKey: key, figures };
-  }, [codes, quotes, budget, scopeKey, extraFigures]);
+  }, [codes, quotes, budget, scopeKey, extraFigures, flow]);
   if (next !== budget) setBudget(next);
   const samples = next.figures;
   const probe = useRef<HTMLSpanElement>(null);
@@ -68,12 +68,12 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
     return () => { observer.disconnect(); cancelAnimationFrame(frame); };
   }, [samples, measure, scrollRef]);
   const layout = useMemo(() => ({
-    '--quote-price-width': metrics.price ? `${metrics.price}px` : '4.75rem',
+    '--quote-price-width': flow ? '64px' : metrics.price ? `${metrics.price}px` : '4.75rem',
     '--quote-percent-width': metrics.percent ? `${metrics.percent}px` : '3.5rem',
     '--quote-rank-width': `${metrics.rank}px`,
     '--quote-detail-width': `${metrics.detail}px`,
     '--quote-column-gap': ['0.5rem', '0.25rem', '0.125rem'][metrics.tier],
     '--quote-right-padding': ['0.75rem', '0.5rem', '0.25rem'][metrics.tier],
-  }) as CSSProperties, [metrics]);
+  }) as CSSProperties, [metrics, flow]);
   return { probe, samples, layout };
 }

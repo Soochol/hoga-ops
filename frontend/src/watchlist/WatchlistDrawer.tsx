@@ -1,3 +1,6 @@
+import { panelFlowRevision, usePanelFlow, type PanelGroupFlow, type PanelStockFlow } from '../api/panelFlow';
+import { latestFlowValue, PanelFlowNotice, PanelGroupSparkline } from '../rightrail/PanelFlowSparkline';
+import { priceDirClass } from '../ui/priceDir';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
@@ -194,6 +197,8 @@ function WatchlistSymbolAddPopover({
  */
 function GroupHeader(props: {
   label: string; count: number; collapsed: boolean;
+  flow: PanelGroupFlow | null;
+  columnLayout: React.CSSProperties;
   onToggle: () => void;
   onRename?: () => void;
   onDelete?: () => void;
@@ -226,6 +231,7 @@ function GroupHeader(props: {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
+  const avg = latestFlowValue(props.flow?.pct ?? []);
   const cycleSortMode = () => {
     if (!props.onSort || !props.sortMode) return;
     if (props.sortMode === 'default') {
@@ -259,7 +265,8 @@ function GroupHeader(props: {
       }}
       onKeyDown={(event) => { if (props.onRename && event.currentTarget.contains(event.target as Node)) openPanelContextMenuFromKeyboard(event); }}
       {...panelDragListeners(props.busy ? undefined : props.dragHandle?.listeners)}
-      className={`group ${props.dragHandle && !props.busy ? props.dragHandle.isDragging ? 'cursor-grabbing' : 'cursor-grab' : ''} select-none touch-none sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover ${
+      style={props.columnLayout}
+      className={`panel-flow-group-header quote-columns-min-width group ${props.dragHandle && !props.busy ? props.dragHandle.isDragging ? 'cursor-grabbing' : 'cursor-grab' : ''} select-none touch-none sticky top-0 ${menuOpen ? 'z-20' : 'z-10'} flex items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim bg-bg hover:bg-bg-input-hover ${
         props.dragHandle ? 'select-none' : ''
       }`}>
 
@@ -278,6 +285,7 @@ function GroupHeader(props: {
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
+      <PanelGroupSparkline flow={props.flow} name={props.label} />
       {props.onSort && (
         <button type="button" aria-label={`${props.label} 정렬`}
           aria-describedby={sortDescriptionId}
@@ -285,8 +293,10 @@ function GroupHeader(props: {
           // 설명은 있으나 포인터 사용자엔 안 보임). aria-describedby 와 같은 문구.
           title={quoteSortModeDescription(props.sortMode)}
           onClick={cycleSortMode}
-          className={`grid h-6 w-6 shrink-0 place-items-center rounded hover:bg-bg-input-hover hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
-          <QuoteSortIcon mode={props.sortMode} />
+          className={`h-6 shrink-0 flex items-center gap-1 text-right font-data text-xs tabular-nums rounded hover:bg-bg-input-hover ${avg == null ? 'text-fg-dim' : priceDirClass(avg)}`}
+          style={{ width: 'calc(var(--quote-percent-width, 3.5rem) + 1rem)' }}>
+          <span className="flex-none"><QuoteSortIcon mode={props.sortMode} /></span>
+          <span className="flex-1">{avg == null ? null : `${avg > 0 ? '+' : ''}${avg.toFixed(2)}%`}</span>
           <span id={sortDescriptionId}
             style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
             {quoteSortModeDescription(props.sortMode)}
@@ -471,6 +481,7 @@ function RemeasureOnCollapse({ active }: { active: boolean }) {
  *  단위 안정 참조이고, 트레일링은 여기서 조립한다. 이 계약을 깨는 prop 을 추가하지 말 것. */
 const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   columnLayout: React.CSSProperties;
+  flow: PanelStockFlow | null;
   entry: WatchlistEntry;
   price: number | null; pct: number | null; changeWon: number | null;
   expectedPrice?: number | null; expectedPct?: number | null;
@@ -502,6 +513,7 @@ const SortableQuoteRow = memo(function SortableQuoteRow(props: {
   return (
     <QuoteRow
       columnLayout={props.columnLayout}
+      flow={props.flow}
       name={entry.name} code={entry.code}
       nameTooltip=""
       price={props.price}
@@ -587,12 +599,12 @@ const SortableMemoRow = memo(function SortableMemoRow(props: {
  *  않는다 — 데이터 동결과 같은 규율이고, 손에 든 것이 도중에 바뀌면 오히려 산만하다. */
 type DragGhost =
   | {
-      kind: 'entry'; name: string; status: DisplayStatus; bulk?: boolean;
+      kind: 'entry'; name: string; status: DisplayStatus; bulk?: boolean; flow: PanelStockFlow | null;
       price: number | null; pct: number | null;
       expectedPrice: number | null; expectedPct: number | null;
     }
   | { kind: 'memo'; text: string }
-  | { kind: 'folder'; label: string; count: number; sortMode: QuoteSortMode; initialRect?: RailDragOverlayRect };
+  | { kind: 'folder'; label: string; count: number; sortMode: QuoteSortMode; flow: PanelGroupFlow | null; initialRect?: RailDragOverlayRect };
 
 const GHOST_NOOP = () => {};
 
@@ -631,15 +643,17 @@ function WatchlistDragGhost({ ghost, columnLayout }: { ghost: DragGhost; columnL
     // 타이포·간격은 GroupHeader 와 같은 값 — 손에 든 것이 "방금 잡은 그 헤더"로 읽혀야
     // 한다. `<li>` 인 이유는 래퍼가 `wrapperElement="ul"` 이기 때문(행 고스트와 동일).
     return (
-      <li data-testid="watchlist-drag-ghost"
-        className="flex h-full items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim">
+      <li data-testid="watchlist-drag-ghost" style={columnLayout}
+        className="panel-flow-group-header quote-columns-min-width flex h-full items-center gap-1.5 px-3 py-1.5 min-h-list-group-header text-sm font-semibold text-fg-dim">
         <span className="grid h-6 w-6 shrink-0 place-items-center"><ChevronIcon collapsed /></span>
         <span className="flex-1 min-w-0 flex items-baseline gap-1.5">
           <span className="truncate">{ghost.label}</span>
           <span className="flex-none text-xs font-normal text-fg-dim">{ghost.count}</span>
         </span>
-        <span className={`grid h-6 w-6 shrink-0 place-items-center ${ghost.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
+        <PanelGroupSparkline flow={ghost.flow} name={ghost.label} />
+        <span className="flex h-6 shrink-0 items-center gap-1" style={{ width: 'calc(var(--quote-percent-width, 3.5rem) + 1rem)' }}>
           <QuoteSortIcon mode={ghost.sortMode} />
+          <span className="flex-1 text-right font-data text-xs tabular-nums">{(() => { const value = latestFlowValue(ghost.flow?.pct ?? []); return value == null ? null : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`; })()}</span>
         </span>
       </li>
     );
@@ -661,6 +675,7 @@ function WatchlistDragGhost({ ghost, columnLayout }: { ghost: DragGhost; columnL
       name={ghost.name}
       nameTooltip=""
       price={ghost.price}
+      flow={ghost.flow}
       pct={ghost.pct}
       changeWon={null}
       expectedPrice={ghost.expectedPrice}
@@ -824,7 +839,11 @@ export function WatchlistDrawer() {
   const venue = useLiveVenueStore((s) => s.venue);
   const liveQuoteByCode = useQuoteByCode(codes, venue);
   const quoteByCode = useFrozenWhileDragging(liveQuoteByCode, isDragging);
-  const columns = useQuoteColumns(codes, quoteByCode, scrollRef);
+  const columns = useQuoteColumns(codes, quoteByCode, scrollRef, undefined, undefined, true);
+  const flowRevision = useMemo(() => panelFlowRevision(data?.entries ?? []), [data]);
+  const flowQuery = usePanelFlow('watchlist', venue, flowRevision, !!data?.entries.length);
+  const stockFlows = useFrozenWhileDragging(flowQuery.byCode, isDragging);
+  const groupFlows = useFrozenWhileDragging(flowQuery.byFolder, isDragging);
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusRaw } = useLiveStatus();
@@ -1257,6 +1276,7 @@ export function WatchlistDrawer() {
       const q = quoteByCode.get(code);
       setDragGhost({
         kind: 'entry',
+        flow: stockFlows.get(code) ?? null,
         bulk: dragSources.current.length > 1,
         name: dragSources.current.length > 1 ? `${new Set(dragSources.current.map((s) => s.code)).size}종목 이동` : String(d.name ?? code),
         status: collectionByRow.get(String(ev.active.id))?.displayStatus ?? 'realtime',
@@ -1284,7 +1304,7 @@ export function WatchlistDrawer() {
         // 그룹 블록 rect는 스크롤로 화면 위에 숨을 수 있어 헤더 좌표를 대신할 수 없다.
         const rect = d.getOverlayRect?.() as DOMRect | undefined;
         groupDrag.start(String(ev.active.id), rect);
-        setDragGhost({ kind: 'folder', label: g.label, count: g.count, sortMode: g.sortMode,
+        setDragGhost({ kind: 'folder', label: g.label, count: g.count, sortMode: g.sortMode, flow: groupFlows.get(String(ev.active.id)) ?? null,
           initialRect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : undefined });
         return;
       }
@@ -1443,6 +1463,7 @@ export function WatchlistDrawer() {
         {searching && <p role="status" className="text-xs text-fg-dim">검색 결과 {filteredGroups.reduce((n, g) => n + g.count, 0)}개 · {filteredGroups.length}그룹</p>}
       </div>
       <WatchlistTransferToast transfer={transfer} />
+      <PanelFlowNotice failed={flowQuery.isError} refreshing={flowQuery.isFetching} retry={() => { void flowQuery.refetch(); }} />
       <RailDrawerBody testId="watchlist-scroll" scrollRef={scrollRef} quoteNav>
         {searching && filteredGroups.length === 0 && <RailState>검색 결과가 없습니다 · 다른 종목명이나 그룹명을 입력하세요</RailState>}
         {isLoading && <RailState>불러오는 중</RailState>}
@@ -1490,6 +1511,7 @@ export function WatchlistDrawer() {
                       return (
                         <SortableQuoteRow
                           columnLayout={columns.layout}
+                          flow={stockFlows.get(entry.code) ?? null}
                           key={rowId}
                           entry={entry}
                           price={q?.price ?? null}
@@ -1518,7 +1540,7 @@ export function WatchlistDrawer() {
                 </ul>
               );
               const renderHeader = (dragHandle?: GroupDragHandle) => (
-                <GroupHeader label={label} count={g.count} collapsed={isCollapsed}
+                <GroupHeader columnLayout={columns.layout} label={label} count={g.count} collapsed={isCollapsed} flow={groupFlows.get(folder?.id ?? "") ?? null}
                   onToggle={() => { clearSelection(); if (searching) setSearchCollapsed((old) => { const next = new Set(old); if (next.has(key)) next.delete(key); else next.add(key); return next; }); else toggle(key); }}
                   onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
                   onDelete={folder ? () => deleteFolderWithConfirm(folder.id) : undefined}

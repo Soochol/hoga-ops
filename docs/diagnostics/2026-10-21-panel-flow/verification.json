@@ -1,0 +1,119 @@
+{
+  "recorded_at": "2026-10-21T14:47:13.772930+09:00",
+  "head_sha": "5619cb477cc8c46bbd9a1be974df9804a19039ab",
+  "base_sha": "5619cb477cc8c46bbd9a1be974df9804a19039ab",
+  "working_tree": "uncommitted implementation; hashes include modified and new source/test files",
+  "input_fingerprints": {
+    "frontend": {
+      "files": 1794,
+      "sha256": "912ffae2913148b8371896b61c8bdbdbec910d7b7262a7b72b73edab36a6f242"
+    },
+    "backend": {
+      "files": 810,
+      "sha256": "d2f87c9a2bb61de17a49d2dbcb8221cde87bad4a10fc7fb3e83f5a5fa9a0a51a"
+    }
+  },
+  "versions": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0",
+    "chrome": "Google Chrome 155.0.8059.84"
+  },
+  "environment": {
+    "credentials": "empty vendor credentials in playwright.config.ts; isolated worktree .env",
+    "e2e_workers": 1,
+    "backend_port": 20170,
+    "frontend_port": 21170,
+    "data_dir": "/tmp/hoga-e2e-data-170"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api -m 'not wallclock'",
+      "result": "1102 passed, 1 deselected; 13 existing warnings",
+      "duration_s": 52.24
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed (app, unit, E2E projects)"
+    },
+    {
+      "command": "npx vitest run src/api/panelFlow.test.tsx src/rightrail/PanelFlowSparkline.test.tsx src/watchlist src/heatmap src/rightrail/QuoteRow.test.tsx src/rightrail/useQuoteColumns.test.tsx",
+      "cwd": "frontend",
+      "result": "54 files, 490 passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/watchlist-column-layout.spec.ts tests/e2e/heatmap-column-layout.spec.ts tests/e2e/watchlist-panel-drag.spec.ts tests/e2e/heatmap-panel-drag.spec.ts tests/e2e/panel-flow-performance.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "76 passed",
+      "duration_s": 126
+    },
+    {
+      "command": "npx vite build --logLevel warn",
+      "cwd": "frontend",
+      "result": "passed after baseline comparison and restoring implementation files"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "server_compute_benchmark": {
+    "synthetic": true,
+    "unique_stocks": 200,
+    "memberships": 400,
+    "groups": 10,
+    "minutes_per_stock": 390,
+    "jsonl_mib": 93.8,
+    "record_mix": "one candle plus four orderbook rows per minute; orderbook filler 256 characters",
+    "cold_tail_cache_ms": 333.4,
+    "warm_ms": [
+      37.48,
+      38.86,
+      41.87
+    ],
+    "warm_median_ms": 38.86,
+    "warm_reparsed_bytes": 0,
+    "response_kib": 148.49,
+    "limits": "Core computation in one process; generated files are warm in OS cache. Does not include production disk, compute-worker IPC, network or browser time."
+  },
+  "browser_measurements": [
+    {
+      "source": "watchlist",
+      "uniqueStocks": 200,
+      "rows": 400,
+      "graphs": 410,
+      "firstPaintMs": 786,
+      "flowBatches": 1,
+      "pathWritesDuringQuoteRefresh": 0,
+      "payloadBytes": 162377
+    },
+    {
+      "source": "heatmap",
+      "uniqueStocks": 200,
+      "rows": 400,
+      "graphs": 410,
+      "firstPaintMs": 1156,
+      "flowBatches": 1,
+      "pathWritesDuringQuoteRefresh": 0,
+      "payloadBytes": 162377
+    }
+  ],
+  "resize_observer_audit": {
+    "observation": "Intermittent ResizeObserver loop warnings during density/width changes; no failing E2E assertions.",
+    "baseline": "Replaced only the seven changed UI/layout-test files with HEAD versions temporarily, ran original four column-layout cases; same warnings reproduced (3 occurrences), 4 passed. All implementation bytes restored in finally.",
+    "conclusion": "Warning also exists before this implementation; no global error suppression added."
+  },
+  "scope_limits": [
+    "US stock flow explicitly unavailable; no domestic/US average mixing.",
+    "No new vendor API calls or WS registrations.",
+    "Existing user servers on 5173/8000 were not restarted."
+  ]
+}
