@@ -1,10 +1,10 @@
 {
-  "recordedAtKst": "2026-10-21T23:33:25.954791+09:00",
-  "baseCommit": "bf51fcb432f5741ff9e489db5123f82c897dc508",
-  "implementationState": "Uncommitted working-tree changes; source and final test inputs recorded below.",
+  "recordedAtKst": "2026-10-21T23:37:09.089990+09:00",
+  "baseCommit": "900c3e1b0f754dcf77fdd810704c0c5e4cd1c58c",
+  "implementationState": "Source and tests validated at implementationCommit after merging latest main; subsequent verification-only commits reuse these exact inputs.",
   "scope": "Remove the trade-value ranking column-header row to match the program tab; remove title-only width probes and update existing layout checks.",
   "inputFingerprint": {
-    "sha256": "b67dd57dc93a08c32a34a11e4198bafdafed72322a3997d77c7aaaf18d074748",
+    "sha256": "941473ba59054033b1d94181265c2df3f728bf1747375b6bbe530c179577ce06",
     "files": 2099,
     "gitPathspecs": [
       "frontend/src",
@@ -30,9 +30,9 @@
     "algorithm": "SHA256 of sorted path + NUL + raw SHA256(file bytes)"
   },
   "changedSourceSha256": {
-    "frontend/src/rightrail/RankingDrawer.tsx": "032123099925f9fd6c666bfd70cc0caa7613016cb996f9df3b476ecfc1ab4eeb",
-    "frontend/tests/e2e/ranking-column-layout.spec.ts": "d780bbfb26c7feedc4ca05e2c4ad695179c45a4079a8a7a2f57e9dda39d981c4",
-    "DESIGN.md": "e436dd2156e4621d92b8e12293edfbc2d8290e04079dd6794be21cad92e84aff"
+    "frontend/src/rightrail/RankingDrawer.tsx": "03ab4d2159d1c4fa1a947d3229d31196d8330cd569fc76b6c2d7f3cda1a15cc9",
+    "frontend/tests/e2e/ranking-column-layout.spec.ts": "995ff785617468b06ff1d758027b95ed4766e40743a2c8664e88fcd7a6330d8e",
+    "DESIGN.md": "9171d4fcdacb809616d066b0b7cda151c33c19b1e1e0df1bd05caa326aa54899"
   },
   "tools": {
     "node": "24.13.1",
@@ -47,23 +47,19 @@
   "checks": [
     {
       "command": "cd frontend && npm run typecheck",
-      "result": "passed; app, unit-test and E2E projects. The later test-only screenshot-path change was additionally checked by the E2E TypeScript command below."
-    },
-    {
-      "command": "cd frontend && npx tsc -p tsconfig.e2e.json --noEmit",
-      "result": "passed on final test source"
+      "result": "passed on merged source; app, unit-test and E2E projects"
     },
     {
       "command": "cd frontend && npx vitest run src/rightrail/RankingDrawer.test.tsx",
-      "result": "26 passed; application source unchanged since this run"
+      "result": "26 passed on merged source"
     },
     {
-      "command": "cd frontend && npx playwright test ranking-column-layout.spec.ts --grep '거래대금 4열' --reporter=list",
-      "result": "2 passed on final source; 16px/20px font sizes, header absent, four-column alignment, amount polling, overflow, sorting and drag ghost verified; screenshot visually confirmed without headers"
+      "command": "cd frontend && npx playwright test ranking-column-layout.spec.ts --reporter=list",
+      "result": "4 passed on merged source; 16px/20px fonts, header removal, four-column alignment, integer amounts, polling, responsive overflow and drag ghosts"
     },
     {
       "command": "npx vite build (Playwright webServer startup)",
-      "result": "passed; application source unchanged since this build"
+      "result": "passed on merged source"
     },
     {
       "command": "git diff --check",
@@ -79,5 +75,7 @@
   },
   "limits": [
     "Changes are in this worktree only; the running user checkout was not modified."
-  ]
+  ],
+  "implementationCommit": "5c2441445798b03a0817335392cf44e2c1b82d4b",
+  "integration": "Merged main PR #2236 (ranking amounts in one line and overseas price formatting). Preserved the new integer amounts and program layout, removed the trade-value header, and updated both intersecting design/test sections."
 }
