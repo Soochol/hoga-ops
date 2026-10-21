@@ -9,21 +9,28 @@ const baseTime = () => Date.now() - 180000;
 const makeRow = (i: number, base: number) => ({ event_id: `ka10003:row-${i}`, t_ms: base + i * 1000,
   price: 125500 + i, qty: i, side: i % 2 === 0 ? 1 : -1, cum_volume: i * 10 });
 
-async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty', minAmountManwon = 0) {
+async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty', minAmountManwon = 0, withBooks = false) {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.addInitScript((amount: number) => {
+  await page.addInitScript(({ amount, withBooks }) => {
     localStorage.setItem('live.venue.v1', JSON.stringify({ venue: 'UN' }));
     if (!sessionStorage.getItem('live.workspace.v1')) sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
-      windows: [{ id: 'trade-only', kind: 'trade', group: 1, tradeMinAmountManwon: amount, rect: { x: 0, y: 0, w: 0.25, h: 0.45 } }],
-      zOrder: ['trade-only'], groupSymbols: { 1: { code: '222800', name: '심텍' } },
+      windows: [{ id: 'trade-only', kind: 'trade', group: 1, tradeMinAmountManwon: amount, rect: { x: 0, y: 0, w: 0.25, h: 0.45 } },
+        ...(withBooks ? [
+          { id: 'book-inline', kind: 'book', group: 1, rect: { x: 0.25, y: 0, w: 0.35, h: 0.9 } },
+          { id: 'order-inline', kind: 'order', group: 1, rect: { x: 0.6, y: 0, w: 0.4, h: 0.9 } },
+        ] : [])],
+      zOrder: withBooks ? ['trade-only', 'book-inline', 'order-inline'] : ['trade-only'], groupSymbols: { 1: { code: '222800', name: '심텍' } },
     }));
-  }, minAmountManwon);
+  }, { amount: minAmountManwon, withBooks });
   await installLiveMocks(page);
   const ws = await installLiveWs(page);
   await page.route('**/api/live/series?**', route => {
     const params = new URL(route.request().url()).searchParams;
     return route.fulfill({ json: { code: params.get('code'), date: params.get('date'), session_open_ms: Date.now(),
-      session_close_ms: null, is_open: true, snapshots: [], trades: [], brokers: [], programs: [], after_hours: [],
+      session_close_ms: null, is_open: true, snapshots: withBooks ? [{ kind: 'ob', venue: params.get('venue'), t_ms: Date.now(),
+        asks: Array.from({ length: 10 }, (_, i) => ({ price: 125600 + i * 100, qty: 100 + i })),
+        bids: Array.from({ length: 10 }, (_, i) => ({ price: 125500 - i * 100, qty: 200 + i })),
+        total_ask_qty: 1000, total_bid_qty: 2000 }] : [], trades: [], brokers: [], programs: [], after_hours: [],
       expected: [], ask_peak_today: null, bid_peak_today: null } });
   });
   if (history === 'empty') await page.route(URL_PATTERN, route => route.fulfill({ json: {
@@ -35,6 +42,55 @@ async function setup(page: Page, history: 'empty' | 'provided' | 'real' = 'empty
   await expect(window).toBeVisible();
   await ws.waitForSubscribe(CODE);
   return { window, ws };
+}
+
+for (const failed of [false, true]) {
+  test(`10호가·호가주문은 체결창의 초기 조회를 공유하고 실시간 체결을 합친다 (${failed ? '조회 실패' : '정상 조회'})`, async ({ page }) => {
+    await page.clock.install({ time: new Date('2026-10-21T01:00:00Z') });
+    // The tape's explicit scrolling pagination is tested below; here the two
+    // books must not request older pages merely to populate nine rows.
+    await page.addInitScript(() => Object.defineProperty(globalThis, 'IntersectionObserver', { value: undefined }));
+    await page.route('**/api/trading/v2/accounts', route => route.fulfill({ json: { configured: false, accounts: [] } }));
+    let batches = 0;
+    const base = Date.parse('2026-10-21T00:59:00Z');
+    await page.route(URL_PATTERN, route => {
+      batches++;
+      if (failed) return route.fulfill({ status: 503, json: { detail: 'unavailable' } });
+      return route.fulfill({ json: { code: CODE, date: '20261021', venue: 'UN',
+        rows: Array.from({ length: 12 }, (_, i) => makeRow(12 - i, base)), next_key: 'older',
+        latest_at_ms: base + 12000, latest_volume: 120, prev_close: 125000 } });
+    });
+    const { ws } = await setup(page, 'provided', 0, true);
+    const bookRows = page.locator('[data-win="book-inline"] .book-trade-row');
+    const orderRows = page.getByTestId('order-window').locator('.order-trade');
+    if (failed) {
+      await expect(page.getByRole('button', { name: '이전 내역 조회 실패 · 재시도' })).toBeVisible();
+      await expect(bookRows).toHaveCount(0);
+      await expect(orderRows).toHaveText(Array(9).fill(''));
+    } else {
+      for (const rows of [bookRows, orderRows]) {
+        await expect(rows).toHaveCount(9);
+        await expect(rows.first().locator('span').last()).toHaveText('12');
+        await expect(rows.last().locator('span').last()).toHaveText('4');
+      }
+      expect(batches).toBe(1);
+    }
+    ws.pushBatch(CODE, [
+      { kind: 'trade', venue: 'UN', t_ms: base + 12000, cum_volume: 120,
+        trades: [{ price: 125512, qty: 12, side: 1 }] },
+      { kind: 'trade', venue: 'UN', t_ms: base + 12000, cum_volume: 133,
+        trades: [{ price: 125600, qty: 13, side: -1 }] },
+    ], []);
+    for (const rows of [bookRows, orderRows]) {
+      await expect(rows.first().locator('span').last()).toHaveText('13');
+      await expect(rows.nth(1).locator('span').last()).toHaveText('12');
+    }
+    if (!failed) {
+      await expect(bookRows).toHaveCount(9);
+      await expect(orderRows.last().locator('span').last()).toHaveText('5');
+      expect(batches).toBe(1);
+    }
+  });
 }
 
 async function openTradeSettings(page: Page) {

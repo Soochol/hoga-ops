@@ -34,7 +34,8 @@ import { fillTradeSummaryFromQuote, latestOrderbookSnapshot, latestTradeSummary 
 import { editableOrder, groupPriceOrders, HIGH_VALUE_WON, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder, orderSideLabel } from './orderRules';
 import { previousDayObExpired, realMsToYyyymmdd } from '../liveDateTime';
 import { BookDayMarker, BookQtyDelta, BookSummary, TotalQtyStrip } from './BookPanel';
-import { recentBookTrades, resolveBookBaseline } from './bookDisplay';
+import { resolveBookBaseline } from './bookDisplay';
+import { useRecentBookTrades } from './useRecentBookTrades';
 import { tradeHighlightBackground, useTradeHighlight } from '../tradeHighlight';
 import { bookDayMarkers } from './bookDayMarkers';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
@@ -606,7 +607,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     if (!drag.current && !action && !settingsDraft && !exclusiveBusy) setContextMenu({ ...point, side });
   }
 
-  const recentTrades = useMemo(() => recentBookTrades(live.trade, 9), [live.trade]);
+  const recentTrades = useRecentBookTrades({ code, date: todayKst, venue: effectiveVenue,
+    frames: live.trade, enabled: activeSinglePrice === null });
   const highlight = useTradeHighlight();
   const trades = activeSinglePrice !== null ? singlePriceFills.slice(0, 9) : recentTrades;
   const lastPrice = activeSinglePrice !== null ? (afterHoursBook.data?.cur_price ?? null) : (recentTrades[0]?.price ?? null);
@@ -778,8 +780,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           const key = `${isAsk ? 'ask' : 'bid'}-${slot}`;
           const trade = bidIndex > 0 ? trades[bidIndex - 1] : undefined;
           const tradePriceColor = trade && baseline != null && baseline > 0 ? priceDirClass(trade.price - baseline) : 'text-fg-dim';
-          const info = <div className={`order-info ${firstBid ? 'order-strength' : 'order-trade'}`}><span className={firstBid ? 'order-meta' : tradePriceColor}>{firstBid ? '체결강도' : fmt(trade?.price)}</span><span className={trade ? `rounded-sm ${priceDirClass(trade.side)}` : undefined}
-            style={trade ? { background: tradeHighlightBackground(trade, highlight) } : undefined}>{firstBid ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : fmt(trade?.qty)}</span></div>;
+          const info = <div className={`order-info ${firstBid ? 'order-strength' : 'order-trade'}`}><span className={firstBid ? 'order-meta' : tradePriceColor}>{firstBid ? '체결강도' : trade ? fmt(trade.price) : ''}</span><span className={trade ? `rounded-sm ${priceDirClass(trade.side)}` : undefined}
+            style={trade ? { background: tradeHighlightBackground(trade, highlight) } : undefined}>{firstBid ? summary.fillStrengthPct == null ? '—' : `${fmt(summary.fillStrengthPct)}%` : trade ? fmt(trade.qty) : ''}</span></div>;
           // Empty slots preserve the center without becoming order/drag targets.
           // Recent fills still occupy their fixed slots beside the bid ladder.
           if (!level) return <div className={`order-row order-empty ${firstBid ? 'order-divider' : ''}`} key={key}

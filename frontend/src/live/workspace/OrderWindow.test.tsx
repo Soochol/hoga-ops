@@ -10,6 +10,7 @@ import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
+import { useTradeHistory } from '../../api/tradeHistory';
 import { notifyOrderReceiptAccepted, playOrderReceiptSound, playOrderSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import type { LiveAfterHoursBookResponse } from '../../api/liveAfterHoursBook';
 import { normalizeOrderSettings } from '../../state/orderWindowSettings';
@@ -36,6 +37,7 @@ vi.mock('../../api/liveKrxClose', () => ({ useLiveKrxClose: () => ({ data: { dat
 vi.mock('../../api/liveKrxPreviousClose', () => ({ useLiveKrxPreviousClose: (code: string | null, asOf: string) => (
   { data: code ? { code, as_of: asOf, session_date: asOf, date: '20261012', price: 65000 } : undefined }
 ) }));
+vi.mock('../../api/tradeHistory', () => ({ useTradeHistory: vi.fn(() => ({ data: undefined })) }));
 vi.mock('../../api/liveViStatus', () => ({ useLiveViStatus: vi.fn(() => ({ data: { vi: null } })) }));
 vi.mock('../../util/useWallClockSecond', () => ({ useWallClockSecond: () => mock.now }));
 vi.mock('../useMinuteClock', () => ({ useMinuteClock: () => mock.now }));
@@ -320,6 +322,7 @@ describe('호가 주문', () => {
       <div data-testid="compare-book"><DataWindow win={win} symbol={{ code: '005930', name: '삼성전자' }} /></div>
       <OrderWindow code="005930" name="삼성전자" />
     </QueryClientProvider>);
+    expect(vi.mocked(useTradeHistory).mock.lastCall?.[3]).toBe(false);
     const bookButton = within(screen.getByTestId('compare-book')).getByRole('button', { name: '종목 상세 정보' });
     fireEvent.click(bookButton);
     let dialog = screen.getByRole('dialog', { name: '종목 상세 정보' });
@@ -692,7 +695,10 @@ describe('호가 주문', () => {
         <OrderWindow code="005930" name="삼성전자" />
       </QueryClientProvider>);
       const rows = () => ['.book-trade-row', '.order-trade'].map(selector =>
-        [...view.container.querySelectorAll<HTMLElement>(selector)].filter(row => row.lastElementChild?.textContent !== '—'));
+        [...view.container.querySelectorAll<HTMLElement>(selector)].filter(row => {
+          const qty = row.lastElementChild?.textContent;
+          return !!qty && qty !== '—';
+        }));
       for (const surface of rows()) {
         expect(surface).toHaveLength(4);
         for (const row of surface) {
