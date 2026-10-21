@@ -759,6 +759,90 @@ test('느린 잔고 조회는 주문 수량 표시와 다음 주문을 지연시
   } finally { release(); }
 });
 
+for (const method of ['목록', '드래그'] as const) {
+  test(`5개 가격 주문의 ${method} 취소는 응답을 기다리지 않고 이어 보내며 해당 주문만 잠근다`, async ({ page }) => {
+    const { window, commands, stateRequests } = await setup(page,
+      Array.from({ length: 5 }, (_, index) => mkOrder(`item-${index}`, String(67200 - index * 100))), true, false, 0, 2);
+    await expect(window.getByLabel('매수 가능 금액')).toContainText('20,000,000원');
+    stateRequests.length = 0;
+    const entered: string[] = [];
+    const releases: (() => void)[] = [];
+    const gates = Array.from({ length: 5 }, () => new Promise<void>(resolve => releases.push(resolve)));
+    await page.route(/\/api\/trading\/orders\/item-\d+\/cancel$/, async route => {
+      const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
+      entered.push(id);
+      await gates[Number(id.split('-')[1])];
+      await route.fallback();
+    });
+    const cells = Array.from({ length: 5 }, (_, index) => window.getByRole('button', {
+      name: new RegExp(`매수 ${(67200 - index * 100).toLocaleString('ko-KR')}원 주문 추가`),
+    }));
+    try {
+      if (method === '목록') await window.getByRole('button', { name: '매수 총 접수 주문', exact: true }).click({ button: 'right' });
+      for (let index = 0; index < 5; index++) {
+        if (method === '목록') {
+          const cancel = page.getByRole('button', { name: `주문 ${index + 1} 개별 취소`, exact: true });
+          await expect(cancel).toBeEnabled();
+          await cancel.click();
+          await expect(cancel).toBeDisabled();
+        } else await drag(page, cells[index], orderSettingsButton(window));
+        await expect.poll(() => entered.length).toBe(index + 1);
+        await expect(cells[index].locator('.order-quantity')).toHaveClass(/order-quantity-blocked/);
+        if (index < 4) await expect(cells[index + 1].locator('.order-quantity')).not.toHaveClass(/order-quantity-blocked/);
+      }
+      expect(entered).toEqual(Array.from({ length: 5 }, (_, index) => `item-${index}`));
+      expect(commands).toHaveLength(0); // Every ACK is still held by its gate.
+      expect(stateRequests).toHaveLength(0);
+      await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+      releases[4]();
+      await expect.poll(() => commands.length).toBe(1);
+      await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+      expect(stateRequests).toHaveLength(0);
+      for (const release of releases) release();
+      await expect(window.getByRole('button', { name: '매수 총 접수 주문', exact: true })).toHaveText('0(0)');
+      await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+      expect(commands).toHaveLength(5);
+      expect(new Set(commands.map(command => command.command_id)).size).toBe(5);
+      expect(stateRequests.filter(part => part === 'orders')).toHaveLength(1);
+    } finally { for (const release of releases) release(); }
+  });
+}
+
+test('가격별 묶음 취소는 아직 보내지 않은 주문도 잠그고 다른 가격의 취소와 새 목록을 유지한다', async ({ page }) => {
+  const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67100')]);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const entered: string[] = [];
+  await page.route(/\/api\/trading\/orders\/[^/]+\/cancel$/, async route => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    entered.push(id);
+    if (id === 'one') await gate;
+    await route.fallback();
+  });
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  const other = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
+  try {
+    await drag(page, cell, orderSettingsButton(window));
+    await expect.poll(() => entered).toEqual(['one']);
+    await window.getByRole('button', { name: '매수 총 접수 주문', exact: true }).click({ button: 'right' });
+    const pendingList = page.getByRole('menu', { name: '매수 전체 접수 주문 목록', exact: true });
+    await expect(pendingList.getByRole('button', { name: '주문 1 개별 취소', exact: true })).toBeDisabled();
+    await expect(pendingList.getByRole('button', { name: '주문 2 개별 취소', exact: true })).toBeDisabled();
+    await pendingList.getByRole('button', { name: '주문 목록 닫기', exact: true }).click();
+    await other.click({ button: 'right' });
+    const newList = page.getByRole('menu', { name: '매수 67,100원 주문 목록', exact: true });
+    await newList.getByRole('button', { name: '주문 1 개별 취소', exact: true }).click();
+    await expect.poll(() => commands.length).toBe(1);
+    expect(entered).toEqual(['one', 'other']);
+    release();
+    await expect(cell).toBeEmpty();
+    await expect(other).toBeEmpty();
+    await expect(newList).toBeVisible();
+    expect(entered).toEqual(['one', 'other', 'two']);
+    expect(commands).toHaveLength(3);
+  } finally { release(); }
+});
+
 test('5건 묶음 취소 중 주문 이벤트가 와도 조회를 끼워 넣지 않고 마지막에 한번 갱신한다', async ({ page }) => {
   const { window, commands, ws, stateRequests } = await setup(page, Array.from({ length: 5 }, (_, i) => mkOrder(`item-${i}`)));
   await expect(window.getByLabel('매수 가능 금액')).toContainText('20,000,000원');

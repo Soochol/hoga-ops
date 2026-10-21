@@ -70,6 +70,9 @@ type Action = {
   keepOrderList?: boolean;
 };
 const changesPrice = (action: Action) => action.type === 'create' || action.type === 'modify' || (action.type === 'group' && action.operation === 'modify');
+const cancelsOrders = (action: Action) => action.type === 'cancel' || (action.type === 'group' && action.operation === 'cancel');
+const orderKey = (account: TradingAccountId, id: string) => JSON.stringify([account, id]);
+type CancelFailure = { action: Action; notice: OrderNotice };
 type Drag = { orders: TossOrder[]; list: HTMLElement | null; cancelOnly: boolean; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
 
 export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSymbol }: {
@@ -147,7 +150,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; side?: TradingSide; price?: number } | null>(null);
   const closeMenu = useCallback(() => setContextMenu(null), []);
   const [noticeState, setNoticeState] = useState<(OrderNotice & { account: TradingAccountId }) | null>(null);
-  const notice = noticeState?.account === account ? noticeState : null;
+  const [cancelFailures, setCancelFailures] = useState<CancelFailure[]>([]);
+  const cancelFailure = cancelFailures.find(item => item.action.base.account_seq === account);
+  const notice = cancelFailure?.notice ?? (noticeState?.account === account ? noticeState : null);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
   function setNotice(value: string | OrderNotice | null) {
     if (value) setReceipt(null);
@@ -156,8 +161,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     });
   }
   const [failedRequest, setFailedRequest] = useState<{ action: Action; high: boolean } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [exclusiveBusy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const cancellingRef = useRef(new Set<string>());
+  const [cancelling, setCancelling] = useState<ReadonlySet<string>>(() => new Set());
+  const busy = exclusiveBusy || cancelling.size > 0;
   const [pendingIds, setPending] = useState<Record<string, string>>({});
   const [accountTab, setAccountTab] = useState<AccountListTab | null>(null);
   const accountAnchor = useRef<HTMLDivElement>(null);
@@ -245,13 +253,13 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
   const fresh = !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
-  const ready = !!account && !!activeAccount && !!state.data && !state.isError && !busy && activeAccount.order_enabled !== false;
+  const ready = !!account && !!activeAccount && !!state.data && !state.isError && !exclusiveBusy && activeAccount.order_enabled !== false;
   const availability = {
     accountsLoading: accounts.isLoading, configured: accounts.data?.configured === true, account,
     accountError: accounts.error ?? (!accounts.data?.accounts.length && Object.keys(accounts.data?.errors ?? {}).length
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
-    unresolved: !!state.data?.unresolved_commands.length, settingsOpen: !!settingsDraft,
+    unresolved: !!state.data?.unresolved_commands.length || cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent), settingsOpen: !!settingsDraft,
     locked: dragInProgress, stored: storedLadder, singlePrice: activeSinglePrice !== null,
     hasBook: !!snapshot, fresh, quantity,
     brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
@@ -323,20 +331,47 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   function base(): TradingCommand { return { account_seq: account, code, command_id: nanoid() }; }
   function resetAction() { setAction(null); confirmHigh(false); }
   function closeAction() { resetAction(); closeMenu(); }
-  function pending(order: TossOrder) {
-    const replacement = pendingIds[order.orderId];
+  function awaitingResult(order: TossOrder) {
+    const replacement = pendingIds[orderKey(account, order.orderId)];
     // Keep the old order disabled until it leaves OPEN, or a reject is confirmed.
     return !!replacement && !state.data?.recent_orders.some(o => o.orderId === replacement && ['CANCEL_REJECTED', 'REPLACE_REJECTED'].includes(o.status));
   }
+  function pending(order: TossOrder) {
+    return cancellingRef.current.has(orderKey(account, order.orderId)) || awaitingResult(order)
+      || cancelFailures.some(item => item.action.base.account_seq === account && item.action.order?.orderId === order.orderId && item.notice.persistent);
+  }
+  function recordCancelFailure(next: Action, failure: OrderNotice) {
+    const price = next.order?.price;
+    const notice = { ...failure, message: `${orderSideLabel(next.side!)} ${price == null ? '시장가' : `${fmt(price)}원`} · ${failure.message}` };
+    setCancelFailures(prev => [...prev.filter(item => item.action.base.command_id !== next.base.command_id), { action: next, notice }]);
+  }
+  function dismissNotice() {
+    if (cancelFailure) setCancelFailures(prev => prev.filter(item => item !== cancelFailure));
+    else setNotice(null);
+  }
   async function submit(next: Action, high = false) {
     if (busyRef.current) return;
+    const cancellingOrders = cancelsOrders(next);
+    // New orders and cancel-all keep their existing exclusive submission boundary.
+    if (!cancellingOrders && cancellingRef.current.size && next.type !== 'modify' && next.type !== 'group') return;
     if (!account || next.base.account_seq !== account || next.base.code !== code) { setNotice('계좌·종목이 변경되었습니다. 다시 선택하세요.'); return; }
+    const targets = next.batch ?? (next.order ? [{ order: next.order, base: next.base }] : []);
+    if (targets.some(item => cancellingRef.current.has(orderKey(account, item.order.orderId)) || awaitingResult(item.order)
+      || cancelFailures.some(failure => failure.action.base.account_seq === account && failure.action.order?.orderId === item.order.orderId
+        && failure.notice.persistent && failure.action.base.command_id !== item.base.command_id))) return;
     const issue = next.type === 'create' ? newOrderIssue({ ...availability, quantity: next.quantity,
-      unresolved: !!state.data?.unresolved_commands.some(id => id !== next.base.command_id) })
+      unresolved: cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent)
+        || !!state.data?.unresolved_commands.some(id => id !== next.base.command_id) })
       : changesPrice(next) && !fresh ? newOrderIssue({ ...availability, settingsOpen: false, locked: false }) : null;
     if (issue) { setNotice(issue); return; }
     if (next.type === 'create' && preferences.orderReceiptSound) prepareOrderReceiptSound();
-    busyRef.current = true; setBusy(true); setNotice(null); setFailedRequest(null);
+    if (cancellingOrders) {
+      // Reserve every target synchronously, before either React or the broker responds.
+      for (const item of targets) cancellingRef.current.add(orderKey(account, item.order.orderId));
+      setCancelling(new Set(cancellingRef.current));
+      setCancelFailures(prev => prev.filter(item => !targets.some(target => target.base.command_id === item.action.base.command_id)));
+    } else { busyRef.current = true; setBusy(true); }
+    setNotice(null); setFailedRequest(null);
     const resumeRefresh = pauseTradingRefresh(client, mode, account);
     const label = next.type === 'create' ? '주문' : (next.operation ?? next.type) === 'modify' ? '정정' : '취소';
     setReceipt(null);
@@ -353,20 +388,26 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             const body = next.operation === 'modify' ? { ...item.base, price: next.price, quantity: null, confirm_high_value: high } : item.base;
             const response = await tradingCommand<TradingCommandResponse>(`/orders/${encodeURIComponent(item.order.orderId)}/${next.operation}`, body, mode);
             if (next.operation === 'modify') acceptTradingReplacement(client, mode, account, code, item.order.orderId, response.order_id);
-            setPending(prev => ({ ...prev, [item.order.orderId]: response.order_id }));
+            setPending(prev => ({ ...prev, [orderKey(account, item.order.orderId)]: response.order_id }));
           } catch (error) {
             const failure = orderFailure(error, label);
+            if (cancellingOrders) recordCancelFailure({ type: 'cancel', base: item.base, order: item.order,
+              side: item.order.side, price: 0, quantity: null, keepOrderList: true },
+            { ...failure, message: `취소 미접수 1건 · ${failure.message}` });
             if (failure.retry) failed.push(item);
             uncertain ||= !!failure.persistent;
             messages.push(error instanceof Error ? error.message : '처리 결과 확인 필요');
           }
         }
         if (messages.length) {
-          retryAction = { ...next, batch: failed };
-          groupFailure = { title: `${label} ${uncertain ? '결과 확인 필요' : '접수 불가'}`,
-            message: `${label} 미접수 ${messages.length}건 · ${messages.join(' · ')}`, tone: uncertain ? 'error' : 'warn',
-            persistent: uncertain, retry: failed.length > 0 };
-          throw new Error(groupFailure.message);
+          if (cancellingOrders) accepted = false;
+          else {
+            retryAction = { ...next, batch: failed };
+            groupFailure = { title: `${label} ${uncertain ? '결과 확인 필요' : '접수 불가'}`,
+              message: `${label} 미접수 ${messages.length}건 · ${messages.join(' · ')}`, tone: uncertain ? 'error' : 'warn',
+              persistent: uncertain, retry: failed.length > 0 };
+            throw new Error(groupFailure.message);
+          }
         }
       } else if (next.type === 'bulk') {
         const body: CancelTradingOrders = { ...next.base, side: next.side };
@@ -378,7 +419,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           setNotice({ title: uncertain ? '취소 결과 확인 필요' : '취소 접수 불가', tone: uncertain ? 'error' : 'warn',
             persistent: uncertain, message: `취소 미접수 ${rejected.length}건${rejected.map(r => ` · ${r.message}`).join('')}` });
         }
-        setPending(prev => ({ ...prev, ...Object.fromEntries(result.results.filter(r => r.accepted).map(r => [r.order_id, r.operation_id ?? r.order_id])) }));
+        setPending(prev => ({ ...prev, ...Object.fromEntries(result.results.filter(r => r.accepted).map(r => [orderKey(account, r.order_id), r.operation_id ?? r.order_id])) }));
       } else {
         let response: TradingCommandResponse;
         if (next.type === 'create') {
@@ -399,24 +440,31 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             response = await tradingCommand<TradingCommandResponse>(path, body, mode);
           } else response = await tradingCommand<TradingCommandResponse>(path, next.base, mode);
           if (next.type === 'modify') acceptTradingReplacement(client, mode, account, code, next.order!.orderId, response.order_id);
-          setPending(prev => ({ ...prev, [next.order!.orderId]: response.order_id }));
+          setPending(prev => ({ ...prev, [orderKey(account, next.order!.orderId)]: response.order_id }));
         }
       }
-      resetAction();
-      if (!next.keepOrderList) closeMenu();
+      // A late cancel ACK must not close a newer order menu or confirmation.
+      if (!cancellingOrders) {
+        resetAction();
+        if (!next.keepOrderList) closeMenu();
+      }
       setReceipt(accepted ? { text: `${label} 요청 접수됨`, commandId: next.base.command_id } : null);
     } catch (error) {
       setReceipt(null);
       const failure = groupFailure ?? orderFailure(error, label);
-      setNotice(failure);
+      if (cancellingOrders) recordCancelFailure(next, failure);
+      else setNotice(failure);
       if (next.type === 'group') {
         resetAction();
         if (!next.keepOrderList) closeMenu();
       }
       // A failure never opens the removed new-order editor. Retry retains its ID.
-      setFailedRequest(failure.retry ? { action: retryAction, high } : null);
+      if (!cancellingOrders) setFailedRequest(failure.retry ? { action: retryAction, high } : null);
     } finally {
-      busyRef.current = false; setBusy(false);
+      if (cancellingOrders) {
+        for (const item of targets) cancellingRef.current.delete(orderKey(account, item.order.orderId));
+        setCancelling(new Set(cancellingRef.current));
+      } else { busyRef.current = false; setBusy(false); }
       resumeRefresh();
     }
   }
@@ -431,17 +479,18 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     else { resetAction(); void submit(next); }
   }
   async function reviewCommand(commandId: string) {
-    if (!reviewedUnknown || busyRef.current) return;
+    if (!reviewedUnknown || busyRef.current || cancellingRef.current.size) return;
     busyRef.current = true; setBusy(true);
     try {
       const body: ReviewTradingCommand = { ...base(), command_id: commandId, confirmed: true };
       await tradingCommand<TradingReviewResponse>(`/commands/${encodeURIComponent(commandId)}/review`, body, mode);
+      setCancelFailures(prev => prev.filter(item => item.action.base.command_id !== commandId));
       closeAction(); reviewUnknown(false);
     } catch (error) { setNotice(error instanceof Error ? error.message : '내역 확인 기록 실패'); }
     finally { await client.invalidateQueries({ queryKey: ['trading', mode, 'state', account] }); busyRef.current = false; setBusy(false); }
   }
   function create(side: TradingSide, price: number) {
-    if (busyRef.current) return;
+    if (busyRef.current || cancellingRef.current.size) return;
     if (creationIssue) {
       // A blocked new order must not hide the outstanding request's reconciliation action.
       if (!(creationIssue.persistent && notice?.retry && failedRequest)) setNotice(creationIssue);
@@ -554,7 +603,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   }
 
   function openSideOrders(side: TradingSide, point: { x: number; y: number }) {
-    if (!drag.current && !action && !settingsDraft && !busy) setContextMenu({ ...point, side });
+    if (!drag.current && !action && !settingsDraft && !exclusiveBusy) setContextMenu({ ...point, side });
   }
 
   const recentTrades = useMemo(() => recentBookTrades(live.trade, 9), [live.trade]);
@@ -803,7 +852,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       <OrderSurfaceHeading closeLabel="주문 취소 메뉴 닫기" onClose={closeMenu}>주문 취소</OrderSurfaceHeading>
       {([{ label: '매수 모두 취소', side: 'BUY' }, { label: '매도 모두 취소', side: 'SELL' }, { label: '전체 주문 취소', side: null }] as const).map(item =>
         <button key={item.label} type="button" role="menuitem" aria-label={item.label} className="order-cancel-menu-item"
-          disabled={!ready || !orders.some(order => (item.side == null || order.side === item.side) && editableOrder(order) && !pending(order))}
+          disabled={!ready || busy || !orders.some(order => (item.side == null || order.side === item.side) && editableOrder(order) && !pending(order))}
           onClick={() => request({ type: 'bulk', base: base(), side: item.side, price: 0, quantity: null })}><span>{item.label}</span><span className="order-meta">{orders.filter(order => (item.side == null || order.side === item.side) && editableOrder(order) && !pending(order)).length}건</span></button>)}
     </PanelContextMenu>}
     {action && highValue && createPortal(<div className="order-settings-surface font-data"><ModalShell ariaLabel="고액 주문 확인" width="w-[360px]" onClose={closeAction}>
@@ -822,8 +871,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       </div>
     </ModalShell></div>, document.body)}
     <OrderStatusBar key={`order-notice:${account}`} notice={notice ?? (!receipt && state.data?.unresolved_commands.length ? UNRESOLVED_NOTICE : null)} receipt={receipt} busy={busy}
-      onDismiss={() => setNotice(null)} onExpireReceipt={() => setReceipt(null)}
-      onRetry={() => { if (failedRequest) void submit(failedRequest.action, failedRequest.high); }}>
+      onDismiss={dismissNotice} onExpireReceipt={() => setReceipt(null)}
+      onRetry={() => { if (cancelFailure) void submit(cancelFailure.action); else if (failedRequest) void submit(failedRequest.action, failedRequest.high); }}>
       {!!state.data?.unresolved_commands.length && <>
         <label><input type="checkbox" checked={reviewedUnknown} onChange={e => reviewUnknown(e.target.checked)} />해당 증권사의 실제 주문·체결 여부를 확인했습니다</label>
         {state.data.unresolved_commands.map(id => <button type="button" key={id} disabled={!reviewedUnknown || busy} onClick={() => void reviewCommand(id)}>요청 {id.slice(0, 8)} 확인 완료</button>)}

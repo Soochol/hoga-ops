@@ -1577,6 +1577,74 @@ describe('호가 주문', () => {
     expect(screen.getByRole('button', { name: '주문 2 개별 취소' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '주문 1 개별 취소' })).toBeEnabled();
   });
+  it('5개 가격의 주문을 응답 대기 없이 취소하고 먼저 끝난 응답이 나머지 잠금을 풀지 않는다', async () => {
+    mock.accountCount = 2;
+    mock.orders = Array.from({ length: 5 }, (_, index) => ({ ...order(`item-${index}`), price: String(67200 - index * 100) }));
+    const completions: ((response: object) => void)[] = [];
+    mock.command.mockImplementation(() => new Promise(resolve => completions.push(resolve)));
+    const view = show();
+    fireEvent.contextMenu(screen.getByRole('button', { name: '매수 총 접수 주문' }));
+    const cancel = (index: number) => screen.getByRole('button', { name: `주문 ${index + 1} 개별 취소` });
+    for (let index = 0; index < 5; index++) {
+      expect(cancel(index)).toBeEnabled();
+      fireEvent.click(cancel(index));
+      expect(cancel(index)).toBeDisabled();
+      fireEvent.click(cancel(index));
+      expect(mock.command).toHaveBeenCalledTimes(index + 1);
+    }
+    expect(mock.command.mock.calls.map(([path]) => path)).toEqual(mock.orders.map(item => `/orders/${item.orderId}/cancel`));
+    expect(new Set(mock.command.mock.calls.map(([, body]) => body.command_id)).size).toBe(5);
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+    await act(async () => completions[4]({ order_id: 'cancel-4', status: 'accepted' }));
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+    for (let index = 0; index < 5; index++) expect(cancel(index)).toBeDisabled();
+    fireEvent.contextMenu(view.container.querySelector('.order-ladder')!);
+    expect(screen.getByRole('menuitem', { name: '전체 주문 취소' })).toBeDisabled();
+    await act(async () => {
+      for (let index = 0; index < 4; index++) completions[index]({ order_id: `cancel-${index}`, status: 'accepted' });
+    });
+    expect(screen.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+    fireEvent.contextMenu(screen.getByRole('button', { name: '매수 총 접수 주문' }));
+    for (let index = 0; index < 5; index++) expect(cancel(index)).toBeDisabled();
+    expect(mock.command).toHaveBeenCalledTimes(5);
+  });
+  it('동시에 취소한 주문들의 거절을 각각 보존하고 다른 주문의 성공으로 덮어쓰지 않는다', async () => {
+    mock.orders = [order('one'), { ...order('two'), price: '67100' }, { ...order('three'), price: '67000' }];
+    const requests: { resolve: (response: object) => void; reject: (error: Error) => void }[] = [];
+    mock.command.mockImplementation(() => new Promise((resolve, reject) => requests.push({ resolve, reject })));
+    show();
+    fireEvent.contextMenu(screen.getByRole('button', { name: '매수 총 접수 주문' }));
+    for (let index = 1; index <= 3; index++) fireEvent.click(screen.getByRole('button', { name: `주문 ${index} 개별 취소` }));
+    const rejected = (message: string) => Object.assign(new Error(message), { code: 'cancel-rejected', status: 422 });
+    await act(async () => requests[1].reject(rejected('두 번째 취소 거절')));
+    await act(async () => requests[0].reject(rejected('첫 번째 취소 거절')));
+    await act(async () => requests[2].resolve({ order_id: 'cancel-three', status: 'accepted' }));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('매수 67,100원 · 두 번째 취소 거절');
+    expect(screen.getByRole('button', { name: '주문 1 개별 취소' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '주문 2 개별 취소' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '주문 3 개별 취소' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '주문 알림 닫기' }));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('매수 67,200원 · 첫 번째 취소 거절');
+  });
+  it('결과가 불명확한 취소는 해당 주문을 잠그고 같은 요청으로만 재확인한다', async () => {
+    mock.orders = [order('one'), { ...order('two'), price: '67100' }];
+    mock.command.mockRejectedValueOnce(Object.assign(new Error('접수 여부 확인 필요'), { code: 'order-outcome-unknown', status: 503 }));
+    show();
+    fireEvent.contextMenu(screen.getByRole('button', { name: '매수 총 접수 주문' }));
+    fireEvent.click(screen.getByRole('button', { name: '주문 1 개별 취소' }));
+    await screen.findByRole('alert', { name: '주문 알림' });
+    expect(screen.getByRole('button', { name: '주문 1 개별 취소' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '주문 2 개별 취소' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '주문 2 개별 취소' }));
+    await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('접수 여부 확인 필요');
+    fireEvent.click(screen.getByRole('button', { name: '내역 확인' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '같은 요청 다시 확인' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '같은 요청 다시 확인' }));
+    await waitFor(() => expect(mock.command).toHaveBeenCalledTimes(3));
+    expect(mock.command.mock.calls[2]).toEqual(mock.command.mock.calls[0]);
+    expect(screen.getByRole('button', { name: '주문 1 개별 취소' })).toBeDisabled();
+  });
   it('가격별 목록의 취소 전송 중과 실패 후에도 목록을 유지한다', async () => {
     mock.orders = [order('one')];
     let reject!: (error: Error) => void;
@@ -1587,7 +1655,7 @@ describe('호가 주문', () => {
     fireEvent.click(within(menu).getByRole('button', { name: '주문 1 개별 취소' }));
     expect(menu).toBeInTheDocument();
     expect(within(menu).getByRole('button', { name: '주문 1 개별 취소' })).toBeDisabled();
-    await act(async () => reject(new Error('취소 요청 실패')));
+    await act(async () => reject(Object.assign(new Error('취소 요청 거절'), { code: 'cancel-rejected', status: 422 })));
     expect(menu).toBeInTheDocument();
     expect(within(menu).getByRole('button', { name: '주문 1 개별 취소' })).toBeEnabled();
     expect(mock.command).toHaveBeenCalledOnce();
