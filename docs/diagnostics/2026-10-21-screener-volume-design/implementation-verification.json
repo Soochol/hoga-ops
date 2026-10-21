@@ -107,7 +107,7 @@
     "native_previous_closing_bars": "previous-closing-bars.json",
     "visual_review": "Inspected emitted Chrome E2E page/drawer screenshots. No native desktop interaction; missing /browse executable remains a limitation."
   },
-  "operational_deployed": false,
+  "operational_deployed": true,
   "limitations": [
     "Fast continuous path requires scoped 1m volume conditions; full-market simultaneous tick monitoring is unsupported.",
     "WS values are provisional until API audit; external corrections may change matches.",
@@ -123,5 +123,19 @@
       1927,
       1726
     ]
+  },
+  "deployment_record": "deployment.json",
+  "feature_head": "d491967af3834d3cd7a07e7367216b45e926d782",
+  "deployed_commit": "13ed6fb17ee075288b5e5a9c7d00c5baed68aa6c",
+  "postdeploy_summary": {
+    "total": 342,
+    "prepared": 342,
+    "receiving": 342,
+    "first_all_prepared_seconds": 24.55,
+    "first_all_receiving_seconds": 39.83,
+    "restart_reuse_seconds": 0.013239271997008473,
+    "capture_healthy": true,
+    "matching_monitor_events": 253,
+    "temporary_monitors_deleted": true
   }
 }
