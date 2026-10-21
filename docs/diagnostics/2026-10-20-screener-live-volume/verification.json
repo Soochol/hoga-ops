@@ -19,8 +19,13 @@
     "ruff": "ruff 0.15.13",
     "chrome": "Google Chrome 155.0.8059.84"
   },
-  "vendor_live_validation": false,
-  "production_deployed": false,
+  "vendor_live_validation": {
+    "scoped_runtime_path": true,
+    "measured_tick_to_result_latency": false,
+    "all_market": false,
+    "record": "deployment.json"
+  },
+  "production_deployed": true,
   "credentials": "isolated worktree with empty .env; E2E retains blank vendor credentials",
   "e2e_resources": {
     "backend": 20260,
@@ -104,7 +109,7 @@
     "512 watch entries / 250000 bars; all-market lossless live detection not supported in the current setup.",
     "Mid-bar seeding is a conservative lower bound; closed incomplete bars require REST reconciliation.",
     "Broker-side condition search exists but matching semantics and its 100-result cap have not been live validated.",
-    "Live-market provider latency, full-market operational load and production deployment remain unverified."
+    "Full-market operational load and exact provider tick-to-result latency remain unverified. Scoped existing-collector WS delivery and follow-up scan verified on 2026-10-21; see deployment.json."
   ],
   "benchmark_script_sha256": "a5804df9d40a6cbfe5a95ff396c15a8592bc0237a541b0867bfe80571cf37377",
   "deployment_preflight": {
