@@ -48,7 +48,7 @@ import { SortCycleButton } from './SortCycleButton';
 import { HeatmapSearchInput } from './HeatmapSearchInput';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { ConfirmModal } from '../ui/ConfirmModal';
-import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
+import { GroupToggleButton } from '../ui/GroupToggleButton';
 import { filterGroups, entryMatchesQuery } from './filterGroups';
 import { sortEntries, avgPct, groupHeatmapEntries, orderFolderGroups, makePctOf, nextSort, SORT_THROTTLE_MS } from './heat';
 import { useThrottledValue } from '../util/useThrottledValue';
@@ -431,17 +431,8 @@ function DrawerToolbar({ query, onQuery, allCollapsed, onToggleAll, toggleAllDis
     <div className="flex flex-col gap-1.5 border-b border-border px-md py-sm">
       <div className="flex items-center gap-1">
         <HeatmapSearchInput className="min-w-0 flex-1" query={query} onQuery={onQuery} testId="heatmap-drawer-search" />
-        <button
-          type="button"
-          data-testid="heatmap-drawer-toggle-all"
-          onClick={onToggleAll}
-          disabled={toggleAllDisabled}
-          aria-label={allCollapsed ? '전체 펼치기' : '전체 접기'}
-          title={allCollapsed ? '전체 펼치기' : '전체 접기'}
-          className="shrink-0 grid h-7 w-7 place-items-center rounded text-fg-dim transition-colors hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim"
-        >
-          {allCollapsed ? <ExpandAllIcon className="h-4 w-4" /> : <CollapseAllIcon className="h-4 w-4" />}
-        </button>
+        <GroupToggleButton testId="heatmap-drawer-toggle-all" allCollapsed={allCollapsed}
+          onToggle={onToggleAll} disabled={toggleAllDisabled} />
       </div>
       <div className="flex flex-wrap items-center gap-1">
         <SortCycleButton label="종목" mode={sortMode} onCycle={() => setSortMode(nextSort(sortMode))} />

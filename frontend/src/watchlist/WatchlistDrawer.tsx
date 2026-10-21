@@ -15,7 +15,7 @@ import { useJumpToLive } from '../live/useJumpToLive';
 import { useQuoteByCode } from '../api/liveQuotes';
 import { makeChangePctOf, sortEntriesByChangePct, type QuoteSortMode } from '../rightrail/quoteSort';
 import { QuoteSortIcon } from '../rightrail/QuoteSortIcon';
-import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
+import { GroupToggleButton } from '../ui/GroupToggleButton';
 import { quoteSortModeDescription } from '../rightrail/quoteSortDescription';
 import { useLivePageStore } from '../state/livePage';
 import { useLiveStatus } from '../api/liveStatus';
@@ -1434,14 +1434,8 @@ export function WatchlistDrawer() {
       <div className="flex flex-col gap-1.5 border-b border-border px-md py-sm">
         <div className="flex items-center gap-1">
           <HeatmapSearchInput className="min-w-0 flex-1" query={query} onQuery={changeQuery} testId="watchlist-search" />
-            <button type="button" data-testid="watchlist-toggle-all"
-                    aria-label={allCollapsed ? '전체 펼치기' : '전체 접기'}
-                    title={allCollapsed ? '전체 펼치기' : '전체 접기'}
-                    onClick={toggleAll}
-                    disabled={visibleGroupKeys.length === 0}
-                    className="grid h-7 w-7 place-items-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-dim">
-              {allCollapsed ? <ExpandAllIcon className="h-3.5 w-3.5" /> : <CollapseAllIcon className="h-3.5 w-3.5" />}
-            </button>
+          <GroupToggleButton testId="watchlist-toggle-all" allCollapsed={allCollapsed}
+            onToggle={toggleAll} disabled={visibleGroupKeys.length === 0} />
         </div>
         {selectedSources.length > 0 && <div className="flex min-h-7 items-center gap-2 text-xs" data-testid="watchlist-selection-actions">
           <span role="status" className="mr-auto text-fg-dim">{selectedSources.length}개 선택</span>
