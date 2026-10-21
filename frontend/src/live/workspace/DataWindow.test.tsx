@@ -427,9 +427,26 @@ describe('DataWindow — 매물대·프로그램 그룹 차트 링크 (ADR-0119 
   });
 
   it('매물대 latest — todayKst 가 세그먼트 날짜와 일치하면(정상 장중) 당일 분포를 그린다', () => {
-    publishGroupChartLink(chartLink({ bundle: vdistBundle(), todayKst: '20260720', vdist: VDIST_2BIN }));
+    liveSeriesBuffers.trade = [{ t_ms: VDIST_OPEN_MS + 60_000, trades: [] }];
+    try {
+      publishGroupChartLink(chartLink({ bundle: vdistBundle(), todayKst: '20260720', vdist: VDIST_2BIN }));
+      renderWithQuery(<DataWindow win={dataWin('vdist')} symbol={symbol} />);
+      expect(screen.queryByText('매물대 분포 없음')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('volume-distribution-cursor-marker')).not.toBeInTheDocument();
+    } finally { liveSeriesBuffers.trade = []; }
+  });
+
+  it('매물대 통합 세션이 08시여도 첫 가격 관측인 09:15부터 표시한다', () => {
+    const bundle = vdistBundle();
+    bundle.segments[0].session_open_ms = VDIST_OPEN_MS - 3600_000;
+    bundle.candles = [15, 60].map((minutes, i) => ({ ts_ms: VDIST_OPEN_MS + minutes * 60_000,
+      open: 1200, high: 1800, low: 1100, close: 1200 + i * 100, vol_a: 10, vol_b: 0 }));
+    publishGroupChartLink(chartLink({ bundle, todayKst: '20260720', vdist: VDIST_2BIN }));
     renderWithQuery(<DataWindow win={dataWin('vdist')} symbol={symbol} />);
-    expect(screen.queryByText('매물대 분포 없음')).not.toBeInTheDocument();
+    const timeAxis = screen.getByTestId('volume-distribution-time-axis');
+    expect(timeAxis).toHaveTextContent('09:15');
+    expect(timeAxis).toHaveTextContent('10:00');
+    expect(timeAxis).not.toHaveTextContent('08:00');
   });
 });
 

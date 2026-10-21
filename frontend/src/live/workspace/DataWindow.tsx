@@ -680,8 +680,8 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
   const liveDistribution = useLiveDistributionTrades(live.trade, linked);
   // 집계에 넘기는 segment 는 전부 정규장으로 좁힌다 — venue=UN 의 확장창
   // (08:00~20:00)이 그대로 들어오면 bar 에 NXT 프리·애프터 체결이 섞이고, 백엔드가
-  // 산출하는 과거일 분포(정규장 고정)와 기준이 어긋난다. 축은 아래 axisStartMs 가
-  // 원본 확장창을 그대로 쓰므로 종가 라인은 NXT 시간대까지 이어진다.
+  // 산출하는 과거일 분포(정규장 고정)와 기준이 어긋난다. 표시 축은 실제 가격
+  // 데이터 범위를 사용하므로 NXT 가격이 있을 때만 그 시간대까지 이어진다.
   const todayContinuousBeforeMs = useMemo(() => {
     if (!bundle || !todayKst) return null;
     const todaySegment = bundle.segments.find((segment) => segment.date === todayKst);
@@ -777,22 +777,17 @@ function LegacyVdistWindow({ win, code }: { win: WorkspaceWindow; code: string }
     () => (activeDate ? volumeDistributionClosePointsFromCandles(activeCandles) : []),
     [activeCandles, activeDate],
   );
-  // 마커: 스팟=호버 시각, latest=마지막 체결 시각(장중 "지금" 위치 표시. 없으면 숨김).
-  const markerCursorMs = isSpot
-    ? spotCursorMs
-    : (live.trade.length > 0 ? live.trade[live.trade.length - 1].t_ms : null);
-
   if (!linked) return <LinkPendingCard kind={win.kind} group={win.group} />;
   return (
     <div className="flex h-full flex-col bg-bg-card">
       <div className="min-h-0 flex-1 overflow-auto">
       <VolumeDistributionCard
         profile={cutoffProfile}
-        cursorMs={markerCursorMs}
+        cursorMs={spotCursorMs}
         closePoints={closePoints}
         color={vdistSettings.color}
         maxColor={vdistSettings.maxColor}
-        axisStartMs={activeSegment?.session_open_ms}
+        axisProfile={activeProfile}
       />
       </div>
     </div>
