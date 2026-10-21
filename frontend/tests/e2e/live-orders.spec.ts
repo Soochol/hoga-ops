@@ -1643,7 +1643,7 @@ test('압축형 주·금액 전환은 수량 한 칸을 유지하고 금액 버�
   await expect(window.getByRole('spinbutton')).toHaveCount(1);
   ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: Date.now(), prev_close: 66000,
     trades: [{ price: 75000, qty: 1, side: 1 }] });
-  await expect(window.getByRole('button', { name: '100만', exact: true })).toHaveAttribute('title', '현재가 75,000원 기준으로 수량 환산');
+  await expect(window.getByRole('button', { name: '100만', exact: true })).not.toHaveAttribute('title');
   await expect(window.getByRole('spinbutton', { name: '신규 주문 수량' })).toHaveValue('14');
   expect(commands).toHaveLength(0);
   const buy = window.getByRole('button', { name: /매수 68,200원 주문 추가/ });

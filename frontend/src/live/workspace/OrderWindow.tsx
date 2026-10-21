@@ -727,7 +727,6 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         <div className="order-quantity-presets">
           {presets.map((value, index) => <button type="button" key={index} aria-pressed={amountPresets ? undefined : quantity === value}
             disabled={amountPresets && !canConvertAmount}
-            title={amountPresets ? canConvertAmount ? `현재가 ${fmt(currentPrice)}원 기준으로 수량 환산` : '현재가 확인 후 수량 환산 가능' : undefined}
             onClick={() => applyPreset(value)}>{fmt(amountPresets ? value * 100 : value)}{amountPresets ? '만' : '주'}</button>)}
         </div>
         <span className="order-field order-estimate" aria-label="예상 주문 금액" title={estimatePrice != null ? `${fmt(estimatePrice)}원 기준` : undefined}>
