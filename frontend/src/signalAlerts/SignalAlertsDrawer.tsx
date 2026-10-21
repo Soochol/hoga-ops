@@ -1,4 +1,3 @@
-import { requestSettingsSection } from '../live/settingsModalControls';
 import { formatHhmm } from '../util/tradingTime';
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -114,9 +113,8 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
         )}
       />
       <RailDrawerSection className="py-2 text-xs text-fg-dim">
-        <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="mb-2">
           <span role="status">{settings.isError ? '알림 설정 확인 실패' : !rule ? '알림 설정 확인 중' : rule.enabled ? '알림 사용 중' : '알림 꺼짐'}</span>
-          <button type="button" onClick={() => requestSettingsSection('alerts')} className="h-7 rounded px-2 text-accent hover:bg-bg-input-hover">알림 설정</button>
         </div>
         {rule?.enabled && <p className="mb-2">{formatHhmm(rule.start_hhmm)} 기준 최대값 대비 {rule.threshold_pct}% 이상 갱신 시 알림</p>}
 
