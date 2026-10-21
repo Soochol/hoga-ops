@@ -50,13 +50,8 @@ test('volume timeframe, candle counts and open-bar policy survive save/reload an
   await expect(page.getByLabel('신고 기준 기간(봉)')).toHaveValue('2');
   await expect(page.getByLabel('진행 중 봉 포함')).toHaveCount(0);
   await page.getByRole('button', { name: '조회', exact: true }).click();
-  const historySummary = page.getByText('이력 부족 1종목', { exact: true });
-  await expect(historySummary).toBeVisible();
-  const missingReason = page.getByText('비교할 봉 이력 부족 · 원인 미확인 · 1종목', { exact: true });
-  await expect(missingReason).toBeHidden();
-  await historySummary.click();
-  await expect(missingReason).toBeVisible();
-  await historySummary.click();
+  await expect(page.getByText('표시 1 / 1종목', { exact: true })).toBeVisible();
+  await expect(page.getByText(/^이력 부족|비교할 봉 이력 부족/)).toHaveCount(0);
   expect(scans.at(-1)?.conditions[0].params).toMatchObject({ timeframe: '5m', lookback: 3, period: 2, include_open_bar: true });
   await page.screenshot({ path: testInfo.outputPath('bar-volume-wide.png'), fullPage: true });
   for (const timeframe of ['W', 'M', 'D']) {
