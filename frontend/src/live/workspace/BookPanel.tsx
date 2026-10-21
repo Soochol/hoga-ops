@@ -420,6 +420,7 @@ export function BookSummary({
   height = ROW_H * SUMMARY_ROWS,
   page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '정보',
   expectedFillPosition = 'top',
+  separateVi = false,
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
@@ -434,6 +435,7 @@ export function BookSummary({
   expectedDimClass?: string;
   headingLabel?: string;
   expectedFillPosition?: 'top' | 'bottom';
+  separateVi?: boolean;
 }) {
   const expectedRows = <ExpectedFillRows price={expectedFill?.price ?? 0} qty={expectedFill?.qty ?? null}
     baselinePrice={baselinePrice} dimClass={expectedDimClass} divider={expectedFillPosition === 'bottom'} />;
@@ -498,7 +500,7 @@ export function BookSummary({
             limits?.lower_limit != null ? dirClass(limits.lower_limit, baselinePrice) : undefined
           }
         />
-        <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} />
+        <ViRow dir="up" vi={vi} base={viBase(vi, summary, limits)} divider={separateVi} />
         <ViRow dir="down" vi={vi} base={viBase(vi, summary, limits)} />
       </div>}
     </div>
@@ -718,10 +720,12 @@ function ViRow({
   dir,
   vi,
   base,
+  divider = false,
 }: {
   dir: 'up' | 'down';
   vi: LiveViEvent | null;
   base: number | null;
+  divider?: boolean;
 }) {
   const active = vi?.active === true && vi.direction === dir;
   const dirColor = dir === 'up' ? 'text-price-up' : 'text-price-down';
@@ -731,6 +735,7 @@ function ViRow({
         label={dir === 'up' ? '상승VI' : '하강VI'}
         value={`${fmtOr(vi.trigger_price)} 발동`}
         color={dirColor}
+        divider={divider}
         highlight
       />
     );
@@ -742,6 +747,7 @@ function ViRow({
       label={dir === 'up' ? '상승VI' : '하강VI'}
       value={fmtOr(expected)}
       color={expected !== null ? 'text-fg-dim' : undefined}
+      divider={divider}
     />
   );
 }
