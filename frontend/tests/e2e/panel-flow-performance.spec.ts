@@ -26,7 +26,7 @@ for (const source of ['watchlist', 'heatmap'] as const) {
     const started = performance.now();
     const panel = page.getByTestId(`${source}-panel`);
     if (!(await panel.isVisible())) await page.getByRole('button', { name: new RegExp(`${source === 'watchlist' ? '관심종목' : '히트맵'} 패널 토글`) }).click();
-    await expect(panel.locator('.quote-row-flow svg')).toHaveCount(410);
+    await expect(panel.locator('.quote-row-flow svg')).toHaveCount(400);
     const firstPaintMs = Math.round(performance.now() - started);
     expect(batches).toBe(1);
     await expect(panel.locator('.quote-row-price')).toHaveCount(0);
@@ -42,7 +42,7 @@ for (const source of ['watchlist', 'heatmap'] as const) {
     const writes = await page.evaluate(() => (window as unknown as { finishFlowObservation: () => number }).finishFlowObservation());
     expect(writes).toBe(0);
     expect(batches).toBe(1);
-    const measurements = { source, uniqueStocks: 200, rows: 400, graphs: 410, firstPaintMs, flowBatches: batches, pathWritesDuringQuoteRefresh: writes, payloadBytes: Buffer.byteLength(JSON.stringify(payload)) };
+    const measurements = { source, uniqueStocks: 200, rows: 400, graphs: 400, firstPaintMs, flowBatches: batches, pathWritesDuringQuoteRefresh: writes, payloadBytes: Buffer.byteLength(JSON.stringify(payload)) };
     console.log(JSON.stringify(measurements));
     await testInfo.attach('panel-flow-performance', { body: JSON.stringify(measurements, null, 2), contentType: 'application/json' });
   });

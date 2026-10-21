@@ -1,5 +1,5 @@
-import { panelFlowRevision, usePanelFlow, type PanelGroupFlow } from '../api/panelFlow';
-import { PanelFlowNotice, PanelGroupSparkline } from '../rightrail/PanelFlowSparkline';
+import { panelFlowRevision, usePanelFlow } from '../api/panelFlow';
+import { PanelFlowNotice } from '../rightrail/PanelFlowSparkline';
 import './HeatmapColumns.css';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
@@ -46,7 +46,6 @@ import { HeatmapRowMenu } from './HeatmapRowMenu';
 import { useAddToFolder } from './useAddToFolder';
 import { SortCycleButton } from './SortCycleButton';
 import { HeatmapSearchInput } from './HeatmapSearchInput';
-import { priceDirClass } from '../ui/priceDir';
 import { ChevronIcon } from '../ui/ChevronIcon';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { CollapseAllIcon, ExpandAllIcon } from '../ui/CollapseAllIcon';
@@ -90,9 +89,7 @@ type GroupDragHandle = {
 };
 
 type GroupDragGhost = {
-  flow: PanelGroupFlow | null;
   count: number;
-  avg: number | null;
   initialRect?: RailDragOverlayRect;
 };
 
@@ -185,7 +182,7 @@ function SortableEntryRow({ code, name, folderId, busy, children }: {
 const typeAwareCollision = createPanelCollision('[data-testid="heatmap-drawer-scroll"]');
 
 /**
- * 그룹 헤더 행 — 헤더 전체 드래그 + chevron 접기 + 라벨/개수 + 평균 등락률 + 우클릭 메뉴
+ * 그룹 헤더 행 — 헤더 전체 드래그 + chevron 접기 + 라벨/개수 + 우클릭 메뉴
  * (종목 추가/이름 변경/순서/삭제). WatchlistDrawer.GroupHeader
  * 미러(폴더별 행 정렬 토글은 드로어 툴바로 승격돼 헤더엔 없음).
  */
@@ -193,8 +190,6 @@ function GroupHeader(props: {
   columnLayout: React.CSSProperties;
   folderId: string; busy: boolean;
   label: string; count: number; collapsed: boolean;
-  avg?: number | null;
-  flow: PanelGroupFlow | null;
   onToggle: () => void;
   onRename?: () => void;
   onDelete?: () => void;
@@ -248,14 +243,6 @@ function GroupHeader(props: {
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
-      <PanelGroupSparkline flow={props.flow} name={props.label} />
-      {/* 그룹 평균 등락률(비가중, 시세 도착 종목만; 전부 결측이면 미표시). 방향색만 —
-          배경 틴트는 없다(섹터 스트립과 달리 드로어는 숫자만). 같은 avgPct 지만 **라이브
-          시세**로 계산한다 — 그룹 순서를 정하는 쪽은 SORT_THROTTLE_MS 로 스로틀된 시세를
-          보므로, 창 안에서는 이 숫자가 현재 순서보다 앞선다(값은 실시간, 자리는 격자). */}
-      <span className={`heatmap-group-percent flex-none text-xs font-normal font-data tabular-nums ${props.avg == null ? 'text-fg-dim' : priceDirClass(props.avg)}`}>
-        {props.avg == null ? null : `${props.avg > 0 ? '+' : ''}${props.avg.toFixed(2)}%`}
-      </span>
       {props.onRename && (
         <>
 
@@ -559,7 +546,6 @@ export function HeatmapDrawer() {
   const flowRevision = useMemo(() => panelFlowRevision(data?.entries ?? []), [data]);
   const flowQuery = usePanelFlow('heatmap', venue, flowRevision, !!data?.entries.length);
   const stockFlows = useFrozenWhileDragging(flowQuery.byCode, ghost !== null);
-  const groupFlows = useFrozenWhileDragging(flowQuery.byFolder, ghost !== null);
 
   const toggle = (key: string) => {
     clearSelection();
@@ -649,12 +635,7 @@ export function HeatmapDrawer() {
   // 렌더 파이프라인: groupByFolder → orderFolderGroups(그룹간 정렬) → filterGroups(검색)
   //   → (렌더 시) sortEntries(그룹내 정렬).
   //
-  // pctOf 가 **두 갈래**인 이유: 표시값(그룹 헤더 평균 숫자)은 라이브여야 하고, 순서를
-  // 정하는 키는 SORT_THROTTLE_MS 격자여야 한다. 갈라 두지 않으면 둘 중 하나가 반드시
-  // 틀린다 — 통째로 스로틀하면 헤더 숫자가 최대 30초 낡고, 통째로 라이브면 WS 틱
-  // flush 마다(초당 최대 ~6.7회) 그룹·행이 자리를 바꾼다. 페이지는 행 정렬이
-  // HeatmapFolder 안에 있어 주입점이 다를 뿐 정책은 같다.
-  const pctOf = useMemo(() => makePctOf(quoteByCode), [quoteByCode]);
+  // 그룹·종목 순서는 SORT_THROTTLE_MS 격자로 갱신해 시세 틱마다 이동하지 않는다.
   const [sortQuoteByCode, flushSortQuotes] = useThrottledValue(quoteByCode, SORT_THROTTLE_MS);
   // 정렬 버튼 클릭(=모드 변화) 순간엔 스로틀을 우회해 즉시 최신 시세로 정렬 — 페이지
   // (pages/Heatmap.tsx)와 동일 계약. 모드 스토어를 공유하므로 어느 표면의 클릭이든
@@ -787,7 +768,7 @@ export function HeatmapDrawer() {
       // 그룹 블록은 스크롤로 화면 위에 숨을 수 있어 헤더 위치를 대신할 수 없다.
       const rect = d?.getOverlayRect?.() as DOMRect | undefined;
       groupDrag.start(String(ev.active.id), rect);
-      setGroupGhost({ flow: groupFlows.get(String(ev.active.id)) ?? null, count: group?.entries.length ?? 0, avg: group ? avgPct(group.entries, pctOf) : null,
+      setGroupGhost({ count: group?.entries.length ?? 0,
         initialRect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : undefined });
       setGhost(group?.folder.name ?? '그룹');
       return;
@@ -933,8 +914,6 @@ export function HeatmapDrawer() {
               const renderGroup = (dragHandle?: GroupDragHandle) => (
                 <>
                   <GroupHeader columnLayout={columns.layout} folderId={folder.id} busy={busy} label={folder.name} count={g.entries.length} collapsed={isCollapsed}
-                    flow={groupFlows.get(folder.id) ?? null}
-                    avg={avgPct(g.entries, pctOf)}
                     onToggle={() => toggle(key)}
                     onRename={() => setRenameTarget({ id: folder.id, name: folder.name })}
                     onDelete={() => deleteFolderWithConfirm(folder.id, folder.name)}
@@ -1038,10 +1017,6 @@ export function HeatmapDrawer() {
                 <span className="flex-1 min-w-0 flex items-baseline gap-1.5">
                   <span className="truncate">{ghost}</span>
                   <span className="flex-none text-xs font-normal text-fg-dim">{groupGhost.count}</span>
-                </span>
-                <PanelGroupSparkline flow={groupGhost.flow} name={String(ghost)} />
-                <span className={`heatmap-group-percent flex-none text-xs font-normal font-data tabular-nums ${groupGhost.avg == null ? 'text-fg-dim' : priceDirClass(groupGhost.avg)}`}>
-                  {groupGhost.avg == null ? null : `${groupGhost.avg > 0 ? '+' : ''}${groupGhost.avg.toFixed(2)}%`}
                 </span>
               </li>
             ) : ghost && (

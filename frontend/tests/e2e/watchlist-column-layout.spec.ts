@@ -50,6 +50,10 @@ for (const fontSize of [16, 20]) {
     const first = panel.getByTestId('watchlist-row-005930'), second = panel.getByTestId('watchlist-row-000660');
     await expect(second.locator('.quote-row-flow')).toBeVisible();
     await expect(second.locator('.quote-row-price')).toHaveCount(0);
+    const header = panel.getByTestId('watchlist-group-header');
+    await expect(header.locator('.quote-row-flow')).toHaveCount(0);
+    await expect(header).not.toContainText('%');
+    await expect(header.getByRole('button', { name: `${folder.name} 정렬` })).toBeVisible();
     await first.click();
     await expect(first).toHaveAttribute('aria-current', 'true');
     const scale = fontSize / 16;

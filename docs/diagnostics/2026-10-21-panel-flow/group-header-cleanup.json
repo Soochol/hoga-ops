@@ -1,0 +1,83 @@
+{
+  "recorded_at": "2026-10-21T06:31:13.846688+00:00",
+  "head_sha": "c4cbb58de998ac1539bd9b9b73e6a0a4b7c8756b",
+  "base_sha": "8c07102862a154ee682ee697ef16494816ada33e",
+  "working_tree": "Uncommitted group-header presentation change; fingerprint includes all tracked frontend source, tests, fixtures, dependency manifests/lockfile and validation configuration.",
+  "input_fingerprint": {
+    "scope": "git ls-files frontend, sorted paths and file bytes separated by NUL",
+    "files": 1794,
+    "sha256": "1e5b0bfe5cf55e331783bdbfe4c23b3586a5c48be1d4c5f53082c6e440e38903"
+  },
+  "versions": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "typescript": "6.0.3",
+    "vite": "8.0.16",
+    "vitest": "4.1.7",
+    "@playwright/test": "1.60.0",
+    "chrome": "Google Chrome 155.0.8059.84"
+  },
+  "environment": {
+    "e2e_workers": 1,
+    "backend_port": 20170,
+    "frontend_port": 21170,
+    "data_dir": "/tmp/hoga-e2e-data-170",
+    "credentials": "Empty vendor credentials from playwright.config.ts"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed; app, unit, E2E projects"
+    },
+    {
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "cwd": "frontend",
+      "result": "passed after adding watchlist group ghost assertions"
+    },
+    {
+      "command": "npx vitest run src/watchlist src/heatmap/HeatmapDrawer.test.tsx src/rightrail/PanelFlowSparkline.test.tsx src/api/panelFlow.test.tsx",
+      "cwd": "frontend",
+      "result": "31 files, 304 tests passed"
+    },
+    {
+      "command": "npx vite build",
+      "cwd": "frontend",
+      "result": "passed as Playwright webServer prerequisite, 3.06s"
+    },
+    {
+      "command": "npx playwright test tests/e2e/watchlist-column-layout.spec.ts tests/e2e/heatmap-column-layout.spec.ts tests/e2e/watchlist-panel-drag.spec.ts tests/e2e/heatmap-panel-drag.spec.ts tests/e2e/panel-flow-performance.spec.ts --reporter=line",
+      "cwd": "frontend",
+      "result": "76 passed (2.1m)",
+      "log": "/tmp/hoga-panel-header-e2e.log"
+    }
+  ],
+  "backend_scope": "No backend/API/dependency changes; no backend checks rerun.",
+  "visual_qa": [
+    "/tmp/hoga-heatmap-columns-default-16.png",
+    "/tmp/hoga-watchlist-columns-16.png"
+  ],
+  "known_observations": "Existing ResizeObserver loop warnings during density/width changes also occurred in the earlier base comparison documented in verification.json. No suppression added.",
+  "performance": [
+    {
+      "source": "watchlist",
+      "uniqueStocks": 200,
+      "rows": 400,
+      "graphs": 400,
+      "firstPaintMs": 840,
+      "flowBatches": 1,
+      "pathWritesDuringQuoteRefresh": 0,
+      "payloadBytes": 162377
+    },
+    {
+      "source": "heatmap",
+      "uniqueStocks": 200,
+      "rows": 400,
+      "graphs": 400,
+      "firstPaintMs": 1182,
+      "flowBatches": 1,
+      "pathWritesDuringQuoteRefresh": 0,
+      "payloadBytes": 162377
+    }
+  ]
+}
