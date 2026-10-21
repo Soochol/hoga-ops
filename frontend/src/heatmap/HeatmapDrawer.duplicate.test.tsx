@@ -92,30 +92,24 @@ describe('HeatmapDrawer — 추가 팝오버의 중복 안내', () => {
     await waitFor(() => expect(flashed()).toEqual(['heatmap-drawer-row-005930']));
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
 
-    const addBtn = screen.getByRole('button', { name: '추가' });
-    expect(addBtn).toBeDisabled();
-    fireEvent.click(addBtn);
+    expect(screen.queryByRole('button', { name: '추가' })).toBeNull();
     expect(api.addToHeatmapFolder).not.toHaveBeenCalled();
   });
 
-  it('헤더 추가는 **선택한 그룹**으로 판정한다 — 셀렉트를 바꾸면 답도 바뀐다', async () => {
+  it('대상 그룹을 바꾸면 이전 중복 안내와 실행 취소를 버리고 새 그룹에서 판정한다', async () => {
     wrap(<HeatmapDrawer />);
     await screen.findByRole('button', { name: '2차전지 1' });
     fireEvent.click(screen.getByTestId('heatmap-header-add'));
-    fireEvent.click(screen.getByTestId('pick'));
-    // 기본 선택은 첫 그룹(f1) — 거기엔 없다.
-    expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull();
-    expect(screen.getByRole('button', { name: '추가' })).toBeEnabled();
-
     fireEvent.change(screen.getByRole('combobox', { name: '추가할 그룹' }), { target: { value: 'f2' } });
+    fireEvent.click(screen.getByTestId('pick'));
     expect(await screen.findByText(/이미 이 그룹에 있습니다/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
+    expect(api.addToHeatmapFolder).not.toHaveBeenCalled();
     await waitFor(() => expect(flashed()).toEqual(['heatmap-drawer-row-005930']));
-
-    // 되돌리면 배너가 걷히고 추가가 다시 열린다 — 판정을 캐시하면 여기서 굳는다.
     fireEvent.change(screen.getByRole('combobox', { name: '추가할 그룹' }), { target: { value: 'f1' } });
-    await waitFor(() => expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull());
-    expect(screen.getByRole('button', { name: '추가' })).toBeEnabled();
+    expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull();
+    expect(screen.queryByRole('button', { name: '실행 취소' })).toBeNull();
+    fireEvent.click(screen.getByTestId('pick'));
+    await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f1'));
   });
 
   it('접힌 그룹을 가리켜야 하면 펼친다', async () => {
@@ -126,8 +120,8 @@ describe('HeatmapDrawer — 추가 팝오버의 중복 안내', () => {
     expect(screen.queryByTestId('heatmap-drawer-row-005930')).toBeNull();
 
     fireEvent.click(screen.getByTestId('heatmap-header-add'));
-    fireEvent.click(screen.getByTestId('pick'));
     fireEvent.change(screen.getByRole('combobox', { name: '추가할 그룹' }), { target: { value: 'f2' } });
+    fireEvent.click(screen.getByTestId('pick'));
 
     const row = await screen.findByTestId('heatmap-drawer-row-005930');
     await waitFor(() => expect(row.className).toContain('row-flash'));
@@ -141,7 +135,6 @@ describe('HeatmapDrawer — 추가 팝오버의 중복 안내', () => {
     fireEvent.click(screen.getByTestId('pick'));
 
     expect(screen.queryByText(/이미 이 그룹에 있습니다/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: '추가' }));
     await waitFor(() => expect(api.addToHeatmapFolder).toHaveBeenCalledWith('005930', 'f1'));
   });
 });

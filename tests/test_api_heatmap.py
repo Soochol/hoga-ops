@@ -269,6 +269,19 @@ def test_member_add_wire_has_no_capture_fields(tmp_path: Path):
     assert "registered_at_kst_date" not in r.json()
 
 
+@pytest.mark.parametrize("code", ["0158S0", "Q500093"])
+def test_member_add_resolves_alphanumeric_code_from_symbol_master(tmp_path, monkeypatch, code):
+    from hoga.api import symbols
+
+    monkeypatch.setattr(symbols, "_cache", [_fake_hit(code, "엘리스")])
+    client = TestClient(_app(tmp_path))
+    fid = client.post("/api/heatmap/folders", json={"name": "신규상장"}).json()["id"]
+    response = client.post(f"/api/heatmap/folders/{fid}/members", json={"code": code})
+    assert response.status_code == 201
+    assert response.json() == {"code": code, "name": "엘리스", "folder_id": fid, "order": 0}
+    assert client.get("/api/heatmap").json()["entries"] == [response.json()]
+
+
 def test_delete_absent_404(tmp_path: Path):
     r = TestClient(_app(tmp_path)).delete("/api/heatmap/003490")
     assert r.status_code == 404

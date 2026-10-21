@@ -1,86 +1,128 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { it, expect, vi, beforeEach } from 'vitest';
+import type { SymbolSearchProps } from '../capture/SymbolSearch';
 
+const hit = { code: '005930', name: '삼성전자', market: 'KOSPI' as const, captured_count: 0,
+  captured_breakdown: { complete: 0, source_partial: 0, client_incomplete: 0, invalid: 0 } };
 vi.mock('../capture/SymbolSearch', () => ({
-  SymbolSearch: ({ onChange }: { onChange: (h: { code: string; name: string; market: string }) => void }) =>
-    <button data-testid="pick" onClick={() => onChange({ code: '005930', name: '삼성전자', market: 'KOSPI' })}>pick</button>,
+  SymbolSearch: ({ onChange, disabled, optionState }: SymbolSearchProps) => <>
+    <input aria-label="검색" disabled={disabled} onChange={() => onChange(null)} />
+    <button data-testid="pick" disabled={disabled || optionState?.(hit) === 'added'}
+      onClick={() => onChange(hit)}>{optionState?.(hit) === 'added' ? '추가됨' : 'pick'}</button>
+  </>,
 }));
-
-const { addToFolder } = vi.hoisted(() => ({ addToFolder: vi.fn(() => Promise.resolve()) }));
+const { addToFolder, removeFromFolder } = vi.hoisted(() => ({
+  addToFolder: vi.fn<() => Promise<void>>(), removeFromFolder: vi.fn<() => Promise<void>>(),
+}));
 vi.mock('./useAddToFolder', () => ({
-  useAddToFolder: () => ({ addToFolder, isPending: false, error: null }),
+  useAddToFolder: () => ({ addToFolder, removeFromFolder }),
 }));
-
 import { FolderAddButton } from './FolderAddButton';
 
-beforeEach(() => { addToFolder.mockClear(); });
-
-/** 새로 필수가 된 두 prop 의 기본값 — 이 파일의 관심사는 자동 열기·포털·실패 유지이지
- *  중복 판정이 아니다(그건 `FolderAddButton.duplicate.test.tsx` 가 따로 잰다). */
-const base = () => ({ isDuplicate: () => false, onDuplicate: vi.fn() });
-
-it('＋종목 → 종목 선택 → 추가 시 addToFolder(code, folderId)', async () => {
-  render(<FolderAddButton {...base()} folderId="f1" />);
+beforeEach(() => {
+  addToFolder.mockReset().mockResolvedValue();
+  removeFromFolder.mockReset().mockResolvedValue();
+});
+const base = () => ({ folderId: 'f1', isDuplicate: () => false, onDuplicate: vi.fn() });
+const openAndPick = () => {
   fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
   fireEvent.click(screen.getByTestId('pick'));
-  fireEvent.click(screen.getByRole('button', { name: '추가' }));
-  await waitFor(() => expect(addToFolder).toHaveBeenCalledWith('005930', 'f1'));
-});
+};
 
-// 새 그룹 직후 페이지가 켜 주는 자동 열기. 갓 만든 그룹은 행이 없어 클릭 표적이
-// 이 버튼 하나뿐이라 "만들기 → 종목 넣기"가 한 흐름이어야 한다.
-it('autoOpen 이면 클릭 없이 팝오버가 열리고, 닫으면 다시 열리지 않는다', () => {
-  const { rerender } = render(<FolderAddButton {...base()} folderId="f1" autoOpen />);
+it('선택 즉시 추가하고 팝오버와 입력 포커스를 유지하며 별도 추가 버튼은 없다', async () => {
+  render(<FolderAddButton {...base()} />);
+  openAndPick();
+  await waitFor(() => expect(addToFolder).toHaveBeenCalledWith('005930', 'f1'));
+  expect(await screen.findByLabelText('종목 추가 안내')).toHaveTextContent('삼성전자 추가됨');
   expect(screen.getByRole('dialog', { name: '종목 추가' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: '닫기' }));
-  expect(screen.queryByRole('dialog', { name: '종목 추가' })).toBeNull();
-  // 부모 리렌더(폴링 등)로 같은 prop 이 다시 흘러도 되살아나지 않는다 — autoOpen 은
-  // 마운트 시 초기값으로만 읽는다.
-  rerender(<FolderAddButton {...base()} folderId="f1" autoOpen />);
-  expect(screen.queryByRole('dialog', { name: '종목 추가' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '추가' })).not.toBeInTheDocument();
 });
 
-// 소비 통지가 없으면 페이지가 표식을 못 태우고, 검색 필터로 카드가 언마운트→재마운트될 때
-// (마운트마다 초기값을 다시 읽으므로) 팝오버가 계속 되살아난다.
-it('자동으로 열렸으면 onAutoOpened 로 1회 통지한다', () => {
-  const onAutoOpened = vi.fn();
-  const { rerender } = render(<FolderAddButton {...base()} folderId="f1" autoOpen onAutoOpened={onAutoOpened} />);
-  expect(onAutoOpened).toHaveBeenCalledTimes(1);
-  // 페이지가 표식을 태운 뒤(autoOpen=false) 다시 부르지 않는다.
-  rerender(<FolderAddButton {...base()} folderId="f1" onAutoOpened={onAutoOpened} />);
-  expect(onAutoOpened).toHaveBeenCalledTimes(1);
-});
-
-it('autoOpen 없이 마운트되면 닫힌 채로 시작하고 통지도 없다', () => {
-  const onAutoOpened = vi.fn();
-  render(<FolderAddButton {...base()} folderId="f1" onAutoOpened={onAutoOpened} />);
-  expect(screen.queryByRole('dialog', { name: '종목 추가' })).toBeNull();
-  expect(onAutoOpened).not.toHaveBeenCalled();
-});
-
-it('미선택 시 추가 버튼 비활성', () => {
-  render(<FolderAddButton {...base()} folderId="f1" />);
-  fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
-  expect(screen.getByRole('button', { name: '추가' })).toBeDisabled();
-});
-
-it('팝오버는 createPortal 로 body 직속 — 카드 overflow-hidden/multicol 클리핑 회피', () => {
-  const { container } = render(<FolderAddButton {...base()} folderId="f1" />);
-  fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
-  const dialog = screen.getByRole('dialog', { name: '종목 추가' });
-  // 포털 대상이 document.body 라 폴더 카드의 overflow-hidden 경계 밖에 산다(클리핑 회피).
-  expect(dialog.parentElement).toBe(document.body);
-  // 트리거가 사는 컴포넌트 서브트리(실사용 시 overflow-hidden 카드 안)엔 팝오버가 없다.
-  expect(container.querySelector('[role="dialog"]')).toBeNull();
-});
-
-it('addToFolder 실패 시 unhandled rejection 없이 팝오버 유지(재시도 가능)', async () => {
-  addToFolder.mockRejectedValueOnce(new Error('boom'));
-  render(<FolderAddButton {...base()} folderId="f1" />);
-  fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
+it('진행 중에는 검색·선택과 중복 전송을 막고 완료 후 검색으로 포커스를 돌린다', async () => {
+  let release!: () => void;
+  addToFolder.mockReturnValueOnce(new Promise<void>(resolve => { release = resolve; }));
+  render(<FolderAddButton {...base()} />);
+  openAndPick();
+  expect(screen.getByRole('textbox', { name: '검색' })).toBeDisabled();
   fireEvent.click(screen.getByTestId('pick'));
-  fireEvent.click(screen.getByRole('button', { name: '추가' }));
-  await waitFor(() => expect(addToFolder).toHaveBeenCalledWith('005930', 'f1'));
-  // 실패 후에도 팝오버(추가 버튼)가 닫히지 않고 남아 재시도 가능.
-  expect(screen.getByRole('button', { name: '추가' })).toBeInTheDocument();
+  expect(addToFolder).toHaveBeenCalledOnce();
+  await act(async () => release());
+  expect(screen.getByRole('textbox', { name: '검색' })).toHaveFocus();
+  expect(screen.getByTestId('pick')).toBeEnabled();
+});
+
+it('이미 등록된 결과는 추가됨으로 표시하고 재전송하지 않는다', () => {
+  render(<FolderAddButton {...base()} isDuplicate={() => true} />);
+  fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
+  expect(screen.getByTestId('pick')).toHaveTextContent('추가됨');
+  expect(screen.getByTestId('pick')).toBeDisabled();
+  fireEvent.click(screen.getByTestId('pick'));
+  expect(addToFolder).not.toHaveBeenCalled();
+});
+
+it('실행 취소는 마지막 추가의 현재 그룹만 해제하고 검색창을 유지한다', async () => {
+  render(<FolderAddButton {...base()} />);
+  openAndPick();
+  fireEvent.click(await screen.findByRole('button', { name: '실행 취소' }));
+  await waitFor(() => expect(removeFromFolder).toHaveBeenCalledWith('005930', 'f1'));
+  expect(await screen.findByLabelText('종목 추가 안내')).toHaveTextContent('삼성전자 추가 취소됨');
+  expect(screen.queryByRole('button', { name: '실행 취소' })).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox', { name: '검색' })).toHaveFocus();
+});
+
+it('추가 실패 사유와 다시 시도를 표시하고 재시도 성공 후에도 검색창을 유지한다', async () => {
+  addToFolder.mockRejectedValueOnce(new Error('저장 실패'));
+  render(<FolderAddButton {...base()} />);
+  openAndPick();
+  expect(await screen.findByRole('alert')).toHaveTextContent('종목을 추가하지 못했습니다. 저장 실패');
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+  expect(await screen.findByLabelText('종목 추가 안내')).toHaveTextContent('삼성전자 추가됨');
+  expect(addToFolder).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.getByRole('dialog', { name: '종목 추가' })).toBeVisible();
+});
+
+it('취소 실패도 사유를 표시하고 다시 시도는 추가가 아닌 취소를 반복한다', async () => {
+  removeFromFolder.mockRejectedValueOnce(new Error('취소 실패'));
+  render(<FolderAddButton {...base()} />);
+  openAndPick();
+  fireEvent.click(await screen.findByRole('button', { name: '실행 취소' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('추가를 취소하지 못했습니다. 취소 실패');
+  fireEvent.click(screen.getByRole('button', { name: '다시 시도' }));
+  await waitFor(() => expect(removeFromFolder).toHaveBeenCalledTimes(2));
+  expect(addToFolder).toHaveBeenCalledOnce();
+});
+
+it.each(['다시 검색', '닫고 열기'])('실패 안내는 %s에서 해제한다', async action => {
+  addToFolder.mockRejectedValueOnce(null);
+  render(<FolderAddButton {...base()} />);
+  openAndPick();
+  expect(await screen.findByRole('alert')).toHaveTextContent('잠시 후 다시 시도하세요.');
+  if (action === '다시 검색') fireEvent.change(screen.getByRole('textbox', { name: '검색' }), { target: { value: '다른 종목' } });
+  else {
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
+  }
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('autoOpen은 한 번만 열고 닫은 뒤 다시 열리지 않는다', () => {
+  const onAutoOpened = vi.fn();
+  const props = { ...base(), autoOpen: true, onAutoOpened };
+  const { rerender } = render(<FolderAddButton {...props} />);
+  expect(screen.getByRole('dialog', { name: '종목 추가' })).toBeInTheDocument();
+  expect(onAutoOpened).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+  rerender(<FolderAddButton {...props} />);
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('팝오버는 카드 클리핑을 피하도록 body에 렌더하고 Escape는 트리거로 복귀한다', () => {
+  const { container } = render(<FolderAddButton {...base()} />);
+  fireEvent.click(screen.getByRole('button', { name: '종목 추가' }));
+  expect(screen.getByRole('dialog').parentElement).toBe(document.body);
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '종목 추가' })).toHaveFocus();
 });

@@ -1,4 +1,4 @@
-import { useAddToHeatmapFolder } from './useHeatmap';
+import { useAddToHeatmapFolder, useRemoveFromHeatmap } from './useHeatmap';
 
 /** 폴더 지정 추가 = 단일 backend command.
  *  서버 lock 안에서 "이 그룹에 없으면 추가, 이미 있으면 이름만 갱신(멱등)"을 처리해
@@ -7,11 +7,13 @@ import { useAddToHeatmapFolder } from './useHeatmap';
  *  이 그룹에도 등록된다(한 종목 다중 그룹). 옮기려면 드래그/⋯ 메뉴의 '그룹으로 이동'. */
 export function useAddToFolder() {
   const addM = useAddToHeatmapFolder();
+  const removeM = useRemoveFromHeatmap();
   const addToFolder = async (code: string, folderId: string) => {
     await addM.mutateAsync({ code, folderId });
   };
   return {
     addToFolder,
+    removeFromFolder: (code: string, folderId: string) => removeM.mutateAsync({ code, folderId }),
     isPending: addM.isPending,
     error: addM.error,
   };

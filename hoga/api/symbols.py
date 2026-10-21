@@ -767,8 +767,8 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
     """Pure in-memory filter — caller is expected to have already populated
     the cache via :func:`get_all`.
 
-    Numeric prefix → code match. Otherwise → name substring match.
-    Sort: name-prefix matches before substring matches, then by name length.
+    Numeric prefix → code match. Otherwise → code prefix or name substring.
+    Exact codes precede code prefixes, then name-prefix/length ordering.
     """
     q_norm = q.strip()
     if not q_norm:
@@ -777,11 +777,14 @@ def search(q: str, *, limit: int = 20) -> list[SymbolHit]:
         # Code prefix
         matches = [h for h in _cache if h.code.startswith(q_norm)]
         return matches[:limit]
-    # Name substring (case-insensitive)
+    # KRX codes can contain letters (0158S0); keep English name search too.
+    q_upper = q_norm.upper()
+    code_matches = [h for h in _cache if h.code.startswith(q_upper)]
+    code_matches.sort(key=lambda h: h.code != q_upper)
     q_lower = q_norm.lower()
-    matches = [h for h in _cache if q_lower in h.name.lower()]
+    matches = [h for h in _cache if q_lower in h.name.lower() and not h.code.startswith(q_upper)]
     matches.sort(key=lambda h: (not h.name.lower().startswith(q_lower), len(h.name)))
-    return matches[:limit]
+    return (code_matches + matches)[:limit]
 
 
 def krx_aftermarket_eligibility(code: str) -> bool | None:

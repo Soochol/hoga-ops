@@ -7,10 +7,12 @@ vi.mock('../api/heatmap', async (orig) => ({
   ...(await orig<typeof import('../api/heatmap')>()),
   addToHeatmapFolder: vi.fn(() => Promise.resolve({
     code: '005930', name: '삼성전자', folder_id: null, order: 0 })),
+  removeFromHeatmapFolder: vi.fn(() => Promise.resolve()),
 }));
 
 import { useAddToFolder } from './useAddToFolder';
-import { addToHeatmapFolder } from '../api/heatmap';
+import { addToHeatmapFolder, removeFromHeatmapFolder, type HeatmapResponse } from '../api/heatmap';
+import { HEATMAP_KEY } from './heatmapKeys';
 import { INDEX_SECTOR_RANKINGS_KEY } from '../api/indexSectorRankings';
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -19,6 +21,21 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 beforeEach(() => { vi.clearAllMocks(); });
+
+it('추가 성공은 캐시에 즉시 반영하고 실행 취소는 그 그룹의 등록만 제거한다', async () => {
+  const qc = new QueryClient();
+  const added = { code: '0158S0', name: '엘리스', folder_id: 'f1', order: 0 };
+  const other = { ...added, folder_id: 'f2' };
+  qc.setQueryData<HeatmapResponse>(HEATMAP_KEY, { folders: [], entries: [other], capture_markers: {}, next_run_at_ms: 0 });
+  vi.mocked(addToHeatmapFolder).mockResolvedValueOnce(added);
+  const customWrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+  const { result } = renderHook(() => useAddToFolder(), { wrapper: customWrapper });
+  await act(async () => { await result.current.addToFolder(added.code, 'f1'); });
+  expect(qc.getQueryData<HeatmapResponse>(HEATMAP_KEY)?.entries).toEqual([other, added]);
+  await act(async () => { await result.current.removeFromFolder(added.code, 'f1'); });
+  expect(removeFromHeatmapFolder).toHaveBeenCalledWith(added.code, 'f1');
+  expect(qc.getQueryData<HeatmapResponse>(HEATMAP_KEY)?.entries).toEqual([other]);
+});
 
 it('추가 후 해당 폴더로 이동', async () => {
   const { result } = renderHook(() => useAddToFolder(), { wrapper });

@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SymbolSearch } from './SymbolSearch';
 import * as symbolsApi from '../api/symbols';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { SymbolsAllResponse } from '../api/types';
 
 function W({ children, qc }: { children: ReactNode; qc: QueryClient }) {
@@ -31,6 +31,50 @@ function setup(envelope: SymbolsAllResponse = DEFAULT_ENVELOPE) {
 beforeEach(() => { vi.restoreAllMocks(); });
 
 describe('SymbolSearch', () => {
+  it('선택된 검색어를 새 검색어로 바꿀 때 첫 입력을 지우지 않는다', async () => {
+    const qc = setup();
+    function Form() {
+      const [value, setValue] = useState<typeof DEFAULT_ENVELOPE.symbols[number] | null>(DEFAULT_ENVELOPE.symbols[0]);
+      return <SymbolSearch value={value} onChange={setValue} />;
+    }
+    render(<Form />, { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: '삼성전자우' } });
+    expect(input).toHaveValue('삼성전자우');
+    expect(await screen.findByRole('option')).toHaveTextContent('005935');
+  });
+
+  it('추가된 결과는 표시하되 클릭·Enter로 다시 선택하지 않고 다음 결과를 선택한다', async () => {
+    const qc = setup();
+    const onChange = vi.fn();
+    render(<SymbolSearch value={null} onChange={onChange} optionState={hit => hit.code === '005930' ? 'added' : undefined} />,
+      { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    const input = screen.getByPlaceholderText(/종목/i);
+    fireEvent.change(input, { target: { value: '삼성' } });
+    const added = (await screen.findByText('005930')).closest('[role="option"]')!;
+    expect(added).toHaveAttribute('aria-disabled', 'true');
+    expect(added).toHaveTextContent('추가됨');
+    onChange.mockClear();
+    fireEvent.click(added);
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true, keyCode: 229 });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ code: '005935' }));
+  });
+
+  it('resetKey는 value가 null인 채로도 검색어를 비우고 disabled는 선택을 막는다', async () => {
+    const qc = setup();
+    const onChange = vi.fn();
+    const { rerender } = render(<SymbolSearch value={null} onChange={onChange} resetKey={0} />,
+      { wrapper: ({ children }) => <W qc={qc}>{children}</W> });
+    const input = screen.getByPlaceholderText(/종목/i);
+    fireEvent.change(input, { target: { value: '삼성' } });
+    await screen.findByText('005930');
+    rerender(<SymbolSearch value={null} onChange={onChange} resetKey={1} disabled />);
+    expect(input).toHaveValue('');
+    expect(input).toBeDisabled();
+  });
   it('집계 중에도 선택할 수 있고 미확인 건수를 완결 없음으로 표시하지 않는다', async () => {
     const qc = setup({ ...DEFAULT_ENVELOPE, capture_counts_status: 'pending',
       symbols: [{ ...DEFAULT_ENVELOPE.symbols[1], capture_counts_status: 'pending' }] });

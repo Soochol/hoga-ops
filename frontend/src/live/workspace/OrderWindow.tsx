@@ -545,7 +545,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       {group.length > 0 && <span className={`order-quantity ${!canDrag ? 'order-quantity-blocked' : ''} ${draggingOrders.some(order => group.some(item => item.orderId === order.orderId)) ? 'order-chip-dragging' : ''}`}
         aria-label={`${orderSideLabel(side)} ${fmt(price)}원 주문${group.length > 1 ? ' 합계' : ''}`}
         data-drag-order={group.some(order => editableOrder(order) && !pending(order)) ? group.map(order => order.orderId).join(',') : undefined}>
-        {fmt(group.reduce((sum, order) => sum + orderRemainder(order), 0))}{group.some(order => !editableOrder(order) || pending(order)) ? ' · 처리 중' : ''}
+        {fmt(group.reduce((sum, order) => sum + orderRemainder(order), 0))}
       </span>}
     </button>;
   }
@@ -562,9 +562,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     trades, summary.fillStrengthPct,
     [...groups.values()].map(group => group.reduce((sum, order) => sum + orderRemainder(order), 0))
       .concat([sideOrders.SELL, sideOrders.BUY].map(list => list.reduce((sum, order) => sum + orderRemainder(order), 0))),
-    Math.max(sideOrders.SELL.length, sideOrders.BUY.length), orders.some(order => !editableOrder(order) || pending(order)));
+    Math.max(sideOrders.SELL.length, sideOrders.BUY.length));
 
-  const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
+  const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null} headingLabel=""
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
     vi={vi.data?.vi} height={height} page={infoPage} onNextPage={() => setInfoPage(page => page === 0 ? 1 : 0)}

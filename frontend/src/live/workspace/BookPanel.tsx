@@ -415,7 +415,7 @@ export default function BookPanel({
 export function BookSummary({
   summary, baselinePrice, limits = null, krxClose = null, krxPreviousClose = null, vi = null,
   height = ROW_H * SUMMARY_ROWS,
-  page, onNextPage, expectedFill = null, expectedDimClass = '',
+  page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '정보',
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
@@ -428,13 +428,14 @@ export function BookSummary({
   onNextPage: () => void;
   expectedFill?: { price: number; qty: number | null } | null;
   expectedDimClass?: string;
+  headingLabel?: string;
 }) {
   return (
     <div className="book-summary flex flex-col" data-testid="book-summary" data-page={page + 1}
       onClick={onNextPage}
       style={{ height, '--book-summary-row-height': `${height / SUMMARY_ROWS}px` } as React.CSSProperties}>
       <button type="button" className="book-summary-heading" aria-label={`정보 ${page + 1}페이지, 다음 정보 페이지로 전환`}>
-        <span>정보</span>
+        <span>{headingLabel}</span>
         <span className="book-summary-pages" aria-hidden="true">
           {[0, 1].map(index => <span key={index} className={`book-summary-dot${page === index ? ' is-active' : ''}`} />)}
         </span>
