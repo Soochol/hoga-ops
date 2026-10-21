@@ -1,5 +1,12 @@
 import { test, expect, type Locator } from '@playwright/test';
 
+async function expectBookSummary(dialog: Locator) {
+  await expect(dialog.getByTestId('book-summary')).toHaveAttribute('data-page', '1');
+  for (const label of ['예상 체결가', '예상 체결량', '시작', '최고', '최저', 'KRX종가', '거래량', '어제보다', '거래대금']) {
+    await expect(dialog.getByText(label, { exact: true })).toBeVisible();
+  }
+}
+
 for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as const) {
   test(`${depth} 호가는 빈 가격 없이 잔량과 정렬되고 상세 정보를 열 수 있다`, async ({ page }, testInfo) => {
     await page.goto(`/tests/e2e/fixtures/book-price-layout.html?depth=${depth}`);
@@ -40,7 +47,7 @@ for (const [depth, askCount, bidCount] of [['partial', 4, 3], ['five', 5, 5]] as
       await expect(info).toBeVisible();
       await info.click();
       const dialog = page.getByRole('dialog', { name: '종목 상세 정보' });
-      await expect(dialog.getByText('250일', { exact: true })).toBeVisible();
+      await expectBookSummary(dialog);
       await page.keyboard.press('Escape');
       await expect(dialog).toHaveCount(0);
       await expect(info).toBeFocused();
@@ -121,8 +128,16 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
             const textBounds = range.getBoundingClientRect();
             return r.left >= cellBounds.left && r.right <= cellBounds.right && textBounds.width <= r.width + 0.5;
           });
+          const quantityAligned = [...grid.querySelectorAll('.book-quantity-content')].every(cell => {
+            const quantity = cell.querySelector('.flex-1')!;
+            const range = document.createRange(); range.selectNodeContents(quantity);
+            const text = range.getBoundingClientRect(), box = cell.getBoundingClientRect(), css = getComputedStyle(cell);
+            return quantity.classList.contains('text-qty-ask')
+              ? Math.abs(text.right - (box.right - parseFloat(css.paddingRight))) < 0.1
+              : Math.abs(text.left - (box.left + parseFloat(css.paddingLeft))) < 0.1;
+          });
           return {
-            quantityFits,
+            quantityFits, quantityAligned,
             sideMinimum: parseFloat(getComputedStyle(grid).getPropertyValue('--book-side-content-width')),
             count: prices.length, gridWidth: grid.getBoundingClientRect().width,
             leftWidth: left.getBoundingClientRect().width, rightWidth: right.getBoundingClientRect().width, centerWidth: bounds.width,
@@ -137,6 +152,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
         });
         expect(g.count).toBe(20);
         expect(g.quantityFits).toBe(true);
+        expect(g.quantityAligned).toBe(true);
         expect(g.gridWidth).toBeCloseTo(Math.max(width, 2 * (width < 531 ? g.sideMinimum : Math.max(184, g.sideMinimum)) + g.centerWidth), 0);
         expect(g.leftWidth).toBeCloseTo(g.rightWidth, 1);
         expect(g.centerOffset).toBeCloseTo(0, 1);
@@ -170,7 +186,7 @@ test('축소한 10호가의 폰트·가격·잔량 대칭·22px 행과 압축 �
         await expect(info).toBeInViewport();
         await info.click();
         const dialog = page.getByRole('dialog', { name: '종목 상세 정보' });
-        await expect(dialog.getByText('250일', { exact: true })).toBeVisible();
+        await expectBookSummary(dialog);
         await expect(dialog.getByRole('button', { name: '상세 정보 닫기' })).toBeFocused();
         expect(await dialog.evaluate(el => {
           const r = el.getBoundingClientRect();
