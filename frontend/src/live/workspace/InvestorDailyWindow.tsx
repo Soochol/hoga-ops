@@ -58,7 +58,6 @@ import './InvestorDailyWindow.css';
 import { InvestorDailySummaryCell } from './InvestorDailySummaryCell';
 import { investorDailySummary } from '../investorDailySummary';
 import { formatInvestorDailyNumber } from './investorDailyNumbers';
-import { InvestorDailyNumber } from './InvestorDailyNumber';
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useLivePastInvestorNet } from '../../api/livePastInvestorNet';
@@ -183,7 +182,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     cells: <>
       <DateCell date={row.date} isToday={row.date === today} />
       {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-        <InvestorDailySummaryCell separateColumns key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} values={{
+        <InvestorDailySummaryCell separateColumns numberAlignment="right" key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} values={{
           net: dataSide === 'net' ? row.values[column.key] : null,
           buy: summary.buy.value(row.date, column.key),
           sell: summary.sell.value(row.date, column.key),
@@ -202,7 +201,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
 
   const totalCells = useMemo(() => (<>
     {columns.map((column, index) => (!showDetails && compactDisplay === 'all' ?
-      <InvestorDailySummaryCell separateColumns key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} foot values={{
+      <InvestorDailySummaryCell separateColumns numberAlignment="right" key={column.key} unit={dataUnit} useK={useK} showUnitSuffix={false} foot values={{
         net: dataSide === 'net' && table.rows.every((row) => row.values[column.key] !== null) ? table.totals[column.key] : null,
         buy: summary.buy.total(column.key), sell: summary.sell.total(column.key),
       }} /> : <ValueCell
@@ -570,9 +569,7 @@ function ValueCell({
         foot ? 'border-t border-border bg-bg-card font-medium' : ''
       } ${qtyClass(value === null || dataSide === 'net' ? value : dataSide === 'sell' ? -value : value)} ${className}`}
     >
-      {value === null ? '' : <InvestorDailyNumber
-        text={formatInvestorDailyNumber(value, dataUnit, dataSide, compact && useK)}
-        amount={dataUnit !== 'qty_shares'} />}
+      {value === null ? '' : formatInvestorDailyNumber(value, dataUnit, dataSide, compact && useK)}
     </td>
   );
 }
