@@ -81,17 +81,6 @@ function TradeValue({ won }: { won: number | null | undefined }) {
   </span>;
 }
 
-function ValueColumnsHeader({ layout }: { layout: React.CSSProperties }) {
-  return <div role="group" aria-label="거래대금 목록 열" data-testid="ranking-value-columns-header" style={layout}
-    className="quote-columns-header quote-row-fluid flex items-center border-b border-border bg-bg text-xs text-fg-dim">
-    <RankSlot />
-    <span className="quote-row-name flex-1 min-w-0">종목</span>
-    <span className="ranking-trade-value flex-none text-right">거래대금(억)</span>
-    <span className="quote-row-price flex-none text-right">가격</span>
-    <span className="quote-row-percent flex-none text-right">등락률</span>
-  </div>;
-}
-
 function formatNetBuyAmount(won: number | null | undefined) {
   if (won == null) return '—';
   const rounded = Math.round(Math.abs(won) / 100_000_000);
@@ -280,8 +269,7 @@ export function RankingDrawer() {
   const extraFigures = useMemo(() => ({
     // Reserve four ranks from the start so expanding through 5000 never moves names.
     rank: ['8888', ...rows.map(row => String(row.rank))],
-    price: kind === 'value' ? ['가격'] : [],
-    detail: kind === 'value' ? ['거래대금(억)', ...rows.map(row => formatTradeValue(row.trade_value_won))] : netBuyLabel ? rows.flatMap(row => {
+    detail: kind === 'value' ? rows.map(row => formatTradeValue(row.trade_value_won)) : netBuyLabel ? rows.flatMap(row => {
       const won = netBuyAmount(row, kind);
       return won == null ? ['—'] : [formatNetBuyAmount(Math.abs(won)), formatNetBuyAmount(-Math.abs(won))];
     }) : [],
@@ -463,7 +451,6 @@ export function RankingDrawer() {
       </RailDrawerSection>
 
       <RailDrawerBody testId="ranking-scroll" quoteNav scrollRef={scrollRef}>
-        {kind === 'value' && <ValueColumnsHeader layout={columnLayout} />}
         {/* 토글은 켰는데 심볼 마스터가 없어 거르지 못한 경우. 배지가 없으면 사용자에겐
             "ETF 제외가 안 먹는" 상태로만 보인다(원인 단서 0). 스크리너 경고와 같은 관용구. */}
         {data?.etfFilterUnavailable && (

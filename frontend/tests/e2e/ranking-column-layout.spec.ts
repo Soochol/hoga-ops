@@ -54,7 +54,7 @@ async function cloneMatches(page: Page, row: Locator) {
 }
 
 for (const fontSize of [16, 20]) {
-  test(`거래대금 4열·320px·고정 제목·금액 갱신·드래그 (${fontSize}px)`, async ({ page }) => {
+  test(`거래대금 4열·320px·열 제목 없음·금액 갱신·드래그 (${fontSize}px)`, async ({ page }, info) => {
     await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
     await installLiveMocks(page);
     let amount = 3_119_200_000_000, price = 123456, percent = -1.23;
@@ -78,7 +78,7 @@ for (const fontSize of [16, 20]) {
     await expect(panel.locator('.ranking-trade-value')).toHaveCount(0);
     await panel.getByRole('button', { name: '거래대금', exact: true }).click();
     await expect(panel).toHaveCSS('width', `${320 * fontSize / 16}px`);
-    await expect(header).toHaveText('종목거래대금(억)가격등락률');
+    await expect(header).toHaveCount(0);
     const first = panel.getByTestId('ranking-row-100000'), second = panel.getByTestId('ranking-row-100001');
     await expect(first.locator('.ranking-trade-value')).toHaveText('1,235억');
     await expect(second.locator('.ranking-trade-value')).toHaveText('31,192억');
@@ -86,23 +86,19 @@ for (const fontSize of [16, 20]) {
     const missing = panel.getByTestId('ranking-row-100002');
     for (const selector of ['.ranking-trade-value', '.quote-row-price', '.quote-row-percent']) await expect(missing.locator(selector)).toHaveText('—');
     await expect(panel.getByTestId('ranking-row-100003').locator('.ranking-trade-value')).toHaveText('0억');
-    const [a, b, h] = await Promise.all([geometry(first), geometry(second), geometry(header)]);
+    const [a, b] = await Promise.all([geometry(first), geometry(second)]);
     for (const value of [a, b]) {
       expect(value.name.left).toBe(40 * fontSize / 16);
       for (const column of ['price', 'percent', 'trade'] as const) {
         expect(value[column]!.full).toBe(true);
         expect(value[column]!.align).toBe('right');
-        expect(value[column]!.right).toBeCloseTo(h[column]!.right, 3);
+        expect(value[column]!.right).toBeCloseTo(a[column]!.right, 3);
       }
     }
     const scroll = panel.getByTestId('ranking-scroll');
     expect(await scroll.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-    await panel.screenshot({ path: `/tmp/hoga-ranking-value-${fontSize}.png` });
+    await panel.screenshot({ path: info.outputPath('ranking-value.png') });
     await cloneMatches(page, second);
-    const headerTop = (await header.boundingBox())!.y;
-    await scroll.evaluate(node => { node.scrollTop = 300; });
-    expect((await header.boundingBox())!.y).toBeCloseTo(headerTop, 3);
-    await scroll.evaluate(node => { node.scrollTop = 0; });
     amount = 123_456_789_012_345; price = 123456789012; percent = -1234.56;
     await page.clock.fastForward(11_000);
     await expect(second.locator('.ranking-trade-value')).toHaveText('1,234,568억');
