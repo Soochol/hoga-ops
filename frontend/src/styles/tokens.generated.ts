@@ -34,7 +34,6 @@ export const TAILWIND_THEME = {
   width: {
     "sidebar": "var(--sidebar-w)",
     "watchlist-panel": "var(--watchlist-panel-w)",
-    "stock-panel": "var(--stock-panel-w)",
     "rail": "var(--rail-w)",
   },
   minWidth: {

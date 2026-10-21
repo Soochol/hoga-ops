@@ -190,8 +190,7 @@
   --h-bottom-bar: 1.5rem; /* 24px @ default; 24px base intent — Global market-index bottom bar row */
   --sidebar-w: 20rem; /* 320px @ default; 320px base intent — /inventory master-detail 좌열 폭 (pages/Inventory.tsx) */
   --dropdown-min-w: 20rem; /* 320px @ default; 320px base intent — Combobox / search dropdown minimum width */
-  --watchlist-panel-w: 17.5rem; /* 280px @ default; 280px base intent — Global Watchlist Panel (Right Rail) width */
-  --stock-panel-w: 22.5rem; /* 360px @ default; 360px base intent — Watchlist and Heatmap right-rail panels with name, flow, price and percent columns */
+  --watchlist-panel-w: 20rem; /* 320px @ default; 320px base intent — Shared Right Rail panel width */
   --rail-w: 3rem; /* 48px @ default; 48px base intent — Right Rail icon column width (fixed) */
   --app-floor-min-w: 59rem; /* 944px @ default; 944px base intent — App shell responsive floor — below this the shell stops compressing and scrolls horizontally */
   --app-floor-min-h: 39rem; /* 624px @ default; 624px base intent — App shell vertical floor — /live windows scale with the canvas, so the canvas needs a readable height floor (ADR-0122) */

@@ -169,8 +169,7 @@ describe('App shell layout', () => {
     wrap(<div>Heatmap</div>, '/heatmap');
 
     expect(screen.getByTestId('app-content-grid')).toHaveStyle({
-      gridTemplateColumns: '1fr var(--active-rail-panel-w) var(--rail-w)',
-      '--active-rail-panel-w': 'var(--stock-panel-w)',
+      gridTemplateColumns: '1fr var(--watchlist-panel-w) var(--rail-w)',
     });
     expect(screen.getByTestId('watchlist-drawer')).toBeInTheDocument();
   });
@@ -184,8 +183,7 @@ describe('App shell layout', () => {
     wrap(<div>Heatmap</div>, '/heatmap');
 
     expect(screen.getByTestId('app-content-grid')).toHaveStyle({
-      gridTemplateColumns: '1fr var(--active-rail-panel-w) var(--rail-w)',
-      '--active-rail-panel-w': 'var(--stock-panel-w)',
+      gridTemplateColumns: '1fr var(--watchlist-panel-w) var(--rail-w)',
     });
     expect(await screen.findByTestId('heatmap-drawer')).toBeInTheDocument();
   });

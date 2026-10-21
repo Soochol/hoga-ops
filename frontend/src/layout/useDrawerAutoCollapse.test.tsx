@@ -7,9 +7,9 @@ import { useRightRailStore } from '../state/rightRail';
 // 없으면 훅이 threshold=0 으로 계산돼 **조용히 아무 일도 안 하고** 테스트는
 // 통과한다 — 이 파일의 존재 이유가 그 거짓 통과를 막는 것이다.
 const FLOOR_REM = 57;
-const DRAWER_REM = 17.5;
+const DRAWER_REM = 20;
 const ROOT_PX = 18;
-/** 임계 = (57 + 17.5) * 18 = 1341px */
+/** 임계 = (57 + 20) * 18 = 1386px */
 const THRESHOLD = (FLOOR_REM + DRAWER_REM) * ROOT_PX;
 
 function Probe() {
@@ -33,7 +33,6 @@ describe('useDrawerAutoCollapse', () => {
     root.style.fontSize = `${ROOT_PX}px`;
     root.style.setProperty('--app-floor-min-w', `${FLOOR_REM}rem`);
     root.style.setProperty('--watchlist-panel-w', `${DRAWER_REM}rem`);
-    root.style.setProperty('--stock-panel-w', `${DRAWER_REM}rem`);
     useRightRailStore.setState({ activePanel: 'watchlist', lastPanel: 'watchlist' });
     setViewport(1600);
   });
@@ -43,7 +42,6 @@ describe('useDrawerAutoCollapse', () => {
     root.style.removeProperty('font-size');
     root.style.removeProperty('--app-floor-min-w');
     root.style.removeProperty('--watchlist-panel-w');
-    root.style.removeProperty('--stock-panel-w');
     localStorage.clear();
   });
 
@@ -51,7 +49,7 @@ describe('useDrawerAutoCollapse', () => {
     // 토큰이 실제로 읽히는지 — 이게 0 이면 아래 단언들이 전부 무의미해진다.
     const root = getComputedStyle(document.documentElement);
     expect(root.getPropertyValue('--app-floor-min-w').trim()).toBe(`${FLOOR_REM}rem`);
-    expect(THRESHOLD).toBe(1341);
+    expect(THRESHOLD).toBe(1386);
   });
 
   it('keeps the drawer open above the threshold', () => {
@@ -78,20 +76,14 @@ describe('useDrawerAutoCollapse', () => {
     expect(useRightRailStore.getState().activePanel).toBeNull();
   });
 
-  it.each(['watchlist', 'heatmap'] as const)('uses the wider stock panel token for %s', panel => {
-    document.documentElement.style.setProperty('--stock-panel-w', '22.5rem');
+  it.each(['watchlist', 'heatmap', 'screener', 'ranking', 'pattern', 'savedViews', 'signalAlerts'] as const)('uses the shared width threshold for %s', panel => {
     useRightRailStore.setState({ activePanel: panel });
-    setViewport(THRESHOLD + 1);
+    setViewport(THRESHOLD);
     render(<Probe />);
+    expect(useRightRailStore.getState().activePanel).toBe(panel);
+    setViewport(THRESHOLD - 1);
+    fireResize();
     expect(useRightRailStore.getState().activePanel).toBeNull();
-  });
-
-  it('keeps other panels at the original width threshold', () => {
-    document.documentElement.style.setProperty('--stock-panel-w', '22.5rem');
-    useRightRailStore.setState({ activePanel: 'screener' });
-    setViewport(THRESHOLD + 1);
-    render(<Probe />);
-    expect(useRightRailStore.getState().activePanel).toBe('screener');
   });
 
   it('respects a user re-opening the drawer at the same narrow width (one-time yield)', () => {

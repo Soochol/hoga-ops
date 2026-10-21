@@ -56,7 +56,7 @@ for (const fontSize of [16, 20]) {
     await first.click();
     await expect(first).toHaveAttribute('aria-current', 'true');
     const scale = fontSize / 16;
-    await expect(panel).toHaveCSS('width', `${360 * scale}px`);
+    await expect(panel).toHaveCSS('width', `${320 * scale}px`);
     const columnsHeader = panel.getByTestId('quote-columns-header');
     await expect(columnsHeader).toHaveText('종목명흐름가격등락률');
     const headerGeometry = await geometry(columnsHeader);
@@ -66,8 +66,8 @@ for (const fontSize of [16, 20]) {
       expect(headerGeometry[column].right).toBeCloseTo(rowGeometry[column].right, 3);
     }
     await panel.screenshot({ path: `/tmp/hoga-heatmap-four-columns-${fontSize}.png` });
-    for (const [width, gap, padding] of [[360, 8, 12], [280, 4, 8], [240, 2, 4]]) {
-      await page.addStyleTag({ content: `:root { --stock-panel-w: ${width / 16}rem !important; }` });
+    for (const [width, gap, padding] of [[360, 8, 12], [320, 4, 8], [280, 4, 8], [240, 2, 4]]) {
+      await page.addStyleTag({ content: `:root { --watchlist-panel-w: ${width / 16}rem !important; }` });
       await expect.poll(() => geometry(first).then(value => value.gap)).toBe(gap * scale);
       const [a, b] = await Promise.all([geometry(first), geometry(second)]);
       expect(a.padding).toBe(padding * scale);
@@ -87,9 +87,9 @@ for (const fontSize of [16, 20]) {
         await expect(header.locator('.quote-row-flow, .heatmap-group-percent')).toHaveCount(0);
         await expect(header).not.toContainText('%');
       }
-      if (width === 280) await panel.screenshot({ path: `/tmp/hoga-heatmap-columns-default-${fontSize}.png` });
+      if (width === 320) await panel.screenshot({ path: `/tmp/hoga-heatmap-columns-default-${fontSize}.png` });
       expect(a.height).toBeLessThanOrEqual(26 * scale);
-      if (width !== 280) expect(await panel.getByTestId('heatmap-drawer-scroll').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(width === 360);
+      if (width !== 280) expect(await panel.getByTestId('heatmap-drawer-scroll').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(width >= 320);
     }
     await panel.getByRole('button', { name: '종목 정렬', exact: true }).click();
     await panel.getByRole('button', { name: '그룹 정렬', exact: true }).click();
@@ -104,10 +104,10 @@ for (const fontSize of [16, 20]) {
     await expect.poll(() => geometry(second).then(value => value.flow.full && value.percent.full)).toBe(true);
     const wide = await geometry(first);
     const scroll = panel.getByTestId('heatmap-drawer-scroll');
-    await page.addStyleTag({ content: ':root { --stock-panel-w: 10rem !important; }' });
+    await page.addStyleTag({ content: ':root { --watchlist-panel-w: 10rem !important; }' });
     await expect.poll(() => scroll.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
     expect((await geometry(second)).flow.full).toBe(true);
-    await page.addStyleTag({ content: ':root { --stock-panel-w: 15rem !important; }' });
+    await page.addStyleTag({ content: ':root { --watchlist-panel-w: 15rem !important; }' });
     price = 12; percent = 1; expectedPrice = undefined;
     await page.clock.fastForward(11_000);
     await expect(second.locator('.quote-row-price')).toHaveCount(1);

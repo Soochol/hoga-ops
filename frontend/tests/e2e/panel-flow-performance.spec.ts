@@ -29,7 +29,7 @@ for (const source of ['watchlist', 'heatmap'] as const) {
     await expect(panel.locator('.quote-row-flow svg')).toHaveCount(400);
     const firstPaintMs = Math.round(performance.now() - started);
     expect(batches).toBe(1);
-    await expect(panel).toHaveCSS('width', '360px');
+    await expect(panel).toHaveCSS('width', '320px');
     const heading = panel.getByTestId('quote-columns-header');
     const top = (await heading.boundingBox())!.y;
     await panel.locator('[data-quote-nav]').evaluate(node => { node.scrollTop = 250; });
