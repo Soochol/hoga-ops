@@ -100,6 +100,77 @@ def test_parse_volume_negative_change_kept():
     assert rows[0].change_pct == -18.32  # 음수 부호 보존
 
 
+@pytest.mark.parametrize("kind,raw,field,expected", [
+    ("change", {"pred_pre": "+1,200"}, "change_won", 1200),
+    ("change", {"pred_pre": "--1,200"}, "change_won", -1200),
+    ("change", {"pred_pre": "1200", "pred_pre_sig": "5"}, "change_won", -1200),
+    ("change", {"pred_pre": "1200", "pred_pre_sig": "4"}, "change_won", -1200),
+    ("change", {"pred_pre": "0", "pred_pre_sig": "3"}, "change_won", 0),
+    ("change", {"pred_pre": "NaN"}, "change_won", None),
+    ("change", {}, "change_won", None),
+    ("volume", {"trde_qty": "98,420,001"}, "volume", 98420001),
+    ("volume", {"trde_qty": "0"}, "volume", 0),
+    ("volume", {"trde_qty": "-1"}, "volume", None),
+    ("volume", {"trde_qty": "1.5"}, "volume", None),
+    ("volume", {}, "volume", None),
+    ("surge", {"sdnin_rt": "+1,842.37"}, "volume_surge_pct", 1842.37),
+    ("surge", {"sdnin_rt": "-25.50"}, "volume_surge_pct", -25.5),
+    ("surge", {"sdnin_rt": "0"}, "volume_surge_pct", 0),
+    ("surge", {"sdnin_rt": "NaN"}, "volume_surge_pct", None),
+    ("surge", {"sdnin_rt": "Infinity"}, "volume_surge_pct", None),
+    ("surge", {}, "volume_surge_pct", None),
+])
+def test_ranking_metrics_keep_units_signs_zero_and_missing(kind, raw, field, expected):
+    from hoga.live.kiwoom_rankings import _KIND_SPEC
+
+    row = parse_rankings(kind, {_KIND_SPEC[kind].wrapper_key: [
+        {"stk_cd": "005930", "stk_nm": "삼성전자", **raw},
+    ]})[0]
+    assert getattr(row, field) == expected
+    assert all(getattr(row, other) is None for other in ("change_won", "volume", "volume_surge_pct") if other != field)
+
+
+@pytest.mark.parametrize("kind,field,expected", [
+    ("change", "change_won", -1200),
+    ("surge", "volume_surge_pct", 1842.37),
+    ("volume", "volume", 98420001),
+])
+def test_ranking_http_response_preserves_metric_and_nulls(monkeypatch, tmp_path, kind, field, expected):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from hoga.live import api, lifecycle
+    from hoga.live.kiwoom_rankings import _KIND_SPEC
+
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json={"return_code": 0, _KIND_SPEC[kind].wrapper_key: [
+            {"stk_cd": "005930", "stk_nm": "삼성전자", "pred_pre": "1200", "pred_pre_sig": "5",
+             "trde_qty": "98,420,001", "sdnin_rt": "+1842.37"},
+            {"stk_cd": "000660", "stk_nm": "SK하이닉스"},
+        ]})
+
+    fetcher = _fetcher(handler)
+    monkeypatch.setattr(api, "kiwoom_rankings_fetcher_instance", fetcher)
+    app = FastAPI()
+    app.include_router(api.build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    with TestClient(app) as client:
+        response = client.get("/api/live/rankings", params={"kind": kind})
+    assert response.status_code == 200
+    rows = response.json()["rows"]
+    assert rows[0][field] == expected
+    assert {key: rows[1][key] for key in ("change_won", "volume", "volume_surge_pct")} == {
+        "change_won": None, "volume": None, "volume_surge_pct": None,
+    }
+    assert len(calls) == 1
+    if kind == "surge":
+        assert json.loads(calls[0].content)["tm_tp"] == "1"
+        assert json.loads(calls[0].content)["tm"] == "1"
+    fetcher.close()
+
+
 def test_parse_all_four_wrapper_keys_resolve():
     assert len(parse_rankings("change", GOLDEN_CHANGE)) == 2
     assert len(parse_rankings("surge", GOLDEN_SURGE)) == 1

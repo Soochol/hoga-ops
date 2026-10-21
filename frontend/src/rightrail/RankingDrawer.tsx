@@ -28,6 +28,7 @@ import {
   type RankingRow,
 } from '../api/liveRankings';
 import { QuoteRow } from './QuoteRow';
+import { rankingMetricFor, type RankingMetric } from './rankingMetric';
 import { QuoteRowGroupMenu } from './QuoteRowGroupMenu';
 import {
   nextRankingSortMode,
@@ -93,6 +94,11 @@ function NetBuyAmount({ won, label }: { won: number | null | undefined; label: s
 
 function netBuyAmount(row: RankingRow, kind: RankingKind): number | null | undefined {
   return kind === 'program' ? row.program_net_buy_won : row.investor_net_buy_won;
+}
+
+function RankingMetricValue({ metric }: { metric: RankingMetric }) {
+  return <span className="ranking-metric flex-none text-right font-data tabular-nums text-xs text-fg-dim leading-tight"
+    title={metric.title}>{metric.text}</span>;
 }
 
 const MARKETS: { key: RankingMarket; label: string }[] = [
@@ -164,6 +170,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
   const handleActivate = useCallback((e?: JumpModifiers) => onActivate(row, e), [onActivate, row]);
   const handleContextMenu = useCallback(
     (e: React.MouseEvent<HTMLLIElement>) => onOpenMenu(row, e), [onOpenMenu, row]);
+  const metric = rankingMetricFor(row, kind);
   return (
     <QuoteRow
       columnLayout={columnLayout}
@@ -178,7 +185,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
       onClick={handleActivate}
       onContextMenu={handleContextMenu}
       leading={<RankSlot rank={row.rank} />}
-      beforePrice={kind === 'value' ? <TradeValue won={row.trade_value_won} />
+      beforePrice={metric ? <RankingMetricValue metric={metric} /> : kind === 'value' ? <TradeValue won={row.trade_value_won} />
         : netBuyLabel ? <NetBuyAmount won={netBuyAmount(row, kind)} label={netBuyLabel} /> : undefined}
       sortableRef={setNodeRef}
       dragListeners={listeners}
@@ -213,7 +220,8 @@ function RankingDragGhost({ ghost, columnLayout }: { ghost: ChartDropGhost; colu
       ariaLabel={ghost.name}
       testId="ranking-drag-ghost"
       leading={<RankSlot rank={ghost.rank} />}
-      beforePrice={ghost.tradeValueWon !== undefined ? <TradeValue won={ghost.tradeValueWon} />
+      beforePrice={ghost.rankingMetric ? <RankingMetricValue metric={ghost.rankingMetric} />
+        : ghost.tradeValueWon !== undefined ? <TradeValue won={ghost.tradeValueWon} />
         : ghost.netBuyLabel ? <NetBuyAmount won={ghost.netBuyWon} label={ghost.netBuyLabel} /> : undefined}
       onClick={() => {}}
     />
@@ -272,7 +280,7 @@ export function RankingDrawer() {
     detail: kind === 'value' ? rows.map(row => formatTradeValue(row.trade_value_won)) : netBuyLabel ? rows.flatMap(row => {
       const won = netBuyAmount(row, kind);
       return won == null ? ['—'] : [formatNetBuyAmount(Math.abs(won)), formatNetBuyAmount(-Math.abs(won))];
-    }) : [],
+    }) : rows.map(row => rankingMetricFor(row, kind)?.text ?? '—'),
   }), [rows, kind, netBuyLabel]);
   const columns = useQuoteColumns(columnCodes, columnQuotes, scrollRef, columnScope, extraFigures);
   const columnLayout = useMemo(() => ({ ...columns.layout,
@@ -281,8 +289,8 @@ export function RankingDrawer() {
     // Use the left gutter for the four-digit figure; the name stays at 2.5rem.
     paddingLeft: 'max(0px, calc(var(--quote-name-start) - var(--quote-rank-width) - var(--quote-rank-gap)))',
     '--quote-name-min': 'calc(6 * var(--text-xs))',
-    ...(kind === 'value' || netBuyLabel ? { '--quote-extra-width': 'var(--quote-detail-width)', '--quote-column-gaps': 3 } : {}),
-  }) as React.CSSProperties, [columns.layout, kind, netBuyLabel]);
+    '--quote-extra-width': 'var(--quote-detail-width)', '--quote-column-gaps': 3,
+  }) as React.CSSProperties, [columns.layout]);
 
   const captureAnchor = useCallback(() => {
     const scroller = scrollRef.current;
@@ -332,6 +340,7 @@ export function RankingDrawer() {
         tradeValueWon: kind === 'value' ? row.trade_value_won ?? null : undefined,
         netBuyWon: netBuyLabel ? netBuyAmount(row, kind) ?? null : undefined,
         netBuyLabel,
+        rankingMetric: rankingMetricFor(row, kind),
       } : null,
     );
   };

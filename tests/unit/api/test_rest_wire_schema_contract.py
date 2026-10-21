@@ -465,6 +465,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     RankingRowModel: frozenset({
         "rank", "code", "name", "price", "change_pct", "trade_value_won",
         "program_net_buy_won", "investor_net_buy_won",
+        "change_won", "volume", "volume_surge_pct",
     }),
     # 프론트 미러는 ``frontend/src/api/liveQuotes.ts`` 의 ``LiveQuote``.
     #

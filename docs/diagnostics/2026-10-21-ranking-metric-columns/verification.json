@@ -1,0 +1,102 @@
+{
+  "recordedAtKst": "2026-10-21T23:50:13.076172+09:00",
+  "baseCommit": "505c1df195fc15456b0223c21f352b97adf33005",
+  "implementationState": "Uncommitted working-tree changes; exact source and test inputs hashed below.",
+  "scope": "Ranking change/surge/volume tabs display signed won change, vendor one-minute-condition surge percent and share volume between name and price, without headers. Existing polling, pagination, sorting and drag behavior retained.",
+  "changedSourceSha256": {
+    "DESIGN.md": "ebe5d3f72e41c272a8a196cc28e9b582399ac0824ad84f8426aa21dd040e23eb",
+    "frontend/src/api/liveRankings.ts": "db5d6c628401e7241e378300cc18770dd75e86df4fa1e03207be60c658aa1017",
+    "frontend/src/rightrail/RankingColumns.css": "47157b13ee5f433647a4baeb7991402380b76450e5b1577f4d24f1e6ca3db1a8",
+    "frontend/src/rightrail/RankingDrawer.test.tsx": "489ba3ee66e9eb30ce075f0b6132e87018a2fb508c7cbae8e5bdf27bcded65e6",
+    "frontend/src/rightrail/RankingDrawer.tsx": "512aae2688156111b4134b6b7c845fe9dd734e08a516eae7eadfe1611d3023d7",
+    "frontend/src/rightrail/rankingMetric.test.ts": "39fb80faa90b71559f5e5d856ba7c63e7dc77428318330e28e9364b8b1283af9",
+    "frontend/src/rightrail/rankingMetric.ts": "4297105baf532d5afe74cb966586496f371482143d2980d2c9eec4e3d74c4e4e",
+    "frontend/src/rightrail/useChartDropDrag.ts": "e749cb29ca3b09c81def91caff532a8e3e97f33fed7ebb857917506a9a724c78",
+    "frontend/tests/e2e/ranking-column-layout.spec.ts": "5c4b126a3fed464bfb2a5e87b98a6e148b5b017f493418475d14aa6de47c62fc",
+    "hoga/live/api.py": "0586d636c3f3827b8d4fc2249c2d784b181c0d55019636cbcc6f76cce91e3b37",
+    "hoga/live/kiwoom_rankings.py": "8eae08508886de85aeac9b1b984311b4711f42f2d290c9bf93cce90fdd9ce8ce",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "a60e0fef2aed7deceb8531c32bbb89f7d7d42fcf018bbf84d0ceb0dd56fc4ec8",
+    "tests/unit/live/test_kiwoom_rankings.py": "0d15ece34983f116e8265f16311b50f226d1a0ec4d3109c06038cec38bdc2f8c"
+  },
+  "inputFingerprint": {
+    "sha256": "726e45abd419e4842862c327c9d8d0ae16f6a862e4caff148b20e585993fee9d",
+    "files": 2579,
+    "gitPathspecs": [
+      "frontend/src",
+      "frontend/tests",
+      "frontend/public",
+      "frontend/index.html",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/vite.config.ts",
+      "frontend/vitest.config.ts",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.test.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.node.json",
+      "hoga",
+      "tests",
+      "pyproject.toml",
+      "uv.lock",
+      "ruff.toml",
+      ".python-version"
+    ],
+    "algorithm": "SHA256 of sorted path + NUL + raw SHA256(file bytes)"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_kiwoom_rankings.py tests/unit/live/test_ranking_pagination.py tests/unit/live/test_program_rankings.py tests/unit/live/test_investor_rankings.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "134 passed; parser signs, exact integer quantities, zero/missing/nonfinite values and actual HTTP serialization verified; metric response required only the original ranking TR request"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; application, unit-test and E2E TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/rightrail/RankingDrawer.test.tsx src/rightrail/rankingMetric.test.ts src/api/liveRankings.test.tsx src/rightrail/rankingSort.test.ts src/rightrail/useQuoteColumns.test.tsx",
+      "result": "60 passed across 5 files"
+    },
+    {
+      "command": "cd frontend && npx playwright test ranking-column-layout.spec.ts ranking-pagination.spec.ts --reporter=list",
+      "result": "9 passed; 16px/20px fonts, header absence, four-column geometry, zero/missing data, precise tooltips, ghost alignment, retained widths after polling, responsive overflow and pagination"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed on final application source"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_rest_wire_schema_contract.py::test_live_wire_models_match_frontend_mirror_snapshot",
+      "result": "Guard rejected intentional omission of volume_surge_pct from expected fields (exit 1); restored source passed (1 test)"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "python": "3.14.7",
+    "backendPort": 20379,
+    "frontendPort": 21379,
+    "workers": 1,
+    "credentials": "blank vendor credentials from Playwright config"
+  },
+  "visualReview": "Inspected the worktree-specific change.png, surge.png and volume.png screenshots; header-free single rows and right-aligned figures verified.",
+  "limits": [
+    "Vendor metric mapping follows the official Kiwoom examples examined in the preceding investigation. Values and HTTP serialization were verified with fixture responses; no live vendor call or token issuance was performed.",
+    "The supplier surge percent is passed through rather than recomputed. Tooltip identifies the existing tm_tp=1, tm=1 request condition.",
+    "Changes are in this worktree; running user servers and checkout were preserved."
+  ]
+}

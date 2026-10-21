@@ -1945,6 +1945,9 @@ class RankingRowModel(BaseModel):
     trade_value_won: int | None = None
     program_net_buy_won: int | None = None
     investor_net_buy_won: int | None = None
+    change_won: int | None = None
+    volume: int | None = None
+    volume_surge_pct: float | None = None
 
 
 class RankingsResponse(BaseModel):
@@ -3423,6 +3426,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                     price=r.price, change_pct=r.change_pct, trade_value_won=r.trade_value_won,
                     program_net_buy_won=r.program_net_buy_won,
                     investor_net_buy_won=r.investor_net_buy_won,
+                    change_won=r.change_won, volume=r.volume, volume_surge_pct=r.volume_surge_pct,
                 )
                 for i, r in enumerate(rows, start=1)
             ],

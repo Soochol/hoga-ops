@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DragEndEvent, DragMoveEvent, DragStartEvent } from '@dnd-kit/core';
 import { dropPoint, isPointOnChart, resolveDropOnChart, useEntryDragStore } from '../state/entryDrag';
 import { useDragPointPublisher } from '../state/useDragPointPublisher';
+import type { RankingMetric } from './rankingMetric';
 
 /** 고스트에 그릴 스냅샷. drag start 에 한 번 찍고 드래그 내내 갱신하지 않는다 —
  *  손에 든 것이 도중에 바뀌면 산만하고, 데이터 동결과도 같은 규율이다.
@@ -16,6 +17,7 @@ export type ChartDropGhost = {
   tradeValueWon?: number | null;
   netBuyWon?: number | null;
   netBuyLabel?: string;
+  rankingMetric?: RankingMetric;
 };
 
 /**

@@ -7,3 +7,4 @@
 }
 .ranking-net-buy { flex: none; width: var(--quote-detail-width); text-align: right; white-space: nowrap; }
 .ranking-trade-value { width: var(--quote-detail-width); white-space: nowrap; }
+.ranking-metric { width: var(--quote-detail-width); white-space: nowrap; }
