@@ -1,6 +1,6 @@
 /* Opt-in on measured rail lists; the portal clone receives the same variables. */
 .quote-row-fluid, .quote-columns-min-width {
-  min-width: calc(var(--quote-name-start, 2.5rem) + var(--quote-name-min, 6 * var(--text-xs)) + var(--quote-flow-width, 0px) + var(--quote-price-width) + var(--quote-percent-width) + var(--quote-column-gaps, 2) * var(--quote-column-gap) + var(--quote-right-padding));
+  min-width: calc(var(--quote-name-start, 2.5rem) + var(--quote-name-min, 6 * var(--text-xs)) + var(--quote-flow-width, 0px) + var(--quote-extra-width, 0px) + var(--quote-price-width) + var(--quote-percent-width) + var(--quote-column-gaps, 2) * var(--quote-column-gap) + var(--quote-right-padding));
 }
 .stock-flow-panel, .quote-row-flow-layout { --quote-flow-width: 64px; --quote-column-gaps: 3; }
 .quote-columns-header { position: sticky; top: 0; z-index: 20; height: var(--list-row-min-h); }
