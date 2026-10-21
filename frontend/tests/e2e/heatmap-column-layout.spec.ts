@@ -58,7 +58,7 @@ for (const fontSize of [16, 20]) {
     const scale = fontSize / 16;
     await expect(panel).toHaveCSS('width', `${320 * scale}px`);
     const columnsHeader = panel.getByTestId('quote-columns-header');
-    await expect(columnsHeader).toHaveText('종목명흐름가격등락률');
+    await expect(columnsHeader).toHaveText('종목명가격등락률흐름');
     const headerGeometry = await geometry(columnsHeader);
     const rowGeometry = await geometry(first);
     for (const column of ['name', 'flow', 'price', 'percent'] as const) {
@@ -76,8 +76,9 @@ for (const fontSize of [16, 20]) {
       expect(a.percent.right).toBeCloseTo(b.percent.right, 3);
       expect(a.flow.width).toBe(64);
       expect(a.price.right).toBeCloseTo(b.price.right, 3);
-      expect(a.flow.right).toBeLessThanOrEqual(a.price.left);
-      expect(a.flow.right).toBeCloseTo(b.flow.right, 3);
+      expect(a.name.right).toBeLessThanOrEqual(a.price.left);
+      expect(a.price.right).toBeLessThanOrEqual(a.percent.left);
+      expect(a.percent.right).toBeLessThanOrEqual(a.flow.left);
       for (const value of [a.price, b.price, a.percent, b.percent]) {
         expect(value.full).toBe(true);
         expect(value.align).toBe('right');

@@ -26,7 +26,7 @@ async function geometry(row: Locator) {
 }
 
 for (const fontSize of [16, 20]) {
-  test(`관심종목 종목명·흐름·가격·등락률 4열·반응형 여백·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
+  test(`관심종목 종목명·가격·등락률·흐름 4열·반응형 여백·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
     await installLiveMocks(page);
     let flowRequests = 0;
@@ -59,7 +59,7 @@ for (const fontSize of [16, 20]) {
     const scale = fontSize / 16;
     await expect(panel).toHaveCSS('width', `${320 * scale}px`);
     const columnsHeader = panel.getByTestId('quote-columns-header');
-    await expect(columnsHeader).toHaveText('종목명흐름가격등락률');
+    await expect(columnsHeader).toHaveText('종목명가격등락률흐름');
     const headerGeometry = await geometry(columnsHeader);
     const rowGeometry = await geometry(first);
     for (const column of ['name', 'flow', 'price', 'percent'] as const) {
@@ -77,8 +77,9 @@ for (const fontSize of [16, 20]) {
       expect(a.percent.right).toBeCloseTo(b.percent.right, 3);
       expect(a.flow.width).toBe(64);
       expect(a.price.right).toBeCloseTo(b.price.right, 3);
-      expect(a.flow.right).toBeLessThanOrEqual(a.price.left);
-      expect(a.flow.right).toBeCloseTo(b.flow.right, 3);
+      expect(a.name.right).toBeLessThanOrEqual(a.price.left);
+      expect(a.price.right).toBeLessThanOrEqual(a.percent.left);
+      expect(a.percent.right).toBeLessThanOrEqual(a.flow.left);
       for (const value of [a.price, b.price, a.percent, b.percent]) {
         expect(value.full).toBe(true);
         expect(value.align).toBe('right');
