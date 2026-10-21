@@ -44,8 +44,8 @@ import { useLiveVenueStore } from '../state/liveVenue';
 /**
  * 순위 패널 (특징주) — 앱 전역 RightRail 형제(스크리너/관심종목과 동일 계열).
  * 키움 rkinfo 4종과 프로그램·기관·외국인 순매수 금액을 전환하고, 행 클릭은 activeCode 로 차트
- * 종목을 바꾼다(useJumpToLive). 시안 A(세그먼트 리스트) 확정 — 기준값 열은 없다
- * (순서가 곧 기준값, 그릴링 결정 7). 드래그로 특정 차트 창에 드롭하면 그 창만
+ * 종목을 바꾼다(useJumpToLive). 거래대금 탭은 사용자 승인으로 금액 열을 표시하고,
+ * 다른 탭은 기존 배치를 유지한다. 드래그로 특정 차트 창에 드롭하면 그 창만
  * 종목 교체(resolveDropOnChart, 스크리너와 동일 seam).
  *
  * 데이터는 10s 폴링(순매수 30s) — 장외엔 60s로 낮추고 "장 외" 라벨을 단다.
@@ -68,6 +68,29 @@ const KINDS: { key: RankingKind; label: string }[] = [
 const NET_BUY_AMOUNT_FORMAT = new Intl.NumberFormat('ko-KR', {
   minimumFractionDigits: 2, maximumFractionDigits: 2,
 });
+const TRADE_VALUE_FORMAT = new Intl.NumberFormat('ko-KR', {
+  minimumFractionDigits: 1, maximumFractionDigits: 1,
+});
+function formatTradeValue(won: number | null | undefined) {
+  return won == null ? '—' : TRADE_VALUE_FORMAT.format(won / 100_000_000);
+}
+function TradeValue({ won }: { won: number | null | undefined }) {
+  return <span className="ranking-trade-value flex-none text-right font-data tabular-nums text-xs text-fg leading-tight"
+    title={won == null ? undefined : `${won.toLocaleString('ko-KR')}원`}>
+    {formatTradeValue(won)}
+  </span>;
+}
+
+function ValueColumnsHeader({ layout }: { layout: React.CSSProperties }) {
+  return <div role="group" aria-label="거래대금 목록 열" data-testid="ranking-value-columns-header" style={layout}
+    className="quote-columns-header quote-row-fluid flex items-center border-b border-border bg-bg text-xs text-fg-dim">
+    <RankSlot />
+    <span className="quote-row-name flex-1 min-w-0">종목</span>
+    <span className="ranking-trade-value flex-none text-right">거래대금(억)</span>
+    <span className="quote-row-price flex-none text-right">가격</span>
+    <span className="quote-row-percent flex-none text-right">등락률</span>
+  </div>;
+}
 
 function formatNetBuyAmount(won: number | null | undefined) {
   return won == null ? '—' : `${won > 0 ? '+' : ''}${NET_BUY_AMOUNT_FORMAT.format(won / 100_000_000)}억`;
@@ -164,6 +187,7 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
       onClick={handleActivate}
       onContextMenu={handleContextMenu}
       leading={<RankSlot rank={row.rank} />}
+      beforePrice={kind === 'value' ? <TradeValue won={row.trade_value_won} /> : undefined}
       nameDetail={netBuyLabel ? <NetBuyAmount won={netBuyAmount(row, kind)} label={netBuyLabel} /> : undefined}
       sortableRef={setNodeRef}
       dragListeners={listeners}
@@ -198,6 +222,7 @@ function RankingDragGhost({ ghost, columnLayout }: { ghost: ChartDropGhost; colu
       ariaLabel={ghost.name}
       testId="ranking-drag-ghost"
       leading={<RankSlot rank={ghost.rank} />}
+      beforePrice={ghost.tradeValueWon !== undefined ? <TradeValue won={ghost.tradeValueWon} /> : undefined}
       nameDetail={ghost.netBuyLabel ? <NetBuyAmount won={ghost.netBuyWon} label={ghost.netBuyLabel} /> : undefined}
       onClick={() => {}}
     />
@@ -253,7 +278,8 @@ export function RankingDrawer() {
   const extraFigures = useMemo(() => ({
     // Reserve four ranks from the start so expanding through 5000 never moves names.
     rank: ['8888', ...rows.map(row => String(row.rank))],
-    detail: netBuyLabel ? rows.flatMap(row => {
+    price: kind === 'value' ? ['가격'] : [],
+    detail: kind === 'value' ? ['거래대금(억)', ...rows.map(row => formatTradeValue(row.trade_value_won))] : netBuyLabel ? rows.flatMap(row => {
       const won = netBuyAmount(row, kind);
       return won == null ? ['—'] : [formatNetBuyAmount(Math.abs(won)), formatNetBuyAmount(-Math.abs(won))];
     }) : [],
@@ -264,8 +290,9 @@ export function RankingDrawer() {
     '--quote-name-start': '2.5rem',
     // Use the left gutter for the four-digit figure; the name stays at 2.5rem.
     paddingLeft: 'max(0px, calc(var(--quote-name-start) - var(--quote-rank-width) - var(--quote-rank-gap)))',
-    '--quote-name-min': 'max(calc(6 * var(--text-xs)), var(--quote-detail-width))',
-  }) as React.CSSProperties, [columns.layout]);
+    '--quote-name-min': kind === 'value' ? 'calc(6 * var(--text-xs))' : 'max(calc(6 * var(--text-xs)), var(--quote-detail-width))',
+    ...(kind === 'value' ? { '--quote-extra-width': 'var(--quote-detail-width)', '--quote-column-gaps': 3 } : {}),
+  }) as React.CSSProperties, [columns.layout, kind]);
 
   const captureAnchor = useCallback(() => {
     const scroller = scrollRef.current;
@@ -312,6 +339,7 @@ export function RankingDrawer() {
       ev,
       row ? {
         code: row.code, name: row.name, price: row.price, pct: row.change_pct, rank: row.rank,
+        tradeValueWon: kind === 'value' ? row.trade_value_won ?? null : undefined,
         netBuyWon: netBuyLabel ? netBuyAmount(row, kind) ?? null : undefined,
         netBuyLabel,
       } : null,
@@ -433,6 +461,7 @@ export function RankingDrawer() {
       </RailDrawerSection>
 
       <RailDrawerBody testId="ranking-scroll" quoteNav scrollRef={scrollRef}>
+        {kind === 'value' && <ValueColumnsHeader layout={columnLayout} />}
         {/* 토글은 켰는데 심볼 마스터가 없어 거르지 못한 경우. 배지가 없으면 사용자에겐
             "ETF 제외가 안 먹는" 상태로만 보인다(원인 단서 0). 스크리너 경고와 같은 관용구. */}
         {data?.etfFilterUnavailable && (

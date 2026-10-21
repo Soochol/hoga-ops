@@ -52,6 +52,8 @@ export interface QuoteRowProps {
   nameTooltip?: string;
   /** 종목명 아래 보조 지표. 가격·등락률 컬럼과 행의 탐색/드래그를 유지한다. */
   nameDetail?: React.ReactNode;
+  /** Optional metric column between the name and price; its host owns sizing. */
+  beforePrice?: React.ReactNode;
   // --- drag (선택 패널용; 미전달 시 비-드래그 동작) ---
   sortableRef?: (node: HTMLElement | null) => void;
   sortableStyle?: Pick<React.CSSProperties, 'transform' | 'transition'>;
@@ -98,7 +100,7 @@ function formatPct(pct: number | null): string {
 
 export function QuoteRow({
   name, code, price, flow, pct, changeWon: _changeWon, expectedPrice, expectedPct,
-  active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, columnLayout, nameTooltip, nameDetail,
+  active, ariaLabel, testId, onClick, leading, indentContent, trailingAction, compact = false, columnLayout, nameTooltip, nameDetail, beforePrice,
   sortableRef, sortableStyle, dragListeners, dragAttributes, dragActivatorRef, dragging,
   draggingAppearance = 'lifted', dropIndicator,
   onContextMenu, onDelete, selected, selectionId, onSelectionKeyDown, indented, flash, matched,
@@ -217,11 +219,12 @@ export function QuoteRow({
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
       {flow !== undefined && <PanelStockSparkline flow={flow} name={name} />}
+      {beforePrice}
       <span title={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>
       <span className={`quote-row-percent flex-none ${compact ? 'w-[3rem]' : 'w-[3.5rem]'} text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
-        {shownPct != null ? formatPct(shownPct) : flow !== undefined ? '—' : ''}
+        {shownPct != null ? formatPct(shownPct) : flow !== undefined || beforePrice != null ? '—' : ''}
       </span>
       {trailingAction != null && (
         <span className="flex items-center justify-center" style={{ minWidth: '1.25rem' }}>

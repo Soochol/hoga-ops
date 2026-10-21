@@ -3,7 +3,7 @@ import type { LiveQuote } from '../api/liveQuotes';
 
 const COLUMNS = ['price', 'percent', 'rank', 'detail'] as const;
 type Figures = Record<typeof COLUMNS[number], string[]>;
-type ExtraFigures = Partial<Record<'rank' | 'detail', readonly string[]>>;
+type ExtraFigures = Partial<Record<typeof COLUMNS[number], readonly string[]>>;
 type QuoteColumnValue = Pick<LiveQuote, 'change_pct' | 'expected_price' | 'expected_change_pct'> & { price: number | null };
 const initialFigures = (): Figures => ({ price: ['—'], percent: ['+88.88%', '-88.88%'], rank: [], detail: [] });
 const patterns = (values: string[]) => [...new Set(values.map(value => value.replace(/\d/g, '8')))];
@@ -18,7 +18,7 @@ export function useQuoteColumns(codes: readonly string[], quotes: ReadonlyMap<st
     // an actual result with a different condition identity starts a new budget.
     const key = scopeKey ?? budget.scopeKey;
     const retained = key === budget.scopeKey ? budget.figures : initialFigures();
-    const price = [...retained.price], percent = [...retained.percent];
+    const price = [...retained.price, ...(extraFigures?.price ?? [])], percent = [...retained.percent, ...(extraFigures?.percent ?? [])];
     for (const code of codes) {
       const quote = quotes.get(code);
       if (!quote) continue;
