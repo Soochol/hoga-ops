@@ -30,6 +30,17 @@ async function metrics(page: Page) {
       heights: rows.map(row => row.getBoundingClientRect().height),
       cells: rows.map(row => row.children.length),
       right: rows.map(row => Array.from(row.querySelectorAll('td')).slice(1).map(cell => cell.getBoundingClientRect().right)),
+      textEdges: rows.map(row => Array.from(row.querySelectorAll('td')).slice(1).map(cell => {
+        const walker = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT);
+        const nodes: Node[] = [];
+        while (walker.nextNode()) if (walker.currentNode.textContent?.trim()) nodes.push(walker.currentNode);
+        const range = document.createRange();
+        range.setStart(nodes[0], 0);
+        const last = nodes[nodes.length - 1];
+        range.setEnd(last, last.textContent!.length);
+        return { text: cell.textContent, textRight: range.getBoundingClientRect().right,
+          cellRight: cell.getBoundingClientRect().right - parseFloat(getComputedStyle(cell).paddingRight) };
+      })),
       font: getComputedStyle(rows[0].children[1]).fontSize };
   });
 }
@@ -43,8 +54,9 @@ test('estimate columns respond to the window, keeping every round on one line', 
     const sample = await metrics(page);
     expect(sample.fits).toBe(true);
     expect(sample.scroll).toBe(false);
-    expect(sample.cells).toEqual([4, 4, 4]);
+    expect(sample.cells).toEqual([4, 4, 4, 4, 4]);
     for (const row of sample.right) expect(row).toEqual(sample.right[0]);
+    for (const row of sample.textEdges) for (const cell of row) expect(cell.textRight).toBeCloseTo(cell.cellRight, 1);
     samples.push(sample);
     if (width === 400) await page.screenshot({ path: info.outputPath('estimate-fluid-400.png') });
   }
@@ -55,7 +67,27 @@ test('estimate columns respond to the window, keeping every round on one line', 
   await page.getByRole('button', { name: '금액(억원)', exact: true }).click();
   await expect(page.getByText('단위: 억원')).toBeVisible();
   await expect(page.getByRole('table')).toContainText('-5.4');
-  expect((await metrics(page)).fits).toBe(true);
+  for (const width of [720, 560, 400, 320, 720]) {
+    await page.locator('.live-window').evaluate((host, width) => { (host as HTMLElement).style.width = `${width}px`; }, width);
+    await expect(page.locator('tbody td').nth(1)).toHaveCSS('padding-right', width < 480 ? '1px' : width < 640 ? '4px' : '8px');
+    const sample = await metrics(page);
+    expect(sample.fits).toBe(true);
+    expect(sample.scroll).toBe(false);
+    expect(sample.textEdges).toHaveLength(5);
+    expect(sample.textEdges.flat().map(cell => cell.text)).toEqual([
+      '-', '-', '-', '-54', '+36', '-18', '0', '0', '0', '+0.5', '-0.4', '+0.2', '-5.4', '+3.6', '-1.8',
+    ]);
+    for (const row of sample.textEdges) {
+      expect(row).toHaveLength(3);
+      for (const cell of row) expect(cell.textRight).toBeCloseTo(cell.cellRight, 1);
+    }
+    samples.push(sample);
+    if (width === 320) await page.screenshot({ path: info.outputPath('estimate-amount-320.png') });
+  }
+  await page.getByRole('button', { name: '수량(주)', exact: true }).click();
+  const restored = await metrics(page);
+  expect(restored.right).toEqual(samples[0].right);
+  for (const row of restored.textEdges) for (const cell of row) expect(cell.textRight).toBeCloseTo(cell.cellRight, 1);
   await info.attach('resize-metrics', { body: JSON.stringify(samples), contentType: 'application/json' });
 });
 
