@@ -87,33 +87,56 @@ test('daily program keeps one row and shares aligned columns across dates and to
   await info.attach('resize-metrics', { body: JSON.stringify(samples), contentType: 'application/json' });
 });
 
-test('intraday values stay complete as the window narrows', async ({ page }, info) => {
+test('intraday quantity and amount text ends align as the window narrows', async ({ page }, info) => {
   await mount(page);
   await page.getByRole('button', { name: '당일 누적', exact: true }).click();
-  const samples = [];
-  for (const width of [720, 560, 400, 320]) {
-    await resize(page, width);
-    await expect(page.locator('.program-metric').nth(1)).toHaveCSS('padding-left', width < 480 ? '1px' : width < 640 ? '4px' : '8px');
-    const sample = await page.getByLabel('프로그램 누적 요약').evaluate(scroller => ({
-      scroll: scroller.scrollWidth > scroller.clientWidth + 1,
-      values: Array.from(scroller.querySelectorAll('.program-metric > span:last-child')).map(el => ({
-        fits: el.scrollWidth <= el.clientWidth + 1,
-        overflow: getComputedStyle(el).overflow,
-        font: getComputedStyle(el).fontSize,
-        text: el.textContent,
-      })),
-    }));
-    expect(sample.scroll).toBe(false);
-    expect(sample.values).toHaveLength(3);
-    for (const value of sample.values) {
-      expect(value.fits).toBe(true);
-      expect(value.overflow).toBe('visible');
+  for (const measure of ['수량', '금액', '수량']) {
+    await page.getByRole('button', { name: measure, exact: true }).click();
+    const samples = [];
+    for (const width of [720, 560, 400, 320]) {
+      await resize(page, width);
+      await expect(page.locator('.program-metric').nth(1)).toHaveCSS('padding-left', width < 480 ? '1px' : width < 640 ? '4px' : '8px');
+      const sample = await page.getByLabel('프로그램 누적 요약').evaluate(scroller => {
+        const textRight = (el: Element) => {
+          const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          const nodes: Node[] = [];
+          while (walker.nextNode()) if (walker.currentNode.textContent?.trim()) nodes.push(walker.currentNode);
+          const range = document.createRange();
+          range.setStart(nodes[0], 0);
+          const last = nodes[nodes.length - 1];
+          range.setEnd(last, last.textContent!.length);
+          return range.getBoundingClientRect().right;
+        };
+        return {
+          scroll: scroller.scrollWidth > scroller.clientWidth + 1,
+          values: Array.from(scroller.querySelectorAll('.program-metric > span:last-child')).map(el => {
+            const metric = el.parentElement!;
+            const edge = metric.getBoundingClientRect().right - parseFloat(getComputedStyle(metric).paddingRight);
+            return {
+              fits: el.scrollWidth <= el.clientWidth + 1,
+              overflow: getComputedStyle(el).overflow,
+              font: getComputedStyle(el).fontSize,
+              text: el.textContent,
+              aligned: Math.abs(textRight(el) - edge) < 0.1,
+              headingAligned: Math.abs(textRight(metric.firstElementChild!) - edge) < 0.1,
+            };
+          }),
+        };
+      });
+      expect(sample.scroll).toBe(false);
+      expect(sample.values).toHaveLength(3);
+      for (const value of sample.values) {
+        expect(value.fits).toBe(true);
+        expect(value.overflow).toBe('visible');
+        expect(value.aligned).toBe(true);
+        expect(value.headingAligned).toBe(true);
+      }
+      samples.push(sample);
     }
-    samples.push(sample);
+    for (const sample of samples) expect(sample.values).toEqual(samples[0].values);
+    await page.screenshot({ path: info.outputPath(`program-intraday-${measure}-320.png`) });
   }
-  for (const sample of samples) expect(sample.values).toEqual(samples[0].values);
   await expect(page.getByTestId('program-metric-strip')).toContainText('-123,456,789');
-  await page.screenshot({ path: info.outputPath('program-intraday-320.png') });
 });
 
 test('long raw values scroll without clipping while date and chart remain in place', async ({ page }) => {
