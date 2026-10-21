@@ -1,0 +1,94 @@
+{
+  "request": {
+    "conditions": [
+      {
+        "id": "deployment-volume-check",
+        "type": "new_high_vol",
+        "params": {
+          "timeframe": "1m",
+          "period": 100,
+          "lookback": 5,
+          "include_open_bar": true
+        }
+      }
+    ],
+    "universe": {
+      "scopes": [
+        "watchlist",
+        "heatmap"
+      ]
+    },
+    "basis": "intraday",
+    "limit": 1
+  },
+  "started_at": "2026-10-21T10:14:53+0900",
+  "finished_at": "2026-10-21T10:15:13+0900",
+  "broker_subscribe_messages_sent": 0,
+  "observed_event": {
+    "type": "screener_volume_changed",
+    "condition_ids": [
+      "deployment-volume-check"
+    ]
+  },
+  "initial_scan": {
+    "duration_seconds": 3.497,
+    "returned_rows": 0,
+    "total": 334,
+    "complete": 64,
+    "realtime": {
+      "prepared": 64,
+      "receiving": 20
+    },
+    "incomplete_reasons": {
+      "fetch_budget_exhausted": 270
+    }
+  },
+  "followup_scan": {
+    "duration_seconds": 3.314,
+    "returned_rows": 1,
+    "total": 334,
+    "complete": 121,
+    "realtime": {
+      "prepared": 128,
+      "receiving": 74
+    },
+    "incomplete_reasons": {
+      "live_bar_unconfirmed": 7,
+      "fetch_budget_exhausted": 206
+    }
+  },
+  "deployment_commit": "ed74ebb19edd94fbe87c84b17f035972685df708",
+  "feature_pr": "https://github.com/Soochol/hoga-ops/pull/2202",
+  "operational_checkout": "/home/dev/code/hoga-ops",
+  "health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "ed74ebb19"
+  },
+  "frontend": {
+    "origin": "http://localhost:5173",
+    "ws_event_handler_served": true,
+    "readable_volume_summary_served": true,
+    "realtime_coverage_label_served": true,
+    "vite_client_reload_logged": true
+  },
+  "backend": {
+    "origin": "http://localhost:8000",
+    "wire_realtime_coverage": true,
+    "wire_volume_is_lower_bound": true,
+    "reload": "Existing single-worker uvicorn reloader retained. Old worker gracefully stopped; new worker healthy after roughly 32 seconds. No manual process termination.",
+    "collector_mode": "process",
+    "connected_accounts": 6,
+    "subscribed_count": 337,
+    "capture_healthy": true
+  },
+  "desktop": {
+    "profile": "local-vite",
+    "launcher": "/home/dev/.local/bin/ticklane",
+    "launcher_path_preserved": true,
+    "gtk_launch_exit_code": 0,
+    "visible_window_verified": false,
+    "ui_verification_limitation": "orca-ide: command not found; no native UI automation or direct visible-window verification claimed."
+  },
+  "scope": "Actual existing KRX collector -> parent buffer -> screener WS signal -> HTTP follow-up verified. Event may indicate crossing or bar rollover; no tick-to-result latency or specific crossing ground truth claim. Saved user screeners were not changed. Initial comparison-data preparation still obeys the 64-new-code scan budget."
+}
