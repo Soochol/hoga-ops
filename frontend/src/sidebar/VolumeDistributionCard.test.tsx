@@ -242,6 +242,72 @@ describe('VolumeDistributionCard 확장축', () => {
   const lastCloseMs = sessionOpenMs + 10.5 * 3600 * 1000;    // 19:30
   const axisSpanMs = lastCloseMs - axisStartMs;
 
+  it('09시 첫 가격 전의 비어 있는 확장 세션을 제거하고 막대·가격선·눈금을 함께 맞춘다', () => {
+    render(<VolumeDistributionCard profile={{ ...profile, session_open_ms: axisStartMs }} cursorMs={null}
+      closePoints={[
+        { t_ms: axisStartMs, close: 0 },
+        { t_ms: sessionOpenMs, close: 100 },
+        { t_ms: sessionOpenMs + 30 * 60_000, close: 110 },
+        { t_ms: sessionOpenMs + 60 * 60_000, close: 120 },
+      ]} color="#64748B" maxColor="#EAB308" />);
+    const timeAxis = screen.getByTestId('volume-distribution-time-axis');
+    expect(timeAxis).toHaveTextContent('09:0009:3010:00');
+    expect(timeAxis).not.toHaveTextContent('08:00');
+    expect(screen.getByTestId('volume-distribution-close-graph').querySelector('path'))
+      .toHaveAttribute('d', 'M 0.00 100.00 L 50.00 50.00 L 100.00 0.00');
+    const window = screen.getByTestId('volume-distribution-bar-window');
+    expect(window).toHaveStyle({ left: '0%', right: '0%' });
+  });
+
+  it('첫 관측이 09:15이면 그 시각부터 시작하고 마지막 가격까지만 표시한다', () => {
+    render(<VolumeDistributionCard profile={{ ...profile, last_trade_ms: sessionOpenMs + 120 * 60_000 }}
+      cursorMs={null} closePoints={[
+        { t_ms: sessionOpenMs + 60 * 60_000, close: 120 },
+        { t_ms: axisStartMs, close: NaN },
+        { t_ms: sessionOpenMs + 15 * 60_000, close: 100 },
+      ]} color="#64748B" maxColor="#EAB308" />);
+    const timeAxis = screen.getByTestId('volume-distribution-time-axis');
+    expect(timeAxis).toHaveTextContent('09:15');
+    expect(timeAxis).toHaveTextContent('10:00');
+    expect(timeAxis).not.toHaveTextContent('09:00');
+    expect(timeAxis).not.toHaveTextContent('11:00');
+    expect(screen.getByTestId('volume-distribution-close-graph').querySelector('path'))
+      .toHaveAttribute('d', 'M 0.00 100.00 L 100.00 0.00');
+  });
+
+  it('중간 데이터 공백은 시간 비율 그대로 보존한다', () => {
+    render(<VolumeDistributionCard profile={profile} cursorMs={null} closePoints={[
+      { t_ms: sessionOpenMs, close: 100 },
+      { t_ms: sessionOpenMs + 15 * 60_000, close: 110 },
+      { t_ms: sessionOpenMs + 60 * 60_000, close: 120 },
+    ]} color="#64748B" maxColor="#EAB308" />);
+    expect(screen.getByTestId('volume-distribution-close-graph').querySelector('path'))
+      .toHaveAttribute('d', 'M 0.00 100.00 L 25.00 50.00 L 100.00 0.00');
+  });
+
+  it('가격이 없어도 전체 분포의 관측 범위로 축을 고정해 호버 집계에 따라 줄이지 않는다', () => {
+    const full = { ...profile, last_trade_ms: sessionOpenMs + 60 * 60_000,
+      bins: profile.bins.map(bin => ({ ...bin, first_trade_ms: sessionOpenMs + 15 * 60_000 })) };
+    const props = { axisProfile: full, color: '#64748B', maxColor: '#EAB308' };
+    const view = render(<VolumeDistributionCard {...props} profile={full} cursorMs={null} />);
+    const labels = screen.getByTestId('volume-distribution-time-axis').textContent;
+    expect(labels).toContain('09:15');
+    expect(labels).toContain('10:00');
+    view.rerender(<VolumeDistributionCard {...props}
+      profile={{ ...full, last_trade_ms: sessionOpenMs + 20 * 60_000 }} cursorMs={sessionOpenMs + 20 * 60_000} />);
+    expect(screen.getByTestId('volume-distribution-time-axis').textContent).toBe(labels);
+    expect(screen.getByTestId('volume-distribution-cursor-marker')).toHaveStyle({ left: `${100 / 9}%` });
+  });
+
+  it('단일 가격은 해당 시각만 표시하고 예정 종료까지 빈 공간을 늘리지 않는다', () => {
+    render(<VolumeDistributionCard profile={profile} cursorMs={null}
+      closePoints={[{ t_ms: sessionOpenMs + 15 * 60_000, close: 110 }]}
+      color="#64748B" maxColor="#EAB308" />);
+    expect(screen.getByTestId('volume-distribution-time-axis')).toHaveTextContent('09:15');
+    expect(screen.getByTestId('volume-distribution-time-axis').querySelectorAll('span')).toHaveLength(1);
+    expect(screen.queryByTestId('volume-distribution-close-graph')).toBeNull();
+  });
+
   function renderExtended() {
     return render(
       <VolumeDistributionCard
@@ -254,7 +320,6 @@ describe('VolumeDistributionCard 확장축', () => {
         ]}
         color="#64748B"
         maxColor="#EAB308"
-        axisStartMs={axisStartMs}
       />,
     );
   }

@@ -12,16 +12,8 @@ type Props = {
   closePoints?: readonly ClosePoint[];
   color: string;
   maxColor: string;
-  /**
-   * x 축 원점. 생략하면 `profile.session_open_ms`(= 집계 창의 시작).
-   *
-   * venue=UN 은 분봉 표시창이 08:00~20:00 확장창이라(liveVenuePolicy) 종가 라인이
-   * NXT 프리·애프터까지 이어지는데, bar 는 정규장 연속체결만 담는다. 두 창이
-   * 다를 때 이 prop 으로 축을 넓혀 라인을 온전히 보이게 하고, bar 는 자기 집계
-   * 창(`profile.session_open_ms`~`session_close_ms`)에 해당하는 가로 구간에만
-   * 그린다 — 막대의 시작·끝이 곧 "이 값이 어느 시간대의 것인지" 를 말한다.
-   */
-  axisStartMs?: number;
+  /** Full-day observations keep the time axis fixed while profile follows hover. */
+  axisProfile?: DayVolumeDistribution | null;
 };
 
 type ClosePoint = {
@@ -42,7 +34,7 @@ export function VolumeDistributionCard({
   closePoints = EMPTY_CLOSE_POINTS,
   color,
   maxColor,
-  axisStartMs,
+  axisProfile = profile,
 }: Props) {
   const [axisElement, setAxisElement] = useState<HTMLDivElement | null>(null);
   const [axisMetrics, setAxisMetrics] = useState({ height: 240, fontSize: 10.5 });
@@ -62,15 +54,26 @@ export function VolumeDistributionCard({
     return () => observer.disconnect();
   }, [axisElement]);
   const priceMin = profile?.price_min, priceMax = profile?.price_max;
-  const open = profile?.session_open_ms, close = profile?.session_close_ms, last = profile?.last_trade_ms;
-  const geometryFrom = open == null ? null : Math.min(axisStartMs ?? open, open);
-  const geometryEnd = geometryFrom == null ? null : Math.max(geometryFrom, closePoints.at(-1)?.t_ms ?? last ?? close ?? geometryFrom);
+  const observedPrices = useMemo(() => closePoints
+    .filter(point => Number.isFinite(point.t_ms) && Number.isFinite(point.close) && point.close > 0)
+    .sort((a, b) => a.t_ms - b.t_ms), [closePoints]);
+  const timeRange = useMemo(() => {
+    if (observedPrices.length > 0) return { from: observedPrices[0].t_ms, to: observedPrices.at(-1)!.t_ms };
+    if (!axisProfile) return null;
+    const starts = axisProfile.bins.flatMap(bin => bin.qty > 0 && bin.first_trade_ms != null
+      && Number.isFinite(bin.first_trade_ms) ? [bin.first_trade_ms] : []);
+    const from = starts.length ? Math.min(...starts) : axisProfile.session_open_ms;
+    const to = axisProfile.last_trade_ms ?? axisProfile.session_close_ms;
+    return { from, to: Math.max(from, to) };
+  }, [observedPrices, axisProfile]);
+  const geometryFrom = timeRange?.from ?? null;
+  const geometryEnd = timeRange?.to ?? null;
   const closeGeometry = useMemo(() => {
     if (priceMin == null || priceMax == null || geometryFrom == null || geometryEnd == null) return { coords: null, path: null };
-    const coords = buildCloseCoords({ points: closePoints, priceMin, priceMax, sessionOpenMs: geometryFrom, axisEndMs: geometryEnd });
+    const coords = buildCloseCoords({ points: observedPrices, priceMin, priceMax, sessionOpenMs: geometryFrom, axisEndMs: geometryEnd });
     const path = coords ? coords.map(([x, y], i) => `${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`).join(' ') : null;
     return { coords, path };
-  }, [closePoints, priceMin, priceMax, geometryFrom, geometryEnd]);
+  }, [observedPrices, priceMin, priceMax, geometryFrom, geometryEnd]);
   if (profile === undefined) {
     return <SidebarState>—</SidebarState>;
   }
@@ -80,11 +83,9 @@ export function VolumeDistributionCard({
 
   const maxQty = Math.max(0, ...profile.bins.map((bin) => bin.qty));
   const rows = [...profile.bins].reverse();
-  // 축 원점은 집계 창보다 앞설 수 있다(확장창). 뒤로는 밀지 않는다 — 축이 집계
-  // 창보다 늦게 시작하면 bar 구간이 축 밖으로 나가 버린다.
-  const axisFromMs = Math.min(axisStartMs ?? profile.session_open_ms, profile.session_open_ms);
-  const lastCloseMs = closePoints.length > 0 ? closePoints[closePoints.length - 1]?.t_ms : null;
-  const axisEndMs = Math.max(axisFromMs, lastCloseMs ?? profile.last_trade_ms ?? profile.session_close_ms);
+  // One observed time domain drives the price path, bars, cursor and labels.
+  const axisFromMs = timeRange?.from ?? profile.session_open_ms;
+  const axisEndMs = timeRange?.to ?? axisFromMs;
   const axisSpanMs = axisEndMs - axisFromMs;
   // 커서 마커는 **축** 전체에서 유효하다 — 정규장 밖(NXT 시간대) 을 가리켜도
   // 라인은 거기 있으므로 마커만 사라지면 읽는 사람이 위치를 잃는다.
@@ -123,16 +124,14 @@ export function VolumeDistributionCard({
     ? priceTickPcts(axisMetrics.height, axisMetrics.fontSize, pocPct)
       .map((pct) => ({ pct, label: formatPrice(profile.price_max - (pct / 100) * priceRange) }))
     : [];
-  // 데이터가 세션 시작 시각뿐이면(축 스팬 0) 예정 세션 종료를 눈금 폴백으로 쓴다.
-  // 이 경우 종가 라인·커서 마커는 어차피 비활성이라 축 불일치가 생기지 않는다.
-  const tickEndMs = axisEndMs > axisFromMs ? axisEndMs : profile.session_close_ms;
-  const timeTicks = tickEndMs > axisFromMs
+  // A single observed point gets one label rather than an empty future session.
+  const timeTicks = axisSpanMs > 0
     ? [
       axisFromMs,
-      axisFromMs + (tickEndMs - axisFromMs) / 2,
-      tickEndMs,
+      axisFromMs + axisSpanMs / 2,
+      axisEndMs,
     ].map((ms) => unixMsToKSTClock(ms).slice(0, 5))
-    : null;
+    : [unixMsToKSTClock(axisFromMs).slice(0, 5)];
   return (
     <div
       data-testid="volume-distribution-card"
@@ -280,8 +279,10 @@ export function VolumeDistributionCard({
             {timeTicks && (
               <>
                 <span className="absolute left-0 top-0">{timeTicks[0]}</span>
-                <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
-                <span className="absolute right-0 top-0">{timeTicks[2]}</span>
+                {timeTicks.length > 1 && <>
+                  <span className="absolute left-1/2 top-0 -translate-x-1/2">{timeTicks[1]}</span>
+                  <span className="absolute right-0 top-0">{timeTicks[2]}</span>
+                </>}
               </>
             )}
           </div>
