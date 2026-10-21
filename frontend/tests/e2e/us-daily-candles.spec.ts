@@ -1,5 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
+import type { IChartApi } from 'lightweight-charts';
+
+async function axisPrice(page: Page) {
+  return page.evaluate(() => {
+    const chart = (window as Window & { __liveCharts?: Map<string, IChartApi> }).__liveCharts?.get('us-daily-test');
+    const candle = chart?.panes().flatMap(p => p.getSeries()).find(s => s.seriesType() === 'Candlestick');
+    return candle?.priceFormatter().format(1234567.8912);
+  });
+}
 
 const indexLabels = { NASDAQ_COMPOSITE: '나스닥 종합', SP500: 'S&P 500', SOX: '필라델피아 반도체지수' };
 const candles = Array.from({ length: 120 }, (_, index) => {
@@ -51,7 +60,8 @@ for (const id of Object.keys(indexLabels)) {
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(`/live?index=${id}`);
     const frame = page.locator('.live-window-chart');
-    await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+    await expect(frame.getByText('121.23 pt', { exact: false }).first()).toBeVisible();
+    await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
     await expect(frame.getByRole('status')).toHaveCount(0);
     await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(4);
     await expect.poll(() => requests.some(url => url.includes(`index_id=${id}&timeframe=D`))).toBe(true);
@@ -62,12 +72,14 @@ for (const id of Object.keys(indexLabels)) {
       await button.click();
       await expect(button).toHaveAttribute('aria-pressed', 'true');
       await expect.poll(() => requests.some(url => url.includes(`index_id=${id}&timeframe=${tf}`))).toBe(true);
-      await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+      await expect(frame.getByText('121.23 pt', { exact: false }).first()).toBeVisible();
+      await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
       await expect(frame.getByRole('status')).toHaveCount(0);
     }
     await page.reload();
     await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: '월', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+    await expect(frame.getByText('121.23 pt', { exact: false }).first()).toBeVisible();
+    await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
     await expect(frame.getByRole('status')).toHaveCount(0);
     await frame.screenshot({ path: testInfo.outputPath(`${id}-monthly.png`) });
     expect(errors).toEqual([]);
@@ -86,7 +98,8 @@ test('US stock search preserves exchange/ticker and never requests domestic stoc
   await page.getByRole('option', { name: /엔비디아/ }).click();
   const frame = page.locator('.live-window-chart');
   await expect(frame.getByRole('status')).toHaveCount(0);
-  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
+  await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
   await expect.poll(() => requests.some(url => url.includes('us-stock-daily-candles?exchange=NASDAQ&symbol=NVDA'))).toBe(true);
   expect(requests.filter(url => /\/(past-daily-candles|quotes|stock-limits|investor-net|series)\?/.test(url) && /NVDA/.test(url))).toEqual([]);
   await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button')).toHaveCount(4);
@@ -97,14 +110,16 @@ test('US stock search preserves exchange/ticker and never requests domestic stoc
     await button.click();
     await expect(button).toHaveAttribute('aria-pressed', 'true');
     await expect.poll(() => requests.some(url => url.includes('us-stock-daily-candles?exchange=NASDAQ&symbol=NVDA') && url.includes(`timeframe=${tf}`))).toBe(true);
-    await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+    await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
+    await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
     await expect(frame.getByRole('status')).toHaveCount(0);
   }
   // Reload restores both the US instrument and monthly timeframe.
   await page.reload();
   await expect(frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: '월', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect(frame.getByRole('status')).toHaveCount(0);
-  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
+  await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
 });
 
 
@@ -114,10 +129,12 @@ test('preferred-share URL keeps broker case and underscore across restore', asyn
   page.on('request', request => requests.push(request.url()));
   await page.goto('/live?market=US&exchange=NYSE&symbol=AHT_pd');
   const frame = page.locator('.live-window-chart');
-  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
+  await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
   await expect.poll(() => requests.some(url => url.includes('exchange=NYSE&symbol=AHT_pd'))).toBe(true);
   await page.reload();
-  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
+  await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
   expect(requests.filter(url => url.includes('symbol=AHT_PD'))).toEqual([]);
 });
 
@@ -126,10 +143,12 @@ test('US daily partial data keeps its retry action and removes the notice after 
   await setup(page, () => partial ? 'partial' : 'normal');
   await page.goto('/live?market=US&exchange=NASDAQ&symbol=NVDA');
   const frame = page.locator('.live-window-chart');
-  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
+  await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
   await expect(frame.getByRole('status')).toHaveText('과거 일부 조회됨더 조회');
   partial = false;
   await frame.getByRole('button', { name: '더 조회', exact: true }).click();
   await expect(frame.getByRole('status')).toHaveCount(0);
-  await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+  await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
+  await expect.poll(() => axisPrice(page)).toBe('1,234,567.89');
 });

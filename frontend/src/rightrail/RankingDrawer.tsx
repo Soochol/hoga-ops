@@ -44,8 +44,8 @@ import { useLiveVenueStore } from '../state/liveVenue';
 /**
  * 순위 패널 (특징주) — 앱 전역 RightRail 형제(스크리너/관심종목과 동일 계열).
  * 키움 rkinfo 4종과 프로그램·기관·외국인 순매수 금액을 전환하고, 행 클릭은 activeCode 로 차트
- * 종목을 바꾼다(useJumpToLive). 거래대금 탭은 사용자 승인으로 금액 열을 표시하고,
- * 다른 탭은 기존 배치를 유지한다. 드래그로 특정 차트 창에 드롭하면 그 창만
+ * 종목을 바꾼다(useJumpToLive). 거래대금·순매수 금액은 억원 단위 정수로
+ * 종목명과 가격 사이 한 줄에 표시한다. 드래그로 특정 차트 창에 드롭하면 그 창만
  * 종목 교체(resolveDropOnChart, 스크리너와 동일 seam).
  *
  * 데이터는 10s 폴링(순매수 30s) — 장외엔 60s로 낮추고 "장 외" 라벨을 단다.
@@ -66,27 +66,29 @@ const KINDS: { key: RankingKind; label: string }[] = [
 ];
 
 const NET_BUY_AMOUNT_FORMAT = new Intl.NumberFormat('ko-KR', {
-  minimumFractionDigits: 2, maximumFractionDigits: 2,
+  maximumFractionDigits: 0,
 });
 const TRADE_VALUE_FORMAT = new Intl.NumberFormat('ko-KR', {
-  minimumFractionDigits: 1, maximumFractionDigits: 1,
+  maximumFractionDigits: 0,
 });
 function formatTradeValue(won: number | null | undefined) {
-  return won == null ? '—' : TRADE_VALUE_FORMAT.format(won / 100_000_000);
+  return won == null ? '—' : `${TRADE_VALUE_FORMAT.format(won / 100_000_000)}억`;
 }
 function TradeValue({ won }: { won: number | null | undefined }) {
-  return <span className="ranking-trade-value flex-none text-right font-data tabular-nums text-xs text-fg leading-tight"
+  return <span className="ranking-trade-value flex-none text-right font-data tabular-nums text-xs text-fg-dim leading-tight"
     title={won == null ? undefined : `${won.toLocaleString('ko-KR')}원`}>
     {formatTradeValue(won)}
   </span>;
 }
 
 function formatNetBuyAmount(won: number | null | undefined) {
-  return won == null ? '—' : `${won > 0 ? '+' : ''}${NET_BUY_AMOUNT_FORMAT.format(won / 100_000_000)}억`;
+  if (won == null) return '—';
+  const rounded = Math.round(Math.abs(won) / 100_000_000);
+  return `${rounded === 0 ? '' : won > 0 ? '+' : '-'}${NET_BUY_AMOUNT_FORMAT.format(rounded)}억`;
 }
 function NetBuyAmount({ won, label }: { won: number | null | undefined; label: string }) {
   const amount = formatNetBuyAmount(won);
-  return <span className="ranking-net-buy font-data tabular-nums text-fg-dim" title={`${label} 순매수 ${amount}`}>{amount}</span>;
+  return <span className="ranking-net-buy text-xs leading-tight font-data tabular-nums text-fg-dim" title={`${label} 순매수 ${amount}`}>{amount}</span>;
 }
 
 function netBuyAmount(row: RankingRow, kind: RankingKind): number | null | undefined {
@@ -176,8 +178,8 @@ const DraggableRankingRow = memo(function DraggableRankingRow({
       onClick={handleActivate}
       onContextMenu={handleContextMenu}
       leading={<RankSlot rank={row.rank} />}
-      beforePrice={kind === 'value' ? <TradeValue won={row.trade_value_won} /> : undefined}
-      nameDetail={netBuyLabel ? <NetBuyAmount won={netBuyAmount(row, kind)} label={netBuyLabel} /> : undefined}
+      beforePrice={kind === 'value' ? <TradeValue won={row.trade_value_won} />
+        : netBuyLabel ? <NetBuyAmount won={netBuyAmount(row, kind)} label={netBuyLabel} /> : undefined}
       sortableRef={setNodeRef}
       dragListeners={listeners}
       dragAttributes={attributes}
@@ -211,8 +213,8 @@ function RankingDragGhost({ ghost, columnLayout }: { ghost: ChartDropGhost; colu
       ariaLabel={ghost.name}
       testId="ranking-drag-ghost"
       leading={<RankSlot rank={ghost.rank} />}
-      beforePrice={ghost.tradeValueWon !== undefined ? <TradeValue won={ghost.tradeValueWon} /> : undefined}
-      nameDetail={ghost.netBuyLabel ? <NetBuyAmount won={ghost.netBuyWon} label={ghost.netBuyLabel} /> : undefined}
+      beforePrice={ghost.tradeValueWon !== undefined ? <TradeValue won={ghost.tradeValueWon} />
+        : ghost.netBuyLabel ? <NetBuyAmount won={ghost.netBuyWon} label={ghost.netBuyLabel} /> : undefined}
       onClick={() => {}}
     />
   );
@@ -278,9 +280,9 @@ export function RankingDrawer() {
     '--quote-name-start': '2.5rem',
     // Use the left gutter for the four-digit figure; the name stays at 2.5rem.
     paddingLeft: 'max(0px, calc(var(--quote-name-start) - var(--quote-rank-width) - var(--quote-rank-gap)))',
-    '--quote-name-min': kind === 'value' ? 'calc(6 * var(--text-xs))' : 'max(calc(6 * var(--text-xs)), var(--quote-detail-width))',
-    ...(kind === 'value' ? { '--quote-extra-width': 'var(--quote-detail-width)', '--quote-column-gaps': 3 } : {}),
-  }) as React.CSSProperties, [columns.layout, kind]);
+    '--quote-name-min': 'calc(6 * var(--text-xs))',
+    ...(kind === 'value' || netBuyLabel ? { '--quote-extra-width': 'var(--quote-detail-width)', '--quote-column-gaps': 3 } : {}),
+  }) as React.CSSProperties, [columns.layout, kind, netBuyLabel]);
 
   const captureAnchor = useCallback(() => {
     const scroller = scrollRef.current;

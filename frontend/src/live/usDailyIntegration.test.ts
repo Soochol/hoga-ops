@@ -113,7 +113,14 @@ describe('US daily chart identity and capability boundaries', () => {
       candles: [{ trading_date: '20240607', t_ms: 1717718400000, open: 119.77, high: 121.6917, low: 118.022, close: 120.888, volume: 0 }] });
     expect(bundle.candles[0].close).toBe(120.888);
     expect(bundle.segments[0].date).toBe('20240607');
-    expect(formatInstrumentPrice(121.6917, bundle.code)).toBe('121.6917');
+    expect(formatInstrumentPrice(121.6917, bundle.code)).toBe('121.69');
+    expect(formatInstrumentPrice(120, bundle.code)).toBe('120.00');
+    expect(formatInstrumentPrice(1234567.8912, bundle.code)).toBe('1,234,567.89');
+    for (const code of ['index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX']) {
+      expect(formatInstrumentPrice(121.6917, code)).toBe('121.69');
+      expect(formatInstrumentPrice(120, code)).toBe('120.00');
+      expect(formatInstrumentPrice(1234567.8912, code)).toBe('1,234,567.89');
+    }
     expect(instrumentPriceUnit(bundle.code)).toBe(' USD');
     expect(instrumentPriceUnit('index:SP500')).toBe(' pt');
   });

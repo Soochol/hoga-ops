@@ -65,6 +65,20 @@ function renderTip(chart: never) {
 }
 
 describe('CandleTooltip', () => {
+  it.each(['us-stock:NASDAQ:NVDA', 'index:NASDAQ_COMPOSITE', 'index:SP500', 'index:SOX'])(
+    'shows %s OHLC and price changes with exactly two decimals', (code) => {
+      const { chart, fire } = makeChart();
+      const candles = [C(1_000_000, 120, 121, 119, 120, 10), C(1_060_000, 120, 121.6917, 118.022, 120.888, 20)];
+      render(<CandleTooltip chart={chart} bundle={{ code, candles } as never}
+        axis={axis} paneSeries={new Map() as never} timeframe="1m" />);
+      fire({ point: { x: 100, y: 50 }, time: 1060 });
+      const tip = screen.getByTestId('candle-tooltip');
+      for (const price of ['120.00', '121.69', '118.02', '120.89', '+0.89']) expect(tip).toHaveTextContent(price);
+      expect(tip).not.toHaveTextContent('121.6917');
+      expect(candles[1].close).toBe(120.888);
+    },
+  );
+
   it('토글 OFF 면 렌더 안 함', () => {
     useChartPrefsStore.setState({ candleTooltipEnabled: false });
     const { chart } = makeChart();

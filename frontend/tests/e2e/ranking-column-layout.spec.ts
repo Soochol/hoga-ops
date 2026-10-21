@@ -12,7 +12,7 @@ async function geometry(row: Locator) {
       const node = element.querySelector<HTMLElement>(selector)!;
       const box = node.getBoundingClientRect(), style = getComputedStyle(node);
       const text = document.createRange(); text.selectNodeContents(node);
-      return { left: box.left - origin.left, right: box.right - origin.left, width: box.width,
+      return { left: box.left - origin.left, right: box.right - origin.left, width: box.width, top: box.top - origin.top, height: box.height,
         full: node.scrollWidth <= node.clientWidth + 1 && text.getBoundingClientRect().width <= box.width + 0.5,
         align: style.textAlign };
     };
@@ -80,12 +80,12 @@ for (const fontSize of [16, 20]) {
     await expect(panel).toHaveCSS('width', `${320 * fontSize / 16}px`);
     await expect(header).toHaveCount(0);
     const first = panel.getByTestId('ranking-row-100000'), second = panel.getByTestId('ranking-row-100001');
-    await expect(first.locator('.ranking-trade-value')).toHaveText('1,234.6');
-    await expect(second.locator('.ranking-trade-value')).toHaveText('31,192.0');
+    await expect(first.locator('.ranking-trade-value')).toHaveText('1,235억');
+    await expect(second.locator('.ranking-trade-value')).toHaveText('31,192억');
     await expect(second.locator('.ranking-trade-value')).toHaveAttribute('title', '3,119,200,000,000원');
     const missing = panel.getByTestId('ranking-row-100002');
     for (const selector of ['.ranking-trade-value', '.quote-row-price', '.quote-row-percent']) await expect(missing.locator(selector)).toHaveText('—');
-    await expect(panel.getByTestId('ranking-row-100003').locator('.ranking-trade-value')).toHaveText('0.0');
+    await expect(panel.getByTestId('ranking-row-100003').locator('.ranking-trade-value')).toHaveText('0억');
     const [a, b] = await Promise.all([geometry(first), geometry(second)]);
     for (const value of [a, b]) {
       expect(value.name.left).toBe(40 * fontSize / 16);
@@ -101,18 +101,18 @@ for (const fontSize of [16, 20]) {
     await cloneMatches(page, second);
     amount = 123_456_789_012_345; price = 123456789012; percent = -1234.56;
     await page.clock.fastForward(11_000);
-    await expect(second.locator('.ranking-trade-value')).toHaveText('1,234,567.9');
+    await expect(second.locator('.ranking-trade-value')).toHaveText('1,234,568억');
     const wide = await geometry(second);
     expect(wide.trade!.full && wide.price.full && wide.percent.full).toBe(true);
     await expect.poll(() => scroll.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
     amount = 100_000_000; price = 12; percent = 1;
     await page.clock.fastForward(11_000);
-    await expect(second.locator('.ranking-trade-value')).toHaveText('1.0');
+    await expect(second.locator('.ranking-trade-value')).toHaveText('1억');
     expect((await geometry(second)).trade!.width).toBe(wide.trade!.width);
     await panel.getByRole('button', { name: '등락률 정렬', exact: true }).click();
     await expect(second.getByTestId('ranking-rank')).toHaveText('2');
     await panel.getByRole('button', { name: 'ETF 제외', exact: true }).click();
-    await expect(second.locator('.ranking-trade-value')).toHaveText('1.0');
+    await expect(second.locator('.ranking-trade-value')).toHaveText('1억');
     expect((await geometry(second)).trade!.width).toBe(wide.trade!.width);
     await panel.getByRole('button', { name: '거래량', exact: true }).click();
     await expect(header).toHaveCount(0);
@@ -190,22 +190,24 @@ for (const fontSize of [16, 20]) {
     for (const label of ['프로그램', '기관', '외국인']) {
       amount = 12345678901234;
       await panel.getByRole('button', { name: label, exact: true }).click();
-      await expect(second.locator('.ranking-net-buy')).toHaveText('-123,456.79억');
+      await expect(second.locator('.ranking-net-buy')).toHaveText('-123,457억');
       const [a, b] = await Promise.all([geometry(first), geometry(second)]);
       expect(a.net!.full && b.net!.full).toBe(true);
       expect(a.net!.align).toBe('right');
       expect(a.net!.right).toBeCloseTo(b.net!.right, 3);
-      expect(b.net!.right).toBeCloseTo(b.name.right, 3);
+      expect(b.net!.left).toBeGreaterThanOrEqual(b.name.right);
+      expect(b.price.left).toBeGreaterThanOrEqual(b.net!.right);
+      expect(b.net!.top + b.net!.height / 2).toBeCloseTo(b.name.top + b.name.height / 2, 3);
       await panel.screenshot({ path: `/tmp/hoga-ranking-${label}-${fontSize}.png` });
       if (label === '프로그램') await cloneMatches(page, second);
       amount = 1e8;
       await page.clock.fastForward(31_000);
-      await expect(second.locator('.ranking-net-buy')).toHaveText('-1.00억');
+      await expect(second.locator('.ranking-net-buy')).toHaveText('-1억');
       expect((await geometry(second)).detailWidth).toBe(b.detailWidth);
     }
     const detailWidth = (await geometry(second)).detailWidth;
     await panel.getByRole('combobox', { name: '시장' }).selectOption('kospi');
-    await expect(second.locator('.ranking-net-buy')).toHaveText('-1.00억');
+    await expect(second.locator('.ranking-net-buy')).toHaveText('-1억');
     await expect.poll(() => geometry(second).then(value => value.detailWidth)).toBeLessThan(detailWidth);
     expect(errors).toEqual([]);
   });

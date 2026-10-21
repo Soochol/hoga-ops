@@ -16,7 +16,7 @@ async function measure(page: Page) {
     const series = chart?.panes().flatMap(p => p.getSeries()).find(s => s.seriesType() === 'Candlestick') as ISeriesApi<'Candlestick'> | undefined;
     const rows = series?.data().filter(r => 'close' in r) ?? [];
     const last = rows.at(-1);
-    return { count: rows.length, last, range: chart?.timeScale().getVisibleLogicalRange(), width: chart?.timeScale().width(), latestX: last ? chart?.timeScale().timeToCoordinate(last.time) : null };
+    return { axisPrice: series?.priceFormatter().format(1234567.8912), count: rows.length, last, range: chart?.timeScale().getVisibleLogicalRange(), width: chart?.timeScale().width(), latestX: last ? chart?.timeScale().timeToCoordinate(last.time) : null };
   }, windowId);
 }
 async function setup(page: Page, options: { stale?: () => boolean; midnight?: boolean } = {}) {
@@ -60,8 +60,9 @@ for (const [exchange, symbol] of [['NASDAQ', 'NVDA'], ['NASDAQ', 'AAPL'], ['NYSE
     await page.clock.runFor(500);
     await expect(frame.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
     const expected = evidence.responses.find(r => r.exchange === exchange && r.symbol === symbol && r.timeframe === '1m')!.candles.at(-1)!;
-    await expect(frame.getByText(`${expected.close.toLocaleString('en-US', { maximumFractionDigits: 4 })} USD`, { exact: false }).first()).toBeVisible();
+    await expect(frame.getByText(`${expected.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`, { exact: false }).first()).toBeVisible();
     const initial = await measure(page);
+    expect(initial.axisPrice).toBe('1,234,567.89');
     // Multi-day axes compress non-trading gaps; compare price and counts here,
     // and use the NY/KST fixture test below for the real epoch assertion.
     expect(initial.last).toMatchObject({ close: expected.close });
@@ -97,7 +98,7 @@ for (const [exchange, symbol] of [['NASDAQ', 'NVDA'], ['NASDAQ', 'AAPL'], ['NYSE
       for (const label of ['일', '주', '월']) {
         await frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true }).click();
         await expect(frame.getByRole('status')).toHaveCount(0);
-        await expect(frame.getByText('121.2345 USD', { exact: false }).first()).toBeVisible();
+        await expect(frame.getByText('121.23 USD', { exact: false }).first()).toBeVisible();
       }
     }
     expect(requests.filter(url => /\/(past-candles|past-daily-candles|screener-daily-candles|quotes|series|stock-limits|investor-net)\?/.test(url) && url.includes(symbol))).toEqual([]);

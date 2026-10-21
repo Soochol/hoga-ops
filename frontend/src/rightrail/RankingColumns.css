@@ -5,5 +5,5 @@
   margin-right: calc(var(--quote-rank-gap) - var(--quote-column-gap));
   white-space: nowrap;
 }
-.ranking-net-buy { display: block; text-align: right; white-space: nowrap; }
+.ranking-net-buy { flex: none; width: var(--quote-detail-width); text-align: right; white-space: nowrap; }
 .ranking-trade-value { width: var(--quote-detail-width); white-space: nowrap; }

@@ -1,4 +1,5 @@
 import { formatKoreanInt } from '../../util/koreanNumber';
+import { formatUsPrice } from '../../live/instrumentPriceFormat';
 import {
   CandlestickSeries,
   type CandlestickData,
@@ -152,7 +153,7 @@ export const CANDLE_SPEC = {
           priceFormat,
         };
       },
-      renderOptions: (ctx) => ({ priceFormat: ctx.decimalPrices ? { type: 'price', precision: 4, minMove: 0.0001 } : priceFormat }),
+      renderOptions: (ctx) => ({ priceFormat: ctx.decimalPrices ? { type: 'custom', formatter: formatUsPrice, minMove: 0.01 } : priceFormat }),
       data: projectCandleCached,
       afterAdd: (series) => {
         series.priceScale().applyOptions({

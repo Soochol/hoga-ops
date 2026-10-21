@@ -14,7 +14,7 @@ async function measurements(page: Page) {
     const series = chart?.panes().flatMap(p => p.getSeries()).find(s => s.seriesType() === 'Candlestick') as ISeriesApi<'Candlestick'> | undefined;
     const rows = series?.data().filter(r => 'close' in r) ?? [];
     const last = rows.at(-1);
-    return { count: rows.length, last, range: chart?.timeScale().getVisibleLogicalRange(), width: chart?.timeScale().width(), latestX: last ? chart?.timeScale().timeToCoordinate(last.time) : null };
+    return { axisPrice: series?.priceFormatter().format(1234567.8912), count: rows.length, last, range: chart?.timeScale().getVisibleLogicalRange(), width: chart?.timeScale().width(), latestX: last ? chart?.timeScale().timeToCoordinate(last.time) : null };
   }, windowId);
 }
 
@@ -57,11 +57,12 @@ for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX']) {
     await expect.poll(async () => (await measurements(page)).count).toBe(102);
     await expect(frame.getByRole('status')).toHaveCount(0);
     const expected = evidence.responses.find(r => r.index_id === id && r.timeframe === '1m')!.candles.at(-1)!;
-    await expect(frame.getByText(`${expected.close.toLocaleString('en-US')} pt`, { exact: false }).first()).toBeVisible();
+    await expect(frame.getByText(`${expected.close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} pt`, { exact: false }).first()).toBeVisible();
     // Fake time must advance rAF/reveal timers before testing the painted chart.
     await page.clock.runFor(1_000);
     await expect(frame.getByTestId('chart-reveal-cover')).toHaveCSS('opacity', '0');
     const initial = await measurements(page);
+    expect(initial.axisPrice).toBe('1,234,567.89');
     expect(initial.last).toMatchObject({ time: expected.t_ms / 1000, close: expected.close });
     expect(initial.latestX).toBeGreaterThan(0);
     expect(initial.latestX!).toBeLessThan(initial.width!);
@@ -92,7 +93,7 @@ for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX']) {
     await expect(frame.getByRole('button', { name: '분봉 선택 열기: 5분', exact: true })).toBeVisible();
     for (const label of ['일', '주', '월']) {
       await frame.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true }).click();
-      await expect(frame.getByText('121.2345 pt', { exact: false }).first()).toBeVisible();
+      await expect(frame.getByText('121.23 pt', { exact: false }).first()).toBeVisible();
       await expect(frame.getByRole('status')).toHaveCount(0);
     }
     expect(requests.filter(url => /\/(past-candles|past-daily-candles|screener-daily-candles|index-investor-net|quotes|series)\?/.test(url) && new RegExp(id).test(url))).toEqual([]);
