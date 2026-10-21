@@ -16,6 +16,7 @@ interface NewOrderInput {
   settingsOpen: boolean; locked: boolean; stored: boolean; singlePrice: boolean;
   hasBook: boolean; fresh: boolean; quantity: number | null;
   brokerBlocked?: string | null;
+  bookIssue?: OrderNotice;
 }
 
 /** Block invalid commands and report the reason through the order status bar. */
@@ -32,7 +33,7 @@ export function newOrderIssue(input: NewOrderInput): OrderNotice | null {
   if (input.locked) return { title: '주문 이동 중', message: '진행 중인 드래그를 마친 후 신규 주문을 넣으세요.', tone: 'neutral' };
   if (input.stored) return { title: '신규 주문 불가', message: '저장된 호가는 조회만 가능합니다.', tone: 'warn' };
   if (input.singlePrice) return { title: '신규 주문 불가', message: '현재 표시 중인 시간외 단일가 호가에서는 지정가 주문을 지원하지 않습니다.', tone: 'warn' };
-  if (!input.hasBook) return { title: '주문 대기', message: '실시간 호가를 기다리고 있습니다.', tone: 'warn' };
+  if (!input.hasBook) return input.bookIssue ?? { title: '주문 대기', message: '실시간 호가를 기다리고 있습니다.', tone: 'warn' };
   if (!input.fresh) return { title: '주문 대기', message: '실시간 호가가 오래되었습니다. 최신 호가를 기다리고 있습니다.', tone: 'warn' };
   if (input.quantity == null || !validOrderInput(input.quantity, 'quantity')) return {
     title: '신규 주문 불가', message: '주문 수량은 1주 이상 10억주 이하의 정수로 입력하세요.', tone: 'warn',

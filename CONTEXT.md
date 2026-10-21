@@ -851,6 +851,16 @@ _Avoid_: 거래대금을 종가×거래량으로 (— 평균가×거래량); 기
 이름 붙은 `{conditions, universe}` 의 영속 사본 — 사용자가 빌더에서 만든 조건검색을 저장/목록/이름변경/삭제(CRUD)한다. 목록에서 선택하면 빌더에 **로드만** 되고(자동 조회 X), `조회` 로 실행한다(스테이트리스 — `/scan` 에 현재 빌더 상태 POST; `/saves/{id}/run` 없음). 영속은 **Watchlist 패턴**(파일=SSOT, `<data_dir>/screener/saves.json`, `atomic_write_json` + `asyncio.Lock` + `schema_version` + 손상 격리). `SavedScreener.id` 는 서버 uuid4(이름변경과 무관)이고, 각 조건 leaf 의 `id` 는 프론트 React key/저장 라운드트립용 클라이언트 nanoid 로 **별개**다.
 _Avoid_: "프리셋"·"필터 저장" 단독 (— **저장된 조건검색/SavedScreener**); `SavedScreener.id` 와 조건 leaf `id` 혼동.
 
+**열람 호가 상태 (Viewed Orderbook Availability)**:
+10호가·호가주문의 종목/유효시장별 표시 상태. 열람 요청 접수, 증권사 등록 ACK,
+실제 호가 수신은 서로 다른 사실이다. `/api/live/status`의
+`kiwoom.view_subscriptions`는 활성 열람 참조의 연결 대기·슬롯 대기·등록 중·등록 완료를
+현재 수집기 세대에서 관측하며 `observed_at_ms`를 함께 보낸다. 재시작/동기화/낡은
+수집기 상태에서는 이전 등록·수신 증거를 무효화한다. FE는 공유 상태 조회와 현재
+호가 스냅샷을 합쳐 안내하고, 앱 표시 참조 한도 거절은 현재 브라우저 구독 수명에
+따라 별도로 관리한다. 체결 수신은 호가 수신의 증거가 아니다. 표시 상태는 신규
+주문의 기존 30초 신선도 검사나 저장 여부를 바꾸지 않는다.
+
 ## Relationships
 
 - A **Stock-Date** has exactly one **Data Window** and exactly one **Full Capture**.

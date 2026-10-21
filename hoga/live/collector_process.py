@@ -465,6 +465,15 @@ class CaptureProcessSession:
                           last_tick_ms=None, last_recv_ms=None, accounts=[], connection_allowed=None)
         if not ready:
             status.update(ready_codes=[], ready_registrations=[], registration_incomplete=True)
+            status["observed_at_ms"] = int(time.time() * 1000)
+            # Never present an old child's registrations or arrivals as current evidence.
+            status["data_received_ms"] = {}
+            status["view_subscriptions"] = [
+                {"code": code, "venue": venue, "phase": "waiting_connection",
+                 "connection_generation": None}
+                for code, venue in sorted({(code, venue) for (code, _ref), venues in self.views.items()
+                                           for venue in venues})
+            ]
             status["accounts"] = [{**a, "registration_ready": False} for a in status.get("accounts", [])]
         status.setdefault("connected_accounts", 0)
         status.setdefault("subscribed_count", 0)

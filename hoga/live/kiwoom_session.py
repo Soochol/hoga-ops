@@ -38,6 +38,7 @@ from .kiwoom_ws_client import KiwoomWsClient
 from .sector_registry import SECTOR_CODES
 from .snapshot import LiveSnapshot
 from .ticks import WsTick
+from .view_subscription import ViewSubscriptionStatus
 
 _log = logging.getLogger(__name__)
 
@@ -801,6 +802,29 @@ class KiwoomSessionManager:
                 if all(apply_venue(code, v) in registered
                        for v in subscription_venues(code, nxt_map))
             )
+        view_subscriptions = []
+        wire_owners = {
+            wire: conn for conn in self._conns.values() for wire in conn.client.expected_codes
+        }
+        slots_full = bool(self._conns) and not any(
+            self._unclaimed_slots(account) for account in self._conns
+        )
+        for (code, venue), entry in sorted(self._display.items()):
+            if not entry.refs:
+                continue
+            wire = apply_venue(code, venue)
+            conn = wire_owners.get(wire) or self._conns.get(entry.owner)
+            if conn is not None and conn.client.connected and not _conn_dead(conn):
+                phase = ("registered" if wire in ready_registrations
+                         and conn.account_id not in self._subscription_tasks else "registering")
+            elif conn is None and self._connection_allowed is not False and slots_full:
+                phase = "waiting_slot"
+            else:
+                phase = "waiting_connection"
+            view_subscriptions.append(ViewSubscriptionStatus(
+                code=code, venue=venue, phase=phase,
+                connection_generation=getattr(conn.client, "connection_generation", 0) if conn else None,
+            ).model_dump())
         return {
             "enabled": True,
             "accounts_configured": len(self._conns),
@@ -812,6 +836,8 @@ class KiwoomSessionManager:
             "subscribed_codes": codes,
             "ready_codes": ready_codes,
             "ready_registrations": sorted(ready_registrations),
+            "view_subscriptions": view_subscriptions,
+            "observed_at_ms": self._now_fn(),
             "data_received_ms": {
                 f"{code}:{venue}:{kind}": received
                 for conn in self._conns.values() if conn.client.connected

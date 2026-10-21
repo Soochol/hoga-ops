@@ -403,3 +403,49 @@ async def test_late_tick_from_other_storage_owner_cannot_duplicate_delivery():
     assert len(buf.published) == 1
     assert buf.published[0][1][0].payload["venue"] == "NXT"
     await mgr.stop()
+
+
+async def test_display_status_tracks_slots_ack_and_disconnect(monkeypatch):
+    mgr = _mgr(per_account_max=2)
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        client = mgr._conns[0].client
+        client.last_recv_ms = None
+        missing = {"W"}
+        monkeypatch.setattr(client, "sub_missing", lambda: list(missing & client.expected_codes))
+        assert await mgr.on_view_subscribe("Y", {"KRX"}, ref="holder")
+        assert not await mgr.on_view_subscribe("W", {"KRX"}, ref="waiting")
+
+        def row(code):
+            return next(r for r in mgr.status()["view_subscriptions"] if r["code"] == code)
+
+        assert row("W")["phase"] == "waiting_slot"
+        await mgr.on_view_unsubscribe("Y", {"KRX"}, ref="holder")
+        await mgr.watchdog_pass(_KRX_MS + 61_000)
+        assert row("W")["phase"] == "registering"
+        missing.clear()
+        assert row("W")["phase"] == "registered"
+        assert row("W")["connection_generation"] == 0
+        client.connected = False
+        assert row("W")["phase"] == "waiting_connection"
+        await mgr.on_view_unsubscribe("W", {"KRX"}, ref="waiting")
+        assert mgr.status()["view_subscriptions"] == []
+    finally:
+        await mgr.stop()
+
+
+async def test_display_status_is_per_venue_and_ignores_released_references(monkeypatch):
+    mgr = _mgr()
+    try:
+        await mgr.sync(("A",), n_accounts=1)
+        client = mgr._conns[0].client
+        client.last_recv_ms = None
+        monkeypatch.setattr(client, "sub_missing", lambda: ["Z_NX"])
+        await mgr.on_view_subscribe("Z", {"KRX", "NXT"}, ref="tab")
+        await asyncio.sleep(0)
+        states = {r["venue"]: r["phase"] for r in mgr.status()["view_subscriptions"]}
+        assert states == {"KRX": "registered", "NXT": "registering"}
+        await mgr.on_view_unsubscribe("Z", {"NXT"}, ref="tab")
+        assert [r["venue"] for r in mgr.status()["view_subscriptions"]] == ["KRX"]
+    finally:
+        await mgr.stop()

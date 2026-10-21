@@ -39,6 +39,8 @@ import { useRecentBookTrades } from './useRecentBookTrades';
 import { tradeHighlightBackground, useTradeHighlight } from '../tradeHighlight';
 import { bookDayMarkers } from './bookDayMarkers';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
+import { useOrderbookAvailability } from '../useOrderbookAvailability';
+import { BookAvailabilityState } from './BookAvailabilityState';
 import { AccountTradingPanel, type AccountListTab } from './AccountTradingPanel';
 import { OrderSurfaceHeading } from './OrderSurface';
 import { OrderSettingsForm } from './OrderSettingsForm';
@@ -137,6 +139,10 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   const vi = useLiveViStatus(code, effectiveVenue);
+  const { availability: bookAvailability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
+    live, bookMs: snapshot?.ts_ms, nowMs: now,
+    enabled: (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
+      && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [dragInProgress, setDragInProgress] = useState(false);
   const book = snapshot;
@@ -261,8 +267,9 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
     unresolved: !!state.data?.unresolved_commands.length || cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent), settingsOpen: !!settingsDraft,
-    locked: dragInProgress, stored: storedLadder, singlePrice: activeSinglePrice !== null,
+    locked: dragInProgress, stored: storedLadder && snapshot != null, singlePrice: activeSinglePrice !== null,
     hasBook: !!snapshot, fresh, quantity,
+    bookIssue: bookAvailability ? { title: '주문 대기', message: bookAvailability.message, tone: 'warn' as const } : undefined,
     brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
       : activeAccount?.order_enabled === false ? activeAccount.blocked_reason ?? '이 계좌의 주문 경로를 확인하세요.' : null,
   };
@@ -758,6 +765,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         }}
         render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
+    {snapshot != null && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
     <div className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
@@ -770,7 +778,10 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           <span data-lane-probe className="order-lane-probe" data-figure={samples.order} />
           <span data-lane-probe className="order-total-probe" data-figure={samples.total} />
         </span>
-        {prices.length === 0 ? <p className="order-notice">실시간 호가 없음</p> : Array.from({ length: 20 }, (_, slot) => {
+        {prices.length === 0 ? bookAvailability
+          ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />
+          : <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>
+          : Array.from({ length: 20 }, (_, slot) => {
           const isAsk = slot < 10;
           const index = slot - (10 - asks.length);
           const bidIndex = slot - 10;
