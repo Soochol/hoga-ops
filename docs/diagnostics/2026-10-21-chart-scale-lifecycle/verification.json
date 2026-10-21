@@ -1,0 +1,83 @@
+{
+  "recordedAtKst": "2026-10-21T23:26:06.839374+09:00",
+  "baseCommit": "2834f6c3349cc322232eefb80888a2536761478a",
+  "originMainAtValidation": "2834f6c3349cc322232eefb80888a2536761478a",
+  "implementationState": "Uncommitted working-tree changes on the base commit; exact modified inputs are hashed below.",
+  "scope": "Candle-series attachment lifetime and price-scale preferences during rapid instrument switches. No backend behavior changed. User servers on 5173/8000 were preserved.",
+  "changedSourceSha256": {
+    "frontend/src/live/LiveChartRoot.tsx": "5b3d3ababd173f7ac46732c984f6a556f5e4c640f88efdd23862881b84681c7d",
+    "frontend/src/live/LiveChartRoot.test.tsx": "ad5a535e36ff9a9b1fe4d9995ff8d926b5ad34fd32577bcd7154584f7097775e",
+    "frontend/tests/e2e/heatmap-chart-switch.spec.ts": "e7ee27cb06944d7fe0eb7d15c93e5374f14b33d43ee740c28ea98b7235b68646"
+  },
+  "inputFingerprint": {
+    "files": 2099,
+    "sha256": "0bee39d3dabd102523a09a199df47d77b0335f12c4699c8abdc3b764a8381e78",
+    "gitPathspecs": [
+      "frontend/src",
+      "frontend/tests",
+      "frontend/public",
+      "frontend/index.html",
+      "frontend/package.json",
+      "frontend/package-lock.json",
+      "frontend/vite.config.ts",
+      "frontend/vitest.config.ts",
+      "frontend/playwright.config.ts",
+      "frontend/tsconfig.json",
+      "frontend/tsconfig.app.json",
+      "frontend/tsconfig.test.json",
+      "frontend/tsconfig.e2e.json",
+      "frontend/tsconfig.node.json",
+      "pyproject.toml",
+      "uv.lock",
+      ".python-version",
+      "hoga",
+      "tests/fixtures/tiny_tsv_multi"
+    ],
+    "algorithm": "SHA256 of sorted path + NUL + raw SHA256(file bytes)"
+  },
+  "tools": {
+    "node": "24.13.1",
+    "npm": "11.8.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "lightweightCharts": "5.2.0",
+    "python": "3.14.7"
+  },
+  "regressionEvidence": {
+    "beforeFix": "The unit regression reproduced Value is null at LiveChartRoot priceScale() when pane recreation and scale-preference updates committed together.",
+    "afterFix": "The same regression passes, verifies no removed-series priceScale calls, and confirms preferences reach the replacement candle series across ten code switches with empty/loading bundles."
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed on latest main plus changes; app, unit-test, E2E TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/LiveChartRoot.test.tsx src/live/LiveChartRoot.paneToggles.test.tsx src/chart/useDrawingHost.test.tsx",
+      "result": "209 passed, 3 files on latest main plus changes"
+    },
+    {
+      "command": "cd frontend && npx playwright test heatmap-chart-switch.spec.ts chart-window-settings.spec.ts --grep '히트맵에서 빠르게|로그·반전·색상' --reporter=list",
+      "result": "5 passed on latest main plus changes; one worker, backend 20379/frontend 21379, isolated fixture data; 60 rapid arrow transitions plus final destination and scale checks; 1m/D/W/M scale-coordinate tests"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed on latest main plus changes"
+    },
+    {
+      "command": "cd frontend && npx playwright test heatmap-chart-switch.spec.ts --repeat-each=5 --reporter=list",
+      "result": "5 passed on previous base 5c813d7d9394f26143aaff563e5b1e04fcf1c900 with identical fix/test sources; latest-main combined run above additionally covers the subsequently merged QuoteRow column-order update"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "limits": [
+    "Browser tests use mocked price responses and isolated no-credential servers, not the running user app.",
+    "Synthetic keyboard bursts can trigger the existing paneLegend per-frame write-rate diagnostic. The regression checks runtime page errors, React error-boundary reports, Value is null/undefined console errors, final candle data, and price-scale settings."
+  ]
+}
