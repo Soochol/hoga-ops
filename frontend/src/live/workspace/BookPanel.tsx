@@ -17,7 +17,7 @@
  */
 import './BookPanel.css';
 import './BookPriceLayout.css';
-import { useCallback, useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnchoredPopover } from '../../util/useAnchoredPopover';
 import { BookScrollArea } from './BookScrollArea';
@@ -56,6 +56,7 @@ type Props = {
   /** Resets the retained price width when switching symbols. */
   symbol?: string;
   snapshot: OrderbookSnapshot | null | undefined;
+  emptyState?: ReactNode;
   /** 전일종가 — 등락률 분모이자 가격 색 기준. */
   baselinePrice: number | null;
   summary: LiveTradeSummary;
@@ -142,6 +143,7 @@ const SUMMARY_ROWS = 10;
 export default function BookPanel({
   symbol = '',
   snapshot,
+  emptyState,
   baselinePrice,
   summary,
   trades,
@@ -207,8 +209,8 @@ export default function BookPanel({
       // (16:00 에 자동 전환된 뒤 되돌릴 수 없음).
       return (
         <div className="flex h-full flex-col bg-bg-card">
-          <div className="flex min-h-0 flex-1">
-            <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>
+          <div className="min-h-0 flex-1">
+            {emptyState ?? <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>}
           </div>
           <SessionOnlyStrip
             control={sessionControl}

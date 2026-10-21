@@ -136,3 +136,25 @@ it('reports reconnect gaps and accepts new server sequence numbers', async () =>
     expect(latest).toEqual([10, 1]);
   } finally { vi.useRealTimers(); }
 });
+
+it('tracks application admission separately from toast dismissal and releases it with the last observer', async () => {
+  const { liveSubscriptionLimited, subscribeLiveAdmissionStatus } = await import('./ws');
+  const notify = vi.fn();
+  const stop = subscribeLiveAdmissionStatus(notify);
+  const first = subscribeLive('005930', () => {});
+  const second = subscribeLive('005930', () => {});
+  const sock = await connect();
+  sock.message({ ch: 'event', data: { type: 'live_subscription_limit', code: '005930' } });
+  expect(liveSubscriptionLimited('005930')).toBe(true);
+  first();
+  expect(liveSubscriptionLimited('005930')).toBe(true);
+  second();
+  expect(liveSubscriptionLimited('005930')).toBe(false);
+  const release = subscribeLive('005930', () => {});
+  expect(liveSubscriptionLimited('005930')).toBe(false);
+  sock.message({ ch: 'event', data: { type: 'live_subscription_limit', code: '005930' } });
+  sock.serverClose();
+  expect(liveSubscriptionLimited('005930')).toBe(false);
+  expect(notify).toHaveBeenCalledTimes(4);
+  release(); stop();
+});

@@ -1,0 +1,71 @@
+{
+  "verified_at": "2026-10-22T00:29:45.598940+09:00",
+  "worktree": "/home/dev/.codex/worktrees/9ab9/hoga-ops",
+  "head": "c89fd58f0c6674a43c7ac2ed24f4b746408ea566",
+  "base": "c89fd58f0c6674a43c7ac2ed24f4b746408ea566",
+  "working_tree": "Uncommitted implementation on the recorded head; fingerprints identify the verified inputs",
+  "inputs": {
+    "backend": {
+      "sha256": "d23f16b54fbcd128a3c4cf1cd30b2cf8aecda68776a8e11984d6a7eb7a824374",
+      "file_count": 785,
+      "scope": "Tracked and non-ignored new backend source, tests, fixtures, dependencies/lockfiles and configuration; generated output and installed dependencies excluded"
+    },
+    "frontend": {
+      "sha256": "e5a27075ca6eee671e548db1e17e2a52bbd4ea8bf1fb8673847c8cecc24def4e",
+      "file_count": 1806,
+      "scope": "Tracked and non-ignored new frontend source, tests, fixtures, dependencies/lockfiles and configuration; generated output and installed dependencies excluded"
+    }
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_kiwoom_ondemand.py tests/unit/live/test_kiwoom_session.py tests/unit/live/test_collector_readiness.py tests/unit/live/test_collector_process.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/live/test_view_subscription_readiness.py tests/unit/live/test_lifecycle_kiwoom.py tests/api/test_ws.py -m 'not wallclock'",
+      "result": "144 passed"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; application, unit-test and E2E TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx src/live/workspace/BookPanel.test.tsx src/live/workspace/DataWindow.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/linkedViews.performance.test.tsx src/api/ws.test.ts src/api/sharedLiveSeries.test.tsx src/api/liveSeries.test.tsx src/serviceStatus/ServiceStatusButton.test.tsx src/live/KiwoomFullHouseToastHost.test.tsx",
+      "result": "405 passed across 11 files"
+    },
+    {
+      "command": "cd frontend && npx playwright test book-availability.spec.ts --reporter=line",
+      "result": "2 passed; both books share slot/registration/first-book transitions, trades alone do not satisfy book demand, status action opens subscription details, initial query retry recovers both views, retained book includes timestamp and new orders block after 30 seconds"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed; existing bundle size warning"
+    },
+    {
+      "command": "Intentional ViewSubscriptionPhase frontend union mismatch, then restored; pytest test_wire_enum_members_match_frontend_union",
+      "result": "Expected mismatch failure observed; full 12-test wire contract suite passed after restoration"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "@playwright/test": "1.60.0",
+    "backend_port": 20374,
+    "frontend_port": 21374,
+    "workers": 1,
+    "credentials": "Blank vendor credentials from Playwright configuration"
+  },
+  "visual_review": "Inspected slot-wait.png from the worktree Playwright run; both notices occupy the normal panel width and content height",
+  "limits": [
+    "Fixture-based provider and order tests; no live broker verification or token issuance",
+    "Changes are in this worktree; production servers were not restarted",
+    "Scoped related suites were run; full repository test suites were not run"
+  ]
+}

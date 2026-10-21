@@ -26,6 +26,8 @@ import BookPanel from './BookPanel';
 import { resolveBookBaseline } from './bookDisplay';
 import { useRecentBookTrades } from './useRecentBookTrades';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
+import { useOrderbookAvailability } from '../useOrderbookAvailability';
+import { BookAvailabilityState } from './BookAvailabilityState';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import { TradeWindow } from './TradeWindow';
 import { ProgramTradeTickWindow } from './ProgramTradeTickWindow';
@@ -42,6 +44,7 @@ import {
 } from '../../sidebar/cursorDetailResolver';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useMinuteClock } from '../useMinuteClock';
+import { useWallClockSecond } from '../../util/useWallClockSecond';
 import { useLiveInvestorTrendEstimate } from '../../api/liveInvestorTrendEstimate';
 import { useLiveDailyProgramTrade } from '../../api/liveDailyProgramTrade';
 import { useDailyProgramTradeHistory } from '../useDailyProgramTradeHistory';
@@ -459,6 +462,12 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   // 시간외 단일가 사다리는 스팟 경로가 아니다 — 그쪽이 사다리를 통째로 대체하고
   // 있으면 스팟 조회의 신선도는 화면에 그려진 것과 무관하다.
   const bookStale = !useSinglePrice && spotOrderbookStale;
+  const availabilityNow = useWallClockSecond();
+  const { availability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
+    live, bookMs: snapshot?.ts_ms, nowMs: availabilityNow,
+    enabled: !isSpot && (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
+      && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
+  const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook} />;
   // 조회 중에는 안내 행을 추가하지 않아 호가 사다리의 위치를 유지한다.
   const bookContextMode = scope.kind === 'second-cursor' ? '저장 호가' : null;
   // 스팟 조회 실패는 **패널을 대체한다**(칩으로 얹지 않는다). `useSpot` 이 실패분을
@@ -481,6 +490,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }
   return (
     <div className="flex h-full flex-col">
+      {snapshot != null && bookAvailability}
       {isSpot && (bookContextMode !== null || showAvailableHint || showFormingHint) && <DataContext
         mode={bookContextMode ?? ''}
         time={bookContextMode !== null ? snapshot?.ts_ms : undefined}
@@ -511,6 +521,9 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
       <div className="min-h-0 flex-1">
         <BookPanel
           symbol={code}
+          emptyState={isSpot && snapshot === null
+            ? <div className="m-auto text-xs text-fg-dim">선택 시점의 저장 호가 없음</div>
+            : availability ? bookAvailability : undefined}
           snapshot={snapshot}
           expectedFill={!isSpot && !storedLadder && activeSinglePrice === null
             ? { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null } : undefined}
@@ -529,7 +542,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           deltaBadges={isSpot ? null : deltaBadges}
           limits={spotLimits}
           vi={spotVi}
-          stale={bookStale}
+          stale={bookStale || availability?.lastBookMs !== undefined}
         />
       </div>
     </div>

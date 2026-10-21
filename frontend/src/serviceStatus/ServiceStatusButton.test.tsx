@@ -163,3 +163,16 @@ it('does not suppress a partial transport failure during configuration sync', ()
   };
   expect(serviceIssues(status).some(issue => issue.id === 'provider:connection')).toBe(true);
 });
+
+it('shows on-demand registration use and the actual pending venue', () => {
+  query.data = { ...data(provider), kiwoom: { enabled: true, accounts_configured: 1,
+    connected_accounts: 1, subscribed_count: 1, last_tick_ms: null, accounts: [],
+    on_demand_count: 3, on_demand_capacity: 3, view_subscriptions: [
+      { code: '005930', venue: 'NXT', phase: 'waiting_slot', connection_generation: null },
+    ] } };
+  render(<ServiceStatusButton />);
+  open();
+  const panel = screen.getByRole('dialog');
+  expect(panel).toHaveTextContent('열람 구독 3/3등록');
+  expect(panel).toHaveTextContent('005930 · NXT 연결 대기');
+});

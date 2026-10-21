@@ -119,6 +119,11 @@ export function ServiceStatusButton() {
         <div className="mt-2 flex justify-between gap-sm"><span>앱 이벤트 연결</span><span className="text-fg-dim">{eventLive ? '수신 확인' : '재연결 중'}</span></div>
         <div className="mt-2 flex justify-between gap-sm"><span>키움 실시간</span><span className="text-fg-dim">{isError ? '확인 불가' : provider ? CONNECTION_COPY[provider.connection] : '정보 없음'}</span></div>
         {data?.kiwoom?.collector?.state_reason === 'syncing' && <p className="mt-1 text-right text-xs text-warn">실시간 설정 반영 중</p>}
+        {data?.kiwoom?.on_demand_capacity != null && <p className="mt-1 text-right text-xs text-fg-dim">
+          열람 구독 {data.kiwoom.on_demand_count ?? 0}/{data.kiwoom.on_demand_capacity}등록
+          {data.kiwoom.view_subscriptions?.filter(row => row.phase === 'waiting_slot').map(row =>
+            <span key={`${row.code}:${row.venue}`} className="block text-warn">{row.code} · {row.venue} 연결 대기</span>)}
+        </p>}
         {provider && <p className="mt-1 text-right text-xs text-fg-dim">{isError ? '이전 정보 · ' : ''}연결 {provider.connected_accounts}/{provider.configured_accounts}계정
           {' · '}{provider.ready_accounts != null ? `구독 준비 ${provider.ready_accounts}/${provider.configured_accounts}계정` : '구독 준비 정보 없음'}
         </p>}

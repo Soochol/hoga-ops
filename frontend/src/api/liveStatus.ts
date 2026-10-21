@@ -19,6 +19,14 @@ import { apiCall } from './client';
 export type CaptureReason = 'healthy' | 'offline' | 'closed' | 'registration_incomplete' | 'syncing' | 'collector_unavailable' | 'storage_error';
 export type CollectorStateReason = 'ready' | 'syncing' | 'stopping' | 'dead' | 'ipc_closed' | 'state_stale' | 'sync_failed' | 'storage_error';
 export type CollectorSyncPhase = 'ack' | 'state';
+export type ViewSubscriptionPhase = 'waiting_connection' | 'waiting_slot' | 'registering' | 'registered';
+
+export interface ViewSubscriptionStatus {
+  code: string;
+  venue: string;
+  phase: ViewSubscriptionPhase;
+  connection_generation: number | null;
+}
 
 export interface ProviderStatus {
   observed_at_ms: number;
@@ -169,6 +177,10 @@ export interface KiwoomStatus {
   /** Actual REG ACK coverage, separate from the storage ownership set. */
   ready_codes?: string[];
   ready_registrations?: string[];
+  view_subscriptions?: ViewSubscriptionStatus[];
+  observed_at_ms?: number;
+  on_demand_count?: number;
+  on_demand_capacity?: number;
   /** Keys are code:venue:kind; arrival time, not exchange event time. */
   data_received_ms?: Record<string, number>;
   last_tick_ms: number | null;
@@ -245,11 +257,12 @@ export interface KiwoomAccountStatus {
  * spec §10 LiveStatusBar cadence. Keep this as the wire-shaped fetch hook;
  * frontend UI meaning is projected in `liveStatusProjection`.
  */
-export function useLiveStatus() {
+export function useLiveStatus(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ['live', 'status'],
     queryFn: () => apiCall<LiveStatus>('/api/live/status'),
     refetchInterval: 5_000,
     staleTime: 1_000,
+    enabled: options?.enabled,
   });
 }

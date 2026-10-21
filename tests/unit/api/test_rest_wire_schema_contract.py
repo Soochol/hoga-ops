@@ -82,6 +82,7 @@ from hoga.live.us_daily_candles import (
 from hoga.live.us_index_minutes import UsMinuteMetadata
 from hoga.live.us_market_api import UsStockCatalogResponse, UsStockEntry
 from hoga.live.us_stock_minutes import UsStockMinuteMetadata, UsStockMinuteResponse
+from hoga.live.view_subscription import ViewSubscriptionPhase, ViewSubscriptionStatus
 from hoga.trading import contracts as broker_contracts, models as trading_models
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -433,6 +434,7 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
         "observed_at_ms", "connection", "connected_accounts", "configured_accounts", "ready_accounts",
         "last_received_at_ms", "notice", "notice_phase", "notice_config_error", "failures",
     }),
+    ViewSubscriptionStatus: frozenset({"code", "venue", "phase", "connection_generation"}),
     DailyProgramTradePoint: frozenset({"t_ms", "net_qty", "buy_qty", "sell_qty",
                                        "net_amount", "buy_amount", "sell_amount"}),
     LiveDailyProgramTradeResponse: frozenset({
@@ -589,6 +591,7 @@ WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
     ),
     "CollectorStateReason": (frozenset(get_args(CollectorStateReason)), "frontend/src/api/liveStatus.ts"),
     "CollectorSyncPhase": (frozenset(get_args(CollectorSyncPhase)), "frontend/src/api/liveStatus.ts"),
+    "ViewSubscriptionPhase": (frozenset(get_args(ViewSubscriptionPhase)), "frontend/src/api/liveStatus.ts"),
     "CaptureReason": (
         frozenset(get_args(LiveStatus.model_fields["capture_reason"].annotation)),
         "frontend/src/api/liveStatus.ts",

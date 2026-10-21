@@ -22,6 +22,19 @@ const _latestSeq = new Map<string, number>();
 const _partialHistory = new Set<string>();
 const _historyListeners = new Set<() => void>();
 const _dispatchMs: number[] = [];
+const _limitedSubscriptions = new Set<string>();
+const _admissionListeners = new Set<() => void>();
+export function liveSubscriptionLimited(code: string): boolean { return _limitedSubscriptions.has(code); }
+export function subscribeLiveAdmissionStatus(listener: () => void): () => void {
+  _admissionListeners.add(listener);
+  return () => { _admissionListeners.delete(listener); };
+}
+function clearAdmission(code?: string): void {
+  const changed = code === undefined ? _limitedSubscriptions.size > 0 : _limitedSubscriptions.has(code);
+  if (code === undefined) _limitedSubscriptions.clear();
+  else _limitedSubscriptions.delete(code);
+  if (changed) _admissionListeners.forEach(listener => listener());
+}
 let _lastReceivedAt = 0;
 /** Browser monotonic clock, for correlation with React/DOM performance traces. */
 export function wsLastReceivedAt(): number { return _lastReceivedAt; }
@@ -51,6 +64,8 @@ function deliverLatest(code: string, entry: SequencedEntry): void {
 let _ws: WebSocket | null = null;
 let _opening = false;
 let _connected = false;
+let _connectedAt = 0;
+export function wsConnectedAt(): number { return _connectedAt; }
 let _lastHeartbeatMs = 0;
 let _reconnectMs = 500;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -82,6 +97,7 @@ async function open(): Promise<void> {
     if (_ws) return; // raced
     const sock = new W(url);
     sock.onopen = () => {
+      _connectedAt = Date.now();
       _lastHeartbeatMs = Date.now();
       _reconnectMs = 500;
       if (!_connected) { _connected = true; emitEvent({ type: 'connected' }); }
@@ -94,6 +110,10 @@ async function open(): Promise<void> {
       let frame: Frame;
       try { frame = JSON.parse(e.data) as Frame; } catch { return; }
       if (frame.ch === 'event') {
+        if (frame.data.type === 'live_subscription_limit' && _liveSubs.has(frame.data.code)) {
+          _limitedSubscriptions.add(frame.data.code);
+          _admissionListeners.forEach(listener => listener());
+        }
         emitEvent(frame.data);
       } else if (frame.ch === 'live') {
         _latestSubs.get(frame.code)?.forEach((fn) => fn(frame.data));
@@ -111,6 +131,7 @@ async function open(): Promise<void> {
       if (_dispatchMs.length > 256) _dispatchMs.shift();
     };
     sock.onclose = () => {
+      clearAdmission();
       if (_connected) for (const code of _liveSubs.keys()) markHistoryPartial(code);
       _latestSeq.clear();
       _ws = null;
@@ -158,12 +179,16 @@ export function subscribeLive(
   if (!set) { set = new Set(); _liveSubs.set(code, set); }
   set.add(handler);
   void open();
-  if (first) send({ action: 'subscribe', code, protocol: 2 });
+  if (first) {
+    clearAdmission(code);
+    send({ action: 'subscribe', code, protocol: 2 });
+  }
   return () => {
     const s = _liveSubs.get(code);
     if (!s) return;
     s.delete(handler);
     if (s.size === 0) {
+      clearAdmission(code);
       _liveSubs.delete(code);
       _partialHistory.delete(code);
       for (const key of _latestSeq.keys()) if (key.startsWith(`${code}:`)) _latestSeq.delete(key);
@@ -193,11 +218,13 @@ export function __resetForTests(): void {
   _ws = null;
   _opening = false;
   _connected = false;
+  _connectedAt = 0;
   _lastHeartbeatMs = 0;
   _reconnectMs = 500;
   _eventSubs.clear();
   _liveSubs.clear();
   _latestSubs.clear(); _latestSeq.clear(); _partialHistory.clear(); _historyListeners.clear();
   _dispatchMs.length = 0;
+  _limitedSubscriptions.clear(); _admissionListeners.clear();
   _lastReceivedAt = 0;
 }

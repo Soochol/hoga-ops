@@ -156,3 +156,50 @@ async def test_previous_config_state_updates_transport_but_not_peaks(owner):
         await manager._states(reader, manager.epoch)
     assert manager._peaks == {'preserved': True}
     assert lifecycle.get_status().capture_reason == 'offline'
+
+
+@pytest.mark.parametrize('fault', ['dead', 'old_epoch', 'syncing'])
+def test_old_child_display_readiness_and_arrivals_are_invalidated(owner, fault):
+    manager, _ = owner
+    manager.views[("005930", "tab")] = {"KRX"}
+    manager._state['status']['view_subscriptions'] = [
+        {'code': '005930', 'venue': 'KRX', 'phase': 'registered', 'connection_generation': 7},
+    ]
+    manager._state['status']['data_received_ms'] = {'005930:KRX:ob': 100_000}
+    if fault == 'dead':
+        manager.process.is_alive = lambda: False
+    elif fault == 'old_epoch':
+        manager._state['epoch'] = 'previous'
+    else:
+        manager.version += 1
+        manager._sync_started_at = 100.0
+    status = manager.status()
+    assert status['data_received_ms'] == {}
+    assert status['view_subscriptions'] == [
+        {'code': '005930', 'venue': 'KRX', 'phase': 'waiting_connection', 'connection_generation': None},
+    ]
+
+
+def test_view_subscription_state_survives_status_http_serialization(owner, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from hoga.live.api import build_router
+    from hoga.live.session_gate import ws_connection_window_async
+
+    manager, _ = owner
+    rows = [{'code': '005930', 'venue': 'KRX', 'phase': 'registered', 'connection_generation': 7}]
+    manager._state['status']['view_subscriptions'] = rows
+    manager._state['status']['observed_at_ms'] = 100_000
+    monkeypatch.setattr(
+        'hoga.live.session_gate.ws_connection_window_async',
+        AsyncMock(spec=ws_connection_window_async, return_value=True),
+    )
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status))
+    with TestClient(app) as client:
+        response = client.get('/api/live/status')
+    assert response.status_code == 200
+    status = response.json()['kiwoom']
+    assert status['view_subscriptions'] == rows
+    assert status['observed_at_ms'] == 100_000
