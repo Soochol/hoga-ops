@@ -311,6 +311,16 @@ _Avoid_: "subscription" (ambiguous with SSE topics), "auto-list", "follow list",
 The app-wide **Right Rail** view of the **Watchlist**, showing each **Code** under every **Watchlist Folder** it belongs to, with collapsible groups, member counts and **Live Quote**s; row clicks and single-Code chart drops navigate to the current `/live` view, while dedicated handles support folder reorder and single- or multi-Code moves between groups with precise placement and guarded undo (see the [panel transfer behavior and storage contract](docs/superpowers/specs/2026-09-08-watchlist-panel-transfer.md)). A focused row's `Delete` excludes that Code from **that Folder only**, preserving its other memberships, while the context menu's 관심 해제 removes it from all Folders; the **Watchlist Edit Modal** remains the fuller structural editor, alongside the panel's group picker and direct manipulation.
 _Avoid_: "watchlist" alone (ambiguous with the backend **Watchlist**); "read-only panel" or "the Modal does all structural editing" (the panel also changes membership and order); "Delete removes the Code from every group" (only 관심 해제 does that); "drag to reorder the flat list" / "the /watchlist page" (both removed when folders landed).
 
+관심종목·히트맵 우측 패널의 표시 확장(2026-10-21): 사용자 승인으로 현재가 열을
+당일 흐름(64×16px)으로 교체해 종목명·흐름·등락률을 한 줄에 표시한다. 그룹 헤더는
+평균 흐름도 표시한다. `/api/panel-flow?source=watchlist|heatmap&venue=…`가 독립
+목록의 그룹 구성과 코드별 저장 분봉을 배치 계산한다. 코드별 계산은 소속 수와 무관하게
+한 번 수행하고 그룹은 유효 관측 종목 평균을 쓴다. 5분 버킷·60초 조회, 결측·미래 시간은
+보존하고 무데이터를 0%로 채우지 않는다. 통합의 비NXT 종목은 기존 시세처럼 KRX를 읽는다.
+원본은 증분 JSONL이며 벤더 호출이나 구독을 추가하지 않는다. 미국 관심종목은 이 국내
+저장 경로 밖이라 흐름 미지원으로 명시하고 국내 평균에서 제외한다. 다른 우측 패널의
+현재가와 `/heatmap` 보드는 유지한다.
+
 **Screener Panel**:
 The right-rail sibling of the **Watchlist Panel** (`ScreenerDrawer`), surfaced via the **Right Rail** (ADR-0052). Pick a **저장된 조건검색 (SavedScreener)** from the dropdown, run 조회 (a `/api/screener/scan` against the EOD corpus), then click a result row to set **activeCode** + jump to `/live` — same jump-to-chart pattern as the Watchlist Panel. Dragging a result row onto the `/live` chart also changes the current view's **Code**, but unlike the Watchlist Panel it never reorders or persists row order; the drag payload is only a chart-drop affordance. Read-only w.r.t. saves (create/rename/delete live on the `/screener` page). Result rows carry a **Live Quote** overlay on **every row** (display-only — the panel scan filter stays EOD; see **Live Quote**). Each result row also carries a **Watchlist** membership **heart** (filled = in ≥1 Folder, via `useWatchlistMembership`) that opens the **WatchlistGroupPicker** popup to choose which Folder(s) the Code belongs to (v3, ADR-0070 — there is no single "미분류" add target) — so the panel is a **Watchlist writer** even though it stays read-only w.r.t. **SavedScreener**s and the EOD scan. The hearts cover **all** result rows, as does the **Live Quote** overlay (the former top-30 cap was removed — ADR-0056 2026-06-03; the `/screener` page's result table carries the same per-row live overlay).
 _Avoid_: "screener sidebar" (collides with **Cursor Sidebar** / **Right Rail** naming); conflating with the `/screener` **Screener** page (the panel runs saved scans and toggles **Watchlist** membership but is read-only w.r.t. **SavedScreener**s — it is not the condition builder).

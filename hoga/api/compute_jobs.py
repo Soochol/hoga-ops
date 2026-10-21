@@ -39,6 +39,7 @@ from hoga.api.error_codes import ComputeErrorCode
 if TYPE_CHECKING:
     from hoga.api.heatmap_group_flow import HeatmapGroupFlowResponse
     from hoga.api.models import PatternSearchRequest, PatternSearchResponse, RangeBundle
+    from hoga.api.panel_flow import PanelFlowResponse, PanelFlowSource
     from hoga.api.queries import QueryEngine
     from hoga.compute_executor import ComputeExecutor
 
@@ -284,6 +285,16 @@ def group_flow_job(
     from hoga.api.heatmap_group_flow import build_group_flow  # noqa: PLC0415 — 워커 import 를 가볍게
 
     return build_group_flow(Path(data_dir), basis, now_ms=now_ms, venue=venue)
+
+
+@_picklable_errors
+def panel_flow_job(
+    data_dir: str, basis: dt.date, now_ms: int, source: PanelFlowSource, venue: str,
+    nxt_enabled: dict[str, bool | None] | None,
+) -> PanelFlowResponse:
+    from hoga.api.panel_flow import build_panel_flow  # noqa: PLC0415 — worker-only dependency
+
+    return build_panel_flow(Path(data_dir), basis, now_ms, source, venue, nxt_enabled)
 
 
 # ── 부모 쪽 진입점 ──────────────────────────────────────────────────────────────

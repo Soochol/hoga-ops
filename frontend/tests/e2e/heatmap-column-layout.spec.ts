@@ -20,18 +20,24 @@ async function geometry(row: Locator) {
       return { left: box.left - origin.left, right: box.right - origin.left, width: box.width,
         full: node.scrollWidth <= node.clientWidth + 1, align: style.textAlign, whiteSpace: style.whiteSpace };
     };
-    return { name: read('.quote-row-name'), price: read('.quote-row-price'), percent: read('.quote-row-percent'),
+    return { name: read('.quote-row-name'), flow: read('.quote-row-flow'), percent: read('.quote-row-percent'),
       gap: parseFloat(getComputedStyle(element).columnGap), padding: parseFloat(getComputedStyle(element).paddingRight),
       height: origin.height };
   });
 }
 
 for (const fontSize of [16, 20]) {
-  test(`히트맵 공통 숫자·그룹 평균 정렬·반응형 여백·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
+  test(`히트맵 흐름·그룹 평균 정렬·반응형 여백·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
     await installLiveMocks(page);
+    let flowRequests = 0;
+    const series = Array.from({ length: 132 }, (_, i) => i < 60 ? Math.round((Math.sin(i / 7) + i / 40) * 100) / 100 : null);
+    await page.route(apiExact('panel-flow'), route => { flowRequests++; return route.fulfill({ json: {
+      date: '2026-10-19', venue: 'KRX', bucket_ms: 300000, t_base_ms: 1792368000000, as_of_ms: 1792371600000,
+      stocks: entries.map(entry => ({ code: entry.code, venue: 'KRX', pct: series, last_observed_ms: 1792371600000, missing_reason: null })), groups: [{ folder_id: folder.id, pct: series, counts: series.map(value => value == null ? 0 : 1), total: 1 }],
+    } }); });
     await page.route(apiExact('heatmap'), route => route.fulfill({ json: { folders: [folder, otherFolder], entries, capture_markers: {} } }));
     let price = 123456, percent = -1.23;
     let expectedPrice: number | undefined;
@@ -45,7 +51,8 @@ for (const fontSize of [16, 20]) {
     const panel = page.getByTestId('heatmap-panel');
     if (!(await panel.isVisible())) await page.getByRole('button', { name: /히트맵 패널 토글/ }).click();
     const first = panel.getByTestId('heatmap-drawer-row-005930'), second = panel.getByTestId('heatmap-drawer-row-000660');
-    await expect(second.locator('.quote-row-price')).toHaveText('123,456');
+    await expect(second.locator('.quote-row-flow')).toBeVisible();
+    await expect(second.locator('.quote-row-price')).toHaveCount(0);
     await first.click();
     await expect(first).toHaveAttribute('aria-current', 'true');
     const scale = fontSize / 16;
@@ -55,10 +62,11 @@ for (const fontSize of [16, 20]) {
       const [a, b] = await Promise.all([geometry(first), geometry(second)]);
       expect(a.padding).toBe(padding * scale);
       expect(a.name.left).toBe(40 * scale);
-      expect(a.price.right).toBeCloseTo(b.price.right, 3);
+      expect(a.flow.right).toBeCloseTo(b.flow.right, 3);
       expect(a.percent.right).toBeCloseTo(b.percent.right, 3);
-      expect(a.price.width).toBeCloseTo(b.price.width, 3);
-      for (const value of [a.price, a.percent, b.price, b.percent]) {
+      expect(a.flow.width).toBe(64);
+      expect(a.flow.right).toBeCloseTo(b.flow.right, 3);
+      for (const value of [a.percent, b.percent]) {
         expect(value.full).toBe(true);
         expect(value.align).toBe('right');
         expect(value.whiteSpace).toBe('nowrap');
@@ -77,36 +85,37 @@ for (const fontSize of [16, 20]) {
     }
     await panel.getByRole('button', { name: '종목 정렬', exact: true }).click();
     await panel.getByRole('button', { name: '그룹 정렬', exact: true }).click();
-    expect((await geometry(first)).price.width).toBe((await geometry(second)).price.width);
+    expect((await geometry(first)).flow.width).toBe((await geometry(second)).flow.width);
     // Real query refreshes grow and then shrink the displayed figures. The
     // retained budget must survive shrink, search and group collapse.
     price = 123456789; percent = -1234.56; expectedPrice = 1234567890;
     await page.clock.fastForward(11_000);
-    await expect(second.locator('.quote-row-price')).toHaveText('1,234,567,890');
+    await expect(second.locator('.quote-row-price')).toHaveCount(0);
     await expect(second.getByTestId('heatmap-drawer-row-000660-expected-marker')).toBeVisible();
     await expect(second.locator('.quote-row-percent')).toHaveText('-1234.56%');
-    await expect.poll(() => geometry(second).then(value => value.price.full && value.percent.full)).toBe(true);
+    await expect.poll(() => geometry(second).then(value => value.flow.full && value.percent.full)).toBe(true);
     const wide = await geometry(first);
     const scroll = panel.getByTestId('heatmap-drawer-scroll');
     await page.addStyleTag({ content: ':root { --watchlist-panel-w: 10rem !important; }' });
     await expect.poll(() => scroll.evaluate(node => node.scrollWidth > node.clientWidth)).toBe(true);
-    expect((await geometry(second)).price.full).toBe(true);
+    expect((await geometry(second)).flow.full).toBe(true);
     await page.addStyleTag({ content: ':root { --watchlist-panel-w: 15rem !important; }' });
     price = 12; percent = 1; expectedPrice = undefined;
     await page.clock.fastForward(11_000);
-    await expect(second.locator('.quote-row-price')).toHaveText('12');
+    await expect(second.locator('.quote-row-price')).toHaveCount(0);
     await expect(second.getByTestId('heatmap-drawer-row-000660-expected-marker')).toHaveCount(0);
-    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    expect((await geometry(first)).flow.width).toBe(wide.flow.width);
     expect((await geometry(first)).percent.width).toBe(wide.percent.width);
+    expect(flowRequests).toBe(1);
     const search = panel.getByRole('textbox', { name: '종목·그룹 검색' });
     await search.fill('삼성');
     await expect(second).toHaveCount(0);
-    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    expect((await geometry(first)).flow.width).toBe(wide.flow.width);
     await search.fill('');
     await panel.getByRole('button', { name: '전체 접기' }).click();
     await expect(first).toHaveCount(0);
     await panel.getByRole('button', { name: '전체 펼치기' }).click();
-    expect((await geometry(first)).price.width).toBe(wide.price.width);
+    expect((await geometry(first)).flow.width).toBe(wide.flow.width);
     expect((await geometry(first)).percent.width).toBe(wide.percent.width);
     // Group drag keeps the same average column in the body-portal ghost.
     const header = panel.getByTestId('heatmap-group-header').filter({ hasText: folder.name });
