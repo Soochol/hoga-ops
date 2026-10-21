@@ -311,8 +311,9 @@ _Avoid_: "subscription" (ambiguous with SSE topics), "auto-list", "follow list",
 The app-wide **Right Rail** view of the **Watchlist**, showing each **Code** under every **Watchlist Folder** it belongs to, with collapsible groups, member counts and **Live Quote**s; row clicks and single-Code chart drops navigate to the current `/live` view, while dedicated handles support folder reorder and single- or multi-Code moves between groups with precise placement and guarded undo (see the [panel transfer behavior and storage contract](docs/superpowers/specs/2026-09-08-watchlist-panel-transfer.md)). A focused row's `Delete` excludes that Code from **that Folder only**, preserving its other memberships, while the context menu's 관심 해제 removes it from all Folders; the **Watchlist Edit Modal** remains the fuller structural editor, alongside the panel's group picker and direct manipulation.
 _Avoid_: "watchlist" alone (ambiguous with the backend **Watchlist**); "read-only panel" or "the Modal does all structural editing" (the panel also changes membership and order); "Delete removes the Code from every group" (only 관심 해제 does that); "drag to reorder the flat list" / "the /watchlist page" (both removed when folders landed).
 
-관심종목·히트맵 우측 패널의 표시 확장(2026-10-21): 사용자 승인으로 현재가 열을
-당일 흐름(64×16px)으로 교체해 종목명·흐름·등락률을 한 줄에 표시한다. 그룹 헤더는
+관심종목·히트맵 우측 패널의 표시 확장(2026-10-21): 사용자 승인으로
+당일 흐름(64×16px)을 별도 열로 두어 종목명·흐름·가격·등락률을 한 줄에 표시한다.
+두 패널은 기본 360px이며 목록 상단의 공통 열 제목을 고정한다. 그룹 헤더는
 이름·개수와 기존 접기·정렬 기능만 표시하고 등락률·흐름은 표시하지 않는다. `/api/panel-flow?source=watchlist|heatmap&venue=…`가 독립
 목록의 그룹 구성과 코드별 저장 분봉을 배치 계산한다. 코드별 계산은 소속 수와 무관하게
 한 번 수행하고 그룹은 유효 관측 종목 평균을 쓴다. 5분 버킷·60초 조회, 결측·미래 시간은

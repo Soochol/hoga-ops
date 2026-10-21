@@ -29,7 +29,12 @@ for (const source of ['watchlist', 'heatmap'] as const) {
     await expect(panel.locator('.quote-row-flow svg')).toHaveCount(400);
     const firstPaintMs = Math.round(performance.now() - started);
     expect(batches).toBe(1);
-    await expect(panel.locator('.quote-row-price')).toHaveCount(0);
+    await expect(panel).toHaveCSS('width', '360px');
+    const heading = panel.getByTestId('quote-columns-header');
+    const top = (await heading.boundingBox())!.y;
+    await panel.locator('[data-quote-nav]').evaluate(node => { node.scrollTop = 250; });
+    await expect.poll(async () => (await heading.boundingBox())!.y).toBeCloseTo(top, 1);
+    await expect(panel.locator('[data-quote-row] .quote-row-price')).toHaveCount(400);
     await page.evaluate(() => {
       let writes = 0;
       const observer = new MutationObserver(records => { writes += records.length; });
@@ -38,7 +43,7 @@ for (const source of ['watchlist', 'heatmap'] as const) {
     });
     quote = 2;
     await page.clock.fastForward(11_000);
-    await expect(panel.locator('.quote-row-percent').first()).toHaveText('+2.00%');
+    await expect(panel.locator('[data-quote-row] .quote-row-percent').first()).toHaveText('+2.00%');
     const writes = await page.evaluate(() => (window as unknown as { finishFlowObservation: () => number }).finishFlowObservation());
     expect(writes).toBe(0);
     expect(batches).toBe(1);

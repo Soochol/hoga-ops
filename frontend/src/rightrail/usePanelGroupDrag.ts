@@ -48,7 +48,10 @@ export function usePanelGroupDrag(scrollRef: RefObject<HTMLElement | null>) {
     const index = headers.findIndex((header) => header.dataset.panelGroupId === folderId);
     if (index < 0) return;
     const prefixHeight = headers.slice(0, index).reduce((sum, header) => sum + header.getBoundingClientRect().height, 0);
-    const top = rect.top - panel.getBoundingClientRect().top;
+    // Column headings occupy normal flow even while sticky. The collapsed
+    // group slots start below them, so exclude that inset from the grab offset.
+    const headingHeight = panel.querySelector('.quote-columns-header')?.getBoundingClientRect().height ?? 0;
+    const top = rect.top - panel.getBoundingClientRect().top - headingHeight;
     const scrollTop = Math.max(0, prefixHeight - top);
     restoreScroll.current = panel.scrollTop;
     setLayout({ paddingTop: Math.max(0, top - prefixHeight), minHeight: scrollTop + panel.clientHeight, scrollTop });

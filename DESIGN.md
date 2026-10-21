@@ -640,8 +640,11 @@ Ctrl+Z(⌘Z)로 되돌리고 Ctrl+Shift+Z(⌘⇧Z) 또는 Ctrl+Y로 다시 실�
 
 ### 2026-10-21 — 관심종목·히트맵 우측 패널의 당일 흐름
 
-사용자 승인 시안: 두 우측 패널에서 현재가 열을 64×16px 흐름 그래프로 교체한다.
-종목명·당일 흐름·등락률을 기존 높이의 한 줄에 표시하고 패널 기본 폭은 유지한다.
+사용자 후속 승인: 두 우측 패널을 `종목명 · 흐름 · 가격 · 등락률` 4열로 통일한다.
+관심종목·히트맵만 기본 폭을 360px(`--stock-panel-w`)로 늘리고 다른 패널은 280px를 유지한다.
+흐름은 64×16px, 행 높이·글자 크기는 기존 값을 유지한다. 열 제목은 목록 상단에 한 번만
+고정하고 그룹 헤더는 그 아래에서 고정한다. 가격·등락률은 패널 공통 측정폭으로 오른쪽
+정렬하며 수신·검색·접기 뒤에도 열 경계를 보존한다. 결측 흐름은 `—`로 표시한다.
 64px는 SVG가 보호받는 고정 콘텐츠 폭이며 밀도 다이얼에 따라 줄이지 않는다.
 다른 패널의 현재가 열과 `/heatmap` 보드는 유지한다. 같은 날 사용자 후속 요청으로
 두 우측 패널의 그룹 헤더에서는 등락률·흐름을 제거한다. 그룹명·개수와 기존
@@ -885,7 +888,8 @@ Layout and source-identity tokens beyond the core scale. The Right Rail tokens (
 | Token | Base intent (1.0×) | Rendered @ default (1×) | Use |
 |---|---|---|---|
 | `--rail-w` | 48px | 48px | Right Rail icon column width (app shell, all routes; fixed — does not collapse) |
-| `--watchlist-panel-w` | 280px | 280px | Watchlist Panel width — opened from the Right Rail (global) |
+| `--watchlist-panel-w` | 280px | 280px | Default Right Rail panel width, except Watchlist and Heatmap |
+| `--stock-panel-w` | 360px | 360px | Watchlist and Heatmap panels with four columns |
 | `--h-top-nav` | 32px | 32px | Global top navigation row |
 | `--h-toolbar` | 32px | 32px | Workspace toolbar row — `WorkspaceShell.WorkspaceToolbar`, 소비처는 `/live` 의 `WorkspaceLiveToolbar` (창 추가·설정·프리셋·캡처헬스 한 줄 버튼 행). 밀도 개편(2026-07-23)으로 60→32px |
 | `--h-bottom-bar` | 24px | 24px | Global market-index bottom bar row (하단 시장지표 스트립; 데이터 없으면 행 자체가 접힘) |
