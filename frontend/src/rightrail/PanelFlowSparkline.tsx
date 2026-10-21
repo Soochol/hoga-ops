@@ -39,7 +39,7 @@ const Sparkline = memo(function Sparkline({ series, label }: { series: (number |
     flush();
     return { line, area, zero: y(0), isolated, last: valid.at(-1)! };
   }, [series]);
-  return <span className="quote-row-flow flex-none" role="img" aria-label={label} title={label}>
+  return <span className="quote-row-flow flex-none" role="img" aria-label={label}>
     {geometry ? <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className={priceDirClass(geometry.last)} aria-hidden>
       <path d={geometry.area} fill="currentColor" opacity={0.1} />
       <line x1={0} y1={geometry.zero} x2={W} y2={geometry.zero} stroke="var(--grid)" strokeWidth={1} />
