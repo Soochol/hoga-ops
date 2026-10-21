@@ -47,6 +47,7 @@ from typing import Literal, get_args, get_origin
 from hoga.api import events, models as m, sources
 from hoga.api.error_codes import ComputeErrorCode
 from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, ProgramResponse
+from hoga.api.screener_continuous import ContinuousStatus
 from hoga.live import flow_receipts, futures_runtime, market_overview
 from hoga.live.api import (
     AfterHoursBookResponse,
@@ -149,7 +150,8 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
                                  "is_open", "fetched_at_ms"}),
     "BarVolumeMatch": frozenset({"timeframe", "volume", "maximum", "window_start_ms", "is_open",
                                   "fetched_at_ms", "volume_is_lower_bound"}),
-    "BarRealtimeCoverage": frozenset({"prepared", "receiving"}),
+    "BarRealtimeCoverage": frozenset({"prepared", "receiving", "continuous", "preparing", "recovering",
+                                      "unavailable", "last_verified_ms", "insufficient", "monitor_error"}),
     "BarVolumeCoverage": frozenset({"total", "complete", "incomplete", "realtime"}),
     "BarVolumeCoverageItem": frozenset({"code", "condition_id", "reason", "missing_days",
                                         "required_from", "required_to", "name"}),
@@ -369,6 +371,8 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    ContinuousStatus: frozenset({"id", "total", "prepared", "receiving", "preparing", "recovering",
+        "unavailable", "insufficient", "last_verified_ms", "error"}),
     broker_contracts.BrokerState: frozenset({"account_ref", "code", "buying_power", "buyable_quantity",
         "sellable_quantity", "holding_quantity", "average_purchase_price", "fetched_at_ms", "capacity_status",
         "orders", "recent_orders", "unresolved_commands", "events_connected", "revision"}),

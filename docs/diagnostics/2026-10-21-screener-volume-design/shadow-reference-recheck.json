@@ -1,0 +1,78 @@
+{
+  "rows": [
+    {
+      "code": "005930",
+      "start_ms": 1792548780000,
+      "ws_volume": 10648,
+      "api_initial": 10484,
+      "api_recheck": 10648,
+      "equal": true,
+      "api_has_later_bar": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792548780000,
+      "ws_volume": 5346,
+      "api_initial": 5196,
+      "api_recheck": 5346,
+      "equal": true,
+      "api_has_later_bar": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792548780000,
+      "ws_volume": 405,
+      "api_initial": 399,
+      "api_recheck": 405,
+      "equal": true,
+      "api_has_later_bar": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792548780000,
+      "ws_volume": 303,
+      "api_initial": 281,
+      "api_recheck": 303,
+      "equal": true,
+      "api_has_later_bar": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792548780000,
+      "ws_volume": 62,
+      "api_initial": 62,
+      "api_recheck": 62,
+      "equal": true,
+      "api_has_later_bar": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792548780000,
+      "ws_volume": 157,
+      "api_initial": 152,
+      "api_recheck": 157,
+      "equal": true,
+      "api_has_later_bar": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792548780000,
+      "ws_volume": 95,
+      "api_initial": 94,
+      "api_recheck": 95,
+      "equal": true,
+      "api_has_later_bar": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792548780000,
+      "ws_volume": 625,
+      "api_initial": 625,
+      "api_recheck": 625,
+      "equal": true,
+      "api_has_later_bar": true
+    }
+  ],
+  "all_equal": true,
+  "explanation": "Initial comparison treated the last candle in a 60-second cached chart response as closed. The response watermark did not establish closure. A later response containing subsequent bars agrees with all sampled WS volumes. Subsequent probe compares only bars with a newer candle in its API response."
+}

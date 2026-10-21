@@ -188,6 +188,11 @@ class LiveBuffer:
         self._subscriber_drops = 0
         self._outboxes: set[LiveOutbox] = set()
         self._high_water_entries = 0
+        from .volume_state import VolumeReplica, VolumeSource  # noqa: PLC0415 — independent memory state
+        self.volume_source = VolumeSource('inprocess')
+        self.volume_replica = VolumeReplica()
+        self.volume_replica.reset('inprocess')
+        self.volume_external = False
         self._trade_observers: set[Callable] = set()
         self._gap_observers: set[Callable] = set()
 
@@ -288,6 +293,8 @@ class LiveBuffer:
 
     def _notify_trades(self, code, entries, now_ms):
         for entry in entries:
+            if not self.volume_external:
+                self.volume_source.ingest(code, entry, now_ms)
             if entry["kind"] == "trade":
                 for listener in tuple(self._trade_observers):
                     listener(code, entry, now_ms)

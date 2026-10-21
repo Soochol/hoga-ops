@@ -85,6 +85,7 @@ from hoga.live.lifecycle import (
     get_today_bid_peak as live_get_today_bid_peak,
     get_vi_status as live_get_vi_status,
     restore_last_ob_from_disk,
+    set_screener_volume_targets,
     start_kiwoom_session_watchdog,
     start_last_ob_flusher,
     start_live_stream,
@@ -630,7 +631,8 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     app.include_router(build_calendar_router(data_dir=data_dir))
     app.include_router(build_watchlist_router(data_dir=data_dir, bus=bus))
     app.include_router(build_heatmap_router(data_dir=data_dir, bus=bus, compute=pools))
-    app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools, live_buffer=live_get_buffer()))
+    app.include_router(build_screener_router(data_dir=data_dir, bus=bus, compute=pools, live_buffer=live_get_buffer(),
+        volume_targets=set_screener_volume_targets))
     app.include_router(build_signal_alert_router(data_dir=data_dir))
     app.include_router(build_sentiment_router(data_dir=data_dir))
     app.include_router(build_news_router(data_dir=data_dir))

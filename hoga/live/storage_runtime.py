@@ -83,6 +83,9 @@ def _ensure_kiwoom_session(
     )
     from .session_gate import ws_connection_window  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
 
+    if getattr(buffer, 'volume_external', False):
+        buffer.volume_external = False
+        buffer.volume_replica.reset('inprocess')
     mgr = KiwoomSessionManager(
         buffer=buffer,
         data_dir=data_dir,

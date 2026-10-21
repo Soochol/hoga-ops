@@ -1,0 +1,15 @@
+{
+  "checked_at": "2026-10-21T11:43:10.185851+09:00",
+  "code": "005930",
+  "bar_start_ms": 1792550220000,
+  "shadow_ws_volume": 12932,
+  "native_collector_saved_volumes": [
+    12932
+  ],
+  "api_volume": 12931,
+  "corrected_by_prepare": 12931,
+  "after_old_ws_replay": 12931,
+  "passed": true,
+  "conclusion": "Shadow matches independent operating raw-WS candle aggregator. REST differs by one share. Exact exchange/vendor cause is not established. The designed settled-REST correction replaces it downward and replay cannot undo it.",
+  "limitations": "WS-derived in-progress and not-yet-audited bars are provisional. Periodic audit is five minutes; no claim that WS and REST are tick-for-tick identical."
+}

@@ -1,0 +1,13 @@
+{
+  "symbols": 512,
+  "replay_bars_per_symbol": 16,
+  "iterations": 100,
+  "frame_build_ms": {
+    "p50": 1.819135999539867,
+    "p95": 2.416250001260778,
+    "p99": 8.234155000536703
+  },
+  "chunks": 8,
+  "limitations": "Only full-state frame construction and its byte-budget encoding. Excludes raw tick ingest, IPC, scan, browser and existing collector load.",
+  "source_sha256": "dabe74d98d27a0ae36d581c7069b4a6919a57de7bc4318187a362ef168938a6e"
+}

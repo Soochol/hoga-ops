@@ -1,0 +1,239 @@
+{
+  "started_ms": 1792549232080,
+  "finished_ms": 1792549472142,
+  "duration_seconds": 240,
+  "production_health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "89507441c"
+  },
+  "requested": 342,
+  "existing_ready": 342,
+  "sampled_codes": [
+    "005930",
+    "000660",
+    "006400",
+    "035420",
+    "012450",
+    "373220",
+    "005490",
+    "011200"
+  ],
+  "already_ready": 8,
+  "coverage": {
+    "id": "4a3727132d5d43b5af2787ab6ea1cc2e",
+    "total": 8,
+    "prepared": 8,
+    "receiving": 8,
+    "preparing": 0,
+    "recovering": 0,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": 1792549277595,
+    "error": null
+  },
+  "first_all_prepared_ms": 2042,
+  "metrics": {
+    "condition_events": 48,
+    "history_http_requests": 75,
+    "max_prepared": 8,
+    "max_receiving": 8,
+    "trade_frames": 8842,
+    "history_requests_from_result_reads": 0
+  },
+  "comparisons": [
+    {
+      "code": "005930",
+      "start_ms": 1792549260000,
+      "ws_volume": 6968,
+      "api_volume": 6968,
+      "equal": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792549260000,
+      "ws_volume": 6322,
+      "api_volume": 6322,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792549260000,
+      "ws_volume": 3155,
+      "api_volume": 3155,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792549260000,
+      "ws_volume": 709,
+      "api_volume": 709,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792549260000,
+      "ws_volume": 220,
+      "api_volume": 220,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792549260000,
+      "ws_volume": 284,
+      "api_volume": 284,
+      "equal": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792549260000,
+      "ws_volume": 35,
+      "api_volume": 35,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792549260000,
+      "ws_volume": 519,
+      "api_volume": 519,
+      "equal": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792549320000,
+      "ws_volume": 15,
+      "api_volume": 15,
+      "equal": true
+    },
+    {
+      "code": "005930",
+      "start_ms": 1792549320000,
+      "ws_volume": 14659,
+      "api_volume": 14659,
+      "equal": true
+    },
+    {
+      "code": "005930",
+      "start_ms": 1792549380000,
+      "ws_volume": 9333,
+      "api_volume": 9333,
+      "equal": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792549320000,
+      "ws_volume": 6415,
+      "api_volume": 6415,
+      "equal": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792549380000,
+      "ws_volume": 4243,
+      "api_volume": 4243,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792549320000,
+      "ws_volume": 1817,
+      "api_volume": 1817,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792549380000,
+      "ws_volume": 596,
+      "api_volume": 596,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792549320000,
+      "ws_volume": 680,
+      "api_volume": 680,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792549380000,
+      "ws_volume": 199,
+      "api_volume": 199,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792549320000,
+      "ws_volume": 58,
+      "api_volume": 58,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792549380000,
+      "ws_volume": 60,
+      "api_volume": 60,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792549320000,
+      "ws_volume": 379,
+      "api_volume": 379,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792549380000,
+      "ws_volume": 628,
+      "api_volume": 628,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792549320000,
+      "ws_volume": 879,
+      "api_volume": 879,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792549380000,
+      "ws_volume": 640,
+      "api_volume": 640,
+      "equal": true
+    }
+  ],
+  "matched_comparisons": 23,
+  "mismatches": 0,
+  "local_ipc_delivery_ms": {
+    "p50": 0,
+    "p95": 1,
+    "p99": 1
+  },
+  "history_http_seconds_max": 0.4287063829979161,
+  "internal_outbox": {
+    "messages": 0,
+    "bytes": 0,
+    "dropped": 0,
+    "sent": 956,
+    "max_messages": 1024,
+    "max_bytes": 8388608
+  },
+  "subscription_count_before": 342,
+  "subscription_count_after": 342,
+  "limitations": "Shadow uses the existing production public WS; it adds no second vendor connection. The public WS may report gaps. New absolute state IPC and monitor histories are isolated. Only sampled completed bars are compared. Local IPC timing excludes provider and browser latency. Production code is unchanged during this run.",
+  "source_sha256_before": {
+    "hoga/live/volume_state.py": "3d7d550b0dc435336d5eef17d26b8eb6f59b50dc18e95d461f2816fa64ae218d",
+    "hoga/api/screener_continuous.py": "c6c232edf6cbcc8c4dd06e6f34390a51f5dfcb8c583a0d3dae233ed7cfdeb3d5",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  },
+  "unchanged_sources": true,
+  "source_sha256": {
+    "hoga/live/volume_state.py": "3d7d550b0dc435336d5eef17d26b8eb6f59b50dc18e95d461f2816fa64ae218d",
+    "hoga/api/screener_continuous.py": "c6c232edf6cbcc8c4dd06e6f34390a51f5dfcb8c583a0d3dae233ed7cfdeb3d5",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  }
+}

@@ -430,7 +430,8 @@ async def _evaluate_minute_leaf(leaf, code, *, data_dir, as_of, now, basis, fetc
             async with sem:
                 if live:
                     data, received_ms, lower_bounds = live
-                    snapshot = MinuteSnapshot(data, received_ms)
+                    snapshot = MinuteSnapshot(data, received_ms,
+                        volume_runtime.reason(code) if hasattr(volume_runtime, 'reason') else None)
                 else:
                     snapshot = await minute_snapshot(data_dir, code, p.timeframe, needed, lower, cutoff)
                     if realtime:
@@ -511,5 +512,9 @@ async def evaluate(*, data_dir, conditions, codes, basis, now, overlay=None,
     result.coverage.complete = len(codes) - len(incomplete)
     if volume_runtime and basis == "intraday" and any(volume_runtime.supports(leaf) for leaf in selected):
         prepared, receiving = volume_runtime.counts(selected, codes, int(time.time() * 1000))
-        result.coverage.realtime = BarRealtimeCoverage(prepared=prepared, receiving=receiving)
+        detail = volume_runtime.coverage() if hasattr(volume_runtime, 'coverage') else {}
+        detail.pop('prepared', None)
+        detail.pop('receiving', None)
+        result.coverage.realtime = BarRealtimeCoverage(prepared=prepared, receiving=receiving,
+                                                      continuous=bool(detail), **detail)
     return result

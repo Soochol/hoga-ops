@@ -87,6 +87,10 @@ class CaptureProcessSession:
         self._sync_acked_at: float | None = None
         self._sync_failed = False
         self.account_refs: set[int] = set()
+        self._volume_codes: tuple[str, ...] = ()
+        self._volume_sent: tuple | None = None
+        if self.buffer is not None:
+            self.buffer.volume_external = True
 
     def alive(self) -> bool:
         return self.process is not None and self.process.is_alive()
@@ -136,12 +140,14 @@ class CaptureProcessSession:
             self.process.close()
             self.restarts += 1
         self.epoch = uuid.uuid4().hex
+        self.buffer.volume_replica.reset(self.epoch)
+        self._volume_sent = None
         self._state, self._peaks, self._vi = {}, {}, {}
         self._received_at = 0.0
         self._state_sequence = self._display_sequence = 0
         self._peak_sequence_floor = 0
         self.ack_version = 0
-        pairs = [socket.socketpair() for _ in range(3)]
+        pairs = [socket.socketpair() for _ in range(4)]
         proc = multiprocessing.get_context("spawn").Process(
             target=self._target, args=(str(self.data_dir), self.epoch, tuple(p[1] for p in pairs), os.getpid()),
             name="live-capture", daemon=True,
@@ -155,6 +161,7 @@ class CaptureProcessSession:
                 ("control", self.peer.read()), ("tokens", self._tokens(self.peer)),
                 ("display", self._display(channels[1][0], self.epoch)),
                 ("state", self._states(channels[2][0], self.epoch)),
+                ("volume", self._volumes(channels[3][0], self.epoch)),
             )]
             # Readers own these writers until explicit shutdown; otherwise GC
             # would close the receiving stream transport immediately.
@@ -239,6 +246,20 @@ class CaptureProcessSession:
                 await self.buffer.publish(message["code"], snapshots, now_ms=message["now_ms"])
             elif message["type"] == "event":
                 _Configuration.publish(message["event"])
+
+    async def set_volume_targets(self, codes) -> None:
+        self._volume_codes = tuple(sorted(codes))
+        key = (self.epoch, self._volume_codes)
+        if self.peer is not None and not self.peer.closed.is_set() and key != self._volume_sent:
+            await self.peer.call('volume_targets', {'codes': list(self._volume_codes)})
+            self._volume_sent = key
+
+    async def _volumes(self, reader, epoch):
+        while True:
+            frame = await read_frame(reader, limit=DISPLAY_MAX_FRAME_BYTES)
+            if epoch != self.epoch:
+                raise ValueError('old volume epoch')
+            self.buffer.volume_replica.apply(frame)
 
     async def _states(self, reader: asyncio.StreamReader, epoch: str) -> None:
         while True:

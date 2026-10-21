@@ -23,6 +23,7 @@ from hoga.util.timeenc import KST
 from .buffer import LiveBuffer
 from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, BoundedOutbox, PeakSnapshotDelta, RpcPeer, encode, open_channel
 from .snapshot import SnapshotKind
+from .volume_state import manager_generations
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class ForwardBuffer(LiveBuffer):
     def __init__(self, epoch: str, outbox: BoundedOutbox):
         super().__init__(max_total_entries=1, max_total_bytes=1)
         self.epoch, self.outbox = epoch, outbox
+        self.volume_source.epoch = epoch
         self.sequence = 0
         self.desired_version = 0
 
@@ -55,6 +57,10 @@ class ForwardBuffer(LiveBuffer):
 
     async def publish(self, code, snapshots, *, now_ms=None):
         snapshots = list(snapshots)
+        stamp = int(time.time() * 1000) if now_ms is None else now_ms
+        for snapshot in snapshots:
+            self.volume_source.ingest(code, {'t_ms': snapshot.t_ms, 'kind': snapshot.kind.value,
+                                            **snapshot.payload}, stamp)
         # The sidecar is small/compact and survives display IPC pressure.
         books = [s for s in snapshots if s.kind is SnapshotKind.OB]
         if books:
@@ -73,6 +79,7 @@ class CollectorWorker:
         self.root, self.epoch, self.peer = root, epoch, peer
         self.display = BoundedOutbox()
         self.state_outbox = BoundedOutbox(max_messages=1)
+        self.volume_outbox = BoundedOutbox()
         self.peak_delta = PeakSnapshotDelta()
         self.buffer = ForwardBuffer(epoch, self.display)
         self.config: dict = {}
@@ -236,8 +243,11 @@ class CollectorWorker:
                     "dates": sorted(store.live_dates(code, venue)), "error": store.storage_error}
         if method == "vi":
             return self.manager.vi_status(args["code"])
-        if method == "alert_settings":
-            self.monitor.refresh_settings()
+        if method in {"alert_settings", "volume_targets"}:
+            if method == "volume_targets":
+                self.buffer.volume_source.configure(args["codes"])
+            else:
+                self.monitor.refresh_settings()
             return None
         if method == "stop":
             self.stopping.set()
@@ -291,6 +301,17 @@ class CollectorWorker:
                          os.getpid(), len(frame), len(self.peak_delta.previous), len(state["peaks"]),
                          state["peaks_full"], (time.monotonic() - started) * 1000)
             await asyncio.sleep(1)
+
+    async def volumes(self) -> None:
+        # All snapshots carry the complete bounded replay for their streams.
+        # A dropped older snapshot needs no relative delta or tick replay.
+        while True:
+            stamp = now_ms()
+            source = self.buffer.volume_source
+            source.health(manager_generations(self.manager, stamp), stamp)
+            for frame in source.frames(stamp):
+                self.volume_outbox.put(encode(frame, limit=DISPLAY_MAX_FRAME_BYTES))
+            await asyncio.sleep(0.25)
 
     async def watchdog(self) -> None:
         while True:
@@ -356,6 +377,7 @@ async def run_worker(root: str, epoch: str, sockets: tuple[socket.socket, ...], 
         tasks = [asyncio.create_task(coro) for coro in (
             peer.read(), worker.commands(), worker.display.send(channels[1][1]),
             worker.state_outbox.send(channels[2][1]), worker.states(), worker.watchdog(),
+            worker.volume_outbox.send(channels[3][1]), worker.volumes(),
         )]
         stop_task = asyncio.create_task(worker.stopping.wait())
         tasks.append(stop_task)

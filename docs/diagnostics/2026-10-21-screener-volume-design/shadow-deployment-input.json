@@ -1,0 +1,246 @@
+{
+  "started_ms": 1792550209042,
+  "finished_ms": 1792550459075,
+  "duration_seconds": 240,
+  "production_health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "89507441c"
+  },
+  "requested": 342,
+  "existing_ready": 342,
+  "sampled_codes": [
+    "005930",
+    "000660",
+    "006400",
+    "035420",
+    "012450",
+    "373220",
+    "005490",
+    "011200"
+  ],
+  "already_ready": 8,
+  "coverage": {
+    "id": "e44d6bdc6579400bb4e46350f3d4005e",
+    "total": 8,
+    "prepared": 8,
+    "receiving": 8,
+    "preparing": 0,
+    "recovering": 0,
+    "unavailable": 0,
+    "insufficient": 0,
+    "last_verified_ms": 1792550269465,
+    "error": null
+  },
+  "first_all_prepared_ms": 2038,
+  "metrics": {
+    "condition_events": 46,
+    "max_prepared": 8,
+    "max_receiving": 8,
+    "history_http_requests": 80,
+    "trade_frames": 8821,
+    "history_requests_from_result_reads": 0
+  },
+  "comparisons": [
+    {
+      "code": "005930",
+      "start_ms": 1792550220000,
+      "ws_volume": 12932,
+      "api_volume": 12931,
+      "equal": false
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792550220000,
+      "ws_volume": 3763,
+      "api_volume": 3763,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792550220000,
+      "ws_volume": 222,
+      "api_volume": 222,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792550220000,
+      "ws_volume": 317,
+      "api_volume": 317,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792550220000,
+      "ws_volume": 294,
+      "api_volume": 294,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792550220000,
+      "ws_volume": 499,
+      "api_volume": 499,
+      "equal": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792550220000,
+      "ws_volume": 17,
+      "api_volume": 17,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792550220000,
+      "ws_volume": 671,
+      "api_volume": 671,
+      "equal": true
+    },
+    {
+      "code": "005930",
+      "start_ms": 1792550280000,
+      "ws_volume": 12442,
+      "api_volume": 12442,
+      "equal": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792550280000,
+      "ws_volume": 8236,
+      "api_volume": 8236,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792550280000,
+      "ws_volume": 150,
+      "api_volume": 150,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792550280000,
+      "ws_volume": 324,
+      "api_volume": 324,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792550280000,
+      "ws_volume": 83,
+      "api_volume": 83,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792550280000,
+      "ws_volume": 312,
+      "api_volume": 312,
+      "equal": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792550280000,
+      "ws_volume": 17,
+      "api_volume": 17,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792550280000,
+      "ws_volume": 1221,
+      "api_volume": 1221,
+      "equal": true
+    },
+    {
+      "code": "005930",
+      "start_ms": 1792550340000,
+      "ws_volume": 17051,
+      "api_volume": 17051,
+      "equal": true
+    },
+    {
+      "code": "000660",
+      "start_ms": 1792550340000,
+      "ws_volume": 1508,
+      "api_volume": 1508,
+      "equal": true
+    },
+    {
+      "code": "006400",
+      "start_ms": 1792550340000,
+      "ws_volume": 163,
+      "api_volume": 163,
+      "equal": true
+    },
+    {
+      "code": "035420",
+      "start_ms": 1792550340000,
+      "ws_volume": 299,
+      "api_volume": 299,
+      "equal": true
+    },
+    {
+      "code": "012450",
+      "start_ms": 1792550340000,
+      "ws_volume": 563,
+      "api_volume": 563,
+      "equal": true
+    },
+    {
+      "code": "373220",
+      "start_ms": 1792550340000,
+      "ws_volume": 279,
+      "api_volume": 279,
+      "equal": true
+    },
+    {
+      "code": "005490",
+      "start_ms": 1792550340000,
+      "ws_volume": 112,
+      "api_volume": 112,
+      "equal": true
+    },
+    {
+      "code": "011200",
+      "start_ms": 1792550340000,
+      "ws_volume": 770,
+      "api_volume": 770,
+      "equal": true
+    }
+  ],
+  "matched_comparisons": 23,
+  "mismatches": 1,
+  "local_ipc_delivery_ms": {
+    "p50": 0,
+    "p95": 1,
+    "p99": 1
+  },
+  "history_http_seconds_max": 0.6014578050017008,
+  "internal_outbox": {
+    "messages": 0,
+    "bytes": 0,
+    "dropped": 0,
+    "sent": 995,
+    "max_messages": 1024,
+    "max_bytes": 8388608
+  },
+  "subscription_count_before": 342,
+  "subscription_count_after": 342,
+  "limitations": "Shadow uses the existing production public WS; it adds no second vendor connection. The public WS may report gaps. New absolute state IPC and monitor histories are isolated. Only sampled completed bars are compared. Local IPC timing excludes provider and browser latency. Production code is unchanged during this run.",
+  "source_sha256_before": {
+    "hoga/live/volume_state.py": "dabe74d98d27a0ae36d581c7069b4a6919a57de7bc4318187a362ef168938a6e",
+    "hoga/api/screener_continuous.py": "5d2c34075a9fe0148254339089bb09b6b74739e592146fb1663f442783a10cb9",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  },
+  "unchanged_sources": true,
+  "source_sha256": {
+    "hoga/live/volume_state.py": "dabe74d98d27a0ae36d581c7069b4a6919a57de7bc4318187a362ef168938a6e",
+    "hoga/api/screener_continuous.py": "5d2c34075a9fe0148254339089bb09b6b74739e592146fb1663f442783a10cb9",
+    "hoga/live/collector_worker.py": "604484c222264ad3d704f671d40fcce10ff4b15b6be0cfda59145230c798f3fe",
+    "hoga/live/collector_process.py": "e39f7d6f5c6c32843e6698317f2b80a73522fc39d2eb2868b257867f02ed4742"
+  }
+}

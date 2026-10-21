@@ -41,6 +41,7 @@ from hoga.api.models import (
 from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 from hoga.api.request_coalescer import ReadRequestCoalescer
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR as _SCREENER_EOD_CUTOFF_HOUR
+from hoga.api.screener_continuous import build_router as continuous_router, make_owner
 from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
 from hoga.live import kiwoom_rest_runtime
@@ -466,7 +467,7 @@ def _build_pattern_saves_router(data_dir: Path, bus) -> APIRouter:
     return pat_saves
 
 
-def _read_requests_lifespan(*coalescers: ReadRequestCoalescer, volume_runtime=None, live_buffer=None):
+def _read_requests_lifespan(*coalescers: ReadRequestCoalescer, volume_runtime=None, live_buffer=None, continuous=None):
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         release = (live_buffer.observe_trades(volume_runtime.ingest, volume_runtime.gap)
@@ -476,13 +477,16 @@ def _read_requests_lifespan(*coalescers: ReadRequestCoalescer, volume_runtime=No
         finally:
             if release:
                 release()
+            if continuous:
+                await continuous.close()
             if volume_runtime:
                 volume_runtime.close()
             await asyncio.gather(*(c.aclose() for c in coalescers))
     return lifespan
 
 
-def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = None, live_buffer=None) -> APIRouter:
+def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = None,
+                 live_buffer=None, volume_targets=None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
     _module_bus = bus   # 스케줄러발 trigger_update(bus 미전달)도 같은 버스로 발행
     # 패턴 검색이 도는 자리(ADR-0169). 안 넘기면 스레드 — 종전 `asyncio.to_thread` 와 같다.
@@ -492,11 +496,13 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     from hoga.live.screener_volume import ScreenerVolumeRuntime  # noqa: PLC0415 — runtime assembly
     volume_runtime = ScreenerVolumeRuntime(bus.publish if bus else None)
 
+    continuous = make_owner(data_dir, bus, live_buffer, volume_targets)
     router = APIRouter(
         prefix="/api/screener", tags=["screener"],
         lifespan=_read_requests_lifespan(scan_requests, pattern_requests,
-            volume_runtime=volume_runtime, live_buffer=live_buffer),
+            volume_runtime=volume_runtime, live_buffer=live_buffer, continuous=continuous),
     )
+    router.include_router(continuous_router(continuous))
     from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
     router.include_router(history_router(data_dir))
     from hoga.api.screener_exclusions import build_router as exclusions_router  # noqa: PLC0415
