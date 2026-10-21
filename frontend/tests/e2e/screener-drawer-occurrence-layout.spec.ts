@@ -21,7 +21,8 @@ test('narrow screener drawer keeps stock rows compact and existing exclusions re
     if (r.request().method() === 'DELETE') { exclusions = []; return r.fulfill({ status: 204 }); }
     return r.fulfill({ json: { schema_version: 1, exclusions } });
   });
-  await page.route(apiExact('screener/scan'), r => r.fulfill({ json: { status: 'ok', warnings: [], rows: [
+  await page.route(apiExact('screener/scan'), r => r.fulfill({ json: { status: 'ok', warnings: [],
+    basis_at_ms: Date.UTC(2026, 9, 21, 4, 3), fallback_basis_at_ms: Date.UTC(2026, 9, 20, 6, 30), rows: [
     { code: '000660', name: 'SK하이닉스', market: 'KOSPI', price: 1851000, change_pct: -0.27,
       trade_value_won: 1e10, occurrences: events.filter(date => !exclusions.some(e => e.date === date))
         .map(date => ({ condition_id: 'v', condition_key: 'volume', date })) },
@@ -36,7 +37,9 @@ test('narrow screener drawer keeps stock rows compact and existing exclusions re
   await expect.poll(async () => (await row.boundingBox())!.height).toBeLessThan(36);
   await expect(row).not.toContainText('2026-09-10');
   await expect(row.getByRole('button', { name: /발생/ })).toHaveCount(0);
-  await expect(panel.getByText('1종목', { exact: true })).toBeVisible();
+  await expect(panel.getByText('1종목', { exact: true })).toHaveCount(0);
+  await expect(panel.getByTestId('screener-drawer-basis-time')).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: '스크리너 결과 정렬' })).toBeVisible();
   await expect(panel.getByText('신고가, 거래대금', { exact: true })).toHaveCount(1);
   await expect(panel.getByText(/^발생 \d+건/)).toHaveCount(0);
   await panel.getByRole('button', { name: '제외한 발생 건 1', exact: true }).click();
@@ -47,7 +50,7 @@ test('narrow screener drawer keeps stock rows compact and existing exclusions re
   await expect(restore).toHaveCount(0);
   expect(exclusions).toEqual([]);
   await dialog.getByRole('button', { name: '닫기', exact: true }).click();
-  await expect(panel.getByText('1종목', { exact: true })).toBeVisible();
+  await expect(panel.getByText('1종목', { exact: true })).toHaveCount(0);
   await expect(row).toHaveCount(1);
   await expect.poll(async () => (await row.boundingBox())!.height).toBeLessThan(36);
   await page.screenshot({ path: testInfo.outputPath('narrow-restored.png') });

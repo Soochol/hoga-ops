@@ -6,7 +6,7 @@ it('uses server cutoffs in KST, including empty results and mixed dates', () => 
   const live = Date.UTC(2026, 9, 20, 1, 35);
   expect(scanBasisLabel({ rows: [], basisAtMs: confirmed })).toBe('2026-10-19 15:30 기준');
   expect(scanBasisLabel({ rows: [], basisAtMs: live, fallbackBasisAtMs: confirmed }))
-    .toBe('2026-10-19 15:30 ~ 2026-10-20 10:35 기준');
+    .toBe('10:35 기준 · 일부 종목 전일 데이터');
   expect(scanBasisLabel({ rows: [], basisAtMs: live, fallbackBasisAtMs: live })).toBe('2026-10-20 10:35 기준');
 });
 
