@@ -27,7 +27,7 @@ async function geometry(row: Locator) {
 }
 
 for (const fontSize of [16, 20]) {
-  test(`히트맵 흐름·그룹 평균 정렬·반응형 여백·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
+  test(`히트맵 흐름·그룹 헤더 정렬·반응형 여백·관측 폭 유지 (${fontSize}px)`, async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.clock.install({ time: new Date('2026-10-19T01:00:00Z') });
@@ -72,12 +72,8 @@ for (const fontSize of [16, 20]) {
         expect(value.whiteSpace).toBe('nowrap');
       }
       for (const header of await panel.getByTestId('heatmap-group-header').all()) {
-        const average = header.locator('.heatmap-group-percent');
-        expect(await average.evaluate(node => getComputedStyle(node).textAlign)).toBe('right');
-        const averageBounds = await average.boundingBox();
-        const percentBounds = await first.locator('.quote-row-percent').boundingBox();
-        expect(averageBounds!.x + averageBounds!.width).toBeCloseTo(percentBounds!.x + percentBounds!.width, 3);
-        expect(averageBounds!.width).toBeCloseTo(a.percent.width, 3);
+        await expect(header.locator('.quote-row-flow, .heatmap-group-percent')).toHaveCount(0);
+        await expect(header).not.toContainText('%');
       }
       if (width === 280) await panel.screenshot({ path: `/tmp/hoga-heatmap-columns-default-${fontSize}.png` });
       expect(a.height).toBeLessThanOrEqual(26 * scale);
@@ -117,10 +113,8 @@ for (const fontSize of [16, 20]) {
     await panel.getByRole('button', { name: '전체 펼치기' }).click();
     expect((await geometry(first)).flow.width).toBe(wide.flow.width);
     expect((await geometry(first)).percent.width).toBe(wide.percent.width);
-    // Group drag keeps the same average column in the body-portal ghost.
+    // Group drag keeps the name/count header without flow or percentage.
     const header = panel.getByTestId('heatmap-group-header').filter({ hasText: folder.name });
-    const headerBounds = await header.boundingBox();
-    const averageBefore = await header.locator('.heatmap-group-percent').boundingBox();
     await panel.getByRole('button', { name: '그룹 정렬', exact: true }).click();
     await panel.getByRole('button', { name: '그룹 정렬', exact: true }).click();
     const box = await header.boundingBox();
@@ -129,10 +123,9 @@ for (const fontSize of [16, 20]) {
     await page.mouse.move(box!.x + box!.width / 2 + 8, box!.y + box!.height / 2, { steps: 3 });
     const ghost = page.getByTestId('heatmap-drag-ghost');
     await expect(ghost).toBeVisible();
-    const ghostBounds = await ghost.boundingBox();
-    const averageGhost = await ghost.locator('.heatmap-group-percent').boundingBox();
-    expect(averageGhost!.width).toBeCloseTo(averageBefore!.width, 3);
-    expect(averageGhost!.x + averageGhost!.width - ghostBounds!.x).toBeCloseTo(averageBefore!.x + averageBefore!.width - headerBounds!.x, 3);
+    await expect(ghost.locator('.quote-row-flow, .heatmap-group-percent')).toHaveCount(0);
+    await expect(ghost).not.toContainText('%');
+    await expect(ghost).toContainText(folder.name);
     await page.keyboard.press('Escape');
     await page.mouse.up();
     await expect(ghost).toHaveCount(0);

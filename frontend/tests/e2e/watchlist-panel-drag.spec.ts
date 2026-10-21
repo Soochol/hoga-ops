@@ -200,6 +200,9 @@ test('이동 이후 다른 변경이 있으면 되돌리기가 덮어쓰지 않�
 test('그룹 헤더로 순서를 옮기고 드롭 후 목록이 돌아온다', async ({ page }) => {
   const state = await setup(page);
   await start(page, group(page, A).getByTestId('watchlist-group-header'));
+  const ghost = page.getByTestId('watchlist-drag-ghost');
+  await expect(ghost.locator('.quote-row-flow')).toHaveCount(0);
+  await expect(ghost).not.toContainText('%');
   await expect(row(page, A, '005930')).toBeHidden();
   await over(page, group(page, B).getByTestId('watchlist-group-header'), 0.8);
   await page.mouse.up();

@@ -1,6 +1,5 @@
-import { panelFlowRevision, usePanelFlow, type PanelGroupFlow, type PanelStockFlow } from '../api/panelFlow';
-import { latestFlowValue, PanelFlowNotice, PanelGroupSparkline } from '../rightrail/PanelFlowSparkline';
-import { priceDirClass } from '../ui/priceDir';
+import { panelFlowRevision, usePanelFlow, type PanelStockFlow } from '../api/panelFlow';
+import { PanelFlowNotice } from '../rightrail/PanelFlowSparkline';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
 import { HeatmapSearchInput } from '../heatmap/HeatmapSearchInput';
@@ -197,7 +196,6 @@ function WatchlistSymbolAddPopover({
  */
 function GroupHeader(props: {
   label: string; count: number; collapsed: boolean;
-  flow: PanelGroupFlow | null;
   columnLayout: React.CSSProperties;
   onToggle: () => void;
   onRename?: () => void;
@@ -231,7 +229,6 @@ function GroupHeader(props: {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const itemClass =
     'w-full text-left px-3 py-1.5 text-sm text-fg hover:bg-bg-input-hover flex items-center gap-2 disabled:opacity-40 disabled:hover:bg-transparent';
-  const avg = latestFlowValue(props.flow?.pct ?? []);
   const cycleSortMode = () => {
     if (!props.onSort || !props.sortMode) return;
     if (props.sortMode === 'default') {
@@ -285,7 +282,6 @@ function GroupHeader(props: {
         <span className="truncate">{props.label}</span>
         <span className="flex-none text-xs font-normal text-fg-dim">{props.count}</span>
       </button>
-      <PanelGroupSparkline flow={props.flow} name={props.label} />
       {props.onSort && (
         <button type="button" aria-label={`${props.label} 정렬`}
           aria-describedby={sortDescriptionId}
@@ -293,10 +289,8 @@ function GroupHeader(props: {
           // 설명은 있으나 포인터 사용자엔 안 보임). aria-describedby 와 같은 문구.
           title={quoteSortModeDescription(props.sortMode)}
           onClick={cycleSortMode}
-          className={`h-6 shrink-0 flex items-center gap-1 text-right font-data text-xs tabular-nums rounded hover:bg-bg-input-hover ${avg == null ? 'text-fg-dim' : priceDirClass(avg)}`}
-          style={{ width: 'calc(var(--quote-percent-width, 3.5rem) + 1rem)' }}>
-          <span className="flex-none"><QuoteSortIcon mode={props.sortMode} /></span>
-          <span className="flex-1">{avg == null ? null : `${avg > 0 ? '+' : ''}${avg.toFixed(2)}%`}</span>
+          className={`grid h-6 w-6 shrink-0 place-items-center rounded hover:bg-bg-input-hover hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
+          <QuoteSortIcon mode={props.sortMode} />
           <span id={sortDescriptionId}
             style={{ position: 'absolute', width: 1, height: 1, padding: 0, margin: -1, overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', whiteSpace: 'nowrap', border: 0 }}>
             {quoteSortModeDescription(props.sortMode)}
@@ -604,7 +598,7 @@ type DragGhost =
       expectedPrice: number | null; expectedPct: number | null;
     }
   | { kind: 'memo'; text: string }
-  | { kind: 'folder'; label: string; count: number; sortMode: QuoteSortMode; flow: PanelGroupFlow | null; initialRect?: RailDragOverlayRect };
+  | { kind: 'folder'; label: string; count: number; sortMode: QuoteSortMode; initialRect?: RailDragOverlayRect };
 
 const GHOST_NOOP = () => {};
 
@@ -650,10 +644,8 @@ function WatchlistDragGhost({ ghost, columnLayout }: { ghost: DragGhost; columnL
           <span className="truncate">{ghost.label}</span>
           <span className="flex-none text-xs font-normal text-fg-dim">{ghost.count}</span>
         </span>
-        <PanelGroupSparkline flow={ghost.flow} name={ghost.label} />
-        <span className="flex h-6 shrink-0 items-center gap-1" style={{ width: 'calc(var(--quote-percent-width, 3.5rem) + 1rem)' }}>
+        <span className={`grid h-6 w-6 shrink-0 place-items-center ${ghost.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
           <QuoteSortIcon mode={ghost.sortMode} />
-          <span className="flex-1 text-right font-data text-xs tabular-nums">{(() => { const value = latestFlowValue(ghost.flow?.pct ?? []); return value == null ? null : `${value > 0 ? '+' : ''}${value.toFixed(2)}%`; })()}</span>
         </span>
       </li>
     );
@@ -843,7 +835,6 @@ export function WatchlistDrawer() {
   const flowRevision = useMemo(() => panelFlowRevision(data?.entries ?? []), [data]);
   const flowQuery = usePanelFlow('watchlist', venue, flowRevision, !!data?.entries.length);
   const stockFlows = useFrozenWhileDragging(flowQuery.byCode, isDragging);
-  const groupFlows = useFrozenWhileDragging(flowQuery.byFolder, isDragging);
 
   // ADR-0067: 행별 수집상태 배지 — live_set을 한 번 읽어 공유 (행마다 재계산 없음).
   const { data: liveStatusRaw } = useLiveStatus();
@@ -1304,7 +1295,7 @@ export function WatchlistDrawer() {
         // 그룹 블록 rect는 스크롤로 화면 위에 숨을 수 있어 헤더 좌표를 대신할 수 없다.
         const rect = d.getOverlayRect?.() as DOMRect | undefined;
         groupDrag.start(String(ev.active.id), rect);
-        setDragGhost({ kind: 'folder', label: g.label, count: g.count, sortMode: g.sortMode, flow: groupFlows.get(String(ev.active.id)) ?? null,
+        setDragGhost({ kind: 'folder', label: g.label, count: g.count, sortMode: g.sortMode,
           initialRect: rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height } : undefined });
         return;
       }
@@ -1540,7 +1531,7 @@ export function WatchlistDrawer() {
                 </ul>
               );
               const renderHeader = (dragHandle?: GroupDragHandle) => (
-                <GroupHeader columnLayout={columns.layout} label={label} count={g.count} collapsed={isCollapsed} flow={groupFlows.get(folder?.id ?? "") ?? null}
+                <GroupHeader columnLayout={columns.layout} label={label} count={g.count} collapsed={isCollapsed}
                   onToggle={() => { clearSelection(); if (searching) setSearchCollapsed((old) => { const next = new Set(old); if (next.has(key)) next.delete(key); else next.add(key); return next; }); else toggle(key); }}
                   onRename={folder ? () => setRenameTarget({ id: folder.id, name: folder.name }) : undefined}
                   onDelete={folder ? () => deleteFolderWithConfirm(folder.id) : undefined}

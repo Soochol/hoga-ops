@@ -313,7 +313,7 @@ _Avoid_: "watchlist" alone (ambiguous with the backend **Watchlist**); "read-onl
 
 관심종목·히트맵 우측 패널의 표시 확장(2026-10-21): 사용자 승인으로 현재가 열을
 당일 흐름(64×16px)으로 교체해 종목명·흐름·등락률을 한 줄에 표시한다. 그룹 헤더는
-평균 흐름도 표시한다. `/api/panel-flow?source=watchlist|heatmap&venue=…`가 독립
+이름·개수와 기존 접기·정렬 기능만 표시하고 등락률·흐름은 표시하지 않는다. `/api/panel-flow?source=watchlist|heatmap&venue=…`가 독립
 목록의 그룹 구성과 코드별 저장 분봉을 배치 계산한다. 코드별 계산은 소속 수와 무관하게
 한 번 수행하고 그룹은 유효 관측 종목 평균을 쓴다. 5분 버킷·60초 조회, 결측·미래 시간은
 보존하고 무데이터를 0%로 채우지 않는다. 통합의 비NXT 종목은 기존 시세처럼 KRX를 읽는다.

@@ -1,6 +1,1 @@
 .heatmap-fluid-group-header { padding-right: var(--quote-right-padding); }
-.heatmap-group-percent {
-  width: var(--quote-percent-width);
-  text-align: right;
-  white-space: nowrap;
-}
