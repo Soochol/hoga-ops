@@ -749,6 +749,8 @@ describe('호가 주문', () => {
       const orderWindow = within(screen.getByTestId('compare-order'));
       fireEvent.click(orderWindow.getByRole('button', { name: '종목 상세 정보' }));
       const orderSummary = screen.getByRole('dialog', { name: '종목 상세 정보' });
+      const summaryRows = (summary: HTMLElement) => Array.from(summary.querySelectorAll('.book-summary-row'))
+        .map(row => row.textContent).sort();
       for (const venue of ['KRX', 'NXT', 'UN'] as const) {
         act(() => useLiveVenueStore.setState({ venue }));
         const index = indexOf(venue), price = 67200 + index * 1000;
@@ -763,8 +765,8 @@ describe('호가 주문', () => {
         expect(screen.getByTestId('compare-order')).toHaveTextContent(`체결강도${index * 50}%`);
         expect(screen.getByTestId('compare-order').querySelectorAll('.order-info')[1]).toHaveTextContent(`${price.toLocaleString('ko-KR')}${index * 7}`);
         expect(screen.getByTestId('compare-book')).toHaveTextContent(price.toLocaleString('ko-KR'));
-        expect(book.getByTestId('book-summary').querySelector('.book-summary-page')?.textContent)
-          .toBe(within(orderSummary).getByTestId('book-summary').querySelector('.book-summary-page')?.textContent);
+        expect(summaryRows(book.getByTestId('book-summary')))
+          .toEqual(summaryRows(within(orderSummary).getByTestId('book-summary')));
       }
       expect(mock.command).not.toHaveBeenCalled();
       view.unmount();
