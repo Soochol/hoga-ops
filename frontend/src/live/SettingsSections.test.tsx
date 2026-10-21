@@ -13,9 +13,8 @@ import {
 } from '../state/chartPrefs';
 import * as apiClientApi from '../api/client';
 import * as liveSettingsApi from '../api/liveSettings';
-import * as signalAlertsApi from '../api/signalAlerts';
 
-// 단일 스크롤 전환으로 정보 섹션(알림·데이터소스·테마·Symbol Master·앱 정보)이
+// 단일 스크롤 전환으로 정보 섹션(데이터소스·테마·Symbol Master·앱 정보)이
 // **항상 마운트**된다 — 각 섹션의 쿼리 함수를 파일 스코프에서 막아 모든 테스트가
 // 네트워크 없이 조용히 돈다. 부분 mock: 오버라이드하지 않은 export 는 원본 유지.
 vi.mock('../api/client', async (importOriginal) => ({
@@ -46,15 +45,6 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
       rest_bypass_enabled: false,
       screener_depth_autocollect: false,
       krx_prefer_hogaplay: false,
-    });
-    vi.spyOn(signalAlertsApi, 'getSignalAlertSettings').mockResolvedValue({
-      schema_version: 1,
-      sell_total_renewal: {
-        enabled: true,
-        start_hhmm: 1100,
-        threshold_pct: 100,
-        use_intra_minute_max: true,
-      },
     });
   });
   afterEach(() => {
@@ -109,34 +99,15 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     expect(patches[0]).toEqual({ rest_bypass_enabled: true });
     expect(queryClient.getQueryData(liveSettingsApi.LIVE_SETTINGS_KEY)).toEqual(initial);
   });
-  it('서버 알림 설정도 저장 이후 이전 규칙으로 되돌린다', async () => {
-    const rule = { enabled: true, start_hhmm: 1100, threshold_pct: 100, use_intra_minute_max: true };
-    const patches: unknown[] = [];
-    let server = { schema_version: 1, sell_total_renewal: rule };
-    vi.mocked(apiClientApi.apiCall).mockImplementation(async (url, options) => {
-      if (url === '/api/signal-alerts/settings') {
-        if (options?.method === 'PATCH') { const patch = JSON.parse(String(options.body)); patches.push(patch); server = { ...server, ...patch }; }
-        return server as never;
-      }
-      return {} as never;
-    });
-    const { queryClient } = renderSettings();
-    await waitFor(() => expect(queryClient.getQueryData(signalAlertsApi.SIGNAL_ALERT_SETTINGS_KEY)).toEqual({ schema_version: 1, sell_total_renewal: rule }));
-    fireEvent.click(screen.getByRole('switch', { name: '알림 사용' }));
-    const undo = screen.getByRole('button', { name: '되돌리기' });
-    await waitFor(() => expect(undo).toBeEnabled());
-    fireEvent.click(undo);
-    await waitFor(() => expect(patches.at(-1)).toEqual({ sell_total_renewal: rule }));
-    await waitFor(() => expect(undo).toBeDisabled());
-  });
-
-  it('통합 목차 8개를 렌더한다 — 차트·체결창·알림 + 앱 스코프 5개', () => {
+  it('통합 목차 7개를 렌더한다 — 차트·체결창 + 앱 스코프 5개', () => {
     renderSettings();
     for (const id of [
-      'chart', 'trade-window', 'alerts', 'data-source', 'theme', 'symbols', 'general', 'roadmap',
+      'chart', 'trade-window', 'data-source', 'theme', 'symbols', 'general', 'roadmap',
     ]) {
       expect(screen.getByTestId(`settings-nav-${id}`)).toBeTruthy();
     }
+    expect(screen.queryByTestId('settings-nav-alerts')).toBeNull();
+    expect(screen.queryByRole('region', { name: '알림' })).toBeNull();
     // 「저장뷰」 nav 는 #1326 에서 사라졌다 — 저장뷰가 차트 봉을 정하지 않게 되면서
     // 그 섹션이 정할 것이 없어졌다.
     expect(screen.queryByTestId('settings-nav-study-views')).toBeNull();
@@ -148,7 +119,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
 
   it('단일 스크롤 — 모든 섹션이 클릭 없이 동시에 문서에 있다', () => {
     renderSettings();
-    for (const name of ['차트', '체결창', '알림', '데이터소스', '테마', '종목 목록', '앱 정보', '로드맵']) {
+    for (const name of ['차트', '체결창', '데이터소스', '테마', '종목 목록', '앱 정보', '로드맵']) {
       expect(screen.getByRole('region', { name })).toBeTruthy();
     }
   });
@@ -157,7 +128,7 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
     // `variant` 가 가르는 **유일한** 항목이다. 데이터소스가 쓰던 분기는 삭제됐다 —
     // 값이 전역인데 화면마다 숨기면 어느 문으로 들어왔는지에 답이 달라진다.
     renderSettings({ variant: 'study' });
-    for (const id of ['chart', 'alerts', 'data-source', 'theme', 'symbols', 'general', 'roadmap']) {
+    for (const id of ['chart', 'data-source', 'theme', 'symbols', 'general', 'roadmap']) {
       expect(screen.getByTestId(`settings-nav-${id}`)).toBeTruthy();
     }
     expect(screen.queryByTestId('settings-nav-trade-window')).toBeNull();
@@ -362,98 +333,4 @@ describe('SettingsSections (단일 스크롤 + 목차)', () => {
   });
 
   // 데이터소스 상세 콘텐츠 테스트는 DataSourceDetail.test.tsx로 이관(추출·재사용).
-
-  it('알림 섹션에서 시그널 알림 설정을 수정한다', async () => {
-    const mutate = vi.fn().mockResolvedValue({ schema_version: 1, sell_total_renewal: { enabled: true, start_hhmm: 1100, threshold_pct: 100, use_intra_minute_max: true } });
-    vi.spyOn(signalAlertsApi, 'usePatchSignalAlertSettings').mockReturnValue({
-      mutate,
-      mutateAsync: mutate,
-      reset: vi.fn(),
-      status: 'idle',
-      isIdle: true,
-      isPending: false,
-      isSuccess: false,
-      isError: false,
-      isPaused: false,
-      failureCount: 0,
-      failureReason: null,
-      submittedAt: 0,
-      variables: undefined,
-      data: undefined,
-      error: null,
-      context: undefined,
-    } as never);
-
-    renderSettings();
-
-    expect(await screen.findByRole('switch', { name: '알림 사용' })).toHaveAttribute('aria-checked', 'true');
-    const startTime = screen.getByLabelText('기준 시각');
-    const threshold = screen.getByLabelText('기준 최대값 대비 문턱 (%)');
-
-    fireEvent.change(startTime, { target: { value: '11:15' } });
-    fireEvent.blur(startTime);
-    fireEvent.change(threshold, { target: { value: '95' } });
-    fireEvent.blur(threshold);
-    fireEvent.click(screen.getByRole('switch', { name: '분봉 내 최대 매도 총잔량으로 판정' }));
-
-    await waitFor(() => {
-      expect(mutate).toHaveBeenCalledWith({
-        sell_total_renewal: {
-          enabled: true,
-          start_hhmm: 1115,
-          threshold_pct: 95,
-          use_intra_minute_max: false,
-        },
-      });
-    });
-  });
-
-  it('알림 기준 시각은 네 자리 HHMM 입력을 HH:MM으로 해석해 저장한다', async () => {
-    const mutate = vi.fn().mockResolvedValue({ schema_version: 1, sell_total_renewal: { enabled: true, start_hhmm: 1100, threshold_pct: 100, use_intra_minute_max: true } });
-    vi.spyOn(signalAlertsApi, 'usePatchSignalAlertSettings').mockReturnValue({
-      mutate,
-      mutateAsync: mutate,
-      reset: vi.fn(),
-      status: 'idle',
-      isIdle: true,
-      isPending: false,
-      isSuccess: false,
-      isError: false,
-      isPaused: false,
-      failureCount: 0,
-      failureReason: null,
-      submittedAt: 0,
-      variables: undefined,
-      data: undefined,
-      error: null,
-      context: undefined,
-    } as never);
-
-    renderSettings();
-    const startTime = await screen.findByLabelText('기준 시각') as HTMLInputElement;
-
-    fireEvent.change(startTime, { target: { value: '1000' } });
-    fireEvent.blur(startTime);
-    expect(startTime.value).toBe('10:00');
-    expect(mutate).toHaveBeenLastCalledWith({
-      sell_total_renewal: {
-        enabled: true,
-        start_hhmm: 1000,
-        threshold_pct: 100,
-        use_intra_minute_max: true,
-      },
-    });
-
-    fireEvent.change(startTime, { target: { value: '1500' } });
-    fireEvent.blur(startTime);
-    expect(startTime.value).toBe('15:00');
-    expect(mutate).toHaveBeenLastCalledWith({
-      sell_total_renewal: {
-        enabled: true,
-        start_hhmm: 1500,
-        threshold_pct: 100,
-        use_intra_minute_max: true,
-      },
-    });
-  });
 });
