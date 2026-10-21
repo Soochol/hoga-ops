@@ -129,7 +129,7 @@ export default function ProgramTradeSummaryCard({
           >
             {(['net', 'buy', 'sell'] as const).map((candidate) => {
               const value = programValue(point, candidate, measure);
-              return <div key={candidate} className="program-metric whitespace-nowrap text-center first:pl-0 last:pr-0">
+              return <div key={candidate} className="program-metric whitespace-nowrap text-right first:pl-0 last:pr-0">
                 <span className="block text-xs text-fg-dim">{METRIC_LABELS[candidate]}</span>
                 <span className={`mt-0.5 block ${candidate === 'net' ? 'font-semibold' : 'font-normal'} ${programValueClass(candidate, value)}`}>
                   {formatProgramValue(value, candidate, measure)}
