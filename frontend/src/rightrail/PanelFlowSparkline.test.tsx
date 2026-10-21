@@ -22,19 +22,19 @@ describe('panel flow glyph', () => {
 
   it('reports missing data and sample coverage without synthesizing a flat line', () => {
     render(<PanelStockSparkline flow={null} name="삼성전자" />);
-    expect(screen.getByText('흐름 없음')).toBeVisible();
+    expect(screen.getByText('—')).toBeVisible();
     expect(document.querySelector('path')).toBeNull();
     cleanup();
     render(<PanelGroupSparkline name="반도체" flow={{ folder_id: 'f1', total: 4, pct: [2, null, 3, null], counts: [4, 0, 2, 0] }} />);
     expect(screen.getByRole('img')).toHaveAccessibleName(/평균 반영 2\/4종목/);
   });
 
-  it('replaces prices only for the opted-in panels and retains click/keyboard row semantics', () => {
+  it('adds flow alongside prices only for the opted-in panels and retains click/keyboard row semantics', () => {
     const props = { name: '삼성전자', price: 72000, pct: 2, changeWon: 1000, active: false, ariaLabel: '삼성전자 차트 열기', testId: 'row', onClick: () => {} };
     const { rerender } = render(<ul><QuoteRow {...props} /></ul>);
     expect(screen.getByText('72,000')).toBeVisible();
     rerender(<ul><QuoteRow {...props} flow={flow} /></ul>);
-    expect(screen.queryByText('72,000')).toBeNull();
+    expect(screen.getByText('72,000')).toBeVisible();
     expect(screen.getByRole('button')).toHaveAttribute('tabindex', '0');
     expect(screen.getByText('+2.00%')).toBeVisible();
     expect(screen.getByRole('img')).toBeVisible();

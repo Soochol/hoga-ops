@@ -15,13 +15,14 @@ async function columns(row: Locator) {
   return row.evaluate(element => {
     const origin = element.getBoundingClientRect();
     const name = element.querySelector<HTMLElement>('.truncate')!;
-    const price = element.querySelector<HTMLElement>('.font-data.text-sm')!;
+    const price = element.querySelector<HTMLElement>('.quote-row-price')!;
+    const flow = element.querySelector<HTMLElement>('.quote-row-flow')!;
     const percent = element.querySelector<HTMLElement>('.font-data.text-xs')!;
     const bounds = (node: HTMLElement) => {
       const rect = node.getBoundingClientRect();
       return { left: rect.left - origin.left, width: rect.width };
     };
-    return { name: bounds(name), price: bounds(price), percent: bounds(percent), clipped: name.scrollWidth > name.clientWidth };
+    return { name: bounds(name), flow: bounds(flow), price: bounds(price), percent: bounds(percent), clipped: name.scrollWidth > name.clientWidth };
   });
 }
 
@@ -81,7 +82,7 @@ for (const fontSize of [16, 20]) {
       const row = heatmap.getByTestId(`heatmap-drawer-row-${stocks[index].code}`);
       await expect(row).toBeVisible();
       const heatmapColumns = await columns(row);
-      for (const column of ['name', 'price', 'percent'] as const) {
+      for (const column of ['name', 'flow', 'price', 'percent'] as const) {
         expect(watchlistColumns[index][column].left).toBeCloseTo(heatmapColumns[column].left, 3);
         expect(watchlistColumns[index][column].width).toBeCloseTo(heatmapColumns[column].width, 3);
       }

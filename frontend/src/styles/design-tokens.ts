@@ -135,6 +135,7 @@ export const SIZE_TOKENS = {
   'sidebar-w':          { rem: 20,      baseIntentPx: 320, usage: '/inventory master-detail 좌열 폭 (pages/Inventory.tsx)' },
   'dropdown-min-w':     { rem: 20,      baseIntentPx: 320, usage: 'Combobox / search dropdown minimum width' },
   'watchlist-panel-w':  { rem: 17.5,    baseIntentPx: 280, usage: 'Global Watchlist Panel (Right Rail) width' },
+  'stock-panel-w':      { rem: 22.5,    baseIntentPx: 360, usage: 'Watchlist and Heatmap right-rail panels with name, flow, price and percent columns' },
   'rail-w':             { rem: 3,       baseIntentPx: 48,  usage: 'Right Rail icon column width (fixed)' },
   'app-floor-min-w':    { rem: 59,      baseIntentPx: 944, usage: 'App shell responsive floor — below this the shell stops compressing and scrolls horizontally' },
   'app-floor-min-h':    { rem: 39,      baseIntentPx: 624, usage: 'App shell vertical floor — /live windows scale with the canvas, so the canvas needs a readable height floor (ADR-0122)' },

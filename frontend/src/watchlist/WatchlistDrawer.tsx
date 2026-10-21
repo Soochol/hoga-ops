@@ -1,3 +1,4 @@
+import { QuoteColumnsHeader } from '../rightrail/QuoteColumnsHeader';
 import { panelFlowRevision, usePanelFlow, type PanelStockFlow } from '../api/panelFlow';
 import { PanelFlowNotice } from '../rightrail/PanelFlowSparkline';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
@@ -1403,7 +1404,7 @@ export function WatchlistDrawer() {
   };
 
   return (
-    <RailDrawer id="right-rail-watchlist-panel" testId="watchlist-panel" ariaLabel="관심종목"
+    <RailDrawer id="right-rail-watchlist-panel" testId="watchlist-panel" ariaLabel="관심종목" className="stock-flow-panel"
       onKeyDown={event => {
         if (event.key !== 'Escape' || event.defaultPrevented || isDragging || selectionMenu || menu || memoMenu
           || (event.target as HTMLElement).closest('[role="dialog"]')) return;
@@ -1450,6 +1451,7 @@ export function WatchlistDrawer() {
       <WatchlistTransferToast transfer={transfer} />
       <PanelFlowNotice failed={flowQuery.isError} refreshing={flowQuery.isFetching} retry={() => { void flowQuery.refetch(); }} />
       <RailDrawerBody testId="watchlist-scroll" scrollRef={scrollRef} quoteNav>
+        <QuoteColumnsHeader layout={columns.layout} />
         {searching && filteredGroups.length === 0 && <RailState>검색 결과가 없습니다 · 다른 종목명이나 그룹명을 입력하세요</RailState>}
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">관심종목을 불러올 수 없습니다</RailState>}

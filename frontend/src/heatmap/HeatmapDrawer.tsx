@@ -1,3 +1,4 @@
+import { QuoteColumnsHeader } from '../rightrail/QuoteColumnsHeader';
 import { panelFlowRevision, usePanelFlow } from '../api/panelFlow';
 import { PanelFlowNotice } from '../rightrail/PanelFlowSparkline';
 import './HeatmapColumns.css';
@@ -842,7 +843,7 @@ export function HeatmapDrawer() {
   };
 
   return (
-    <RailDrawer id="right-rail-heatmap-panel" testId="heatmap-panel" ariaLabel="히트맵"
+    <RailDrawer id="right-rail-heatmap-panel" testId="heatmap-panel" ariaLabel="히트맵" className="stock-flow-panel"
       onKeyDown={event => {
         if (event.key !== 'Escape' || event.defaultPrevented || ghost !== null || selectionMenu || menu
           || (event.target as HTMLElement).closest('[role="dialog"]')) return;
@@ -875,6 +876,7 @@ export function HeatmapDrawer() {
 
       <PanelFlowNotice failed={flowQuery.isError} refreshing={flowQuery.isFetching} retry={() => { void flowQuery.refetch(); }} />
       <RailDrawerBody testId="heatmap-drawer-scroll" scrollRef={scrollRef} quoteNav>
+        <QuoteColumnsHeader layout={columns.layout} />
         {isLoading && <RailState>불러오는 중</RailState>}
         {error && <RailState tone="error">히트맵을 불러올 수 없습니다</RailState>}
         {!isLoading && !error && (data?.entries.length ?? 0) === 0 && (data?.folders.length ?? 0) === 0 && (

@@ -45,7 +45,7 @@ const Sparkline = memo(function Sparkline({ series, label }: { series: (number |
       <line x1={0} y1={geometry.zero} x2={W} y2={geometry.zero} stroke="var(--grid)" strokeWidth={1} />
       <path d={geometry.line} fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinejoin="round" strokeLinecap="round" />
       {geometry.isolated.map(point => <circle key={point.x} cx={point.x} cy={point.y} r={1.3} fill="currentColor" />)}
-    </svg> : <span className="text-2xs text-fg-dim whitespace-nowrap">흐름 없음</span>}
+    </svg> : <span className="block text-center text-xs text-fg-dim">—</span>}
   </span>;
 });
 

@@ -24,7 +24,7 @@ export interface QuoteRowProps {
   name: string;
   code?: string;
   price: number | null;
-  /** undefined preserves price cells elsewhere; null opts into empty flow. */
+  /** undefined keeps three columns elsewhere; null reserves an empty flow column. */
   flow?: PanelStockFlow | null;
   pct: number | null;
   changeWon: number | null;
@@ -174,7 +174,7 @@ export function QuoteRow({
       onBlur={nameTip.hide}
       onMouseLeave={nameTip.hide}
       onContextMenu={onContextMenu}
-      className={`group ${columnLayout ? 'quote-row-fluid' : ''} ${indentContent != null ? 'relative' : ''} ${selected !== undefined ? 'select-none' : ''} ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
+      className={`group ${columnLayout ? 'quote-row-fluid' : ''} ${flow !== undefined ? 'quote-row-flow-layout' : ''} ${indentContent != null ? 'relative' : ''} ${selected !== undefined ? 'select-none' : ''} ${dragListeners ? dragging ? 'cursor-grabbing' : 'cursor-grab' : 'cursor-pointer'} touch-none ${compact || leading != null ? 'pl-md' : indented ? 'pl-10' : 'pl-md'} pr-md py-0.5 min-h-list-row flex items-center ${compact ? 'gap-1' : 'gap-2'} border-b border-border outline-none focus-visible:outline-none hover:bg-bg-input-hover focus-visible:bg-bg-input-hover ${
         flash ? 'row-flash' : ''
       } ${dropIndicatorClass(dropIndicator)}`}
       style={{
@@ -216,11 +216,12 @@ export function QuoteRow({
       {/* 가격은 --fg 중립, 등락%만 방향색 — 패널이 온통 적/청이던 것을 진정시켜 변동 큰
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
-      {flow !== undefined ? <PanelStockSparkline flow={flow} name={name} /> : <span title={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
+      {flow !== undefined && <PanelStockSparkline flow={flow} name={name} />}
+      <span title={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
-      </span>}
+      </span>
       <span className={`quote-row-percent flex-none ${compact ? 'w-[3rem]' : 'w-[3.5rem]'} text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>
-        {shownPct != null ? formatPct(shownPct) : ''}
+        {shownPct != null ? formatPct(shownPct) : flow !== undefined ? '—' : ''}
       </span>
       {trailingAction != null && (
         <span className="flex items-center justify-center" style={{ minWidth: '1.25rem' }}>

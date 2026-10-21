@@ -34,13 +34,14 @@ export function useDrawerAutoCollapse(): void {
 
   useEffect(() => {
     const check = () => {
-      const threshold = readTokenPx('--app-floor-min-w') + readTokenPx('--watchlist-panel-w');
+      const { activePanel, setActivePanel } = useRightRailStore.getState();
+      const widthToken = activePanel === 'watchlist' || activePanel === 'heatmap' ? '--stock-panel-w' : '--watchlist-panel-w';
+      const threshold = readTokenPx('--app-floor-min-w') + readTokenPx(widthToken);
       if (window.innerWidth >= threshold) {
         yielded.current = false;
         return;
       }
       if (yielded.current) return;
-      const { activePanel, setActivePanel } = useRightRailStore.getState();
       if (activePanel === null) return;
       yielded.current = true;
       setActivePanel(null);

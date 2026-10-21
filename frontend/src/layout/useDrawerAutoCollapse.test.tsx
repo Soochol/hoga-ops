@@ -33,6 +33,7 @@ describe('useDrawerAutoCollapse', () => {
     root.style.fontSize = `${ROOT_PX}px`;
     root.style.setProperty('--app-floor-min-w', `${FLOOR_REM}rem`);
     root.style.setProperty('--watchlist-panel-w', `${DRAWER_REM}rem`);
+    root.style.setProperty('--stock-panel-w', `${DRAWER_REM}rem`);
     useRightRailStore.setState({ activePanel: 'watchlist', lastPanel: 'watchlist' });
     setViewport(1600);
   });
@@ -42,6 +43,7 @@ describe('useDrawerAutoCollapse', () => {
     root.style.removeProperty('font-size');
     root.style.removeProperty('--app-floor-min-w');
     root.style.removeProperty('--watchlist-panel-w');
+    root.style.removeProperty('--stock-panel-w');
     localStorage.clear();
   });
 
@@ -74,6 +76,22 @@ describe('useDrawerAutoCollapse', () => {
     setViewport(1100);
     render(<Probe />);
     expect(useRightRailStore.getState().activePanel).toBeNull();
+  });
+
+  it.each(['watchlist', 'heatmap'] as const)('uses the wider stock panel token for %s', panel => {
+    document.documentElement.style.setProperty('--stock-panel-w', '22.5rem');
+    useRightRailStore.setState({ activePanel: panel });
+    setViewport(THRESHOLD + 1);
+    render(<Probe />);
+    expect(useRightRailStore.getState().activePanel).toBeNull();
+  });
+
+  it('keeps other panels at the original width threshold', () => {
+    document.documentElement.style.setProperty('--stock-panel-w', '22.5rem');
+    useRightRailStore.setState({ activePanel: 'screener' });
+    setViewport(THRESHOLD + 1);
+    render(<Probe />);
+    expect(useRightRailStore.getState().activePanel).toBe('screener');
   });
 
   it('respects a user re-opening the drawer at the same narrow width (one-time yield)', () => {
