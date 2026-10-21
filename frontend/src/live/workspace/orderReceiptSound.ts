@@ -1,12 +1,10 @@
 import type { TradingAccountId } from '../../api/trading';
-const PEAK_GAIN = 0.45;
-const NOTE_SECONDS = 0.16;
-const SECOND_NOTE_AT = 0.17;
+import { orderSoundSamples, type OrderSoundKind } from './orderSoundTone';
 const MAX_START_DELAY_MS = 800;
 const RESUME_TIMEOUT_MS = 250;
 const RETRY_DELAY_MS = 80;
 let context: AudioContext | null = null;
-let chime: { audio: AudioContext; buffer: AudioBuffer } | null = null;
+let chimes: { audio: AudioContext; buffers: Map<OrderSoundKind, AudioBuffer> } | null = null;
 const notifiedCommands = new Set<string>();
 const pendingCommands = new Map<string, Promise<boolean>>();
 
@@ -74,25 +72,19 @@ export function subscribeOrderReceiptSoundRecovery(): () => void {
   };
 }
 
-function chimeBuffer(audio: AudioContext): AudioBuffer {
-  if (chime?.audio === audio) return chime.buffer;
-  const buffer = audio.createBuffer(1, Math.ceil(audio.sampleRate * (SECOND_NOTE_AT + NOTE_SECONDS)), audio.sampleRate);
-  const samples = buffer.getChannelData(0);
-  for (const [offset, frequency] of [[0, 880], [SECOND_NOTE_AT, 660]]) {
-    for (let i = 0; i < Math.floor(NOTE_SECONDS * audio.sampleRate); i++) {
-      const t = i / audio.sampleRate;
-      const envelope = t < 0.008 ? t / 0.008 : t < 0.045 ? 1 : ((NOTE_SECONDS - t) / (NOTE_SECONDS - 0.045)) ** 2;
-      const phase = 2 * Math.PI * frequency * t;
-      samples[Math.round(offset * audio.sampleRate) + i] = PEAK_GAIN * envelope
-        * (Math.sin(phase) + 0.18 * Math.exp(-22 * t) * Math.sin(2 * phase)) / 1.18;
-    }
-  }
-  chime = { audio, buffer };
+function chimeBuffer(audio: AudioContext, kind: OrderSoundKind): AudioBuffer {
+  if (chimes?.audio !== audio) chimes = { audio, buffers: new Map() };
+  const cached = chimes.buffers.get(kind);
+  if (cached) return cached;
+  const samples = orderSoundSamples(kind, audio.sampleRate);
+  const buffer = audio.createBuffer(1, samples.length, audio.sampleRate);
+  buffer.getChannelData(0).set(samples);
+  chimes.buffers.set(kind, buffer);
   return buffer;
 }
 
-/** One source contains both notes, so retry cannot duplicate a partially started chime. */
-export async function playOrderReceiptSound(): Promise<boolean> {
+/** One source contains the complete sound, so retry cannot duplicate a partially started chime. */
+export async function playOrderSound(kind: OrderSoundKind): Promise<boolean> {
   const deadline = Date.now() + MAX_START_DELAY_MS;
   for (let attempt = 0; attempt < 2; attempt++) {
     // Allow a fresh resume attempt after 250ms, but let the final attempt use
@@ -103,7 +95,7 @@ export async function playOrderReceiptSound(): Promise<boolean> {
       let source: AudioBufferSourceNode | undefined;
       try {
         source = audio.createBufferSource();
-        source.buffer = chimeBuffer(audio);
+        source.buffer = chimeBuffer(audio, kind);
         source.connect(audio.destination);
         source.onended = () => source?.disconnect();
         if (audio.state !== 'running' || Date.now() >= deadline) throw new Error('audio-not-ready');
@@ -121,6 +113,22 @@ export async function playOrderReceiptSound(): Promise<boolean> {
   }
   console.warn('[order-receipt-sound] playback unavailable', getOrderReceiptSoundDiagnostics().at(-1));
   return false;
+}
+
+export function playOrderReceiptSound(): Promise<boolean> {
+  return playOrderSound('receipt');
+}
+
+// Shared across windows: each cumulative fill is announced only once per tab.
+const notifiedFills = new Map<string, number>();
+export function notifyOrderFill(account: TradingAccountId, code: string, orderId: string,
+  side: 'BUY' | 'SELL', filled: number): void {
+  const key = JSON.stringify([account, code, orderId]);
+  if (filled <= (notifiedFills.get(key) ?? 0)) return;
+  notifiedFills.delete(key);
+  notifiedFills.set(key, filled);
+  while (notifiedFills.size > 2000) notifiedFills.delete(notifiedFills.keys().next().value!);
+  void playOrderSound(side === 'BUY' ? 'buy-fill' : 'sell-fill');
 }
 
 /** Deduplicate concurrent calls, and remember only successfully started notifications. */

@@ -10,13 +10,13 @@ import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
 import { useLiveSeries } from '../../api/liveSeries';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
-import { notifyOrderReceiptAccepted, playOrderReceiptSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
+import { notifyOrderReceiptAccepted, playOrderReceiptSound, playOrderSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import type { LiveAfterHoursBookResponse } from '../../api/liveAfterHoursBook';
 import { normalizeOrderSettings } from '../../state/orderWindowSettings';
 import { useChartPrefsStore } from '../../state/chartPrefs';
 
 vi.mock('./orderReceiptSound', () => ({
-  notifyOrderReceiptAccepted: vi.fn(), playOrderReceiptSound: vi.fn(), prepareOrderReceiptSound: vi.fn(),
+  notifyOrderReceiptAccepted: vi.fn(), playOrderReceiptSound: vi.fn(), playOrderSound: vi.fn(), notifyOrderFill: vi.fn(), prepareOrderReceiptSound: vi.fn(),
   subscribeOrderReceiptSoundRecovery: vi.fn(),
 }));
 
@@ -67,6 +67,7 @@ beforeEach(() => {
   vi.mocked(notifyOrderReceiptAccepted).mockReset().mockResolvedValue(true);
   vi.mocked(prepareOrderReceiptSound).mockReset();
   vi.mocked(playOrderReceiptSound).mockReset().mockResolvedValue(true);
+  vi.mocked(playOrderSound).mockReset().mockResolvedValue(true);
   vi.mocked(subscribeOrderReceiptSoundRecovery).mockReset().mockReturnValue(() => {});
 });
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
@@ -369,6 +370,26 @@ describe('호가 주문', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '소리 들어보기' }));
     await screen.findByText('소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.');
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it('매수·매도 체결음을 독립적으로 미리 듣고 창 설정에 즉시 반영한다', async () => {
+    show();
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    for (const [label, kind] of [['매수 체결 소리', 'buy-fill'], ['매도 체결 소리', 'sell-fill']]) {
+      const toggle = screen.getByRole('switch', { name: label });
+      expect(toggle).not.toBeChecked();
+      fireEvent.click(screen.getByRole('button', { name: `${label} 들어보기` }));
+      await waitFor(() => expect(playOrderSound).toHaveBeenLastCalledWith(kind));
+      expect(toggle).not.toBeChecked();
+      fireEvent.click(toggle);
+      expect(toggle).toBeChecked();
+    }
+    expect(screen.getByRole('switch', { name: '주문접수 소리' })).not.toBeChecked();
+    expect(subscribeOrderReceiptSoundRecovery).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    expect(screen.getByRole('switch', { name: '매수 체결 소리' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: '매도 체결 소리' })).toBeChecked();
     expect(mock.command).not.toHaveBeenCalled();
   });
   it.each(['매수 67,200원 주문 추가', '매도 67,300원 주문 추가'])('%s는 전송 중에는 울리지 않고 성공 응답에서만 알린다', async label => {
@@ -1480,7 +1501,7 @@ describe('호가 주문', () => {
   it('종목을 다시 방문해도 수량은 빈칸이고 직접 지워도 0이나 프리셋으로 바뀌지 않는다', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const settings = { unit: 'quantity' as const, quantityPresets: [25, 75, 125] as [number, number, number],
-      amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, orderReceiptSound: false, rememberQuantity: false };
+      amountPresets: [2, 6, 12] as [number, number, number], showAveragePrice: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false };
     const content = (code: string) => <QueryClientProvider client={client}><OrderWindow code={code} name={code} settings={settings} /></QueryClientProvider>;
     const view = render(content('005930'));
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '321' } });

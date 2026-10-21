@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { normalizeOrderSettings, quantityForAmount, validOrderSettings } from './orderWindowSettings';
 
 describe('주문 금액 변환과 설정 복구', () => {
+  it.each(['buyFillSound', 'sellFillSound'] as const)('%s는 기본 끔이며 명시적 켜기와 유효성 검사를 보존한다', key => {
+    expect(normalizeOrderSettings(undefined)[key]).toBe(false);
+    expect(normalizeOrderSettings({ [key]: true })[key]).toBe(true);
+    for (const value of ['true', 1, null]) expect(normalizeOrderSettings({ [key]: value })[key]).toBe(false);
+    expect(validOrderSettings(normalizeOrderSettings({ [key]: true }))).toBe(true);
+    expect(validOrderSettings({ ...normalizeOrderSettings(null), [key]: undefined })).toBe(false);
+  });
   it('수량 기억은 기존·손상된 설정에서 끄기로 복구하고 명시적 켜기를 보존한다', () => {
     expect(normalizeOrderSettings(undefined).rememberQuantity).toBe(false);
     expect(normalizeOrderSettings({ rememberQuantity: true }).rememberQuantity).toBe(true);
@@ -21,7 +28,7 @@ describe('주문 금액 변환과 설정 복구', () => {
   it('손상된 저장 필드만 복구하고 수량·금액 프리셋 사본을 만든다', () => {
     const raw = { unit: 'amount', quantityPresets: [25, 1.5, -1], amountPresets: [2, 6, 12] };
     const restored = normalizeOrderSettings(raw);
-    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12], showAveragePrice: true, orderReceiptSound: false, rememberQuantity: false });
+    expect(restored).toEqual({ unit: 'amount', quantityPresets: [25, 50, 100], amountPresets: [2, 6, 12], showAveragePrice: true, orderReceiptSound: false, buyFillSound: false, sellFillSound: false, rememberQuantity: false });
     restored.amountPresets[0] = 99;
     expect(raw.amountPresets[0]).toBe(2);
     expect(normalizeOrderSettings({ unit: 'invalid', amountPresets: null }).unit).toBe('quantity');

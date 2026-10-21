@@ -316,6 +316,54 @@ test('결과 불명확 확인은 한 줄 하단 상태줄 상세에서 처리하
   expect(commands).toHaveLength(0);
 });
 
+test('매수·매도 체결음은 미리듣기·실제 체결 증가에서 재생하고 독립 설정을 복원한다', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    const observed = window as unknown as { __fillSounds: number[] };
+    observed.__fillSounds = [];
+    const start = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when?: number) {
+      observed.__fillSounds.push(this.buffer!.duration);
+      start.call(this, when);
+    };
+  });
+  const sounds = () => page.evaluate(() => (window as unknown as { __fillSounds: number[] }).__fillSounds);
+  const { window: content, ws, commands } = await setup(page, true);
+  await ws.waitForSubscribe('005930');
+  const settings = orderSettingsButton(content);
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  await settings.click();
+  for (const label of ['매수 체결 소리', '매도 체결 소리']) {
+    const toggle = dialog.getByRole('switch', { name: label, exact: true });
+    await expect(toggle).toHaveAttribute('aria-checked', 'false');
+    await dialog.getByRole('button', { name: `${label} 들어보기`, exact: true }).click();
+    await expect(toggle).toHaveAttribute('aria-checked', 'false');
+    await setSettingSwitch(toggle, true);
+  }
+  await expect.poll(sounds).toHaveLength(2);
+  expect((await sounds()).every(duration => Math.abs(duration - 0.5) < 0.001)).toBe(true);
+  await expect(dialog.getByRole('switch', { name: '주문접수 소리', exact: true })).toHaveAttribute('aria-checked', 'false');
+  await dialog.screenshot({ path: testInfo.outputPath('fill-sound-settings.png') });
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  const push = (filled: string, extra = {}) => ws.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1,
+    revision: Number(filled) + 1, order: { ...mkOrder('old', '67200', filled), ...extra } });
+  push('50');
+  await expect.poll(sounds).toHaveLength(3);
+  push('50');
+  push('30');
+  push('0', { orderId: 'pending', status: 'PENDING' });
+  push('100', { orderId: 'sell', side: 'SELL', status: 'FILLED' });
+  await expect.poll(sounds).toHaveLength(4);
+  push('100', { status: 'FILLED' });
+  await expect.poll(sounds).toHaveLength(5);
+  expect(commands).toHaveLength(0);
+  await page.reload();
+  await settings.click();
+  for (const label of ['매수 체결 소리', '매도 체결 소리']) {
+    await expect(dialog.getByRole('switch', { name: label, exact: true })).toHaveAttribute('aria-checked', 'true');
+  }
+  expect(await sounds()).toEqual([]);
+});
+
 test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
   // Observe the real Web Audio buffer without replacing playback or autoplay policy.
   await page.addInitScript(() => {
@@ -1619,8 +1667,8 @@ test('헤더 주문 설정은 차트 팝오버와 같은 UI로 즉시 저장하�
   await expect(dialog.locator('.settings-editor-footer')).toBeInViewport();
   const body = dialog.locator('.order-settings-body');
   await expect.poll(() => body.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
-  await dialog.getByRole('button', { name: '소리 들어보기' }).scrollIntoViewIfNeeded();
-  await expect(dialog.getByRole('button', { name: '소리 들어보기' })).toBeInViewport();
+  await dialog.getByRole('button', { name: '매도 체결 소리 들어보기', exact: true }).scrollIntoViewIfNeeded();
+  await expect(dialog.getByRole('button', { name: '매도 체결 소리 들어보기', exact: true })).toBeInViewport();
   await expect(dialog.locator('.settings-editor-footer')).toBeInViewport();
   await expect(dialog.getByRole('spinbutton')).toHaveCount(6);
   await dialog.screenshot({ path: testInfo.outputPath('order-settings-short-viewport.png') });
