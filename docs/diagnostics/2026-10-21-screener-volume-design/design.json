@@ -1,0 +1,154 @@
+{
+  "title": "관심종목과 히트맵 1분봉 신고거래량 지속 감시 설계",
+  "date": "2026-10-21",
+  "status": "implementation_design_fixed; production_release_requires_gates_below",
+  "scope": "국내 KRX 정규장 1분봉 new_high_vol 및 new_high_vol_today 최근 방식. 기존 후보 포함 M봉·양의 거래량·동률 인정·최근 N개 실제 봉 의미 유지. 다른 주기, 날짜 범위, 가격 및 혼합 조건의 고속 평가 보장은 별도 범위.",
+  "production_changed": false,
+  "decision": "과거 비교 이력과 현재 봉의 수명을 분리한다. raw 수집 단계에서 품질을 가진 분봉 절대 상태를 만들고 부모 검색 프로세스가 공유 메모리 이력으로 평가한다. 표시용 틱 전달과 REST 15초 캐시를 지속 감시의 진실 원천으로 사용하지 않는다.",
+  "confirmed_findings": [
+    {
+      "finding": "현재 runtime.counts는 prepared/receiving을 모두 1로 세지만 seed 15초 경과 시 snapshot은 None이다. 연결·최근 체결·비교 이력 유효성은 다른 상태다.",
+      "test": "test_current_runtime_rejects_old_seed_even_with_fresh_continuous_ticks"
+    },
+    {
+      "finding": "현재 338종목×서로 다른 두 조건은 676 watch를 요구한다. 512 제한으로 첫 조건 174개만 남고 둘째 338개가 남는다.",
+      "test": "test_current_two_conditions_evict_active_watches_for_338_symbols"
+    },
+    {
+      "finding": "표시 IPC BoundedOutbox는 틱 프레임을 버릴 수 있다. 부모 표시 버퍼만으로 무손실 분봉을 보장할 수 없다.",
+      "test": "test_display_outbox_can_drop_trade_frames"
+    },
+    {
+      "finding": "기존 raw 분봉 합성기는 정상 관측에서는 거래량이 맞지만 중간 시작이나 누적값 역행을 품질 메타데이터로 알리지 않는다. 그대로 완결 판정에 재사용하면 안 된다.",
+      "test": [
+        "test_raw_aggregator_matches_complete_observed_minutes_for_338_symbols",
+        "test_existing_raw_aggregator_cannot_prove_a_midminute_seed_is_complete",
+        "test_existing_aggregator_rewind_fallback_is_not_a_quality_certificate"
+      ]
+    },
+    {
+      "finding": "API+WS 합산은 겹치는 구간을 이중 계산한다. max 병합도 완료 봉의 하향 정정을 반영하지 못한다. 현재 봉의 보수적 하한과 완료 봉의 권위 있는 정정을 분리해야 한다.",
+      "test": [
+        "test_rest_baseline_and_ws_overlap_can_overcount_but_max_is_a_lower_bound",
+        "test_completed_rest_bar_must_not_be_max_merged_with_stale_live_bar"
+      ]
+    },
+    {
+      "finding": "338종목×104봉은 35152봉으로 250000봉 예산 안에 들지만 1249봉 조건은 초과한다. 조건 수 자체보다 공유된 최대 이력 길이에 대한 수용 검사가 필요하다.",
+      "test": "test_candidate_data_shape_shares_history_and_stays_within_bar_budget"
+    }
+  ],
+  "design": {
+    "data_ownership": [
+      "캐시 키는 data_dir·종목·KRX·1분·거래량 집계 정책 버전. 여러 조건은 같은 이력의 최대 필요 길이를 공유한다. leaf id별로 원본 봉을 복제하지 않는다.",
+      "부모는 최근 max(M+N-1)개의 조회 가능한 원본 봉과 품질·원천·수정 revision을 보유한다. collector는 현재 봉과 복구용 최근 15분 봉 상태를 보유한다.",
+      "활성 감시의 확인된 과거 봉에는 15초 TTL을 적용하지 않는다. 현재 전달 상태의 신선도와 확인된 비교 이력의 유효성은 별개다.",
+      "첫 범위는 1분봉만이다. 3/5/10분 등을 1분봉으로 임의 집계해 공급자 원본 주기의 정렬·무체결 봉 의미를 바꾸지 않는다."
+    ],
+    "bootstrap": [
+      "사용자 감시 시작으로 서버 감시를 생성하고 해당 범위만 준비한다. 앱 기동 시 전 시장을 선행 수집하지 않는다.",
+      "먼저 collector의 구독 세대·연결 세대·관측 시작을 확보하고 WS 상태를 받는 동안 REST가 필요한 완료 봉을 준비한다. 초기 현재 봉은 중간 시작 여부를 기록한다.",
+      "종목당 동시 중복 조회를 합치고 기존 전역 거버너와 background 우선순위·동시성 4를 따른다. 작업 배치는 최대 64종목이며 배치 사이 화면의 15초 타이머를 기다리지 않는다.",
+      "WS 신호에 따른 결과 조회는 준비 작업을 새로 시작하지 않는다. 준비 완료 종목부터 결과를 제공하며 준비 중·불충분·오류를 미충족과 구분한다."
+    ],
+    "raw_volume_and_quality": [
+      "수집 단계의 원시 KRX 체결에서 분봉 거래량 상태를 갱신한다. 기존 MinuteCandleAggregator의 집계 의미는 재사용하되 저장용 flush/commit에 의존하지 않는 읽기 상태와 품질 추적을 추가한다.",
+      "완료 봉의 계산 가능 여부는 연결·구독 세대, 관측 시작, 순서·누적값 정합성과 공백 기록으로 판정한다. 기존 합성기 결과가 존재한다는 이유만으로 완전하다고 표시하지 않는다.",
+      "현재 봉의 기준 도달은 비교 봉이 모두 확인된 경우에만 확정한다. 중간 시작 봉은 API 값과 관측값을 더하지 않고 보수적인 하한으로 취급한다. 하한만으로 충족이 증명되면 최소 거래량 표시로 결과를 허용한다.",
+      "중간 시작·재연결·역행·불명확 누락에 걸린 봉은 종료 후 비교 최대값에 쓰지 않는다. REST로 보정하거나 필요한 비교 창에서 벗어날 때까지 해당 평가를 미확인으로 둔다.",
+      "무체결 종목은 종목별 마지막 체결이 15초 지났다는 이유로 장애로 분류하지 않는다. 계정 연결·구독·collector heartbeat와 실제 공백 기록을 사용한다. 연결 증거도 없으면 조용한 종목으로 간주하지 않는다.",
+      "무체결 분에 0거래량 봉을 자동 생성하지 않는다. REST 원본 봉과 관측된 실제 봉을 병합해 기존 봉 수 의미를 유지한다. 공급자 무체결 봉 차이는 운영 비교의 필수 확인 항목이다.",
+      "거래일·세션·venue·구독 세대 경계를 명시한다. 전일 누적값을 새 거래일에 더하지 않으며 15:30 종가 체결과 장마감 봉 전환을 별도 검증한다."
+    ],
+    "ipc": [
+      "기존 표시용 raw 틱 IPC는 그대로 두고 분봉 상태 전달을 별도 유한한 내부 lane으로 분리한다. 브로커 WS 연결·구독은 추가하지 않는다.",
+      "프레임에는 protocol version, collector epoch, 구독 세대, 종목, 봉 시작 시각, 절대 거래량, open/closed, 품질, revision을 포함한다. 상대 증가분을 누적 적용하지 않는다.",
+      "최신 현재 봉 변경을 최대 250ms 단위로 모은다. 유실·중복·역순이 있어도 revision으로 멱등 적용하고 세대가 다른 프레임과 지연 응답을 거부한다.",
+      "전달 순번 공백이 생기면 collector의 복구용 봉 이력을 청크로 다시 받는다. 복구가 완료될 때까지 영향 범위를 최신 확정 상태로 표시하지 않는다. 15분 보존 범위 밖 공백·collector 재시작은 REST 보정 대상이다.",
+      "복구 응답과 상태 전달은 최대 64종목 및 실제 인코딩 256KiB 중 먼저 도달하는 기준으로 분할한다. 실험의 전체 104봉 snapshot은 약 915KB로 한 표시 프레임의 256KiB 한도를 넘는다.",
+      "새 sender는 I/O 대기를 ingest 경로로 전파하지 않는다. 최신 상태 교체와 유한한 큐·재생 이력으로 메모리를 제한한다. 저장 경로와 기존 control RPC를 틱마다 기다리지 않는다."
+    ],
+    "repair_and_correction": [
+      "실제 WS 단절·관측 중간 시작·봉 데이터 이상은 해당 종목/봉만 보정한다. 표시 IPC 누락과 실제 브로커 관측 공백을 구분해 불필요한 REST 재요청을 막는다.",
+      "완료 봉에 대해 유효한 최신 REST 정정이 확인되면 하향 정정도 교체 적용한다. max 값 고정은 금지한다. 관련 비교 창·발생 결과를 다시 평가하고 삭제된 충족도 화면에 반영한다.",
+      "수집 중인 봉은 REST 응답 시점과 WS 시점이 정확히 연결되지 않으면 합산하지 않는다. 요청 시작 세대와 응답 revision을 검증하고 응답 뒤의 새 봉을 이전 응답으로 지우지 않는다.",
+      "정상 상태에도 전체 범위의 완료 봉을 5분에 한 번 대조하는 것을 기본 목표로 한다. 화면 15초 조회와 분리하고 bootstrap/공백 복구 뒤의 낮은 우선순위로 배치한다. 기존 거버너·사용자 요청을 침범하지 않으며 밀리면 대조 지연 상태를 표시한다.",
+      "338종목·1페이지 가정의 5분 대조는 평균 약 1.13요청/초다. 실제 페이지 수·공급자 지연에 따라 늘어나므로 구현 후 장중 측정으로 조정한다.",
+      "실패 시 종목별 1·2·4초부터 최대 30초 백오프를 적용하고 중복 작업을 합친다. 데이터 부족은 무한 재시도로 채우지 않고 범위를 표시한다. 확실히 복구 불가능한 구간은 조건 불충족으로 바꾸지 않는다."
+    ],
+    "monitor_lifecycle": [
+      "서버가 감시 시작/중지·조건 revision·상태·결과 revision을 소유한다. 브라우저 조회가 잠시 멈췄다는 이유로 과거 이력이 만료되거나 감시가 중단되지 않는다.",
+      "감시 클라이언트는 30초 heartbeat를 보내고 비정상 종료 회수를 위한 유예는 5분이다. 숨긴 화면에서도 서버 감시는 유예 안에서 계속한다. 장시간 절전 등으로 유예가 만료되면 복귀 시 상태를 확인하고 다시 준비한다.",
+      "명시적 중지는 해당 감시의 연산·준비 작업을 해제한다. 공유 이력은 다른 활성 감시가 있으면 보존하고 마지막 참조 종료 후 5분간 보관 후 회수한다. 재시작은 메모리 재사용을 보장하지 않는다.",
+      "서버/collector 재시작과 거래일 전환은 세대를 바꿔 검증한다. 부모 서버 재시작 후 캐시는 다시 준비하며 저장된 조건·사용자 설정은 변경하지 않는다.",
+      "관심종목·히트맵 추가/삭제는 유니버스 revision으로 추적한다. 추가 종목만 준비하고 기존 유효 이력은 유지한다. producer의 관측 세대는 실제 연결/구독 변화가 있는 스트림만 바꾸며, monitor 조건 revision과 혼동하지 않는다."
+    ],
+    "capacity_and_ui": [
+      "첫 범위의 고속 감시 시작에는 관심종목·히트맵 중 하나 이상을 요구한다. 두 범위는 중복 제거한 합집합이다. 전체 시장 수동 검색은 기존 방식으로 유지하고 고속 감시와 혼동하지 않게 한다.",
+      "예산은 최대 512개 공유 스트림·250000봉이다. 부모 캐시 retained bytes 기본 예산 64MiB, collector 복구 상태 16MiB, 전달 outbox 8MiB를 별도로 적용한다. 실제 프로세스 RSS 보장은 구현 후 측정 대상이다.",
+      "활성 감시의 데이터를 조용히 LRU 축출하지 않는다. 조건 추가·이력 확장 전에 예산을 검사하고 초과 시 해당 새 감시를 시작하지 못한 사유를 명시한다. 기존 활성 감시는 유지한다.",
+      "화면은 대상·준비 중·감시 가능·복구 중·범위 부족·중단을 구분하고 최근 체결 시각, collector heartbeat, 최근 API 대조 시각을 별도로 제공한다. 조용한 종목을 단순히 실시간 미수신으로 집계하지 않는다.",
+      "결과 알림은 monitor id와 조건 revision에 묶고 250ms로 모은다. 부모는 변경 종목부터 평가하며 결과 조회가 REST 비교 이력 전체 재조회로 이어지지 않게 한다.",
+      "다른 조건과의 AND/OR 조합은 그 조건의 기준 시각·커버리지를 함께 표시한다. 1분봉 거래량만 빠르게 갱신되었다고 전체 조합을 틱 단위 검증했다고 표현하지 않는다.",
+      "브로커 구독 용량 때문에 ready가 아닌 종목은 감시 가능 수에 포함하지 않는다. 이 기능이 새 구독을 강제로 만들거나 계정을 증설하지 않는다. 대상 수와 실제 고속 감시 가능 수가 다르면 사유를 표시한다."
+    ]
+  },
+  "release_gates": [
+    "REST/WS 동시 시작·요청 중 체결·중복·역순·누적값 역행·날짜 전환·무체결 분·15:30 체결의 합계와 발생 판정 검증.",
+    "IPC 프레임 유실·큐 포화·지연 응답·collector 교체·재시작에서 세대와 절대 revision의 복구 정합성 검증. 잃어버린 중간 완료 봉을 단순 최신값으로 덮어 숨기지 않을 것.",
+    "338종목×100봉/최근5봉 및 여러 공유 조건을 최소 한 정규장 길이로 합성 재생. 자원 예산 초과를 명시하고 큐·메모리 누적 증가가 없을 것.",
+    "고속 결과 조회에서 정상 비교 이력 REST 재호출이 0인지 호출 횟수로 확인. API 대조·복구는 별도 계측할 것.",
+    "실장중 대표 표본에 대해 API 완료 봉과 병행 비교. 차이가 나면 원인과 품질 상태가 설명 가능해야 하며 최신성/정답이 불명확한 상태를 확정 판정에 쓰지 않을 것.",
+    "체결 도착부터 결과까지 p50/p95/p99와 initial all-ready 시간, API 호출 수, collector lag, RSS, 복구 시간 실측. 250ms는 알림 배치 간격일 뿐 종단 지연 보장이 아님.",
+    "백엔드 wire·TypeScript 미러·lifespan 해제·화면 준비/복구 상태와 감시 시작/중지/복귀 E2E 검증. 주문·일봉·차트·기존 저장 파일 경로에 영향이 없을 것."
+  ],
+  "alternatives_rejected": [
+    "15초 TTL만 늘리기: 공백과 초기 부분 봉이 비교 이력에 들어갈 수 있고 IPC 유실을 해결하지 못함.",
+    "부모 표시용 틱만 장기간 누적하기: 유실 가능한 전달 경로를 완전한 봉 근거로 사용함.",
+    "API와 WS 거래량 더하기 또는 완료 봉을 영구 max 병합: 중복 계산 또는 하향 정정 무시.",
+    "조건마다 봉 복제/활성 LRU 축출: 338종목 두 조건에서도 silent coverage loss 재현.",
+    "매 분 전체 REST 재확인: 정상 지속 감시에서도 초기 조회 병목을 반복함.",
+    "분봉 캐시 디스크 영속화: 이번 목표에 필요하지 않고 ADR-0095/0136의 memory-only 결정을 변경함."
+  ],
+  "test_evidence": {
+    "design_experiments": {
+      "command": "uv run --extra dev pytest -q docs/diagnostics/2026-10-21-screener-volume-design/test_design_probes.py",
+      "passed": 18,
+      "scope": "실제 기존 코드 한계 재현과 후보 프로토콜의 대수적 성질. 새 프로토콜의 실제 통합 구현 검증은 아님."
+    },
+    "related_regressions": {
+      "command": "uv run --extra dev pytest -q docs/diagnostics/2026-10-21-screener-volume-design/test_design_probes.py tests/unit/live/test_screener_volume.py tests/unit/live/test_minute_candle_agg.py tests/unit/live/test_collector_peak_delta.py tests/unit/live/test_collector_process.py tests/api/test_screener_bar_volume.py",
+      "passed": 96,
+      "seconds": 8.69,
+      "scope": "최초 16개 설계 실험 + 기존 관련 회귀 80개. 이후 설계 실험 2개를 추가하고 전체 18개를 재실행. 기존 80개 입력은 동일."
+    },
+    "overlap_random_cases": 2000,
+    "complete_observed_raw_symbols": 338,
+    "sizing": "sizing.json의 구조 예시만 측정. 실제 신규 구현의 IPC 지연·전체 메모리·장중 처리 성능은 미측정.",
+    "environment": {
+      "python": "3.14.7",
+      "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+      "pytest": "pytest 9.0.3"
+    },
+    "base_sha": "8d9e9e42c252dfc5d617ad3897e3f0f349f62227",
+    "latest_main_sha": "741f797c06e83cb8ce57800dcff1d3aaa63b5647",
+    "latest_main_relevant_source_diff": "none: checked hoga/live, screener evaluator/runner and selected tests",
+    "fingerprints": "sizing.json source_sha256 includes inspected runtime sources and final experiment file"
+  },
+  "remaining_uncertainty": "구현 설계는 확정했다. 신규 runtime 구현의 정합성, 공급자 측 무통지 누락, API 무체결 봉과 수집 봉의 실제 차이, 장중 지연과 부하는 합격한 것으로 취급하지 않는다. 위 release_gates로 확인한다.",
+  "compatibility": {
+    "preserved": [
+      "기존 저장 조건과 발생/제외 키",
+      "일봉·다른 주기·전체 시장 수동 검색",
+      "기존 브로커 구독·자격증명·주문 경로",
+      "기존 JSONL·Parquet 저장과 flush/commit 규율",
+      "memory-only 과거 분봉 캐시 정책(ADR-0095/0136)"
+    ],
+    "required_future_change": [
+      "고속 감시는 표시 IPC에 의존하지 않는 별도 volume state lane이 필요",
+      "최근 체결 15초 유무로 receiving을 세던 상태 정의를 연결 증거·봉 품질·평가 가능 상태로 개정",
+      "monitor lifecycle API와 응답 wire 및 TypeScript 미러를 함께 추가/검증"
+    ],
+    "adr_scope": "ADR-0038 hot path 금지와 ADR-0125 raw 집계 원칙, ADR-0140 venue 분리 유지. 이번 검토에서 ADR을 개정하거나 신규 번호를 예약하지 않음."
+  }
+}

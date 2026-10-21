@@ -1,0 +1,15 @@
+{
+  "ruff": "passed",
+  "json_parse": "passed",
+  "source_fingerprints": "matched",
+  "diff_whitespace": "passed",
+  "production_code_changes": false,
+  "backend_servers_started": false,
+  "vendor_requests_made": false,
+  "worktree_env": "empty .env retained",
+  "log_files": [
+    "related-tests.log",
+    "design-tests.log"
+  ],
+  "git_base": "8d9e9e42c252dfc5d617ad3897e3f0f349f62227"
+}
