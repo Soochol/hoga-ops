@@ -731,16 +731,22 @@ export function LiveChartRoot({
   const { paneSeries, registerPaneSeries, unregisterPaneSeries } =
     useDrawingHost(chart, drawingScope);
   const candleSeries = paneSeries.get('candle');
+  const liveCandleSeriesRef = useRef<ISeriesApi<SeriesType> | null>(null);
   const candleLogScale = useActivePrefs(p => p.candleLogScale);
   const candleInvertScale = useActivePrefs(p => p.candleInvertScale);
   const candleInvertColors = useActivePrefs(p => p.candleInvertColors);
   const swapCandleColors = candleInvertScale && candleInvertColors;
   useEffect(() => {
+    // Child pane cleanup runs before this effect. The render's registry can
+    // still contain a removed series until its queued state update commits.
+    // Ready/gone callbacks track attachment synchronously; wait for the new
+    // registry entry before touching its scale.
+    if (!candleSeries || liveCandleSeriesRef.current !== candleSeries) return;
     // Target the candle's current pane/scale, including after timeframe or pane
     // changes. Chart-wide rightPriceScale options would also change lower panes.
     // Updating this scale keeps price overlays aligned without rebuilding data
     // or resetting the horizontal viewport.
-    candleSeries?.priceScale().applyOptions({
+    candleSeries.priceScale().applyOptions({
       mode: candleLogScale ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
       invertScale: candleInvertScale,
     });
@@ -751,11 +757,17 @@ export function LiveChartRoot({
   // would be a fresh function every render and defeat memo). register/unregister
   // are already stable (useCallback in useDrawingHost).
   const handleSeriesReady = useCallback(
-    (s: ISeriesApi<SeriesType>, name: string) => registerPaneSeries(name as PaneId, s),
+    (s: ISeriesApi<SeriesType>, name: string) => {
+      if (name === 'candle') liveCandleSeriesRef.current = s;
+      registerPaneSeries(name as PaneId, s);
+    },
     [registerPaneSeries],
   );
   const handleSeriesGone = useCallback(
-    (name: string) => unregisterPaneSeries(name as PaneId),
+    (name: string) => {
+      if (name === 'candle') liveCandleSeriesRef.current = null;
+      unregisterPaneSeries(name as PaneId);
+    },
     [unregisterPaneSeries],
   );
   // Pane Legend registry: RangeSeriesPane fires these after series creation with

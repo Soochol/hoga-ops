@@ -5468,6 +5468,61 @@ describe('LiveChartRoot per-view chart remount (cross-view staleness guard)', ()
     expect(vi.mocked(createChartEx)).toHaveBeenCalledTimes(2);
   });
 
+  it('never reads the price scale of a removed candle during rapid view changes', async () => {
+    const factory = vi.mocked(createChartEx).getMockImplementation()!;
+    const removed = new WeakSet<object>();
+    const staleReads = vi.fn();
+    const charts: IChartApi[] = [];
+    const candleScaleOptions: ReturnType<typeof vi.fn>[] = [];
+    vi.mocked(createChartEx).mockImplementation((...args) => {
+      const chart = factory(...args);
+      charts.push(chart as IChartApi);
+      const addSeries = vi.mocked(chart.addSeries).getMockImplementation()!;
+      vi.mocked(chart.addSeries).mockImplementation((definition, options, paneIndex) => {
+        const series = addSeries(definition, options, paneIndex);
+        const priceScale = series.priceScale();
+        if (definition.type === 'Candlestick') candleScaleOptions.push(vi.mocked(priceScale.applyOptions));
+        vi.mocked(series.priceScale).mockImplementation(() => {
+          if (removed.has(series)) {
+            staleReads();
+            throw new Error('Value is null');
+          }
+          return priceScale;
+        });
+        return series;
+      });
+      vi.mocked(chart.removeSeries).mockImplementation(series => { removed.add(series); });
+      return chart;
+    });
+    try {
+      const props = chartProps('005930', '1m', TODAY_ONLY_BUNDLE);
+      const { rerender, unmount } = render(<LiveChartRoot {...props} />, { wrapper });
+      act(() => {
+        useChartPrefsStore.setState(state => ({
+          candleAlwaysOnTop: !state.candleAlwaysOnTop,
+          candleLogScale: !state.candleLogScale,
+        }));
+      });
+      const scalePrefs = useChartPrefsStore.getState();
+      const expectedScale = { mode: scalePrefs.candleLogScale ? 1 : 0, invertScale: scalePrefs.candleInvertScale };
+      expect(candleScaleOptions).toHaveLength(2);
+      expect(candleScaleOptions.at(-1)).toHaveBeenLastCalledWith(expectedScale);
+      for (let i = 0; i < 10; i++) {
+        const code = i % 2 ? '005930' : '000660';
+        rerender(<LiveChartRoot {...props} code={code} bundle={null} />);
+        rerender(<LiveChartRoot {...props} code={code} bundle={{ ...TODAY_ONLY_BUNDLE, code }} />);
+      }
+      expect(staleReads).not.toHaveBeenCalled();
+      expect(charts).toHaveLength(11);
+      expect(candleScaleOptions.at(-1)).toHaveBeenLastCalledWith(expectedScale);
+      unmount();
+      await act(async () => {});
+    } finally {
+      vi.mocked(createChartEx).mockImplementation(factory);
+      useChartPrefsStore.getState().resetToDefaults();
+    }
+  });
+
   it('keeps the chart instance across bundle-only updates (SSE push)', () => {
     const { rerender } = render(
       <LiveChartRoot {...chartProps('005930', '1m', TODAY_ONLY_BUNDLE)} />,
