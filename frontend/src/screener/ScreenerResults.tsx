@@ -48,7 +48,6 @@ export function ScreenerResults({ scan, liveRows, sortMode, onSortChange, onActi
           className="min-w-0 w-48 rounded-md border border-border bg-bg-input px-2 py-1 text-sm text-fg" />
         <span role="status" className="font-data text-xs text-fg-dim">
           표시 {filtered.length.toLocaleString('ko-KR')} / {scan.rows.length.toLocaleString('ko-KR')}종목
-          {scan.rows.some(r => r.occurrences !== undefined) && ` · 발생 ${filtered.reduce((n, r) => n + (r.occurrences?.length ?? 0), 0).toLocaleString('ko-KR')}건`}
         </span>
         <span className="flex-1" />
         <SegmentedControl aria-label="결과 시세 보기">

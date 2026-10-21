@@ -27,8 +27,8 @@ export function BarVolumeCoverage({ coverage }: { coverage?: Coverage | null }) 
   if (!coverage) return null;
   const reasons = [...new Set(coverage.incomplete.map(item => item.reason))];
   const incompleteCount = new Set(coverage.incomplete.map(item => item.code)).size;
+  if (incompleteCount === 0 && !coverage.realtime) return null;
   return <div className="text-xs text-fg-dim" role="status">
-    <span>봉 이력 충분 {coverage.complete}/{coverage.total}종목</span>
     {coverage.realtime && <div>
       {coverage.realtime.continuous ? <>
         실시간 감시 {coverage.realtime.receiving}/{coverage.total}종목
@@ -42,8 +42,8 @@ export function BarVolumeCoverage({ coverage }: { coverage?: Coverage | null }) 
         {coverage.realtime.receiving < coverage.total && ' · 나머지는 분봉 재조회'}
       </>}
     </div>}
-    {reasons.length > 0 && <details>
-      <summary>전체 이력 판정 불가 {incompleteCount}종목 · 확인된 충족 기록만 표시</summary>
+    {incompleteCount > 0 && <details>
+      <summary>이력 부족 {incompleteCount}종목</summary>
       <ul>{reasons.map(reason => {
         const items = coverage.incomplete.filter(item => item.reason === reason);
         const count = new Set(items.map(item => item.code)).size;

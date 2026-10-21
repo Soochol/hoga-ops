@@ -467,7 +467,7 @@ export function ScreenerDrawer() {
         {lastScan && !screener.isError && (
           <div className="flex items-center gap-2 border-t border-border pt-sm text-xs uppercase text-fg-dim">
             <div className="min-w-0 flex-1 truncate">
-              발생 {scanRows.reduce((count, row) => count + (row.occurrences?.length || 1), 0)}건 · {lastScan.hasMore && '상위 '}{lastScan.rows.length}종목 · {lastScan.savedName ?? '임시 조건'}
+              {lastScan.hasMore && '상위 '}{lastScan.rows.length}종목
               {lastScanStaleReason && (
                 <span className="ml-1 normal-case" style={{ color: 'var(--warn)' }}>
                   · {lastScanStaleReason} — 시작으로 갱신
