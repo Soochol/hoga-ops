@@ -281,13 +281,14 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
     timeframe === 'D' && capabilities.investorNet === 'market' && investorNetEnabled,
   );
   const indexBundle = useMemo<RangeBundle | null>(() => {
-    if (!activeIndexId || !indexCandles.data) return null;
+    const data = indexCandles.data;
+    if (!activeIndexId || !data) return null;
     return buildIndexBundle({
       indexId: activeIndexId,
-      from: indexCandles.data.from,
-      to: indexCandles.data.to,
+      from: data.from,
+      to: data.to,
       bucketMs: isSecondTimeframe(timeframe) ? Number(timeframe.slice(0, -1)) * 1000 : INDEX_BUCKET_MS[timeframe],
-      candles: indexCandles.data.candles.map(c => indexCandles.data.daily_metadata ? ({ ...c, volume: 0 }) : c),
+      candles: data.candles.map(c => data.daily_metadata ? ({ ...c, volume: 0 }) : c),
       investorPoints: indexInvestorNet.data?.points ?? [],
     });
   }, [activeIndexId, timeframe, indexCandles.data, indexInvestorNet.data?.points]);

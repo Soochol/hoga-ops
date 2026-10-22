@@ -1,6 +1,8 @@
 import { isUsIndexId, US_MINUTE_TIMEFRAMES } from '../live/liveInstrument';
 import { usDailyRefetchInterval, type UsDailyMetadata } from './usDailyCandles';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { indexRealtimeKey, overlayIndexCandles, type IndexRealtimeSession } from './indexRealtimeCandles';
 import { apiCall } from './client';
 import type { WireDataWarning } from './dataWarnings';
 import { hasBlockingWarnings, PAST_CANDLES_REFETCH_IN_BACKGROUND } from './livePastCandles';
@@ -85,6 +87,9 @@ export interface LiveIndexCandlesResponse {
   data_warnings: LiveIndexCandlesWarning[];
 }
 
+/** Query metadata, not part of the server wire model. */
+type IndexCandleQueryData = LiveIndexCandlesResponse & { realtimeBaseMs?: number };
+
 export interface LiveIndexInvestorNetResponse {
   index_id: LiveIndexId;
   from: string;
@@ -127,14 +132,16 @@ export function useLiveIndexCandles(
   const queryClient = useQueryClient();
   const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || [...US_MINUTE_TIMEFRAMES, 'D', 'W', 'M'].includes(timeframe));
   const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number } }) => isUsIndexId(indexId) && isMinuteTimeframe(timeframe) ? 60_000 : isUsIndexId(indexId) ? usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount) : indexCandlesRefetchInterval(timeframe, to);
-  return useQuery({
+  const realtime = useQuery<IndexRealtimeSession>({ queryKey: indexRealtimeKey(indexId), queryFn: skipToken });
+  const result = useQuery({
     queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,
     queryFn: async ({ signal }) => {
+      const startedAtMs = Date.now();
       const response = await apiCall<LiveIndexCandlesResponse>(
         `/api/live/index-candles?index_id=${indexId}&timeframe=${timeframe}&from=${from}&to=${to}`,
         { signal },
       );
-      if (!hasBlockingWarnings(response)) return response;
+      if (!hasBlockingWarnings(response)) return { ...response, realtimeBaseMs: startedAtMs } as IndexCandleQueryData;
       // A degraded history request may contain no candles or only the older
       // chunk. Retain already fetched rows in this requested window; keep the
       // response's failure warnings so the backfill/retry policy still sees it.
@@ -142,17 +149,19 @@ export function useLiveIndexCandles(
       const cached = queryClient.getQueryCache().findAll({
         queryKey: ['live', 'index-candles', indexId, timeframe],
       }).sort((a, b) => a.state.dataUpdatedAt - b.state.dataUpdatedAt);
+      let realtimeBaseMs = startedAtMs;
       for (const query of cached) {
-        const previous = query.state.data as LiveIndexCandlesResponse | undefined;
+        const previous = query.state.data as IndexCandleQueryData | undefined;
         if (previous?.index_id !== indexId || previous.timeframe !== timeframe) continue;
+        realtimeBaseMs = Math.min(realtimeBaseMs, previous.realtimeBaseMs ?? 0);
         for (const row of previous.candles) {
           const date = realMsToYyyymmdd(row.t_ms);
           if (date >= response.from && date <= response.to) byTime.set(row.t_ms, row);
         }
       }
-      if (byTime.size === 0) return response;
+      if (byTime.size === 0) return { ...response, realtimeBaseMs } as IndexCandleQueryData;
       for (const row of response.candles) byTime.set(row.t_ms, row);
-      return { ...response, candles: [...byTime.values()].sort((a, b) => a.t_ms - b.t_ms) };
+      return { ...response, realtimeBaseMs, candles: [...byTime.values()].sort((a, b) => a.t_ms - b.t_ms) };
     },
     enabled,
     staleTime: 60_000,
@@ -163,6 +172,10 @@ export function useLiveIndexCandles(
     refetchOnWindowFocus: (query) => refetchInterval(query) !== false,
     placeholderData: (prev) => (prev && prev.index_id === indexId && prev.timeframe === timeframe ? prev : undefined),
   });
+  const data = useMemo(() => result.data ? overlayIndexCandles(
+    result.data, realtime.data, result.data.realtimeBaseMs ?? 0,
+  ) : undefined, [result.data, realtime.data]);
+  return { ...result, data };
 }
 
 export function useLiveIndexInvestorNet(

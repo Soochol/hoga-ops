@@ -91,6 +91,17 @@ TTL 캐시와 WS 표시 캐시를 공유하며, 거래일은 마지막 정상 �
 앵커를 시세 시각으로 표시하지 않는다. 실패는 마지막 정상값과 분리해 재시도를
 제공하며, 지수 전환 시 이전 지수의 값은 표시하지 않는다.
 
+국내 지수 캔들 실시간 표시(2026-10-22): 기존 `market_sector_tick`의 지수값·관측
+시각을 KOSPI·KOSDAQ·KOSPI200·KOSDAQ150별로 모아 마지막 분봉과 진행 중인
+D/W/M 봉에 표시한다. 기존 1초 묶음 전송을 재사용하며 새 WS 구독을 만들지 않는다.
+관측한 가격만으로 고가·저가·종가와 새 분봉을 만들고, 미관측 분의 봉이나 거래량을
+추정하지 않는다. REST의 시가·거래량·거래대금은 보존하며 새 관측 봉의 거래량은
+REST 도착 전까지 0이다. 60초 REST 조회·캐시는 유지해 누락 구간과 완결된 봉을
+보정한다. 조회 도중 들어온 최신 관측은 응답 위에 다시 반영하고, 실패 시 기존
+관측을 유지한다. 관측은 지수별 당일 정규장 최대 391분·초당 한 표본으로 제한하며
+다음 관측 거래일에 초기화한다. KRX100은 확인된 실시간 코드가 없어 기존 REST
+방식을 유지하고, 미국 지수와 과거 전용 조회 범위에는 이 관측을 섞지 않는다.
+
 **activeCode**:
 The stock-only **Code** projection of the current **LiveInstrument**. `useLivePageStore.activeInstrument` is the canonical `/live` subject; `activeCode` is a compatibility field for stock-only hooks and is `null` for **Representative Index** charts. `/live` is a **single-view** page (ADR-0113 removed the multi-tab strip): `useLivePageStore.projectActiveView` is the single writer of the subject (surfaced through `live/liveNavigate.ts`'s `activateLiveInstrument`/`activateLiveCode`): selecting a stock or index in the header search, clicking a row in the **Watchlist Panel** / **Screener Panel** / **Heatmap** (which also navigates to `/live` if elsewhere), or **dragging a Watchlist or Screener Panel row onto the `/live` chart** all **replace the current view's subject in place** (`timeframe` kept, pan reset). A `/live?code=` or `/live?index=` deep link seeds the subject one-shot on first load; with no deep link the restored subject (`live.page.v1`) is normalized to a fresh view (store writes thereafter always win). Distinct from the **Watchlist** (a set of Codes) — activeCode is one selected stock projection, not a saved list.
 _Avoid_: "selected ticker", "current symbol" (use **Code** vocabulary); conflating with **Watchlist** (list vs single active view).
