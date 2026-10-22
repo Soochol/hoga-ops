@@ -76,7 +76,7 @@ for (const width of [320, 500, 700, 1000]) {
     await expect(page.getByTestId('titlebar-current-price')).toHaveText('1,551,000');
     if (width > 320) await expect(page.getByTestId('past-backfill-progress-chip')).toBeVisible();
     else await expect(page.getByTestId('past-backfill-progress-chip')).toBeHidden();
-    await expect(page.getByTestId('past-backfill-progress-chip')).toHaveAttribute('title', /05\/01까지 로드됨/);
+    await expect(page.getByTestId('past-backfill-progress-chip')).not.toHaveAttribute('title');
     for (const name of ['titlebar-current-price', 'titlebar-change', 'past-backfill-progress-chip']) {
       const fits = await page.getByTestId(name).evaluate(el => el.scrollWidth <= el.clientWidth);
       expect(fits, `${name} must fit without clipping`).toBe(true);

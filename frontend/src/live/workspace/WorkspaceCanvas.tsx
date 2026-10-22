@@ -13,6 +13,7 @@ import {
   type WindowItemProps,
   type WorkspaceCanvasApi,
 } from '../../workspace/WorkspaceCanvas';
+import { StockDescriptionTooltipProvider } from '../../heatmap/StockDescriptionTooltip';
 import { WindowFrame, type WindowFrameProps } from './WindowFrame';
 import { useEntryDragStore } from '../../state/entryDrag';
 import { ChartWindow } from './ChartWindow';
@@ -171,20 +172,22 @@ export function WorkspaceCanvas() {
   );
 
   return (
-    <WorkspaceCanvasCore<WorkspaceWindow, LiveItemCtx>
-      windows={windows}
-      onCanvasSize={setCanvasSize}
-      zOrder={zOrder}
-      focusWindow={focusWindow}
-      setWindowRects={setWindowRects}
-      pendingNormalize={pendingNormalize}
-      normalizeLegacyRects={normalizeLegacyRects}
-      onDragStart={onDragStart}
-      windowItem={LiveWindowItem}
-      itemCtx={itemCtx}
-      emptyState={emptyState}
-      onApi={setApi}
-    />
+    <StockDescriptionTooltipProvider>
+      <WorkspaceCanvasCore<WorkspaceWindow, LiveItemCtx>
+        windows={windows}
+        onCanvasSize={setCanvasSize}
+        zOrder={zOrder}
+        focusWindow={focusWindow}
+        setWindowRects={setWindowRects}
+        pendingNormalize={pendingNormalize}
+        normalizeLegacyRects={normalizeLegacyRects}
+        onDragStart={onDragStart}
+        windowItem={LiveWindowItem}
+        itemCtx={itemCtx}
+        emptyState={emptyState}
+        onApi={setApi}
+      />
+    </StockDescriptionTooltipProvider>
   );
 }
 

@@ -23,13 +23,13 @@ export function MajorIndicesWindow({ frameProps }: { frameProps: Omit<WindowFram
     <div className="major-indices-header" data-testid="major-indices-header">
       <span className="major-indices-title">주요 지수</span>
       <div className="major-indices-legend" aria-label="주요 지수 시세">
-        {model.series.map(s => <span key={s.id} className="major-indices-quote" title={`${s.label} ${formatValue(s.value)} · ${formatPercent(s.percent)}`}>
+        {model.series.map(s => <span key={s.id} className="major-indices-quote">
           <span className="major-indices-name"><i aria-hidden style={{ background: s.color }} />{s.label}</span>
           <span className="major-indices-value">{formatValue(s.value)}</span>
           <span className="major-indices-percent">{formatPercent(s.percent)}</span>
         </span>)}
       </div>
-      <span className="major-indices-status" role="status" title={description}>{model.label}</span>
+      <span className="major-indices-status" role="status" aria-label={description}>{model.label}</span>
     </div>
   }><MajorIndicesChart model={model} /></WindowFrame>;
 }

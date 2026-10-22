@@ -1,8 +1,10 @@
 import { liveQuotesQueryKey } from '../../api/liveQuotes';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, cleanup, act } from '@testing-library/react';
+import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { WatchlistResponse } from '../../api/watchlist';
+import { StockDescriptionTooltipProvider } from '../../heatmap/StockDescriptionTooltip';
+import { getStockDescription } from '../../heatmap/stockDescriptions';
 import { TitleBarSymbolRow } from './TitleBarSymbolRow';
 import { useLiveVenueStore } from '../../state/liveVenue';
 import { publishWindowWarnings, clearWindowWarnings } from './windowWarningsSource';
@@ -41,7 +43,9 @@ function renderRow(
   });
   const rendered = render(
     <QueryClientProvider client={qc}>
-      <TitleBarSymbolRow name={name} code={code} isIndex={isIndex} windowId={windowId} />
+      <StockDescriptionTooltipProvider>
+        <TitleBarSymbolRow name={name} code={code} isIndex={isIndex} windowId={windowId} />
+      </StockDescriptionTooltipProvider>
     </QueryClientProvider>,
   );
   return { ...rendered, qc };
@@ -55,15 +59,16 @@ describe('TitleBarSymbolRow', () => {
     clearWindowWarnings('w1');
   });
 
-  it('종목명을 보존하고 전체 코드는 툴팁으로 제공한다', () => {
+  it('종목명과 코드를 표시하고 네이티브 헤더 툴팁을 제거한다', () => {
     renderRow({ name: '삼성전자', code: '005930' });
-    expect(screen.getByText('삼성전자')).toHaveAttribute('title', '삼성전자(005930)');
+    expect(screen.getByText('삼성전자')).not.toHaveAttribute('title');
+    expect(screen.getByText('005930')).toBeInTheDocument();
   });
 
   it('shows the US ticker and exchange while keeping its internal identity out of the title', () => {
     renderRow({ name: '버크셔', code: 'us-stock:NYSE:BRKb', isIndex: true });
     expect(screen.getByText('BRKb · NYSE')).toBeInTheDocument();
-    expect(screen.getByText('버크셔')).toHaveAttribute('title', '버크셔(BRKb · NYSE)');
+    expect(screen.getByText('버크셔')).not.toHaveAttribute('title');
     expect(screen.getByTestId('titlebar-symbol-row')).not.toHaveTextContent('us-stock:');
   });
 
@@ -72,6 +77,37 @@ describe('TitleBarSymbolRow', () => {
     const text = screen.getByTestId('titlebar-symbol-row').textContent ?? '';
     expect(text).toContain('005930');
     expect(text).not.toContain('(005930)');
+  });
+
+  it('종목명에만 0.5초 뒤 공통 설명을 열고 다른 헤더 영역·누르기에서는 닫는다', () => {
+    vi.useFakeTimers();
+    try {
+      const { container } = renderRow({}, { quote: { price: 72000, change_pct: 1.2, change_won: 850 },
+        liveSet: ['005930'], watchlistCodes: ['005930'] });
+      const name = screen.getByText('삼성전자');
+      expect(container.querySelectorAll('[title]')).toHaveLength(0);
+      fireEvent.mouseEnter(name);
+      act(() => vi.advanceTimersByTime(499));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      act(() => vi.advanceTimersByTime(1));
+      expect(screen.getByTestId('stock-description-lines').textContent).toBe(getStockDescription('005930')!.lines.join(''));
+      expect(name).toHaveAttribute('aria-describedby', screen.getByRole('tooltip').id);
+      fireEvent.mouseLeave(name);
+      fireEvent.mouseEnter(screen.getByTestId('titlebar-current-price'));
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      fireEvent.mouseEnter(name);
+      act(() => vi.advanceTimersByTime(250));
+      fireEvent.pointerDown(name);
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      fireEvent.mouseLeave(name);
+      fireEvent.mouseEnter(name);
+      act(() => vi.advanceTimersByTime(500));
+      expect(screen.getByRole('tooltip')).toBeInTheDocument();
+      fireEvent.pointerDown(name);
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    } finally { cleanup(); vi.useRealTimers(); }
   });
 
   it('shows current price from quote.price (candles 폴백 없음)', () => {
@@ -131,7 +167,7 @@ describe('TitleBarSymbolRow', () => {
     });
     const progress = screen.getByTestId('past-backfill-progress-chip');
     expect(progress).toHaveTextContent('↻05/27');
-    expect(progress).toHaveAttribute('title', '과거 데이터 불러오는 중 — 05/27까지 로드됨');
+    expect(progress).not.toHaveAttribute('title');
     act(() => clearWindowWarnings('w1'));
     expect(screen.getByTestId('past-backfill-progress-chip')).toBe(progress);
     expect(progress).not.toBeVisible();

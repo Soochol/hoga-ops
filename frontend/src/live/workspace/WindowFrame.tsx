@@ -138,6 +138,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
       resizable={!maximized}
       onFocus={onFocus}
       onClose={onClose}
+      closeTitle={null}
       closeLabel={marketWide ? `${title} 창 닫기` : `${title} ${KIND_LABEL[kind]} 창 닫기`}
       header={
         <>
@@ -155,13 +156,12 @@ function WindowFrameImpl(props: WindowFrameProps) {
             <TitleBarSymbolRow name={symbolLabel} code={symbolCode} isIndex={isIndex} windowId={id} />
           ) : (
             <>
-              <span className={`live-data-title flex min-w-0 items-center gap-1 text-sm font-medium text-fg${showVenueSupport ? ' live-data-title-with-venues' : ''}`} title={`${KIND_LABEL[kind]} · ${title}${symbolCode ? ` (${symbolCode})` : ''}`} tabIndex={0}>
+              <span className={`live-data-title flex min-w-0 items-center gap-1 text-sm font-medium text-fg${showVenueSupport ? ' live-data-title-with-venues' : ''}`} tabIndex={0}>
                 {kind !== 'chart' && <span className="live-data-title-kind shrink-0">{KIND_LABEL[kind]} ·</span>}
                 {showVenueSupport ? <span className="live-data-title-identity">
                   <span className="live-symbol-name truncate">{title}</span>
                   <span className="live-symbol-venue-badge" data-supported={nxtEnabled === true ? '' : undefined}
-                    aria-label={nxtEnabled === true ? 'NXT 거래 지원' : nxtEnabled === false ? 'NXT 거래 미지원' : 'NXT 지원 여부 미확인'}
-                    title={nxtEnabled === true ? 'NXT 거래 지원' : nxtEnabled === false ? 'NXT 거래 미지원' : 'NXT 지원 여부 미확인'}>
+                    aria-label={nxtEnabled === true ? 'NXT 거래 지원' : nxtEnabled === false ? 'NXT 거래 미지원' : 'NXT 지원 여부 미확인'}>
                     {nxtEnabled === true ? 'NXT 지원' : nxtEnabled === false ? 'NXT 미지원' : 'NXT 미확인'}
                   </span>
                 </span> : <span className="live-symbol-name truncate">{title}</span>}
@@ -179,7 +179,7 @@ function WindowFrameImpl(props: WindowFrameProps) {
                 onApply={amount => { onTradeMinAmountChange(amount); close(); }} />} />}
             {onToggleMaximize && (
               <button type="button" className="live-window-maximize inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-fg-dim hover:bg-tint-selection hover:text-fg"
-                aria-label={maximized ? '원래 크기로 복원' : '창 최대화'} title={maximized ? '원래 크기로 복원 (Esc)' : '창 최대화'}
+                aria-label={maximized ? '원래 크기로 복원' : '창 최대화'}
                 onPointerDown={(e) => e.stopPropagation()} onClick={() => onToggleMaximize(id)}>
                 <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   {maximized ? <><path d="M8 8V4h12v12h-4" /><rect x="4" y="8" width="12" height="12" /></> : <rect x="4" y="4" width="16" height="16" />}
@@ -191,7 +191,6 @@ function WindowFrameImpl(props: WindowFrameProps) {
                 type="button"
                 aria-label="항상 위"
                 aria-pressed={alwaysOnTop}
-                title={alwaysOnTop ? '항상 위 해제' : '항상 위 — 다른 창에 가려지지 않게 표시'}
                 className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm ${alwaysOnTop
                   ? 'bg-tint-selection text-accent hover:brightness-125'
                   : 'text-fg-dim hover:bg-tint-selection hover:text-fg'}`}
@@ -221,13 +220,6 @@ function WindowFrameImpl(props: WindowFrameProps) {
                   }`}
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => onTogglePin(id)}
-                  title={
-                    pinned
-                      ? '이 창 종목 고정 해제 — 다시 링크 그룹을 따릅니다'
-                      : canPin
-                        ? '이 창 종목 고정 — 목록 클릭으로 안 바뀌고, 이 창에 직접 드롭할 때만 바뀝니다'
-                        : '고정할 종목이 없습니다'
-                  }
                 >
                   <PinGlyph filled={pinned} />
                 </button>

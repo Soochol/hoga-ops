@@ -17,13 +17,12 @@ export function ChartWindowSettings({ windowId }: { windowId: string }) {
 
   return <span className="live-chart-header-settings" data-active={active ? '' : undefined}>
     {active && <button type="button" className="live-chart-scale-status" aria-label={`차트 축 상태: ${description}`}
-      title={`${description} — 차트 설정 열기`} aria-haspopup="dialog" aria-expanded={open}
+      aria-haspopup="dialog" aria-expanded={open}
       onPointerDown={event => event.stopPropagation()} onClick={() => setOpen(true)}>
       {log && <span className="live-chart-scale-badge">로그</span>}
       {inverted && <span className="live-chart-scale-badge" data-inverted>반전</span>}
     </button>}
     <WindowSettingsPopover title="차트 설정" scope="이 차트에 적용" width={380}
-      buttonTitle={active ? `차트 설정 · ${description}` : undefined}
       open={open} onOpenChange={setOpen} render={() => <ChartDisplaySettings windowId={windowId} />} />
   </span>;
 }

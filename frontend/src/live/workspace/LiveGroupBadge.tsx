@@ -14,5 +14,5 @@ export function LiveGroupBadge(props: GroupBadgeProps) {
       return [group, `${symbols[group as GroupBadgeProps['group']]?.name ?? '종목 없음'} · ${counts.get(group) ?? 0}개 창`];
     }));
   }, [symbols, membership]);
-  return <GroupBadge {...props} descriptions={descriptions} />;
+  return <GroupBadge {...props} title={null} descriptions={descriptions} />;
 }

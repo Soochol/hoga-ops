@@ -22,7 +22,7 @@ export interface GroupBadgeProps {
   onToggle: () => void;
   onPick: (group: GroupId) => void;
   /** 뱃지 호버 툴팁. 페이지마다 번호가 가리키는 것이 달라 문구를 열어 둔다. */
-  title?: string;
+  title?: string | null;
   descriptions?: Readonly<Record<number, string>>;
 }
 
@@ -41,7 +41,7 @@ export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그�
         // 않도록 여기서 끊는다.
         onPointerDown={(e) => e.stopPropagation()}
         onClick={onToggle}
-        title={title}
+        title={title ?? undefined}
       >
         {group}
       </button>
