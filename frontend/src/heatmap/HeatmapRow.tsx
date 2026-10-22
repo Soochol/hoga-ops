@@ -1,8 +1,11 @@
 import type { DraggableSyntheticListeners } from '@dnd-kit/core';
 import { priceDirClass } from '../ui/priceDir';
 import { CandleGlyph } from './CandleGlyph';
+import { getStockDescription } from './stockDescriptions';
+import { useStockDescriptionTooltip } from './StockDescriptionTooltip';
 
 export interface HeatmapRowProps {
+  code?: string;
   name: string;
   price: number | null;
   pct: number | null;
@@ -56,8 +59,10 @@ export interface HeatmapRowProps {
 export function HeatmapRow({
   name, price, pct, open, high, low, expectedPrice, expectedPct, onClick, ariaLabel, testId, flash,
   sortableRef, sortableStyle, dragListeners, dragging, onContextMenu, matched,
-  captureTitle,
+  captureTitle, code,
 }: HeatmapRowProps) {
+  const descriptionTooltip = useStockDescriptionTooltip();
+  const hasDescription = !!descriptionTooltip && !!getStockDescription(code);
   const sign = (n: number) => (n > 0 ? '+' : '');
   const draggable = !!dragListeners;
   // 예상 표시 모드 — 가격·등락률 셀이 예상값을 싣고 **종목명 앞에 '*' 마커**가 붙는다.
@@ -101,6 +106,13 @@ export function HeatmapRow({
       // 우선되게 한다(현 PointerSensor 는 onPointerDown 만 — 충돌 없음; 향후 KeyboardSensor
       // 도입 시에도 Enter/Space 가 드래그가 아닌 차트 열기로 유지되도록 하는 방어).
       {...dragListeners}
+      onPointerDownCapture={() => descriptionTooltip?.hide()}
+      onFocus={(e) => {
+        if (!e.currentTarget.matches(':focus-visible')) return;
+        const anchor = e.currentTarget.querySelector<HTMLElement>('[data-stock-description-trigger]');
+        if (anchor) descriptionTooltip?.show(anchor, code, captureTitle);
+      }}
+      onBlur={() => descriptionTooltip?.hide()}
       onClick={onClick}
       onContextMenu={onContextMenu}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } }}
@@ -146,12 +158,12 @@ export function HeatmapRow({
           등락률 칩보다 낮춰, 이름은 작고 차분하게·숫자는 크게(라벨=이름 < 값=가격 < 신호=칩). */}
       <span
         className="truncate text-xs text-fg-dim"
-        // title 은 캡처 지연 안내 전용으로 둔다. 잘린 이름을 읽게 하려고 `?? name`
-        // 폴백을 넣어 봤다가 되돌렸다 — ① `HeatmapFolder.test` 의 "마커를 안 넘기면
-        // 캡처 표시가 통째로 빠진다" 계약을 깨고, ② 무엇보다 **276행 전부에 호버
-        // 툴팁이 생긴다**. 아래 폭 재배분으로 잘림이 1행까지 줄었는데, 그 1행을
-        // 위해 275행에 툴팁을 켜는 건 남는 거래가 아니다.
-        title={captureTitle}
+        data-stock-description-trigger=""
+        onMouseEnter={(e) => descriptionTooltip?.show(e.currentTarget, code, captureTitle)}
+        onMouseLeave={() => descriptionTooltip?.scheduleHide()}
+        // User-approved company prose replaces the native title on the board.
+        // Capture information remains in its footer; unknown Codes retain the old title.
+        title={hasDescription ? undefined : captureTitle}
       >
         {/* 동시호가 예상 마커 — 관심종목 QuoteRow 와 같은 표기·같은 자리(이름 앞).
             truncate 는 부모인 이 span(그리드 아이템)에 걸려 있어 inline 마커는 자기

@@ -1,0 +1,33 @@
+{
+  "dateKst": "2026-10-22",
+  "baseSha": "d9ec63812820fcd6bb2263faa90b72a799c95543",
+  "originMainSha": "d9ec63812820fcd6bb2263faa90b72a799c95543",
+  "frontendInputsSha256": "dd143477c5ac943fe1468b77f2a8222a5e3de1c996d683f5620d6a35b91cfee7",
+  "inputFiles": 1815,
+  "node": "v24.13.1",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "npx vitest run src/heatmap",
+      "result": "passed",
+      "files": 24,
+      "tests": 201
+    },
+    {
+      "command": "npx playwright test tests/e2e/heatmap-stock-description.spec.ts tests/e2e/heatmap-uiux.spec.ts --reporter=line",
+      "result": "passed",
+      "tests": 6,
+      "workers": 1,
+      "backendPort": 20373,
+      "frontendPort": 21373,
+      "notes": "Configured webServer runs vite build and isolated credential-free backend; 330 descriptions measured at 1440px and 600px."
+    }
+  ],
+  "hoverDelayMs": 500,
+  "fingerprintRecipe": "sha256 of sorted frontend/src + frontend/tests files and listed package/build/test configs, each encoded as relative path + NUL + bytes + NUL",
+  "latestRunKst": "2026-10-22 23:54",
+  "notes": "Final 500ms implementation and theme-aware shadow verified. Unchanged backend needs no separate backend suite."
+}
