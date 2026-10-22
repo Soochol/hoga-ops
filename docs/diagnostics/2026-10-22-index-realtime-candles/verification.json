@@ -1,0 +1,67 @@
+{
+  "verified_at": "2026-10-22T14:14:01.433396+09:00",
+  "worktree": "/home/dev/.codex/worktrees/3d7f/hoga-ops",
+  "head": "aff3f700ba26d091ae75116b96a260ad1405fa65",
+  "base": "aff3f700ba26d091ae75116b96a260ad1405fa65",
+  "working_tree": "Uncommitted implementation on the recorded head; input fingerprint identifies the final source and fixtures",
+  "inputs": {
+    "sha256": "8815095bdbfeb32161041a611ab003d0430430da039e2818cbce1b078460f04a",
+    "file_count": 2592,
+    "scope": "Sorted tracked and non-ignored new frontend/src, frontend/tests, hoga and tests files plus frontend package/lockfile, Vite/Vitest/Playwright/TypeScript configs, pyproject.toml, uv.lock, ruff.toml and .python-version. SHA256(path + NUL + bytes + NUL); generated outputs and installed dependencies excluded."
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npx vitest run src/api/indexRealtimeCandles.test.ts src/api/liveIndices.realtime.test.tsx src/api/liveIndices.test.tsx src/api/sectorTickOverlay.test.ts src/live/useLiveChartData.test.tsx src/live/buildIndexBundle.test.ts src/live/LiveChartRoot.test.tsx src/live/workspace/useMajorIndices.test.tsx src/layout/MarketIndexBar.test.tsx src/market/IndexCards.test.tsx src/live/workspace/IndexTitleBarSymbolRow.test.tsx src/api/marketIndexQuotes.test.tsx",
+      "result": "327 passed across 12 files"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; application, unit tests and E2E projects"
+    },
+    {
+      "command": "cd frontend && npx eslint src/api/indexRealtimeCandles.ts src/api/liveIndices.ts src/api/sectorTickOverlay.ts src/api/indexRealtimeCandles.test.ts src/api/liveIndices.realtime.test.tsx tests/e2e/index-realtime-candles.spec.ts",
+      "result": "passed"
+    },
+    {
+      "command": "cd frontend && npx playwright test index-realtime-candles.spec.ts index-chart-header.spec.ts --reporter=line",
+      "result": "3 passed; actual chart OHLC movement, header coherence, same-index multiple periods, other-index and KRX100 isolation, new minute, late REST correction with newer ticks retained, historical pan/zoom retained, one shared WS connection"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed; existing bundle size warning"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "12 passed"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "result_reuse": "Final changes after the 327-test run affected only the E2E fixture for coherent baseline quotes and header assertions. Application code and unit-test inputs are unchanged; E2E/build/type/lint checks rerun with that final fixture.",
+  "environment": {
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "backend_port": 20192,
+    "frontend_port": 21192,
+    "workers": 1,
+    "credentials": "Blank vendor credentials in Playwright configuration; existing empty worktree .env preserved"
+  },
+  "visual_review": "Inspected the generated four-window index-realtime-candles.png. The 5-minute tail and right-axis price move; the panned 1-minute window preserves its historical anchor. Price-axis label width changes are accounted for using chart width and bar spacing.",
+  "limits": [
+    "Observed WS prices use the existing approximately one-second broadcast. Intrasecond extrema and missed intervals require the retained 60-second REST correction.",
+    "Volume and turnover are never inferred from index levels. Existing REST volume is retained; an observed new bar has zero volume until REST supplies its bar.",
+    "Realtime applies to KOSPI, KOSDAQ, KOSPI200 and KOSDAQ150. KRX100 has no confirmed stream mapping and retains REST. US indices are unchanged.",
+    "The four-chart fixture emits the peakWallCounts dev store-write threshold diagnostic (six registrations per mounted chart); no production registry logic was changed.",
+    "Mocked provider/browser verification only; production servers were not restarted and full repository suites were not run."
+  ]
+}

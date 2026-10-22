@@ -26,6 +26,8 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { MarketSectorsResponse } from './market';
 import type { MarketIndexQuote } from './marketIndexQuotes';
+import { appendIndexPrice, indexRealtimeKey, type IndexRealtimeSession } from './indexRealtimeCandles';
+import type { LiveIndexId } from '../live/liveInstrument';
 
 /** 서버가 싣는 필드(= 화면이 쓰는 것만). 전 스냅샷을 보내지 않는 이유는 백엔드
  *  `_SECTOR_WIRE_FIELDS` 주석 참조. 전부 optional — 그 틱이 말한 것만 온다. */
@@ -51,7 +53,7 @@ export interface SectorTickEvent {
 /** 종합지수 업종코드 → 하단 바/카드의 지수 id. 백엔드
  *  `sector_registry.INDEX_ID_TO_SECTOR_CODE` 의 역방향이고, **양쪽이 어긋나면 카드가
  *  조용히 폴링으로 남는다**(틀린 값이 뜨는 게 아니라 안 뜬다). */
-const SECTOR_CODE_TO_INDEX_ID: Record<string, string> = {
+const SECTOR_CODE_TO_INDEX_ID: Record<string, LiveIndexId> = {
   '001': 'KOSPI',
   '101': 'KOSDAQ',
   '201': 'KOSPI200',
@@ -162,4 +164,9 @@ export function applySectorTick(qc: QueryClient, evt: SectorTickEvent): void {
   if (!evt.sectors || Object.keys(evt.sectors).length === 0) return;
   patchSectors(qc, evt.sectors);
   patchIndexQuotes(qc, evt.sectors);
+  for (const [code, tick] of Object.entries(evt.sectors)) {
+    const id = SECTOR_CODE_TO_INDEX_ID[code];
+    if (id) qc.setQueryData<IndexRealtimeSession>(indexRealtimeKey(id), previous =>
+      appendIndexPrice(previous, id, tick, Date.now()));
+  }
 }
