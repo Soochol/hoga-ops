@@ -17,6 +17,11 @@ async function setup(page: Page) {
   await page.goto('/live?code=098460');
   await expect.poll(() => page.evaluate(() => (window as unknown as ChartWindow).__liveCharts?.size ?? 0)).toBe(1);
   const id = await page.evaluate(() => [...(window as unknown as ChartWindow).__liveCharts.keys()][0]);
+  await page.evaluate(async id => {
+    const path = '/src/state/livePage.ts';
+    const { useLivePageStore } = await import(path);
+    useLivePageStore.getState().patchIndicatorsScoped({ windowKey: `live:${id}` }, '1m', { movingAverages: [] });
+  }, id);
   await page.getByTestId('live-indicators-button').click();
   return id;
 }
@@ -30,8 +35,8 @@ async function state(page: Page, id: string) {
 }
 async function envelopeLines(page: Page, id: string) {
   return page.evaluate(id => (window as unknown as ChartWindow).__liveCharts.get(id)!.panes()[0].getSeries()
-    .filter(s => s.seriesType() === 'Line' && s.options().title.startsWith('엔벨로프 '))
-    .map(s => ({ visible: s.options().visible, values: (s as ISeriesApi<'Line'>).data() })), id);
+    .filter(s => s.seriesType() === 'Line' && ['#3B82F6', '#F97316'].includes((s as ISeriesApi<'Line'>).options().color))
+    .map(s => ({ title: s.options().title, visible: s.options().visible, values: (s as ISeriesApi<'Line'>).data() })), id);
 }
 
 for (const theme of ['toss-light', 'toss-dark']) {
@@ -49,6 +54,7 @@ for (const theme of ['toss-light', 'toss-dark']) {
     await editor.getByRole('button', { name: '설정대로 추가', exact: true }).click();
     await expect.poll(async () => (await envelopeLines(page, id)).length).toBe(3);
     await expect.poll(async () => (await envelopeLines(page, id))[0].values.filter(p => 'value' in p).length).toBeGreaterThan(0);
+    expect((await envelopeLines(page, id)).map(line => line.title)).toEqual(['', '', '']);
     const values = (await envelopeLines(page, id)).map(line => line.values.at(-1)!);
     if (!values.every(p => 'value' in p)) throw new Error('Envelope bands have no values');
     expect(values[0].value).toBeCloseTo(values[1].value * 1.02, 7);

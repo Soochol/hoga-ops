@@ -47,8 +47,7 @@ function EnvelopeOverlay({ chart, bundle, axis }: { chart: IChartApi; bundle: Ra
 
   useEffect(() => {
     if (!enabled) return;
-    const series = BANDS.map((band) => chart.addSeries(LineSeries, {
-      title: `엔벨로프 ${LABELS[band]}`,
+    const series = BANDS.map(() => chart.addSeries(LineSeries, {
       priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       priceFormat: { type: 'custom', formatter: (p: number) => Math.round(p).toLocaleString('ko-KR'), minMove: 1 },
     }, 0));
