@@ -1,0 +1,43 @@
+{
+  "client_date": "2026-10-23",
+  "timezone": "Asia/Seoul",
+  "base_sha": "b111d15735a14551bc13c0ff042c90bff1ce0917",
+  "branch": "codex/envelope-no-series-label",
+  "frontend_inputs": {
+    "sha256": "fb7e253bfa5658e87f5f0f6755906af3e1598c99d2cb7126e0b35ebe8b9b7bf9",
+    "file_count": 1834,
+    "algorithm": "sha256(sorted path + NUL + sha256(file bytes).digest())"
+  },
+  "checks": {
+    "typecheck": {
+      "command": "cd frontend && npm run typecheck",
+      "status": "passed",
+      "summary": "app, unit and E2E projects passed",
+      "log_path": "/tmp/hoga-envelope-label-typecheck.log",
+      "log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250"
+    },
+    "vitest": {
+      "command": "cd frontend && npx vitest run src/live/indicators/EnvelopeOverlay.test.tsx src/live/indicators/BollingerOverlay.test.tsx",
+      "status": "passed",
+      "summary": "2 files, 4 tests passed",
+      "log_path": "/tmp/hoga-envelope-label-vitest.log",
+      "log_sha256": "376f87e979a13cf0fb662901b0c7f681458d17f38c656bba4595bccd268b1d0a"
+    },
+    "e2e": {
+      "command": "cd frontend && npx playwright test envelope.spec.ts --reporter=line",
+      "status": "passed",
+      "summary": "2 tests passed; three Envelope titles empty in light/dark themes; Vite production build passed",
+      "log_path": "/tmp/hoga-envelope-label-e2e.log",
+      "log_sha256": "07f0c3982fe11d2a6e2f68610ab9a47be685dd517b4c86a83845c6bf0d572dbf"
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  },
+  "runtime": {
+    "node": "v24.13.1",
+    "chrome": "Google Chrome 156.0.8078.47"
+  },
+  "change": "Remove native Envelope series titles; retain existing cursor legends. E2E identifies lines without requiring a displayed series title."
+}
