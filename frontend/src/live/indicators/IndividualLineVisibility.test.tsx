@@ -6,6 +6,7 @@ import { FACTORY_INDICATOR_SETTINGS } from '../../state/indicatorSettingsV2';
 import MovingAverageConfig from './MovingAverageConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import BollingerConfig from './BollingerConfig';
+import EnvelopeConfig from './EnvelopeConfig';
 import SupertrendConfig from './SupertrendConfig';
 import QuoteTotalsConfig from './QuoteTotalsConfig';
 import FillStrengthConfig from './FillStrengthConfig';
@@ -17,7 +18,7 @@ beforeEach(() => {
   localStorage.clear();
   useLivePageStore.setState({ ...FACTORY_INDICATOR_SETTINGS, indicatorsByTimeframe: {}, indicatorsByWindow: {}, indicatorTimeframe: '1m',
     dailyMovingAverages: FACTORY_INDICATOR_SETTINGS.dailyMovingAverages.map(m => ({ ...m, enabled: true })),
-    bollingerEnabled: true, supertrendEnabled: true, quoteTotalsEnabled: true, fillStrengthEnabled: true,
+    envelopeEnabled: true, bollingerEnabled: true, supertrendEnabled: true, quoteTotalsEnabled: true, fillStrengthEnabled: true,
     quoteTotalsLevelLineEnabled: true, quoteTotalsDayMaxLineEnabled: true });
   useChartPrefsStore.getState().resetToDefaults();
 });
@@ -29,6 +30,7 @@ describe('individual display switches and preview', () => {
   it.each([
     [MovingAverageConfig, 'moving-average', '기간1 표시', '5봉'],
     [DailyMovingAverageConfig, 'daily-moving-average', '기간1 표시', '20일'],
+    [EnvelopeConfig, 'envelope', '엔벨로프 상단선 표시', '상단선'],
     [BollingerConfig, 'bollinger', '볼린저 상단선 표시', '상단선'],
     [SupertrendConfig, 'supertrend', '슈퍼트렌드 상승 추세 표시', '상승 추세'],
     [QuoteTotalsConfig, 'quote-totals', '매수 총잔량 표시', '매수 총잔량'],

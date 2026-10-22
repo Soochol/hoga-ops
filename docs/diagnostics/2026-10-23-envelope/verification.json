@@ -1,0 +1,136 @@
+{
+  "client_date": "2026-10-23",
+  "timezone": "Asia/Seoul",
+  "branch": "codex/envelope",
+  "base_sha": "0563dd78e79ddda356dff74eeeac4ac128e6ae40",
+  "origin_main_sha_at_verification": "0563dd78e79ddda356dff74eeeac4ac128e6ae40",
+  "implementation_state": "validated source tree; commit reuses checks only when recorded inputs match",
+  "input_fingerprints": {
+    "frontend": {
+      "sha256": "07b7ad520e029cc90dda6db828a62e9b6ce52b35f9e23b0c856725ddf9281bdd",
+      "file_count": 1834,
+      "paths": [
+        "frontend"
+      ],
+      "algorithm": "sha256(sorted path + NUL + sha256(file bytes).digest())"
+    },
+    "backend": {
+      "sha256": "6c10a04d8b504f7c4a3be81954fcc17c5932adffe35e071ebdcdd034169344dd",
+      "file_count": 789,
+      "paths": [
+        "hoga",
+        "tests",
+        "pyproject.toml",
+        "uv.lock",
+        ".python-version"
+      ],
+      "algorithm": "sha256(sorted path + NUL + sha256(file bytes).digest())"
+    }
+  },
+  "changed_files": [
+    "CHANGELOG.md",
+    "CONTEXT.md",
+    "frontend/src/chart/projectors/envelope.test.ts",
+    "frontend/src/chart/projectors/envelope.ts",
+    "frontend/src/live/LiveChartRoot.tsx",
+    "frontend/src/live/PaneLegendOverlay.tsx",
+    "frontend/src/live/indicators/EnvelopeConfig.tsx",
+    "frontend/src/live/indicators/EnvelopeOverlay.test.tsx",
+    "frontend/src/live/indicators/EnvelopeOverlay.tsx",
+    "frontend/src/live/indicators/IndicatorConfigContent.tsx",
+    "frontend/src/live/indicators/IndicatorInstanceLegend.tsx",
+    "frontend/src/live/indicators/IndicatorInstanceOverlays.tsx",
+    "frontend/src/live/indicators/IndicatorPanel.test.tsx",
+    "frontend/src/live/indicators/IndicatorPanel.tsx",
+    "frontend/src/live/indicators/IndicatorPanelHelpers.tsx",
+    "frontend/src/live/indicators/IndicatorStylePreview.tsx",
+    "frontend/src/live/indicators/IndividualLineVisibility.test.tsx",
+    "frontend/src/live/indicators/LineVisibilityRow.tsx",
+    "frontend/src/live/indicators/indicatorCatalogDraft.ts",
+    "frontend/src/live/indicators/indicatorDotColors.test.ts",
+    "frontend/src/live/indicators/indicatorDotColors.ts",
+    "frontend/src/live/indicators/indicatorGlyphs.test.tsx",
+    "frontend/src/live/indicators/indicatorGlyphs.tsx",
+    "frontend/src/live/indicators/indicatorInstancePanes.ts",
+    "frontend/src/live/presets/presetFlags.test.ts",
+    "frontend/src/live/presets/presetFlags.ts",
+    "frontend/src/state/envelopeSettings.test.ts",
+    "frontend/src/state/indicatorInstances.ts",
+    "frontend/src/state/indicatorLineVisibility.ts",
+    "frontend/src/state/indicatorOps.flagFields.test.ts",
+    "frontend/src/state/indicatorOps.ts",
+    "frontend/src/state/liveIndicatorsPersistence.test.ts",
+    "frontend/src/state/liveIndicatorsPersistence.ts",
+    "frontend/src/state/livePage.ts",
+    "frontend/tests/e2e/envelope.spec.ts"
+  ],
+  "runtime": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 156.0.8078.47"
+  },
+  "checks": {
+    "typecheck": {
+      "command": "cd frontend && npm run typecheck",
+      "status": "passed",
+      "summary": "App, unit/component tests and E2E TypeScript projects passed",
+      "log_path": "/tmp/hoga-envelope-typecheck.log",
+      "log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250"
+    },
+    "unit_component": {
+      "command": "cd frontend && npx vitest run src/chart/projectors/envelope.test.ts src/state src/live/presets src/live/indicators src/live/PaneLegendOverlay.test.tsx src/live/legendRows.test.ts src/live/LiveChartRoot.test.tsx src/live/LivePage.test.tsx src/live/workspace/IndexTitleBarSymbolRow.test.tsx src/api/liveIndices.test.tsx",
+      "status": "passed",
+      "summary": "98 files, 1545 tests passed",
+      "log_path": "/tmp/hoga-envelope-vitest.log",
+      "log_sha256": "8ad3675a68f0dcef612fd54acd37d032387ff5226ec0736480b555c385b6210f"
+    },
+    "e2e": {
+      "command": "cd frontend && npx playwright test envelope.spec.ts us-index-minutes.spec.ts --reporter=line",
+      "status": "passed",
+      "summary": "8 tests passed, including light/dark Envelope calculation, independent instances, hidden lines, delete/undo, reload and 390px layout",
+      "log_path": "/tmp/hoga-envelope-e2e.log",
+      "log_sha256": "a496e418c00d30f0855bfa59460edf2a017aca40b064a2f689f7370dd88a8cd5"
+    },
+    "build": {
+      "command": "npx vite build (Playwright webServer prerequisite)",
+      "status": "passed",
+      "summary": "1025 modules transformed, build passed",
+      "log_path": "/tmp/hoga-envelope-e2e.log",
+      "log_sha256": "a496e418c00d30f0855bfa59460edf2a017aca40b064a2f689f7370dd88a8cd5"
+    },
+    "diff_check": {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  },
+  "scope_notes": [
+    "No backend implementation, API contract, dependencies or verification configuration changed for Envelope.",
+    "Existing price-overlay lifecycle, candle layering, intraday gap masking and window/instance-scoped legends are reused.",
+    "Rebased onto main 0563dd78e after its US index refresh change; reran the affected frontend checks and US index E2E tests.",
+    "No change applied to the running user development servers."
+  ],
+  "browser_environment": {
+    "workers": 1,
+    "backend_port": 20390,
+    "frontend_port": 21390,
+    "data_dir": "/tmp/hoga-e2e-data-390",
+    "dist_dir": "/tmp/hoga-e2e-dist-390",
+    "vendor_credentials": "empty values from playwright.config.ts"
+  },
+  "visual_qa": {
+    "status": "passed",
+    "reviewed": [
+      "desktop dark Envelope settings",
+      "390px light Envelope settings"
+    ]
+  },
+  "formula_reference": "https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/mae",
+  "pre_merge_reuse": {
+    "base_sha": "0563dd78e79ddda356dff74eeeac4ac128e6ae40",
+    "input_fingerprints_match": true,
+    "log_hashes_match": true,
+    "open_pr_file_overlap": false,
+    "backend_change": false
+  }
+}

@@ -4,6 +4,7 @@
 export type CategoryId =
   | 'supertrend'
   | 'bollinger'
+  | 'envelope'
   | 'moving-average'
   | 'daily-moving-average'
   | 'volume'
@@ -50,6 +51,8 @@ export const CATEGORIES: ReadonlyArray<{
     description: 'ATR 변동성을 바탕으로 상승·하락 추세를 표시합니다.' },
   { id: 'bollinger', label: '볼린저 밴드', group: 'top', placement: 'overlay',
     description: '이동평균선 위아래에 가격 변동폭을 표시합니다.' },
+  { id: 'envelope', label: '엔벨로프', group: 'top', placement: 'overlay',
+    description: '단순이동평균선 위아래에 설정한 비율의 가격 밴드를 표시합니다.' },
   { id: 'daily-moving-average', label: '일봉 이동평균선',  group: 'top',  placement: 'overlay',
     description: '일봉 종가의 이동평균선을 분봉 차트에 표시합니다. 분봉 전용입니다.' },
   { id: 'volume',          label: '거래량',           group: 'top',  placement: 'pane',

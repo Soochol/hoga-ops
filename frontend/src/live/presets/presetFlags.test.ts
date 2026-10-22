@@ -5,10 +5,11 @@ import {
 } from './presetFlags';
 
 describe('PRESET_INDICATOR_FLAG_KEYS', () => {
-  it('covers the 10 overlay enables + 8 pane toggles (18 enable keys)', () => {
-    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(18);
+  it('covers the 11 overlay enables + 8 pane toggles (19 enable keys)', () => {
+    expect(PRESET_INDICATOR_FLAG_KEYS).toHaveLength(19);
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('movingAverageEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('depthHeatmapEnabled');
+    expect(PRESET_INDICATOR_FLAG_KEYS).toContain('envelopeEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('volumeEnabled');
     expect(PRESET_INDICATOR_FLAG_KEYS).toContain('foreignNetEnabled');
   });
@@ -18,12 +19,12 @@ describe('normalizePresetEnableByTimeframe', () => {
   it('keeps known profile/enable/boolean triples, drops the rest', () => {
     expect(normalizePresetEnableByTimeframe({
       minute: { askPeakEnabled: true, unknownKey: true, ratioEnabled: 'no' },
-      D: { volumeEnabled: false },
+      D: { volumeEnabled: false, envelopeEnabled: true },
       bogus: { askPeakEnabled: true },      // unknown profile → drop
       W: {},                                 // empty bucket → drop
     })).toEqual({
       minute: { askPeakEnabled: true },
-      D: { volumeEnabled: false },
+      D: { volumeEnabled: false, envelopeEnabled: true },
     });
   });
 

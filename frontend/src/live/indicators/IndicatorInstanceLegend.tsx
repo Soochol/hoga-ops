@@ -37,7 +37,7 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
   const category = CATEGORIES.find(c => c.id === row.category)!;
   const hidden = row.hidden || indicatorGroupHidden(row.category, settings);
   const title = `${category.label} · ${indicatorInstanceSummary(row.category, settings)}`;
-  const flagType = ({ bollinger: 'bollinger', supertrend: 'supertrend', 'depth-heatmap': 'depth-heatmap', 'trade-volume-poc': 'trade-volume-poc', 'peak-walls': 'ask-peak' } as Partial<Record<string, LegendFlagId>>)[row.category];
+  const flagType = ({ envelope: 'envelope', bollinger: 'bollinger', supertrend: 'supertrend', 'depth-heatmap': 'depth-heatmap', 'trade-volume-poc': 'trade-volume-poc', 'peak-walls': 'ask-peak' } as Partial<Record<string, LegendFlagId>>)[row.category];
   const cells = row.category === 'broker-late-entry' ? settings.brokerLateEntries.flatMap(slot => readFlagLegendValues(registryScope, 'broker-late-entry', slot.id, cursorTimeSec))
     : row.category === 'peak-walls' ? (['ask-peak', 'bid-peak'] as const).flatMap(type => readFlagLegendValues(registryScope, type, 'main', cursorTimeSec))
     : flagType ? readFlagLegendValues(registryScope, flagType, 'main', cursorTimeSec) : [];

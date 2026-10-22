@@ -50,11 +50,11 @@ export function filterPrimaryPaneGroups(groups: readonly (readonly BoundPaneSpec
   }).filter(group => group.length > 0);
 }
 export function indicatorInstanceApplicable(category: CategoryId, tf: LiveTimeframe, hogaPanes: boolean, priceOnly = false): boolean {
-  if (priceOnly) return ['moving-average', 'bollinger', 'supertrend'].includes(category);
+  if (priceOnly) return ['moving-average', 'bollinger', 'envelope', 'supertrend'].includes(category);
   if (category === 'daily-moving-average') return !['D', 'W', 'M'].includes(tf);
   if (category === 'foreign-net' || category === 'institution-net' || category === 'program-daily') return tf === 'D';
   if (category === 'trade-value') return ['D', 'W', 'M'].includes(tf);
-  if (['moving-average', 'bollinger', 'supertrend', 'volume'].includes(category)) return true;
+  if (['moving-average', 'bollinger', 'envelope', 'supertrend', 'volume'].includes(category)) return true;
   return hogaPanes && !['D', 'W', 'M'].includes(tf);
 }
 

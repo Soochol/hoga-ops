@@ -412,6 +412,7 @@ const FLAG_SET_HIDDEN: Record<
   'trade-volume-poc': (a, h) => a.setTradeVolumePocHidden(h),
   'depth-heatmap': (a, h) => a.setDepthHeatmapHidden(h),
   bollinger: (a, h) => a.setBollingerHidden(h),
+  envelope: (a, h) => a.setEnvelopeHidden(h),
   supertrend: (a, h) => a.setSupertrendHidden(h),
   // 이 지표는 배열로 승격돼 **인스턴스의 `enabled` 가 유일 게이트**다 — 타입 눈이
   // 따로 없으므로 행의 눈은 그 인스턴스를 끄고 켠다.
@@ -917,6 +918,14 @@ function PaneLegendOverlay({
   const bollingerUpperColor = useWindowIndicator((s) => s.bollingerUpperColor);
   const bollingerMiddleColor = useWindowIndicator((s) => s.bollingerMiddleColor);
   const bollingerLowerColor = useWindowIndicator((s) => s.bollingerLowerColor);
+  const envelopeEnabled = useWindowIndicator((s) => s.envelopeEnabled);
+  const envelopeHidden = useWindowIndicator((s) => s.envelopeHidden);
+  const envelopePeriod = useWindowIndicator((s) => s.envelopePeriod);
+  const envelopePercent = useWindowIndicator((s) => s.envelopePercent);
+  const envelopeSource = useWindowIndicator((s) => s.envelopeSource);
+  const envelopeUpperColor = useWindowIndicator((s) => s.envelopeUpperColor);
+  const envelopeMiddleColor = useWindowIndicator((s) => s.envelopeMiddleColor);
+  const envelopeLowerColor = useWindowIndicator((s) => s.envelopeLowerColor);
   const movingAverages = useWindowIndicator((s) => s.movingAverages);
   const dailyMovingAverages = useWindowIndicator((s) => s.dailyMovingAverages);
   // Candle-pane flag indicators — enabled/hidden flags + swatch colors (설정 변경 즉시 반영).
@@ -960,11 +969,12 @@ function PaneLegendOverlay({
   // Hoga-only ticks retain candles/axis and do not trigger another legend render;
   // the provider registry itself stays non-reactive.
   useEffect(() => {
-    if (!bollingerEnabled && !supertrendEnabled) return;
+    if (!bollingerEnabled && !envelopeEnabled && !supertrendEnabled) return;
     const raf = requestAnimationFrame(() => tick());
     return () => cancelAnimationFrame(raf);
   }, [chart, windowId, candles, axis, bollingerEnabled, bollingerPeriod, bollingerMultiplier,
     bollingerSource, bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor,
+    envelopeEnabled, envelopePeriod, envelopePercent, envelopeSource, envelopeUpperColor, envelopeMiddleColor, envelopeLowerColor,
     supertrendEnabled, supertrendPeriod, supertrendMultiplier, supertrendUpColor, supertrendDownColor]);
 
   // Share the time grid with the tooltip; OHLC updates keep both maps stable.
@@ -1140,6 +1150,14 @@ function PaneLegendOverlay({
       swatches: [bollingerUpperColor, bollingerMiddleColor, bollingerLowerColor].filter((_, i) => lineVisible(lineVisibility, (['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const)[i])),
       cells: indicatorLegendsVisible && bollingerEnabled
         ? readFlagLegendValues(windowId, 'bollinger', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
+    },
+    {
+      type: 'envelope', instanceId: FLAG_MAIN_INSTANCE, paneId: 'candle',
+      label: `엔벨로프 (${envelopePeriod}, ±${envelopePercent}%)`,
+      enabled: envelopeEnabled, hidden: envelopeHidden, applicable: true,
+      swatches: [envelopeUpperColor, envelopeMiddleColor, envelopeLowerColor].filter((_, i) => lineVisible(lineVisibility, (['envelopeUpper', 'envelopeMiddle', 'envelopeLower'] as const)[i])),
+      cells: indicatorLegendsVisible && envelopeEnabled
+        ? readFlagLegendValues(windowId, 'envelope', FLAG_MAIN_INSTANCE, cursorTimeSec) : [],
     },
     {
       type: 'ask-peak',

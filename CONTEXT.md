@@ -132,6 +132,15 @@ The current analysis indicator setup. It is **not owned by a saved study view**:
 같은 종류를 여러 개 추가한 항목은 `indicatorInstances`에서 각자의 설정·표시 상태·지표 전용 prefs를 소유한다. 기존 flat 필드는 첫 항목이며, 원본 시세 수요는 활성 항목들의 합집합이다.
 _Avoid_: saying a **복기뷰** restores or stores indicator state; treating the `study` bucket of `IndicatorPageScope` as a live axis.
 
+**엔벨로프 (Envelope)**:
+가격 차트 위의 보조지표. 선택한 기준가의 후행 N봉 단순이동평균을 중심선으로,
+상단은 중심선 × (1 + 이격률/100), 하단은 중심선 × (1 − 이격률/100)로 표시한다.
+기본값은 종가·20봉·±2%이며 완전한 N봉이 쌓인 시점부터 그린다. 기간 1~400봉,
+이격률 0.1~100%, 기준가·선 색상·공통 두께·개별 선 표시를 설정한다.
+분봉·일봉·주봉·월봉과 가격 전용 차트에서 공용 지표 셋업의 창·봉별 저장 및
+독립 항목 반복 추가·숨김·삭제 취소·커서 레전드를 공유한다.
+_Avoid_: 표준편차 밴드(볼린저 밴드와 계산식이 다르다); 이격률을 가격의 절대 차이로 해석.
+
 **Pane 크기 가중치 (Pane Stretch)**:
 The user-owned relative height weight of each chart pane kind (candle, volume, 호가비, …) inside the `/live` chart, adjusted by dragging the pane separator. It has four **LiveTimeframe** profiles (`minute` / D / W / M): all minute intervals share one profile, while daily, weekly, and monthly charts retain independent proportions. The profile is global across chart windows — it is not window-owned. It lives beside pane order in the persisted indicator slice and travels with layout presets; applying a legacy flat preset seeds all four profiles equally. Like pane order (layout, not indicator config), it is treated as user-owned layout: the indicator drawer's "기본값 복원" **preserves** it, and only the preset menu's "기본 레이아웃으로 초기화" restores the spec defaults. A pane kind the user never dragged keeps its spec default weight. ADR-0172.
 _Avoid_: "pane height" in pixels (weights are relative; pixel height is derived), "per-window pane sizes" (profiles are shared by timeframe family), "separator position" as the stored state (the separator is chrome; the stored state is the adjacent panes' weights).
