@@ -626,7 +626,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       .concat([sideOrders.SELL, sideOrders.BUY].map(list => list.reduce((sum, order) => sum + orderRemainder(order), 0))),
     Math.max(sideOrders.SELL.length, sideOrders.BUY.length));
 
-  const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null} headingLabel="" expectedFillPosition="bottom" separateVi
+  const renderSummary = (height: number) => <BookSummary summary={summary} baselinePrice={baseline ?? null}
     limits={limits.data} krxClose={krxClose.data?.date === todayKst ? krxClose.data.price : null}
     krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
     vi={vi.data?.vi} height={height} page={infoPage} onNextPage={() => setInfoPage(page => page === 0 ? 1 : 0)}

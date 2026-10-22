@@ -420,9 +420,9 @@ export default function BookPanel({
 export function BookSummary({
   summary, baselinePrice, limits = null, krxClose = null, krxPreviousClose = null, vi = null,
   height = ROW_H * SUMMARY_ROWS,
-  page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '정보',
-  expectedFillPosition = 'top',
-  separateVi = false,
+  page, onNextPage, expectedFill = null, expectedDimClass = '', headingLabel = '',
+  expectedFillPosition = 'bottom',
+  separateVi = true,
 }: {
   summary: LiveTradeSummary;
   baselinePrice: number | null;
