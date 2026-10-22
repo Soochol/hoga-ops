@@ -1,0 +1,3782 @@
+{
+  "started_at_utc": "2026-10-22T14:59:18.995369+00:00",
+  "started_at_kst": "2026-10-22T23:59:18.995380+09:00",
+  "scope": "market data only, production endpoints, no app/server changes",
+  "rest_tokens_issued": 0,
+  "rest_tokens_revoked": 0,
+  "kis_ws_credential_slot": 4,
+  "kiwoom_ws_credential_slot": 6,
+  "duration_seconds": 180,
+  "host_ntp_synchronized": true,
+  "kis_rest": {
+    "samples": [
+      {
+        "round": 0,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T14:59:19.029372+00:00",
+        "received_at_utc": "2026-10-22T14:59:19.085853+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "26100.48",
+            "optn_oprc": "26089.69",
+            "optn_hgpr": "26100.98",
+            "optn_lwpr": "26086.18",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 19.086,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-594.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.23",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26108.18",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 0,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T14:59:19.387995+00:00",
+        "received_at_utc": "2026-10-22T14:59:19.407564+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "7652.50",
+            "optn_oprc": "7649.88",
+            "optn_hgpr": "7652.59",
+            "optn_lwpr": "7649.47",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 19.408,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 0,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T14:59:19.708311+00:00",
+        "received_at_utc": "2026-10-22T14:59:19.727379+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "10845.40",
+            "optn_oprc": "10837.06",
+            "optn_hgpr": "10845.40",
+            "optn_lwpr": "10836.34",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 19.727,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-657.04",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.71",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10848.52",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 1,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T14:59:28.996057+00:00",
+        "received_at_utc": "2026-10-22T14:59:29.058817+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "26100.48",
+            "optn_oprc": "26089.69",
+            "optn_hgpr": "26100.98",
+            "optn_lwpr": "26086.18",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 29.059,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-594.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.23",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26108.18",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 1,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T14:59:29.359493+00:00",
+        "received_at_utc": "2026-10-22T14:59:29.381271+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "7652.50",
+            "optn_oprc": "7649.88",
+            "optn_hgpr": "7652.59",
+            "optn_lwpr": "7649.47",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 29.381,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 1,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T14:59:29.681862+00:00",
+        "received_at_utc": "2026-10-22T14:59:29.701101+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "10845.40",
+            "optn_oprc": "10837.06",
+            "optn_hgpr": "10845.40",
+            "optn_lwpr": "10836.34",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 29.701,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-657.04",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.71",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10848.52",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 2,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T14:59:38.997175+00:00",
+        "received_at_utc": "2026-10-22T14:59:39.080234+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "26100.48",
+            "optn_oprc": "26089.69",
+            "optn_hgpr": "26100.98",
+            "optn_lwpr": "26086.18",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 39.08,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-594.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.23",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26108.18",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 2,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T14:59:39.382096+00:00",
+        "received_at_utc": "2026-10-22T14:59:39.404088+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "7652.50",
+            "optn_oprc": "7649.88",
+            "optn_hgpr": "7652.59",
+            "optn_lwpr": "7649.47",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 39.404,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 2,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T14:59:39.704857+00:00",
+        "received_at_utc": "2026-10-22T14:59:39.726121+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "10845.40",
+            "optn_oprc": "10837.06",
+            "optn_hgpr": "10845.40",
+            "optn_lwpr": "10836.34",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 39.726,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-657.04",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.71",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10848.52",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 3,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T14:59:48.996471+00:00",
+        "received_at_utc": "2026-10-22T14:59:49.098633+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "26100.48",
+            "optn_oprc": "26089.69",
+            "optn_hgpr": "26100.98",
+            "optn_lwpr": "26086.18",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 49.099,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-594.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.23",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26108.18",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 3,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T14:59:49.399291+00:00",
+        "received_at_utc": "2026-10-22T14:59:49.418212+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "7652.50",
+            "optn_oprc": "7649.88",
+            "optn_hgpr": "7652.59",
+            "optn_lwpr": "7649.47",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 49.418,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 3,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T14:59:49.719397+00:00",
+        "received_at_utc": "2026-10-22T14:59:49.737148+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "10845.40",
+            "optn_oprc": "10837.06",
+            "optn_hgpr": "10845.40",
+            "optn_lwpr": "10836.34",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 49.737,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-657.04",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.71",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10848.52",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 4,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T14:59:58.996445+00:00",
+        "received_at_utc": "2026-10-22T14:59:59.058372+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "26100.48",
+            "optn_oprc": "26089.69",
+            "optn_hgpr": "26100.98",
+            "optn_lwpr": "26086.18",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 59.058,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-594.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.23",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26108.18",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 4,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T14:59:59.359530+00:00",
+        "received_at_utc": "2026-10-22T14:59:59.379442+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "7652.50",
+            "optn_oprc": "7649.88",
+            "optn_hgpr": "7652.59",
+            "optn_lwpr": "7649.47",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 59.379,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 4,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T14:59:59.681212+00:00",
+        "received_at_utc": "2026-10-22T14:59:59.700337+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 14:59:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "10845.40",
+            "optn_oprc": "10837.06",
+            "optn_hgpr": "10845.40",
+            "optn_lwpr": "10836.34",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 59.7,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-657.04",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.71",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10848.52",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 5,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:00:08.997501+00:00",
+        "received_at_utc": "2026-10-22T15:00:09.077769+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "26100.48",
+            "optn_oprc": "26089.69",
+            "optn_hgpr": "26100.98",
+            "optn_lwpr": "26086.18",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 69.078,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-594.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.23",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26108.18",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 5,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:00:09.378995+00:00",
+        "received_at_utc": "2026-10-22T15:00:09.394728+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "7652.50",
+            "optn_oprc": "7649.88",
+            "optn_hgpr": "7652.59",
+            "optn_lwpr": "7649.47",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 69.395,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 5,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:00:09.695650+00:00",
+        "received_at_utc": "2026-10-22T15:00:09.712739+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "10845.40",
+            "optn_oprc": "10837.06",
+            "optn_hgpr": "10845.40",
+            "optn_lwpr": "10836.34",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 69.713,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-657.04",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.71",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10848.52",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 6,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:00:18.997279+00:00",
+        "received_at_utc": "2026-10-22T15:00:19.070927+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "26100.48",
+            "optn_oprc": "26089.69",
+            "optn_hgpr": "26100.98",
+            "optn_lwpr": "26086.18",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 79.071,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-594.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.23",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26108.18",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 6,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:00:19.371434+00:00",
+        "received_at_utc": "2026-10-22T15:00:19.391215+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "7652.50",
+            "optn_oprc": "7649.88",
+            "optn_hgpr": "7652.59",
+            "optn_lwpr": "7649.47",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 79.391,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 6,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:00:19.692283+00:00",
+        "received_at_utc": "2026-10-22T15:00:19.722325+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105700",
+            "optn_prpr": "10845.40",
+            "optn_oprc": "10837.06",
+            "optn_hgpr": "10845.40",
+            "optn_lwpr": "10836.34",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T10:59:00-04:00",
+        "bar_timestamp_age_seconds": 79.722,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-657.04",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.71",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10848.52",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 7,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:00:28.996478+00:00",
+        "received_at_utc": "2026-10-22T15:00:29.057756+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26127.47",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.19",
+            "optn_lwpr": "26126.19",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 29.058,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-575.39",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.15",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26127.47",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 7,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:00:29.359008+00:00",
+        "received_at_utc": "2026-10-22T15:00:29.375703+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7659.39",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7659.14",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 29.376,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-97.78",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.26",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.39",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 7,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:00:29.676169+00:00",
+        "received_at_utc": "2026-10-22T15:00:29.697308+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10862.51",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10868.99",
+            "optn_lwpr": "10861.27",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 29.697,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-643.05",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.59",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10862.51",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 8,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:00:38.997470+00:00",
+        "received_at_utc": "2026-10-22T15:00:39.063664+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26135.80",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26126.19",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 39.064,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-567.06",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.12",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26135.80",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 8,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:00:39.364394+00:00",
+        "received_at_utc": "2026-10-22T15:00:39.382126+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7660.46",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7659.06",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 39.382,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-96.71",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.25",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7660.46",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 8,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:00:39.683088+00:00",
+        "received_at_utc": "2026-10-22T15:00:39.702991+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10869.39",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10861.27",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 39.703,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-636.17",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.53",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10869.39",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 9,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:00:48.996966+00:00",
+        "received_at_utc": "2026-10-22T15:00:49.055499+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26129.10",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26126.19",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 49.055,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-573.76",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.15",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26129.10",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 9,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:00:49.356232+00:00",
+        "received_at_utc": "2026-10-22T15:00:49.376877+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7659.56",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7658.98",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 49.377,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-97.61",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.26",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.56",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 9,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:00:49.677420+00:00",
+        "received_at_utc": "2026-10-22T15:00:49.696159+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10864.91",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10861.27",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 49.696,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-640.65",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.57",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10864.91",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 10,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:00:58.996470+00:00",
+        "received_at_utc": "2026-10-22T15:00:59.051725+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26120.59",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "26097.55",
+            "optn_oprc": "26100.68",
+            "optn_hgpr": "26102.84",
+            "optn_lwpr": "26090.75",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 59.052,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-582.27",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.18",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26120.59",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 10,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:00:59.352378+00:00",
+        "received_at_utc": "2026-10-22T15:00:59.370530+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "7652.32",
+            "optn_oprc": "7652.50",
+            "optn_hgpr": "7653.21",
+            "optn_lwpr": "7650.81",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 59.371,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-99.44",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.28",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7657.73",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 10,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:00:59.671172+00:00",
+        "received_at_utc": "2026-10-22T15:00:59.687200+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:00:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105800",
+            "optn_prpr": "10837.73",
+            "optn_oprc": "10845.68",
+            "optn_hgpr": "10845.68",
+            "optn_lwpr": "10831.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:00:00-04:00",
+        "bar_timestamp_age_seconds": 59.687,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-647.46",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.63",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10858.10",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 11,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:01:08.996812+00:00",
+        "received_at_utc": "2026-10-22T15:01:09.131755+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26130.94",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26130.94",
+            "optn_lwpr": "26125.17",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 9.132,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-571.92",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.14",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26130.94",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 11,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:01:09.432688+00:00",
+        "received_at_utc": "2026-10-22T15:01:09.518478+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7659.36",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.36",
+            "optn_lwpr": "7658.25",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 9.518,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-97.81",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.26",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.36",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 11,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:01:09.819205+00:00",
+        "received_at_utc": "2026-10-22T15:01:09.838035+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10863.71",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10864.38",
+            "optn_lwpr": "10858.74",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 9.838,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-641.85",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.58",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10863.71",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 12,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:01:18.996001+00:00",
+        "received_at_utc": "2026-10-22T15:01:19.055844+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26131.65",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26133.12",
+            "optn_lwpr": "26125.17",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 19.056,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-571.21",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.14",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26131.65",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 12,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:01:19.356360+00:00",
+        "received_at_utc": "2026-10-22T15:01:19.415718+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7659.18",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.38",
+            "optn_lwpr": "7658.25",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 19.416,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-97.99",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.26",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.18",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 12,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:01:19.716678+00:00",
+        "received_at_utc": "2026-10-22T15:01:19.738609+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10862.56",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10864.38",
+            "optn_lwpr": "10858.74",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 19.739,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-643.00",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.59",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10862.56",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 13,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:01:28.997829+00:00",
+        "received_at_utc": "2026-10-22T15:01:29.269389+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26130.91",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26133.12",
+            "optn_lwpr": "26125.17",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 29.269,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-571.95",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.14",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26130.91",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 13,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:01:29.569811+00:00",
+        "received_at_utc": "2026-10-22T15:01:29.590992+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7659.49",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.49",
+            "optn_lwpr": "7658.23",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 29.591,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-97.68",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.26",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.49",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 13,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:01:29.891782+00:00",
+        "received_at_utc": "2026-10-22T15:01:29.907087+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:29 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10861.77",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10864.38",
+            "optn_lwpr": "10858.74",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 29.907,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-643.79",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.60",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10861.77",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 14,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:01:38.996730+00:00",
+        "received_at_utc": "2026-10-22T15:01:39.058661+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26134.74",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26135.36",
+            "optn_lwpr": "26125.17",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 39.059,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-568.12",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.13",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26134.74",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 14,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:01:39.360010+00:00",
+        "received_at_utc": "2026-10-22T15:01:39.378837+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7659.35",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.94",
+            "optn_lwpr": "7658.23",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 39.379,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-97.82",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.26",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7659.35",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 14,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:01:39.680312+00:00",
+        "received_at_utc": "2026-10-22T15:01:39.698969+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:39 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10866.07",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10866.07",
+            "optn_lwpr": "10858.74",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 39.699,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-639.49",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.56",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10866.07",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 15,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:01:48.996458+00:00",
+        "received_at_utc": "2026-10-22T15:01:49.051433+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26132.80",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26135.36",
+            "optn_lwpr": "26125.17",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 49.051,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-570.06",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.13",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26132.80",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 15,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:01:49.352621+00:00",
+        "received_at_utc": "2026-10-22T15:01:49.378470+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7657.84",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.94",
+            "optn_lwpr": "7657.84",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 49.378,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-99.33",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.28",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7657.84",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 15,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:01:49.679138+00:00",
+        "received_at_utc": "2026-10-22T15:01:49.697705+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:49 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10860.98",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10866.07",
+            "optn_lwpr": "10858.74",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 49.698,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-644.58",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.60",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10860.98",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 16,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:01:58.997098+00:00",
+        "received_at_utc": "2026-10-22T15:01:59.062246+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26122.81",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26135.36",
+            "optn_lwpr": "26122.81",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "26108.18",
+            "optn_oprc": "26097.89",
+            "optn_hgpr": "26108.18",
+            "optn_lwpr": "26097.89",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 59.062,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-580.05",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.17",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26122.81",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 16,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:01:59.363387+00:00",
+        "received_at_utc": "2026-10-22T15:01:59.384192+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7656.43",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.94",
+            "optn_lwpr": "7656.34",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "7655.43",
+            "optn_oprc": "7652.60",
+            "optn_hgpr": "7655.43",
+            "optn_lwpr": "7652.60",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 59.384,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-100.74",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.30",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7656.43",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 16,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:01:59.685033+00:00",
+        "received_at_utc": "2026-10-22T15:01:59.701555+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:01:59 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10851.73",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10866.07",
+            "optn_lwpr": "10851.73",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "105900",
+            "optn_prpr": "10848.52",
+            "optn_oprc": "10838.08",
+            "optn_hgpr": "10848.52",
+            "optn_lwpr": "10838.08",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:01:00-04:00",
+        "bar_timestamp_age_seconds": 59.702,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-653.83",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.68",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10851.73",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 17,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:02:08.998190+00:00",
+        "received_at_utc": "2026-10-22T15:02:09.054130+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:02:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110200",
+            "optn_prpr": "26116.19",
+            "optn_oprc": "26120.39",
+            "optn_hgpr": "26122.74",
+            "optn_lwpr": "26116.19",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26122.73",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26135.36",
+            "optn_lwpr": "26122.73",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:02:00-04:00",
+        "bar_timestamp_age_seconds": 9.054,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-586.67",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.20",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26116.19",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 17,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:02:09.356366+00:00",
+        "received_at_utc": "2026-10-22T15:02:09.376533+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:02:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110200",
+            "optn_prpr": "7655.06",
+            "optn_oprc": "7655.85",
+            "optn_hgpr": "7656.59",
+            "optn_lwpr": "7655.06",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7656.43",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.94",
+            "optn_lwpr": "7656.34",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:02:00-04:00",
+        "bar_timestamp_age_seconds": 9.377,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-102.11",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.32",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.06",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 17,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:02:09.677278+00:00",
+        "received_at_utc": "2026-10-22T15:02:09.697444+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:02:09 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110200",
+            "optn_prpr": "10838.64",
+            "optn_oprc": "10848.47",
+            "optn_hgpr": "10848.47",
+            "optn_lwpr": "10838.64",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10851.73",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10866.07",
+            "optn_lwpr": "10851.73",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:02:00-04:00",
+        "bar_timestamp_age_seconds": 9.697,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-666.92",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.80",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10838.64",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      },
+      {
+        "round": 18,
+        "symbol": "COMP",
+        "sent_at_utc": "2026-10-22T15:02:18.996612+00:00",
+        "received_at_utc": "2026-10-22T15:02:19.056993+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:02:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110200",
+            "optn_prpr": "26112.36",
+            "optn_oprc": "26120.39",
+            "optn_hgpr": "26122.74",
+            "optn_lwpr": "26110.38",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "26122.73",
+            "optn_oprc": "26125.17",
+            "optn_hgpr": "26135.36",
+            "optn_lwpr": "26122.73",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "26122.88",
+            "optn_oprc": "26128.21",
+            "optn_hgpr": "26135.80",
+            "optn_lwpr": "26120.59",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:02:00-04:00",
+        "bar_timestamp_age_seconds": 19.057,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-590.50",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-2.21",
+          "ovrs_nmix_prdy_clpr": "26702.86",
+          "acml_vol": "0",
+          "hts_kor_isnm": "나스닥 종합",
+          "ovrs_nmix_prpr": "26112.36",
+          "stck_shrn_iscd": "COMP",
+          "ovrs_prod_oprc": "26308.41",
+          "ovrs_prod_hgpr": "26359.41",
+          "ovrs_prod_lwpr": "26080.27"
+        }
+      },
+      {
+        "round": 18,
+        "symbol": "SPX",
+        "sent_at_utc": "2026-10-22T15:02:19.358189+00:00",
+        "received_at_utc": "2026-10-22T15:02:19.375173+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:02:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110200",
+            "optn_prpr": "7655.58",
+            "optn_oprc": "7655.85",
+            "optn_hgpr": "7656.59",
+            "optn_lwpr": "7654.43",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "7656.43",
+            "optn_oprc": "7658.25",
+            "optn_hgpr": "7659.94",
+            "optn_lwpr": "7656.34",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "7657.73",
+            "optn_oprc": "7661.04",
+            "optn_hgpr": "7661.28",
+            "optn_lwpr": "7657.50",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:02:00-04:00",
+        "bar_timestamp_age_seconds": 19.375,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-101.59",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-1.31",
+          "ovrs_nmix_prdy_clpr": "7757.17",
+          "acml_vol": "0",
+          "hts_kor_isnm": "S&P500",
+          "ovrs_nmix_prpr": "7655.58",
+          "stck_shrn_iscd": "SPX",
+          "ovrs_prod_oprc": "7694.62",
+          "ovrs_prod_hgpr": "7702.94",
+          "ovrs_prod_lwpr": "7646.05"
+        }
+      },
+      {
+        "round": 18,
+        "symbol": "SOX",
+        "sent_at_utc": "2026-10-22T15:02:19.675981+00:00",
+        "received_at_utc": "2026-10-22T15:02:19.693501+00:00",
+        "http_status": 200,
+        "server_date": "Thu, 22 Oct 2026 15:02:19 GMT",
+        "rt_cd": "0",
+        "msg_cd": "MCA00000",
+        "msg1": "정상처리 되었습니다.",
+        "row_count": 102,
+        "latest_rows": [
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110200",
+            "optn_prpr": "10836.43",
+            "optn_oprc": "10848.47",
+            "optn_hgpr": "10848.47",
+            "optn_lwpr": "10835.28",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110100",
+            "optn_prpr": "10851.73",
+            "optn_oprc": "10858.74",
+            "optn_hgpr": "10866.07",
+            "optn_lwpr": "10851.73",
+            "cntg_vol": "0"
+          },
+          {
+            "stck_bsop_date": "20261022",
+            "stck_cntg_hour": "110000",
+            "optn_prpr": "10858.10",
+            "optn_oprc": "10862.41",
+            "optn_hgpr": "10870.61",
+            "optn_lwpr": "10857.31",
+            "cntg_vol": "0"
+          }
+        ],
+        "latest_bar_at_ny": "2026-10-22T11:02:00-04:00",
+        "bar_timestamp_age_seconds": 19.694,
+        "output1": {
+          "ovrs_nmix_prdy_vrss": "-669.13",
+          "prdy_vrss_sign": "5",
+          "prdy_ctrt": "-5.82",
+          "ovrs_nmix_prdy_clpr": "11505.56",
+          "acml_vol": "0",
+          "hts_kor_isnm": "필라델피아 반도체지수",
+          "ovrs_nmix_prpr": "10836.43",
+          "stck_shrn_iscd": "SOX",
+          "ovrs_prod_oprc": "11049.07",
+          "ovrs_prod_hgpr": "11140.33",
+          "ovrs_prod_lwpr": "10831.89"
+        }
+      }
+    ],
+    "errors": [],
+    "tr_id": "FHKST03030200"
+  },
+  "kis_ws": {
+    "acks": [
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118433+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "DNASAAPL",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118504+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "COMP",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118518+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "SPX",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118528+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "SOX",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118552+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "DNASCOMP",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118563+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "DNYSSPX",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118583+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "DNASSOX",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.118592+00:00",
+        "tr_id": "HDFSCNT0",
+        "tr_key": "DNASZZZZINVALID_",
+        "rt_cd": "0",
+        "msg_cd": "OPSP0000",
+        "msg1": "SUBSCRIBE SUCCESS"
+      }
+    ],
+    "samples": {
+      "DNASAAPL": [
+        {
+          "received_at_utc": "2026-10-22T14:59:21.118472+00:00",
+          "tr_id": "HDFSCNT0",
+          "symbol": "DNASAAPL",
+          "field_count": 26,
+          "ny_date": "20261022",
+          "kst_date": "20261022",
+          "business_date": "20261022",
+          "ny_time": "105919"
+        },
+        {
+          "received_at_utc": "2026-10-22T14:59:21.118538+00:00",
+          "tr_id": "HDFSCNT0",
+          "symbol": "DNASAAPL",
+          "field_count": 26,
+          "ny_date": "20261022",
+          "kst_date": "20261022",
+          "business_date": "20261022",
+          "ny_time": "105919"
+        },
+        {
+          "received_at_utc": "2026-10-22T14:59:21.118572+00:00",
+          "tr_id": "HDFSCNT0",
+          "symbol": "DNASAAPL",
+          "field_count": 26,
+          "ny_date": "20261022",
+          "kst_date": "20261022",
+          "business_date": "20261022",
+          "ny_time": "105920"
+        },
+        {
+          "received_at_utc": "2026-10-22T14:59:21.492417+00:00",
+          "tr_id": "HDFSCNT0",
+          "symbol": "DNASAAPL",
+          "field_count": 130,
+          "ny_date": "20261022",
+          "kst_date": "20261022",
+          "business_date": "20261022",
+          "ny_time": "105921"
+        }
+      ]
+    },
+    "last_sample": {
+      "DNASAAPL": {
+        "received_at_utc": "2026-10-22T15:02:21.093664+00:00",
+        "tr_id": "HDFSCNT0",
+        "symbol": "DNASAAPL",
+        "field_count": 338,
+        "ny_date": "20261022",
+        "kst_date": "20261023",
+        "business_date": "20261022",
+        "ny_time": "110220"
+      }
+    },
+    "errors": [],
+    "approval_http_status": 200,
+    "requested_codes": [
+      "DNASAAPL",
+      "COMP",
+      "SPX",
+      "SOX",
+      "DNASCOMP",
+      "DNYSSPX",
+      "DNASSOX",
+      "DNASZZZZINVALID_HOGA"
+    ],
+    "started_at_utc": "2026-10-22T14:59:19.088526+00:00",
+    "tr_id": "HDFSCNT0",
+    "ended_at_utc": "2026-10-22T15:02:21.931490+00:00",
+    "data_frame_counts": {
+      "DNASAAPL": 383
+    },
+    "sample_notes": "RSYM precedes SYMB in 26-field KIS records. Captured date/time fields were corrected offline against that layout; price omitted because its initial field position was incorrect. Frame counts count messages, which may contain multiple records, not individual trades.",
+    "received_index_data_frames": 0
+  },
+  "kiwoom_ws": {
+    "acks": [
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958229+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958353+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958371+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958418+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958453+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958465+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958478+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      },
+      {
+        "received_at_utc": "2026-10-22T14:59:21.958581+00:00",
+        "trnm": "REG",
+        "return_code": 0,
+        "return_msg": "",
+        "grp_no": null,
+        "data": null
+      }
+    ],
+    "tick_counts": {
+      "ND:AAPL": 634
+    },
+    "samples": {
+      "ND:AAPL": [
+        {
+          "received_at_utc": "2026-10-22T14:59:21.958313+00:00",
+          "type": "FE",
+          "symbol": "AAPL",
+          "exchange": "ND",
+          "price": "+344.4050",
+          "trade_date": "20261022",
+          "time": "105900",
+          "local_time": "105900"
+        },
+        {
+          "received_at_utc": "2026-10-22T14:59:21.958401+00:00",
+          "type": "FE",
+          "symbol": "AAPL",
+          "exchange": "ND",
+          "price": "+344.3800",
+          "trade_date": "20261022",
+          "time": "105900",
+          "local_time": "105900"
+        },
+        {
+          "received_at_utc": "2026-10-22T14:59:21.958440+00:00",
+          "type": "FE",
+          "symbol": "AAPL",
+          "exchange": "ND",
+          "price": "+344.3800",
+          "trade_date": "20261022",
+          "time": "105900",
+          "local_time": "105900"
+        },
+        {
+          "received_at_utc": "2026-10-22T14:59:21.958548+00:00",
+          "type": "FE",
+          "symbol": "AAPL",
+          "exchange": "ND",
+          "price": "+344.3800",
+          "trade_date": "20261022",
+          "time": "105900",
+          "local_time": "105900"
+        }
+      ]
+    },
+    "last_sample": {
+      "ND:AAPL": {
+        "received_at_utc": "2026-10-22T15:02:21.828801+00:00",
+        "type": "FE",
+        "symbol": "AAPL",
+        "exchange": "ND",
+        "price": "+344.5300",
+        "trade_date": "20261022",
+        "time": "110200",
+        "local_time": "110200"
+      }
+    },
+    "errors": [],
+    "requested_items": [
+      {
+        "jmcode": "AAPL",
+        "stex_tp": "ND"
+      },
+      {
+        "jmcode": "IXIC",
+        "stex_tp": "NQ"
+      },
+      {
+        "jmcode": "INX",
+        "stex_tp": "NS"
+      },
+      {
+        "jmcode": "SOX",
+        "stex_tp": "NQ"
+      },
+      {
+        "jmcode": "IXIC",
+        "stex_tp": "ND"
+      },
+      {
+        "jmcode": "INX",
+        "stex_tp": "ND"
+      },
+      {
+        "jmcode": "SOX",
+        "stex_tp": "ND"
+      },
+      {
+        "jmcode": "ZZZZINVALID_HOGA",
+        "stex_tp": "ND"
+      }
+    ],
+    "started_at_utc": "2026-10-22T14:59:19.061792+00:00",
+    "login": {
+      "trnm": "LOGIN",
+      "return_code": 0,
+      "return_msg": ""
+    },
+    "ended_at_utc": "2026-10-22T15:02:22.771105+00:00",
+    "received_index_records": 0,
+    "tick_counts_semantics": "Decoded REAL data records, not necessarily individual exchange trades."
+  },
+  "kiwoom_index_list": {
+    "http_status": 200,
+    "received_at_utc": "2026-10-22T14:59:19.061671+00:00",
+    "body": {
+      "return_msg": "정상적으로 처리되었습니다",
+      "list": [
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXBK",
+          "index_nm": "나스닥 은행",
+          "index_enm": "Nasdaq Bank"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXF",
+          "index_nm": "나스닥 금융100",
+          "index_enm": "NASDAQ Financial 100"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXFN",
+          "index_nm": "나스닥 기타금융",
+          "index_enm": "Nasdaq Real Estate and Other Financial S"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXIC",
+          "index_nm": "나스닥 종합",
+          "index_enm": "NASDAQ Composite"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXID",
+          "index_nm": "나스닥 공업",
+          "index_enm": "Northern Trust ESG &#38; Climate Investm"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXIS",
+          "index_nm": "나스닥 보험",
+          "index_enm": "Nasdaq Insurance"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXK",
+          "index_nm": "나스닥 컴퓨터",
+          "index_enm": "Nasdaq Computer"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXTR",
+          "index_nm": "나스닥 운송",
+          "index_enm": "Nasdaq Transportation"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "IXUT",
+          "index_nm": "나스닥 통신",
+          "index_enm": "Nasdaq Telecommunications"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "NBI",
+          "index_nm": "나스닥 생명공학",
+          "index_enm": "NASDAQ Biotechnology"
+        },
+        {
+          "stex_tp": "NQ",
+          "index_cd": "NDX",
+          "index_nm": "나스닥 100",
+          "index_enm": "NASDAQ-100"
+        },
+        {
+          "stex_tp": "NS",
+          "index_cd": "INX",
+          "index_nm": "S&P 500",
+          "index_enm": "S&P 500"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJI",
+          "index_nm": "다우 산업",
+          "index_enm": "Dow Jones Industrial Average"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUS",
+          "index_nm": "다우 브로드마켓",
+          "index_enm": "Dow Jones U.S. Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSBM",
+          "index_nm": "다우 기초재료",
+          "index_enm": "Dow Jones U.S. Basic Materials Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSCY",
+          "index_nm": "다우 소비자서비스",
+          "index_enm": "Dow Jones U.S. Consumer Services Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSEN",
+          "index_nm": "다우 에너지",
+          "index_enm": "Dow Jones U.S. Oil & Gas Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSFN",
+          "index_nm": "다우 금융",
+          "index_enm": "Dow Jones U.S. Financials Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSHC",
+          "index_nm": "다우 건강의약",
+          "index_enm": "Dow Jones U.S. Health Care Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSIN",
+          "index_nm": "다우 공산업",
+          "index_enm": "Dow Jones U.S. Industrials Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSL",
+          "index_nm": "다우 대형주(Large-Cap)",
+          "index_enm": "Dow Jones U.S. Large-Cap Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSM",
+          "index_nm": "다우 중형주",
+          "index_enm": "Dow Jones U.S. Mid-Cap Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSNC",
+          "index_nm": "다우 소비재",
+          "index_enm": "Dow Jones U.S. Consumer Goods Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSS",
+          "index_nm": "다우 소형주(Small-Cap)",
+          "index_enm": "Dow Jones U.S. Small-Cap Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSTC",
+          "index_nm": "다우 테크놀러지",
+          "index_enm": "Dow Jones U.S. Technology Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSTL",
+          "index_nm": "다우 통신",
+          "index_enm": "Dow Jones U.S. Telecommunications Index"
+        },
+        {
+          "stex_tp": "NW",
+          "index_cd": "DJUSUT",
+          "index_nm": "다우 유틸리티(Industries)",
+          "index_enm": "Dow Jones U.S. Utilities Index"
+        }
+      ],
+      "return_code": 0
+    }
+  },
+  "task_errors": [],
+  "ended_at_utc": "2026-10-22T15:02:22.772578+00:00",
+  "interpretation_limits": [
+    "Successful subscription acknowledgements do not validate a code: deliberately invalid negative controls were also acknowledged.",
+    "No index market-data records were received in the three-minute observation window; this does not prove every code or permission combination unsupported.",
+    "Kiwoom usa10102 returned IXIC/NQ and INX/NS, but no SOX entry. SOX/NQ and SOX/ND were candidate tests, not a confirmed Kiwoom master mapping.",
+    "Minute bar timestamps identify minute buckets, not the last underlying observation second. Timestamp age is not a measurement of exchange-to-client tick latency.",
+    "No independently licensed real-time index feed was available to establish true value latency."
+  ],
+  "rest_measurement_summary": {
+    "COMP": {
+      "initial_10s_samples": 19,
+      "initial_bar_timestamp_age_seconds_min": 9.054,
+      "initial_bar_timestamp_age_seconds_max": 79.071,
+      "followup_2s_samples": 41,
+      "followup_age_seconds_min": 0.916,
+      "followup_age_seconds_max": 58.915,
+      "followup_distinct_bar_close_pairs": 41,
+      "new_1103_bar_first_observed_at_utc": "2026-10-22T15:03:00.915514+00:00",
+      "new_1103_bar_first_observed_seconds_after_minute_start": 0.916,
+      "note": "One observed minute transition; appearance time is an upper bound at sample resolution, not exchange-tick latency."
+    },
+    "SPX": {
+      "initial_10s_samples": 19,
+      "initial_bar_timestamp_age_seconds_min": 9.377,
+      "initial_bar_timestamp_age_seconds_max": 79.391,
+      "followup_2s_samples": 41,
+      "followup_age_seconds_min": 1.029,
+      "followup_age_seconds_max": 59.027,
+      "followup_distinct_bar_close_pairs": 37,
+      "new_1103_bar_first_observed_at_utc": "2026-10-22T15:03:01.028831+00:00",
+      "new_1103_bar_first_observed_seconds_after_minute_start": 1.029,
+      "note": "One observed minute transition; appearance time is an upper bound at sample resolution, not exchange-tick latency."
+    },
+    "SOX": {
+      "initial_10s_samples": 19,
+      "initial_bar_timestamp_age_seconds_min": 9.697,
+      "initial_bar_timestamp_age_seconds_max": 79.722,
+      "followup_2s_samples": 41,
+      "followup_age_seconds_min": 1.14,
+      "followup_age_seconds_max": 59.14,
+      "followup_distinct_bar_close_pairs": 41,
+      "new_1103_bar_first_observed_at_utc": "2026-10-22T15:03:01.140101+00:00",
+      "new_1103_bar_first_observed_seconds_after_minute_start": 1.14,
+      "note": "One observed minute transition; appearance time is an upper bound at sample resolution, not exchange-tick latency."
+    }
+  },
+  "initial_stall": {
+    "observation": "All three codes returned identical latest bar and price from 14:59:19 UTC through 15:00:19 UTC; next 10-second sample at 15:00:29 UTC advanced and subsequent samples updated.",
+    "cause": "not established; not attributed to fixed market-data delay"
+  },
+  "followup_started_at_utc": "2026-10-22T15:02:30.920825+00:00",
+  "followup_ended_at_utc": "2026-10-22T15:03:51.146490+00:00",
+  "followup_artifact": "2026-10-22-us-index-live-fast-samples.json",
+  "variants_artifact": "2026-10-22-us-index-live-variants.json",
+  "tested_kis_minute_request": {
+    "method": "GET",
+    "url": "https://openapi.koreainvestment.com:9443/uapi/overseas-price/v1/quotations/inquire-time-indexchartprice",
+    "tr_id": "FHKST03030200",
+    "params": {
+      "FID_COND_MRKT_DIV_CODE": "N",
+      "FID_INPUT_ISCD": [
+        "COMP",
+        "SPX",
+        "SOX"
+      ],
+      "FID_HOUR_CLS_CODE": "0",
+      "FID_PW_DATA_INCU_YN": "Y"
+    }
+  },
+  "app_health_after": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "d9ec63812"
+  },
+  "connection_cleanup": {
+    "probe_ws_closed": true,
+    "original_kis_ws_preserved": true,
+    "original_local_tcp_port": 36402,
+    "original_owner_pid": 117062
+  },
+  "assessment_ko": {
+    "websocket": "한투 HDFSCNT0와 키움 FE에서 시험한 세 지수 코드 조합은 구독 ACK를 받았으나 180초 동안 실제 지수 데이터 0건. AAPL 대조군은 두 경로에서 수신됨. 수신 경로 확인 실패이며 공급자의 모든 지수 코드/권한에 대한 불가 확정은 아님.",
+    "rest": "한투 세 지수 분봉은 2초 간격의 후속 조회에서 진행 중 봉 가격이 바뀜. 11:03 NY 새 봉을 분 시작 약 0.9~1.1초에 처음 관측. 관측한 봉 시각은 현재 분이며 15분 전 봉이 오는 현상은 없음. 실제 지수값 자체의 전송 지연은 독립 실시간 피드와 교차 검증하지 못해 확정 불가.",
+    "product_implication": "WS 지원을 전제로 구현할 근거는 얻지 못함. 현재 한투 REST로 더 짧게 폴링하는 차트는 가능성을 확인함. 앱의 기존 60초 갱신 주기는 이번 작업에서 변경하지 않음."
+  }
+}

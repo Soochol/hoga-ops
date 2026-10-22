@@ -20,6 +20,26 @@ def app_for(data_dir):
     return app
 
 
+def test_live_index_http_preserves_poll_hint_and_provisional_day(monkeypatch):
+    from hoga.live.us_daily_candles import UsDailyBar
+    from hoga.live.us_index_minutes import UsMinuteMetadata
+
+    day = UsDailyBar(trading_date="20261022", t_ms=1792627200000,
+                     open=100, high=200, low=80, close=121)
+
+    async def chart(self, index, start, end, timeframe):
+        return [day], None, UsMinuteMetadata(refresh_interval_ms=2000, current_daily_candle=day)
+
+    monkeypatch.setattr(UsMarketApi, "index_chart", chart)
+    with TestClient(app_for(None)) as client:
+        result = client.get("/api/live/index-candles?index_id=SOX&timeframe=D&from=20261001&to=20261022")
+    assert result.status_code == 200
+    meta = result.json()["minute_metadata"]
+    assert meta["refresh_interval_ms"] == 2000
+    assert meta["current_daily_candle"]["high"] == 200
+    assert meta["current_daily_candle"]["trading_date"] == "20261022"
+
+
 @pytest.mark.parametrize("index_id,code", [("NASDAQ_COMPOSITE", "COMP"), ("SP500", "SPX"), ("SOX", "SOX")])
 def test_us_index_http_preserves_dates_decimals_metadata_and_routes_only_to_kis(tmp_path, monkeypatch, index_id, code):
     calls = []

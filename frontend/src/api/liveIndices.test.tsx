@@ -8,6 +8,7 @@ import {
   useLiveIndices,
   type LiveIndexCandlesResponse,
 } from './liveIndices';
+import { usIndexRefreshInterval } from './usIndexRefreshPolicy';
 import { liveVenueRefetchInterval } from '../live/liveVenuePolicy';
 import * as venuePolicy from '../live/liveVenuePolicy';
 import * as client from './client';
@@ -21,6 +22,15 @@ function wrap() {
 
 describe('useLiveIndices', () => {
   beforeEach(() => vi.restoreAllMocks());
+
+  it('bounds the server poll interval and supports older servers', () => {
+    expect(usIndexRefreshInterval()).toBe(60_000);
+    expect(usIndexRefreshInterval(2000)).toBe(2000);
+    expect(usIndexRefreshInterval(8000)).toBe(8000);
+    expect(usIndexRefreshInterval(-1)).toBe(2000);
+    expect(usIndexRefreshInterval(Infinity)).toBe(60_000);
+    expect(usIndexRefreshInterval(900_000)).toBe(60_000);
+  });
 
   it.each(['D', 'W', 'M', '3m'] as const)('%s keeps loaded candles when an earlier history request returns an empty failure response', async timeframe => {
     const head: LiveIndexCandlesResponse = {

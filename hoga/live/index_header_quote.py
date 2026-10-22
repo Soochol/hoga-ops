@@ -35,6 +35,7 @@ class IndexHeaderQuoteResponse(BaseModel):
     refresh_status: IndexQuoteRefresh = "normal"
     source: str = "kiwoom"
     delay_unverified: bool = False
+    refresh_interval_ms: int = 30_000
 
 
 def domestic_session(now: datetime) -> tuple[str | None, IndexQuoteSession]:
@@ -92,6 +93,7 @@ async def us_header_quote(index, markets, now: datetime | None = None) -> IndexH
         index_id=index.id, market_timezone=index.market_timezone, source="kis_daily" if use_daily else "kis_minute",
         delay_unverified=True, refresh_status=meta.refresh_status,
         checked_at_ms=meta.last_successful_check_at_ms,
+        refresh_interval_ms=minute_meta.refresh_interval_ms,
     )
     if latest is None:
         status = meta.refresh_status if meta.refresh_status != "normal" else "partial"

@@ -6,7 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from hoga.live.us_index_minutes import UsIndexMinuteService, aggregate_minutes, parse_snapshot
+from hoga.live.us_index_minutes import (
+    NY,
+    UsIndexMinuteService,
+    aggregate_minutes,
+    index_refresh_interval_ms,
+    parse_snapshot,
+)
 
 
 def row(clock="143400", day="20261016", close="120.888"):
@@ -100,6 +106,95 @@ async def test_shared_snapshot_singleflight_ttl_stale_bypass_and_index_isolation
     assert (await service.get("COMP", "1m", bypass=True))[1].refresh_status == "bypass"
     assert (await service.get("SPX", "1m"))[1].refresh_status == "unconfigured"
     assert (await service.get("SPX", "1m", client=client))[1].refresh_status == "error"
+    await service.aclose()
+
+
+@pytest.mark.parametrize("instant,interval", [
+    ("2026-07-10T13:30:00+00:00", 2000),  # summer NY 09:30
+    ("2026-01-09T14:30:00+00:00", 2000),  # winter NY 09:30
+    ("2026-10-22T20:42:00+00:00", 2000),  # post-close corrections
+    ("2026-10-22T21:20:00+00:00", 60_000),
+    ("2026-10-23T00:30:00+09:00", 2000),  # KST midnight, still Thursday NY
+    ("2026-10-24T14:00:00+00:00", 60_000),
+])
+def test_poll_budget_uses_new_york_dst_and_keeps_postclose(instant, interval):
+    assert index_refresh_interval_ms(datetime.fromisoformat(instant)) == interval
+
+
+@pytest.mark.asyncio
+async def test_fast_cache_is_shared_across_periods_and_backs_off_without_erasing_good_data():
+    tick = [0.0]
+    wall = datetime(2026, 10, 22, 11, tzinfo=NY).timestamp()
+    service = UsIndexMinuteService(clock=lambda: tick[0], wall_clock=lambda: wall + tick[0])
+    calls, fail = [], [False]
+
+    async def fetch(code):
+        calls.append(code)
+        await asyncio.sleep(0)
+        if fail[0]:
+            raise ValueError("offline")
+        return body([row("105900", "20261022")])
+
+    client = SimpleNamespace(get_global_index_minute_snapshot=fetch)
+    original, _ = await service.get("COMP", "1m", client=client)
+    for tf in ("1m", "3m", "5m", "60m"):
+        assert (await service.get("COMP", tf, client=client))[1].refresh_interval_ms == 2000
+    assert calls == ["COMP"]
+    tick[0] = 2
+    await asyncio.gather(*(service.get("COMP", tf, client=client) for tf in ("1m", "5m", "15m")))
+    assert calls == ["COMP", "COMP"]
+    fail[0] = True
+    for instant, interval in [(4, 2000), (6, 4000), (10, 8000), (18, 16000), (34, 32000), (66, 60000)]:
+        tick[0] = instant
+        bars, meta = await service.get("COMP", "1m", client=client)
+        assert bars == original and meta.refresh_status == "stale"
+        assert meta.last_successful_check_at_ms == int((wall + 2) * 1000)
+        assert meta.refresh_interval_ms == interval
+        before = len(calls)
+        await service.get("COMP", "1m", client=client)
+        assert len(calls) == before
+    tick[0] = 126
+    fail[0] = False
+    assert (await service.get("COMP", "1m", client=client))[1].refresh_interval_ms == 2000
+    await service.aclose()
+
+
+@pytest.mark.asyncio
+async def test_empty_or_older_success_keeps_last_snapshot_and_full_day_quote():
+    tick = [0.0]
+    wall = datetime(2026, 10, 22, 11, tzinfo=NY).timestamp()
+    service = UsIndexMinuteService(clock=lambda: tick[0], wall_clock=lambda: wall)
+    response = [body([row("105900", "20261022")])]
+    response[0]['output1'] = dict(stck_shrn_iscd="COMP", ovrs_prod_oprc="110", ovrs_prod_hgpr="200",
+                                  ovrs_prod_lwpr="100", ovrs_nmix_prpr="120.888", acml_vol="0")
+
+    async def fetch(_):
+        return response[0]
+
+    client = SimpleNamespace(get_global_index_minute_snapshot=fetch)
+    good, meta = await service.get("COMP", "1m", client=client)
+    assert meta.current_daily_candle.high == 200  # outside the recent minute high
+    assert meta.current_daily_candle.open == 110
+    for instant, invalid in [(2, []), (4, [row("105800", "20261022")]),
+                             (8, [row("105900", "20261022")])]:
+        tick[0] = instant
+        response[0] = body(invalid)
+        bars, stale = await service.get("COMP", "1m", client=client)
+        assert bars == good and stale.refresh_status == "stale"
+        assert stale.current_daily_candle == meta.current_daily_candle
+    await service.aclose()
+
+
+@pytest.mark.asyncio
+async def test_previous_date_snapshot_does_not_fast_poll_on_a_weekday_holiday():
+    service = UsIndexMinuteService(wall_clock=lambda: datetime(2026, 10, 22, 11, tzinfo=NY).timestamp())
+
+    async def fetch(_):
+        return body([row("155900", "20261021")])
+
+    _, meta = await service.get("COMP", "1m", client=SimpleNamespace(get_global_index_minute_snapshot=fetch))
+    assert meta.refresh_interval_ms == 60_000
+    assert meta.current_daily_candle is None
     await service.aclose()
 
 

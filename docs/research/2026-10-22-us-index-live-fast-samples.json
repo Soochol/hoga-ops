@@ -1,0 +1,2462 @@
+[
+  {
+    "round": 0,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:30.920825+00:00",
+    "received_at_utc": "2026-10-22T15:02:30.985993+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:30 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26107.20",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.20",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 30.986,
+    "output1_price": "26107.20"
+  },
+  {
+    "round": 0,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:31.087368+00:00",
+    "received_at_utc": "2026-10-22T15:02:31.101059+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:31 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7654.85",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 31.101,
+    "output1_price": "7654.85"
+  },
+  {
+    "round": 0,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:31.201358+00:00",
+    "received_at_utc": "2026-10-22T15:02:31.212830+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:31 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10835.17",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.90",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 31.213,
+    "output1_price": "10835.17"
+  },
+  {
+    "round": 1,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:32.900389+00:00",
+    "received_at_utc": "2026-10-22T15:02:32.918995+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:32 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26108.55",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 32.919,
+    "output1_price": "26108.55"
+  },
+  {
+    "round": 1,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:33.019428+00:00",
+    "received_at_utc": "2026-10-22T15:02:33.033142+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:33 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7654.90",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 33.033,
+    "output1_price": "7654.90"
+  },
+  {
+    "round": 1,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:33.133555+00:00",
+    "received_at_utc": "2026-10-22T15:02:33.145167+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:33 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10835.34",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.90",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 33.145,
+    "output1_price": "10835.34"
+  },
+  {
+    "round": 2,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:34.900539+00:00",
+    "received_at_utc": "2026-10-22T15:02:34.916319+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:34 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26108.18",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 34.916,
+    "output1_price": "26108.18"
+  },
+  {
+    "round": 2,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:35.016744+00:00",
+    "received_at_utc": "2026-10-22T15:02:35.027876+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:35 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7655.10",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 35.028,
+    "output1_price": "7655.10"
+  },
+  {
+    "round": 2,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:35.128289+00:00",
+    "received_at_utc": "2026-10-22T15:02:35.143609+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:35 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10834.89",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 35.144,
+    "output1_price": "10834.89"
+  },
+  {
+    "round": 3,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:36.900456+00:00",
+    "received_at_utc": "2026-10-22T15:02:36.912503+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:36 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26108.03",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 36.913,
+    "output1_price": "26108.03"
+  },
+  {
+    "round": 3,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:37.013006+00:00",
+    "received_at_utc": "2026-10-22T15:02:37.025351+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:37 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7654.85",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 37.025,
+    "output1_price": "7654.85"
+  },
+  {
+    "round": 3,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:37.126290+00:00",
+    "received_at_utc": "2026-10-22T15:02:37.141320+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:37 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10835.43",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 37.141,
+    "output1_price": "10835.43"
+  },
+  {
+    "round": 4,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:38.900433+00:00",
+    "received_at_utc": "2026-10-22T15:02:38.916507+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:38 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26107.91",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 38.917,
+    "output1_price": "26107.91"
+  },
+  {
+    "round": 4,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:39.017012+00:00",
+    "received_at_utc": "2026-10-22T15:02:39.029119+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:39 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7654.91",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 39.029,
+    "output1_price": "7654.91"
+  },
+  {
+    "round": 4,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:39.129656+00:00",
+    "received_at_utc": "2026-10-22T15:02:39.143121+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:39 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10836.08",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 39.143,
+    "output1_price": "10836.08"
+  },
+  {
+    "round": 5,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:40.900400+00:00",
+    "received_at_utc": "2026-10-22T15:02:40.914773+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:40 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26111.24",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 40.915,
+    "output1_price": "26111.24"
+  },
+  {
+    "round": 5,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:41.015239+00:00",
+    "received_at_utc": "2026-10-22T15:02:41.031073+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:41 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7655.72",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 41.031,
+    "output1_price": "7655.72"
+  },
+  {
+    "round": 5,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:41.131569+00:00",
+    "received_at_utc": "2026-10-22T15:02:41.155155+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:41 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10839.55",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 41.155,
+    "output1_price": "10839.55"
+  },
+  {
+    "round": 6,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:42.900420+00:00",
+    "received_at_utc": "2026-10-22T15:02:42.915968+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:42 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26110.32",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 42.916,
+    "output1_price": "26110.32"
+  },
+  {
+    "round": 6,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:43.016398+00:00",
+    "received_at_utc": "2026-10-22T15:02:43.028659+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:43 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7655.77",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 43.029,
+    "output1_price": "7655.77"
+  },
+  {
+    "round": 6,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:43.129118+00:00",
+    "received_at_utc": "2026-10-22T15:02:43.143745+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:43 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10839.72",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 43.144,
+    "output1_price": "10839.72"
+  },
+  {
+    "round": 7,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:44.900421+00:00",
+    "received_at_utc": "2026-10-22T15:02:44.915693+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:44 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26113.96",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 44.916,
+    "output1_price": "26113.96"
+  },
+  {
+    "round": 7,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:45.016193+00:00",
+    "received_at_utc": "2026-10-22T15:02:45.043798+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:45 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7655.86",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 45.044,
+    "output1_price": "7655.86"
+  },
+  {
+    "round": 7,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:45.144284+00:00",
+    "received_at_utc": "2026-10-22T15:02:45.157517+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:45 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10841.81",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 45.158,
+    "output1_price": "10841.81"
+  },
+  {
+    "round": 8,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:46.901160+00:00",
+    "received_at_utc": "2026-10-22T15:02:46.917875+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:46 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26112.46",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 46.918,
+    "output1_price": "26112.46"
+  },
+  {
+    "round": 8,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:47.018418+00:00",
+    "received_at_utc": "2026-10-22T15:02:47.032300+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:47 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7656.45",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 47.032,
+    "output1_price": "7656.45"
+  },
+  {
+    "round": 8,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:47.132746+00:00",
+    "received_at_utc": "2026-10-22T15:02:47.166733+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:47 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10841.05",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 47.167,
+    "output1_price": "10841.05"
+  },
+  {
+    "round": 9,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:48.899428+00:00",
+    "received_at_utc": "2026-10-22T15:02:48.917085+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:48 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26110.11",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 48.917,
+    "output1_price": "26110.11"
+  },
+  {
+    "round": 9,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:49.017615+00:00",
+    "received_at_utc": "2026-10-22T15:02:49.030680+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:49 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7655.87",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 49.031,
+    "output1_price": "7655.87"
+  },
+  {
+    "round": 9,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:49.131135+00:00",
+    "received_at_utc": "2026-10-22T15:02:49.153973+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:49 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10840.19",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 49.154,
+    "output1_price": "10840.19"
+  },
+  {
+    "round": 10,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:50.901455+00:00",
+    "received_at_utc": "2026-10-22T15:02:50.927480+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:50 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26109.33",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 50.927,
+    "output1_price": "26109.33"
+  },
+  {
+    "round": 10,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:51.027920+00:00",
+    "received_at_utc": "2026-10-22T15:02:51.039121+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:51 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7655.76",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 51.039,
+    "output1_price": "7655.76"
+  },
+  {
+    "round": 10,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:51.139376+00:00",
+    "received_at_utc": "2026-10-22T15:02:51.152614+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:51 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10840.17",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 51.153,
+    "output1_price": "10840.17"
+  },
+  {
+    "round": 11,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:52.900403+00:00",
+    "received_at_utc": "2026-10-22T15:02:52.919747+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:52 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26111.30",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 52.92,
+    "output1_price": "26111.30"
+  },
+  {
+    "round": 11,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:53.020353+00:00",
+    "received_at_utc": "2026-10-22T15:02:53.032521+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:53 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7656.19",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 53.033,
+    "output1_price": "7656.19"
+  },
+  {
+    "round": 11,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:53.132984+00:00",
+    "received_at_utc": "2026-10-22T15:02:53.145115+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:53 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10842.11",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 53.145,
+    "output1_price": "10842.11"
+  },
+  {
+    "round": 12,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:54.900455+00:00",
+    "received_at_utc": "2026-10-22T15:02:54.915159+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:54 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26112.12",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 54.915,
+    "output1_price": "26112.12"
+  },
+  {
+    "round": 12,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:55.015575+00:00",
+    "received_at_utc": "2026-10-22T15:02:55.041505+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:55 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7656.28",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 55.042,
+    "output1_price": "7656.28"
+  },
+  {
+    "round": 12,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:55.141926+00:00",
+    "received_at_utc": "2026-10-22T15:02:55.151951+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:55 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10842.23",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 55.152,
+    "output1_price": "10842.23"
+  },
+  {
+    "round": 13,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:56.899404+00:00",
+    "received_at_utc": "2026-10-22T15:02:56.919302+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:56 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26112.31",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 56.919,
+    "output1_price": "26112.31"
+  },
+  {
+    "round": 13,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:57.019775+00:00",
+    "received_at_utc": "2026-10-22T15:02:57.031886+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:57 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7656.19",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.59",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 57.032,
+    "output1_price": "7656.19"
+  },
+  {
+    "round": 13,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:57.132352+00:00",
+    "received_at_utc": "2026-10-22T15:02:57.155521+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:57 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10842.38",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 57.156,
+    "output1_price": "10842.38"
+  },
+  {
+    "round": 14,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:02:58.899401+00:00",
+    "received_at_utc": "2026-10-22T15:02:58.914845+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:58 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "26113.48",
+      "optn_oprc": "26120.39",
+      "optn_hgpr": "26122.74",
+      "optn_lwpr": "26107.10",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 58.915,
+    "output1_price": "26113.48"
+  },
+  {
+    "round": 14,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:02:59.015349+00:00",
+    "received_at_utc": "2026-10-22T15:02:59.026517+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:59 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "7656.62",
+      "optn_oprc": "7655.85",
+      "optn_hgpr": "7656.62",
+      "optn_lwpr": "7654.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 59.027,
+    "output1_price": "7656.62"
+  },
+  {
+    "round": 14,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:02:59.127091+00:00",
+    "received_at_utc": "2026-10-22T15:02:59.139980+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:02:59 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110200",
+      "optn_prpr": "10843.02",
+      "optn_oprc": "10848.47",
+      "optn_hgpr": "10848.47",
+      "optn_lwpr": "10834.89",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 59.14,
+    "output1_price": "10843.02"
+  },
+  {
+    "round": 15,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:00.899395+00:00",
+    "received_at_utc": "2026-10-22T15:03:00.915514+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:00 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26112.73",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26112.73",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 0.916,
+    "output1_price": "26112.73"
+  },
+  {
+    "round": 15,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:01.015998+00:00",
+    "received_at_utc": "2026-10-22T15:03:01.028831+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:01 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7656.43",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7656.43",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 1.029,
+    "output1_price": "7656.43"
+  },
+  {
+    "round": 15,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:01.129331+00:00",
+    "received_at_utc": "2026-10-22T15:03:01.140101+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:01 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10842.66",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10842.66",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 1.14,
+    "output1_price": "10842.66"
+  },
+  {
+    "round": 16,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:02.899419+00:00",
+    "received_at_utc": "2026-10-22T15:03:02.916780+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:02 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26110.92",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26110.92",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 2.917,
+    "output1_price": "26110.92"
+  },
+  {
+    "round": 16,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:03.017260+00:00",
+    "received_at_utc": "2026-10-22T15:03:03.028615+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:03 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7656.18",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7656.18",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 3.029,
+    "output1_price": "7656.18"
+  },
+  {
+    "round": 16,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:03.129143+00:00",
+    "received_at_utc": "2026-10-22T15:03:03.140941+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:03 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10841.68",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10841.68",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 3.141,
+    "output1_price": "10841.68"
+  },
+  {
+    "round": 17,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:04.900414+00:00",
+    "received_at_utc": "2026-10-22T15:03:04.916485+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:04 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26111.08",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26110.92",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 4.916,
+    "output1_price": "26111.08"
+  },
+  {
+    "round": 17,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:05.017033+00:00",
+    "received_at_utc": "2026-10-22T15:03:05.032105+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:05 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7656.09",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7656.06",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 5.032,
+    "output1_price": "7656.09"
+  },
+  {
+    "round": 17,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:05.132567+00:00",
+    "received_at_utc": "2026-10-22T15:03:05.143455+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:05 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10841.38",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10841.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 5.143,
+    "output1_price": "10841.38"
+  },
+  {
+    "round": 18,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:06.901238+00:00",
+    "received_at_utc": "2026-10-22T15:03:06.917718+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:06 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26108.82",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26108.82",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 6.918,
+    "output1_price": "26108.82"
+  },
+  {
+    "round": 18,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:07.018202+00:00",
+    "received_at_utc": "2026-10-22T15:03:07.041639+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:07 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7655.44",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7655.44",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 7.042,
+    "output1_price": "7655.44"
+  },
+  {
+    "round": 18,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:07.142244+00:00",
+    "received_at_utc": "2026-10-22T15:03:07.153921+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:07 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10839.37",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10839.37",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 7.154,
+    "output1_price": "10839.37"
+  },
+  {
+    "round": 19,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:08.899487+00:00",
+    "received_at_utc": "2026-10-22T15:03:08.917232+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:08 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26108.66",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26108.66",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 8.917,
+    "output1_price": "26108.66"
+  },
+  {
+    "round": 19,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:09.017773+00:00",
+    "received_at_utc": "2026-10-22T15:03:09.028975+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:09 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7655.37",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7655.37",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 9.029,
+    "output1_price": "7655.37"
+  },
+  {
+    "round": 19,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:09.129421+00:00",
+    "received_at_utc": "2026-10-22T15:03:09.140988+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:09 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10839.22",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10839.22",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 9.141,
+    "output1_price": "10839.22"
+  },
+  {
+    "round": 20,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:10.900425+00:00",
+    "received_at_utc": "2026-10-22T15:03:10.916593+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:10 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26105.52",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26105.52",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 10.917,
+    "output1_price": "26105.52"
+  },
+  {
+    "round": 20,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:11.017087+00:00",
+    "received_at_utc": "2026-10-22T15:03:11.028258+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:11 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.65",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7654.65",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 11.028,
+    "output1_price": "7654.65"
+  },
+  {
+    "round": 20,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:11.128681+00:00",
+    "received_at_utc": "2026-10-22T15:03:11.140564+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:11 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10838.86",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 11.141,
+    "output1_price": "10838.86"
+  },
+  {
+    "round": 21,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:12.899446+00:00",
+    "received_at_utc": "2026-10-22T15:03:12.915898+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:12 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26107.73",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26105.52",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 12.916,
+    "output1_price": "26107.73"
+  },
+  {
+    "round": 21,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:13.016351+00:00",
+    "received_at_utc": "2026-10-22T15:03:13.026948+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:13 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.66",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7654.65",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 13.027,
+    "output1_price": "7654.66"
+  },
+  {
+    "round": 21,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:13.127309+00:00",
+    "received_at_utc": "2026-10-22T15:03:13.139086+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:13 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10840.70",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 13.139,
+    "output1_price": "10840.70"
+  },
+  {
+    "round": 22,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:14.900566+00:00",
+    "received_at_utc": "2026-10-22T15:03:14.915952+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:14 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26107.65",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26105.52",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 14.916,
+    "output1_price": "26107.65"
+  },
+  {
+    "round": 22,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:15.016407+00:00",
+    "received_at_utc": "2026-10-22T15:03:15.029200+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:15 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.77",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7654.65",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 15.029,
+    "output1_price": "7654.77"
+  },
+  {
+    "round": 22,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:15.129663+00:00",
+    "received_at_utc": "2026-10-22T15:03:15.141490+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:15 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10840.78",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 15.141,
+    "output1_price": "10840.78"
+  },
+  {
+    "round": 23,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:16.899500+00:00",
+    "received_at_utc": "2026-10-22T15:03:16.916063+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:16 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26105.02",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26105.02",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 16.916,
+    "output1_price": "26105.02"
+  },
+  {
+    "round": 23,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:17.016409+00:00",
+    "received_at_utc": "2026-10-22T15:03:17.032450+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:17 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.02",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7654.02",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 17.032,
+    "output1_price": "7654.02"
+  },
+  {
+    "round": 23,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:17.132939+00:00",
+    "received_at_utc": "2026-10-22T15:03:17.155518+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:17 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10839.71",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 17.156,
+    "output1_price": "10839.71"
+  },
+  {
+    "round": 24,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:18.900397+00:00",
+    "received_at_utc": "2026-10-22T15:03:18.915352+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:18 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26106.73",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26105.02",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 18.915,
+    "output1_price": "26106.73"
+  },
+  {
+    "round": 24,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:19.015880+00:00",
+    "received_at_utc": "2026-10-22T15:03:19.029535+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:19 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.08",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7654.02",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 19.03,
+    "output1_price": "7654.08"
+  },
+  {
+    "round": 24,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:19.129983+00:00",
+    "received_at_utc": "2026-10-22T15:03:19.141640+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:19 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10841.40",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 19.142,
+    "output1_price": "10841.40"
+  },
+  {
+    "round": 25,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:20.899408+00:00",
+    "received_at_utc": "2026-10-22T15:03:20.914764+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:20 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26105.53",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26105.02",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 20.915,
+    "output1_price": "26105.53"
+  },
+  {
+    "round": 25,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:21.015179+00:00",
+    "received_at_utc": "2026-10-22T15:03:21.029674+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:21 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7653.73",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7653.73",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 21.03,
+    "output1_price": "7653.73"
+  },
+  {
+    "round": 25,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:21.130081+00:00",
+    "received_at_utc": "2026-10-22T15:03:21.140836+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:21 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10841.05",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 21.141,
+    "output1_price": "10841.05"
+  },
+  {
+    "round": 26,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:22.900439+00:00",
+    "received_at_utc": "2026-10-22T15:03:22.916213+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:22 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26101.79",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26101.79",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 22.916,
+    "output1_price": "26101.79"
+  },
+  {
+    "round": 26,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:23.016714+00:00",
+    "received_at_utc": "2026-10-22T15:03:23.030538+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:23 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7653.12",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7653.12",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 23.031,
+    "output1_price": "7653.12"
+  },
+  {
+    "round": 26,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:23.130978+00:00",
+    "received_at_utc": "2026-10-22T15:03:23.147995+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:23 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10840.39",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 23.148,
+    "output1_price": "10840.39"
+  },
+  {
+    "round": 27,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:24.899422+00:00",
+    "received_at_utc": "2026-10-22T15:03:24.916909+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:24 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26102.06",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26101.29",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 24.917,
+    "output1_price": "26102.06"
+  },
+  {
+    "round": 27,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:25.017429+00:00",
+    "received_at_utc": "2026-10-22T15:03:25.029037+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:25 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7653.13",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7653.12",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 25.029,
+    "output1_price": "7653.13"
+  },
+  {
+    "round": 27,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:25.129868+00:00",
+    "received_at_utc": "2026-10-22T15:03:25.142128+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:25 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10841.37",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 25.142,
+    "output1_price": "10841.37"
+  },
+  {
+    "round": 28,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:26.899407+00:00",
+    "received_at_utc": "2026-10-22T15:03:26.919320+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:26 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26101.80",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26101.29",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 26.919,
+    "output1_price": "26101.80"
+  },
+  {
+    "round": 28,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:27.019799+00:00",
+    "received_at_utc": "2026-10-22T15:03:27.035753+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:27 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7652.74",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.74",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 27.036,
+    "output1_price": "7652.74"
+  },
+  {
+    "round": 28,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:27.136256+00:00",
+    "received_at_utc": "2026-10-22T15:03:27.148603+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:27 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10841.11",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 27.149,
+    "output1_price": "10841.11"
+  },
+  {
+    "round": 29,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:28.900416+00:00",
+    "received_at_utc": "2026-10-22T15:03:28.915689+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:28 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26101.28",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26101.28",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 28.916,
+    "output1_price": "26101.28"
+  },
+  {
+    "round": 29,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:29.016161+00:00",
+    "received_at_utc": "2026-10-22T15:03:29.027595+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:29 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7652.88",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.74",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 29.028,
+    "output1_price": "7652.88"
+  },
+  {
+    "round": 29,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:29.128166+00:00",
+    "received_at_utc": "2026-10-22T15:03:29.140278+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:29 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10840.01",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10838.86",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 29.14,
+    "output1_price": "10840.01"
+  },
+  {
+    "round": 30,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:30.899408+00:00",
+    "received_at_utc": "2026-10-22T15:03:30.914656+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:30 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26100.83",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 30.915,
+    "output1_price": "26100.83"
+  },
+  {
+    "round": 30,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:31.015116+00:00",
+    "received_at_utc": "2026-10-22T15:03:31.026405+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:31 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7652.90",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 31.026,
+    "output1_price": "7652.90"
+  },
+  {
+    "round": 30,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:31.126814+00:00",
+    "received_at_utc": "2026-10-22T15:03:31.137554+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:31 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10837.64",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10837.64",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 31.138,
+    "output1_price": "10837.64"
+  },
+  {
+    "round": 31,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:32.901348+00:00",
+    "received_at_utc": "2026-10-22T15:03:32.920920+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:32 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26101.95",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 32.921,
+    "output1_price": "26101.95"
+  },
+  {
+    "round": 31,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:33.021471+00:00",
+    "received_at_utc": "2026-10-22T15:03:33.036133+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:33 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7653.13",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 33.036,
+    "output1_price": "7653.13"
+  },
+  {
+    "round": 31,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:33.136647+00:00",
+    "received_at_utc": "2026-10-22T15:03:33.149503+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:33 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10837.49",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10837.49",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 33.15,
+    "output1_price": "10837.49"
+  },
+  {
+    "round": 32,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:34.901401+00:00",
+    "received_at_utc": "2026-10-22T15:03:34.920092+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:34 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26101.33",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 34.92,
+    "output1_price": "26101.33"
+  },
+  {
+    "round": 32,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:35.020575+00:00",
+    "received_at_utc": "2026-10-22T15:03:35.032428+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:35 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7653.03",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 35.032,
+    "output1_price": "7653.03"
+  },
+  {
+    "round": 32,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:35.132948+00:00",
+    "received_at_utc": "2026-10-22T15:03:35.143574+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:35 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10836.71",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 35.144,
+    "output1_price": "10836.71"
+  },
+  {
+    "round": 33,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:36.899634+00:00",
+    "received_at_utc": "2026-10-22T15:03:36.915245+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:36 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26101.39",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 36.915,
+    "output1_price": "26101.39"
+  },
+  {
+    "round": 33,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:37.015799+00:00",
+    "received_at_utc": "2026-10-22T15:03:37.029732+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:37 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7653.40",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 37.03,
+    "output1_price": "7653.40"
+  },
+  {
+    "round": 33,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:37.130238+00:00",
+    "received_at_utc": "2026-10-22T15:03:37.196110+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:37 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10837.03",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.66",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 37.196,
+    "output1_price": "10837.03"
+  },
+  {
+    "round": 34,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:38.899392+00:00",
+    "received_at_utc": "2026-10-22T15:03:38.915628+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:38 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26110.01",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 38.916,
+    "output1_price": "26110.01"
+  },
+  {
+    "round": 34,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:39.016114+00:00",
+    "received_at_utc": "2026-10-22T15:03:39.028418+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:39 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7655.08",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 39.028,
+    "output1_price": "7655.08"
+  },
+  {
+    "round": 34,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:39.128876+00:00",
+    "received_at_utc": "2026-10-22T15:03:39.142184+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:39 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10842.92",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10842.92",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 39.142,
+    "output1_price": "10842.92"
+  },
+  {
+    "round": 35,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:40.899444+00:00",
+    "received_at_utc": "2026-10-22T15:03:40.916230+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:40 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26110.37",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 40.916,
+    "output1_price": "26110.37"
+  },
+  {
+    "round": 35,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:41.016747+00:00",
+    "received_at_utc": "2026-10-22T15:03:41.030115+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:41 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7655.07",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 41.03,
+    "output1_price": "7655.07"
+  },
+  {
+    "round": 35,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:41.130610+00:00",
+    "received_at_utc": "2026-10-22T15:03:41.142722+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:41 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10843.54",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10843.75",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 41.143,
+    "output1_price": "10843.54"
+  },
+  {
+    "round": 36,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:42.901190+00:00",
+    "received_at_utc": "2026-10-22T15:03:42.916655+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:42 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26109.05",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 42.917,
+    "output1_price": "26109.05"
+  },
+  {
+    "round": 36,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:43.017127+00:00",
+    "received_at_utc": "2026-10-22T15:03:43.029375+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:43 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.87",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 43.029,
+    "output1_price": "7654.87"
+  },
+  {
+    "round": 36,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:43.130166+00:00",
+    "received_at_utc": "2026-10-22T15:03:43.143786+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:43 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10842.34",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10843.75",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 43.144,
+    "output1_price": "10842.34"
+  },
+  {
+    "round": 37,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:44.899915+00:00",
+    "received_at_utc": "2026-10-22T15:03:44.918851+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:44 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26109.12",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 44.919,
+    "output1_price": "26109.12"
+  },
+  {
+    "round": 37,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:45.019363+00:00",
+    "received_at_utc": "2026-10-22T15:03:45.031391+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:45 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.80",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 45.031,
+    "output1_price": "7654.80"
+  },
+  {
+    "round": 37,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:45.131865+00:00",
+    "received_at_utc": "2026-10-22T15:03:45.142666+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:45 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10842.17",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10843.75",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 45.143,
+    "output1_price": "10842.17"
+  },
+  {
+    "round": 38,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:46.900912+00:00",
+    "received_at_utc": "2026-10-22T15:03:46.916941+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:46 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26107.24",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 46.917,
+    "output1_price": "26107.24"
+  },
+  {
+    "round": 38,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:47.017417+00:00",
+    "received_at_utc": "2026-10-22T15:03:47.029729+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:47 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7654.37",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 47.03,
+    "output1_price": "7654.37"
+  },
+  {
+    "round": 38,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:47.130212+00:00",
+    "received_at_utc": "2026-10-22T15:03:47.143138+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:47 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10839.85",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10843.75",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 47.143,
+    "output1_price": "10839.85"
+  },
+  {
+    "round": 39,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:48.901197+00:00",
+    "received_at_utc": "2026-10-22T15:03:48.925476+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:48 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26111.06",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 48.925,
+    "output1_price": "26111.06"
+  },
+  {
+    "round": 39,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:49.026412+00:00",
+    "received_at_utc": "2026-10-22T15:03:49.037652+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:49 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7655.00",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 49.038,
+    "output1_price": "7655.00"
+  },
+  {
+    "round": 39,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:49.138176+00:00",
+    "received_at_utc": "2026-10-22T15:03:49.149690+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:49 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10842.45",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10843.75",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 49.15,
+    "output1_price": "10842.45"
+  },
+  {
+    "round": 40,
+    "symbol": "COMP",
+    "sent_at_utc": "2026-10-22T15:03:50.899398+00:00",
+    "received_at_utc": "2026-10-22T15:03:50.917265+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:50 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "26111.04",
+      "optn_oprc": "26112.73",
+      "optn_hgpr": "26112.73",
+      "optn_lwpr": "26100.38",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 50.917,
+    "output1_price": "26111.04"
+  },
+  {
+    "round": 40,
+    "symbol": "SPX",
+    "sent_at_utc": "2026-10-22T15:03:51.017793+00:00",
+    "received_at_utc": "2026-10-22T15:03:51.029945+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:51 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "7655.08",
+      "optn_oprc": "7656.43",
+      "optn_hgpr": "7656.43",
+      "optn_lwpr": "7652.70",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 51.03,
+    "output1_price": "7655.08"
+  },
+  {
+    "round": 40,
+    "symbol": "SOX",
+    "sent_at_utc": "2026-10-22T15:03:51.130417+00:00",
+    "received_at_utc": "2026-10-22T15:03:51.146490+00:00",
+    "http_status": 200,
+    "rt_cd": "0",
+    "server_date": "Thu, 22 Oct 2026 15:03:51 GMT",
+    "latest": {
+      "stck_bsop_date": "20261022",
+      "stck_cntg_hour": "110300",
+      "optn_prpr": "10843.17",
+      "optn_oprc": "10842.66",
+      "optn_hgpr": "10843.75",
+      "optn_lwpr": "10836.71",
+      "cntg_vol": "0"
+    },
+    "bar_timestamp_age_seconds": 51.146,
+    "output1_price": "10843.17"
+  }
+]

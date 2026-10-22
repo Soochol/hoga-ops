@@ -24,12 +24,13 @@ from hoga.live.us_daily_candles import (
     UsDailyBar,
     UsDailyMetadata,
     UsDailyService,
+    UsDateRange,
     UsExchange,
     UsStockDailyResponse,
     completed_through,
     parse_date,
 )
-from hoga.live.us_index_minutes import UsIndexMinuteService
+from hoga.live.us_index_minutes import MINUTE_TIMEFRAMES, UsIndexMinuteService
 from hoga.live.us_stock_minutes import UsStockMinuteResponse, UsStockMinuteService
 from hoga.util.timeenc import KST
 
@@ -129,6 +130,37 @@ class UsMarketApi:
         bypass = self.bypass()
         client = kis_runtime.ensure_kis_client_for_account(0, self.data_dir) if self.data_dir and not bypass else None
         return await self.minutes.get(index.daily_code, timeframe, client=client, bypass=bypass)
+
+    async def index_calendar_chart(self, index, start: str, end: str, timeframe: str):
+        """Compose a provisional day without promoting it into completed history."""
+        start = calendar_bounds(start, timeframe)[0]
+        today = self.daily.calendar_now().strftime("%Y%m%d")
+        if end < today:
+            bars, meta = await self.index_daily(index, start, end, timeframe)
+            return bars, meta, None
+        (bars, meta), (_, minute_meta) = await asyncio.gather(
+            self.index_daily(index, start, end), self.index_minutes(index, "1m"),
+        )
+        day = minute_meta.current_daily_candle
+        if day and start <= day.trading_date == today <= end and not any(
+            b.trading_date == day.trading_date for b in bars
+        ):
+            bars = sorted([*bars, day], key=lambda b: b.trading_date)
+            if timeframe != "D":
+                coverage = [*self.daily.verified_coverage(f"index:{index.id}:points"),
+                            # Ephemeral coverage of this provisional day only.
+                            # Never write it into the completed daily cache.
+                            UsDateRange(start=today, end=today)]
+                bars = aggregate_us_calendar(bars, timeframe, today, coverage)
+        else:
+            bars, meta = self.calendar_bars(f"index:{index.id}:points", bars, meta, timeframe, end, stock=False)
+        return bars, meta, minute_meta
+
+    async def index_chart(self, index, start: str, end: str, timeframe: str):
+        if timeframe in MINUTE_TIMEFRAMES:
+            bars, meta = await self.index_minutes(index, timeframe)
+            return bars, None, meta
+        return await self.index_calendar_chart(index, start, end, timeframe)
 
     def retry_index_quote(self, index) -> None:
         self.minutes.retry_failed(index.daily_code)
