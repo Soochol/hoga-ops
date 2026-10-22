@@ -1,0 +1,72 @@
+{
+  "verified_at": "2026-10-22T13:34:09.869126+09:00",
+  "worktree": "/home/dev/.codex/worktrees/3d7f/hoga-ops",
+  "head": "4e05431fba407a8aa7dc52e849bf872196328cd1",
+  "base": "4e05431fba407a8aa7dc52e849bf872196328cd1",
+  "working_tree": "Uncommitted implementation on the recorded head; fingerprints identify the final verified code",
+  "inputs": {
+    "sha256": "225017d4e24574bbce91716c287ba4a78a90cee7df032b6fcfd4a6509b240a98",
+    "file_count": 2588,
+    "scope": "Sorted tracked and non-ignored new files under frontend/src, frontend/tests, hoga, tests plus frontend package/lockfile, Vite/Vitest/Playwright/TypeScript configs, pyproject.toml, uv.lock, ruff.toml, .python-version. SHA256 of path + NUL + bytes + NUL. Generated outputs and installed dependencies excluded."
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_us_daily_candles.py tests/unit/live/test_us_index_minutes.py tests/unit/live/test_kiwoom_index_rest.py tests/api/test_live_index_quotes_route.py tests/unit/live/test_index_header_quote.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "88 passed"
+    },
+    {
+      "command": "cd frontend && npx vitest run src/live/workspace/TitleBarSymbolRow.test.tsx src/live/workspace/IndexTitleBarSymbolRow.test.tsx src/api/marketIndexQuotes.test.tsx src/api/sectorTickOverlay.test.ts",
+      "result": "34 passed in 4 files"
+    },
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed; application, unit-test and E2E TypeScript projects"
+    },
+    {
+      "command": "cd frontend && npx playwright test index-chart-header.spec.ts --reporter=line",
+      "result": "2 passed; delayed subject switch clears previous data, failure retains last-good, retry recovers without moving window, narrow/minimum window controls stay reachable, NY trading date and completed daily basis appear in tooltip"
+    },
+    {
+      "command": "npx vite build (Playwright webServer startup)",
+      "result": "passed; existing bundle size warning"
+    },
+    {
+      "command": "In-memory intentional backend-only IndexQuoteSession member, then restore and invoke enum and field guards",
+      "result": "intentional mismatch rejected; restored enum and field snapshots passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "cd frontend && npx eslint src/api/indexHeaderQuote.ts src/live/workspace/IndexTitleBarSymbolRow.tsx src/live/workspace/IndexTitleBarSymbolRow.test.tsx tests/e2e/index-chart-header.spec.ts",
+      "result": "passed with no warnings"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "3.14.7",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "@playwright/test": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "backend_port": 20192,
+    "frontend_port": 21192,
+    "workers": 1,
+    "credentials": "Empty worktree .env and blank vendor credentials from Playwright configuration"
+  },
+  "visual_review": "Inspected generated index-header-narrow.png and us-index-header.png; the one-line title, price formatting, closed indicator and window controls retain existing typography and theme.",
+  "limits": [
+    "Fixture-based HTTP and browser verification; no live broker calls or token issuance",
+    "Domestic trading dates follow the calendar at the last successful lookup; outside calendar coverage the date stays unknown",
+    "US readout uses the latest bounded minute close or completed daily close; vendor delay remains unverified",
+    "Scoped tests passed; full repository suites were not run",
+    "Production servers were not restarted"
+  ],
+  "result_reuse": "Backend 88-test result reused after the final frontend-only clock injection; backend source, tests, dependencies, configuration, and frontend wire fields/enums are unchanged. Final frontend unit/type/lint/build/browser checks rerun."
+}

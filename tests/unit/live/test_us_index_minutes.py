@@ -130,3 +130,34 @@ async def test_cancelling_one_waiter_does_not_cancel_shared_refresh_and_shutdown
     with pytest.raises(asyncio.CancelledError):
         await waiter
     assert service.pending == {}
+
+
+@pytest.mark.asyncio
+async def test_manual_retry_bypasses_failed_ttl_but_keeps_singleflight_and_cooldown():
+    tick = [0.0]
+    service = UsIndexMinuteService(clock=lambda: tick[0])
+    calls = []
+    fail = [True]
+
+    async def fetch(code):
+        calls.append(code)
+        await asyncio.sleep(0)
+        if fail[0]:
+            raise ValueError("offline")
+        return body([row()])
+
+    client = SimpleNamespace(get_global_index_minute_snapshot=fetch)
+    await service.get("SPX", "1m", client=client)
+    service.retry_failed("SPX")
+    await service.get("SPX", "1m", client=client)
+    service.retry_failed("SPX")
+    await service.get("SPX", "1m", client=client)
+    assert calls == ["SPX", "SPX"]  # a repeated click cannot hammer the vendor
+    tick[0] = 3
+    fail[0] = False
+    service.retry_failed("SPX")
+    first, second = await asyncio.gather(service.get("SPX", "1m", client=client),
+                                         service.get("SPX", "1m", client=client))
+    assert calls == ["SPX", "SPX", "SPX"]
+    assert first[1].refresh_status == second[1].refresh_status == "normal"
+    await service.aclose()

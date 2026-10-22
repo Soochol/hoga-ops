@@ -82,6 +82,15 @@ W/M은 실제 미국 거래일의 검증된 일봉을 집계한다. ISO 월요�
 A fixed `/live` index instrument backed by KIS domestic index APIs. The enabled set is KOSPI, KOSDAQ, KOSPI200, KOSDAQ150, and KRX100; KRX300 stays disabled until a usable KIS index code is confirmed. Representative indices can show candle and volume data but cannot show orderbook-derived panes. KOSPI/KOSDAQ may additionally show market-level foreign/institution net-buy data; narrower indices must not borrow broader-market investor data.
 _Avoid_: "index stock", "synthetic Code", or applying hoga/quote-derived indicators to indices.
 
+지수 차트 제목줄(2026-10-22): `index-header-quote`는 차트 커서·봉 주기와 독립된
+최신 지수값·전일 대비 등락률·전일 종가를 제공한다. 국내는 시장지표 바의 키움
+TTL 캐시와 WS 표시 캐시를 공유하며, 거래일은 마지막 정상 조회 시점의 국내 달력
+기준이다. 달력 범위 밖에서는 거래일을 추정하지 않는다. 미국은 기존 KIS 최근
+1분봉과 완료 일봉 캐시를 공유하며 뉴욕 거래일을 보존한다. 같은 날짜의 완료 일봉
+종가가 우선이고, 전일 종가는 검증된 직전 구간에서만 고른다. 일봉의 가상 표시
+앵커를 시세 시각으로 표시하지 않는다. 실패는 마지막 정상값과 분리해 재시도를
+제공하며, 지수 전환 시 이전 지수의 값은 표시하지 않는다.
+
 **activeCode**:
 The stock-only **Code** projection of the current **LiveInstrument**. `useLivePageStore.activeInstrument` is the canonical `/live` subject; `activeCode` is a compatibility field for stock-only hooks and is `null` for **Representative Index** charts. `/live` is a **single-view** page (ADR-0113 removed the multi-tab strip): `useLivePageStore.projectActiveView` is the single writer of the subject (surfaced through `live/liveNavigate.ts`'s `activateLiveInstrument`/`activateLiveCode`): selecting a stock or index in the header search, clicking a row in the **Watchlist Panel** / **Screener Panel** / **Heatmap** (which also navigates to `/live` if elsewhere), or **dragging a Watchlist or Screener Panel row onto the `/live` chart** all **replace the current view's subject in place** (`timeframe` kept, pan reset). A `/live?code=` or `/live?index=` deep link seeds the subject one-shot on first load; with no deep link the restored subject (`live.page.v1`) is normalized to a fresh view (store writes thereafter always win). Distinct from the **Watchlist** (a set of Codes) — activeCode is one selected stock projection, not a saved list.
 _Avoid_: "selected ticker", "current symbol" (use **Code** vocabulary); conflating with **Watchlist** (list vs single active view).

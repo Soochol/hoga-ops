@@ -82,6 +82,38 @@ def test_coverage_union_does_not_hide_holes():
 
 
 @pytest.mark.asyncio
+async def test_manual_retry_of_failed_daily_baseline_keeps_backoff_for_repeated_clicks():
+    tick = [0.0]
+    service = UsDailyService(clock=lambda: tick[0], calendar_now=lambda: datetime(2026, 10, 22, 10, tzinfo=NY))
+    calls = []
+    fail = [True]
+
+    async def fetch(start, end):
+        calls.append((start, end))
+        if fail[0]:
+            return UsFetchResult(messages=["offline"], truncated=True)
+        return UsFetchResult(bars=[bar(end)], completed=[UsDateRange(start=start, end=end)])
+
+    async def get():
+        return await service.get("index:SP500:points", "20261020", "20261021", source="kis",
+                                 price_basis="index_points", stock=False, fetch=fetch)
+
+    await get()
+    service.retry_failed("index:SP500:points")
+    await get()
+    service.retry_failed("index:SP500:points")
+    await get()
+    assert len(calls) == 2
+    tick[0] = 3
+    fail[0] = False
+    service.retry_failed("index:SP500:points")
+    rows, meta = await get()
+    assert len(calls) == 3
+    assert rows and meta.refresh_status == "normal"
+    await service.aclose()
+
+
+@pytest.mark.asyncio
 async def test_kis_short_pages_walk_until_explicit_empty_not_row_count():
     calls = []
 

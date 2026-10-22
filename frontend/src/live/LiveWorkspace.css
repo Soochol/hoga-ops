@@ -62,6 +62,9 @@
 /* Quotes follow the code; spare width stays before the right-hand metadata. */
 .live-symbol-price { flex: 0 0 auto; margin-left: var(--space-xs); text-align: left; font-size: var(--live-text-data); font-weight: 600; }
 .live-symbol-change { flex: 0 0 auto; text-align: left; font-size: var(--live-text-meta); font-weight: 400; }
+.live-index-quote-status { flex: 0 0 auto; margin-left: auto; white-space: nowrap; font-size: var(--live-text-meta); }
+.live-window button.live-index-quote-status { font-size: var(--live-text-meta); }
+.live-index-quote-status:disabled { opacity: .6; }
 .live-symbol-sector { flex: 0 1 9rem; max-width: 9rem; margin-left: auto; font-size: var(--live-text-meta); color: var(--fg-dim); }
 .live-data-title { flex: 1; overflow: hidden; }
 .live-data-title-kind { color: var(--fg-dim); font-weight: 400; }
@@ -105,6 +108,7 @@
   .live-symbol-backfill { margin-left: auto; }
 }
 @container (max-width: 620px) {
+  .live-index-quote-status:not(button) { display: none; }
   .live-symbol-code { display: none; }
   .live-symbol-warning-label { display: none; }
   .live-symbol-backfill { flex-basis: 1.5rem; width: 1.5rem; }
@@ -114,6 +118,7 @@
   .live-symbol-change { display: none; }
 }
 @container (max-width: 320px) {
+  .live-index-quote-status { display: none; }
   .live-symbol-price, .live-symbol-backfill { display: none; }
   .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title { flex-wrap: wrap; gap: 0 !important; line-height: 1.15; }
   .live-window:not(.live-window-trade):not(.live-window-program-trade) .live-data-title-kind { width: 100%; font-size: var(--live-text-meta); }

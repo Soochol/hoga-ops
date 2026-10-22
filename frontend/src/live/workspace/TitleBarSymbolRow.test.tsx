@@ -98,15 +98,15 @@ describe('TitleBarSymbolRow', () => {
     expect(screen.getByLabelText('실시간 수집 중')).toBeInTheDocument();
   });
 
-  it('hides price·change·dot for an index window', () => {
+  it('reserves index quote slots without using a domestic stock quote', () => {
     renderRow(
       { name: 'KOSPI', code: 'KOSPI', isIndex: true },
       { quote: { price: 2650, change_pct: 0.5, change_won: 13 } },
     );
     expect(screen.getByTestId('titlebar-symbol-row').textContent).toContain('KOSPI');
-    // 지수는 quote 조회 자체를 안 하므로 현재가·등락률 셀이 없다.
-    expect(screen.queryByTestId('titlebar-current-price')).toBeNull();
-    expect(screen.queryByTestId('titlebar-change')).toBeNull();
+    expect(screen.getByTestId('titlebar-current-price')).toHaveTextContent('—');
+    expect(screen.getByTestId('titlebar-change')).toHaveTextContent('—');
+    expect(screen.queryByLabelText('실시간 수집 중')).toBeNull();
   });
 
   it('관심 등록 종목이어도 헤더의 중복 관심 버튼을 표시하지 않는다', () => {
