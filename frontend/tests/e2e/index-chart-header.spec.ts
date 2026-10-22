@@ -40,8 +40,7 @@ test('지수 헤더의 전환·실패·재시도와 좁은 창 조작을 보존�
   const price = win.getByTestId('titlebar-current-price');
   await expect(price).toHaveText('2,650.35');
   await expect(win.getByTestId('titlebar-change')).toHaveText('+1.24%');
-  await expect(price).toHaveAttribute('title', /전일 종가 2,617.89/);
-  await expect(price).toHaveAttribute('title', /기준 거래일 2026-10-22/);
+  await expect(win.locator('.live-window-titlebar [title]')).toHaveCount(0);
   await page.evaluate(async () => {
     const path = '/src/state/workspace.ts';
     const { useWorkspaceStore } = await import(path);
@@ -98,8 +97,7 @@ test('미국 지수의 뉴욕 거래일과 장 종료 시세를 표시한다', a
   const header = page.getByTestId('titlebar-symbol-row').first();
   await expect(header.getByTestId('titlebar-current-price')).toHaveText('6,025.75');
   await expect(header.getByTestId('titlebar-change')).toHaveText('-0.25%');
-  await expect(header.getByTestId('titlebar-current-price')).toHaveAttribute('title', /2026-10-21 \(뉴욕 기준\)/);
-  await expect(header.getByTestId('titlebar-current-price')).toHaveAttribute('title', /완료된 일봉 종가 기준/);
+  await expect(header.locator('[title]')).toHaveCount(0);
   await expect(header.getByTestId('titlebar-index-status')).toHaveText('장 종료');
   await page.screenshot({ path: info.outputPath('us-index-header.png') });
 });

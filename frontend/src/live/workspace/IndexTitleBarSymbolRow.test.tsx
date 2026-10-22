@@ -28,16 +28,14 @@ describe('index chart header', () => {
   });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-  it('shows fractional points, signed percent and the baseline/date in a focusable tooltip', () => {
+  it('shows fractional points and signed percent without header tooltips', () => {
     setup(quote());
     expect(screen.getByTestId('titlebar-current-price')).toHaveTextContent('2,650.35');
     expect(screen.getByTestId('titlebar-change')).toHaveTextContent('+1.24%');
     expect(screen.getByTestId('titlebar-current-price')).toHaveAttribute('data-direction', 'up');
     const price = screen.getByTestId('titlebar-current-price');
     expect(price).toHaveAttribute('tabindex', '0');
-    expect(price.title).toContain('전일 종가 2,617.89');
-    expect(price.title).toContain('전일 대비 +32.46pt');
-    expect(price.title).toContain('기준 거래일 2026-10-22');
+    expect(screen.getByTestId('titlebar-symbol-row').querySelectorAll('[title]')).toHaveLength(0);
     expect(screen.queryByTestId('titlebar-index-status')).toBeNull();
   });
 
@@ -47,10 +45,10 @@ describe('index chart header', () => {
     expect(screen.getByTestId('titlebar-change')).not.toHaveTextContent('+');
   });
 
-  it('keeps the closed-session value and actual trading date', () => {
+  it('keeps the closed-session value without a hover tooltip', () => {
     setup(quote({ trading_date: '20261021', session_status: 'closed' }));
     expect(screen.getByTestId('titlebar-index-status')).toHaveTextContent('장 종료');
-    expect(screen.getByTestId('titlebar-current-price').title).toContain('기준 거래일 2026-10-21');
+    expect(screen.getByTestId('titlebar-current-price')).not.toHaveAttribute('title');
   });
 
   it('clears the previous index while the replacement request is pending, ignoring a late old response', async () => {
@@ -109,17 +107,16 @@ describe('index chart header', () => {
       change: 100, changeRate: 3.85, tMs: NOW + 1000 }]));
     await waitFor(() => expect(screen.getByTestId('titlebar-current-price')).toHaveTextContent('2,700.25'));
     expect(screen.getByTestId('titlebar-change')).toHaveTextContent('+3.85%');
-    expect(screen.getByTestId('titlebar-current-price').title).toContain('전일 종가 2,600.25');
+    expect(screen.getByTestId('titlebar-current-price')).not.toHaveAttribute('title');
   });
 
-  it('explains US minute and NY date without treating the daily display anchor as a quote time', async () => {
+  it('keeps US index quotes and closed status without header tooltips', async () => {
     vi.mocked(client.apiCall).mockResolvedValue(quote({ index_id: 'SP500', source: 'kis_minute', delay_unverified: true,
       market_timezone: 'America/New_York', trading_date: '20261021', session_status: 'closed' }));
     const view = setup();
     view.rerender(view.row('SP500', 'S&P 500'));
     await waitFor(() => expect(screen.getByTestId('titlebar-current-price')).toHaveTextContent('2,650.35'));
-    expect(screen.getByTestId('titlebar-current-price').title).toContain('2026-10-21 (뉴욕 기준)');
-    expect(screen.getByTestId('titlebar-current-price').title).toContain('최신 1분봉 종가 기준');
-    expect(screen.getByTestId('titlebar-current-price').title).toContain('공급자 시세 지연 미확인');
+    expect(screen.getByTestId('titlebar-symbol-row').querySelectorAll('[title]')).toHaveLength(0);
+    expect(screen.getByTestId('titlebar-index-status')).toHaveTextContent('장 종료');
   });
 });

@@ -1,3 +1,4 @@
+import { useStockDescriptionTooltip } from '../../heatmap/StockDescriptionTooltip';
 import { isLiveIndexId, usStockFromKey } from '../liveInstrument';
 import { IndexTitleBarSymbolRow } from './IndexTitleBarSymbolRow';
 /**
@@ -46,17 +47,17 @@ export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
   if (isIndex && isLiveIndexId(indexId)) {
     return <IndexTitleBarSymbolRow key={indexId} name={name} indexId={indexId} windowId={windowId} />;
   }
-  return <StockTitleBarSymbolRow name={name} code={code} isIndex={isIndex} windowId={windowId} />;
+  return <StockTitleBarSymbolRow key={code} name={name} code={code} isIndex={isIndex} windowId={windowId} />;
 }
 
 function StockTitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
+  const tooltip = useStockDescriptionTooltip();
   const live = useConnectionLiveness(LIVE_STALE_MS);
   const venue = useLiveVenueStore((s) => s.venue);
   const effectiveVenue = useEffectiveVenue(code, venue);
 
   const usStock = usStockFromKey(code);
   const displayCode = usStock?.kind === 'us_stock' ? `${usStock.symbol} · ${usStock.exchange}` : code;
-  const symbolLabel = name ? `${name}(${displayCode})` : displayCode;
 
   // 현재가·등락률 — 관심/스크리너 패널과 동일한 라이브 quote 단일 출처(ADR-0056).
   // 타이틀바는 candles 폴백이 없어 quote.price 를 직접 쓴다(stale·0·비유한 배제).
@@ -66,8 +67,6 @@ function StockTitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
     quote && !isStaleLiveQuote(quote) && Number.isFinite(quote.price) && quote.price > 0
       ? quote.price
       : null;
-  const symbolTitle = [symbolLabel, currentPrice !== null ? `최신 시세 ${formatKoreanInt(currentPrice)}원` : null,
-    quote?.change_pct != null ? `${quote.change_pct.toFixed(2)}%` : null].filter(Boolean).join(' · ');
 
   // 히트맵 그룹명 — 주식만. 데이터 로드 전엔 숨겨 '없음'→그룹명 플리커 방지.
   const { data: heatmapData } = useHeatmap();
@@ -105,12 +104,16 @@ function StockTitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
       className="live-symbol-row tabular-nums"
     >
       <span className="live-symbol-identity">
-        <span className="live-symbol-name truncate text-fg" title={symbolTitle} tabIndex={0}>{name ?? code}</span>
+        <span className="live-symbol-name truncate text-fg" tabIndex={0}
+          onMouseEnter={event => { if (!isIndex && event.buttons === 0) tooltip?.show(event.currentTarget, code); }}
+          onMouseLeave={() => tooltip?.scheduleHide()}
+          onFocus={event => { if (!isIndex && event.currentTarget.matches(':focus-visible')) tooltip?.show(event.currentTarget, code); }}
+          onBlur={() => tooltip?.hide()}>{name ?? code}</span>
         {name && name !== code && <span className="live-symbol-code font-data">{displayCode}</span>}
-        {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} />}
+        {!isIndex && <CollectionDot status={collection.displayStatus} showLabel={false} showTooltip={false} />}
       </span>
       {!isIndex && (
-        <span data-testid="titlebar-current-price" title="최신 시세 — 차트 커서와 독립" className="live-symbol-price shrink-0 font-data text-fg"
+        <span data-testid="titlebar-current-price" className="live-symbol-price shrink-0 font-data text-fg"
           data-direction={currentPrice !== null && quote?.change_pct != null
             ? quote.change_pct > 0 ? 'up' : quote.change_pct < 0 ? 'down' : undefined
             : undefined}>
@@ -128,7 +131,6 @@ function StockTitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
           data-testid="titlebar-heatmap-group"
           className="live-symbol-sector truncate"
           style={{ visibility: showHeatmapChip ? undefined : 'hidden' }}
-          title={heatmapGroupName ? `히트맵 그룹: ${heatmapGroupName}` : '히트맵 그룹 없음'}
         >
           {heatmapGroupName ?? '히트맵 그룹 없음'}
         </span>
@@ -136,7 +138,6 @@ function StockTitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
       {/* 숨겨도 칸은 유지한다 — 로딩 시작/종료와 날짜 자릿수가 헤더를 밀지 않는다. */}
       <span
         data-testid="past-backfill-progress-chip"
-        title={backfillDate ? `과거 데이터 불러오는 중 — ${backfillDate}까지 로드됨` : undefined}
         className="live-symbol-backfill font-data whitespace-nowrap rounded text-2xs"
         style={{ visibility: backfillDate ? undefined : 'hidden',
           background: backfillPill.bg, border: backfillPill.border, color: backfillPill.fg }}

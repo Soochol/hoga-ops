@@ -47,6 +47,7 @@ for (const kind of Object.keys(WINDOW_KIND_LABEL)) {
     await page.goto('/live');
     const frame = page.locator('[data-win="actions-test"]');
     await expect(frame).toBeVisible();
+    await expect(frame.locator('.live-window-titlebar [title]')).toHaveCount(0);
     if (kind === 'market-indices') await expect(frame.getByTestId('major-indices-header')).toBeVisible();
     const maximize = frame.getByRole('button', { name: '창 최대화', exact: true });
     const onTop = frame.getByRole('button', { name: '항상 위', exact: true });
@@ -156,7 +157,8 @@ test('차트 헤더의 축 상태는 설정을 열고 최소 폭에서도 설정
     if (width > 240) await expect(badge).toBeVisible();
     else await expect(badge).toBeHidden();
     await expect(settings).toBeVisible();
-    await expect(settings).toHaveAttribute('title', '차트 설정 · 로그 스케일 켜짐 · 가격축 반전 켜짐 · 캔들/거래량 색상 교환 켜짐');
+    await expect(settings).not.toHaveAttribute('title');
+    await expect(frame.locator('.live-window-titlebar [title]')).toHaveCount(0);
     await expectHeaderFits(frame);
     if (width === 420 || width === 160) await frame.screenshot({ path: testInfo.outputPath(`scale-status-${width}.png`) });
   }
@@ -170,7 +172,7 @@ test('차트 헤더의 축 상태는 설정을 열고 최소 폭에서도 설정
   await dialog.getByRole('switch', { name: '차트 거꾸로 보기', exact: true }).click();
   await page.keyboard.press('Escape');
   await expect(badge).toHaveCount(0);
-  await expect(settings).toHaveAttribute('title', '차트 설정');
+  await expect(settings).not.toHaveAttribute('title');
 });
 
 test('차트 설정은 제목줄에서 열리고 각 창에 독립적으로 저장된다', async ({ page }, testInfo) => {

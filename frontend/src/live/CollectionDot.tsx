@@ -12,18 +12,19 @@ interface Props {
    * 전달하므로 정보는 사라지지 않는다.
    */
   showLabel?: boolean;
+  showTooltip?: boolean;
 }
 
 /** 수집/연결 상태를 점(정상) 또는 점+라벨(예외)로 표현. uncollected는 미렌더.
  *  DISPLAY_PRESENTATION 단일 매핑을 LiveStatusBar(종목 앞)·WatchlistDrawer(행)가
  *  공유한다. 점만 표시되는 정상 상태도 aria-label/title로 의미를 전달(접근성). */
-export function CollectionDot({ status, showLabel = true }: Props) {
+export function CollectionDot({ status, showLabel = true, showTooltip = true }: Props) {
   if (status === 'uncollected') return null;
   const { label, colorVar, ariaLabel } = DISPLAY_PRESENTATION[status];
   return (
     <span
       data-testid={`collection-dot-${status}`}
-      title={ariaLabel}
+      title={showTooltip ? ariaLabel : undefined}
       role="img"
       aria-label={ariaLabel}
       className="inline-flex items-center gap-1 font-data"

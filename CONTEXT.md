@@ -391,6 +391,11 @@ _Avoid_: **Watchlist** 과 동일시(2026-06-11 분리 전엔 히트맵이 watch
 보유한다. `StockDescriptionTooltipProvider`가 보드당 한 툴팁을 관리하고, 동일 Code의
 다중 그룹 등록·표시 별칭은 같은 설명을 공유한다. 기존 수집일 안내는 툴팁 하단에 남는다.
 미등록 Code는 임의 소개를 생성하지 않고 기존 수집 안내를 유지한다.
+2026-10-23: `/live` 캔들 차트 제목줄의 종목명도 같은 Code 설명과 500ms 지연을 공유한다.
+워크스페이스당 한 provider를 두며, 종목 교체·드래그/누르기·창 닫기에 해제한다. 그 밖의
+모든 창 제목줄 툴팁은 제거했다(접근성 이름과 버튼 동작은 유지). 설명 미등록 Code·지수·
+미국 종목에는 소개 툴팁이 없다. 본문 캔들 툴팁은 별개다.
+
 
 **Index Sector Ranking Pane**:
 `/live` 의 **Representative Index** 에서만 보이는 하단 workarea 패널로, 선택된 KST 거래일을 현재 **히트맵** Folder 구성에 대입해 왼쪽은 섹터 평균 등락률 순위, 오른쪽은 선택/preview 섹터의 종목 등락률 순위를 보여준다. 기준일은 지수 캔들 hover 를 따라가거나 캔들 click 으로 고정되고, 섹터는 row hover 로 preview 하거나 click 으로 고정된다. 과거 기준일 값은 **Live Quote** 가 아니라 일봉 EOD 데이터에서 계산한 daily change 이며, 오늘 기준일의 intraday overlay 는 `LiveIndexSectorIntradayOverlay` 가 KIS Capacity Scheduler 의 `QUOTES` request 로 현재가를 가져오고 실패/timeout 시 빈 overlay 로 degrade 한다. 이 패널은 hoga 캡처나 Watchlist 구독을 구동하지 않는다.

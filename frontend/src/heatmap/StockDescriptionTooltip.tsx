@@ -21,7 +21,7 @@ interface TooltipActions {
 const TooltipContext = createContext<TooltipActions | null>(null);
 export const useStockDescriptionTooltip = () => useContext(TooltipContext);
 
-/** One timer/portal/listener set for the whole board, including duplicate registrations. */
+/** One timer/portal/listener set per board or live workspace, including duplicate Codes. */
 export function StockDescriptionTooltipProvider({ children, disabled = false }: { children: ReactNode; disabled?: boolean }) {
   const id = useId();
   const [active, setActive] = useState<ActiveDescription | null>(null);
@@ -49,6 +49,7 @@ export function StockDescriptionTooltipProvider({ children, disabled = false }: 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') hide(); };
     const onVisibility = () => { if (document.visibilityState === 'hidden') hide(); };
+    window.addEventListener('pointerdown', hide, true);
     window.addEventListener('scroll', hide, true);
     window.addEventListener('resize', hide);
     window.addEventListener('blur', hide);
@@ -56,6 +57,7 @@ export function StockDescriptionTooltipProvider({ children, disabled = false }: 
     document.addEventListener('keydown', onKeyDown, true);
     return () => {
       cancelTimer();
+      window.removeEventListener('pointerdown', hide, true);
       window.removeEventListener('scroll', hide, true);
       window.removeEventListener('resize', hide);
       window.removeEventListener('blur', hide);

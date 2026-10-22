@@ -58,11 +58,11 @@ describe('창 헤더 고정(핀) 버튼', () => {
   });
 
   it.each([false, true])(
-    '스코프를 창으로 못박는 툴팁(pinned=%s) — 그룹 뱃지 옆이라 그룹 단위로 오해되기 쉽다',
+    '고정 상태와 무관하게 헤더 툴팁을 표시하지 않는다(pinned=%s)',
     (pinned) => {
       // 한 it 안에서 renderFrame 을 두 번 부르면 자동 cleanup 이 안 돌아 testId 가
       // 두 개가 된다(getByTestId 가 "multiple elements" 로 실패). 케이스를 나눈다.
-      expect(renderFrame({ pinned }).pin.getAttribute('title')).toContain('이 창');
+      expect(renderFrame({ pinned }).pin).not.toHaveAttribute('title');
     },
   );
 
@@ -70,7 +70,7 @@ describe('창 헤더 고정(핀) 버튼', () => {
   it('헤더 오른쪽 ① DOM 순서 — 제목 뒤, 닫기(×) 앞', () => {
     const { pin } = renderFrame({ pinned: false });
     const title = screen.getByText(/삼성전자/);
-    const close = screen.getByTitle('창 닫기');
+    const close = screen.getByRole('button', { name: '삼성전자 10호가 창 닫기' });
 
     const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
     // 제목 → 핀 → × 순서. compareDocumentPosition 은 인자가 뒤에 오면 FOLLOWING 을 켠다.
@@ -80,7 +80,7 @@ describe('창 헤더 고정(핀) 버튼', () => {
 
   it('그룹 뱃지는 왼쪽에 그대로 남는다 — 핀만 옮겼다', () => {
     const { pin } = renderFrame({ pinned: false });
-    const badge = screen.getByTitle('링크 그룹 변경');
+    const badge = screen.getByRole('button', { name: '링크 그룹 1 변경' });
 
     expect(badge.compareDocumentPosition(pin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
@@ -120,6 +120,7 @@ it.each(WINDOW_KINDS)('%s 최대화 옆 항상 위 버튼은 상태와 토글을
     onTogglePalette={vi.fn()} onPickGroup={vi.fn()}><div /></WindowFrame>);
   const button = screen.getByRole('button', { name: '항상 위' });
   expect(button).toHaveAttribute('aria-pressed', 'true');
+  expect(button.closest('.live-window-titlebar')!.querySelectorAll('[title]')).toHaveLength(0);
   expect(screen.getByRole('button', { name: '창 최대화' }).nextElementSibling).toBe(button);
   await userEvent.click(button);
   expect(onToggleAlwaysOnTop).toHaveBeenCalledWith('w1');

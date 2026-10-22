@@ -14,16 +14,17 @@ describe('chart title-bar scale status', () => {
     render(<ChartWindowSettings windowId="a" />);
     const settings = screen.getByRole('button', { name: '차트 설정' });
     act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertScale: true }));
-    expect(settings.title).toContain('캔들/거래량 색상 교환 켜짐');
+    expect(screen.getByRole('button', { name: /차트 축 상태/ })).toHaveAccessibleName(expect.stringContaining('캔들/거래량 색상 교환 켜짐'));
+    expect(settings).not.toHaveAttribute('title');
     act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertColors: false }));
-    expect(settings.title).toContain('캔들/거래량 색상 교환 꺼짐');
+    expect(screen.getByRole('button', { name: /차트 축 상태/ })).toHaveAccessibleName(expect.stringContaining('캔들/거래량 색상 교환 꺼짐'));
     act(() => useWindowSettingsStore.getState().patch('a', 'chart', { candleInvertScale: false }));
-    expect(settings.title).toBe('차트 설정');
+    expect(settings).not.toHaveAttribute('title');
   });
   it('keeps the normal header free of inactive badges', () => {
     render(<ChartWindowSettings windowId="a" />);
     expect(screen.queryByRole('button', { name: /차트 축 상태/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '차트 설정' })).toHaveAttribute('title', '차트 설정');
+    expect(screen.getByRole('button', { name: '차트 설정' })).not.toHaveAttribute('title');
   });
 
   it.each([[true, false], [false, true], [true, true]])('shows only the active window settings (log=%s, inverted=%s)', (log, inverted) => {
@@ -35,7 +36,8 @@ describe('chart title-bar scale status', () => {
     expect(a).toHaveAttribute('data-active');
     expect(b).not.toHaveAttribute('data-active');
     expect(within(b).queryByRole('button', { name: /차트 축 상태/ })).not.toBeInTheDocument();
-    const title = within(a).getByRole('button', { name: '차트 설정' }).title;
+    expect(a.querySelectorAll('[title]')).toHaveLength(0);
+    const title = within(a).getByRole('button', { name: /차트 축 상태/ }).getAttribute('aria-label')!;
     expect(title.includes('로그 스케일 켜짐')).toBe(log);
     expect(title.includes('가격축 반전 켜짐')).toBe(inverted);
   });

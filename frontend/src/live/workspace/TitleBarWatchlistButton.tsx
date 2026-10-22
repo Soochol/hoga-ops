@@ -24,9 +24,6 @@ export function TitleBarWatchlistButton({ code, name, groups, ready }: {
     <button ref={anchor} type="button" data-testid="titlebar-watchlist-button"
       aria-label={`${label} ${action}`} aria-haspopup="dialog" aria-expanded={picker !== null}
       aria-busy={!ready}
-      title={!ready ? `${label} 관심 그룹 확인` : member
-        ? `${label} 관심 등록됨 · ${groups.join(', ')} — 그룹 관리`
-        : `${label} 관심종목에 추가`}
       className={`live-watchlist-heart inline-flex h-6 min-w-6 shrink-0 items-center justify-center gap-1 rounded-sm px-1 hover:bg-tint-selection ${member ? 'text-fg' : 'text-fg-dim hover:text-fg'}`}
       onPointerDown={event => event.stopPropagation()}
       onClick={event => {
