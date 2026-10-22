@@ -1,5 +1,6 @@
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiCall } from './client';
+import { usIndexRefreshInterval } from './usIndexRefreshPolicy';
 import type { MarketIndexQuote } from './marketIndexQuotes';
 import { isUsIndexId, type LiveIndexId } from '../live/liveInstrument';
 import { realMsToYyyymmdd, regularSessionCloseMs, regularSessionOpenMs } from '../live/liveDateTime';
@@ -22,6 +23,7 @@ export interface IndexHeaderQuoteResponse {
   refresh_status: IndexQuoteRefresh;
   source: string;
   delay_unverified: boolean;
+  refresh_interval_ms?: number;
 }
 
 export const indexHeaderQuoteKey = (id: LiveIndexId | null) => ['live', 'index-header-quote', id] as const;
@@ -37,7 +39,8 @@ export function useIndexHeaderQuote(id: LiveIndexId, now: number) {
     const previous = qc.getQueryData<IndexHeaderQuoteResponse>(key);
     if (response.value == null && response.refresh_status !== 'normal' && previous?.index_id === id
       && previous.value != null) {
-      return { ...previous, refresh_status: response.refresh_status };
+      return { ...previous, refresh_status: response.refresh_status,
+        refresh_interval_ms: response.refresh_interval_ms };
     }
     // A failed baseline refresh cannot erase a previously verified close for
     // this SAME trading day. Never carry yesterday's baseline into a new day.
@@ -53,8 +56,10 @@ export function useIndexHeaderQuote(id: LiveIndexId, now: number) {
   const query = useQuery({
     queryKey: key,
     queryFn: ({ signal }) => request(signal),
-    staleTime: 20_000,
-    refetchInterval: isUsIndexId(id) ? 60_000 : 30_000,
+    staleTime: isUsIndexId(id) ? 2000 : 20_000,
+    refetchInterval: query => isUsIndexId(id)
+      ? query.state.error ? 60_000 : usIndexRefreshInterval(query.state.data?.refresh_interval_ms)
+      : 30_000,
     refetchOnWindowFocus: true,
     retry: false,
     // A changed subject always gets its own data, including while a request is pending.

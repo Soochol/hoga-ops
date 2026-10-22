@@ -1,0 +1,128 @@
+{
+  "base_sha": "aaa7a274f12f5548aab48d4ead732fbef0a79cfc",
+  "branch": "codex/us-index-fast-rest-refresh",
+  "prepared_at_utc": "2026-10-22T15:29:18.692477+00:00",
+  "input_fingerprints": {
+    "backend": {
+      "sha256": "74c0de2eb08a91973cf60318b294a08319b61bf8334aa0824658d90ee9d17582",
+      "file_count": 1018
+    },
+    "frontend": {
+      "sha256": "983faebc21af0e76046e374c2346ad0af610c0dfbfbee087322031fe396bef93",
+      "file_count": 2055
+    }
+  },
+  "changed_files": [
+    "CONTEXT.md",
+    "docs/adr/0136-kis-removal-kiwoom-full-replacement.md",
+    "frontend/src/api/indexHeaderQuote.ts",
+    "frontend/src/api/liveIndices.test.tsx",
+    "frontend/src/api/liveIndices.ts",
+    "frontend/src/live/LivePage.test.tsx",
+    "frontend/src/live/workspace/IndexTitleBarSymbolRow.test.tsx",
+    "frontend/tests/e2e/us-index-minutes.spec.ts",
+    "hoga/live/api.py",
+    "hoga/live/index_header_quote.py",
+    "hoga/live/us_index_minutes.py",
+    "hoga/live/us_market_api.py",
+    "tests/api/test_us_daily_routes.py",
+    "tests/unit/api/test_rest_wire_schema_contract.py",
+    "tests/unit/live/test_us_index_minutes.py",
+    "docs/plans/2026-10-23-us-index-live-refresh.md",
+    "docs/research/2026-10-22-us-index-live-fast-samples.json",
+    "docs/research/2026-10-22-us-index-live-probe.json",
+    "docs/research/2026-10-22-us-index-live-variants.json",
+    "docs/research/2026-10-23-us-index-shared-live-validation.json",
+    "frontend/src/api/usIndexRefreshPolicy.ts",
+    "tests/unit/live/test_us_index_live_calendar.py"
+  ],
+  "verified_at_kst": "2026-10-23T00:31:00.327756+09:00",
+  "checks": {
+    "backend": {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_us_index_minutes.py tests/unit/live/test_us_index_live_calendar.py tests/unit/live/test_index_header_quote.py tests/unit/live/test_us_daily_candles.py tests/unit/live/test_us_stock_minutes.py tests/api/test_us_daily_routes.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "status": "passed",
+      "log_sha256": "a52ca1d641ae5f3ae1e6d88ae9a634727319dd2437928a50e6dd4ca491778cb4",
+      "summary": [
+        "tests/unit/live/test_us_stock_minutes.py ............................... [ 70%]",
+        "......                                                                   [ 74%]",
+        "tests/api/test_us_daily_routes.py .........................              [ 91%]",
+        "tests/unit/api/test_rest_wire_schema_contract.py ............            [100%]",
+        "",
+        "============================= 145 passed in 6.46s =============================="
+      ]
+    },
+    "frontend": {
+      "command": "cd frontend && npx vitest run --maxWorkers=4",
+      "status": "passed",
+      "log_sha256": "81b3a0704e700f519a7d0a85c0e0394a4bb54d73749114f68aacbdf0f8ae4c42",
+      "summary": [
+        "",
+        " Test Files  689 passed (689)",
+        "      Tests  8889 passed (8889)",
+        "   Start at  00:28:04",
+        "   Duration  145.93s (transform 14.25s, setup 18.78s, import 60.51s, tests 171.48s, environment 263.50s)",
+        ""
+      ]
+    },
+    "typecheck": {
+      "command": "cd frontend && npm run typecheck",
+      "status": "passed",
+      "log_sha256": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+      "summary": [
+        "",
+        "> frontend@0.0.0 typecheck",
+        "> tsc -b && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
+        ""
+      ]
+    },
+    "e2e": {
+      "command": "cd frontend && npx playwright test tests/e2e/us-index-minutes.spec.ts tests/e2e/index-chart-header.spec.ts --reporter=line",
+      "status": "passed",
+      "log_sha256": "7b721ae535832e85434b77732c027967e633906d57a53e5a1b3a4744795b7fd0",
+      "summary": [
+        "",
+        "  8 passed (27.6s)"
+      ]
+    },
+    "ruff": {
+      "command": "uv run --extra dev ruff check .",
+      "status": "passed"
+    },
+    "diff_whitespace": {
+      "command": "git diff --check",
+      "status": "passed"
+    }
+  },
+  "versions": {
+    "python": "Python 3.14.7",
+    "node": "v24.13.1",
+    "npm": "11.8.0"
+  },
+  "browser": {
+    "engine": "system Chrome",
+    "workers": 1,
+    "backend_port": 20365,
+    "frontend_port": 21365,
+    "credentials": "empty for test server; live measurement used cached token in standalone read-only process"
+  },
+  "live_source_check": {
+    "evidence": "docs/research/2026-10-23-us-index-shared-live-validation.json",
+    "concurrent_consumers": 24,
+    "rounds": 8,
+    "upstream_requests": 24,
+    "total_consumer_calls": 216,
+    "all_three_index_prices_changed_in_all_eight_rounds": true,
+    "rest_tokens_issued": 0,
+    "new_ws_connections": 0
+  },
+  "regression_fixes": [
+    "Preserve domestic QueryClient retry defaults: omit retry option for domestic indices instead of setting undefined.",
+    "Update four LivePage assertions for the current main title-bar UI (#2244), which removed native title attributes.",
+    "Keep last-good US header value while accepting the server backoff interval after an empty error response."
+  ],
+  "deployment": {
+    "applied_to_worktree": true,
+    "applied_to_running_user_server": false,
+    "original_kis_ws_connection_preserved": true
+  }
+}

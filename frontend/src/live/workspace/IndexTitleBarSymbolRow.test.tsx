@@ -86,6 +86,18 @@ describe('index chart header', () => {
     expect(screen.getByTestId('titlebar-current-price')).toHaveTextContent('—');
   });
 
+  it('keeps the last US price while accepting a slower server retry interval', async () => {
+    const view = setup();
+    act(() => view.qc.setQueryData(indexHeaderQuoteKey('SP500'), quote({ index_id: 'SP500',
+      refresh_status: 'stale', refresh_interval_ms: 2000 })));
+    vi.mocked(client.apiCall).mockResolvedValue(quote({ index_id: 'SP500', value: null,
+      refresh_status: 'error', refresh_interval_ms: 60_000 }));
+    view.rerender(view.row('SP500'));
+    fireEvent.click(screen.getByRole('button', { name: 'SP500 시세 다시 조회' }));
+    await waitFor(() => expect(view.qc.getQueryData(indexHeaderQuoteKey('SP500')))
+      .toMatchObject({ value: 2650.35, refresh_status: 'error', refresh_interval_ms: 60_000 }));
+  });
+
   it('keeps a verified same-day baseline on refresh failure but never carries it across a trading date', async () => {
     const view = setup(quote({ refresh_status: 'stale' }));
     vi.mocked(client.apiCall).mockResolvedValue(quote({ refresh_status: 'partial', previous_close: null,

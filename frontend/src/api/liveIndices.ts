@@ -1,5 +1,6 @@
 import { isUsIndexId, US_MINUTE_TIMEFRAMES } from '../live/liveInstrument';
 import { usDailyRefetchInterval, type UsDailyMetadata } from './usDailyCandles';
+import { usIndexRefreshInterval } from './usIndexRefreshPolicy';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { indexRealtimeKey, overlayIndexCandles, type IndexRealtimeSession } from './indexRealtimeCandles';
@@ -74,6 +75,8 @@ export interface UsMinuteMetadata {
   last_successful_check_at_ms: number | null;
   refresh_status: UsDailyMetadata['refresh_status'];
   messages: string[];
+  refresh_interval_ms?: number;
+  current_daily_candle?: (LiveIndexCandle & { trading_date: string }) | null;
 }
 
 export interface LiveIndexCandlesResponse {
@@ -131,7 +134,14 @@ export function useLiveIndexCandles(
 ) {
   const queryClient = useQueryClient();
   const enabled = !!(indexId && from && to && from <= to) && (!isUsIndexId(indexId) || [...US_MINUTE_TIMEFRAMES, 'D', 'W', 'M'].includes(timeframe));
-  const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number } }) => isUsIndexId(indexId) && isMinuteTimeframe(timeframe) ? 60_000 : isUsIndexId(indexId) ? usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount) : indexCandlesRefetchInterval(timeframe, to);
+  const refetchInterval = (query: { state: { data?: LiveIndexCandlesResponse; dataUpdateCount: number; error?: unknown } }) => {
+    if (!isUsIndexId(indexId)) return indexCandlesRefetchInterval(timeframe, to);
+    if (query.state.error) return 60_000;
+    if (isMinuteTimeframe(timeframe) || query.state.data?.minute_metadata) {
+      return usIndexRefreshInterval(query.state.data?.minute_metadata?.refresh_interval_ms);
+    }
+    return usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount);
+  };
   const realtime = useQuery<IndexRealtimeSession>({ queryKey: indexRealtimeKey(indexId), queryFn: skipToken });
   const result = useQuery({
     queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,
@@ -164,11 +174,12 @@ export function useLiveIndexCandles(
       return { ...response, realtimeBaseMs, candles: [...byTime.values()].sort((a, b) => a.t_ms - b.t_ms) };
     },
     enabled,
-    staleTime: 60_000,
+    staleTime: isUsIndexId(indexId) ? 2000 : 60_000,
     refetchInterval,
     // 탭 가림 중 정지 방지 + focus refetch 를 같은 술어로 게이트 — 근거는
     // livePastCandles.ts 의 PAST_CANDLES_REFETCH_IN_BACKGROUND 주석 참조.
-    refetchIntervalInBackground: PAST_CANDLES_REFETCH_IN_BACKGROUND,
+    refetchIntervalInBackground: isUsIndexId(indexId) ? false : PAST_CANDLES_REFETCH_IN_BACKGROUND,
+    ...(isUsIndexId(indexId) ? { retry: false } : {}),
     refetchOnWindowFocus: (query) => refetchInterval(query) !== false,
     placeholderData: (prev) => (prev && prev.index_id === indexId && prev.timeframe === timeframe ? prev : undefined),
   });

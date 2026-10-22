@@ -1,0 +1,518 @@
+{
+  "started_at_utc": "2026-10-22T15:18:19.164876+00:00",
+  "ended_at_utc": "2026-10-22T15:18:34.533953+00:00",
+  "code_base": "aaa7a274f12f5548aab48d4ead732fbef0a79cfc plus workspace changes",
+  "concurrent_consumers_per_round": 24,
+  "consumer_requests": 216,
+  "upstream_calls": 24,
+  "rest_tokens_issued": 0,
+  "websockets_opened": 0,
+  "snapshots": [
+    {
+      "round": 0,
+      "code": "COMP",
+      "last_close": 26121.86,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682299246,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26121.86,
+        "volume": 0
+      }
+    },
+    {
+      "round": 0,
+      "code": "SPX",
+      "last_close": 7661.41,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682299238,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7661.41,
+        "volume": 0
+      }
+    },
+    {
+      "round": 0,
+      "code": "SOX",
+      "last_close": 10839.92,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682299240,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10839.92,
+        "volume": 0
+      }
+    },
+    {
+      "round": 1,
+      "code": "COMP",
+      "last_close": 26124.41,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682301329,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26124.41,
+        "volume": 0
+      }
+    },
+    {
+      "round": 1,
+      "code": "SPX",
+      "last_close": 7661.6,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682301327,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7661.6,
+        "volume": 0
+      }
+    },
+    {
+      "round": 1,
+      "code": "SOX",
+      "last_close": 10841.22,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682301332,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10841.22,
+        "volume": 0
+      }
+    },
+    {
+      "round": 2,
+      "code": "COMP",
+      "last_close": 26124.12,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682303531,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26124.12,
+        "volume": 0
+      }
+    },
+    {
+      "round": 2,
+      "code": "SPX",
+      "last_close": 7661.47,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682303527,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7661.47,
+        "volume": 0
+      }
+    },
+    {
+      "round": 2,
+      "code": "SOX",
+      "last_close": 10841.57,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682303528,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10841.57,
+        "volume": 0
+      }
+    },
+    {
+      "round": 3,
+      "code": "COMP",
+      "last_close": 26123.41,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682305741,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26123.41,
+        "volume": 0
+      }
+    },
+    {
+      "round": 3,
+      "code": "SPX",
+      "last_close": 7661.2,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682305728,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7661.2,
+        "volume": 0
+      }
+    },
+    {
+      "round": 3,
+      "code": "SOX",
+      "last_close": 10841.38,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682305733,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10841.38,
+        "volume": 0
+      }
+    },
+    {
+      "round": 4,
+      "code": "COMP",
+      "last_close": 26124.39,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682307931,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26124.39,
+        "volume": 0
+      }
+    },
+    {
+      "round": 4,
+      "code": "SPX",
+      "last_close": 7661.64,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682307937,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7661.64,
+        "volume": 0
+      }
+    },
+    {
+      "round": 4,
+      "code": "SOX",
+      "last_close": 10841.42,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682307934,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10841.42,
+        "volume": 0
+      }
+    },
+    {
+      "round": 5,
+      "code": "COMP",
+      "last_close": 26125.22,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682310132,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26125.22,
+        "volume": 0
+      }
+    },
+    {
+      "round": 5,
+      "code": "SPX",
+      "last_close": 7661.87,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682310128,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7661.87,
+        "volume": 0
+      }
+    },
+    {
+      "round": 5,
+      "code": "SOX",
+      "last_close": 10843.34,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682310130,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10843.34,
+        "volume": 0
+      }
+    },
+    {
+      "round": 6,
+      "code": "COMP",
+      "last_close": 26127.43,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682312335,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26127.43,
+        "volume": 0
+      }
+    },
+    {
+      "round": 6,
+      "code": "SPX",
+      "last_close": 7662.06,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682312329,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7662.06,
+        "volume": 0
+      }
+    },
+    {
+      "round": 6,
+      "code": "SOX",
+      "last_close": 10844.56,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682312331,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10844.56,
+        "volume": 0
+      }
+    },
+    {
+      "round": 7,
+      "code": "COMP",
+      "last_close": 26126.08,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682314530,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 26308.41,
+        "high": 26359.41,
+        "low": 26065.99,
+        "close": 26126.08,
+        "volume": 0
+      }
+    },
+    {
+      "round": 7,
+      "code": "SPX",
+      "last_close": 7661.54,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682314527,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 7694.62,
+        "high": 7702.94,
+        "low": 7646.05,
+        "close": 7661.54,
+        "volume": 0
+      }
+    },
+    {
+      "round": 7,
+      "code": "SOX",
+      "last_close": 10844.37,
+      "minute_t_ms": 1792682280000,
+      "refresh_interval_ms": 2000,
+      "checked_at_ms": 1792682314531,
+      "day_ohlc": {
+        "trading_date": "20261022",
+        "t_ms": 1792627200000,
+        "open": 11049.07,
+        "high": 11140.33,
+        "low": 10779.0,
+        "close": 10844.37,
+        "volume": 0
+      }
+    }
+  ],
+  "calls": [
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:19.164876+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:19.167402+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:19.167670+00:00"
+    },
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:21.307465+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:21.308190+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:21.308798+00:00"
+    },
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:23.507668+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:23.508237+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:23.508440+00:00"
+    },
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:25.706798+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:25.707574+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:25.707873+00:00"
+    },
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:27.908854+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:27.909563+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:27.909840+00:00"
+    },
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:30.108687+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:30.109425+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:30.109715+00:00"
+    },
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:32.307694+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:32.308300+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:32.308497+00:00"
+    },
+    {
+      "code": "COMP",
+      "sent_at_utc": "2026-10-22T15:18:34.506882+00:00"
+    },
+    {
+      "code": "SPX",
+      "sent_at_utc": "2026-10-22T15:18:34.507574+00:00"
+    },
+    {
+      "code": "SOX",
+      "sent_at_utc": "2026-10-22T15:18:34.507862+00:00"
+    }
+  ]
+}

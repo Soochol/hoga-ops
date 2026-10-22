@@ -1,0 +1,242 @@
+[
+  {
+    "at_utc": "2026-10-22T15:01:11.631960+00:00",
+    "symbol": "COMP",
+    "mode": "minute_without_history",
+    "http_status": 200,
+    "rt_cd": "0",
+    "output1": {
+      "ovrs_nmix_prdy_vrss": "-572.54",
+      "prdy_vrss_sign": "5",
+      "prdy_ctrt": "-2.14",
+      "ovrs_nmix_prdy_clpr": "26702.86",
+      "acml_vol": "0",
+      "hts_kor_isnm": "나스닥 종합",
+      "ovrs_nmix_prpr": "26130.32",
+      "stck_shrn_iscd": "COMP",
+      "ovrs_prod_oprc": "26308.41",
+      "ovrs_prod_hgpr": "26359.41",
+      "ovrs_prod_lwpr": "26080.27"
+    },
+    "latest_rows": [
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "110100",
+        "optn_prpr": "26130.32",
+        "optn_oprc": "26125.17",
+        "optn_hgpr": "26131.07",
+        "optn_lwpr": "26125.17",
+        "cntg_vol": "0"
+      },
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "110000",
+        "optn_prpr": "26122.88",
+        "optn_oprc": "26128.21",
+        "optn_hgpr": "26135.80",
+        "optn_lwpr": "26120.59",
+        "cntg_vol": "0"
+      },
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "105900",
+        "optn_prpr": "26108.18",
+        "optn_oprc": "26097.89",
+        "optn_hgpr": "26108.18",
+        "optn_lwpr": "26097.89",
+        "cntg_vol": "0"
+      }
+    ]
+  },
+  {
+    "at_utc": "2026-10-22T15:01:11.946644+00:00",
+    "symbol": "COMP",
+    "mode": "daily_latest_quote",
+    "http_status": 200,
+    "rt_cd": "0",
+    "output1": {
+      "ovrs_nmix_prdy_vrss": "-572.54",
+      "prdy_vrss_sign": "5",
+      "prdy_ctrt": "-2.14",
+      "ovrs_nmix_prdy_clpr": "26702.86",
+      "acml_vol": "0",
+      "hts_kor_isnm": "나스닥 종합",
+      "ovrs_nmix_prpr": "26130.32",
+      "stck_shrn_iscd": "COMP",
+      "ovrs_prod_oprc": "26308.41",
+      "ovrs_prod_hgpr": "26359.41",
+      "ovrs_prod_lwpr": "26080.27"
+    },
+    "latest_rows": [
+      {
+        "stck_bsop_date": "20261022",
+        "ovrs_nmix_prpr": "26130.32",
+        "ovrs_nmix_oprc": "26308.41",
+        "ovrs_nmix_hgpr": "26359.41",
+        "ovrs_nmix_lwpr": "26080.27",
+        "acml_vol": "0",
+        "mod_yn": "N"
+      }
+    ]
+  },
+  {
+    "at_utc": "2026-10-22T15:01:12.264750+00:00",
+    "symbol": "SPX",
+    "mode": "minute_without_history",
+    "http_status": 200,
+    "rt_cd": "0",
+    "output1": {
+      "ovrs_nmix_prdy_vrss": "-97.90",
+      "prdy_vrss_sign": "5",
+      "prdy_ctrt": "-1.26",
+      "ovrs_nmix_prdy_clpr": "7757.17",
+      "acml_vol": "0",
+      "hts_kor_isnm": "S&P500",
+      "ovrs_nmix_prpr": "7659.27",
+      "stck_shrn_iscd": "SPX",
+      "ovrs_prod_oprc": "7694.62",
+      "ovrs_prod_hgpr": "7702.94",
+      "ovrs_prod_lwpr": "7646.05"
+    },
+    "latest_rows": [
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "110100",
+        "optn_prpr": "7659.27",
+        "optn_oprc": "7658.25",
+        "optn_hgpr": "7659.36",
+        "optn_lwpr": "7658.25",
+        "cntg_vol": "0"
+      },
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "110000",
+        "optn_prpr": "7657.73",
+        "optn_oprc": "7661.04",
+        "optn_hgpr": "7661.28",
+        "optn_lwpr": "7657.50",
+        "cntg_vol": "0"
+      },
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "105900",
+        "optn_prpr": "7655.43",
+        "optn_oprc": "7652.60",
+        "optn_hgpr": "7655.43",
+        "optn_lwpr": "7652.60",
+        "cntg_vol": "0"
+      }
+    ]
+  },
+  {
+    "at_utc": "2026-10-22T15:01:12.576979+00:00",
+    "symbol": "SPX",
+    "mode": "daily_latest_quote",
+    "http_status": 200,
+    "rt_cd": "0",
+    "output1": {
+      "ovrs_nmix_prdy_vrss": "-97.90",
+      "prdy_vrss_sign": "5",
+      "prdy_ctrt": "-1.26",
+      "ovrs_nmix_prdy_clpr": "7757.17",
+      "acml_vol": "0",
+      "hts_kor_isnm": "S&P500",
+      "ovrs_nmix_prpr": "7659.27",
+      "stck_shrn_iscd": "SPX",
+      "ovrs_prod_oprc": "7694.62",
+      "ovrs_prod_hgpr": "7702.94",
+      "ovrs_prod_lwpr": "7646.05"
+    },
+    "latest_rows": [
+      {
+        "stck_bsop_date": "20261022",
+        "ovrs_nmix_prpr": "7659.27",
+        "ovrs_nmix_oprc": "7694.62",
+        "ovrs_nmix_hgpr": "7702.94",
+        "ovrs_nmix_lwpr": "7646.05",
+        "acml_vol": "0",
+        "mod_yn": "N"
+      }
+    ]
+  },
+  {
+    "at_utc": "2026-10-22T15:01:12.896237+00:00",
+    "symbol": "SOX",
+    "mode": "minute_without_history",
+    "http_status": 200,
+    "rt_cd": "0",
+    "output1": {
+      "ovrs_nmix_prdy_vrss": "-642.13",
+      "prdy_vrss_sign": "5",
+      "prdy_ctrt": "-5.58",
+      "ovrs_nmix_prdy_clpr": "11505.56",
+      "acml_vol": "0",
+      "hts_kor_isnm": "필라델피아 반도체지수",
+      "ovrs_nmix_prpr": "10863.43",
+      "stck_shrn_iscd": "SOX",
+      "ovrs_prod_oprc": "11049.07",
+      "ovrs_prod_hgpr": "11140.33",
+      "ovrs_prod_lwpr": "10831.89"
+    },
+    "latest_rows": [
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "110100",
+        "optn_prpr": "10863.43",
+        "optn_oprc": "10858.74",
+        "optn_hgpr": "10864.38",
+        "optn_lwpr": "10858.74",
+        "cntg_vol": "0"
+      },
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "110000",
+        "optn_prpr": "10858.10",
+        "optn_oprc": "10862.41",
+        "optn_hgpr": "10870.61",
+        "optn_lwpr": "10857.31",
+        "cntg_vol": "0"
+      },
+      {
+        "stck_bsop_date": "20261022",
+        "stck_cntg_hour": "105900",
+        "optn_prpr": "10848.52",
+        "optn_oprc": "10838.08",
+        "optn_hgpr": "10848.52",
+        "optn_lwpr": "10838.08",
+        "cntg_vol": "0"
+      }
+    ]
+  },
+  {
+    "at_utc": "2026-10-22T15:01:13.210189+00:00",
+    "symbol": "SOX",
+    "mode": "daily_latest_quote",
+    "http_status": 200,
+    "rt_cd": "0",
+    "output1": {
+      "ovrs_nmix_prdy_vrss": "-642.13",
+      "prdy_vrss_sign": "5",
+      "prdy_ctrt": "-5.58",
+      "ovrs_nmix_prdy_clpr": "11505.56",
+      "acml_vol": "0",
+      "hts_kor_isnm": "필라델피아 반도체지수",
+      "ovrs_nmix_prpr": "10863.43",
+      "stck_shrn_iscd": "SOX",
+      "ovrs_prod_oprc": "11049.07",
+      "ovrs_prod_hgpr": "11140.33",
+      "ovrs_prod_lwpr": "10831.89"
+    },
+    "latest_rows": [
+      {
+        "stck_bsop_date": "20261022",
+        "ovrs_nmix_prpr": "10863.43",
+        "ovrs_nmix_oprc": "11049.07",
+        "ovrs_nmix_hgpr": "11140.33",
+        "ovrs_nmix_lwpr": "10831.89",
+        "acml_vol": "0",
+        "mod_yn": "N"
+      }
+    ]
+  }
+]

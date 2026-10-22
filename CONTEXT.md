@@ -78,6 +78,15 @@ W/M은 실제 미국 거래일의 검증된 일봉을 집계한다. ISO 월요�
 
 
 
+미국 지수 빠른 갱신(2026-10-23): 위 지수의 분봉·헤더·진행 중 D/W/M은 한투 최근
+스냅샷을 공유한다. 당일 자료가 있는 뉴욕 평일 09:30~17:20은 2초, 그 밖은 60초이며
+조회 예산 시간대이지 실제 장 상태/휴장일 판정이 아니다. 가려진 브라우저는 빠른
+폴링을 멈춘다. 실패는 최대 60초 백오프하고 마지막 정상 창을 보존한다. 진행 중 당일
+OHLC는 같은 응답의 검증된 전체 일중 값을 쓰며 완료 일봉 캐시/검증 구간에는 넣지
+않는다. 같은 날짜의 완료 일봉이 우선하고 과거 전용 조회에는 최신 시세를 섞지 않는다.
+미국 개별주식은 위의 기존 완료 일봉 집계·60초 분봉 갱신을 유지한다. WS 지수 틱과
+거래소 대비 무지연은 확인하지 못했다. ADR-0136 개정 및 관련 설계/실측 참조.
+
 **Representative Index**:
 A fixed `/live` index instrument backed by KIS domestic index APIs. The enabled set is KOSPI, KOSDAQ, KOSPI200, KOSDAQ150, and KRX100; KRX300 stays disabled until a usable KIS index code is confirmed. Representative indices can show candle and volume data but cannot show orderbook-derived panes. KOSPI/KOSDAQ may additionally show market-level foreign/institution net-buy data; narrower indices must not borrow broader-market investor data.
 _Avoid_: "index stock", "synthetic Code", or applying hoga/quote-derived indicators to indices.

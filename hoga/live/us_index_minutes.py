@@ -21,6 +21,12 @@ MINUTE_TIMEFRAMES = ("1m", "3m", "5m", "10m", "15m", "30m", "60m")
 _MANUAL_RETRY_COOLDOWN_S = 2
 
 
+def index_refresh_interval_ms(now: datetime) -> int:
+    """Polling budget, NOT a holiday/early-close calendar or session assertion."""
+    local = now.astimezone(NY)
+    return 2000 if local.weekday() not in {5, 6} and (9, 30) <= (local.hour, local.minute) < (17, 20) else 60_000
+
+
 class UsMinuteMetadata(BaseModel):
     market_timezone: str = "America/New_York"
     source: str = "kis"
@@ -32,6 +38,8 @@ class UsMinuteMetadata(BaseModel):
     last_successful_check_at_ms: int | None = None
     refresh_status: UsDailyStatus = "normal"
     messages: list[str] = Field(default_factory=list)
+    refresh_interval_ms: int = 60_000
+    current_daily_candle: UsDailyBar | None = None
 
 
 def parse_snapshot(body: dict) -> list[UsDailyBar]:
@@ -82,6 +90,22 @@ def aggregate_minutes(bars: list[UsDailyBar], timeframe: str) -> list[UsDailyBar
     return result
 
 
+def current_daily_candle(body: dict, bars: list[UsDailyBar], code: str, now: datetime) -> UsDailyBar | None:
+    """Use full-day vendor OHLC only when tied to today's minute snapshot."""
+    quote = body.get("output1")
+    if not bars or bars[-1].trading_date != now.astimezone(NY).strftime("%Y%m%d") or not quote:
+        return None
+    if not isinstance(quote, dict):
+        raise ValueError("invalid index day snapshot")
+    if quote.get("stck_shrn_iscd") != code:
+        raise ValueError("index day snapshot subject mismatch")
+    daily = parse_bar({**quote, "date": bars[-1].trading_date}, fields=(
+        "date", "ovrs_prod_oprc", "ovrs_prod_hgpr", "ovrs_prod_lwpr", "ovrs_nmix_prpr", "acml_vol"))
+    if daily.close != bars[-1].close:
+        raise ValueError("index day/minute snapshot mismatch")
+    return daily.model_copy(update={"volume": 0})
+
+
 @dataclass
 class _Snapshot:
     rows: list[UsDailyBar] = field(default_factory=list)
@@ -89,15 +113,29 @@ class _Snapshot:
     retry_at: float = 0
     failed: bool = False
     manual_retry_at: float = float("-inf")
+    refreshed_at: float = float("-inf")
+    failures: int = 0
+    daily_candle: UsDailyBar | None = None
 
 
 class UsIndexMinuteService:
-    """Three index keys, single-flight and one-minute TTL shared across periods."""
+    """Three index keys; one demand-driven snapshot shared across all consumers."""
 
     def __init__(self, *, clock=time.monotonic, wall_clock=time.time) -> None:
         self.clock, self.wall_clock = clock, wall_clock
         self.entries: dict[str, _Snapshot] = {}
         self.pending: dict[str, asyncio.Task] = {}
+
+    def refresh_interval_ms(self, entry: _Snapshot) -> int:
+        now = datetime.fromtimestamp(self.wall_clock(), NY)
+        interval = index_refresh_interval_ms(now)
+        # An old/empty source on a holiday must not acquire a fast polling lease.
+        # This is observed data freshness, not a guessed US trading calendar.
+        if not entry.rows or entry.rows[-1].trading_date != now.strftime("%Y%m%d"):
+            interval = 60_000
+        if entry.failed:
+            interval = max(interval, min(60_000, 2000 * 2 ** min(entry.failures - 1, 5)))
+        return interval
 
     def retry_failed(self, code: str) -> None:
         entry = self.entries.get(code)
@@ -114,7 +152,8 @@ class UsIndexMinuteService:
         if client is not None and not bypass:
             if code in self.pending:
                 await asyncio.shield(self.pending[code])
-            elif self.clock() >= entry.retry_at:
+            elif self.clock() >= (entry.retry_at if entry.failed else
+                                  entry.refreshed_at + self.refresh_interval_ms(entry) / 1000):
                 task = asyncio.create_task(self._refresh(code, client, entry))
                 self.pending[code] = task
                 task.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
@@ -126,6 +165,8 @@ class UsIndexMinuteService:
             available_to_ms=entry.rows[-1].t_ms if entry.rows else None,
             last_successful_check_at_ms=entry.checked_ms,
             refresh_status=status,
+            refresh_interval_ms=self.refresh_interval_ms(entry),
+            current_daily_candle=entry.daily_candle,
             messages=["Latest vendor window only; arbitrary date history is unavailable.",
                       "Delay is unverified. Post-close corrections are retained; the last bucket is provisional."],
         )
@@ -133,14 +174,24 @@ class UsIndexMinuteService:
     async def _refresh(self, code, client, entry):
         try:
             body = await asyncio.wait_for(client.get_global_index_minute_snapshot(code), timeout=15)
-            entry.rows = parse_snapshot(body)
+            rows = parse_snapshot(body)
+            if entry.rows and (not rows or rows[-1].t_ms < entry.rows[-1].t_ms):
+                raise ValueError("empty or regressing index snapshot")
+            daily = current_daily_candle(body, rows, code, datetime.fromtimestamp(self.wall_clock(), NY))
+            if (entry.daily_candle and rows and entry.daily_candle.trading_date == rows[-1].trading_date
+                    and daily is None):
+                raise ValueError("missing previously available index day snapshot")
+            entry.rows, entry.daily_candle = rows, daily
             entry.checked_ms = int(self.wall_clock() * 1000)
             entry.failed = False
+            entry.failures = 0
         except (KisApiError, KisAuthError, KisRateLimitError, KisTransportError, httpx.HTTPError,
                 TimeoutError, ValueError, KeyError, TypeError):
             entry.failed = True
+            entry.failures += 1
         finally:
-            entry.retry_at = self.clock() + 60
+            entry.refreshed_at = self.clock()
+            entry.retry_at = self.clock() + self.refresh_interval_ms(entry) / 1000
             self.pending.pop(code, None)
 
     async def aclose(self):

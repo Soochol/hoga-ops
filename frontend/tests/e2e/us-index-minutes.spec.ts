@@ -18,7 +18,7 @@ async function measurements(page: Page) {
   }, windowId);
 }
 
-async function setup(page: Page, options: { stale?: () => boolean; crossMidnight?: boolean } = {}) {
+async function setup(page: Page, options: { stale?: () => boolean; crossMidnight?: boolean; liveClose?: () => number } = {}) {
   await installLiveMocks(page);
   await page.addInitScript(id => {
     if (!sessionStorage.getItem('live.workspace.v1')) sessionStorage.setItem('live.workspace.v1', JSON.stringify({ schema_version: 2,
@@ -36,12 +36,56 @@ async function setup(page: Page, options: { stale?: () => boolean; crossMidnight
         payload.minute_metadata!.available_to_ms = payload.candles.at(-1)!.t_ms;
       }
       if (options.stale?.()) payload.minute_metadata!.refresh_status = 'stale';
+      if (options.liveClose) {
+        const close = options.liveClose();
+        const last = payload.candles.at(-1)!;
+        payload.candles[payload.candles.length - 1] = { ...last, close, high: Math.max(last.high, close), low: Math.min(last.low, close) };
+        payload.minute_metadata!.refresh_interval_ms = 2000;
+      }
       return route.fulfill({ json: payload });
     }
     // A calendar transition stays on the independent daily path.
-    return route.fulfill({ json: { index_id: params.get('index_id'), timeframe: params.get('timeframe'), from: params.get('from'), to: params.get('to'), candles: [{ trading_date: '20261016', t_ms: Date.UTC(2026, 9, 16), open: 120, high: 125, low: 119, close: 121.2345, volume: 0 }], data_warnings: [], daily_metadata: { refresh_status: 'normal', latest_bar_date: '20261016' } } });
+    const close = options.liveClose?.() ?? 121.2345;
+    return route.fulfill({ json: { index_id: params.get('index_id'), timeframe: params.get('timeframe'), from: params.get('from'), to: params.get('to'), candles: [{ trading_date: '20261016', t_ms: Date.UTC(2026, 9, 16), open: 120, high: Math.max(125, close), low: Math.min(119, close), close, volume: 0 }], data_warnings: [], daily_metadata: { refresh_status: 'normal', latest_bar_date: '20261016' },
+      ...(options.liveClose ? { minute_metadata: { ...evidence.responses[0].minute_metadata, refresh_interval_ms: 2000 } } : {}) } });
   });
 }
+
+test('US index updates minute, D/W/M and header every two seconds without resetting the viewport', async ({ page }) => {
+  const original = evidence.responses.find(r => r.index_id === 'SOX' && r.timeframe === '1m')!.candles.at(-1)!;
+  let close = original.close;
+  await page.clock.install({ time: new Date('2026-10-22T15:00:00Z') });
+  await setup(page, { liveClose: () => close });
+  await page.route(/\/api\/live\/index-header-quote\?/, route => route.fulfill({ json: {
+    index_id: 'SOX', value: close, change: close - 100, change_rate: close - 100,
+    previous_close: 100, trading_date: '20261022', observed_at_ms: Date.parse('2026-10-22T15:00:00Z'),
+    checked_at_ms: Date.parse('2026-10-22T15:00:00Z'), market_timezone: 'America/New_York',
+    session_status: 'open', refresh_status: 'normal', source: 'kis_minute', delay_unverified: true,
+    refresh_interval_ms: 2000,
+  } }));
+  await page.goto('/live?index=SOX');
+  await expect.poll(async () => (await measurements(page)).count).toBe(102);
+  await page.clock.runFor(1_000);
+  const before = await measurements(page);
+  close += 10;
+  await page.clock.runFor(2500);
+  await expect.poll(async () => (await measurements(page)).last).toMatchObject({ close });
+  const after = await measurements(page);
+  expect(after.count).toBe(before.count);
+  expect(after.range!.from).toBeCloseTo(before.range!.from, 1);
+  expect(after.range!.to).toBeCloseTo(before.range!.to, 1);
+  const price = page.getByTestId('titlebar-current-price');
+  await expect(price).toHaveText(close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  for (const label of ['일', '주', '월']) {
+    await page.getByRole('group', { name: 'LiveTimeframe' }).getByRole('button', { name: label, exact: true }).click();
+    await expect.poll(async () => (await measurements(page)).count).toBe(1);
+    close += 10;
+    await page.clock.runFor(2500);
+    await expect.poll(async () => (await measurements(page)).last).toMatchObject({ close });
+    await expect(price).toHaveText(close.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  }
+  await expect(page.locator('.live-window-chart').getByRole('status')).toHaveCount(0);
+});
 
 for (const id of ['NASDAQ_COMPOSITE', 'SP500', 'SOX']) {
   test(`${id}: renders actual-provider minute fixture, period changes, restore and bounded polling`, async ({ page }, testInfo) => {

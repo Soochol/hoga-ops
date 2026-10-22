@@ -2288,13 +2288,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             if timeframe not in {*US_MINUTE_TIMEFRAMES, "D", "W", "M"}:
                 raise HTTPException(422, {"code": LiveErrorCode.UNSUPPORTED_INDEX,
                                           "message": "US indices support 1/3/5/10/15/30/60m and D/W/M candles"})
-            bars, meta = (await us_markets.index_minutes(index, timeframe) if timeframe in US_MINUTE_TIMEFRAMES
-                          else await us_markets.index_daily(index, from_, to, timeframe))
+            bars, meta, minute_meta = await us_markets.index_chart(index, from_, to, timeframe)
             return LiveIndexCandlesResponse(
                 index_id=index.id,
                 **({"from": bars[0].trading_date if bars else from_, "to": bars[-1].trading_date if bars else to,
-                    "minute_metadata": meta} if timeframe in US_MINUTE_TIMEFRAMES else
-                   {"from": calendar_bounds(from_, timeframe)[0], "to": to, "daily_metadata": meta}),
+                    } if timeframe in US_MINUTE_TIMEFRAMES else
+                   {"from": calendar_bounds(from_, timeframe)[0], "to": to}),
+                daily_metadata=meta, minute_metadata=minute_meta,
                 timeframe=timeframe, candles=[LiveCandleRow.model_validate(b.model_dump()) for b in bars],
             )
         if data_dir is None:
