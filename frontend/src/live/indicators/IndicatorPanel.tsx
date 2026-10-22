@@ -273,6 +273,7 @@ export default function IndicatorPanel({
     switch (id) {
       case 'supertrend': return () => actions.setSupertrendEnabled(present);
       case 'bollinger': return () => actions.setBollingerEnabled(present);
+      case 'envelope': return () => actions.setEnvelopeEnabled(present);
       case 'moving-average': return () => setMaEnabled(present);
       case 'daily-moving-average': return () => setDailyMaEnabled(present);
       // 병합 카테고리: 매도·매수를 함께 움직인다(레전드에서는 각각 별도 행이다).

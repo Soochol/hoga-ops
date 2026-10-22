@@ -1,5 +1,6 @@
 import MovingAverageConfig from './MovingAverageConfig';
 import BollingerConfig from './BollingerConfig';
+import EnvelopeConfig from './EnvelopeConfig';
 import SupertrendConfig from './SupertrendConfig';
 import DailyMovingAverageConfig from './DailyMovingAverageConfig';
 import VolumeConfig from './VolumeConfig';
@@ -26,6 +27,7 @@ export default function IndicatorConfigContent({ category, capabilities }: { cat
     <IndicatorStylePreview category={category} settings={settings} />
     {category === 'supertrend' && <SupertrendConfig />}
     {category === 'bollinger' && <BollingerConfig />}
+    {category === 'envelope' && <EnvelopeConfig />}
     {category === 'moving-average' && <MovingAverageConfig />}
     {category === 'daily-moving-average' && <DailyMovingAverageConfig />}
     {category === 'volume' && <VolumeConfig />}

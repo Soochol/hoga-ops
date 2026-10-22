@@ -13,6 +13,7 @@ import type { CategoryId } from './IndicatorPanelHelpers';
 import MovingAverageOverlay from './MovingAverageOverlay';
 import DailyMovingAverageOverlay from './DailyMovingAverageOverlay';
 import BollingerOverlay from './BollingerOverlay';
+import EnvelopeOverlay from './EnvelopeOverlay';
 import SupertrendOverlay from './SupertrendOverlay';
 import DepthHeatmapOverlay from '../DepthHeatmapOverlay';
 import type { DepthHeatmapPoint } from '../depthHeatmapWire';
@@ -41,6 +42,7 @@ export function IndicatorInstanceOverlays(props: InstanceOverlayProps) {
   const behindSeries = useActivePrefs(s => s.candleAlwaysOnTop);
   if (category === 'moving-average') return <MovingAverageOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'bollinger') return <BollingerOverlay chart={chart} bundle={bundle} axis={axis} />;
+  if (category === 'envelope') return <EnvelopeOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'supertrend') return <SupertrendOverlay chart={chart} bundle={bundle} axis={axis} />;
   if (category === 'daily-moving-average') return <DailyMovingAverageOverlay chart={chart} bundle={bundle} axis={axis}
     code={props.code} timeframe={props.timeframe} venue={props.venue} todayKst={props.todayKst}

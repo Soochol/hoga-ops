@@ -16,7 +16,7 @@ export interface IndicatorInstance {
 
 const PREFIXES: Record<CategoryId, readonly string[]> = {
   'moving-average': ['movingAverages'], 'daily-moving-average': ['dailyMovingAverages'],
-  bollinger: ['bollinger'], supertrend: ['supertrend'], volume: ['volume'],
+  envelope: ['envelope'], bollinger: ['bollinger'], supertrend: ['supertrend'], volume: ['volume'],
   'trade-value': ['tradeValue'], 'quote-totals': ['quoteTotals', 'surge'], ratio: ['ratio'],
   'fill-strength': ['fillStrength'], 'program-trade': ['programTrade'],
   'program-daily': ['dailyProgram'], 'foreign-net': ['foreignNet', 'foreignTradeSide'],
@@ -25,7 +25,7 @@ const PREFIXES: Record<CategoryId, readonly string[]> = {
   'volume-distribution': ['volumeDistribution'], 'broker-late-entry': ['brokerLateEntries'],
 };
 const LINE_PREFIX: Partial<Record<CategoryId, string>> = {
-  bollinger: 'bollinger', supertrend: 'supertrend', 'quote-totals': 'quoteTotals', 'fill-strength': 'fillStrength',
+  envelope: 'envelope', bollinger: 'bollinger', supertrend: 'supertrend', 'quote-totals': 'quoteTotals', 'fill-strength': 'fillStrength',
 };
 export const INDICATOR_CATEGORIES = Object.keys(PREFIXES) as CategoryId[];
 export function ownsIndicatorKey(category: CategoryId, key: string): boolean {
@@ -67,6 +67,7 @@ export function normalizeIndicatorInstances(raw: unknown, normalize: (raw: unkno
 }
 export function indicatorInstanceSummary(category: CategoryId, settings: IndicatorSettings): string {
   switch (category) {
+    case 'envelope': return `${settings.envelopePeriod}봉 · ±${settings.envelopePercent}%`;
     case 'bollinger': return `${settings.bollingerPeriod}봉 · ${settings.bollingerMultiplier}배`;
     case 'supertrend': return `ATR ${settings.supertrendPeriod} · ${settings.supertrendMultiplier}배`;
     case 'moving-average': return settings.movingAverages.filter(m => m.enabled).map(m => `${m.period}`).join(' · ') || '이동평균선';

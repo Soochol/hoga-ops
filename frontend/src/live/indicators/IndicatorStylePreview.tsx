@@ -1,3 +1,4 @@
+import { computeEnvelope } from '../../chart/projectors/envelope';
 import type { LineStyle } from '../../chart/drawing/types';
 import { resolveMaColor } from '../../util/maColor';
 import { useThemePrefsStore } from '../../state/themePrefs';
@@ -26,6 +27,13 @@ function previewLines(category: CategoryId, s: IndicatorSettings, cumulative: bo
       color: resolveMaColor(m, theme), width: m.lineWidth,
       values: computeSMA(SAMPLE.map(c => selectSource(c, m.source)), m.period).slice(-40).map(value => value ?? 100),
     }));
+  }
+  if (category === 'envelope') {
+    const points = computeEnvelope(SAMPLE.map(c => selectSource(c, s.envelopeSource)), s.envelopePeriod, s.envelopePercent).slice(-40);
+    return [s.envelopeUpperColor, s.envelopeMiddleColor, s.envelopeLowerColor].map((color, line) => ({
+      label: ['상단선', '중심선', '하단선'][line], color, width: s.envelopeLineWidth,
+      values: points.map(point => point?.[(['upper', 'middle', 'lower'] as const)[line]] ?? 100),
+    })).filter((_, i) => lineVisible(s.indicatorLineVisibility, (['envelopeUpper', 'envelopeMiddle', 'envelopeLower'] as const)[i]));
   }
   if (category === 'bollinger') {
     const values = SAMPLE.map(c => selectSource(c, s.bollingerSource));
@@ -87,7 +95,7 @@ export default function IndicatorStylePreview({ category, settings }: { category
   const theme = useThemePrefsStore(s => s.themePreference);
   const cumulative = useScopedChartPrefs().fillStrengthCumulative;
   const lines = previewLines(category, settings, cumulative, theme);
-  const controlled = ['moving-average', 'daily-moving-average', 'bollinger', 'supertrend', 'quote-totals', 'fill-strength'].includes(category);
+  const controlled = ['moving-average', 'daily-moving-average', 'bollinger', 'envelope', 'supertrend', 'quote-totals', 'fill-strength'].includes(category);
   const hoga = category === 'quote-totals' || category === 'fill-strength';
   const colors = dotColorsFor(category, settings, theme);
   if (!controlled && !lines.length && !colors.length) return null;

@@ -1,6 +1,7 @@
 /** Missing entries are visible, preserving existing saved indicator settings. */
 export const INDICATOR_LINE_KEYS = [
   'bollingerUpper', 'bollingerMiddle', 'bollingerLower',
+  'envelopeUpper', 'envelopeMiddle', 'envelopeLower',
   'supertrendUp', 'supertrendDown',
   'quoteTotalsBid', 'quoteTotalsAsk',
   'quoteTotalsBidLevel', 'quoteTotalsAskLevel',

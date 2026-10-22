@@ -12,6 +12,7 @@ export default function LineVisibilityRow({ lineKey, label, toggleLabel, childre
   const toggle = () => {
     actions.setIndicatorLineVisible(lineKey, !visible);
     if (!visible && lineKey.startsWith('bollinger')) actions.setBollingerHidden(false);
+    if (!visible && lineKey.startsWith('envelope')) actions.setEnvelopeHidden(false);
     if (!visible && lineKey.startsWith('supertrend')) actions.setSupertrendHidden(false);
   };
   return <LineDisplayRow label={label} toggleLabel={toggleLabel} checked={visible} onToggle={toggle}>{children}</LineDisplayRow>;

@@ -33,6 +33,8 @@ export function dotColorsFor(id: CategoryId, ind: IndicatorSettings, theme?: str
       return [ind.supertrendUpColor, ind.supertrendDownColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, i ? 'supertrendDown' : 'supertrendUp'));
     case 'bollinger':
       return [ind.bollingerUpperColor, ind.bollingerMiddleColor, ind.bollingerLowerColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, (['bollingerUpper', 'bollingerMiddle', 'bollingerLower'] as const)[i]));
+    case 'envelope':
+      return [ind.envelopeUpperColor, ind.envelopeMiddleColor, ind.envelopeLowerColor].filter((_, i) => lineVisible(ind.indicatorLineVisibility, (['envelopeUpper', 'envelopeMiddle', 'envelopeLower'] as const)[i]));
     case 'moving-average':
       return capped(ind.movingAverages.filter((m) => m.enabled && !m.hidden).map((m) => resolveMaColor(m, theme)));
     case 'daily-moving-average':

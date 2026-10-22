@@ -247,6 +247,7 @@ export const FLAG_INDICATOR_TYPES = [
   'trade-volume-poc',
   'depth-heatmap',
   'bollinger',
+  'envelope',
   'supertrend',
   'broker-late-entry',
 ] as const;
@@ -260,6 +261,7 @@ export const FLAG_INDICATOR_LABEL: Record<FlagIndicatorType, string> = {
   'trade-volume-poc': '당일 최대 매물대',
   'depth-heatmap': '호가 잔량 히트맵',
   bollinger: '볼린저 밴드',
+  envelope: '엔벨로프',
   supertrend: '슈퍼트렌드',
   'broker-late-entry': '신규 거래원 등장',
 };
@@ -313,6 +315,11 @@ export const FLAG_INDICATOR_FIELDS: Record<
     'bollingerEnabled', 'bollingerHidden', 'bollingerPeriod', 'bollingerMultiplier',
     'bollingerSource', 'bollingerUpperColor', 'bollingerMiddleColor', 'bollingerLowerColor',
     'bollingerLineWidth',
+  ],
+  envelope: [
+    'envelopeEnabled', 'envelopeHidden', 'envelopePeriod', 'envelopePercent',
+    'envelopeSource', 'envelopeUpperColor', 'envelopeMiddleColor', 'envelopeLowerColor',
+    'envelopeLineWidth',
   ],
 };
 
@@ -449,6 +456,29 @@ export const INDICATOR_OPS = {
       if (next[key] !== undefined && !/^#[0-9a-f]{6}$/i.test(next[key])) return null;
     }
     if (next.bollingerLineWidth !== undefined && ![1, 2, 3, 4].includes(next.bollingerLineWidth)) return null;
+    return next;
+  },
+  setEnvelopeEnabled: (_cur: IndicatorSettings, enabled: boolean): Patch =>
+    enabled ? { envelopeEnabled: true, envelopeHidden: false } : { envelopeEnabled: false },
+  setEnvelopeHidden: (_cur: IndicatorSettings, hidden: boolean): Patch => ({ envelopeHidden: hidden }),
+  setEnvelopeSettings: (_cur: IndicatorSettings, patch: Partial<Pick<IndicatorSettings,
+    'envelopePeriod' | 'envelopePercent' | 'envelopeSource' | 'envelopeUpperColor'
+    | 'envelopeMiddleColor' | 'envelopeLowerColor' | 'envelopeLineWidth'>>): Patch => {
+    const next = { ...patch };
+    if (next.envelopePeriod !== undefined) {
+      if (!Number.isFinite(next.envelopePeriod)) return null;
+      next.envelopePeriod = clamp(Math.floor(next.envelopePeriod), MA_PERIOD_MIN, MA_PERIOD_MAX);
+    }
+    if (next.envelopePercent !== undefined) {
+      if (!Number.isFinite(next.envelopePercent)) return null;
+      next.envelopePercent = clamp(next.envelopePercent, 0.1, 100);
+    }
+    if (next.envelopeSource !== undefined
+      && !['close', 'open', 'high', 'low', 'hl2', 'hlc3', 'ohlc4'].includes(next.envelopeSource)) return null;
+    for (const key of ['envelopeUpperColor', 'envelopeMiddleColor', 'envelopeLowerColor'] as const) {
+      if (next[key] !== undefined && !/^#[0-9a-f]{6}$/i.test(next[key])) return null;
+    }
+    if (next.envelopeLineWidth !== undefined && ![1, 2, 3, 4].includes(next.envelopeLineWidth)) return null;
     return next;
   },
   setMovingAverage: (cur: IndicatorSettings, id: string, patch: Partial<LiveMAConfig>): Patch => {

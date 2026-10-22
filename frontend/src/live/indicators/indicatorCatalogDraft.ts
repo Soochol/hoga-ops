@@ -21,6 +21,7 @@ export function indicatorIsPresent(id: CategoryId, settings: IndicatorSettings):
     case 'daily-moving-average': return settings.dailyMovingAverages.some(m => m.enabled);
     case 'supertrend': return settings.supertrendEnabled;
     case 'bollinger': return settings.bollingerEnabled;
+    case 'envelope': return settings.envelopeEnabled;
     case 'peak-walls': return settings.askPeakEnabled || settings.bidPeakEnabled;
     case 'trade-volume-poc': return settings.tradeVolumePocEnabled;
     case 'volume-distribution': return settings.volumeDistributionEnabled;
@@ -46,6 +47,7 @@ export function createCatalogDraft(id: CategoryId, base: IndicatorSettings, base
       actions.setAllDailyMovingAveragesEnabled(true); break;
     case 'supertrend': actions.setSupertrendEnabled(true); break;
     case 'bollinger': actions.setBollingerEnabled(true); break;
+    case 'envelope': actions.setEnvelopeEnabled(true); break;
     case 'peak-walls': actions.setAskPeakEnabled(true); actions.setBidPeakEnabled(true); break;
     case 'trade-volume-poc': actions.setTradeVolumePocEnabled(true); break;
     case 'volume-distribution': actions.setVolumeDistributionEnabled(true); break;

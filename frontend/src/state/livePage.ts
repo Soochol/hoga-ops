@@ -392,6 +392,9 @@ type Store = Persisted & IndicatorSettings & {
   setBollingerEnabled: (enabled: boolean) => void;
   setBollingerHidden: (hidden: boolean) => void;
   setBollingerSettings: import('./indicatorOps').BoundIndicatorOps['setBollingerSettings'];
+  setEnvelopeEnabled: (enabled: boolean) => void;
+  setEnvelopeHidden: (hidden: boolean) => void;
+  setEnvelopeSettings: import('./indicatorOps').BoundIndicatorOps['setEnvelopeSettings'];
   setMovingAverage: (id: string, patch: Partial<LiveMAConfig>) => void;
   addMovingAverage: () => void;
   removeMovingAverage: (id: string) => void;

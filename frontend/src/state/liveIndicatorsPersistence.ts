@@ -182,6 +182,15 @@ export type PersistedIndicators = {
   bollingerMiddleColor: string;
   bollingerLowerColor: string;
   bollingerLineWidth: 1 | 2 | 3 | 4;
+  envelopeEnabled: boolean;
+  envelopeHidden: boolean;
+  envelopePeriod: number;
+  envelopePercent: number;
+  envelopeSource: MASource;
+  envelopeUpperColor: string;
+  envelopeMiddleColor: string;
+  envelopeLowerColor: string;
+  envelopeLineWidth: 1 | 2 | 3 | 4;
 
   movingAverages: LiveMAConfig[];
   /**
@@ -719,6 +728,22 @@ export function mergeLiveIndicatorPrefs(
       ? obj.bollingerLowerColor : '#3B82F6',
     bollingerLineWidth: typeof obj?.bollingerLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.bollingerLineWidth)
       ? obj.bollingerLineWidth as 1 | 2 | 3 | 4 : 1,
+    envelopeEnabled: obj?.envelopeEnabled === true,
+    envelopeHidden: obj?.envelopeHidden === true,
+    envelopePeriod: typeof obj?.envelopePeriod === 'number' && Number.isFinite(obj.envelopePeriod)
+      ? Math.max(MA_PERIOD_MIN, Math.min(MA_PERIOD_MAX, Math.floor(obj.envelopePeriod))) : 20,
+    envelopePercent: typeof obj?.envelopePercent === 'number' && Number.isFinite(obj.envelopePercent)
+      ? Math.max(0.1, Math.min(100, obj.envelopePercent)) : 2,
+    envelopeSource: typeof obj?.envelopeSource === 'string' && VALID_SOURCES.has(obj.envelopeSource)
+      ? obj.envelopeSource as MASource : 'close',
+    envelopeUpperColor: typeof obj?.envelopeUpperColor === 'string' && HEX_COLOR.test(obj.envelopeUpperColor)
+      ? obj.envelopeUpperColor : '#3B82F6',
+    envelopeMiddleColor: typeof obj?.envelopeMiddleColor === 'string' && HEX_COLOR.test(obj.envelopeMiddleColor)
+      ? obj.envelopeMiddleColor : '#F97316',
+    envelopeLowerColor: typeof obj?.envelopeLowerColor === 'string' && HEX_COLOR.test(obj.envelopeLowerColor)
+      ? obj.envelopeLowerColor : '#3B82F6',
+    envelopeLineWidth: typeof obj?.envelopeLineWidth === 'number' && VALID_LINE_WIDTHS.has(obj.envelopeLineWidth)
+      ? obj.envelopeLineWidth as 1 | 2 | 3 | 4 : 1,
     movingAverages: mas,
     movingAverageEnabled: enabled,
     foreignNetEnabled: fNet,

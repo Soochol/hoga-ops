@@ -64,6 +64,7 @@ import { useLiveCursorStore, type SidebarCursorOrigin } from './useLiveCursorSto
 import { alignSidebarCursorMs, shouldPublishSidebarCursor, sidebarCursorPublishDelayMs, LIVE_SIDEBAR_CURSOR_THROTTLE_MS } from './sidebarCursorRateLimit';
 import MovingAverageOverlay from './indicators/MovingAverageOverlay';
 import BollingerOverlay from './indicators/BollingerOverlay';
+import EnvelopeOverlay from './indicators/EnvelopeOverlay';
 import SupertrendOverlay from './indicators/SupertrendOverlay';
 import DailyMovingAverageOverlay from './indicators/DailyMovingAverageOverlay';
 import LiveCurrentPriceLine from './LiveCurrentPriceLine';
@@ -2788,6 +2789,7 @@ export function LiveChartRoot({
               </IndicatorInstanceProvider>)}
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
+              <EnvelopeOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
@@ -2826,6 +2828,7 @@ export function LiveChartRoot({
               </IndicatorInstanceProvider>)}
               <MovingAverageOverlay chart={chart} bundle={cb} axis={axis} />
               <BollingerOverlay chart={chart} bundle={cb} axis={axis} />
+              <EnvelopeOverlay chart={chart} bundle={cb} axis={axis} />
               <SupertrendOverlay chart={chart} bundle={cb} axis={axis} />
               <DailyMovingAverageOverlay chart={chart} bundle={cb} axis={axis} code={code} timeframe={timeframe} venue={venue} todayKst={todayKst} dailyCandleKisEnabled={dailyCandleKisEnabled} dailyMaWindowFloorDate={dailyMaWindowFloorDate} override={dailyMovingAverageOverride} />
             </>
