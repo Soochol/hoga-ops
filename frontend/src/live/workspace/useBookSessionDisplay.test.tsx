@@ -5,6 +5,10 @@ import type { ReactNode } from 'react';
 import type { OrderbookSnapshot } from '../../api/types';
 import * as client from '../../api/client';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
+import type { AftermarketExclusionResponse } from '../../api/aftermarketExclusion';
+
+const restriction = vi.hoisted(() => ({ current: undefined as AftermarketExclusionResponse | undefined }));
+vi.mock('../../api/aftermarketExclusion', () => ({ useAftermarketExclusion: () => restriction.current }));
 
 vi.mock('../useEffectiveVenue', () => ({
   useNxtEnabledResolver: () => () => false,
@@ -40,7 +44,7 @@ function setup(venue: 'KRX' | 'NXT' | 'UN' = 'KRX', isSpot = false,
   return { ...hook, props, queryClient };
 }
 
-beforeEach(() => { vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: null }); });
+beforeEach(() => { restriction.current = undefined; vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: null }); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 it('recovers pre-auction data after an empty reset and replaces it at 15:59:50 without a clock gate', async () => {
@@ -81,6 +85,17 @@ it('keeps the saved ladder past 16:00 until data arrives, and resumes updates pa
   expect(result.current.snapshot).toEqual(late);
 });
 
+it('removes the receive-wait footer when a current designation excludes the stock', async () => {
+  vi.spyOn(client, 'apiCall').mockResolvedValue({ snapshot: saved });
+  const { result, rerender, props } = setup();
+  await waitFor(() => expect(result.current.snapshot).toEqual(saved));
+  restriction.current = { code: '036930', date: '20261014', status: 'checked', reasons: ['investment_warning'],
+    checked_at_ms: at(19), source: 'kiwoom_ka10100' };
+  rerender({ ...props, nowMs: at(19) });
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '정규장 마지막 · 15:19:50' });
+  expect(result.current.aftermarketExclusion?.reasons).toEqual(['investment_warning']);
+});
+
 it('keeps same-day usable data across empty frames outside KRX, including before the opening time', () => {
   const api = vi.spyOn(client, 'apiCall');
   const retained = book(at(7, 59, 50));
@@ -91,6 +106,40 @@ it('keeps same-day usable data across empty frames outside KRX, including before
   expect(result.current.snapshot).toEqual(retained);
   expect(result.current.storedLadder).toBe(true);
   expect(api).not.toHaveBeenCalled();
+});
+
+it('retains a stale KRX closing residual as a saved ladder and resumes on an evening book', () => {
+  const residual = book(at(15, 30, 2));
+  const { result, rerender, props } = setup('UN');
+  rerender({ ...props, nowMs: at(19, 30), latest: residual, retained: residual });
+  expect(result.current.snapshot).toEqual(residual);
+  expect(result.current.storedLadder).toBe(true);
+  expect(result.current.sessionControl).toEqual({ kind: 'label', label: '마지막 수신 · 15:30:02' });
+
+  const evening = book(at(19, 30), 33400);
+  rerender({ ...props, nowMs: at(19, 30), latest: evening, retained: evening });
+  expect(result.current.snapshot).toEqual(evening);
+  expect(result.current.storedLadder).toBe(false);
+  // Missing updates during the continuous market must still report a delay.
+  rerender({ ...props, nowMs: at(19, 31), latest: evening, retained: evening });
+  expect(result.current.storedLadder).toBe(false);
+});
+
+it('keeps an arriving pre-reopening KRX ladder live until it becomes stale', () => {
+  const early = book(at(15, 59, 50));
+  const { result, rerender, props } = setup();
+  rerender({ ...props, nowMs: at(16, 0, 19), latest: early, retained: early });
+  expect(result.current.storedLadder).toBe(false);
+  rerender({ ...props, nowMs: at(16, 0, 20), latest: early, retained: early });
+  expect(result.current.snapshot).toEqual(early);
+  expect(result.current.storedLadder).toBe(true);
+});
+
+it('does not apply the KRX break to an NXT book', () => {
+  const residual = book(at(15, 30, 2));
+  const { result, rerender, props } = setup('NXT');
+  rerender({ ...props, nowMs: at(19, 30), latest: residual, retained: residual });
+  expect(result.current.storedLadder).toBe(false);
 });
 
 it('does not substitute live or saved fallback data into a historical cursor', () => {

@@ -36,6 +36,7 @@ from hoga.live import (
     kiwoom_runtime,
 )
 from hoga.live.after_hours_store import load_book as load_stored_after_hours_book, today_kst_yyyymmdd
+from hoga.live.aftermarket_exclusions import AftermarketExclusionResponse, AftermarketExclusionService
 from hoga.live.daily_program_trade import DailyProgramTradeBackfill, DailyProgramTradePoint
 from hoga.live.data_warnings import (
     LiveDataWarning,
@@ -2015,6 +2016,28 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     router = APIRouter(prefix="/api/live")
     us_markets = UsMarketApi(data_dir)
     router.include_router(us_markets.router)
+
+    async def fetch_aftermarket_designation(code: str) -> dict | None:
+        client = kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir else None
+        if client is None or live_settings.rest_bypass_enabled(data_dir):
+            return None
+        page = await kiwoom_access.run_with_capacity(
+            kiwoom_rest_runtime.ensure_scheduler(data_dir), key=("aftermarket-exclusion", code),
+            api_id="ka10100", priority="user_visible", client=client,
+            fetch_fn=lambda c: c.call("ka10100", {"stk_cd": code}),
+        )
+        if not page.rows:
+            raise ValueError("stock information response is empty")
+        return page.rows[0]
+
+    exclusions = AftermarketExclusionService(
+        fetch_aftermarket_designation,
+        lambda code: next((hit.security_type for hit in symbols.search(code) if hit.code == code), None),
+    )
+
+    @router.get("/aftermarket-exclusion", response_model=AftermarketExclusionResponse)
+    async def _get_aftermarket_exclusion(code: str = Query(pattern=CODE_PATTERN)) -> AftermarketExclusionResponse:
+        return await exclusions.get(code, int(monotonic_time.time() * 1000))
 
     @router.get("/status", response_model=LiveStatus)
     async def _get_status(request: Request, background_tasks: BackgroundTasks) -> LiveStatus:

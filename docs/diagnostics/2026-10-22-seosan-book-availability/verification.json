@@ -1,0 +1,74 @@
+{
+  "verified_at": "2026-10-22T19:38:58.084728+09:00",
+  "head": "e6d5e4faa2f5d66c2b0c8da5ea11e9b31d31f11f",
+  "base": "e6d5e4faa2f5d66c2b0c8da5ea11e9b31d31f11f",
+  "working_tree": "Uncommitted changes on codex/seosan-book-availability; fingerprint includes changed inputs",
+  "inputs": {
+    "frontend": {
+      "scope": "All tracked frontend source, tests, fixtures, dependencies, lockfile and configuration",
+      "file_count": 1814,
+      "sha256": "588b113d4b117f81a2c67e6662d780bb475254bc84aca685e61ae590497897e8"
+    }
+  },
+  "observed": {
+    "source": "Read-only localhost:8000 health, live/status and live/series responses",
+    "version": "0.16.6.0",
+    "code": "079650",
+    "date": "20261022",
+    "effective_venue": "KRX",
+    "subscription_phase": "registered",
+    "provider_connection": "connected",
+    "collector_ready": true,
+    "last_ob_ms": 1792650602000,
+    "last_ob_kst": "15:30:02",
+    "last_ob_phase": "after_hours_closing",
+    "snapshots": 0,
+    "after_hours": 0
+  },
+  "checks": [
+    {
+      "command": "npx vitest run src/live/workspace/useBookSessionDisplay.test.tsx (before fix)",
+      "result": "Regression reproduced: 2 failed, 18 passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed; app, unit and E2E TypeScript projects"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/useBookSessionDisplay.test.tsx src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx src/live/workspace/DataWindow.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/bookSessionMode.test.ts",
+      "result": "309 passed across 6 files"
+    },
+    {
+      "command": "npx playwright test book-availability.spec.ts --reporter=line",
+      "result": "3 passed on final inputs; both book windows retain closing residual, accept evening updates, show actual evening delay and block new orders after 30s"
+    },
+    {
+      "command": "npx vite build (Playwright startup)",
+      "result": "passed; existing bundle size warning"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "backend_port": 20041,
+    "frontend_port": 21041,
+    "workers": 1,
+    "vendor_credentials": "Blank per Playwright configuration"
+  },
+  "limits": [
+    "Worktree changes only; running user application and servers were not modified or restarted",
+    "No live broker re-registration, token issuance or trading performed",
+    "The reason no newer Seosan broker book arrived is not established; this corrects the display of the retained closing-session ladder",
+    "Scoped frontend tests; full repository suites not run",
+    "Existing ResizeObserver loop warnings occurred during successful E2E runs"
+  ]
+}

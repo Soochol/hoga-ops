@@ -276,7 +276,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const todayKst = link?.todayKst ?? realMsToYyyymmdd(nowMs);
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
-  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
+  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
     afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
@@ -464,7 +464,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   const bookStale = !useSinglePrice && spotOrderbookStale;
   const availabilityNow = useWallClockSecond();
   const { availability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
-    live, bookMs: snapshot?.ts_ms, nowMs: availabilityNow,
+    live, bookMs: snapshot?.ts_ms, nowMs: availabilityNow, exclusion: aftermarketExclusion,
     enabled: !isSpot && (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const bookAvailability = <BookAvailabilityState state={availability} onRetry={retryBook} />;

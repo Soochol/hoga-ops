@@ -2,7 +2,7 @@ import type { LiveStatus } from '../api/liveStatus';
 import type { LiveVenueOption } from '../state/liveVenue';
 
 export type OrderbookAvailabilityKind = 'loading' | 'registering' | 'awaiting_book' | 'waiting_slot'
-  | 'recovering' | 'unconfigured' | 'reference_limit' | 'query_error' | 'closed' | 'stale';
+  | 'recovering' | 'unconfigured' | 'reference_limit' | 'query_error' | 'closed' | 'stale' | 'aftermarket_excluded';
 export interface OrderbookAvailability {
   kind: OrderbookAvailabilityKind;
   message: string;

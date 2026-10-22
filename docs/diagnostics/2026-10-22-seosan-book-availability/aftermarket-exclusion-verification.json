@@ -1,0 +1,78 @@
+{
+  "verified_at": "2026-10-22T19:59:13.929397+09:00",
+  "head": "e6d5e4faa2f5d66c2b0c8da5ea11e9b31d31f11f",
+  "base": "e6d5e4faa2f5d66c2b0c8da5ea11e9b31d31f11f",
+  "branch": "codex/seosan-book-availability",
+  "working_tree": "Uncommitted implementation; fingerprints identify final source, tests, fixtures, dependencies, lockfiles and configuration",
+  "inputs": {
+    "backend": {
+      "sha256": "ad54802f8a95533ef8e95b576869169290060c26afabf00b496c9e7d80924ea9",
+      "file_count": 789
+    },
+    "frontend": {
+      "sha256": "b84650eccd9415c9d018f5f4aaeec10bd1f04df31a58183c370f373e1804be5f",
+      "file_count": 1818
+    }
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_aftermarket_exclusions.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/live/test_kiwoom_rest_seam.py -m 'not wallclock'",
+      "result": "59 passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed; app, unit-test and E2E projects"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/useBookSessionDisplay.test.tsx src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx src/live/workspace/DataWindow.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/bookSessionMode.test.ts src/api/aftermarketExclusion.test.tsx src/live/aftermarketExclusionState.test.tsx",
+      "result": "330 passed across 8 files"
+    },
+    {
+      "command": "npx playwright test book-availability.spec.ts --reporter=line",
+      "result": "7 passed on final product and test inputs (26.4s); both books show ETF/ETN/investment-warning exclusion reason without connection buttons, keep the retained timestamp and block stale-book orders; regular-session delays still show normally"
+    },
+    {
+      "command": "npx vite build (Playwright startup)",
+      "result": "passed; existing bundle size warning"
+    },
+    {
+      "command": "Intentional AftermarketExclusionReason FE union mismatch, run test_wire_enum_members_match_frontend_union, restore",
+      "result": "expected mismatch failure observed; all 12 wire tests subsequently passed after restoration"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "playwright": "1.60.0",
+    "chrome": "156.0.8078.47",
+    "backend_port": 20041,
+    "frontend_port": 21041,
+    "workers": 1,
+    "credentials": "Blank vendor credentials from Playwright configuration"
+  },
+  "research": {
+    "path": "docs/research/2026-10-22-aftermarket-exclusions.md",
+    "official_kiwoom_spec_sha256": "42a7b3912c9d9588c83bdc2db7779c8d2e038703a2b5562e54ef46ae905cba79",
+    "order_warning_5": "Official public spec contains 투자경과 typo; interpreted as investment warning. No new live authenticated broker response was sampled."
+  },
+  "visual_review": "Inspected aftermarket-excluded.png: neutral notices in both book windows show the exclusion name, 16:00-20:00 scope and 15:30:02 retained-book time without action buttons.",
+  "limits": [
+    "No running user application/server changes or restart; implementation remains in this worktree",
+    "Provider and account behavior in tests are fixtures; no new broker session, credential copying, token issuance or live trading",
+    "No complete aftermarket eligibility guarantee; missing/unknown designation fields are not inferred from a stale book, NXT status, no trades or a current halt",
+    "A halt at the regular-session close and no regular-session trades require evidence not provided by this endpoint",
+    "Scoped relevant suites; full repository test suites were not run",
+    "Existing ResizeObserver loop warnings occurred during successful E2E runs"
+  ]
+}
