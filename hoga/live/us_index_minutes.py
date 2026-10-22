@@ -18,6 +18,7 @@ from hoga.live.kis_errors import KisApiError, KisAuthError, KisRateLimitError, K
 from hoga.live.us_daily_candles import NY, UsDailyBar, UsDailyStatus, parse_bar
 
 MINUTE_TIMEFRAMES = ("1m", "3m", "5m", "10m", "15m", "30m", "60m")
+_MANUAL_RETRY_COOLDOWN_S = 2
 
 
 class UsMinuteMetadata(BaseModel):
@@ -87,6 +88,7 @@ class _Snapshot:
     checked_ms: int | None = None
     retry_at: float = 0
     failed: bool = False
+    manual_retry_at: float = float("-inf")
 
 
 class UsIndexMinuteService:
@@ -96,6 +98,14 @@ class UsIndexMinuteService:
         self.clock, self.wall_clock = clock, wall_clock
         self.entries: dict[str, _Snapshot] = {}
         self.pending: dict[str, asyncio.Task] = {}
+
+    def retry_failed(self, code: str) -> None:
+        entry = self.entries.get(code)
+        now = self.clock()
+        if (entry and entry.failed and code not in self.pending
+                and now - entry.manual_retry_at >= _MANUAL_RETRY_COOLDOWN_S):
+            entry.retry_at = 0
+            entry.manual_retry_at = now
 
     async def get(self, code: str, timeframe: str, *, client=None, bypass=False):
         if code not in {"COMP", "SPX", "SOX"} or timeframe not in MINUTE_TIMEFRAMES:

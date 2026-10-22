@@ -6,6 +6,7 @@ import contextlib
 import fcntl
 import json
 import logging
+import math
 import re
 import time as monotonic_time
 from collections.abc import Awaitable, Callable
@@ -48,6 +49,13 @@ from hoga.live.index_candles_cache import (
     collect_index_candles_with_cache,
 )
 from hoga.live.index_cold_fetch import fetch_index_daily_candles_windowed
+from hoga.live.index_header_quote import (
+    INDEX_QUOTE_RETRY_COOLDOWN_S,
+    IndexHeaderQuoteResponse,
+    IndexQuoteRefresh,
+    domestic_header_quote,
+    us_header_quote,
+)
 from hoga.live.index_minute_candles_cache import (
     IndexMinuteCacheKey,
     IndexMinuteCandlesCache,
@@ -2131,11 +2139,16 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     # last-good(없으면 빈 배열)을 돌려주고 프론트가 바를 숨긴다.
     _INDEX_QUOTES_TTL_S = 20.0
     _index_quotes_cache: dict[str, LiveIndexQuote] = {}
-    _index_quotes_meta = {"fetched_at": float("-inf")}
+    _index_quotes_meta = {"fetched_at": float("-inf"), "manual_retry_at": float("-inf")}
     _index_quotes_lock = asyncio.Lock()
+    _index_quotes_checked: dict[str, int] = {}
+    _index_quotes_status: dict[str, IndexQuoteRefresh] = {}
 
     @router.get("/index-quotes", response_model=LiveIndexQuotesResponse)
     async def _get_index_quotes() -> LiveIndexQuotesResponse:
+        return await _load_index_quotes()
+
+    async def _load_index_quotes(*, retry_failed: bool = False) -> LiveIndexQuotesResponse:
         indices = [i for i in list_representative_indices() if i.market == "KR"]
 
         def snapshot() -> LiveIndexQuotesResponse:
@@ -2161,12 +2174,23 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             # 보는 동작(캐시로 강등)은 같다. 토글 자체는 PR-J 에서 사라진다.
             or live_settings.rest_bypass_enabled(data_dir)
         ):
+            status = ("bypass" if data_dir is not None and live_settings.rest_bypass_enabled(data_dir)
+                      else "unconfigured")
+            _index_quotes_status.update({index.id: status for index in indices})
             return snapshot()
         scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
 
         async with _index_quotes_lock:
-            if monotonic_time.monotonic() - _index_quotes_meta["fetched_at"] < _INDEX_QUOTES_TTL_S:
+            now = monotonic_time.monotonic()
+            age = now - _index_quotes_meta["fetched_at"]
+            failed = any(s in {"error", "stale"} for s in _index_quotes_status.values())
+            manual_retry = retry_failed and failed and (
+                now - _index_quotes_meta["manual_retry_at"] >= INDEX_QUOTE_RETRY_COOLDOWN_S
+            )
+            if age < _INDEX_QUOTES_TTL_S and not manual_retry:
                 return snapshot()
+            if manual_retry:
+                _index_quotes_meta["manual_retry_at"] = now
 
             async def fetch_one(index) -> LiveIndexQuote | None:
                 try:
@@ -2180,13 +2204,19 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                         ),
                         client=kiwoom_client,
                     )
+                    if value <= 0 or not all(math.isfinite(v) for v in (value, change, change_rate)):
+                        raise ValueError("invalid index quote")
                 except (KiwoomRestError, KiwoomCapacityOverloaded) as e:
                     # 20s 주기 배경 폴 — 개별 WARN 은 로그벽이 된다(EGW00201 교훈).
                     log.debug("index-quote fetch failed: %s (%s)", index.id, e)
+                    _index_quotes_status[index.id] = "stale" if index.id in _index_quotes_cache else "error"
                     return None
                 except (KeyError, ValueError, TypeError) as e:
                     log.warning("index-quote parse failed: %s (%s)", index.id, e)
+                    _index_quotes_status[index.id] = "stale" if index.id in _index_quotes_cache else "error"
                     return None
+                _index_quotes_status[index.id] = "normal"
+                _index_quotes_checked[index.id] = int(datetime.now(KST).timestamp() * 1000)
                 return LiveIndexQuote(
                     id=index.id,
                     label=index.label,
@@ -2203,6 +2233,25 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
             # 부분 실패여도 fetched_at 은 갱신 — KIS 저하 시 TTL 간격으로만 재시도.
             _index_quotes_meta["fetched_at"] = monotonic_time.monotonic()
             return snapshot()
+
+    @router.get("/index-header-quote", response_model=IndexHeaderQuoteResponse)
+    async def _get_index_header_quote(
+        index_id: str = Query(...), retry: bool = False,
+    ) -> IndexHeaderQuoteResponse:
+        try:
+            index = get_representative_index(index_id)
+        except UnknownRepresentativeIndex as exc:
+            raise HTTPException(422, {"code": LiveErrorCode.UNSUPPORTED_INDEX, "message": "unknown index"}) from exc
+        if not index.enabled_by_default:
+            raise HTTPException(422, {"code": LiveErrorCode.UNSUPPORTED_INDEX, "message": "index unavailable"})
+        if index.market == "US":
+            if retry:
+                us_markets.retry_index_quote(index)
+            return await us_header_quote(index, us_markets)
+        response = await _load_index_quotes(retry_failed=retry)
+        quote = next((q for q in response.quotes if q.id == index.id), None)
+        return domestic_header_quote(index.id, quote, _index_quotes_checked.get(index.id),
+                                     _index_quotes_status.get(index.id, "partial"))
 
     @router.get("/index-candles")
     async def _get_index_candles(  # noqa: PLR0912 — ADR 이 지정한 단일 조립점 — 분기 분할이 설계에 반한다

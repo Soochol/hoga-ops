@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from hoga.live.candle_models import daily_anchor_ms
 
 NY = ZoneInfo("America/New_York")
+_MANUAL_RETRY_COOLDOWN_S = 2
 UsExchange = Literal["NASDAQ", "NYSE", "AMEX"]
 UsDailyStatus = Literal["normal", "stale", "unconfigured", "error", "bypass", "partial"]
 
@@ -161,6 +162,7 @@ class _Entry:
     retry_at: float = 0
     failures: int = 0
     messages: list[str] = field(default_factory=list)
+    manual_retry_at: float = float("-inf")
 
 
 class UsDailyService:
@@ -180,6 +182,14 @@ class UsDailyService:
     def verified_coverage(self, key: str) -> list[UsDateRange]:
         entry = self.entries.get(key)
         return list(entry.verified) if entry else []
+
+    def retry_failed(self, key: str) -> None:
+        entry = self.entries.get(key)
+        now = self.clock()
+        if (entry and entry.failures and key not in self.pending
+                and now - entry.manual_retry_at >= _MANUAL_RETRY_COOLDOWN_S):
+            entry.retry_at = 0
+            entry.manual_retry_at = now
 
     async def aclose(self) -> None:
         tasks = list(self.pending.values())

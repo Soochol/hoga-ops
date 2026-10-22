@@ -147,3 +147,72 @@ def test_index_quotes_without_data_dir_returns_empty() -> None:
 
     assert res.status_code == 200
     assert res.json() == {"quotes": []}
+
+
+def test_header_quote_shares_market_bar_cache_and_exposes_baseline(tmp_path, monkeypatch) -> None:
+    class Fake:
+        async def fetch_index_price(self, _client, index):
+            return _snapshot(index.id)
+
+    _, calls = _patch_kiwoom_capacity(monkeypatch, Fake())
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    client = TestClient(app)
+    client.get("/api/live/index-quotes")
+    response = client.get("/api/live/index-header-quote?index_id=KOSPI")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["value"] == 2855.67
+    assert body["change_rate"] == 0.43
+    assert body["previous_close"] == 2843.37
+    assert body["refresh_status"] == "normal"
+    assert body["checked_at_ms"] is not None
+    assert len(calls) == 5  # one batch for market bar + all chart header lookups
+    client.get("/api/live/index-header-quote?index_id=KOSDAQ")
+    assert len(calls) == 5
+
+
+def test_header_quote_reports_partial_failure_and_manual_retry(tmp_path, monkeypatch) -> None:
+    phase = {"fail": False, "now": 0.0}
+
+    class Fake:
+        async def fetch_index_price(self, _client, index):
+            if phase["fail"] and index.id == "KOSPI":
+                raise KiwoomApiError(code="FAIL", msg="offline")
+            return _snapshot(index.id, value=100 if not phase["fail"] else 200)
+
+    _, calls = _patch_kiwoom_capacity(monkeypatch, Fake())
+    monkeypatch.setattr(live_api.monotonic_time, "monotonic", lambda: phase["now"])
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    client = TestClient(app)
+    first = client.get("/api/live/index-header-quote?index_id=KOSPI").json()
+    phase.update(fail=True, now=30.0)
+    failed = client.get("/api/live/index-header-quote?index_id=KOSPI").json()
+    assert failed["refresh_status"] == "stale"
+    assert failed["value"] == first["value"]
+    assert failed["checked_at_ms"] == first["checked_at_ms"]
+    phase.update(fail=False)  # the first explicit retry works immediately after failure
+    recovered = client.get("/api/live/index-header-quote?index_id=KOSPI&retry=true").json()
+    assert recovered["refresh_status"] == "normal"
+    assert len(calls) == 15  # explicit retry bypasses the failed batch's 20-second TTL
+
+
+def test_header_quote_initial_failure_and_configuration_are_distinct(tmp_path, monkeypatch) -> None:
+    class Fake:
+        async def fetch_index_price(self, _client, index):
+            raise KiwoomApiError(code="FAIL", msg="offline")
+
+    _patch_kiwoom_capacity(monkeypatch, Fake())
+    app = FastAPI()
+    app.include_router(build_router(get_status=lifecycle.get_status, data_dir=tmp_path))
+    body = TestClient(app).get("/api/live/index-header-quote?index_id=KOSPI").json()
+    assert body["value"] is None
+    assert body["refresh_status"] == "error"
+    unconfigured = FastAPI()
+    unconfigured.include_router(build_router(get_status=lifecycle.get_status))
+    response = TestClient(unconfigured).get("/api/live/index-header-quote?index_id=KOSPI")
+    assert response.json()["refresh_status"] == "unconfigured"
+    assert response.json()["previous_close"] is None
+    assert TestClient(app).get("/api/live/index-header-quote?index_id=OTHER").status_code == 422
+    assert TestClient(app).get("/api/live/index-header-quote?index_id=KRX300").status_code == 422

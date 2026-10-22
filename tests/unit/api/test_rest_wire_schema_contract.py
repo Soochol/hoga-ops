@@ -64,6 +64,7 @@ from hoga.live.api import (
 from hoga.live.collector_process import CollectorStateReason, CollectorSyncPhase
 from hoga.live.daily_program_trade import DailyProgramTradePoint
 from hoga.live.error_policy import LiveErrorKind
+from hoga.live.index_header_quote import IndexHeaderQuoteResponse, IndexQuoteRefresh, IndexQuoteSession
 from hoga.live.index_registry import LiveIndexId
 from hoga.live.investor import InvestorNetUnit, InvestorTradeSide
 from hoga.live.krx_close import KrxCloseResponse
@@ -373,6 +374,9 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    IndexHeaderQuoteResponse: frozenset({"index_id", "value", "change", "change_rate", "previous_close",
+        "trading_date", "observed_at_ms", "checked_at_ms", "market_timezone", "session_status", "refresh_status",
+        "source", "delay_unverified"}),
     PanelStockFlow: frozenset({"code", "venue", "pct", "last_observed_ms", "missing_reason"}),
     PanelGroupFlow: frozenset({"folder_id", "pct", "counts", "total"}),
     PanelFlowResponse: frozenset({"date", "venue", "bucket_ms", "t_base_ms", "as_of_ms", "stocks", "groups"}),
@@ -546,6 +550,8 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "IndexQuoteSession": (frozenset(get_args(IndexQuoteSession)), "frontend/src/api/indexHeaderQuote.ts"),
+    "IndexQuoteRefresh": (frozenset(get_args(IndexQuoteRefresh)), "frontend/src/api/indexHeaderQuote.ts"),
     "PanelFlowSource": (frozenset(get_args(PanelFlowSource)), "frontend/src/api/panelFlow.ts"),
     "ChangeReference": (frozenset(get_args(m.ChangeReference)), "frontend/src/api/screener.ts"),
     "TradeValueMethod": (frozenset(get_args(m.TradeValueMethod)), "frontend/src/api/screener.ts"),

@@ -1,9 +1,11 @@
-import { usStockFromKey } from '../liveInstrument';
+import { isLiveIndexId, usStockFromKey } from '../liveInstrument';
+import { IndexTitleBarSymbolRow } from './IndexTitleBarSymbolRow';
 /**
  * TitleBarSymbolRow — 차트 창 타이틀바(제목 표시줄)의 종목 식별 행.
  *
  * 종목명·현재가·등락률·히트맵 그룹·수집 점·경고칩을 창 제목 줄에 표시한다(#869의
  * 캔버스 레전드에서 여기로 이관 — 사용자가 원한 "마우스로 창을 드래그하는 영역").
+ * 대표지수는 IndexTitleBarSymbolRow에서 독립된 지수 시세 경로를 사용한다.
  * 타이틀바는 창 데이터 파이프라인(useLiveChartData)의 **부모**라 번들 파생값에
  * 직접 못 닿으므로:
  *  - 현재가·등락률·히트맵·수집상태는 `code` 만으로 전역 캐시 훅에서 self-fetch,
@@ -31,15 +33,23 @@ import { useWindowWarnings } from './windowWarningsSource';
 interface Props {
   /** 창 제목 종목명(그룹 스토어의 symbol.name). code=name 딥링크면 코드일 수 있다. */
   name: string | null;
-  /** 주식 코드. */
+  /** 창 종목 식별자(국내 Code, 대표지수 ID 또는 미국 종목 키). */
   code: string;
-  /** 지수 창이면 현재가/등락률/히트맵/수집점을 숨기고 종목명만(지수는 quote 없음). */
+  /** 지수·미국 종목이면 국내 주식 전용 시세/수집 조회를 차단한다. */
   isIndex: boolean;
   /** 경고칩 구독 키 — ChartWindowInner 가 windowWarnings 로 발행한다. */
   windowId: string;
 }
 
 export function TitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
+  const indexId = code.startsWith('index:') ? code.slice(6) : code;
+  if (isIndex && isLiveIndexId(indexId)) {
+    return <IndexTitleBarSymbolRow key={indexId} name={name} indexId={indexId} windowId={windowId} />;
+  }
+  return <StockTitleBarSymbolRow name={name} code={code} isIndex={isIndex} windowId={windowId} />;
+}
+
+function StockTitleBarSymbolRow({ name, code, isIndex, windowId }: Props) {
   const live = useConnectionLiveness(LIVE_STALE_MS);
   const venue = useLiveVenueStore((s) => s.venue);
   const effectiveVenue = useEffectiveVenue(code, venue);

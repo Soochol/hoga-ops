@@ -130,6 +130,10 @@ class UsMarketApi:
         client = kis_runtime.ensure_kis_client_for_account(0, self.data_dir) if self.data_dir and not bypass else None
         return await self.minutes.get(index.daily_code, timeframe, client=client, bypass=bypass)
 
+    def retry_index_quote(self, index) -> None:
+        self.minutes.retry_failed(index.daily_code)
+        self.daily.retry_failed(f"index:{index.id}:points")
+
     async def stock_daily(
         self,
         exchange: UsExchange = Query(...),
