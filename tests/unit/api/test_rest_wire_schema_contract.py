@@ -50,6 +50,12 @@ from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, Prog
 from hoga.api.panel_flow import PanelFlowResponse, PanelFlowSource, PanelGroupFlow, PanelStockFlow
 from hoga.api.screener_continuous import ContinuousStatus
 from hoga.live import flow_receipts, futures_runtime, market_overview
+from hoga.live.aftermarket_exclusions import (
+    AftermarketExclusionReason,
+    AftermarketExclusionResponse,
+    AftermarketExclusionSource,
+    AftermarketExclusionStatus,
+)
 from hoga.live.api import (
     AfterHoursBookResponse,
     InvestorEstimateWarningReason,
@@ -374,6 +380,7 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    AftermarketExclusionResponse: frozenset({"code", "date", "status", "reasons", "checked_at_ms", "source"}),
     IndexHeaderQuoteResponse: frozenset({"index_id", "value", "change", "change_rate", "previous_close",
         "trading_date", "observed_at_ms", "checked_at_ms", "market_timezone", "session_status", "refresh_status",
         "source", "delay_unverified"}),
@@ -550,6 +557,15 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "AftermarketExclusionReason": (
+        frozenset(get_args(AftermarketExclusionReason)), "frontend/src/api/aftermarketExclusion.ts",
+    ),
+    "AftermarketExclusionStatus": (
+        frozenset(get_args(AftermarketExclusionStatus)), "frontend/src/api/aftermarketExclusion.ts",
+    ),
+    "AftermarketExclusionSource": (
+        frozenset(get_args(AftermarketExclusionSource)), "frontend/src/api/aftermarketExclusion.ts",
+    ),
     "IndexQuoteSession": (frozenset(get_args(IndexQuoteSession)), "frontend/src/api/indexHeaderQuote.ts"),
     "IndexQuoteRefresh": (frozenset(get_args(IndexQuoteRefresh)), "frontend/src/api/indexHeaderQuote.ts"),
     "PanelFlowSource": (frozenset(get_args(PanelFlowSource)), "frontend/src/api/panelFlow.ts"),

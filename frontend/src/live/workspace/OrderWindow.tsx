@@ -133,14 +133,14 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   }, [live.latestOb, live.ob, now, venue]);
   const lastValidSnapshot = useMemo(() => latestOrderbookSnapshot(live.lastValidOb ? [live.lastValidOb] : []), [live.lastValidOb]);
   const preAuctionSnapshot = useMemo(() => latestOrderbookSnapshot(live.preAuctionOb ? [live.preAuctionOb] : []), [live.preAuctionOb]);
-  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue,
+  const { snapshot, storedLadder, activeSinglePrice, singlePriceFills, afterHoursBook, effectiveVenue, aftermarketExclusion,
     afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs: now, todayKst, isSpot: false, regularSnapshot: latestSnapshot,
     latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   const vi = useLiveViStatus(code, effectiveVenue);
   const { availability: bookAvailability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
-    live, bookMs: snapshot?.ts_ms, nowMs: now,
+    live, bookMs: snapshot?.ts_ms, nowMs: now, exclusion: aftermarketExclusion,
     enabled: (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);

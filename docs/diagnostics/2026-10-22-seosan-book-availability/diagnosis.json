@@ -1,0 +1,85 @@
+{
+  "checked_at": "2026-10-22T19:41:56.026294+09:00",
+  "conclusion": "Seosan is excluded from KRX aftermarket trading due to investment-warning designation, which explains the absence of evening orderbook data. The generic stale-book alert misclassifies this normal absence.",
+  "official_sources": [
+    {
+      "url": "https://kind.krx.co.kr/external/2026/10/13/000515/20261013001278/72049.htm",
+      "issuer": "KRX KIND",
+      "title": "서산 투자경고종목 지정(재지정)",
+      "published_on": "2026-10-13",
+      "designation_effective_on": "2026-10-14",
+      "first_release_assessment_on": "2026-10-27",
+      "finding": "Seosan designated as an investment-warning stock; earliest release assessment is after the date under investigation (2026-10-22)."
+    },
+    {
+      "url": "https://www.kbsec.com/go.able?idt=20260904&linkcd=s060901010000&seq=10010298",
+      "issuer": "KB Securities",
+      "title": "KRX 애프터마켓 개설 및 NXT 제도개편 안내",
+      "published_on": "2026-09-04",
+      "effective_on": "2026-09-14",
+      "finding": "KRX aftermarket operates 16:00-20:00; investment-warning stocks, ETF and ETN are among excluded instruments."
+    }
+  ],
+  "local_evidence": [
+    {
+      "date": "20261021",
+      "code": "079650",
+      "venue": "KRX",
+      "book_rows": 1619,
+      "last_stored_book_kst": "2026-10-21T15:30:00.004000+09:00",
+      "book_rows_after_1600": 0
+    },
+    {
+      "date": "20261021",
+      "code": "069500",
+      "venue": "KRX",
+      "book_rows": 1966,
+      "last_stored_book_kst": "2026-10-21T15:30:00.001000+09:00",
+      "book_rows_after_1600": 0
+    },
+    {
+      "date": "20261021",
+      "code": "005930",
+      "venue": "KRX",
+      "book_rows": 3405,
+      "last_stored_book_kst": "2026-10-21T20:00:00.001000+09:00",
+      "book_rows_after_1600": 1437
+    },
+    {
+      "date": "20261022",
+      "code": "079650",
+      "venue": "KRX",
+      "book_rows": 2156,
+      "last_stored_book_kst": "2026-10-22T15:30:00+09:00",
+      "book_rows_after_1600": 0
+    },
+    {
+      "date": "20261022",
+      "code": "069500",
+      "venue": "KRX",
+      "book_rows": 2156,
+      "last_stored_book_kst": "2026-10-22T15:30:00.001000+09:00",
+      "book_rows_after_1600": 0
+    },
+    {
+      "date": "20261022",
+      "code": "005930",
+      "venue": "KRX",
+      "book_rows": 2349,
+      "last_stored_book_kst": "2026-10-22T19:41:50.003000+09:00",
+      "book_rows_after_1600": 193
+    }
+  ],
+  "master_observation": {
+    "code": "079650",
+    "security_type": "stock",
+    "nxt_enabled": false,
+    "meaning": "No NXT venue fallback; NXT flag alone does not establish KRX aftermarket eligibility."
+  },
+  "implementation_gap": {
+    "backend": "hoga/api/symbols.py:krx_aftermarket_eligibility returns False only for ETF/ETN, unknown for ordinary stocks.",
+    "frontend": "frontend/src/live/useEffectiveVenue.ts:useKrxAftermarketExcluded likewise recognizes ETF/ETN only; it carries no current investment-warning designation."
+  },
+  "scope": "Read-only public official disclosures, existing application master and local saved market data. No server restart, new broker session, credentials access or trading. No additional product-code changes in this follow-up.",
+  "limits": "Stored JSONL contains downsampled capture rows, not every received WebSocket frame. Compare the pre-existing verification.json live-series last_ob (15:30:02) separately from the stored 10-second bucket timestamp (15:30:00)."
+}

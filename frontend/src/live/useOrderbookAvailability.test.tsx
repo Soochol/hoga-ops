@@ -63,3 +63,17 @@ it('retries only the current code series query', () => {
   act(() => hook.result.current.retry());
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['live', 'series', '005930'] });
 });
+
+it('explains exclusion even while a stored ladder disables live-delay reporting', () => {
+  const now = Date.parse('2026-10-22T19:30:00+09:00');
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  const { result } = renderHook(() => useOrderbookAvailability({
+    code: '079650', venue: 'KRX', live, nowMs: now, enabled: false,
+    bookMs: Date.parse('2026-10-22T15:30:02+09:00'),
+    exclusion: { code: '079650', date: '20261022', status: 'checked', reasons: ['investment_warning'],
+      checked_at_ms: now, source: 'kiwoom_ka10100' },
+  }), { wrapper });
+  expect(result.current.availability).toMatchObject({ kind: 'aftermarket_excluded',
+    message: 'KRX 장후 거래 제외 · 투자경고종목' });
+});
