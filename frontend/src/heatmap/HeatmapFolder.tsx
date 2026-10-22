@@ -135,6 +135,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
     const q = quoteByCode.get(e.code);
     const matched = query ? entryMatchesQuery(e, query) : false;
     const common = {
+      code: e.code,
       name: e.name,
       price: q?.price ?? null, pct: q?.change_pct ?? null,
       open: q?.open ?? null, high: q?.high ?? null, low: q?.low ?? null,

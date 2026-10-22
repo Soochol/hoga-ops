@@ -1,0 +1,3328 @@
+{
+  "000100": {
+    "name": "유한양행",
+    "lines": [
+      "의약품을 개발·생산·판매하는 제약사입니다.",
+      "전문의약품·일반의약품과 항암 신약 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00010"
+    ]
+  },
+  "000150": {
+    "name": "두산",
+    "lines": [
+      "전자소재 사업을 보유한 지주회사입니다.",
+      "AI 서버·반도체 기판용 동박적층판 등을 생산합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00015",
+      "https://www.doosannewsroom.com/?cat=8&p=51749"
+    ]
+  },
+  "000270": {
+    "name": "기아",
+    "lines": [
+      "승용차·상용차와 특수차량을 만듭니다.",
+      "SUV·전기차 등 다양한 차종을 국내외에 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00027"
+    ]
+  },
+  "000500": {
+    "name": "가온전선",
+    "lines": [
+      "전력·통신용 케이블을 만듭니다.",
+      "송배전망·산업설비·건축물의 전선에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00050"
+    ]
+  },
+  "000660": {
+    "name": "SK하이닉스",
+    "lines": [
+      "DRAM과 낸드플래시를 만드는 반도체 기업입니다.",
+      "서버·AI 연산용 HBM 등 메모리를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00066"
+    ]
+  },
+  "000720": {
+    "name": "현대건설",
+    "lines": [
+      "국내외 건설·플랜트 사업을 수행합니다.",
+      "주택·토목과 원전·에너지 설비 건설을 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00072"
+    ]
+  },
+  "000810": {
+    "name": "삼성화재",
+    "lines": [
+      "자동차·장기·일반 손해보험 사업을 합니다.",
+      "보험 위험을 인수하고 보험료·자산을 운용합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00081"
+    ]
+  },
+  "001440": {
+    "name": "대한전선",
+    "lines": [
+      "전력·통신용 케이블을 만드는 기업입니다.",
+      "초고압 전력망과 해저 케이블 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00144"
+    ]
+  },
+  "001450": {
+    "name": "현대해상",
+    "lines": [
+      "자동차·장기·일반 손해보험을 제공합니다.",
+      "사고·질병 등 위험에 대비하는 보험을 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00145"
+    ]
+  },
+  "001820": {
+    "name": "삼화콘덴서",
+    "lines": [
+      "전자제품용 콘덴서를 만드는 기업입니다.",
+      "MLCC·전력용 콘덴서 등 전기를 저장하는 부품을 만듭니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00182"
+    ]
+  },
+  "002380": {
+    "name": "KCC",
+    "lines": [
+      "건축·산업용 소재를 만드는 기업입니다.",
+      "도료·단열재·건자재와 실리콘 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00238"
+    ]
+  },
+  "003230": {
+    "name": "삼양식품",
+    "lines": [
+      "라면·스낵 등 가공식품을 만듭니다.",
+      "불닭 브랜드 등을 국내외에 판매하는 식품기업입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00323"
+    ]
+  },
+  "003350": {
+    "name": "한국화장품제조",
+    "lines": [
+      "화장품 위탁생산·개발을 하는 기업입니다.",
+      "브랜드 고객사의 기초·색조 제품 등을 제조합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00335"
+    ]
+  },
+  "003490": {
+    "name": "대한항공",
+    "lines": [
+      "항공 여객·화물 운송 서비스를 제공합니다.",
+      "항공기 정비·항공우주 관련 사업도 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00349"
+    ]
+  },
+  "003530": {
+    "name": "한화투자증권",
+    "lines": [
+      "증권 중개·금융상품·기업금융 사업을 합니다.",
+      "주식·채권 거래와 자산관리 서비스를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00353"
+    ]
+  },
+  "003540": {
+    "name": "대신증권",
+    "lines": [
+      "증권거래·투자은행·자산관리 사업을 합니다.",
+      "계열사를 통해 부동산·금융 투자도 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00354"
+    ]
+  },
+  "003670": {
+    "name": "포스코퓨처엠",
+    "lines": [
+      "이차전지 소재와 기초소재를 만듭니다.",
+      "양극재·음극재와 내화물·생석회를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00367"
+    ]
+  },
+  "004020": {
+    "name": "현대제철",
+    "lines": [
+      "철강재를 만드는 종합 제철기업입니다.",
+      "철근·형강·자동차용 강판·후판 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00402"
+    ]
+  },
+  "004370": {
+    "name": "농심",
+    "lines": [
+      "라면·스낵·음료를 만드는 식품기업입니다.",
+      "신라면 등 면류와 새우깡 등 과자를 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00437"
+    ]
+  },
+  "005290": {
+    "name": "동진쎄미켐",
+    "lines": [
+      "반도체·디스플레이용 전자재료를 만듭니다.",
+      "회로 패턴을 형성하는 포토레지스트 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00529"
+    ]
+  },
+  "005380": {
+    "name": "현대차",
+    "lines": [
+      "승용차·상용차를 개발·생산하는 완성차 기업입니다.",
+      "내연기관·전기차·수소전기차 등을 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00538"
+    ]
+  },
+  "005490": {
+    "name": "POSCO홀딩스",
+    "lines": [
+      "철강·이차전지 소재 계열사를 보유한 지주사입니다.",
+      "포스코 등 계열사의 사업과 신규 투자를 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00549"
+    ]
+  },
+  "005690": {
+    "name": "파미셀",
+    "lines": [
+      "세포치료제와 바이오 화학소재를 만듭니다.",
+      "줄기세포 사업과 핵산의약품용 원료를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00569"
+    ]
+  },
+  "005830": {
+    "name": "DB손해보험",
+    "lines": [
+      "자동차·장기·일반 손해보험을 운영합니다.",
+      "개인·기업의 위험 보장과 보험자산 운용을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00583"
+    ]
+  },
+  "005850": {
+    "name": "에스엘",
+    "lines": [
+      "자동차용 조명·전동화 부품을 만듭니다.",
+      "헤드램프·리어램프 등 차량 조명이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00585"
+    ]
+  },
+  "005930": {
+    "name": "삼성전자",
+    "lines": [
+      "메모리·시스템반도체와 전자제품을 만듭니다.",
+      "DRAM·낸드·스마트폰·가전이 주요 사업입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00593"
+    ]
+  },
+  "005940": {
+    "name": "NH투자증권",
+    "lines": [
+      "증권 중개·자산관리·기업금융을 제공합니다.",
+      "주식·채권 거래와 투자은행 사업을 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00594"
+    ]
+  },
+  "006040": {
+    "name": "동원산업",
+    "lines": [
+      "수산·식품·물류 계열사를 보유한 기업입니다.",
+      "참치 등 원양어업과 계열사 관리 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00604"
+    ]
+  },
+  "006260": {
+    "name": "LS",
+    "lines": [
+      "전선·전력기기 계열사를 보유한 지주사입니다.",
+      "계열사를 통해 전력망·자동화·소재 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00626"
+    ]
+  },
+  "006340": {
+    "name": "대원전선",
+    "lines": [
+      "전력·통신용 전선을 만드는 기업입니다.",
+      "산업·건축·자동차 등에 쓰이는 케이블을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00634"
+    ]
+  },
+  "006360": {
+    "name": "GS건설",
+    "lines": [
+      "주택·건축·토목·플랜트 사업을 합니다.",
+      "아파트와 국내외 산업·인프라 시설을 건설합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00636"
+    ]
+  },
+  "006400": {
+    "name": "삼성SDI",
+    "lines": [
+      "전기차·ESS용 배터리와 전자재료를 만듭니다.",
+      "ESS용 각형 배터리와 배터리 시스템을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00640",
+      "https://www.samsungsdi.co.kr/sdi-now/sdi-news/4801.html"
+    ]
+  },
+  "006650": {
+    "name": "대한유화",
+    "lines": [
+      "석유화학 기초 원료와 합성수지를 만듭니다.",
+      "올레핀·폴리에틸렌·폴리프로필렌을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00665"
+    ]
+  },
+  "006800": {
+    "name": "미래에셋증권",
+    "lines": [
+      "증권 중개·자산관리·투자은행 사업을 합니다.",
+      "국내외 금융상품 거래와 기업금융을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00680"
+    ]
+  },
+  "006910": {
+    "name": "보성파워텍",
+    "lines": [
+      "송배전용 철구조물과 전력 기자재를 만듭니다.",
+      "송전철탑·변전소 구조물 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00691"
+    ]
+  },
+  "007160": {
+    "name": "사조산업",
+    "lines": [
+      "원양어업과 수산식품 사업을 합니다.",
+      "참치 등 어획과 수산·식품 가공 사업이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00716"
+    ]
+  },
+  "007310": {
+    "name": "오뚜기",
+    "lines": [
+      "조미식품·면류·즉석식품을 만듭니다.",
+      "카레·소스·라면·냉동식품 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00731"
+    ]
+  },
+  "007540": {
+    "name": "샘표",
+    "lines": [
+      "식품 계열사를 관리하는 지주회사입니다.",
+      "샘표식품 등 계열사의 사업과 브랜드를 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00754"
+    ]
+  },
+  "007610": {
+    "name": "선도전기",
+    "lines": [
+      "전력의 분배·보호용 중전기기를 만듭니다.",
+      "수배전반·보호배전반·개폐장치가 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00761",
+      "https://kind.krx.co.kr/external/2026/04/28/000744/20260422001016/91569.htm"
+    ]
+  },
+  "007660": {
+    "name": "이수페타시스",
+    "lines": [
+      "고다층 인쇄회로기판을 만드는 기업입니다.",
+      "서버·네트워크 장비용 고속 신호 기판이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00766"
+    ]
+  },
+  "007810": {
+    "name": "코리아써키트",
+    "lines": [
+      "전자제품용 인쇄회로기판을 만듭니다.",
+      "모바일 기기·반도체 패키지용 기판이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00781"
+    ]
+  },
+  "009150": {
+    "name": "삼성전기",
+    "lines": [
+      "전자제품용 부품과 반도체 기판을 만듭니다.",
+      "MLCC·카메라 모듈·패키지 기판이 주요 사업입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00915"
+    ]
+  },
+  "009420": {
+    "name": "한올바이오파마",
+    "lines": [
+      "의약품 판매와 바이오 신약 개발을 합니다.",
+      "자가면역질환 등의 항체 치료제를 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00942"
+    ]
+  },
+  "009540": {
+    "name": "HD한국조선해양",
+    "lines": [
+      "HD현대 조선 계열사를 관리하는 중간지주사입니다.",
+      "선박·엔진·해양 분야 기술 개발과 사업을 총괄합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00954"
+    ]
+  },
+  "009830": {
+    "name": "한화솔루션",
+    "lines": [
+      "태양광·화학 사업을 하는 기업입니다.",
+      "큐셀의 태양광 셀·모듈과 화학제품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=00983",
+      "https://qcells.com/kr/get-inspired/birth-of-sustainable-future"
+    ]
+  },
+  "010060": {
+    "name": "OCI홀딩스",
+    "lines": [
+      "태양광·화학 계열사를 보유한 지주사입니다.",
+      "계열사를 통해 태양광용 폴리실리콘 등을 생산합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01006",
+      "https://wetalkotalk.oci.co.kr/download/OCI%ED%99%80%EB%94%A9%EC%8A%A4%20%EC%84%A4%EB%AA%85%EC%9E%90%EB%A3%8C_%EA%B5%AD%EB%AC%B8.pdf"
+    ]
+  },
+  "010120": {
+    "name": "LS ELECTRIC",
+    "lines": [
+      "전력기기와 산업 자동화 장비를 만듭니다.",
+      "배전반·차단기·PLC·인버터 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01012"
+    ]
+  },
+  "010140": {
+    "name": "삼성중공업",
+    "lines": [
+      "대형 상선과 해양플랜트를 만드는 조선사입니다.",
+      "LNG운반선·컨테이너선·해양 생산설비를 건조합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01014"
+    ]
+  },
+  "010170": {
+    "name": "대한광통신",
+    "lines": [
+      "광섬유와 광케이블을 만드는 기업입니다.",
+      "통신망의 데이터를 빛으로 전달하는 소재입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01017"
+    ]
+  },
+  "010950": {
+    "name": "S-Oil",
+    "lines": [
+      "원유를 정제해 석유제품을 만듭니다.",
+      "휘발유·경유·항공유·윤활기유·화학제품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01095"
+    ]
+  },
+  "011070": {
+    "name": "LG이노텍",
+    "lines": [
+      "광학·전자 부품과 기판 소재를 만듭니다.",
+      "스마트폰 카메라 모듈·반도체 기판 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01107"
+    ]
+  },
+  "011150": {
+    "name": "CJ씨푸드",
+    "lines": [
+      "수산물 기반의 가공식품을 만듭니다.",
+      "어묵·맛살 등 냉장·냉동 수산가공품이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01115"
+    ]
+  },
+  "011170": {
+    "name": "롯데케미칼",
+    "lines": [
+      "기초 석유화학 제품과 합성수지를 만듭니다.",
+      "에틸렌·폴리에틸렌·폴리프로필렌 등이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01117"
+    ]
+  },
+  "011200": {
+    "name": "HMM",
+    "lines": [
+      "해상 운송 서비스를 제공하는 해운사입니다.",
+      "컨테이너 화물과 벌크 화물을 운송합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01120"
+    ]
+  },
+  "011210": {
+    "name": "현대위아",
+    "lines": [
+      "자동차 부품과 산업 기계를 만듭니다.",
+      "차량 구동계·열관리 부품과 자동화 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01121"
+    ]
+  },
+  "011700": {
+    "name": "한신기계",
+    "lines": [
+      "산업용 공기압축기를 만드는 기업입니다.",
+      "공장·발전설비에 필요한 압축공기를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01170"
+    ]
+  },
+  "011790": {
+    "name": "SKC",
+    "lines": [
+      "반도체·이차전지용 소재 사업을 합니다.",
+      "동박과 계열사를 통한 유리기판 사업을 추진합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01179"
+    ]
+  },
+  "011930": {
+    "name": "신성이엔지",
+    "lines": [
+      "클린룸과 태양광 관련 사업을 합니다.",
+      "반도체 공장의 청정 환경 설비·태양광 모듈을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01193"
+    ]
+  },
+  "012330": {
+    "name": "현대모비스",
+    "lines": [
+      "자동차 모듈·핵심 부품과 보수용 부품을 만듭니다.",
+      "전동화·차량 전자장치·섀시 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01233"
+    ]
+  },
+  "012450": {
+    "name": "한화에어로스페이스",
+    "lines": [
+      "항공엔진과 지상 방산장비를 만듭니다.",
+      "자주포·다연장로켓과 항공·우주 추진 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01245"
+    ]
+  },
+  "014680": {
+    "name": "한솔케미칼",
+    "lines": [
+      "반도체·디스플레이용 정밀 화학소재를 만듭니다.",
+      "과산화수소·전자재료와 배터리 소재를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01468"
+    ]
+  },
+  "015760": {
+    "name": "한국전력",
+    "lines": [
+      "전력 판매와 송배전망 운영을 맡습니다.",
+      "발전 자회사 등의 전기를 구매해 고객에게 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01576"
+    ]
+  },
+  "0158S0": {
+    "name": "엘리스",
+    "lines": [
+      "AI 클라우드와 기업용 AI 솔루션을 제공합니다.",
+      "GPU 인프라·AI 교육·업무 전환 플랫폼을 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=0158S",
+      "https://elice.io/ko/resources/newsroom/elice-ai-infrastructure-kosdaq-ipo"
+    ]
+  },
+  "016360": {
+    "name": "삼성증권",
+    "lines": [
+      "증권거래·자산관리 서비스를 제공합니다.",
+      "투자은행·금융상품 판매·운용 사업도 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01636"
+    ]
+  },
+  "017670": {
+    "name": "SK텔레콤",
+    "lines": [
+      "이동통신과 AI 관련 서비스를 제공합니다.",
+      "통신망 운영과 AI·데이터센터 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01767"
+    ]
+  },
+  "017960": {
+    "name": "한국카본",
+    "lines": [
+      "LNG운반선용 보냉재와 복합소재를 만듭니다.",
+      "극저온 화물을 운송하는 선박의 단열에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01796"
+    ]
+  },
+  "018000": {
+    "name": "유니슨",
+    "lines": [
+      "풍력발전기와 관련 설비를 만듭니다.",
+      "육상 풍력 시스템 공급·설치·유지보수를 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01800"
+    ]
+  },
+  "018260": {
+    "name": "삼성에스디에스",
+    "lines": [
+      "기업용 IT서비스와 물류서비스를 제공합니다.",
+      "클라우드·AI·시스템 운영과 물류 플랫폼을 다룹니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01826"
+    ]
+  },
+  "018290": {
+    "name": "브이티",
+    "lines": [
+      "화장품 브랜드와 관련 제품을 운영합니다.",
+      "리들샷 등 스킨케어 제품을 국내외에 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01829"
+    ]
+  },
+  "018670": {
+    "name": "SK가스",
+    "lines": [
+      "LPG·LNG 관련 에너지 사업을 합니다.",
+      "가스 수입·저장·판매와 발전 사업을 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01867",
+      "https://kind.krx.co.kr/external/2026/05/15/001794/20260515003990/11013.htm"
+    ]
+  },
+  "018880": {
+    "name": "한온시스템",
+    "lines": [
+      "자동차용 공조·열관리 시스템을 만듭니다.",
+      "에어컨·히터와 전기차 배터리의 열관리에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01888"
+    ]
+  },
+  "019990": {
+    "name": "에너토크",
+    "lines": [
+      "밸브·댐퍼용 전동 액추에이터를 만듭니다.",
+      "발전소·산업설비의 유체 흐름을 원격 제어합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=01999"
+    ]
+  },
+  "024110": {
+    "name": "기업은행",
+    "lines": [
+      "중소기업 금융을 중심으로 하는 은행입니다.",
+      "기업·개인 대상 예금·대출·외환 서비스를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=02411"
+    ]
+  },
+  "024840": {
+    "name": "KBI메탈",
+    "lines": [
+      "전선 소재와 전장 부품을 만드는 기업입니다.",
+      "동선재·모터코어 등 전기·전자용 소재를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=02484"
+    ]
+  },
+  "027050": {
+    "name": "코리아나",
+    "lines": [
+      "화장품을 개발·제조·판매합니다.",
+      "기초·기능성 화장품과 뷰티 브랜드를 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=02705"
+    ]
+  },
+  "028050": {
+    "name": "삼성E&A",
+    "lines": [
+      "산업·에너지 플랜트 엔지니어링 기업입니다.",
+      "정유·석유화학 시설의 설계·조달·시공을 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=02805"
+    ]
+  },
+  "028260": {
+    "name": "삼성물산",
+    "lines": [
+      "건설·상사·패션·리조트 사업을 합니다.",
+      "대형 건설 프로젝트와 상품 교역 등을 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=02826"
+    ]
+  },
+  "028670": {
+    "name": "팬오션",
+    "lines": [
+      "벌크 화물 중심의 해운기업입니다.",
+      "철광석·석탄·곡물 등 원자재를 바다로 운송합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=02867"
+    ]
+  },
+  "030200": {
+    "name": "KT",
+    "lines": [
+      "유무선 통신과 기업용 ICT서비스를 제공합니다.",
+      "이동통신·인터넷·클라우드 관련 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03020"
+    ]
+  },
+  "030530": {
+    "name": "원익홀딩스",
+    "lines": [
+      "반도체·가스 등 계열사를 보유한 지주회사입니다.",
+      "계열사를 통해 반도체 장비·소재 사업에 참여합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03053"
+    ]
+  },
+  "031980": {
+    "name": "피에스케이홀딩스",
+    "lines": [
+      "반도체 패키징 공정용 장비를 만듭니다.",
+      "디스컴 세정·플럭스리스 리플로우가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03198",
+      "https://pskholding.com/"
+    ]
+  },
+  "032640": {
+    "name": "LG유플러스",
+    "lines": [
+      "이동통신·인터넷·IPTV를 제공합니다.",
+      "기업 통신망·데이터센터 등 기업 사업도 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03264"
+    ]
+  },
+  "032820": {
+    "name": "우리기술",
+    "lines": [
+      "산업용 계측·제어 시스템을 개발합니다.",
+      "원전 감시제어와 철도·산업 자동화에 활용됩니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03282"
+    ]
+  },
+  "032830": {
+    "name": "삼성생명",
+    "lines": [
+      "생명보험과 자산운용 사업을 합니다.",
+      "보장성 보험·연금·저축성 보험 등을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03283"
+    ]
+  },
+  "033100": {
+    "name": "제룡전기",
+    "lines": [
+      "배전용 변압기와 전력 기자재를 만듭니다.",
+      "전력망에서 전압을 조정·배분하는 데 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03310"
+    ]
+  },
+  "033230": {
+    "name": "인성정보",
+    "lines": [
+      "기업용 네트워크·IT 인프라를 구축합니다.",
+      "서버·네트워크·클라우드 관련 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03323"
+    ]
+  },
+  "033500": {
+    "name": "동성화인텍",
+    "lines": [
+      "LNG 선박·저장설비용 보냉재를 만듭니다.",
+      "극저온 액화가스의 온도를 유지하는 단열재입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03350"
+    ]
+  },
+  "033640": {
+    "name": "네패스",
+    "lines": [
+      "반도체 패키징과 전자재료 사업을 합니다.",
+      "범핑·웨이퍼 레벨 패키징 등 후공정을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03364"
+    ]
+  },
+  "034020": {
+    "name": "두산에너빌리티",
+    "lines": [
+      "발전소용 주기기와 에너지 설비를 만듭니다.",
+      "원전·가스터빈·발전 기자재와 서비스를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03402"
+    ]
+  },
+  "034220": {
+    "name": "LG디스플레이",
+    "lines": [
+      "디스플레이 패널을 개발·생산합니다.",
+      "TV·모바일·차량용 OLED·LCD 패널을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03422"
+    ]
+  },
+  "035420": {
+    "name": "NAVER",
+    "lines": [
+      "검색·광고·커머스 플랫폼을 운영합니다.",
+      "콘텐츠·핀테크와 클라우드·AI 사업도 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03542"
+    ]
+  },
+  "035720": {
+    "name": "카카오",
+    "lines": [
+      "카카오톡 기반의 플랫폼 서비스를 제공합니다.",
+      "광고·커머스·콘텐츠 등 디지털 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03572"
+    ]
+  },
+  "035900": {
+    "name": "JYP Ent.",
+    "lines": [
+      "아티스트를 발굴·관리하는 엔터테인먼트사입니다.",
+      "음반·공연·음원·콘텐츠 사업을 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03590"
+    ]
+  },
+  "036460": {
+    "name": "한국가스공사",
+    "lines": [
+      "천연가스를 도입·저장·공급하는 기업입니다.",
+      "해외 LNG를 들여와 도시가스사·발전소에 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03646"
+    ]
+  },
+  "036540": {
+    "name": "SFA반도체",
+    "lines": [
+      "반도체 패키징과 테스트를 제공합니다.",
+      "메모리·비메모리 칩의 조립과 검사를 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03654"
+    ]
+  },
+  "036570": {
+    "name": "NC",
+    "lines": [
+      "온라인·모바일 게임을 개발·서비스합니다.",
+      "리니지 등 게임 IP를 기반으로 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03657"
+    ]
+  },
+  "036930": {
+    "name": "주성엔지니어링",
+    "lines": [
+      "반도체·디스플레이용 증착 장비를 만듭니다.",
+      "원자층 단위로 박막을 쌓는 ALD 장비를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03693"
+    ]
+  },
+  "037440": {
+    "name": "희림",
+    "lines": [
+      "건축 설계와 건설사업관리 서비스를 제공합니다.",
+      "건축물의 기획·설계·감리·프로젝트 관리를 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03744"
+    ]
+  },
+  "039030": {
+    "name": "이오테크닉스",
+    "lines": [
+      "반도체·디스플레이용 레이저 장비를 만듭니다.",
+      "레이저 마킹·절단·열처리 공정에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03903"
+    ]
+  },
+  "039490": {
+    "name": "키움증권",
+    "lines": [
+      "온라인 증권거래 중심의 금융투자회사입니다.",
+      "주식 중개·자산관리·기업금융 서비스를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03949"
+    ]
+  },
+  "039980": {
+    "name": "폴라리스AI",
+    "lines": [
+      "기업·공공기관의 IT 시스템을 구축합니다.",
+      "무선통신 솔루션과 패션 유통 사업도 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=03998"
+    ]
+  },
+  "041020": {
+    "name": "폴라리스오피스",
+    "lines": [
+      "문서 작성·편집 소프트웨어를 개발합니다.",
+      "폴라리스 오피스와 AI 기반 문서 도구를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04102"
+    ]
+  },
+  "041510": {
+    "name": "에스엠",
+    "lines": [
+      "아티스트 매니지먼트와 음악 사업을 합니다.",
+      "음원·음반·공연과 관련 콘텐츠를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04151"
+    ]
+  },
+  "042660": {
+    "name": "한화오션",
+    "lines": [
+      "상선·특수선·해양플랜트를 만드는 조선사입니다.",
+      "LNG운반선·잠수함 등 민수·방산 선박을 건조합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04266"
+    ]
+  },
+  "042700": {
+    "name": "한미반도체",
+    "lines": [
+      "반도체 후공정 장비를 만드는 기업입니다.",
+      "HBM 적층에 쓰는 열압착 본딩 장비 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04270"
+    ]
+  },
+  "044490": {
+    "name": "태웅",
+    "lines": [
+      "산업용 대형 단조 부품을 만드는 기업입니다.",
+      "풍력·조선·발전설비용 금속 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04449"
+    ]
+  },
+  "046120": {
+    "name": "오르비텍",
+    "lines": [
+      "방사선 안전관리와 항공 부품 사업을 합니다.",
+      "원전 방사선 관리·검사와 정밀 부품을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04612"
+    ]
+  },
+  "046970": {
+    "name": "우리로",
+    "lines": [
+      "광통신용 광분배기·광다이오드를 만듭니다.",
+      "통신망의 광 신호 분배와 미약한 빛 검출에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04697"
+    ]
+  },
+  "047040": {
+    "name": "대우건설",
+    "lines": [
+      "주택·토목·플랜트 건설 사업을 합니다.",
+      "아파트·도로·에너지 시설 등을 시공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04704"
+    ]
+  },
+  "047050": {
+    "name": "포스코인터내셔널",
+    "lines": [
+      "에너지·종합상사 사업을 하는 기업입니다.",
+      "가스전·LNG·발전과 철강·원료 교역을 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04705",
+      "https://www.poscointl.com/energy"
+    ]
+  },
+  "047560": {
+    "name": "이스트소프트",
+    "lines": [
+      "소프트웨어와 AI 서비스를 개발합니다.",
+      "알툴즈·보안 제품과 AI 휴먼 사업 등을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04756"
+    ]
+  },
+  "047810": {
+    "name": "한국항공우주",
+    "lines": [
+      "군용·민간 항공기와 기체 부품을 만듭니다.",
+      "훈련기·전투기·헬기 개발과 항공 정비를 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04781"
+    ]
+  },
+  "049080": {
+    "name": "기가레인",
+    "lines": [
+      "RF 통신부품과 반도체 장비를 만듭니다.",
+      "고주파 연결 부품과 식각 장비 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=04908"
+    ]
+  },
+  "051600": {
+    "name": "한전KPS",
+    "lines": [
+      "발전·송전 설비를 정비하는 기업입니다.",
+      "원전·화력 발전설비의 점검과 유지보수를 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05160"
+    ]
+  },
+  "051900": {
+    "name": "LG생활건강",
+    "lines": [
+      "화장품·생활용품·음료 사업을 합니다.",
+      "뷰티 브랜드와 세정·위생·음료 제품을 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05190"
+    ]
+  },
+  "051910": {
+    "name": "LG화학",
+    "lines": [
+      "석유화학·첨단소재·생명과학 사업을 합니다.",
+      "플라스틱 원료·배터리 양극재·의약품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05191"
+    ]
+  },
+  "052690": {
+    "name": "한전기술",
+    "lines": [
+      "발전소 설계·엔지니어링을 하는 기업입니다.",
+      "원자력발전소의 종합설계와 관련 기술이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05269"
+    ]
+  },
+  "053080": {
+    "name": "케이엔솔",
+    "lines": [
+      "산업용 클린룸을 설계·시공하는 기업입니다.",
+      "반도체·배터리 공장 설비와 냉각 솔루션을 다룹니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05308"
+    ]
+  },
+  "053610": {
+    "name": "프로텍",
+    "lines": [
+      "반도체 패키징용 정밀 장비를 만듭니다.",
+      "접착제·봉지재를 정량 도포하는 디스펜서가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05361"
+    ]
+  },
+  "053690": {
+    "name": "한미글로벌",
+    "lines": [
+      "건설 프로젝트 관리 서비스를 제공합니다.",
+      "발주자를 대신해 공사비·일정·품질을 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05369"
+    ]
+  },
+  "053800": {
+    "name": "안랩",
+    "lines": [
+      "정보보안 소프트웨어·서비스를 제공합니다.",
+      "백신·단말 보안·네트워크 보안 솔루션이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05380"
+    ]
+  },
+  "054450": {
+    "name": "텔레칩스",
+    "lines": [
+      "차량용 시스템반도체를 설계합니다.",
+      "인포테인먼트·디지털 계기판용 칩이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05445"
+    ]
+  },
+  "055550": {
+    "name": "신한지주",
+    "lines": [
+      "은행·카드·증권·보험을 아우르는 금융지주사입니다.",
+      "신한은행 등 계열사의 금융 사업을 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05555"
+    ]
+  },
+  "056080": {
+    "name": "유진로봇",
+    "lines": [
+      "자율주행 로봇과 물류 자동화 기술을 개발합니다.",
+      "이동로봇·관제 시스템·센서 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05608"
+    ]
+  },
+  "056360": {
+    "name": "코위버",
+    "lines": [
+      "유선 통신망용 전송장비를 만듭니다.",
+      "광전송·패킷 전송 장비로 통신망을 연결합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05636"
+    ]
+  },
+  "058470": {
+    "name": "리노공업",
+    "lines": [
+      "정밀 검사핀과 반도체 소켓을 만듭니다.",
+      "반도체의 전기적 성능을 검사할 때 사용됩니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05847"
+    ]
+  },
+  "058610": {
+    "name": "에스피지",
+    "lines": [
+      "정밀 감속기와 소형 모터를 만듭니다.",
+      "산업용 장비·로봇의 속도와 회전력을 제어합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05861"
+    ]
+  },
+  "059090": {
+    "name": "미코",
+    "lines": [
+      "반도체·디스플레이용 세라믹 부품을 만듭니다.",
+      "장비의 가열·온도 제어 등에 쓰이는 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05909"
+    ]
+  },
+  "059120": {
+    "name": "아진엑스텍",
+    "lines": [
+      "자동화 장비용 모션 제어 부품을 만듭니다.",
+      "모터의 위치·속도를 제어하는 칩과 모듈이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=05912"
+    ]
+  },
+  "060250": {
+    "name": "NHN KCP",
+    "lines": [
+      "온라인·오프라인 전자결제 서비스를 제공합니다.",
+      "가맹점의 카드결제·정산 등을 처리하는 PG사입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06025"
+    ]
+  },
+  "060370": {
+    "name": "LS마린솔루션",
+    "lines": [
+      "해저 케이블을 시공·유지보수하는 기업입니다.",
+      "해저 통신망과 해상풍력 전력망 설치를 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06037"
+    ]
+  },
+  "062040": {
+    "name": "산일전기",
+    "lines": [
+      "산업용·전력망용 변압기를 만듭니다.",
+      "전압을 바꾸는 특수·배전 변압기를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06204"
+    ]
+  },
+  "064350": {
+    "name": "현대로템",
+    "lines": [
+      "철도차량과 지상 방산장비를 만듭니다.",
+      "전동차·고속철도 차량·전차 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06435"
+    ]
+  },
+  "064400": {
+    "name": "LG씨엔에스",
+    "lines": [
+      "기업·공공기관의 IT 시스템을 구축합니다.",
+      "클라우드·AI와 데이터센터 설계·구축·운영을 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06440",
+      "https://www.lgcns.com/kr/newsroom/press/detail.250806001"
+    ]
+  },
+  "064760": {
+    "name": "티씨케이",
+    "lines": [
+      "반도체 장비용 고순도 부품을 만듭니다.",
+      "식각 공정의 실리콘카바이드 링 등이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06476"
+    ]
+  },
+  "066570": {
+    "name": "LG전자",
+    "lines": [
+      "가전·전장·냉난방공조 사업을 합니다.",
+      "데이터센터용 칠러와 액체냉각 장비도 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06657",
+      "https://www.lge.co.kr/story/newsroom/236195"
+    ]
+  },
+  "066970": {
+    "name": "엘앤에프",
+    "lines": [
+      "이차전지용 양극활물질을 만듭니다.",
+      "전기차 배터리 등에 쓰이는 니켈계 소재가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06697"
+    ]
+  },
+  "067310": {
+    "name": "하나마이크론",
+    "lines": [
+      "반도체 패키징과 테스트를 맡는 기업입니다.",
+      "완성된 칩을 보호·연결하고 성능을 검사합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06731"
+    ]
+  },
+  "068270": {
+    "name": "셀트리온",
+    "lines": [
+      "바이오의약품을 개발·생산·판매합니다.",
+      "항체 바이오시밀러와 관련 치료제를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06827"
+    ]
+  },
+  "069540": {
+    "name": "빛과전자",
+    "lines": [
+      "광통신용 부품과 모듈을 만듭니다.",
+      "광트랜시버 등 데이터 전송용 광전자 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06954"
+    ]
+  },
+  "069620": {
+    "name": "대웅제약",
+    "lines": [
+      "의약품과 바이오의약품을 개발·판매합니다.",
+      "전문의약품·보툴리눔 톡신 등 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=06962"
+    ]
+  },
+  "071050": {
+    "name": "한국금융지주",
+    "lines": [
+      "한국투자증권 등을 보유한 금융지주사입니다.",
+      "증권·운용·저축은행 등 계열 금융 사업을 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07105"
+    ]
+  },
+  "071970": {
+    "name": "HD현대마린엔진",
+    "lines": [
+      "선박용 엔진과 엔진 부품을 만듭니다.",
+      "대형 상선의 추진 엔진·조선 기자재를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07197"
+    ]
+  },
+  "073010": {
+    "name": "케이에스피",
+    "lines": [
+      "선박 엔진용 밸브와 단조 부품을 만듭니다.",
+      "엔진의 흡기·배기 흐름을 제어하는 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07301"
+    ]
+  },
+  "074600": {
+    "name": "원익QnC",
+    "lines": [
+      "반도체 공정에 쓰는 석영 부품을 만듭니다.",
+      "고온·고순도 환경의 웨이퍼 처리 장비에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07460"
+    ]
+  },
+  "077970": {
+    "name": "STX엔진",
+    "lines": [
+      "선박·산업·방산용 엔진을 만듭니다.",
+      "함정·지상장비 엔진과 부품·정비를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07797"
+    ]
+  },
+  "078150": {
+    "name": "HB테크놀러지",
+    "lines": [
+      "디스플레이·기판용 검사 장비를 만듭니다.",
+      "자동 광학 검사와 레이저 수리 장비 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07815"
+    ]
+  },
+  "078600": {
+    "name": "대주전자재료",
+    "lines": [
+      "전자재료와 이차전지용 소재를 만듭니다.",
+      "전도성 페이스트·실리콘 음극재 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07860"
+    ]
+  },
+  "078930": {
+    "name": "GS",
+    "lines": [
+      "에너지·유통 계열사를 보유한 지주회사입니다.",
+      "정유·발전·소매유통 등 계열사의 사업을 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07893"
+    ]
+  },
+  "079550": {
+    "name": "LIG디펜스앤에어로스페이스",
+    "lines": [
+      "정밀유도무기와 방산 전자체계를 개발합니다.",
+      "미사일·감시정찰·지휘통제 체계 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=07955"
+    ]
+  },
+  "080220": {
+    "name": "제주반도체",
+    "lines": [
+      "저전력 메모리를 설계하는 팹리스 기업입니다.",
+      "모바일·사물인터넷 기기용 메모리를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08022"
+    ]
+  },
+  "082740": {
+    "name": "한화엔진",
+    "lines": [
+      "대형 선박용 저속 디젤엔진을 만듭니다.",
+      "선박 추진 엔진과 유지보수 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08274"
+    ]
+  },
+  "082920": {
+    "name": "비츠로셀",
+    "lines": [
+      "산업용 리튬 일차전지를 만듭니다.",
+      "스마트 계량기·군용 장비 등 장수명 전원에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08292"
+    ]
+  },
+  "083450": {
+    "name": "GST",
+    "lines": [
+      "반도체용 가스 정화·온도 제어 장비를 만듭니다.",
+      "스크러버·칠러와 액침냉각 기술을 개발합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08345"
+    ]
+  },
+  "083650": {
+    "name": "비에이치아이",
+    "lines": [
+      "발전·산업 플랜트용 열교환 설비를 만듭니다.",
+      "배열회수보일러·보일러·열교환기 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08365"
+    ]
+  },
+  "084370": {
+    "name": "유진테크",
+    "lines": [
+      "반도체 박막 증착 장비를 만듭니다.",
+      "저압 화학기상증착 등 메모리 공정 장비가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08437"
+    ]
+  },
+  "086280": {
+    "name": "현대글로비스",
+    "lines": [
+      "자동차·산업 물류 서비스를 제공합니다.",
+      "완성차 해상운송·부품 물류와 유통 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08628"
+    ]
+  },
+  "086520": {
+    "name": "에코프로",
+    "lines": [
+      "이차전지 소재·환경 사업 계열사를 보유합니다.",
+      "양극재·원료·재활용 등 배터리 소재 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08652"
+    ]
+  },
+  "086790": {
+    "name": "하나금융지주",
+    "lines": [
+      "은행·증권·카드 등 계열사를 보유한 금융지주사입니다.",
+      "하나은행을 중심으로 국내외 금융 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08679"
+    ]
+  },
+  "087010": {
+    "name": "펩트론",
+    "lines": [
+      "약효 지속형 주사제와 펩타이드를 개발합니다.",
+      "약물을 오래 방출하는 미립구 기술이 핵심입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08701"
+    ]
+  },
+  "088350": {
+    "name": "한화생명",
+    "lines": [
+      "생명보험과 관련 금융서비스를 제공합니다.",
+      "보장성 보험·연금·저축성 상품을 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08835"
+    ]
+  },
+  "088800": {
+    "name": "에이스테크",
+    "lines": [
+      "무선통신용 안테나와 RF 부품을 만듭니다.",
+      "기지국·통신장비에서 무선 신호를 송수신합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08880"
+    ]
+  },
+  "089010": {
+    "name": "켐트로닉스",
+    "lines": [
+      "전자부품·화학소재·유리 가공 사업을 합니다.",
+      "디스플레이 식각과 반도체 공정 소재를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08901"
+    ]
+  },
+  "089030": {
+    "name": "테크윙",
+    "lines": [
+      "반도체 검사 자동화 장비를 만듭니다.",
+      "칩을 검사기에 옮기는 핸들러 등이 핵심 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08903"
+    ]
+  },
+  "089970": {
+    "name": "브이엠",
+    "lines": [
+      "반도체 전공정용 식각 장비를 만듭니다.",
+      "플라즈마로 웨이퍼의 필요한 부분을 깎아냅니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=08997"
+    ]
+  },
+  "090360": {
+    "name": "로보스타",
+    "lines": [
+      "산업용 로봇과 자동화 장비를 만듭니다.",
+      "디스플레이·반도체 생산라인의 이송 로봇을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09036"
+    ]
+  },
+  "090430": {
+    "name": "아모레퍼시픽",
+    "lines": [
+      "화장품·생활용품을 개발·판매합니다.",
+      "설화수·라네즈 등 여러 뷰티 브랜드를 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09043"
+    ]
+  },
+  "090460": {
+    "name": "비에이치",
+    "lines": [
+      "전자제품용 연성 인쇄회로기판을 만듭니다.",
+      "스마트폰·디스플레이 등의 부품을 연결합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09046"
+    ]
+  },
+  "090710": {
+    "name": "휴림로봇",
+    "lines": [
+      "산업용 로봇과 자동화 시스템을 만듭니다.",
+      "직교·다관절 로봇으로 제조 공정의 이송을 지원합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09071"
+    ]
+  },
+  "093370": {
+    "name": "후성",
+    "lines": [
+      "불소계 화학제품과 반도체용 가스를 만듭니다.",
+      "냉매·특수가스·배터리 전해질 소재가 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09337"
+    ]
+  },
+  "094360": {
+    "name": "칩스앤미디어",
+    "lines": [
+      "영상 처리용 반도체 설계 IP를 개발합니다.",
+      "비디오 코덱과 영상 특화 NPU IP를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09436"
+    ]
+  },
+  "095340": {
+    "name": "ISC",
+    "lines": [
+      "반도체 검사에 쓰이는 소켓을 만듭니다.",
+      "칩과 검사 장비를 연결하는 테스트소켓이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09534"
+    ]
+  },
+  "095610": {
+    "name": "테스",
+    "lines": [
+      "반도체 제조용 증착·처리 장비를 만듭니다.",
+      "메모리 생산에 쓰이는 화학기상증착 장비를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09561"
+    ]
+  },
+  "096770": {
+    "name": "SK이노베이션",
+    "lines": [
+      "정유·화학·윤활유 등 에너지 사업을 합니다.",
+      "계열사를 통해 배터리·가스·전력 사업도 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09677"
+    ]
+  },
+  "097950": {
+    "name": "CJ제일제당",
+    "lines": [
+      "가공식품과 바이오 소재를 만드는 기업입니다.",
+      "비비고 등 식품과 아미노산·조미소재를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09795"
+    ]
+  },
+  "099320": {
+    "name": "쎄트렉아이",
+    "lines": [
+      "지구관측 위성과 지상 시스템을 개발합니다.",
+      "위성 본체·탑재체·영상 활용 기술을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=09932"
+    ]
+  },
+  "100090": {
+    "name": "SK오션플랜트",
+    "lines": [
+      "해상풍력용 하부구조물을 만드는 기업입니다.",
+      "풍력발전기를 바다에 지지하는 구조물을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10009"
+    ]
+  },
+  "100130": {
+    "name": "동국S&C",
+    "lines": [
+      "풍력발전용 타워와 철구조물을 만듭니다.",
+      "풍력 터빈 지지 구조물과 관련 공사를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10013"
+    ]
+  },
+  "103140": {
+    "name": "풍산",
+    "lines": [
+      "구리 가공제품과 방산 탄약을 만듭니다.",
+      "동·동합금 판재·봉재와 각종 탄약을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10314",
+      "https://join.poongsan.co.kr/guide/duty.aspx"
+    ]
+  },
+  "103590": {
+    "name": "일진전기",
+    "lines": [
+      "전력 케이블과 중전기기를 만듭니다.",
+      "초고압 케이블·변압기 등 전력망 설비를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10359",
+      "https://www.iljinelectric.com/file/download/105"
+    ]
+  },
+  "105560": {
+    "name": "KB금융",
+    "lines": [
+      "은행·증권·보험 계열사를 보유한 금융지주사입니다.",
+      "KB국민은행 등을 통해 종합 금융서비스를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10556"
+    ]
+  },
+  "105840": {
+    "name": "우진",
+    "lines": [
+      "원전·산업용 계측기를 만드는 기업입니다.",
+      "발전소의 온도·수위 등 운전 상태를 측정합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10584"
+    ]
+  },
+  "107640": {
+    "name": "한중엔시에스",
+    "lines": [
+      "ESS 배터리의 열을 관리하는 기업입니다.",
+      "수냉식 냉각시스템과 관련 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10764"
+    ]
+  },
+  "108320": {
+    "name": "LX세미콘",
+    "lines": [
+      "디스플레이 구동용 반도체를 설계합니다.",
+      "화면을 제어하는 DDI와 관련 칩을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10832"
+    ]
+  },
+  "108490": {
+    "name": "로보티즈",
+    "lines": [
+      "로봇 구동 부품과 자율주행 로봇을 만듭니다.",
+      "다이나믹셀 액추에이터와 서비스 로봇이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10849"
+    ]
+  },
+  "108860": {
+    "name": "셀바스AI",
+    "lines": [
+      "음성·필기 인식 등 인공지능 기술을 개발합니다.",
+      "음성인식·합성·문서 처리 솔루션을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10886"
+    ]
+  },
+  "109080": {
+    "name": "옵티시스",
+    "lines": [
+      "디지털 광전송 모듈을 개발합니다.",
+      "영상·음성·제어 신호를 광섬유로 전달합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=10908"
+    ]
+  },
+  "112290": {
+    "name": "와이씨켐",
+    "lines": [
+      "반도체·디스플레이용 화학소재를 만듭니다.",
+      "포토레지스트·세정액과 유리기판용 소재를 개발합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=11229"
+    ]
+  },
+  "112610": {
+    "name": "씨에스윈드",
+    "lines": [
+      "풍력발전용 타워를 만드는 기업입니다.",
+      "풍력 터빈을 지지하는 대형 강철 구조물입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=11261"
+    ]
+  },
+  "121600": {
+    "name": "나노신소재",
+    "lines": [
+      "반도체·배터리용 나노 소재를 만듭니다.",
+      "CNT 도전재·연마 소재·투명전극 소재를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=12160"
+    ]
+  },
+  "123690": {
+    "name": "한국화장품",
+    "lines": [
+      "화장품 브랜드·유통 사업을 합니다.",
+      "기초·색조 화장품 등을 판매하는 기업입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=12369"
+    ]
+  },
+  "125490": {
+    "name": "한라캐스트",
+    "lines": [
+      "알루미늄·마그네슘 정밀 주조 부품을 만듭니다.",
+      "자동차 전장·전자기기의 구조·방열 부품에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=12549"
+    ]
+  },
+  "128940": {
+    "name": "한미약품",
+    "lines": [
+      "전문의약품과 바이오 신약을 개발합니다.",
+      "대사질환·항암 분야와 약효 지속 기술을 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=12894"
+    ]
+  },
+  "130660": {
+    "name": "한전산업",
+    "lines": [
+      "발전설비 운전·정비 서비스를 제공합니다.",
+      "연료·환경 설비 운영과 전력 관련 업무를 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=13066"
+    ]
+  },
+  "131290": {
+    "name": "티에스이",
+    "lines": [
+      "반도체 검사에 쓰이는 부품을 만듭니다.",
+      "프로브카드·테스트보드·테스트소켓을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=13129"
+    ]
+  },
+  "131970": {
+    "name": "두산테스나",
+    "lines": [
+      "시스템반도체의 성능 검사를 수행합니다.",
+      "이미지센서·차량용 칩 등 웨이퍼 테스트가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=13197"
+    ]
+  },
+  "137400": {
+    "name": "피엔티",
+    "lines": [
+      "롤투롤 방식의 생산 장비를 만듭니다.",
+      "배터리 전극의 코팅·압연 등 제조 공정에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=13740"
+    ]
+  },
+  "138040": {
+    "name": "메리츠금융지주",
+    "lines": [
+      "화재보험·증권 계열사를 보유한 금융지주사입니다.",
+      "보험·증권 사업과 계열사 자본 배분을 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=13804"
+    ]
+  },
+  "138080": {
+    "name": "오이솔루션",
+    "lines": [
+      "광통신용 트랜시버를 만드는 기업입니다.",
+      "전기 신호와 광 신호를 서로 바꾸는 모듈입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=13808"
+    ]
+  },
+  "141080": {
+    "name": "리가켐바이오",
+    "lines": [
+      "항체약물접합체 기반 항암 신약을 개발합니다.",
+      "항체와 약물을 연결하는 ADC 기술이 핵심입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=14108"
+    ]
+  },
+  "150900": {
+    "name": "파수AI",
+    "lines": [
+      "기업용 데이터·문서 보안 소프트웨어를 개발합니다.",
+      "문서 암호화·접근제어·AI 데이터 관리에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=15090",
+      "https://kind.krx.co.kr/external/2026/05/14/001022/20260514002245/11013.htm"
+    ]
+  },
+  "160190": {
+    "name": "하이젠알앤엠",
+    "lines": [
+      "산업용·서보 모터와 구동장치를 만듭니다.",
+      "로봇·자동화 설비의 정밀한 움직임을 제어합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=16019"
+    ]
+  },
+  "161580": {
+    "name": "필옵틱스",
+    "lines": [
+      "디스플레이·반도체용 정밀 장비를 만듭니다.",
+      "레이저 가공·노광·유리 가공 장비를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=16158"
+    ]
+  },
+  "161890": {
+    "name": "한국콜마",
+    "lines": [
+      "화장품 위탁개발·생산 사업을 합니다.",
+      "브랜드 고객사의 제품 연구부터 제조까지 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=16189"
+    ]
+  },
+  "166090": {
+    "name": "하나머티리얼즈",
+    "lines": [
+      "반도체 제조 장비용 소모성 부품을 만듭니다.",
+      "실리콘·실리콘카바이드 기반 식각 부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=16609"
+    ]
+  },
+  "171090": {
+    "name": "선익시스템",
+    "lines": [
+      "OLED 디스플레이용 증착 장비를 만듭니다.",
+      "기판 위에 유기물 박막을 형성하는 공정에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=17109"
+    ]
+  },
+  "178320": {
+    "name": "서진시스템",
+    "lines": [
+      "정밀 가공·조립 기반의 제조 전문기업입니다.",
+      "ESS 완제품과 반도체·데이터센터 부품을 만듭니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=17832",
+      "https://seojinsystem.net/business/sector.php"
+    ]
+  },
+  "179880": {
+    "name": "멜콘",
+    "lines": [
+      "반도체 공정용 환경 제어 장비를 만듭니다.",
+      "온습도와 공정 가스를 정밀하게 제어합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=17988",
+      "https://melcon.co.kr/page/ir-news.html?aq_id=83&aq_listnum=1&aq_part=&page=b_view&pg=1&s_table=ir_report"
+    ]
+  },
+  "180640": {
+    "name": "한진칼",
+    "lines": [
+      "대한항공 등을 보유한 지주회사입니다.",
+      "항공·물류·관광 관련 계열사를 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=18064"
+    ]
+  },
+  "181710": {
+    "name": "NHN",
+    "lines": [
+      "게임·결제·IT서비스 사업을 하는 기업입니다.",
+      "한게임과 클라우드 등 디지털 서비스를 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=18171"
+    ]
+  },
+  "183300": {
+    "name": "코미코",
+    "lines": [
+      "반도체 장비 부품을 세정·코팅합니다.",
+      "오염을 제거하고 부품의 내구성·수명을 높입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=18330"
+    ]
+  },
+  "185490": {
+    "name": "아이진",
+    "lines": [
+      "백신과 바이오 신약을 개발합니다.",
+      "mRNA 백신·전달체 등 예방·치료 기술을 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=18549"
+    ]
+  },
+  "185750": {
+    "name": "종근당",
+    "lines": [
+      "전문의약품을 개발·생산하는 제약사입니다.",
+      "만성질환 치료제와 바이오 신약 등을 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=18575"
+    ]
+  },
+  "189300": {
+    "name": "인텔리안테크",
+    "lines": [
+      "위성통신 안테나와 단말을 만듭니다.",
+      "선박·육상에서 위성망에 연결하는 장비입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=18930"
+    ]
+  },
+  "189860": {
+    "name": "서전기전",
+    "lines": [
+      "수배전반과 전력 제어 장치를 만듭니다.",
+      "건물·산업설비에 전기를 분배·보호하는 장비입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=18986"
+    ]
+  },
+  "192820": {
+    "name": "코스맥스",
+    "lines": [
+      "화장품 위탁개발·생산 전문기업입니다.",
+      "국내외 브랜드에 스킨케어·색조 제품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=19282"
+    ]
+  },
+  "195870": {
+    "name": "해성디에스",
+    "lines": [
+      "반도체 패키징용 금속 소재·부품을 만듭니다.",
+      "리드프레임과 메모리용 패키지 기판이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=19587"
+    ]
+  },
+  "196170": {
+    "name": "알테오젠",
+    "lines": [
+      "바이오의약품 플랫폼과 신약을 개발합니다.",
+      "항체의약품의 피하주사 전환 기술 등이 핵심입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=19617"
+    ]
+  },
+  "199430": {
+    "name": "케이엔알시스템",
+    "lines": [
+      "유압 로봇과 시험·계측 시스템을 만듭니다.",
+      "극한 환경용 구동 기술과 성능 시험 장비를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=19943"
+    ]
+  },
+  "199820": {
+    "name": "제일일렉트릭",
+    "lines": [
+      "배선기구·분전반·전자부품을 만듭니다.",
+      "건물·전력기기의 전기 연결과 회로 보호에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=19982"
+    ]
+  },
+  "200470": {
+    "name": "에이팩트",
+    "lines": [
+      "메모리 반도체 테스트와 패키징을 합니다.",
+      "DRAM·낸드 등의 품질·성능 검사를 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=20047"
+    ]
+  },
+  "200710": {
+    "name": "에이디테크놀로지",
+    "lines": [
+      "고객 맞춤형 시스템반도체를 설계합니다.",
+      "칩 설계부터 파운드리 생산 연계까지 지원합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=20071"
+    ]
+  },
+  "203650": {
+    "name": "드림시큐리티",
+    "lines": [
+      "인증·암호화 등 정보보안 기술을 제공합니다.",
+      "디지털 신원 확인과 데이터 보호에 사용됩니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=20365"
+    ]
+  },
+  "204270": {
+    "name": "제이앤티씨",
+    "lines": [
+      "전자기기용 강화유리와 커넥터를 만듭니다.",
+      "스마트폰·차량용 커버유리와 유리기판을 다룹니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=20427"
+    ]
+  },
+  "204320": {
+    "name": "HL만도",
+    "lines": [
+      "자동차의 제동·조향·현가 장치를 만듭니다.",
+      "차량의 속도·방향·승차감을 제어하는 부품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=20432"
+    ]
+  },
+  "207940": {
+    "name": "삼성바이오로직스",
+    "lines": [
+      "바이오의약품 위탁개발·생산 기업입니다.",
+      "고객사의 항체의약품 등 생산 공정을 맡습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=20794"
+    ]
+  },
+  "211270": {
+    "name": "AP위성",
+    "lines": [
+      "위성통신 단말과 위성 전자장비를 만듭니다.",
+      "위성전화 단말·위성 탑재 전자부품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21127"
+    ]
+  },
+  "213420": {
+    "name": "덕산네오룩스",
+    "lines": [
+      "OLED 디스플레이용 유기소재를 만듭니다.",
+      "발광·전하 이동을 돕는 소재와 Black PDL을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21342"
+    ]
+  },
+  "214260": {
+    "name": "라파스",
+    "lines": [
+      "피부에 붙이는 마이크로니들 패치를 만듭니다.",
+      "미세 바늘로 화장품·약물 성분의 전달을 돕습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21426"
+    ]
+  },
+  "214370": {
+    "name": "케어젠",
+    "lines": [
+      "펩타이드 기반 바이오 소재를 개발합니다.",
+      "피부·모발 관리 제품과 의약품 후보를 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21437"
+    ]
+  },
+  "214450": {
+    "name": "파마리서치",
+    "lines": [
+      "재생의학 기반 의약품·의료기기를 만듭니다.",
+      "PN·PDRN 관련 제품과 리쥬란 브랜드를 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21445"
+    ]
+  },
+  "215100": {
+    "name": "로보로보",
+    "lines": [
+      "교육용 로봇과 코딩 학습 제품을 만듭니다.",
+      "조립형 로봇과 교육 콘텐츠로 로봇 학습을 돕습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21510"
+    ]
+  },
+  "215790": {
+    "name": "이노인스트루먼트",
+    "lines": [
+      "광통신망 설치·유지용 장비를 공급합니다.",
+      "광섬유를 연결하는 융착접속기 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21579"
+    ]
+  },
+  "217190": {
+    "name": "제너셈",
+    "lines": [
+      "반도체 후공정 자동화 장비를 만듭니다.",
+      "패키지 검사·분류·이송 장비를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=21719"
+    ]
+  },
+  "222800": {
+    "name": "심텍",
+    "lines": [
+      "반도체 패키지·메모리 모듈용 기판을 만듭니다.",
+      "DRAM·SSD 등 메모리 제품에 쓰이는 PCB를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=22280"
+    ]
+  },
+  "226320": {
+    "name": "잇츠한불",
+    "lines": [
+      "화장품 개발·제조·판매 사업을 합니다.",
+      "잇츠스킨 등 스킨케어 브랜드를 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=22632"
+    ]
+  },
+  "226950": {
+    "name": "올릭스",
+    "lines": [
+      "RNA간섭 기술을 이용한 신약을 개발합니다.",
+      "siRNA로 질병 관련 유전자 발현을 억제합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=22695",
+      "https://kind.krx.co.kr/external/dst/irReference/18925/2026%20%EC%98%AC%EB%A6%AD%EC%8A%A4%20R%26D%20DAY_260714_F.pdf"
+    ]
+  },
+  "229640": {
+    "name": "LS에코에너지",
+    "lines": [
+      "전력·통신 케이블 사업 계열사를 보유합니다.",
+      "베트남 등의 생산거점을 통해 전선을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=22964",
+      "https://lsecoenergy.com/bbs/board.php?bo_table=d2&wr_id=66"
+    ]
+  },
+  "237690": {
+    "name": "에스티팜",
+    "lines": [
+      "신약 원료의약품을 위탁개발·생산합니다.",
+      "올리고핵산 원료와 mRNA 관련 기술을 다룹니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=23769"
+    ]
+  },
+  "240810": {
+    "name": "원익IPS",
+    "lines": [
+      "반도체 제조 공정용 장비를 만듭니다.",
+      "웨이퍼 위에 박막을 형성하는 증착 장비가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=24081"
+    ]
+  },
+  "247540": {
+    "name": "에코프로비엠",
+    "lines": [
+      "배터리의 핵심 재료인 양극활물질을 만듭니다.",
+      "니켈 비중이 높은 이차전지 양극재가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=24754"
+    ]
+  },
+  "248170": {
+    "name": "샘표식품",
+    "lines": [
+      "장류와 소스류를 만드는 식품기업입니다.",
+      "간장·연두 등 조미식품과 식재료를 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=24817"
+    ]
+  },
+  "249420": {
+    "name": "일동제약",
+    "lines": [
+      "전문의약품과 일반의약품을 만듭니다.",
+      "아로나민 등 의약품과 신약 연구 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=24942"
+    ]
+  },
+  "257720": {
+    "name": "실리콘투",
+    "lines": [
+      "한국 화장품의 해외 유통을 지원합니다.",
+      "온라인몰·물류망을 통해 K뷰티 제품을 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=25772"
+    ]
+  },
+  "259960": {
+    "name": "크래프톤",
+    "lines": [
+      "게임을 개발·서비스하는 기업입니다.",
+      "배틀그라운드 등 PC·모바일 게임을 운영합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=25996"
+    ]
+  },
+  "263860": {
+    "name": "지니언스",
+    "lines": [
+      "네트워크·단말 보안 솔루션을 개발합니다.",
+      "접근제어 NAC와 위협 탐지·대응 EDR이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=26386"
+    ]
+  },
+  "264850": {
+    "name": "이랜시스",
+    "lines": [
+      "가전·생활기기용 구동 부품을 만듭니다.",
+      "소형 감속 모터·펌프·댐퍼 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=26485"
+    ]
+  },
+  "266690": {
+    "name": "덕산넵코어스",
+    "lines": [
+      "위성항법·항재밍 장치를 만드는 기업입니다.",
+      "방산·항공우주 장비의 위치 측정과 전파 방해에 대응합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=26669",
+      "https://navcours.irpage.co.kr/"
+    ]
+  },
+  "267260": {
+    "name": "HD현대일렉트릭",
+    "lines": [
+      "송배전용 전력기기를 만드는 기업입니다.",
+      "변압기·차단기·배전반 등 전력망 설비를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=26726"
+    ]
+  },
+  "267270": {
+    "name": "HD건설기계",
+    "lines": [
+      "건설기계와 엔진을 만드는 기업입니다.",
+      "굴착기·휠로더 등 토공 장비와 엔진을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=26727",
+      "https://kind.krx.co.kr/external/2026/06/02/000761/20260602001735/11013.htm"
+    ]
+  },
+  "271560": {
+    "name": "오리온",
+    "lines": [
+      "과자·스낵을 만들어 국내외에 판매합니다.",
+      "초코파이·비스킷·스낵 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=27156"
+    ]
+  },
+  "272210": {
+    "name": "한화시스템",
+    "lines": [
+      "방산 전자장비와 ICT 시스템을 개발합니다.",
+      "레이더·전투체계·감시정찰 장비가 주요 사업입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=27221"
+    ]
+  },
+  "274090": {
+    "name": "켄코아에어로스페이스",
+    "lines": [
+      "항공기 부품 가공·조립 사업을 합니다.",
+      "항공·우주용 구조물과 금속 소재 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=27409"
+    ]
+  },
+  "277810": {
+    "name": "레인보우로보틱스",
+    "lines": [
+      "협동로봇·이동형 로봇을 개발합니다.",
+      "로봇 플랫폼과 정밀 제어 기술을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=27781"
+    ]
+  },
+  "278280": {
+    "name": "천보",
+    "lines": [
+      "이차전지·디스플레이용 정밀 화학소재를 만듭니다.",
+      "배터리 전해질·첨가제와 전자재료를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=27828"
+    ]
+  },
+  "278470": {
+    "name": "에이피알",
+    "lines": [
+      "화장품과 홈 뷰티기기를 만드는 기업입니다.",
+      "메디큐브 등 브랜드와 피부 관리기기를 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=27847"
+    ]
+  },
+  "280360": {
+    "name": "롯데웰푸드",
+    "lines": [
+      "제과·빙과·가공식품을 만드는 기업입니다.",
+      "껌·초콜릿·과자·아이스크림 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=28036"
+    ]
+  },
+  "281820": {
+    "name": "케이씨텍",
+    "lines": [
+      "반도체 연마·세정 장비와 소재를 만듭니다.",
+      "웨이퍼 표면을 평탄하게 하는 CMP 장비가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=28182"
+    ]
+  },
+  "287840": {
+    "name": "인투셀",
+    "lines": [
+      "항체약물접합체용 플랫폼을 개발합니다.",
+      "ADC의 링커와 약물 기술을 연구·제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=28784"
+    ]
+  },
+  "288620": {
+    "name": "에스프리즘",
+    "lines": [
+      "건물·발전용 연료전지 시스템을 만듭니다.",
+      "분산형 전원과 건물 에너지 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=28862"
+    ]
+  },
+  "297090": {
+    "name": "씨에스베어링",
+    "lines": [
+      "풍력발전기용 베어링을 만드는 기업입니다.",
+      "날개 각도와 터빈 방향을 조절하는 부품에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=29709"
+    ]
+  },
+  "298040": {
+    "name": "효성중공업",
+    "lines": [
+      "전력설비와 산업용 기계를 만드는 기업입니다.",
+      "변압기·차단기 등 중전기기와 건설 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=29804"
+    ]
+  },
+  "298050": {
+    "name": "HS효성첨단소재",
+    "lines": [
+      "산업용 섬유와 복합소재를 만듭니다.",
+      "타이어코드·에어백 원사·탄소섬유 등을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=29805"
+    ]
+  },
+  "298380": {
+    "name": "에이비엘바이오",
+    "lines": [
+      "이중항체 기반의 신약을 개발합니다.",
+      "면역항암제와 뇌 전달 항체 기술 등을 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=29838"
+    ]
+  },
+  "302440": {
+    "name": "SK바이오사이언스",
+    "lines": [
+      "백신을 개발·생산하는 바이오기업입니다.",
+      "자체 백신과 위탁개발·생산 사업을 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=30244"
+    ]
+  },
+  "304100": {
+    "name": "솔트룩스",
+    "lines": [
+      "인공지능·빅데이터 소프트웨어를 개발합니다.",
+      "검색·지식 처리·대화형 AI 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=30410"
+    ]
+  },
+  "306200": {
+    "name": "세아제강",
+    "lines": [
+      "산업용 강관을 만드는 기업입니다.",
+      "에너지·건설 분야의 배관·구조용 강관을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=30620"
+    ]
+  },
+  "307950": {
+    "name": "현대오토에버",
+    "lines": [
+      "차량 소프트웨어와 기업 IT서비스를 제공합니다.",
+      "내비게이션·스마트팩토리·클라우드 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=30795"
+    ]
+  },
+  "310210": {
+    "name": "보로노이",
+    "lines": [
+      "질환 표적 단백질을 겨냥한 신약을 개발합니다.",
+      "정밀 표적치료제 중심으로 약물 후보를 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=31021"
+    ]
+  },
+  "316140": {
+    "name": "우리금융지주",
+    "lines": [
+      "우리은행 등을 보유한 금융지주회사입니다.",
+      "은행과 비은행 계열사의 금융 사업을 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=31614"
+    ]
+  },
+  "319400": {
+    "name": "현대무벡스",
+    "lines": [
+      "물류 자동화 설비와 승강장 안전문을 만듭니다.",
+      "창고·공장의 보관·이송 시스템을 구축합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=31940"
+    ]
+  },
+  "319660": {
+    "name": "피에스케이",
+    "lines": [
+      "반도체 전공정용 표면 처리 장비를 만듭니다.",
+      "감광막을 제거하는 드라이 스트립 장비가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=31966"
+    ]
+  },
+  "322000": {
+    "name": "HD현대에너지솔루션",
+    "lines": [
+      "태양광 셀·모듈·발전 시스템을 만듭니다.",
+      "태양광 설비의 설계·설치·운영 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=32200"
+    ]
+  },
+  "323280": {
+    "name": "태성",
+    "lines": [
+      "인쇄회로기판 제조용 습식 장비를 만듭니다.",
+      "동도금·표면 처리 등 기판 가공 공정에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=32328"
+    ]
+  },
+  "323410": {
+    "name": "카카오뱅크",
+    "lines": [
+      "모바일 중심의 인터넷전문은행입니다.",
+      "예금·대출·송금 등 비대면 은행 서비스를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=32341"
+    ]
+  },
+  "326030": {
+    "name": "SK바이오팜",
+    "lines": [
+      "중추신경계 신약을 개발·판매합니다.",
+      "뇌전증 치료제 등 신경질환 의약품이 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=32603"
+    ]
+  },
+  "329180": {
+    "name": "HD현대중공업",
+    "lines": [
+      "선박·해양 설비와 선박 엔진을 만듭니다.",
+      "대형 상선·특수선·해양플랜트가 주요 사업입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=32918"
+    ]
+  },
+  "336260": {
+    "name": "두산퓨얼셀",
+    "lines": [
+      "발전용 연료전지 시스템을 만듭니다.",
+      "수소의 전기화학 반응으로 전기·열을 생산합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=33626"
+    ]
+  },
+  "347850": {
+    "name": "디앤디파마텍",
+    "lines": [
+      "대사성질환 치료제를 개발하는 바이오기업입니다.",
+      "GLP-1 계열 등 비만·지방간 신약을 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=34785"
+    ]
+  },
+  "348210": {
+    "name": "넥스틴",
+    "lines": [
+      "반도체 웨이퍼의 미세 결함을 검사합니다.",
+      "광학 검사 장비로 제조 공정의 수율 관리를 돕습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=34821",
+      "https://ir.nextinsol.com/company/area"
+    ]
+  },
+  "348340": {
+    "name": "뉴로메카",
+    "lines": [
+      "중소 제조업용 협동로봇을 개발합니다.",
+      "로봇 팔과 제어기·자동화 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=34834"
+    ]
+  },
+  "348370": {
+    "name": "엔켐",
+    "lines": [
+      "이차전지용 전해액을 만드는 기업입니다.",
+      "배터리 내부에서 이온을 전달하는 소재입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=34837"
+    ]
+  },
+  "352820": {
+    "name": "하이브",
+    "lines": [
+      "음악·아티스트·팬 플랫폼 사업을 합니다.",
+      "여러 레이블을 통해 음반·공연·콘텐츠를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=35282"
+    ]
+  },
+  "353200": {
+    "name": "대덕전자",
+    "lines": [
+      "반도체 패키지용 인쇄회로기판을 만듭니다.",
+      "메모리·비메모리 칩을 연결하는 기판을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=35320"
+    ]
+  },
+  "355150": {
+    "name": "코스텍시스",
+    "lines": [
+      "반도체 패키징용 방열 소재·부품을 만듭니다.",
+      "전력·고주파 반도체의 열을 밖으로 전달합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=35515"
+    ]
+  },
+  "356680": {
+    "name": "엑스게이트",
+    "lines": [
+      "네트워크 보안 장비·솔루션을 개발합니다.",
+      "방화벽·VPN 등 통신망 보호 제품을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=35668"
+    ]
+  },
+  "356860": {
+    "name": "티엘비",
+    "lines": [
+      "메모리 모듈·SSD용 인쇄회로기판을 만듭니다.",
+      "서버·컴퓨터의 데이터 저장·전달 기판에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=35686"
+    ]
+  },
+  "357780": {
+    "name": "솔브레인",
+    "lines": [
+      "반도체·디스플레이용 화학소재를 만듭니다.",
+      "식각액·세정액 등 제조 공정에 쓰는 소재가 주력입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=35778"
+    ]
+  },
+  "368770": {
+    "name": "파이버프로",
+    "lines": [
+      "광섬유 센서와 관성 측정장치를 만듭니다.",
+      "항공·방산 장비의 자세·방향 측정 등에 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=36877"
+    ]
+  },
+  "373220": {
+    "name": "LG에너지솔루션",
+    "lines": [
+      "전기차·ESS 등에 쓰이는 배터리를 만듭니다.",
+      "ESS용 셀부터 팩·시스템 통합까지 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=37322",
+      "https://www.lgensol.com/kr/business/ess"
+    ]
+  },
+  "375500": {
+    "name": "DL이앤씨",
+    "lines": [
+      "주택·토목·플랜트 건설을 수행합니다.",
+      "아파트와 산업·에너지 시설을 설계·시공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=37550"
+    ]
+  },
+  "377300": {
+    "name": "카카오페이",
+    "lines": [
+      "간편결제·송금 등 금융 플랫폼을 운영합니다.",
+      "결제와 금융상품 연계 서비스를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=37730"
+    ]
+  },
+  "377480": {
+    "name": "마음AI",
+    "lines": [
+      "AI 엔진과 통합 플랫폼을 개발합니다.",
+      "음성·영상·언어 기술을 기업 서비스에 연결합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=37748"
+    ]
+  },
+  "382900": {
+    "name": "범한퓨얼셀",
+    "lines": [
+      "수소 연료전지와 수소 인프라 사업을 합니다.",
+      "잠수함·건물용 연료전지와 충전소를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=38290"
+    ]
+  },
+  "388050": {
+    "name": "지투파워",
+    "lines": [
+      "전력설비와 상태 감시 장치를 만듭니다.",
+      "수배전반·변압기와 설비 진단 시스템을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=38805"
+    ]
+  },
+  "388720": {
+    "name": "유일로보틱스",
+    "lines": [
+      "산업용 로봇과 공장 자동화 설비를 만듭니다.",
+      "직교·다관절 로봇으로 생산 공정의 이송을 돕습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=38872"
+    ]
+  },
+  "389470": {
+    "name": "인벤티지랩",
+    "lines": [
+      "약물전달 플랫폼과 제형을 개발합니다.",
+      "미세유체 기술로 장기지속형 주사제 등을 만듭니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=38947"
+    ]
+  },
+  "389500": {
+    "name": "에스비비테크",
+    "lines": [
+      "로봇·자동화 장비용 정밀 감속기를 만듭니다.",
+      "모터의 회전 속도를 낮추고 토크를 높이는 부품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=38950"
+    ]
+  },
+  "393890": {
+    "name": "더블유씨피",
+    "lines": [
+      "이차전지용 습식 분리막을 만듭니다.",
+      "양극과 음극을 분리하면서 이온은 통과시킵니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=39389"
+    ]
+  },
+  "394280": {
+    "name": "오픈엣지테크놀로지",
+    "lines": [
+      "반도체 설계에 쓰는 핵심 IP를 개발합니다.",
+      "메모리 제어기·인터커넥트·NPU IP를 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=39428"
+    ]
+  },
+  "399720": {
+    "name": "가온칩스",
+    "lines": [
+      "시스템반도체 설계와 양산을 지원합니다.",
+      "고객의 칩 설계를 실제 제조 공정에 맞춥니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=39972"
+    ]
+  },
+  "402030": {
+    "name": "코난테크놀로지",
+    "lines": [
+      "검색·언어·음성 처리 소프트웨어를 개발합니다.",
+      "기업용 검색과 AI 분석·대화 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=40203"
+    ]
+  },
+  "402340": {
+    "name": "SK스퀘어",
+    "lines": [
+      "반도체·ICT 기업에 투자하는 지주회사입니다.",
+      "SK하이닉스 등 보유 기업의 가치를 관리합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=40234"
+    ]
+  },
+  "403870": {
+    "name": "HPSP",
+    "lines": [
+      "반도체 제조용 열처리 장비를 만듭니다.",
+      "고압 수소로 소자 특성을 개선하는 장비를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=40387"
+    ]
+  },
+  "406820": {
+    "name": "뷰티스킨",
+    "lines": [
+      "화장품 제조·브랜드·유통 사업을 합니다.",
+      "위탁생산과 자체 브랜드의 해외 판매를 수행합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=40682"
+    ]
+  },
+  "416180": {
+    "name": "신성에스티",
+    "lines": [
+      "전기차·ESS용 배터리 부품을 만듭니다.",
+      "버스바·모듈 케이스·열관리 부품이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=41618",
+      "https://kind.krx.co.kr/external/2026/05/15/000697/20260515001478/11013.htm"
+    ]
+  },
+  "420770": {
+    "name": "기가비스",
+    "lines": [
+      "반도체 기판용 광학 검사·수리 장비를 만듭니다.",
+      "기판 회로의 결함을 찾아 검사·복구하는 데 쓰입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=42077"
+    ]
+  },
+  "437730": {
+    "name": "삼현",
+    "lines": [
+      "모터·제어기·감속기를 결합한 구동계를 만듭니다.",
+      "자동차·로봇 등에 쓰는 정밀 구동 모듈을 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=43773"
+    ]
+  },
+  "439090": {
+    "name": "마녀공장",
+    "lines": [
+      "스킨케어 화장품 브랜드를 운영합니다.",
+      "클렌징·앰플 등 기초화장품을 국내외에 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=43909"
+    ]
+  },
+  "439960": {
+    "name": "코스모로보틱스",
+    "lines": [
+      "재활·보행 보조용 웨어러블 로봇을 만듭니다.",
+      "의료·산업 현장에서 사람의 움직임을 지원합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=43996"
+    ]
+  },
+  "440110": {
+    "name": "파두",
+    "lines": [
+      "데이터 저장장치용 반도체를 설계합니다.",
+      "데이터센터 SSD의 제어 칩이 핵심 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=44011"
+    ]
+  },
+  "443060": {
+    "name": "HD현대마린솔루션",
+    "lines": [
+      "운항 선박의 유지보수·개조를 지원합니다.",
+      "선박 부품·서비스와 친환경 개조 사업을 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=44306"
+    ]
+  },
+  "443670": {
+    "name": "에스피소프트",
+    "lines": [
+      "소프트웨어 유통·클라우드 서비스를 제공합니다.",
+      "라이선스 공급·가상 데스크톱 운영을 지원합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=44367"
+    ]
+  },
+  "451250": {
+    "name": "삐아",
+    "lines": [
+      "색조화장품 브랜드를 운영하는 기업입니다.",
+      "립·아이 메이크업 등 화장품을 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45125"
+    ]
+  },
+  "451760": {
+    "name": "컨텍",
+    "lines": [
+      "인공위성 지상국과 데이터 처리 사업을 합니다.",
+      "위성과 통신하고 수신한 영상의 처리를 지원합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45176"
+    ]
+  },
+  "454910": {
+    "name": "두산로보틱스",
+    "lines": [
+      "사람과 함께 작업하는 협동로봇을 만듭니다.",
+      "용접·가공·물류 등 작업의 자동화를 지원합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45491"
+    ]
+  },
+  "455900": {
+    "name": "엔젤로보틱스",
+    "lines": [
+      "재활·보행 보조용 웨어러블 로봇을 만듭니다.",
+      "사람의 움직임을 보조하는 구동·제어 기술이 핵심입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45590"
+    ]
+  },
+  "456010": {
+    "name": "아이씨티케이",
+    "lines": [
+      "반도체 기반 보안 솔루션을 개발합니다.",
+      "칩의 고유 특성을 활용하는 PUF 보안칩이 핵심입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45601"
+    ]
+  },
+  "456040": {
+    "name": "OCI",
+    "lines": [
+      "반도체용 폴리실리콘과 화학소재를 만듭니다.",
+      "카본블랙·과산화수소 등 산업 소재도 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45604"
+    ]
+  },
+  "457190": {
+    "name": "이수스페셜티케미컬",
+    "lines": [
+      "정밀 화학제품과 전고체전지 소재를 만듭니다.",
+      "황화리튬 등 전고체전지 전해질 원료를 개발합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45719"
+    ]
+  },
+  "457550": {
+    "name": "우진엔텍",
+    "lines": [
+      "발전소 계측제어설비를 정비합니다.",
+      "원전·화력발전소의 계측 장비를 점검·보수합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=45755"
+    ]
+  },
+  "460860": {
+    "name": "동국제강",
+    "lines": [
+      "건설·조선용 철강재를 만드는 기업입니다.",
+      "철근·형강·후판 등이 주요 제품입니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=46086"
+    ]
+  },
+  "460930": {
+    "name": "현대힘스",
+    "lines": [
+      "선박용 블록과 배관·철의장품을 만듭니다.",
+      "조선사에 선체 구조물과 선박 기자재를 공급합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=46093"
+    ]
+  },
+  "466100": {
+    "name": "클로봇",
+    "lines": [
+      "로봇 자율주행·관제 소프트웨어를 개발합니다.",
+      "이동로봇의 길 찾기와 여러 로봇의 운영을 돕습니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=46610"
+    ]
+  },
+  "474170": {
+    "name": "루미르",
+    "lines": [
+      "인공위성과 위성 전자장비를 개발합니다.",
+      "관측위성·영상 데이터와 관련 솔루션을 제공합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=47417"
+    ]
+  },
+  "475150": {
+    "name": "SK이터닉스",
+    "lines": [
+      "신재생에너지 발전 개발·운영 사업을 합니다.",
+      "태양광·풍력·연료전지와 ESS 사업을 다룹니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=47515",
+      "https://www.sketernix.com/company/overview.do"
+    ]
+  },
+  "476830": {
+    "name": "알지노믹스",
+    "lines": [
+      "RNA 기반 유전자치료 기술을 개발합니다.",
+      "RNA 치환·편집 기술로 질환 치료제를 연구합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=47683",
+      "https://kind.krx.co.kr/external/dst/irReference/18876/Rznomics%20Inc.%20IR%20Book_KR_Jun%202026%28%EB%B0%B0%ED%8F%AC%EC%9A%A9%29.pdf"
+    ]
+  },
+  "483650": {
+    "name": "달바글로벌",
+    "lines": [
+      "화장품 브랜드를 운영하는 기업입니다.",
+      "달바의 스킨케어와 선케어 제품 등을 판매합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=48365"
+    ]
+  },
+  "484810": {
+    "name": "티엑스알로보틱스",
+    "lines": [
+      "물류 자동화 시스템과 로봇을 만듭니다.",
+      "이송·분류 설비와 이동로봇으로 물류를 자동화합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=48481"
+    ]
+  },
+  "489790": {
+    "name": "한화비전",
+    "lines": [
+      "영상보안 카메라와 관리 솔루션을 제공합니다.",
+      "계열사를 통해 반도체·산업용 장비 사업도 합니다."
+    ],
+    "sources": [
+      "https://kind.krx.co.kr/corpdetail/totalinfo.do?method=searchTotalInfo&isurCd=48979",
+      "https://kind.krx.co.kr/external/2026/06/30/000116/20260630000197/00591.htm"
+    ]
+  }
+}
