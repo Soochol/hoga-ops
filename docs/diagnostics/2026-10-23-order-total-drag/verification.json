@@ -1,0 +1,58 @@
+{
+  "verified_at": "2026-10-23T20:07:12.188814+09:00",
+  "head": "bff016032978e2b3100b2fd7239aae723c7dd9af",
+  "base": "bff016032978e2b3100b2fd7239aae723c7dd9af",
+  "working_tree": "Uncommitted implementation on freshly fetched main. No backend product code changes.",
+  "change": "Bottom BUY/SELL totals now modify all editable remaining same-side orders in the current account/code to the dropped price. Orders already at that price are preserved. Drag-out cancellation remains unchanged.",
+  "inputs": {
+    "frontend": {
+      "sha256": "674c5c3732a75923c4357a9a2c5c1a6de8f5dbcfcc25add556add5b56ef38bdd",
+      "file_count": 1839
+    },
+    "backend_and_fixtures": {
+      "sha256": "676d5e86af1761818db3ed2477d1428262ac74341c15f19a4510b10486a8bf20",
+      "file_count": 796
+    }
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed on final app, unit-test and E2E inputs"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/OrderWindow.test.tsx src/live/workspace/OrderStatusBar.test.tsx src/api/trading.test.tsx",
+      "result": "185 passed across 3 files. Subsequent changes only adjusted an E2E fixture, outside unit inputs."
+    },
+    {
+      "command": "npx playwright test live-orders.spec.ts --grep '총 접수|같은 가격.*주문|묶음 정정|드래그.*(정정|취소)|드래그 아웃|호가 경계' --reporter=line",
+      "result": "26 passed on final inputs (55.3s). Both BUY/SELL totals move multiple prices including off-ladder orders, skip the first order already at destination, avoid no-op reorders, retain pending-order locks, preserve opposite-side and other-code orders, keep drag-out cancellation, require aggregate high-value confirmation and block stale-book replacements while allowing cancellation. Existing per-price/per-order moves and cancellation flows also pass."
+    },
+    {
+      "command": "npx vite build (Playwright startup)",
+      "result": "passed; existing chunk size warning"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "python": "Python 3.14.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "@playwright/test": "1.60.0",
+    "backend_port": 20223,
+    "frontend_port": 21223,
+    "workers": 1,
+    "credentials": "Existing Playwright blank vendor credentials and empty worktree .env."
+  },
+  "visual_review": "Reviewed order-total-modified-BUY.png and SELL.png: destination shows 210 remaining shares, the opposite side stays at 70 shares, and the side total includes the unchanged locked order. Existing colors, geometry and receipts remain.",
+  "limits": [
+    "Existing ResizeObserver and chunk-size warnings appeared in successful runs.",
+    "The first run passed 25/26; the new stale SELL fixture lacked an order at the setup helper’s initial SELL lane, so setup correctly observed a disabled new-order button. Fixed fixture placement without changing any product guard; final 26/26 pass.",
+    "All order writes were intercepted by existing Playwright fixtures; no actual account order or broker session was created.",
+    "Changes have not been merged or applied to the running user checkout."
+  ]
+}

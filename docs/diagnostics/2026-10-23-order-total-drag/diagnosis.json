@@ -1,0 +1,51 @@
+{
+  "checked_at": "2026-10-23T20:00:35.505807+09:00",
+  "head": "bff016032978e2b3100b2fd7239aae723c7dd9af",
+  "base": "bff016032978e2b3100b2fd7239aae723c7dd9af",
+  "subject": "Dragging the bottom BUY/SELL total-order button onto a price lane does not submit a modification.",
+  "conclusion": "Confirmed current implementation and existing test expectation: bottom totals are cancellation-only drag handles. A drop onto a price is ignored before any order API request is constructed. Both BUY and SELL reproduce.",
+  "code_evidence": [
+    {
+      "file": "frontend/src/live/workspace/OrderWindow.tsx",
+      "line": 833,
+      "finding": "Total-order buttons call beginDrag with cancelOnly=true."
+    },
+    {
+      "file": "frontend/src/live/workspace/OrderWindow.tsx",
+      "line": 554,
+      "finding": "cancelOnly prevents assigning a target price even over a valid matching-side price lane."
+    },
+    {
+      "file": "frontend/src/live/workspace/OrderWindow.tsx",
+      "line": 585,
+      "finding": "Without an outside-cancel or target price, endDrag returns without request()."
+    }
+  ],
+  "introduced_by": {
+    "commit": "485e0c105cf9acf6d0ed94fb4759d475c71ef789",
+    "pr": "https://github.com/Soochol/hoga-ops/pull/2116",
+    "merged_at": "2026-10-19T01:51:42Z",
+    "intent": "Bottom totals support same-side drag-out cancellation and right-click per-order editing; they do not implement cross-price bulk modification."
+  },
+  "checks": [
+    {
+      "command": "npx playwright test live-orders.spec.ts --grep '총 접수 버튼의 드래그 아웃|총 접수 우클릭 메뉴|같은 가격의 여러 주문' --reporter=line",
+      "result": "5 passed (14.7s). For both sides, total-to-price drop emits zero commands, drag-out cancels matching orders, and per-order menu drags modify the selected order. Same-price grouped modification also passes."
+    }
+  ],
+  "inputs_sha256": "ca73927b13d971492a447fbe72c84589e33757304233625876e65140edf19538",
+  "environment": {
+    "node": "v24.13.1",
+    "playwright": "1.60.0",
+    "backend_port": 20223,
+    "frontend_port": 21223,
+    "workers": 1,
+    "credentials": "Existing Playwright blank vendor environment; empty worktree .env."
+  },
+  "available_workaround": "Right-click the bottom side total, then drag an individual order from the list to the desired same-side price lane.",
+  "scope": "Investigation only. No product code, running user server, account setting or real order was modified. Order mutations in reproduction were intercepted by existing Playwright route fixtures.",
+  "limits": [
+    "The reported individual user gesture was not captured; investigation targets the bottom direction-total buttons described by the user.",
+    "Actual exchange execution is not tested; the reproduced missing step is the price-modification request itself."
+  ]
+}
