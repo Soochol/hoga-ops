@@ -1,7 +1,7 @@
 .book-scroll-region { container-type:inline-size; }
 .book-scroll-content { display:flex; flex-direction:column; justify-content:center; min-height:100%; }
 .book-panel { --book-side-padding:0.5rem; --book-side-gap:0.375rem; --book-summary-gap:0.75rem; }
-.book-panel-grid { --book-side-min-width:max(184px,var(--book-side-content-width)); min-width:calc(2 * var(--book-side-min-width) + var(--book-price-width)); min-height:440px; flex-shrink:0; grid-template-columns:minmax(var(--book-side-min-width),1fr) var(--book-price-width) minmax(var(--book-side-min-width),1fr); font-size:var(--live-text-data,var(--text-sm)); }
+.book-panel-grid { --book-side-min-width:max(var(--book-summary-content-width),var(--book-side-content-width)); min-width:calc(2 * var(--book-side-min-width) + var(--book-price-width)); min-height:440px; flex-shrink:0; grid-template-columns:minmax(var(--book-side-min-width),1fr) var(--book-price-width) minmax(var(--book-side-min-width),1fr); font-size:var(--live-text-data,var(--text-sm)); }
 .book-panel-grid > div > div { flex-shrink:0; }
 .book-compact-info { display:none; justify-content:flex-end; padding:0 var(--book-side-padding); height:22px; }
 .book-compact-info button,.book-info-heading button { font:inherit; color:var(--fg); background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-sm); padding:0 6px; }

@@ -3283,6 +3283,8 @@ nativeScrollbarTest.describe('호가주문 스크롤바 경계', () => {
           expect(new Set(samples.map(sample => JSON.stringify(sample))).size,
             `${digits}자리 가격 / ${width}×${height}: ${JSON.stringify(samples)}`).toBe(1);
           expect(samples[0].inline).toBe(width >= 560);
+          expect(samples[0].scroll[2], `${digits}자리 가격 / ${width}×${height}: no unnecessary horizontal scroll`)
+            .toBeLessThanOrEqual(samples[0].scroll[0] + 1);
           cases.push({ width, height, sample: samples[0] });
         }
       }
@@ -3298,11 +3300,11 @@ nativeScrollbarTest.describe('호가주문 스크롤바 경계', () => {
   }
 });
 
-test('호가주문 버튼 밝기는 가격 자릿수가 같지 않아도 주문 가능 상태가 같으면 동일하다', async ({ page, browser, baseURL }, info) => {
+test('호가주문 버튼은 가격 자릿수·수량 유무와 관계없이 밝기를 유지하고 잘못된 수량은 차단한다', async ({ page, browser, baseURL }, info) => {
   const second = await browser.newPage({ baseURL });
   try {
     const first = (await setup(page, false, false, true, 180_000)).window;
-    const other = (await setup(second, false, false, true, 1_401_800)).window;
+    const { window: other, commands } = await setup(second, false, false, true, 1_401_800);
     const styles = (panel: Locator) => panel.locator('[data-order-side]').evaluateAll(buttons => buttons.map(button => {
       const style = getComputedStyle(button);
       return { side: (button as HTMLElement).dataset.orderSide, disabled: button.getAttribute('aria-disabled'),
@@ -3313,10 +3315,79 @@ test('호가주문 버튼 밝기는 가격 자릿수가 같지 않아도 주문 
     await expect.poll(() => styles(first)).toEqual(await styles(other));
     const enabled = await styles(other);
     expect(enabled.every(button => button.disabled === 'false' && button.opacity === '1')).toBe(true);
-    await other.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('');
-    await expect.poll(async () => (await styles(other)).every(button => button.disabled === 'true' && button.opacity === '0.5')).toBe(true);
+    for (const quantity of ['', '0']) {
+      await other.getByRole('spinbutton', { name: '신규 주문 수량' }).fill(quantity);
+      await second.mouse.move(0, 0);
+      await expect.poll(async () => (await styles(other)).every(button => button.disabled === 'true' && button.opacity === '1')).toBe(true);
+      expect((await styles(other)).map(({ disabled: _disabled, ...style }) => style))
+        .toEqual(enabled.map(({ disabled: _disabled, ...style }) => style));
+      await other.getByRole('button', { name: /매수 1,469,000원 주문 추가/ }).dblclick({ force: true });
+      await expect(other.getByTestId('order-status-bar')).toContainText('1주 이상');
+      expect(commands).toHaveLength(0);
+    }
+    await expect(other.getByRole('button', { name: '매수 총 접수 주문', exact: true })).toHaveCSS('opacity', '0.5');
     await info.attach('price-and-availability-button-styles', { body: JSON.stringify({ sameAvailability: enabled, missingQuantity: await styles(other) }), contentType: 'application/json' });
   } finally {
     await second.close();
   }
+});
+
+nativeScrollbarTest('100만원대 상세정보는 실제 폭으로 맞추고 긴 값이 넘칠 때만 가로 스크롤한다', async ({ nativeScrollbarPage: page }, info) => {
+  const { window, ws, commands } = await setup(page, false, false, true, 1_401_800);
+  await ws.waitForSubscribe('005930');
+  await window.evaluate(root => { Object.assign(root.style, { width: '562px', height: '600px' }); });
+  const at = Date.now();
+  ws.pushLive('005930', { kind: 'trade', venue: 'UN', t_ms: at, trades: [],
+    day_open: 1_469_100, day_high: 1_470_000, day_low: 1_468_100,
+    cum_volume: 83_338_888, cum_value: 12_345_678_900_000, vs_prev_volume_pct: 184.55 });
+  const frame = { kind: 'ob', venue: 'UN', t_ms: at + 1,
+    asks: Array.from({ length: 10 }, (_, i) => ({ price: 1_469_100 + i * 100, qty: 100 + i })),
+    bids: Array.from({ length: 10 }, (_, i) => ({ price: 1_469_000 - i * 100, qty: 200 + i })),
+    total_ask_qty: 1000, total_bid_qty: 2000, expected_price: 1_469_000, expected_qty: 123_456_789 };
+  ws.pushLive('005930', frame);
+  await expect(window.getByTestId('book-expected-fill')).toContainText('1,469,000원');
+  await page.evaluate(() => document.fonts.ready);
+  const metrics = () => window.evaluate(root => {
+    const scroll = root.querySelector<HTMLElement>('.order-scroll')!;
+    const rows = [...root.querySelectorAll('.book-summary-row')];
+    const fits = rows.every(row => {
+      const bounds = row.getBoundingClientRect();
+      const text = [...row.querySelectorAll(':scope > span')].map(span => {
+        const range = document.createRange(); range.selectNodeContents(span); return range.getBoundingClientRect();
+      });
+      return text[0].left >= bounds.left - 1 && text[0].right <= text[1].left + 1 && text[1].right <= bounds.right + 1;
+    });
+    return { fits, client: scroll.clientWidth, full: scroll.scrollWidth,
+      gutter: scroll.offsetWidth - scroll.clientWidth,
+      summary: parseFloat(getComputedStyle(root).getPropertyValue('--order-summary-content-width')) };
+  });
+  await expect(async () => {
+    const value = await metrics();
+    expect(value.gutter).toBeGreaterThan(0);
+    expect(value.fits).toBe(true);
+    expect(value.full).toBeLessThanOrEqual(value.client + 1);
+  }).toPass({ timeout: 5000 });
+  const before = await metrics();
+  for (const font of [20, 14, 16]) {
+    await page.evaluate(font => { document.documentElement.style.fontSize = `${font}px`; }, font);
+    await expect.poll(async () => (await metrics()).fits).toBe(true);
+    if (font <= 16) await expect.poll(async () => {
+      const value = await metrics(); return value.full <= value.client + 1;
+    }).toBe(true);
+  }
+  expect((await metrics()).summary).toBe(before.summary);
+  await showInfoPage(page, window, 2);
+  await expect.poll(async () => (await metrics()).fits).toBe(true);
+  await showInfoPage(page, window, 1);
+  expect((await metrics()).summary).toBe(before.summary);
+  await window.screenshot({ path: '/tmp/hoga-order-intrinsic-562.png' });
+  ws.pushLive('005930', { ...frame, t_ms: at + 2, expected_price: 1_234_567_890_123 });
+  await expect(window.getByTestId('book-expected-fill')).toContainText('1,234,567,890,123원');
+  await expect(async () => {
+    const value = await metrics();
+    expect(value.fits).toBe(true);
+    expect(value.full).toBeGreaterThan(value.client + 1);
+  }).toPass({ timeout: 5000 });
+  await info.attach('intrinsic-summary-width', { body: JSON.stringify({ ordinary: before, longValue: await metrics() }), contentType: 'application/json' });
+  expect(commands).toHaveLength(0);
 });
