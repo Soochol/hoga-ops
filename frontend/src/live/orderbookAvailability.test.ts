@@ -11,6 +11,12 @@ const status = (overrides: Partial<KiwoomStatus> = {}): LiveStatus => ({
 } as LiveStatus);
 const rows = (phase: 'registered' | 'waiting_slot' | 'registering' | 'waiting_connection') =>
   [{ code: '005930', venue: 'KRX', phase, connection_generation: 1 }];
+const healthyStatus = (): LiveStatus => ({
+  ...status({ view_subscriptions: rows('registered') }),
+  provider_status: { observed_at_ms: nowMs, connection: 'connected', connected_accounts: 1,
+    configured_accounts: 1, last_received_at_ms: nowMs, notice: null, notice_phase: null,
+    notice_config_error: false, failures: [] },
+});
 
 describe('orderbook availability', () => {
   it.each([
@@ -67,5 +73,34 @@ describe('orderbook availability', () => {
     expect(unknown?.kind).toBe('stale');
     expect(unknown?.message).not.toContain('수신 지연');
     expect(unknown?.detail).toContain('아직 구분할 수 없습니다');
+  });
+  it.each(['KRX', 'NXT', 'UN'] as const)('uses calm waiting copy for a healthy registered %s book', venue => {
+    const healthy = healthyStatus();
+    healthy.kiwoom!.view_subscriptions = [{ ...rows('registered')[0], venue }];
+    expect(derive({ ...input, venue, bookMs: nowMs - 33_000, status: healthy }))
+      .toMatchObject({ kind: 'stale', message: '호가 갱신 대기 중',
+        detail: '새 호가가 수신되면 자동으로 갱신됩니다', lastBookMs: 67_000, action: 'status' });
+  });
+  it.each(['rest', 'ws'] as const)('keeps diagnostic copy when a %s failure is observed', channel => {
+    const healthy = healthyStatus();
+    healthy.provider_status!.failures = [{ channel, kind: 'timeout', operation: 'REG',
+      observed_at_ms: nowMs, code: null }];
+    expect(derive({ ...input, bookMs: nowMs - 33_000, status: healthy })?.message).toBe('호가 갱신 확인 중');
+  });
+  it('requires current connection, error and matching registration evidence before softening copy', () => {
+    const stale = { ...input, bookMs: nowMs - 33_000, status: healthyStatus() };
+    const unknownFailures = healthyStatus();
+    delete unknownFailures.provider_status!.failures;
+    const partial = healthyStatus();
+    partial.provider_status!.connection = 'partial';
+    for (const candidate of [
+      { ...stale, statusCurrent: false }, { ...stale, status: status() },
+      { ...stale, status: unknownFailures }, { ...stale, status: partial },
+      { ...stale, error: new Error('series failed') }, { ...stale, venue: 'NXT' as const },
+    ]) expect(derive(candidate)?.message).toBe('호가 갱신 확인 중');
+    expect(derive({ ...stale, connected: false })?.kind).toBe('recovering');
+    stale.status.kiwoom!.data_received_ms = { '005930:KRX:ob': nowMs };
+    expect(derive(stale)?.kind).toBe('display_delayed');
+    expect(derive({ ...stale, browserReceivedMs: nowMs })?.kind).toBe('timestamp_old');
   });
 });

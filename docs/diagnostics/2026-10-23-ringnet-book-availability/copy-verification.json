@@ -1,0 +1,39 @@
+{
+  "verified_at": "2026-10-23T18:40:56.411210+09:00",
+  "head": "880cd16e3b675fa2727406bad30fd45673b820a0",
+  "base": "880cd16e3b675fa2727406bad30fd45673b820a0",
+  "working_tree": "Uncommitted change; frontend fingerprint includes final source, tests, fixtures, dependencies, lockfile and configuration. HEAD equals freshly fetched main.",
+  "inputs": {
+    "frontend_sha256": "8ef5021b3f156b12a4357efd440b1194c664fc1e0819950b6612e7dff42c9cc2",
+    "file_count": 1838
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed: app, unit and E2E projects"
+    },
+    {
+      "command": "npx vitest run src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx src/live/workspace/DataWindow.test.tsx src/live/workspace/OrderWindow.test.tsx",
+      "result": "268 passed across 4 files"
+    },
+    {
+      "command": "npx vite build",
+      "result": "passed; existing chunk-size warning"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16"
+  },
+  "limits": [
+    "Text and availability-copy gate only; no interaction, layout, transport, recovery budget or order freshness changes.",
+    "Scoped unit suites; browser E2E not rerun for this copy-only change.",
+    "Changes are in this worktree and have not been applied to the running user checkout or server."
+  ]
+}
