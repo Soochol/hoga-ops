@@ -1,6 +1,7 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { installLiveWs } from './helpers/liveWs';
+import { nativeScrollbarTest } from './helpers/nativeScrollbarTest';
 
 const mkOrder = (id: string, price = '67200', filled = '30') => ({
   orderId: id, symbol: '005930', side: 'BUY', orderType: 'LIMIT', timeInForce: 'DAY', status: 'PARTIAL_FILLED', price,
@@ -3244,4 +3245,78 @@ test('보유종목은 좁은 창에서도 5열과 손익 두 줄을 유지하고
   await expect(panel.locator('.account-holdings-table')).toBeVisible();
   expect((await holdingGeometry(panel)).columns).toEqual(retained);
   expect(commands).toHaveLength(0);
+});
+
+
+nativeScrollbarTest.describe('호가주문 스크롤바 경계', () => {
+  // Headless Chrome hides scrollbars by default, removing the width change that
+  // triggers this feedback loop in the desktop app.
+  for (const [digits, offset] of [[6, 180_000], [7, 1_401_800]] as const) {
+    nativeScrollbarTest(`${digits}자리 가격은 높이 경계에서도 상세정보와 주문 좌표가 왕복하지 않는다`, async ({ nativeScrollbarPage: page }, testInfo) => {
+      const { window, commands } = await setup(page, false, false, true, offset);
+      await page.evaluate(() => document.fonts.ready);
+      const cases = [];
+      for (const width of [559, 560, 564, 570, 576, 696, 700, 706]) {
+        for (const height of [600, 672, 680, 688, 720]) {
+          const samples = await window.evaluate(async (root, { width, height }) => {
+            Object.assign(root.style, { width: `${width}px`, height: `${height}px`, flexShrink: '0' });
+            const samples = [];
+            for (let frame = 0; frame < 20; frame++) {
+              await new Promise(requestAnimationFrame);
+              if (frame < 8) continue;
+              const scroll = root.querySelector<HTMLElement>('.order-scroll')!;
+              const bounds = (node: Element) => {
+                const { x, y, width, height } = node.getBoundingClientRect();
+                return { x, y, width, height };
+              };
+              samples.push({
+                inline: root.querySelector('.order-summary-layer') != null,
+                classes: root.className,
+                row: bounds(root.querySelector('.order-row')!),
+                totals: bounds(root.querySelector('.order-total-row')!),
+                gutter: scroll.offsetWidth - scroll.clientWidth,
+                scroll: [scroll.clientWidth, scroll.clientHeight, scroll.scrollWidth, scroll.scrollHeight],
+              });
+            }
+            return samples;
+          }, { width, height });
+          expect(new Set(samples.map(sample => JSON.stringify(sample))).size,
+            `${digits}자리 가격 / ${width}×${height}: ${JSON.stringify(samples)}`).toBe(1);
+          expect(samples[0].inline).toBe(width >= 560);
+          cases.push({ width, height, sample: samples[0] });
+        }
+      }
+      // The regression must exercise real scrollbar space, and retain both the
+      // inline and popover layouts rather than suppressing one permanently.
+      expect(cases.some(item => item.sample.gutter > 0)).toBe(true);
+      expect(cases.some(item => item.sample.gutter === 0)).toBe(true);
+      expect(cases.some(item => item.sample.inline)).toBe(true);
+      expect(cases.some(item => !item.sample.inline)).toBe(true);
+      expect(commands).toHaveLength(0);
+      await testInfo.attach('height-scrollbar-geometry', { body: JSON.stringify(cases), contentType: 'application/json' });
+    });
+  }
+});
+
+test('호가주문 버튼 밝기는 가격 자릿수가 같지 않아도 주문 가능 상태가 같으면 동일하다', async ({ page, browser, baseURL }, info) => {
+  const second = await browser.newPage({ baseURL });
+  try {
+    const first = (await setup(page, false, false, true, 180_000)).window;
+    const other = (await setup(second, false, false, true, 1_401_800)).window;
+    const styles = (panel: Locator) => panel.locator('[data-order-side]').evaluateAll(buttons => buttons.map(button => {
+      const style = getComputedStyle(button);
+      return { side: (button as HTMLElement).dataset.orderSide, disabled: button.getAttribute('aria-disabled'),
+        background: style.backgroundColor, color: style.color, opacity: style.opacity };
+    }));
+    await page.mouse.move(0, 0);
+    await second.mouse.move(0, 0);
+    await expect.poll(() => styles(first)).toEqual(await styles(other));
+    const enabled = await styles(other);
+    expect(enabled.every(button => button.disabled === 'false' && button.opacity === '1')).toBe(true);
+    await other.getByRole('spinbutton', { name: '신규 주문 수량' }).fill('');
+    await expect.poll(async () => (await styles(other)).every(button => button.disabled === 'true' && button.opacity === '0.5')).toBe(true);
+    await info.attach('price-and-availability-button-styles', { body: JSON.stringify({ sameAvailability: enabled, missingQuantity: await styles(other) }), contentType: 'application/json' });
+  } finally {
+    await second.close();
+  }
 });

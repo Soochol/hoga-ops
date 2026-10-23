@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { nativeScrollbarTest } from './helpers/nativeScrollbarTest';
 
 async function mount(page: Page) {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -117,3 +118,44 @@ test('side widths follow font density and summary numbers share a right edge', a
   const ends = await page.getByTestId('book-summary').locator('.book-summary-row > span:nth-child(2)').evaluateAll(spans => spans.map(span => span.getBoundingClientRect().right));
   for (const end of ends) expect(end).toBeCloseTo(ends[0], 1);
 });
+
+for (const [digits, offset] of [[6, 180_000], [7, 1_401_800]] as const) {
+  for (const mode of ['normal', 'large'] as const) {
+    nativeScrollbarTest(`10호가 ${digits}자리 가격 ${mode} 잔량은 높이 경계에서도 상세정보와 좌표가 왕복하지 않는다`, async ({ nativeScrollbarPage: page }, info) => {
+      await mount(page);
+      await page.evaluate(async ({ mode, offset }) => {
+        const path = '/tests/e2e/helpers/bookFluidLayoutHarness.tsx';
+        const harness = await import(path);
+        harness.render(mode, 'price-boundary', offset);
+      }, { mode, offset });
+      const cases = [];
+      for (const width of [399, 400, 404, 531, 535, 540]) {
+        for (const height of [450, 466, 474, 490]) {
+          const samples = await page.locator('.live-window').evaluate(async (host, { width, height }) => {
+            Object.assign((host as HTMLElement).style, { width: `${width}px`, height: `${height}px` });
+            const samples = [];
+            for (let frame = 0; frame < 16; frame++) {
+              await new Promise(requestAnimationFrame);
+              if (frame < 6) continue;
+              const region = host.querySelector<HTMLElement>('.book-scroll-region')!;
+              const grid = host.querySelector('.book-panel-grid')!.getBoundingClientRect();
+              const summary = host.querySelector('.book-inline-summary')!;
+              samples.push({ inline: getComputedStyle(summary).display !== 'none',
+                x: grid.x, y: grid.y, width: grid.width, height: grid.height,
+                gutter: region.offsetWidth - region.clientWidth,
+                scroll: [region.clientWidth, region.clientHeight, region.scrollWidth, region.scrollHeight] });
+            }
+            return samples;
+          }, { width, height });
+          expect(new Set(samples.map(sample => JSON.stringify(sample))).size,
+            `${width}×${height}: ${JSON.stringify(samples)}`).toBe(1);
+          expect(samples[0].inline, `${width}×${height}: detail visibility follows the window width`).toBe(width >= 531);
+          cases.push({ width, height, sample: samples[0] });
+        }
+      }
+      expect(cases.some(item => item.sample.gutter > 0)).toBe(true);
+      expect(cases.some(item => item.sample.gutter === 0)).toBe(true);
+      await info.attach('book-height-scrollbar-geometry', { body: JSON.stringify(cases), contentType: 'application/json' });
+    });
+  }
+}
