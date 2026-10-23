@@ -606,7 +606,8 @@ export const useDrawingsStore = create<State & Actions>((set, get) => {
       const next = current.filter((d) => !doomed.has(d.id));
       const byScope = new Map(get().byScope);
       byScope.set(scope, next);
-      set({ byScope, selectedByScope: pruneSelection(get().selectedByScope, scope, next) });
+      set({ byScope, selectedByScope: pruneSelection(get().selectedByScope, scope, next),
+        clearToast: { scope, count: doomed.size, snapshot: current } });
       queuePersist(scope);
     },
 

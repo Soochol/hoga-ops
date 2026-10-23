@@ -931,6 +931,8 @@ describe('useDrawingsStore — 다중 선택', () => {
     s().update(A, 'h2', { locked: true });
     s().removeMany(A, ['h1', 'h2', 'h3']);
     expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h2']);
+    expect(s().clearToast).toMatchObject({ scope: A, count: 2 });
+    expect(s().clearToast?.snapshot.map(d => d.id)).toEqual(['h1', 'h2', 'h3']);
 
     s().undo(A);
     expect(s().drawingsFor(A).map((d) => d.id)).toEqual(['h1', 'h2', 'h3']);
@@ -940,6 +942,7 @@ describe('useDrawingsStore — 다중 선택', () => {
     seed3();
     s().update(A, 'h1', { locked: true });
     s().removeMany(A, ['h1']);
+    expect(s().clearToast).toBeNull();
     s().undo(A);
     expect(s().drawingsFor(A).find((d) => d.id === 'h1')).toEqual(mkHline('h1', 100));
   });
