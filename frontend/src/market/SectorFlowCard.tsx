@@ -26,15 +26,14 @@ const MARKETS: ReadonlyArray<readonly [Market, string]> = [
   ['KOSDAQ', '코스닥'],
 ];
 
-/** 표시 행 수. 코스피 27 · 코스닥 31 업종을 다 그리면 카드가 페이지를 밀어낸다.
- *  절단 기준은 **선택된 주체의 순매수 절대값** 이라 사용자가 정한다. */
+/** 표시 행 수. 선택한 정렬 기준으로 정렬한 뒤 자른다. */
 const ROWS = 12;
 
 const PREF_KEY = 'market.sectorFlow.v1';
 
-type Sort = 'actor' | 'default' | 'up' | 'down';
+type Sort = 'default' | 'up' | 'down';
 
-export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }) {
+export function SectorFlowCard({ initialSort = 'default' }: { initialSort?: Sort }) {
   const flow = useMarketSectorFlow();
   const breadth = useMarketBreadth();
   const quotes = useMarketSectors();
@@ -42,7 +41,6 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
   const [category, setCategory] = useState<'all' | 'industry' | 'index' | 'unknown'>('all');
   const [showAll, setShowAll] = useState(false);
   const [market, setMarket] = useCardPref<Market>(PREF_KEY, 'market', 'KOSPI');
-  const [actor, setActor] = useCardPref<Actor>(PREF_KEY, 'actor', 'foreign');
 
   const all = flow.data?.markets?.[market] ?? [];
   const quoteRows = quotes.data?.markets?.[market === 'KOSPI' ? '0' : '1']?.sectors ?? [];
@@ -62,15 +60,17 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
     : [...byCode.values()];
   const filtered = source.filter(r => category === 'all' || sectorCategory(r.code) === category);
   const ordered = sort === 'default' ? filtered : [...filtered].sort((a, b) => {
-    const av = sort === 'actor' ? a[actor] : a.change_pct;
-    const bv = sort === 'actor' ? b[actor] : b.change_pct;
+    const av = a.change_pct;
+    const bv = b.change_pct;
     if (av == null) return bv == null ? 0 : 1;
     if (bv == null) return -1;
-    return sort === 'actor' ? Math.abs(bv) - Math.abs(av) : sort === 'up' ? bv - av : av - bv;
+    return sort === 'up' ? bv - av : av - bv;
   });
   const sectors = ordered.slice(0, showAll ? undefined : ROWS);
 
-  const max = Math.max(...sectors.map((r) => Math.abs(r[actor] ?? 0)), 1);
+  // 종합을 포함한 표시 행의 세 주체가 같은 농도 기준을 공유한다.
+  const visibleRows = whole ? [whole, ...sectors] : sectors;
+  const max = Math.max(...visibleRows.flatMap(r => ACTORS.map(([key]) => Math.abs(r[key] ?? 0))), 0) || 1;
 
   return (
     <MarketCard className="market-sector-card">
@@ -81,18 +81,14 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
       />
 
       <div className="market-sector-controls flex flex-wrap items-center justify-between gap-sm">
-        <ModeSwitch value={sort === 'actor' ? actor : sort} onChange={value => {
-          if (value === 'foreign' || value === 'institution' || value === 'individual') {
-            setActor(value); setSort('actor');
-          } else setSort(value);
-        }} label="정렬 기준" options={[
-          ['default', '기본순'], ['up', '상승순'], ['down', '하락순'], ...ACTORS,
-        ] as ReadonlyArray<readonly [Exclude<Sort, 'actor'> | Actor, string]>} />
+        <ModeSwitch value={sort} onChange={setSort} label="정렬 기준" options={[
+          ['default', '기본순'], ['up', '상승순'], ['down', '하락순'],
+        ]} />
         <button type="button" className="text-xs text-accent" aria-expanded={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? '12개씩 보기' : '전체 보기'}</button>
         <ModeSwitch value={category} onChange={setCategory} label="업종 지수 유형" options={[
           ['all', '전체'], ['industry', '업종'], ['index', '규모·대표지수'], ['unknown', '미분류'],
         ]} />
-        <span className="text-2xs text-fg-dim">{sectors.length}/{filtered.length}개 · {sort === 'actor' ? '순매수 절대값순' : sort === 'default' ? '제공 순서' : '등락률순'}</span>
+        <span className="text-2xs text-fg-dim">{sectors.length}/{filtered.length}개 · {sort === 'default' ? '제공 순서' : '등락률순'}</span>
       </div>
       {(flow.isError || quotes.isError) && <div className="market-sector-stamps text-2xs text-fg-dim">
         {flow.isError && <div><span>수급</span><DataStatus hasData={flow.data !== undefined} error /></div>}
@@ -118,7 +114,7 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
                 {ACTORS.map(([key, label]) => (
                   <th
                     key={key}
-                    className={`pb-1 text-right font-normal ${sort === 'actor' && key === actor ? 'text-fg' : ''}`}
+                    className="pb-1 text-right font-normal"
                   >
                     {label}
                   </th>
@@ -126,9 +122,9 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
               </tr>
             </thead>
             <tbody>
-              {whole && <Row row={whole} actor={sort === 'actor' ? actor : undefined} max={max} emphasise />}
+              {whole && <Row row={whole} max={max} emphasise />}
               {sectors.map((r) => (
-                <Row key={r.code} row={r} actor={sort === 'actor' ? actor : undefined} max={max} />
+                <Row key={r.code} row={r} max={max} />
               ))}
             </tbody>
           </table>
@@ -142,12 +138,10 @@ export function SectorFlowCard({ initialSort = 'actor' }: { initialSort?: Sort }
 
 function Row({
   row,
-  actor,
   max,
   emphasise,
 }: {
   row: SectorFlowRow;
-  actor: Actor | undefined;
   max: number;
   emphasise?: boolean;
 }) {
@@ -164,16 +158,14 @@ function Row({
       </td>
       {ACTORS.map(([key]) => {
         const v = row[key];
-        // 히트 배경은 **정렬 기준 열에만** 칠한다. 세 열을 다 칠하면 어느 축으로
-        // 줄이 세워졌는지가 사라지고, 색이 셋이라 표가 시끄러워진다.
-        const alpha = key === actor && v != null ? Math.min(Math.abs(v) / max, 1) * 0.45 : 0;
+        const alpha = v != null ? Math.abs(v) / max * 0.45 : 0;
         return (
           <td
             key={key}
             className="py-0.5 text-right text-fg"
             style={{
               background:
-                alpha < 0.02
+                alpha === 0
                   ? undefined
                   : `color-mix(in srgb, ${(v ?? 0) >= 0 ? 'var(--price-up)' : 'var(--price-down)'} ${alpha * 100}%, transparent)`,
             }}

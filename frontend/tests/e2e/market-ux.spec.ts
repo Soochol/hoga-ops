@@ -139,6 +139,52 @@ async function expectContextChartHeights(page: Page) {
   }
 }
 
+test('sector table keeps a shared heat scale across all actors and sort modes', async ({ page }, testInfo) => {
+  await marketMocks(page, true);
+  await page.route(apiPrefix('market/sectors'), route => route.fulfill({ json: { markets: {} } }));
+  await page.route(apiPrefix('market/sector-flow'), route => route.fulfill({ json: {
+    markets: { KOSPI: [
+      { code: '001', name: '종합(KOSPI)', change_pct: 1, foreign: 1000, institution: -500, individual: 0 },
+      { code: '027', name: '제조', change_pct: -1, foreign: -500, institution: 500, individual: -250 },
+      { code: '002', name: '대형주', change_pct: 2, foreign: 500, institution: null, individual: -1 },
+    ] },
+  } }));
+  await page.goto('/market');
+  const card = page.locator('.market-sector-card');
+  const sorts = card.getByRole('group', { name: '정렬 기준', exact: true });
+  await expect(sorts.getByRole('button')).toHaveText(['기본순', '상승순', '하락순']);
+  for (const actor of ['외국인', '기관', '개인']) {
+    await expect(card.getByRole('button', { name: actor, exact: true })).toHaveCount(0);
+    await expect(card.getByRole('columnheader', { name: actor, exact: true })).toBeVisible();
+  }
+  const names = card.locator('tbody tr td:first-child');
+  const cell = (name: string, column: number) => card.getByRole('row', { name: new RegExp(name) }).getByRole('cell').nth(column);
+  for (const width of [1440, 600]) {
+    await page.setViewportSize({ width, height: 1100 });
+    for (const [mode, ordered] of [
+      ['기본순', ['종합(KOSPI)', '제조', '대형주']],
+      ['상승순', ['종합(KOSPI)', '대형주', '제조']],
+      ['하락순', ['종합(KOSPI)', '제조', '대형주']],
+    ] as const) {
+      await sorts.getByRole('button', { name: mode }).click();
+      await expect(names).toHaveText([...ordered]);
+      const backgrounds = await Promise.all([
+        cell('종합', 2), cell('종합', 3), cell('제조', 2), cell('제조', 3), cell('대형주', 2), cell('제조', 4),
+      ].map(cell => cell.evaluate(el => getComputedStyle(el).backgroundColor)));
+      expect(backgrounds[0]).toMatch(/\/ 0\.45\)/);
+      expect(backgrounds[1]).toMatch(/\/ 0\.225\)/);
+      expect(backgrounds[1]).toBe(backgrounds[2]);
+      expect(backgrounds[3]).toBe(backgrounds[4]);
+      expect(backgrounds[3]).not.toBe(backgrounds[2]);
+      expect(backgrounds[5]).toMatch(/\/ 0\.1125\)/);
+      await expect(cell('종합', 4)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(cell('대형주', 3)).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(cell('대형주', 3)).toHaveText('—');
+    }
+    await card.screenshot({ path: testInfo.outputPath(`sector-shared-heat-${width}.png`) });
+  }
+});
+
 test('flow layout groups market context and preserves explorer preferences across views', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1920, height: 1400 });
   await marketMocks(page, true);
