@@ -198,18 +198,16 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       const width = root.getBoundingClientRect().width;
       if (width <= 0) return;
       setCompact(width < 560);
-      const scroll = root.querySelector<HTMLElement>('.order-scroll');
-      const usableWidth = width - (scroll ? scroll.offsetWidth - scroll.clientWidth : 0);
-      setExpanded(usableWidth >= 560);
-      setSpacious(usableWidth >= 696);
+      // Internal scrollbars depend on these layouts. Basing the breakpoint on
+      // their client width can toggle the summary and scrollbars every frame.
+      setExpanded(width >= 560);
+      setSpacious(width >= 696);
       if (width !== previousWidth) setInfoOpen(false);
       previousWidth = width;
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(root);
-    const scroll = root.querySelector('.order-scroll');
-    if (scroll) observer.observe(scroll);
     return () => observer.disconnect();
   }, []);
   const [dragTarget, setDragTarget] = useState<number | null>(null);
