@@ -1,0 +1,102 @@
+{
+  "recorded_at_kst": "2026-10-23T16:17:41.152143+09:00",
+  "head_commit": "f06ba91d43f031d634a74f3098b4448a099b3458",
+  "base_commit": "f06ba91d43f031d634a74f3098b4448a099b3458",
+  "implementation": "Uncommitted changes on codex/collector-intra-key-frames. Complete snapshot tree streaming for periodic state and peaks seed RPC; no public response or native capture/storage algorithm changes. Production not restarted or deployed.",
+  "source_sha256": {
+    "hoga/live/collector_ipc.py": "779ae3232e19e244e66cf65f75d5eedb9d64f8d21ad44fbe772b1d741fe6042c",
+    "hoga/live/collector_transfer.py": "7a1d83bd74f80c3c9b5b2bce7585598fdc5d3a8d6554b6fac55958d8127634bd",
+    "hoga/live/collector_worker.py": "5c5e1b19c42dc09dedd84625329ef2c54833471b67a07be9513c7cc1be5911f3",
+    "hoga/live/collector_process.py": "498e0f85b411c1e329fd2c1207a13c231f7423956e738dd244096dd2e2f91e14",
+    "hoga/live/stream.py": "f9e27a040ea3a5599bb6215594b689ae04ac24b0534641f03cfdc6ac6a4b965c",
+    "hoga/live/ask_peak_state.py": "7da207f281c95f465d5c842f6dfc0634ba21f59912f41d6b261d42480dd80ce6",
+    "tests/unit/live/test_collector_large_transfer.py": "9eca3750416fe6b6db9b32c9c2df5759a3c154f5de2adb811082ef799eb7d403",
+    "tests/unit/live/test_collector_state_frames.py": "70a6ef88c2a5ea360245546e8f7a5d1c1603bf7ab1a67b605bf6c83af4acdcbd",
+    "tests/unit/live/test_collector_ipc_design_probe.py": "00f9246e3b9c02260cb64760985d1bd4a352d10dd678176b8749f024b231b0db",
+    "scripts/probe_collector_large_transfer.py": "e626dabd9fcbe1d12ddce334a16e9b7a86ab58d358718262d086a3bab2f7c8e9"
+  },
+  "artifact_sha256": {
+    "capture-with-latency.json": "a663d0e1b348e429f16f14f653cf9e709babe258fe74617fc890dd614c297f74",
+    "capture.json": "14c4e55eaf0c2ec0de90b1685d5569f1a4bd2e8e51a7d39e2e0bb85eaaf8cdc5",
+    "lifecycle.json": "cc23b6b4cfbd6c258c5fbd94102328017508576adea4888bf0ac31546bc60b5c",
+    "processes-chunked.json": "77bf3fb69e44e13109cca6fcf519cc627493808ea514ef1acd35d968da0ed930",
+    "processes-monolithic.json": "89d2f927301aff2ef03cf17e5af50c0af7a49261267ad4b74542002b6a69e3dc",
+    "transport-before-buffer.json": "bc512a745a538396a2c3bc8620f36cbe868bcdd351174061f442cb531a7a68a7",
+    "transport.json": "c097b45f47f4a71ee7d8a3edd046baab8354f95a9294be7fb3c354e6149ae726",
+    "validation.md": "1e6344fe3c2eae9a6cba37901123a4d8b7b3f3583b64e4b69cc2db78169366f1"
+  },
+  "input_fingerprint": {
+    "sha256": "5be7371f3a7e2a50e857d50311d66a425f08a67d84649773c1932d47046a4bb8",
+    "files": 798,
+    "git_pathspecs": [
+      "hoga",
+      "tests",
+      "scripts/probe_collector_large_transfer.py",
+      "pyproject.toml",
+      "uv.lock",
+      "ruff.toml",
+      ".python-version"
+    ],
+    "algorithm": "SHA256(sorted path + NUL + raw SHA256(file bytes))"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "6847 passed, 2 skipped, 13 deselected, 50 warnings in 273.06s",
+      "log": "/tmp/hoga-collector-intra-key-pytest.log"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_collector_large_transfer.py tests/unit/live/test_collector_state_frames.py tests/unit/live/test_collector_process.py tests/unit/live/test_collector_ipc_design_probe.py tests/unit/live/test_peak_shadow.py -m 'not wallclock'",
+      "result": "112 passed in 10.77s",
+      "log": "/tmp/hoga-collector-intra-key-affected.log"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed on final sources"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev python -m scripts.probe_collector_large_transfer --output docs/diagnostics/2026-10-23-collector-intra-key/transport.json",
+      "result": "24 fresh subprocesses: three CPU and one separate memory trial x two encoders x 390/90000/200000 records per side. All data equal. Old production encoder explicitly fails for two large cases; monolithic measurement bypasses frame limit only."
+    },
+    {
+      "command": "uv run --extra dev python -m scripts.probe_collector_large_transfer --trial capture --points 90000 --output docs/diagnostics/2026-10-23-collector-intra-key/capture-with-latency.json",
+      "result": "90000 valid synthetic OB callbacks + 7106 frozen observed frames, separate original/current native stream and stores. Actual blocked socket, coalesced pending-state recovery, final parent/native cache exact; 44 durable files byte equal. Actual original snapshot creation and recovery wall time recorded."
+    },
+    {
+      "command": "scripts.probe_collector_large_transfer --trial processes --strategy {monolithic,chunked} --points 200000",
+      "result": "Two separate spawn sender/parent trials; canonical JSON SHA and 400000 record points matched. Traced sender peak 39203084B -> 1039750B; parent peak 120451754B -> 101253948B. Source tree built before tracing, RSS recorded separately."
+    },
+    {
+      "command": "scripts.probe_collector_large_transfer --trial lifecycle",
+      "result": "100 socket roundtrip/release cycles, 2000 points per side, all matched. Natural GC only; retained traced 24031B at 10 vs 26925B at 100. No increasing encoded outbox or partial-tree cache."
+    }
+  ],
+  "reuse_scope": "Full suite includes all final executable production/test logic. A read-ahead explanatory comment was added after full-suite start; final affected 112 and Ruff include it. Probe-only capture timing instrumentation was then added and its capture path rerun. Transport/process/lifecycle implementations and production behavior used by prior measurements are unchanged. Baseline f06ba91d4 frontend-only changes do not affect these Python measurements. Original callback baseline independently loaded from 97b3ffe03.",
+  "environment": {
+    "python": "3.14.7",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "packages": {
+      "pytest": "9.0.3",
+      "pytest-asyncio": "1.3.0",
+      "ruff": "0.15.13"
+    },
+    "probe_gc_thresholds": [
+      50000,
+      50,
+      50
+    ],
+    "gc": "No forced collections, disabling or freeze. Natural gen0 counts included (large case monolithic 1 vs chunked 7); no gen1/gen2 collection during short individual transfer samples."
+  },
+  "limits": [
+    "No production server restart, credential inheritance, vendor authentication or new live vendor capture. Worktree .env empty. Frozen observed input replayed through real callbacks and writers.",
+    "Operational state stays atomic and fail-closed. Existing 10s freshness, 30s RPC timeout and 512 peak key cap retained. Sustained backpressure can cause explicit not-ready/timeouts; partial arrays never published.",
+    "Only transient serialization/read-ahead is bounded. Complete native/snapshot/parent caches remain O(history); valid scalar/point fields must fit a frame and max path depth is 16.",
+    "Monolithic comparison is a measurement-only uncapped baseline; old production path does not succeed for >8MiB logical peaks.",
+    "Not a pre-API losslessness guarantee, fleet-wide/long-term RSS, natural gen2 or live vendor-to-storage p99 measurement. Small histories cost ~0.23ms extra in sample and gen0 frequency increases."
+  ]
+}

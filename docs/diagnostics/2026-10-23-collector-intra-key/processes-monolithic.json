@@ -1,0 +1,26 @@
+{
+  "strategy": "monolithic",
+  "points_per_side": 200000,
+  "sha256": "c19445042d4d61b811bfb42a57e6f68be4b69cdb86d2b4876a86e2fe5999bc82",
+  "matched": true,
+  "sender": {
+    "rss_before": 183484416,
+    "rss_after": 222871552,
+    "traced_retained": 19602099,
+    "traced_peak": 39203084,
+    "transfer": {
+      "frames": 1,
+      "bytes": 19601303,
+      "max_frame": 19601299,
+      "max_buffer": 19382039
+    }
+  },
+  "parent": {
+    "rss_before": 46874624,
+    "rss_after": 281157632,
+    "traced_retained": 100848984,
+    "traced_peak": 120451754
+  },
+  "forced_gc": false,
+  "limits": "RSS includes imports/arenas; source tree constructed before tracing."
+}

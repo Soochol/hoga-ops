@@ -311,8 +311,9 @@ def test_single_key_larger_than_8mib_requires_intra_key_chunking():
     # only in this framing test; the JSON byte count is still genuinely >8MiB.
     records = [{"price": 100_000, "qty": 1_000_000, "t_ms": 1_792_713_600_000}] * 180_000
     current[key]["ask"]["all_record_peaks"] = records
-    with pytest.raises(ValueError, match="peak exceeds byte limit"):
-        list(state_frames(status(current)))
+    operational_parts = list(state_frames(status(current)))
+    assert sum(map(len, operational_parts)) > MAX_FRAME_BYTES
+    assert max(map(len, operational_parts)) - 4 <= 256 * 1024
     frame = {"epoch": "experiment", "desired_version": 1, "key": key, "revision": 1,
              "base_revision": 0, "full": True, "removed": False, "value": current[key]}
     parts = list(transaction_frames(frame))

@@ -1,0 +1,870 @@
+{
+  "base": "97b3ffe03fcefe7fb2e5ed6512d7d0356ec8ac65",
+  "python": "3.14.7",
+  "trials": [
+    {
+      "points_per_side": 390,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 0.730334002582822,
+      "cpu_ms": 0.7293820000000006,
+      "loop_gaps": {
+        "p50_us": 16.531,
+        "p95_us": 281.29,
+        "p99_us": 281.29,
+        "max_us": 281.29
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 39523,
+        "max_frame": 39519,
+        "max_buffer": 0
+      },
+      "rss_before": 46764032,
+      "rss_retained": 47104000,
+      "rss_released": 47104000,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 390,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 0.7653400025446899,
+      "cpu_ms": 0.7644170000000172,
+      "loop_gaps": {
+        "p50_us": 18.605,
+        "p95_us": 288.463,
+        "p99_us": 288.463,
+        "max_us": 288.463
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 39523,
+        "max_frame": 39519,
+        "max_buffer": 0
+      },
+      "rss_before": 46768128,
+      "rss_retained": 47108096,
+      "rss_released": 47112192,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 390,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 0.7491590004065074,
+      "cpu_ms": 0.7484170000000012,
+      "loop_gaps": {
+        "p50_us": 16.912,
+        "p95_us": 286.99,
+        "p99_us": 286.99,
+        "max_us": 286.99
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 39523,
+        "max_frame": 39519,
+        "max_buffer": 0
+      },
+      "rss_before": 46731264,
+      "rss_retained": 47071232,
+      "rss_released": 47071232,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 390,
+      "strategy": "monolithic",
+      "memory_profile": true,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 4.763804005051497,
+      "cpu_ms": 4.761729999999992,
+      "loop_gaps": {
+        "p50_us": 28.293,
+        "p95_us": 2550.048,
+        "p99_us": 2550.048,
+        "max_us": 2550.048
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 39523,
+        "max_frame": 39519,
+        "max_buffer": 0
+      },
+      "rss_before": 46768128,
+      "rss_retained": 47374336,
+      "rss_released": 47374336,
+      "traced_retained": 206255,
+      "traced_peak": 276033,
+      "traced_released": 20730,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 390,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 0.9024279934237711,
+      "cpu_ms": 0.901502999999998,
+      "loop_gaps": {
+        "p50_us": 18.545,
+        "p95_us": 339.94,
+        "p99_us": 339.94,
+        "max_us": 339.94
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 40541,
+        "max_frame": 40537,
+        "max_buffer": 0
+      },
+      "rss_before": 46768128,
+      "rss_retained": 47177728,
+      "rss_released": 47181824,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 390,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 0.9880090001388453,
+      "cpu_ms": 0.9869519999999854,
+      "loop_gaps": {
+        "p50_us": 20.308,
+        "p95_us": 373.333,
+        "p99_us": 373.333,
+        "max_us": 373.333
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 40541,
+        "max_frame": 40537,
+        "max_buffer": 0
+      },
+      "rss_before": 46702592,
+      "rss_retained": 47112192,
+      "rss_released": 47112192,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 390,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 0.9757969964994118,
+      "cpu_ms": 0.9750000000000036,
+      "loop_gaps": {
+        "p50_us": 19.567,
+        "p95_us": 362.733,
+        "p99_us": 362.733,
+        "max_us": 362.733
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 40541,
+        "max_frame": 40537,
+        "max_buffer": 0
+      },
+      "rss_before": 46829568,
+      "rss_retained": 47239168,
+      "rss_released": 47239168,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 390,
+      "strategy": "chunked",
+      "memory_profile": true,
+      "old_production_error": null,
+      "matched": true,
+      "points_received": {
+        "ask": 390,
+        "bid": 390
+      },
+      "wall_ms": 5.83738400018774,
+      "cpu_ms": 5.836556999999992,
+      "loop_gaps": {
+        "p50_us": 33.212,
+        "p95_us": 3357.608,
+        "p99_us": 3357.608,
+        "max_us": 3357.608
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 40541,
+        "max_frame": 40537,
+        "max_buffer": 0
+      },
+      "rss_before": 46866432,
+      "rss_retained": 47517696,
+      "rss_released": 47517696,
+      "traced_retained": 210166,
+      "traced_peak": 276437,
+      "traced_released": 24031,
+      "natural_gc": {},
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 117.00194000150077,
+      "cpu_ms": 116.996352,
+      "loop_gaps": {
+        "p50_us": 18.846,
+        "p95_us": 70.423,
+        "p99_us": 70285.464,
+        "max_us": 70285.464
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 8821303,
+        "max_frame": 8821299,
+        "max_buffer": 8602039
+      },
+      "rss_before": 108019712,
+      "rss_retained": 162078720,
+      "rss_released": 111538176,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 113.74059299851069,
+      "cpu_ms": 113.74074399999998,
+      "loop_gaps": {
+        "p50_us": 17.503,
+        "p95_us": 65.353,
+        "p99_us": 69260.506,
+        "max_us": 69260.506
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 8821303,
+        "max_frame": 8821299,
+        "max_buffer": 8602039
+      },
+      "rss_before": 108040192,
+      "rss_retained": 162103296,
+      "rss_released": 111185920,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 124.04741699720034,
+      "cpu_ms": 124.02242999999999,
+      "loop_gaps": {
+        "p50_us": 20.679,
+        "p95_us": 69.721,
+        "p99_us": 76068.818,
+        "max_us": 76068.818
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 8821303,
+        "max_frame": 8821299,
+        "max_buffer": 8602039
+      },
+      "rss_before": 108032000,
+      "rss_retained": 162095104,
+      "rss_released": 110526464,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "monolithic",
+      "memory_profile": true,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 1024.2068989973632,
+      "cpu_ms": 1024.1790420000002,
+      "loop_gaps": {
+        "p50_us": 25.879,
+        "p95_us": 90.53,
+        "p99_us": 576765.137,
+        "max_us": 576765.137
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 8821303,
+        "max_frame": 8821299,
+        "max_buffer": 8602039
+      },
+      "rss_before": 108027904,
+      "rss_retained": 228675584,
+      "rss_released": 178671616,
+      "traced_retained": 45535810,
+      "traced_peak": 54367370,
+      "traced_released": 25149,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 117.62337900290731,
+      "cpu_ms": 117.62155900000002,
+      "loop_gaps": {
+        "p50_us": 86.403,
+        "p95_us": 3045.821,
+        "p99_us": 5648.178,
+        "max_us": 7402.359
+      },
+      "transfer": {
+        "frames": 36,
+        "bytes": 8839526,
+        "max_frame": 259407,
+        "max_buffer": 291521
+      },
+      "rss_before": 108101632,
+      "rss_retained": 147161088,
+      "rss_released": 147161088,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 3
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 105.20512299990514,
+      "cpu_ms": 105.19826600000002,
+      "loop_gaps": {
+        "p50_us": 74.771,
+        "p95_us": 2834.824,
+        "p99_us": 4550.392,
+        "max_us": 5813.098
+      },
+      "transfer": {
+        "frames": 36,
+        "bytes": 8839526,
+        "max_frame": 259407,
+        "max_buffer": 291521
+      },
+      "rss_before": 108027904,
+      "rss_retained": 147402752,
+      "rss_released": 146370560,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 3
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 102.5252300023567,
+      "cpu_ms": 102.519634,
+      "loop_gaps": {
+        "p50_us": 81.613,
+        "p95_us": 2769.11,
+        "p99_us": 4401.072,
+        "max_us": 5707.299
+      },
+      "transfer": {
+        "frames": 36,
+        "bytes": 8839526,
+        "max_frame": 259407,
+        "max_buffer": 291521
+      },
+      "rss_before": 107970560,
+      "rss_retained": 147345408,
+      "rss_released": 146313216,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 3
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 90000,
+      "strategy": "chunked",
+      "memory_profile": true,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 90000,
+        "bid": 90000
+      },
+      "wall_ms": 1091.0873460015864,
+      "cpu_ms": 1090.546448,
+      "loop_gaps": {
+        "p50_us": 141.106,
+        "p95_us": 31146.267,
+        "p99_us": 35284.955,
+        "max_us": 37791.361
+      },
+      "transfer": {
+        "frames": 36,
+        "bytes": 8839526,
+        "max_frame": 259407,
+        "max_buffer": 291521
+      },
+      "rss_before": 108027904,
+      "rss_retained": 219787264,
+      "rss_released": 214556672,
+      "traced_retained": 45408300,
+      "traced_peak": 45685524,
+      "traced_released": 30029,
+      "natural_gc": {
+        "0": 3
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 252.4598679956398,
+      "cpu_ms": 252.457578,
+      "loop_gaps": {
+        "p50_us": 18.435,
+        "p95_us": 46.578,
+        "p99_us": 90635.597,
+        "max_us": 154682.683
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 19601303,
+        "max_frame": 19601299,
+        "max_buffer": 19382039
+      },
+      "rss_before": 183222272,
+      "rss_retained": 303075328,
+      "rss_released": 186286080,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 258.16952300374396,
+      "cpu_ms": 258.16807,
+      "loop_gaps": {
+        "p50_us": 20.438,
+        "p95_us": 49.233,
+        "p99_us": 92819.217,
+        "max_us": 157678.199
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 19601303,
+        "max_frame": 19601299,
+        "max_buffer": 19382039
+      },
+      "rss_before": 183234560,
+      "rss_retained": 303075328,
+      "rss_released": 186728448,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "monolithic",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 278.9303480021772,
+      "cpu_ms": 278.87297700000005,
+      "loop_gaps": {
+        "p50_us": 24.717,
+        "p95_us": 56.717,
+        "p99_us": 94227.356,
+        "max_us": 175762.038
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 19601303,
+        "max_frame": 19601299,
+        "max_buffer": 19382039
+      },
+      "rss_before": 183201792,
+      "rss_retained": 303030272,
+      "rss_released": 187580416,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "monolithic",
+      "memory_profile": true,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 2187.8070819948334,
+      "cpu_ms": 2187.1177490000005,
+      "loop_gaps": {
+        "p50_us": 27.812,
+        "p95_us": 52.499,
+        "p99_us": 923257.816,
+        "max_us": 1256017.793
+      },
+      "transfer": {
+        "frames": 1,
+        "bytes": 19601303,
+        "max_frame": 19601299,
+        "max_buffer": 19382039
+      },
+      "rss_before": 183230464,
+      "rss_retained": 446570496,
+      "rss_released": 335626240,
+      "traced_retained": 100865958,
+      "traced_peak": 120477514,
+      "traced_released": 29153,
+      "natural_gc": {
+        "0": 1
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 213.8252399963676,
+      "cpu_ms": 213.75957100000005,
+      "loop_gaps": {
+        "p50_us": 45.545,
+        "p95_us": 2720.9,
+        "p99_us": 4048.398,
+        "max_us": 6926.814
+      },
+      "transfer": {
+        "frames": 79,
+        "bytes": 19641552,
+        "max_frame": 255480,
+        "max_buffer": 287614
+      },
+      "rss_before": 183218176,
+      "rss_retained": 268484608,
+      "rss_released": 266424320,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 7
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 215.8389600008377,
+      "cpu_ms": 215.82697899999997,
+      "loop_gaps": {
+        "p50_us": 48.09,
+        "p95_us": 2613.698,
+        "p99_us": 4124.23,
+        "max_us": 6851.533
+      },
+      "transfer": {
+        "frames": 79,
+        "bytes": 19641552,
+        "max_frame": 255480,
+        "max_buffer": 287614
+      },
+      "rss_before": 183238656,
+      "rss_retained": 268505088,
+      "rss_released": 265412608,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 7
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "chunked",
+      "memory_profile": false,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 252.36944900098024,
+      "cpu_ms": 252.328266,
+      "loop_gaps": {
+        "p50_us": 59.412,
+        "p95_us": 3105.514,
+        "p99_us": 5669.438,
+        "max_us": 7921.616
+      },
+      "transfer": {
+        "frames": 79,
+        "bytes": 19641552,
+        "max_frame": 255480,
+        "max_buffer": 287614
+      },
+      "rss_before": 183275520,
+      "rss_retained": 268546048,
+      "rss_released": 267517952,
+      "traced_retained": null,
+      "traced_peak": null,
+      "traced_released": null,
+      "natural_gc": {
+        "0": 7
+      },
+      "forced_gc": false
+    },
+    {
+      "points_per_side": 200000,
+      "strategy": "chunked",
+      "memory_profile": true,
+      "old_production_error": "collector IPC frame exceeds byte limit",
+      "matched": true,
+      "points_received": {
+        "ask": 200000,
+        "bid": 200000
+      },
+      "wall_ms": 2441.885274995002,
+      "cpu_ms": 2441.5362579999996,
+      "loop_gaps": {
+        "p50_us": 142.268,
+        "p95_us": 30890.747,
+        "p99_us": 40019.965,
+        "max_us": 45707.216
+      },
+      "transfer": {
+        "frames": 79,
+        "bytes": 19641552,
+        "max_frame": 255480,
+        "max_buffer": 287614
+      },
+      "rss_before": 183238656,
+      "rss_retained": 427409408,
+      "rss_released": 416923648,
+      "traced_retained": 100988465,
+      "traced_peak": 101312975,
+      "traced_released": 34829,
+      "natural_gc": {
+        "0": 7
+      },
+      "forced_gc": false
+    }
+  ],
+  "medians": [
+    {
+      "points": 390,
+      "strategy": "monolithic",
+      "cpu_ms": 0.7484170000000012,
+      "wall_ms": 0.7491590004065074
+    },
+    {
+      "points": 390,
+      "strategy": "chunked",
+      "cpu_ms": 0.9750000000000036,
+      "wall_ms": 0.9757969964994118
+    },
+    {
+      "points": 90000,
+      "strategy": "monolithic",
+      "cpu_ms": 116.996352,
+      "wall_ms": 117.00194000150077
+    },
+    {
+      "points": 90000,
+      "strategy": "chunked",
+      "cpu_ms": 105.19826600000002,
+      "wall_ms": 105.20512299990514
+    },
+    {
+      "points": 200000,
+      "strategy": "monolithic",
+      "cpu_ms": 258.16807,
+      "wall_ms": 258.16952300374396
+    },
+    {
+      "points": 200000,
+      "strategy": "chunked",
+      "cpu_ms": 215.82697899999997,
+      "wall_ms": 215.8389600008377
+    }
+  ],
+  "forced_gc": false,
+  "limits": "Both socket endpoints share one process. Traced timings excluded from CPU comparison; RSS includes allocator arenas. The monolithic baseline bypasses only the frame limit for measurement, and cannot serve these large histories in production."
+}

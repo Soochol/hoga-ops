@@ -13,6 +13,8 @@ import struct
 from collections import deque
 from collections.abc import Iterator
 
+from .collector_transfer import TRANSFER_FRAME_BYTES, read_tree, tree_frames, write_frames
+
 MAX_FRAME_BYTES = 8 * 1024 * 1024
 DISPLAY_MAX_FRAME_BYTES = 256 * 1024
 DISPLAY_MAX_MESSAGES = 1024
@@ -62,46 +64,22 @@ async def read_frame(reader: asyncio.StreamReader, *, limit: int = MAX_FRAME_BYT
     return value
 
 
-def state_frames(state: dict, *, limit: int = MAX_FRAME_BYTES) -> Iterator[bytes]:
-    """Encode one snapshot lazily, splitting only between complete Code/venues.
-
-    The day histories of 512 tracked peak keys can exceed one IPC frame. Keep
-    at most one encoded frame at a time; never truncate a key's minute history.
-    """
-    peaks = state["peaks"]
-    if len(peaks) > STATE_MAX_PEAK_KEYS:
+def state_frames(state: dict, *, limit: int = TRANSFER_FRAME_BYTES) -> Iterator[bytes]:
+    """Bound frames inside a Code/venue as well as between keys; retain all rows."""
+    if len(state["peaks"]) > STATE_MAX_PEAK_KEYS:
         raise ValueError("collector state peak capacity exceeded")
-    base = {key: value for key, value in state.items() if key != "peaks"}
-    part, entries = 0, []
-
-    def payload(last: bool) -> bytes:
-        header = json.dumps({**base, "state_part": part, "state_last": last},
-                            separators=(",", ":"), ensure_ascii=False).encode()
-        return header[:-1] + b',"peaks":{' + b",".join(entries) + b"}}"
-
-    size = len(payload(False))
-    for key, value in peaks.items():
-        entry = json.dumps({key: value}, separators=(",", ":"), ensure_ascii=False).encode()[1:-1]
-        added = len(entry) + bool(entries)
-        if size + added > limit and entries:
-            body = payload(False)
-            yield struct.pack("!I", len(body)) + body
-            part, entries = part + 1, []
-            size = len(payload(False))
-            added = len(entry)
-        if size + added > limit:
-            raise ValueError("collector state peak exceeds byte limit")
-        entries.append(entry)
-        size += added
-    body = payload(True)
-    if len(body) > limit:
-        raise ValueError("collector state metadata exceeds byte limit")
-    yield struct.pack("!I", len(body)) + body
+    identity = {"kind": "state", **{key: state[key] for key in ("epoch", "sequence", "desired_version")}}
+    yield from tree_frames(state, identity, limit=limit)
 
 
 async def read_state(reader: asyncio.StreamReader) -> dict:
     """Publish only complete ordered snapshots; partial state is never healthy."""
     state = await read_frame(reader)
+    if "_transfer" in state:
+        state = await read_tree(reader, state, read_frame, kind="state")
+        if len(state["peaks"]) > STATE_MAX_PEAK_KEYS:
+            raise ValueError("collector state peak capacity exceeded")
+        return state
     if "state_part" not in state:  # Single-frame peers/tests from before fragmentation.
         return state
     if state.pop("state_part") != 0:
@@ -148,14 +126,14 @@ class LatestStateOutbox:
                 self.wake.clear()
                 await self.wake.wait()
             state = self.frames.popleft()
-            for frame in state_frames(state):
-                writer.write(frame)
-                await writer.drain()
+            await write_frames(writer, state_frames(state))
 
 
 async def open_channel(sock: socket.socket) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
     sock.setblocking(False)
-    reader, writer = await asyncio.open_connection(sock=sock, limit=MAX_FRAME_BYTES)
+    # Read-ahead watermark, not the frame-size check. readexactly() can still
+    # receive legacy/control frames up to MAX_FRAME_BYTES without deadlocking.
+    reader, writer = await asyncio.open_connection(sock=sock, limit=TRANSFER_FRAME_BYTES)
     writer.transport.set_write_buffer_limits(high=DISPLAY_MAX_FRAME_BYTES, low=0)
     return reader, writer
 
@@ -234,12 +212,39 @@ class RpcPeer:
             self.pending.pop(request_id, None)
 
     async def reply(self, command: dict, *, result=None, error: str | None = None):
-        await self.write({"reply": command["id"], "result": result, "error": error})
+        message = {"reply": command["id"], "result": result, "error": error}
+        if command.get("method") != "peaks" or error is not None:
+            await self.write(message)
+            return
+        message["epoch"] = self.epoch
+        identity = {"kind": "peak_reply", "epoch": self.epoch, "reply": command["id"]}
+        async with self.write_lock:
+            try:
+                await write_frames(self.writer, tree_frames(message, identity))
+            except ValueError as exc:
+                # A partially sent transaction cannot be followed by a normal
+                # error reply: the reader is still expecting its next part.
+                self.writer.close()
+                raise ConnectionError("collector peak transfer failed") from exc
+
+    async def _read_reply_parts(self, message):
+        if "_transfer" not in message:
+            return message
+        identity = message["_transfer"]
+        if not isinstance(identity, dict) or identity.get("epoch") != self.epoch:
+            raise ValueError("collector IPC epoch mismatch")
+        request_id = identity.get("reply")
+        return await read_tree(self.reader, message, read_frame, kind="peak_reply",
+                               accept=lambda request_id=request_id: request_id in self.pending
+                               and not self.pending[request_id].done())
 
     async def read(self) -> None:
         try:
             while True:
                 message = await read_frame(self.reader)
+                message = await self._read_reply_parts(message)
+                if message is None:
+                    continue
                 if message.get("epoch") != self.epoch:
                     raise ValueError("collector IPC epoch mismatch")
                 if "reply" in message:
