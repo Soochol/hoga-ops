@@ -83,7 +83,7 @@ async def test_late_seed_rpc_does_not_rewind_a_newer_state_delta(tmp_path, monke
     session = CaptureProcessSession(buffer=None, data_dir=tmp_path)
     monkeypatch.setattr(session, "fresh", lambda: True)
     session._state_sequence = sequence
-    session._peak_sequence_floor = floor
+    session._peak_sequence_floors = {"005930:KRX": floor}
     session._peaks = {"005930:KRX": {"ask": 3}}
     session.peer = SimpleNamespace(call=AsyncMock(return_value={
         "values": {"005930:KRX": {"ask": 2}}, "state_sequence": reply,

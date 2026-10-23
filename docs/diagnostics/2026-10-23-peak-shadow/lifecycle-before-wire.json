@@ -1,0 +1,199 @@
+{
+  "cycles": 2000,
+  "samples": [
+    {
+      "cycles": 100,
+      "retained_bytes": 664106,
+      "peak_bytes": 691679,
+      "rss": 70242304,
+      "gc": {}
+    },
+    {
+      "cycles": 200,
+      "retained_bytes": 1227965,
+      "peak_bytes": 1255538,
+      "rss": 71561216,
+      "gc": {}
+    },
+    {
+      "cycles": 300,
+      "retained_bytes": 1791632,
+      "peak_bytes": 1819205,
+      "rss": 73015296,
+      "gc": {}
+    },
+    {
+      "cycles": 400,
+      "retained_bytes": 2355267,
+      "peak_bytes": 2382840,
+      "rss": 74199040,
+      "gc": {}
+    },
+    {
+      "cycles": 500,
+      "retained_bytes": 2918902,
+      "peak_bytes": 2946483,
+      "rss": 75898880,
+      "gc": {}
+    },
+    {
+      "cycles": 600,
+      "retained_bytes": 3482569,
+      "peak_bytes": 3510151,
+      "rss": 77094912,
+      "gc": {}
+    },
+    {
+      "cycles": 700,
+      "retained_bytes": 4046204,
+      "peak_bytes": 4073786,
+      "rss": 78282752,
+      "gc": {}
+    },
+    {
+      "cycles": 800,
+      "retained_bytes": 1130815,
+      "peak_bytes": 4189196,
+      "rss": 78254080,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 900,
+      "retained_bytes": 1603410,
+      "peak_bytes": 4189196,
+      "rss": 78254080,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 1000,
+      "retained_bytes": 2076069,
+      "peak_bytes": 4189196,
+      "rss": 78254080,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 1100,
+      "retained_bytes": 2548664,
+      "peak_bytes": 4189196,
+      "rss": 78254080,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 1200,
+      "retained_bytes": 3021259,
+      "peak_bytes": 4189196,
+      "rss": 79040512,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 1300,
+      "retained_bytes": 3493854,
+      "peak_bytes": 4189196,
+      "rss": 79040512,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 1400,
+      "retained_bytes": 3966449,
+      "peak_bytes": 4189196,
+      "rss": 79065088,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 1500,
+      "retained_bytes": 4492852,
+      "peak_bytes": 4520434,
+      "rss": 79409152,
+      "gc": {
+        "0": 1
+      }
+    },
+    {
+      "cycles": 1600,
+      "retained_bytes": 1129007,
+      "peak_bytes": 4757573,
+      "rss": 80347136,
+      "gc": {
+        "0": 2
+      }
+    },
+    {
+      "cycles": 1700,
+      "retained_bytes": 1601602,
+      "peak_bytes": 4757573,
+      "rss": 80347136,
+      "gc": {
+        "0": 2
+      }
+    },
+    {
+      "cycles": 1800,
+      "retained_bytes": 2074261,
+      "peak_bytes": 4757573,
+      "rss": 80347136,
+      "gc": {
+        "0": 2
+      }
+    },
+    {
+      "cycles": 1900,
+      "retained_bytes": 2546856,
+      "peak_bytes": 4757573,
+      "rss": 80351232,
+      "gc": {
+        "0": 2
+      }
+    },
+    {
+      "cycles": 2000,
+      "retained_bytes": 3019451,
+      "peak_bytes": 4757573,
+      "rss": 80871424,
+      "gc": {
+        "0": 2
+      }
+    }
+  ],
+  "shadow": {
+    "enabled": true,
+    "disabled": false,
+    "active_sides": 0,
+    "retained_points": 0,
+    "first_failure": null,
+    "sampled": [],
+    "checks": 4000,
+    "matched": 4000,
+    "mismatches": 0,
+    "errors": 0,
+    "admission_rejected": 0,
+    "point_budget_rejected": 0,
+    "time_budget_rejected": 0,
+    "attached": 4000,
+    "prepare_us": 102929.59601065377,
+    "wire_bytes": 4955786,
+    "wire_parts": 4000,
+    "apply_wire_us": 2342068.107005616,
+    "full": 4000,
+    "reference_us": 111974.0558497142,
+    "check_us": 2609011.1820521997,
+    "max_check_us": 29409.638002107386
+  },
+  "gc": {
+    "0": 2
+  },
+  "forced_gc": false
+}

@@ -21,6 +21,7 @@ from .ask_peak_state import TodayAskPeakState, TodayBidPeakState
 from .buffer import LiveBuffer
 from .downsampler import TickDownsampler
 from .minute_candle_agg import MS_PER_MINUTE, MinuteCandleAggregator
+from .peak_shadow import PeakShadow
 from .second_trade_store import SecondTradeStore
 from .session_gate import market_phase, venue_capture_windows_async
 from .snapshot import LiveSnapshot, SnapshotKind
@@ -105,6 +106,8 @@ def _next_window_delay_s(now_s: float, interval_s: float) -> float:
 
 
 class LiveStream:
+    _peak_shadow: PeakShadow | None = None
+
     def __init__(
         self,
         *,
@@ -116,6 +119,7 @@ class LiveStream:
         owns_seconds_flush: bool = True,
         signal_monitor_fn: Callable | None = None,
         open_venues_fn: Callable | None = None,
+        peak_shadow: PeakShadow | None = None,
     ) -> None:
         self._signal_monitor_fn = signal_monitor_fn or (lambda: get_signal_alert_monitor())  # noqa: PLW0108 — late DI
         self._open_venues_fn = open_venues_fn or venue_capture_windows_async
@@ -146,12 +150,15 @@ class LiveStream:
         self._ask_peak_by_code: dict[tuple[str, str], TodayAskPeakState] = {}
         self._bid_peak_by_code: dict[tuple[str, str], TodayBidPeakState] = {}
         self._ask_peak_date: str | None = None
+        self._peak_shadow = peak_shadow
 
     def set_active_codes(self, codes: set[str]) -> None:
         """Live Set 변경 위임 — start/refresh_live_stream이 호출(advisor C)."""
         self._active_codes = set(codes)
         self._ds.set_active_codes(codes)
         self._candle_agg.set_active_codes(self._active_codes)
+        if self._peak_shadow is not None:
+            self._peak_shadow.release(self, self._active_codes)
         # 멤버십은 **종목 단위** — 코드가 떠나면 그 종목의 모든 venue 피크를 버린다.
         for key in [k for k in self._ask_peak_by_code if k[0] not in self._active_codes]:
             del self._ask_peak_by_code[key]
@@ -174,6 +181,8 @@ class LiveStream:
             self._ask_peak_date = date
             return
         if date != self._ask_peak_date:
+            if self._peak_shadow is not None:
+                self._peak_shadow.release(self)
             self._ask_peak_by_code.clear()
             self._bid_peak_by_code.clear()
             self._ask_peak_date = date
@@ -184,6 +193,7 @@ class LiveStream:
         state = self._ask_peak_by_code.get(key)
         if state is None:
             state = self._ask_peak_by_code[key] = TodayAskPeakState()
+            self._attach_peak_shadow(state, code, venue, "ask")
         return state
 
     def _bid_peak_state(self, code: str, venue: str) -> TodayBidPeakState:
@@ -192,7 +202,12 @@ class LiveStream:
         state = self._bid_peak_by_code.get(key)
         if state is None:
             state = self._bid_peak_by_code[key] = TodayBidPeakState()
+            self._attach_peak_shadow(state, code, venue, "bid")
         return state
+
+    def _attach_peak_shadow(self, state, code, venue, side):
+        if self._peak_shadow is not None:
+            self._peak_shadow.attach(self, state, code=code, venue=venue, side=side, date=self._ask_peak_date)
 
     def ask_peak_snapshot(self, code: str, venue: str) -> dict | None:
         self._reset_ask_peak_if_date_changed()
@@ -228,12 +243,15 @@ class LiveStream:
         `coverage` 는 두 경로 모두 "full" 로 올린다 — 재생본이 그날 파일 전체를 훑었으므로
         흡수 후의 확정 계열은 하루 전체를 반영한다.
         """
+        self._reset_ask_peak_if_date_changed()
         ask = self._ask_peak_by_code.get((code, venue))
         bid = self._bid_peak_by_code.get((code, venue))
         if ask is None and bid is None:
             self._reset_ask_peak_if_date_changed()
             self._ask_peak_by_code[(code, venue)] = seed.ask
             self._bid_peak_by_code[(code, venue)] = seed.bid
+            self._attach_peak_shadow(seed.ask, code, venue, "ask")
+            self._attach_peak_shadow(seed.bid, code, venue, "bid")
             return "installed"
         self._ask_peak_state(code, venue).merge_from(seed.ask)
         self._bid_peak_state(code, venue).merge_from(seed.bid)

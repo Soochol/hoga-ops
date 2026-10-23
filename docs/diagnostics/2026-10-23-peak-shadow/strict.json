@@ -1,0 +1,321 @@
+{
+  "mode": "strict",
+  "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+  "rows": 7106,
+  "kinds": {
+    "ob": 3450,
+    "trade": 3322,
+    "program": 296,
+    "broker": 38
+  },
+  "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+  "durable_file_hashes": {
+    "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+    "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+    "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+    "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+    "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+    "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+    "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+    "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+    "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+    "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+    "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+    "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+    "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+    "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+    "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+    "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+    "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+    "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+    "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+    "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+    "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+    "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+    "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+    "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+    "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+    "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+    "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+    "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+    "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+    "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+    "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+    "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+    "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+    "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+    "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+    "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+    "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+    "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+    "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+    "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+    "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+    "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+    "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+    "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+  },
+  "on_tick": {
+    "p50_us": 75.572,
+    "p95_us": 110.358,
+    "p99_us": 217.299,
+    "max_us": 3117.777
+  },
+  "on_tick_total_ms": 468.392618,
+  "replay_s_including_flush_and_checks": 1.26318865599751,
+  "sampled_checks": null,
+  "shadow": {
+    "enabled": true,
+    "disabled": false,
+    "active_sides": 44,
+    "retained_points": 909,
+    "first_failure": null,
+    "sampled": [
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "096770",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "096770",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "096770",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "096770",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "035420",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "035420",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "035420",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "035420",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "005930",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "005930",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "005930",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "005930",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "005930",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "005930",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "010060",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "010060",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "096770",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "096770",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "010060",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "010060",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "010060",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "010060",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "058470",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "058470",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "058470",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "058470",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "035420",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "035420",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "089030",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "089030",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "058470",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "058470",
+        "venue": "KRX",
+        "side": "bid"
+      }
+    ],
+    "checks": 14252,
+    "matched": 14252,
+    "mismatches": 0,
+    "errors": 0,
+    "admission_rejected": 0,
+    "point_budget_rejected": 0,
+    "time_budget_rejected": 0,
+    "attached": 44,
+    "prepare_us": 15991.61392368842,
+    "wire_bytes": 2690643,
+    "wire_parts": 1833,
+    "apply_wire_us": 281671.8250178383,
+    "full": 76,
+    "reference_us": 113834.66477127513,
+    "check_us": 458216.1442376673,
+    "max_check_us": 3040.9920000238344,
+    "delta": 1757
+  },
+  "rss_before": 68648960,
+  "rss_after_ingest": 72196096,
+  "rss_ingest_delta": 3547136,
+  "rss_after_release": 72671232,
+  "peak_rss": 70262784,
+  "tracemalloc": null,
+  "gc_counts": {},
+  "gc_ms": {}
+}

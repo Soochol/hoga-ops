@@ -1,0 +1,170 @@
+{
+  "started_at_epoch": 1792737635.7181563,
+  "elapsed_s": 62.09570002555847,
+  "rows": 1258,
+  "codes": [
+    "003160",
+    "000660"
+  ],
+  "venues": {
+    "NXT": 636,
+    "UN": 613,
+    "KRX": 9
+  },
+  "kinds": {
+    "trade": 495,
+    "program": 70,
+    "ob": 662,
+    "ah": 19,
+    "broker": 12
+  },
+  "events": {
+    "market_sector_tick": 31,
+    "trading_order": 2,
+    "trading_order_v2": 2,
+    "trading_changed": 2
+  },
+  "full_oracle_comparisons": 2516,
+  "shadow": {
+    "enabled": true,
+    "disabled": false,
+    "active_sides": 12,
+    "blocked_sides": 0,
+    "retained_points": 11118,
+    "first_failure": null,
+    "sampled": [
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "bid"
+      }
+    ],
+    "checks": 2528,
+    "matched": 2528,
+    "mismatches": 0,
+    "errors": 0,
+    "admission_rejected": 0,
+    "point_budget_rejected": 0,
+    "time_budget_rejected": 0,
+    "attached": 12,
+    "prepare_us": 6061.822969058994,
+    "wire_bytes": 801123,
+    "wire_parts": 118,
+    "apply_wire_us": 78218.3209375944,
+    "full": 12,
+    "reference_us": 606384.206097573,
+    "check_us": 856850.2979105688,
+    "max_check_us": 9011.114998429548,
+    "delta": 94
+  },
+  "seeds": [
+    {
+      "code": "003160",
+      "venue": "KRX",
+      "bytes": 4083583,
+      "sha256": "199dbe2d34ef9e5bfdb2c096187630a4d27d0f09203276683972bc17d668378e"
+    },
+    {
+      "code": "003160",
+      "venue": "NXT",
+      "bytes": 4225459,
+      "sha256": "274a49b2944897d9e20b5fa01885b5be16de3b103818e45a334896c108109638"
+    },
+    {
+      "code": "003160",
+      "venue": "UN",
+      "bytes": 4525877,
+      "sha256": "9d34a0d0790d4648dbc63e374b0993e86e7fffb9c83ab5a2638e5a567c88913d"
+    },
+    {
+      "code": "000660",
+      "venue": "KRX",
+      "bytes": 4839018,
+      "sha256": "88e8b7c2d0824f99e8c23533f7760efae088de0d5174c7eb98e90e8340ba7b30"
+    },
+    {
+      "code": "000660",
+      "venue": "NXT",
+      "bytes": 4813800,
+      "sha256": "8aabdf2a80606d343b2d7e014906b4fad0495873d0de4cda5b12f22651953fd4"
+    },
+    {
+      "code": "000660",
+      "venue": "UN",
+      "bytes": 5333438,
+      "sha256": "ce007411e3586c3794122c0a89d4f8428f5bdca7053a55d8ea84733625683388"
+    }
+  ],
+  "durable_hashes": {
+    "live/20261023/NXT/000660.jsonl": "9d78a27c45c58dee0de32977190459164857c2972a291c4e39ae5c54bcc8bf16",
+    "live/20261023/NXT/003160.jsonl": "d28bfff6d57480dc8cec0327d38d75416d65fe57b227f43ae618115497727fa9",
+    "live/20261023/UN/000660.jsonl": "e8e8f389b56930c25c1ad19b0fec7678c4d515d2afa8aaf001047281690bba23",
+    "live/20261023/UN/003160.jsonl": "f904748b5692608887810800676c8c4b8b4ecb020e3266a91264dd8efdd0aec3",
+    "seconds/20261023/NXT/000660.jsonl": "710517ca3779c6eb099d3b8fdb40a0dbf30a4938a107f097fcd9e17e970ca37e",
+    "seconds/20261023/NXT/003160.jsonl": "bcf3d4122881a721b3678c49374331ab74d114c9668cb64e0df137c46ba8adf0",
+    "seconds/20261023/UN/000660.jsonl": "d9fbe3ade8e8bfaa9d55339037e931a1071e124619bc6304e71fb63f471e1596",
+    "seconds/20261023/UN/003160.jsonl": "666ba1cb66cbdf41356f70645b23819cbba7e6c4315f6d0fca2b7ddf9e71fb58"
+  },
+  "durable_equal": true,
+  "live_updates_observed": true,
+  "production_capture_healthy_after": true,
+  "production_connected_accounts_before_after": [
+    6,
+    6
+  ]
+}

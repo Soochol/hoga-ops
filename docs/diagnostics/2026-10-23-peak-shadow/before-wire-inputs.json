@@ -1,0 +1,7 @@
+{
+  "hoga/live/peak_changes.py": "109a7ebc0670e02bbf8975809745dc53d9d4088370b51ecc93834b71a3a2d385",
+  "hoga/live/peak_shadow.py": "ce8d497037edb6fba70f85696bbc9fa1fde0f2a9759f20a17d1abb1d907d29d3",
+  "hoga/live/collector_worker.py": "e067328c1eff42b128cf08aabd0778d3599ade917b6051674920f167190b1d96",
+  "hoga/live/ask_peak_state.py": "7da207f281c95f465d5c842f6dfc0634ba21f59912f41d6b261d42480dd80ce6",
+  "hoga/live/stream.py": "f9e27a040ea3a5599bb6215594b689ae04ac24b0534641f03cfdc6ac6a4b965c"
+}

@@ -5,6 +5,8 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import ClassVar, Literal
 
+from .peak_changes import PeakChanges
+
 _EMIT_LIMIT = 3
 
 #: 기록 갱신 시퀀스의 상한. 과거일 경로(`snapshots._PEAK_RECORD_CAP`)와 **같은 값이어야
@@ -105,6 +107,7 @@ class _TodaySidePeakState:
     traded_peak: Peak | None = None
     all_peak: Peak | None = None
     coverage: Literal["full", "partial"] = "partial"
+    changes: PeakChanges | None = field(default=None, repr=False, compare=False)
 
     side_name: ClassVar[str]
 
@@ -131,6 +134,8 @@ class _TodaySidePeakState:
             return
         if type(t_ms) is not int or t_ms <= 0:
             return
+        if self.changes is not None:
+            self.changes.begin()
         minute = _minute_of(t_ms)
         self.touch_extreme_by_minute[minute] = self._extend_touch_extreme(
             self.touch_extreme_by_minute.get(minute), price,
@@ -138,6 +143,8 @@ class _TodaySidePeakState:
         # 당일 극값 — 전진했을 때만 미도달 딕셔너리를 걷어낸다(도달한 가격의 소급 제거).
         previous_extreme = self.day_extreme
         self.day_extreme = self._extend_touch_extreme(previous_extreme, price)
+        if self.changes is not None and self.day_extreme != previous_extreme:
+            self.changes.mark()
         if self.day_extreme != previous_extreme and self.unreached_by_price:
             reached = [
                 wall_price
@@ -168,6 +175,8 @@ class _TodaySidePeakState:
         levels: Sequence[Mapping[str, int]],
     ) -> None:
         minute = _minute_of(t_ms)
+        if self.changes is not None:
+            self.changes.begin()
         extreme = self.touch_extreme_by_minute.get(minute)
         for level in levels:
             price = _positive_int(level.get("price"))
@@ -183,9 +192,12 @@ class _TodaySidePeakState:
             # "삽입 시점에 이하였던 가격"은 최종에도 이하이므로 처음부터 안 담는 것이
             # 하루 스코프 정의와 일치하고, 나중에 도달하면 ingest_trade 가 걷어낸다.
             if self.day_extreme is None or not self._is_touched_by_price(self.day_extreme, price):
+                previous = self.unreached_by_price.get(price)
                 self.unreached_by_price[price] = _larger_peak(
-                    self.unreached_by_price.get(price), price=price, qty=qty, t_ms=t_ms, seq=None,
+                    previous, price=price, qty=qty, t_ms=t_ms, seq=None,
                 )
+                if self.changes is not None and previous is not self.unreached_by_price[price]:
+                    self.changes.mark()
                 # 같은 판정을 분별로 박제한다 — 위 딕셔너리는 극값 전진에 걷히지만
                 # 이쪽은 남는다(필드 주석). 판정식을 공유하는 것이 요점이라 같은
                 # 분기 안에 둔다: 따로 적으면 두 축이 조용히 갈린다.
@@ -238,6 +250,8 @@ class _TodaySidePeakState:
                 return          # 3위도 못 이긴다
         insort(top, peak, key=_peak_rank_key)
         del top[_EMIT_LIMIT:]
+        if self.changes is not None:
+            self.changes.mark()
 
     def _advance_window(self, minute: int) -> None:
         """관측 분이 앞으로 갔으면 창 밖의 대기 벽·체결 극값을 버린다.
@@ -254,7 +268,7 @@ class _TodaySidePeakState:
         for stale in [m for m in self.touch_extreme_by_minute if m < cutoff]:
             self.touch_extreme_by_minute.pop(stale, None)
 
-    def snapshot(self) -> dict | None:
+    def snapshot(self, *, include_history: bool = True) -> dict | None:
         if self.all_peak is None:
             return None
 
@@ -268,7 +282,7 @@ class _TodaySidePeakState:
         # O(n log n) 이 틱 경로에 얹히지 않는다(필드 주석 참조).
         unreached_peaks = _top_ranked_peaks(self.unreached_by_price.values())
         unreached = unreached_peaks[0] if unreached_peaks else None
-        return {
+        result = {
             "coverage": self.coverage,
             "traded_price": traded.price if traded is not None else None,
             "traded_qty": traded.qty if traded is not None else None,
@@ -280,18 +294,8 @@ class _TodaySidePeakState:
             # `traded_max_peaks` 에 이미 같은 배열을 싣는다. 그래서 필드도 하나만 내고
             # 프론트가 양쪽 축에 같은 배열을 배선한다(`attachFamilies`).
             "traded_record_peaks": [_peak_payload(p) for p in self.traded_record],
-            "all_record_peaks": [_peak_payload(p) for p in self.all_record],
             # 분별 최대 — 위 기록 시퀀스와 **같은 축 규약**이다(rep/cont 를 가르지
             # 않는다). 시간순으로 낸다: 소비처가 시간축에 그린다.
-            "traded_bar_peaks": [
-                _peak_payload(p) for _, p in sorted(self.traded_bar_max.items())
-            ],
-            "all_bar_peaks": [
-                _peak_payload(p) for _, p in sorted(self.all_bar_max.items())
-            ],
-            "unreached_bar_peaks": [
-                _peak_payload(p) for _, p in sorted(self.unreached_bar_max.items())
-            ],
             "all_price": all_peak.price,
             "all_qty": all_peak.qty,
             "all_t_ms": all_peak.t_ms,
@@ -304,6 +308,13 @@ class _TodaySidePeakState:
             # 서버 스냅샷 이후의 극값 전진을 따라간다.
             "day_extreme": self.day_extreme,
         }
+        if include_history:
+            result["all_record_peaks"] = [_peak_payload(p) for p in self.all_record]
+            for wire, native in (("traded_bar_peaks", self.traded_bar_max),
+                                 ("all_bar_peaks", self.all_bar_max),
+                                 ("unreached_bar_peaks", self.unreached_bar_max)):
+                result[wire] = [_peak_payload(p) for _, p in sorted(native.items())]
+        return result
 
     def _refresh_rank_ones(self) -> None:
         # 두 계열 모두 **이미 상한 3** 이라 여기서 큰 정렬이 없다 — `all_top` 은
@@ -321,7 +332,10 @@ class _TodaySidePeakState:
         }
 
     def _record_closed_peak(self, peak: Peak) -> None:
-        self.closed_traded = _top_ranked_peaks([*self.closed_traded, peak])
+        previous = self.closed_traded
+        self.closed_traded = _top_ranked_peaks([*previous, peak])
+        if self.changes is not None and previous != self.closed_traded:
+            self.changes.mark()
         self._offer_record(peak)
         self._offer_bar_max(peak)
 
@@ -339,6 +353,8 @@ class _TodaySidePeakState:
         current = self.traded_bar_max.get(minute)
         if current is None or peak.qty > current.qty:
             self.traded_bar_max[minute] = peak
+            if self.changes is not None:
+                self.changes.minute("traded_bar_peaks", minute)
 
     def _offer_all_bar_max(self, peak: Peak) -> None:
         """분별 최대에 벽 하나를 제시한다 — **터치를 묻지 않는** 판. O(1), 멱등.
@@ -351,6 +367,8 @@ class _TodaySidePeakState:
         current = self.all_bar_max.get(minute)
         if current is None or peak.qty > current.qty:
             self.all_bar_max[minute] = peak
+            if self.changes is not None:
+                self.changes.minute("all_bar_peaks", minute)
 
     def _offer_unreached_bar_max(self, peak: Peak) -> None:
         """분별 최대에 **그 시점 미도달** 벽 하나를 제시한다 — O(1), 멱등.
@@ -362,6 +380,8 @@ class _TodaySidePeakState:
         current = self.unreached_bar_max.get(minute)
         if current is None or peak.qty > current.qty:
             self.unreached_bar_max[minute] = peak
+            if self.changes is not None:
+                self.changes.minute("unreached_bar_peaks", minute)
 
     def _offer_record(self, peak: Peak) -> None:
         """기록 갱신 시퀀스에 터치된 벽 하나를 제시한다 — **도착 순서에 무관**하고 멱등.
@@ -398,6 +418,8 @@ class _TodaySidePeakState:
             j += 1
         records[i:j] = [peak]
         del records[_TRADED_RECORD_CAP:]
+        if self.changes is not None:
+            self.changes.mark()
 
     def _offer_all_record(self, peak: Peak) -> None:
         """전체벽의 정확한 시간순 prefix maxima 를 유지한다.
@@ -415,6 +437,8 @@ class _TodaySidePeakState:
         while j < len(records) and records[j].qty <= peak.qty:
             j += 1
         records[i:j] = [peak]
+        if self.changes is not None:
+            self.changes.record(i)
 
     def merge_from(self, other: _TodaySidePeakState) -> None:
         """다른 상태(오늘 JSONL 재생본)의 **확정 계열만** 흡수한다.
@@ -476,6 +500,8 @@ class _TodaySidePeakState:
             for wall_price in reached:
                 self.unreached_by_price.pop(wall_price, None)
         self._refresh_rank_ones()
+        if self.changes is not None:
+            self.changes.reset()  # Seed merge may replace arbitrary history and coverage.
 
 
 @dataclass

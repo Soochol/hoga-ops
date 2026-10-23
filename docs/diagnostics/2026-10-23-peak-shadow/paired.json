@@ -1,0 +1,281 @@
+{
+  "input_sha256": "4a9a6585a657f46dddce3d2af55d29098546f8061255b3995c144755748fccc3",
+  "rows": 7106,
+  "python": "3.14.7",
+  "base": "56ce0b5722b9d76112eb06c072cd7f6d45eba396",
+  "peak_hashes": {
+    "old": "11bf590ee2efe0f5f388babddf29e78beb7788f024e938ce4436bb9bb376dba7",
+    "off": "11bf590ee2efe0f5f388babddf29e78beb7788f024e938ce4436bb9bb376dba7",
+    "track": "11bf590ee2efe0f5f388babddf29e78beb7788f024e938ce4436bb9bb376dba7"
+  },
+  "per_callback_cpu": {
+    "old": {
+      "p50_us": 38.101,
+      "p95_us": 82.244,
+      "p99_us": 101.791,
+      "max_us": 286.555,
+      "total_ms": 358.537261
+    },
+    "off": {
+      "p50_us": 37.79,
+      "p95_us": 82.313,
+      "p99_us": 102.281,
+      "max_us": 247.001,
+      "total_ms": 358.721358
+    },
+    "track": {
+      "p50_us": 39.444,
+      "p95_us": 83.897,
+      "p99_us": 107.441,
+      "max_us": 198.48,
+      "total_ms": 364.567145
+    }
+  },
+  "shadow_final": {
+    "enabled": true,
+    "disabled": false,
+    "active_sides": 44,
+    "blocked_sides": 0,
+    "retained_points": 909,
+    "first_failure": null,
+    "sampled": [
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "096770",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "096770",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "096770",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "096770",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "035420",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "035420",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "035420",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "035420",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "005930",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "005930",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "005930",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "005930",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "005930",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "005930",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "010060",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "010060",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "096770",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "096770",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "010060",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "010060",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "010060",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "010060",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "058470",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "058470",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "058470",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "058470",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "035420",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "035420",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "089030",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "089030",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "058470",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "058470",
+        "venue": "KRX",
+        "side": "bid"
+      }
+    ],
+    "checks": 44,
+    "matched": 44,
+    "mismatches": 0,
+    "errors": 0,
+    "admission_rejected": 0,
+    "point_budget_rejected": 0,
+    "time_budget_rejected": 0,
+    "attached": 44,
+    "prepare_us": 483.1900296267122,
+    "wire_bytes": 98249,
+    "wire_parts": 44,
+    "apply_wire_us": 8242.963020165917,
+    "full": 44,
+    "reference_us": 296.8199551105499,
+    "check_us": 9134.218998951837,
+    "max_check_us": 468.2810031226836
+  },
+  "limitations": "Rotating same-process order controls host load; shared GC and cache effects remain."
+}
