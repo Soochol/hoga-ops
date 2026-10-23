@@ -31,13 +31,17 @@ const ROWS = 12;
 
 const PREF_KEY = 'market.sectorFlow.v1';
 
-type Sort = 'default' | 'up' | 'down';
+type SortKey = 'name' | 'change_pct' | Actor;
+type Sort = { key: SortKey; direction: 'asc' | 'desc' } | null;
+const COLUMNS: ReadonlyArray<readonly [SortKey, string]> = [
+  ['name', '업종'], ['change_pct', '등락'], ...ACTORS,
+];
 
-export function SectorFlowCard({ initialSort = 'default' }: { initialSort?: Sort }) {
+export function SectorFlowCard() {
   const flow = useMarketSectorFlow();
   const breadth = useMarketBreadth();
   const quotes = useMarketSectors();
-  const [sort, setSort] = useState<Sort>(initialSort);
+  const [sort, setSort] = useState<Sort>(null);
   const [category, setCategory] = useState<'all' | 'industry' | 'index' | 'unknown'>('all');
   const [showAll, setShowAll] = useState(false);
   const [market, setMarket] = useCardPref<Market>(PREF_KEY, 'market', 'KOSPI');
@@ -55,18 +59,27 @@ export function SectorFlowCard({ initialSort = 'default' }: { initialSort?: Sort
       byCode.set(row.code, { ...row, individual: null, foreign: null, institution: null });
     }
   }
-  const source = sort === 'default'
-    ? [...new Set([...quoteRows.map(r => r.code), ...byCode.keys()])].flatMap(code => byCode.has(code) ? [byCode.get(code)!] : [])
-    : [...byCode.values()];
+  const source = [...new Set([...quoteRows.map(r => r.code), ...byCode.keys()])]
+    .flatMap(code => byCode.has(code) ? [byCode.get(code)!] : []);
   const filtered = source.filter(r => category === 'all' || sectorCategory(r.code) === category);
-  const ordered = sort === 'default' ? filtered : [...filtered].sort((a, b) => {
-    const av = a.change_pct;
-    const bv = b.change_pct;
+  const ordered = sort == null ? filtered : [...filtered].sort((a, b) => {
+    if (sort.key === 'name') {
+      const compared = a.name.localeCompare(b.name, 'ko');
+      return sort.direction === 'asc' ? compared : -compared;
+    }
+    const av = a[sort.key];
+    const bv = b[sort.key];
     if (av == null) return bv == null ? 0 : 1;
     if (bv == null) return -1;
-    return sort === 'up' ? bv - av : av - bv;
+    return sort.direction === 'asc' ? av - bv : bv - av;
   });
   const sectors = ordered.slice(0, showAll ? undefined : ROWS);
+
+  const cycleSort = (key: SortKey) => setSort(current => {
+    const first = key === 'name' ? 'asc' : 'desc';
+    if (current?.key !== key) return { key, direction: first };
+    return current.direction === first ? { key, direction: first === 'asc' ? 'desc' : 'asc' } : null;
+  });
 
   // 종합을 포함한 표시 행의 세 주체가 같은 농도 기준을 공유한다.
   const visibleRows = whole ? [whole, ...sectors] : sectors;
@@ -81,14 +94,11 @@ export function SectorFlowCard({ initialSort = 'default' }: { initialSort?: Sort
       />
 
       <div className="market-sector-controls flex flex-wrap items-center justify-between gap-sm">
-        <ModeSwitch value={sort} onChange={setSort} label="정렬 기준" options={[
-          ['default', '기본순'], ['up', '상승순'], ['down', '하락순'],
-        ]} />
         <button type="button" className="text-xs text-accent" aria-expanded={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? '12개씩 보기' : '전체 보기'}</button>
         <ModeSwitch value={category} onChange={setCategory} label="업종 지수 유형" options={[
           ['all', '전체'], ['industry', '업종'], ['index', '규모·대표지수'], ['unknown', '미분류'],
         ]} />
-        <span className="text-2xs text-fg-dim">{sectors.length}/{filtered.length}개 · {sort === 'default' ? '제공 순서' : '등락률순'}</span>
+        <span className="text-2xs text-fg-dim">{sectors.length}/{filtered.length}개 · {sort == null ? '제공 순서' : `${COLUMNS.find(([key]) => key === sort.key)![1]} ${sort.direction === 'asc' ? '오름차순' : '내림차순'}`}</span>
       </div>
       {(flow.isError || quotes.isError) && <div className="market-sector-stamps text-2xs text-fg-dim">
         {flow.isError && <div><span>수급</span><DataStatus hasData={flow.data !== undefined} error /></div>}
@@ -109,14 +119,20 @@ export function SectorFlowCard({ initialSort = 'default' }: { initialSort?: Sort
           <table className="w-full border-collapse font-data text-sm tabular-nums">
             <thead>
               <tr className="text-fg-dim">
-                <th className="pb-1 text-left font-normal">업종</th>
-                <th className="pb-1 text-right font-normal">등락</th>
-                {ACTORS.map(([key, label]) => (
+                {COLUMNS.map(([key, label]) => (
                   <th
                     key={key}
-                    className="pb-1 text-right font-normal"
+                    aria-sort={sort?.key === key ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
+                    className={`pb-1 font-normal ${key === 'name' ? 'text-left' : 'text-right'}`}
                   >
-                    {label}
+                    <button
+                      type="button"
+                      onClick={() => cycleSort(key)}
+                      className={`inline-flex w-full items-center gap-xs whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${key === 'name' ? 'justify-start' : 'justify-end'} ${sort?.key === key ? 'text-fg' : 'text-fg-dim hover:text-fg'}`}
+                    >
+                      {label}
+                      {sort?.key === key && <span aria-hidden="true" className="text-accent">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+                    </button>
                   </th>
                 ))}
               </tr>

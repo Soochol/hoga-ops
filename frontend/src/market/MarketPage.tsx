@@ -508,7 +508,7 @@ function IndexCard({
 
 /** 기존 업종 등락 진입점도 같은 표와 필터를 사용한다. */
 export function SectorCard() {
-  return <SectorFlowCard initialSort="default" />;
+  return <SectorFlowCard />;
 }
 
 // ── 프로그램 매매 ────────────────────────────────────────────────────────
