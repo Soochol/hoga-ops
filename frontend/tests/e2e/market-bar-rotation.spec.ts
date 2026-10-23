@@ -30,6 +30,8 @@ test('one-line market bar rotates, switches on blank clicks, and keeps coverage 
   await page.goto('/live');
   const bar = page.getByRole('contentinfo', { name: '시장지표' });
   await expect(page.getByRole('button', { name: '시장지표 자동 전환' })).toBeVisible();
+  await expect(bar.getByRole('button', { name: 'KRX100 차트 열기', exact: true })).toHaveCount(0);
+  await expect(bar.getByRole('button', { name: /차트 열기$/ })).toHaveCount(4);
   await expect(page.getByTestId('market-bar-switch')).toHaveCount(0);
   await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1_000);
   await expect(bar).toHaveAttribute('data-page', 'indices');
