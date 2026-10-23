@@ -11,6 +11,7 @@ import json
 import socket
 import struct
 from collections import deque
+from collections.abc import Iterator
 
 MAX_FRAME_BYTES = 8 * 1024 * 1024
 DISPLAY_MAX_FRAME_BYTES = 256 * 1024
@@ -19,6 +20,7 @@ DISPLAY_MAX_BYTES = 8 * 1024 * 1024
 RPC_MAX_PENDING = 32
 RPC_TIMEOUT_S = 30.0
 STATE_FRESH_S = 10.0
+STATE_MAX_PEAK_KEYS = 512
 
 
 class PeakSnapshotDelta:
@@ -58,6 +60,97 @@ async def read_frame(reader: asyncio.StreamReader, *, limit: int = MAX_FRAME_BYT
     if not isinstance(value, dict):
         raise ValueError("collector IPC frame must be an object")
     return value
+
+
+def state_frames(state: dict, *, limit: int = MAX_FRAME_BYTES) -> Iterator[bytes]:
+    """Encode one snapshot lazily, splitting only between complete Code/venues.
+
+    The day histories of 512 tracked peak keys can exceed one IPC frame. Keep
+    at most one encoded frame at a time; never truncate a key's minute history.
+    """
+    peaks = state["peaks"]
+    if len(peaks) > STATE_MAX_PEAK_KEYS:
+        raise ValueError("collector state peak capacity exceeded")
+    base = {key: value for key, value in state.items() if key != "peaks"}
+    part, entries = 0, []
+
+    def payload(last: bool) -> bytes:
+        header = json.dumps({**base, "state_part": part, "state_last": last},
+                            separators=(",", ":"), ensure_ascii=False).encode()
+        return header[:-1] + b',"peaks":{' + b",".join(entries) + b"}}"
+
+    size = len(payload(False))
+    for key, value in peaks.items():
+        entry = json.dumps({key: value}, separators=(",", ":"), ensure_ascii=False).encode()[1:-1]
+        added = len(entry) + bool(entries)
+        if size + added > limit and entries:
+            body = payload(False)
+            yield struct.pack("!I", len(body)) + body
+            part, entries = part + 1, []
+            size = len(payload(False))
+            added = len(entry)
+        if size + added > limit:
+            raise ValueError("collector state peak exceeds byte limit")
+        entries.append(entry)
+        size += added
+    body = payload(True)
+    if len(body) > limit:
+        raise ValueError("collector state metadata exceeds byte limit")
+    yield struct.pack("!I", len(body)) + body
+
+
+async def read_state(reader: asyncio.StreamReader) -> dict:
+    """Publish only complete ordered snapshots; partial state is never healthy."""
+    state = await read_frame(reader)
+    if "state_part" not in state:  # Single-frame peers/tests from before fragmentation.
+        return state
+    if state.pop("state_part") != 0:
+        raise ValueError("collector state missing first part")
+    last = state.pop("state_last")
+    if len(state["peaks"]) > STATE_MAX_PEAK_KEYS or (not last and not state["peaks"]):
+        raise ValueError("collector state peak capacity exceeded")
+    part = 0
+    while not last:
+        fragment = await read_frame(reader)
+        part += 1
+        if (part >= STATE_MAX_PEAK_KEYS or fragment.get("state_part") != part
+                or any(fragment.get(key) != state.get(key) for key in ("epoch", "sequence", "desired_version"))):
+            raise ValueError("collector state part mismatch")
+        if state["peaks"].keys() & fragment["peaks"].keys():
+            raise ValueError("collector state duplicate peak key")
+        state["peaks"].update(fragment["peaks"])
+        if len(state["peaks"]) > STATE_MAX_PEAK_KEYS:
+            raise ValueError("collector state peak capacity exceeded")
+        last = fragment["state_last"]
+        if not last and not fragment["peaks"]:
+            raise ValueError("collector state empty part")
+    return state
+
+
+class LatestStateOutbox:
+    """One latest unencoded snapshot, plus the sender's in-flight snapshot.
+
+    Replacements require PeakSnapshotDelta's full recovery. Once sending starts,
+    finish every part before taking another snapshot from the slot. Only this
+    sender waits for transport capacity, independently of ingestion/storage.
+    """
+    def __init__(self) -> None:
+        self.frames: deque[dict] = deque(maxlen=1)
+        self.wake = asyncio.Event()
+
+    def put(self, state: dict) -> None:
+        self.frames.append(state)
+        self.wake.set()
+
+    async def send(self, writer: asyncio.StreamWriter) -> None:
+        while True:
+            if not self.frames:
+                self.wake.clear()
+                await self.wake.wait()
+            state = self.frames.popleft()
+            for frame in state_frames(state):
+                writer.write(frame)
+                await writer.drain()
 
 
 async def open_channel(sock: socket.socket) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:

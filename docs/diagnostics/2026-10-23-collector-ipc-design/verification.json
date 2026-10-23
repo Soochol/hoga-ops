@@ -1,0 +1,67 @@
+{
+  "recorded_at_kst": "2026-10-23T15:05:08.952250+09:00",
+  "head_commit": "56ce0b5722b9d76112eb06c072cd7f6d45eba396",
+  "base_commit": "56ce0b5722b9d76112eb06c072cd7f6d45eba396",
+  "working_state": "Uncommitted prototype, tests and design report; previous production IPC patch preserved.",
+  "changed_scope": "Compare current/key-snapshot/array-diff/native-journal designs; test intra-key chunk recovery and independent health.",
+  "sha256": {
+    "scripts/probe_collector_ipc_design.py": "47dde84891df087ef1a9ae6addc94159dcf64b021f6c9dfcb9c3174fa011f3e8",
+    "tests/unit/live/test_collector_ipc_design_probe.py": "a0ed2c885037fa8bafc73a56d08b724384db26b7f85b845dd87cf440ff4d73f2",
+    "hoga/live/collector_ipc.py": "1bd1badfac2c77b6ae692d082991c856f22841c173737b80623c1088a2421ad7",
+    "hoga/live/collector_process.py": "498e0f85b411c1e329fd2c1207a13c231f7423956e738dd244096dd2e2f91e14",
+    "hoga/live/collector_worker.py": "d31c794038c15e32edede2e8ed7a007b1fd1fdd5b2e04d755bfe1aa8ccba94e5",
+    "docs/diagnostics/2026-10-23-collector-ipc-design/design.md": "fb2dfa39d1bc91f5ccef8c9626a68c48ba279e857b5dfec4981ffc5fbeeadc8c",
+    "docs/diagnostics/2026-10-23-collector-ipc-design/benchmark.json": "5ed46062d29eed3e75a7731df068e147deb5a75ba638576fb26ea268d3a767f5"
+  },
+  "input_fingerprint": {
+    "sha256": "4944d2aa1aa15ef1f539056f0e0d4cc1d02bdf6c7c27da537207b65c8800794e",
+    "files": 793,
+    "git_pathspecs": [
+      "hoga",
+      "tests",
+      "scripts/probe_collector_ipc_design.py",
+      "pyproject.toml",
+      "uv.lock",
+      "ruff.toml",
+      ".python-version"
+    ],
+    "algorithm": "SHA256 of sorted path + NUL + raw SHA256(file bytes)"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev python -m scripts.probe_collector_ipc_design --output docs/diagnostics/2026-10-23-collector-ipc-design/benchmark.json --repetitions 7",
+      "result": "passed: 6 scenarios x 4 designs, 7 updates/scenario, actual blocked sockets, dense single-key records",
+      "reuse": "Benchmark was run before the latest main fast-forward. All script/native peak/IPC input hashes match exactly. Main changed broker aliases/UI; dependency lock, Python version and measured inputs are unchanged."
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_collector_ipc_design_probe.py tests/unit/live/test_collector_state_frames.py tests/unit/live/test_collector_peak_delta.py tests/unit/live/test_collector_process.py tests/unit/live/test_collector_readiness.py tests/unit/live/test_stream.py tests/unit/test_broker_names.py -m 'not wallclock'",
+      "result": "163 passed in 10.50s after updating to latest main; includes 28 design experiment tests"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "python": "3.14.7",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "packages": {
+      "pytest": "9.0.3",
+      "pytest-asyncio": "1.3.0",
+      "ruff": "0.15.13"
+    },
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)"
+  },
+  "corrected_harness": "Initial socket probe used one frame below the transport high watermark. Sending two frames now demonstrably blocks drain; the deterministic regression test asserts that it stays blocked during 20 heartbeat reads.",
+  "limitations": [
+    "Native journal prototype is given exact mutation hints; production LiveStream ingest/seed instrumentation is not implemented.",
+    "No performance claim for real-market p99, process RSS, natural GC under vendor load or receiver application cost.",
+    "Per-key chunking prototype stages the full logical transaction; production cache/staging resource budgets remain to implement.",
+    "Current production patch still rejects a single key exceeding 8MiB; this was newly reproduced and documented.",
+    "No deployment, restart, vendor credentials or public wire contract changes."
+  ]
+}

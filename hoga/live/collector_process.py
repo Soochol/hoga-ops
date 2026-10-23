@@ -17,7 +17,15 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, RPC_TIMEOUT_S, STATE_FRESH_S, RpcPeer, open_channel, read_frame
+from .collector_ipc import (
+    DISPLAY_MAX_FRAME_BYTES,
+    RPC_TIMEOUT_S,
+    STATE_FRESH_S,
+    RpcPeer,
+    open_channel,
+    read_frame,
+    read_state,
+)
 from .snapshot import LiveSnapshot, SnapshotKind
 from .view_subscription import MAX_DISPLAY_CODES, MAX_DISPLAY_REFS_PER_CODE, ViewSubscriptionLimitError
 
@@ -81,7 +89,7 @@ class CaptureProcessSession:
         self.stopping = False
         self.lock = asyncio.Lock()
         self._peaks: dict = {}
-        self._peak_sequence_floor = 0
+        self._peak_sequence_floors: dict[str, int] = {}
         self._vi: dict = {}
         self._sync_started_at: float | None = None
         self._sync_acked_at: float | None = None
@@ -145,7 +153,7 @@ class CaptureProcessSession:
         self._state, self._peaks, self._vi = {}, {}, {}
         self._received_at = 0.0
         self._state_sequence = self._display_sequence = 0
-        self._peak_sequence_floor = 0
+        self._peak_sequence_floors = {}
         self.ack_version = 0
         pairs = [socket.socketpair() for _ in range(4)]
         proc = multiprocessing.get_context("spawn").Process(
@@ -263,7 +271,7 @@ class CaptureProcessSession:
 
     async def _states(self, reader: asyncio.StreamReader, epoch: str) -> None:
         while True:
-            state = await read_frame(reader)
+            state = await read_state(reader)
             if state.get("epoch") != epoch or epoch != self.epoch:
                 raise ValueError("old collector state epoch")
             if state["sequence"] <= self._state_sequence:
@@ -275,15 +283,22 @@ class CaptureProcessSession:
                     or state["desired_version"] < self._state.get("desired_version", 0)):
                 continue
             self._state = state
-            if state["desired_version"] == self.version and state["sequence"] > self._peak_sequence_floor:
+            if state["desired_version"] == self.version:
+                protected = {key for key, floor in self._peak_sequence_floors.items() if state["sequence"] <= floor}
+                preserved = {key: value for key, value in self._peaks.items()
+                             if key in protected}
                 if state.get("peaks_full", True):
-                    self._peaks = state["peaks"]
+                    self._peaks = {key: value for key, value in state["peaks"].items() if key not in protected}
                 else:
                     if gap:
                         raise ValueError("collector peak delta without recovery snapshot")
-                    self._peaks.update(state["peaks"])
+                    self._peaks.update({key: value for key, value in state["peaks"].items() if key not in protected})
                     for key in state.get("peaks_removed", []):
-                        self._peaks.pop(key, None)
+                        if key not in protected:
+                            self._peaks.pop(key, None)
+                self._peaks.update(preserved)
+                self._peak_sequence_floors = {key: floor for key, floor in self._peak_sequence_floors.items()
+                                             if state["sequence"] <= floor}
             self._received_at = time.monotonic()
             self._finish_sync()
 
@@ -422,13 +437,19 @@ class CaptureProcessSession:
     async def ensure_today_peaks_seeded(self, code, venue, date) -> None:
         if not self.fresh():
             raise ConnectionError("collector state unavailable")
+        epoch, version = self.epoch, self.version
         result = await self.peer.call("peaks", {"code": code, "venue": venue, "date": date})
-        # State and RPC use separate ordered sockets. A newer state delta may
-        # arrive before this full RPC reply; replacing it would lose unchanged
-        # keys indefinitely. That newer state already includes the seeded key.
-        if result["state_sequence"] >= max(self._state_sequence, self._peak_sequence_floor):
-            self._peaks = result["values"]
-            self._peak_sequence_floor = result["state_sequence"]
+        # Replies contain only the requested key, keeping RPC independent of the
+        # number of previously queried histories. Other keys retain their own
+        # state/RPC ordering floors across the two sockets.
+        key = f"{code}:{venue}"
+        if (self.epoch == epoch and self.version == version
+                and result["state_sequence"] >= max(self._state_sequence, self._peak_sequence_floors.get(key, 0))):
+            if key in result["values"]:
+                self._peaks[key] = result["values"][key]
+            else:
+                self._peaks.pop(key, None)
+            self._peak_sequence_floors[key] = result["state_sequence"]
 
     async def seconds_snapshot(self, code, venue, date=None):
         if not self.fresh():

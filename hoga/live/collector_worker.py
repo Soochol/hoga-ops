@@ -21,7 +21,17 @@ from pathlib import Path
 from hoga.util.timeenc import KST
 
 from .buffer import LiveBuffer
-from .collector_ipc import DISPLAY_MAX_FRAME_BYTES, BoundedOutbox, PeakSnapshotDelta, RpcPeer, encode, open_channel
+from .collector_ipc import (
+    DISPLAY_MAX_FRAME_BYTES,
+    STATE_MAX_PEAK_KEYS,
+    BoundedOutbox,
+    LatestStateOutbox,
+    PeakSnapshotDelta,
+    RpcPeer,
+    encode,
+    open_channel,
+)
+from .peak_shadow import PeakShadow
 from .snapshot import SnapshotKind
 from .volume_state import manager_generations
 
@@ -71,6 +81,8 @@ class ForwardBuffer(LiveBuffer):
 
 
 class CollectorWorker:
+    peak_shadow: PeakShadow | None = None
+
     def __init__(self, root: Path, epoch: str, peer: RpcPeer, *, manager_factory=None):
         from .kiwoom_session import KiwoomSessionManager  # noqa: PLC0415 — child-only resources
         from .program_trade_collector import ProgramTradeCollector  # noqa: PLC0415
@@ -78,7 +90,7 @@ class CollectorWorker:
 
         self.root, self.epoch, self.peer = root, epoch, peer
         self.display = BoundedOutbox()
-        self.state_outbox = BoundedOutbox(max_messages=1)
+        self.state_outbox = LatestStateOutbox()
         self.volume_outbox = BoundedOutbox()
         self.peak_delta = PeakSnapshotDelta()
         self.buffer = ForwardBuffer(epoch, self.display)
@@ -90,6 +102,7 @@ class CollectorWorker:
         self.monitor = SignalAlertMonitor(root, publish=lambda event: self.buffer.forward(
             {"type": "event", "event": event}))
         self.invalid_tokens: set[int] = set()
+        self.peak_shadow = PeakShadow.from_env()
         self.manager = (manager_factory or KiwoomSessionManager)(
             buffer=self.buffer, data_dir=root, date_fn=today, now_fn=now_ms,
             nxt_map_fn=lambda: self.config.get("nxt_map"),
@@ -97,7 +110,7 @@ class CollectorWorker:
             token_getter=self.token, token_invalidator=self.invalid_tokens.add,
             on_account_row=self.account_row, on_account_state=self.account_state,
             stream_options={"signal_monitor_fn": lambda: self.monitor,
-                            "open_venues_fn": self.open_venues},
+                            "open_venues_fn": self.open_venues, "peak_shadow": self.peak_shadow},
         )
         self.program = ProgramTradeCollector(data_dir=root, date_fn=today, now_ms_fn=now_ms,
                                              open_venues_fn=self.open_venues)
@@ -142,9 +155,9 @@ class CollectorWorker:
                 self.invalid_tokens.add(account)
             raise KiwoomAuthTransient("collector token owner unavailable") from exc
 
-    def peaks(self) -> dict:
+    def peaks(self, keys: set[tuple[str, str, str]] | None = None) -> dict:
         values = {}
-        for code, venue, date in self.peak_keys:
+        for code, venue, date in self.peak_keys if keys is None else keys:
             if date != today():
                 continue
             for stream in self.manager.capture_streams():
@@ -163,9 +176,9 @@ class CollectorWorker:
         self.peak_owners = {k: owner for k, owner in self.peak_owners.items() if k in self.peak_keys}
         stream = next((s for s in self.manager.capture_streams() if s.owns_code(code)), None)
         if stream is None:
-            return self.peaks()
+            return {}
         if (self.peak_owners[key]() if key in self.peak_owners else None) is not stream:
-            if key not in self.peak_keys and len(self.peak_keys) >= 512:  # noqa: PLR2004 — finite query tracking
+            if key not in self.peak_keys and len(self.peak_keys) >= STATE_MAX_PEAK_KEYS:
                 raise ValueError("collector peak query capacity exceeded")
             seed = await asyncio.to_thread(build_today_peak_seed, code=code, venue=venue,
                                            date=date, live_root=self.root / "live_kiwoom")
@@ -175,7 +188,7 @@ class CollectorWorker:
                     stream.install_today_peak_seed(code=code, venue=venue, seed=seed)
                 self.peak_owners[key] = weakref.ref(stream)
             self.peak_keys.add(key)
-        return self.peaks()
+        return self.peaks({key})
 
     async def synchronize(self, args: dict):
         from hoga.api.gc_probe import stats_snapshot  # noqa: PLC0415
@@ -293,12 +306,21 @@ class CollectorWorker:
         while True:
             started = time.monotonic()
             state = self.peak_delta.apply(self.state(), queued=bool(self.state_outbox.frames))
-            frame = encode(state)
-            self.state_outbox.put(frame)
+            self.state_outbox.put(state)
+            if self.peak_shadow is not None:
+                try:
+                    self.peak_shadow.reconcile(self.manager.capture_streams())
+                    self.peak_shadow.check_one()
+                    if self.state_sequence % 30 == 0:
+                        log.info("collector.peak_shadow %s", self.peak_shadow.summary())
+                except Exception:
+                    self.peak_shadow.close()
+                    self.peak_shadow = None
+                    log.exception("collector.peak_shadow_disabled")
             from hoga import perf_debug  # noqa: PLC0415 — optional diagnostics
             if perf_debug.enabled():
-                log.info("hoga_perf collector_state pid=%s bytes=%d peak_keys=%d changed=%d full=%s build_ms=%.1f",
-                         os.getpid(), len(frame), len(self.peak_delta.previous), len(state["peaks"]),
+                log.info("hoga_perf collector_state pid=%s peak_keys=%d changed=%d full=%s build_ms=%.1f",
+                         os.getpid(), len(self.peak_delta.previous), len(state["peaks"]),
                          state["peaks_full"], (time.monotonic() - started) * 1000)
             await asyncio.sleep(1)
 

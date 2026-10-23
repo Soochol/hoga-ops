@@ -1,0 +1,56 @@
+{
+  "path": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+  "bytes": 33819456,
+  "sha256": "8e1057b6c153a31701f12c286f9ca68202b3723726267933bdc38f0c10b60c93",
+  "rows": 76468,
+  "sources": [
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/KRX/003160.jsonl",
+      "prefix_bytes": 3970888,
+      "sha256": "1c26aa99de646999e05f29d06f3d235808c89f35a5d760e48f702a25e4ae9d34",
+      "rows": 9238
+    },
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/KRX/031980.jsonl",
+      "prefix_bytes": 4332105,
+      "sha256": "dc3c742b606eaa543888e446a512a76c2412969b57306cab75fdf765596ee478",
+      "rows": 9370
+    },
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/KRX/005930.jsonl",
+      "prefix_bytes": 4407832,
+      "sha256": "044ba763324d1025d868fef43f9fa579aa9d4bea76587f761fc9bef7c5392d28",
+      "rows": 9407
+    },
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/KRX/000660.jsonl",
+      "prefix_bytes": 4722347,
+      "sha256": "223cc84a9a011f97feda80f296d3b5bc9d16c21bf751ff692836681197e19abb",
+      "rows": 9399
+    },
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/NXT/196170.jsonl",
+      "prefix_bytes": 3864907,
+      "sha256": "276cb60ac6596e049e1cabec8f4532fc20140128b88b1a17044fb91bcb880e05",
+      "rows": 9179
+    },
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/UN/196170.jsonl",
+      "prefix_bytes": 4271748,
+      "sha256": "2157f88b5fbfe6eb5750ee9b5b5f3252e3c5c4dcf81fb6380fc562c19c3b51d3",
+      "rows": 9921
+    },
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/NXT/000660.jsonl",
+      "prefix_bytes": 4599003,
+      "sha256": "d2267269a6307d52ed5548ee3eaf585089cbffe88829185a3ddb86683818d677",
+      "rows": 9974
+    },
+    {
+      "path": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/UN/000660.jsonl",
+      "prefix_bytes": 5122076,
+      "sha256": "16435cf6a055dda7fdc047d519f2b562a52c0333d7a2ded5b4013d7c4f5cfef5",
+      "rows": 9980
+    }
+  ]
+}

@@ -1,0 +1,432 @@
+{
+  "trials": [
+    {
+      "mode": "old",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 97.483,
+        "p95_us": 288.763,
+        "p99_us": 359.426,
+        "max_us": 4144.408
+      },
+      "on_tick_total_ms": 10474.372662,
+      "replay_s_including_flush_and_checks": 25.972840818001714,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 292630528,
+      "rss_after_ingest": 311754752,
+      "rss_ingest_delta": 19124224,
+      "rss_after_release": 323821568,
+      "peak_rss": 325943296,
+      "tracemalloc": {
+        "retained_bytes": 7411770,
+        "peak_bytes": 12551905,
+        "after_membership_release_bytes": 4683380
+      },
+      "gc_counts": {},
+      "gc_ms": {}
+    },
+    {
+      "mode": "off",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 108.615,
+        "p95_us": 331.354,
+        "p99_us": 457.521,
+        "max_us": 1521.774
+      },
+      "on_tick_total_ms": 11761.461626,
+      "replay_s_including_flush_and_checks": 29.289134751998063,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 291229696,
+      "rss_after_ingest": 311562240,
+      "rss_ingest_delta": 20332544,
+      "rss_after_release": 323649536,
+      "peak_rss": 325971968,
+      "tracemalloc": {
+        "retained_bytes": 7444939,
+        "peak_bytes": 12585074,
+        "after_membership_release_bytes": 4716313
+      },
+      "gc_counts": {},
+      "gc_ms": {}
+    },
+    {
+      "mode": "track",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 102.843,
+        "p95_us": 309.422,
+        "p99_us": 391.967,
+        "max_us": 3416.309
+      },
+      "on_tick_total_ms": 11161.293044,
+      "replay_s_including_flush_and_checks": 27.635777211995446,
+      "sampled_checks": null,
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 16,
+        "matched": 16,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 16938.99298697943,
+        "wire_bytes": 854678,
+        "wire_parts": 32,
+        "apply_wire_us": 477936.7920054938,
+        "full": 16,
+        "reference_us": 13992.748004966415,
+        "check_us": 509925.3249936737,
+        "max_check_us": 40584.87699512625
+      },
+      "rss_before": 291008512,
+      "rss_after_ingest": 310951936,
+      "rss_ingest_delta": 19943424,
+      "rss_after_release": 334565376,
+      "peak_rss": 338157568,
+      "tracemalloc": {
+        "retained_bytes": 11693253,
+        "peak_bytes": 16832539,
+        "after_membership_release_bytes": 3651291
+      },
+      "gc_counts": {},
+      "gc_ms": {}
+    },
+    {
+      "mode": "shadow",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 101.661,
+        "p95_us": 309.613,
+        "p99_us": 403.84,
+        "max_us": 1355.701
+      },
+      "on_tick_total_ms": 10997.593377,
+      "replay_s_including_flush_and_checks": 29.318577985002776,
+      "sampled_checks": {
+        "p50_us": 2874.81,
+        "p95_us": 4545.253,
+        "p99_us": 5309.551,
+        "max_us": 7795.869
+      },
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 613,
+        "matched": 613,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 52148.56204111129,
+        "wire_bytes": 2154099,
+        "wire_parts": 613,
+        "apply_wire_us": 1172739.4540575915,
+        "full": 16,
+        "reference_us": 455418.49698201986,
+        "check_us": 1794888.5501464247,
+        "max_check_us": 7273.545998032205,
+        "delta": 597
+      },
+      "rss_before": 290942976,
+      "rss_after_ingest": 324489216,
+      "rss_ingest_delta": 33546240,
+      "rss_after_release": 334233600,
+      "peak_rss": 337633280,
+      "tracemalloc": {
+        "retained_bytes": 11878840,
+        "peak_bytes": 17018313,
+        "after_membership_release_bytes": 3665106
+      },
+      "gc_counts": {},
+      "gc_ms": {}
+    }
+  ],
+  "note": "tracemalloc timings excluded from performance conclusions; no forced GC",
+  "reuse_note": "Old/off retained allocation baselines reused; their ingestion and absence of diagnostic serialization are unchanged. Tracking/shadow final-cache measurements rerun after wire refinement."
+}

@@ -1,0 +1,158 @@
+{
+  "started_at_epoch": 1792737565.2581925,
+  "elapsed_s": 12.085175514221191,
+  "rows": 171,
+  "codes": [
+    "003160",
+    "000660"
+  ],
+  "venues": {
+    "NXT": 93,
+    "UN": 70,
+    "KRX": 8
+  },
+  "kinds": {
+    "ob": 117,
+    "expected": 46,
+    "ah": 8
+  },
+  "events": {
+    "market_sector_tick": 5
+  },
+  "full_oracle_comparisons": 342,
+  "shadow": {
+    "enabled": true,
+    "disabled": false,
+    "active_sides": 12,
+    "blocked_sides": 0,
+    "retained_points": 11078,
+    "first_failure": null,
+    "sampled": [
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "003160",
+        "venue": "UN",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "KRX",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "NXT",
+        "side": "bid"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "ask"
+      },
+      {
+        "code": "000660",
+        "venue": "UN",
+        "side": "bid"
+      }
+    ],
+    "checks": 354,
+    "matched": 354,
+    "mismatches": 0,
+    "errors": 0,
+    "admission_rejected": 0,
+    "point_budget_rejected": 0,
+    "time_budget_rejected": 0,
+    "attached": 12,
+    "prepare_us": 3200.600025593303,
+    "wire_bytes": 620298,
+    "wire_parts": 24,
+    "apply_wire_us": 55786.56300349394,
+    "full": 12,
+    "reference_us": 97237.31590929674,
+    "check_us": 179345.18890979234,
+    "max_check_us": 7895.595997979399
+  },
+  "seeds": [
+    {
+      "code": "003160",
+      "venue": "KRX",
+      "bytes": 4083583,
+      "sha256": "199dbe2d34ef9e5bfdb2c096187630a4d27d0f09203276683972bc17d668378e"
+    },
+    {
+      "code": "003160",
+      "venue": "NXT",
+      "bytes": 4214456,
+      "sha256": "ee988f5970832baea13ad691a608444c3372db6937dbf2968da7d0dc4647db54"
+    },
+    {
+      "code": "003160",
+      "venue": "UN",
+      "bytes": 4514895,
+      "sha256": "b5efa4f3005eb64b8f2bfc4a87ceeb9bd8d89426bf26843ccd1e60ae00ffe771"
+    },
+    {
+      "code": "000660",
+      "venue": "KRX",
+      "bytes": 4839018,
+      "sha256": "88e8b7c2d0824f99e8c23533f7760efae088de0d5174c7eb98e90e8340ba7b30"
+    },
+    {
+      "code": "000660",
+      "venue": "NXT",
+      "bytes": 4802324,
+      "sha256": "967a862595aab9e97c869ece520375c34eeec629f7a8ad80b95d28d51bb2f1ce"
+    },
+    {
+      "code": "000660",
+      "venue": "UN",
+      "bytes": 5322095,
+      "sha256": "e64ea63ea2114170911ac1a9bb339cf88ad5b761f89ad3c4089fe58461354756"
+    }
+  ],
+  "durable_hashes": {
+    "live/20261023/NXT/000660.jsonl": "3be089d9c0526f4978f2c1642543cfea88d06c717f0ee419b1624ab317b3552a",
+    "live/20261023/UN/000660.jsonl": "ba9ace798e2a409d353e020ed3ab1aa2b3a0b357592d070e6fa1b27a4b2d36e5"
+  },
+  "durable_equal": true,
+  "live_updates_observed": false,
+  "production_capture_healthy_after": true,
+  "production_connected_accounts_before_after": [
+    6,
+    6
+  ]
+}

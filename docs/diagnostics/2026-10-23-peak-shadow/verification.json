@@ -1,0 +1,106 @@
+{
+  "recorded_at_kst": "2026-10-23T15:51:31.172615+09:00",
+  "head_commit": "56ce0b5722b9d76112eb06c072cd7f6d45eba396",
+  "base_commit": "56ce0b5722b9d76112eb06c072cd7f6d45eba396",
+  "implementation": "Uncommitted worktree changes. Real native mutation journal plus opt-in sampled shadow comparison. Legacy responses/storage authoritative.",
+  "source_sha256": {
+    "hoga/live/ask_peak_state.py": "7da207f281c95f465d5c842f6dfc0634ba21f59912f41d6b261d42480dd80ce6",
+    "hoga/live/stream.py": "f9e27a040ea3a5599bb6215594b689ae04ac24b0534641f03cfdc6ac6a4b965c",
+    "hoga/live/peak_changes.py": "e475f87b1ca4e708a29176ca3a759b9215f628c7a099f3b6235c2318ea47cb94",
+    "hoga/live/peak_shadow.py": "c865a6f590e4411e5594c17c2b54e7b96e3c767cc6126d9648fd56492b526b55",
+    "hoga/live/collector_worker.py": "5c5e1b19c42dc09dedd84625329ef2c54833471b67a07be9513c7cc1be5911f3",
+    "tests/unit/live/test_peak_shadow.py": "d83f3584b53ce550fe72d1853161f9d0e52f7d93c58378b736e05417ef9d0f89",
+    "scripts/probe_peak_capture_shadow.py": "6b46a7b4cea03a59f3bff859dbd5afac86ee4b28f449bdf91253b7653dd005ff",
+    "scripts/probe_peak_shadow_paired.py": "6ee18b11772e86bfab3260901efc414d13dfb0a3546cd0f3ed0c3c62ff5b90c7",
+    "scripts/probe_peak_shadow_lifecycle.py": "17b19472a6f177c3f35c172c74957ae0b727761abb889d1d94b1ddbde1f8c58d",
+    "scripts/probe_peak_shadow_live.py": "e988c4c2093bb6125221fb9f66acf6be0f3b395ef67b8037b8b218a3ad5fb16e",
+    "scripts/probe_collector_ipc_design.py": "47dde84891df087ef1a9ae6addc94159dcf64b021f6c9dfcb9c3174fa011f3e8"
+  },
+  "artifact_sha256": {
+    "capture.json": "be21a953631b0ea47eed35b37324b0add15373ce87f08e0694a6bc5ea6ece7ab",
+    "stored-input.json": "0a14ccd32f7e879839194fcf090234ad5db0c9e79f4c6cde47ec74eac280bd55",
+    "replay.json": "6a7d084b2e37e4b5d1e9859ba8d058a6756cc4e7686eacb0b0e41b0c9deae409",
+    "paired.json": "f3c6498fb3283b6fcf25d6b420b953da206ac7df5ce62eb213ce51b01fd79da2",
+    "memory.json": "51ce5eca6e999ec278e4214e72e756d921a1f2fd73e25ec813a41a7048aa128d",
+    "lifecycle.json": "b303308bedd0bfff6d218ad461cc56443cb729f7db6c568f380a835f814f5e77",
+    "live-parallel.json": "b64380faf48d7a3df19272ccb0c4090b24da14093ab180354c613d1cc5657235",
+    "strict.json": "bde787929b95f37ff44342d6592937c2e2200b8089bf1f0baf1e841661b19dd3",
+    "validation.md": "b472f53d079b758bd1241d123032dc682e14a7760bed9112c4c85bab6da76556"
+  },
+  "input_fingerprint": {
+    "sha256": "30e173179db6fa61e50886c11235f234f1a600d3be85ba74094c8140d4666b5b",
+    "files": 800,
+    "git_pathspecs": [
+      "hoga",
+      "tests",
+      "scripts/probe_peak_capture_shadow.py",
+      "scripts/probe_peak_shadow_paired.py",
+      "scripts/probe_peak_shadow_lifecycle.py",
+      "scripts/probe_peak_shadow_live.py",
+      "scripts/probe_collector_ipc_design.py",
+      "pyproject.toml",
+      "uv.lock",
+      "ruff.toml",
+      ".python-version"
+    ],
+    "algorithm": "SHA256(sorted path + NUL + raw SHA256(file bytes))"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev pytest -q -m 'not wallclock'",
+      "result": "6820 passed, 2 skipped, 13 deselected, 50 warnings in 269.45s",
+      "phase": "Before final iterative-wire, diagnostic-fault and active-owner refinements. Only affected optional shadow/collector/stream/native/prototype scope was rerun below; unaffected backend results reused. Before-wire production hashes recorded in before-wire-inputs.json."
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_peak_shadow.py tests/unit/live/test_collector_process.py tests/unit/live/test_collector_state_frames.py tests/unit/live/test_collector_ipc_design_probe.py tests/unit/live/test_ask_peak_state.py tests/unit/live/test_peak_state_allocations.py tests/unit/live/test_stream.py -m 'not wallclock'",
+      "result": "175 passed in 10.57s on final production/test code"
+    },
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed on final sources"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "scripts.probe_peak_capture_shadow (3 repeats x 4 modes x 2 fixed inputs; final shadow modes rerun after wire refinement)",
+      "result": "7106 observed API frames plus 76468 saved rows; final native digests and all durable JSONL file hashes equal the independently loaded original implementation. Strict observed-frame replay matched 14252 checks, no mismatch/error."
+    },
+    {
+      "command": "scripts.probe_peak_shadow_paired",
+      "result": "Final same-input rotating-order CPU test: old/off/track p99 101.791/102.281/107.441 us; total callback CPU 358.537/358.721/364.567 ms. Native tracking cost +1.68%; does not include periodic comparator work."
+    },
+    {
+      "command": "scripts.probe_peak_capture_shadow --memory (separate traced passes)",
+      "result": "Final shadow retained 11878840B vs off 7444939B; +4433901B (+4.23MiB). On membership release no replica points/entries remained; memory profiling timings excluded."
+    },
+    {
+      "command": "scripts.probe_peak_shadow_lifecycle --cycles 2000",
+      "result": "4000 checks matched; all caches/markers/native slots empty after every release. Final traced peak 250287B vs original encoder 4757573B. No forced GC; current RSS changed 4096B between samples 100 and 2000."
+    },
+    {
+      "command": "scripts.probe_peak_shadow_live --seconds 60",
+      "result": "1258 current API frames, 2516 full old/new comparisons and 2528 incremental checks matched; 94 deltas; 8 durable files byte-equal; no diagnostic budget rejection. Capture healthy and accounts 6->6 after cleanup. Prior no-change sample explicitly inconclusive."
+    }
+  ],
+  "measurement_reuse": "Old/off/track ingestion measurements retained after wire-only and diagnostic ownership bookkeeping refinements; ingestion functions/journal mutation logic unchanged. Final shadow timing/memory/strict/live trials rerun. Peak/durable hashes rechecked against independent baseline; current-frame live trial used final production modules.",
+  "environment": {
+    "python": "3.14.7",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "packages": {
+      "pytest": "9.0.3",
+      "pytest-asyncio": "1.3.0",
+      "ruff": "0.15.13"
+    },
+    "gc": "Production threshold configuration, no forced collect/disable/freeze; memory timing separated from CPU trials"
+  },
+  "limits": [
+    "No production server restart, installation/environment changes or vendor authentication. Existing ready registrations observed only; API view references cleaned up.",
+    "Live shadow runs as a separate consumer through real LiveStream callbacks; opt-in worker implementation was not enabled in the running production owner.",
+    "Tested observed-input equivalence, not losslessness before API delivery or an exact lossless seed/feed handoff.",
+    "Not a fleet-wide or long-duration p99/RSS/gen2 guarantee. Point/time caps are diagnostic limits, not a total RSS bound.",
+    "Operational peak IPC responses remain legacy; dedicated production peak lane replacement is not part of this shadow-only change."
+  ]
+}

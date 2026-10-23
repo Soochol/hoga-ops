@@ -1,0 +1,627 @@
+{
+  "recorded_at_kst": "2026-10-23T14:58:12.470096+09:00",
+  "base_commit": "bc0e50b7c2fd48d464892cf5200d781665e225c4",
+  "input_sha256": {
+    "/home/dev/.codex/worktrees/c940/hoga-ops/scripts/probe_collector_ipc_design.py": "47dde84891df087ef1a9ae6addc94159dcf64b021f6c9dfcb9c3174fa011f3e8",
+    "hoga/live/ask_peak_state.py": "da2b9951982e015f0a9707159211560c799de5bfd484de7d577ba9ac6fe01f59",
+    "hoga/live/collector_ipc.py": "1bd1badfac2c77b6ae692d082991c856f22841c173737b80623c1088a2421ad7"
+  },
+  "environment": {
+    "python": "3.14.7",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "packages": {
+      "pytest": "9.0.3",
+      "ruff": "0.15.13"
+    }
+  },
+  "repetitions": 7,
+  "scenarios": [
+    {
+      "keys": 12,
+      "minutes": 30,
+      "changed_keys": 12,
+      "snapshot_build_ms": {
+        "initial": 0.4099709985894151,
+        "update_median": 0.35858499904861674
+      },
+      "journal_record_median_ms": 0.018876002286560833,
+      "designs": {
+        "current": {
+          "initial": {
+            "bytes": 132926,
+            "frames": 1,
+            "max_payload_bytes": 132922,
+            "encode_ms": 0.8483269994030707,
+            "max_encoder_slice_ms": 0.8430059970123693
+          },
+          "update_median": {
+            "bytes": 132927,
+            "frames": 1,
+            "max_payload_bytes": 132923,
+            "encode_ms": 0.6237740017240867,
+            "max_encoder_slice_ms": 0.614926997513976
+          }
+        },
+        "key_snapshot": {
+          "initial": {
+            "bytes": 134088,
+            "frames": 12,
+            "max_payload_bytes": 11170,
+            "encode_ms": 0.6111699985922314,
+            "max_encoder_slice_ms": 0.06801800191169605
+          },
+          "update_median": {
+            "bytes": 134088,
+            "frames": 12,
+            "max_payload_bytes": 11170,
+            "encode_ms": 0.5831680027768016,
+            "max_encoder_slice_ms": 0.05776800389867276
+          }
+        },
+        "minute_patch": {
+          "initial": {
+            "bytes": 134088,
+            "frames": 12,
+            "max_payload_bytes": 11170,
+            "encode_ms": 0.5627079954138026,
+            "max_encoder_slice_ms": 0.05100599810248241
+          },
+          "update_median": {
+            "bytes": 27756,
+            "frames": 12,
+            "max_payload_bytes": 2309,
+            "encode_ms": 0.8622919995104894,
+            "max_encoder_slice_ms": 0.08758500189287588
+          }
+        },
+        "native_journal": {
+          "initial": {
+            "bytes": 134088,
+            "frames": 12,
+            "max_payload_bytes": 11170,
+            "encode_ms": 0.561395994736813,
+            "max_encoder_slice_ms": 0.051556999096646905
+          },
+          "update_median": {
+            "bytes": 34044,
+            "frames": 12,
+            "max_payload_bytes": 2833,
+            "encode_ms": 0.4044010056531988,
+            "max_encoder_slice_ms": 0.04535500193014741
+          }
+        }
+      },
+      "current_overwrite_recovery": {
+        "bytes": 132926,
+        "frames": 1,
+        "max_payload_bytes": 132922,
+        "encode_ms": 0.6279419976635836,
+        "max_encoder_slice_ms": 0.6260270019993186
+      },
+      "transport_model": {
+        "1_MiB_per_s": {
+          "current_initial_health_wait_s": 0.1267681121826172,
+          "current_overwrite_health_wait_s": 0.1267681121826172,
+          "separate_health_payload_bytes": 186
+        },
+        "8_MiB_per_s": {
+          "current_initial_health_wait_s": 0.01584601402282715,
+          "current_overwrite_health_wait_s": 0.01584601402282715,
+          "separate_health_payload_bytes": 186
+        }
+      }
+    },
+    {
+      "keys": 12,
+      "minutes": 390,
+      "changed_keys": 12,
+      "snapshot_build_ms": {
+        "initial": 5.537940996873658,
+        "update_median": 5.233086994849145
+      },
+      "journal_record_median_ms": 0.030838004022371024,
+      "designs": {
+        "current": {
+          "initial": {
+            "bytes": 1428926,
+            "frames": 1,
+            "max_payload_bytes": 1428922,
+            "encode_ms": 7.74405099946307,
+            "max_encoder_slice_ms": 7.736087005469017
+          },
+          "update_median": {
+            "bytes": 1428927,
+            "frames": 1,
+            "max_payload_bytes": 1428923,
+            "encode_ms": 7.234443000925239,
+            "max_encoder_slice_ms": 7.10174299456412
+          }
+        },
+        "key_snapshot": {
+          "initial": {
+            "bytes": 1430088,
+            "frames": 12,
+            "max_payload_bytes": 119170,
+            "encode_ms": 5.951749000814743,
+            "max_encoder_slice_ms": 0.562608998734504
+          },
+          "update_median": {
+            "bytes": 1430088,
+            "frames": 12,
+            "max_payload_bytes": 119170,
+            "encode_ms": 6.497805996332318,
+            "max_encoder_slice_ms": 0.6590699995285831
+          }
+        },
+        "minute_patch": {
+          "initial": {
+            "bytes": 1430088,
+            "frames": 12,
+            "max_payload_bytes": 119170,
+            "encode_ms": 5.889121996005997,
+            "max_encoder_slice_ms": 0.5269320026854984
+          },
+          "update_median": {
+            "bytes": 27756,
+            "frames": 12,
+            "max_payload_bytes": 2309,
+            "encode_ms": 8.937828002672177,
+            "max_encoder_slice_ms": 1.023787001031451
+          }
+        },
+        "native_journal": {
+          "initial": {
+            "bytes": 1430088,
+            "frames": 12,
+            "max_payload_bytes": 119170,
+            "encode_ms": 5.946730001596734,
+            "max_encoder_slice_ms": 0.5248380039120093
+          },
+          "update_median": {
+            "bytes": 34044,
+            "frames": 12,
+            "max_payload_bytes": 2833,
+            "encode_ms": 0.5230839960859157,
+            "max_encoder_slice_ms": 0.09223399683833122
+          }
+        }
+      },
+      "current_overwrite_recovery": {
+        "bytes": 1428926,
+        "frames": 1,
+        "max_payload_bytes": 1428922,
+        "encode_ms": 8.15604699891992,
+        "max_encoder_slice_ms": 8.03141199867241
+      },
+      "transport_model": {
+        "1_MiB_per_s": {
+          "current_initial_health_wait_s": 1.3627300262451172,
+          "current_overwrite_health_wait_s": 1.3627300262451172,
+          "separate_health_payload_bytes": 186
+        },
+        "8_MiB_per_s": {
+          "current_initial_health_wait_s": 0.17034125328063965,
+          "current_overwrite_health_wait_s": 0.17034125328063965,
+          "separate_health_payload_bytes": 186
+        }
+      }
+    },
+    {
+      "keys": 100,
+      "minutes": 390,
+      "changed_keys": 1,
+      "snapshot_build_ms": {
+        "initial": 51.27342000196222,
+        "update_median": 153.84618799726013
+      },
+      "journal_record_median_ms": 0.009807998139876872,
+      "designs": {
+        "current": {
+          "initial": {
+            "bytes": 11906033,
+            "frames": 2,
+            "max_payload_bytes": 8334113,
+            "encode_ms": 59.295775994542055,
+            "max_encoder_slice_ms": 43.41353999916464
+          },
+          "update_median": {
+            "bytes": 119322,
+            "frames": 1,
+            "max_payload_bytes": 119318,
+            "encode_ms": 21.966042993881274,
+            "max_encoder_slice_ms": 21.288938994985074
+          }
+        },
+        "key_snapshot": {
+          "initial": {
+            "bytes": 11917400,
+            "frames": 100,
+            "max_payload_bytes": 119170,
+            "encode_ms": 51.0050040029455,
+            "max_encoder_slice_ms": 0.7949860009830445
+          },
+          "update_median": {
+            "bytes": 119174,
+            "frames": 1,
+            "max_payload_bytes": 119170,
+            "encode_ms": 24.337435002962593,
+            "max_encoder_slice_ms": 13.00878899928648
+          }
+        },
+        "minute_patch": {
+          "initial": {
+            "bytes": 11917400,
+            "frames": 100,
+            "max_payload_bytes": 119170,
+            "encode_ms": 51.24979500396876,
+            "max_encoder_slice_ms": 0.8334480007761158
+          },
+          "update_median": {
+            "bytes": 2313,
+            "frames": 1,
+            "max_payload_bytes": 2309,
+            "encode_ms": 24.43046000553295,
+            "max_encoder_slice_ms": 12.712531002762262
+          }
+        },
+        "native_journal": {
+          "initial": {
+            "bytes": 11917400,
+            "frames": 100,
+            "max_payload_bytes": 119170,
+            "encode_ms": 50.321808994340245,
+            "max_encoder_slice_ms": 0.717720999091398
+          },
+          "update_median": {
+            "bytes": 2837,
+            "frames": 1,
+            "max_payload_bytes": 2833,
+            "encode_ms": 0.12638800399145111,
+            "max_encoder_slice_ms": 0.11948500468861312
+          }
+        }
+      },
+      "current_overwrite_recovery": {
+        "bytes": 11906033,
+        "frames": 2,
+        "max_payload_bytes": 8334113,
+        "encode_ms": 58.45436199888354,
+        "max_encoder_slice_ms": 41.04509299941128
+      },
+      "transport_model": {
+        "1_MiB_per_s": {
+          "current_initial_health_wait_s": 11.354477882385254,
+          "current_overwrite_health_wait_s": 11.354477882385254,
+          "separate_health_payload_bytes": 186
+        },
+        "8_MiB_per_s": {
+          "current_initial_health_wait_s": 1.4193097352981567,
+          "current_overwrite_health_wait_s": 1.4193097352981567,
+          "separate_health_payload_bytes": 186
+        }
+      }
+    },
+    {
+      "keys": 100,
+      "minutes": 390,
+      "changed_keys": 100,
+      "snapshot_build_ms": {
+        "initial": 47.92271399492165,
+        "update_median": 138.973913002701
+      },
+      "journal_record_median_ms": 0.18523800099501386,
+      "designs": {
+        "current": {
+          "initial": {
+            "bytes": 11906033,
+            "frames": 2,
+            "max_payload_bytes": 8334113,
+            "encode_ms": 60.787411995988805,
+            "max_encoder_slice_ms": 42.741394994664006
+          },
+          "update_median": {
+            "bytes": 11906035,
+            "frames": 2,
+            "max_payload_bytes": 8334114,
+            "encode_ms": 54.981656998279504,
+            "max_encoder_slice_ms": 38.756346999434754
+          }
+        },
+        "key_snapshot": {
+          "initial": {
+            "bytes": 11917400,
+            "frames": 100,
+            "max_payload_bytes": 119170,
+            "encode_ms": 53.85805299738422,
+            "max_encoder_slice_ms": 0.9116260043811053
+          },
+          "update_median": {
+            "bytes": 11917400,
+            "frames": 100,
+            "max_payload_bytes": 119170,
+            "encode_ms": 50.87160299444804,
+            "max_encoder_slice_ms": 0.9585329971741885
+          }
+        },
+        "minute_patch": {
+          "initial": {
+            "bytes": 11917400,
+            "frames": 100,
+            "max_payload_bytes": 119170,
+            "encode_ms": 54.093966995424125,
+            "max_encoder_slice_ms": 0.922626000829041
+          },
+          "update_median": {
+            "bytes": 231300,
+            "frames": 100,
+            "max_payload_bytes": 2309,
+            "encode_ms": 71.6989439970348,
+            "max_encoder_slice_ms": 1.4367940020747483
+          }
+        },
+        "native_journal": {
+          "initial": {
+            "bytes": 11917400,
+            "frames": 100,
+            "max_payload_bytes": 119170,
+            "encode_ms": 56.56978599290596,
+            "max_encoder_slice_ms": 0.9670099971117452
+          },
+          "update_median": {
+            "bytes": 283700,
+            "frames": 100,
+            "max_payload_bytes": 2833,
+            "encode_ms": 4.060590996232349,
+            "max_encoder_slice_ms": 0.10900499910349026
+          }
+        }
+      },
+      "current_overwrite_recovery": {
+        "bytes": 11906033,
+        "frames": 2,
+        "max_payload_bytes": 8334113,
+        "encode_ms": 54.69347500184085,
+        "max_encoder_slice_ms": 38.559725995582994
+      },
+      "transport_model": {
+        "1_MiB_per_s": {
+          "current_initial_health_wait_s": 11.354477882385254,
+          "current_overwrite_health_wait_s": 11.354477882385254,
+          "separate_health_payload_bytes": 186
+        },
+        "8_MiB_per_s": {
+          "current_initial_health_wait_s": 1.4193097352981567,
+          "current_overwrite_health_wait_s": 1.4193097352981567,
+          "separate_health_payload_bytes": 186
+        }
+      }
+    },
+    {
+      "keys": 512,
+      "minutes": 390,
+      "changed_keys": 0,
+      "snapshot_build_ms": {
+        "initial": 805.4258960037259,
+        "update_median": 691.9762210018234
+      },
+      "journal_record_median_ms": 0.0030559967854060233,
+      "designs": {
+        "current": {
+          "initial": {
+            "bytes": 60958295,
+            "frames": 8,
+            "max_payload_bytes": 8334113,
+            "encode_ms": 285.5797070005792,
+            "max_encoder_slice_ms": 40.94875200098613
+          },
+          "update_median": {
+            "bytes": 268,
+            "frames": 1,
+            "max_payload_bytes": 264,
+            "encode_ms": 102.6179830005276,
+            "max_encoder_slice_ms": 102.5627990020439
+          }
+        },
+        "key_snapshot": {
+          "initial": {
+            "bytes": 61017088,
+            "frames": 512,
+            "max_payload_bytes": 119170,
+            "encode_ms": 256.6142729992862,
+            "max_encoder_slice_ms": 1.1702619958668947
+          },
+          "update_median": {
+            "bytes": 0,
+            "frames": 0,
+            "max_payload_bytes": 0,
+            "encode_ms": 107.65338799683377,
+            "max_encoder_slice_ms": 107.64869900594931
+          }
+        },
+        "minute_patch": {
+          "initial": {
+            "bytes": 61017088,
+            "frames": 512,
+            "max_payload_bytes": 119170,
+            "encode_ms": 256.89140500617214,
+            "max_encoder_slice_ms": 1.1316590025671758
+          },
+          "update_median": {
+            "bytes": 0,
+            "frames": 0,
+            "max_payload_bytes": 0,
+            "encode_ms": 107.72493299737107,
+            "max_encoder_slice_ms": 107.71925200242549
+          }
+        },
+        "native_journal": {
+          "initial": {
+            "bytes": 61017088,
+            "frames": 512,
+            "max_payload_bytes": 119170,
+            "encode_ms": 258.0386130066472,
+            "max_encoder_slice_ms": 0.841112996567972
+          },
+          "update_median": {
+            "bytes": 0,
+            "frames": 0,
+            "max_payload_bytes": 0,
+            "encode_ms": 0.0018629943951964378,
+            "max_encoder_slice_ms": 0.0012130039976909757
+          }
+        }
+      },
+      "current_overwrite_recovery": {
+        "bytes": 60958295,
+        "frames": 8,
+        "max_payload_bytes": 8334113,
+        "encode_ms": 277.83180799451657,
+        "max_encoder_slice_ms": 38.8603020037408
+      },
+      "transport_model": {
+        "1_MiB_per_s": {
+          "current_initial_health_wait_s": 58.13436031341553,
+          "current_overwrite_health_wait_s": 58.13436031341553,
+          "separate_health_payload_bytes": 186
+        },
+        "8_MiB_per_s": {
+          "current_initial_health_wait_s": 7.266795039176941,
+          "current_overwrite_health_wait_s": 7.266795039176941,
+          "separate_health_payload_bytes": 186
+        }
+      }
+    },
+    {
+      "keys": 512,
+      "minutes": 390,
+      "changed_keys": 512,
+      "snapshot_build_ms": {
+        "initial": 848.3034469973063,
+        "update_median": 678.3995239966316
+      },
+      "journal_record_median_ms": 1.5525510025327094,
+      "designs": {
+        "current": {
+          "initial": {
+            "bytes": 60958295,
+            "frames": 8,
+            "max_payload_bytes": 8334113,
+            "encode_ms": 278.8775750013883,
+            "max_encoder_slice_ms": 39.996248997340444
+          },
+          "update_median": {
+            "bytes": 60958303,
+            "frames": 8,
+            "max_payload_bytes": 8334114,
+            "encode_ms": 280.05971899983706,
+            "max_encoder_slice_ms": 42.267324002750684
+          }
+        },
+        "key_snapshot": {
+          "initial": {
+            "bytes": 61017088,
+            "frames": 512,
+            "max_payload_bytes": 119170,
+            "encode_ms": 248.48559800011571,
+            "max_encoder_slice_ms": 1.0483930018381216
+          },
+          "update_median": {
+            "bytes": 61017088,
+            "frames": 512,
+            "max_payload_bytes": 119170,
+            "encode_ms": 258.3552599971881,
+            "max_encoder_slice_ms": 1.9488769976305775
+          }
+        },
+        "minute_patch": {
+          "initial": {
+            "bytes": 61017088,
+            "frames": 512,
+            "max_payload_bytes": 119170,
+            "encode_ms": 248.5356219985988,
+            "max_encoder_slice_ms": 1.0072149962070398
+          },
+          "update_median": {
+            "bytes": 1184256,
+            "frames": 512,
+            "max_payload_bytes": 2309,
+            "encode_ms": 364.60601900034817,
+            "max_encoder_slice_ms": 2.527196003939025
+          }
+        },
+        "native_journal": {
+          "initial": {
+            "bytes": 61017088,
+            "frames": 512,
+            "max_payload_bytes": 119170,
+            "encode_ms": 248.00398200022755,
+            "max_encoder_slice_ms": 0.7212370037450455
+          },
+          "update_median": {
+            "bytes": 1452544,
+            "frames": 512,
+            "max_payload_bytes": 2833,
+            "encode_ms": 21.049298004072625,
+            "max_encoder_slice_ms": 0.13732800289290026
+          }
+        }
+      },
+      "current_overwrite_recovery": {
+        "bytes": 60958295,
+        "frames": 8,
+        "max_payload_bytes": 8334113,
+        "encode_ms": 286.2208139995346,
+        "max_encoder_slice_ms": 41.845989995636046
+      },
+      "transport_model": {
+        "1_MiB_per_s": {
+          "current_initial_health_wait_s": 58.13436031341553,
+          "current_overwrite_health_wait_s": 58.13436031341553,
+          "separate_health_payload_bytes": 186
+        },
+        "8_MiB_per_s": {
+          "current_initial_health_wait_s": 7.266795039176941,
+          "current_overwrite_health_wait_s": 7.266795039176941,
+          "separate_health_payload_bytes": 186
+        }
+      }
+    }
+  ],
+  "actual_socket_probe": {
+    "peak_drain_blocked": true,
+    "heartbeats_received_while_blocked": 20,
+    "heartbeat_roundtrip_median_ms": 0.02505200245650485,
+    "heartbeat_roundtrip_max_ms": 0.1282519951928407,
+    "peak_drain_still_blocked": true
+  },
+  "dense_record_probe": {
+    "records_per_side": 200000,
+    "current_single_key_failure": "collector state peak exceeds byte limit",
+    "chunked_initial": {
+      "bytes": 22822571,
+      "frames": 621,
+      "max_payload_bytes": 36812,
+      "encode_ms": 1365.335030001006,
+      "max_encoder_slice_ms": 3.0607899971073493,
+      "total_ms": 1365.3537349964608
+    },
+    "journal_append_update": {
+      "bytes": 2039,
+      "frames": 1,
+      "max_payload_bytes": 2035,
+      "encode_ms": 0.10270300117554143,
+      "max_encoder_slice_ms": 0.09575999865774065
+    }
+  },
+  "caveats": [
+    "Synthetic histories built using real TodayAsk/BidPeakState.snapshot().",
+    "Current/key_snapshot/minute_patch share full source snapshot cost, reported separately.",
+    "native_journal reads explicit dirty minutes and metadata, avoiding full update snapshots.",
+    "Minute diff scans full lists; native dirty revisions are not assumed.",
+    "native_journal needs exact dirty markers for ingest, seed and rollover.",
+    "Intra-key chunking is a prototype; production cache budgets remain to implement.",
+    "Timings cover diff/encoding, excluding receiver application, RSS and vendor load.",
+    "Transfer wait uses a bandwidth model; socket probe uses actual backpressure.",
+    "No production code replacement, restart or real credentials used."
+  ]
+}

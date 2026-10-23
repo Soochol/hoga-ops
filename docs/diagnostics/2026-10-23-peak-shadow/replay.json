@@ -1,0 +1,3806 @@
+{
+  "base": "56ce0b5722b9d76112eb06c072cd7f6d45eba396",
+  "python": "3.14.7",
+  "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+  "inputs": {
+    "/tmp/hoga-peak-shadow-20261023/live.jsonl": {
+      "sha256": "4a9a6585a657f46dddce3d2af55d29098546f8061255b3995c144755748fccc3",
+      "bytes": 3739247
+    },
+    "/tmp/hoga-peak-shadow-20261023/stored.jsonl": {
+      "sha256": "8e1057b6c153a31701f12c286f9ca68202b3723726267933bdc38f0c10b60c93",
+      "bytes": 33819456
+    }
+  },
+  "source_sha256": {
+    "hoga/live/ask_peak_state.py": "7da207f281c95f465d5c842f6dfc0634ba21f59912f41d6b261d42480dd80ce6",
+    "hoga/live/stream.py": "f9e27a040ea3a5599bb6215594b689ae04ac24b0534641f03cfdc6ac6a4b965c",
+    "hoga/live/peak_changes.py": "e475f87b1ca4e708a29176ca3a759b9215f628c7a099f3b6235c2318ea47cb94",
+    "hoga/live/peak_shadow.py": "7fdfc800c32ac3f7348b5a2bdabe4080ed03ab53f301cc4ec6122a94f406d4b9",
+    "hoga/live/collector_worker.py": "ddad1ce415ce6e448c8214215018b76d364f680c8ab927976bd007edf74ed23d",
+    "/home/dev/.codex/worktrees/c940/hoga-ops/scripts/probe_peak_capture_shadow.py": "6b46a7b4cea03a59f3bff859dbd5afac86ee4b28f449bdf91253b7653dd005ff"
+  },
+  "summary": {
+    "live.jsonl": {
+      "old": {
+        "median_on_tick": {
+          "p50_us": 64.402,
+          "p95_us": 96.361,
+          "p99_us": 184.036,
+          "max_us": 441.51
+        },
+        "median_on_tick_total_ms": 414.327166,
+        "median_rss_ingest_delta": 2887680,
+        "median_replay_s": 0.47573194099823013
+      },
+      "off": {
+        "median_on_tick": {
+          "p50_us": 57.789,
+          "p95_us": 94.829,
+          "p99_us": 188.685,
+          "max_us": 380.876
+        },
+        "median_on_tick_total_ms": 409.770325,
+        "median_rss_ingest_delta": 3682304,
+        "median_replay_s": 0.47256496199406683
+      },
+      "track": {
+        "median_on_tick": {
+          "p50_us": 72.326,
+          "p95_us": 124.173,
+          "p99_us": 208.934,
+          "max_us": 353.966
+        },
+        "median_on_tick_total_ms": 444.319162,
+        "median_rss_ingest_delta": 3821568,
+        "median_replay_s": 0.5295265639942954
+      },
+      "shadow": {
+        "median_on_tick": {
+          "p50_us": 44.955,
+          "p95_us": 91.983,
+          "p99_us": 125.857,
+          "max_us": 320.263
+        },
+        "median_on_tick_total_ms": 379.421485,
+        "median_rss_ingest_delta": 3301376,
+        "median_replay_s": 0.45863110599748325
+      }
+    },
+    "stored.jsonl": {
+      "old": {
+        "median_on_tick": {
+          "p50_us": 28.995,
+          "p95_us": 98.215,
+          "p99_us": 127.009,
+          "max_us": 416.444
+        },
+        "median_on_tick_total_ms": 3357.428954,
+        "median_rss_ingest_delta": 7028736,
+        "median_replay_s": 8.173625256000378
+      },
+      "off": {
+        "median_on_tick": {
+          "p50_us": 28.724,
+          "p95_us": 98.215,
+          "p99_us": 127.51,
+          "max_us": 597.504
+        },
+        "median_on_tick_total_ms": 3369.547862,
+        "median_rss_ingest_delta": 8204288,
+        "median_replay_s": 8.012873329993454
+      },
+      "track": {
+        "median_on_tick": {
+          "p50_us": 28.925,
+          "p95_us": 100.9,
+          "p99_us": 127.089,
+          "max_us": 524.798
+        },
+        "median_on_tick_total_ms": 3414.150375,
+        "median_rss_ingest_delta": 9605120,
+        "median_replay_s": 8.153031458998157
+      },
+      "shadow": {
+        "median_on_tick": {
+          "p50_us": 30.427,
+          "p95_us": 107.773,
+          "p99_us": 162.866,
+          "max_us": 952.222
+        },
+        "median_on_tick_total_ms": 3540.976494,
+        "median_rss_ingest_delta": 13119488,
+        "median_replay_s": 9.17844405300275
+      }
+    }
+  },
+  "trials": [
+    {
+      "mode": "old",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 50.705,
+        "p95_us": 93.597,
+        "p99_us": 133.141,
+        "max_us": 351.612
+      },
+      "on_tick_total_ms": 413.138659,
+      "replay_s_including_flush_and_checks": 0.47573194099823013,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 70393856,
+      "rss_after_ingest": 73281536,
+      "rss_ingest_delta": 2887680,
+      "rss_after_release": 73670656,
+      "peak_rss": 71221248,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 0
+    },
+    {
+      "mode": "off",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 57.789,
+        "p95_us": 94.829,
+        "p99_us": 188.685,
+        "max_us": 420.581
+      },
+      "on_tick_total_ms": 409.770325,
+      "replay_s_including_flush_and_checks": 0.47256496199406683,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 68530176,
+      "rss_after_ingest": 72212480,
+      "rss_ingest_delta": 3682304,
+      "rss_after_release": 72777728,
+      "peak_rss": 70635520,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 0
+    },
+    {
+      "mode": "track",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 53.4,
+        "p95_us": 97.905,
+        "p99_us": 134.834,
+        "max_us": 331.955
+      },
+      "on_tick_total_ms": 410.384817,
+      "replay_s_including_flush_and_checks": 0.4703315590013517,
+      "sampled_checks": null,
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 44,
+        "retained_points": 909,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 44,
+        "matched": 44,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 44,
+        "prepare_us": 690.2470122440718,
+        "wire_bytes": 98249,
+        "wire_parts": 44,
+        "apply_wire_us": 6941.481013200246,
+        "full": 44,
+        "reference_us": 317.54800875205547,
+        "check_us": 8066.23901007697,
+        "max_check_us": 412.0559970033355
+      },
+      "rss_before": 68579328,
+      "rss_after_ingest": 72396800,
+      "rss_ingest_delta": 3817472,
+      "rss_after_release": 73629696,
+      "peak_rss": 71540736,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 0
+    },
+    {
+      "mode": "off",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 46.407,
+        "p95_us": 86.373,
+        "p99_us": 122.641,
+        "max_us": 275.398
+      },
+      "on_tick_total_ms": 384.641443,
+      "replay_s_including_flush_and_checks": 0.4433938619986293,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 68554752,
+      "rss_after_ingest": 72237056,
+      "rss_ingest_delta": 3682304,
+      "rss_after_release": 72802304,
+      "peak_rss": 70979584,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 1
+    },
+    {
+      "mode": "track",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 72.326,
+        "p95_us": 145.705,
+        "p99_us": 211.167,
+        "max_us": 1292.943
+      },
+      "on_tick_total_ms": 496.80244,
+      "replay_s_including_flush_and_checks": 0.5867816169993603,
+      "sampled_checks": null,
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 44,
+        "retained_points": 909,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 44,
+        "matched": 44,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 44,
+        "prepare_us": 961.8939729989506,
+        "wire_bytes": 98249,
+        "wire_parts": 44,
+        "apply_wire_us": 10085.057001560926,
+        "full": 44,
+        "reference_us": 490.90500397142023,
+        "check_us": 11710.243015841115,
+        "max_check_us": 609.126000199467
+      },
+      "rss_before": 68714496,
+      "rss_after_ingest": 72536064,
+      "rss_ingest_delta": 3821568,
+      "rss_after_release": 73805824,
+      "peak_rss": 71553024,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 1
+    },
+    {
+      "mode": "old",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 64.402,
+        "p95_us": 96.361,
+        "p99_us": 184.036,
+        "max_us": 441.51
+      },
+      "on_tick_total_ms": 426.115735,
+      "replay_s_including_flush_and_checks": 0.532449642996653,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 70516736,
+      "rss_after_ingest": 73449472,
+      "rss_ingest_delta": 2932736,
+      "rss_after_release": 73834496,
+      "peak_rss": 71258112,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 1
+    },
+    {
+      "mode": "track",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 72.686,
+        "p95_us": 124.173,
+        "p99_us": 208.934,
+        "max_us": 353.966
+      },
+      "on_tick_total_ms": 444.319162,
+      "replay_s_including_flush_and_checks": 0.5295265639942954,
+      "sampled_checks": null,
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 44,
+        "retained_points": 909,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 44,
+        "matched": 44,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 44,
+        "prepare_us": 598.5340030747466,
+        "wire_bytes": 98249,
+        "wire_parts": 44,
+        "apply_wire_us": 6954.609008971602,
+        "full": 44,
+        "reference_us": 325.0149675295688,
+        "check_us": 7994.887986569665,
+        "max_check_us": 389.99399839667603
+      },
+      "rss_before": 68661248,
+      "rss_after_ingest": 72482816,
+      "rss_ingest_delta": 3821568,
+      "rss_after_release": 73719808,
+      "peak_rss": 72105984,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 2
+    },
+    {
+      "mode": "old",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 70.031,
+        "p95_us": 98.726,
+        "p99_us": 196.53,
+        "max_us": 478.099
+      },
+      "on_tick_total_ms": 414.327166,
+      "replay_s_including_flush_and_checks": 0.4704881139987265,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 70582272,
+      "rss_after_ingest": 73469952,
+      "rss_ingest_delta": 2887680,
+      "rss_after_release": 73859072,
+      "peak_rss": 71729152,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 2
+    },
+    {
+      "mode": "off",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 73.318,
+        "p95_us": 146.275,
+        "p99_us": 218.271,
+        "max_us": 380.876
+      },
+      "on_tick_total_ms": 473.42705,
+      "replay_s_including_flush_and_checks": 0.533189224996022,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 68657152,
+      "rss_after_ingest": 72339456,
+      "rss_ingest_delta": 3682304,
+      "rss_after_release": 72904704,
+      "peak_rss": 70262784,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 2
+    },
+    {
+      "mode": "old",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 28.995,
+        "p95_us": 98.215,
+        "p99_us": 127.009,
+        "max_us": 408.8
+      },
+      "on_tick_total_ms": 3357.428954,
+      "replay_s_including_flush_and_checks": 8.173625256000378,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 292470784,
+      "rss_after_ingest": 299524096,
+      "rss_ingest_delta": 7053312,
+      "rss_after_release": 307077120,
+      "peak_rss": 309694464,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 0
+    },
+    {
+      "mode": "off",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 29.806,
+        "p95_us": 103.244,
+        "p99_us": 136.366,
+        "max_us": 1013.928
+      },
+      "on_tick_total_ms": 3465.076028,
+      "replay_s_including_flush_and_checks": 8.352712915002485,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 290840576,
+      "rss_after_ingest": 299036672,
+      "rss_ingest_delta": 8196096,
+      "rss_after_release": 306626560,
+      "peak_rss": 309587968,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 0
+    },
+    {
+      "mode": "track",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 28.925,
+        "p95_us": 100.9,
+        "p99_us": 127.089,
+        "max_us": 367.822
+      },
+      "on_tick_total_ms": 3414.150375,
+      "replay_s_including_flush_and_checks": 8.124651254001947,
+      "sampled_checks": null,
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 16,
+        "matched": 16,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 5624.815014016349,
+        "wire_bytes": 854678,
+        "wire_parts": 32,
+        "apply_wire_us": 60527.77300646994,
+        "full": 16,
+        "reference_us": 2803.625007800292,
+        "check_us": 69772.18700194499,
+        "max_check_us": 5532.941002456937
+      },
+      "rss_before": 290619392,
+      "rss_after_ingest": 300253184,
+      "rss_ingest_delta": 9633792,
+      "rss_after_release": 312946688,
+      "peak_rss": 315445248,
+      "tracemalloc": null,
+      "gc_counts": {
+        "0": 1
+      },
+      "gc_ms": {
+        "0": 9.168683
+      },
+      "repeat": 0
+    },
+    {
+      "mode": "off",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 28.724,
+        "p95_us": 98.215,
+        "p99_us": 127.51,
+        "max_us": 474.653
+      },
+      "on_tick_total_ms": 3369.547862,
+      "replay_s_including_flush_and_checks": 8.012873329993454,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 290832384,
+      "rss_after_ingest": 299114496,
+      "rss_ingest_delta": 8282112,
+      "rss_after_release": 306712576,
+      "peak_rss": 309678080,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 1
+    },
+    {
+      "mode": "track",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 28.664,
+        "p95_us": 99.467,
+        "p99_us": 126.979,
+        "max_us": 524.798
+      },
+      "on_tick_total_ms": 3395.502348,
+      "replay_s_including_flush_and_checks": 8.153031458998157,
+      "sampled_checks": null,
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 16,
+        "matched": 16,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 5560.451994824689,
+        "wire_bytes": 854678,
+        "wire_parts": 32,
+        "apply_wire_us": 59660.97101918422,
+        "full": 16,
+        "reference_us": 2057.272991805803,
+        "check_us": 68006.55199185712,
+        "max_check_us": 5262.100996333174
+      },
+      "rss_before": 290672640,
+      "rss_after_ingest": 300277760,
+      "rss_ingest_delta": 9605120,
+      "rss_after_release": 313024512,
+      "peak_rss": 315355136,
+      "tracemalloc": null,
+      "gc_counts": {
+        "0": 1
+      },
+      "gc_ms": {
+        "0": 6.601653
+      },
+      "repeat": 1
+    },
+    {
+      "mode": "old",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 29.105,
+        "p95_us": 101.551,
+        "p99_us": 152.287,
+        "max_us": 416.444
+      },
+      "on_tick_total_ms": 3402.620329,
+      "replay_s_including_flush_and_checks": 8.237502944997686,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 292372480,
+      "rss_after_ingest": 299401216,
+      "rss_ingest_delta": 7028736,
+      "rss_after_release": 307027968,
+      "peak_rss": 309563392,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 1
+    },
+    {
+      "mode": "track",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 30.638,
+        "p95_us": 110.458,
+        "p99_us": 163.066,
+        "max_us": 723.061
+      },
+      "on_tick_total_ms": 3575.263033,
+      "replay_s_including_flush_and_checks": 8.747748282003158,
+      "sampled_checks": null,
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 16,
+        "matched": 16,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 5634.742010443006,
+        "wire_bytes": 854678,
+        "wire_parts": 32,
+        "apply_wire_us": 59499.71001246013,
+        "full": 16,
+        "reference_us": 1970.9170010173693,
+        "check_us": 67808.70300281094,
+        "max_check_us": 6160.892000480089
+      },
+      "rss_before": 290787328,
+      "rss_after_ingest": 300363776,
+      "rss_ingest_delta": 9576448,
+      "rss_after_release": 313106432,
+      "peak_rss": 315535360,
+      "tracemalloc": null,
+      "gc_counts": {
+        "0": 1
+      },
+      "gc_ms": {
+        "0": 6.504249
+      },
+      "repeat": 2
+    },
+    {
+      "mode": "old",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 27.221,
+        "p95_us": 92.524,
+        "p99_us": 117.491,
+        "max_us": 532.222
+      },
+      "on_tick_total_ms": 3168.11807,
+      "replay_s_including_flush_and_checks": 7.700984201997926,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 292421632,
+      "rss_after_ingest": 299397120,
+      "rss_ingest_delta": 6975488,
+      "rss_after_release": 307019776,
+      "peak_rss": 309637120,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 2
+    },
+    {
+      "mode": "off",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 27.762,
+        "p95_us": 93.185,
+        "p99_us": 119.405,
+        "max_us": 597.504
+      },
+      "on_tick_total_ms": 3215.658528,
+      "replay_s_including_flush_and_checks": 7.645127599003899,
+      "sampled_checks": null,
+      "shadow": null,
+      "rss_before": 290738176,
+      "rss_after_ingest": 298942464,
+      "rss_ingest_delta": 8204288,
+      "rss_after_release": 306569216,
+      "peak_rss": 309846016,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 2
+    },
+    {
+      "mode": "shadow",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 44.955,
+        "p95_us": 91.983,
+        "p99_us": 125.857,
+        "max_us": 319.321
+      },
+      "on_tick_total_ms": 379.421485,
+      "replay_s_including_flush_and_checks": 0.45863110599748325,
+      "sampled_checks": {
+        "p50_us": 240.914,
+        "p95_us": 478.49,
+        "p99_us": 532.642,
+        "max_us": 532.642
+      },
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 44,
+        "retained_points": 909,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 100,
+        "matched": 100,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 44,
+        "prepare_us": 1166.7230210150592,
+        "wire_bytes": 175441,
+        "wire_parts": 95,
+        "apply_wire_us": 17601.494982955046,
+        "full": 44,
+        "reference_us": 916.1229972960427,
+        "check_us": 20073.083993338514,
+        "max_check_us": 481.91600217251107,
+        "delta": 51
+      },
+      "rss_before": 68542464,
+      "rss_after_ingest": 71843840,
+      "rss_ingest_delta": 3301376,
+      "rss_after_release": 72396800,
+      "peak_rss": 70443008,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 0,
+      "wire_phase": "iterative"
+    },
+    {
+      "mode": "shadow",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 36.559,
+        "p95_us": 81.213,
+        "p99_us": 92.514,
+        "max_us": 320.263
+      },
+      "on_tick_total_ms": 365.017418,
+      "replay_s_including_flush_and_checks": 0.42565479499899084,
+      "sampled_checks": {
+        "p50_us": 227.398,
+        "p95_us": 326.434,
+        "p99_us": 485.884,
+        "max_us": 485.884
+      },
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 44,
+        "retained_points": 909,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 100,
+        "matched": 100,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 44,
+        "prepare_us": 1102.3349870811217,
+        "wire_bytes": 175441,
+        "wire_parts": 95,
+        "apply_wire_us": 16946.629017184023,
+        "full": 44,
+        "reference_us": 889.9520544218831,
+        "check_us": 19355.102063855156,
+        "max_check_us": 467.0589987654239,
+        "delta": 51
+      },
+      "rss_before": 68653056,
+      "rss_after_ingest": 71938048,
+      "rss_ingest_delta": 3284992,
+      "rss_after_release": 72560640,
+      "peak_rss": 71581696,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 1,
+      "wire_phase": "iterative"
+    },
+    {
+      "mode": "shadow",
+      "input": "/tmp/hoga-peak-shadow-20261023/live.jsonl",
+      "rows": 7106,
+      "kinds": {
+        "ob": 3450,
+        "trade": 3322,
+        "program": 296,
+        "broker": 38
+      },
+      "peak_digest": "868d403311e82cd4926d181780b8cef0065ceee0f754a0c7f178eab7aad59ba8",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "b3b9af93767d904d954687fb27dc8aca108a0822f3cedbe1ae28a18bc3c98be2",
+        "live/20261023/KRX/003160.jsonl": "3fda2947328c20bd499f7c4053edd7b28f04f73a81bf7e9c129035d73cffdf63",
+        "live/20261023/KRX/005930.jsonl": "7d38049b3b1b0dba729eb07c554d5ce8e2f1cefd42bf96b305c66c5b2ea75325",
+        "live/20261023/KRX/010060.jsonl": "8bfa9ba1838b3031a02054895298fadd394387245c9ce9436466100db6b10ebd",
+        "live/20261023/KRX/035420.jsonl": "471e658d4f56f8eab134b22df21d58915b7894ef3889ccfe0966db8e46755bb3",
+        "live/20261023/KRX/058470.jsonl": "170031f8dff51abb48530f9ec57803473448aa7897dc4291b580b9565c81b860",
+        "live/20261023/KRX/089030.jsonl": "980b732a2abe53d131987769a0e38e91f13124f308456c94cc03da6bac162f0f",
+        "live/20261023/KRX/096770.jsonl": "5261c24114db23fed6ef56ef37f95685a48400fc256bad0a2faf6454075d4714",
+        "live/20261023/NXT/000660.jsonl": "a8a64515aca80cd64da78d7318e9fd2e65b041e324b223250fdfaf70cec7df76",
+        "live/20261023/NXT/003160.jsonl": "dab7a5d16a1992a232a0ca7a641ae1ee1310344783ef7b97c1736eec27279cf5",
+        "live/20261023/NXT/005930.jsonl": "73aef7e1d8ce2cf8e5549581087cf35d6d1d3f8cf16b4b1898636dc4739a07d0",
+        "live/20261023/NXT/010060.jsonl": "45d11e1ee5ac17bc9ac6df59e5d86008ba5ab5e8643594f64db9975d4a2d0922",
+        "live/20261023/NXT/035420.jsonl": "81e5ee723e1d203deca6083f132cbdf2a7f2083e3eda88621c60333ba9f02477",
+        "live/20261023/NXT/058470.jsonl": "6d2456d08679d263ec803ad4be0968809f356b21a3809e9617147f05f5755d13",
+        "live/20261023/NXT/096770.jsonl": "2b5489d6304e0d59c4267a73eb3f7110caf79c9f263bfa6de09d5172bcb5339a",
+        "live/20261023/UN/000660.jsonl": "7f347c86db584b3f7cd55997671c7dee2997214bf97a04fc7a06a62e80edd819",
+        "live/20261023/UN/003160.jsonl": "c966a457f420cbb432da3d2d003954ca28d204d5e9c42351bb2eade337226750",
+        "live/20261023/UN/005930.jsonl": "05b34a79364c7a7d2727f73e44cb08b8f2ec070c11c3670e8f673dff6e355f23",
+        "live/20261023/UN/010060.jsonl": "a2269d2ec856f09dabc0c249abb37511f42a44dad54f348adb00aea0331d315d",
+        "live/20261023/UN/035420.jsonl": "2941c461549fa270c1a6c2a1925a9c4bf1f9bd086dbc414ca0757ba20f1089d6",
+        "live/20261023/UN/058470.jsonl": "e067c3a16f8f599f36e246d329d2fadb605de814aca42f965d7c1e2436a13c3a",
+        "live/20261023/UN/096770.jsonl": "5fb8e257f8643f7be24e1f7e58a81299be65a2ca8969aac5b1ff04c4eeaf4176",
+        "seconds/20261023/KRX/000660.jsonl": "cabf9afeac499a383c12a30f5cc1d6cf583d51d4d321782de11c604315d26594",
+        "seconds/20261023/KRX/003160.jsonl": "8612f5fa6864904b5c657e86fdd9ad7e711b314fc5a037f353e325d835f9bdf7",
+        "seconds/20261023/KRX/005930.jsonl": "75867ab59e2f463f60319fb5d9d218db19b9380c388ebdbadb7b1985b0387de2",
+        "seconds/20261023/KRX/010060.jsonl": "4c98c77e91ce8843b9e273bf2bbd760316fd4cb92dde42a84524fec4a52d8bed",
+        "seconds/20261023/KRX/035420.jsonl": "e60600a34e69ceaf38999cf7622e8bbdc21a9adc5cd85592753594398593fc82",
+        "seconds/20261023/KRX/058470.jsonl": "2788faee3ce770dd2e528874cc66ac7426b3ff9559fcbd6aa0f24354f5986df1",
+        "seconds/20261023/KRX/089030.jsonl": "7aa5a035193fa53973261d50985d989b645a924a93e00851485106ef450b1cfc",
+        "seconds/20261023/KRX/096770.jsonl": "599e0114a7a0f568255095b34664a3134cc6b4fbab866a866586d2c9c12b278e",
+        "seconds/20261023/NXT/000660.jsonl": "18db4f2c02534073f20468b2fe4b31f29a78d6133b869a366e297a36c1e9da24",
+        "seconds/20261023/NXT/003160.jsonl": "64f467fda919c164b73e1c2ce21df04a73f3dfa2a6cfaf2178f01b6f1d9944c2",
+        "seconds/20261023/NXT/005930.jsonl": "187873a925891f7c48d3249dd1ebe815d14ef59b4f1367319757b90a2fd04880",
+        "seconds/20261023/NXT/010060.jsonl": "9627cb187de9af74667fa4a36d2723800091c3e0c2d5a98ea3518aab868cf81b",
+        "seconds/20261023/NXT/035420.jsonl": "e49f6c8adfb7bd187009b0351f31b617d98ac1d87d477d6dd131682ea679aa87",
+        "seconds/20261023/NXT/058470.jsonl": "174e8e7bab83c704daaf1a77773ae07fbd36f97eb7d83beedd5639ae1402b278",
+        "seconds/20261023/NXT/096770.jsonl": "8bb0b135008dd1c47a017a72ede06799e40bfc6096099f7d7c0a587cd7a68b2b",
+        "seconds/20261023/UN/000660.jsonl": "3715811521a242fc045c84c02a3663837d0302ed183491eb239e960ab269c1f2",
+        "seconds/20261023/UN/003160.jsonl": "7efce719cb66258aec7b01d3527e47c817661d9c3bad867a5130b7aa76cf9efd",
+        "seconds/20261023/UN/005930.jsonl": "8f4eabaac55f930afa8e2892489a9c840efa9193fb7c66beddf621764406f629",
+        "seconds/20261023/UN/010060.jsonl": "d8815fdce17a78b0e4042d924791930e291e56128731c4c815c598be69d9a24f",
+        "seconds/20261023/UN/035420.jsonl": "96c8c5b66c41260ee2ccb9e1f346a044b62c8580eae644bf7f43398757fd9076",
+        "seconds/20261023/UN/058470.jsonl": "bb1bf33de0919743d48f7c8647f63e0ca1d1a6b18f21656601a8f2064228842b",
+        "seconds/20261023/UN/096770.jsonl": "2361b42c7b5b192343fd5527efadce2c2967a04fc7d0e4b682ade9b90b78272a"
+      },
+      "on_tick": {
+        "p50_us": 70.283,
+        "p95_us": 132.589,
+        "p99_us": 207.61,
+        "max_us": 472.71
+      },
+      "on_tick_total_ms": 435.792531,
+      "replay_s_including_flush_and_checks": 0.549710655999661,
+      "sampled_checks": {
+        "p50_us": 264.257,
+        "p95_us": 548.241,
+        "p99_us": 871.18,
+        "max_us": 871.18
+      },
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 44,
+        "retained_points": 909,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "096770",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "010060",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "035420",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "089030",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "058470",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 100,
+        "matched": 100,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 44,
+        "prepare_us": 1401.2040119268931,
+        "wire_bytes": 175441,
+        "wire_parts": 95,
+        "apply_wire_us": 19651.656984933652,
+        "full": 44,
+        "reference_us": 1127.3259951849468,
+        "check_us": 22666.60403984133,
+        "max_check_us": 789.1549976193346,
+        "delta": 51
+      },
+      "rss_before": 68546560,
+      "rss_after_ingest": 71847936,
+      "rss_ingest_delta": 3301376,
+      "rss_after_release": 72396800,
+      "peak_rss": 70692864,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 2,
+      "wire_phase": "iterative"
+    },
+    {
+      "mode": "shadow",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 27.612,
+        "p95_us": 93.656,
+        "p99_us": 119.385,
+        "max_us": 952.222
+      },
+      "on_tick_total_ms": 3220.784643,
+      "replay_s_including_flush_and_checks": 8.06894193199696,
+      "sampled_checks": {
+        "p50_us": 752.185,
+        "p95_us": 1292.021,
+        "p99_us": 1668.83,
+        "max_us": 2730.708
+      },
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 613,
+        "matched": 613,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 18011.075095273554,
+        "wire_bytes": 2154099,
+        "wire_parts": 613,
+        "apply_wire_us": 214557.58500815136,
+        "full": 16,
+        "reference_us": 141429.60796016268,
+        "check_us": 476301.7809818848,
+        "max_check_us": 2624.4679975206964,
+        "delta": 597
+      },
+      "rss_before": 290836480,
+      "rss_after_ingest": 304033792,
+      "rss_ingest_delta": 13197312,
+      "rss_after_release": 311603200,
+      "peak_rss": 314732544,
+      "tracemalloc": null,
+      "gc_counts": {
+        "0": 1
+      },
+      "gc_ms": {
+        "0": 10.608391
+      },
+      "repeat": 0,
+      "wire_phase": "iterative"
+    },
+    {
+      "mode": "shadow",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 30.427,
+        "p95_us": 107.953,
+        "p99_us": 162.987,
+        "max_us": 3902.373
+      },
+      "on_tick_total_ms": 3540.976494,
+      "replay_s_including_flush_and_checks": 9.397519467995153,
+      "sampled_checks": {
+        "p50_us": 862.292,
+        "p95_us": 1318.861,
+        "p99_us": 1666.656,
+        "max_us": 1981.148
+      },
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 613,
+        "matched": 613,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 20545.814957586117,
+        "wire_bytes": 2154099,
+        "wire_parts": 613,
+        "apply_wire_us": 239327.74696004344,
+        "full": 16,
+        "reference_us": 145514.42098309053,
+        "check_us": 508295.177060063,
+        "max_check_us": 1881.5899966284633,
+        "delta": 597
+      },
+      "rss_before": 290779136,
+      "rss_after_ingest": 303898624,
+      "rss_ingest_delta": 13119488,
+      "rss_after_release": 311414784,
+      "peak_rss": 313397248,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 1,
+      "wire_phase": "iterative"
+    },
+    {
+      "mode": "shadow",
+      "input": "/tmp/hoga-peak-shadow-20261023/stored.jsonl",
+      "rows": 76468,
+      "kinds": {
+        "ob": 18678,
+        "broker": 18583,
+        "trade": 17413,
+        "fill": 18678,
+        "candle": 3116
+      },
+      "peak_digest": "06fccbd11e5971f9c14d86e9618e01815d83a3846dc8e3d82eb61abd621e0741",
+      "durable_file_hashes": {
+        "live/20261023/KRX/000660.jsonl": "fc0975e31178955769df35c2472a6a655bee5343b9afe80464e51448bf965bab",
+        "live/20261023/KRX/003160.jsonl": "4667cad3030d3fe2b49b19ed3351d8e800b71446caf6486016ce6ddef366f0e6",
+        "live/20261023/KRX/005930.jsonl": "3c35c3f04bd0604ec038853cf8ce7258faab690332c49b4a72ff76c20736ea25",
+        "live/20261023/KRX/031980.jsonl": "5d4e4e4d6378a34ae2bfc875829238d9c7f6d2e38bf379ff5a58ad6f5990758c",
+        "live/20261023/NXT/000660.jsonl": "2bd51e6f82ef37aa032697abeb65ad2bb3bac821a12528373469e7288b864e87",
+        "live/20261023/NXT/196170.jsonl": "158dadb3a8b9800d531ccbf7cb18e61e5a972a7d1eef40f397b227da32c12418",
+        "live/20261023/UN/000660.jsonl": "d68f504089cda5dd3b9662d2dcb37fabc1803b1585d27ce4a028602c3f7f7858",
+        "live/20261023/UN/196170.jsonl": "ce26da55c9fa254dfb27711bff1c059e7c0b5d5a6c8f103f95d01656e9ac55bf",
+        "seconds/20261023/KRX/000660.jsonl": "c1bbeb1e80a82a40e306f442639a6840cb1ea2fca92f581d8a3c27e7130595cc",
+        "seconds/20261023/KRX/003160.jsonl": "204a00f646d623792b4ae796f4e2692ff43207121d627fc682da2899bd4d9b65",
+        "seconds/20261023/KRX/005930.jsonl": "b5d1edc036c860db22c0e1199e7b4e27d3cc6e2bf9a25b71093203801f9018f2",
+        "seconds/20261023/KRX/031980.jsonl": "bb01b0a309734418873d2c42365c6a375a0444868ea63c56502a5abd329b92fe",
+        "seconds/20261023/NXT/000660.jsonl": "f3745d676187993d73973d2222aa6d5afd487660657dffbb5b41158e97e47347",
+        "seconds/20261023/NXT/196170.jsonl": "2899eeb7de68d9aeddb5a8145f9a829073dff305f721f763f405edf59de516ed",
+        "seconds/20261023/UN/000660.jsonl": "45fd0154bc0d6d63ce3d396e8c6f738520163ebf130d1ecb5f9abd7424af79a5",
+        "seconds/20261023/UN/196170.jsonl": "6369b2c2225998d0755c41953f8c0fc139f8f0cfc9747a76faa3cc4530168ada"
+      },
+      "on_tick": {
+        "p50_us": 30.447,
+        "p95_us": 107.773,
+        "p99_us": 162.866,
+        "max_us": 590.211
+      },
+      "on_tick_total_ms": 3549.623882,
+      "replay_s_including_flush_and_checks": 9.17844405300275,
+      "sampled_checks": {
+        "p50_us": 830.383,
+        "p95_us": 1447.133,
+        "p99_us": 1663.94,
+        "max_us": 2579.153
+      },
+      "shadow": {
+        "enabled": true,
+        "disabled": false,
+        "active_sides": 16,
+        "retained_points": 15180,
+        "first_failure": null,
+        "sampled": [
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "196170",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "NXT",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "UN",
+            "side": "bid"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "003160",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "005930",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "000660",
+            "venue": "KRX",
+            "side": "bid"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "ask"
+          },
+          {
+            "code": "031980",
+            "venue": "KRX",
+            "side": "bid"
+          }
+        ],
+        "checks": 613,
+        "matched": 613,
+        "mismatches": 0,
+        "errors": 0,
+        "admission_rejected": 0,
+        "point_budget_rejected": 0,
+        "time_budget_rejected": 0,
+        "attached": 16,
+        "prepare_us": 20919.627022522036,
+        "wire_bytes": 2154099,
+        "wire_parts": 613,
+        "apply_wire_us": 241014.2640583217,
+        "full": 16,
+        "reference_us": 150849.03896786273,
+        "check_us": 517540.5410627718,
+        "max_check_us": 2462.6739977975376,
+        "delta": 597
+      },
+      "rss_before": 290963456,
+      "rss_after_ingest": 303943680,
+      "rss_ingest_delta": 12980224,
+      "rss_after_release": 311418880,
+      "peak_rss": 312995840,
+      "tracemalloc": null,
+      "gc_counts": {},
+      "gc_ms": {},
+      "repeat": 2,
+      "wire_phase": "iterative"
+    }
+  ],
+  "limits": [
+    "Replay of captured API Live Ticks and stored snapshots, not a new vendor connection.",
+    "Shadow keeps legacy responses authoritative; new wire lane is not deployed.",
+    "Profiling explicitly raises diagnostic admission/time limits; runtime defaults stay bounded.",
+    "RSS is current process RSS without forced GC; peak RSS reported separately.",
+    "on_tick excludes flush/check cost; replay wall time includes both.",
+    "Input fixtures and writes are local; no production data changed."
+  ],
+  "source_sha256_before_wire": {
+    "hoga/live/ask_peak_state.py": "7da207f281c95f465d5c842f6dfc0634ba21f59912f41d6b261d42480dd80ce6",
+    "hoga/live/stream.py": "f9e27a040ea3a5599bb6215594b689ae04ac24b0534641f03cfdc6ac6a4b965c",
+    "hoga/live/peak_changes.py": "109a7ebc0670e02bbf8975809745dc53d9d4088370b51ecc93834b71a3a2d385",
+    "hoga/live/peak_shadow.py": "3c4e5b77a2dbb6bd90be27a5830701febcfd731709fc813aea5cb3b098d1950d",
+    "hoga/live/collector_worker.py": "e067328c1eff42b128cf08aabd0778d3599ade917b6051674920f167190b1d96",
+    "/home/dev/.codex/worktrees/c940/hoga-ops/scripts/probe_peak_capture_shadow.py": "6b46a7b4cea03a59f3bff859dbd5afac86ee4b28f449bdf91253b7653dd005ff"
+  },
+  "reuse_note": "Old/off/track ingestion measurements reused: native mutation and on_tick unchanged by wire-only serializer/diagnostic exception isolation refinement. Shadow trials rerun and file/peak hashes matched the original baseline."
+}
