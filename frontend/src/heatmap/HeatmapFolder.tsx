@@ -173,14 +173,26 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
       {/* 그룹 헤더 밴드 = heatHeaderBg(avg) — 평균 등락 비례 히트 틴트(섹터 온도). 폴더 본문은
           투명·평면이고 좌측 border-strong 스파인 + 이 틴트 밴드로 그룹을 구분한다. 평균 % 는
           평면 text-fg-dim 텍스트(색=밴드가 짊어짐, 숫자=보조; G4). */}
-      <div className="flex flex-wrap justify-between items-center gap-x-2 gap-y-1 px-2 py-1 min-h-list-group-header"
+      <div className="flex justify-between items-center gap-2 px-2 py-1 min-h-list-group-header"
+        data-testid={`heatmap-folder-header-${folderId}`}
+        role={hasGroupMenu ? 'group' : undefined}
+        aria-label={hasGroupMenu ? `${folder.name} 그룹` : undefined}
+        aria-haspopup={hasGroupMenu ? 'menu' : undefined}
+        aria-expanded={hasGroupMenu ? menu !== null : undefined}
+        tabIndex={hasGroupMenu && !renaming ? 0 : undefined}
         style={{ background: heatHeaderBg(avg) }}
         onContextMenu={hasGroupMenu && !renaming
-          ? (e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }); }
-          : undefined}>
+          ? (e) => { e.preventDefault(); e.currentTarget.focus(); setMenu({ x: e.clientX, y: e.clientY }); }
+          : undefined}
+        onKeyDown={hasGroupMenu && !renaming ? (e) => {
+          if (e.target !== e.currentTarget || !(e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) return;
+          e.preventDefault();
+          const r = e.currentTarget.getBoundingClientRect();
+          setMenu({ x: r.left, y: r.bottom });
+        } : undefined}>
         {/* 폴더(섹터)명 = 보드의 1차 앵커. 글자 크기 text-xs(가독성, origin/main).
             그룹 당일 흐름 미니 그래프는 이름 옆(기준선 면적형, GroupFlowSparkline). */}
-        <span className="flex items-center gap-2 min-w-0 flex-1 basis-40">
+        <span className="flex items-center gap-2 min-w-0 flex-1">
           {renaming && onRenameFolder ? (
             <GroupNameInput
               state={renaming}
@@ -218,7 +230,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
           )}
           {flowSeries !== undefined && <GroupFlowSparkline series={flowSeries} />}
         </span>
-        <span className="flex items-center gap-2 flex-none ml-auto">
+        <span className="flex items-center gap-2 flex-none ml-auto whitespace-nowrap">
           {avg !== null && (
             <span className="text-xs font-data tabular-nums text-fg-dim" title={`평균 등락률 · 시세 반영 ${entries.filter((e) => pctOf(e.code) != null).length}/${entries.length}종목 · 동일 가중 평균`}>
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
@@ -226,9 +238,6 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
           )}
           <FolderAddButton folderId={folder.id} isDuplicate={isDuplicate} onDuplicate={flashDuplicate}
             autoOpen={autoOpenAdd} onAutoOpened={onAutoOpenAdd} />
-          {hasGroupMenu && <button type="button" aria-label={`${folder.name} 그룹 메뉴`} aria-haspopup="menu" aria-expanded={menu !== null}
-            className="h-7 w-7 rounded text-fg-dim hover:bg-bg-input-hover" disabled={!!renaming}
-            onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu({ x: r.left, y: r.bottom }); }}>⋯</button>}
         </span>
       </div>
       {body}
