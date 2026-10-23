@@ -67,7 +67,7 @@ export function ConditionExpressionEditor({ conditions, expression, onChange, in
         const edit = toggleExpressionOperator(value, { start: input.selectionStart, end: input.selectionEnd });
         if (edit) onChange(edit.text, edit);
       }}
-      title="AND/OR를 더블클릭하면 서로 전환합니다. 괄호 안을 먼저 계산하고, AND는 OR보다 먼저 적용합니다."
+      data-tooltip="AND/OR를 더블클릭하면 서로 전환합니다. 괄호 안을 먼저 계산하고, AND는 OR보다 먼저 적용합니다."
       maxLength={MAX_EXPRESSION_LENGTH}
       aria-keyshortcuts="Control+Z Meta+Z Control+Shift+Z Meta+Shift+Z Control+Y"
       rows={2} spellCheck={false} autoCapitalize="characters" placeholder="A AND (B OR C)"
@@ -76,7 +76,7 @@ export function ConditionExpressionEditor({ conditions, expression, onChange, in
     <div className="condition-expression-tools" aria-label="조합식 빠른 입력">
       {conditions.map((leaf, i) => <button key={leaf.id} type="button"
         aria-label={`${conditionLabel(i)} ${catalogEntry(leaf.type).label} 조합식에 입력`}
-        title={`${conditionLabel(i)} · ${catalogEntry(leaf.type).label}`}
+        data-tooltip={`${conditionLabel(i)} · ${catalogEntry(leaf.type).label}`}
         className="condition-expression-button condition-expression-letter"
         disabled={rangeSelected}
         onClick={() => onInsert(conditionLabel(i))}>{conditionLabel(i)}</button>)}
@@ -84,11 +84,11 @@ export function ConditionExpressionEditor({ conditions, expression, onChange, in
         aria-label={`${token} 조합식에 입력`} className="condition-expression-button"
         onClick={() => onInsert(token)}>{token}</button>)}
       <button type="button" className="condition-expression-button" disabled={!grouped}
-        title={grouped ? '선택한 범위를 괄호로 묶기' : rangeSelected ? '완전한 조건이나 조합식을 선택해 주세요.' : '묶을 범위를 선택하세요.'}
+        data-tooltip={grouped ? '선택한 범위를 괄호로 묶기' : rangeSelected ? '완전한 조건이나 조합식을 선택해 주세요.' : '묶을 범위를 선택하세요.'}
         onMouseDown={event => event.preventDefault()}
         onClick={() => { if (grouped) onChange(grouped.text, grouped); }}>() 묶기</button>
       <button type="button" className="condition-expression-button" disabled={!ungrouped}
-        title={ungrouped ? '바깥 괄호 한 쌍만 제거하기' : '묶인 그룹 전체나 그룹의 내용 전체를 선택하세요.'}
+        data-tooltip={ungrouped ? '바깥 괄호 한 쌍만 제거하기' : '묶인 그룹 전체나 그룹의 내용 전체를 선택하세요.'}
         onMouseDown={event => event.preventDefault()}
         onClick={() => { if (ungrouped) onChange(ungrouped.text, ungrouped); }}>() 묶기 해제</button>
     </div>

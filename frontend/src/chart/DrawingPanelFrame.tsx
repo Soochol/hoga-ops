@@ -87,7 +87,7 @@ export function DrawingPanelFrame({ positionKey, testId, onMove, children }: {
     className="absolute z-30 inline-flex flex-wrap items-center gap-0.5 bg-bg-card border border-border rounded-lg p-1 shadow-lg"
     style={{ top: MARGIN, left: '50%', transform: 'translateX(-50%)', width: 'max-content', maxWidth: 'calc(100% - 16px)' }}>
     <button type="button" data-testid="drawing-panel-grip" aria-label="그리기 옵션 이동"
-      title="드래그·방향키로 이동 · 더블클릭·Home으로 기본 위치"
+      data-tooltip="드래그·방향키로 이동 · 더블클릭·Home으로 기본 위치"
       className="h-7 w-4 shrink-0 touch-none cursor-grab active:cursor-grabbing inline-flex items-center justify-center rounded text-fg-dim hover:bg-bg-input-hover"
       onDoubleClick={reset}
       onPointerDown={event => {

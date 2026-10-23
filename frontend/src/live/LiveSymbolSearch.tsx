@@ -297,7 +297,7 @@ export function LiveSymbolSearch() {
                   onClick={() => { selectItem(item); setOpen(false); }}
                   className="min-w-0 flex-1 py-2.5 text-left text-base text-fg disabled:cursor-default">
                   <span className="flex items-center gap-2 font-medium">
-                    <span className="min-w-0 truncate" title={name}><MatchedName name={name} query={q} /></span>
+                    <span className="min-w-0 truncate" data-tooltip={name}><MatchedName name={name} query={q} /></span>
                     {isCurrent && <span className="shrink-0 text-sm font-normal text-fg-dim">현재</span>}
                   </span>
                   <span className="mt-0.5 flex items-center gap-2 text-sm text-fg-dim">

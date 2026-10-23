@@ -18,6 +18,8 @@ export const TAILWIND_THEME = {
   spacing: {
     "2xs": "var(--space-2xs)",
     "xs": "var(--space-xs)",
+    "tooltip-x": "var(--space-tooltip-x)",
+    "tooltip-y": "var(--space-tooltip-y)",
     "sm": "var(--space-sm)",
     "md": "var(--space-md)",
     "lg": "var(--space-lg)",

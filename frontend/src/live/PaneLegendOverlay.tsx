@@ -260,7 +260,7 @@ function HoverIcon({
     <button
       type="button"
       aria-label={label}
-      title={label}
+      data-tooltip={label}
       onClick={onClick}
       style={{ ...iconBtnStyle, color: restColor }}
       onMouseEnter={(e) => {
@@ -335,7 +335,7 @@ function PaneChip({
       <button
         type="button"
         aria-label={`${label} pane 이동/병합`}
-        title="드래그하여 이동·병합 · 클릭하여 메뉴 열기"
+        data-tooltip="드래그하여 이동·병합 · 클릭하여 메뉴 열기"
         aria-expanded={expanded}
         onClick={onClick}
         className="pane-legend-name"
@@ -362,7 +362,7 @@ function PaneChip({
         {axisBadge !== null && (
           <span
             aria-label={axisBadge === '좌축' ? '왼쪽 축 눈금 소유' : '오른쪽 축 눈금 소유'}
-            title={axisBadge === '좌축'
+            data-tooltip={axisBadge === '좌축'
               ? '왼쪽 축 눈금은 이 지표의 것입니다'
               : '오른쪽 축 눈금은 이 지표의 것입니다'}
             style={{
@@ -509,7 +509,7 @@ function MaChip({
       <button
         type="button"
         aria-label={`${label} ${ma.period} ${ma.enabled ? '숨김' : '표시'}`}
-        title={`${label} ${ma.period}`}
+        data-tooltip={`${label} ${ma.period}`}
         onClick={onToggle}
         onDoubleClick={(e) => onOpenSettings(e.currentTarget.parentElement ?? e.currentTarget)}
         style={{
@@ -533,7 +533,7 @@ function MaChip({
         type="button"
         className="legend-chip-x"
         aria-label={`${label} ${ma.period} 삭제`}
-        title={`${label} ${ma.period} 삭제`}
+        data-tooltip={`${label} ${ma.period} 삭제`}
         onClick={onRemove}
         style={{ ...iconBtnStyle, width: 14, height: 14 }}
       >

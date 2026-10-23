@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { JumpToMinuteButton } from './JumpToMinuteButton';
 
 const NOW = new Date('2026-08-22T05:00:00Z').getTime(); // KST 14:00
@@ -9,7 +9,7 @@ const YESTERDAY = '20260821';
 const LAST_YEAR = '20250718';
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.useFakeTimers();
   vi.setSystemTime(NOW);
 });
 afterEach(() => {
@@ -18,6 +18,12 @@ afterEach(() => {
 });
 
 const button = () => screen.getByTestId('live-jump-to-minute-button');
+function tooltipText() {
+  expect(button()).not.toHaveAttribute('title');
+  fireEvent.pointerEnter(button(), { pointerType: 'mouse', buttons: 0 });
+  act(() => vi.advanceTimersByTime(500));
+  return screen.getByRole('tooltip').textContent;
+}
 
 describe('JumpToMinuteButton', () => {
   // 종전 문구는 「이 창번호에 분봉 창이 없습니다」로 끝났다 — 사실이지만 막다른 길이다.
@@ -28,7 +34,7 @@ describe('JumpToMinuteButton', () => {
       <JumpToMinuteButton timeframe="D" destinationDate={YESTERDAY} hasMinuteWindow={false} onRun={vi.fn()} />,
     );
     expect(button()).toBeDisabled();
-    const title = button().getAttribute('title') ?? '';
+    const title = tooltipText() ?? '';
     expect(title).toContain('분봉 창이 없습니다');
     // 상태 서술로 끝나지 않는다 — 창을 만들고, 그 창의 봉을 바꾸라고까지 적는다.
     expect(title).toContain('창 추가');
@@ -44,13 +50,13 @@ describe('JumpToMinuteButton', () => {
       <JumpToMinuteButton timeframe="D" destinationDate={YESTERDAY} hasMinuteWindow onRun={vi.fn()} />,
     );
     expect(button().textContent).toContain('08-21');
-    expect(button().getAttribute('title')).toBe('분봉으로 — 08-21');
+    expect(tooltipText()).toBe('분봉으로 — 08-21');
     expect(button().getAttribute('aria-label')).toBe('분봉 창을 08-21 로 이동');
   });
 
   it('차트가 아직 날짜를 밀지 않았으면 동사만 남는다', () => {
     render(<JumpToMinuteButton timeframe="D" destinationDate={null} hasMinuteWindow onRun={vi.fn()} />);
-    expect(button().getAttribute('title')).toBe('분봉으로');
+    expect(tooltipText()).toBe('분봉으로');
     expect(button().getAttribute('aria-label')).toBe('분봉으로');
   });
 
@@ -61,7 +67,7 @@ describe('JumpToMinuteButton', () => {
     render(
       <JumpToMinuteButton timeframe="D" destinationDate={LAST_YEAR} hasMinuteWindow onRun={onRun} />,
     );
-    expect(button().getAttribute('title')).toBe('분봉으로 — 25-07-18');
+    expect(tooltipText()).toBe('분봉으로 — 25-07-18');
     fireEvent.click(button());
     expect(onRun).toHaveBeenCalledTimes(1);
   });
@@ -87,13 +93,13 @@ describe('JumpToMinuteButton', () => {
   // 일요일: 주·월봉 모두 `08-23` 을 보여줬는데 실제 착지는 `08-21`).
   it('주봉은 **그 주**로, 월봉은 **그 달**로 말한다', () => {
     render(<JumpToMinuteButton timeframe="W" destinationDate="20260818" hasMinuteWindow onRun={vi.fn()} />);
-    expect(button().getAttribute('title')).toBe('분봉으로 — 08-18 주');
+    expect(tooltipText()).toBe('분봉으로 — 08-18 주');
     cleanup();
     render(<JumpToMinuteButton timeframe="M" destinationDate="20260803" hasMinuteWindow onRun={vi.fn()} />);
-    expect(button().getAttribute('title')).toBe('분봉으로 — 08월');
+    expect(tooltipText()).toBe('분봉으로 — 08월');
     cleanup();
     render(<JumpToMinuteButton timeframe="M" destinationDate="20251215" hasMinuteWindow onRun={vi.fn()} />);
-    expect(button().getAttribute('title')).toBe('분봉으로 — 25년 12월');
+    expect(tooltipText()).toBe('분봉으로 — 25년 12월');
   });
 
   it('라벨을 접으면 텍스트가 빠지고 aria-label 만 남는다(#762 접힘 정책)', () => {

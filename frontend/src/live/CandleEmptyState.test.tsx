@@ -54,7 +54,7 @@ describe('CandleEmptyState', () => {
       />,
     );
     const label = screen.getByText('벤더 인증에 실패해 캔들을 받지 못했다');
-    expect(label).toHaveAttribute('title', '…[8050:…]');
+    expect(label).toHaveAttribute('data-tooltip', '…[8050:…]');
     // 컨테이너가 pointer-events-none 이라 되살리지 않으면 hover 가 안 걸려 툴팁이 안 뜬다.
     expect(label.className).toContain('pointer-events-auto');
   });

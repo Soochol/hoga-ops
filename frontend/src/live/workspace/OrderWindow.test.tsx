@@ -520,14 +520,16 @@ describe('호가 주문', () => {
     expect(holdingBookMarker(100, '67200', [0, NaN])).toEqual({ price: null, outside: false });
     expect(holdingBookMarker(100, '67200', [])).toEqual({ price: null, outside: false });
   });
-  it('평단가 원과 저가 배지를 같은 가격에 함께 표시하고 정확한 원본 평단가를 설명한다', () => {
+  it('평단가 원과 저가 배지를 같은 가격에 함께 표시하고 정확한 원본 평단가를 설명한다', async () => {
     mock.averagePrice = '67000.1';
     const { container } = show();
     const marker = screen.getByRole('img', { name: '내 평단가 67,000.1원 · 가장 가까운 호가 67,000원' });
     const value = container.querySelector('[data-order-price="67000"] .order-price-value')!;
     expect(value).toContainElement(marker);
     expect(value.querySelector('[data-price-badges]')).toHaveTextContent('저');
-    expect(marker).toHaveAttribute('title', '내 평단가 67,000.1원 · 가장 가까운 호가 67,000원');
+    expect(marker).not.toHaveAttribute('title');
+    fireEvent.pointerEnter(marker, { pointerType: 'mouse', buttons: 0 });
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('내 평단가 67,000.1원 · 가장 가까운 호가 67,000원');
     expect(container.querySelectorAll('.order-average-marker')).toHaveLength(1);
     expect(mock.command).not.toHaveBeenCalled();
   });

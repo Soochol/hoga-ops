@@ -33,6 +33,9 @@ for (const width of [1440, 600]) {
     await name.hover();
     const tooltip = page.getByRole('tooltip');
     await expect(tooltip).toBeVisible();
+    await expect(tooltip).toHaveClass(/tooltip-surface/);
+    await expect(tooltip).toHaveCSS('padding', '6px 10px');
+    await expect(tooltip).toHaveCSS('border-radius', '6px');
     await expect(tooltip).toContainText('가전·전장·냉난방공조');
     await expect(first).toHaveAttribute('aria-describedby', await tooltip.getAttribute('id') as string);
     expect(await first.boundingBox()).toEqual(before);

@@ -39,7 +39,7 @@ export function DailyNetList({ label, columns, rows, compact = false, todayProvi
         <div role="row" className="daily-net-row">
           <span role="rowheader" className="text-xs text-fg-dim">기간 합계</span>
           {totals.map((value, i) => <span role="cell" key={columns[i]} className="text-right font-semibold"
-            title={value == null ? '누락된 값이 있어 기간 합계를 계산하지 않았습니다.' : undefined}>{cell(value)}</span>)}
+            data-tooltip={value == null ? '누락된 값이 있어 기간 합계를 계산하지 않았습니다.' : undefined}>{cell(value)}</span>)}
         </div>
       </div>
     </div>

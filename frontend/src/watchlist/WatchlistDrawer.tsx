@@ -288,7 +288,7 @@ function GroupHeader(props: {
           aria-describedby={sortDescriptionId}
           // 마우스 툴팁 — 아이콘만으론 현재 정렬 상태·다음 동작이 불투명했다(sr-only
           // 설명은 있으나 포인터 사용자엔 안 보임). aria-describedby 와 같은 문구.
-          title={quoteSortModeDescription(props.sortMode)}
+          data-tooltip={quoteSortModeDescription(props.sortMode)}
           onClick={cycleSortMode}
           className={`grid h-6 w-6 shrink-0 place-items-center rounded hover:bg-bg-input-hover hover:text-fg ${props.sortMode === 'default' ? 'text-fg-dimmer' : 'text-accent'}`}>
           <QuoteSortIcon mode={props.sortMode} />
@@ -1418,7 +1418,7 @@ export function WatchlistDrawer() {
           // (히트맵 보드의 "+ 새 그룹" 과 표면 일치). 남은 편집은 항목 하나뿐이라
           // 메뉴를 없애고 "편집"이 관심 편집 모달을 바로 연다.
           <div className="flex items-center gap-2">
-            <button type="button" aria-label="새 그룹 만들기" title="새 그룹 만들기"
+            <button type="button" aria-label="새 그룹 만들기" data-tooltip="새 그룹 만들기"
                     onClick={() => setAddGroupOpen(true)}
                     className="flex h-7 items-center gap-1 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg">
               <PlusIcon /> 그룹
@@ -1563,7 +1563,7 @@ export function WatchlistDrawer() {
         </DndContext>
       </RailDrawerBody>
       <div role="status" aria-live="polite" aria-atomic="true"
-        title={destination?.label}
+        data-tooltip={destination?.label}
         className={`flex shrink-0 items-center text-xs text-fg-dim${dragGhost?.kind === 'entry' || searching ? ' h-12 border-t border-border px-md' : ''}`}>
         <span className={dragGhost?.kind === 'entry' ? 'line-clamp-3 text-accent' : ''}>
           {dragGhost?.kind === 'entry'

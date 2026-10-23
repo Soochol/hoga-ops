@@ -163,7 +163,7 @@ export function HeatmapRow({
         onMouseLeave={() => descriptionTooltip?.scheduleHide()}
         // User-approved company prose replaces the native title on the board.
         // Capture information remains in its footer; unknown Codes retain the old title.
-        title={hasDescription ? undefined : captureTitle}
+        data-tooltip={hasDescription ? undefined : captureTitle}
       >
         {/* 동시호가 예상 마커 — 관심종목 QuoteRow 와 같은 표기·같은 자리(이름 앞).
             truncate 는 부모인 이 span(그리드 아이템)에 걸려 있어 inline 마커는 자기

@@ -16,6 +16,7 @@ import { priceDirClass } from '../ui/priceDir';
 import { formatKoreanInt } from '../util/koreanNumber';
 import { buildCandleTooltip, formatTooltipQtyK, placeTooltip } from './candleTooltipModel';
 import { safeUnsubscribe } from '../chart/util/safeUnsubscribe';
+import '../ui/TextTooltip.css';
 
 type Hover = { source: 'pointer' | 'sync'; tsMs: number; left: number; top: number; x: number; y: number };
 
@@ -34,20 +35,13 @@ const boxStyle: CSSProperties = {
   position: 'absolute',
   zIndex: 6,
   pointerEvents: 'none',
-  background: 'var(--bg-card)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--radius-md)',
-  padding: 'var(--space-2xs) var(--space-sm)',
   fontFamily: 'var(--font-data)',
-  fontSize: 'var(--text-xs)',
-  lineHeight: 1.5,
   fontVariantNumeric: 'tabular-nums',
   whiteSpace: 'nowrap',
   minWidth: 150,
-  boxShadow: 'var(--shadow)',
 };
 const rowStyle: CSSProperties = { display: 'flex', justifyContent: 'space-between', gap: 16 };
-const keyStyle: CSSProperties = { color: 'var(--fg-dimmer)' };
+const keyStyle: CSSProperties = { color: 'var(--fg-dim)' };
 const valStyle: CSSProperties = { color: 'var(--fg)' };
 
 const signed = (n: number, code?: string) => (n >= 0 ? '+' : '') + formatInstrumentPrice(n, code);
@@ -264,7 +258,7 @@ function CandleTooltip({ chart, bundle, quoteBundle, axis, paneSeries, timeframe
   });
   if (!m) return null;
   return (
-    <div ref={tipRef} data-testid="candle-tooltip" style={{ ...boxStyle, left: renderedHover.left, top: renderedHover.top }}>
+    <div ref={tipRef} className="tooltip-surface" role="tooltip" data-testid="candle-tooltip" style={{ ...boxStyle, left: renderedHover.left, top: renderedHover.top }}>
       <div style={{ ...rowStyle, color: 'var(--fg-dim)', marginBottom: 4 }}>
         <span>{m.dateLabel}{m.timeLabel ? ` ${m.timeLabel}` : ''}</span>
       </div>

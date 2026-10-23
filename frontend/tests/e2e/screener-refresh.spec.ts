@@ -19,7 +19,7 @@ test('refresh shows per-symbol repair progress and restores the persisted result
   });
   await page.goto('/screener');
   const update = page.getByRole('button', { name: '데이터 갱신', exact: true });
-  await expect(update).toHaveAttribute('title', /최신 종목 목록.*과거 일봉/);
+  await expect(update).toHaveAttribute('data-tooltip', /최신 종목 목록.*과거 일봉/);
   await update.click();
   await expect(update).toBeDisabled();
   await expect(page.getByTestId('screener-update-progress')).toContainText('종목 목록 확인 중');

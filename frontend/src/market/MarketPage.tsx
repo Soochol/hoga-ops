@@ -268,7 +268,7 @@ function VolatilityCard({ row, fetchedAt, error }: { row: MarketVolatility; fetc
   return (
     <MarketCard>
       <div className={`flex items-baseline justify-between ${CARD_HEADER_RULE}`}>
-        <span className="text-xs font-semibold uppercase text-fg-dim" title="KOSPI 200 옵션 가격에 반영된 향후 30일 예상 변동성. 상승은 변동성 확대를 뜻합니다."><span>VKOSPI</span> · 변동성</span>
+        <span className="text-xs font-semibold uppercase text-fg-dim" data-tooltip="KOSPI 200 옵션 가격에 반영된 향후 30일 예상 변동성. 상승은 변동성 확대를 뜻합니다."><span>VKOSPI</span> · 변동성</span>
       </div>
       <div className="flex flex-col">
         <span
@@ -428,7 +428,7 @@ function IndexCard({
               <button
                 type="button"
                 onClick={() => setPreferAlt((v) => !v)}
-                title={
+                data-tooltip={
                   viewingAlt
                     ? `${sessionLabel(future.dataSession)} 값으로 되돌리기`
                     : future.dataSession === 'night'
@@ -688,7 +688,7 @@ export function ActorNetCard({ actor, embedded = false }: { actor: '외국인' |
       </div>
       <DataStatus hasData={streaks.data !== undefined} error={streaks.isError} status={`제공 순서 · ${streaks.data?.warnings?.includes('etf_filter_unavailable') ? 'ETF·ETN 필터 확인 필요' : 'ETF·ETN 제외'}`} />
       <div className="grid grid-cols-[minmax(0,1fr)_3rem_5.5rem] gap-xs text-2xs text-fg-dim">
-        <span>종목</span><span className="text-right">연속일수</span><span className="text-right" title="연속 매매 기간에 누적된 순매수 또는 순매도 금액">기간 누적(억)</span>
+        <span>종목</span><span className="text-right">연속일수</span><span className="text-right" data-tooltip="연속 매매 기간에 누적된 순매수 또는 순매도 금액">기간 누적(억)</span>
       </div>
       {rows.length === 0 ? (
         // 어느 조합이 빈 것인지 문구가 말한다 — 토글이 넷이라 더 그렇다.
@@ -702,7 +702,7 @@ export function ActorNetCard({ actor, embedded = false }: { actor: '외국인' |
               <button
                 type="button"
                 onClick={(e) => jump(r.code, r.name, e)}
-                title={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
+                data-tooltip={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
                 className="grid w-full grid-cols-[minmax(0,1fr)_3rem_5.5rem] items-center gap-xs py-2xs text-left hover:bg-bg-input-hover"
               >
                 <span className="truncate text-sm text-fg">{r.name}</span>
@@ -838,7 +838,7 @@ export function RankCard({
               <button
                 type="button"
                 onClick={(e) => jump(r.code, r.name, e)}
-                title={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
+                data-tooltip={`${r.name} 라이브 차트로 (ctrl/⌘ = 새 탭)`}
                 className="grid w-full grid-cols-[1.2rem_minmax(0,1fr)_5.5rem_4.2rem] items-center gap-sm py-2xs text-left hover:bg-bg-input-hover"
               >
                 <span className="font-data text-2xs text-fg-dim tabular-nums">{r.rank}</span>

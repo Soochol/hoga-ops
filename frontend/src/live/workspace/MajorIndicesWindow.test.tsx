@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../../tests/tooltipQueries';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MajorIndicesWindow } from './MajorIndicesWindow';
@@ -19,7 +20,7 @@ describe('major indices window', () => {
     expect(screen.getByTestId('major-indices-chart').querySelectorAll('svg')).toHaveLength(1);
     expect(container.querySelectorAll('[data-index-series]')).toHaveLength(3);
     expect(screen.getByText('등락률 %')).toHaveAttribute('text-anchor', 'end');
-    expect(screen.queryByTitle('링크 그룹 변경')).toBeNull();
+    expect(tooltipQueries().queryByText('링크 그룹 변경')).toBeNull();
     expect(screen.queryByTestId('window-pin-toggle')).toBeNull();
     expect(screen.queryByText('삼성전자')).toBeNull();
     expect(container.querySelector('footer')).toBeNull();

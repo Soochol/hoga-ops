@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { getStockDescription } from './stockDescriptions';
+import '../ui/TextTooltip.css';
 
 export const STOCK_DESCRIPTION_DELAY_MS = 500;
 const LEAVE_DELAY_MS = 120;
@@ -98,7 +99,7 @@ export function StockDescriptionTooltipProvider({ children, disabled = false }: 
     {active && description && createPortal(
       <div ref={panel} id={id} role="tooltip" data-testid="stock-description-tooltip"
         onMouseEnter={cancelTimer} onMouseLeave={scheduleHide}
-        className="fixed z-50 w-80 max-w-[calc(100vw-1rem)] rounded-lg border border-border-strong bg-bg-card p-3 text-sm text-fg shadow-[var(--shadow)]"
+        className="tooltip-surface fixed z-50 w-80 max-w-[calc(100vw-1rem)]"
         style={{ left: 0, top: 0 }}>
         <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="font-semibold">{description.name}</span>

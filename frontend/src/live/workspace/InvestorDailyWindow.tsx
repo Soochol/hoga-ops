@@ -307,12 +307,12 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
     <div className="live-data-table-panel flex h-full flex-col bg-bg-card">
       <ResponsiveDataControls status={table.rows.length > 0 ? stateText : null}
         trailing={<span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim"
-          title={unitLabel === '천 주' ? '1K = 1,000주' : undefined}>단위: {unitLabel}</span>}
+          data-tooltip={unitLabel === '천 주' ? '1K = 1,000주' : undefined}>단위: {unitLabel}</span>}
         secondary={<>
           {showDetails && <div role="group" aria-label="매매 기준" className="ui-segmented">
             {(Object.keys(TRADE_SIDE_LABELS) as InvestorTradeSide[]).map((side) => (
               <button key={side} type="button" aria-pressed={tradeSide === side}
-                title={side === 'net' ? '총매수 − 총매도' : TRADE_SIDE_LABELS[side]}
+                data-tooltip={side === 'net' ? '총매수 − 총매도' : TRADE_SIDE_LABELS[side]}
                 onClick={() => setTradeSide(side)}
                 className={`rounded border px-1.5 py-px text-2xs ${tradeSide === side ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
                 {TRADE_SIDE_LABELS[side]}
@@ -336,7 +336,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
           <UnitChip unit={unit} onToggle={toggleUnit} compact={!showDetails && useK} />
           {!showDetails && unit === 'qty' && <button type="button" aria-pressed={useK}
             onClick={() => setUseK(!useK)}
-            title="K 단위: 1K = 1,000주"
+            data-tooltip="K 단위: 1K = 1,000주"
             className={`shrink-0 rounded border px-1.5 py-px text-2xs ${useK ? 'border-accent text-accent' : 'border-border text-fg-dim'}`}>K 단위</button>}
           <button type="button" aria-expanded={showDetails} className="shrink-0 rounded border border-border px-1.5 py-px text-2xs text-fg-dim hover:text-accent" onClick={() => setShowDetails(!showDetails)}>기관 상세 {showDetails ? '접기' : '펼치기'}</button>
       </>}>
@@ -434,7 +434,7 @@ export function InvestorDailyWindow({ code, cursorDate }: Props) {
                     // 그 컬럼들의 누적은 그만큼 덜 더해진 값이다.
                     <span
                       className="ml-1 text-2xs text-fg-dimmer"
-                      title={`${table.missingBreakdown}일치 주체 분해가 없어 세부 누적에서 빠졌습니다`}
+                      data-tooltip={`${table.missingBreakdown}일치 주체 분해가 없어 세부 누적에서 빠졌습니다`}
                     >
                       −{table.missingBreakdown}일
                     </span>
@@ -535,7 +535,7 @@ function DateCell({ date, isToday }: { date: string; isToday: boolean }) {
       {`${date.slice(4, 6)}-${date.slice(6)}`}
       {isToday && (
         // 오늘 행은 ~15:40 까지 가집계다 — 확정치와 같은 표에 있으므로 구분한다.
-        <span className="ml-1 text-2xs text-fg-dimmer" title="장중 잠정치 (확정 전)">
+        <span className="ml-1 text-2xs text-fg-dimmer" data-tooltip="장중 잠정치 (확정 전)">
           잠정
         </span>
       )}

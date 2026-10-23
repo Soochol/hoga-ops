@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../tests/tooltipQueries';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -104,7 +105,7 @@ describe('BrokerTrajectoryTable — render states', () => {
     // Compact label visible in the row.
     expect(screen.getByText('신한투자')).toBeInTheDocument();
     // Canonical name accessible via title attribute for disambiguation.
-    expect(screen.getByTitle('신한투자증권')).toBeInTheDocument();
+    expect(tooltipQueries().getByText('신한투자증권')).toBeInTheDocument();
   });
 });
 

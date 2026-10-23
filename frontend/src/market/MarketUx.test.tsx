@@ -65,7 +65,7 @@ describe('market data meaning', () => {
     mount(<SectorCard />);
     await screen.findByText('업종0');
     expect(screen.queryByText('최대상승')).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: '상승순' }));
+    await userEvent.click(within(screen.getByRole('columnheader', { name: '등락' })).getByRole('button'));
     expect(screen.getByText('최대상승')).toBeInTheDocument();
     expect(screen.queryByText('업종0')).not.toBeInTheDocument();
   });
@@ -92,7 +92,7 @@ it('separates verified industries, index products and unknown codes without drop
   ] } } });
   mount(<SectorCard />);
   await screen.findByText('음식료');
-  await userEvent.click(screen.getByRole('button', { name: '업종' }));
+  await userEvent.click(within(screen.getByRole('group', { name: '업종 지수 유형' })).getByRole('button', { name: '업종' }));
   expect(screen.getByText('음식료')).toBeInTheDocument();
   expect(screen.queryByText('고배당50')).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: '규모·대표지수' }));

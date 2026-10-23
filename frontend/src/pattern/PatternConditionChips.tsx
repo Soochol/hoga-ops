@@ -122,7 +122,7 @@ export function PatternConditionChips({
         className="flex h-7 items-center gap-1 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg">
         상세 조건 {applied.length}개 적용 <ChevronIcon collapsed={!expanded} />
       </button>}
-      {collapsible && !expanded && <p title={applied.join(' · ')} className="w-full text-xs text-fg-dim line-clamp-2">
+      {collapsible && !expanded && <p data-tooltip={applied.join(' · ')} className="w-full text-xs text-fg-dim line-clamp-2">
         {applied.length > 0 ? applied.join(' · ') : '상세 조건 제한 없음'}
       </p>}
       <div id={collapsible ? 'pattern-advanced-conditions' : undefined} hidden={collapsible && !expanded}

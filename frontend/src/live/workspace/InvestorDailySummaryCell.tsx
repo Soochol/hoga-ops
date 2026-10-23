@@ -29,7 +29,7 @@ export function InvestorDailySummaryCell({ values, unit, useK = true, foot = fal
       : formatAmount(unit === 'amt_eok' ? value * 100 : value);
     const shown = showUnitSuffix ? formatted : formatted.replace(/[K억]$/, '');
     const text = side === 'net' ? shown : shown.replace(/^\+/, '');
-    return <span title={`${labels[side]} ${exact}`} aria-label={`${labels[side]} ${exact}`}
+    return <span data-tooltip={`${labels[side]} ${exact}`} aria-label={`${labels[side]} ${exact}`}
       className={value === null ? 'text-fg-dimmer' : side === 'net' ? `font-semibold ${qtyClass(value)}` : 'text-fg-dim'}>
       {numberAlignment === 'decimal' && separateColumns && !showUnitSuffix
         ? <InvestorDailyNumber text={text} amount={unit !== 'qty_shares'} /> : text}

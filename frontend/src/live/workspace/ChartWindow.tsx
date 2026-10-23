@@ -811,7 +811,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
       >
         {/* 종목 식별·현재가·경고는 창 타이틀바(TitleBarSymbolRow)로 이관됐다.
             이 헤더는 봉·그리기·보조지표·레전드·저장·수집을 소유한다. */}
-        {/* 액션은 항상 아이콘으로 표시하고 이름·상태·목적지는 title 툴팁으로 안내한다.
+        {/* 액션은 항상 아이콘으로 표시하고 이름·상태·목적지는 공통 툴팁으로 안내한다.
             좁아지면 일·주·월을 분봉 드롭다운에 합친다. 모든 기능은 도구 행에서 직접 접근한다.
             최소 폭에서도 부족하면 버튼 묶음을 줄바꿈한다. */}
         <TimeframeControl

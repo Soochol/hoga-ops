@@ -500,7 +500,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           <span
             data-testid="orderbook-available-hint"
             className="truncate"
-            title={`다음 가용: ${formatKstClock(availableFrom)}`}
+            data-tooltip={`다음 가용: ${formatKstClock(availableFrom)}`}
           >
             다음 가용: {formatKstClock(availableFrom)}
           </span>
@@ -512,7 +512,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           <span
             data-testid="orderbook-forming-hint"
             className="truncate"
-            title="형성 중 · 실시간"
+            data-tooltip="형성 중 · 실시간"
           >
             형성 중 · 실시간
           </span>

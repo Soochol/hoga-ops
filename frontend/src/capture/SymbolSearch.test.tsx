@@ -154,7 +154,7 @@ describe('SymbolSearch', () => {
     expect(screen.getByText(/완결 14일/)).toBeTruthy();
     // The breakdown tooltip lives on title attribute of the count.
     const countEl = screen.getByText(/완결 14일/);
-    expect(countEl.getAttribute('title')).toMatch(/완결 14 · 부분 3 · 미완결 2/);
+    expect(countEl.getAttribute('data-tooltip')).toMatch(/완결 14 · 부분 3 · 미완결 2/);
   });
 
   // Q19(개정): 상태 뱃지는 **경고일 때만** 뜬다. 정상(fresh)·첫 fetch 중(loading)은
@@ -397,7 +397,7 @@ describe('SymbolSearch — empty-result staleness nudge', () => {
     const name = screen.getByText('삼성전자');
     expect(name.className).toContain('truncate');   // = overflow-hidden + ellipsis + nowrap
     expect(name.className).toContain('min-w-0');    // grid 자식이 1fr 아래로 줄 수 있게
-    expect(name.getAttribute('title')).toBe('삼성전자');
+    expect(name.getAttribute('data-tooltip')).toBe('삼성전자');
   });
   // `showRefresh` 는 stale·unavailable 둘 다 포함하는데 갱신 블록이 unavailable 일 때만
   // 렌더돼서 **stale 에서 그 조건이 죽어 있었다** — "오래됨" 을 본 사용자에게 갱신 경로가

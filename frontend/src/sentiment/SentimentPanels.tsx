@@ -9,6 +9,7 @@ import type {
 } from '../api/optionSentiment';
 import { fmtCompact } from './sentimentFormat';
 import { useChartWidth } from './useChartWidth';
+import '../ui/TextTooltip.css';
 import {
   AXIS_H,
   CHART_W,
@@ -163,8 +164,9 @@ function HoverTip({
   const left = Math.min(92, Math.max(8, pct));
   return (
     <div
-      className="pointer-events-none absolute top-1 z-10 -translate-x-1/2 rounded border border-border bg-bg-card px-sm py-xs text-xs tabular-nums"
-      style={{ left: `${left}%`, boxShadow: 'var(--shadow)' }}
+      role="tooltip"
+      className="tooltip-surface pointer-events-none absolute top-1 z-10 -translate-x-1/2 tabular-nums"
+      style={{ left: `${left}%` }}
     >
       <div className="text-fg">{strike.toLocaleString()}</div>
       {rows.map(([k, v]) => (

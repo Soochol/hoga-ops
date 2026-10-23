@@ -2411,7 +2411,7 @@ describe('LiveChartRoot', () => {
       { wrapper },
     );
     const chip = screen.getByTestId('partial-load-chip');
-    expect(chip.getAttribute('title')).toContain('8005');
+    expect(chip.getAttribute('data-tooltip')).toContain('8005');
     expect(chip.textContent).toContain('실패');
     expect(chip.style.pointerEvents).toBe('auto');
   });

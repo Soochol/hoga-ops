@@ -23,7 +23,7 @@ describe('MinuteJumpChip', () => {
     show({ date: '20260821', status: 'no-data' });
     expect(chip().textContent).toContain('봉 없음');
     expect(chip().textContent).not.toContain('불러오는 중');
-    expect(chip().getAttribute('title')).toContain('봉이 없습니다');
+    expect(chip().getAttribute('data-tooltip')).toContain('봉이 없습니다');
   });
 
   // 봉이 없는 것은 시장의 사실이지 이 창의 고장이 아니다 — 경고색은 사용자가 뭔가
@@ -38,15 +38,15 @@ describe('MinuteJumpChip', () => {
 
   it('착지에는 "이동했습니다" 를 쓰지 않는다 — 그 뒤 사용자가 팬했을 수 있다', () => {
     show({ date: '20260821', status: 'landed' });
-    expect(chip().getAttribute('title')).toContain('점프 대상 20260821');
-    expect(chip().getAttribute('title')).not.toContain('이동했');
+    expect(chip().getAttribute('data-tooltip')).toContain('점프 대상 20260821');
+    expect(chip().getAttribute('data-tooltip')).not.toContain('이동했');
   });
 
   // 종전 문구는 「보유 기간(13개월)」 상수였고 **이중으로 틀렸다** — 판정에 쓰이는
   // 벤더 벽은 250일이고, 디스크 모드에는 벽 자체가 없다.
   it('갈 수 없을 때 **그 창의 실제 하한 날짜**를 말한다 — 상수를 적지 않는다', () => {
     show({ date: '20250101', status: 'out-of-retention', floorDate: '20251217' });
-    const detail = chip().getAttribute('title') ?? '';
+    const detail = chip().getAttribute('data-tooltip') ?? '';
     expect(detail).toContain('20251217');
     expect(detail).not.toContain('13개월');
     expect(detail).toContain('일봉으로 보거나');
@@ -54,7 +54,7 @@ describe('MinuteJumpChip', () => {
 
   it('하한을 모르면 기간 문장을 **아예 뺀다** — 모르는 것을 지어내지 않는다', () => {
     show({ date: '20250101', status: 'out-of-retention' });
-    const detail = chip().getAttribute('title') ?? '';
+    const detail = chip().getAttribute('data-tooltip') ?? '';
     expect(detail).not.toContain('가장 이른 날');
     expect(detail).toContain('일봉으로 보거나');
   });

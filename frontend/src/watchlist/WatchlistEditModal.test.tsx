@@ -96,7 +96,7 @@ describe('WatchlistEditModal', () => {
     const row = screen.getByTestId('folder-row-f_a');
     const actions = screen.getByTestId('folder-row-actions-f_a');
 
-    expect(name).toHaveAttribute('title', '길게 만든 관심 그룹 이름');
+    expect(name).toHaveAttribute('data-tooltip', '길게 만든 관심 그룹 이름');
     expect(row).toHaveClass('relative');
     // 액션 묶음은 **평범한 flex 아이템**이다 — absolute + hover 패딩(pr-12/pr-16) 조합은
     // 패딩 값과 액션 실제 폭을 손으로 맞춰야 해서 어긋나면 카운트를 덮었다(pr-12 시절

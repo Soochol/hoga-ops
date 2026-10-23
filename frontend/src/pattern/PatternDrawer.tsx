@@ -449,7 +449,7 @@ function MatchRow({
           <span
             className="block truncate text-badge text-fg-dimmer"
             data-testid="pattern-struct-miss"
-            title={missNames.join(' · ')}
+            data-tooltip={missNames.join(' · ')}
           >
             {missText}
           </span>
@@ -457,7 +457,7 @@ function MatchRow({
       </span>
       <CandleThumb bars={row.bars} tail={row.tail} ma={row.ma} maPeriods={maPeriods} height={34} />
       <span className="pattern-match-figures flex flex-col items-end gap-[3px] font-data tabular-nums">
-        <span className="font-data text-xs font-semibold text-fg" title={`유사도(상관계수) ${row.corr.toFixed(3)} · 1에 가까울수록 비슷한 모양`}>{row.corr.toFixed(3)}</span>
+        <span className="font-data text-xs font-semibold text-fg" data-tooltip={`유사도(상관계수) ${row.corr.toFixed(3)} · 1에 가까울수록 비슷한 모양`}>{row.corr.toFixed(3)}</span>
         {mode === 'history' ? (
           <span
             className="font-data text-2xs"

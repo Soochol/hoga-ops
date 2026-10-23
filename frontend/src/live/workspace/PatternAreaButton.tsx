@@ -1,6 +1,7 @@
 import { useDrawingsStore } from '../../state/drawings';
 import { useRightRailStore } from '../../state/rightRail';
 import { PatternIcon } from '../../ui/PatternIcon';
+import { TooltipButton } from '../../ui/TextTooltip';
 import { PATTERN_MAX_BARS, PATTERN_MIN_BARS } from '../../pattern/patternQuery';
 
 /**
@@ -23,7 +24,7 @@ import { PATTERN_MAX_BARS, PATTERN_MIN_BARS } from '../../pattern/patternQuery';
 export function PatternAreaButton({ showLabel = true }: { showLabel?: boolean }) {
   const active = useDrawingsStore((s) => s.activeTool === 'measure');
   return (
-    <button
+    <TooltipButton
       type="button"
       aria-label="패턴 영역 — 기간을 드래그해 봉 패턴 찾기"
       title={`패턴 영역 — 기간을 드래그해 닮은 봉 패턴 찾기 (${PATTERN_MIN_BARS}~${PATTERN_MAX_BARS}봉)`}
@@ -40,6 +41,6 @@ export function PatternAreaButton({ showLabel = true }: { showLabel?: boolean })
     >
       <PatternIcon filled={active} className="h-[1.125em] w-[1.125em]" />
       {showLabel && <span>패턴 영역</span>}
-    </button>
+    </TooltipButton>
   );
 }

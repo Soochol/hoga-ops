@@ -27,7 +27,7 @@ export function DiskStateBadge(
   const p = PRESENTATION[displayStateFor(state, upstreamGapConfirmed)];
   return (
     <span
-      title={p.label}
+      data-tooltip={p.label}
       aria-label={p.label}
       className="font-data text-sm leading-none"
       style={{ color: p.color }}
@@ -71,7 +71,7 @@ export function VenueStateCell({ venues }: { venues?: StockDateVenue[] }) {
           <span className="text-badge text-fg-dim">{v.venue}</span>
           {v.disk_state === null || v.disk_state === undefined ? (
             <span
-              title={`${v.venue} — 기대됐으나 아직 없음`}
+              data-tooltip={`${v.venue} — 기대됐으나 아직 없음`}
               aria-label={`${v.venue} 없음`}
               className="font-data text-sm leading-none"
               style={{ color: 'var(--fg-dimmer)' }}
@@ -94,7 +94,7 @@ export function DiskStateDot({ state }: { state: DiskStateValue }) {
   const p = PRESENTATION[state];
   return (
     <span
-      title={`이 종목의 캡처 중 ${p.label}이 있음`}
+      data-tooltip={`이 종목의 캡처 중 ${p.label}이 있음`}
       aria-label={p.label}
       className="inline-block w-1.5 h-1.5 rounded-full"
       style={{ backgroundColor: p.color }}

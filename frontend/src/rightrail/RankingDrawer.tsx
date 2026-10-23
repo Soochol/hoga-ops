@@ -77,7 +77,7 @@ function formatTradeValue(won: number | null | undefined) {
 }
 function TradeValue({ won }: { won: number | null | undefined }) {
   return <span className="ranking-trade-value flex-none text-right font-data tabular-nums text-xs text-fg-dim leading-tight"
-    title={won == null ? undefined : `${won.toLocaleString('ko-KR')}원`}>
+    data-tooltip={won == null ? undefined : `${won.toLocaleString('ko-KR')}원`}>
     {formatTradeValue(won)}
   </span>;
 }
@@ -89,7 +89,7 @@ function formatNetBuyAmount(won: number | null | undefined) {
 }
 function NetBuyAmount({ won, label }: { won: number | null | undefined; label: string }) {
   const amount = formatNetBuyAmount(won);
-  return <span className="ranking-net-buy text-xs leading-tight font-data tabular-nums text-fg-dim" title={`${label} 순매수 ${amount}`}>{amount}</span>;
+  return <span className="ranking-net-buy text-xs leading-tight font-data tabular-nums text-fg-dim" data-tooltip={`${label} 순매수 ${amount}`}>{amount}</span>;
 }
 
 function netBuyAmount(row: RankingRow, kind: RankingKind): number | null | undefined {
@@ -98,7 +98,7 @@ function netBuyAmount(row: RankingRow, kind: RankingKind): number | null | undef
 
 function RankingMetricValue({ metric }: { metric: RankingMetric }) {
   return <span className="ranking-metric flex-none text-right font-data tabular-nums text-xs text-fg-dim leading-tight"
-    title={metric.title}>{metric.text}</span>;
+    data-tooltip={metric.title}>{metric.text}</span>;
 }
 
 const MARKETS: { key: RankingMarket; label: string }[] = [
@@ -403,7 +403,7 @@ export function RankingDrawer() {
             type="button"
             aria-pressed={excludeEtf}
             onClick={() => setExcludeEtf((v) => !v)}
-            title="ETF·ETN 종목을 순위에서 제외"
+            data-tooltip="ETF·ETN 종목을 순위에서 제외"
             className={`rounded-lg border px-2 py-[3px] text-xs ${
               excludeEtf
                 ? 'border-accent bg-tint-selection text-accent'

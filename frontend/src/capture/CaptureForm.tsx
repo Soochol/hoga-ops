@@ -187,7 +187,7 @@ export function CaptureForm({
         type="button"
         onClick={onStart}
         disabled={!valid || notOwned}
-        title={notOwned ? '다른 서버 인스턴스가 캡처 큐를 소유 중입니다 — 이 인스턴스에서는 시작할 수 없습니다' : undefined}
+        data-tooltip={notOwned ? '다른 서버 인스턴스가 캡처 큐를 소유 중입니다 — 이 인스턴스에서는 시작할 수 없습니다' : undefined}
         style={{
           // disabled 배경은 --bg-input 이 아니라 --bg-subtle — Ledger 는
           // --bg-input == --bg(#FDFCF8) 라 버튼 면이 통째로 사라졌다(2026-08-04

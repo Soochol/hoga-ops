@@ -49,10 +49,10 @@ describe('SavedRangeChip', () => {
 
   it('툴팁도 고정 여부에 따라 다른 사실을 말한다', () => {
     const { unmount } = render(<SavedRangeChip {...base} krxPinned />);
-    expect(screen.getByTestId('live-saved-range-chip').getAttribute('title')).toContain('KRX 기준으로 고정');
+    expect(screen.getByTestId('live-saved-range-chip').getAttribute('data-tooltip')).toContain('KRX 기준으로 고정');
     unmount();
     render(<SavedRangeChip {...base} krxPinned={false} />);
-    expect(screen.getByTestId('live-saved-range-chip').getAttribute('title')).toContain('이 창의 선택을 따릅니다');
+    expect(screen.getByTestId('live-saved-range-chip').getAttribute('data-tooltip')).toContain('이 창의 선택을 따릅니다');
   });
 
   it('안내가 있으면 칩 문구가 안내로 바뀌고 상세는 툴팁에 실린다', () => {
@@ -65,7 +65,7 @@ describe('SavedRangeChip', () => {
     );
     const chip = screen.getByTestId('live-saved-range-chip');
     expect(chip.textContent).toContain('저장 구간이 분봉 범위 밖');
-    expect(chip.getAttribute('title')).toContain('분봉은 최근');
+    expect(chip.getAttribute('data-tooltip')).toContain('분봉은 최근');
   });
 
   it('× 로 해제한다 — /live 에 라이브 복귀 컨트롤이 따로 없어 이것이 유일한 문이다', async () => {

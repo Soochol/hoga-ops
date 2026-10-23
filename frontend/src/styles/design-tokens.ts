@@ -112,6 +112,8 @@ export const SIZE_TOKENS = {
   // ── spacing (4px base intent unit) ─────────────────────────────
   'space-2xs':  { rem: 0.125,   baseIntentPx: 2,    usage: 'Hairline gaps' },
   'space-xs':   { rem: 0.25,    baseIntentPx: 4,    usage: 'Pane gap, tight stacking' },
+  'space-tooltip-x': { rem: 0.625, baseIntentPx: 10, usage: 'Soft compact tooltip inline padding' },
+  'space-tooltip-y': { rem: 0.375, baseIntentPx: 6, usage: 'Soft compact tooltip block padding' },
   'space-sm':   { rem: 0.5,     baseIntentPx: 8,    usage: 'Card padding inside, gap between sidebar cards' },
   'space-md':   { rem: 0.75,    baseIntentPx: 12,   usage: 'Card padding default' },
   'space-lg':   { rem: 1,       baseIntentPx: 16,   usage: 'Section spacing, nav item padding' },

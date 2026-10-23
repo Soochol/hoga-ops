@@ -69,7 +69,7 @@ test('saved-condition popup stays open and protects edits in page and rail workf
   await expect(longOption).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('condition-search-wide.png') });
   await longOption.click();
-  await expect(trigger).toHaveAttribute('title', saves.at(-1)!.name);
+  await expect(trigger).toHaveAttribute('data-tooltip', saves.at(-1)!.name);
   await trigger.click();
   await search.press('Escape');
   await expect(trigger).toBeFocused();
@@ -84,7 +84,7 @@ test('saved-condition popup stays open and protects edits in page and rail workf
   await expect(page.getByRole('listbox').getByRole('option')).toBeInViewport();
   await page.screenshot({ path: testInfo.outputPath('condition-search-compact.png') });
   await search.press('Enter');
-  await expect(panelTrigger).toHaveAttribute('title', saves.at(-1)!.name);
+  await expect(panelTrigger).toHaveAttribute('data-tooltip', saves.at(-1)!.name);
   await panelTrigger.click();
   await builder.getByText('조건검색', { exact: true }).click();
   await expect(page.getByRole('listbox')).toHaveCount(0);

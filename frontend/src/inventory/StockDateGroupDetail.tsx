@@ -119,7 +119,7 @@ export function StockDateGroupDetail({ group }: Props) {
               <SortableTh column="failStreak" sort={sort} onSort={onSort} title="연속 실패 횟수 — 5회 시 차단">재시도</SortableTh>
               {/* 정렬 불가 — venue 상태는 여러 값의 묶음이라 한 축으로 못 세운다.
                   행 정렬은 hogaplay 주 상태(`state`)가 계속 담당한다. */}
-              <th className="px-3 py-2 border-b text-left font-normal text-fg-dim" title="kiwoom_live 시장별 상태 — 자리가 없으면 그 시장에 미상장">시장</th>
+              <th className="px-3 py-2 border-b text-left font-normal text-fg-dim" data-tooltip="kiwoom_live 시장별 상태 — 자리가 없으면 그 시장에 미상장">시장</th>
               <SortableTh column="date"     sort={sort} onSort={onSort}>날짜</SortableTh>
               <SortableTh column="captured" sort={sort} onSort={onSort}>수집 시각</SortableTh>
               <SortableTh column="volume"   sort={sort} onSort={onSort} right>거래량</SortableTh>
@@ -422,7 +422,7 @@ function SortableTh({ column, sort, onSort, right, title, children }: SortableTh
     >
       <button
         type="button"
-        title={title}
+        data-tooltip={title}
         onClick={() => onSort(column)}
         className={`group inline-flex items-center gap-1 select-none ${labelClass} ${
           right ? 'flex-row-reverse' : 'flex-row'

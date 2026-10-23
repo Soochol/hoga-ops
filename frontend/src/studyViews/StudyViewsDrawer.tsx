@@ -353,7 +353,7 @@ export function StudyViewsDrawer() {
       <RailTreeRow
         key={row.id}
         data-saved-row={row.id}
-        title={`${formatStudyViewTitle(row)} (${row.code}) · ${formatStudyViewMeta(row)}`}
+        data-tooltip={`${formatStudyViewTitle(row)} (${row.code}) · ${formatStudyViewMeta(row)}`}
         className="group"
         role={isEditing ? undefined : 'button'}
         tabIndex={isEditing ? undefined : 0}
@@ -466,7 +466,7 @@ export function StudyViewsDrawer() {
               </div>
               {/* 메타행 — 저장뷰 이름만으론 "무엇을 저장했나"를 알 수 없던 것 보완:
                   타임프레임 · 복기 대상일(종목은 위 이름행에 표시). */}
-              <div className="truncate text-xs text-fg-dim font-data" title={`${row.code} · ${studyTimeframeLabel(row.timeframe)} · ${studyViewPeriod(row.range, row.timeframe)}`}>
+              <div className="truncate text-xs text-fg-dim font-data" data-tooltip={`${row.code} · ${studyTimeframeLabel(row.timeframe)} · ${studyViewPeriod(row.range, row.timeframe)}`}>
                 {formatStudyViewMeta(row)}
               </div>
               {/* 메모 미리보기(첫 줄) — 검색만 되고 화면엔 없던 복기 노트를 목록에서
@@ -516,7 +516,7 @@ export function StudyViewsDrawer() {
                 <button
                   type="button"
                   aria-label="검색어 지우기"
-                  title="검색어 지우기"
+                  data-tooltip="검색어 지우기"
                   onClick={() => setQuery('')}
                   className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-fg-dim hover:bg-bg-input-hover hover:text-fg focus-visible:outline focus-visible:outline-1 focus-visible:outline-accent"
                 >
@@ -576,7 +576,7 @@ export function StudyViewsDrawer() {
                           type="button"
                           aria-label={`${group.label} ${groupCollapsed ? '펼치기' : '접기'}`}
                           aria-expanded={!groupCollapsed}
-                          title={`${group.label}`}
+                          data-tooltip={`${group.label}`}
                           // Ctrl/⌘+클릭 = 그 종목의 최신 저장뷰를 앱 탭으로 열던 분기는
                           // ADR-0149 로 사라졌다. 헤더 클릭은 이제 접기/펼치기 하나다.
                           // 행에 생긴 브라우저 새 탭(ctrl/⌘+클릭)을 여기까지 넓히지 않은 것은

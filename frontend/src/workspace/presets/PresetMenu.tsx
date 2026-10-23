@@ -177,7 +177,7 @@ export function PresetMenu<P>({
             type="button"
             role="menuitem"
             aria-label={preset.name}
-            title={labels.applyTitle}
+            data-tooltip={labels.applyTitle}
             data-testid={`${testIdPrefix}-apply-${preset.id}`}
             onClick={() => applyPreset(preset.id)}
             className={`flex min-w-0 flex-1 items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-bg-input-hover ${

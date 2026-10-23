@@ -220,7 +220,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
             <span
               className={`text-xs font-semibold truncate text-fg${onRenameFolder ? ' select-none' : ''}`}
               data-testid={`heatmap-folder-name-${folderId}`}
-              title={`${folder.name}${onRenameFolder ? ' · 더블클릭하여 이름 변경' : ''}`}
+              data-tooltip={`${folder.name}${onRenameFolder ? ' · 더블클릭하여 이름 변경' : ''}`}
               onDoubleClick={onRenameFolder
                 ? (e) => { e.preventDefault(); setRenaming({ value: folder.name, error: null }); }
                 : undefined}
@@ -232,7 +232,7 @@ export function HeatmapFolder({ folder, entries, quoteByCode, sortQuoteByCode, s
         </span>
         <span className="flex items-center gap-2 flex-none ml-auto whitespace-nowrap">
           {avg !== null && (
-            <span className="text-xs font-data tabular-nums text-fg-dim" title={`평균 등락률 · 시세 반영 ${entries.filter((e) => pctOf(e.code) != null).length}/${entries.length}종목 · 동일 가중 평균`}>
+            <span className="text-xs font-data tabular-nums text-fg-dim" data-tooltip={`평균 등락률 · 시세 반영 ${entries.filter((e) => pctOf(e.code) != null).length}/${entries.length}종목 · 동일 가중 평균`}>
               {avg > 0 ? '+' : ''}{avg.toFixed(1)}%
             </span>
           )}

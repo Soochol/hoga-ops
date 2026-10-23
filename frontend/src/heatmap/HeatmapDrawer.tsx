@@ -390,7 +390,7 @@ function HeaderAddButton({ folders, isDuplicate, onDuplicate }: {
   const btnRef = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button ref={btnRef} type="button" title="종목 추가" data-testid="heatmap-header-add"
+      <button ref={btnRef} type="button" data-tooltip="종목 추가" data-testid="heatmap-header-add"
         onClick={() => setOpen((v) => !v)}
         className="h-7 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-accent">
         종목 추가
@@ -854,7 +854,7 @@ export function HeatmapDrawer() {
         title="히트맵"
         actions={(
           <div className="flex items-center gap-2">
-            <button type="button" aria-label="새 그룹 만들기" title="새 그룹 만들기"
+            <button type="button" aria-label="새 그룹 만들기" data-tooltip="새 그룹 만들기"
                     onClick={() => setAddGroupOpen(true)}
                     className="flex h-7 items-center gap-1 rounded px-2 text-xs text-fg-dim hover:bg-bg-input-hover hover:text-fg">
               <PlusIcon /> 그룹

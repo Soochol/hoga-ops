@@ -24,6 +24,7 @@
  */
 import { useCallback, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { TooltipButton } from '../ui/TextTooltip';
 import { DRAWABLE_TOOLS_ORDER, TOOLS, shortcutLabel } from '../chart/drawing/tools';
 import type { DrawingTool } from '../chart/drawing/types';
 import { drawingScopeFor, useDrawingsStore } from '../state/drawings';
@@ -184,7 +185,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
 
   return (
     <div ref={wrapRef} className="relative shrink-0">
-      <button
+      <TooltipButton
         ref={buttonRef}
         type="button"
         data-testid="drawing-menu-trigger"
@@ -209,7 +210,7 @@ export function DrawingMenu({ code, timeframe, showLabel = true }: Props) {
       >
         <span aria-hidden="true" className="font-data">{drawing ? activeSpec.glyph : '✎'}</span>
         {showLabel && <span className="live-action-label">{drawing ? activeSpec.label : '그리기'}</span>}
-      </button>
+      </TooltipButton>
       {menu && createPortal(menu, document.body)}
     </div>
   );

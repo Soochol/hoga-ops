@@ -13,7 +13,7 @@ export function DataContext({ mode, time, detail, children, tone }: { mode: stri
   const label = [mode, formattedTime, detail].filter(Boolean).join(' · ');
   // 커서 시각·상태가 길어져도 본문 높이를 밀지 않는다. 전체 문구는 title로 남긴다.
   return <div className="live-data-context flex min-w-0 shrink-0 items-center justify-between bg-bg-card font-data text-fg-dim" data-testid="data-window-context">
-    <span className="min-w-0 flex-1 truncate" title={label}>
+    <span className="min-w-0 flex-1 truncate" data-tooltip={label}>
       <span className="live-data-mode" data-tone={tone}>
         {tone && <span aria-hidden className="live-data-mode-dot" />}{mode}
       </span>

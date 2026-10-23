@@ -299,6 +299,9 @@ test('표시 옵션이 같은 종목·그룹의 두 차트에서 독립 적용�
   expect(hover!.onTop).toBe(true);
   await page.mouse.move(hover!.x, hover!.y);
   await expect(page.locator('[data-win="a"]').getByTestId('candle-tooltip')).toBeVisible();
+  await expect(page.locator('[data-win="a"]').getByTestId('candle-tooltip')).toHaveClass(/tooltip-surface/);
+  await expect(page.locator('[data-win="a"]').getByTestId('candle-tooltip')).toHaveCSS('padding', '6px 10px');
+  await expect(page.locator('[data-win="a"]').getByTestId('candle-tooltip')).toHaveCSS('font-size', '11.5px');
   await expect(page.locator('[data-win="b"]').getByTestId('candle-tooltip')).toHaveCount(0);
   const b = await open(page, 'b');
   for (const def of CHART_DISPLAY_TOGGLES) await expect(b.getByRole('switch', { name: def.label, exact: true })).toHaveAttribute('aria-checked', String(initial[def.key]));

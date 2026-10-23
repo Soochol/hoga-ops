@@ -127,7 +127,7 @@ function MajorIndicesChart({ model }: { model: Overview }) {
       </g>
     </svg>
     {!hasData && <span className="major-indices-empty">{model.loading ? '지수 불러오는 중…' : '지수 데이터 없음'}</span>}
-    {cursorTime !== null && hasData && <div className="major-indices-tooltip" role="tooltip" style={{ left: tooltipX }}>
+    {cursorTime !== null && hasData && <div className="tooltip-surface major-indices-tooltip" role="tooltip" style={{ left: tooltipX }}>
       <span>{timeLabel(cursorTime)}</span>
       {hovered.map(s => <div key={s.id}><i aria-hidden style={{ background: s.color }} /><span>{s.label}</span><span>{formatPercent(s.at)}</span></div>)}
     </div>}

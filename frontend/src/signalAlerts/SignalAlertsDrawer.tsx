@@ -102,7 +102,7 @@ export default function SignalAlertsDrawer({ today = todayKst() }: { today?: str
         actions={(
           <RailToolbarIconButton
             aria-label="오늘 인박스 비우기"
-            title={visibleAlerts.length === 0 ? "비울 알림 없음" : "오늘 인박스 비우기"}
+            data-tooltip={visibleAlerts.length === 0 ? "비울 알림 없음" : "오늘 인박스 비우기"}
             disabled={visibleAlerts.length === 0 || clearToday.isPending}
             onClick={() => setConfirmingClear((open) => !open)}
           >

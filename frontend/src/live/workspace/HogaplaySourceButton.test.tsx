@@ -39,10 +39,12 @@ describe('HogaplaySourceButton', () => {
     ['no-code' as const, '지수는 지원하지 않습니다'],
     ['calendar-timeframe' as const, '분봉에서만 지원합니다'],
     ['saved-range' as const, '저장뷰 기간을 보는 중입니다'],
-  ])('비활성 사유 %s 는 그 사유를 툴팁에 적는다', (reason, fragment) => {
+  ])('비활성 사유 %s 는 그 사유를 툴팁에 적는다', async (reason, fragment) => {
     const { btn, onToggle } = renderButton({ disabledReason: reason });
     expect(btn).toBeDisabled();
-    expect(btn.title).toContain(fragment);
+    expect(btn).not.toHaveAttribute('title');
+    fireEvent.pointerEnter(btn, { pointerType: 'mouse', buttons: 0 });
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(fragment);
     fireEvent.click(btn);
     expect(onToggle).not.toHaveBeenCalled();
   });

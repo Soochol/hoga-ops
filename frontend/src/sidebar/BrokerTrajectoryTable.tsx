@@ -147,7 +147,7 @@ export default function BrokerTrajectoryTable({ series, cursorMs, venue, gapThre
               data-testid="broker-row"
               className="broker-row grid py-[3px] items-center"
             >
-              <span className="whitespace-nowrap" title={entry.broker}>
+              <span className="whitespace-nowrap" data-tooltip={entry.broker}>
                 {brokerDisplayShort(entry.broker)}
                 {foreignFlags[rowIndex] && (
                   <span

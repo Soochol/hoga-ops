@@ -4,6 +4,7 @@ import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
 import { playOrderReceiptSound, playOrderSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import '../settings/SettingsEditor.css';
 import { SettingsRow, ToggleSwitch } from '../settings/SettingsRow';
+import { TooltipButton } from '../../ui/TextTooltip';
 import './OrderSettingsForm.css';
 
 function OrderSettingsSection({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -83,11 +84,11 @@ export function OrderSettingsForm({ draft, onChange, busy }: {
             onChange={enabled => {
               if (enabled) prepareOrderReceiptSound();
               onChange({ ...draft, [key]: enabled });
-            }} actions={<button type="button" className="ui-choice" disabled={busy} aria-label={`${label} 들어보기`}
+            }} actions={<TooltipButton type="button" className="ui-choice" disabled={busy} aria-label={`${label} 들어보기`}
               title={side === 'BUY' ? '소프트 코드 · 0.5초' : '레이더 · 0.5초'} onClick={async () => {
                 setPreviewFailed(false);
                 setPreviewFailed(!await playOrderSound(side === 'BUY' ? 'buy-fill' : 'sell-fill'));
-              }}>소리 들어보기</button>} />;
+              }}>소리 들어보기</TooltipButton>} />;
         })}
         {previewFailed && <p role="status" className="text-xs text-fg-dim">소리를 재생할 수 없습니다. 브라우저의 소리 설정을 확인하세요.</p>}
       </OrderSettingsSection>

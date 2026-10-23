@@ -11,7 +11,7 @@ export function SortCycleButton({ label, mode, onCycle, expanded = false }: {
 }) {
   const qm = toQuoteSortMode(mode);
   return (
-    <button type="button" aria-label={`${label} 정렬`} title={quoteSortModeDescription(qm)}
+    <button type="button" aria-label={`${label} 정렬`} data-tooltip={quoteSortModeDescription(qm)}
       onClick={onCycle} aria-pressed={mode !== 'manual'}
       className={`flex items-center gap-1 h-7 px-1 leading-none rounded hover:bg-bg-input-hover ${
         mode === 'manual' ? 'text-fg-dimmer' : 'text-accent'

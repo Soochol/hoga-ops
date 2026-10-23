@@ -11,6 +11,7 @@
  */
 import { requestCollectDialog, type CollectVisibleRange } from './collectDialogControls';
 import { COMPACT_PADDING_INLINE } from './chartHeaderCompact';
+import { TooltipButton } from '../../ui/TextTooltip';
 
 export function CollectButton({
   code,
@@ -28,7 +29,7 @@ export function CollectButton({
   getVisibleRange?: () => CollectVisibleRange | null;
 }) {
   return (
-    <button
+    <TooltipButton
       type="button"
       data-testid="live-collect-button"
       disabled={code == null}
@@ -48,6 +49,6 @@ export function CollectButton({
         <path d="M5 21h14" />
       </svg>
       {showLabel && <span>수집</span>}
-    </button>
+    </TooltipButton>
   );
 }

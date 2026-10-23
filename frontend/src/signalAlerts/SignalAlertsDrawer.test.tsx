@@ -38,7 +38,7 @@ describe('SignalAlertsDrawer', () => {
     renderWithProviders(<SignalAlertsDrawer today="20260701" />);
     expect(await screen.findByText(enabled ? '알림 사용 중' : '알림 꺼짐')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '오늘 인박스 비우기' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '오늘 인박스 비우기' })).toHaveAttribute('title', '비울 알림 없음');
+    expect(screen.getByRole('button', { name: '오늘 인박스 비우기' })).toHaveAttribute('data-tooltip', '비울 알림 없음');
     expect(screen.queryByRole('button', { name: '알림 설정' })).not.toBeInTheDocument();
   });
 

@@ -24,7 +24,7 @@ export function CollectionDot({ status, showLabel = true, showTooltip = true }: 
   return (
     <span
       data-testid={`collection-dot-${status}`}
-      title={showTooltip ? ariaLabel : undefined}
+      data-tooltip={showTooltip ? ariaLabel : undefined}
       role="img"
       aria-label={ariaLabel}
       className="inline-flex items-center gap-1 font-data"

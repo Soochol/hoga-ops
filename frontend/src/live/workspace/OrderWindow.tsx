@@ -7,6 +7,7 @@ import { ModalShell } from '../../ui/ModalShell';
 import { PanelContextMenu } from '../../ui/PanelContextMenu';
 import { GripIcon } from '../../ui/RailActionIcons';
 import { useTextTooltip } from '../../ui/useTextTooltip';
+import { TextTooltip } from '../../ui/TextTooltip';
 import { BookPriceAmount } from './BookPriceAmount';
 import { useBookPriceLayout } from './useBookPriceLayout';
 import { useOrderColumnLayout } from './useOrderColumnLayout';
@@ -680,7 +681,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           if (next) onAccountChange(next.account_seq);
           closeAction(); resetDrag(); setPending({}); setFailedRequest(null); setNotice(null); setReceipt(null); reviewUnknown(false); }}>
         {accounts.data.accounts.map(a => <option key={a.account_seq} value={a.account_seq}>{accountDisplayLabel(a.label)}</option>)}
-      </select> : <span className="order-account-label text-fg-dim" title={accountDisplayLabel(activeAccount?.label)}>{accountDisplayLabel(activeAccount?.label)}</span>}
+      </select> : <TextTooltip text={accountDisplayLabel(activeAccount?.label)}><span className="order-account-label text-fg-dim">{accountDisplayLabel(activeAccount?.label)}</span></TextTooltip>}
       {routes && <span className="text-fg-dim" aria-label="주문 경로">시세 {venue} · 주문 {activeAccount?.order_enabled === false ? '검증 대기' : orderRoute}</span>}
       {routes && routes.length > 1 && <select aria-label="주문 거래소" value={orderRoute} disabled={busy || dragInProgress}
         onChange={e => { chooseRoute(e.target.value as 'SOR' | 'KRX' | 'NXT'); closeAction(); resetDrag(); setFailedRequest(null); }}>
@@ -816,7 +817,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             {isAsk ? <div className="order-depth order-ask" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`a:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>
               : info}
             <div className={`order-price book-price-line ${lastPrice === level.price ? 'order-current' : ''} ${pct == null || pct === 0 ? '' : pct > 0 ? 'text-price-up' : 'text-price-down'}`}><span className="order-price-value book-price-value"><BookDayMarker marker={dayMarkers.get(level.price) ?? null} />
-              {index === averageMarkerIndex && <span className="order-average-marker" role="img" aria-label={averageMarkerLabel} title={averageMarkerLabel} />}
+              {index === averageMarkerIndex && <TextTooltip text={averageMarkerLabel}><span className="order-average-marker" role="img" aria-label={averageMarkerLabel} /></TextTooltip>}
               <BookPriceAmount price={level.price} qty={level.qty} /></span><small className="book-price-percent">{pct == null ? '—' : `${pct > 0 ? '+' : ''}${pct.toFixed(2)}%`}</small></div>
             {isAsk ? <div className="order-summary-slot" />
               : <div className="order-depth order-bid" style={{ '--order-depth': level.qty / maxQty } as React.CSSProperties}><span className="order-depth-values"><BookQtyDelta badge={deltaBadges?.get(`b:${level.price}`) ?? null} /><span className="order-depth-qty">{fmt(level.qty)}</span></span></div>}

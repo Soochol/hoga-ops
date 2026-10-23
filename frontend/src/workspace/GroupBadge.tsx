@@ -41,7 +41,7 @@ export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그�
         // 않도록 여기서 끊는다.
         onPointerDown={(e) => e.stopPropagation()}
         onClick={onToggle}
-        title={title ?? undefined}
+        data-tooltip={title ?? undefined}
       >
         {group}
       </button>
@@ -64,7 +64,7 @@ export function GroupBadge({ group, open, onToggle, onPick, title = '링크 그�
               key={g}
               type="button"
               aria-pressed={g === group}
-              title={descriptions ? `그룹 ${g} · ${descriptions[g]}` : `그룹 ${g}`}
+              data-tooltip={descriptions ? `그룹 ${g} · ${descriptions[g]}` : `그룹 ${g}`}
               className={`h-[20px] w-[20px] rounded-sm font-data text-2xs font-semibold ${
                 g === group
                   ? 'bg-accent text-accent-fg'

@@ -33,7 +33,7 @@ test('chart toolbar icon buttons save a rendered PNG and copy an image to the cl
   await expect(toolbar.locator('.live-action-label')).toHaveCount(0);
   for (const button of [copyButton, saveButton, toolbar.getByRole('button', { name: '보조지표', exact: true })]) {
     await expect(button).toHaveText('');
-    await expect(button).toHaveAttribute('title', /.+/);
+    await expect(button).toHaveAttribute('data-tooltip', /.+/);
   }
   await expect(toolbar.getByRole('button', { name: '그리기', exact: true })).not.toContainText('그리기');
   const indicatorBounds = await toolbar.getByRole('button', { name: '보조지표', exact: true }).boundingBox();

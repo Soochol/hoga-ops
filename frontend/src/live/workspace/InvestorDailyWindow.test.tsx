@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../../tests/tooltipQueries';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -461,7 +462,7 @@ it('접힌 표는 날짜 한 줄·투자자별 세 숫자 열을 K주로 표시�
   expect(within(row).getAllByRole('cell')).toHaveLength(12);
   const foreign = () => within(row).getAllByRole('cell').slice(3, 6);
   expect(foreign().map(cell => cell.textContent)).toEqual(['+85', '285', '200']);
-  expect(within(foreign()[1]).getByTitle('총매수 285,400주')).toBeInTheDocument();
+  expect(tooltipQueries(foreign()[1]).getByText('총매수 285,400주')).toBeInTheDocument();
   expect(screen.getByLabelText('숫자 표시 순서')).toHaveTextContent('각 주체: 순매수 · 매수 · 매도');
   expect(screen.queryByRole('group', { name: '매매 기준' })).toBeNull();
   expect(screen.getByRole('group', { name: '표기 방법' })).toBeInTheDocument();

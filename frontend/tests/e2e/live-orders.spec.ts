@@ -1419,6 +1419,81 @@ test('두 호가창의 시고저는 빠진 중간 가격을 최근접 행에 표
   expect(commands).toHaveLength(0);
 });
 
+test('메뉴와 호가주문은 소프트 컴팩트 툴팁·키보드·화면 경계 보정을 공유한다', async ({ page }, info) => {
+  const { window, commands } = await setup(page, false, false);
+  await page.evaluate(async () => {
+    const path = '/src/state/workspace.ts';
+    const { useWorkspaceStore } = await import(path);
+    const state = useWorkspaceStore.getState();
+    state.setWindowRects(state.windows.map((win: import('../../src/state/workspace').WorkspaceWindow) => ({ id: win.id,
+      rect: win.kind === 'chart' ? { x: 0, y: 0, w: .6, h: 1 }
+        : win.kind === 'order' ? { x: .6, y: 0, w: .4, h: 1 } : { x: 0, y: .8, w: .3, h: .2 },
+    })));
+    const chart = state.windows.find((win: import('../../src/state/workspace').WorkspaceWindow) => win.kind === 'chart')!;
+    state.setChartTimeframe(chart.id, 'D');
+    state.focusWindow(chart.id);
+  });
+  const toolbar = page.getByTestId('chart-window-header').first();
+  const tooltip = page.getByRole('tooltip');
+  const menu = toolbar.getByRole('button', { name: '보조지표', exact: true });
+  await expect(toolbar.locator('[title]')).toHaveCount(0);
+  await expect(page.locator('.live-window-titlebar [title]')).toHaveCount(0);
+  await menu.hover();
+  await expect(tooltip).toHaveText('보조지표');
+  const styles = await tooltip.evaluate(el => {
+    const style = getComputedStyle(el);
+    return Object.fromEntries(['fontSize', 'borderRadius', 'padding', 'boxShadow', 'backgroundColor', 'color']
+      .map(key => [key, style[key as keyof CSSStyleDeclaration]]));
+  });
+  expect(styles.fontSize).toBe('11.5px');
+  expect(styles.borderRadius).toBe('6px');
+  expect(styles.padding).toBe('6px 10px');
+  await page.screenshot({ path: info.outputPath('soft-compact-menu.png') });
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toHaveCount(0);
+
+  const disabled = toolbar.getByTestId('live-hogaplay-source-button');
+  await expect(disabled).toBeDisabled();
+  await disabled.hover();
+  await expect(tooltip).toHaveText('hogaplay 저장 데이터 — 분봉에서만 지원합니다');
+  await page.keyboard.press('Escape');
+  await menu.focus();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(menu).toBeFocused();
+  await expect(tooltip).toHaveText('보조지표');
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toHaveCount(0);
+  await menu.evaluate(el => (el as HTMLElement).blur());
+
+  const price = window.locator('.book-price-amount').filter({ hasText: /^67,300$/ });
+  await price.hover();
+  await expect(tooltip).toHaveText('0.07억');
+  for (const [key, value] of Object.entries(styles)) {
+    expect(await tooltip.evaluate((el, key) => getComputedStyle(el)[key as keyof CSSStyleDeclaration], key)).toBe(value);
+  }
+  await page.screenshot({ path: info.outputPath('soft-compact-order.png') });
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toHaveCount(0);
+
+  // An actual menu trigger at the viewport corner exercises measured placement.
+  const drawing = toolbar.getByTestId('drawing-menu-trigger');
+  await drawing.evaluate(el => { Object.assign((el as HTMLElement).style,
+    { position: 'fixed', left: 'auto', top: 'auto', right: '8px', bottom: '8px', zIndex: '100' }); });
+  await drawing.hover();
+  await expect(tooltip).toHaveText('그리기');
+  const box = (await tooltip.boundingBox())!;
+  const triggerBox = (await drawing.boundingBox())!;
+  const viewport = page.viewportSize()!;
+  expect(box.x).toBeGreaterThanOrEqual(8);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width - 7);
+  expect(box.y + box.height).toBeLessThanOrEqual(triggerBox.y - 3);
+  await drawing.click();
+  await expect(page.getByRole('menu', { name: '그리기 도구' })).toBeVisible();
+  await expect(tooltip).toHaveCount(0);
+  expect(commands).toHaveLength(0);
+});
+
 test('두 호가창의 가격 호버는 매수·매도 잔량 금액을 주문창 툴팁으로 표시한다', async ({ page }, testInfo) => {
   const { window, commands } = await setup(page, false, false);
   const book = page.locator('.book-panel');
@@ -1540,8 +1615,8 @@ test('주문창은 실시간 틱 방향색·잔량 증감·가격 왼쪽 시고�
     bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 - i * 100, qty: i === 0 ? 120 : 200 + i })),
     total_ask_qty: 2200, total_bid_qty: 1920,
   });
-  const incoming = window.locator('[data-order-price="67300"] .order-ask').getByTitle('+1,200', { exact: true });
-  const outgoing = window.locator('[data-order-price="67200"] .order-bid').getByTitle('−80', { exact: true });
+  const incoming = window.locator('[data-order-price="67300"] .order-ask').locator('[data-tooltip="+1,200"]');
+  const outgoing = window.locator('[data-order-price="67200"] .order-bid').locator('[data-tooltip="−80"]');
   await expect(incoming).toHaveClass(/text-price-up/);
   await expect(outgoing).toHaveClass(/text-price-down/);
   await expect(window.locator('[data-order-price="67300"] .order-depth-qty')).toHaveText('1,300');

@@ -1451,7 +1451,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           ref={textInputRef}
           data-drawing-text-input
           aria-label="텍스트 그리기"
-          title="Shift+Enter 줄바꿈 · Enter 완료 · Esc 취소"
+          data-tooltip="Shift+Enter 줄바꿈 · Enter 완료 · Esc 취소"
           wrap="off"
           rows={editorLayout.lines.length}
           value={textValue}

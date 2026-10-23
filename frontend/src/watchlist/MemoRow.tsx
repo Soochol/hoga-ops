@@ -154,7 +154,7 @@ export function MemoRow({
         type="button"
         data-testid={`${testId}-edit`}
         aria-label={text ? `메모 편집: ${text}` : '빈칸 — 메모 입력'}
-        title={text || undefined}
+        data-tooltip={text || undefined}
         onClick={() => setEditing(true)}
         className="flex-1 min-w-0 self-stretch flex items-center text-left text-xs text-fg-dim leading-tight cursor-text"
       >

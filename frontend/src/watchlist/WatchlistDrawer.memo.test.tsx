@@ -111,7 +111,7 @@ describe('WatchlistDrawer — 메모(빈칸) 행', () => {
     const long = '가'.repeat(60);
     renderPanel({ ...DATA, memos: [{ ...MEMOS[0], text: long }] });
     const btn = await screen.findByTestId('watchlist-memo-m_0000000a-edit');
-    expect(btn).toHaveAttribute('title', long);
+    expect(btn).toHaveAttribute('data-tooltip', long);
     expect(btn.querySelector('.truncate')).not.toBeNull();
   });
 

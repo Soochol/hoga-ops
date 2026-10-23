@@ -3089,7 +3089,7 @@ export function LiveChartRoot({
           {cb !== null && cb.candles.length > 0 && warnSummary.count > 0 && (
             <div
               data-testid="partial-load-chip"
-              title={warnSummary.firstMsg ?? undefined}
+              data-tooltip={warnSummary.firstMsg ?? undefined}
               style={{
                 ...chipStyle,
                 ...(warnSummary.firstMsg ? { pointerEvents: 'auto' as const } : null),

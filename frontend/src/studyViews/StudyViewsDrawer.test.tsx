@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../tests/tooltipQueries';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -230,7 +231,7 @@ it('renders saved views as Code-keyed stock-name tree groups', () => {
 
   const samsung = screen.getByRole('region', { name: '삼성전자 저장뷰' });
   expect(within(samsung).getByRole('button', { name: '삼성전자 접기' })).toHaveAttribute('aria-expanded', 'true');
-  expect(within(samsung).getByTitle('삼성전자')).toBeTruthy();
+  expect(tooltipQueries(samsung).getByText('삼성전자')).toBeTruthy();
   expect(within(samsung).getByRole('button', { name: '급등 이후 저장뷰 열기' })).toBeTruthy();
   expect(within(samsung).queryByText('삼성전자 · 5m')).toBeNull();
   expect(within(samsung).getByRole('button', { name: '종가 반등 저장뷰 열기' })).toBeTruthy();

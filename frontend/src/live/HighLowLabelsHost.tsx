@@ -233,12 +233,10 @@ function HighLowLabelsHost({
   }, [chart, series, enabled, remeasureLegend]);
 
   return enabled && series && detail ? createPortal(
-    <div role="tooltip" data-testid="extreme-label-detail" style={{
+    <div className="tooltip-surface" role="tooltip" data-testid="extreme-label-detail" style={{
       position: 'fixed', left: detail.left, top: detail.top, zIndex: 1000,
       pointerEvents: 'none', maxWidth: 'min(280px, calc(100vw - 16px))',
-      padding: 'var(--space-2xs) var(--space-sm)', borderRadius: 'var(--radius-md)',
-      border: '1px solid var(--border)', background: 'var(--bg-card)',
-      color: detail.color, fontFamily: 'var(--font-data)', fontSize: 'var(--text-xs)',
+      color: detail.color, fontFamily: 'var(--font-data)',
     }}>{detail.text}</div>, document.body,
   ) : null;
 }

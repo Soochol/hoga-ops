@@ -72,7 +72,7 @@ export function MinuteJumpChip({
   return (
     <div
       data-testid="live-minute-jump-chip"
-      title={detail}
+      data-tooltip={detail}
       aria-label={detail}
       className="live-chart-state-chip flex min-w-0 items-center gap-1 rounded border px-1.5 py-0.5 text-2xs"
       style={{ ...noticeStyle(warn ? 'warn' : 'neutral'), ...(warn ? {} : { color: tone }) }}

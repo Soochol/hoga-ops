@@ -179,7 +179,7 @@ export function InvestorCard() {
               label="수급 표시 구간"
             />
           ) : (
-            <span className="font-data text-2xs text-fg-dimmer" title={units?.reason}>
+            <span className="font-data text-2xs text-fg-dimmer" data-tooltip={units?.reason}>
               {product ? `${product.iscd}/${sel}` : sel}
             </span>
           )
