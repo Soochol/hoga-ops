@@ -86,6 +86,8 @@
 값 내림차순→오름차순→제공 순서로 순환한다. 수급은 부호를 포함한 금액으로
 비교하고 결측값은 양 방향 모두 마지막에 둔다. 다른 열을 누르면 그 열의 첫 정렬로
 시작하며 활성 헤더에만 ▲·▼를 표시한다. 종합 행 고정과 세 열 공통 농도는 유지한다.
+후속 요청으로 업종 표 위의 `12/24개 · 외국인 내림차순` 형태의 개수·정렬 상태
+라벨을 제거한다. 정렬 방향은 활성 헤더의 ▲·▼로 표시한다.
 순위 세 종류와 연속 매매 두 주체는 카드 안에서 전환하며 각 주체의 저장된 시장·방향을
 유지한다. 중앙 최대 폭 1680px, 기존 테마·데이터 색상·기간·세션·결측값 의미는 유지한다.
 좁은 폭에서는 행을 순서대로 쌓고 숫자 표만 내부 가로 스크롤한다.
@@ -111,6 +113,9 @@
 표시한다. 코스피·코스닥의 당일·일별에는 항상 `억원`을 표시하며, 파생은 금액 단위가
 확정되면 `억원`, 미확정이면 `계약 · 단위 미확정`을 표시한다. 단위의 작은 보조색
 글씨를 유지하고, 좁은 폭에서는 제목·단위를 함께 둔 채 우측 조작부만 다음 줄로 옮긴다.
+2026-10-23 사용자 요청: 전역 하단 시장지표 바의 수급은 코스피·코스닥·K200 선물
+모두 외국인(표시명 외인)·기관·개인 순서로 표시한다.
+후속 요청으로 수급 앞의 `순매수 · 억원` 라벨을 제거한다.
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.

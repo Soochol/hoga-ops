@@ -20,7 +20,7 @@ import { flowStatus } from '../market/flowStatus';
 import { fmtSigned } from '../market/marketFormat';
 
 const ROTATE_MS = 10_000;
-const ACTORS = [['individual', '개인'], ['foreign', '외인'], ['institution', '기관']] as const;
+const ACTORS = [['foreign', '외인'], ['institution', '기관'], ['individual', '개인']] as const;
 const STATUS_LABELS = {
   waiting: '수신 대기', receiving: '', delayed: '수신 지연', closed: '',
   unavailable: '수집 설정 없음', unknown: '수신 상태 확인 불가',
@@ -179,7 +179,6 @@ export function MarketIndexBar() {
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
       {showFlow && summary ? (
         <>
-          <span data-market-bar-content className="shrink-0 font-ui text-xs text-fg-dim">순매수 · 억원</span>
           <InvestorFlowItem group={summary.stock} market="KOSPI" label="코스피" receivedAt={flow.dataUpdatedAt} nowMs={nowMs} error={flow.isError} />
           <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
           <InvestorFlowItem group={summary.stock} market="KOSDAQ" label="코스닥" receivedAt={flow.dataUpdatedAt} nowMs={nowMs} error={flow.isError} />

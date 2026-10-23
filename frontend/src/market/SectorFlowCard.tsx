@@ -98,7 +98,6 @@ export function SectorFlowCard() {
         <ModeSwitch value={category} onChange={setCategory} label="업종 지수 유형" options={[
           ['all', '전체'], ['industry', '업종'], ['index', '규모·대표지수'], ['unknown', '미분류'],
         ]} />
-        <span className="text-2xs text-fg-dim">{sectors.length}/{filtered.length}개 · {sort == null ? '제공 순서' : `${COLUMNS.find(([key]) => key === sort.key)![1]} ${sort.direction === 'asc' ? '오름차순' : '내림차순'}`}</span>
       </div>
       {(flow.isError || quotes.isError) && <div className="market-sector-stamps text-2xs text-fg-dim">
         {flow.isError && <div><span>수급</span><DataStatus hasData={flow.data !== undefined} error /></div>}

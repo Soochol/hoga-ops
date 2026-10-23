@@ -155,7 +155,7 @@ describe('MarketIndexBar', () => {
     const bar = screen.getByTestId('market-index-bar');
     await user.click(bar);
     expect(bar).toHaveAttribute('data-page', 'flow');
-    expect(screen.getByTestId('market-flow-KOSPI')).toHaveTextContent('개인-3,240외인+2,180기관+980');
+    expect(screen.getByTestId('market-flow-KOSPI')).toHaveTextContent('외인+2,180기관+980개인-3,240');
     expect(screen.getByTestId('market-flow-KOSDAQ')).toHaveTextContent('기관0');
     expect(screen.getByTestId('market-flow-F001')).toHaveTextContent('K200 선물');
     expect(within(screen.getByTestId('market-flow-KOSPI')).getByText('-3,240')).toHaveClass('text-price-down');
