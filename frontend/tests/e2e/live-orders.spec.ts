@@ -1730,6 +1730,49 @@ test('보유 63주 클릭은 미체결 매도 20주를 제외한 43주를 입력
   expect(commands).toHaveLength(0);
 });
 
+test('전량 매도 주문 후 보유 클릭은 주문수량을 0으로 바꾸고 기존 주문을 유지한다', async ({ page }, testInfo) => {
+  const market = { holdingQuantity: '100', sellableQuantity: '100' };
+  const { window, commands } = await setup(page, false, false, false, 0, 1, market);
+  // The accepted sell reserves all holdings; the next balance response reports zero sellable.
+  await page.route(/^https?:\/\/[^/]+\/api\/trading\/orders$/, async route => {
+    if (route.request().postDataJSON().side === 'SELL') market.sellableQuantity = '0';
+    await route.fallback();
+  });
+  const holding = window.getByRole('button', { name: '매입수량', exact: true });
+  const input = window.getByRole('spinbutton', { name: '신규 주문 수량' });
+  await holding.click();
+  await expect(input).toHaveValue('100');
+  const zeroBalance = page.waitForResponse(async response => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/trading/state' && url.searchParams.get('part') === 'balances'
+      && (await response.json()).sellable_quantity === '0';
+  });
+  await window.getByRole('button', { name: /매도 67,300원 주문 추가/ }).dblclick();
+  const reserved = window.getByLabel('매도 67,300원 주문', { exact: true });
+  await expect(reserved).toHaveText('100');
+  expect(commands).toHaveLength(1);
+  expect(commands[0]).toMatchObject({ side: 'SELL', quantity: 100 });
+  // Orders refresh ahead of balances; click only after the server confirms zero sellable.
+  await zeroBalance;
+  await expect(input).toHaveValue('100');
+  await expect(holding).toContainText('100');
+  await expect(holding).toBeEnabled();
+  await holding.click();
+  await expect(input).toHaveValue('0');
+  for (const side of ['매수', '매도']) {
+    const button = window.getByRole('button', { name: new RegExp(`${side} 67,200원 주문 추가`) });
+    await expect(button).toHaveAttribute('aria-disabled', 'true');
+    // aria-disabled lanes still explain blocked mouse attempts, as in the existing tests.
+    const box = (await button.boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.getByRole('alert', { name: '주문 알림' })).toContainText('주문 수량은 1주 이상');
+    await button.press('Enter');
+  }
+  expect(commands).toHaveLength(1);
+  await expect(reserved).toHaveText('100');
+  await window.screenshot({ path: testInfo.outputPath('all-holdings-reserved-zero-quantity.png') });
+});
+
 test('압축형 주·금액 전환은 수량 한 칸을 유지하고 금액 버튼은 현재가로 한 번 환산한다', async ({ page }, testInfo) => {
   const { window, commands, ws } = await setup(page, false, false);
   await ws.waitForSubscribe('005930');

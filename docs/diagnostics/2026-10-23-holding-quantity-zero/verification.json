@@ -1,0 +1,92 @@
+{
+  "recorded_at": "2026-10-23T09:01:59.503249+00:00",
+  "base_commit": "3c85dab7263657e182a1a90dd851c2693b9a51f4",
+  "head_commit": "3c85dab7263657e182a1a90dd851c2693b9a51f4",
+  "working_tree_overlay": {
+    "frontend/src/live/workspace/OrderWindow.test.tsx": "bfc4f4b1acd8cd1a42cc4d67af1e485ac2ecc13f8bb42883262b1445181028f0",
+    "frontend/src/live/workspace/OrderWindow.tsx": "ac3668934d827a796f4d1997dc7f3b6e1e57bf4637b4402c9db59f6dae23829b",
+    "frontend/tests/e2e/live-orders.spec.ts": "54c3b8a9640d98a2a5c7a64757c6d53d4ff596ec1f0a165bf2e40b074c912f16"
+  },
+  "input_manifest": {
+    "file": "inputs.json.gz",
+    "count": 2169,
+    "uncompressed_sha256": "42458094132c4aa346741434863c4c789eee833a25de1d2ee53b07653ab4771c"
+  },
+  "environment": {
+    "os": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 156.0.8078.47",
+    "react": "18.3.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "playwright": "1.60.0",
+    "vite": "8.0.16"
+  },
+  "checks": [
+    {
+      "command": "npx vitest run src/live/workspace/OrderWindow.test.tsx -t '전량 매도 주문 후|미보유는' --maxWorkers=2",
+      "result": "expected red before implementation: 2 failed at disabled holding button",
+      "log": "red-unit.log.gz"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/OrderWindow.test.tsx src/live/workspace/useOrderQuantity.test.ts src/state/orderWindowSettings.test.ts --maxWorkers=2",
+      "result": "172 passed, 3 files",
+      "log": "unit.log.gz"
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed all 3 TypeScript projects; application and unit inputs unchanged afterwards",
+      "log": "typecheck-final.log.gz"
+    },
+    {
+      "command": "npx tsc -p tsconfig.e2e.json --noEmit",
+      "result": "passed after final E2E test synchronization adjustments",
+      "log": "e2e-typecheck.log.gz"
+    },
+    {
+      "command": "npx playwright test live-orders.spec.ts --grep '전량 매도 주문 후|보유 63주 클릭|공통 수량·환산|압축형 주·금액|주문 불가 사유와 공통 알림' --reporter=line",
+      "result": "6 passed, 18.8s, workers=1, system Chrome",
+      "log": "e2e-verified.log.gz"
+    },
+    {
+      "command": "npx vite build (Playwright webServer command)",
+      "result": "passed; existing chunk size warning",
+      "log": "e2e-verified.log.gz"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "reproduction": [
+    "Start with holding=100, sellable=100.",
+    "Click holding to set quantity=100 and submit one SELL order at 67300 through HTTP fixture.",
+    "Fixture reserves 100 shares and next balance response reports sellable=0.",
+    "After this balance response quantity stays 100 until user clicks; holdings display remains 100 and holding button stays enabled.",
+    "Click holding: input becomes 0.",
+    "Mouse and Enter attempts on both BUY and SELL at 67200 send no additional requests; original SELL 100 at 67300 remains."
+  ],
+  "test_development_notes": [
+    "Initial E2E attempt clicked before the existing delayed balance refresh; fixed by waiting for the response reporting zero sellable.",
+    "Second attempt reached quantity=0 but Playwright locator dblclick waits for aria-disabled to clear; final test uses real mouse coordinates as existing blocked-order tests do."
+  ],
+  "scope": {
+    "backend_changed": false,
+    "broker_orders": "HTTP/WS fixtures only; no real brokerage orders",
+    "ports": {
+      "backend": 20481,
+      "frontend": 21481
+    },
+    "user_servers": "5173 and 8000 not restarted",
+    "full_suites": "not rerun: targeted checks cover changed quantity input behavior"
+  },
+  "pr_verification_reuse": {
+    "checked_at": "2026-10-23T09:04:05.219062+00:00",
+    "base_commit": "3c85dab7263657e182a1a90dd851c2693b9a51f4",
+    "matched_input_files": 2169,
+    "environment_versions_match": true,
+    "reason": "All recorded source, test, fixture, lockfile and configuration hashes and tool versions match; PR head will be identified in its description."
+  }
+}
