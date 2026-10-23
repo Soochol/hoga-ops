@@ -147,8 +147,8 @@ async def test_disconnect_mid_snapshot_cannot_publish_partial_state(tmp_path):
     assert session._state == {} and session._peaks == {} and session._received_at == 0
 
 
-def test_single_oversized_key_and_too_many_keys_still_fail_explicitly():
-    with pytest.raises(ValueError, match="peak exceeds byte limit"):
+def test_oversized_scalar_and_too_many_keys_fail_explicitly():
+    with pytest.raises(ValueError, match="scalar exceeds frame byte limit"):
         list(ipc.state_frames(snapshot(1, {"a": "x" * 1000}), limit=500))
     with pytest.raises(ValueError, match="capacity"):
         list(ipc.state_frames(snapshot(1, dict.fromkeys(map(str, range(ipc.STATE_MAX_PEAK_KEYS + 1)), 1))))

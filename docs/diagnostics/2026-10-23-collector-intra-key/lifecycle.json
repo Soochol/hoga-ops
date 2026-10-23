@@ -1,0 +1,68 @@
+{
+  "roundtrips": 100,
+  "points_per_side": 2000,
+  "matched": true,
+  "samples": [
+    {
+      "cycle": 10,
+      "retained": 24031,
+      "peak": 1240910,
+      "rss": 51314688
+    },
+    {
+      "cycle": 20,
+      "retained": 24390,
+      "peak": 1240910,
+      "rss": 51380224
+    },
+    {
+      "cycle": 30,
+      "retained": 24658,
+      "peak": 1240910,
+      "rss": 50372608
+    },
+    {
+      "cycle": 40,
+      "retained": 24985,
+      "peak": 1240910,
+      "rss": 50339840
+    },
+    {
+      "cycle": 50,
+      "retained": 25312,
+      "peak": 1240910,
+      "rss": 50339840
+    },
+    {
+      "cycle": 60,
+      "retained": 25612,
+      "peak": 1241107,
+      "rss": 50405376
+    },
+    {
+      "cycle": 70,
+      "retained": 25939,
+      "peak": 1241434,
+      "rss": 50405376
+    },
+    {
+      "cycle": 80,
+      "retained": 26266,
+      "peak": 1241761,
+      "rss": 50339840
+    },
+    {
+      "cycle": 90,
+      "retained": 26534,
+      "peak": 1242029,
+      "rss": 50339840
+    },
+    {
+      "cycle": 100,
+      "retained": 26925,
+      "peak": 1242420,
+      "rss": 50405376
+    }
+  ],
+  "forced_gc": false
+}

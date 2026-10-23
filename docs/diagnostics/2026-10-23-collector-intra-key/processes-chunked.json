@@ -1,0 +1,26 @@
+{
+  "strategy": "chunked",
+  "points_per_side": 200000,
+  "sha256": "25bc358fc124bf53bf80bcbf7d222c11c7e993b87a521ec400344cc40c6ce232",
+  "matched": true,
+  "sender": {
+    "rss_before": 183689216,
+    "rss_after": 183889920,
+    "traced_retained": 1531,
+    "traced_peak": 1039750,
+    "transfer": {
+      "frames": 79,
+      "bytes": 19641552,
+      "max_frame": 255480,
+      "max_buffer": 356572
+    }
+  },
+  "parent": {
+    "rss_before": 46624768,
+    "rss_after": 281198592,
+    "traced_retained": 100970715,
+    "traced_peak": 101253948
+  },
+  "forced_gc": false,
+  "limits": "RSS includes imports/arenas; source tree constructed before tracing."
+}
