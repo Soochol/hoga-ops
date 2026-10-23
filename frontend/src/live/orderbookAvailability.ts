@@ -39,6 +39,8 @@ export function deriveOrderbookAvailability(input: {
   const status = statusCurrent ? input.status : undefined;
   const kiwoom = status?.kiwoom;
   const view = kiwoom?.view_subscriptions?.find(row => row.code === code && row.venue === venue);
+  const wire = `${code}${venue === 'NXT' ? '_NX' : venue === 'UN' ? '_AL' : ''}`;
+  const registered = view?.phase === 'registered' || kiwoom?.ready_registrations?.includes(wire);
   const serverReceived = kiwoom?.data_received_ms?.[`${code}:${venue}:ob`];
   const hasBook = bookMs !== undefined;
   // An actual current book wins over a slower status poll and metadata errors.
@@ -66,12 +68,16 @@ export function deriveOrderbookAvailability(input: {
     if (recentBookEvidence(input.browserReceivedMs, nowMs)) {
       state = { kind: 'timestamp_old', message: '호가 시각 갱신 대기',
         detail: '호가는 수신 중이며 호가 시각은 아직 갱신되지 않았습니다', action: 'status' };
+    } else if (registered && !input.error && status?.provider_status?.connection === 'connected'
+      && status.provider_status.failures?.length === 0 && !kiwoom?.collector?.error
+      && !kiwoom?.collector?.storage_errors?.length) {
+      // A quiet book is not itself a failure; only soften copy with current health evidence.
+      state = { kind: 'stale', message: '호가 갱신 대기 중',
+        detail: '새 호가가 수신되면 자동으로 갱신됩니다', action: 'status' };
     } else state = { kind: 'stale', message: '호가 갱신 확인 중',
       detail: status ? '최근 호가 수신이 없습니다. 호가가 뜸한 경우와 수신 중단을 아직 구분할 수 없습니다'
         : '현재 서버의 호가 수신 상태를 확인할 수 없습니다', action: 'status' };
   } else {
-    const wire = `${code}${venue === 'NXT' ? '_NX' : venue === 'UN' ? '_AL' : ''}`;
-    const registered = view?.phase === 'registered' || kiwoom?.ready_registrations?.includes(wire);
     const receivedBook = kiwoom?.data_received_ms?.[`${code}:${venue}:ob`];
     state = registered
       ? { kind: 'awaiting_book', message: receivedBook ? '호가 수신 대기 중' : '첫 호가 수신 대기 중', action: 'status' }

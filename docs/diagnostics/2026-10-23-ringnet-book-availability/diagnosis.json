@@ -1,0 +1,251 @@
+{
+  "checked_at": "2026-10-23T18:23:43.345233+09:00",
+  "code": "042500",
+  "name": "링네트",
+  "health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "e06369153"
+  },
+  "master": [
+    {
+      "code": "042500",
+      "name": "링네트",
+      "market": "KOSDAQ",
+      "security_type": "stock",
+      "nxt_enabled": false,
+      "listing_date": "2002-01-10",
+      "captured_count": 0,
+      "captured_breakdown": {
+        "complete": 0,
+        "source_partial": 0,
+        "client_incomplete": 0,
+        "invalid": 0
+      },
+      "capture_counts_status": "ready"
+    }
+  ],
+  "status": {
+    "capture_healthy": true,
+    "capture_reason": "healthy",
+    "provider_status": {
+      "observed_at_ms": 1792747423306,
+      "connection": "connected",
+      "connected_accounts": 6,
+      "configured_accounts": 6,
+      "ready_accounts": 6,
+      "last_received_at_ms": 1792747422839,
+      "notice": null,
+      "notice_phase": null,
+      "notice_config_error": false,
+      "failures": []
+    }
+  },
+  "view_subscriptions": [
+    {
+      "code": "042500",
+      "venue": "KRX",
+      "phase": "registered",
+      "connection_generation": 1
+    }
+  ],
+  "ready_registrations": [
+    "042500"
+  ],
+  "data_received": {
+    "042500:KRX:trade": {
+      "received_at_ms": 1792746653152,
+      "received_at_kst": "2026-10-23T18:10:53.152000+09:00"
+    },
+    "042500:KRX:ob": {
+      "received_at_ms": 1792746653152,
+      "received_at_kst": "2026-10-23T18:10:53.152000+09:00"
+    },
+    "042500:KRX:broker": {
+      "received_at_ms": 1792746653348,
+      "received_at_kst": "2026-10-23T18:10:53.348000+09:00"
+    },
+    "042500:KRX:program": {
+      "received_at_ms": 1792746663546,
+      "received_at_kst": "2026-10-23T18:11:03.546000+09:00"
+    }
+  },
+  "collector": {
+    "ready": true,
+    "alive": true,
+    "state_reason": "ready",
+    "state_age_ms": 308,
+    "display_gaps": 0,
+    "discarded_old_frames": 24
+  },
+  "last_ob": {
+    "t_ms": 1792746652000,
+    "kind": "ob",
+    "code": "042500",
+    "asks": [
+      {
+        "price": 4140,
+        "qty": 100
+      },
+      {
+        "price": 4145,
+        "qty": 179
+      },
+      {
+        "price": 4160,
+        "qty": 201
+      },
+      {
+        "price": 4165,
+        "qty": 50
+      },
+      {
+        "price": 4180,
+        "qty": 526
+      },
+      {
+        "price": 4185,
+        "qty": 1
+      },
+      {
+        "price": 4190,
+        "qty": 246
+      },
+      {
+        "price": 4195,
+        "qty": 100
+      },
+      {
+        "price": 4210,
+        "qty": 1292
+      },
+      {
+        "price": 4500,
+        "qty": 505
+      }
+    ],
+    "bids": [
+      {
+        "price": 4120,
+        "qty": 1065
+      },
+      {
+        "price": 4115,
+        "qty": 1269
+      },
+      {
+        "price": 4110,
+        "qty": 600
+      },
+      {
+        "price": 4105,
+        "qty": 50
+      },
+      {
+        "price": 4100,
+        "qty": 1111
+      },
+      {
+        "price": 4090,
+        "qty": 50
+      },
+      {
+        "price": 4070,
+        "qty": 2
+      },
+      {
+        "price": 4050,
+        "qty": 12
+      },
+      {
+        "price": 4000,
+        "qty": 1
+      },
+      {
+        "price": 3985,
+        "qty": 1
+      }
+    ],
+    "total_ask_qty": 3200,
+    "total_bid_qty": 4161,
+    "phase": "aftermarket",
+    "venue": "KRX"
+  },
+  "last_trade": [
+    {
+      "t_ms": 1792746652000,
+      "kind": "trade",
+      "trades": [
+        {
+          "t_ms": 1792746652000,
+          "price": 4135,
+          "qty": 27,
+          "side": 1,
+          "side_source": "kiwoom_ws"
+        }
+      ],
+      "prev_close": 4180,
+      "day_open": 4155,
+      "day_high": 4210,
+      "day_low": 4070,
+      "fill_strength_pct": 52.98,
+      "vs_prev_volume_pct": 93.55,
+      "cum_volume": 88321,
+      "vwap": 4121,
+      "cum_value": 364000000,
+      "phase": "aftermarket",
+      "venue": "KRX"
+    }
+  ],
+  "series_counts": {
+    "snapshots": 2,
+    "trades": 2
+  },
+  "rest_quote": {
+    "phase": "open",
+    "quotes": [
+      {
+        "code": "042500",
+        "price": 4135,
+        "change_pct": -1.08,
+        "change_won": -45,
+        "open": 4155,
+        "high": 4210,
+        "low": 4070,
+        "volume": 88321,
+        "trade_value": 364000000,
+        "vs_prev_volume_pct": 93.55,
+        "fill_strength_pct": 52.98,
+        "baseline_price": 4180,
+        "baseline_date": null,
+        "change_pct_source": "kis",
+        "warnings": [],
+        "stale": false,
+        "stale_reason": null
+      }
+    ],
+    "missing_codes": []
+  },
+  "aftermarket_exclusion": {
+    "code": "042500",
+    "date": "20261023",
+    "status": "checked",
+    "reasons": [],
+    "checked_at_ms": 1792747423344,
+    "source": "kiwoom_ka10100"
+  },
+  "findings": [
+    "Ringnet is currently NXT-ineligible in the application master. The existing effective-venue rule resolves the integrated selection to KRX for current orderbook/trade display.",
+    "The broker registration is acknowledged and all six account connections continue receiving other market data. Ringnet itself has no later book receipt in the observed status.",
+    "A successful independent ka10095 REST quote reports the same current price and cumulative volume as the last WS trade: 4135 KRW and 88321 shares.",
+    "The current aftermarket exclusion endpoint reports checked with an empty reason list; it does not establish complete eligibility.",
+    "The lack of a later trade is consistent with inactivity. It does not establish that the ladder has not changed or rule out an upstream per-code book delivery problem.",
+    "The existing stale notice accurately preserves uncertainty; no demonstrated frontend delivery gap or reconnect failure warrants a product-code change from these observations."
+  ],
+  "scope": "Read-only application GET endpoints and existing logs/source. No new broker client/session, token issuance, server restart, trading or user configuration change.",
+  "limits": [
+    "No independent current full 10-level orderbook endpoint was available in the existing app API.",
+    "No complete raw vendor frame history was sampled.",
+    "No product code changed; no test run required."
+  ]
+}
