@@ -34,6 +34,7 @@ const KOSPI_WIRE = {
   change_rate: 0.43,
   t_ms: 1_782_000_000_000,
 };
+const KRX100_WIRE = { ...KOSPI_WIRE, id: 'KRX100', label: 'KRX 100' };
 
 function flowSummary(withPoints = false): InvestorFlowSummaryResponse {
   const now = Date.now();
@@ -78,6 +79,7 @@ describe('MarketIndexBar', () => {
     mockMarketData([
         KOSPI_WIRE,
         { id: 'KOSDAQ', label: 'KOSDAQ', value: 821.1, change: -3.2, change_rate: -0.39, t_ms: 1 },
+        KRX100_WIRE,
       ]);
 
     renderBar();
@@ -85,14 +87,18 @@ describe('MarketIndexBar', () => {
     const bar = await screen.findByTestId('market-index-bar');
     expect(bar).toBeInTheDocument();
     expect(screen.getByText('KOSPI')).toBeInTheDocument();
+    expect(screen.queryByText('KRX 100')).not.toBeInTheDocument();
     expect(screen.getByText('2,855.67')).toBeInTheDocument();
     // 상승 = price-up(빨강) + '+' 부호, 하락 = price-down(파랑) — 색+부호 2중.
     expect(screen.getByText('+12.30 (+0.43%)')).toHaveClass('text-price-up');
     expect(screen.getByText('-3.20 (-0.39%)')).toHaveClass('text-price-down');
   });
 
-  it('renders nothing when the backend returns no quotes', async () => {
-    const spy = mockMarketData([]);
+  it.each([
+    { label: 'empty response', quotes: [] },
+    { label: 'only KRX100', quotes: [KRX100_WIRE] },
+  ])('renders nothing when no visible indices are available ($label)', async ({ quotes }) => {
+    const spy = mockMarketData(quotes);
 
     renderBar();
 

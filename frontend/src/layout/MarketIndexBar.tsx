@@ -136,7 +136,8 @@ function CoverageChip({ leadingDivider }: { leadingDivider: boolean }) {
 
 export function MarketIndexBar() {
   const nowMs = useNowMs(10_000);
-  const { data } = useMarketIndexQuotes();
+  const { data: quotes } = useMarketIndexQuotes();
+  const data = quotes?.filter(quote => quote.id !== 'KRX100');
   const { data: status } = useLiveStatus();
   const flow = useMarketInvestorFlowSummary();
   const [page, setPage] = useState({ mode: 'indices' as 'indices' | 'flow', revision: 0 });

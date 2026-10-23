@@ -118,6 +118,7 @@
 후속 요청으로 수급 앞의 `순매수 · 억원` 라벨을 제거한다.
 이어진 요청으로 하단의 `지수 ›`·`수급 ›` 전환 안내 버튼을 제거한다. 빈 영역 클릭과
 10초 자동 전환·자동/정지 버튼을 유지하며, 푸터 포커스에서 Enter·Space로도 전환한다.
+후속 요청으로 하단 지수 바에서 KRX100을 제거하고 코스피·코스닥·코스피200·코스닥150을 표시한다.
 
 - **What this is:** Single-user local desktop tool that captures Korean stock orderbook + trade replay data from `hogaplay.com` and exposes it for analysis through a browser frontend.
 - **Who it's for:** The single user (analyst/researcher) running the tool on their own machine. No external audience.
