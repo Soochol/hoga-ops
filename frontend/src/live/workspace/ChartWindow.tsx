@@ -909,6 +909,10 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
         {d.dailyMetadata?.refresh_status === 'partial' && <><span>과거 일부 조회됨</span><button type="button" className="text-accent" onClick={() => { void d.refetchCandles(); }}>더 조회</button></>}
         {(d.dailyMetadata?.refresh_status === 'stale' || d.dailyMetadata?.refresh_status === 'error') && <span>조회 실패 · 이전 데이터 유지</span>}
       </div>}
+      {symbol?.kind === 'us_stock' && ['error', 'waiting_account'].includes(d.usRealtimeStatus ?? '') &&
+        <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
+          {d.usRealtimeStatus === 'error' ? '실시간 시세 연결 복구 중 · REST 조회 유지' : '실시간 시세 연결 대기 · REST 조회 유지'}
+        </div>}
       {latestMinutesOnly && hasMinuteIssue && <div className="flex flex-wrap gap-x-md px-2 py-1 text-xs text-fg-dim" role="status">
         {symbol?.kind !== 'us_stock' && d.minuteMetadata?.available_from_ms && d.workareaBundle?.candles.length === 0 && <span>해당 분봉 집계에 필요한 연속 데이터 부족 · 1분봉을 선택하세요</span>}
         {d.usStockHistoryError && <span>과거 조회 실패 · 기존 데이터 유지 {('status' in d.usStockHistoryError && d.usStockHistoryError.status === 422)

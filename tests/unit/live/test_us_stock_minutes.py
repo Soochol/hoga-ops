@@ -52,6 +52,24 @@ def test_new_york_interpretation_agrees_with_independent_kst_timestamps():
             assert bar.t_ms == int((reference - timedelta(hours=9)).replace(tzinfo=UTC).timestamp() * 1000)
 
 
+async def test_warm_latest_refresh_reads_one_page_but_long_disconnect_rebuilds_window(monkeypatch):
+    tick, calls = [0], []
+
+    async def fetch(*args, **kwargs):
+        calls.append(kwargs)
+        return StockMinuteWindow(bars=[parse_stock_minute(row())], pages=1)
+
+    monkeypatch.setattr("hoga.live.us_stock_minutes.fetch_stock_minutes", fetch)
+    service = UsStockMinuteService(clock=lambda: tick[0], wall_clock=lambda: 123 + tick[0])
+    await service.get("NASDAQ", "AAPL", "1m", client=object())
+    tick[0] = 61
+    await service.get("NASDAQ", "AAPL", "1m", client=object())
+    tick[0] = 7000
+    await service.get("NASDAQ", "AAPL", "1m", client=object())
+    assert calls == [{}, {"max_pages": 1}, {}]
+    await service.aclose()
+
+
 @pytest.mark.parametrize("stamp,expected", [("20261015261000", "2026-10-16T06:10:00+00:00"),
                                             ("20260109261000", "2026-01-10T07:10:00+00:00")])
 def test_extended_hours_normalize_next_date_before_applying_dst(stamp, expected):
@@ -142,7 +160,7 @@ async def test_native_window_caps_rows_and_pages_even_if_upstream_has_more(monke
 async def test_snapshot_singleflight_ttl_last_good_and_distinct_exchange_symbol_period(monkeypatch):
     tick, calls, fail = [0.0], [], [False]
 
-    async def fetch(client, scheduler, exchange, symbol, tf, anchor):
+    async def fetch(client, scheduler, exchange, symbol, tf, anchor, **kwargs):
         calls.append((exchange, symbol, tf, anchor))
         await asyncio.sleep(0)
         return StockMinuteWindow(bars=[parse_stock_minute(row())] if not fail[0] else [],
@@ -174,7 +192,7 @@ async def test_snapshot_singleflight_ttl_last_good_and_distinct_exchange_symbol_
 async def test_pending_refresh_is_shielded_and_lru_is_bounded(monkeypatch):
     entered, release = asyncio.Event(), asyncio.Event()
 
-    async def fetch(*args):
+    async def fetch(*args, **kwargs):
         entered.set()
         await release.wait()
         return StockMinuteWindow(bars=[parse_stock_minute(row())], pages=1)

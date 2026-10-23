@@ -1,0 +1,66 @@
+{
+  "base_commit": "815ba125269d047244cfe19773377e3db95c823a",
+  "live_executed_source_sha256": "b69940d81cd4ef3e90892388c02943ba7a3db5e242f9641fa0e0824a20b848d9",
+  "live_runtime": {
+    "python": "3.14.7",
+    "httpx": "0.28.1",
+    "websockets": "17.3",
+    "mode": "isolated uv --no-project; cached token read only; no hoga runtime import"
+  },
+  "tests": [
+    {
+      "command": "uv run --frozen --extra dev pytest -q tests/unit/live/test_us_stock_minutes.py tests/unit/live/test_us_daily_candles.py tests/unit/live/test_us_index_live_calendar.py -m 'not wallclock'",
+      "result": "73 passed in 0.71s"
+    },
+    {
+      "command": "uv run --frozen --extra dev python -m pytest -q docs/diagnostics/2026-10-24-us-stock-realtime/test_design.py",
+      "result": "7 passed in 0.02s"
+    },
+    {
+      "command": "uv run --frozen --extra dev ruff check scripts/probe_us_stock_realtime.py scripts/analyze_us_stock_realtime.py docs/diagnostics/2026-10-24-us-stock-realtime/test_design.py",
+      "result": "All checks passed"
+    },
+    {
+      "command": "uv run --frozen python scripts/analyze_us_stock_realtime.py docs/research/2026-10-24-us-stock-realtime-live.json.gz /tmp/us-stock-realtime-analysis-replay.json",
+      "result": "Decoded evidence analysis is exactly equal to saved analysis JSON."
+    }
+  ],
+  "input_sha256": {
+    "scripts/probe_us_stock_realtime.py": "f6cc85c199374d45038baf79a19aeaf5e7f64d151f3dbd390b56d365c85f1c92",
+    "scripts/analyze_us_stock_realtime.py": "480376eb4a68426c18ab618729f6b91b585d9c6539b4ccd621db738382957f64",
+    "docs/diagnostics/2026-10-24-us-stock-realtime/test_design.py": "9eb603eab4b2980fe690ebd5998a0ac433c42fa5c6fb996f213c7a1dd31059db",
+    "uv.lock": "b6704bb6abd785df4c1898f776d837a9e5defd547a99d2c8dede66d758ed3893",
+    "hoga/live/us_stock_minutes.py": "17d0c5dccd5714a3b02a39321988a14c417709f4c89b41b85bbf4223788c7e29",
+    "hoga/live/us_daily_candles.py": "c4d0f434221d1b3f7b8cac2d0a34c95948af08144e224eb170f40370e6d2b21e",
+    "hoga/live/kiwoom_capacity.py": "88537c3ed3c25c82cc70a8c4eb3e0d35f6dd5097e28906a4029a4b3d48e398a1"
+  },
+  "live_source_changes_after_launch": "Catch explicit diagnostic exception types, name reconnect constant, remove unused stop Event; repeat additionally records normal websocket close code. Sampling logic unchanged.",
+  "repeat_runtime": {
+    "python": "3.14.7",
+    "httpx": "0.28.1",
+    "websockets": "16.0",
+    "python-dotenv": "1.2.2"
+  },
+  "source_and_evidence_sha256": {
+    "scripts/probe_us_stock_realtime.py": "f6cc85c199374d45038baf79a19aeaf5e7f64d151f3dbd390b56d365c85f1c92",
+    "scripts/analyze_us_stock_realtime.py": "480376eb4a68426c18ab618729f6b91b585d9c6539b4ccd621db738382957f64",
+    "docs/diagnostics/2026-10-24-us-stock-realtime/test_design.py": "9eb603eab4b2980fe690ebd5998a0ac433c42fa5c6fb996f213c7a1dd31059db",
+    "docs/research/2026-10-24-us-stock-realtime-coexist-repeat.json.gz": "7214f14c9125e1276bdf15aefeffcb704e92405ca9653af9f77c314f5d63ba0b",
+    "docs/research/2026-10-24-us-stock-realtime-analysis.json": "6db2f3e353b84f2632982ec2f1dbd7b26edf066a642a9400a746e9e409f45da1",
+    "docs/research/2026-10-24-us-stock-realtime-live.json.gz": "0d7326864923dbfe98e9e61dc1cba28a5ed57a63f09c2ca88a6a8995c67def2f",
+    "docs/research/2026-10-24-us-stock-account-capacity.json": "eca42139829823f7243ad017cd45ba8aea898af398d2e9abb456608fa2b82398"
+  },
+  "live_result": {
+    "main_fe_records": 1387,
+    "main_rest_successes": 119,
+    "repeat_fe_records": 322,
+    "repeat_rest_successes": 24,
+    "tokens_issued": 0,
+    "orders_sent": 0,
+    "token_cache_content_unchanged": true,
+    "operator_server_restart": false
+  },
+  "analysis_note": "Minute price comparisons include only observations received before the final REST request started. Current provisional minute is separate from completed minutes; unrelated snapshot close prices are not expected equal.",
+  "configured_application_keys_are_distinct": true,
+  "compressed_evidence_replay_matches_saved_analysis": true
+}

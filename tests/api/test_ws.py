@@ -44,6 +44,44 @@ def test_global_events_auto_delivered():
         ws.close()
 
 
+def test_us_refs_are_separate_and_disconnection_removes_only_that_tabs_ownership(monkeypatch):
+    from hoga.live import lifecycle
+
+    app, bus, _ = _make_app()
+
+    class Session:
+        refs = set()
+
+        async def on_us_subscribe(self, exchange, symbol, *, ref):
+            self.refs.add((exchange, symbol, ref))
+            bus.publish({"type": "us_test_ack", "count": len(self.refs)})
+
+        async def on_us_unsubscribe(self, exchange, symbol, *, ref):
+            self.refs.discard((exchange, symbol, ref))
+
+        def forget_us_ref(self, ref):
+            self.refs = {v for v in self.refs if v[2] != ref}
+
+        async def release_us_view(self, ref):
+            self.forget_us_ref(ref)
+
+    session = Session()
+    monkeypatch.setattr(lifecycle._state, "kiwoom_session", session)
+    domestic = AsyncMock()
+    monkeypatch.setattr(lifecycle, "on_view_subscribe", domestic)
+    with TestClient(app) as client:
+        with client.websocket_connect("/api/ws") as first:
+            first.send_json({"action": "subscribe_us_stock", "exchange": "NASDAQ", "symbol": "AAPL"})
+            assert first.receive_json()["data"]["count"] == 1
+            with client.websocket_connect("/api/ws") as second:
+                second.send_json({"action": "subscribe_us_stock", "exchange": "NASDAQ", "symbol": "AAPL"})
+                assert second.receive_json()["data"]["count"] == 2
+                assert len(session.refs) == 2
+            assert len(session.refs) == 1
+        assert not session.refs
+    domestic.assert_not_called()
+
+
 def test_subscribe_acks_then_delivers_code_tagged_live():
     app, _, buf = _make_app()
     with TestClient(app) as client, client.websocket_connect("/api/ws") as ws:

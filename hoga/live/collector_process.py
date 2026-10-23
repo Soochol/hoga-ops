@@ -51,6 +51,10 @@ def collector_mode() -> str:
     return _Configuration.mode
 
 
+def publish_capture_event(event) -> None:
+    _Configuration.publish(event)
+
+
 def _repository_commit() -> str | None:
     # Read checkout identity without importing the FastAPI assembly in the child.
     import subprocess  # noqa: PLC0415
@@ -95,6 +99,7 @@ class CaptureProcessSession:
         self._sync_acked_at: float | None = None
         self._sync_failed = False
         self.account_refs: set[int] = set()
+        self.us_refs: set[tuple[str, str, str]] = set()
         self._volume_codes: tuple[str, ...] = ()
         self._volume_sent: tuple | None = None
         if self.buffer is not None:
@@ -312,7 +317,11 @@ class CaptureProcessSession:
 
         from hoga.util.timeenc import KST  # noqa: PLC0415
 
+        from .kiwoom_runtime import us_ws_account  # noqa: PLC0415 — credentials stay in parent
+
         return {"targets": list(targets), "n_accounts": n_accounts, "nxt_map": _nxt_map(),
+                "us_account": us_ws_account(n_accounts),
+                "us_refs": [list(key) for key in sorted(self.us_refs)],
                 "account_refs": sorted(self.account_refs),
                 "calendar_date": datetime.fromtimestamp(stamp / 1000, KST).strftime("%Y%m%d"),
                 "calendar_allowed": await asyncio.to_thread(is_trading_day_now, stamp),
@@ -364,6 +373,28 @@ class CaptureProcessSession:
         self.account_refs.add(account)
         await self.sync(tuple(self.config.get("targets", [])),
                         n_accounts=len(configured_account_ids(self.data_dir)))
+
+    async def on_us_subscribe(self, exchange, symbol, *, ref):
+        from .us_stock_realtime import MAX_SUBJECTS  # noqa: PLC0415
+
+        key = (exchange, symbol, ref)
+        if key not in self.us_refs and len({v[:2] for v in self.us_refs} | {(exchange, symbol)}) > MAX_SUBJECTS:
+            raise ViewSubscriptionLimitError("US display reference limit")
+        self.us_refs.add(key)
+        await self.sync(tuple(self.config.get("targets", [])), n_accounts=self.config.get("n_accounts", 0))
+
+    async def on_us_unsubscribe(self, exchange, symbol, *, ref):
+        self.us_refs.discard((exchange, symbol, ref))
+        if self.config and self.alive():
+            await self.sync(tuple(self.config.get("targets", [])), n_accounts=self.config["n_accounts"])
+
+    def forget_us_ref(self, ref):
+        self.us_refs = {key for key in self.us_refs if key[2] != ref}
+
+    async def release_us_view(self, ref):
+        self.forget_us_ref(ref)
+        if self.config and self.alive():
+            await self.sync(tuple(self.config.get("targets", [])), n_accounts=self.config["n_accounts"])
 
     async def release_account(self, account: int) -> None:
         self.account_refs.discard(account)

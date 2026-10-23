@@ -88,6 +88,7 @@ def partition_kiwoom(
     *,
     weight: Callable[[str], int] | None = None,
     last_account_reserve: int = KIWOOM_SECTOR_RESERVE,
+    reserved_account: int | None = None,
 ) -> list[list[str]]:
     """키움 계정별 disjoint 분할 — **wire 등록 수**가 계정당 200 을 넘지 않게 순차로 채운다.
 
@@ -106,7 +107,7 @@ def partition_kiwoom(
     account, used = 0, 0
     for code in codes:
         cost = w(code)
-        while account < n and used + cost > _account_cap(account, n, last_account_reserve):
+        while account < n and used + cost > _account_cap(account, n, last_account_reserve, reserved_account):
             account += 1
             used = 0
         if account >= n:
@@ -116,7 +117,8 @@ def partition_kiwoom(
     return parts
 
 
-def _account_cap(account: int, n: int, reserve: int = KIWOOM_SECTOR_RESERVE) -> int:
+def _account_cap(account: int, n: int, reserve: int = KIWOOM_SECTOR_RESERVE,
+                 reserved_account: int | None = None) -> int:
     """이 계정이 **저장셋에** 쓸 수 있는 상한.
 
     마지막 계정만 낮다 — 업종·지수 구독(0J/0U)이 거기 얹히기 때문이다. 그 구독은
@@ -134,7 +136,7 @@ def _account_cap(account: int, n: int, reserve: int = KIWOOM_SECTOR_RESERVE) -> 
     """
     # 예약이 상한을 삼키면 저장셋이 통째로 드롭된다 — 최소 1 자리는 남긴다(테스트가
     # 작은 상한을 주입하는 경로 방어).
-    if account != n - 1:
+    if account != (n - 1 if reserved_account is None else reserved_account):
         return KIWOOM_PER_ACCOUNT_MAX
     return max(1, KIWOOM_PER_ACCOUNT_MAX - reserve)
 
@@ -142,6 +144,7 @@ def _account_cap(account: int, n: int, reserve: int = KIWOOM_SECTOR_RESERVE) -> 
 def partition_balanced_kiwoom(
     codes: list[str], n: int, *, weight: Callable[[str], int],
     previous: Mapping[str, int], last_account_reserve: int = KIWOOM_SECTOR_RESERVE,
+    reserved_account: int | None = None,
 ) -> list[list[str]]:
     """Spread new registrations while keeping live owners stable.
 
@@ -154,10 +157,10 @@ def partition_balanced_kiwoom(
     """
     admitted = {
         code for part in partition_kiwoom(
-            codes, n, weight=weight, last_account_reserve=last_account_reserve,
+            codes, n, weight=weight, last_account_reserve=last_account_reserve, reserved_account=reserved_account,
         ) for code in part
     }
-    caps = [_account_cap(i, n, last_account_reserve) for i in range(n)]
+    caps = [_account_cap(i, n, last_account_reserve, reserved_account) for i in range(n)]
     used = [0] * n
     owners: dict[str, int] = {}
     costs = {code: weight(code) for code in codes if code in admitted}

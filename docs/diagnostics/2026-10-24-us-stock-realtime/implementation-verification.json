@@ -1,0 +1,188 @@
+{
+  "recorded_at": "2026-10-24T01:25:32.648909+09:00",
+  "base_commit": "815ba125269d047244cfe19773377e3db95c823a",
+  "origin_main": "815ba125269d047244cfe19773377e3db95c823a",
+  "working_tree": "uncommitted implementation on base_commit",
+  "environment": {
+    "python": "3.14.7",
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "backend_packages": {
+      "pytest": "9.0.3",
+      "pytest-asyncio": "1.3.0",
+      "ruff": "0.15.13",
+      "websockets": "16.0",
+      "httpx": "0.28.1",
+      "fastapi": "0.136.1",
+      "pydantic": "2.13.4",
+      "duckdb": "1.5.2"
+    },
+    "node": {
+      "node": "v24.13.1",
+      "platform": "linux",
+      "arch": "x64"
+    },
+    "frontend_packages": {
+      "react": "18.3.1",
+      "@tanstack/react-query": "5.100.11",
+      "lightweight-charts": "5.2.0",
+      "typescript": "6.0.3",
+      "vitest": "4.1.7",
+      "vite": "8.0.16",
+      "@playwright/test": "1.60.0"
+    },
+    "uv": "0.11.8",
+    "npm": "11.8.0",
+    "browser": "Google Chrome 156.0.8078.47",
+    "timezone": "Asia/Seoul"
+  },
+  "inputs": {
+    "manifest": "implementation-inputs.json.gz",
+    "file_count": 3461,
+    "manifest_sha256": "dcf98f2839a62892ef1042e42838f37fda2217b9adbe05bc2efed0726b7b8a5b",
+    "source_test_fixture_config_lock_digest": "1e3d578ea74fa51ff2f3959b3b0432381ede89180da3f5fcc60870dc0ada53ae",
+    "final_fingerprints_rechecked": true
+  },
+  "checks": [
+    {
+      "scope": "backend-full",
+      "command": "uv run --frozen --extra dev pytest -q -m 'not wallclock'",
+      "exit_code": 0,
+      "result": [
+        "=== 6903 passed, 2 skipped, 13 deselected, 50 warnings in 306.96s (0:05:06) ===="
+      ],
+      "log": "implementation-backend-full.log.gz",
+      "log_sha256": "2c78395b27704c051cc650c37cddca7d9738e1603bcacc2822bba0bb8f4c79ab"
+    },
+    {
+      "scope": "backend-focused",
+      "command": "uv run --frozen --extra dev pytest -q tests/api/test_ws.py tests/unit/live/test_coverage_plan.py tests/unit/live/test_kiwoom_session.py tests/unit/live/test_us_stock_realtime.py tests/unit/live/test_us_stock_minutes.py tests/unit/live/test_collector_process.py tests/unit/api/test_rest_wire_schema_contract.py -m 'not wallclock'",
+      "exit_code": 0,
+      "result": [
+        "============================= 162 passed in 12.85s ============================="
+      ],
+      "log": "implementation-backend-focused.log.gz",
+      "log_sha256": "91c9b3b55cfacc5c0d7ea3d61214dcd364000800d332d7be8c9aeffdcc9287eb"
+    },
+    {
+      "scope": "frontend-full",
+      "command": "cd frontend && npx vitest run",
+      "exit_code": 0,
+      "result": [
+        "Test Files  698 passed (698)",
+        "Tests  8980 passed (8980)"
+      ],
+      "log": "implementation-frontend-full.log.gz",
+      "log_sha256": "e7808670fc1ea287a284039217409251f656dc1ebba7bba2c6e34c7e716aa95b"
+    },
+    {
+      "scope": "frontend-focused",
+      "command": "cd frontend && npx vitest run src/api/usStockRealtime.test.ts src/api/ws.test.ts src/live/useLiveChartData.test.tsx",
+      "exit_code": 0,
+      "result": [
+        "Test Files  3 passed (3)",
+        "Tests  40 passed (40)"
+      ],
+      "log": "implementation-frontend-focused.log.gz",
+      "log_sha256": "bad40d3c133d5a1ce8a491441371e77e53bda7ce6d38735bc4dc85bdb69f171d"
+    },
+    {
+      "scope": "typecheck",
+      "command": "cd frontend && npm run typecheck",
+      "exit_code": 0,
+      "result": [
+        "",
+        "> frontend@0.0.0 typecheck",
+        "> tsc -b && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.e2e.json --noEmit",
+        ""
+      ],
+      "log": "implementation-typecheck.log.gz",
+      "log_sha256": "6edb4e536f9d90345e33c7426aedb0fd14986f6cf9aba0aae2d298b6d472d40d"
+    },
+    {
+      "scope": "build",
+      "command": "cd frontend && npx vite build",
+      "exit_code": 0,
+      "result": [
+        "",
+        "✓ built in 2.65s",
+        "[plugin builtin:vite-reporter] ",
+        "(!) Some chunks are larger than 700 kB after minification. Consider:",
+        "- Using dynamic import() to code-split the application",
+        "- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting",
+        "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit."
+      ],
+      "log": "implementation-build.log.gz",
+      "log_sha256": "f6ef728f49302ca9c243b433b57ebb6c38dadb339e73953e5b3d0e5554be4a49"
+    },
+    {
+      "scope": "e2e-related",
+      "command": "cd frontend && npx playwright test us-stock-realtime.spec.ts us-stock-minutes.spec.ts us-stock-minute-history.spec.ts us-daily-candles.spec.ts index-realtime-candles.spec.ts --reporter=line",
+      "exit_code": 0,
+      "result": [
+        "\u001b[1A\u001b[2K  32 passed (1.1m)"
+      ],
+      "log": "implementation-e2e-related.log.gz",
+      "log_sha256": "240843f2f01109ee1f686dbbd604068c88f59bece426ddde15869186e27ced9a"
+    },
+    {
+      "scope": "e2e-focused",
+      "command": "cd frontend && npx playwright test us-stock-realtime.spec.ts --reporter=line",
+      "exit_code": 0,
+      "result": [
+        "\u001b[1A\u001b[2K  1 passed (8.8s)"
+      ],
+      "log": "implementation-e2e-focused.log.gz",
+      "log_sha256": "19608de3cc0888b832bc3707410923ff0927e5e5fca5bdb5bf9e67ba3877891b"
+    },
+    {
+      "scope": "design",
+      "command": "uv run --frozen --extra dev python -m pytest -q docs/diagnostics/2026-10-24-us-stock-realtime/test_design.py",
+      "exit_code": 0,
+      "result": [
+        "============================== 7 passed in 0.02s ==============================="
+      ],
+      "log": "implementation-design.log.gz",
+      "log_sha256": "9a95fd95adb738c25db48ac362d11deb7e5dd4f3a1f2c473cbb1573a51f4215b"
+    },
+    {
+      "scope": "ruff",
+      "command": "uv run --frozen --extra dev ruff check .",
+      "exit_code": 0,
+      "result": [
+        "All checks passed!"
+      ],
+      "log": "implementation-ruff.log.gz",
+      "log_sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53"
+    }
+  ],
+  "wire_guard_negative_check": "Removed sequence from the in-memory UsStockCandleEvent expected field set; guard failed with sequence drift. Restored the field set and guard passed. No source mutation.",
+  "invocation_note": "Diagnostic design tests import scripts from the repository root and use python -m pytest. A direct pytest invocation failed collection because scripts was not on sys.path; rerunning the documented module invocation passed.",
+  "isolation": {
+    "worktree": "/home/dev/.codex/worktrees/da81/hoga-ops",
+    "e2e_workers": 1,
+    "e2e_backend_port": 20337,
+    "e2e_frontend_port": 21337,
+    "data_dir": "/tmp/hoga-e2e-data-337",
+    "dist_dir": "/tmp/hoga-e2e-dist-337",
+    "vendor_credentials": "blank for development and E2E; ignored local .env blocks inheritance",
+    "main_ports_8000_5173": "existing processes preserved; no restart",
+    "deployment": false,
+    "orders_sent": 0,
+    "production_settings_changed": false
+  },
+  "verified_behaviour": [
+    "Replay all 1387 archived FE observations including signed OHLC and repeated minute labels",
+    "One US subscription across daily/minute chart windows; independent tab reference cleanup",
+    "Current-day provisional REST bars stay outside completed daily coverage",
+    "REST open and volume preserved; observation highs/lows folded before 1 Hz broadcast",
+    "Stale sequence ignored; late REST responses retain newer observations; corrected older minutes stay corrected inside native multi-minute buckets",
+    "Domestic storage targets and sector socket/reserved slots preserved; US yields for domestic capacity and private account events",
+    "Collector process carries desired US references and display events without transferring vendor credentials",
+    "Recent one-page correction, long-gap existing fetch budget, past cursor/history and US index regression"
+  ],
+  "limitations": [
+    "Initial product scope is regular-session D and minute candles; W/M keep completed-daily aggregation and extended-session REST remains available",
+    "No production deployment or current live vendor-to-browser test was performed in this implementation phase; archived real observations, fake transport/IPC, HTTP serialization and isolated browser tests were used",
+    "Actual exchange-to-display latency, AMEX real feed, NY/DST session transitions and simultaneous live domestic/US market-hours capture remain separate live observations"
+  ]
+}

@@ -105,6 +105,43 @@ def fake_entry(root, epoch, sockets, parent_pid):
     asyncio.run(run_worker(root, epoch, sockets, parent_pid, manager_factory=FakeManager))
 
 
+class UsEventManager(FakeManager):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        from types import SimpleNamespace
+
+        self._us = SimpleNamespace(publish=kwargs["on_us_event"], event=lambda key, **options: {
+            "type": "us_stock_candles", "instrument_key": f"us-stock:{key[0]}:{key[1]}",
+            "generation": "fake-us-owner", "sequence": 1, "status": "streaming", "checked_at_ms": STAMP,
+            "minutes": [], "daily": None,
+        })
+
+
+def us_event_entry(root, epoch, sockets, parent_pid):
+    asyncio.run(run_worker(root, epoch, sockets, parent_pid, manager_factory=UsEventManager))
+
+
+async def test_spawn_preserves_us_refs_and_forwards_candle_events_without_vendor_credentials(tmp_path, monkeypatch):
+    from hoga.live import collector_process, session_gate
+
+    events = []
+    monkeypatch.setattr(collector_process._Configuration, "publish", staticmethod(events.append))
+    monkeypatch.setattr(session_gate, "is_trading_day_now", lambda _: True)
+    owner = CaptureProcessSession(buffer=LiveBuffer(), data_dir=tmp_path, process_target=us_event_entry)
+    owner.us_refs.add(("NASDAQ", "AAPL", "tab-one"))
+    try:
+        await owner.sync((), n_accounts=0)
+        async with asyncio.timeout(5):
+            while not any(event["type"] == "us_stock_candles" for event in events):
+                await asyncio.sleep(0.01)
+        assert owner.config["us_refs"] == [["NASDAQ", "AAPL", "tab-one"]]
+        assert any(event.get("instrument_key") == "us-stock:NASDAQ:AAPL" for event in events)
+        owner.forget_us_ref("tab-one")
+        assert not owner.us_refs
+    finally:
+        await owner.stop()
+
+
 class BlockingSyncManager(FakeManager):
     async def sync(self, targets, *, n_accounts):
         if self.started:
