@@ -441,6 +441,18 @@ def test_early_regular_close_excludes_auction_without_losing_evening(regular_clo
     ) == ((90000000, regular_close),)
 
 
+@pytest.mark.parametrize("closing", [0, 200000000])
+def test_missing_regular_close_has_no_regular_continuous_window(closing):
+    from hoga.live.stock_sessions import krx_continuous_windows
+
+    # A frozen info.php response reports close=0. It cannot establish an
+    # auction boundary; subtracting ten minutes used to cross into yesterday.
+    windows = krx_continuous_windows(
+        "20261023", "KRX", 90000000, closing, regular_close_ms=0,
+    )
+    assert windows == (((160000000, 200000000),) if closing else ())
+
+
 def test_early_close_backfill_and_series_guard_agree(tmp_path):
     import polars as pl
 
