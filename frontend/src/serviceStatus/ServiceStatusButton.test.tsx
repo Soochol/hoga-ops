@@ -176,3 +176,20 @@ it('shows on-demand registration use and the actual pending venue', () => {
   expect(panel).toHaveTextContent('열람 구독 3/3등록');
   expect(panel).toHaveTextContent('005930 · NXT 연결 대기');
 });
+
+it('retains the selected book diagnosis while separating it from global issue counts', () => {
+  query.data = data({ ...provider, connection: 'connected', failures: [] });
+  useServiceStatusPanel.getState().showBook({ code: '222800', venue: 'KRX',
+    checkedAtMs: Date.parse('2026-10-23T16:57:20+09:00'), message: '화면 호가 갱신 지연',
+    bookMs: Date.parse('2026-10-23T16:56:47+09:00'), serverReceivedMs: Date.parse('2026-10-23T16:57:19+09:00') });
+  render(<ServiceStatusButton />);
+  const panel = screen.getByRole('dialog');
+  expect(panel).toHaveTextContent('현재 문제 0');
+  const book = screen.getByTestId('book-diagnostics');
+  expect(book).toHaveTextContent('222800 · KRX');
+  expect(book).toHaveTextContent('선택 당시 화면 진단');
+  expect(book).toHaveTextContent('표시 호가 시각 · 16:56:47');
+  expect(book).toHaveTextContent('서버 호가 수신 · 16:57:19');
+  expect(book).toHaveTextContent('브라우저 호가 수신 · 확인되지 않음');
+  expect(book).toHaveTextContent('개별 호가의 갱신 상태와 구분');
+});

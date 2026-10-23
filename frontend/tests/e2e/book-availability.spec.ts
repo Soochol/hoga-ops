@@ -27,11 +27,15 @@ async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: nu
   } }));
   let phase = 'waiting_slot';
   let failed = options.initialFailure ?? false;
+  let replyBookMs = options.bookMs;
+  let serverReceivedMs: number | undefined;
+  let seriesRequests = 0;
+  let heldSeries: Promise<void> | undefined;
   const product = code === '069500' ? 'etf' : code === '500001' ? 'etn' : 'stock';
   const reasons: AftermarketExclusionReason[] = options.exclusionReasons ?? (product === 'stock' ? [] : [product]);
   await page.route(apiPrefix('symbols/all'), route => route.fulfill({ json: {
-    symbols: [{ code, name: code === '079650' ? '서산' : product === 'etf' ? 'KODEX 200' : product === 'etn' ? '테스트 ETN' : '삼성전자',
-      market: code === '079650' ? 'KOSDAQ' : 'KOSPI', security_type: product,
+    symbols: [{ code, name: code === '222800' ? '심텍' : code === '079650' ? '서산' : product === 'etf' ? 'KODEX 200' : product === 'etn' ? '테스트 ETN' : '삼성전자',
+      market: ['079650', '222800'].includes(code) ? 'KOSDAQ' : 'KOSPI', security_type: product,
       nxt_enabled: code !== '079650' && product === 'stock' }], status: 'fresh',
   } }));
   await page.route(apiPrefix('live/aftermarket-exclusion'), async route => route.fulfill({ json: {
@@ -39,13 +43,15 @@ async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: nu
     checked_at_ms: await page.evaluate(() => Date.now()),
     source: product === 'stock' ? 'kiwoom_ka10100' : 'symbol_master',
   } }));
-  await page.route(apiPrefix('live/series'), route => {
+  await page.route(apiPrefix('live/series'), async route => {
+    seriesRequests++;
+    if (heldSeries) await heldSeries;
     if (failed) return route.fulfill({ status: 503, json: { detail: 'fixture unavailable' } });
     const url = new URL(route.request().url());
     return route.fulfill({ json: { code: url.searchParams.get('code'), date: url.searchParams.get('date'),
       session_open_ms: NOW - 3_600_000, session_close_ms: null, is_open: true,
-      last_ob: options.bookMs === undefined ? null : { kind: 'ob', code, venue: 'KRX',
-        t_ms: options.bookMs, phase: 'after_hours_closing',
+      last_ob: replyBookMs === undefined ? null : { kind: 'ob', code, venue: 'KRX',
+        t_ms: replyBookMs, phase: 'after_hours_closing',
         asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
         total_ask_qty: 100, total_bid_qty: 200 },
       snapshots: [], trades: [], brokers: [], programs: [], after_hours: [], expected: [],
@@ -60,7 +66,7 @@ async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: nu
         accounts: [], last_tick_ms: null, connection_allowed: true, observed_at_ms: observed,
         ready_registrations: phase === 'registered' ? [code] : [],
         view_subscriptions: [{ code, venue: 'KRX', phase, connection_generation: 1 }],
-        data_received_ms: {}, on_demand_count: 1, on_demand_capacity: 1 },
+        data_received_ms: serverReceivedMs === undefined ? {} : { [`${code}:KRX:ob`]: serverReceivedMs }, on_demand_count: 1, on_demand_capacity: 1 },
     } });
   });
   await page.goto(`/live?code=${code}`);
@@ -68,8 +74,72 @@ async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: nu
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
   await expect(page.getByTestId('order-window')).toBeVisible();
-  return { ws, setPhase: (value: string) => { phase = value; }, recoverQuery: () => { failed = false; } };
+  return { ws, setPhase: (value: string) => { phase = value; }, recoverQuery: () => { failed = false; },
+    setServerBook: (time: number) => { replyBookMs = time; serverReceivedMs = time; },
+    seriesRequests: () => seriesRequests,
+    holdSeries: () => { let release!: () => void; heldSeries = new Promise<void>(resolve => { release = resolve; });
+      return () => { heldSeries = undefined; release(); }; },
+  };
 }
+
+test('stale WS books converge to a newer REST book with one shared recovery and scoped diagnostics', async ({ page }, testInfo) => {
+  const code = '222800';
+  const start = Date.parse('2026-10-22T16:56:47+09:00');
+  const fixture = await setup(page, { code, nowMs: start });
+  fixture.setPhase('registered');
+  fixture.ws.pushLive(code, { kind: 'ob', venue: 'KRX', t_ms: start,
+    asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }], total_ask_qty: 100, total_bid_qty: 200 });
+  await expect(page.getByTestId('book-availability')).toHaveCount(0);
+  await page.clock.runFor(31_000);
+  const before = fixture.seriesRequests();
+  const release = fixture.holdSeries();
+  const fresh = await page.evaluate(() => Date.now());
+  // Other traffic keeps the app socket alive but is never orderbook evidence.
+  fixture.ws.pushLive(code, { kind: 'trade', venue: 'KRX', t_ms: fresh, trades: [{ price: 67200, qty: 1, side: 1 }] });
+  fixture.setServerBook(fresh);
+  await page.clock.runFor(5_100);
+  const states = page.getByTestId('book-availability');
+  await expect(states).toHaveCount(2);
+  await expect(states.nth(0)).toHaveAttribute('data-state', 'display_delayed');
+  await expect(states.nth(1)).toHaveAttribute('data-state', 'display_delayed');
+  await states.nth(0).getByRole('button', { name: '연결 상태', exact: true }).click();
+  const diagnostics = page.getByTestId('book-diagnostics');
+  await expect(diagnostics).toContainText('222800 · KRX');
+  await expect(diagnostics).toContainText('표시 호가 시각 · 16:56:47');
+  const freshClock = new Date(fresh).toLocaleTimeString('en-GB', { timeZone: 'Asia/Seoul' });
+  await expect(diagnostics).toContainText(`서버 호가 수신 · ${freshClock}`);
+  await expect(page.getByRole('button', { name: '현재 문제 0', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('book-display-diagnosis.png') });
+  expect(fixture.seriesRequests() - before).toBe(1);
+  release();
+  await expect(states).toHaveCount(0);
+  const buy = page.getByTestId('order-window').getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await expect(buy).toHaveAttribute('aria-disabled', 'false');
+  expect(fixture.ws.connectionCount()).toBe(1);
+  await page.getByRole('button', { name: '서비스 상태 닫기', exact: true }).click();
+  await page.screenshot({ path: testInfo.outputPath('book-rest-recovered.png') });
+});
+
+test('recent browser book receipts with an old event time remain distinct from a display delivery gap', async ({ page }) => {
+  const code = '222800';
+  const now = Date.parse('2026-10-22T16:57:20+09:00');
+  const fixture = await setup(page, { code, nowMs: now });
+  fixture.setPhase('registered');
+  await page.clock.runFor(5_100);
+  const before = fixture.seriesRequests();
+  fixture.ws.pushLive(code, { kind: 'ob', venue: 'KRX', t_ms: now - 60_000,
+    asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
+    total_ask_qty: 100, total_bid_qty: 200 });
+  const states = page.getByTestId('book-availability');
+  await expect(states).toHaveCount(2);
+  await expect(states.nth(0)).toHaveAttribute('data-state', 'timestamp_old');
+  await expect(states.nth(1)).toHaveAttribute('data-state', 'timestamp_old');
+  await expect(states.nth(0)).toContainText('호가는 수신 중');
+  await expect(page.getByTestId('order-window').getByRole('button', { name: /매수 67,200원 주문 추가/ }))
+    .toHaveAttribute('aria-disabled', 'true');
+  await page.clock.runFor(5_100);
+  expect(fixture.seriesRequests()).toBe(before);
+});
 
 test('both books recover from slot wait through vendor registration and the first book', async ({ page }, testInfo) => {
   const fixture = await setup(page);

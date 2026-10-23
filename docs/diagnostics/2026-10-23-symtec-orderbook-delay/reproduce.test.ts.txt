@@ -1,0 +1,41 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import * as client from './client';
+import { hydrateLiveSeries, readLiveSeries, subscribeLiveSeries, LIVE_FLUSH_MS, __resetRetainedBooksForTests } from './sharedLiveSeries';
+import { fakeSockets, installFakeWebSocket } from '../test/fakeWebSocket';
+import { __resetForTests as resetWs } from './ws';
+import { deriveOrderbookAvailability } from '../live/orderbookAvailability';
+import type { LiveSeriesResponse } from './liveSeries';
+
+let stop: (() => void) | undefined;
+afterEach(() => { stop?.(); __resetRetainedBooksForTests(); resetWs(); vi.useRealTimers(); vi.restoreAllMocks(); });
+
+it('characterizes a retained latest book masking newer REST hydration', async () => {
+  vi.useFakeTimers();
+  installFakeWebSocket(); resetWs();
+  vi.spyOn(client, 'wsUrl').mockResolvedValue('ws://localhost/api/ws');
+  stop = subscribeLiveSeries('222800', '20261023', () => {});
+  await Promise.resolve();
+  const sock = fakeSockets[0]; sock.open();
+  const oldMs = Date.parse('2026-10-23T16:56:47+09:00');
+  const nowMs = Date.parse('2026-10-23T16:57:20+09:00');
+  const book = (t_ms: number) => ({ t_ms, kind: 'ob', venue: 'KRX', asks: [{ price: 112100, qty: 12 }], bids: [] });
+  sock.message({ ch: 'live_batch', code: '222800', data: [], latest: [{ ...book(oldMs), seq: 1 }], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  hydrateLiveSeries('222800', '20261023', 'KRX', {
+    code: '222800', date: '20261023', session_open_ms: 0, session_close_ms: null, is_open: true,
+    snapshots: [book(nowMs - 1000)], last_ob: book(nowMs - 1000), trades: [], brokers: [], programs: [],
+    after_hours: [], expected: [], ask_peak_today: null,
+  } satisfies LiveSeriesResponse);
+  const data = readLiveSeries('222800', '20261023', 'KRX');
+  expect(data.ob.at(-1)?.t_ms).toBe(nowMs - 1000);
+  expect(data.lastValidOb?.t_ms).toBe(nowMs - 1000);
+  expect(data.latestOb?.t_ms).toBe(oldMs);
+  const selectedBookMs = data.latestOb?.t_ms ?? data.ob.at(-1)?.t_ms;
+  expect(deriveOrderbookAvailability({ code: '222800', venue: 'KRX', nowMs,
+    bookMs: selectedBookMs, loading: false, error: null, statusCurrent: true,
+    connected: true, referenceLimited: false })?.kind).toBe('stale');
+  // A subsequent actual WS book repairs the state: the issue is not permanent.
+  sock.message({ ch: 'live_batch', code: '222800', data: [], latest: [{ ...book(nowMs), seq: 2 }], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries('222800', '20261023', 'KRX').latestOb?.t_ms).toBe(nowMs);
+});

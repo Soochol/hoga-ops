@@ -46,6 +46,29 @@ it('keeps coalesced latest book out of the indicator history', async () => {
   expect(data.latestOb?.t_ms).toBe(99);
   expect(readLiveSeries(CODE, DATE, 'NXT').latestOb).toBeUndefined();
 });
+
+it('converges to a newer REST book after the Symtec stale-WS sequence without rewriting history', async () => {
+  vi.useFakeTimers();
+  subscribe();
+  const sock = await socket();
+  const at = (s: string) => Date.parse(`2026-10-23T${s}+09:00`);
+  const book = (time: string, qty: number) => ({ t_ms: at(time), kind: 'ob', venue: 'KRX',
+    asks: [{ price: 112100, qty }], bids: [] });
+  const old = book('16:56:47', 1);
+  sock.message({ ch: 'live_batch', code: CODE, latest: [{ ...old, seq: 100 }], data: [old], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  const fresh = book('16:57:19', 2);
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ last_ob: fresh }));
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb?.t_ms).toBe(fresh.t_ms);
+  expect(readLiveSeries(CODE, DATE, 'KRX').ob).toEqual([old]);
+  // A slow prior response cannot rewind either the selected book or same-second WS values.
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ last_ob: old }));
+  sock.message({ ch: 'live_batch', code: CODE, latest: [{ ...fresh, seq: 101, asks: [{ price: 112100, qty: 3 }] }], data: [], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ last_ob: fresh }));
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb?.asks?.[0].qty).toBe(3);
+  expect(readLiveSeries(CODE, DATE, 'NXT').latestOb).toBeUndefined();
+});
 afterEach(() => {
   cleanup();
   for (const stop of cleanups.splice(0)) stop();
@@ -84,6 +107,42 @@ it('expires the retained ladder and never transfers it across dates', async () =
   await vi.advanceTimersByTimeAsync(RETAINED_BOOK_MS + 1);
   subscribe();
   expect(readLiveSeries(CODE, DATE, 'KRX').latestOb).toBeUndefined();
+});
+
+it('tracks browser book receipts independently of REST, trades and other venues', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(10_000);
+  subscribe();
+  const sock = await socket();
+  sock.message({ ch: 'live_batch', code: CODE, data: [], latest: [{ kind: 'ob', venue: 'KRX', t_ms: 5000, seq: 1 }], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries(CODE, DATE, 'KRX').bookReceivedAtMs).toBe(10_000);
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ last_ob: { kind: 'ob', venue: 'KRX', t_ms: 6000 } }));
+  sock.message({ ch: 'live', code: CODE, data: { kind: 'trade', venue: 'KRX', t_ms: 7000 } });
+  sock.message({ ch: 'live', code: CODE, data: { kind: 'ob', venue: 'NXT', t_ms: 7000 } });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries(CODE, DATE, 'KRX').bookReceivedAtMs).toBe(10_000);
+  expect(readLiveSeries(CODE, DATE, 'NXT').bookReceivedAtMs).toBe(10_000 + LIVE_FLUSH_MS);
+});
+
+it('keeps a newer reset over delayed REST and accepts new-connection same-second WS sequence', async () => {
+  vi.useFakeTimers();
+  subscribe();
+  const sock = await socket();
+  const row = (t_ms: number, qty: number) => ({ kind: 'ob', venue: 'KRX', t_ms,
+    asks: [{ price: 112100, qty }], bids: [] });
+  sock.message({ ch: 'live_batch', code: CODE, data: [], latest: [{ ...row(1000, 1), seq: 100 }], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ last_ob: { ...row(2000, 0), asks: [], bids: [] } }));
+  hydrateLiveSeries(CODE, DATE, 'KRX', body({ last_ob: row(1000, 2) }));
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb?.t_ms).toBe(2000);
+  expect(readLiveSeries(CODE, DATE, 'KRX').lastValidOb?.t_ms).toBe(1000);
+  sock.serverClose();
+  await vi.advanceTimersByTimeAsync(501);
+  fakeSockets[1].open();
+  fakeSockets[1].message({ ch: 'live_batch', code: CODE, data: [], latest: [{ ...row(2000, 3), seq: 1 }], dropped: 0 });
+  await vi.advanceTimersByTimeAsync(LIVE_FLUSH_MS);
+  expect(readLiveSeries(CODE, DATE, 'KRX').latestOb?.asks?.[0].qty).toBe(3);
 });
 
 it('retains usable ladders through empty resets and never rewinds on delayed WS or REST frames', async () => {

@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
@@ -61,7 +61,34 @@ it('retries only the current code series query', () => {
   const hook = setup();
   const invalidate = vi.spyOn(hook.client, 'invalidateQueries');
   act(() => hook.result.current.retry());
-  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['live', 'series', '005930'] });
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['live', 'series', '005930', '19700101', 'KRX'], exact: true }, { cancelRefetch: false });
+});
+
+it('joins recovery across two books and never treats stale status or trades as a reason to refetch', async () => {
+  const client = new QueryClient();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  source.query.data!.kiwoom!.data_received_ms = { '005930:KRX:ob': 99_900 };
+  const render = () => renderHook((enabled: boolean) => useOrderbookAvailability({
+    code: '005930', venue: 'KRX', live, nowMs: 100_000, bookMs: 67_000, enabled,
+  }), { wrapper, initialProps: true });
+  const first = render();
+  const second = render();
+  await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(1));
+  expect(first.result.current.availability?.kind).toBe('display_delayed');
+  expect(first.result.current.availability?.diagnostics?.serverReceivedMs).toBe(99_900);
+  expect(second.result.current.availability?.kind).toBe('display_delayed');
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: ['live', 'series', '005930', '19700101', 'KRX'], exact: true }, { cancelRefetch: false });
+  source.query.data!.kiwoom!.data_received_ms = { '005930:KRX:trade': 99_900 };
+  first.rerender(true);
+  expect(first.result.current.availability?.kind).toBe('stale');
+  source.query.data!.kiwoom!.data_received_ms = { '005930:KRX:ob': 99_900 };
+  source.query.data!.kiwoom!.observed_at_ms = 50_000;
+  second.rerender(true);
+  expect(second.result.current.availability?.kind).toBe('stale');
+  expect(second.result.current.availability?.diagnostics?.serverReceivedMs).toBeUndefined();
+  expect(invalidate).toHaveBeenCalledTimes(1);
+  first.unmount(); second.unmount(); client.clear();
 });
 
 it('explains exclusion even while a stored ladder disables live-delay reporting', () => {

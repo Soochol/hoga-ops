@@ -134,6 +134,12 @@ it('reports reconnect gaps and accepts new server sequence numbers', async () =>
     fakeSockets[1].open();
     fakeSockets[1].message({ ch: 'live_batch', code: 'A', latest: [row(1)], data: [], dropped: 0 });
     expect(latest).toEqual([10, 1]);
+    // Late callbacks from the previous connection cannot poison its successor's
+    // seq floor, liveness, or registration events.
+    sock.message({ ch: 'live_batch', code: 'A', latest: [row(1000)], data: [], dropped: 0 });
+    sock.serverClose();
+    fakeSockets[1].message({ ch: 'live_batch', code: 'A', latest: [row(2)], data: [], dropped: 0 });
+    expect(latest).toEqual([10, 1, 2]);
   } finally { vi.useRealTimers(); }
 });
 

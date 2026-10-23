@@ -1,0 +1,1870 @@
+{
+  "started_ms": 1792742621578,
+  "counts": {
+    "batches": 141,
+    "dropped": 0,
+    "latest:KRX": 40,
+    "data:KRX": 40,
+    "latest:NXT": 31,
+    "latest:UN": 61,
+    "data:NXT": 32,
+    "data:UN": 61
+  },
+  "rows": [
+    {
+      "received_ms": 1792742622571,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742622000,
+      "seq": 590913
+    },
+    {
+      "received_ms": 1792742622571,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742622000,
+      "seq": 590913
+    },
+    {
+      "received_ms": 1792742622657,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742622000,
+      "seq": 590925
+    },
+    {
+      "received_ms": 1792742622657,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742622000,
+      "seq": 590927
+    },
+    {
+      "received_ms": 1792742622657,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742622000,
+      "seq": 590924
+    },
+    {
+      "received_ms": 1792742622657,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742622000,
+      "seq": 590925
+    },
+    {
+      "received_ms": 1792742622657,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742622000,
+      "seq": 590927
+    },
+    {
+      "received_ms": 1792742623255,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742623000,
+      "seq": 591070
+    },
+    {
+      "received_ms": 1792742623255,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742623000,
+      "seq": 591070
+    },
+    {
+      "received_ms": 1792742623356,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742623000,
+      "seq": 591085
+    },
+    {
+      "received_ms": 1792742623356,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742623000,
+      "seq": 591085
+    },
+    {
+      "received_ms": 1792742624252,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742624000,
+      "seq": 591300
+    },
+    {
+      "received_ms": 1792742624252,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742624000,
+      "seq": 591300
+    },
+    {
+      "received_ms": 1792742624358,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742624000,
+      "seq": 591312
+    },
+    {
+      "received_ms": 1792742624358,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742624000,
+      "seq": 591312
+    },
+    {
+      "received_ms": 1792742625328,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742625000,
+      "seq": 591527
+    },
+    {
+      "received_ms": 1792742625328,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742625000,
+      "seq": 591527
+    },
+    {
+      "received_ms": 1792742625477,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742625000,
+      "seq": 591572
+    },
+    {
+      "received_ms": 1792742625477,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742625000,
+      "seq": 591572
+    },
+    {
+      "received_ms": 1792742627049,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742626000,
+      "seq": 591971
+    },
+    {
+      "received_ms": 1792742627049,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742626000,
+      "seq": 591971
+    },
+    {
+      "received_ms": 1792742627055,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742626000,
+      "seq": 591973
+    },
+    {
+      "received_ms": 1792742627055,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742626000,
+      "seq": 591973
+    },
+    {
+      "received_ms": 1792742628752,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742628000,
+      "seq": 592443
+    },
+    {
+      "received_ms": 1792742628752,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742628000,
+      "seq": 592443
+    },
+    {
+      "received_ms": 1792742628851,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742628000,
+      "seq": 592467
+    },
+    {
+      "received_ms": 1792742628851,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742628000,
+      "seq": 592467
+    },
+    {
+      "received_ms": 1792742631977,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742631000,
+      "seq": 593205
+    },
+    {
+      "received_ms": 1792742631977,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742631000,
+      "seq": 593206
+    },
+    {
+      "received_ms": 1792742631977,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742631000,
+      "seq": 593205
+    },
+    {
+      "received_ms": 1792742631977,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742631000,
+      "seq": 593206
+    },
+    {
+      "received_ms": 1792742632251,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742632000,
+      "seq": 593305
+    },
+    {
+      "received_ms": 1792742632251,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742632000,
+      "seq": 593305
+    },
+    {
+      "received_ms": 1792742632344,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742632000,
+      "seq": 593330
+    },
+    {
+      "received_ms": 1792742632344,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742632000,
+      "seq": 593330
+    },
+    {
+      "received_ms": 1792742633095,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742632000,
+      "seq": 593481
+    },
+    {
+      "received_ms": 1792742633095,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742632000,
+      "seq": 593481
+    },
+    {
+      "received_ms": 1792742633123,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742632000,
+      "seq": 593519
+    },
+    {
+      "received_ms": 1792742633123,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742632000,
+      "seq": 593519
+    },
+    {
+      "received_ms": 1792742633558,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742633000,
+      "seq": 593637
+    },
+    {
+      "received_ms": 1792742633558,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742633000,
+      "seq": 593637
+    },
+    {
+      "received_ms": 1792742633655,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742633000,
+      "seq": 593662
+    },
+    {
+      "received_ms": 1792742633655,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742633000,
+      "seq": 593662
+    },
+    {
+      "received_ms": 1792742634457,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742634000,
+      "seq": 593832
+    },
+    {
+      "received_ms": 1792742634457,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742634000,
+      "seq": 593833
+    },
+    {
+      "received_ms": 1792742634457,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742634000,
+      "seq": 593832
+    },
+    {
+      "received_ms": 1792742634457,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742634000,
+      "seq": 593833
+    },
+    {
+      "received_ms": 1792742635654,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742635000,
+      "seq": 594159
+    },
+    {
+      "received_ms": 1792742635654,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742635000,
+      "seq": 594162
+    },
+    {
+      "received_ms": 1792742635654,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742635000,
+      "seq": 594159
+    },
+    {
+      "received_ms": 1792742635654,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742635000,
+      "seq": 594162
+    },
+    {
+      "received_ms": 1792742635853,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742635000,
+      "seq": 594210
+    },
+    {
+      "received_ms": 1792742635853,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742635000,
+      "seq": 594213
+    },
+    {
+      "received_ms": 1792742635853,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742635000,
+      "seq": 594210
+    },
+    {
+      "received_ms": 1792742635853,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742635000,
+      "seq": 594213
+    },
+    {
+      "received_ms": 1792742638252,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742638000,
+      "seq": 594766
+    },
+    {
+      "received_ms": 1792742638252,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742638000,
+      "seq": 594766
+    },
+    {
+      "received_ms": 1792742638350,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742638000,
+      "seq": 594792
+    },
+    {
+      "received_ms": 1792742638350,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742638000,
+      "seq": 594792
+    },
+    {
+      "received_ms": 1792742638465,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742638000,
+      "seq": 594821
+    },
+    {
+      "received_ms": 1792742638465,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742638000,
+      "seq": 594825
+    },
+    {
+      "received_ms": 1792742638465,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742638000,
+      "seq": 594821
+    },
+    {
+      "received_ms": 1792742638465,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742638000,
+      "seq": 594825
+    },
+    {
+      "received_ms": 1792742640050,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742639000,
+      "seq": 595227
+    },
+    {
+      "received_ms": 1792742640050,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742639000,
+      "seq": 595229
+    },
+    {
+      "received_ms": 1792742640050,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742639000,
+      "seq": 595227
+    },
+    {
+      "received_ms": 1792742640050,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742639000,
+      "seq": 595229
+    },
+    {
+      "received_ms": 1792742640150,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742639000,
+      "seq": 595251
+    },
+    {
+      "received_ms": 1792742640150,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742639000,
+      "seq": 595251
+    },
+    {
+      "received_ms": 1792742640451,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742640000,
+      "seq": 595322
+    },
+    {
+      "received_ms": 1792742640451,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742640000,
+      "seq": 595322
+    },
+    {
+      "received_ms": 1792742640551,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742640000,
+      "seq": 595343
+    },
+    {
+      "received_ms": 1792742640551,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742640000,
+      "seq": 595343
+    },
+    {
+      "received_ms": 1792742641051,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742640000,
+      "seq": 595446
+    },
+    {
+      "received_ms": 1792742641051,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742640000,
+      "seq": 595450
+    },
+    {
+      "received_ms": 1792742641051,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742640000,
+      "seq": 595446
+    },
+    {
+      "received_ms": 1792742641051,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742640000,
+      "seq": 595450
+    },
+    {
+      "received_ms": 1792742641455,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742641000,
+      "seq": 595578
+    },
+    {
+      "received_ms": 1792742641455,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742641000,
+      "seq": 595580
+    },
+    {
+      "received_ms": 1792742641455,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742641000,
+      "seq": 595578
+    },
+    {
+      "received_ms": 1792742641455,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742641000,
+      "seq": 595580
+    },
+    {
+      "received_ms": 1792742642450,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742642000,
+      "seq": 595827
+    },
+    {
+      "received_ms": 1792742642450,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742642000,
+      "seq": 595827
+    },
+    {
+      "received_ms": 1792742642543,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742642000,
+      "seq": 595854
+    },
+    {
+      "received_ms": 1792742642543,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742642000,
+      "seq": 595854
+    },
+    {
+      "received_ms": 1792742642751,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742642000,
+      "seq": 595913
+    },
+    {
+      "received_ms": 1792742642751,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742642000,
+      "seq": 595913
+    },
+    {
+      "received_ms": 1792742642852,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742642000,
+      "seq": 595937
+    },
+    {
+      "received_ms": 1792742642852,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742642000,
+      "seq": 595937
+    },
+    {
+      "received_ms": 1792742643007,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742642000,
+      "seq": 595962
+    },
+    {
+      "received_ms": 1792742643007,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742642000,
+      "seq": 595962
+    },
+    {
+      "received_ms": 1792742644851,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742644000,
+      "seq": 596406
+    },
+    {
+      "received_ms": 1792742644851,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742644000,
+      "seq": 596407
+    },
+    {
+      "received_ms": 1792742644851,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742644000,
+      "seq": 596406
+    },
+    {
+      "received_ms": 1792742644851,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742644000,
+      "seq": 596407
+    },
+    {
+      "received_ms": 1792742648278,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742648000,
+      "seq": 597301
+    },
+    {
+      "received_ms": 1792742648278,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742648000,
+      "seq": 597301
+    },
+    {
+      "received_ms": 1792742648485,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742648000,
+      "seq": 597317
+    },
+    {
+      "received_ms": 1792742648485,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742648000,
+      "seq": 597319
+    },
+    {
+      "received_ms": 1792742648485,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742648000,
+      "seq": 597317
+    },
+    {
+      "received_ms": 1792742648485,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742648000,
+      "seq": 597319
+    },
+    {
+      "received_ms": 1792742648551,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742648000,
+      "seq": 597349
+    },
+    {
+      "received_ms": 1792742648551,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742648000,
+      "seq": 597349
+    },
+    {
+      "received_ms": 1792742650189,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742649000,
+      "seq": 597736
+    },
+    {
+      "received_ms": 1792742650189,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742649000,
+      "seq": 597740
+    },
+    {
+      "received_ms": 1792742650189,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742649000,
+      "seq": 597736
+    },
+    {
+      "received_ms": 1792742650189,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742649000,
+      "seq": 597740
+    },
+    {
+      "received_ms": 1792742650319,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742650000,
+      "seq": 597772
+    },
+    {
+      "received_ms": 1792742650319,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742650000,
+      "seq": 597772
+    },
+    {
+      "received_ms": 1792742650350,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742650000,
+      "seq": 597779
+    },
+    {
+      "received_ms": 1792742650350,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742650000,
+      "seq": 597779
+    },
+    {
+      "received_ms": 1792742650981,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742650000,
+      "seq": 597894
+    },
+    {
+      "received_ms": 1792742650981,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742650000,
+      "seq": 597896
+    },
+    {
+      "received_ms": 1792742650981,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742650000,
+      "seq": 597920
+    },
+    {
+      "received_ms": 1792742650981,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742650000,
+      "seq": 597894
+    },
+    {
+      "received_ms": 1792742650981,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742650000,
+      "seq": 597896
+    },
+    {
+      "received_ms": 1792742650981,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742650000,
+      "seq": 597920
+    },
+    {
+      "received_ms": 1792742651054,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742650000,
+      "seq": 597950
+    },
+    {
+      "received_ms": 1792742651054,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742650000,
+      "seq": 597950
+    },
+    {
+      "received_ms": 1792742651152,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742650000,
+      "seq": 597971
+    },
+    {
+      "received_ms": 1792742651152,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742650000,
+      "seq": 597971
+    },
+    {
+      "received_ms": 1792742651650,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742651000,
+      "seq": 598103
+    },
+    {
+      "received_ms": 1792742651650,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742651000,
+      "seq": 598103
+    },
+    {
+      "received_ms": 1792742651786,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742651000,
+      "seq": 598128
+    },
+    {
+      "received_ms": 1792742651786,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742651000,
+      "seq": 598128
+    },
+    {
+      "received_ms": 1792742652449,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742652000,
+      "seq": 598273
+    },
+    {
+      "received_ms": 1792742652449,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742652000,
+      "seq": 598273
+    },
+    {
+      "received_ms": 1792742652462,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742652000,
+      "seq": 598284
+    },
+    {
+      "received_ms": 1792742652462,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742652000,
+      "seq": 598284
+    },
+    {
+      "received_ms": 1792742652548,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742652000,
+      "seq": 598297
+    },
+    {
+      "received_ms": 1792742652548,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742652000,
+      "seq": 598297
+    },
+    {
+      "received_ms": 1792742653250,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742653000,
+      "seq": 598459
+    },
+    {
+      "received_ms": 1792742653250,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742653000,
+      "seq": 598459
+    },
+    {
+      "received_ms": 1792742653251,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742653000,
+      "seq": 598460
+    },
+    {
+      "received_ms": 1792742653251,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742653000,
+      "seq": 598460
+    },
+    {
+      "received_ms": 1792742653653,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742653000,
+      "seq": 598573
+    },
+    {
+      "received_ms": 1792742653653,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742653000,
+      "seq": 598575
+    },
+    {
+      "received_ms": 1792742653653,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742653000,
+      "seq": 598573
+    },
+    {
+      "received_ms": 1792742653653,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742653000,
+      "seq": 598575
+    },
+    {
+      "received_ms": 1792742653957,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742653000,
+      "seq": 598639
+    },
+    {
+      "received_ms": 1792742653957,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742653000,
+      "seq": 598640
+    },
+    {
+      "received_ms": 1792742653957,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742653000,
+      "seq": 598639
+    },
+    {
+      "received_ms": 1792742653957,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742653000,
+      "seq": 598640
+    },
+    {
+      "received_ms": 1792742654352,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742654000,
+      "seq": 598773
+    },
+    {
+      "received_ms": 1792742654352,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742654000,
+      "seq": 598773
+    },
+    {
+      "received_ms": 1792742654452,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742654000,
+      "seq": 598789
+    },
+    {
+      "received_ms": 1792742654452,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742654000,
+      "seq": 598789
+    },
+    {
+      "received_ms": 1792742655040,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742654000,
+      "seq": 598908
+    },
+    {
+      "received_ms": 1792742655040,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742654000,
+      "seq": 598908
+    },
+    {
+      "received_ms": 1792742655058,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742654000,
+      "seq": 598926
+    },
+    {
+      "received_ms": 1792742655058,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742654000,
+      "seq": 598926
+    },
+    {
+      "received_ms": 1792742655953,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742655000,
+      "seq": 599124
+    },
+    {
+      "received_ms": 1792742655953,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742655000,
+      "seq": 599124
+    },
+    {
+      "received_ms": 1792742656138,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742655000,
+      "seq": 599150
+    },
+    {
+      "received_ms": 1792742656138,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742655000,
+      "seq": 599150
+    },
+    {
+      "received_ms": 1792742657454,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742657000,
+      "seq": 599508
+    },
+    {
+      "received_ms": 1792742657454,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742657000,
+      "seq": 599510
+    },
+    {
+      "received_ms": 1792742657454,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742657000,
+      "seq": 599508
+    },
+    {
+      "received_ms": 1792742657454,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742657000,
+      "seq": 599510
+    },
+    {
+      "received_ms": 1792742658679,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742658000,
+      "seq": 599855
+    },
+    {
+      "received_ms": 1792742658679,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742658000,
+      "seq": 599855
+    },
+    {
+      "received_ms": 1792742658680,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742658000,
+      "seq": 599860
+    },
+    {
+      "received_ms": 1792742658680,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742658000,
+      "seq": 599860
+    },
+    {
+      "received_ms": 1792742659652,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742659000,
+      "seq": 600071
+    },
+    {
+      "received_ms": 1792742659652,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742659000,
+      "seq": 600072
+    },
+    {
+      "received_ms": 1792742659652,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742659000,
+      "seq": 600071
+    },
+    {
+      "received_ms": 1792742659652,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742659000,
+      "seq": 600072
+    },
+    {
+      "received_ms": 1792742660173,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742660000,
+      "seq": 600184
+    },
+    {
+      "received_ms": 1792742660173,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742660000,
+      "seq": 600184
+    },
+    {
+      "received_ms": 1792742660249,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742660000,
+      "seq": 600204
+    },
+    {
+      "received_ms": 1792742660249,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742660000,
+      "seq": 600205
+    },
+    {
+      "received_ms": 1792742660249,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742660000,
+      "seq": 600204
+    },
+    {
+      "received_ms": 1792742660249,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742660000,
+      "seq": 600205
+    },
+    {
+      "received_ms": 1792742660856,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742660000,
+      "seq": 600384
+    },
+    {
+      "received_ms": 1792742660856,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742660000,
+      "seq": 600384
+    },
+    {
+      "received_ms": 1792742660945,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742660000,
+      "seq": 600409
+    },
+    {
+      "received_ms": 1792742660945,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742660000,
+      "seq": 600409
+    },
+    {
+      "received_ms": 1792742661053,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742660000,
+      "seq": 600430
+    },
+    {
+      "received_ms": 1792742661053,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742660000,
+      "seq": 600430
+    },
+    {
+      "received_ms": 1792742661151,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742660000,
+      "seq": 600454
+    },
+    {
+      "received_ms": 1792742661151,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742660000,
+      "seq": 600454
+    },
+    {
+      "received_ms": 1792742662150,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742661000,
+      "seq": 600755
+    },
+    {
+      "received_ms": 1792742662150,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742661000,
+      "seq": 600755
+    },
+    {
+      "received_ms": 1792742662250,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742661000,
+      "seq": 600793
+    },
+    {
+      "received_ms": 1792742662250,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742661000,
+      "seq": 600793
+    },
+    {
+      "received_ms": 1792742662951,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742662000,
+      "seq": 600988
+    },
+    {
+      "received_ms": 1792742662951,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742662000,
+      "seq": 600988
+    },
+    {
+      "received_ms": 1792742663046,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742662000,
+      "seq": 601010
+    },
+    {
+      "received_ms": 1792742663046,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742662000,
+      "seq": 601010
+    },
+    {
+      "received_ms": 1792742663050,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742662000,
+      "seq": 601036
+    },
+    {
+      "received_ms": 1792742663050,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742662000,
+      "seq": 601036
+    },
+    {
+      "received_ms": 1792742664475,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742664000,
+      "seq": 601390
+    },
+    {
+      "received_ms": 1792742664475,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742664000,
+      "seq": 601393
+    },
+    {
+      "received_ms": 1792742664475,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742664000,
+      "seq": 601390
+    },
+    {
+      "received_ms": 1792742664475,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742664000,
+      "seq": 601393
+    },
+    {
+      "received_ms": 1792742665752,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742665000,
+      "seq": 601685
+    },
+    {
+      "received_ms": 1792742665752,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742665000,
+      "seq": 601685
+    },
+    {
+      "received_ms": 1792742665852,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742665000,
+      "seq": 601721
+    },
+    {
+      "received_ms": 1792742665852,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742665000,
+      "seq": 601721
+    },
+    {
+      "received_ms": 1792742666550,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742666000,
+      "seq": 601885
+    },
+    {
+      "received_ms": 1792742666550,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742666000,
+      "seq": 601885
+    },
+    {
+      "received_ms": 1792742666652,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742666000,
+      "seq": 601901
+    },
+    {
+      "received_ms": 1792742666652,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742666000,
+      "seq": 601901
+    },
+    {
+      "received_ms": 1792742667566,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742667000,
+      "seq": 602149
+    },
+    {
+      "received_ms": 1792742667566,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742667000,
+      "seq": 602149
+    },
+    {
+      "received_ms": 1792742667651,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742667000,
+      "seq": 602168
+    },
+    {
+      "received_ms": 1792742667651,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742667000,
+      "seq": 602168
+    },
+    {
+      "received_ms": 1792742667665,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742667000,
+      "seq": 602174
+    },
+    {
+      "received_ms": 1792742667665,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742667000,
+      "seq": 602174
+    },
+    {
+      "received_ms": 1792742667856,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742667000,
+      "seq": 602216
+    },
+    {
+      "received_ms": 1792742667856,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742667000,
+      "seq": 602217
+    },
+    {
+      "received_ms": 1792742667856,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742667000,
+      "seq": 602216
+    },
+    {
+      "received_ms": 1792742667856,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742667000,
+      "seq": 602217
+    },
+    {
+      "received_ms": 1792742669951,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742669000,
+      "seq": 602759
+    },
+    {
+      "received_ms": 1792742669951,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742669000,
+      "seq": 602759
+    },
+    {
+      "received_ms": 1792742670078,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742669000,
+      "seq": 602817
+    },
+    {
+      "received_ms": 1792742670078,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742669000,
+      "seq": 602817
+    },
+    {
+      "received_ms": 1792742671050,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742670000,
+      "seq": 603034
+    },
+    {
+      "received_ms": 1792742671050,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742670000,
+      "seq": 603034
+    },
+    {
+      "received_ms": 1792742671150,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742670000,
+      "seq": 603059
+    },
+    {
+      "received_ms": 1792742671150,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742670000,
+      "seq": 603059
+    },
+    {
+      "received_ms": 1792742671591,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742671000,
+      "seq": 603179
+    },
+    {
+      "received_ms": 1792742671591,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742671000,
+      "seq": 603181
+    },
+    {
+      "received_ms": 1792742671591,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742671000,
+      "seq": 603179
+    },
+    {
+      "received_ms": 1792742671591,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742671000,
+      "seq": 603181
+    },
+    {
+      "received_ms": 1792742673351,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742673000,
+      "seq": 603633
+    },
+    {
+      "received_ms": 1792742673351,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742673000,
+      "seq": 603633
+    },
+    {
+      "received_ms": 1792742673480,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742673000,
+      "seq": 603665
+    },
+    {
+      "received_ms": 1792742673480,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742673000,
+      "seq": 603665
+    },
+    {
+      "received_ms": 1792742674864,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742674000,
+      "seq": 603986
+    },
+    {
+      "received_ms": 1792742674864,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742674000,
+      "seq": 603990
+    },
+    {
+      "received_ms": 1792742674864,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742674000,
+      "seq": 603986
+    },
+    {
+      "received_ms": 1792742674864,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742674000,
+      "seq": 603990
+    },
+    {
+      "received_ms": 1792742675049,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742674000,
+      "seq": 604016
+    },
+    {
+      "received_ms": 1792742675049,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742674000,
+      "seq": 604016
+    },
+    {
+      "received_ms": 1792742675062,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742674000,
+      "seq": 604035
+    },
+    {
+      "received_ms": 1792742675062,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742674000,
+      "seq": 604035
+    },
+    {
+      "received_ms": 1792742676750,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742676000,
+      "seq": 604389
+    },
+    {
+      "received_ms": 1792742676750,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742676000,
+      "seq": 604389
+    },
+    {
+      "received_ms": 1792742676904,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742676000,
+      "seq": 604405
+    },
+    {
+      "received_ms": 1792742676904,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742676000,
+      "seq": 604405
+    },
+    {
+      "received_ms": 1792742677849,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742677000,
+      "seq": 604606
+    },
+    {
+      "received_ms": 1792742677849,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742677000,
+      "seq": 604606
+    },
+    {
+      "received_ms": 1792742678015,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742677000,
+      "seq": 604629
+    },
+    {
+      "received_ms": 1792742678015,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742677000,
+      "seq": 604629
+    },
+    {
+      "received_ms": 1792742678056,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742677000,
+      "seq": 604643
+    },
+    {
+      "received_ms": 1792742678056,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742677000,
+      "seq": 604644
+    },
+    {
+      "received_ms": 1792742678056,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742677000,
+      "seq": 604643
+    },
+    {
+      "received_ms": 1792742678056,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742677000,
+      "seq": 604644
+    },
+    {
+      "received_ms": 1792742678156,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742677000,
+      "seq": 604657
+    },
+    {
+      "received_ms": 1792742678156,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742677000,
+      "seq": 604657
+    },
+    {
+      "received_ms": 1792742678253,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742678000,
+      "seq": 604703
+    },
+    {
+      "received_ms": 1792742678253,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742678000,
+      "seq": 604703
+    },
+    {
+      "received_ms": 1792742678267,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742678000,
+      "seq": 604720
+    },
+    {
+      "received_ms": 1792742678267,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742678000,
+      "seq": 604720
+    },
+    {
+      "received_ms": 1792742678353,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742678000,
+      "seq": 604746
+    },
+    {
+      "received_ms": 1792742678353,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742678000,
+      "seq": 604746
+    },
+    {
+      "received_ms": 1792742679850,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742679000,
+      "seq": 605138
+    },
+    {
+      "received_ms": 1792742679850,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742679000,
+      "seq": 605138
+    },
+    {
+      "received_ms": 1792742679958,
+      "source": "latest",
+      "venue": "KRX",
+      "t_ms": 1792742679000,
+      "seq": 605161
+    },
+    {
+      "received_ms": 1792742679958,
+      "source": "data",
+      "venue": "KRX",
+      "t_ms": 1792742679000,
+      "seq": 605161
+    },
+    {
+      "received_ms": 1792742680849,
+      "source": "latest",
+      "venue": "NXT",
+      "t_ms": 1792742680000,
+      "seq": 605401
+    },
+    {
+      "received_ms": 1792742680849,
+      "source": "data",
+      "venue": "NXT",
+      "t_ms": 1792742680000,
+      "seq": 605401
+    },
+    {
+      "received_ms": 1792742680861,
+      "source": "latest",
+      "venue": "UN",
+      "t_ms": 1792742680000,
+      "seq": 605426
+    },
+    {
+      "received_ms": 1792742680861,
+      "source": "data",
+      "venue": "UN",
+      "t_ms": 1792742680000,
+      "seq": 605426
+    }
+  ]
+}
