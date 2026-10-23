@@ -5,6 +5,8 @@ import json
 import shutil
 from pathlib import Path
 
+import pytest
+
 from hoga.parser import parse_stock_date
 
 
@@ -42,6 +44,33 @@ def test_meta_has_collection_complete_false_when_progress_not_finished(tmp_path:
     meta_path = tmp_path / "parquet" / "20260520" / "005930" / "hogaplay" / "meta.json"
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
     assert meta["collection_complete"] is False
+
+
+@pytest.mark.parametrize("aftermarket_eligible", [True, False, None])
+def test_frozen_upstream_close_zero_is_archived_as_invalid(tmp_path: Path, monkeypatch, aftermarket_eligible) -> None:
+    from hoga.api import symbols
+    from hoga.api.disk_state import DiskState, check_disk_state
+
+    monkeypatch.setattr(symbols, "krx_aftermarket_eligibility", lambda _: aftermarket_eligible)
+    raw = _stage_raw(tmp_path, "tiny_tsv", "005930", "20261023", finished=False)
+    info_path = raw / "info.tsv"
+    fields = info_path.read_text().strip().split("\t")
+    fields[5] = "0"  # 2026-10-23 frozen info.php response; preserve the evidence.
+    raw_info = "\t".join(fields)
+    info_path.write_text(raw_info, encoding="utf-8")
+
+    out = parse_stock_date(code="005930", date="20261023", data_dir=tmp_path, lenient=True)
+    meta = json.loads((out / "meta.json").read_text())
+
+    assert meta["regular_session_close_ms"] == 0
+    assert meta["raw_info_tsv"] == raw_info
+    assert meta["collection_complete"] is False
+    assert meta["is_partial"] is True
+    assert {"meta.close_after_open", "meta.close_in_kst_range", "collection.finished"} <= {
+        v["invariant_id"] for v in meta["invariant_violations"]
+    }
+    assert all(0 <= g["start_ms"] < g["end_ms"] for g in meta["gap_ranges"])
+    assert check_disk_state(tmp_path, "005930", "20261023", source="hogaplay").state == DiskState.INVALID
 
 
 def test_meta_collection_complete_false_when_progress_missing(tmp_path: Path) -> None:
