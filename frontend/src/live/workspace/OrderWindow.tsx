@@ -301,7 +301,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   }
   const estimateAmount = quantity != null && estimatePrice != null && estimatePrice > 0 && Number.isSafeInteger(quantity) && quantity > 0
     && Number.isSafeInteger(estimatePrice * quantity) ? estimatePrice * quantity : null;
-  const holdingQuantity = state.data?.holding_quantity != null && !state.balancesError ? Number(state.data.holding_quantity) : null;
+  const holdingQuantity = state.data?.holding_quantity?.trim() && !state.balancesError ? Number(state.data.holding_quantity) : null;
   const averageMarker = preferences.showAveragePrice
     ? holdingBookMarker(holdingQuantity, state.data?.average_purchase_price, onScreen) : { price: null, outside: false };
   const averageMarkerIndex = prices.findIndex(level => level.price === averageMarker.price);
@@ -310,9 +310,12 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const averageMarkerLabel = averageMarker.price == null ? '' : `내 평단가 ${averagePriceText}원${
     Number(averageWhole) === averageMarker.price && (!averageFraction || /^0+$/.test(averageFraction)) ? '' : ` · 가장 가까운 호가 ${fmt(averageMarker.price)}원`}`;
   // The server's sellable quantity already excludes outstanding sell orders.
-  const sellableQuantity = state.data?.sellable_quantity != null && !state.balancesError ? Number(state.data.sellable_quantity) : null;
-  const canFillHoldingQuantity = holdingQuantity != null && validOrderInput(holdingQuantity, 'quantity')
-    && sellableQuantity != null && validOrderInput(sellableQuantity, 'quantity') && sellableQuantity <= holdingQuantity;
+  const sellableQuantity = state.data?.sellable_quantity?.trim() && !state.balancesError ? Number(state.data.sellable_quantity) : null;
+  // Zero is a known balance and can clear the input; submitting an order still requires >= 1.
+  const canFillHoldingQuantity = holdingQuantity != null && Number.isSafeInteger(holdingQuantity)
+    && holdingQuantity >= 0 && holdingQuantity <= MAX_ORDER_QUANTITY
+    && sellableQuantity != null && Number.isSafeInteger(sellableQuantity)
+    && sellableQuantity >= 0 && sellableQuantity <= holdingQuantity;
   const buyingPower = state.data?.buying_power != null && !state.balancesError ? Number(state.data.buying_power) : null;
   const holdingProfit = holdingProfitWon(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
   const profitPercent = holdingProfitPercent(holdingQuantity, quote?.price ?? null, state.data?.average_purchase_price);
@@ -736,7 +739,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           {(['amount', 'quantity'] as const).map(unit => <button key={unit} type="button" aria-pressed={preferences.unit === unit} disabled={busy || dragInProgress}
             onClick={() => { closeAction(); onApplySettings({ ...preferences, unit }); }}>{unit === 'amount' ? '금액' : '주'}</button>)}
         </div>
-        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="1" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
+        <label className="order-input-field"><input type="number" aria-label="신규 주문 수량" min="0" max={MAX_ORDER_QUANTITY} step="1" value={quantity ?? ''} onChange={e => { onQuantityChange(e.target.value === '' ? null : Number(e.target.value)); setNotice(null); }} /><span className="order-meta">주</span></label>
         <div className="order-quantity-presets">
           {presets.map((value, index) => <button type="button" key={index} aria-pressed={amountPresets ? undefined : quantity === value}
             disabled={amountPresets && !canConvertAmount}

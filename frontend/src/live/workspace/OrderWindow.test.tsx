@@ -826,7 +826,40 @@ describe('호가 주문', () => {
     expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(43);
     expect(mock.command).not.toHaveBeenCalled();
   });
-  it.each(['0', '-1', 'NaN', '1.5', '101', undefined])('매도 가능 수량 %s가 없거나 유효하지 않으면 기존 입력값을 유지한다', sellable => {
+  it('전량 매도 주문 후 보유 클릭은 주문수량을 0으로 바꾸고 추가 주문을 전송하지 않는다', async () => {
+    mock.sellableQuantity = '100';
+    const sell = { ...order('reserved-sell'), side: 'SELL' as const, price: '67300', status: 'PENDING' as const,
+      execution: { ...order().execution, filledQuantity: '0' } };
+    mock.command.mockImplementationOnce(async () => {
+      mock.orders = [sell]; mock.sellableQuantity = '0';
+      return { command_id: 'a', order_id: sell.orderId, status: 'accepted' };
+    });
+    show();
+    const holding = screen.getByLabelText('매입수량');
+    const input = screen.getByLabelText('신규 주문 수량');
+    fireEvent.click(holding);
+    expect(input).toHaveValue(100);
+    const sellButton = screen.getByRole('button', { name: /매도 67,300원 주문 추가/ });
+    await waitFor(() => expect(sellButton).toHaveAttribute('aria-disabled', 'false'));
+    fireEvent.doubleClick(sellButton);
+    await waitFor(() => expect(screen.getByLabelText('매도 67,300원 주문', { exact: true })).toHaveTextContent('100'));
+    expect(mock.command).toHaveBeenCalledOnce();
+    expect(mock.command.mock.calls[0][1]).toMatchObject({ side: 'SELL', quantity: 100 });
+    expect(input).toHaveValue(100);
+    expect(holding).toHaveTextContent('100');
+    expect(holding).toBeEnabled();
+    fireEvent.click(holding);
+    expect(input).toHaveValue(0);
+    for (const side of ['매수', '매도']) {
+      const button = screen.getByRole('button', { name: new RegExp(`${side} 67,200원 주문 추가`) });
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      fireEvent.doubleClick(button);
+      fireEvent.keyDown(button, { key: 'Enter' });
+    }
+    expect(mock.command).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('매도 67,300원 주문', { exact: true })).toHaveTextContent('100');
+  });
+  it.each(['', ' ', '-1', 'NaN', '1.5', '101', undefined])('매도 가능 수량 %s가 없거나 유효하지 않으면 기존 입력값을 유지한다', sellable => {
     mock.sellableQuantity = sellable;
     show();
     fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '37' } });
@@ -839,6 +872,16 @@ describe('호가 주문', () => {
     mock.balancesError = true;
     show();
     expect(screen.getByLabelText('매입수량')).toBeDisabled();
+    expect(mock.command).not.toHaveBeenCalled();
+  });
+  it.each(['', ' ', '-1', 'NaN', '1.5', '1000000001'])('보유 수량 %s가 유효하지 않으면 매도 가능 0도 적용하지 않는다', holding => {
+    mock.holdingQuantity = holding; mock.sellableQuantity = '0';
+    show();
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '37' } });
+    const button = screen.getByLabelText('매입수량');
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(37);
     expect(mock.command).not.toHaveBeenCalled();
   });
   it('매수금액은 원본 소수 평단가로 계산하고 정수 경계·누락·보유 없음도 처리한다', () => {
@@ -1027,10 +1070,12 @@ describe('호가 주문', () => {
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0][1]).toMatchObject({ price: 67200, quantity: 74 });
   });
-  it('미보유는 보유 0과 평단가·평가손익 없음으로 표시하며 보유 수량을 적용하지 않는다', () => {
-    mock.holdingQuantity = '0'; show();
+  it('미보유는 보유 0과 평단가·평가손익 없음으로 표시하며 클릭하면 주문수량을 0으로 바꾼다', () => {
+    mock.holdingQuantity = '0'; mock.sellableQuantity = '0'; show();
     expect(screen.getByLabelText('매입수량')).toHaveTextContent('0');
-    expect(screen.getByLabelText('매입수량')).toBeDisabled();
+    expect(screen.getByLabelText('매입수량')).toBeEnabled();
+    fireEvent.click(screen.getByLabelText('매입수량'));
+    expect(screen.getByLabelText('신규 주문 수량')).toHaveValue(0);
     expect(screen.getByLabelText('매입평단가')).toHaveTextContent('—');
     expect(screen.getByLabelText('보유 종목 평가 수익')).toHaveTextContent('—');
     expect(screen.getByRole('button', { name: '평가손익 표시 전환' })).toBeDisabled();
