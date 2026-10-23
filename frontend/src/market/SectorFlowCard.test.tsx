@@ -1,4 +1,4 @@
-/** 업종 수급 카드 — 프로토타입 판정(B + 주체 토글)이 지키려던 계약을 고정한다.
+/** 업종 수급 카드 — 정렬과 세 주체의 공통 농도 기준을 검증한다.
  *
  * 값은 2026-08-07 장중 ka10051 실응답에서 가져왔다. 합성값을 쓰면 이 카드가 풀려던
  * 문제(한 방향으로 쏠린 날의 가독성)가 픽스처에서 사라진다.
@@ -17,7 +17,6 @@ const FLOW = {
   markets: {
     KOSPI: [
       { code: '001', name: '종합(KOSPI)', value: 6200.89, change_pct: -1.22, individual: -701, foreign: -3942, institution: 4723 },
-      // 외국인 기준으로는 제조가 1위, 개인 기준으로는 대형주가 1위 — 토글이 순서를 바꾸는지 본다.
       { code: '027', name: '제조', value: 1000, change_pct: -1.13, individual: -1919, foreign: -2601, institution: 4669 },
       { code: '002', name: '대형주', value: 2000, change_pct: -1.23, individual: -1785, foreign: -2543, institution: 4389 },
       { code: '009', name: '제약', value: 3000, change_pct: 0.56, individual: -3011, foreign: 281, institution: 145 },
@@ -67,32 +66,60 @@ describe('SectorFlowCard', () => {
   });
 
   it('세 주체 열이 항상 보이고 종합이 맨 위에 고정된다', async () => {
-    // 토글은 "무엇을 보나" 가 아니라 "무엇으로 고르나" 다 — 열은 안 사라진다.
     mockApi();
     renderCard();
 
     expect(await screen.findByText('종합(KOSPI)')).toBeTruthy();
     for (const label of ['외국인', '기관', '개인']) {
       expect(screen.getByRole('columnheader', { name: label })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: new RegExp(`^${label}$`) })).toBeNull();
     }
     expect(rowNames()[0]).toBe('종합(KOSPI)');
   });
 
-  it('주체 토글이 정렬·절단 기준을 바꾼다', async () => {
+  it('기본순·상승순·하락순이 종합 행을 고정한 채 정렬한다', async () => {
     mockApi();
     renderCard();
     await screen.findByText('종합(KOSPI)');
 
-    // 외국인 기준: |−2601| > |−2543| > |281|
+    expect(within(screen.getByLabelText('정렬 기준')).getAllByRole('button').map(b => b.textContent))
+      .toEqual(['기본순', '상승순', '하락순']);
+    expect(screen.getByRole('button', { name: '기본순' })).toHaveAttribute('aria-pressed', 'true');
     expect(rowNames()).toEqual(['종합(KOSPI)', '제조', '대형주', '제약']);
 
-    await userEvent.click(within(screen.getByLabelText('정렬 기준')).getByText('개인'));
-
-    // 개인 기준: |−3011| > |−1919| > |−1785| — **제약이 꼴찌에서 1위로** 올라온다
+    await userEvent.click(screen.getByRole('button', { name: '상승순' }));
     expect(rowNames()).toEqual(['종합(KOSPI)', '제약', '제조', '대형주']);
-    // 어느 축으로 세웠는지 화면이 말한다 — 정렬만 바뀌고 표시가 그대로면 읽는 사람이
-    // 무엇을 보고 있는지 모른다.
-    expect(screen.getByRole('columnheader', { name: '개인' }).className).toContain('text-fg');
+    await userEvent.click(screen.getByRole('button', { name: '하락순' }));
+    expect(rowNames()).toEqual(['종합(KOSPI)', '대형주', '제조', '제약']);
+    await userEvent.click(screen.getByRole('button', { name: '기본순' }));
+    expect(rowNames()).toEqual(['종합(KOSPI)', '제조', '대형주', '제약']);
+  });
+
+  it('정렬과 관계없이 종합을 포함한 세 열이 같은 금액에 같은 농도를 사용한다', async () => {
+    mockApi({ ...FLOW, markets: { KOSPI: [
+      { ...FLOW.markets.KOSPI[0], foreign: 1000, institution: -500, individual: 0 },
+      { ...FLOW.markets.KOSPI[1], foreign: -500, institution: 500, individual: -250 },
+      { ...FLOW.markets.KOSPI[2], foreign: 500, institution: null, individual: -1 },
+    ] } });
+    renderCard();
+    await screen.findByText('종합(KOSPI)');
+
+    const background = (name: string, column: number) => {
+      const row = screen.getByRole('row', { name: new RegExp(name) });
+      return (within(row).getAllByRole('cell')[column] as HTMLElement).style.background;
+    };
+    for (const mode of ['기본순', '상승순', '하락순']) {
+      await userEvent.click(screen.getByRole('button', { name: mode }));
+      expect(background('종합', 2)).toContain('var(--price-up) 45%');
+      expect(background('종합', 3)).toContain('var(--price-down) 22.5%');
+      expect(background('제조', 2)).toBe(background('종합', 3));
+      expect(background('제조', 3)).toBe(background('대형주', 2));
+      expect(background('제조', 3)).toContain('var(--price-up) 22.5%');
+      expect(background('제조', 4)).toContain('var(--price-down) 11.25%');
+      expect(background('대형주', 4)).toContain('var(--price-down)');
+      expect(background('종합', 4)).toBe('');
+      expect(background('대형주', 3)).toBe('');
+    }
   });
 
   it('시장 토글이 코스닥 행으로 바꾼다', async () => {
