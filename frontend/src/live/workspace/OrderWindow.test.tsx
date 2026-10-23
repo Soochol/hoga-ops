@@ -1204,7 +1204,7 @@ describe('호가 주문', () => {
     fireEvent.pointerEnter(buy.closest('.order-row')!);
     fireEvent.focus(buy);
     expect(screen.getByLabelText('예상 주문 금액')).toHaveTextContent('3,360,000원');
-    expect(screen.getByLabelText('예상 주문 금액')).toHaveAttribute('title', '67,200원 기준');
+    expect(screen.getByLabelText('예상 주문 금액')).not.toHaveAttribute('title');
     fireEvent.doubleClick(buy);
     await waitFor(() => expect(mock.command).toHaveBeenCalledOnce());
     expect(mock.command.mock.calls[0][1]).toMatchObject({ side: 'BUY', quantity: 50, price: 67300 });
