@@ -151,23 +151,39 @@ test('sector table keeps a shared heat scale across all actors and sort modes', 
   } }));
   await page.goto('/market');
   const card = page.locator('.market-sector-card');
-  const sorts = card.getByRole('group', { name: '정렬 기준', exact: true });
-  await expect(sorts.getByRole('button')).toHaveText(['기본순', '상승순', '하락순']);
+  await expect(card.getByRole('group', { name: '정렬 기준', exact: true })).toHaveCount(0);
+  for (const label of ['기본순', '상승순', '하락순']) {
+    await expect(card.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+  }
   for (const actor of ['외국인', '기관', '개인']) {
-    await expect(card.getByRole('button', { name: actor, exact: true })).toHaveCount(0);
+    await expect(card.getByRole('columnheader', { name: actor, exact: true }).getByRole('button')).toBeVisible();
     await expect(card.getByRole('columnheader', { name: actor, exact: true })).toBeVisible();
   }
   const names = card.locator('tbody tr td:first-child');
   const cell = (name: string, column: number) => card.getByRole('row', { name: new RegExp(name) }).getByRole('cell').nth(column);
   for (const width of [1440, 600]) {
     await page.setViewportSize({ width, height: 1100 });
-    for (const [mode, ordered] of [
-      ['기본순', ['종합(KOSPI)', '제조', '대형주']],
-      ['상승순', ['종합(KOSPI)', '대형주', '제조']],
-      ['하락순', ['종합(KOSPI)', '제조', '대형주']],
+    for (const [label, first, second] of [
+      ['업종', ['종합(KOSPI)', '대형주', '제조'], ['종합(KOSPI)', '제조', '대형주']],
+      ['등락', ['종합(KOSPI)', '대형주', '제조'], ['종합(KOSPI)', '제조', '대형주']],
+      ['외국인', ['종합(KOSPI)', '대형주', '제조'], ['종합(KOSPI)', '제조', '대형주']],
+      ['기관', ['종합(KOSPI)', '제조', '대형주'], ['종합(KOSPI)', '제조', '대형주']],
+      ['개인', ['종합(KOSPI)', '대형주', '제조'], ['종합(KOSPI)', '제조', '대형주']],
     ] as const) {
-      await sorts.getByRole('button', { name: mode }).click();
-      await expect(names).toHaveText([...ordered]);
+      const header = card.getByRole('columnheader', { name: label, exact: true });
+      const button = header.getByRole('button');
+      await button.click();
+      await expect(names).toHaveText([...first]);
+      await expect(header).toHaveAttribute('aria-sort', label === '업종' ? 'ascending' : 'descending');
+      await expect(card.locator('th[aria-sort]:not([aria-sort="none"])')).toHaveCount(1);
+      await expect(button.locator('[aria-hidden="true"]')).toHaveText(label === '업종' ? '▲' : '▼');
+      await button.press('Enter');
+      await expect(names).toHaveText([...second]);
+      await expect(header).toHaveAttribute('aria-sort', label === '업종' ? 'descending' : 'ascending');
+      await button.press('Space');
+      await expect(names).toHaveText(['종합(KOSPI)', '제조', '대형주']);
+      await expect(header).toHaveAttribute('aria-sort', 'none');
+      await expect(button.locator('[aria-hidden="true"]')).toHaveCount(0);
       const backgrounds = await Promise.all([
         cell('종합', 2), cell('종합', 3), cell('제조', 2), cell('제조', 3), cell('대형주', 2), cell('제조', 4),
       ].map(cell => cell.evaluate(el => getComputedStyle(el).backgroundColor)));

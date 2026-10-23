@@ -72,27 +72,66 @@ describe('SectorFlowCard', () => {
     expect(await screen.findByText('종합(KOSPI)')).toBeTruthy();
     for (const label of ['외국인', '기관', '개인']) {
       expect(screen.getByRole('columnheader', { name: label })).toBeTruthy();
-      expect(screen.queryByRole('button', { name: new RegExp(`^${label}$`) })).toBeNull();
+      expect(within(screen.getByRole('columnheader', { name: label })).getByRole('button', { name: label })).toBeTruthy();
     }
+    expect(screen.queryByLabelText('정렬 기준')).toBeNull();
+    for (const label of ['기본순', '상승순', '하락순']) expect(screen.queryByRole('button', { name: label })).toBeNull();
     expect(rowNames()[0]).toBe('종합(KOSPI)');
   });
 
-  it('기본순·상승순·하락순이 종합 행을 고정한 채 정렬한다', async () => {
+  it.each([
+    ['업종', 'ascending', ['대형주', '제약', '제조'], ['제조', '제약', '대형주']],
+    ['등락', 'descending', ['제약', '제조', '대형주'], ['대형주', '제조', '제약']],
+    ['외국인', 'descending', ['제약', '대형주', '제조'], ['제조', '대형주', '제약']],
+    ['기관', 'descending', ['제조', '대형주', '제약'], ['제약', '대형주', '제조']],
+    ['개인', 'descending', ['대형주', '제조', '제약'], ['제약', '제조', '대형주']],
+  ] as const)('%s 헤더가 두 방향과 제공 순서를 순환하고 종합 행을 고정한다', async (label, direction, first, second) => {
     mockApi();
     renderCard();
     await screen.findByText('종합(KOSPI)');
 
-    expect(within(screen.getByLabelText('정렬 기준')).getAllByRole('button').map(b => b.textContent))
-      .toEqual(['기본순', '상승순', '하락순']);
-    expect(screen.getByRole('button', { name: '기본순' })).toHaveAttribute('aria-pressed', 'true');
+    const header = screen.getByRole('columnheader', { name: label });
+    const button = within(header).getByRole('button');
+    expect(header).toHaveAttribute('aria-sort', 'none');
     expect(rowNames()).toEqual(['종합(KOSPI)', '제조', '대형주', '제약']);
+    await userEvent.click(button);
+    expect(rowNames()).toEqual(['종합(KOSPI)', ...first]);
+    expect(header).toHaveAttribute('aria-sort', direction);
+    await userEvent.click(button);
+    expect(rowNames()).toEqual(['종합(KOSPI)', ...second]);
+    expect(header).toHaveAttribute('aria-sort', direction === 'ascending' ? 'descending' : 'ascending');
+    await userEvent.click(button);
+    expect(rowNames()).toEqual(['종합(KOSPI)', '제조', '대형주', '제약']);
+    expect(header).toHaveAttribute('aria-sort', 'none');
+  });
 
-    await userEvent.click(screen.getByRole('button', { name: '상승순' }));
-    expect(rowNames()).toEqual(['종합(KOSPI)', '제약', '제조', '대형주']);
-    await userEvent.click(screen.getByRole('button', { name: '하락순' }));
-    expect(rowNames()).toEqual(['종합(KOSPI)', '대형주', '제조', '제약']);
-    await userEvent.click(screen.getByRole('button', { name: '기본순' }));
-    expect(rowNames()).toEqual(['종합(KOSPI)', '제조', '대형주', '제약']);
+  it('다른 열을 누르면 첫 방향으로 시작하고 기본순은 시세 제공 순서로 돌아간다', async () => {
+    mockApi(FLOW, BREADTH, { markets: { '0': { sectors: [
+      { code: '009', change_pct: 0.56 }, { code: '002', change_pct: -1.23 }, { code: '027', change_pct: -1.13 },
+    ] } } });
+    renderCard();
+    await screen.findByText('종합(KOSPI)');
+    await userEvent.click(within(screen.getByRole('columnheader', { name: '업종' })).getByRole('button'));
+    await userEvent.click(within(screen.getByRole('columnheader', { name: '업종' })).getByRole('button'));
+    await userEvent.click(screen.getByRole('button', { name: '외국인' }));
+    expect(screen.getByRole('columnheader', { name: '외국인' })).toHaveAttribute('aria-sort', 'descending');
+    expect(screen.getByRole('columnheader', { name: '업종' })).toHaveAttribute('aria-sort', 'none');
+    await userEvent.click(screen.getByRole('button', { name: '외국인' }));
+    await userEvent.click(screen.getByRole('button', { name: '외국인' }));
+    expect(rowNames()).toEqual(['종합(KOSPI)', '제약', '대형주', '제조']);
+  });
+
+  it('수급의 결측값은 오름차순과 내림차순 모두 마지막에 둔다', async () => {
+    mockApi({ ...FLOW, markets: { KOSPI: [
+      FLOW.markets.KOSPI[0], { ...FLOW.markets.KOSPI[1], foreign: null },
+      { ...FLOW.markets.KOSPI[2], foreign: -100 }, { ...FLOW.markets.KOSPI[3], foreign: 100 },
+    ] } });
+    renderCard();
+    await screen.findByText('종합(KOSPI)');
+    await userEvent.click(screen.getByRole('button', { name: '외국인' }));
+    expect(rowNames()).toEqual(['종합(KOSPI)', '제약', '대형주', '제조']);
+    await userEvent.click(screen.getByRole('button', { name: '외국인' }));
+    expect(rowNames()).toEqual(['종합(KOSPI)', '대형주', '제약', '제조']);
   });
 
   it('정렬과 관계없이 종합을 포함한 세 열이 같은 금액에 같은 농도를 사용한다', async () => {
@@ -108,8 +147,8 @@ describe('SectorFlowCard', () => {
       const row = screen.getByRole('row', { name: new RegExp(name) });
       return (within(row).getAllByRole('cell')[column] as HTMLElement).style.background;
     };
-    for (const mode of ['기본순', '상승순', '하락순']) {
-      await userEvent.click(screen.getByRole('button', { name: mode }));
+    for (const label of ['등락', '외국인', '기관', '개인', '업종']) {
+      await userEvent.click(within(screen.getByRole('columnheader', { name: label })).getByRole('button'));
       expect(background('종합', 2)).toContain('var(--price-up) 45%');
       expect(background('종합', 3)).toContain('var(--price-down) 22.5%');
       expect(background('제조', 2)).toBe(background('종합', 3));
@@ -211,7 +250,7 @@ describe('SectorFlowCard', () => {
     ] } } });
     renderCard();
     await screen.findByText('지수0');
-    await userEvent.click(screen.getByRole('button', { name: '상승순' }));
+    await userEvent.click(screen.getByRole('button', { name: '등락' }));
     expect(rowNames()[0]).toBe('최대상승');
     expect(rowNames()).toHaveLength(12);
     expect(screen.queryByText('지수0')).toBeNull();
