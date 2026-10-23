@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
 import React from 'react';
-import { installFakeWebSocket, fakeSockets } from '../test/fakeWebSocket';
+import { installFakeWebSocket, fakeSockets, type FakeWebSocket } from '../test/fakeWebSocket';
 import { __resetForTests as resetWs } from './ws';
 import * as client from './client';
 import {
@@ -25,6 +25,22 @@ async function connect() {
   const sock = fakeSockets[0];
   sock.open();
   return sock;
+}
+
+async function reconnect(sock: FakeWebSocket, disconnected: () => void = () => {}) {
+  // A closed WebSocket cannot reopen. Drive the production retry timer and use
+  // its new instance, so these tests also exercise connection-generation guards.
+  vi.useFakeTimers();
+  try {
+    sock.serverClose();
+    disconnected();
+    await vi.advanceTimersByTimeAsync(500);
+    const next = fakeSockets.at(-1)!;
+    expect(next).not.toBe(sock);
+    next.open();
+    await Promise.resolve();
+    return next;
+  } finally { vi.useRealTimers(); }
 }
 
 describe('subscribeToCaptureEvents', () => {
@@ -94,9 +110,7 @@ describe('useEventStream disconnect handler', () => {
       React.createElement(QueryClientProvider, { client: qc }, children);
     renderHook(() => useEventStream(), { wrapper });
     const sock = await connect();
-    sock.serverClose();
-    expect(spy).not.toHaveBeenCalled();
-    sock.open(); // Deterministic transport reconnect, no retry timer sleep.
+    await reconnect(sock, () => expect(spy).not.toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
     const calls = spy.mock.calls.map((c) => c[0]);
     expect(calls.some((c) => Array.isArray(c?.queryKey) && c.queryKey[0] === 'stock-dates')).toBe(true);
@@ -246,9 +260,7 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     const spy = mount();
     await new Promise((r) => setTimeout(r, 0));
     fakeSockets[0].open();
-    fakeSockets[0].serverClose();
-    expect(spy).not.toHaveBeenCalled();
-    fakeSockets[0].open();
+    await reconnect(fakeSockets[0], () => expect(spy).not.toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
 
     const onReconnect = new Set(keys(spy));
@@ -261,9 +273,7 @@ describe('useEventStream 목록 교차 창 동기화', () => {
     const spy = mount();
     await new Promise((r) => setTimeout(r, 0));
     fakeSockets[0].open();
-    fakeSockets[0].serverClose();
-    expect(spy).not.toHaveBeenCalled();
-    fakeSockets[0].open();
+    await reconnect(fakeSockets[0], () => expect(spy).not.toHaveBeenCalled());
     await new Promise((r) => setTimeout(r, 0));
 
     expect(keys(spy)).toContain('watchlist');
@@ -400,15 +410,13 @@ it('cancels old pending queue reads on reconnect, preserves unrelated work, and 
   const otherRead = qc.fetchQuery({ queryKey: ['unrelated'], queryFn: ({ signal }) => {
     otherSignal = signal; return new Promise(() => {});
   } }).catch(() => {});
-  sock.serverClose();
-  expect(queueSignal.aborted).toBe(false);
-  sock.open();
+  const next = await reconnect(sock, () => expect(queueSignal.aborted).toBe(false));
   await queueRead;
   await Promise.resolve();
   expect(queueSignal.aborted).toBe(true);
   expect(otherSignal.aborted).toBe(false);
   const calls = spy.mock.calls.length;
-  sock.open();
+  next.open();
   await Promise.resolve();
   expect(spy).toHaveBeenCalledTimes(calls);
   unmount();

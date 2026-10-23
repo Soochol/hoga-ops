@@ -97,6 +97,9 @@ export interface LiveSeriesData {
   initial: LiveSeriesResponse | undefined;
   /** Coalesced display state; never mixed into the ordered indicator history. */
   latestOb?: ObSnapshot;
+  /** Browser receipt of an admitted WS orderbook, scoped to this Code/venue.
+   * REST reads and trades never refresh this evidence. */
+  bookReceivedAtMs?: number;
   /** Latest usable ladder, retained when a reset frame has no prices. */
   lastValidOb?: ObSnapshot;
   /** KRX ladder immediately before the regular closing auction. */

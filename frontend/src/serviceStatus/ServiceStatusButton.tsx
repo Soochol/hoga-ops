@@ -7,6 +7,7 @@ import { STATUS_STALE_MS } from '../api/liveness';
 import { useAnchoredPopover } from '../util/useAnchoredPopover';
 import { useServiceStatusPanel } from './controls';
 import { clearedIssues, CONNECTION_COPY, failurePhaseLabel, issueReport, serviceIssues, type ClearedIssue, type ServiceIssue } from './model';
+import { unixMsToKSTClock } from '../util/time';
 
 function stamp(ms: number) {
   return new Date(ms).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
@@ -58,7 +59,7 @@ function Issue({ issue, clearedAt, expanded }: { issue: ServiceIssue; clearedAt?
 export function ServiceStatusButton() {
   const { data, isError, dataUpdatedAt } = useLiveStatus();
   const eventLive = useConnectionLiveness(STATUS_STALE_MS, 5000);
-  const { open, operation, show, close } = useServiceStatusPanel();
+  const { open, operation, book, show, close } = useServiceStatusPanel();
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
   const dismiss = useCallback(() => { close(); trigger.current?.focus({ preventScroll: true }); }, [close]);
@@ -76,7 +77,7 @@ export function ServiceStatusButton() {
   const provider = data?.provider_status;
   const count = issues.length + (isError ? 1 : 0);
   const notice = provider?.notice;
-  const selectedView = operation ? 'current' : view;
+  const selectedView = operation || book ? 'current' : view;
   return <>
     <button ref={trigger} type="button" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
       aria-label={`서비스 상태${count ? ` · 문제 ${count}건` : ''}`}
@@ -98,6 +99,16 @@ export function ServiceStatusButton() {
         </button>)}
       </div>
       {isError && <div role="status" className="border-b border-border px-lg py-md text-sm text-warn">상태 서버 연결 실패 · 이전 정보입니다. 현재 상태와 복구 여부를 확인할 수 없습니다.</div>}
+      {book && <div className="border-b border-border px-lg py-md text-sm" data-testid="book-diagnostics">
+        <strong>선택한 호가 · {book.code} · {book.venue}</strong>
+        <p className="mt-1 text-fg-dim">{book.message}</p>
+        <p className="mt-2 text-xs text-fg-dim">선택 당시 화면 진단 · {unixMsToKSTClock(book.checkedAtMs)}</p>
+        <p className="mt-1 text-xs text-fg-dim">표시 호가 시각 · {book.bookMs === undefined ? '없음' : unixMsToKSTClock(book.bookMs)}</p>
+        <p className="mt-1 text-xs text-fg-dim">브라우저 호가 수신 · {book.browserReceivedMs === undefined ? '확인되지 않음' : unixMsToKSTClock(book.browserReceivedMs)}</p>
+        <p className="mt-1 text-xs text-fg-dim">서버 호가 수신 · {book.serverReceivedMs === undefined ? '확인되지 않음' : unixMsToKSTClock(book.serverReceivedMs)}</p>
+        <p className="mt-1 text-xs text-fg-dim">서버 관측 · {book.serverObservedMs === undefined ? '확인되지 않음' : unixMsToKSTClock(book.serverObservedMs)}</p>
+        <p className="mt-2 text-xs text-fg-dim">아래 문제 건수는 서비스 전체 관측입니다. 개별 호가의 갱신 상태와 구분합니다.</p>
+      </div>}
       {selectedView === 'current' ? <>
         {!data && !isError && <p className="px-lg py-lg text-sm text-fg-dim">상태 확인 중</p>}
         {data && !isError && !count && <p className="px-lg py-lg text-center text-sm text-fg-dim">{provider ? '현재 확인된 문제가 없습니다' : '공급사 상태 정보가 없습니다'}</p>}

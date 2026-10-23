@@ -48,4 +48,24 @@ describe('orderbook availability', () => {
   it('makes application reference limits persistent and distinct from vendor slots', () => {
     expect(derive({ ...input, referenceLimited: true })?.kind).toBe('reference_limit');
   });
+  it('identifies the missing browser update only from recent matching server book receipts', () => {
+    const stale = { ...input, bookMs: nowMs - 33_000 };
+    expect(derive({ ...stale, status: status({ data_received_ms: { '005930:KRX:ob': nowMs - 100 } }) }))
+      .toMatchObject({ kind: 'display_delayed', message: '화면 호가 갱신 지연' });
+    for (const key of ['005930:NXT:ob', '000660:KRX:ob', '005930:KRX:trade']) {
+      expect(derive({ ...stale, status: status({ data_received_ms: { [key]: nowMs } }) })?.kind).toBe('stale');
+    }
+    expect(derive({ ...stale, statusCurrent: false,
+      status: status({ data_received_ms: { '005930:KRX:ob': nowMs } }) })?.kind).toBe('stale');
+    expect(derive({ ...input, status: status({ view_subscriptions: rows('registered'),
+      data_received_ms: { '005930:KRX:ob': nowMs } }) })?.kind).toBe('display_delayed');
+  });
+  it('separates an old event timestamp from recent browser receipts without asserting an outage', () => {
+    expect(derive({ ...input, bookMs: nowMs - 33_000, browserReceivedMs: nowMs - 100 }))
+      .toMatchObject({ kind: 'timestamp_old', message: '호가 시각 갱신 대기' });
+    const unknown = derive({ ...input, bookMs: nowMs - 33_000, status: status() });
+    expect(unknown?.kind).toBe('stale');
+    expect(unknown?.message).not.toContain('수신 지연');
+    expect(unknown?.detail).toContain('아직 구분할 수 없습니다');
+  });
 });

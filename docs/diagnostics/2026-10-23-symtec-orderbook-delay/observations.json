@@ -1,0 +1,216 @@
+{
+  "investigated_at": "2026-10-23T17:08:01.650682+09:00",
+  "head": "e06369153898d70686c3515e1c9caf1563aed55b",
+  "running_health": {
+    "version": "0.16.6.0",
+    "commit": "e06369153",
+    "api_pid": 1417335,
+    "capture_pid": 1417444
+  },
+  "subject": {
+    "code": "222800",
+    "name": "심텍",
+    "venue": "KRX",
+    "reported_last_book": "2026-10-23T16:56:47+09:00",
+    "reported_status_minute": "2026-10-23T16:57+09:00"
+  },
+  "conclusion": {
+    "confirmed": "서버는 신고된 마지막 호가 이후에도 심텍 KRX 호가를 수신·저장했다. 최신 REST 호가가 더 새로워도 기존 WS latestOb를 우선하는 화면 선택 경로의 복구 결함을 합성 입력으로 재현했다.",
+    "incident_attribution": "당시 브라우저 WS 수신·표시 전환 기록은 없어, 이 결함이 신고 시점의 직접 원인이었는지, 처음 WS 표시가 뒤처진 이유가 무엇인지는 확정하지 못했다. 현재 서버 연결 장애나 30초 이상 수집 정지의 증거는 없다.",
+    "status_mismatch": "개별 창 경고는 선택한 호가의 이벤트 시각이 30초 이상 오래되면 발생한다. 서비스 상태 문제 집계는 공급사 실패·연결·수집 프로세스·디스크·작업 상태를 사용하며 개별 창 stale을 집계하지 않는다.",
+    "on_demand": "열람 구독 0/346은 저장 대상 외 추가 표시 등록의 사용량/가용 슬롯이다. 전체 저장 구독이나 현재 심텍 호가 수신이 0이라는 뜻이 아니다."
+  },
+  "persisted_10_second_rows": [
+    {
+      "flush_at": "2026-10-23T16:56:00.004000+09:00",
+      "book_at": "2026-10-23T16:55:58+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:56:10.004000+09:00",
+      "book_at": "2026-10-23T16:56:09+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:56:20.004000+09:00",
+      "book_at": "2026-10-23T16:56:18+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:56:30.006000+09:00",
+      "book_at": "2026-10-23T16:56:18+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:56:40.003000+09:00",
+      "book_at": "2026-10-23T16:56:31+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:56:50.003000+09:00",
+      "book_at": "2026-10-23T16:56:48+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:57:00.005000+09:00",
+      "book_at": "2026-10-23T16:56:59+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:57:10.003000+09:00",
+      "book_at": "2026-10-23T16:57:09+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:57:20.003000+09:00",
+      "book_at": "2026-10-23T16:57:19+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:57:30.057000+09:00",
+      "book_at": "2026-10-23T16:57:29+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:57:40.004000+09:00",
+      "book_at": "2026-10-23T16:57:35+09:00"
+    },
+    {
+      "flush_at": "2026-10-23T16:57:50.003000+09:00",
+      "book_at": "2026-10-23T16:57:48+09:00"
+    }
+  ],
+  "persisted_source": "/home/dev/.local/share/hoga-ops/data/live_kiwoom/20261023/KRX/222800.jsonl",
+  "status_observed_at": "2026-10-23T16:59:05.977000+09:00",
+  "status": {
+    "connection": "connected",
+    "connected_accounts": 6,
+    "configured_accounts": 6,
+    "ready_accounts": 6,
+    "view_rows": [
+      {
+        "code": "222800",
+        "venue": "KRX",
+        "phase": "registered",
+        "connection_generation": 1
+      },
+      {
+        "code": "222800",
+        "venue": "NXT",
+        "phase": "registered",
+        "connection_generation": 1
+      },
+      {
+        "code": "222800",
+        "venue": "UN",
+        "phase": "registered",
+        "connection_generation": 1
+      }
+    ],
+    "book_received_at": "2026-10-23T16:59:02.872000+09:00",
+    "collector": {
+      "ready": true,
+      "restarts": 0,
+      "display_gaps": 0,
+      "discarded_old_frames": 0,
+      "error": null
+    },
+    "display_dropped": 0,
+    "account_queue_overflows": [
+      {
+        "account_id": 0,
+        "overflows": 0,
+        "connection_generation": 1
+      },
+      {
+        "account_id": 1,
+        "overflows": 0,
+        "connection_generation": 1
+      },
+      {
+        "account_id": 2,
+        "overflows": 0,
+        "connection_generation": 1
+      },
+      {
+        "account_id": 3,
+        "overflows": 0,
+        "connection_generation": 1
+      },
+      {
+        "account_id": 4,
+        "overflows": 0,
+        "connection_generation": 1
+      },
+      {
+        "account_id": 5,
+        "overflows": 0,
+        "connection_generation": 1
+      }
+    ],
+    "subscriber_drops": 0
+  },
+  "log_check": {
+    "source": "/home/dev/.local/share/hoga-ops/logs/hoga.log",
+    "range": "2026-10-23 16:56:00–16:58:59 KST",
+    "finding": "16:56:01 API loop_stall 283ms 외 관련 경고·오류 없음. 해당 구간에 WS 단절·등록 실패·큐 포화·수집 재시작 기록이 없다. 단발 283ms 기록을 30초 이상 오래된 화면의 원인으로 단정할 수 없다."
+  },
+  "live_sample": {
+    "started_at": "2026-10-23T17:03:41.578000+09:00",
+    "duration_s": 60,
+    "transport": "기존 API /api/ws protocol=2. 증권사 WS 추가·토큰 발급 없이 기존 저장 대상의 표시 참조만 추가했고 종료 시 해제했다.",
+    "counts": {
+      "batches": 141,
+      "dropped": 0,
+      "latest:KRX": 40,
+      "data:KRX": 40,
+      "latest:NXT": 31,
+      "latest:UN": 61,
+      "data:NXT": 32,
+      "data:UN": 61
+    },
+    "by_venue": {
+      "KRX": {
+        "latest_count": 40,
+        "max_event_age_ms": 1189,
+        "max_arrival_gap_ms": 5478,
+        "sequence_regressions": 0
+      },
+      "NXT": {
+        "latest_count": 31,
+        "max_event_age_ms": 1056,
+        "max_arrival_gap_ms": 6130,
+        "sequence_regressions": 0
+      },
+      "UN": {
+        "latest_count": 61,
+        "max_event_age_ms": 1250,
+        "max_arrival_gap_ms": 3427,
+        "sequence_regressions": 0
+      }
+    }
+  },
+  "browser_observation": {
+    "at": "2026-10-23T17:02:25+09:00",
+    "tabs": "기존 localhost:5173/live 심텍 탭 2개 읽기 확인",
+    "book_availability_notices": [
+      0,
+      0
+    ],
+    "console_warnings_errors": 0,
+    "limitations": "접속 이후의 현재 DOM/console이며 장애 당시 이력은 아니다. 화면 설정·레이아웃·reload 조작 없음."
+  },
+  "reproduction": {
+    "fixture": "reproduce.test.ts.txt",
+    "input": "WS latest=16:56:47; REST snapshots/last_ob=16:57:19; now=16:57:20; connected=true",
+    "actual": "history와 lastValidOb는 16:57:19로 갱신되나 latestOb는 16:56:47에 남는다. DataWindow/OrderWindow의 latestOb 우선식을 적용하면 stale. 이후 새 WS latest가 오면 해제된다.",
+    "limit": "합성 입력으로 기존 코드의 동작을 확인했다. 신고 당시 실제 브라우저 이벤트열의 재생은 아니다."
+  },
+  "recommended_change": "같은 Code·venue·날짜의 WS/REST 표시 후보를 시각 비교해 선택한다. 더 새로운 reset, 같은 초의 WS 우선, 순서 있는 지표 이력 분리를 유지한다. 30초 임계값 연장이나 data_received_ms만으로 낡은 화면을 정상 처리하는 방식은 피한다.",
+  "verification": {
+    "command": "cd frontend && npx vitest run src/api/orderbookInvestigation.test.ts src/api/sharedLiveSeries.test.tsx src/api/ws.test.ts src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx",
+    "result": "43 passed / 5 files",
+    "duration_s": 1.24,
+    "fixture_note": "조사 후 임시 테스트를 reproduce.test.ts.txt로 이동했다. 재실행은 이 파일을 frontend/src/api/orderbookInvestigation.test.ts로 복사해 위 명령을 실행한 뒤 복사본만 삭제한다."
+  },
+  "changes": "진단 기록·재현 입력만 추가했다. 앱 소스·운영 서버·자격증명·저장 데이터 변경 없음.",
+  "input_sha256": {
+    "frontend/src/api/sharedLiveSeries.ts": "526a486e21c2aca554dfb404bdaefd5289f244ce29e079f55eccfff3bdf6172c",
+    "frontend/src/api/ws.ts": "6af14a5cacafdfa666317db06fbfabe736720641a99a2bbd8ff780700df42a0e",
+    "frontend/src/live/orderbookAvailability.ts": "76a768173ccedf862c3faef38862367d70f4fa9f9f884011d63ad07f9cc5fb12",
+    "frontend/src/live/workspace/DataWindow.tsx": "fc991ff4c7755d9a10f9cb5995fd770a72b3e15d86b2295dfdcdcca790a46335",
+    "frontend/src/live/workspace/OrderWindow.tsx": "0f73bef51a23e78a6772376e64f20d836bf26fe7cb83c793ff6957c8ee583c00",
+    "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f",
+    "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493"
+  }
+}

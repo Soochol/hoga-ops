@@ -97,6 +97,7 @@ async function open(): Promise<void> {
     if (_ws) return; // raced
     const sock = new W(url);
     sock.onopen = () => {
+      if (_ws !== sock) return;
       _connectedAt = Date.now();
       _lastHeartbeatMs = Date.now();
       _reconnectMs = 500;
@@ -104,6 +105,7 @@ async function open(): Promise<void> {
       for (const code of _liveSubs.keys()) send({ action: 'subscribe', code, protocol: 2 });
     };
     sock.onmessage = (e: MessageEvent) => {
+      if (_ws !== sock) return; // queued callbacks from a retired connection are not current evidence
       _lastHeartbeatMs = Date.now(); // ANY frame proves liveness
       const started = performance.now();
       _lastReceivedAt = started;
@@ -131,6 +133,7 @@ async function open(): Promise<void> {
       if (_dispatchMs.length > 256) _dispatchMs.shift();
     };
     sock.onclose = () => {
+      if (_ws !== sock) return;
       clearAdmission();
       if (_connected) for (const code of _liveSubs.keys()) markHistoryPartial(code);
       _latestSeq.clear();

@@ -1,0 +1,76 @@
+{
+  "verified_at": "2026-10-23T17:38:10.786660+09:00",
+  "head": "e06369153898d70686c3515e1c9caf1563aed55b",
+  "base": "e06369153898d70686c3515e1c9caf1563aed55b",
+  "working_tree": "위 커밋 기준의 미커밋 수정. 입력 지문이 검증한 소스·테스트·의존성·설정을 식별한다.",
+  "scope": "프론트 호가 선택·국소 수신 진단·복구 및 기존 설계 문서. 백엔드 wire/API·저장·주문 30초 판정 변경 없음.",
+  "decisions": [
+    "공유 저장소가 REST의 더 새 호가를 현재 표시 후보에 반영한다. 오래된 응답은 되감지 않고, 같은 초는 순번 검사를 통과한 WS가 우선한다.",
+    "REST 최신값은 순서 있는 지표 이력에 주입하지 않는다. 최신 reset·마지막 유효 사다리·venue 격리 규칙을 유지한다.",
+    "브라우저의 실제 WS 호가 수신은 REST·체결·다른 venue로 갱신되지 않으며 소켓 재연결 시 초기화한다. 이전 소켓의 늦은 open/message/close 콜백은 새 연결에 영향을 주지 못한다.",
+    "서버의 최근 호가 수신과 브라우저 호가 무수신이 함께 확인될 때만 화면 갱신 지연으로 분류한다. 이벤트 시각만 오래된 경우 및 양쪽 무수신/관측 불명은 다른 확인 상태다.",
+    "종목·날짜·venue별 활성 창은 조회 중 합류·30초 cooldown·연속 3회 자동 복구 시도 예산을 공유한다. 최신 호가 회복은 예산을 초기화하며 수동 재조회는 해당 exact query만 갱신한다.",
+    "호가 안내에서 연 서비스 상태는 선택 당시 종목·venue·표시/브라우저/서버 관측 시각을 전달하고 서비스 전체 문제 건수와 구분한다."
+  ],
+  "regression": {
+    "before": "신규 Symtec stale-WS 회귀 테스트가 수정 전 실패: 기대 1792742239000(16:57:19), 실제 1792742207000(16:56:47).",
+    "after": "같은 회귀와 늦은 REST·같은 초 WS·reset·재연결 낮은 순번·이전 소켓 콜백·실패/포화 복구 예산 검사가 통과했다."
+  },
+  "checks": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "통과: 앱·단위·E2E TypeScript 3개 프로젝트",
+      "log": "implementation-typecheck-verified.log.gz"
+    },
+    {
+      "command": "cd frontend && npx vitest run --maxWorkers=4",
+      "result": "최종 코드: 8,922 통과, 기존 시장 종합 테스트 2 실패 / 693파일 중 692통과",
+      "log": "implementation-vitest-verified.log.gz"
+    },
+    {
+      "command": "수정 전 HEAD를 git archive로 별도 임시 디렉터리에 추출, 독립 npm ci 후 npx vitest run src/market/MarketUx.test.tsx --maxWorkers=2",
+      "result": "동일 테스트 2개가 동일 사유로 실패, 7개 통과. 기준 커밋도 e06369153898d70686c3515e1c9caf1563aed55b",
+      "log": "baseline-market.log.gz"
+    },
+    {
+      "command": "cd frontend && npx playwright test book-availability.spec.ts --reporter=line",
+      "result": "9 통과. 최종 런타임 코드에서 두 창의 공유 REST 복구·선택 진단·주문 신선도 유지·오래된 이벤트 시각/최근 수신 구분·슬롯/첫 호가/실패 재시도/장후 제외를 검증",
+      "log": "implementation-e2e-current.log.gz"
+    },
+    {
+      "command": "Playwright webServer의 npx vite build",
+      "result": "통과. 기존 큰 chunk 경고 유지. 이후 변경은 eventStream 테스트의 실제 새 소켓 모형뿐이며 빌드 소스는 동일하다."
+    },
+    {
+      "command": "git diff --check",
+      "result": "통과"
+    }
+  ],
+  "known_baseline_failures": [
+    {
+      "test": "MarketUx > market data meaning > sorts all sectors before truncating and keeps missing values last",
+      "reason": "현재 UI에서 제거된 상승순 버튼을 테스트가 찾음"
+    },
+    {
+      "test": "MarketUx > separates verified industries, index products and unknown codes without dropping rows",
+      "reason": "업종 버튼이 두 개여서 단일 getByRole 선택자가 모호함"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "python": "Python 3.14.7",
+    "backend_port": 20481,
+    "frontend_port": 21481,
+    "e2e_workers": 1,
+    "vendor_credentials": "기존 Playwright 설정의 모든 빈 자격증명 유지. 워크트리 .env는 비어 있고 운영 토큰 발급·벤더 WS 신규 연결 없음."
+  },
+  "limits": [
+    "원래 16:57 사례의 실제 브라우저 WS 이력이 없어 그 사건의 최초 원인을 단정하지 않는다. 이번 결과는 확인된 선택/복구 결함과 합성 입력·실제 브라우저 회귀 검증이다.",
+    "공급자 HHMMSS에는 같은 초의 REST/WS 전역 순번이 없다. 같은 초는 WS 우선이라는 보수적 규칙이며, 공급자 이벤트 전체의 전역 순서를 복원했다는 뜻이 아니다.",
+    "자동 복구 예산은 공유 query 갱신 시도 기준이며 기존 Query의 네트워크 재시도 정책은 유지한다.",
+    "서비스 패널의 개별 호가 진단은 선택 당시 스냅샷이며 실시간으로 갱신된다는 뜻이 아니다.",
+    "전체 검사 실패 2건은 이번 수정과 별개로 기준 커밋에서도 재현됐다. 운영 서버 적용·재시작·실계좌 주문·저장 데이터 변경은 하지 않았다."
+  ],
+  "frontend_inputs_sha256": "5da68ff7b2793b497185fb6a0aab32d10bb7abc34a2c8228549ae4c3c1d16486",
+  "frontend_input_count": 1838
+}

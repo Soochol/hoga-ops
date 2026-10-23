@@ -2,7 +2,7 @@
  * 등록은 React의 subscribe(커밋)에서만 한다. 렌더 중 중단된 창은 버퍼를 남기지 않는다.
  */
 import type { LiveSeriesData, LiveSeriesResponse } from './liveSeries';
-import { subscribeLive, subscribeLiveLatest } from './ws';
+import { subscribeEvents, subscribeLive, subscribeLiveLatest } from './ws';
 import { LiveSnapshotBuffer, type RawSnapshot, type SnapshotKind } from '../live/liveSnapshotBuffer';
 import { liveVenueAcceptsFrame, type LiveFrameVenue } from '../live/liveVenuePolicy';
 import type { ObSnapshot, TradeSnapshot } from '../live/bucketHogaSeries';
@@ -18,7 +18,7 @@ type RetainedBooks = { expires: number; latest: Map<string, ObSnapshot>; valid: 
 // subscriptions are still released immediately; timestamps/freshness stay intact.
 const retainedBooks = new Map<string, RetainedBooks>();
 export function __resetRetainedBooksForTests(): void { retainedBooks.clear(); }
-type Frames = Pick<LiveSeriesData, 'ob' | 'trade' | 'broker' | 'program' | 'afterHours' | 'expected' | 'latestOb' | 'lastValidOb' | 'preAuctionOb'>;
+type Frames = Pick<LiveSeriesData, 'ob' | 'trade' | 'broker' | 'program' | 'afterHours' | 'expected' | 'latestOb' | 'lastValidOb' | 'preAuctionOb' | 'bookReceivedAtMs'>;
 type Raw = Record<SnapshotKind, readonly RawSnapshot[]>;
 const KINDS = ['ob', 'trade', 'broker', 'program', 'ah', 'expected'] as const;
 const EMPTY: readonly never[] = Object.freeze([]);
@@ -83,7 +83,9 @@ class SharedSeries {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private unsubscribe: (() => void) | null = null;
   private unsubscribeLatest: (() => void) | null = null;
+  private unsubscribeEvents: (() => void) | null = null;
   private latestOb = new Map<string, ObSnapshot>();
+  private bookReceivedAt = new Map<string, number>();
   private lastValidOb = new Map<string, ObSnapshot>();
   private preAuctionOb?: ObSnapshot;
   private readonly regularOpen: number;
@@ -113,35 +115,46 @@ class SharedSeries {
       preAuction: this.preAuctionOb && fresh(this.preAuctionOb) ? this.preAuctionOb : undefined };
   }
 
-  private retainBook(entry: RawSnapshot, latest = true): void {
+  private retainBook(entry: RawSnapshot, source: 'live' | 'history' | 'rest' = 'live'): void {
     if (entry.kind !== 'ob') return;
     const venue = typeof entry.venue === 'string' ? entry.venue : 'KRX';
     const book = entry as ObSnapshot;
     if (!Number.isFinite(book.t_ms)) return;
     const previous = this.latestOb.get(venue);
-    // HHMMSS is not unique: newer arrivals within the same second still update.
-    if (latest && bookIsAtLeastAsNew(book, previous)) this.latestOb.set(venue, book);
+    const live = source === 'live';
+    if (live) this.bookReceivedAt.set(venue, Date.now());
+    // WS seq/generation admission is owned by ws.ts. Across REST/WS, HHMMSS
+    // cannot order same-second changes: REST advances only a strictly newer
+    // timestamp; the admitted WS wins ties. History never replaces latest state.
+    const select = live ? bookIsAtLeastAsNew(book, previous)
+      : source === 'rest' && (!previous || book.t_ms > previous.t_ms);
+    if (select) this.latestOb.set(venue, book);
     const valid = this.lastValidOb.get(venue);
     const usable = [book.asks, book.bids].some(levels => Array.isArray(levels)
       && levels.some(level => Number.isFinite(level.price) && level.price > 0));
-    if (usable && bookIsAtLeastAsNew(book, valid) && (latest || !valid || book.t_ms > valid.t_ms)) {
+    if (usable && bookIsAtLeastAsNew(book, valid) && (live || select || !valid || book.t_ms > valid.t_ms)) {
       this.lastValidOb.set(venue, book);
     }
     const saved = this.preAuctionOb;
     if (usable && venue === 'KRX' && book.t_ms >= this.regularOpen && book.t_ms < this.auctionCutoff
-      && bookIsAtLeastAsNew(book, saved) && (latest || !saved || book.t_ms > saved.t_ms)) {
+      && bookIsAtLeastAsNew(book, saved) && (live || select || !saved || book.t_ms > saved.t_ms)) {
       this.preAuctionOb = book;
     }
   }
 
   start(code: string): void {
+    this.unsubscribeEvents = subscribeEvents(event => {
+      if (event.type !== 'connected' && event.type !== 'disconnected') return;
+      this.bookReceivedAt.clear();
+      if (this.timer === null) this.timer = setTimeout(() => this.publish(), LIVE_FLUSH_MS);
+    });
     this.unsubscribeLatest = subscribeLiveLatest(code, (entry) => {
       if (entry.kind !== 'ob') return;
       this.retainBook(entry);
       if (this.timer === null) this.timer = setTimeout(() => this.publish(), LIVE_FLUSH_MS);
     });
     this.unsubscribe = subscribeLive(code, (entry) => {
-      this.retainBook(entry, false);
+      this.retainBook(entry, 'history');
       this.buffer.push(entry);
       if (this.timer === null) this.timer = setTimeout(() => this.publish(), LIVE_FLUSH_MS);
     });
@@ -150,6 +163,7 @@ class SharedSeries {
   stop(): void {
     this.unsubscribe?.();
     this.unsubscribeLatest?.();
+    this.unsubscribeEvents?.();
     if (this.timer !== null) clearTimeout(this.timer);
   }
 
@@ -168,8 +182,20 @@ class SharedSeries {
     const fresh = !this.hydrated.has(initial);
     if (!fresh && this.served.get(venue) === served) return;
     this.served.set(venue, served);
-    for (const entry of initial.snapshots) this.retainBook({ ...entry, kind: 'ob' } as RawSnapshot, false);
-    if (served) this.retainBook({ ...served, kind: 'ob' }, false);
+    const candidates = new Map<string, RawSnapshot>();
+    for (const entry of initial.snapshots) {
+      const book = { ...entry, kind: 'ob' } as RawSnapshot;
+      this.retainBook(book, 'history');
+      const key = typeof book.venue === 'string' ? book.venue : 'KRX';
+      if (!candidates.has(key) || book.t_ms >= candidates.get(key)!.t_ms) candidates.set(key, book);
+    }
+    // last_ob is authoritative at the REST read boundary, including when its
+    // history was evicted. Never admit a mismatched venue as this view's book.
+    if (served && liveVenueAcceptsFrame(venue, served.venue)) {
+      const candidate = candidates.get(venue);
+      if (!candidate || served.t_ms >= candidate.t_ms) candidates.set(venue, { ...served, kind: 'ob' });
+    }
+    for (const book of candidates.values()) this.retainBook(book, 'rest');
     if (fresh) {
       this.hydrated.add(initial);
       const data = {
@@ -209,6 +235,7 @@ class SharedSeries {
     let frames: Frames = { ob, trade: filtered.trade as readonly TradeSnapshot[], broker: filtered.broker, program: filtered.program,
       afterHours: filtered.ah, expected: filtered.expected,
       latestOb: this.latestOb.get(venue), lastValidOb: this.lastValidOb.get(venue),
+      bookReceivedAtMs: this.bookReceivedAt.get(venue),
       preAuctionOb: venue === 'KRX' ? this.preAuctionOb : undefined };
     if (prev && Object.keys(frames).every((k) => frames[k as keyof Frames] === prev.frames[k as keyof Frames])) {
       frames = prev.frames;
