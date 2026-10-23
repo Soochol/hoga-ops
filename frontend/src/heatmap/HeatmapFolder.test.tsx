@@ -102,8 +102,8 @@ it('행 툴팁이 마지막 수집일을 말한다', () => {
     sortMode="manual" onPick={() => {}}
     captureMarkers={{ '005930': '20260806' }}
     laggingCodes={new Set(['000660'])} />);
-  expect(screen.getByText('삼성전자')).toHaveAttribute('title', '마지막 수집 08/06');
-  expect(screen.getByText('SK하이닉스')).toHaveAttribute('title', '수집 이력 없음');
+  expect(screen.getByText('삼성전자')).toHaveAttribute('data-tooltip', '마지막 수집 08/06');
+  expect(screen.getByText('SK하이닉스')).toHaveAttribute('data-tooltip', '수집 이력 없음');
 });
 
 
@@ -113,7 +113,7 @@ it('일치 종목만 표시해도 전체 그룹 평균과 수집 지연 범위�
     sortMode="manual" onPick={() => {}} query="삼성" matchesOnly
     laggingCodes={new Set(['000660'])} onCollectLagging={collect} />);
   expect(screen.queryByTestId('heatmap-row-000660')).not.toBeInTheDocument();
-  expect(screen.getByText('+5.0%')).toHaveAttribute('title', expect.stringContaining('2/2종목'));
+  expect(screen.getByText('+5.0%')).toHaveAttribute('data-tooltip', expect.stringContaining('2/2종목'));
   fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
   fireEvent.click(screen.getByRole('menuitem', { name: '보충 수집' }));
   expect(collect).toHaveBeenCalledWith('f1', ['000660']);

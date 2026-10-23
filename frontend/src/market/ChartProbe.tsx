@@ -45,7 +45,7 @@ export function ChartProbe({ labels, summaries, positions, unavailableRanges = [
       {active !== null && <>
         {!inGap && <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 border-l border-border-strong"
           style={{ left: `${positions ? positions[index] * 100 : count === 1 ? 50 : index / (count - 1) * 100}%` }} />}
-        <div role="status" className="pointer-events-none absolute inset-x-0 top-full z-20 rounded bg-bg-card p-sm text-xs text-fg shadow-panel">
+        <div role="status" className="tooltip-surface pointer-events-none absolute inset-x-0 top-full z-20">
           {inGap ? '수신 실패 구간 · 관측값 없음' : <><strong className="font-data">{labels[index]}</strong> · {summaries[index]}</>}
         </div>
       </>}

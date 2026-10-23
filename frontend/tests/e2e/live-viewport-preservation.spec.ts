@@ -227,7 +227,7 @@ test('refresh, minute jump and held drag keep the target date and backfill ancho
     ts.setVisibleLogicalRange({ from: idx - 5, to: idx });
   }, ids.daily);
   const jump = page.getByTestId('live-jump-to-minute-button');
-  await expect(jump).toHaveAttribute('title', '분봉으로 — 09-29');
+  await expect(jump).toHaveAttribute('data-tooltip', '분봉으로 — 09-29');
   await jump.click();
   const chip = page.getByTestId('live-minute-jump-chip');
   await expect(chip).toHaveText(/점프 09-29/);
@@ -340,7 +340,7 @@ for (const destinationBars of [128, 384]) {
       ts.setVisibleLogicalRange({ from: index - 5, to: index });
     }, ids.daily);
     const jump = page.getByTestId('live-jump-to-minute-button');
-    await expect(jump).toHaveAttribute('title', '분봉으로 — 09-29');
+    await expect(jump).toHaveAttribute('data-tooltip', '분봉으로 — 09-29');
     await jump.click();
     try {
       await expect.poll(() => destinationRequests).toBeGreaterThan(0);
@@ -432,7 +432,7 @@ for (const gesture of ['none', 'pan', 'zoom'] as const) {
       ts.setVisibleLogicalRange({ from: idx - 5, to: idx });
     }, ids.daily);
     const jump = page.getByTestId('live-jump-to-minute-button');
-    await expect(jump).toHaveAttribute('title', '분봉으로 — 09-29');
+    await expect(jump).toHaveAttribute('data-tooltip', '분봉으로 — 09-29');
     await jump.click();
     const chip = page.getByTestId('live-minute-jump-chip');
     await expect(chip).toHaveText(/점프 09-29/);
@@ -532,7 +532,7 @@ for (const sparse of [true, false]) {
       ts.setVisibleLogicalRange({ from: index - 5, to: index });
     }, ids.daily);
     const jump = page.getByTestId('live-jump-to-minute-button');
-    await expect(jump).toHaveAttribute('title', '분봉으로 — 09-29');
+    await expect(jump).toHaveAttribute('data-tooltip', '분봉으로 — 09-29');
     await jump.click();
     await expect.poll(async () => (await snapshot(page, ids.minute))?.count).toBe(sparse ? 128 : 768);
     await expect(page.getByTestId('chart-reveal-cover').first()).toHaveCSS('opacity', '0');

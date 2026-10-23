@@ -83,11 +83,11 @@ function FolderRow(props: {
         <button type="button" onClick={props.onSelect} onDoubleClick={props.onStartEdit}
           onKeyDown={(e) => { if (e.key === 'F2') { e.preventDefault(); props.onStartEdit(); } }}
           aria-keyshortcuts="F2"
-          title="더블클릭 또는 F2: 이름 변경"
+          data-tooltip="더블클릭 또는 F2: 이름 변경"
           className="flex-1 min-w-0 flex items-center justify-between text-left pr-2">
           {/* span 의 title 은 truncate 된 **전체 이름**을 보여 주는 용도라 그대로 둔다 —
               이름 위에서는 이름이, 나머지 영역에서는 버튼의 안내가 뜬다. */}
-          <span className="truncate" title={props.name}>{props.name}</span>
+          <span className="truncate" data-tooltip={props.name}>{props.name}</span>
           <span className="shrink-0 font-data tabular-nums text-fg-dim text-xs">{props.count}</span>
         </button>
       )}

@@ -40,10 +40,10 @@ export function StatusBadge({
   className?: string;
   children: ReactNode;
 }) {
-  if (tone === 'warn' || tone === 'error') return <StatusChip tone={tone} size="compact" title={title} aria-label={ariaLabel} className={className}>{children}</StatusChip>;
+  if (tone === 'warn' || tone === 'error') return <StatusChip tone={tone} size="compact" data-tooltip={title} aria-label={ariaLabel} className={className}>{children}</StatusChip>;
   return (
     <span
-      title={title}
+      data-tooltip={title}
       aria-label={ariaLabel}
       className={`text-badge rounded-md px-[0.15rem] border ${TONE_CLASS[tone]} font-data tabular-nums ${className}`.trim()}
     >

@@ -41,7 +41,7 @@ export function ConditionRow({
         {letter && <button type="button" className="condition-letter font-data"
           aria-label={`${letter} ${entry.label} 조합식에 입력`} disabled={!onInsertLetter}
           onClick={onInsertLetter}>{letter}</button>}
-        <button type="button" aria-label="조건 순서 변경" title="조건 순서 변경"
+        <button type="button" aria-label="조건 순서 변경" data-tooltip="조건 순서 변경"
           draggable={draggable}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}

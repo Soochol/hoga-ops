@@ -8,6 +8,7 @@ import App from './App';
 import { LivePage } from './live/LivePage';
 import AppErrorBoundary from './ui/AppErrorBoundary';
 import DesktopConfigGate from './ui/DesktopConfigGate';
+import { AppTooltipHost } from './ui/AppTooltipHost';
 import { liveCacheStats } from './api/liveCachePolicy';
 import { LandingPage, Heatmap, Inventory, Screener, Capture, Sentiment, Market, StudyBookmarkRedirect } from './mainRoutes';
 
@@ -64,6 +65,7 @@ createRoot(document.getElementById('root')!).render(
   <AppErrorBoundary>
     <DesktopConfigGate>
     <QueryClientProvider client={qc}>
+      <AppTooltipHost />
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Suspense fallback={null}><LandingPage /></Suspense>} />

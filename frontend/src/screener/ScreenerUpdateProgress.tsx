@@ -14,7 +14,7 @@ export function ScreenerUpdateProgress({ updating }: { updating: ScreenerUpdatin
     <span
       data-testid="screener-update-progress"
       className="inline-flex items-center gap-1.5 font-data text-xs tabular-nums text-fg-dim"
-      title="최신 종목 목록을 반영하고 종목별 빠진 과거 일봉을 보충합니다"
+      data-tooltip="최신 종목 목록을 반영하고 종목별 빠진 과거 일봉을 보충합니다"
     >
       {updating.phase ?? '갱신 중'}
       {(updating.total > 0 || !updating.phase) && ` ${done.toLocaleString()}/${updating.total.toLocaleString()}`}

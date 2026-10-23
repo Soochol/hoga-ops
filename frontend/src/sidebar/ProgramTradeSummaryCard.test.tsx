@@ -1,4 +1,5 @@
 import * as summaryFormatting from '../live/investorDailySummary';
+import { tooltipQueries } from '../../tests/tooltipQueries';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -252,7 +253,7 @@ describe('ProgramTradeSummaryCard — render states', () => {
     expectDailyCells(row, ['+9', '203', '194']);
     expect(row.querySelector('td')).not.toHaveClass('border-l');
     expect(screen.getByText('누적 1일')).toBeInTheDocument();
-    expect(screen.getAllByTitle('총매수 203,000주')).toHaveLength(2);
+    expect(tooltipQueries().getAllByText('총매수 203,000주')).toHaveLength(2);
     expect(screen.getByRole('button', { name: '커서 따라가기' })).toHaveAttribute('aria-pressed', 'true');
   });
 

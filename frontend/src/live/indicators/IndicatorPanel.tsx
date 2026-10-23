@@ -107,9 +107,9 @@ function IndicatorNavRow({
         {/* 글리프는 잉크를 행과 공유한다 — 미추가 행에서 함께 흐려져야 "아직 없다"
             가 한 덩어리로 읽힌다. `aria-hidden` 이라 접근성 이름은 라벨 그대로다. */}
         <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>
-        <span className="indicator-nav-label min-w-0" title={label}>
+        <span className="indicator-nav-label min-w-0" data-tooltip={label}>
           <span className="indicator-nav-name"><HighlightedLabel label={label} query={query} /></span>
-          {summary && <> <span className="indicator-nav-summary" title={summary} aria-hidden="true">{summary}</span></>}
+          {summary && <> <span className="indicator-nav-summary" data-tooltip={summary} aria-hidden="true">{summary}</span></>}
         </span>
       </button>
       {dotColors.length > 0 && (
@@ -130,7 +130,7 @@ function IndicatorNavRow({
       {action && <button
         type="button"
         aria-label={action.label}
-        title={action.label}
+        data-tooltip={action.label}
         onClick={action.onClick}
         // 고정 크기 정사각 — 행 높이를 이 버튼의 패딩이 정하게 두면 목록이 조용히
         // 길어진다(실측 45px/행 → 목록 827px). 밀도는 이 패널의 성격이다.
@@ -543,5 +543,5 @@ export default function IndicatorPanel({
 /** The footer follows the same draft store as the form, including zero-slot validation. */
 function CatalogAddButton({ draft, category, onAdd, count }: { count: number; draft: CatalogDraft; category: CategoryId; onAdd: () => void }) {
   const canAdd = useStore(draft.store, s => indicatorIsPresent(category, s.settings));
-  return <button type="button" className="indicator-catalog-add" onClick={onAdd} disabled={!canAdd || count >= MAX_INDICATOR_INSTANCES} title={count >= MAX_INDICATOR_INSTANCES ? '추가한 지표가 128개입니다' : undefined}>설정대로 추가</button>;
+  return <button type="button" className="indicator-catalog-add" onClick={onAdd} disabled={!canAdd || count >= MAX_INDICATOR_INSTANCES} data-tooltip={count >= MAX_INDICATOR_INSTANCES ? '추가한 지표가 128개입니다' : undefined}>설정대로 추가</button>;
 }

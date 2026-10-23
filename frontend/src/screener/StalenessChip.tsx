@@ -21,6 +21,6 @@ export function StalenessChip({ status }: Props) {
     : null;
   const label = <>일봉 기준 {formatTradingDate(last)}{pendingText && ` · ${pendingText}`}</>;
   if (behind) return <StatusChip tone="warn" data-testid="staleness-chip"
-    title="확정 일봉 아카이브가 최신 거래일 확정분을 기다리는 중">{label}</StatusChip>;
-  return <span data-testid="staleness-chip" title="확정 일봉 아카이브 최신" className="font-data text-xs tabular-nums text-fg-dim" style={{ color: 'var(--fg-dim)' }}>{label}</span>;
+    data-tooltip="확정 일봉 아카이브가 최신 거래일 확정분을 기다리는 중">{label}</StatusChip>;
+  return <span data-testid="staleness-chip" data-tooltip="확정 일봉 아카이브 최신" className="font-data text-xs tabular-nums text-fg-dim" style={{ color: 'var(--fg-dim)' }}>{label}</span>;
 }

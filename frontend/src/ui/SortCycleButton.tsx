@@ -55,7 +55,7 @@ export function SortCycleButton({
       aria-label={label}
       aria-describedby={description ? descId : undefined}
       aria-pressed={active}
-      title={description ?? label}
+      data-tooltip={description ?? label}
       {...rest}
       className={`transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${shape} ${className}`.trim()}
     >

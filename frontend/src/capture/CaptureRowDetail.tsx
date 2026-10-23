@@ -56,7 +56,7 @@ export function CaptureRowDetail({ item }: { item: QueueItem }) {
       <span className="text-fg tabular-nums">
         {formatKstClock(item.started_at_ms)}
       </span>
-      <span title="수집이 도달한 데이터 시각 (frontier)">수집 위치</span>
+      <span data-tooltip="수집이 도달한 데이터 시각 (frontier)">수집 위치</span>
       <span className="text-fg tabular-nums">
         {formatKstClock(item.progress?.frontier_ms ?? null)}
       </span>

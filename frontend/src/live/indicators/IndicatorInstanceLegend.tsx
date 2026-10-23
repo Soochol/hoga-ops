@@ -62,7 +62,7 @@ export function IndicatorInstanceLegend({ id, cursorTimeSec = null, seriesData }
     {!hidden && maSlots.filter(m => m.enabled && !m.hidden).map(m => <span key={m.id}
       aria-label={`${m.period} ${row.category === 'daily-moving-average' ? '일봉' : '현재봉'} 이평선 색상`}
       style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: resolveMaColor(m, theme) }} />)}
-    <span className={hidden ? 'text-fg-dimmer' : undefined} title={title}>{title}</span>
+    <span className={hidden ? 'text-fg-dimmer' : undefined} data-tooltip={title}>{title}</span>
     {!hidden && values.length > 0 && <span className="font-data">{values.join(' · ')}</span>}
     <button type="button" aria-label={`${title} ${hidden ? '표시' : '숨기기'}`} onClick={() => update(false)}><EyeGlyph hidden={hidden === true} /></button>
     <button type="button" aria-label={`${title} 삭제`} onClick={() => update(true)}>✕</button>

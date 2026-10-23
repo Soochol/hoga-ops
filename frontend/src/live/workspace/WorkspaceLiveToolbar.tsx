@@ -30,7 +30,7 @@ function CaptureHealthIndicator({ health }: { health: CaptureHealthView }) {
     return (
       <span
         data-testid="capture-health-dot"
-        title={health.title}
+        data-tooltip={health.title}
         aria-label="캡처 정상"
         className="inline-block shrink-0 rounded-full"
         style={{ width: '6px', height: '6px', background: 'var(--success)', boxShadow: '0 0 4px var(--success)' }}
@@ -41,7 +41,7 @@ function CaptureHealthIndicator({ health }: { health: CaptureHealthView }) {
   return (
     <span
       data-testid="capture-health-pill"
-      title={health.title}
+      data-tooltip={health.title}
       className="font-data shrink-0 rounded px-2 py-0.5"
       style={{ background: pill.bg, border: pill.border, color: pill.fg, fontSize: 'var(--text-xs)' }}
     >

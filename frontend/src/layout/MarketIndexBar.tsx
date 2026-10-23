@@ -50,7 +50,7 @@ function InvestorFlowItem({ group, market, label, receivedAt, nowMs, error }: {
       data-market-bar-content
       data-testid={`market-flow-${market}`}
       className="flex shrink-0 items-baseline gap-1.5 px-1.5"
-      title={`${group.date} · 당일 누적 순매수 · ${group.confirmed ? '확정' : '잠정'} · 마지막 정상 수신 ${stamp}${statusLabel ? ` · ${statusLabel}` : ''}`}
+      data-tooltip={`${group.date} · 당일 누적 순매수 · ${group.confirmed ? '확정' : '잠정'} · 마지막 정상 수신 ${stamp}${statusLabel ? ` · ${statusLabel}` : ''}`}
     >
       <span className="font-ui text-xs text-fg-dim">{label}</span>
       {dateLabel && <span className="font-data text-xs text-fg-dim">{dateLabel}</span>}
@@ -97,7 +97,7 @@ function MarketIndexItem({ quote, nowMs }: { quote: MarketIndexQuote; nowMs: num
       onClick={open}
       disabled={!openable}
       aria-label={`${quote.label} 차트 열기`}
-      title={`시세 기준 ${new Date(quote.tMs).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`}
+      data-tooltip={`시세 기준 ${new Date(quote.tMs).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`}
       className="flex shrink-0 items-baseline gap-1.5 rounded-md px-1.5 hover:bg-bg-input-hover disabled:cursor-default disabled:hover:bg-transparent"
     >
       <span className="font-ui text-xs text-fg-dim">{quote.label}</span>
@@ -124,7 +124,7 @@ function CoverageChip({ leadingDivider }: { leadingDivider: boolean }) {
       {leadingDivider && <span aria-hidden className="h-3 w-px bg-border" />}
       <span
         className="flex items-baseline gap-1 px-1.5"
-        title={`키움 구독 확인 ${total}/${k.subscribed_count}종목 (연결 ${k.connected_accounts}/${k.accounts_configured}계정)`}
+        data-tooltip={`키움 구독 확인 ${total}/${k.subscribed_count}종목 (연결 ${k.connected_accounts}/${k.accounts_configured}계정)`}
       >
         <span className="font-ui text-xs text-fg-dim">실시간</span>
         <span className={`font-data text-xs ${degraded ? 'text-warn' : 'text-fg'}`}>{total}</span>
@@ -203,7 +203,7 @@ export function MarketIndexBar() {
         ))}
       </div>
       {canRotate && <button type="button" aria-label="시장지표 자동 전환" aria-pressed={autoRotate}
-        title={autoRotate ? '10초마다 자동 전환 · 누르면 일시 정지' : '자동 전환 일시 정지 · 누르면 재개'}
+        data-tooltip={autoRotate ? '10초마다 자동 전환 · 누르면 일시 정지' : '자동 전환 일시 정지 · 누르면 재개'}
         onClick={() => setAutoRotate(value => !value)} className="shrink-0 rounded px-1 text-xs text-fg-dim hover:bg-bg-input-hover">
         {autoRotate ? '자동' : '정지'}
       </button>}

@@ -13,7 +13,7 @@ export function SegmentedControl<T extends string>({ label, value, options, onCh
 }) {
   return <SegmentShell aria-label={label} className={className}>
     {options.map(option => <button key={option.value} type="button" className="ui-choice"
-      aria-pressed={value === option.value} disabled={option.disabled} title={option.title} data-testid={option.testId}
+      aria-pressed={value === option.value} disabled={option.disabled} data-tooltip={option.title} data-testid={option.testId}
       onClick={() => { if (value !== option.value) onChange(option.value); }}>{option.label}</button>)}
   </SegmentShell>;
 }

@@ -39,7 +39,7 @@ test('HogaPlay mode displays local candles without requesting missing days from 
   await page.getByRole('button', { name: 'hogaplay 저장 데이터로 보기', exact: true }).first().click();
   const chip = page.getByTestId('live-hogaplay-source-chip').first();
   await expect(chip).toContainText('05-21');
-  await expect(chip).toHaveAttribute('title', /디스크에 있는 분봉만/);
+  await expect(chip).toHaveAttribute('data-tooltip', /디스크에 있는 분봉만/);
   await expect.poll(() => servedMissingDates).toBe(true);
   await expect(page.getByTestId('chart-reveal-cover').first()).toHaveCSS('opacity', '0');
   expect(vendorRequests).toEqual([]);

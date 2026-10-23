@@ -16,7 +16,7 @@ export function HogaplaySourceChip({
   return (
     <div
       data-testid="live-hogaplay-source-chip"
-      title={detail}
+      data-tooltip={detail}
       aria-label={detail}
       // 헤더 안에 산다 — 저장뷰 칩과 같은 흐름(오버레이 스택이 아니다).
       className="flex min-w-0 items-center gap-1 rounded px-1.5 py-0.5 text-2xs"

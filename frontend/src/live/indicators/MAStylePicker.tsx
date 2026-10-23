@@ -86,7 +86,7 @@ export default function MAStylePicker({
       <button
         type="button"
         aria-label={`${lbl} 스타일 선택`}
-        title={autoColor ? '자동 색상 · 테마에 맞춰 변경' : lowContrast ? '배경과 구분하기 어려운 색 · 팔레트에서 변경' : undefined}
+        data-tooltip={autoColor ? '자동 색상 · 테마에 맞춰 변경' : lowContrast ? '배경과 구분하기 어려운 색 · 팔레트에서 변경' : undefined}
         onClick={() => setOpen((o) => !o)}
         style={{
           display: 'inline-flex',

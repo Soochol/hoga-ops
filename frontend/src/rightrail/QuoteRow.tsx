@@ -219,7 +219,7 @@ export function QuoteRow({
           종목만 눈에 띄게(조용한 터미널). 원 접미사 제거(가격 컬럼 문맥상 자명). 가격/%
           고정폭 2컬럼 우측정렬로 행마다 끝자리가 어긋나던 정렬을 맞춘다. */}
       {beforePrice}
-      <span title={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
+      <span data-tooltip={priceTitle} className="quote-row-price flex-none w-[4.75rem] text-right font-data tabular-nums text-sm text-fg leading-tight">
         {shownPrice != null ? shownPrice.toLocaleString('ko-KR') : '—'}
       </span>
       <span className={`quote-row-percent flex-none ${compact ? 'w-[3rem]' : 'w-[3.5rem]'} text-right font-data tabular-nums text-xs leading-tight ${shownPct === null ? 'text-fg-dim' : priceDirClass(shownPct)}`}>

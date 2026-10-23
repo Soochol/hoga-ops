@@ -27,7 +27,7 @@ describe('RecaptureActionBar', () => {
     render(<RecaptureActionBar {...baseProps} recapturableCount={3} />);
     const btn = screen.getByRole('button', { name: /미완결 전체 재캡처/i });
     const expected = RECAPTURABLE_DISK_STATES.map((s) => STATE_SHORT_LABEL[s]).join(' · ');
-    expect(btn.getAttribute('title')).toBe(expected);
+    expect(btn.getAttribute('data-tooltip')).toBe(expected);
   });
 
   it('clicking the button calls onRecaptureAll', () => {

@@ -42,7 +42,7 @@ export function CalendarCell({ date, status, selected = false, inRange = false, 
       onFocus={() => setHovered(true)}      // keyboard focus mirrors hover for a11y
       onBlur={() => setHovered(false)}
       disabled={disabled}
-      title={tooltip}        // F2: spec §4.2 tooltip
+      data-tooltip={tooltip}        // F2: spec §4.2 tooltip
       aria-label={tooltip}
       style={{
         background,

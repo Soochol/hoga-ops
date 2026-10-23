@@ -36,7 +36,7 @@ export function CandleEmptyState({
           원문이 있을 때만 이 span 을 `auto` 로 되살려야 한다. */}
       <span
         className={`font-data text-xs text-fg-dim${state.detail ? ' pointer-events-auto' : ''}`}
-        title={state.detail}
+        data-tooltip={state.detail}
       >
         {state.text}
       </span>

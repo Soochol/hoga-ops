@@ -64,7 +64,7 @@ export function SavedRangeChip({
   return (
     <div
       data-testid="live-saved-range-chip"
-      title={detail}
+      data-tooltip={detail}
       aria-label={detail}
       // 헤더 안에 산다 — 차트 위에 뜨는 `/study` 판과 달리 `shadow-panel` 도
       // `pointer-events-auto` 도 필요 없다(오버레이 스택이 아니라 일반 흐름이다).

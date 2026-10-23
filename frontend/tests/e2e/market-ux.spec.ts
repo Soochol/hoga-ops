@@ -503,7 +503,7 @@ for (const width of [1440, 600]) test(`flow freshness and inspection fit without
   });
   await page.goto('/market');
   const body = page.locator('.market-investor-body');
-  const lastReceipt = body.getByTitle('마지막 정상 수신 시각');
+  const lastReceipt = body.locator('[data-tooltip="마지막 정상 수신 시각"]');
   await expect(body.getByLabel('투자자별 순매수 · 억원')).toContainText('-40');
   await expect(lastReceipt).toHaveCount(0);
   await expect(body.getByText('수집 종료', { exact: true })).toHaveCount(0);

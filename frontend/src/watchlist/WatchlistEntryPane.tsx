@@ -360,7 +360,7 @@ function SortableEntryRow(props: RowProps) {
         onClick={props.onToggle} className="flex items-center cursor-pointer">
         <CheckIcon filled={props.checked} size={16} />
       </button>
-      <span className="truncate" title={entry.name}>{entry.name}</span>
+      <span className="truncate" data-tooltip={entry.name}>{entry.name}</span>
       <span className="font-data tabular-nums text-xs text-fg-dim">{entry.code}</span>
       <LastSuccessBadge date={entry.last_success_date} />
       <button type="button" aria-label={`${entry.name} 수집`} onClick={props.onCatchup} disabled={props.catchingUp}

@@ -53,7 +53,7 @@ async function cloneMatches(page: Page, row: Locator) {
     expect(after.metric!.right).toBeCloseTo(before.metric.right, 3);
     expect(after.metric!.width).toBeCloseTo(before.metric.width, 3);
     await expect(ghost.locator('.ranking-metric')).toHaveText((await row.locator('.ranking-metric').textContent())!);
-    await expect(ghost.locator('.ranking-metric')).toHaveAttribute('title', (await row.locator('.ranking-metric').getAttribute('title'))!);
+    await expect(ghost.locator('.ranking-metric')).toHaveAttribute('data-tooltip', (await row.locator('.ranking-metric').getAttribute('data-tooltip'))!);
   }
   await page.keyboard.press('Escape');
   await page.mouse.up();
@@ -92,7 +92,7 @@ for (const fontSize of [16, 20]) {
       large = false;
       await panel.getByRole('button', { name: label, exact: true }).click();
       await expect(second.locator('.ranking-metric')).toHaveText(text);
-      await expect(second.locator('.ranking-metric')).toHaveAttribute('title', title);
+      await expect(second.locator('.ranking-metric')).toHaveAttribute('data-tooltip', title);
       await expect(panel.getByTestId('ranking-row-100002').locator('.ranking-metric')).toHaveText(zero);
       await expect(panel.getByTestId('ranking-row-100003').locator('.ranking-metric')).toHaveText('—');
       await expect(panel.locator('.quote-columns-header')).toHaveCount(0);
@@ -144,7 +144,7 @@ for (const fontSize of [16, 20]) {
     const first = panel.getByTestId('ranking-row-100000'), second = panel.getByTestId('ranking-row-100001');
     await expect(first.locator('.ranking-trade-value')).toHaveText('1,235억');
     await expect(second.locator('.ranking-trade-value')).toHaveText('31,192억');
-    await expect(second.locator('.ranking-trade-value')).toHaveAttribute('title', '3,119,200,000,000원');
+    await expect(second.locator('.ranking-trade-value')).toHaveAttribute('data-tooltip', '3,119,200,000,000원');
     const missing = panel.getByTestId('ranking-row-100002');
     for (const selector of ['.ranking-trade-value', '.quote-row-price', '.quote-row-percent']) await expect(missing.locator(selector)).toHaveText('—');
     await expect(panel.getByTestId('ranking-row-100003').locator('.ranking-trade-value')).toHaveText('0억');

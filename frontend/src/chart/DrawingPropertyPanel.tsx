@@ -379,7 +379,7 @@ function ZOrderButtons({
         type="button"
         data-testid="drawing-bring-front"
         aria-label="맨 앞으로"
-        title="맨 앞으로 — 겹친 도형 위로 올립니다"
+        data-tooltip="맨 앞으로 — 겹친 도형 위로 올립니다"
         disabled={disabled}
         onClick={() => move('front')}
         className={cls}
@@ -390,7 +390,7 @@ function ZOrderButtons({
         type="button"
         data-testid="drawing-send-back"
         aria-label="맨 뒤로"
-        title="맨 뒤로 — 겹친 도형 아래로 내립니다"
+        data-tooltip="맨 뒤로 — 겹친 도형 아래로 내립니다"
         disabled={disabled}
         onClick={() => move('back')}
         className={cls}
@@ -617,7 +617,7 @@ function MultiSelectionToolbar({
             aria-label="우측 무한 확장"
             aria-pressed={allExtended}
             disabled={!canToggleExtend}
-            title={
+            data-tooltip={
               allExtended
                 ? '선택한 사각형의 우측 무한 확장을 함께 해제합니다'
                 : '선택한 사각형의 오른쪽 변을 항상 화면 끝에 붙입니다'
@@ -646,7 +646,7 @@ function MultiSelectionToolbar({
             data-testid="drawing-extend-to-view"
             aria-label="보이는 영역까지 우측 확장"
             disabled={!canExtendToView}
-            title={
+            data-tooltip={
               allExtended
                 ? '우측 무한 확장이 켜져 있어 이미 화면 끝까지 닿아 있습니다'
                 : '선택한 사각형의 오른쪽 변을 지금 화면 끝에 맞춥니다 (Ctrl+Z 로 되돌리기)'
@@ -699,7 +699,7 @@ function MultiSelectionToolbar({
         type="button"
         data-testid="drawing-align-trigger"
         aria-label="정렬"
-        title="정렬·분배"
+        data-tooltip="정렬·분배"
         disabled={allLocked}
         onClick={(event) => toggle('align', event)}
         className={
@@ -729,7 +729,7 @@ function MultiSelectionToolbar({
         data-testid="drawing-multi-lock"
         aria-label={allLocked ? '선택 잠금 해제' : '선택 잠금'}
         aria-pressed={allLocked}
-        title={
+        data-tooltip={
           allLocked
             ? '선택한 도형의 잠금을 함께 풉니다'
             : '선택한 도형을 잠급니다 — 이동·수정·삭제를 막습니다'
@@ -754,7 +754,7 @@ function MultiSelectionToolbar({
         type="button"
         data-testid="drawing-multi-delete"
         aria-label="선택 삭제"
-        title="선택한 도형을 모두 삭제합니다 (Delete)"
+        data-tooltip="선택한 도형을 모두 삭제합니다 (Delete)"
         disabled={allLocked}
         onClick={() => useDrawingsStore.getState().removeMany(scope, ids)}
         className={
@@ -950,7 +950,7 @@ export default function DrawingPropertyPanel({
           <button
             type="button"
             data-testid="drawing-pattern-search"
-            title={state.title}
+            data-tooltip={state.title}
             disabled={locked || state.disabled}
             onClick={() => onSearchPattern(drawing.a.realMs, drawing.b.realMs)}
             className={
@@ -969,7 +969,7 @@ export default function DrawingPropertyPanel({
           aria-label="라벨 표시"
           aria-pressed={labelVisible}
           disabled={locked}
-          title={drawing.kind === 'trendline' ? '가격 변화·등락률 라벨 표시/숨기기' : '가격 라벨 표시/숨기기'}
+          data-tooltip={drawing.kind === 'trendline' ? '가격 변화·등락률 라벨 표시/숨기기' : '가격 라벨 표시/숨기기'}
           onClick={() => useDrawingsStore.getState().update(scope, id, {
             labelHidden: labelVisible,
           })}
@@ -1019,7 +1019,7 @@ export default function DrawingPropertyPanel({
             aria-label="우측 무한 확장"
             aria-pressed={extendedRight}
             disabled={locked}
-            title={
+            data-tooltip={
               extendedRight
                 ? '우측 무한 확장 해제 — 그린 폭으로 돌아갑니다'
                 : '우측 무한 확장 — 오른쪽 변이 팬·줌과 무관하게 항상 화면 끝에 붙습니다'
@@ -1045,7 +1045,7 @@ export default function DrawingPropertyPanel({
             data-testid="drawing-extend-to-view"
             aria-label="보이는 영역까지 우측 확장"
             disabled={extendToViewDisabled}
-            title={
+            data-tooltip={
               extendedRight
                 ? '우측 무한 확장이 켜져 있어 이미 화면 끝까지 닿아 있습니다'
                 : '보이는 영역까지 우측 확장 — 오른쪽 변을 지금 화면 끝에 맞춥니다 (Ctrl+Z 로 되돌리기)'
@@ -1091,7 +1091,7 @@ export default function DrawingPropertyPanel({
         data-testid="drawing-lock"
         aria-label={locked ? '잠금 해제' : '잠금'}
         aria-pressed={locked}
-        title={locked ? '잠금 해제 — 이동·수정·삭제가 다시 가능해집니다' : '잠금 — 이동·수정·삭제를 막습니다'}
+        data-tooltip={locked ? '잠금 해제 — 이동·수정·삭제가 다시 가능해집니다' : '잠금 — 이동·수정·삭제를 막습니다'}
         onClick={() => useDrawingsStore.getState().update(scope, id, { locked: !locked } as Partial<Drawing>)}
         className={
           'h-7 w-7 inline-flex items-center justify-center rounded hover:bg-bg-input-hover ' +

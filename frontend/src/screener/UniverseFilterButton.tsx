@@ -17,7 +17,7 @@ export function UniverseFilterButton({ universe, onChange }: {
   return (
     <>
       <button type="button" aria-haspopup="dialog" aria-expanded={open}
-        aria-label={label} title={label} onClick={() => setOpen(true)}
+        aria-label={label} data-tooltip={label} onClick={() => setOpen(true)}
         className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm bg-bg-input border hover:bg-bg-input-hover ${
           count > 0 ? 'border-accent text-fg' : 'border-border-strong text-fg-dim'}`}>
         <FunnelIcon filled={count > 0} className="w-3 h-3" />

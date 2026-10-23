@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../tests/tooltipQueries';
 import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { DailyNetList } from './DailyNetList';
@@ -33,7 +34,7 @@ describe('DailyNetList', () => {
     const rows = within(screen.getByRole('table')).getAllByRole('row');
     expect(rows[2]).toHaveTextContent('08/13+100—+49');
     expect(rows[3]).toHaveTextContent('기간 합계+100—+39');
-    expect(within(rows[3]).getByTitle(/누락된 값/)).toHaveTextContent('—');
+    expect(tooltipQueries(rows[3]).getByText(/누락된 값/)).toHaveTextContent('—');
   });
 
   it('formats date-only and vendor datetime values', () => {

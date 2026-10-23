@@ -166,6 +166,8 @@
   /* ───── Spacing (rem-based; 4px base unit) ───── */
   --space-2xs: 0.125rem; /* 2px @ default; 2px base intent */
   --space-xs: 0.25rem; /* 4px @ default; 4px base intent */
+  --space-tooltip-x: 0.625rem; /* 10px @ default; 10px base intent */
+  --space-tooltip-y: 0.375rem; /* 6px @ default; 6px base intent */
   --space-sm: 0.5rem; /* 8px @ default; 8px base intent */
   --space-md: 0.75rem; /* 12px @ default; 12px base intent */
   --space-lg: 1rem; /* 16px @ default; 16px base intent */

@@ -231,5 +231,5 @@ it('shows the age and timestamp of an old quote without treating it as a connect
   mockMarketData([{ ...KOSPI_WIRE, t_ms: Date.now() - 180_000 }]);
   renderBar();
   expect(await screen.findByText('시세 3분 전')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'KOSPI 차트 열기' }).title).toContain('시세 기준');
+  expect(screen.getByRole('button', { name: 'KOSPI 차트 열기' }).getAttribute('data-tooltip')).toContain('시세 기준');
 });

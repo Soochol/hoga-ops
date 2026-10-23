@@ -41,13 +41,16 @@ afterEach(() => {
 });
 
 describe('chart toolbar capture actions', () => {
-  it('exposes copy and PNG saving as separate icon buttons with accessible names and tooltips', () => {
+  it('exposes copy and PNG saving as separate icon buttons with accessible names and tooltips', async () => {
     render(<Host />);
     for (const name of ['차트 이미지 복사', 'PNG로 저장']) {
       const button = screen.getByRole('button', { name });
       expect(button.textContent).toBe('');
       expect(button.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
-      expect(button).toHaveAttribute('title', expect.stringContaining(name));
+      expect(button).not.toHaveAttribute('title');
+      fireEvent.pointerEnter(button, { pointerType: 'mouse', buttons: 0 });
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(name);
+      fireEvent.pointerLeave(button);
     }
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '차트 메뉴' })).not.toBeInTheDocument();

@@ -53,7 +53,7 @@ for (const fontSize of [16, 20]) {
     await expect(normal.getByTestId('collection-dot-realtime')).toHaveCount(0);
     const dot = waiting.getByTestId('collection-dot-waiting_eod');
     await expect(dot).toBeVisible();
-    await expect(dot).toHaveAttribute('title', '관심종목 대기 중');
+    await expect(dot).toHaveAttribute('data-tooltip', '관심종목 대기 중');
     await expect.poll(() => columns(normal).then(value => value.clipped)).toBe(false);
     const watchlistColumns = await Promise.all([columns(normal), columns(waiting)]);
     expect(watchlistColumns[0].name.width).toBeCloseTo(watchlistColumns[1].name.width, 3);

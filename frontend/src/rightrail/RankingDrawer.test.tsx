@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../tests/tooltipQueries';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -96,12 +97,12 @@ describe('RankingDrawer', () => {
     renderDrawer();
     await screen.findByText('삼성전자');
     fireEvent.click(screen.getByRole('button', { name: label }));
-    expect(await screen.findByTitle(title)).toHaveTextContent(text);
+    expect(await tooltipQueries().findByText(title)).toHaveTextContent(text);
     expect(screen.getByTestId('ranking-row-294870').querySelector('.ranking-metric')).toHaveTextContent(zero);
     expect(screen.getByTestId('ranking-row-005930').querySelector('.quote-row-price')).toHaveTextContent('71,200');
     expect(screen.queryByTestId('ranking-value-columns-header')).not.toBeInTheDocument();
     act(() => { dnd.onDragStart!(DRAG_START); });
-    expect(within(screen.getByTestId('ranking-drag-ghost')).getByTitle(title)).toHaveTextContent(text);
+    expect(tooltipQueries(screen.getByTestId('ranking-drag-ghost')).getByText(title)).toHaveTextContent(text);
     act(() => { dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } }); });
   });
 
@@ -265,8 +266,7 @@ describe('RankingDrawer', () => {
       fireEvent.click(screen.getByTestId('ranking-row-005930'));
       expect(liveNavigate.activateLiveCode).toHaveBeenCalledWith('005930', '삼성전자');
       act(() => { dnd.onDragStart!(DRAG_START); });
-      const ghost = within(screen.getByTestId('ranking-drag-ghost'));
-      expect(ghost.getByTitle(`${label} 순매수 +216억`)).toBeInTheDocument();
+      expect(tooltipQueries(screen.getByTestId('ranking-drag-ghost')).getByText(`${label} 순매수 +216억`)).toBeInTheDocument();
       act(() => { dnd.onDragEnd!({ ...DRAG_START, activatorEvent: null, delta: { x: 0, y: 0 } }); });
       fireEvent.change(screen.getByRole('combobox', { name: '시장' }), { target: { value: 'kosdaq' } });
       fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
@@ -326,7 +326,7 @@ describe('RankingDrawer', () => {
     expect(screen.queryByText('등락률 ↑ 낮은 순')).not.toBeInTheDocument();
     // 구버전/결측 금액이 실제 0억원처럼 보이지 않는다.
     expect(screen.queryByText('+0억')).not.toBeInTheDocument();
-    expect(screen.getAllByTitle('프로그램 순매수 —')).toHaveLength(2);
+    expect(tooltipQueries().getAllByText('프로그램 순매수 —')).toHaveLength(2);
   });
 
   it('renders ranked rows and requests /api/live/rankings with default params', async () => {

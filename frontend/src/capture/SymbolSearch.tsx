@@ -184,7 +184,7 @@ export function SymbolSearch({ value, onChange, disabled = false, resetKey = 0, 
           <span
             data-testid="symbol-cache-status"
             data-status={cacheStatus}
-            title={`종목 마스터 캐시: ${STATUS_TITLE[cacheStatus]}`}
+            data-tooltip={`종목 마스터 캐시: ${STATUS_TITLE[cacheStatus]}`}
             style={{ color: STATUS_COLOR[cacheStatus] }}
             className="shrink-0 text-xs leading-none"
           >
@@ -281,11 +281,11 @@ function SymbolRow({ hit, highlighted, onClick, disabled, added, onAddedClick }:
           한글·CJK 에서만 난다**. `whitespace-nowrap`(truncate 의 일부)이 그 줄바꿈을
           정의상 불가능하게 만들고, 잘린 이름은 `title` 로 복구한다. 넓은 컨테이너
           (히트맵 드로어)에서는 자를 것이 없어 동작 변화가 없다. */}
-      <span className="min-w-0 truncate font-normal text-base text-fg" title={hit.name}>{hit.name}</span>
+      <span className="min-w-0 truncate font-normal text-base text-fg" data-tooltip={hit.name}>{hit.name}</span>
       <span className="font-medium text-sm font-data text-fg-dim tabular-nums">{hit.code}</span>
       <span className="border border-border-strong rounded-md px-xs font-semibold text-badge text-fg-dim">{hit.market}</span>
       <span
-        title={breakdown}
+        data-tooltip={breakdown}
         style={{ color: countsReady && hit.captured_count > 0 ? 'var(--accent)' : 'var(--fg-dim)' }}
         className="font-medium text-xs font-data tabular-nums"
       >

@@ -107,7 +107,7 @@ describe('QuoteRow', () => {
     expect(screen.queryByTestId('quote-row-005930-expected-marker')).not.toBeInTheDocument();
     expect(screen.getByText('72,400')).toBeInTheDocument();
     expect(screen.getByText('+1.20%')).toBeInTheDocument();
-    expect(screen.getByText('72,400').getAttribute('title')).toBeNull();
+    expect(screen.getByText('72,400').getAttribute('data-tooltip')).toBeNull();
   });
 
   it('예상가가 확정가를 덮을 때 직전 체결가를 title 로 보존한다', () => {
@@ -116,12 +116,12 @@ describe('QuoteRow', () => {
     row({ expectedPrice: 71500, expectedPct: 2.14 });
     // 가격 셀은 값으로 직접 잡는다 — 마커의 parentElement 로 잡으면 마커가 옮겨갈 때
     // 조용히 종목명 셀을 검사하게 된다(2026-08-14 마커 이동에서 실제로 그랬다).
-    expect(screen.getByText('71,500')).toHaveAttribute('title', '예상 71,500 · 직전 체결 72,400');
+    expect(screen.getByText('71,500')).toHaveAttribute('data-tooltip', '예상 71,500 · 직전 체결 72,400');
   });
 
   it('확정가가 없으면(개장 동시호가 미도착) title 을 붙이지 않는다', () => {
     row({ price: null, pct: null, changeWon: null, expectedPrice: 71500, expectedPct: 2.14 });
-    expect(screen.getByText('71,500').getAttribute('title')).toBeNull();
+    expect(screen.getByText('71,500').getAttribute('data-tooltip')).toBeNull();
   });
 
   // 좌측 여백 계약 — 우측 레일 네 리스트의 종목명 시작 x(2.5rem)를 결정하는 두 경로.

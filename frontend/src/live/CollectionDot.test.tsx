@@ -40,7 +40,7 @@ describe('CollectionDot', () => {
     expect(el.textContent).toBe('');
     expect(screen.queryByText('실시간 재연결 중')).toBeNull();
     expect(el.getAttribute('aria-label')).toBe('실시간 재연결 중');
-    expect(el.getAttribute('title')).toBe('실시간 재연결 중');
+    expect(el.getAttribute('data-tooltip')).toBe('실시간 재연결 중');
   });
   it('uncollected: 렌더 안 함(null)', () => {
     const { container } = render(<CollectionDot status="uncollected" />);

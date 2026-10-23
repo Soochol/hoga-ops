@@ -97,7 +97,7 @@ export function WatchlistGroupPickerContent({ code, name, selectionRole = 'check
     <section aria-label="관심 그룹 선택" className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-3 py-2">
         <div className="flex min-w-0 items-baseline gap-2 text-sm font-medium text-fg">
-          <span className="truncate" title={displayName}>{displayName}</span>{' '}
+          <span className="truncate" data-tooltip={displayName}>{displayName}</span>{' '}
           <span className="shrink-0 font-data text-xs font-normal text-fg-dim">{code}</span>
         </div>
       </div>
@@ -114,7 +114,7 @@ export function WatchlistGroupPickerContent({ code, name, selectionRole = 'check
             onClick={() => toggle(f.id)}
             className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors focus-visible:outline-accent disabled:opacity-50 ${checked ? 'bg-tint-selection text-fg' : 'text-fg-dim hover:bg-bg-input-hover hover:text-fg'}`}>
             <span className="grid w-4 shrink-0 place-items-center"><CheckIcon filled={checked} size={16} /></span>
-            <span className="min-w-0 truncate" title={f.name}>{f.name}</span>
+            <span className="min-w-0 truncate" data-tooltip={f.name}>{f.name}</span>
           </button>;
         })}
         {!visibleFolders.length && <p className="px-3 py-2 text-xs text-fg-dim">{folders.length ? '검색 결과가 없습니다' : '관심 그룹을 만들어 추가하세요'}</p>}

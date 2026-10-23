@@ -263,7 +263,7 @@ export function VolumeDistributionCard({
           {pocBin && pocPct != null && (
             <span
               data-testid="volume-distribution-poc-label"
-              title={`최대 거래량 가격 · ${formatPrice((pocBin.price_low + pocBin.price_high) / 2)}원`}
+              data-tooltip={`최대 거래량 가격 · ${formatPrice((pocBin.price_low + pocBin.price_high) / 2)}원`}
               className="volume-distribution-poc-label absolute right-0 -translate-y-1/2 font-medium"
               style={{ '--volume-poc-position': `${pocPct}%` } as CSSProperties}
             >

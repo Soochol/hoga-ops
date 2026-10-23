@@ -62,8 +62,7 @@ export function HeatmapFlowChart({ series, start, end, latest, cursor, unit, hig
 
   return (
     <div ref={container} className="heatmap-flow-chart">
-      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" aria-label="그룹별 장중 흐름 비교 차트">
-        <title>같은 시간축과 공통 Y축에서 비교한 그룹별 흐름</title>
+      <svg viewBox={`0 0 ${size.width} ${size.height}`} role="img" aria-label="그룹별 장중 흐름 비교 차트" data-tooltip="같은 시간축과 공통 Y축에서 비교한 그룹별 흐름">
         <desc>마우스를 움직이면 같은 시각의 그룹별 수치를 표시합니다. 클릭하면 시각을 고정합니다. 아래 시각 선택 막대는 키보드로 조절할 수 있습니다.</desc>
         <defs><clipPath id={clipId}><rect x={left} y={top} width={right - left} height={bottom - top} /></clipPath></defs>
         {ticks.map((tick) => <g key={tick}>

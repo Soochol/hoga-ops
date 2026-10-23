@@ -81,11 +81,11 @@ describe('CalendarCell', () => {
   // F2 (design review): tooltip text matches spec §4.2 vocabulary
   it('attaches a title attribute with the status reason', () => {
     const { container, rerender } = render(<CalendarCell {...baseProps} status="weekend" />);
-    expect(container.querySelector('button')!.getAttribute('title')).toMatch(/주말/);
+    expect(container.querySelector('button')!.getAttribute('data-tooltip')).toMatch(/주말/);
     rerender(<CalendarCell {...baseProps} status="today_locked" />);
-    expect(container.querySelector('button')!.getAttribute('title')).toMatch(/16:30/);
+    expect(container.querySelector('button')!.getAttribute('data-tooltip')).toMatch(/16:30/);
     rerender(<CalendarCell {...baseProps} status="source_partial" />);
-    expect(container.querySelector('button')!.getAttribute('title')).toMatch(/부분/);
+    expect(container.querySelector('button')!.getAttribute('data-tooltip')).toMatch(/부분/);
   });
 });
 
@@ -107,6 +107,6 @@ describe('CalendarCell (no_upstream_data)', () => {
   it("shows the '업스트림 데이터 없음' tooltip", () => {
     render(<CalendarCell date="20260319" status="no_upstream_data" />);
     const btn = screen.getByTestId('calendar-cell-20260319');
-    expect(btn.getAttribute('title')).toBe('20260319 · 업스트림 데이터 없음 (캡처 시 재시도)');
+    expect(btn.getAttribute('data-tooltip')).toBe('20260319 · 업스트림 데이터 없음 (캡처 시 재시도)');
   });
 });

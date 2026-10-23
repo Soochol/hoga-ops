@@ -172,7 +172,7 @@ function ProgramTradeControls({ view, onSelect, showUnit = true }: {
     <div className="ui-segmented" role="group" aria-label="프로그램 표시 단위">
     {(['amount', 'qty'] as const).map((value) => <button key={value} type="button"
       aria-pressed={measure === value} onClick={() => setMeasure(value)}
-      title={value === 'amount' ? '금액 · 억원' : '수량 · 주'}
+      data-tooltip={value === 'amount' ? '금액 · 억원' : '수량 · 주'}
       className={`border px-2 py-px text-2xs first:rounded-l last:rounded-r ${measure === value
         ? 'border-accent text-accent' : 'border-border text-fg-dim hover:text-fg'}`}>
       {value === 'amount' ? '금액' : '수량'}
@@ -267,7 +267,7 @@ function ProgramDailySummary({
   return <div className="live-data-table-panel flex h-full min-h-0 flex-col bg-bg-card font-data text-xs">
     <ResponsiveDataControls secondaryPlacement="below"
       trailing={<span className="ml-auto shrink-0 whitespace-nowrap text-xs text-fg-dim"
-        title={measure === 'qty' && useK ? '1K = 1,000주' : undefined}>
+        data-tooltip={measure === 'qty' && useK ? '1K = 1,000주' : undefined}>
         단위: {measure === 'amount' ? '억원' : useK ? '천 주' : '주'}
       </span>}
       secondary={<>

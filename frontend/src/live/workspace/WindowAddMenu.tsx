@@ -20,6 +20,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   Fragment,
 } from 'react';
+import { TooltipButton } from '../../ui/TextTooltip';
 import { createPortal } from 'react-dom';
 import { useDismissablePopover } from '../../util/useDismissablePopover';
 import { useClampedFixedPosition } from '../../util/useClampedFixedPosition';
@@ -129,7 +130,7 @@ export function WindowAddMenu() {
         return (
           <Fragment key={item.kind}>
           {(index === 0 || item.section !== GROUPED_ITEMS[index - 1].section) && <div role="presentation" className="ui-menu-heading">{item.section}</div>}
-          <button
+          <TooltipButton
             ref={(el) => { itemRefs.current[index] = el; }}
             type="button"
             role="menuitem"
@@ -151,7 +152,7 @@ export function WindowAddMenu() {
               </span>
               <span className="block truncate text-xs text-fg-dim">{item.desc}</span>
             </span>
-          </button>
+          </TooltipButton>
           </Fragment>
         );
       })}

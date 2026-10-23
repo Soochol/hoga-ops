@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../tests/tooltipQueries';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import StatusDot from './StatusDot';
@@ -15,7 +16,7 @@ describe('StatusDot', () => {
     // **오리진의 출처는 설정**이어야 한다 — 그래서 툴팁으로 같은 계약을 검사한다.
     getConfig.mockResolvedValue({ api_url: 'http://127.0.0.1:8765' });
     render(<StatusDot />);
-    expect(await screen.findByTitle('실시간 연결 활성 · http://127.0.0.1:8765')).toBeInTheDocument();
+    expect(await tooltipQueries().findByText('실시간 연결 활성 · http://127.0.0.1:8765')).toBeInTheDocument();
   });
 
   it('falls back to the document origin when the backend serves the SPA', async () => {
@@ -23,7 +24,7 @@ describe('StatusDot', () => {
     getConfig.mockResolvedValue({ api_url: '' });
     render(<StatusDot />);
     expect(
-      await screen.findByTitle(`실시간 연결 활성 · ${window.location.origin}`),
+      await tooltipQueries().findByText(`실시간 연결 활성 · ${window.location.origin}`),
     ).toBeInTheDocument();
   });
 
@@ -31,7 +32,7 @@ describe('StatusDot', () => {
     // 자리를 채우려고 아무 포트나 적는 것이 애초의 버그였다.
     getConfig.mockReturnValue(new Promise(() => {}));
     render(<StatusDot />);
-    expect(screen.getByTitle('실시간 연결 활성')).toBeInTheDocument();
+    expect(tooltipQueries().getByText('실시간 연결 활성')).toBeInTheDocument();
   });
 
   it('점만 렌더하고 텍스트 라벨은 내보내지 않는다', async () => {

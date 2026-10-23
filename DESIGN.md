@@ -1,5 +1,20 @@
 # Design System — hoga-ops
 
+2026-10-23 사용자 후속 승인: 소프트 컴팩트를 앱 전체 툴팁에 적용한다. 네이티브
+호버 안내는 `data-tooltip`과 앱 공통 호스트로 표시하며, 목록 가상화·포털·비활성 버튼도
+같은 표시 경로를 사용한다. 제목·본문·단축키·색상의 의미는 유지한다. 기업 설명·캔들
+시세·지수·옵션 및 시장 그래프의 전용 안내는 내용·행 구조·너비·위치 동작을 보존하고
+`tooltip-surface`의 글자·여백·표면·경계·모서리·그림자만 공유한다. 제거한 제목줄
+툴팁은 추가하지 않으며, 기존 국내 종목명 기업 설명 예외만 유지한다.
+
+2026-10-23 사용자 승인: 캔들차트 도구 메뉴와 호가주문 툴팁을 소프트 컴팩트로 통일한다.
+공통 텍스트 툴팁은 기존 테마의 불투명 `bg-card`·`fg`·`border-strong`, `radius-lg`(6px),
+6×10px 여백, `text-sm`(11.5px), 줄높이 1.6, `shadow`를 사용하며 꼬리·장식·모션은 없다.
+메뉴의 네이티브 `title` 툴팁은 같은 컴포넌트로 전환하고 500ms 호버·키보드 포커스,
+Esc·누르기·스크롤·창 포커스 이탈 시 닫기와 실측 기반 화면 가장자리 보정을 공유한다.
+비활성 메뉴의 이유 안내와 호가의 가격 방향색은 유지한다. 제목줄 툴팁 제거 및
+국내 종목명 기업 설명 예외는 아래 기존 규칙을 유지한다.
+
 2026-10-23 사용자 요청: 10호가·호가주문에서 표시 중인 호가가 오래됐더라도 확인된
 오류가 없으면 갱신 대기/서버 상태 미확인 안내 상자와 연결·재조회 버튼을 표시하지 않는다.
 마지막 호가 시각만 기존 `text-xs`·`text-fg-dim` 보조 글씨로 남긴다. 실제 조회 실패·
@@ -472,6 +487,8 @@ with its label folded at narrow widths, rather than inside the More popup.
 |---|---|---|---|
 | `2xs` | 2px | 2px | Hairline gaps |
 | `xs` | 4px | 4px | Pane gap, tight stacking |
+| `tooltip-x` | 10px | 10px | Soft compact tooltip inline padding |
+| `tooltip-y` | 6px | 6px | Soft compact tooltip block padding |
 | `sm` | 8px | 8px | Card padding inside, gap between sidebar cards |
 | `md` | 12px | 12px | Card padding default |
 | `lg` | 16px | 16px | Section spacing, nav item padding |

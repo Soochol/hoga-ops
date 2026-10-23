@@ -301,7 +301,7 @@ export function Screener() {
         <div className="feature-pane-header flex flex-col gap-sm p-md pb-0">
           <div className="flex items-center gap-1.5">
             <span className="text-2xs font-semibold uppercase text-fg-dim">조건검색</span>
-            <button type="button" aria-label="새 조건검색" title="새 조건검색"
+            <button type="button" aria-label="새 조건검색" data-tooltip="새 조건검색"
               disabled={editor.isSaving} onClick={() => switchEditor(null)}
               className="ml-auto rounded-md border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:text-fg disabled:opacity-50">＋ 새 조건</button>
           </div>
@@ -358,13 +358,13 @@ export function Screener() {
             <div className="min-w-0 flex-1" />
             <ToolbarButton tone="primary" onClick={() => { void runScan(); }}
               disabled={screener.isPending || notSeeded || !hasConditions || !!invalidExpression}
-              title={invalidExpression ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
+              data-tooltip={invalidExpression ?? (!hasConditions ? '조건이 없습니다 — 저장된 조건검색을 선택하거나 조건을 추가하세요' : undefined)}
               className="px-lg py-sm text-base">
               {screener.isPending ? '조회 중…' : '조회'}
             </ToolbarButton>
             {!notSeeded && (
               <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
-                disabled={isUpdating} title="최신 종목 목록을 반영하고 종목별 빠진 과거 일봉을 보충합니다">
+                disabled={isUpdating} data-tooltip="최신 종목 목록을 반영하고 종목별 빠진 과거 일봉을 보충합니다">
                 {isUpdating ? '갱신 중…' : '갱신'}
               </ToolbarButton>
             )}
@@ -401,7 +401,7 @@ export function Screener() {
                 <span data-testid="screener-result-meta" className="font-data text-sm tabular-nums text-fg">
                   {lastScan.hasMore && '상위 '}<span className="font-semibold">{rows.length.toLocaleString('ko-KR')}</span>종목
                   <span className="text-fg-dim">
-                    {' '}· <span data-testid="screener-basis-time" title="조건 평가 기준 시각 (한국 시간)">{scanBasisLabel(lastScan)}</span>
+                    {' '}· <span data-testid="screener-basis-time" data-tooltip="조건 평가 기준 시각 (한국 시간)">{scanBasisLabel(lastScan)}</span>
                   </span>
                 </span>
               ) : (
@@ -409,7 +409,7 @@ export function Screener() {
               )}
             </span>
             {chipFlags.map((f) => (
-              <StatusChip key={f.key} tone="warn" size="compact" title={f.text} className="max-w-[16rem] truncate">
+              <StatusChip key={f.key} tone="warn" size="compact" data-tooltip={f.text} className="max-w-[16rem] truncate">
                 {f.text}
               </StatusChip>
             ))}

@@ -128,7 +128,7 @@ function WindowFrameCoreImpl(props: WindowFrameCoreProps) {
               className="ml-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-sm text-sm leading-none text-fg-dim hover:bg-tint-selection hover:text-fg"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => onClose(id)}
-              title={closeTitle ?? undefined}
+              data-tooltip={closeTitle ?? undefined}
             >
               ×
             </button>

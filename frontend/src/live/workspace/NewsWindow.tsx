@@ -63,7 +63,7 @@ function NewsList({ code, name, date, dateControls }: { code: string; name: stri
   return (
     <>
       <ResponsiveDataControls label="뉴스 설정" secondary={<>
-        <label className="flex items-center gap-1 text-fg-dim" title="응답의 종목코드 또는 제목의 종목명이 일치하는 기사만 표시합니다. 기사 내용의 관련성을 보장하지는 않습니다.">
+        <label className="flex items-center gap-1 text-fg-dim" data-tooltip="응답의 종목코드 또는 제목의 종목명이 일치하는 기사만 표시합니다. 기사 내용의 관련성을 보장하지는 않습니다.">
           <input type="checkbox" checked={linkedOnly} onChange={(event) => setLinkedOnly(event.target.checked)} />
           종목 연결만
           <span className="text-fg-dim">{shown.length}건</span>
@@ -100,7 +100,7 @@ function NewsList({ code, name, date, dateControls }: { code: string; name: stri
                   {item.published_at_ms === null ? '시각 미상' : timeFormat.format(item.published_at_ms)}
                 </time>
                 <span className={relation(item, code, name) === '조회 결과' ? 'text-fg-dim' : 'text-accent'}
-                  title="한국투자 응답의 종목코드·제목 기준입니다. 기사 내용의 관련성과는 다를 수 있습니다.">
+                  data-tooltip="한국투자 응답의 종목코드·제목 기준입니다. 기사 내용의 관련성과는 다를 수 있습니다.">
                   {relation(item, code, name)}
                 </span>
               </div>
@@ -116,7 +116,7 @@ function NewsList({ code, name, date, dateControls }: { code: string; name: stri
         <span className="min-w-0 truncate">한국투자 · {date ? '선택일' : '최근'} 최대 {current?.limit ?? 40}건</span>
         <DataControlPopover label="뉴스 제공 안내">
         <p>한국투자 · {date ? '선택일' : '최근'} 최대 {current?.limit ?? 40}건 · 전체 기사 아님 · 원문 링크 미제공</p>
-        <p title="한국투자 종목 메타데이터에도 다른 종목 기사가 섞일 수 있습니다.">
+        <p data-tooltip="한국투자 종목 메타데이터에도 다른 종목 기사가 섞일 수 있습니다.">
           종목 연결은 제공 코드·제목 기준{!date && ' · 60초마다 확인'}
           {query.data?.fetched_at_ms != null && ` · 확인 ${timeFormat.format(query.data.fetched_at_ms)}`}
         </p>

@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../../tests/tooltipQueries';
 import type { ComponentProps } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
@@ -534,7 +535,7 @@ describe('IndicatorPanel', () => {
     openCatalog();
     const button = screen.getByRole('button', { name: '연속체결 매물대 분포' });
     expect(button).not.toHaveClass('whitespace-nowrap');
-    expect(within(button).getByTitle('연속체결 매물대 분포')).not.toHaveClass('truncate');
+    expect(tooltipQueries(button).getByText('연속체결 매물대 분포')).not.toHaveClass('truncate');
   });
 
   it('index capabilities hide every hoga and program indicator category', () => {

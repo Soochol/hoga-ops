@@ -1,3 +1,4 @@
+import { tooltipQueries } from '../../tests/tooltipQueries';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { CaptureQueueRow } from './CaptureQueueRow';
@@ -108,13 +109,13 @@ describe('CaptureQueueRow attempt badge (ADR-0031)', () => {
   it('hides the attempt badge when attempt === 1', () => {
     render(<CaptureQueueRow item={{ ...base, attempt: 1 }} symbolName="삼성전자"
                            onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.queryByTitle(/회차 시도/)).toBeNull();
+    expect(tooltipQueries().queryByText(/회차 시도/)).toBeNull();
   });
 
   it('renders ×N badge when attempt > 1', () => {
     render(<CaptureQueueRow item={{ ...base, attempt: 3 }} symbolName="삼성전자"
                            onCancel={() => {}} onRetry={() => {}} />);
-    const badge = screen.getByTitle(/3회차 시도/);
+    const badge = tooltipQueries().getByText(/3회차 시도/);
     expect(badge).toBeTruthy();
     expect(badge.textContent).toBe('×3');
   });
@@ -123,7 +124,7 @@ describe('CaptureQueueRow attempt badge (ADR-0031)', () => {
     render(<CaptureQueueRow item={{ ...base, force_retry: true, attempt: 2 }}
                            symbolName="삼성전자"
                            onCancel={() => {}} onRetry={() => {}} />);
-    expect(screen.getByTitle(/2회차 시도/)).toBeTruthy();
+    expect(tooltipQueries().getByText(/2회차 시도/)).toBeTruthy();
   });
 });
 
@@ -160,7 +161,7 @@ describe('CaptureQueueRow — inventory badge', () => {
         onRetry={() => {}}
       />,
     );
-    expect(screen.getByTitle(/보관함 재캡처에서 등록됨/)).toBeTruthy();
+    expect(tooltipQueries().getByText(/보관함 재캡처에서 등록됨/)).toBeTruthy();
     expect(screen.getByText('보관함')).toBeTruthy();
   });
 
@@ -203,7 +204,7 @@ describe('CaptureQueueRow — Full Capture Count cell', () => {
     );
     const cell = screen.getByTestId('queue-row-full-capture-count');
     expect(cell.textContent).toBe('×1');
-    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+    expect(cell.querySelector('span')?.getAttribute('data-tooltip')).toBe(
       'Full Capture 횟수 미기록 (≥1로 간주)',
     );
   });
@@ -220,7 +221,7 @@ describe('CaptureQueueRow — Full Capture Count cell', () => {
     );
     const cell = screen.getByTestId('queue-row-full-capture-count');
     expect(cell.textContent).toBe('×1');
-    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+    expect(cell.querySelector('span')?.getAttribute('data-tooltip')).toBe(
       'Full Capture 누적 1회',
     );
   });
@@ -237,7 +238,7 @@ describe('CaptureQueueRow — Full Capture Count cell', () => {
     );
     const cell = screen.getByTestId('queue-row-full-capture-count');
     expect(cell.textContent).toBe('×3');
-    expect(cell.querySelector('span')?.getAttribute('title')).toBe(
+    expect(cell.querySelector('span')?.getAttribute('data-tooltip')).toBe(
       'Full Capture 누적 3회',
     );
   });
@@ -259,7 +260,7 @@ describe('CaptureQueueRow — upstream-health badges', () => {
     );
     const badge = screen.getByTestId('queue-row-slow-upstream');
     expect(badge.textContent).toBe('지연');
-    expect(badge.querySelector('span')?.getAttribute('title')).toContain('612ms');
+    expect(badge.querySelector('span')?.getAttribute('data-tooltip')).toContain('612ms');
   });
 
   it('shows 429×N instead of 지연 when throttled_pages > 0', () => {

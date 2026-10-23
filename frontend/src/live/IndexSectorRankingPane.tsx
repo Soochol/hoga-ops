@@ -268,7 +268,7 @@ export function IndexSectorRankingPane({
                 setShowStocks(false);
                 requestAnimationFrame(() => paneRef.current?.querySelector<HTMLButtonElement>('.sector-ranking-sectors [aria-pressed="true"]')?.focus());
               }}>← 섹터 목록</button>
-            <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs font-medium text-fg" title={activeSector?.folder_name}>{activeSector?.folder_name}</div>
+            <div className="sticky top-0 z-10 bg-bg-card px-2 py-1 text-xs font-medium text-fg" data-tooltip={activeSector?.folder_name}>{activeSector?.folder_name}</div>
             {(activeSector?.stocks ?? []).map((stock, index) => (
               <StockButton key={stock.code} stock={stock} rank={index + 1} onOpenStock={onOpenStock} />
             ))}
@@ -367,7 +367,7 @@ export function IndexSectorRankingPane({
           </button>
         )}
       </div>
-      {destinationHint && <p className="shrink-0 px-2 py-1 text-2xs text-fg-dim" title="Ctrl/⌘+클릭: 새 브라우저 탭">{destinationHint}</p>}
+      {destinationHint && <p className="shrink-0 px-2 py-1 text-2xs text-fg-dim" data-tooltip="Ctrl/⌘+클릭: 새 브라우저 탭">{destinationHint}</p>}
       {body}
     </section>
   );

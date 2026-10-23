@@ -125,7 +125,7 @@ export function CaptureQueueRow({
           {showCancel && (
             <button
               type="button"
-              aria-label="취소" title="취소"
+              aria-label="취소" data-tooltip="취소"
               onClick={(e) => { e.stopPropagation(); onCancel(item.item_id); }}
               className="bg-transparent border-none text-fg-dim cursor-pointer text-sm p-1 -m-1"
             >✕</button>
@@ -133,7 +133,7 @@ export function CaptureQueueRow({
           {showRetry && (
             <button
               type="button"
-              aria-label="재시도" title="재시도"
+              aria-label="재시도" data-tooltip="재시도"
               onClick={(e) => { e.stopPropagation(); onRetry(item); }}
               className="bg-transparent border-none text-accent cursor-pointer text-sm p-1 -m-1"
             >↻</button>

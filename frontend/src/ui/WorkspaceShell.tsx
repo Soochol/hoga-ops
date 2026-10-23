@@ -1,5 +1,6 @@
 import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import { TooltipButton } from './TextTooltip';
 
 /**
  * 워크스페이스 페이지(`/live`)의 **유일한 여백 소유자**.
@@ -45,7 +46,7 @@ export const IconToolbarButton = forwardRef<
   ButtonHTMLAttributes<HTMLButtonElement> & { icon?: ReactNode }
 >(function IconToolbarButton({ children, icon, className = '', ...props }, ref) {
   return (
-    <button
+    <TooltipButton
       type="button"
       ref={ref}
       {...props}
@@ -58,7 +59,7 @@ export const IconToolbarButton = forwardRef<
     >
       {icon}
       {children}
-    </button>
+    </TooltipButton>
   );
 });
 

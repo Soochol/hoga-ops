@@ -30,7 +30,7 @@ export function RecaptureActionBar({
         <button
           type="button"
           disabled={isPending}
-          title={recapturableTooltip()}
+          data-tooltip={recapturableTooltip()}
           onClick={onRecaptureAll}
           className="rounded-md px-2.5 py-1 font-semibold cursor-pointer disabled:cursor-not-allowed border bg-bg-input border-accent text-accent hover:bg-accent hover:text-bg"
         >

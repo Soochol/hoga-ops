@@ -30,7 +30,7 @@ export function ProgramTradeTickTable({ ticks, emptyText }: {
       <span className="col-start-3 row-start-1" data-figure={`−${figure}`} />
     </div>
     <div role="row" className="trade-tick-row trade-tick-header sticky top-0 z-10 bg-bg-subtle py-1 text-2xs text-fg-dim">
-      <span role="columnheader" title="과거 내역은 키움 제공 시각, 실시간 내역은 수신 시각">시간</span>
+      <span role="columnheader" data-tooltip="과거 내역은 키움 제공 시각, 실시간 내역은 수신 시각">시간</span>
       <span role="columnheader" className="text-right">현재가(원)</span>
       <span role="columnheader" className="text-right">순매수 증감(주)</span>
     </div>

@@ -199,7 +199,7 @@ function SideCard({ side, active, onPick }: { side: Side; active: boolean; onPic
             aria-label={`${label} 최대벽 숨김`}
             aria-pressed={hidden}
             disabled={!enabled}
-            title="이 방향의 선 · 라벨 · 화살표를 모두 숨깁니다 (레전드 값은 남습니다)"
+            data-tooltip="이 방향의 선 · 라벨 · 화살표를 모두 숨깁니다 (레전드 값은 남습니다)"
             onClick={() => (side === 'ask'
               ? actions.setAskPeakHidden(!hidden)
               : actions.setBidPeakHidden(!hidden))}
@@ -407,7 +407,7 @@ function PaneSlotSwitch({ side, family, name }: {
       <ToggleSwitch
         size="sm"
         label={`강도 pane ${SIDE_LABEL[side]} ${name}`}
-        title={PANE_FAMILY_HINT[family]}
+        data-tooltip={PANE_FAMILY_HINT[family]}
         checked={inPane}
         onClick={() => setSlot(side, family, !inPane)}
         data-testid={`settings-toggle-${key}`}
@@ -494,7 +494,7 @@ function FilterCount({ side, family }: { side: Side; family: PeakWallFamilyId })
   const total = peakWallFamilyToggleKeys(side, family, 'filter').length;
   return (
     <span
-      title={`후보 필터 ${activeFilterCount}개 작동 중 (전체 ${total}개 — 기본이 최대)`}
+      data-tooltip={`후보 필터 ${activeFilterCount}개 작동 중 (전체 ${total}개 — 기본이 최대)`}
       className="text-2xs tabular-nums text-fg-dim"
     >
       필터 {activeFilterCount}/{total}

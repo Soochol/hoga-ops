@@ -20,6 +20,7 @@ import { useStudyViewMutations, useStudyViews } from './useStudyViews';
 import { bulkItems, coveragePreview } from '../api/captures';
 import { CAPTURE_QUEUE_QUERY_KEY } from '../capture/useCaptureQueue';
 import { COMPACT_PADDING_INLINE } from '../live/workspace/chartHeaderCompact';
+import { TooltipButton } from '../ui/TextTooltip';
 
 export function LiveStudyViewSaveButton({
   source,
@@ -77,7 +78,7 @@ export function LiveStudyViewSaveButton({
 
   return (
     <>
-      <button
+      <TooltipButton
         type="button"
         data-testid="live-study-save-button"
         disabled={!source}
@@ -89,7 +90,7 @@ export function LiveStudyViewSaveButton({
       >
         <span aria-hidden="true" className="font-data">▤</span>
         {showLabel && <span>저장</span>}
-      </button>
+      </TooltipButton>
       {command && !groupsQuery.data && createPortal(<ModalShell ariaLabel="저장 그룹 불러오기" width="w-[360px]" onClose={() => setCommand(null)}>
         <div role="status" className="space-y-3 p-4 text-sm text-fg-dim">
           {groupsQuery.isError ? <button onClick={() => groupsQuery.refetch()}>그룹을 불러오지 못했습니다 · 다시 시도</button> : '그룹 불러오는 중'}

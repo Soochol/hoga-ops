@@ -320,7 +320,7 @@ export default function BookPanel({
                   {t.price.toLocaleString('ko-KR')}
                 </span>
                 <span
-                  title={t.qty.toLocaleString('ko-KR')}
+                  data-tooltip={t.qty.toLocaleString('ko-KR')}
                   style={{ background: tradeHighlightBackground(t, highlight) }}
                   className={`rounded-sm text-right font-data text-sm tabular-nums ${
                     t.side > 0 ? 'text-price-up' : t.side < 0 ? 'text-price-down' : 'text-fg-dim'
@@ -578,7 +578,7 @@ export function BookDayMarker({ marker }: { marker: BookPriceMarker | null }) {
 export function BookQtyDelta({ badge }: { badge: OrderbookDeltaBadge | null }) {
   if (badge === null) return null;
   const text = `${badge.delta > 0 ? '+' : '−'}${Math.abs(badge.delta).toLocaleString('ko-KR')}`;
-  return <span title={text} className={`book-qty-delta shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>{text}</span>;
+  return <span data-tooltip={text} className={`book-qty-delta shrink-0 text-2xs ${priceDirClass(badge.delta)}`}>{text}</span>;
 }
 
 function PriceCell({
@@ -932,7 +932,7 @@ function BookSessionCenter({
         // 라벨만으로는 "지금 이 장을 보고 있다" 인지 "누르면 이 장으로 간다" 인지
         // 알 수 없다 — 스크린리더에는 둘 다 말한다.
         aria-label={`${labelFor(mode)} 호가 표시 중 — 누르면 ${labelFor(next)}`}
-        title={`${labelFor(next)} 보기`}
+        data-tooltip={`${labelFor(next)} 보기`}
         className="whitespace-nowrap text-xs text-fg-dim underline decoration-dotted underline-offset-2 transition-colors duration-150 ease-in-out hover:text-fg"
         data-testid="book-session-toggle"
         data-mode={mode}

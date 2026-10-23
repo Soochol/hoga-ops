@@ -78,7 +78,7 @@ describe('heatmap company tooltip', () => {
   it('closes during drag and leaves unknown Codes with their existing capture title', () => {
     const { rerender } = render(rows());
     const unknown = screen.getByText('새 종목', { exact: true });
-    expect(unknown).toHaveAttribute('title', '수집 이력 없음');
+    expect(unknown).toHaveAttribute('data-tooltip', '수집 이력 없음');
     fireEvent.mouseEnter(unknown); reveal();
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     fireEvent.mouseEnter(screen.getByText('LG전자', { exact: true })); reveal();

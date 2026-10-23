@@ -9,7 +9,7 @@ describe('ViewedDateChip', () => {
     render(<ViewedDateChip date="20260820" onReturn={vi.fn()} />);
     const chip = screen.getByTestId('live-viewed-date-chip');
     expect(chip.textContent).toContain('08-20');
-    expect(chip.getAttribute('title')).toContain('20260820');
+    expect(chip.getAttribute('data-tooltip')).toContain('20260820');
   });
 
   it('× 는 라이브 엣지로 돌려보낸다', () => {

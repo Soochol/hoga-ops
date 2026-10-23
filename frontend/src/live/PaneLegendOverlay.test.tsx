@@ -1077,7 +1077,7 @@ describe('PaneLegendOverlay — 모든 pane 지표의 제거 버튼', () => {
       render(<PaneLegendOverlay chart={makeChart(specs.map(() => 100))} timeframe="D" paneToggles={toggles} />);
       const row = within(screen.getByTestId(`pane-legend-rows-${spec.name}`));
       const remove = row.getByRole('button', { name: /지표 끄기$/ });
-      expect(remove).toHaveAttribute('title', `${PANE_DISPLAY_NAME[basePaneId(spec.name)]} 지표 끄기`);
+      expect(remove).toHaveAttribute('data-tooltip', `${PANE_DISPLAY_NAME[basePaneId(spec.name)]} 지표 끄기`);
       fireEvent.click(remove);
       expect(spec.legendToggleKey).toBeDefined();
       for (const indicator of indicators) {

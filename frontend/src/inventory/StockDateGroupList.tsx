@@ -41,7 +41,7 @@ export function StockDateGroupList({ rows, selectedCode, onSelect }: Props) {
             : <>종목 {allGroupsCount}개 · 캡처 {rows.length}건</>}
         </span>
         <button type="button" aria-pressed={problemsOnly}
-          title="완결이 아닌 종목(부분·미완결·손상·차단)만 표시"
+          data-tooltip="완결이 아닌 종목(부분·미완결·손상·차단)만 표시"
           onClick={() => setProblemsOnly((v) => !v)}
           className={`shrink-0 rounded-md px-1.5 py-0.5 text-2xs font-semibold ${
             problemsOnly ? 'bg-tint-selection text-accent' : 'bg-bg-input text-fg-dim hover:text-fg'}`}>

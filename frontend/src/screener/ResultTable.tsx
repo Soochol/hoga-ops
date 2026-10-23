@@ -53,7 +53,7 @@ function DepthRenewalBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides 
     .join(' / ');
   return (
     <span className="inline-flex items-center gap-1.5 font-data text-2xs tabular-nums text-fg-dim"
-      title={title}>
+      data-tooltip={title}>
       {shown.map((r) => (
         <span key={r.label} className="inline-flex items-center gap-1">
           {shown.length > 1 && <span className="text-fg-dim">{r.label}</span>}
@@ -80,7 +80,7 @@ function DepthBadge({ v, sides }: { v: DepthPeakValue; sides: DepthSides }) {
     .map((r) => `${r.label} 당일 peak ${fmtQty(r.today)} · 지난 ${r.need}일 peak ${fmtQty(r.past)}`)
     .join(' / ');
   return (
-    <span className="inline-flex items-center gap-1.5 font-data text-2xs tabular-nums text-fg-dim" title={title}>
+    <span className="inline-flex items-center gap-1.5 font-data text-2xs tabular-nums text-fg-dim" data-tooltip={title}>
       {rows.map((r) => (
         <span key={r.label} className="inline-flex items-center gap-1">
           {rows.length > 1 && <span className="text-fg-dim">{r.label}</span>}
@@ -184,7 +184,7 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
         // 마감 동시호가엔 확정가가 예상가에 덮인다 — QuoteRow 와 동일하게
         // 직전 체결가를 title 로 보존한다(표에도 두 숫자를 나란히 둘 폭이 없다).
         <span
-          title={r.price != null
+          data-tooltip={r.price != null
             ? `예상 ${r.expected_price.toLocaleString('ko-KR')} · 직전 체결 ${r.price.toLocaleString('ko-KR')}`
             : undefined}
           className={`font-data tabular-nums text-right ${r.expected_change_pct == null ? '' : priceDirClass(r.expected_change_pct)}`}
@@ -195,12 +195,12 @@ function ResultRow({ r, isMember, onActivate, depthValues, depthSides, style, me
       ) : (
         <span className={`font-data tabular-nums text-right ${r.change_pct === null ? '' : priceDirClass(r.change_pct)}`}>
           {r.price != null ? `${r.price.toLocaleString('ko-KR')} (${formatPct(r.change_pct)})` : '—'}
-          {quoteMode === 'snapshot' && <span className="block text-2xs text-fg-dim" title="조회 가격의 기준일 · 조건 충족 발생일과 다를 수 있습니다">
+          {quoteMode === 'snapshot' && <span className="block text-2xs text-fg-dim" data-tooltip="조회 가격의 기준일 · 조건 충족 발생일과 다를 수 있습니다">
             {r.price_date ?? '기준일 미기록'}
           </span>}
         </span>
       )}
-      <span className="font-data tabular-nums text-right text-fg-dim" title="조회 당시 추정 거래대금 · 평균 OHLC × 거래량">{toEok(r.trade_value_won)}</span>
+      <span className="font-data tabular-nums text-right text-fg-dim" data-tooltip="조회 당시 추정 거래대금 · 평균 OHLC × 거래량">{toEok(r.trade_value_won)}</span>
       <span className="flex items-center justify-end gap-2">
         <WatchlistHeartButton code={r.code} name={r.name} isMember={isMember(r.code)} variant="row" />
       </span>

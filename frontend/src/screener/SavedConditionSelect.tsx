@@ -45,7 +45,7 @@ export function SavedConditionSelect({ saves, selectedId, onSelect, disabled = f
     <div ref={anchorRef} className="relative min-w-0 flex-1">
       <button ref={buttonRef} type="button" aria-label="저장한 조건검색 선택"
         aria-haspopup="listbox" aria-expanded={visible} aria-controls={visible ? listId : undefined}
-        disabled={disabled} title={selected?.name ?? placeholder}
+        disabled={disabled} data-tooltip={selected?.name ?? placeholder}
         onClick={() => visible ? close() : show()}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); show(); }
@@ -82,7 +82,7 @@ export function SavedConditionSelect({ saves, selectedId, onSelect, disabled = f
           <div id={listId} role="listbox" aria-label="저장한 조건검색" className="max-h-64 overflow-auto py-1">
             {filtered.map((s) => (
               <button key={s.id} id={`${listId}-${s.id}`} type="button" role="option" tabIndex={-1}
-                aria-selected={s.id === selectedId} title={s.name}
+                aria-selected={s.id === selectedId} data-tooltip={s.name}
                 onMouseDown={(e) => e.preventDefault()}
                 onMouseMove={() => setActiveId(s.id)} onClick={() => choose(s.id)}
                 className={`flex w-full items-start gap-2 px-3 py-2 text-left text-sm ${

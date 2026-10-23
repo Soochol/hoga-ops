@@ -63,7 +63,7 @@ function AsOf({ label, ms, staleMs }: { label: string; ms: number | null; staleM
     age < 45_000 ? '방금' : age < 5_400_000 ? `${Math.round(age / 60_000)}분 전` : `${Math.round(age / 3_600_000)}시간 전`;
   const stale = age > staleMs;
   return (
-    <span title={fmtTime(ms)} style={stale ? { color: 'var(--warn)' } : undefined}>
+    <span data-tooltip={fmtTime(ms)} style={stale ? { color: 'var(--warn)' } : undefined}>
       {label} {text}
       {stale && ' · 지연'}
     </span>
