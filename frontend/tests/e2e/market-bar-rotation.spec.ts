@@ -29,7 +29,8 @@ test('one-line market bar rotates, switches on blank clicks, and keeps coverage 
   } }));
   await page.goto('/live');
   const bar = page.getByRole('contentinfo', { name: '시장지표' });
-  await expect(page.getByRole('button', { name: '투자자 수급 화면으로 전환' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '시장지표 자동 전환' })).toBeVisible();
+  await expect(page.getByTestId('market-bar-switch')).toHaveCount(0);
   await page.clock.pauseAt(await page.evaluate(() => Date.now()) + 1_000);
   await expect(bar).toHaveAttribute('data-page', 'indices');
   const coverage = page.getByTestId('kiwoom-coverage-chip');
@@ -40,11 +41,16 @@ test('one-line market bar rotates, switches on blank clicks, and keeps coverage 
   await expect(page.getByTestId('market-flow-KOSPI')).toContainText('외인+2,180');
   expect(await coverage.boundingBox()).toEqual(before);
   expect(await bar.evaluate(el => el.getBoundingClientRect().height)).toBe(height);
-  await page.getByRole('button', { name: '지수 화면으로 전환' }).click();
+  await bar.click({ position: { x: 2, y: 2 } });
   await expect(bar).toHaveAttribute('data-page', 'indices');
   await page.clock.runFor(9_000);
-  await page.getByRole('button', { name: '투자자 수급 화면으로 전환' }).click();
+  await bar.focus();
+  await bar.press('Enter');
   await page.clock.runFor(1_000);
+  await expect(bar).toHaveAttribute('data-page', 'flow');
+  await bar.press('Space');
+  await expect(bar).toHaveAttribute('data-page', 'indices');
+  await bar.click({ position: { x: 2, y: 2 } });
   await expect(bar).toHaveAttribute('data-page', 'flow');
   // /live 셸은 기존 944px 최소 폭을 유지한다.
   for (const width of [1440, 1024, 960]) {

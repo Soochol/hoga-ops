@@ -170,11 +170,19 @@ export function MarketIndexBar() {
       data-testid="market-index-bar"
       aria-label="시장지표"
       data-page={showFlow ? 'flow' : 'indices'}
+      tabIndex={canRotate ? 0 : undefined}
+      aria-keyshortcuts={canRotate ? 'Enter Space' : undefined}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          switchPage();
+        }
+      }}
       onClick={(event) => {
         const target = event.target as HTMLElement;
         if (!target.closest('button, [data-market-bar-content]')) switchPage();
       }}
-      className="flex h-bottom-bar min-w-0 items-center gap-1 bg-bg px-2"
+      className="flex h-bottom-bar min-w-0 items-center gap-1 bg-bg px-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2"
     >
       <div className="flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto [scrollbar-width:none]">
       {showFlow && summary ? (
@@ -192,16 +200,6 @@ export function MarketIndexBar() {
             <MarketIndexItem quote={quote} nowMs={nowMs} />
           </div>
         ))}
-      {canRotate && (
-        <button
-          type="button"
-          data-testid="market-bar-switch"
-          aria-label={showFlow ? '지수 화면으로 전환' : '투자자 수급 화면으로 전환'}
-          title="빈 영역 클릭으로 전환 · 10초마다 자동 전환"
-          onClick={switchPage}
-          className="h-full min-w-6 shrink-0 self-stretch rounded-sm px-1 text-xs text-fg-dim hover:bg-bg-input-hover"
-        >{showFlow ? '지수 ›' : '수급 ›'}</button>
-      )}
       </div>
       {canRotate && <button type="button" aria-label="시장지표 자동 전환" aria-pressed={autoRotate}
         title={autoRotate ? '10초마다 자동 전환 · 누르면 일시 정지' : '자동 전환 일시 정지 · 누르면 재개'}

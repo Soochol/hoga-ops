@@ -177,7 +177,7 @@ describe('RankingDrawer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
     await screen.findByRole('button', { name: '201~300위 더 보기' });
     expect(String(call.mock.calls.at(-1)?.[0])).toContain('limit=200');
-    expect(String(call.mock.calls.at(-1)?.[0])).toContain('exclude_etf=true');
+    expect(String(call.mock.calls.at(-1)?.[0])).not.toContain('exclude_etf');
     fireEvent.click(screen.getByRole('button', { name: '등락률 정렬' }));
     expect(screen.getByText(/조회 범위 내 등락률순/)).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: /차트 열기/ })[0]).toHaveTextContent('SK하이닉스');
@@ -271,7 +271,7 @@ describe('RankingDrawer', () => {
       fireEvent.change(screen.getByRole('combobox', { name: '시장' }), { target: { value: 'kosdaq' } });
       fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
       await waitFor(() => expect(call.mock.calls.some(([url]) => (
-        String(url).includes(`kind=${kind}`) && String(url).includes('market=kosdaq') && String(url).includes('exclude_etf=true')
+        String(url).includes(`kind=${kind}`) && String(url).includes('market=kosdaq') && !String(url).includes('exclude_etf')
       ))).toBe(true));
       fireEvent.click(screen.getByRole('button', { name: '거래량' }));
       await screen.findByText('삼성전자');
@@ -356,19 +356,23 @@ describe('RankingDrawer', () => {
     });
   });
 
-  it('ETF 제외 토글이 exclude_etf=true 로 재조회한다', async () => {
+  it('ETF 제외가 처음부터 켜져 있고 토글로 해제·재활성화할 수 있다', async () => {
     const apiCall = vi.spyOn(client, 'apiCall').mockResolvedValue(OPEN_RESPONSE as never);
     renderDrawer();
     await screen.findByText('삼성전자');
 
-    // 기본 요청엔 exclude_etf 가 없다.
-    expect((apiCall.mock.calls[0][0] as string)).not.toContain('exclude_etf');
+    const toggle = screen.getByRole('button', { name: 'ETF 제외' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect((apiCall.mock.calls[0][0] as string)).toContain('exclude_etf=true');
 
-    fireEvent.click(screen.getByRole('button', { name: 'ETF 제외' }));
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
     await waitFor(() => {
-      expect(apiCall.mock.calls.some((c) => (c[0] as string).includes('exclude_etf=true'))).toBe(true);
+      expect(apiCall.mock.calls.some((c) => !(c[0] as string).includes('exclude_etf'))).toBe(true);
     });
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('마스터 미로드 경고를 배지로 띄운다 (조용한 fail-open 방지)', async () => {
@@ -541,7 +545,7 @@ describe('RankingDrawer', () => {
     const rowNames = () =>
       screen.getAllByRole('button', { name: /차트 열기/ }).map((li) => li.getAttribute('aria-label'));
     expect(rowNames()[0]).toContain('HDC현대산업개발');
-    const key = ['live-rankings', 'change', 'all', 'up', false, 'KRX', 100];
+    const key = ['live-rankings', 'change', 'all', 'up', true, 'KRX', 100];
 
     act(() => { dnd.onDragStart!(DRAG_START); });
     // 드래그 도중 10초 폴링이 착지해 순위가 통째로 갈린다.
