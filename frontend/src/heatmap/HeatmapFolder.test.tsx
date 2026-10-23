@@ -114,14 +114,15 @@ it('일치 종목만 표시해도 전체 그룹 평균과 수집 지연 범위�
     laggingCodes={new Set(['000660'])} onCollectLagging={collect} />);
   expect(screen.queryByTestId('heatmap-row-000660')).not.toBeInTheDocument();
   expect(screen.getByText('+5.0%')).toHaveAttribute('title', expect.stringContaining('2/2종목'));
-  fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+  fireEvent.contextMenu(screen.getByRole('group', { name: '반도체 그룹' }));
   fireEvent.click(screen.getByRole('menuitem', { name: '보충 수집' }));
   expect(collect).toHaveBeenCalledWith('f1', ['000660']);
 });
 
-it('보이는 그룹 메뉴 버튼으로 이름 변경에 접근한다', () => {
+it('그룹 메뉴 버튼 없이 헤더의 키보드 메뉴로 이름 변경에 접근한다', () => {
   render(<HeatmapFolder folder={folder} entries={entries} quoteByCode={quotes}
     sortMode="manual" onPick={() => {}} onRenameFolder={vi.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: '반도체 그룹 메뉴' }));
+  expect(screen.queryByRole('button', { name: '반도체 그룹 메뉴' })).not.toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('group', { name: '반도체 그룹' }), { key: 'F10', shiftKey: true });
   expect(screen.getByRole('menu')).toBeInTheDocument();
 });
