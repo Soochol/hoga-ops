@@ -734,7 +734,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             disabled={amountPresets && !canConvertAmount}
             onClick={() => applyPreset(value)}>{fmt(amountPresets ? value * 100 : value)}{amountPresets ? '만' : '주'}</button>)}
         </div>
-        <span className="order-field order-estimate" aria-label="예상 주문 금액" title={estimatePrice != null ? `${fmt(estimatePrice)}원 기준` : undefined}>
+        <span className="order-field order-estimate" aria-label="예상 주문 금액">
           <span className="order-meta" aria-hidden="true">금액</span>
           <span className="order-field-value">{estimateAmount == null ? '—' : `${fmt(estimateAmount)}원`}
           </span>
