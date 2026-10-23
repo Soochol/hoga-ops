@@ -3,6 +3,12 @@
 **Status:** accepted (2026-07-12)
 **Related:** ADR-0024 (drawing realMs coordinates), ADR-0032 (drawing property panel)
 
+**2026-10-23 user-approved extension:** Selection deletion (`removeMany`, from
+Delete/Backspace or the Drawing Property Panel) also publishes `clearToast` with
+the actual unlocked deletion count and the pre-delete snapshot. It remains one
+undo step; deleting only locked items is a no-op without a toast. The existing
+toast recovery and six-second dismissal behavior are reused.
+
 ## Decision
 
 The **Drawing** subsystem gains **undo/redo** and a **"모두 지우기" safety net**.

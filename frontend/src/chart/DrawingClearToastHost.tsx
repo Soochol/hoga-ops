@@ -6,7 +6,8 @@ import { useDrawingsStore } from '../state/drawings';
 const AUTO_DISMISS_MS = 6000;
 
 /**
- * Undo-toast for "모두 지우기" (clearAll). Subscribes to the store's reactive
+ * Undo-toast for "모두 지우기" and selection deletion (clearAll/removeMany).
+ * Subscribes to the store's reactive
  * `clearToast` slot; when set, shows a card with an 실행취소 action that
  * `restore`s the pre-clear snapshot (a normal, itself-undoable mutation — not
  * an undo-stack pop, so it stays correct even if the user switched symbol or

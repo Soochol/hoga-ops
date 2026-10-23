@@ -22,6 +22,7 @@ import { TOOLS, matchShortcut, type DragMode, type PencilDraft, type RectDraft, 
 import { pixelToData as projPixelToData, priceToCanvasY as projPriceToCanvasY, canvasYToPrice as projCanvasYToPrice, realMsToCanvasX as projRealMsToCanvasX, realMsToCanvasXClamped as projRealMsToCanvasXClamped, onAxisCandles, futureBandFor, canvasXToRealMs as projCanvasXToRealMs, paneIdToIndex, paneIdAtY as projPaneIdAtY, clampYToPane as projClampYToPane, priceBoundsForPane as projPriceBoundsForPane, dragBarDomain, barPitchPx, type PaneSeriesMap } from './drawing/chartCoordinates';
 import { safeUnsubscribe } from './util/safeUnsubscribe';
 import { resolveSelectModeMouseDown } from './DrawingOverlayHelpers';
+import { useRightDragSelection } from './drawing/useRightDragSelection';
 
 
 type Props = {
@@ -139,6 +140,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const rectDraft = useRef<RectDraft | null>(null);
   const measureDraft = useRef<MeasureDraft | null>(null);
   const marqueeDraft = useRef<MarqueeDraft | null>(null);
+  const rightSelectionPreview = useRef<ReadonlySet<string> | null>(null);
   /** Shift 가 눌려 있는가 — pointer-events 게이트가 마퀴 통로를 열지 결정한다.
    *  mousemove 와 keydown/keyup 양쪽에서 갱신된다(어느 한쪽만으로는 "누른 채
    *  멈춤" 또는 "포커스 밖에서 누름" 중 하나를 놓친다). */
@@ -203,6 +205,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const [textValue, setTextValue] = useState('');
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const marqueeBoxRef = useRef<HTMLDivElement>(null);
+  const marqueeCountRef = useRef<HTMLSpanElement>(null);
   // `textEdit` is also mirrored to a ref so the pointer/keyboard closures (which
   // don't re-bind every render) can read the current editing state.
   const textEditRef = useRef<TextEdit | null>(null);
@@ -281,8 +284,8 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
 
   snapshotRef.current = () => ({
     drawings,
-    selectedIds: selectedIdSet,
-    handlesId: selectedId,
+    selectedIds: rightSelectionPreview.current ?? selectedIdSet,
+    handlesId: rightSelectionPreview.current ? null : selectedId,
     hiddenAll: defaults.hiddenAll,
     axis,
     timeBadgePaneId,
@@ -912,6 +915,28 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     // 번째는 아무 일도 하지 않는다 — 선택을 푸는 우클릭 경로가 아예 없었다).
     useDrawingsStore.getState().exitDrawingMode();
   };
+
+  useRightDragSelection({
+    containerRef,
+    enabled: activeTool === 'select' && scope != null,
+    scope,
+    draft: marqueeDraft,
+    preview: rightSelectionPreview,
+    bounds: () => {
+      if (dragRef.current || marqueeDraft.current || textEditRef.current
+        || paneIdToIndex(paneSeries, 'candle') < 0
+        || useDrawingsStore.getState().clearConfirm) return null;
+      return { x1: 0, x2: chart.timeScale().width(),
+        y1: clampYToPane('candle', 0),
+        y2: clampYToPane('candle', Number.MAX_SAFE_INTEGER) };
+    },
+    selected: () => scope == null ? EMPTY_SELECTION : useDrawingsStore.getState().selectedFor(scope),
+    intersecting: (rect) => defaults.hiddenAll ? []
+      : drawingsInRect(hitCoords(), drawings, rect).filter(d => d.paneId === 'candle').map(d => d.id),
+    commit: (ids) => { if (scope != null) useDrawingsStore.getState().setSelection(scope, ids); },
+    click: () => useDrawingsStore.getState().exitDrawingMode(),
+    redraw: requestRedraw,
+  });
   // Double-click an existing text label to re-open its editor in place.
   const onDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
@@ -1137,7 +1162,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const container = containerRef.current;
     if (!container) return;
     const onWindowMouseDown = (e: MouseEvent) => {
-      if (dragRef.current || scope == null) return;
+      if (e.button !== 0 || dragRef.current || marqueeDraft.current || scope == null) return;
       const isOnPropertyPanel =
         e.target instanceof Node &&
         !!document.querySelector('[data-drawing-property-panel]')?.contains(e.target);
@@ -1363,7 +1388,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     const el = marqueeBoxRef.current;
     if (!el) return;
     const m = marqueeDraft.current;
-    if (!m) {
+    if (!m || (m.rightButton && rightSelectionPreview.current == null)) {
       el.style.display = 'none';
       return;
     }
@@ -1372,6 +1397,10 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     el.style.transform = `translate(${r.x1}px, ${r.y1}px)`;
     el.style.width = `${r.x2 - r.x1}px`;
     el.style.height = `${r.y2 - r.y1}px`;
+    if (marqueeCountRef.current) {
+      marqueeCountRef.current.textContent = m.rightButton
+        ? `${rightSelectionPreview.current?.size ?? 0}개 선택` : '';
+    }
   };
 
   const syncTextEditorPosition = () => {
@@ -1405,7 +1434,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
           {dayExtremesReady ? '날짜를 클릭하세요 · Esc 취소' : '분봉·일봉 데이터가 준비되면 날짜를 클릭하세요'}
         </div>
       )}
-      {/* 마퀴(Shift+드래그) 선택 상자. 항상 마운트하고 display 로 여닫는다 —
+      {/* 마퀴(우측 드래그 / Shift+드래그) 선택 상자. 항상 마운트하고 display 로 여닫는다 —
           드래그마다 마운트/언마운트하면 첫 프레임이 React 렌더를 기다린다. */}
       <div
         ref={marqueeBoxRef}
@@ -1413,7 +1442,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         aria-hidden
         className="pointer-events-none absolute left-0 top-0 z-30 border border-dashed border-accent bg-accent/10"
         style={{ display: 'none' }}
-      />
+      >
+        <span ref={marqueeCountRef} className="absolute left-0 top-0 whitespace-nowrap rounded bg-bg-card px-1 text-xs text-fg-dim" />
+      </div>
 
       {textEdit && textEditPos && editorLayout && editorBox && (
         <textarea

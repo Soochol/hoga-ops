@@ -109,10 +109,10 @@ export type RectDraft = { a: RectCorner; b?: RectCorner; pointerId: number; pane
 export type MeasureDraft = { a: Point; b?: Point; pointerId: number; paneId: PaneId };
 
 /**
- * An in-flight 마퀴 (Shift+드래그 on empty space). Pixel-space, because that is
+ * An in-flight 마퀴 (Shift+left drag or right drag). Pixel-space, because that is
  * what the user is aiming with — it is never converted to data coordinates, and
- * it dies at pointerup. `additive` is not a field: a marquee only exists under
- * Shift, so union is its only reading.
+ * it dies at pointerup. selectTool owns additive Shift+left selection;
+ * useRightDragSelection owns right-button replacement and Shift-addition.
  */
 export type MarqueeDraft = {
   ax: number;
@@ -120,6 +120,8 @@ export type MarqueeDraft = {
   bx: number;
   by: number;
   pointerId: number;
+  /** Right-button selection has a movement threshold and replace semantics. */
+  rightButton?: boolean;
 };
 
 /** Movement below this (px, from the press point) is a click, not a drag. Used
