@@ -26,6 +26,8 @@ async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: nu
     sellable_quantity: '100', holding_quantity: '100', average_purchase_price: '66000',
   } }));
   let phase = 'waiting_slot';
+  let statusStale = false;
+  let statusFailure = false;
   let failed = options.initialFailure ?? false;
   let replyBookMs = options.bookMs;
   let serverReceivedMs: number | undefined;
@@ -58,7 +60,8 @@ async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: nu
       ask_peak_today: null, bid_peak_today: null } });
   });
   await page.route(apiPrefix('live/status'), async route => {
-    const observed = await page.evaluate(() => Date.now());
+    if (statusFailure) return route.fulfill({ status: 503, json: { detail: 'status unavailable' } });
+    const observed = await page.evaluate(() => Date.now()) - (statusStale ? 60_000 : 0);
     return route.fulfill({ json: {
       running: true, started_at_ms: nowMs, last_tick_ms: null, cycle_lag_ms: 0,
       capture_healthy: true, capture_reason: 'healthy', watchlist_count: 0, live_set: [], rest_bypass_enabled: false,
@@ -75,6 +78,8 @@ async function setup(page: Page, options: { initialFailure?: boolean; nowMs?: nu
   await page.getByTestId('workspace-add-order').click();
   await expect(page.getByTestId('order-window')).toBeVisible();
   return { ws, setPhase: (value: string) => { phase = value; }, recoverQuery: () => { failed = false; },
+    setStatusStale: (value: boolean) => { statusStale = value; },
+    setStatusFailure: (value: boolean) => { statusFailure = value; },
     setServerBook: (time: number) => { replyBookMs = time; serverReceivedMs = time; },
     seriesRequests: () => seriesRequests,
     holdSeries: () => { let release!: () => void; heldSeries = new Promise<void>(resolve => { release = resolve; });
@@ -120,7 +125,7 @@ test('stale WS books converge to a newer REST book with one shared recovery and 
   await page.screenshot({ path: testInfo.outputPath('book-rest-recovered.png') });
 });
 
-test('recent browser book receipts with an old event time remain distinct from a display delivery gap', async ({ page }) => {
+test('recent browser book receipts with an old event time stay quiet without relaxing order freshness', async ({ page }) => {
   const code = '222800';
   const now = Date.parse('2026-10-22T16:57:20+09:00');
   const fixture = await setup(page, { code, nowMs: now });
@@ -131,14 +136,43 @@ test('recent browser book receipts with an old event time remain distinct from a
     asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
     total_ask_qty: 100, total_bid_qty: 200 });
   const states = page.getByTestId('book-availability');
-  await expect(states).toHaveCount(2);
-  await expect(states.nth(0)).toHaveAttribute('data-state', 'timestamp_old');
-  await expect(states.nth(1)).toHaveAttribute('data-state', 'timestamp_old');
-  await expect(states.nth(0)).toContainText('호가는 수신 중');
+  await expect(page.getByTestId('book-last-update')).toHaveCount(2);
+  await expect(states).toHaveCount(0);
   await expect(page.getByTestId('order-window').getByRole('button', { name: /매수 67,200원 주문 추가/ }))
     .toHaveAttribute('aria-disabled', 'true');
   await page.clock.runFor(5_100);
   expect(fixture.seriesRequests()).toBe(before);
+});
+
+test('both books keep only the last timestamp for quiet or unobserved status but retain real errors', async ({ page }, testInfo) => {
+  const fixture = await setup(page, { bookMs: NOW - 60_000 });
+  fixture.setPhase('registered');
+  await page.clock.runFor(5_100);
+  const states = page.getByTestId('book-availability');
+  const times = page.getByTestId('book-last-update');
+  await expect(times).toHaveCount(2);
+  await expect(states).toHaveCount(0);
+  await expect(times.nth(0)).toHaveText('마지막 호가 · 09:59:00');
+  const buy = page.getByTestId('order-window').getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  await expect(buy).toHaveAttribute('aria-disabled', 'true');
+  fixture.setStatusStale(true);
+  await page.clock.runFor(5_100);
+  await expect(times).toHaveCount(2);
+  await expect(states).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('quiet-book-timestamp.png') });
+  fixture.setStatusFailure(true);
+  await page.clock.runFor(15_000);
+  await expect(states).toHaveCount(2);
+  await expect(states.nth(0).getByRole('button', { name: '연결 상태', exact: true })).toBeVisible();
+  await expect(states.nth(1).getByRole('button', { name: '다시 조회', exact: true })).toBeVisible();
+  await expect(buy).toHaveAttribute('aria-disabled', 'true');
+  const fresh = await page.evaluate(() => Date.now());
+  fixture.ws.pushLive(CODE, { kind: 'ob', venue: 'KRX', t_ms: fresh,
+    asks: [{ price: 67300, qty: 100 }], bids: [{ price: 67200, qty: 200 }],
+    total_ask_qty: 100, total_bid_qty: 200 });
+  await expect(states).toHaveCount(0);
+  await expect(times).toHaveCount(0);
+  await expect(buy).toHaveAttribute('aria-disabled', 'false');
 });
 
 test('both books recover from slot wait through vendor registration and the first book', async ({ page }, testInfo) => {
@@ -170,9 +204,8 @@ test('both books recover from slot wait through vendor registration and the firs
   const buy = page.getByTestId('order-window').getByRole('button', { name: /매수 67,200원 주문 추가/ });
   await expect(buy).toHaveAttribute('aria-disabled', 'false');
   await page.clock.runFor(31_000);
-  await expect(states).toHaveCount(2);
-  await expect(states.nth(0)).toContainText('마지막 호가');
-  await expect(states.nth(1)).toContainText('마지막 호가');
+  await expect(page.getByTestId('book-last-update')).toHaveCount(2);
+  await expect(states).toHaveCount(0);
   await expect(buy).toHaveAttribute('aria-disabled', 'true');
   expect(fixture.ws.connectionCount()).toBe(1);
 });
@@ -208,9 +241,8 @@ test('both books retain the 15:30:02 closing residual without a false live delay
   await expect(states).toHaveCount(0);
   await expect(page.getByText('마지막 수신 · 15:30:02', { exact: true })).toHaveCount(0);
   await page.clock.runFor(31_000);
-  await expect(states).toHaveCount(2);
-  await expect(states.nth(0)).toHaveAttribute('data-state', 'stale');
-  await expect(states.nth(1)).toHaveAttribute('data-state', 'stale');
+  await expect(page.getByTestId('book-last-update')).toHaveCount(2);
+  await expect(states).toHaveCount(0);
   await expect(buy).toHaveAttribute('aria-disabled', 'true');
 });
 
@@ -245,8 +277,7 @@ test('an investment-warning designation does not replace normal-session book del
   fixture.setPhase('registered');
   await page.clock.runFor(5_100);
   const states = page.getByTestId('book-availability');
-  await expect(states).toHaveCount(2);
-  await expect(states.nth(0)).toHaveAttribute('data-state', 'stale');
-  await expect(states.nth(1)).toHaveAttribute('data-state', 'stale');
+  await expect(page.getByTestId('book-last-update')).toHaveCount(2);
+  await expect(states).toHaveCount(0);
   await expect(page.getByText(/KRX 장후 거래 제외/)).toHaveCount(0);
 });

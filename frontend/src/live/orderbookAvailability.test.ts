@@ -73,19 +73,21 @@ describe('orderbook availability', () => {
     expect(unknown?.kind).toBe('stale');
     expect(unknown?.message).not.toContain('수신 지연');
     expect(unknown?.detail).toContain('아직 구분할 수 없습니다');
+    expect(unknown?.quiet).toBe(true);
   });
   it.each(['KRX', 'NXT', 'UN'] as const)('uses calm waiting copy for a healthy registered %s book', venue => {
     const healthy = healthyStatus();
     healthy.kiwoom!.view_subscriptions = [{ ...rows('registered')[0], venue }];
     expect(derive({ ...input, venue, bookMs: nowMs - 33_000, status: healthy }))
       .toMatchObject({ kind: 'stale', message: '호가 갱신 대기 중',
-        detail: '새 호가가 수신되면 자동으로 갱신됩니다', lastBookMs: 67_000, action: 'status' });
+        detail: '새 호가가 수신되면 자동으로 갱신됩니다', lastBookMs: 67_000, action: 'status', quiet: true });
   });
   it.each(['rest', 'ws'] as const)('keeps diagnostic copy when a %s failure is observed', channel => {
     const healthy = healthyStatus();
     healthy.provider_status!.failures = [{ channel, kind: 'timeout', operation: 'REG',
       observed_at_ms: nowMs, code: null }];
-    expect(derive({ ...input, bookMs: nowMs - 33_000, status: healthy })?.message).toBe('호가 갱신 확인 중');
+    expect(derive({ ...input, bookMs: nowMs - 33_000, status: healthy }))
+      .toMatchObject({ message: '호가 갱신 확인 중', quiet: false });
   });
   it('requires current connection, error and matching registration evidence before softening copy', () => {
     const stale = { ...input, bookMs: nowMs - 33_000, status: healthyStatus() };
@@ -102,5 +104,17 @@ describe('orderbook availability', () => {
     stale.status.kiwoom!.data_received_ms = { '005930:KRX:ob': nowMs };
     expect(derive(stale)?.kind).toBe('display_delayed');
     expect(derive({ ...stale, browserReceivedMs: nowMs })?.kind).toBe('timestamp_old');
+  });
+  it('keeps uncertainty quiet but retains confirmed query and connection failures', () => {
+    const stale = { ...input, bookMs: nowMs - 33_000 };
+    expect(derive(stale)).toMatchObject({ kind: 'stale', quiet: true, lastBookMs: 67_000 });
+    expect(derive({ ...stale, status: healthyStatus(), statusCurrent: false })?.quiet).toBe(true);
+    expect(derive({ ...stale, browserReceivedMs: nowMs })).toMatchObject({ kind: 'timestamp_old', quiet: true });
+    expect(derive({ ...stale, statusFailed: true })?.quiet).toBe(false);
+    expect(derive({ ...stale, error: new Error('series failed') })?.quiet).toBe(false);
+    const unavailable = healthyStatus();
+    unavailable.provider_status!.connection = 'unavailable';
+    expect(derive({ ...stale, status: unavailable })?.quiet).toBe(false);
+    expect(derive({ ...stale, connected: false })).toMatchObject({ kind: 'recovering', quiet: false });
   });
 });

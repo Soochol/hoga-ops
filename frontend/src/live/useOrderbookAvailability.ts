@@ -31,7 +31,7 @@ export function useOrderbookAvailability({ code, venue, live, bookMs, nowMs, ena
   const excluded = aftermarketExclusionState(exclusion, code, venue, nowMs, bookMs);
   const derived = excluded ?? (enabled ? deriveOrderbookAvailability({ code, venue, nowMs, bookMs,
     loading: live.isLoading, error: live.error, status: query.data, statusCurrent,
-    connected, referenceLimited, browserReceivedMs: live.bookReceivedAtMs }) : null);
+    connected, referenceLimited, statusFailed: query.isError, browserReceivedMs: live.bookReceivedAtMs }) : null);
   const availability = derived && { ...derived, diagnostics: { code, venue, bookMs,
     browserReceivedMs: live.bookReceivedAtMs,
     serverReceivedMs: statusCurrent ? query.data?.kiwoom?.data_received_ms?.[`${code}:${venue}:ob`] : undefined,

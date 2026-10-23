@@ -21,6 +21,8 @@ export interface OrderbookAvailability {
   action?: 'retry' | 'status';
   lastBookMs?: number;
   diagnostics?: BookDiagnostics;
+  /** Keep stale-book diagnostics while showing only the last update time. */
+  quiet?: boolean;
 }
 
 export const BOOK_STALE_MS = 30_000;
@@ -33,6 +35,7 @@ export function deriveOrderbookAvailability(input: {
   code: string; venue: LiveVenueOption; nowMs: number; bookMs?: number;
   loading: boolean; error: unknown; status?: LiveStatus; statusCurrent: boolean;
   connected: boolean; referenceLimited: boolean;
+  statusFailed?: boolean;
   browserReceivedMs?: number;
 }): OrderbookAvailability | null {
   const { code, venue, nowMs, bookMs, statusCurrent, connected } = input;
@@ -83,5 +86,10 @@ export function deriveOrderbookAvailability(input: {
       ? { kind: 'awaiting_book', message: receivedBook ? '호가 수신 대기 중' : '첫 호가 수신 대기 중', action: 'status' }
       : { kind: 'registering', message: '실시간 호가 연결 중…', action: 'status' };
   }
-  return hasBook ? { ...state, lastBookMs: bookMs } : state;
+  const provider = status?.provider_status;
+  const reportedIssue = input.error || input.statusFailed || provider?.failures?.length
+    || (provider && ['connecting', 'unavailable', 'partial', 'unconfigured'].includes(provider.connection))
+    || kiwoom?.collector?.error || kiwoom?.collector?.storage_errors?.length;
+  return hasBook ? { ...state, lastBookMs: bookMs,
+    quiet: (state.kind === 'stale' || state.kind === 'timestamp_old') && !reportedIssue } : state;
 }

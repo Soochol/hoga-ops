@@ -1,0 +1,57 @@
+{
+  "verified_at": "2026-10-23T19:57:12.111025+09:00",
+  "head": "e5f4afe6081614609b3d5d96c7cf00929a776dc9",
+  "base": "e5f4afe6081614609b3d5d96c7cf00929a776dc9",
+  "working_tree": "Uncommitted implementation based on freshly fetched main; fingerprints include untracked source/test files.",
+  "inputs": {
+    "frontend": {
+      "sha256": "121a3288bddf971bb6f5c6cae36f434f468855c871ca54b8776398fc027f529f",
+      "file_count": 1839
+    },
+    "backend_and_e2e_fixtures": {
+      "sha256": "676d5e86af1761818db3ed2477d1428262ac74341c15f19a4510b10486a8bf20",
+      "file_count": 796
+    }
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "result": "passed on final app, unit and E2E inputs"
+    },
+    {
+      "command": "npx vitest run src/live/orderbookAvailability.test.ts src/live/useOrderbookAvailability.test.tsx src/live/workspace/BookAvailabilityState.test.tsx src/live/workspace/DataWindow.test.tsx src/live/workspace/OrderWindow.test.tsx",
+      "result": "272 passed across 5 files; subsequent edits affected only Playwright expectations, outside Vitest inputs"
+    },
+    {
+      "command": "npx playwright test book-availability.spec.ts --reporter=line",
+      "result": "10 passed on final inputs (36.3s). Both books hide quiet/unobserved-state notices, preserve timestamps and stale-order blocks, display real HTTP failures, and recover from newer book arrivals."
+    },
+    {
+      "command": "npx vite build (Playwright startup)",
+      "result": "passed; existing chunk-size warning"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "environment": {
+    "node": "v24.13.1",
+    "python": "Python 3.14.7",
+    "typescript": "6.0.3",
+    "vitest": "4.1.7",
+    "vite": "8.0.16",
+    "@playwright/test": "1.60.0",
+    "backend_port": 20223,
+    "frontend_port": 21223,
+    "workers": 1,
+    "credentials": "Blank vendor credentials from existing Playwright configuration; empty worktree .env prevents main-checkout inheritance."
+  },
+  "visual_review": "Inspected quiet-book-timestamp.png: both books retain only the small muted last-book timestamp above the ladder; no notice boxes or connection/retry buttons. Existing stale-ladder dimming and order freshness remain.",
+  "limits": [
+    "Existing ResizeObserver warnings occurred during passing E2E runs.",
+    "An initial E2E run had one obsolete expectation requiring a stale notice; updated that assertion to require timestamp-only display and reran all 10 tests successfully.",
+    "No backend product code changed. No user server restart, trading, or live broker session was performed.",
+    "Implementation is in this worktree and has not been merged or pulled into the running user checkout."
+  ]
+}
