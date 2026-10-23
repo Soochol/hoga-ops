@@ -1,7 +1,7 @@
-import { useId, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { MAX_AMOUNT_MILLIONS, MAX_ORDER_QUANTITY, validOrderSettings,
   type OrderPresets, type OrderWindowSettings } from '../../state/orderWindowSettings';
-import { playOrderReceiptSound, playOrderSound, prepareOrderReceiptSound } from './orderReceiptSound';
+import { playOrderReceiptSound, playOrderSound, prepareOrderReceiptSound, subscribeOrderReceiptSoundRecovery } from './orderReceiptSound';
 import '../settings/SettingsEditor.css';
 import { SettingsRow, ToggleSwitch } from '../settings/SettingsRow';
 import './OrderSettingsForm.css';
@@ -40,6 +40,13 @@ export function OrderSettingsForm({ draft, onChange, busy }: {
   draft: OrderWindowSettings; onChange: (settings: OrderWindowSettings) => void;
   busy: boolean;
 }) {
+  useEffect(() => {
+    // Preview also works with every sound toggle off. Warm the device on opening
+    // the settings, then retain it until the preview controls are closed.
+    const release = subscribeOrderReceiptSoundRecovery();
+    prepareOrderReceiptSound();
+    return release;
+  }, []);
   const valid = validOrderSettings(draft);
   const [previewFailed, setPreviewFailed] = useState(false);
   const sectionId = useId();

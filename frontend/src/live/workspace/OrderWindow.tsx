@@ -61,6 +61,7 @@ const UNRESOLVED_NOTICE: OrderNotice = {
   tone: 'error', persistent: true,
 };
 const mode = 'live' as const;
+const MAX_CONCURRENT_GROUP_CANCELS = 10;
 type Action = {
   type: 'create' | 'modify' | 'cancel' | 'bulk' | 'group';
   base: TradingCommand;
@@ -389,22 +390,29 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         const failed: NonNullable<Action['batch']> = [];
         let uncertain = false;
         const messages: string[] = [];
-        for (const item of next.batch ?? []) {
-          try {
-            const body = next.operation === 'modify' ? { ...item.base, price: next.price, quantity: null, confirm_high_value: high } : item.base;
-            const response = await tradingCommand<TradingCommandResponse>(`/orders/${encodeURIComponent(item.order.orderId)}/${next.operation}`, body, mode);
-            if (next.operation === 'modify') acceptTradingReplacement(client, mode, account, code, item.order.orderId, response.order_id);
-            setPending(prev => ({ ...prev, [orderKey(account, item.order.orderId)]: response.order_id }));
-          } catch (error) {
-            const failure = orderFailure(error, label);
-            if (cancellingOrders) recordCancelFailure({ type: 'cancel', base: item.base, order: item.order,
-              side: item.order.side, price: 0, quantity: null, keepOrderList: true },
-            { ...failure, message: `취소 미접수 1건 · ${failure.message}` });
-            if (failure.retry) failed.push(item);
-            uncertain ||= !!failure.persistent;
-            messages.push(error instanceof Error ? error.message : '처리 결과 확인 필요');
+        const batch = next.batch ?? [];
+        let nextIndex = 0;
+        const submitOrders = async () => {
+          while (nextIndex < batch.length) {
+            const item = batch[nextIndex++];
+            try {
+              const body = next.operation === 'modify' ? { ...item.base, price: next.price, quantity: null, confirm_high_value: high } : item.base;
+              const response = await tradingCommand<TradingCommandResponse>(`/orders/${encodeURIComponent(item.order.orderId)}/${next.operation}`, body, mode);
+              if (next.operation === 'modify') acceptTradingReplacement(client, mode, account, code, item.order.orderId, response.order_id);
+              setPending(prev => ({ ...prev, [orderKey(account, item.order.orderId)]: response.order_id }));
+            } catch (error) {
+              const failure = orderFailure(error, label);
+              if (cancellingOrders) recordCancelFailure({ type: 'cancel', base: item.base, order: item.order,
+                side: item.order.side, price: 0, quantity: null, keepOrderList: true },
+              { ...failure, message: `취소 미접수 1건 · ${failure.message}` });
+              if (failure.retry) failed.push(item);
+              uncertain ||= !!failure.persistent;
+              messages.push(error instanceof Error ? error.message : '처리 결과 확인 필요');
+            }
           }
-        }
+        };
+        // Refill each completed cancel slot immediately; grouped replacements keep their order.
+        await Promise.all(Array.from({ length: Math.min(batch.length, cancellingOrders ? MAX_CONCURRENT_GROUP_CANCELS : 1) }, submitOrders));
         if (messages.length) {
           if (cancellingOrders) accepted = false;
           else {

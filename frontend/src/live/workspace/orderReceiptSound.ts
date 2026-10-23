@@ -3,7 +3,11 @@ import { orderSoundSamples, type OrderSoundKind } from './orderSoundTone';
 const MAX_START_DELAY_MS = 800;
 const RESUME_TIMEOUT_MS = 250;
 const RETRY_DELAY_MS = 80;
+// Chromium's silent sink detects exact zeroes. This -140 dBFS DC signal keeps
+// the output stream active without an audible tone or a timer in background tabs.
+const OUTPUT_KEEP_ALIVE_LEVEL = 1e-7;
 let context: AudioContext | null = null;
+let outputKeepAlive: { audio: AudioContext; source: ConstantSourceNode } | null = null;
 let chimes: { audio: AudioContext; buffers: Map<OrderSoundKind, AudioBuffer> } | null = null;
 const notifiedCommands = new Set<string>();
 const pendingCommands = new Map<string, Promise<boolean>>();
@@ -18,6 +22,32 @@ function record(event: string, error?: unknown) {
 /** Bounded local diagnostics; no account, symbol, or order identifiers are recorded. */
 export function getOrderReceiptSoundDiagnostics(): readonly SoundDiagnostic[] {
   return diagnostics.map(entry => ({ ...entry }));
+}
+
+function stopOutputKeepAlive(): void {
+  const output = outputKeepAlive;
+  outputKeepAlive = null;
+  if (!output) return;
+  try { output.source.stop(); }
+  catch (error) { record('output-stop-failed', error); }
+  finally { output.source.disconnect(); }
+  record('output-released');
+}
+
+function keepOutputReady(audio: AudioContext): void {
+  if (!recoverySubscribers || outputKeepAlive?.audio === audio) return;
+  stopOutputKeepAlive();
+  const source = audio.createConstantSource();
+  try {
+    source.offset.value = OUTPUT_KEEP_ALIVE_LEVEL;
+    source.connect(audio.destination);
+    source.start();
+    outputKeepAlive = { audio, source };
+    record('output-retained');
+  } catch (error) {
+    source.disconnect();
+    throw error;
+  }
 }
 
 async function readyContext(deadline: number): Promise<AudioContext | null> {
@@ -36,6 +66,7 @@ async function readyContext(deadline: number): Promise<AudioContext | null> {
     }
     if (Date.now() >= deadline) { record('expired'); return null; }
     if (audio.state !== 'running') { record('not-running'); return null; }
+    keepOutputReady(audio);
     return audio;
   } catch (error) {
     record('prepare-failed', error);
@@ -68,6 +99,7 @@ export function subscribeOrderReceiptSoundRecovery(): () => void {
       document.removeEventListener('visibilitychange', recover);
       window.removeEventListener('pointerdown', recover, true);
       window.removeEventListener('keydown', recover, true);
+      stopOutputKeepAlive();
     }
   };
 }

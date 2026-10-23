@@ -273,18 +273,26 @@ describe('호가 주문', () => {
     expect(mock.command).toHaveBeenCalledOnce();
     expect(screen.queryByText('주문 요청 접수됨')).not.toBeInTheDocument();
   });
-  it('켜진 주문창만 화면 복귀 복구를 구독하고 끄기·닫기에서 해제한다', () => {
-    const cleanup = vi.fn();
-    vi.mocked(subscribeOrderReceiptSoundRecovery).mockReturnValue(cleanup);
+  it('알림을 켠 창과 미리듣기 설정만 출력 복구를 유지하고 끄기·닫기에서 해제한다', () => {
+    let active = 0;
+    vi.mocked(subscribeOrderReceiptSoundRecovery).mockImplementation(() => {
+      active++;
+      return () => { active--; };
+    });
     const view = show();
-    expect(subscribeOrderReceiptSoundRecovery).not.toHaveBeenCalled();
+    expect(active).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정' }));
+    expect(active).toBe(1); // Preview warms output even while every alert is off.
+    fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
+    expect(active).toBe(0);
     enableReceiptSound();
-    expect(subscribeOrderReceiptSoundRecovery).toHaveBeenCalledOnce();
+    expect(active).toBe(1);
     enableReceiptSound(); // Toggle off and apply.
-    expect(cleanup).toHaveBeenCalledOnce();
+    expect(active).toBe(0);
     enableReceiptSound();
+    expect(active).toBe(1);
     view.unmount();
-    expect(cleanup).toHaveBeenCalledTimes(2);
+    expect(active).toBe(0);
   });
   it.each([false, 'reject'])('오디오 실패 %s는 접수 성공을 유지하며 주문 재확인을 만들지 않는다', async result => {
     if (result === 'reject') vi.mocked(notifyOrderReceiptAccepted).mockRejectedValue(new Error('audio unavailable'));
