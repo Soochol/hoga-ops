@@ -237,7 +237,7 @@ export function RankingDrawer() {
   const netBuyLabel = kind === 'program' ? '프로그램' : kind === 'institution' ? '기관' : kind === 'foreign' ? '외국인' : undefined;
   const [market, setMarket] = useState<RankingMarket>('all');
   const [direction, setDirection] = useState<RankingDirection>('up');
-  const [excludeEtf, setExcludeEtf] = useState(false);
+  const [excludeEtf, setExcludeEtf] = useState(true);
   const [sortMode, setSortMode] = useState<RankingSortMode>('default');
   const venue = useLiveVenueStore((s) => s.venue);
   const scope = `${kind}:${market}:${kind === 'change' ? direction : '-'}:${venue}`;

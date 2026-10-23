@@ -151,8 +151,9 @@ describe('MarketIndexBar', () => {
     });
     renderBar();
     const user = userEvent.setup();
-    await screen.findByRole('button', { name: '투자자 수급 화면으로 전환' });
+    await screen.findByRole('button', { name: '시장지표 자동 전환' });
     const bar = screen.getByTestId('market-index-bar');
+    expect(screen.queryByTestId('market-bar-switch')).not.toBeInTheDocument();
     await user.click(bar);
     expect(bar).toHaveAttribute('data-page', 'flow');
     expect(screen.getByTestId('market-flow-KOSPI')).toHaveTextContent('외인+2,180기관+980개인-3,240');
@@ -162,8 +163,11 @@ describe('MarketIndexBar', () => {
     await user.click(screen.getByText('+2,180'));
     await user.click(screen.getByTestId('kiwoom-coverage-chip'));
     expect(bar).toHaveAttribute('data-page', 'flow');
-    await user.click(screen.getByRole('button', { name: '지수 화면으로 전환' }));
+    bar.focus();
+    await user.keyboard('{Enter}');
     expect(bar).toHaveAttribute('data-page', 'indices');
+    await user.keyboard(' ');
+    expect(bar).toHaveAttribute('data-page', 'flow');
     expect(screen.getByTestId('kiwoom-coverage-chip')).toHaveTextContent('330');
   });
 
@@ -208,7 +212,7 @@ describe('MarketIndexBar', () => {
     summary.stock.collection!.targets.KOSPI.last_success_at_ms = Date.now() - 60_000;
     mockMarketData([KOSPI_WIRE], summary);
     renderBar();
-    await screen.findByTestId('market-bar-switch');
+    await screen.findByRole('button', { name: '시장지표 자동 전환' });
     fireEvent.click(screen.getByTestId('market-index-bar'));
     expect(screen.getByTestId('market-flow-KOSPI')).toHaveTextContent('수신 지연');
     expect(screen.getByTestId('market-flow-F001')).toHaveTextContent('단위 확인 중');

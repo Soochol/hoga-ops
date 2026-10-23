@@ -103,7 +103,7 @@ test('additional request failure keeps rows and scroll, retries, and ends at the
   await expect(panel.getByRole('button', { name: /위 더 보기/ })).toHaveCount(0);
 });
 
-test('program starts at 50, expands to 150 and keeps the range when excluding ETFs', async ({ page }) => {
+test('program starts at 50, excludes ETFs by default and keeps the range when changing the filter', async ({ page }) => {
   await installLiveMocks(page);
   await page.route(apiExact('live/rankings'), route => {
     const params = new URL(route.request().url()).searchParams;
@@ -112,6 +112,7 @@ test('program starts at 50, expands to 150 and keeps the range when excluding ET
   await page.goto('/live');
   await page.getByRole('button', { name: '순위 패널 토글', exact: true }).click();
   const panel = page.getByTestId('ranking-panel');
+  await expect(panel.getByRole('button', { name: 'ETF 제외', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await panel.getByRole('button', { name: '프로그램', exact: true }).click();
   await expect(panel.getByRole('button', { name: /차트 열기/ })).toHaveCount(50);
   await panel.getByRole('button', { name: '51~150위 더 보기', exact: true }).click();
@@ -119,6 +120,7 @@ test('program starts at 50, expands to 150 and keeps the range when excluding ET
   await expect(panel.getByText('순매수 금액 · 상위 150 · 30초 갱신', { exact: true })).toBeVisible();
   await expect(panel.getByTestId('ranking-row-100000').getByTitle('프로그램 순매수 +3억')).toHaveCount(1);
   await panel.getByRole('button', { name: 'ETF 제외', exact: true }).click();
+  await expect(panel.getByRole('button', { name: 'ETF 제외', exact: true })).toHaveAttribute('aria-pressed', 'false');
   await expect(panel.getByRole('button', { name: '151~250위 더 보기', exact: true })).toBeEnabled();
   await panel.getByRole('combobox', { name: '시장' }).selectOption('kosdaq');
   await expect(panel.getByRole('button', { name: /차트 열기/ })).toHaveCount(50);
