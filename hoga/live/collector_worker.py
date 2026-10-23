@@ -109,6 +109,8 @@ class CollectorWorker:
             gate_fn=lambda: self.day_allowed(now_ms()) and bool(self.open_clock(now_ms())),
             token_getter=self.token, token_invalidator=self.invalid_tokens.add,
             on_account_row=self.account_row, on_account_state=self.account_state,
+            us_account_fn=lambda n: self.config.get("us_account"),
+            on_us_event=lambda event: self.buffer.forward({"type": "event", "event": event}),
             stream_options={"signal_monitor_fn": lambda: self.monitor,
                             "open_venues_fn": self.open_venues, "peak_shadow": self.peak_shadow},
         )
@@ -209,7 +211,10 @@ class CollectorWorker:
         desired_accounts = set(args.get("account_refs", []))
         if previous_accounts or desired_accounts:
             self.manager._account_refs = desired_accounts
+        self.manager._us_refs = {tuple(key) for key in args.get("us_refs", [])}
         await self.manager.sync(tuple(args["targets"]), n_accounts=args["n_accounts"])
+        for key in {key[:2] for key in self.manager._us_refs}:
+            self.manager._us.publish(self.manager._us.event(key, seed=True))
         for account in previous_accounts | desired_accounts:
             conn = self.manager._conns.get(account)
             if conn is not None:

@@ -1,5 +1,6 @@
 import { useUsStockDaily, useUsStockMinutes } from '../api/usDailyCandles';
 import { usStockKey } from './liveInstrument';
+import { overlayUsBundle, useUsStockRealtime } from '../api/usStockRealtime';
 import { buildPriceBundle } from './buildIndexBundle';
 import type { InvestorTradeSide } from '../api/types';
 import { useEffectiveVenue } from './useEffectiveVenue';
@@ -264,9 +265,13 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
   const usMinuteCandles = useUsStockMinutes(activeInstrument, timeframe);
   const usCandles = isMinuteTimeframe(timeframe) ? usMinuteCandles : usDailyCandles;
   const activeUsStock = activeInstrument?.kind === 'us_stock' ? activeInstrument : null;
-  const usBundle = useMemo(() => activeUsStock && usCandles.data
+  const usRealtime = useUsStockRealtime(activeUsStock && (timeframe === 'D' || isMinuteTimeframe(timeframe)) ? activeUsStock.exchange : null,
+    activeUsStock && (timeframe === 'D' || isMinuteTimeframe(timeframe)) ? activeUsStock.symbol : null);
+  const usBaseBundle = useMemo(() => activeUsStock && usCandles.data
     ? buildPriceBundle({ code: usStockKey(activeUsStock.exchange, activeUsStock.symbol), from: usCandles.data.from, to: usCandles.data.to, bucketMs: INDEX_BUCKET_MS[timeframe as keyof typeof INDEX_BUCKET_MS], observedSessions: isMinuteTimeframe(timeframe), candles: usCandles.data.candles.map(c => ({ ...c, volume: 0 })) })
     : null, [activeUsStock, usCandles.data, timeframe]);
+  const usBundle = useMemo(() => overlayUsBundle(usBaseBundle, usRealtime, timeframe,
+    usCandles.data?.realtimeBaseMs ?? 0, today), [usBaseBundle, usRealtime, timeframe, usCandles.data, today]);
   const remoteHistory = !!activeIndexId || !!activeUsStock;
   const stockMinuteMetadata = usMinuteCandles.data?.minute_metadata;
   const minuteMetadata = stockMinuteMetadata ?? indexCandles.data?.minute_metadata;
@@ -432,6 +437,7 @@ export function useLiveChartData(args: UseLiveChartDataArgs) {
 
   return {
     today,
+    usRealtimeStatus: usRealtime?.status,
     remoteHistory, dailyMetadata, minuteMetadata, stockMinuteMetadata,
     usStockHistory: activeUsStock && isMinuteTimeframe(timeframe) ? {
       hasMore: usMinuteCandles.historyHasMore, loading: usMinuteCandles.historyLoading,

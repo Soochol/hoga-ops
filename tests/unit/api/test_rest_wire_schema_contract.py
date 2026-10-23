@@ -89,6 +89,7 @@ from hoga.live.us_daily_candles import (
 from hoga.live.us_index_minutes import UsMinuteMetadata
 from hoga.live.us_market_api import UsStockCatalogResponse, UsStockEntry
 from hoga.live.us_stock_minutes import UsStockMinuteMetadata, UsStockMinuteResponse
+from hoga.live.us_stock_realtime import UsObservedMinute, UsStockCandleEvent
 from hoga.live.view_subscription import ViewSubscriptionPhase, ViewSubscriptionStatus
 from hoga.trading import contracts as broker_contracts, models as trading_models
 
@@ -380,6 +381,9 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    UsStockCandleEvent: frozenset({"type", "instrument_key", "generation", "sequence", "status", "checked_at_ms",
+        "minutes", "daily"}),
+    UsObservedMinute: frozenset({"trading_date", "t_ms", "open", "high", "low", "close", "volume", "observed_at_ms"}),
     AftermarketExclusionResponse: frozenset({"code", "date", "status", "reasons", "checked_at_ms", "source"}),
     IndexHeaderQuoteResponse: frozenset({"index_id", "value", "change", "change_rate", "previous_close",
         "trading_date", "observed_at_ms", "checked_at_ms", "market_timezone", "session_status", "refresh_status",

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { FakeWebSocket, fakeSockets, installFakeWebSocket } from '../test/fakeWebSocket';
-import { __resetForTests, lastHeartbeat, subscribeEvents, subscribeLive, subscribeLiveLatest, historyPartial } from './ws';
+import { __resetForTests, lastHeartbeat, subscribeEvents, subscribeLive, subscribeLiveLatest, subscribeUsStock, historyPartial } from './ws';
 import * as client from './client';
 
 beforeEach(() => {
@@ -17,6 +17,23 @@ async function connect(): Promise<FakeWebSocket> {
 }
 
 describe('ws.ts', () => {
+  it('shares US registrations across charts and cancels release when a chart reopens', async () => {
+    const releaseA = subscribeUsStock('NASDAQ', 'AAPL', () => {});
+    const releaseB = subscribeUsStock('NASDAQ', 'AAPL', () => {});
+    const socket = await connect();
+    expect(socket.parsedSent().filter((m: { action?: string }) => m.action === 'subscribe_us_stock')).toHaveLength(1);
+    vi.useFakeTimers();
+    try {
+      releaseA(); releaseB();
+      vi.advanceTimersByTime(4000);
+      const releaseC = subscribeUsStock('NASDAQ', 'AAPL', () => {});
+      vi.advanceTimersByTime(2000);
+      expect(socket.parsedSent().filter((m: { action?: string }) => m.action === 'unsubscribe_us_stock')).toHaveLength(0);
+      releaseC();
+      vi.advanceTimersByTime(5000);
+      expect(socket.parsedSent().filter((m: { action?: string }) => m.action === 'unsubscribe_us_stock')).toHaveLength(1);
+    } finally { __resetForTests(); vi.useRealTimers(); }
+  });
   it('delivers ch:event frames and emits connected on open', async () => {
     const got: Array<Parameters<Parameters<typeof subscribeEvents>[0]>[0]> = [];
     subscribeEvents((e) => got.push(e));

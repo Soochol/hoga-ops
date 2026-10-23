@@ -103,7 +103,7 @@ for (const [exchange, symbol] of [['NASDAQ', 'NVDA'], ['NASDAQ', 'AAPL'], ['NYSE
     }
     expect(requests.filter(url => /\/(past-candles|past-daily-candles|screener-daily-candles|quotes|series|stock-limits|investor-net)\?/.test(url) && url.includes(symbol))).toEqual([]);
     expect(requests.filter(url => url.includes('/index-candles?'))).toEqual([]);
-    expect(wsFrames.filter(message => message.includes(symbol))).toEqual([]);
+    expect(wsFrames.filter(message => message.includes('"action":"subscribe"') && message.includes(symbol))).toEqual([]);
     expect(errors).toEqual([]);
   });
 }

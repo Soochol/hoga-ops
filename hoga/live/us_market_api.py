@@ -31,6 +31,7 @@ from hoga.live.us_daily_candles import (
     parse_date,
 )
 from hoga.live.us_index_minutes import MINUTE_TIMEFRAMES, UsIndexMinuteService
+from hoga.live.us_stock_current_day import UsStockCurrentDay
 from hoga.live.us_stock_minutes import UsStockMinuteResponse, UsStockMinuteService
 from hoga.util.timeenc import KST
 
@@ -57,6 +58,7 @@ class UsMarketApi:
         self.daily = UsDailyService()
         self.minutes = UsIndexMinuteService()
         self.stock_minute_service = UsStockMinuteService()
+        self.stock_current_day = UsStockCurrentDay()
         self.stocks: list[UsStockEntry] = []
         self.master_at_ms: int | None = None
         self.master_expiry = 0.0
@@ -74,6 +76,7 @@ class UsMarketApi:
                 await self.daily.aclose()
                 await self.minutes.aclose()
                 await self.stock_minute_service.aclose()
+                await self.stock_current_day.aclose()
 
         self.router = APIRouter(lifespan=lifespan)
         self.router.add_api_route("/us-stocks", self.catalog, methods=["GET"], response_model=UsStockCatalogResponse)
@@ -193,7 +196,7 @@ class UsMarketApi:
         async def fetch(frm, too):
             return await fetch_stock_daily(client, scheduler, exchange, symbol, frm, too)
 
-        bars, meta = await self.daily.get(
+        history = self.daily.get(
             f"{key}:raw:USD",
             from_,
             to,
@@ -203,6 +206,15 @@ class UsMarketApi:
             fetch=fetch if client else None,
             bypass=self.bypass(),
         )
+        today = self.daily.calendar_now().strftime("%Y%m%d")
+        if client and timeframe == "D" and from_ <= today <= to:
+            (bars, meta), current = await asyncio.gather(
+                history, self.stock_current_day.get(client, scheduler, exchange, symbol, today),
+            )
+            if current and not any(b.trading_date == today for b in bars):
+                bars = [*bars, current]
+        else:
+            bars, meta = await history
         bars, meta = self.calendar_bars(f"{key}:raw:USD", bars, meta, timeframe, to, stock=True)
         return UsStockDailyResponse(
             instrument_key=key,

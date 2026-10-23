@@ -8,6 +8,7 @@
 import { wsUrl } from './client';
 import { WATCHDOG_TIMEOUT_MS } from './liveness';
 import type { PushEvent, LiveSnapshotEntry } from './types';
+import type { UsStockCandleEvent } from './usStockRealtime';
 
 type Frame =
   | { ch: 'event'; data: PushEvent }
@@ -74,6 +75,8 @@ const RECONNECT_MAX_MS = 10_000;
 
 const _eventSubs = new Set<(e: PushEvent) => void>();
 const _liveSubs = new Map<string, Set<(d: LiveSnapshotEntry) => void>>();
+const _usSubs = new Map<string, { exchange: string; symbol: string; handlers: Set<(event: UsStockCandleEvent) => void> }>();
+const _usReleaseTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function emitEvent(e: PushEvent): void { _eventSubs.forEach((fn) => fn(e)); }
 export function lastHeartbeat(): number { return _lastHeartbeatMs; }
@@ -103,6 +106,7 @@ async function open(): Promise<void> {
       _reconnectMs = 500;
       if (!_connected) { _connected = true; emitEvent({ type: 'connected' }); }
       for (const code of _liveSubs.keys()) send({ action: 'subscribe', code, protocol: 2 });
+      for (const { exchange, symbol } of _usSubs.values()) send({ action: 'subscribe_us_stock', exchange, symbol });
     };
     sock.onmessage = (e: MessageEvent) => {
       if (_ws !== sock) return; // queued callbacks from a retired connection are not current evidence
@@ -112,6 +116,7 @@ async function open(): Promise<void> {
       let frame: Frame;
       try { frame = JSON.parse(e.data) as Frame; } catch { return; }
       if (frame.ch === 'event') {
+        if (frame.data.type === 'us_stock_candles') _usSubs.get(frame.data.instrument_key)?.handlers.forEach(fn => fn(frame.data as UsStockCandleEvent));
         if (frame.data.type === 'live_subscription_limit' && _liveSubs.has(frame.data.code)) {
           _limitedSubscriptions.add(frame.data.code);
           _admissionListeners.forEach(listener => listener());
@@ -160,7 +165,7 @@ function ensureLivenessWatchdog(): void {
 }
 
 function scheduleReconnect(): void {
-  if (!_eventSubs.size && !_liveSubs.size) return;
+  if (!_eventSubs.size && !_liveSubs.size && !_usSubs.size) return;
   if (_reconnectTimer !== null) return;
   const delay = _reconnectMs;
   _reconnectMs = Math.min(_reconnectMs * 2, RECONNECT_MAX_MS);
@@ -171,6 +176,31 @@ export function subscribeEvents(handler: (e: PushEvent) => void): () => void {
   _eventSubs.add(handler);
   void open();
   return () => { _eventSubs.delete(handler); };
+}
+
+export function subscribeUsStock(exchange: string, symbol: string, handler: (event: UsStockCandleEvent) => void): () => void {
+  const key = `us-stock:${exchange}:${symbol}`;
+  const pendingRelease = _usReleaseTimers.get(key);
+  if (pendingRelease) { clearTimeout(pendingRelease); _usReleaseTimers.delete(key); }
+  let entry = _usSubs.get(key);
+  if (!entry) {
+    entry = { exchange, symbol, handlers: new Set() };
+    _usSubs.set(key, entry);
+    send({ action: 'subscribe_us_stock', exchange, symbol });
+  }
+  entry.handlers.add(handler);
+  void open();
+  return () => {
+    entry.handlers.delete(handler);
+    if (!entry.handlers.size) {
+      _usReleaseTimers.set(key, setTimeout(() => {
+        _usReleaseTimers.delete(key);
+        if (entry.handlers.size || _usSubs.get(key) !== entry) return;
+        _usSubs.delete(key);
+        send({ action: 'unsubscribe_us_stock', exchange, symbol });
+      }, 5000));
+    }
+  };
 }
 
 export function subscribeLive(
@@ -226,6 +256,8 @@ export function __resetForTests(): void {
   _reconnectMs = 500;
   _eventSubs.clear();
   _liveSubs.clear();
+  _usSubs.clear();
+  _usReleaseTimers.forEach(clearTimeout); _usReleaseTimers.clear();
   _latestSubs.clear(); _latestSeq.clear(); _partialHistory.clear(); _historyListeners.clear();
   _dispatchMs.length = 0;
   _limitedSubscriptions.clear(); _admissionListeners.clear();

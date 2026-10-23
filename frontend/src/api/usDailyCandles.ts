@@ -48,13 +48,20 @@ export function usDailyRefetchInterval(meta: UsDailyMetadata | undefined, curren
 }
 export function useUsStockDaily(instrument: LiveInstrument | null, timeframe: LiveTimeframe, from: string, to: string) {
   const stock = instrument?.kind === 'us_stock' ? instrument : null;
-  return useQuery({
+  return useQuery<UsStockDailyResponse & { realtimeBaseMs?: number }>({
     queryKey: ['live', 'us-stock-daily', stock?.exchange, stock?.symbol, timeframe, from, to],
     enabled: !!stock && ['D', 'W', 'M'].includes(timeframe),
-    queryFn: ({ signal }) => apiCall<UsStockDailyResponse>(`/api/live/us-stock-daily-candles?exchange=${stock!.exchange}&symbol=${encodeURIComponent(stock!.symbol)}&from=${from}&to=${to}&timeframe=${timeframe}`, { signal }),
+    queryFn: async ({ signal }) => {
+      const realtimeBaseMs = Date.now();
+      const data = await apiCall<UsStockDailyResponse>(`/api/live/us-stock-daily-candles?exchange=${stock!.exchange}&symbol=${encodeURIComponent(stock!.symbol)}&from=${from}&to=${to}&timeframe=${timeframe}`, { signal });
+      return { ...data, realtimeBaseMs };
+    },
     placeholderData: (previous) => previous?.instrument_key === `us-stock:${stock?.exchange}:${stock?.symbol}` && previous.timeframe === timeframe ? previous : undefined,
     staleTime: 300_000,
-    refetchInterval: (query) => usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount),
+    refetchInterval: (query) => {
+      const interval = usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount);
+      return timeframe === 'D' && interval === 300_000 ? 60_000 : interval;
+    },
     refetchOnWindowFocus: (query) => usDailyRefetchInterval(query.state.data?.daily_metadata, to, query.state.dataUpdateCount) !== false,
   });
 }
@@ -101,10 +108,13 @@ export function useUsStockMinutes(instrument: LiveInstrument | null, timeframe: 
   const client = useQueryClient();
   const key = ['live', 'us-stock-minute', stock?.exchange, stock?.symbol, timeframe];
   const url = `/api/live/us-stock-minute-candles?exchange=${stock?.exchange}&symbol=${encodeURIComponent(stock?.symbol ?? '')}&timeframe=${timeframe}`;
-  const latest = useQuery({
+  const latest = useQuery<UsStockMinuteResponse & { realtimeBaseMs?: number }>({
     queryKey: key,
     enabled: !!stock && (US_MINUTE_TIMEFRAMES as readonly string[]).includes(timeframe),
-    queryFn: ({ signal }) => apiCall<UsStockMinuteResponse>(url, { signal }),
+    queryFn: async ({ signal }) => {
+      const realtimeBaseMs = Date.now();
+      return { ...await apiCall<UsStockMinuteResponse>(url, { signal }), realtimeBaseMs };
+    },
     structuralSharing: (old, next) => retainUsMinuteWindow(old as UsStockMinuteResponse | undefined, next as UsStockMinuteResponse),
     staleTime: 60_000,
     gcTime: 5 * 60_000,

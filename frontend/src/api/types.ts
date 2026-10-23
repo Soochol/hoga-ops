@@ -320,6 +320,7 @@ export interface CaptureEventBase {
 }
 
 export type PushEvent =
+  | import('./usStockRealtime').UsStockCandleEvent
   | { type: 'trading_order'; mode: 'live'; account_seq: number; order: import('./trading').TossOrder; revision: number }
   | { type: 'trading_changed'; revision: number; mode?: 'paper' | 'live' }
   | { type: 'trading_order_v2'; account_ref: string; order: import('./trading').BrokerOrderWire; revision: number }

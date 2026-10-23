@@ -18,6 +18,7 @@ from fastapi import APIRouter, WebSocket
 from hoga.api.events import EventBus
 from hoga.live.buffer import LiveBuffer
 from hoga.live.delivery import LiveDelivery, LiveOutbox
+from hoga.live.us_stock_realtime import valid_subject
 from hoga.live.view_subscription import ViewSubscriptionLimitError
 
 logger = logging.getLogger(__name__)
@@ -72,6 +73,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
         view_ref = f"ws-{id(out)}"
         pending_subs: dict[str, set[str] | None] = {}
         pending_changed = asyncio.Event()
+        us_subs: set[tuple[str, str]] = set()
 
         def emit(frame: dict) -> None:
             try:
@@ -119,12 +121,34 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                 await websocket.send_json(frame)
                 out.send_latency.observe((time.monotonic() - started) * 1000)
 
+        async def us_action(msg, action):
+            exchange, symbol = msg.get("exchange"), msg.get("symbol")
+            if not valid_subject(exchange, symbol):
+                return
+            subject = (exchange, symbol)
+            session = lifecycle._state.kiwoom_session
+            if session is None:
+                return
+            if action == "subscribe_us_stock" and subject not in us_subs:
+                if len(us_subs) >= 200:  # noqa: PLR2004 — vendor registration limit
+                    return
+                us_subs.add(subject)
+                try:
+                    await session.on_us_subscribe(exchange, symbol, ref=view_ref)
+                except ViewSubscriptionLimitError:
+                    us_subs.discard(subject)
+            elif action == "unsubscribe_us_stock" and subject in us_subs:
+                us_subs.discard(subject)
+                await session.on_us_unsubscribe(exchange, symbol, ref=view_ref)
+
         async def receiver() -> None:
             while True:
                 msg = await websocket.receive_json()
                 action = msg.get("action")
                 code = msg.get("code")
-                if action == "subscribe" and isinstance(code, str):
+                if action in {"subscribe_us_stock", "unsubscribe_us_stock"}:
+                    await us_action(msg, action)
+                elif action == "subscribe" and isinstance(code, str):
                     if code not in code_subs:
                         buf = get_buffer()
                         if buf is None:
@@ -188,6 +212,13 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
             if buf is not None:
                 for code, (q, _task, _v) in subs:
                     buf.unsubscribe(code, q)
+            session = lifecycle._state.kiwoom_session
+            us_release = None
+            if session is not None and us_subs:
+                # Clear ownership synchronously, even under ASGI cancellation.
+                session.forget_us_ref(view_ref)
+                us_release = asyncio.create_task(session.release_us_view(view_ref))
+                us_release.add_done_callback(lambda t: t.exception() if not t.cancelled() else None)
             # 남은 정리는 await 가 필요하다. 취소 중이면 첫 await 에서 끊기므로
             # 여기서 삼킨다 — 삼켜도 try 본문의 취소는 finally 종료와 함께 그대로
             # 전파되므로 태스크 경계에서 취소를 감추지 않는다. 취소를 감추면
@@ -197,6 +228,7 @@ def build_ws_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 —
                 await asyncio.gather(
                     send_task, recv_task, bus_task, pending_task, overflow_task,
                     *(task for _code, (_q, task, _v) in subs),
+                    *([us_release] if us_release else []),
                     return_exceptions=True,
                 )
                 # ADR-0067/PR-C: ghost-polling prevention — unsubscribe all subscribed

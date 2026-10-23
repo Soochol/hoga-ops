@@ -217,6 +217,10 @@ class UsStockMinuteService:
         try:
             anchor, vendor, before = context or (self.calendar_now().strftime("%Y%m%d"), "", None)
             options = {"start_cursor": vendor, "before_ms": before} if context else {}
+            if not context and entry.bars and entry.meta.last_successful_check_at_ms is not None:
+                age_ms = self.wall_clock() * 1000 - entry.meta.last_successful_check_at_ms
+                if age_ms < MAX_PAGE_ROWS * int(key[2][:-1]) * 60_000:
+                    options["max_pages"] = 1
             window = await fetch_stock_minutes(client, scheduler, *key[:3], anchor, **options)
             if window.failed and entry.meta.last_successful_check_at_ms is not None:
                 entry.meta = entry.meta.model_copy(update={"refresh_status": "stale", "messages": window.messages})

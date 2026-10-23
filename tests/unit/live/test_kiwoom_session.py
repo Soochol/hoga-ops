@@ -135,6 +135,68 @@ def _fake_manager(now_fn=None, *, persist_missing=False, gate_fn=None, monotonic
     return mgr, built
 
 
+async def test_us_reservation_preserves_every_domestic_target_and_private_account_priority():
+    mgr, built = _fake_manager()
+    mgr._us_candidate = lambda n: n - 1
+    changes = []
+
+    async def configure(account, subjects):
+        changes.append(account)
+        mgr._us.account = account
+
+    mgr._us.configure = configure
+    codes = tuple(f"{i:06d}" for i in range(788))
+    await mgr.sync(codes, n_accounts=6)
+    assert set(mgr.active_codes()) == set(codes)
+    assert 5 not in mgr._conns and mgr._sector_account == 4
+    await mgr.on_us_subscribe("NASDAQ", "AAPL", ref="tab1")
+    await mgr.on_us_subscribe("NASDAQ", "AAPL", ref="tab2")
+    assert len(mgr._us_refs) == 2 and mgr._us.account == 5
+    await mgr.on_us_unsubscribe("NASDAQ", "AAPL", ref="tab1")
+    assert len(mgr._us_refs) == 1
+    # Private events on that account stop US before building its domestic socket.
+    mgr._account_refs.add(5)
+    await mgr.sync(codes, n_accounts=6)
+    assert mgr._us.account is None and 5 in mgr._conns
+    assert mgr._sector_account == 4
+    assert set(mgr.active_codes()) == set(codes)
+    assert changes[-1] is None
+    await mgr.stop()
+
+
+async def test_us_yield_keeps_sector_owner_and_reserved_slots_on_its_live_socket():
+    mgr, _ = _fake_manager()
+    mgr._us_candidate = lambda n: n - 1
+
+    async def configure(account, subjects):
+        mgr._us.account = account
+
+    mgr._us.configure = configure
+    codes = tuple(f"{i:06d}" for i in range(950))
+    await mgr.sync(codes[:788], n_accounts=6)
+    sector_client = mgr._conns[4].client
+    await mgr.sync(codes, n_accounts=6)
+    assert mgr._us.account is None and set(mgr.active_codes()) == set(codes)
+    assert mgr._sector_account == 4 and mgr._conns[4].client is sector_client
+    assert len(sector_client.expected_codes) <= 200 - KIWOOM_SECTOR_RESERVE
+    await mgr.stop()
+
+
+async def test_us_yields_capacity_instead_of_dropping_domestic_capture():
+    mgr, _ = _fake_manager()
+    mgr._us_candidate = lambda n: n - 1
+
+    async def configure(account, subjects):
+        mgr._us.account = account
+
+    mgr._us.configure = configure
+    codes = tuple(f"{i:06d}" for i in range(950))
+    await mgr.sync(codes, n_accounts=6)
+    assert mgr._us.account is None
+    assert set(mgr.active_codes()) == set(codes)
+    await mgr.stop()
+
+
 async def test_sync_partitions_across_accounts():
     mgr, built = _fake_manager()
     codes = tuple(f"{i:06d}" for i in range(250))

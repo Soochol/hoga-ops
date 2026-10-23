@@ -1,0 +1,594 @@
+{
+  "events": 1387,
+  "subjects": {
+    "NY:KO": {
+      "records": 96,
+      "distinct_prices": 13,
+      "first_at": "2026-10-23T15:25:09.749975+00:00",
+      "last_at": "2026-10-23T15:26:27.652147+00:00",
+      "time_seconds_suffixes": {
+        "00": 96
+      },
+      "session_types": {
+        "0": 96
+      },
+      "invalid_daily_ohlc": 0,
+      "minute_comparisons": [
+        {
+          "stamp": "20261023112500",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 65,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "93.4050",
+          "observed_low": "93.3750",
+          "rest_high": "93.4050",
+          "rest_low": "93.3750"
+        },
+        {
+          "stamp": "20261023112600",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 31,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "93.3850",
+          "observed_low": "93.3700",
+          "rest_high": "93.3850",
+          "rest_low": "93.3550"
+        }
+      ],
+      "daily_comparisons": [
+        {
+          "rest_started_at_utc": "2026-10-23T15:25:15.171884+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.178,
+          "rest_ohlc": {
+            "open_pric": "94.8000",
+            "high_pric": "95.0250",
+            "low_pric": "93.1500",
+            "cur_prc": "93.4000"
+          },
+          "ws_ohlc": {
+            "16": "-94.8000",
+            "17": "-95.0250",
+            "18": "-93.1500",
+            "10": "-93.4000"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:30:15.255316+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 227.603,
+          "rest_ohlc": {
+            "open_pric": "94.8000",
+            "high_pric": "95.0250",
+            "low_pric": "93.1500",
+            "cur_prc": "93.2950"
+          },
+          "ws_ohlc": {
+            "16": "-94.8000",
+            "17": "-95.0250",
+            "18": "-93.1500",
+            "10": "-93.3700"
+          },
+          "same_day_and_ohl": true
+        }
+      ],
+      "seconds_with_prices_lost_by_last_only": 14
+    },
+    "ND:NVDA": {
+      "records": 371,
+      "distinct_prices": 121,
+      "first_at": "2026-10-23T15:25:10.250963+00:00",
+      "last_at": "2026-10-23T15:26:27.652173+00:00",
+      "time_seconds_suffixes": {
+        "00": 371
+      },
+      "session_types": {
+        "0": 371
+      },
+      "invalid_daily_ohlc": 0,
+      "minute_comparisons": [
+        {
+          "stamp": "20261023112500",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 210,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "212.3799",
+          "observed_low": "212.1600",
+          "rest_high": "212.3799",
+          "rest_low": "212.1600"
+        },
+        {
+          "stamp": "20261023112600",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 161,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "212.5400",
+          "observed_low": "212.2602",
+          "rest_high": "212.5400",
+          "rest_low": "212.2602"
+        }
+      ],
+      "daily_comparisons": [
+        {
+          "rest_started_at_utc": "2026-10-23T15:25:12.969710+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.019,
+          "rest_ohlc": {
+            "open_pric": "210.9400",
+            "high_pric": "213.8500",
+            "low_pric": "210.1800",
+            "cur_prc": "212.2500"
+          },
+          "ws_ohlc": {
+            "16": "-210.9400",
+            "17": "+213.8500",
+            "18": "-210.1800",
+            "10": "+212.2500"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:30:13.052721+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 225.401,
+          "rest_ohlc": {
+            "open_pric": "210.9400",
+            "high_pric": "213.8500",
+            "low_pric": "210.1800",
+            "cur_prc": "212.3350"
+          },
+          "ws_ohlc": {
+            "16": "-210.9400",
+            "17": "+213.8500",
+            "18": "-210.1800",
+            "10": "+212.5010"
+          },
+          "same_day_and_ohl": true
+        }
+      ],
+      "seconds_with_prices_lost_by_last_only": 71
+    },
+    "ND:AAPL": {
+      "records": 856,
+      "distinct_prices": 166,
+      "first_at": "2026-10-23T15:25:10.250993+00:00",
+      "last_at": "2026-10-23T15:30:19.374241+00:00",
+      "time_seconds_suffixes": {
+        "00": 856
+      },
+      "session_types": {
+        "0": 856
+      },
+      "invalid_daily_ohlc": 0,
+      "minute_comparisons": [
+        {
+          "stamp": "20261023112500",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 112,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "348.0450",
+          "observed_low": "347.8800",
+          "rest_high": "348.0741",
+          "rest_low": "347.8800"
+        },
+        {
+          "stamp": "20261023112600",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 180,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "348.4100",
+          "observed_low": "347.9550",
+          "rest_high": "348.4100",
+          "rest_low": "347.9550"
+        },
+        {
+          "stamp": "20261023112700",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 199,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "348.4100",
+          "observed_low": "347.9700",
+          "rest_high": "348.4100",
+          "rest_low": "347.9700"
+        },
+        {
+          "stamp": "20261023112800",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 136,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "348.1400",
+          "observed_low": "347.9700",
+          "rest_high": "348.1400",
+          "rest_low": "347.9700"
+        },
+        {
+          "stamp": "20261023112900",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 152,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "348.2100",
+          "observed_low": "347.9600",
+          "rest_high": "348.2100",
+          "rest_low": "347.9600"
+        },
+        {
+          "stamp": "20261023113000",
+          "rest_bar": true,
+          "closed_at_final_snapshot": false,
+          "observations": 44,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "348.3500",
+          "observed_low": "348.2050",
+          "rest_high": "348.3500",
+          "rest_low": "348.2050"
+        }
+      ],
+      "daily_comparisons": [
+        {
+          "rest_started_at_utc": "2026-10-23T15:25:10.767785+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.218,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "348.0450"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "-348.0450"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:26:04.433176+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.018,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "347.9850"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "-347.9750"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:26:51.205703+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.069,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "348.2400"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "+348.2400"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:27:37.979579+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.095,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "348.0600"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "-348.0684"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:28:24.687077+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.587,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "348.0108"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "-348.0399"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:29:11.367204+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.107,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "348.0400"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "-348.0500"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:29:58.076803+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.299,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "348.2100"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "-348.2100"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:30:10.851703+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.077,
+          "rest_ohlc": {
+            "open_pric": "349.1100",
+            "high_pric": "351.7300",
+            "low_pric": "346.4300",
+            "cur_prc": "348.1700"
+          },
+          "ws_ohlc": {
+            "16": "+349.1100",
+            "17": "+351.7300",
+            "18": "-346.4300",
+            "10": "-348.1700"
+          },
+          "same_day_and_ohl": true
+        }
+      ],
+      "seconds_with_prices_lost_by_last_only": 184
+    },
+    "NY:BRKb": {
+      "records": 64,
+      "distinct_prices": 14,
+      "first_at": "2026-10-23T15:25:11.150527+00:00",
+      "last_at": "2026-10-23T15:26:26.649509+00:00",
+      "time_seconds_suffixes": {
+        "00": 64
+      },
+      "session_types": {
+        "0": 64
+      },
+      "invalid_daily_ohlc": 0,
+      "minute_comparisons": [
+        {
+          "stamp": "20261023112500",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 42,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "545.9218",
+          "observed_low": "545.7100",
+          "rest_high": "545.9218",
+          "rest_low": "545.7100"
+        },
+        {
+          "stamp": "20261023112600",
+          "rest_bar": true,
+          "closed_at_final_snapshot": true,
+          "observations": 22,
+          "all_prices_inside_rest_range": true,
+          "observed_high": "545.9150",
+          "observed_low": "545.6750",
+          "rest_high": "545.9150",
+          "rest_low": "545.5301"
+        }
+      ],
+      "daily_comparisons": [
+        {
+          "rest_started_at_utc": "2026-10-23T15:25:17.374497+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 0.676,
+          "rest_ohlc": {
+            "open_pric": "545.3700",
+            "high_pric": "548.3100",
+            "low_pric": "544.4052",
+            "cur_prc": "545.7900"
+          },
+          "ws_ohlc": {
+            "16": "-545.3700",
+            "17": "+548.3100",
+            "18": "-544.4052",
+            "10": "-545.7900"
+          },
+          "same_day_and_ohl": true
+        },
+        {
+          "rest_started_at_utc": "2026-10-23T15:30:17.456700+00:00",
+          "rest_date": "20261023",
+          "ws_date": "20261023",
+          "distance_seconds": 230.807,
+          "rest_ohlc": {
+            "open_pric": "545.3700",
+            "high_pric": "548.3100",
+            "low_pric": "544.4052",
+            "cur_prc": "545.4050"
+          },
+          "ws_ohlc": {
+            "16": "-545.3700",
+            "17": "+548.3100",
+            "18": "-544.4052",
+            "10": "-545.7150"
+          },
+          "same_day_and_ohl": true
+        }
+      ],
+      "seconds_with_prices_lost_by_last_only": 8
+    }
+  },
+  "rest_reads": 119,
+  "rest_successes": 119,
+  "rest_errors": [],
+  "socket_states": {
+    "domestic_control": {
+      "connected_at_utc": "2026-10-23T15:25:07.552216+00:00",
+      "controls": [
+        {
+          "at": "2026-10-23T15:25:07.595298+00:00",
+          "trnm": "LOGIN",
+          "code": 0
+        },
+        {
+          "at": "2026-10-23T15:25:07.603182+00:00",
+          "trnm": "REG",
+          "code": 0
+        }
+      ],
+      "pings": 0,
+      "dropped_records": 0,
+      "receiver_ended_at_utc": "2026-10-23T15:25:09.668015+00:00"
+    },
+    "us": {
+      "connected_at_utc": "2026-10-23T15:25:09.643086+00:00",
+      "controls": [
+        {
+          "at": "2026-10-23T15:25:09.667091+00:00",
+          "trnm": "LOGIN",
+          "code": 0
+        },
+        {
+          "at": "2026-10-23T15:25:09.673625+00:00",
+          "trnm": "REG",
+          "code": 0
+        }
+      ],
+      "pings": 4,
+      "dropped_records": 0,
+      "last_ping_at_utc": "2026-10-23T15:26:19.653590+00:00",
+      "receiver_ended_at_utc": "2026-10-23T15:26:27.796165+00:00"
+    },
+    "us_reconnected": {
+      "connected_at_utc": "2026-10-23T15:26:27.855408+00:00",
+      "controls": [
+        {
+          "at": "2026-10-23T15:26:27.888583+00:00",
+          "trnm": "LOGIN",
+          "code": 0
+        },
+        {
+          "at": "2026-10-23T15:26:27.894105+00:00",
+          "trnm": "REG",
+          "code": 0
+        }
+      ],
+      "pings": 14,
+      "dropped_records": 0,
+      "last_ping_at_utc": "2026-10-23T15:30:17.876523+00:00",
+      "receiver_ended_at_utc": "2026-10-23T15:30:19.678916+00:00"
+    }
+  },
+  "last_only_sampling": {
+    "observed_subject_minutes": 12,
+    "minutes_with_lost_extreme": 11
+  },
+  "native_grid_phases": {
+    "1": {
+      "sampled_rows_including_repeats": 5900,
+      "phase_counts": {
+        "0": 5900
+      }
+    },
+    "3": {
+      "sampled_rows_including_repeats": 600,
+      "phase_counts": {
+        "0": 600
+      }
+    },
+    "5": {
+      "sampled_rows_including_repeats": 600,
+      "phase_counts": {
+        "0": 600
+      }
+    },
+    "10": {
+      "sampled_rows_including_repeats": 600,
+      "phase_counts": {
+        "0": 600
+      }
+    },
+    "15": {
+      "sampled_rows_including_repeats": 600,
+      "phase_counts": {
+        "0": 600
+      }
+    },
+    "30": {
+      "sampled_rows_including_repeats": 600,
+      "phase_counts": {
+        "0": 600
+      }
+    },
+    "60": {
+      "sampled_rows_including_repeats": 600,
+      "phase_counts": {
+        "0": 600
+      }
+    }
+  },
+  "representative_payload_bytes": {
+    "uncompressed_800_rows_repeated_from_first_100": 125637,
+    "one_minute_and_one_day_patch": 300,
+    "full_over_patch_ratio": 418.79,
+    "not_a_network_or_frontend_performance_benchmark": true
+  },
+  "rest_latency_ms": {
+    "median": 15.722,
+    "max": 97.709
+  }
+}

@@ -78,6 +78,19 @@ def ensure_token_provider(
         return prov
 
 
+def us_ws_account(n_accounts: int) -> int | None:
+    """Reserve the last distinct key only in the measured six-key configuration.
+
+    Smaller installations keep their entire domestic capture capacity. The
+    session manager additionally checks all storage/display/private demand.
+    """
+    if n_accounts < 6:  # noqa: PLR2004 — measured five domestic + one US account budget
+        return None
+    credentials = [_resolve_env_creds(i) for i in range(n_accounts)]
+    keys = [c.app_key for c in credentials if c is not None]
+    return n_accounts - 1 if len(keys) == n_accounts and len(set(keys)) == n_accounts else None
+
+
 def ensure_token_provider_for_account(
     account_id: int, data_dir: Path, *, environment: str = "real",
 ) -> KiwoomTokenProvider | None:

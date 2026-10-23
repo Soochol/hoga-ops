@@ -84,8 +84,18 @@ W/M은 실제 미국 거래일의 검증된 일봉을 집계한다. ISO 월요�
 폴링을 멈춘다. 실패는 최대 60초 백오프하고 마지막 정상 창을 보존한다. 진행 중 당일
 OHLC는 같은 응답의 검증된 전체 일중 값을 쓰며 완료 일봉 캐시/검증 구간에는 넣지
 않는다. 같은 날짜의 완료 일봉이 우선하고 과거 전용 조회에는 최신 시세를 섞지 않는다.
-미국 개별주식은 위의 기존 완료 일봉 집계·60초 분봉 갱신을 유지한다. WS 지수 틱과
-거래소 대비 무지연은 확인하지 못했다. ADR-0136 개정 및 관련 설계/실측 참조.
+WS 지수 틱과 거래소 대비 무지연은 확인하지 못했다. ADR-0136 개정 및 관련 설계/실측 참조.
+
+미국 개별주식 정규장 실시간 표시(2026-10-24): 일봉·분봉은 미국 전용 키움 FE
+관측을 원본 REST 위에 반영한다. 같은 공급자 분 라벨에도 여러 가격이 오므로 수신
+순번으로 고저종을 누적하고 초당 변경분을 공유한다. 일봉은 검증된 일중 시고저를
+사용하며 오늘 REST 일봉은 완료 구간과 분리한 60초 캐시다. W/M은 기존 완료 일봉
+집계를 유지한다. 분봉은 원본 시가·거래량을 보존하며 최신 정상 보정은 1페이지/60초,
+긴 공백은 기존 최대 800봉 예산으로 보정한다. 과거 커서·현재 읽는 범위는 유지한다.
+여섯 개 이상의 서로 다른 키 중 마지막 하나를 미국에 예약할 수 있지만 국내 저장·
+열람·계좌 이벤트와 지수 예약 슬롯이 우선한다. 국내 수요를 줄여 미국을 허용하지 않고
+실행 중인 국내 연결도 빼앗지 않는다. 장외 FE·AMEX 실수신·전체 거래소 대비 지연은
+미확인 범위를 유지하고, 미국 관측은 메모리 표시용으로만 사용한다. ADR-0136 개정.
 
 **Representative Index**:
 A fixed `/live` index instrument backed by KIS domestic index APIs. The enabled set is KOSPI, KOSDAQ, KOSPI200, KOSDAQ150, and KRX100; KRX300 stays disabled until a usable KIS index code is confirmed. Representative indices can show candle and volume data but cannot show orderbook-derived panes. KOSPI/KOSDAQ may additionally show market-level foreign/institution net-buy data; narrower indices must not borrow broader-market investor data.

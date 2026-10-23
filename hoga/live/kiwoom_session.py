@@ -38,7 +38,8 @@ from .kiwoom_ws_client import KiwoomWsClient
 from .sector_registry import SECTOR_CODES
 from .snapshot import LiveSnapshot
 from .ticks import WsTick
-from .view_subscription import ViewSubscriptionStatus
+from .us_stock_realtime import MAX_SUBJECTS, UsStockRealtime
+from .view_subscription import ViewSubscriptionLimitError, ViewSubscriptionStatus
 
 _log = logging.getLogger(__name__)
 
@@ -124,6 +125,8 @@ class KiwoomSessionManager:
         environment: str = "real",
         on_account_row=None,
         on_account_state=None,
+        us_account_fn=None,
+        on_us_event=None,
     ) -> None:
         self._nxt_map_fn = nxt_map_fn or (lambda: _nxt_map())  # noqa: PLW0108 — late DI
         self._token_getter = token_getter
@@ -199,6 +202,66 @@ class KiwoomSessionManager:
         self._reconnect_history: dict[int, dict[str, int]] = {}
         self._seconds: SecondTradeStore | None = None
         self._seconds_task: asyncio.Task | None = None
+        from .collector_process import publish_capture_event  # noqa: PLC0415 — late transport assembly
+
+        self._us_candidate = us_account_fn or kiwoom_runtime.us_ws_account
+        self._us_refs: set[tuple[str, str, str]] = set()
+        self._us = UsStockRealtime(on_us_event or publish_capture_event,
+                                   token_fn=self._us_token, now_fn=self._now_fn,
+                                   invalidate_fn=self._invalidate_us_token)
+
+    async def _invalidate_us_token(self, account):
+        if self._token_invalidator:
+            self._token_invalidator(account)
+        else:
+            provider = kiwoom_runtime.ensure_token_provider_for_account(account, self._data_dir)
+            if provider:
+                await asyncio.to_thread(provider.invalidate)
+
+    async def _us_token(self, account):
+        if self._token_getter:
+            return await self._token_getter(account)
+        provider = kiwoom_runtime.ensure_token_provider_for_account(account, self._data_dir)
+        if provider is None:
+            raise ConnectionError("US credentials unavailable")
+        return await asyncio.to_thread(provider.get_token)
+
+    async def on_us_subscribe(self, exchange, symbol, *, ref):
+        async with self._lock:
+            if len({v[:2] for v in self._us_refs} | {(exchange, symbol)}) > MAX_SUBJECTS:
+                raise ViewSubscriptionLimitError("US display reference limit")
+            self._us_refs.add((exchange, symbol, ref))
+        await self.sync(self._desired_targets, n_accounts=self._desired_n_accounts)
+        self._us.publish(self._us.event((exchange, symbol), seed=True))
+
+    async def on_us_unsubscribe(self, exchange, symbol, *, ref):
+        async with self._lock:
+            self._us_refs.discard((exchange, symbol, ref))
+        await self.sync(self._desired_targets, n_accounts=self._desired_n_accounts)
+
+    def forget_us_ref(self, ref):
+        self._us_refs = {key for key in self._us_refs if key[2] != ref}
+
+    async def release_us_view(self, ref):
+        self.forget_us_ref(ref)
+        await self.sync(self._desired_targets, n_accounts=self._desired_n_accounts)
+
+    def _us_reservation(self, codes, n_accounts, nxt_map):
+        candidate = self._us_candidate(n_accounts) if self._environment == "real" else None
+        if candidate != n_accounts - 1 or candidate is None or candidate in self._account_refs:
+            return None
+        parts = partition_balanced_kiwoom(codes, candidate, weight=lambda c: venue_weight(c, nxt_map),
+                                         previous={}, last_account_reserve=self._sector_reserve)
+        # Preserve every domestic storage target, including venue amplification.
+        if sum(map(len, parts)) != len(codes):
+            return None
+        display = {apply_venue(code, venue) for (code, venue), entry in self._display.items() if entry.refs}
+        storage = {apply_venue(code, venue) for code in codes for venue in subscription_venues(code, nxt_map)}
+        if len(display | storage) + self._sector_reserve > candidate * self._per_account_max:
+            return None
+        # Never steal a running domestic connection in order to admit US views.
+        conn = self._conns.get(candidate)
+        return None if conn and (conn.client.connected or self._sector_account == candidate) else candidate
 
     async def sync(self, kiwoom_targets: tuple[str, ...], *, n_accounts: int) -> None:
         """kiwoom_targets를 계정에 분배하고 conn 멤버십을 정합화. n_accounts=0 또는 빈
@@ -249,17 +312,27 @@ class KiwoomSessionManager:
         self, kiwoom_targets: tuple[str, ...], *, n_accounts: int
     ) -> None:
         codes = list(dict.fromkeys(kiwoom_targets))
-        if (not codes and not self._account_refs) or n_accounts <= 0:
+        if (not codes and not self._account_refs and not self._us_refs) or n_accounts <= 0:
             await self._stop_locked()
             return
         # 분할 단위는 종목이 아니라 **wire 등록 수**다(PR-F) — NXT 상장 종목은 3개를 쓴다.
         nxt_map = self._nxt_map_fn()
+        us_account = self._us_reservation(codes, n_accounts, nxt_map)
+        if self._us.account is not None and self._us.account != us_account:
+            await self._us.configure(None, {v[:2] for v in self._us_refs})
+        if us_account is not None:
+            n_accounts -= 1
+        # Preserve the live sector owner's socket and its 66 reserved slots
+        # when a sixth account returns to domestic capture.
+        if not self._conns or self._sector_account not in self._conns or self._sector_account >= n_accounts:
+            self._sector_account = n_accounts - 1
         parts = partition_balanced_kiwoom(
             codes, n_accounts,
             weight=lambda c: venue_weight(c, nxt_map),
             previous={code: account for account, conn in self._conns.items()
                       for code in conn.codes},
             last_account_reserve=self._sector_reserve,
+            reserved_account=self._sector_account,
         )
         dropped = len(codes) - sum(len(p) for p in parts)
         if dropped > 0:
@@ -272,7 +345,6 @@ class KiwoomSessionManager:
         # 업종 구독은 **마지막 계정**이 태운다(빈 파티션이어도 그 계정은 살아 있어야
         # 하므로 아래 wanted 에 강제로 넣는다 — 저장셋이 적은 날 그 conn 이 안 만들어지면
         # 업종 스트림이 통째로 없어진다).
-        self._sector_account = n_accounts - 1
         wanted = {k: part for k, part in enumerate(parts) if part}
         if codes:
             wanted.setdefault(self._sector_account, [])
@@ -309,6 +381,7 @@ class KiwoomSessionManager:
             conn = self._conns.get(account_id)
             if conn is not None:
                 await self._reconcile(conn)
+        await self._us.configure(us_account, {v[:2] for v in self._us_refs})
 
     async def watchdog_pass(self, now_ms: int) -> None:
         """Maintain display references even when closed; recover connections only
@@ -864,6 +937,7 @@ class KiwoomSessionManager:
             await self._stop_locked()
 
     async def _stop_locked(self) -> None:
+        await self._us.stop()
         for account_id in list(self._conns):
             await self._teardown(account_id)
         if self._seconds_task is not None:

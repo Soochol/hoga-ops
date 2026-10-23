@@ -104,7 +104,7 @@ for (const item of evidence.responses) {
     writeFileSync(info.outputPath('viewport.json'), JSON.stringify({ before, after, source: { exchange: item.exchange, symbol: item.symbol, timeframe: item.timeframe } }, null, 2));
     await page.locator('.live-window-chart').screenshot({ path: info.outputPath('history.png') });
     expect(urls.filter(url => /\/(past-candles|past-daily-candles|quotes|series|stock-limits|investor-net)\?/.test(url) && url.includes(item.symbol))).toEqual([]);
-    expect(frames.filter(message => message.includes(item.symbol))).toEqual([]);
+    expect(frames.filter(message => message.includes('"action":"subscribe"') && message.includes(item.symbol))).toEqual([]);
     expect(errors).toEqual([]);
   });
 }

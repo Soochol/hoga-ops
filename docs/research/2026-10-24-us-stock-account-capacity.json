@@ -1,0 +1,46 @@
+{
+  "observed_code_count": 348,
+  "derived_wire_slots": 788,
+  "observed_expected_wire_slots": 788,
+  "sector_reserve": 66,
+  "on_demand_count": 0,
+  "master_sha256": "278e990d576d1d0c9c5ab4a14fc207bd17f5a17195765ea4d253b721ca92077c",
+  "partitions": {
+    "6": {
+      "admitted": 348,
+      "omitted": 0,
+      "stock_slots": [
+        198,
+        200,
+        198,
+        192,
+        0,
+        0
+      ],
+      "free_after_sector_reserve": 346
+    },
+    "5": {
+      "admitted": 348,
+      "omitted": 0,
+      "stock_slots": [
+        198,
+        200,
+        198,
+        192,
+        0
+      ],
+      "free_after_sector_reserve": 146
+    },
+    "4": {
+      "admitted": 321,
+      "omitted": 27,
+      "stock_slots": [
+        198,
+        200,
+        198,
+        133
+      ],
+      "free_after_sector_reserve": 5
+    }
+  }
+}
