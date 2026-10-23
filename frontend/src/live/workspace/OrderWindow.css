@@ -7,6 +7,8 @@
 .order-window button:hover { background:var(--bg-input-hover); }
 .order-window button:disabled { opacity:.5; cursor:default; }
 .order-window button[aria-disabled=true] { opacity:.5; cursor:default; }
+/* New-order lanes retain the ready-state brightness; availability still gates commands. */
+.order-window [data-order-side][aria-disabled=true] { opacity:1; }
 .order-controls { padding:8px; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .order-controls { border-bottom:1px solid var(--border); }
 .order-window > .order-account-controls,.order-window > .order-overview-controls,.order-window > .order-quantity-controls { min-width:0; }
@@ -64,8 +66,8 @@
 .order-ladder-centered { display:flex; flex-direction:column; min-height:536px; padding-block:0; }
 .order-ladder-centered::before,.order-ladder-centered::after { content:""; flex:1 0 4px; }
 .order-ladder-centered::before { flex-basis:28px; }
-.order-expanded .order-scroll { --order-depth-min:max(152px,var(--order-depth-content-width)); }
-.order-expanded.order-spacious .order-scroll { --order-lane-width:max(72px,var(--order-lane-content-width)); --order-depth-min:max(184px,var(--order-depth-content-width)); }
+.order-expanded .order-scroll { --order-depth-min:max(var(--order-summary-content-width),var(--order-depth-content-width)); }
+.order-expanded.order-spacious .order-scroll { --order-lane-width:max(72px,var(--order-lane-content-width)); }
 .order-total-row { display:grid; grid-template-columns:var(--order-columns); flex-shrink:0; padding:0 0 2px; }
 .order-window .order-total-row .order-lane { padding:0; font-size:var(--live-text-meta,var(--text-xs)); white-space:nowrap; }
 .order-total-row .order-buy { grid-column:5; }

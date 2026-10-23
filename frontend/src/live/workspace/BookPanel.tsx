@@ -164,7 +164,7 @@ export default function BookPanel({
 }: Props) {
   const highlight = useTradeHighlight();
   const priceLayout = useBookPriceLayout(snapshot ? [...snapshot.ask, ...snapshot.bid] : [], symbol, false, baselinePrice);
-  const { setProbe, samples: sideSamples, style: sideStyle } = useBookSideLayout(symbol,
+  const { setProbe, setSummaryProbe, samples: sideSamples, style: sideStyle } = useBookSideLayout(symbol,
     snapshot ? [...snapshot.ask, ...snapshot.bid].filter(level => level.price > 0).map(level => level.qty) : [],
     deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [], trades.slice(0, 9), summary.fillStrengthPct);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -363,7 +363,7 @@ export default function BookPanel({
           {/* 우: 고정 매도 10행의 요약 슬롯 → 매수 잔량 바 */}
           <div className="flex flex-col" style={{ paddingBottom: bids.length > 0 ? bidPadding : 0 }}>
             <div className="book-summary-slot" style={{ height: summaryHeight }}>
-              <div className="book-inline-summary">
+              <div ref={setSummaryProbe} className="book-inline-summary">
                 <BookSummary summary={summary} baselinePrice={baselinePrice}
                   limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={summaryHeight}
                   page={infoPage} onNextPage={nextInfoPage}

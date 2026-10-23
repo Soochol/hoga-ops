@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { measureBookSummaryWidth } from './bookSummaryWidth';
 
 type Budget = { symbol: string; qty: number; delta: number; price: number; trade: number; strength: string };
 const digits = (value: number) => Number.isSafeInteger(value) ? String(Math.abs(value)).length : 1;
@@ -21,14 +22,22 @@ export function useBookSideLayout(symbol: string, quantities: readonly number[],
   };
   if (Object.keys(next).some(key => next[key as keyof Budget] !== budget[key as keyof Budget])) setBudget(next);
   const node = useRef<HTMLSpanElement | null>(null);
+  const summaryNode = useRef<HTMLDivElement | null>(null);
+  const summaryBudget = useRef({ key: symbol, font: '', width: 0 });
   const observer = useRef<ResizeObserver | null>(null);
-  const [measured, setMeasured] = useState({ side: 0, price: 0 });
+  const [measured, setMeasured] = useState({ side: 0, price: 0, summary: 0 });
+  const measuredRef = useRef(measured);
   const measure = useCallback(() => {
     if (!node.current) return;
     const side = Math.ceil(node.current.getBoundingClientRect().width);
     const price = Math.ceil(node.current.querySelector('[data-book-trade-price]')!.getBoundingClientRect().width);
-    setMeasured(previous => previous.side === side && previous.price === price ? previous : { side, price });
-  }, []);
+    summaryBudget.current = measureBookSummaryWidth(summaryNode.current, symbol, summaryBudget.current);
+    const summary = summaryBudget.current.width;
+    const previous = measuredRef.current;
+    if (previous.side === side && previous.price === price && previous.summary === summary) return;
+    measuredRef.current = { side, price, summary };
+    setMeasured(measuredRef.current);
+  }, [symbol]);
   const setProbe = useCallback((element: HTMLSpanElement | null) => {
     observer.current?.disconnect();
     node.current = element;
@@ -39,8 +48,14 @@ export function useBookSideLayout(symbol: string, quantities: readonly number[],
       observer.current.observe(element);
     }
   }, [measure]);
-  useLayoutEffect(measure, [budget, measure]);
-  return { setProbe, samples: { qty: sample(next.qty), delta: sample(next.delta), price: sample(next.price),
+  const setSummaryProbe = useCallback((element: HTMLDivElement | null) => {
+    summaryNode.current = element;
+    if (element) measure();
+  }, [measure]);
+  // Summary values and page changes need measurement even with the same digit budget.
+  useLayoutEffect(measure);
+  return { setProbe, setSummaryProbe, samples: { qty: sample(next.qty), delta: sample(next.delta), price: sample(next.price),
     trade: sample(next.trade), strength: next.strength },
-    style: { '--book-side-content-width': `${measured.side}px`, '--book-trade-price-width': `${measured.price}px` } as CSSProperties };
+    style: { '--book-side-content-width': `${measured.side}px`, '--book-trade-price-width': `${measured.price}px`,
+      '--book-summary-content-width': `${measured.summary}px` } as CSSProperties };
 }

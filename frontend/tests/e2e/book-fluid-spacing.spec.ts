@@ -150,6 +150,8 @@ for (const [digits, offset] of [[6, 180_000], [7, 1_401_800]] as const) {
           expect(new Set(samples.map(sample => JSON.stringify(sample))).size,
             `${width}×${height}: ${JSON.stringify(samples)}`).toBe(1);
           expect(samples[0].inline, `${width}×${height}: detail visibility follows the window width`).toBe(width >= 531);
+          if (mode === 'normal') expect(samples[0].scroll[2], `${width}×${height}: no unnecessary horizontal overflow`)
+            .toBeLessThanOrEqual(samples[0].scroll[0] + 1);
           cases.push({ width, height, sample: samples[0] });
         }
       }
@@ -159,3 +161,64 @@ for (const [digits, offset] of [[6, 180_000], [7, 1_401_800]] as const) {
     });
   }
 }
+
+
+nativeScrollbarTest('10호가 100만원대 상세정보는 실제 내용 폭에 맞추고 긴 값만 스크롤한다', async ({ nativeScrollbarPage: page }, info) => {
+  await mount(page);
+  await resize(page, 531);
+  await page.locator('.live-window').evaluate(host => { (host as HTMLElement).style.height = '450px'; });
+  const renderExpected = async (price: number, symbol = 'summary-width') => page.evaluate(async ({ price, symbol }) => {
+    const path = '/tests/e2e/helpers/bookFluidLayoutHarness.tsx';
+    const harness = await import(path);
+    harness.render('normal', symbol, 1_401_800, price);
+  }, { price, symbol });
+  const summaryMetrics = () => page.locator('.book-inline-summary').evaluate(summary => {
+    const region = summary.closest('.book-scroll-region')!;
+    const grid = summary.closest('.book-panel-grid')!;
+    const fits = Array.from(summary.querySelectorAll('.book-summary-row')).every(row => {
+      const bounds = row.getBoundingClientRect();
+      return Array.from(row.children).every(span => {
+        const range = document.createRange(); range.selectNodeContents(span);
+        const text = range.getBoundingClientRect();
+        return text.left >= bounds.left - 1 && text.right <= bounds.right + 1;
+      });
+    });
+    return { fits, scroll: region.scrollWidth > region.clientWidth + 1,
+      width: parseFloat(getComputedStyle(grid).getPropertyValue('--book-summary-content-width')) };
+  });
+  await renderExpected(1_469_000);
+  for (const font of [16, 20, 14, 16]) {
+    await page.evaluate(async font => {
+      document.documentElement.style.fontSize = `${font}px`;
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+    }, font);
+    await expect(async () => {
+      const m = await summaryMetrics();
+      expect(m.fits).toBe(true);
+      if (font <= 16) expect(m.scroll).toBe(false);
+      const ladder = await metrics(page);
+      expect(ladder.fits).toBe(true);
+      expect(ladder.left).toBeCloseTo(ladder.right, 1);
+      expect(ladder.rowHeights).toEqual(Array(20).fill(22));
+    }).toPass();
+  }
+  const first = await summaryMetrics();
+  const heading = page.getByRole('button', { name: '정보 1페이지, 다음 정보 페이지로 전환' });
+  await heading.click();
+  await expect(page.locator('.book-inline-summary [data-testid="book-summary"]')).toHaveAttribute('data-page', '2');
+  const second = await summaryMetrics();
+  expect(second.width).toBeGreaterThanOrEqual(first.width);
+  await page.getByRole('button', { name: '정보 2페이지, 다음 정보 페이지로 전환' }).click();
+  await expect.poll(async () => (await summaryMetrics()).scroll).toBe(false);
+  expect((await summaryMetrics()).width).toBe(second.width);
+  await page.locator('.live-window').screenshot({ path: info.outputPath('book-intrinsic-531.png') });
+  await renderExpected(1_234_567_890_123_456);
+  await expect(async () => {
+    const m = await summaryMetrics(); expect(m.fits).toBe(true); expect(m.scroll).toBe(true);
+  }).toPass();
+  await renderExpected(1_469_000);
+  expect((await summaryMetrics()).scroll).toBe(true);
+  await renderExpected(1_469_000, 'another-code');
+  await expect.poll(async () => (await summaryMetrics()).scroll).toBe(false);
+});

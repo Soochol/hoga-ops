@@ -617,7 +617,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const highlight = useTradeHighlight();
   const trades = activeSinglePrice !== null ? singlePriceFills.slice(0, 9) : recentTrades;
   const lastPrice = activeSinglePrice !== null ? (afterHoursBook.data?.cur_price ?? null) : (recentTrades[0]?.price ?? null);
-  const { setProbe, samples, style: columnStyle } = useOrderColumnLayout(`${account}:${code}`,
+  const { setProbe, setSummaryProbe, samples, style: columnStyle } = useOrderColumnLayout(`${account}:${code}`,
     prices.map(level => level.qty), deltaBadges ? [...deltaBadges.values()].map(badge => badge.delta) : [],
     trades, summary.fillStrengthPct,
     [...groups.values()].map(group => group.reduce((sum, order) => sum + orderRemainder(order), 0))
@@ -809,7 +809,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             {orderCell('BUY', level.price, key)}
           </div>;
         })}
-        {showInlineSummary && <div className="order-summary-layer">{renderSummary(240)}</div>}
+        {showInlineSummary && <div ref={setSummaryProbe} className="order-summary-layer">{renderSummary(240)}</div>}
         <div className="order-total-row" role="group" aria-label="방향별 총 접수 주문">
           {(['SELL', 'BUY'] as const).map(side => {
             const list = sideOrders[side];
@@ -817,7 +817,6 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             return <button key={side} type="button"
               className={`order-lane order-total ${side === 'BUY' ? 'order-buy' : 'order-sell'}`}
               aria-label={`${orderSideLabel(side)} 총 접수 주문`}
-              title="미체결 잔여 수량(접수 건수) · 우클릭: 개별 주문 · 드래그 아웃: 일괄 취소"
               aria-haspopup="menu" aria-expanded={contextMenu?.side === side && contextMenu.price == null}
               aria-disabled={!canDrag} data-order-total={side}
               onPointerDown={e => beginDrag(e, list, false, true)}

@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
+import { measureBookSummaryWidth } from './bookSummaryWidth';
 
 const digits = (n: number) => Number.isSafeInteger(n) ? String(Math.abs(n)).length : 1;
 const figure = (n: number) => '8'.repeat(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -22,16 +23,24 @@ export function useOrderColumnLayout(key: string, quantities: number[], deltas: 
     strength: required.strength.length > budget.strength.length ? required.strength : budget.strength };
   if (Object.keys(next).some(k => next[k as keyof Budget] !== budget[k as keyof Budget])) setBudget(next);
   const node = useRef<HTMLSpanElement | null>(null);
+  const summaryNode = useRef<HTMLDivElement | null>(null);
+  const summaryBudget = useRef({ key, font: '', width: 0 });
   const observer = useRef<ResizeObserver | null>(null);
-  const [sizes, setSizes] = useState({ depth: 0, lane: 0, price: 0 });
+  const [sizes, setSizes] = useState({ depth: 0, lane: 0, price: 0, summary: 0 });
+  const sizesRef = useRef(sizes);
   const measure = useCallback(() => {
     if (!node.current) return;
     const max = (selector: string) => Math.ceil(Math.max(0, ...Array.from(node.current!.querySelectorAll(selector),
       el => el.getBoundingClientRect().width)));
+    summaryBudget.current = measureBookSummaryWidth(summaryNode.current, key, summaryBudget.current);
     const measured = { depth: max('[data-depth-probe]'), lane: max('[data-lane-probe]') + 6,
-      price: max('[data-trade-price-probe]') };
-    setSizes(old => old.depth === measured.depth && old.lane === measured.lane && old.price === measured.price ? old : measured);
-  }, []);
+      price: max('[data-trade-price-probe]'), summary: summaryBudget.current.key === key ? summaryBudget.current.width : 0 };
+    const old = sizesRef.current;
+    if (old.depth === measured.depth && old.lane === measured.lane && old.price === measured.price
+      && old.summary === measured.summary) return;
+    sizesRef.current = measured;
+    setSizes(measured);
+  }, [key]);
   const setProbe = useCallback((element: HTMLSpanElement | null) => {
     observer.current?.disconnect(); node.current = element;
     if (!element) return;
@@ -44,10 +53,17 @@ export function useOrderColumnLayout(key: string, quantities: number[], deltas: 
       element.querySelectorAll('[data-depth-probe], [data-trade-price-probe]').forEach(probe => observer.current!.observe(probe));
     }
   }, [measure]);
-  useLayoutEffect(measure, [budget, measure]);
-  return { setProbe, samples: { qty: figure(next.qty), delta: figure(next.delta), price: figure(next.price),
+  const setSummaryProbe = useCallback((element: HTMLDivElement | null) => {
+    summaryNode.current = element;
+    if (!element) return;
+    measure();
+  }, [measure]);
+  // Summary values and the current page can change without changing the numeric
+  // digit budget. Read after each commit and retain widths until font/Code changes.
+  useLayoutEffect(measure);
+  return { setProbe, setSummaryProbe, samples: { qty: figure(next.qty), delta: figure(next.delta), price: figure(next.price),
     trade: figure(next.trade), strength: next.strength, order: figure(next.order),
     total: `${figure(next.order)}(${figure(next.count)})` },
   style: { '--order-depth-content-width': `${sizes.depth}px`, '--order-lane-content-width': `${sizes.lane}px`,
-    '--order-trade-price-width': `${sizes.price}px` } as CSSProperties };
+    '--order-trade-price-width': `${sizes.price}px`, '--order-summary-content-width': `${sizes.summary}px` } as CSSProperties };
 }
