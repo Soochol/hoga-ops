@@ -7,12 +7,12 @@
  * 초록이었지만, 장외에 연 탭이 09:00 이 지나도 영영 안 깨어나는 버그를 놓쳤다
  * (2026-08-07) — 순수 함수는 옳았고 그 값을 **누가 언제 다시 묻는가**가 틀렸기 때문이다. */
 // `waitFor` 는 쓰지 않는다 — fake timers 와 섞으면 서로의 타이머를 센다.
-import { renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
+import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as client from './client';
-import { isMarketHours, useMarketInvestorFlow, useMarketDerivFlow } from './market';
+import { isMarketHours, useMarketInvestorFlow, useMarketDerivFlow, useMarketFunds } from './market';
 
 /** KST 로 해석되는 시각을 만든다 — 러너 TZ 에 의존하지 않기 위해 오프셋을 명시한다. */
 function kst(y: number, m: number, d: number, hh: number, mm: number): Date {
@@ -127,6 +127,43 @@ describe('수급 전용 서버 주기', () => {
     expect(spy).toHaveBeenCalledTimes(closedCalls);
     await vi.advanceTimersByTimeAsync(1000);
     expect(spy).toHaveBeenCalledTimes(closedCalls + 1);
+    view.unmount();
+    qc.clear();
+  });
+});
+
+describe('주변 자금 공개 확인', () => {
+  afterEach(() => {
+    focusManager.setFocused(undefined);
+    onlineManager.setOnline(true);
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('숨긴 동안 폴링을 멈추고 전역 포커스 설정과 관계없이 복귀 즉시 재조회한다', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(kst(2026, 10, 23, 18, 0));
+    focusManager.setFocused(true);
+    const spy = vi.spyOn(client, 'apiCall')
+      .mockResolvedValueOnce({ as_of: '20261021', series: [] })
+      .mockResolvedValue({ as_of: '20261022', series: [] });
+    const qc = new QueryClient({ defaultOptions: { queries: {
+      retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false,
+    } } });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: qc }, children);
+    const view = renderHook(() => [useMarketFunds(), useMarketFunds()], { wrapper });
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    expect(spy).toHaveBeenCalledTimes(1);
+    focusManager.setFocused(false);
+    await act(async () => { await vi.advanceTimersByTimeAsync(90_000); });
+    expect(spy).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      focusManager.setFocused(true);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(qc.getQueryData(['market', 'funds'])).toMatchObject({ as_of: '20261022' });
     view.unmount();
     qc.clear();
   });

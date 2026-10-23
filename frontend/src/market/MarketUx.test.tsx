@@ -45,16 +45,43 @@ describe('market data meaning', () => {
 
   it('distinguishes fund balance from change and leaves missing ending values unknown', async () => {
     vi.spyOn(client, 'apiCall').mockResolvedValue({ as_of: '20260904', series: [
-      { date: '20260901', deposit_won: 100e12, credit_won: null, cma_won: 80e12 },
-      { date: '20260903', deposit_won: 98e12, credit_won: 30e12, cma_won: 82e12 },
-      { date: '20260904', deposit_won: 93.5e12, credit_won: 31e12, cma_won: null },
+      { date: '20260901', deposit_won: 100e12, credit_kospi_won: null, credit_kosdaq_won: 6e12, credit_won: 30e12, cma_won: 80e12 },
+      { date: '20260903', deposit_won: 98e12, credit_kospi_won: 24e12, credit_kosdaq_won: 5.5e12, credit_won: 29.5e12, cma_won: 82e12 },
+      { date: '20260904', deposit_won: 93.5e12, credit_kospi_won: 25e12, credit_kosdaq_won: null, credit_won: 31e12, cma_won: null },
     ] });
     mount(<FundsCard />);
     expect(await screen.findByText('93.5조')).toBeInTheDocument();
-    expect(screen.getByText('-6.5조')).toBeInTheDocument();
-    expect(screen.getByText('+1.0조')).toBeInTheDocument();
+    const balances = within(screen.getByLabelText('최신 잔고 · 조원'));
+    expect(balances.getByText('25.0조')).toBeInTheDocument();
+    expect(balances.getByText('—')).toBeInTheDocument();
+    const changes = within(screen.getByLabelText('기간 증감 · 조원'));
+    expect(changes.getByText('-6.5조')).toBeInTheDocument();
+    expect(changes.getByText('+1.0조')).toBeInTheDocument();
+    expect(changes.getByText('—')).toBeInTheDocument();
+    for (const area of [balances, changes]) {
+      expect(area.getByText('코스피 신용융자')).toBeInTheDocument();
+      expect(area.getByText('코스닥 신용융자')).toBeInTheDocument();
+    }
+    expect(screen.queryByText('CMA')).not.toBeInTheDocument();
+    expect(screen.queryByText('신용융자', { exact: true })).not.toBeInTheDocument();
+    expect(screen.queryByText('31.0조')).not.toBeInTheDocument();
+    const chart = screen.getByRole('group', { name: /차트 상세/ });
+    fireEvent.focus(chart);
+    fireEvent.keyDown(chart, { key: 'End' });
+    expect(screen.getByRole('status')).toHaveTextContent('코스피 신용융자 1조원');
+    expect(screen.getByRole('status')).toHaveTextContent('코스닥 신용융자 —');
     expect(fundChange([80e12, 82e12, null])).toBeNull();
     expect(fundChange([null, null])).toBeNull();
+  });
+
+  it('ignores dates with only hidden fund balances', async () => {
+    vi.spyOn(client, 'apiCall').mockResolvedValue({ as_of: '20260905', series: [
+      { date: '20260904', deposit_won: 93.5e12, credit_kospi_won: 25e12, credit_kosdaq_won: 6e12 },
+      { date: '20260905', deposit_won: null, credit_kospi_won: null, credit_kosdaq_won: null, credit_won: 31e12, cma_won: 81e12 },
+    ] });
+    mount(<FundsCard />);
+    expect(await screen.findByText('93.5조')).toBeInTheDocument();
+    expect(screen.queryByText('09/05')).not.toBeInTheDocument();
   });
 
   it('sorts all sectors before truncating and keeps missing values last', async () => {

@@ -734,18 +734,25 @@ const FUND_SPANS = [
 ] as const;
 type FundSpan = (typeof FUND_SPANS)[number][0];
 
+const FUND_SERIES = [
+  { label: '고객예탁금', color: SERIES_COLORS.deposit, field: 'deposit_won' },
+  { label: '코스피 신용융자', color: SERIES_COLORS.creditKospi, field: 'credit_kospi_won' },
+  { label: '코스닥 신용융자', color: SERIES_COLORS.creditKosdaq, field: 'credit_kosdaq_won' },
+] as const;
+
 export function FundsCard() {
   const [span, setSpan] = useState<FundSpan>('60');
   const funds = useMarketFunds();
   const data = funds.data;
   // 잔고(스톡) 지표라 "기간" = 시작 대비 증감의 창이다 — 토글이 곧 해석의 창.
-  const series = (data?.series ?? []).slice(-Number(span));
+  const series = (data?.series ?? [])
+    .filter(row => FUND_SERIES.some(({ field }) => row[field] != null))
+    .slice(-Number(span));
   const last = series[series.length - 1];
-  const balances = [
-    { label: '고객예탁금', color: SERIES_COLORS.deposit, won: last?.deposit_won, change: fundChange(series.map(r => r.deposit_won)) },
-    { label: '신용융자', color: SERIES_COLORS.credit, won: last?.credit_won, change: fundChange(series.map(r => r.credit_won)) },
-    { label: 'CMA', color: SERIES_COLORS.cma, won: last?.cma_won, change: fundChange(series.map(r => r.cma_won)) },
-  ];
+  const balances = FUND_SERIES.map(({ label, color, field }) => {
+    const values = series.map(row => row[field]);
+    return { label, color, values, won: last?.[field], change: fundChange(values) };
+  });
   return (
     <MarketCard className="market-context-card market-funds-card">
       <div className={`flex flex-wrap items-center justify-between ${CARD_HEADER_RULE}`}>
@@ -775,14 +782,12 @@ export function FundsCard() {
           </div>
           <CumLinesChart
             className="market-context-chart"
-            series={[
-              { color: SERIES_COLORS.deposit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.deposit_won))), observed: series.map((r) => r.deposit_won != null) },
-              { color: SERIES_COLORS.credit, values: stockSeriesDiffs(series.map((r) => wonToJo(r.credit_won))), observed: series.map((r) => r.credit_won != null) },
-              { color: SERIES_COLORS.cma, values: stockSeriesDiffs(series.map((r) => wonToJo(r.cma_won))), observed: series.map((r) => r.cma_won != null) },
-            ]}
+            series={balances.map(({ color, values }) => ({
+              color, values: stockSeriesDiffs(values.map(wonToJo)), observed: values.map(value => value != null),
+            }))}
             height={72}
             labels={series.map((r) => formatMarketDate(r.date))}
-            names={['고객예탁금', '신용융자', 'CMA']}
+            names={balances.map(({ label }) => label)}
             unit="조원"
           />
           <div className="market-context-axis flex justify-between font-data text-2xs text-fg-dim tabular-nums">

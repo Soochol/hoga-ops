@@ -12,8 +12,8 @@ export const SERIES_COLORS = {
   nonArb: 'var(--ma-7)',
   index: 'var(--fg-dim)',
   deposit: 'var(--ma-1)',
-  credit: 'var(--ma-2)',
-  cma: 'var(--ma-5)',
+  creditKospi: 'var(--ma-2)',
+  creditKosdaq: 'var(--ma-5)',
 } as const;
 
 /** 백엔드 시장 키 → 화면 라벨. 수급 카드와 프로그램 카드가 공유한다 —

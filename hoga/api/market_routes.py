@@ -169,9 +169,11 @@ class BreadthResponse(BaseModel):
 
 class FundsRow(BaseModel):
     date: str
-    # 원(raw). 세 계열의 최신일이 어긋나므로 없는 값은 null 이다(0 으로 채우면 거짓말).
+    # 원(raw). 계열의 최신일이 어긋나므로 없는 값은 null 이다(0 으로 채우면 거짓말).
     deposit_won: int | None = None
     credit_won: int | None = None
+    credit_kospi_won: int | None = None
+    credit_kosdaq_won: int | None = None
     cma_won: int | None = None
 
 

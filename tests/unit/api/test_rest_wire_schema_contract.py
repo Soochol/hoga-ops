@@ -46,7 +46,7 @@ from typing import Literal, get_args, get_origin
 
 from hoga.api import events, models as m, sources
 from hoga.api.error_codes import ComputeErrorCode
-from hoga.api.market_routes import DerivFlowResponse, InvestorFlowResponse, ProgramResponse
+from hoga.api.market_routes import DerivFlowResponse, FundsResponse, FundsRow, InvestorFlowResponse, ProgramResponse
 from hoga.api.panel_flow import PanelFlowResponse, PanelFlowSource, PanelGroupFlow, PanelStockFlow
 from hoga.api.screener_continuous import ContinuousStatus
 from hoga.live import flow_receipts, futures_runtime, market_overview
@@ -457,6 +457,10 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
         "cached_batches", "fresh_batches", "data_warnings",
     }),
     ProgramResponse: frozenset({"axis", "markets", "truncated"}),
+    FundsRow: frozenset({
+        "date", "deposit_won", "credit_won", "cma_won", "credit_kospi_won", "credit_kosdaq_won",
+    }),
+    FundsResponse: frozenset({"unavailable", "as_of", "series"}),
     InvestorFlowResponse: frozenset({
         "collection", "date", "daily", "unit", "confirmed", "coverage", "markets",
         "session_start_sec", "session_end_sec",

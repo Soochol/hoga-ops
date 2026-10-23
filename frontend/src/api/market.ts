@@ -279,6 +279,8 @@ export interface FundsRow {
   /** 원(raw). 조 단위 환산은 표시 계층의 몫이다. */
   deposit_won: number | null;
   credit_won: number | null;
+  credit_kospi_won: number | null;
+  credit_kosdaq_won: number | null;
   cma_won: number | null;
 }
 
@@ -294,9 +296,12 @@ export function useMarketFunds() {
   return useQuery({
     queryKey: ['market', 'funds'],
     queryFn: () => apiCall<FundsResponse>('/api/market/funds'),
-    // 일 1회 공시(T+2)라 폴링하지 않는다. 탭을 다시 열면 staleTime 이 갱신을 부른다.
-    refetchInterval: false,
-    staleTime: 60 * 60_000,
+    // 공개 시각은 장시간과 별개다. 서버의 30초 TTL과 함께 새 기준일을 확인한다.
+    refetchInterval: 30_000,
+    staleTime: 30_000,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }
 

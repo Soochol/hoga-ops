@@ -124,6 +124,7 @@ export default defineConfig({
         KIWOOM_MOCK_APP_KEY_5: '', KIWOOM_MOCK_APP_SECRET_5: '',
         KIWOOM_MOCK_APP_KEY_6: '', KIWOOM_MOCK_APP_SECRET_6: '',
         KIS_APP_KEY: '', KIS_APP_SECRET: '',
+        KOFIA_API_KEY: '',
         TOSSINVEST_CLIENT_ID: '', TOSSINVEST_CLIENT_SECRET: '',
         // 커맨드 인라인이 아니라 여기 두는 이유: `E2E_DIST_DIR` 은 `prepare-dist.mjs`
         // 가, 나머지는 `hoga serve` 가 읽는데 둘이 같은 커맨드 체인에 있어서
