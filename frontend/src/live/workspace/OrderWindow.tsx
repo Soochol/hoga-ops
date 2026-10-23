@@ -77,7 +77,7 @@ const changesPrice = (action: Action) => action.type === 'create' || action.type
 const cancelsOrders = (action: Action) => action.type === 'cancel' || (action.type === 'group' && action.operation === 'cancel');
 const orderKey = (account: TradingAccountId, id: string) => JSON.stringify([account, id]);
 type CancelFailure = { action: Action; notice: OrderNotice };
-type Drag = { orders: TossOrder[]; list: HTMLElement | null; cancelOnly: boolean; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
+type Drag = { orders: TossOrder[]; list: HTMLElement | null; x: number; y: number; cursorX: number; cursorY: number; active: boolean; price: number | null; cancel: boolean; pointer: number; element: HTMLElement };
 
 export function OrderWindow({ code, name, settings, onSettingsChange, onSelectSymbol }: {
   code: string; name: string; settings?: OrderWindowSettings; onSettingsChange?: (settings: OrderWindowSettings) => void; onSelectSymbol?: (code: string, name: string) => void;
@@ -517,11 +517,11 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     request({ type: 'create', base: { ...base(), ...(typeof account === 'string' ? { route: orderRoute } : {}) }, side, price, quantity });
   }
 
-  function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false, cancelOnly = false) {
+  function beginDrag(e: PointerEvent<HTMLElement>, candidates: TossOrder[], list = false) {
     const targets = candidates.filter(order => editableOrder(order) && !pending(order) && orderRemainder(order) > 0);
     if (e.button !== 0 || !targets.length || !ready || settingsDraft || action || drag.current) return;
     e.stopPropagation();
-    drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, cancelOnly, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
+    drag.current = { orders: targets, list: list ? e.currentTarget.closest('[data-order-list]') : null, x: e.clientX, y: e.clientY, cursorX: e.clientX, cursorY: e.clientY, active: false, price: null, cancel: false, pointer: e.pointerId, element: e.currentTarget };
     setDragInProgress(true); e.currentTarget.setPointerCapture(e.pointerId);
   }
   const updateDragTarget = useCallback(() => {
@@ -551,7 +551,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           return d.cursorY >= bounds.top && d.cursorY < bounds.bottom;
         }) : null);
     const lane = hit?.closest<HTMLElement>('[data-order-side]');
-    d.price = !d.cancelOnly && !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.orders[0].side) ? Number(row.dataset.orderPrice) : null;
+    d.price = !d.cancel && row && ladder.current?.contains(row) && (!lane || lane.dataset.orderSide === d.orders[0].side) ? Number(row.dataset.orderPrice) : null;
     setDragTarget(d.price); setDragCancel(d.cancel);
   }, []);
   useLayoutEffect(updateDragTarget, [book, updateDragTarget]);
@@ -577,13 +577,16 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     if (!d || (e && e.pointerId !== d.pointer)) return;
     resetDrag();
     if (aborted || !d.active) return;
-    const targets = d.orders.flatMap(original => {
+    let targets = d.orders.flatMap(original => {
       const order = latestOrders.current.find(o => o.orderId === original.orderId);
       return order && order.side === original.side && order.price === original.price && editableOrder(order) && !pending(order) && orderRemainder(order) > 0 ? [order] : [];
     });
     if (!targets.length) { setNotice('드래그 중 주문 상태가 변경되었습니다. 최신 내역을 확인하세요.'); return; }
-    const operation = d.cancel ? 'cancel' : d.price && d.price !== Number(targets[0].price) ? 'modify' : null;
+    const operation = d.cancel ? 'cancel' : d.price ? 'modify' : null;
     if (!operation) return;
+    // Totals can span prices. Preserve orders already at the destination, including the first one.
+    if (operation === 'modify') targets = targets.filter(order => Number(order.price) !== d.price);
+    if (!targets.length) return;
     const price = operation === 'cancel' ? 0 : d.price!;
     const keepOrderList = !!d.list && operation === 'cancel';
     if (targets.length === 1) request({ type: operation, base: base(), side: targets[0].side, price, quantity: null, order: targets[0], keepOrderList });
@@ -830,7 +833,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
               aria-label={`${orderSideLabel(side)} 총 접수 주문`}
               aria-haspopup="menu" aria-expanded={contextMenu?.side === side && contextMenu.price == null}
               aria-disabled={!canDrag} data-order-total={side}
-              onPointerDown={e => beginDrag(e, list, false, true)}
+              onPointerDown={e => beginDrag(e, list)}
               onContextMenu={e => {
                 e.preventDefault(); e.stopPropagation(); e.currentTarget.focus();
                 openSideOrders(side, { x: e.clientX, y: e.clientY });

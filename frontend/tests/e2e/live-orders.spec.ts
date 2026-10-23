@@ -2556,14 +2556,74 @@ for (const side of ['BUY', 'SELL'] as const) {
     await total.click(); await total.dblclick();
     await expect(page.getByRole('menu')).toHaveCount(0);
     expect(commands).toHaveLength(0);
-    // The summary is a cancellation handle: dropping on a price must not replace every order.
-    await drag(page, total, window.getByRole('button', { name: new RegExp(`${label} 67,300원 주문 추가`) }));
+    // An opposite-side lane must neither modify nor cancel this side's orders.
+    await drag(page, total, window.getByRole('button', { name: new RegExp(`${side === 'BUY' ? '매도' : '매수'} 67,300원 주문 추가`) }));
     expect(commands).toHaveLength(0);
     await drag(page, total, orderSettingsButton(window));
     await expect(total).toHaveText('0(0)');
     await expect(window.getByRole('button', { name: `${side === 'BUY' ? '매도' : '매수'} 총 접수 주문`, exact: true })).toHaveText('70(1)');
     expect(commands).toHaveLength(3);
     expect(commands.every(body => !('price' in body) && body.code === '005930')).toBe(true);
+  });
+  test(`${side} 총 접수 버튼은 여러 가격의 주문을 목표 가격으로 모으고 드래그 아웃 취소를 유지한다`, async ({ page }, testInfo) => {
+    const { window, commands } = await setup(page, [
+      { ...mkOrder('already-target', '67300'), side }, { ...mkOrder('other-price', '67100'), side },
+      { ...mkOrder('outside', '70000'), side }, { ...mkOrder('locked', '70500'), side, status: 'PENDING_CANCEL' },
+      { ...mkOrder('opposite'), side: opposite }, { ...mkOrder('other-symbol'), symbol: '000660', side },
+    ]);
+    const total = window.getByRole('button', { name: `${label} 총 접수 주문`, exact: true });
+    const destination = window.getByRole('button', { name: new RegExp(`${label} 67,300원 주문 추가`) });
+    await expect(total).toHaveText('280(4)');
+    await expect(destination).toHaveText('70');
+    await drag(page, total, destination);
+    await expect(destination).toHaveText('210');
+    await expect(total).toHaveText('280(4)');
+    await expect(window.getByRole('button', { name: new RegExp(`${label} 67,100원 주문 추가`) })).toBeEmpty();
+    expect(commands).toHaveLength(2);
+    expect(commands.every(body => body.price === 67300 && body.quantity === null && body.confirm_high_value === false)).toBe(true);
+    expect(new Set(commands.map(body => body.command_id)).size).toBe(2);
+    await window.screenshot({ path: testInfo.outputPath(`order-total-modified-${side}.png`) });
+    await drag(page, total, destination);
+    expect(commands).toHaveLength(2); // Orders at the destination keep their existing priority.
+    await drag(page, total, orderSettingsButton(window));
+    await expect(total).toHaveText('70(1)'); // The pending-cancel order remains locked.
+    await expect(destination).toBeEmpty();
+    await expect(window.getByRole('button', { name: `${side === 'BUY' ? '매도' : '매수'} 총 접수 주문`, exact: true })).toHaveText('70(1)');
+    expect(commands).toHaveLength(5);
+    expect(commands.slice(2).every(body => !('price' in body) && body.code === '005930')).toBe(true);
+  });
+  test(`${side} 총 접수 정정은 합산 고액 확인 후에만 전송한다`, async ({ page }) => {
+    const { window, commands } = await setup(page, [
+      { ...mkOrder('one', '67100', '0'), side, quantity: '800' },
+      { ...mkOrder('two', '67200', '0'), side, quantity: '800' },
+    ]);
+    const total = window.getByRole('button', { name: `${label} 총 접수 주문`, exact: true });
+    const destination = window.getByRole('button', { name: new RegExp(`${label} 67,300원 주문 추가`) });
+    await drag(page, total, destination);
+    const confirmation = page.getByRole('dialog', { name: '고액 주문 확인' });
+    await expect(confirmation).toContainText('1,600주');
+    expect(commands).toHaveLength(0);
+    await expect(confirmation.getByRole('button', { name: '확인 후 주문' })).toBeDisabled();
+    await confirmation.getByRole('checkbox', { name: '1억원 이상 주문 금액을 확인했습니다' }).check();
+    await confirmation.getByRole('button', { name: '확인 후 주문' }).click();
+    await expect(destination).toHaveText('1,600');
+    expect(commands).toHaveLength(2);
+    expect(commands.every(body => body.price === 67300 && body.quantity === null && body.confirm_high_value === true)).toBe(true);
+  });
+  test(`${side} 총 접수의 오래된 호가는 정정을 막고 드래그 아웃 취소는 허용한다`, async ({ page }) => {
+    const { window, commands } = await setup(page, [
+      { ...mkOrder('one', side === 'SELL' ? '67300' : '67200'), side }, { ...mkOrder('two', '70000'), side },
+    ], true, false, 0, 1, { time: Date.now() - 60_000 });
+    const total = window.getByRole('button', { name: `${label} 총 접수 주문`, exact: true });
+    const destination = window.getByRole('button', { name: new RegExp(`${label} 67,300원 주문 추가`) });
+    await drag(page, total, destination);
+    await expect(page.getByRole('alert', { name: '주문 알림' })).toBeVisible();
+    expect(commands).toHaveLength(0);
+    await expect(total).toHaveText('140(2)');
+    await drag(page, total, orderSettingsButton(window));
+    await expect(total).toHaveText('0(0)');
+    expect(commands).toHaveLength(2);
+    expect(commands.every(body => !('price' in body))).toBe(true);
   });
   test(`${side} 총 접수 우클릭 메뉴에서 개별 취소하고 남은 주문을 호가로 드래그 정정한다`, async ({ page }, testInfo) => {
     const { window, commands } = await setup(page, [
