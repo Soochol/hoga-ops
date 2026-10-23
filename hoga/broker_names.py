@@ -20,7 +20,7 @@ _log = logging.getLogger(__name__)
 
 # Maps both hogaplay TSV tokens AND KIS API tokens to a single canonical
 # string. Sourced from the KRX member-firm registry. Unknown keys pass
-# through unchanged (warned once per session).
+# through unchanged (logged at DEBUG once per spelling per process).
 _CANONICAL: dict[str, str] = {
     # 신한투자증권
     "신한증권": "신한투자증권",
@@ -46,8 +46,8 @@ _CANONICAL: dict[str, str] = {
     # 골드만삭스증권 서울지점 — hogaplay short form only.
     # The KIS-side long form was previously inferred (``골드만삭스증권`` →
     # ``골드만``) but unverified inference risks silently collapsing two
-    # distinct member firms into one. Removed: an unknown_alias warning
-    # on the actual KIS form is the loud-and-safe failure mode.
+    # distinct member firms into one. Unknown forms pass through unchanged
+    # and can be inspected through unknown_alias DEBUG logs.
     "골드만": "골드만",
     # 씨티그룹글로벌마켓증권 — same stance as above.
     "씨티그룹": "씨티그룹",
@@ -68,7 +68,7 @@ _CANONICAL: dict[str, str] = {
     # 메리츠증권 — observed in production logs as the *short* form "메리츠".
     # The full form (메리츠증권) hasn't been seen yet from either ingest path.
     # Identity-only entry: if the other path emits 메리츠증권, a fresh
-    # unknown_alias will surface it for an explicit, verified mapping —
+    # unknown_alias DEBUG log can surface it for a verified mapping —
     # preferable to a silent collapse on a guessed equivalence (the
     # 골드만/씨티그룹 lesson).
     "메리츠": "메리츠",
@@ -79,7 +79,7 @@ _CANONICAL: dict[str, str] = {
     "신  영": "신영증권",
     # BNK증권 — observed as a short form. The KRX-registered full name is
     # BNK투자증권; identity-only for now (골드만/씨티그룹 lesson) so that the
-    # full form, if it ever appears from KIS, surfaces a loud unknown_alias
+    # full form, if it ever appears from KIS, surfaces a DEBUG unknown_alias
     # rather than getting silently merged with an unverified equivalence.
     "BNK증권": "BNK증권",
     "맥쿼리증권": "맥쿼리증권",
@@ -88,6 +88,13 @@ _CANONICAL: dict[str, str] = {
     # if the same KRX member is meant, the user can collapse them once
     # verified against the source path that emitted each form.
     "유안타": "유안타",
+    # Observed production spellings (2026-10-23). No inferred former-name
+    # mergers; HSBC only removes the observed inter-letter padding.
+    "넥스트증권": "넥스트증권",
+    "아이엠증권": "아이엠증권",
+    "리딩투자": "리딩투자",
+    "H S B C": "HSBC",
+    "HSBC": "HSBC",
 }
 
 _unknown_seen: set[str] = set()
@@ -96,13 +103,12 @@ _unknown_seen: set[str] = set()
 def canonical(raw: str) -> str:
     """Return canonical broker name; raw unchanged when unknown.
 
-    Logs a warning the first time each unknown raw form is seen so new
-    aliases surface without spamming logs on every snapshot.
+    Log unknown spellings at DEBUG once per process without disk access.
     """
     mapped = _CANONICAL.get(raw)
     if mapped is not None:
         return mapped
     if raw not in _unknown_seen:
         _unknown_seen.add(raw)
-        _log.warning("broker_names.unknown_alias raw=%r", raw)
+        _log.debug("broker_names.unknown_alias raw=%r", raw)
     return raw

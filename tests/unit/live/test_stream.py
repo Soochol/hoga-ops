@@ -6,6 +6,8 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 import hoga.live.session_gate as session_gate_mod
 import hoga.live.stream as stream_mod
 from hoga.live.buffer import LiveBuffer
@@ -1325,7 +1327,8 @@ def _broker_tick(t_ms, buy_top, sell_top):
     })
 
 
-async def test_broker_names_canonical_on_display_but_raw_in_storage(tmp_path):
+@pytest.mark.parametrize("raw,expected", [("미래에셋", "미래에셋증권"), ("H S B C", "HSBC")])
+async def test_broker_names_canonical_on_display_but_raw_in_storage(tmp_path, raw, expected):
     """거래원명 정규화는 표시 경로에만 적용되고 저장은 원시 이름 그대로다.
 
     hoga.broker_names 의 원칙("API 경계에서만 적용, 저장 스키마 불변") 을 고정한다.
@@ -1342,19 +1345,19 @@ async def test_broker_names_canonical_on_display_but_raw_in_storage(tmp_path):
     # 실측 별칭(2026-07-21 018260): 스트림은 짧은/도시접미 형태를 쓴다.
     await stream.on_tick(_broker_tick(
         now,
-        buy_top=[{"name": "미래에셋", "qty": 100}],
+        buy_top=[{"name": raw, "qty": 100}],
         sell_top=[{"name": "JP모간서울", "qty": 200}],
     ))
 
     series = await buf.get_series("005930")
-    assert series["brokers"][0]["buy_top"][0]["name"] == "미래에셋증권"
+    assert series["brokers"][0]["buy_top"][0]["name"] == expected
     assert series["brokers"][0]["sell_top"][0]["name"] == "JP모간"
     assert series["brokers"][0]["buy_top"][0]["qty"] == 100   # 수량은 불변
 
     await stream.flush_once(now_ms=now + 10_000)
     jsonl = (tmp_path / "live" / "20260605" / "KRX" / "005930.jsonl").read_text()
-    assert "미래에셋증권" not in jsonl      # 저장: 원시 유지
-    assert "미래에셋" in jsonl
+    assert expected not in jsonl      # 저장: 원시 유지
+    assert raw in jsonl
 
 
 async def test_broker_unknown_alias_passes_through_unchanged(tmp_path):

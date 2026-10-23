@@ -74,7 +74,8 @@ def _canonicalize_broker_payload(payload: dict) -> dict:
     모듈 헤더가 예고한 "split nets, split sparklines" 그대로다. 합치지 않더라도
     latest 모드와 스팟 모드의 표기가 달라지는 불일치가 남는다.
 
-    미지 별칭은 canonical() 이 그대로 통과시키며 1회 경고한다(추측 병합 금지 —
+    미지 별칭은 canonical() 이 그대로 통과시키며 프로세스당 1회 DEBUG로
+    기록한다(추측 병합 금지 —
     골드만/씨티그룹 교훈).
     """
     from hoga.broker_names import canonical  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈·monkeypatch 시임)
