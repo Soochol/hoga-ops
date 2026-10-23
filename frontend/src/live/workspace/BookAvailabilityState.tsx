@@ -7,6 +7,10 @@ export function BookAvailabilityState({ state, onRetry }: {
   state: OrderbookAvailability | null; onRetry: () => void;
 }) {
   if (!state) return null;
+  if (state.quiet) return state.lastBookMs === undefined ? null
+    : <div className="m-2 text-xs text-fg-dim" data-testid="book-last-update">
+      마지막 호가 · {unixMsToKSTClock(state.lastBookMs)}
+    </div>;
   const tone = state.kind === 'query_error' ? 'error' : ['waiting_slot', 'reference_limit', 'unconfigured', 'display_delayed'].includes(state.kind) ? 'warn' : 'neutral';
   return <InlineState tone={tone} data-testid="book-availability" data-state={state.kind} className="m-2 text-xs">
     <div>{state.message}</div>

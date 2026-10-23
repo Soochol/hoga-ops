@@ -1,5 +1,10 @@
 # Design System — hoga-ops
 
+2026-10-23 사용자 요청: 10호가·호가주문에서 표시 중인 호가가 오래됐더라도 확인된
+오류가 없으면 갱신 대기/서버 상태 미확인 안내 상자와 연결·재조회 버튼을 표시하지 않는다.
+마지막 호가 시각만 기존 `text-xs`·`text-fg-dim` 보조 글씨로 남긴다. 실제 조회 실패·
+API/WS 오류·연결 복구·화면 전달 지연 안내와 주문 신선도 검사는 유지한다.
+
 **Created:** 2026-05-20 via `/design-consultation`
 **Project:** hoga-ops — Korean stock orderbook + trade replay analysis tool
 **Approved mockup (original, at 1.0× base intent):** `docs/superpowers/designs/2026-05-20-replay-viewer.html`

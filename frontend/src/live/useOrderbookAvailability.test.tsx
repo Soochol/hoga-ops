@@ -57,6 +57,18 @@ it('keeps a reference-limit reason after its toast is dismissed', () => {
   hook.rerender({ code: '005930', venue: 'KRX', enabled: true });
   expect(hook.result.current.availability?.kind).toBe('reference_limit');
 });
+it('distinguishes an expired observation from a failed status request for an existing book', () => {
+  const client = new QueryClient();
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  source.query.data!.kiwoom!.observed_at_ms = 50_000;
+  const hook = renderHook(() => useOrderbookAvailability({ code: '005930', venue: 'KRX',
+    live, nowMs: 100_000, bookMs: 67_000, enabled: true }), { wrapper });
+  expect(hook.result.current.availability).toMatchObject({ kind: 'stale', quiet: true, lastBookMs: 67_000 });
+  source.query.isError = true;
+  hook.rerender();
+  expect(hook.result.current.availability).toMatchObject({ kind: 'stale', quiet: false });
+  hook.unmount(); client.clear();
+});
 it('retries only the current code series query', () => {
   const hook = setup();
   const invalidate = vi.spyOn(hook.client, 'invalidateQueries');
