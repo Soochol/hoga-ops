@@ -15,6 +15,7 @@ from pathlib import Path
 from statistics import median
 from typing import Protocol
 
+from hoga.collector.chart import fetch_full_chart
 from hoga.collector.client import HogaplayHTTPError
 from hoga.collector.page_step import (
     DATA_WINDOW_END_MS,
@@ -626,7 +627,7 @@ def collect_stock_date(  # noqa: PLR0912, PLR0915
          t + new_step.
       3. Terminate when t >= DATA_WINDOW_END_MS and TERMINATION_EMPTY_PAGES consecutive
          Pages contain no new global_seq.
-      4. chart.php once at CHART_FINAL_TIME_MS.
+      4. chart.php backwards from CHART_FINAL_TIME_MS until the oldest page.
     """
     now = _now_kst()
     if is_today_too_early(date, now):
@@ -689,14 +690,27 @@ def collect_stock_date(  # noqa: PLR0912, PLR0915
         initial_step_ms=initial_step_ms,
     )
 
-    # 3. chart.php once
-    if cancel_token is not None and cancel_token.cancelled:
-        raise CaptureCancelled("capture cancelled before chart fetch")
-    if collector is not None:
-        with collector.phase("http_fetch"):
-            chart_body = client.fetch_chart(code, date, chart_final_time(date))
-    else:
-        chart_body = client.fetch_chart(code, date, chart_final_time(date))
+    # 3. chart.php caps one response at 500 candles. Evening sessions can
+    # exceed that, so walk backwards before publishing the full raw chart.
+    chart_requests = 0
+
+    def fetch_chart_page(cursor: int) -> str:
+        nonlocal chart_requests
+        if cancel_token is not None and cancel_token.cancelled:
+            raise CaptureCancelled("capture cancelled before chart fetch")
+        if chart_requests and rate_limit_s > 0:
+            if collector is not None:
+                with collector.phase("rate_limit"):
+                    _cancellable_sleep(rate_limit_s, cancel_token)
+            else:
+                _cancellable_sleep(rate_limit_s, cancel_token)
+        chart_requests += 1
+        if collector is not None:
+            with collector.phase("http_fetch"):
+                return client.fetch_chart(code, date, cursor)
+        return client.fetch_chart(code, date, cursor)
+
+    chart_body = fetch_full_chart(fetch_chart_page, date=date, final_time=chart_final_time(date))
     if collector is not None:
         with collector.phase("disk_write"):
             atomic_write_text(raw_dir / "chart.tsv", chart_body)

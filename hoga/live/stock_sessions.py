@@ -127,10 +127,14 @@ def krx_continuous_windows(
     # The query boundary may be clipped; callers with metadata pass the actual
     # regular close so a partial query cannot invent a closing auction.
     regular_close = min(closing, 153_000_000) if regular_close_ms is None else regular_close_ms
-    auction_start = int(unix_ms_to_hhmmssms(
-        date, hhmmssms_to_unix_ms(date, regular_close) - 10 * 60_000,
-    ))
-    return tuple((lo, hi) for lo, hi in (
-        (opening, min(closing, auction_start)),
-        (max(opening, 160_000_000), closing),
-    ) if lo < hi)
+    auction_start_ms = hhmmssms_to_unix_ms(date, regular_close) - 10 * 60_000
+    windows: list[tuple[int, int]] = []
+    # Frozen info.php responses can carry close=0. Such a close establishes no
+    # regular continuous window; encoding midnight minus ten minutes would
+    # raise before the parser can archive the original bounds as INVALID
+    # (ADR-0130). Keep the independent evening window and never invent a close.
+    if auction_start_ms > hhmmssms_to_unix_ms(date, opening):
+        auction_start = int(unix_ms_to_hhmmssms(date, auction_start_ms))
+        windows.append((opening, min(closing, auction_start)))
+    windows.append((max(opening, 160_000_000), closing))
+    return tuple((lo, hi) for lo, hi in windows if lo < hi)
