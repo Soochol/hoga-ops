@@ -9,12 +9,19 @@ interface FakeSource {
   onended: (() => void) | null;
 }
 const created: FakeAudioContext[] = [];
+const outputSource = () => ({ offset: { value: 1 }, connect: vi.fn(), disconnect: vi.fn(), start: vi.fn(), stop: vi.fn() });
 class FakeAudioContext {
   state = 'suspended';
   currentTime = 10;
   sampleRate = 48000;
   destination = {};
   sources: FakeSource[] = [];
+  outputs: ReturnType<typeof outputSource>[] = [];
+  createConstantSource = vi.fn(() => {
+    const source = outputSource();
+    this.outputs.push(source);
+    return source;
+  });
   resume = vi.fn(async () => { this.state = 'running'; });
   createBuffer = vi.fn((_channels: number, length: number, sampleRate: number) => {
     const samples = new Float32Array(length);
@@ -52,6 +59,60 @@ function delayedResume(audio: { state: string }, milliseconds: number): () => Pr
 }
 
 describe('주문접수 딩동과 복구', () => {
+  it('알림이 켜진 동안 2분 무음 후에도 출력 경로를 유지하고 마지막 구독 해제에서 정리한다', async () => {
+    const first = sound.subscribeOrderReceiptSoundRecovery();
+    const second = sound.subscribeOrderReceiptSoundRecovery();
+    const audio = await initialized();
+    expect(audio.outputs).toHaveLength(1);
+    const output = audio.outputs[0];
+    expect(output.offset.value).toBeGreaterThan(0);
+    expect(output.offset.value).toBeLessThanOrEqual(1e-7);
+    expect(output.connect).toHaveBeenCalledExactlyOnceWith(audio.destination);
+    expect(output.start).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(120_000);
+    sound.prepareOrderReceiptSound();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(audio.outputs).toHaveLength(1);
+    expect(audio.sources).toHaveLength(0); // Retaining output must never ring an alert.
+    expect(output.stop).not.toHaveBeenCalled();
+    expect(await sound.playOrderReceiptSound()).toBe(true);
+    expect(audio.sources).toHaveLength(1);
+    first();
+    expect(output.stop).not.toHaveBeenCalled();
+    second();
+    expect(output.stop).toHaveBeenCalledOnce();
+    expect(output.disconnect).toHaveBeenCalledOnce();
+    sound.prepareOrderReceiptSound();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(audio.outputs).toHaveLength(1);
+  });
+
+  it('닫힌 컨텍스트의 출력 유지 노드를 정리하고 새 컨텍스트에서 하나만 복원한다', async () => {
+    const release = sound.subscribeOrderReceiptSoundRecovery();
+    const old = await initialized();
+    old.state = 'closed';
+    sound.prepareOrderReceiptSound();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(created).toHaveLength(2);
+    expect(old.outputs[0].stop).toHaveBeenCalledOnce();
+    expect(old.outputs[0].disconnect).toHaveBeenCalledOnce();
+    expect(created[1].outputs).toHaveLength(1);
+    release();
+    expect(created[1].outputs[0].stop).toHaveBeenCalledOnce();
+  });
+
+  it('오디오 준비 도중 마지막 창을 닫으면 뒤늦게 출력 유지 노드를 만들지 않는다', async () => {
+    const release = sound.subscribeOrderReceiptSoundRecovery();
+    const audio = await initialized();
+    audio.state = 'suspended';
+    audio.resume.mockImplementation(delayedResume(audio, 100));
+    sound.prepareOrderReceiptSound();
+    release();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(audio.outputs).toHaveLength(1);
+    expect(audio.outputs[0].stop).toHaveBeenCalledOnce();
+  });
+
   it('매수·매도는 다른 버퍼로 재생하고 같은 체결의 여러 창·후퇴 이벤트를 중복 재생하지 않는다', async () => {
     const audio = await initialized();
     sound.notifyOrderFill(1, '005930', 'fill-a', 'BUY', 30);

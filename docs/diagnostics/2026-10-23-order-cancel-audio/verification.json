@@ -1,0 +1,84 @@
+{
+  "verified_at_kst": "2026-10-23T16:05:03.907986+09:00",
+  "rechecked_at_kst": "2026-10-23T16:07:40.219232+09:00",
+  "base_sha": "97b3ffe03fcefe7fb2e5ed6512d7d0356ec8ac65",
+  "working_tree_changes": [
+    "CHANGELOG.md",
+    "docs/plans/2026-10-13-toss-order-window.md",
+    "frontend/src/live/workspace/OrderSettingsForm.tsx",
+    "frontend/src/live/workspace/OrderWindow.test.tsx",
+    "frontend/src/live/workspace/OrderWindow.tsx",
+    "frontend/src/live/workspace/orderReceiptSound.test.ts",
+    "frontend/src/live/workspace/orderReceiptSound.ts",
+    "frontend/tests/e2e/live-orders.spec.ts"
+  ],
+  "fingerprints": {
+    "frontend_sha256": "9182184ca099486dea263ab8d4e56116fd1df94dc80339ea523358226c804f9e",
+    "e2e_inputs_sha256": "828df2a20291adbc4d183f2e1556f12e44dd700d6eb94a66ae99db9334a6faf2",
+    "algorithm": "SHA-256 of JSON with sort_keys=True mapping tracked path to its SHA-256; frontend is git ls-files frontend; E2E also includes hoga/, tests/, pyproject.toml, uv.lock and .python-version. Diagnostic documents are not runtime/test inputs.",
+    "selected_files": {
+      ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+      "frontend/package-lock.json": "7477f354f7ac27ec1d4f4583206b99a3393654f9eb18c4706873efc8935b203f",
+      "frontend/package.json": "20c82c1b5bcd1caf12bd988786df6fa156b27609a8e79c3ebcdbe635b3d3719a",
+      "frontend/playwright.config.ts": "ab37842cb52c4f93d436130846372c792aedb9c14a89b54db742b6a976e1169b",
+      "frontend/src/live/workspace/OrderSettingsForm.tsx": "e8e8f19078f4bc06252f418e846e6acc9692219aba0bccfca9ef167ed86bdea4",
+      "frontend/src/live/workspace/OrderWindow.test.tsx": "d72c6aaa30fc75776d22fe8874d8dc770ad6efa374ad28399af589ddb29b5c83",
+      "frontend/src/live/workspace/OrderWindow.tsx": "0f73bef51a23e78a6772376e64f20d836bf26fe7cb83c793ff6957c8ee583c00",
+      "frontend/src/live/workspace/orderReceiptSound.test.ts": "d83cbc292cbb9d0d9688bbce69a6e19c4538f5054e101ec4c270fb4481196758",
+      "frontend/src/live/workspace/orderReceiptSound.ts": "0e4fefe937c53d44356806c865e48deca670ab6c864d8e266614e2379feab401",
+      "frontend/tests/e2e/live-orders.spec.ts": "ac5ef55a03d4dacfaf471c6318472e1c63ce2ebb3989be92a9be3215f2a6bd06",
+      "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+      "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+      "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+      "frontend/vite.config.ts": "7c73747ef9ee8fdd6daaf48353268fc5b62f7fd8312b6ab1d98ca06782760493",
+      "pyproject.toml": "9ebb8f119bb60eca2cb968c978802b6c8ad3238d13827dd0929e697660c24dd2",
+      "uv.lock": "b6704bb6abd785df4c1898f776d837a9e5defd547a99d2c8dede66d758ed3893"
+    }
+  },
+  "checks": [
+    {
+      "command": "npx vitest run src/live/workspace/orderReceiptSound.test.ts src/live/workspace/OrderWindow.test.tsx src/live/workspace/useOrderFillSound.test.tsx",
+      "result": "182 passed, 3 files",
+      "reuse": "Latest main changed only backend collector and its diagnostics/tests. Every frontend tracked file hash, configs, lockfile and tool versions are unchanged."
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "passed all app/unit/E2E projects",
+      "reuse": "Same frontend input fingerprint after main fast-forward."
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-orders.spec.ts --grep '소리|미리듣기|오디오|같은 가격 묶음 드래그 취소|묶음 취소|묶음 정정' --reporter=line",
+      "result": "11 passed after main update; one worker; production Vite build passed as webServer prerequisite"
+    }
+  ],
+  "reuse_audit": {
+    "inputs_changed_since_success": [],
+    "runtime_changed_since_success": false,
+    "typecheck_and_unit_source_head": "56ce0b5722b9d76112eb06c072cd7f6d45eba396",
+    "final_e2e_source_head": "97b3ffe03fcefe7fb2e5ed6512d7d0356ec8ac65",
+    "reason": "main collector update 97b3ffe03 had no frontend changes. Frontend file hashes, lockfiles, compiler/test configuration and tools are identical. E2E was rerun after that update. All recorded input hashes were rechecked before committing."
+  },
+  "tools": {
+    "node": "v24.13.1",
+    "npm": "11.8.0",
+    "python": "Python 3.14.7",
+    "chrome": "Google Chrome 156.0.8078.47"
+  },
+  "regression_coverage": [
+    "Original sequential cancellation failed new 13-order test: expected 10 in flight, observed 1.",
+    "Maximum ten simultaneous group cancels; refill a completed slot immediately; reserve queued targets against repeated drag; leave other prices untouched.",
+    "Grouped cancel rejection/unknown outcome, event reconciliation and grouped replacement checks.",
+    "Simulated two-minute audio output retention; one shared node; release on last subscriber; closed-context recreation and pending-resume teardown.",
+    "Native Chrome output/preview lifecycle and order sound rejection/recovery."
+  ],
+  "isolation": {
+    "api_port": 20490,
+    "frontend_port": 21490,
+    "credentials": "Blank vendor credentials from committed Playwright configuration, empty worktree .env",
+    "orders": "Trading requests mocked; no live order submission."
+  },
+  "limitations": [
+    "Physical AirPods audibility after idle needs user confirmation after applying the change; automated tests validate the Web Audio lifecycle.",
+    "Tiny constant output remains active only while a sound-enabled order window or preview settings retains it, preventing the idle output power-saving path."
+  ]
+}

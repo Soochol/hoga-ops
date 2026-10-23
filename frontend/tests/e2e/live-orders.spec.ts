@@ -365,6 +365,58 @@ test('매수·매도 체결음은 미리듣기·실제 체결 증가에서 재�
   expect(await sounds()).toEqual([]);
 });
 
+test('미리듣기는 설정을 열 때 출력 경로를 준비하고 마지막 소리 설정을 끄면 해제한다', async ({ page }) => {
+  await page.addInitScript(() => {
+    const observed = globalThis.window as unknown as {
+      __soundOutput: { active: number; level: number; chimes: number };
+    };
+    observed.__soundOutput = { active: 0, level: 0, chimes: 0 };
+    const startOutput = ConstantSourceNode.prototype.start;
+    const stopOutput = ConstantSourceNode.prototype.stop;
+    ConstantSourceNode.prototype.start = function (when?: number) {
+      startOutput.call(this, when);
+      observed.__soundOutput.active++;
+      observed.__soundOutput.level = this.offset.value;
+    };
+    ConstantSourceNode.prototype.stop = function (when?: number) {
+      stopOutput.call(this, when);
+      observed.__soundOutput.active--;
+    };
+    const startChime = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when?: number) {
+      startChime.call(this, when);
+      observed.__soundOutput.chimes++;
+    };
+  });
+  const output = () => page.evaluate(() => (globalThis.window as unknown as {
+    __soundOutput: { active: number; level: number; chimes: number };
+  }).__soundOutput);
+  const { window, commands } = await setup(page);
+  const settings = orderSettingsButton(window);
+  const dialog = page.getByRole('dialog', { name: '주문 설정', exact: true });
+  expect((await output()).active).toBe(0);
+  await settings.click();
+  await expect.poll(async () => (await output()).active).toBe(1);
+  expect((await output()).level).toBeGreaterThan(0);
+  expect((await output()).level).toBeLessThanOrEqual(1.01e-7);
+  expect((await output()).chimes).toBe(0);
+  await dialog.getByRole('button', { name: '소리 들어보기', exact: true }).click();
+  await expect.poll(async () => (await output()).chimes).toBe(1);
+  await dialog.getByRole('button', { name: '매도 체결 소리 들어보기', exact: true }).click();
+  await expect.poll(async () => (await output()).chimes).toBe(2);
+  const toggle = dialog.getByRole('switch', { name: '주문접수 소리', exact: true });
+  await setSettingSwitch(toggle, true);
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  expect((await output()).active).toBe(1); // The enabled order window shares the same output.
+  await settings.click();
+  await setSettingSwitch(toggle, false);
+  expect((await output()).active).toBe(1); // Keep preview ready until its controls close.
+  await dialog.getByRole('button', { name: '주문 설정 닫기', exact: true }).click();
+  await expect.poll(async () => (await output()).active).toBe(0);
+  expect((await output()).chimes).toBe(2);
+  expect(commands).toHaveLength(0);
+});
+
 test('주문접수 소리는 미리듣기·성공 응답에서만 재생하고 켜기 설정을 복원한다', async ({ page }, testInfo) => {
   // Observe the real Web Audio buffer without replacing playback or autoplay policy.
   await page.addInitScript(() => {
@@ -809,7 +861,7 @@ for (const method of ['목록', '드래그'] as const) {
   });
 }
 
-test('가격별 묶음 취소는 아직 보내지 않은 주문도 잠그고 다른 가격의 취소와 새 목록을 유지한다', async ({ page }) => {
+test('가격별 묶음 취소는 모든 대상을 잠그고 다른 가격의 취소와 새 목록을 유지한다', async ({ page }) => {
   const { window, commands } = await setup(page, [mkOrder('one'), mkOrder('two'), mkOrder('other', '67100')]);
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
@@ -817,14 +869,14 @@ test('가격별 묶음 취소는 아직 보내지 않은 주문도 잠그고 다
   await page.route(/\/api\/trading\/orders\/[^/]+\/cancel$/, async route => {
     const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
     entered.push(id);
-    if (id === 'one') await gate;
+    if (id !== 'other') await gate;
     await route.fallback();
   });
   const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
   const other = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
   try {
     await drag(page, cell, orderSettingsButton(window));
-    await expect.poll(() => entered).toEqual(['one']);
+    await expect.poll(() => [...entered].sort()).toEqual(['one', 'two']);
     await window.getByRole('button', { name: '매수 총 접수 주문', exact: true }).click({ button: 'right' });
     const pendingList = page.getByRole('menu', { name: '매수 전체 접수 주문 목록', exact: true });
     await expect(pendingList.getByRole('button', { name: '주문 1 개별 취소', exact: true })).toBeDisabled();
@@ -834,14 +886,63 @@ test('가격별 묶음 취소는 아직 보내지 않은 주문도 잠그고 다
     const newList = page.getByRole('menu', { name: '매수 67,100원 주문 목록', exact: true });
     await newList.getByRole('button', { name: '주문 1 개별 취소', exact: true }).click();
     await expect.poll(() => commands.length).toBe(1);
-    expect(entered).toEqual(['one', 'other']);
+    expect([...entered].sort()).toEqual(['one', 'other', 'two']);
     release();
     await expect(cell).toBeEmpty();
     await expect(other).toBeEmpty();
     await expect(newList).toBeVisible();
-    expect(entered).toEqual(['one', 'other', 'two']);
+    expect([...entered].sort()).toEqual(['one', 'other', 'two']);
     expect(commands).toHaveLength(3);
   } finally { release(); }
+});
+
+test('같은 가격 묶음 드래그 취소는 최대 10건을 병렬 처리하고 응답마다 다음 주문을 시작한다', async ({ page }) => {
+  const targets = Array.from({ length: 13 }, (_, i) => mkOrder(`item-${i}`));
+  const { window, commands } = await setup(page, [...targets, mkOrder('other', '67100')], true, false, 0, 2);
+  const started: string[] = [];
+  const releases = new Map<string, () => void>();
+  let active = 0, peak = 0;
+  let draining = false;
+  await page.route(/\/api\/trading\/orders\/item-\d+\/cancel$/, async route => {
+    const id = new URL(route.request().url()).pathname.split('/').at(-2)!;
+    started.push(id);
+    peak = Math.max(peak, ++active);
+    try {
+      if (!draining) await new Promise<void>(resolve => releases.set(id, resolve));
+      await route.fallback();
+    } finally { active--; }
+  });
+  const cell = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
+  try {
+    await drag(page, cell, orderSettingsButton(window));
+    await expect.poll(() => started.length).toBe(10);
+    expect(active).toBe(10);
+    expect(commands).toHaveLength(0);
+    await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+    // All targets, including queued ones, stay reserved against another drag.
+    await drag(page, cell, orderSettingsButton(window));
+    expect(started).toHaveLength(10);
+    for (const index of [9, 10, 11]) {
+      releases.get(`item-${index}`)!();
+      await expect.poll(() => started.length).toBe(index + 2);
+      expect(active).toBe(10);
+    }
+    expect(peak).toBe(10);
+    for (const [id, release] of releases) if (id !== 'item-0') release();
+    await expect.poll(() => commands.length).toBe(12);
+    await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeDisabled();
+    releases.get('item-0')!();
+    await expect(cell).toBeEmpty();
+    await expect(window.getByRole('button', { name: /매수 67,100원 주문 추가/ })).toHaveText('70');
+    await expect(window.getByRole('combobox', { name: '주문 계좌' })).toBeEnabled();
+    expect(started).toHaveLength(13);
+    expect(new Set(started).size).toBe(13);
+    expect(commands).toHaveLength(13);
+    expect(new Set(commands.map(body => body.command_id)).size).toBe(13);
+  } finally {
+    draining = true;
+    for (const release of releases.values()) release();
+  }
 });
 
 test('5건 묶음 취소 중 주문 이벤트가 와도 조회를 끼워 넣지 않고 마지막에 한번 갱신한다', async ({ page }) => {
@@ -870,13 +971,13 @@ test('묶음 취소 응답을 기다리는 동안 다른 주문의 체결·취�
   await expect(window.getByLabel('매수 가능 금액')).toContainText('20,000,000원');
   const target = window.getByRole('button', { name: /매수 67,100원 주문 추가/ });
   const source = window.getByRole('button', { name: /매수 67,200원 주문 추가/ });
-  let release!: () => void, entered = false;
+  let release!: () => void, entered = 0;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  await page.route(/\/api\/trading\/orders\/item-0\/cancel$/, async route => { entered = true; await gate; await route.fallback(); });
+  await page.route(/\/api\/trading\/orders\/item-\d+\/cancel$/, async route => { entered++; await gate; await route.fallback(); });
   stateRequests.length = 0;
   try {
     await drag(page, source, orderSettingsButton(window));
-    await expect.poll(() => entered).toBe(true);
+    await expect.poll(() => entered).toBe(5);
     const at = Date.now();
     ws!.pushEvent({ type: 'trading_order', mode: 'live', account_seq: 1, revision: 100,
       order: { ...other, execution: { ...other.execution, filledQuantity: '50' } } });
