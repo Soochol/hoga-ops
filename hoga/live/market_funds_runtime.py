@@ -1,15 +1,15 @@
 """증시 주변 자금 런타임 — KOFIA 호출·캐시 (#1101).
 
-**키움 거버너를 타지 않는다.** 벤더가 다르고 유량 축도 다르다(공공데이터포털은
-오퍼레이션당 일 10,000, 우리 수요는 하루 3콜). 거버너에 태우면 키움 버킷을 오염시키고
+**키움 거버너를 타지 않는다.** 벤더가 다르고 유량 축도 다르다. 거버너에 태우면 키움 버킷을 오염시키고
 "이 실패가 어느 벤더인가" 가 흐려진다.
 
 **키가 없으면 이 표면만 조용히 빈다**(ADR-0134) — KIS 키 부재 시 옵션 심리 패널만
 비는 것과 같은 문법이다. 예외를 던지지 않는다.
 
-캐시는 **하루 단위**다. T+2 공시라 장중에 값이 바뀌지 않으므로 짧은 TTL 이 무의미하고,
-반대로 영구 캐시면 새 공시를 못 본다 — `basDt` 가 바뀌었는지로 판정하는 대신 단순히
-6시간 TTL 을 쓴다(하루 3콜 예산이라 정밀할 이유가 없다).
+공개일·시각은 고정하지 않는다. 원천 통계와 공공데이터 API의 반영 시점은 다를 수
+있으므로 화면 요청이 있는 동안 30초 TTL로 새 기준일을 확인한다. 여러 화면의
+요청은 캐시·단일비행으로 공유하고, 실패·빈 응답도 같은 주기로 재시도한다.
+24시간 계속 조회해도 오퍼레이션당 최대 2,880회(3종 합계 8,640회)다.
 """
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ from hoga.live import market_funds
 log = logging.getLogger(__name__)
 
 ENV_KEY = "KOFIA_API_KEY"
-TTL_S = 6 * 3600.0
+TTL_S = 30.0
 # 카드가 기본으로 보여 주는 최장 구간(120일) + 여유. `numOfRows=200` 이 한 콜에
 # 온다고 실측했다(#1098).
 DEFAULT_ROWS = 200
@@ -74,11 +74,17 @@ async def fetch_series(*, key: str) -> list[dict[str, Any]]:
         market_funds.parse_single_value_series(capital or {}, field=market_funds.FIELD_DEPOSIT),
         market_funds.parse_single_value_series(credit or {}, field=market_funds.FIELD_CREDIT),
         market_funds.parse_cma_series(cma or {}),
+        credit_kospi=market_funds.parse_single_value_series(
+            credit or {}, field=market_funds.FIELD_CREDIT_KOSPI,
+        ),
+        credit_kosdaq=market_funds.parse_single_value_series(
+            credit or {}, field=market_funds.FIELD_CREDIT_KOSDAQ,
+        ),
     )
 
 
 class MarketFundsCache:
-    """6시간 TTL + 단일비행 + last-good. 무자격이면 `unavailable` 을 실어 보낸다."""
+    """30초 TTL + 단일비행 + last-good. 무자격이면 `unavailable` 을 실어 보낸다."""
 
     def __init__(self, ttl_s: float = TTL_S) -> None:
         self._ttl_s = ttl_s
@@ -96,14 +102,20 @@ class MarketFundsCache:
         if key is None:
             return self._payload(unavailable="credentials_missing")
         now = time.monotonic()
-        if now - self._fetched_at < self._ttl_s and self._rows:
+        if now - self._fetched_at < self._ttl_s:
             return self._payload()
         async with self._lock:
             now = time.monotonic()
-            if now - self._fetched_at < self._ttl_s and self._rows:
+            if now - self._fetched_at < self._ttl_s:
                 return self._payload()
             rows = await fetch(key=key)
             self._fetched_at = time.monotonic()  # 실패해도 갱신 — 뜨거운 재시도 방지
             if rows:
-                self._rows = rows
+                # 한 오퍼레이션만 실패하거나 이전 날짜의 응답이 돌아와도 마지막
+                # 정상값을 지우지 않는다. 새로 관측한 0은 정상값으로 덮어쓴다.
+                by_date = {row["date"]: dict(row) for row in self._rows}
+                for row in rows:
+                    previous = by_date.setdefault(row["date"], dict(row))
+                    previous.update({field: value for field, value in row.items() if value is not None})
+                self._rows = [by_date[date] for date in sorted(by_date)[-DEFAULT_ROWS:]]
             return self._payload()

@@ -11,8 +11,8 @@ async function marketMocks(page: Page, populated = false) {
       sectors: { markets: { '0': { sectors: [{ code: '1', name: '긴 업종 이름', change_pct: 2 }] } }, volatility: { value: 20, change_pct: 1 } },
       'futures-quotes': { quotes: [], session: 'closed' },
       funds: { as_of: '20260904', series: [
-        { date: '20260901', deposit_won: 100e12, credit_won: 30e12, cma_won: 80e12 },
-        { date: '20260904', deposit_won: 93.5e12, credit_won: 31e12, cma_won: 81e12 },
+        { date: '20260901', deposit_won: 100e12, credit_kospi_won: 24e12, credit_kosdaq_won: 6e12, credit_won: 30e12, cma_won: 80e12 },
+        { date: '20260904', deposit_won: 93.5e12, credit_kospi_won: 25.5e12, credit_kosdaq_won: 5.5e12, credit_won: 31e12, cma_won: 81e12 },
       ] },
       'investor-flow': { date: '20260909', confirmed: false, markets: populated ? { KOSPI: [
         { t_ms: Date.UTC(2026, 8, 9, 0), individual: 10, foreign: -5, institution: -5 },
@@ -276,12 +276,26 @@ test('flow layout groups market context and preserves explorer preferences acros
 });
 
 for (const width of [1440, 800, 600]) {
-  test(`market cards fit available width at ${width}px`, async ({ page }) => {
+  test(`market cards fit available width at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     await marketMocks(page);
     await page.goto('/market');
     const market = page.locator('.market-page');
     await expect(market.getByText('93.5조', { exact: true })).toBeVisible();
+    const funds = market.locator('.market-funds-card');
+    const balances = funds.getByLabel('최신 잔고 · 조원');
+    const changes = funds.getByLabel('기간 증감 · 조원');
+    await expect(balances).toContainText('코스피 신용융자25.5조');
+    await expect(balances).toContainText('코스닥 신용융자5.5조');
+    await expect(changes).toContainText('코스피 신용융자+1.5조');
+    await expect(changes).toContainText('코스닥 신용융자-0.5조');
+    await expect(funds.getByText('CMA', { exact: true })).toHaveCount(0);
+    await expect(funds.getByText('신용융자', { exact: true })).toHaveCount(0);
+    await expect(funds.getByText('31.0조', { exact: true })).toHaveCount(0);
+    const labels = funds.locator('.market-fund-values > div');
+    const overflows = await labels.evaluateAll(elements => elements.map(el => el.scrollWidth - el.clientWidth));
+    expect(overflows.every(px => px <= 1)).toBe(true);
+    await funds.screenshot({ path: testInfo.outputPath(`market-funds-${width}.png`) });
     const investor = market.locator('.market-investor-card');
     const picker = investor.getByRole('group', { name: '수급 대상', exact: true });
     const modes = investor.getByRole('group', { name: '수급 표시 구간', exact: true });
@@ -323,6 +337,8 @@ test('market empty-state action, chart keyboard inspection and after-hours axis'
   await chart.press('End');
   await expect(chart.getByRole('status')).toContainText('09/04');
   await expect(chart.getByRole('status')).toContainText('-6.5조원');
+  await expect(chart.getByRole('status')).toContainText('코스피 신용융자 1.5조원');
+  await expect(chart.getByRole('status')).toContainText('코스닥 신용융자 -0.5조원');
 });
 
 for (const populated of [false, true]) for (const width of [1440, 800, 600]) {
@@ -431,6 +447,52 @@ for (const [width, fontSize] of [[1440, 16], [800, 16], [600, 20], [1440, 24]]) 
     await expect(viewport.getByRole('row').first()).toBeInViewport({ ratio: 0.99 });
     await body.screenshot({ path: testInfo.outputPath(`${modeLabel}-daily.png`) });
   }
+});
+
+test('funds pick up the previous day publication after hours without reloading', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-10-23T18:00:00+09:00') });
+  await marketMocks(page);
+  let published = false;
+  let failing = false;
+  let requests = 0;
+  const previous = { date: '20261021', deposit_won: 89.6e12, credit_kospi_won: 23.4e12, credit_kosdaq_won: 6.8e12 };
+  // 공개 시점을 재현하는 합성 표본이며 10/22 실측값은 아니다.
+  const next = { date: '20261022', deposit_won: 88.7e12, credit_kospi_won: 23.5e12, credit_kosdaq_won: 6.9e12 };
+  await page.route(apiPrefix('market/funds'), async route => {
+    requests++;
+    if (failing) {
+      await route.fulfill({ status: 503, json: { detail: 'temporarily unavailable' } });
+      return;
+    }
+    await route.fulfill({ json: { unavailable: null, as_of: published ? next.date : previous.date,
+      series: published ? [previous, next] : [previous] } });
+  });
+  await page.goto('/market');
+  const card = page.locator('.market-funds-card');
+  const balances = card.getByLabel('최신 잔고 · 조원');
+  await expect(balances).toContainText('고객예탁금89.6조');
+  await card.getByRole('button', { name: '120일', exact: true }).click();
+  const initialRequests = requests;
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => requests).toBeGreaterThan(initialRequests);
+  await expect(balances).toContainText('고객예탁금89.6조');
+  published = true;
+  await page.clock.fastForward(30_000);
+  await expect(balances).toContainText('고객예탁금88.7조');
+  await expect(balances).toContainText('코스피 신용융자23.5조');
+  await expect(balances).toContainText('코스닥 신용융자6.9조');
+  await expect(card.getByText('10/22', { exact: true })).toBeVisible();
+  await expect(card.getByRole('button', { name: '120일', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  failing = true;
+  const beforeFailure = requests;
+  await page.clock.fastForward(30_000);
+  await expect.poll(() => requests).toBeGreaterThan(beforeFailure);
+  await page.clock.fastForward(2000);
+  await expect(card.getByRole('status')).toContainText('서버 연결 확인 필요');
+  await expect(balances).toContainText('고객예탁금88.7조');
+  failing = false;
+  await page.clock.fastForward(30_000);
+  await expect(card.getByRole('status')).toHaveCount(0);
 });
 
 test('investor flow refreshes every ten seconds after 15:30 and recovers from API failure', async ({ page }) => {

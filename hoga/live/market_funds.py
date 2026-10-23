@@ -34,9 +34,11 @@ OP_CAPITAL = "getSecuritiesMarketTotalCapitalInfo"   # 증시자금추이 → �
 OP_CREDIT = "getGrantingOfCreditBalanceInfo"          # 신용공여잔고추이 → 신용융자
 OP_CMA = "getCMAStatus"                               # 일자별CMA현황 → CMA
 
-# 카드의 3계열. 값이 어느 필드에서 오는지를 한 곳에 모아 둔다.
+# 예탁금·신용융자 필드. 합계와 CMA는 기존 API 계약을 유지한다.
 FIELD_DEPOSIT = "invrDpsgAmt"      # 투자자예탁금
 FIELD_CREDIT = "crdTrFingWhl"      # 신용거래융자 전체(코스피+코스닥)
+FIELD_CREDIT_KOSPI = "crdTrFingScrs"  # 신용거래융자 유가증권시장
+FIELD_CREDIT_KOSDAQ = "crdTrFingKosdaq"  # 신용거래융자 코스닥시장
 CMA_TOTAL_LABEL = "합계"
 
 
@@ -105,20 +107,23 @@ def parse_cma_series(body: dict[str, Any]) -> dict[str, int]:
 
 
 def merge_series(
-    deposit: dict[str, int], credit: dict[str, int], cma: dict[str, int]
+    deposit: dict[str, int], credit: dict[str, int], cma: dict[str, int],
+    *, credit_kospi: dict[str, int], credit_kosdaq: dict[str, int],
 ) -> list[dict[str, Any]]:
-    """세 계열 → 날짜 오름차순 행. 화면 축(3계열 × 날짜)과 같은 모양이다.
+    """예탁금·시장별 신용융자와 기존 계열 → 날짜 오름차순 행.
 
     세 오퍼레이션의 최신일이 어긋날 수 있으므로(공시 시점이 각각이다) **합집합**을
     쓰고 없는 값은 `None` 으로 남긴다 — 0 으로 채우면 "그날 예탁금이 0" 이라는
     거짓말이 된다.
     """
-    dates = sorted(set(deposit) | set(credit) | set(cma))
+    dates = sorted(set(deposit) | set(credit) | set(cma) | set(credit_kospi) | set(credit_kosdaq))
     return [
         {
             "date": d,
             "deposit_won": deposit.get(d),
             "credit_won": credit.get(d),
+            "credit_kospi_won": credit_kospi.get(d),
+            "credit_kosdaq_won": credit_kosdaq.get(d),
             "cma_won": cma.get(d),
         }
         for d in dates
