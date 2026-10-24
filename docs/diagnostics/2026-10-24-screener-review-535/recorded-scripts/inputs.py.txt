@@ -1,0 +1,9 @@
+import hashlib,json,platform,subprocess
+from pathlib import Path
+import polars,pydantic,pytest
+from hoga.api.screener_series_execution import code_revision
+paths=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard'],text=True).splitlines()
+paths=sorted(set(p for p in paths if p.startswith(('hoga/','tests/','frontend/src/','frontend/tests/')) or p in ['pyproject.toml','uv.lock','ruff.toml','.python-version','frontend/package.json','frontend/package-lock.json','frontend/vite.config.ts','frontend/vitest.config.ts','frontend/playwright.config.ts'] or p.startswith('frontend/tsconfig')))
+output={'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'base':subprocess.check_output(['git','rev-parse','origin/main'],text=True).strip(),'code_revision':code_revision(),'python':platform.python_version(),'polars':polars.__version__,'pydantic':pydantic.__version__,'pytest':pytest.__version__,'node':subprocess.check_output(['node','--version'],text=True).strip(),'files':{p:hashlib.sha256(Path(p).read_bytes()).hexdigest() for p in paths if Path(p).is_file()}}
+Path('/tmp/hoga-review535-20261024/verification-inputs.json').write_text(json.dumps(output,indent=2))
+print('verification inputs',len(output['files']),'revision',output['code_revision'])

@@ -1,0 +1,3 @@
+020180 recorded sample fields ['started_at', 'finished_at', 'unadjusted', 'adjusted', 'price_events', 'violations', 'provider_rows']
+038390 recorded sample fields ['started_at', 'finished_at', 'unadjusted', 'adjusted', 'price_events', 'violations', 'provider_rows']
+PASS saved7/7; unresolved12 isolated;535 selections preserved; old/new exact replays4/4

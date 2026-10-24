@@ -1,0 +1,122 @@
+[
+  {
+    "code": "020180",
+    "date": "2026-06-08",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260608&to=20260608&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:16.971559+00:00",
+    "finished_at": "2026-10-24T11:08:17.014254+00:00",
+    "status": 200,
+    "file": "live-020180-60000-20260608.json",
+    "sha256": "a17f31af42e35b9a65f03fd55c9d706fba51579522b2e79961dd3a65027a99ae"
+  },
+  {
+    "code": "020180",
+    "date": "2026-06-09",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260609&to=20260609&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.014605+00:00",
+    "finished_at": "2026-10-24T11:08:17.050712+00:00",
+    "status": 200,
+    "file": "live-020180-60000-20260609.json",
+    "sha256": "2566013c63ae8e9d12989e17f1028b7ad449b2613d5188b1254412056b28b386"
+  },
+  {
+    "code": "020180",
+    "date": "2026-06-24",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260624&to=20260624&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.051041+00:00",
+    "finished_at": "2026-10-24T11:08:17.086041+00:00",
+    "status": 200,
+    "file": "live-020180-60000-20260624.json",
+    "sha256": "c3e745a77a60ef15e7c4c2d846e6ecf05bdd59b1c8756536a1730632b772ee2a"
+  },
+  {
+    "code": "020180",
+    "date": "2026-07-10",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260710&to=20260710&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.086363+00:00",
+    "finished_at": "2026-10-24T11:08:17.128895+00:00",
+    "status": 200,
+    "file": "live-020180-60000-20260710.json",
+    "sha256": "fd1eca2c2a3dfb74c46f3dc39282d8966c6f944e9eaa7b3d23d5cea1d751587a"
+  },
+  {
+    "code": "020180",
+    "date": "2026-07-13",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260713&to=20260713&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.129186+00:00",
+    "finished_at": "2026-10-24T11:08:17.167047+00:00",
+    "status": 200,
+    "file": "live-020180-60000-20260713.json",
+    "sha256": "7fff247b9464ba02ddeebbafdff62fc76233e478d745c6828bc6b49d8e17294b"
+  },
+  {
+    "code": "020180",
+    "date": "2026-07-21",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260721&to=20260721&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.167297+00:00",
+    "finished_at": "2026-10-24T11:08:17.213487+00:00",
+    "status": 200,
+    "file": "live-020180-60000-20260721.json",
+    "sha256": "f530c7cbc9c774ccc27bf00496e98e17adfce31eb042bc440a1159775eee578e"
+  },
+  {
+    "code": "020180",
+    "date": "2026-07-22",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260722&to=20260722&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.213850+00:00",
+    "finished_at": "2026-10-24T11:08:17.262059+00:00",
+    "status": 200,
+    "file": "live-020180-60000-20260722.json",
+    "sha256": "ccf01adee651313ac96733300efb0a43e9bc630a9d02a2d240e8827297374dd4"
+  },
+  {
+    "code": "038390",
+    "date": "2026-06-08",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=038390&from=20260608&to=20260608&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.262343+00:00",
+    "finished_at": "2026-10-24T11:08:17.297028+00:00",
+    "status": 200,
+    "file": "live-038390-60000-20260608.json",
+    "sha256": "a9e5d80661f37dc2d224aa42e21b457922e7b213130740133efde9b2f8671dfd"
+  },
+  {
+    "code": "038390",
+    "date": "2026-06-09",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=038390&from=20260609&to=20260609&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.297286+00:00",
+    "finished_at": "2026-10-24T11:08:17.331829+00:00",
+    "status": 200,
+    "file": "live-038390-60000-20260609.json",
+    "sha256": "243680093efdfa77c6f8803eba8d88003933056d244cfd928c5063d5730dcd73"
+  },
+  {
+    "code": "038390",
+    "date": "2026-07-13",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=038390&from=20260713&to=20260713&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.332114+00:00",
+    "finished_at": "2026-10-24T11:08:17.376885+00:00",
+    "status": 200,
+    "file": "live-038390-60000-20260713.json",
+    "sha256": "0540d46bfac99cf09dd183228a73fdcaed227387a051fe492a3b6e23be8386ec"
+  },
+  {
+    "code": "038390",
+    "date": "2026-07-15",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=038390&from=20260715&to=20260715&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.377207+00:00",
+    "finished_at": "2026-10-24T11:08:17.431489+00:00",
+    "status": 200,
+    "file": "live-038390-60000-20260715.json",
+    "sha256": "0f2c948faff6f591a3e11d52ea4186ee789ca6b3883991df1782ba1a54ada7f9"
+  },
+  {
+    "code": "038390",
+    "date": "2026-07-21",
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=038390&from=20260721&to=20260721&venue=KRX&bucket_ms=60000",
+    "started_at": "2026-10-24T11:08:17.431753+00:00",
+    "finished_at": "2026-10-24T11:08:17.470480+00:00",
+    "status": 200,
+    "file": "live-038390-60000-20260721.json",
+    "sha256": "020eeb05f2db437ba8458cc9b7f77bfb76bfadc803be20706ab66ba7fcf7fd11"
+  }
+]

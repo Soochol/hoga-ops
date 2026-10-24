@@ -5,10 +5,15 @@ export type CalculationPolicy = 'legacy_v1' | 'separate_bases_v2';
 export type VolumeBasis = 'raw' | 'share_adjusted';
 export interface VolumePeriodParams extends PeriodParams { volume_basis?: VolumeBasis | null }
 export type AmountMethod = 'provider_actual' | 'ohlcv_estimate' | 'mixed_daily';
+export type DailySessionScope = 'provider_daily_all_sessions' | 'legacy_unknown' | 'mixed';
+export type DailyConfirmationPolicy = 'historical_recheck_v1' | 'legacy_unverified' | 'mixed';
 export interface ScreenerAmountEvidence { trade_value_won: number; method: AmountMethod }
 export interface ScreenerCalculation {
   policy: CalculationPolicy; snapshot_id: string | null; adjusted_as_of: string | null;
   price_basis: string; event_revision: string | null; replayable: boolean; execution_id?: string | null;
+  daily_session_scope?: DailySessionScope | null;
+  daily_confirmation_policy?: DailyConfirmationPolicy | null;
+  correction_revision?: string | null;
 }
 export interface ScreenerVolumeEvidence {
   basis: VolumeBasis; original_volume: string; compared_volume: string; maximum: string;
@@ -222,6 +227,7 @@ export interface DepthPeakValue {
 }
 
 export interface ScreenerResponse {
+  daily_coverage?: BarVolumeCoverage | null;
   calculation?: ScreenerCalculation | null;
   /** Actual evaluation cutoff(s), not the request completion time. */
   basis_at_ms?: number | null;
@@ -263,7 +269,18 @@ export interface ScreenerUpdating {
   phase?: string | null;
 }
 
+export interface ScreenerDailyIngestStatus {
+  attempts_today: number;
+  provisional: number; confirmed: number; quarantined: number; legacy: number;
+  checked_on: string | null; last_trading_day: string | null; last_attempt_at: string | null;
+  failed_codes: number; errors: Record<string, string>; codes: number; sample_count: number;
+  unavailable_codes: number; unavailable: Record<string, string>; excluded_codes: number; excluded_dates: number;
+  retryable_unavailable_codes: number; retired_codes: number; retired: Record<string, string>; skipped_codes: number;
+  provider_pages: number; reused_samples: number; elapsed_ms: number; commit_pending: boolean;
+}
+
 export interface ScreenerStatus {
+  daily_ingest?: ScreenerDailyIngestStatus | null;
   calculation_policies?: CalculationPolicy[];
   status: string;
   last_raw_date?: string;
@@ -279,6 +296,9 @@ export interface ScreenerStatus {
  *  `SKIP_REASON_MESSAGES` 도 같은 PR 에서 — 그쪽은 Record 라 TS 가 강제한다. */
 export type ScreenerUpdateSkipReason =
   | 'no_gap'
+  | 'retry_wait'
+  | 'finalization_wait'
+  | 'daily_limit'
   | 'not_seeded'
   | 'creds_missing'
   | 'calendar_source_missing'
@@ -308,6 +328,8 @@ export const readContinuousResult = (id: string): Promise<ScreenerResponse> => s
 export const getScreenerStatus = () => apiCall<ScreenerStatus>('/api/screener/status');
 export const triggerScreenerUpdate = () =>
   apiCall<ScreenerUpdateResponse>('/api/screener/update', { method: 'POST' });
+export const triggerScreenerHistoryRepair = () =>
+  apiCall<ScreenerUpdateResponse>('/api/screener/repair-history', { method: 'POST' });
 
 // --- 봉 패턴 검색 (ADR-0166) ---------------------------------------------
 // 손 미러 — 정본은 `hoga/api/models.py` 의 Pattern* 모델이다. 값·필드가 갈리면

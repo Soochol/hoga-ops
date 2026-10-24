@@ -1,0 +1,13 @@
+import datetime as dt,hashlib,json
+from pathlib import Path
+from hoga.api import screener_series_store as s
+from hoga.api.screener_series_execution import code_revision
+from hoga.util.timeenc import KST
+P=Path('/tmp/hoga-auto-ingest-20261024');D=Path('/home/dev/.local/share/hoga-ops/data');before=json.loads((P/'protected-before.json').read_text());after={name:hashlib.sha256((D/'screener'/name).read_bytes()).hexdigest() if (D/'screener'/name).exists() else None for name in before}
+assert after==before
+jobs=json.loads(Path('/tmp/hoga-review12-20261024/jobs-before.json').read_text());assert all(hashlib.sha256(Path(name).read_bytes()).hexdigest()==value for name,value in jobs.items())
+snapshot=s.load_snapshot(D);old=json.loads((P/'snapshot-before.json').read_text());assert snapshot[0]==old['id'] and snapshot[1]==old['manifest']
+for source in Path('hoga').rglob('*.py'):assert source.read_bytes()==(Path('/home/dev/code/hoga-ops')/source).read_bytes()
+for name in json.loads((P/'install-paths.json').read_text()):assert Path(name).read_bytes()==(Path('/home/dev/code/hoga-ops')/name).read_bytes()
+(P/'preservation.json').write_text(json.dumps({'observed_at':dt.datetime.now(KST).isoformat(),'protected_before':before,'protected_after':after,'present_files_unchanged':sum(v is not None for v in before.values()),'absent_files_still_absent':sum(v is None for v in before.values()),'recovery_plans_and_jobs_unchanged':len(jobs),'v2_snapshot_unchanged':snapshot[0],'code_revision':code_revision(),'all_primary_feature_files_equal':True,'general_ingest_has_not_run_in_production_yet':not (D/'screener/daily_ingest/current.json').exists()},indent=2))
+print('PASS 8 protected files,3 absent files,9 recovery plan/job files, v2 selections and tested serving sources preserved')

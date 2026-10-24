@@ -1,0 +1,177 @@
+[
+  {
+    "code": "000020",
+    "name": "동화약품",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "000120",
+    "name": "CJ대한통운",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "000430",
+    "name": "대원강업",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "000520",
+    "name": "삼일제약",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "000650",
+    "name": "천일고속",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "001000",
+    "name": "신라섬유",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "001530",
+    "name": "DI동일",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "003060",
+    "name": "에이프로젠바이오로직스",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "003230",
+    "name": "삼양식품",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "003240",
+    "name": "태광산업",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "004770",
+    "name": "써니전자",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "005930",
+    "name": "삼성전자",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "012450",
+    "name": "한화에어로스페이스",
+    "market": "KOSPI",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "013030",
+    "name": "하이록코리아",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "013120",
+    "name": "동원개발",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "017650",
+    "name": "대림제지",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "020180",
+    "name": "대신정보통신",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "020400",
+    "name": "대동금속",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "025980",
+    "name": "아난티",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "027710",
+    "name": "팜스토리",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "038390",
+    "name": "레드캡투어",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "044480",
+    "name": "빌리언스",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "900300",
+    "name": "오가닉티코스메틱",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "900310",
+    "name": "컬러레이",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  },
+  {
+    "code": "900340",
+    "name": "윙입푸드",
+    "market": "KOSDAQ",
+    "is_etf": false,
+    "is_halted": false
+  }
+]

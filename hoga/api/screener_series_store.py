@@ -7,12 +7,14 @@ writers publish its pointer only after every referenced file has been fsynced.
 from __future__ import annotations
 
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
 import re
 import shutil
 import tempfile
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -20,7 +22,6 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from hoga.api import trading_days
-from hoga.api.screener_write_lock import screener_write_lock
 from hoga.util.atomic_write import atomic_write_json
 
 _HASH = re.compile(r"^[a-f0-9]{64}$")
@@ -34,6 +35,20 @@ _BASE_FILES = (
     "saves.json",
     "exclusions.json",
 )
+
+
+@contextmanager
+def _series_write_lock(sdir):
+    """Share the commit lock, but never recover or write the legacy publication journal."""
+    sdir.mkdir(parents=True, exist_ok=True)
+    with (sdir / ".writer.lock").open("a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            if (sdir / "history_publish.json").exists():
+                raise ValueError("기존 미완료 공개를 보존하기 위해 v2 쓰기를 중단합니다")
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 class ShareEvent(BaseModel):
@@ -149,7 +164,7 @@ def ensure_baseline(data_dir: Path) -> str:
     if pointer.exists():
         return _checked(json.loads(pointer.read_text())["id"])
     base.mkdir(parents=True, exist_ok=True)
-    with screener_write_lock(data_dir / "screener"), tempfile.TemporaryDirectory(dir=base) as tmp:
+    with _series_write_lock(data_dir / "screener"), tempfile.TemporaryDirectory(dir=base) as tmp:
         if pointer.exists():
             return _checked(json.loads(pointer.read_text())["id"])
         stage = Path(tmp)
@@ -221,11 +236,16 @@ def _merge_observations(previous: dict, incoming: dict) -> dict:
     return value
 
 
-def _publish(data_dir: Path, section: str, code: str, value: dict, *, anchor: str | None = None) -> str:
+def _publish(
+    data_dir: Path, section: str, code: str, value: dict, *, anchor: str | None = None,
+    expected_snapshot: str | None = None,
+) -> str:
     baseline = ensure_baseline(data_dir)
     base = root(data_dir)
-    with screener_write_lock(data_dir / "screener"):
+    with _series_write_lock(data_dir / "screener"):
         old = load_snapshot(data_dir)
+        if expected_snapshot is not None and (old is None or old[0] != expected_snapshot):
+            raise ValueError("검토 이후 스냅샷이 변경되어 정정 근거를 다시 확인해야 합니다")
         manifest = (
             old[1]
             if old
@@ -238,11 +258,15 @@ def _publish(data_dir: Path, section: str, code: str, value: dict, *, anchor: st
             candidate = _write_object(base, value)
             value = {**_merge_observations(previous, value), "candidate_observation": candidate}
         identity = _write_object(base, value)
-        if manifest[section].get(code) == identity:
+        if manifest.get(section, {}).get(code) == identity:
             return old[0]
-        manifest = {**manifest, section: {**manifest[section], code: identity}, "parent": old[0] if old else None}
+        manifest = {
+            **manifest, section: {**manifest.get(section, {}), code: identity}, "parent": old[0] if old else None,
+        }
         if anchor is not None:
             manifest["adjusted_as_of"] = max(anchor, manifest["adjusted_as_of"] or anchor)
+        if section == "observations" and value.get("confirmation"):
+            manifest["daily_contract_required"] = True
         manifest["calendar"] = sorted(trading_days.trading_days(data_dir))
         roster = data_dir / "screener" / "stocks.parquet"
         import polars as pl  # noqa: PLC0415 — keep the metadata-only reader lightweight
@@ -266,6 +290,28 @@ def publish_share_evidence(data_dir: Path, evidence: ShareEvidence) -> str:
     return _publish(data_dir, "quantity", evidence.code, evidence.model_dump(mode="json"))
 
 
+def publish_correction_reviews(data_dir: Path, reviews: dict[str, dict], *, expected_snapshot: str) -> str:
+    """Publish a fully validated review batch once, keeping all observation and metadata identities."""
+    base = root(data_dir)
+    with _series_write_lock(data_dir / "screener"):
+        current = load_snapshot(data_dir)
+        if current is None or current[0] != expected_snapshot:
+            raise ValueError("검토 이후 스냅샷이 변경되어 정정 근거를 다시 확인해야 합니다")
+        manifest = current[1]
+        for code, review in reviews.items():
+            if (review.get("kind") != "screener_correction_review" or review.get("code") != code
+                    or review.get("baseline") != manifest["baseline"]
+                    or review.get("observation_id") != manifest["observations"].get(code)):
+                raise ValueError("정정 묶음의 관측 바인딩이 다릅니다")
+        identities = {code: _write_object(base, review) for code, review in reviews.items()}
+        updated = {**manifest, "parent": current[0],
+                   "corrections": {**manifest.get("corrections", {}), **identities}}
+        identity = _write_object(base, updated)
+        atomic_write_json(base / "current.json", {"id": identity})
+        _sync_dir(base)
+        return identity
+
+
 def publish_pair(
     data_dir: Path,
     code: str,
@@ -277,6 +323,7 @@ def publish_pair(
     observed_at: str,
     violations: list[dict] | None = None,
     provider_rows: dict[str, list[dict]] | None = None,
+    confirmation: dict | None = None,
 ) -> str:
     """Keep valid observations even if legacy factor reconstruction rejects them.
 
@@ -307,7 +354,18 @@ def publish_pair(
         "violations": violations or [],
         "provider_rows": provider_rows or {},
     }
+    if confirmation is not None:
+        from hoga.api.screener_daily_confirmation import state  # noqa: PLC0415 — metadata avoids store cycle
+
+        value["confirmation"] = confirmation
+        state(value)
     return _publish(data_dir, "observations", code, value, anchor=adjusted_as_of)
+
+
+def current_observation(data_dir: Path, observation: dict) -> dict:
+    """Merged rows keep their old evidence; confirmation belongs to the new candidate only."""
+    identity = observation.get("candidate_observation")
+    return read_object(data_dir, identity) if identity else observation
 
 
 @lru_cache(maxsize=32)

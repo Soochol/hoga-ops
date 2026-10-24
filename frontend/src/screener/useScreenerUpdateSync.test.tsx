@@ -87,7 +87,7 @@ describe('useScreenerUpdateSync', () => {
     await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['screener-status'] }));
   });
 
-  it('finished(reason=error) → error 피드백 + dataStale 미마킹', () => {
+  it('finished(reason=error) → error 피드백 + 격리 가능성을 반영해 dataStale 마킹', () => {
     const qc = new QueryClient();
     useScreenerPanelStore.setState({ lastScan: { ...SCAN } });
     renderHook(() => useScreenerUpdateSync(), { wrapper: makeWrapper(qc) });
@@ -97,10 +97,10 @@ describe('useScreenerUpdateSync', () => {
     expect(useScreenerUpdateFeedback.getState().feedback).toMatchObject({
       message: '갱신 실패', tone: 'error',
     });
-    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(false);
+    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
   });
 
-  it('finished(updated=0, reason=null) → 추가분 없음 피드백 + dataStale 미마킹', () => {
+  it('finished(updated=0, reason=null) → 추가분 없음 피드백 + 격리 가능성을 반영해 dataStale 마킹', () => {
     const qc = new QueryClient();
     useScreenerPanelStore.setState({ lastScan: { ...SCAN } });
     renderHook(() => useScreenerUpdateSync(), { wrapper: makeWrapper(qc) });
@@ -110,7 +110,7 @@ describe('useScreenerUpdateSync', () => {
     expect(useScreenerUpdateFeedback.getState().feedback).toMatchObject({
       message: '추가된 확정분 없음', tone: 'info',
     });
-    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(false);
+    expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
   });
 
   it('disconnected → screener-status invalidate(오프라인 중 완료 복구)', () => {
@@ -220,4 +220,37 @@ describe('manual history refresh feedback', () => {
     fireEvent_({ type: 'screener_update_finished', updated: 0, total: 20, reason: 'partial', refresh });
     expect(useScreenerPanelStore.getState().lastScan?.dataStale).toBe(true);
   });
+});
+
+it('only the explicit repair operation calls the history endpoint', async () => {
+  const qc = new QueryClient();
+  qc.setQueryData(['screener-status'], OK_STATUS);
+  const update = vi.spyOn(screenerApi, 'triggerScreenerUpdate');
+  const repair = vi.spyOn(screenerApi, 'triggerScreenerHistoryRepair')
+    .mockResolvedValue({ running: true, done: 0, total: 0 });
+  const { result } = renderHook(() => useScreenerUpdate(), { wrapper: makeWrapper(qc) });
+  await act(async () => { await result.current.mutateAsync('repair-history'); });
+  expect(repair).toHaveBeenCalledOnce();
+  expect(update).not.toHaveBeenCalled();
+  expect(qc.getQueryData<ScreenerStatus>(['screener-status'])?.updating?.phase).toBe('종목 목록 확인 중');
+});
+
+it.each(['retry_wait', 'daily_limit', 'finalization_wait'] as const)('explains %s instead of claiming completion', async reason => {
+  const qc = new QueryClient();
+  qc.setQueryData(['screener-status'], OK_STATUS);
+  vi.spyOn(screenerApi, 'triggerScreenerUpdate').mockResolvedValue({ running: false, updated: 0, reason });
+  const { result } = renderHook(() => useScreenerUpdate(), { wrapper: makeWrapper(qc) });
+  await act(async () => { await result.current.mutateAsync(); });
+  expect(useScreenerUpdateFeedback.getState().feedback).toMatchObject({ message: SKIP_REASON_MESSAGES[reason], tone: 'warn' });
+  expect(qc.getQueryData<ScreenerStatus>(['screener-status'])?.updating).toBeNull();
+});
+
+it('does not resurrect an older repair failure after a newer daily recheck', () => {
+  const refresh = { master_refreshed: true, symbols_added: 0, written_rows: 0, checked: 987,
+    total: 987, failed: 987, unavailable: 0, completed_ms: 1000, reason: 'partial' };
+  const daily = { last_attempt_at: '2026-10-24T22:00:00+09:00' } as screenerApi.ScreenerDailyIngestStatus;
+  expect(visibleUpdateFeedback(null, false, refresh, daily)).toBeNull();
+  expect(visibleUpdateFeedback({ message: '실패 987종목', source: 'update', tone: 'warn', atMs: 1000 }, false, refresh, daily)).toBeNull();
+  expect(visibleUpdateFeedback(null, false, { ...refresh, completed_ms: Date.parse(daily.last_attempt_at!) + 1 }, daily)?.message)
+    .toContain('실패 987종목');
 });

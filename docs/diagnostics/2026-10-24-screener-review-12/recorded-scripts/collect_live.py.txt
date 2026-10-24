@@ -1,0 +1,19 @@
+import asyncio,datetime as dt,hashlib,json
+from pathlib import Path
+import httpx
+P=Path(__file__).parent;R=Path('docs/diagnostics/2026-10-24-screener-review-535')
+import gzip
+job=json.loads(gzip.decompress((R/'apply-result.json.gz').read_bytes()))['job'];codes=['020180','038390']
+async def main():
+ records=[]
+ async with httpx.AsyncClient(timeout=60) as c:
+  for code in codes:
+   # Use the existing server-owned governor; do not create a broker client or a recovery plan.
+   for kind,bucket in [('past-daily-candles',None),('past-candles',180000),('past-candles',3600000)]:
+    params={'code':code,'from':'20260608','to':'20260722','venue':'KRX'}
+    if bucket:params['bucket_ms']=bucket
+    started=dt.datetime.now(dt.timezone.utc).isoformat();r=await c.get('http://127.0.0.1:8000/api/live/'+kind,params=params)
+    path=P/f'live-{code}-{bucket or "daily"}.json';path.write_bytes(r.content)
+    records.append({'url':str(r.url),'started_at':started,'finished_at':dt.datetime.now(dt.timezone.utc).isoformat(),'http_status':r.status_code,'file':path.name,'sha256':hashlib.sha256(r.content).hexdigest()})
+    (P/'live-collection.json').write_text(json.dumps(records,indent=2));r.raise_for_status();data=r.json();print(code,bucket or 'daily','bars',len(data['candles']),'warnings',data.get('data_warnings'),flush=True)
+asyncio.run(main())

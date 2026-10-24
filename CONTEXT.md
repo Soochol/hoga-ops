@@ -39,7 +39,8 @@ The full span of data hogaplay returns for a stock-date, broader than the Regula
 _Avoid_: "session" alone, "trading day"
 
 **Code**:
-A 6-digit KRX ticker, e.g. `005930`. Strings, not integers — leading zeros matter.
+A 6-character KRX ticker using ASCII uppercase letters and digits, e.g. `005930`,
+`00088K`, `0000D0`. Strings, not integers — leading zeros and letters matter.
 _Avoid_: "symbol", "ticker"
 
 **Window Pin (창 종목 고정)**:
@@ -960,6 +961,25 @@ _Avoid_: 거래대금을 종가×거래량으로 (— 평균가×거래량); 기
 기존 id의 정책 전환은 거절하고 새 사본을 만든다. 일반 화면 캐시와 영구 실행 보존은 다르다.
 확정 D/W/M 실행만 입력·대상 종목·제외·달력·코드 버전을 고정해 정확 재실행할 수 있다.
 수량 자료는 출처·검증 구간을 명시해 import하며 전 종목의 자동 검증 소스로 간주하지 않는다.
+
+**스크리너 명시적 복구**: 고정 종목 목록·필요 구간·수정 기준일·비교 요청으로 복구 계획을
+보존하고 `/api/screener/recovery/{plan_id}/run`으로 서버 소유 작업을 시작한다. 기존 REST
+클라이언트·페이지별 background 거버너를 공유하며 원주가·수정주가·계수·저장 조건·제외는
+덮어쓰지 않는다. 응답을 먼저 불변 객체로 보관해 재개 시 재사용하고, 취소·기준일 변경·
+기존 입력 변경에는 중단한다. 원본 충돌은 해당 비교 구간에서 격리하며 수량 이력 미확인은
+관측 수집 완료와 별개다. 기존 갱신 보고의 실패 건수를 자동으로 지우지 않는다.
+명령·실측·비교 범위는 [10종목 시범 복구](docs/diagnostics/2026-10-24-screener-recovery-pilot/README.md) 참조.
+확정 복구 확장: KRX 공급자 전체 일봉과 15:30 정규장 종가를 구별하며, 과거일 22시 이후
+간격을 둔 두 독립 관측이 일치해야 새 확인 관측으로 사용한다. 현재 v2 계약을 구형 writer가
+확인 자료 없이 낮출 수 없다. 원문 근거가 있는 역산 오류·전체 분봉 누적 일치만 특정 v2
+버전의 정정 선택으로 공개하고 baseline·관측·근거를 묶는다. 원본과 이전 판정은 보존한다.
+정정 전/후 raw와 수량 보정을 별도로 비교한다. [세션·확정·정정 구현](docs/plans/2026-10-24-screener-confirmed-recovery.md).
+검토 전용 `review-plan`은 기존 관측·이전 판정을 재공개 없이 현재 코드로 인계받고 근거 입력과
+시작 snapshot을 고정한다. 전체 정정 묶음을 한 manifest CAS로 공개하며 수집 시작은 거부한다.
+공개 후 작업 상태 저장 중단에는 동일 묶음을 검증해 재공개 없이 상태만 복구한다.
+사건 전 수정 OHLCV가 원본으로 들어간 경우에는 독립 결정 공시·실제 거래 단위 적용일,
+legacy 계수 1, 전체 수정 OHLCV 일치와 정확한 비율식을 별도로 검증한다. 수량 인증과는
+구분하며 [535개 운영 반영](docs/diagnostics/2026-10-24-screener-review-535/README.md)에 전후 비교를 보존한다.
 [ADR-0057 개정](docs/adr/0057-screener-kis-authoritative-factor-store.md),
 [구현·검증 범위](docs/plans/2026-10-24-screener-bases-implementation.md).
 
@@ -1033,3 +1053,17 @@ NXT 미상장은 제외 증거가 아니다. 정규장·과거 커서·실효 NX
 - "등락률" was about to be reused by the 2026-06-12 high/low-extreme-labels spec for its `(현재가 − 가시 극값)/극값` metric — clashes with the **Live Quote** 등락률 (vs 전일종가) and the **봉대비** convention (vs 직전봉). Resolved 2026-06-12 (그릴링): the new metric is **극값 대비율 (Extreme Gap)**, measured vs a *viewport-relative* high/low; bare "등락률" stays reserved for the 전일종가 metric. Three references now coexist by distinct names: 등락률(전일) / 봉대비(직전봉) / 극값 대비율(가시 극값). See **High/Low Extreme Labels**.
 - "peak / 고점" was about to be reused by the 2026-06-13 hoga-peak-basis spec for "the bar's intra-minute maximum" — clashes with **총잔량 급증**'s intraday *running peak* and **당일 매도 최대벽** (Day Ask **Peak**)'s day high-water mark. Resolved 2026-06-13 (그릴링): the new basis is **분봉 내 최댓값 기준 (Intra-Bar Max)**; bare "peak/고점" stays reserved for the surge running-peak and the Day Ask Peak. The same grilling decided **Day Ask Peak's Intra-Bar Max mode deliberately reverses** its documented "sub-bucket transient correctly skipped" rationale (opt-in, default close) — recorded in ADR-0076. See **분봉 내 최댓값 기준 (Intra-Bar Max)**.
 - "체결가격 기준 최대벽" previously meant "the wall price appears anywhere in the Stock-Date trade-price set", but this failed same-price repeated-wall scenarios. Resolved 2026-07-05 (그릴링) into **사후터치 / 사후미터치 최대벽** — "touched by any *later* tick" (ADR-0084). That rule marked a wall as filled when price merely revisited its level hours later, which is not what the overlay claims. Re-resolved 2026-08-21: the canonical term is **동일분 터치 최대벽** (touch must land in the wall's own 1-minute window), the untouched family is **deleted**, and legacy wire names keep `traded_*`. See ADR-0156.
+
+스크리너 일반 자동 갱신(2026-10-24): 22시 정기 원주가 요청에 최근 5거래일 재검사를
+합친다. 당일 값은 잠정 원장에 보존하고, 다음 날짜의 독립 관측과 일치한 없는 날짜만
+추가한다. 기존 행·마감 후 관측의 불일치는 원본을 덮어쓰지 않고 조건·날짜별로 격리한다.
+가격만 쓰는 조건에 거래량만의 충돌을 전파하지 않으며 v2 수정 OHLC·수량 이력의 독립
+계약을 유지한다. 기존 파일·SavedScreener·승인 정정 선택을 자동 이관하지 않는다.
+[자동 갱신의 확인·부하 예산](docs/plans/2026-10-24-screener-automatic-daily-ingest.md)을 따른다.
+최종 공시로 확인한 종료 종목은 별도 원문 해시·검토 이력으로 관리하고 정기 요청에서 제외한다.
+종료 전 미확인 이력은 보존하며, 빈 응답만으로 종료 판정을 하지 않는다. 종료 종목의 미확인 수와
+실제 재시도 가능한 미확인 수를 구분해 종료 이력 때문에 전체 재시도가 반복되지 않도록 한다.
+일반 ‘갱신’ 버튼은 정기 자동 갱신과 같은 최근 일봉 검증 경로를 사용한다. 종목 목록 갱신·
+깊은 누락 보충은 ‘과거 데이터 복구’로 분리한다. 두 경로의 계획과 시작은 한 서버 작업으로
+직렬화하며 일반 갱신 클릭이 과거 복구를 암묵적으로 요청하지 않는다. 낮 한 번의 시도 후에는
+밤 22시 확인의 예산을 남기고, 잠정·독립 확인·충돌 격리와 기존 저장 조건은 유지한다.

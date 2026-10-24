@@ -1,0 +1,228 @@
+{
+  "target_count": 497,
+  "legacy_missing_code_dates": 290054,
+  "pilot_observations": {
+    "000020": {
+      "as_of": "2026-10-24",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "conflicts": 29,
+      "share_evidence_published": false
+    },
+    "000520": {
+      "as_of": "2026-10-24",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "conflicts": 27,
+      "share_evidence_published": false
+    },
+    "003240": {
+      "as_of": "2026-10-24",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "conflicts": 4,
+      "share_evidence_published": false
+    },
+    "013120": {
+      "as_of": "2026-10-24",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "conflicts": 24,
+      "share_evidence_published": false
+    },
+    "017650": {
+      "as_of": "2026-10-24",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "conflicts": 4,
+      "share_evidence_published": false
+    },
+    "900310": {
+      "as_of": "2026-10-24",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "conflicts": 484,
+      "share_evidence_published": false
+    }
+  },
+  "v2_added_required_code_dates": 3096,
+  "remaining_missing_code_dates": 286958,
+  "never_observed_targets": 491,
+  "fractional_price_suspect_rows": 12689,
+  "fractional_price_suspect_codes": 43,
+  "suspect_counts": [
+    {
+      "code": "900250",
+      "len": 609
+    },
+    {
+      "code": "900110",
+      "len": 602
+    },
+    {
+      "code": "900340",
+      "len": 600
+    },
+    {
+      "code": "900120",
+      "len": 594
+    },
+    {
+      "code": "950220",
+      "len": 410
+    },
+    {
+      "code": "020400",
+      "len": 318
+    },
+    {
+      "code": "025320",
+      "len": 318
+    },
+    {
+      "code": "073570",
+      "len": 318
+    },
+    {
+      "code": "044480",
+      "len": 318
+    },
+    {
+      "code": "058450",
+      "len": 318
+    },
+    {
+      "code": "012450",
+      "len": 318
+    },
+    {
+      "code": "006805",
+      "len": 317
+    },
+    {
+      "code": "036630",
+      "len": 317
+    },
+    {
+      "code": "007330",
+      "len": 317
+    },
+    {
+      "code": "010280",
+      "len": 317
+    },
+    {
+      "code": "032800",
+      "len": 317
+    },
+    {
+      "code": "003620",
+      "len": 317
+    },
+    {
+      "code": "016600",
+      "len": 317
+    },
+    {
+      "code": "065060",
+      "len": 317
+    },
+    {
+      "code": "038070",
+      "len": 317
+    },
+    {
+      "code": "004380",
+      "len": 317
+    },
+    {
+      "code": "004710",
+      "len": 317
+    },
+    {
+      "code": "003060",
+      "len": 317
+    },
+    {
+      "code": "052300",
+      "len": 317
+    },
+    {
+      "code": "032540",
+      "len": 317
+    },
+    {
+      "code": "001530",
+      "len": 317
+    },
+    {
+      "code": "040350",
+      "len": 317
+    },
+    {
+      "code": "012340",
+      "len": 317
+    },
+    {
+      "code": "060230",
+      "len": 317
+    },
+    {
+      "code": "042510",
+      "len": 310
+    },
+    {
+      "code": "009310",
+      "len": 283
+    },
+    {
+      "code": "011300",
+      "len": 261
+    },
+    {
+      "code": "027040",
+      "len": 244
+    },
+    {
+      "code": "019660",
+      "len": 244
+    },
+    {
+      "code": "004270",
+      "len": 244
+    },
+    {
+      "code": "036090",
+      "len": 244
+    },
+    {
+      "code": "053950",
+      "len": 164
+    },
+    {
+      "code": "043910",
+      "len": 111
+    },
+    {
+      "code": "049470",
+      "len": 75
+    },
+    {
+      "code": "900300",
+      "len": 24
+    },
+    {
+      "code": "900100",
+      "len": 20
+    },
+    {
+      "code": "900310",
+      "len": 18
+    },
+    {
+      "code": "900070",
+      "len": 18
+    }
+  ],
+  "scope_note": "497 are failed codes with saved-window raw date gaps, not the whole saved condition universe; fractional raw prices are an investigation signal, not a verified conflict."
+}

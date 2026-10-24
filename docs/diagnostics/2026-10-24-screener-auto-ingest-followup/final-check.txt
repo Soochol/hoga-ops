@@ -1,0 +1,41 @@
+{
+  "observed_at": "2026-10-24T22:33:27.509280+09:00",
+  "completed": true,
+  "processing_errors": 0,
+  "invalid_code_errors": 0,
+  "data_coverage_complete": false,
+  "state_entry_counts": {
+    "legacy": 21571
+  },
+  "newly_fetched_count": 500,
+  "new_last_response_at": "2026-10-24T22:31:54.403779+09:00",
+  "ledger_committed_at": "2026-10-24T22:31:54.883845+09:00",
+  "alphanumeric_revalidated": 414,
+  "alphanumeric_data_matched": 410,
+  "alphanumeric_provider_unavailable": [
+    "0021C0",
+    "0021D0",
+    "0021E0",
+    "0036D0"
+  ],
+  "protected_unchanged": {
+    "daily_unadjusted.parquet": true,
+    "daily_adjusted.parquet": true,
+    "factors.parquet": true,
+    "stocks.parquet": true,
+    "status.json": true,
+    "history_evidence.json": true,
+    "saves.json": true,
+    "refresh_report.json": true,
+    "exclusions.json": true,
+    "saves.v2.json": true,
+    "exclusions.v2.json": true
+  },
+  "recovery_plans_and_jobs_unchanged": 9,
+  "original_v2_manifest_fields_preserved": true,
+  "old_v2_snapshot_preserved": "5c4fb9b34ab6898a2e9f5aae78d0394c1bd78e9443e40e155bdae764d4d6cc3b",
+  "snapshot_unchanged_from_first_auto_run": "ab727fe060b27e9b8b188c2153e201178c8088ab8ba89803f1cbf5b6d841cc2c",
+  "code_revision": "f212a2de189b0b8f5134746cb4c85b1db7445b84e86feffe824c4d493668b13b",
+  "status_wire_roundtrip": true,
+  "daily_owner_and_loop_running": true
+}

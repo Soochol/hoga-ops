@@ -1,0 +1,1399 @@
+{
+  "schema_version": 1,
+  "completed_at": "2026-10-24T16:58:55.532021+09:00",
+  "plan_id": "86af0dddd3fc8e0d4eb15719fdcacc142b5e81421c8b79dd92bcccd903700e8c",
+  "pilot_revision": "dcd61ac5c5030db7cbd2edb1c6a581759465a29e9efaaccbef91b33e4e140df1",
+  "final_revision": "598ccd34f81f91d90914eb3acaae3e8ca3aa48bd66b56ff19f82c74bea1f31d3",
+  "clock": "2026-10-24T16:30:00+09:00",
+  "adjusted_as_of": "2026-10-24",
+  "status": "partial",
+  "collected_symbols": 10,
+  "v2_added_original_days": 3302,
+  "observed_full_window": 2,
+  "quarantined_full_window": 8,
+  "conflicting_symbol_dates": 618,
+  "share_evidence_ready": 0,
+  "protected_inputs": {
+    "daily_unadjusted.parquet": "ffae2b2ef4d8c1e852a12f20778810b721fca0c086fcf8f3ee76868dab5d1fb0",
+    "daily_adjusted.parquet": "067ad9d115dc2a21765217e0a61d205767b41868470cd899b44c4eca1693a928",
+    "factors.parquet": "6d7df65617257a14d744183f5215cb9b101e4256d18dd8c8b70f639e4562a732",
+    "stocks.parquet": "05d3b898f0dcf19886eebfecac0576bb90bf6b1ed80407dc429ed46527394479",
+    "status.json": "1577481b2e048d1d5c9a09bb1b0006917c95ea2b2a9098bcd6008af529c78cfa",
+    "history_evidence.json": "c2ecb2db29c71337c6d4858c2222d43815228722a200586466fd9f2f2920fd14",
+    "saves.json": "f004c8f92c4169fb657940be8e65089298a99d191719491dad728804b5d0a2b6",
+    "exclusions.json": null,
+    "saves.v2.json": null,
+    "exclusions.v2.json": null,
+    "refresh_report.json": "5ad37135d457fc28f84b28c56ad7432176f31704d1ba3a6af8b5c6c388bfcb80"
+  },
+  "protected_unchanged": true,
+  "token_cache_files_unchanged": true,
+  "existing_token_files": 6,
+  "user_changed_files_preserved": 9,
+  "wire_roundtrip_equal": true,
+  "legacy_equal_requests": 9,
+  "new_results_replayed_equal": 18,
+  "resume": {
+    "same_job": true,
+    "same_snapshot": true,
+    "same_observation_ids": true
+  },
+  "job": {
+    "plan_id": "86af0dddd3fc8e0d4eb15719fdcacc142b5e81421c8b79dd92bcccd903700e8c",
+    "status": "partial",
+    "items": {
+      "000020": {
+        "status": "quarantined",
+        "candidate_id": "240fc7cf98fe2555b00fa6238a88f8ddd1fab86e25da22c0f211b82781d3849c",
+        "observation_id": "7c97e5a3dc3f0382982d3f877c62ee260fcd98982f821e3eba790321d10a10c8",
+        "snapshot_id": "62e929d72a342bd5434d3e3e2dfda844b440a640300ae6bab2e2a2c7d8cbe683",
+        "added_original_days": 516,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2026-06-02",
+          "2026-06-08",
+          "2026-06-09",
+          "2026-06-11",
+          "2026-06-12",
+          "2026-06-24",
+          "2026-07-10",
+          "2026-07-13",
+          "2026-07-15",
+          "2026-07-16",
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-29",
+          "2026-07-31",
+          "2026-08-11",
+          "2026-08-14",
+          "2026-08-19",
+          "2026-08-21",
+          "2026-08-24",
+          "2026-08-26",
+          "2026-08-27",
+          "2026-09-04",
+          "2026-09-07",
+          "2026-09-10",
+          "2026-09-11",
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-18",
+          "2026-09-21"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "003240": {
+        "status": "quarantined",
+        "candidate_id": "359403cf08e240bed0634e4c49ba7bc5604f1cead8d8409c1fb2e890908bda3f",
+        "observation_id": "0f526ae9225f3ee3a85de1cc256e6e326c41c782d66f5e03b5d3c6717ab9bb0c",
+        "snapshot_id": "afb209ac0bb1519acf5a7f7e137c2ac390d70d9ec57e0925d1bde45f28df7a9e",
+        "added_original_days": 516,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-18",
+          "2026-09-21"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "000520": {
+        "status": "quarantined",
+        "candidate_id": "3b838b652503fc7ba6be57c44b6c977931b27f6d6812d33ef41af8676b668efc",
+        "observation_id": "8547c2c972414c0421c942768799fc2c36337cfa5c2d4add5f44e9bc4e6d92c5",
+        "snapshot_id": "2e6aa759c98833a4867ee92c320c53a10b8469f1162c4dbd08b1d85022c046f1",
+        "added_original_days": 516,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2026-06-08",
+          "2026-06-09",
+          "2026-06-11",
+          "2026-06-24",
+          "2026-07-06",
+          "2026-07-13",
+          "2026-07-15",
+          "2026-07-16",
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-29",
+          "2026-07-31",
+          "2026-08-11",
+          "2026-08-14",
+          "2026-08-19",
+          "2026-08-21",
+          "2026-08-24",
+          "2026-08-26",
+          "2026-08-27",
+          "2026-09-04",
+          "2026-09-07",
+          "2026-09-10",
+          "2026-09-11",
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-18",
+          "2026-09-21"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "013120": {
+        "status": "quarantined",
+        "candidate_id": "5383620be697435376fe52c6b7e56445d793cdd9c1057fbb421d220c859d9f33",
+        "observation_id": "8c29c95805112bbf0f5ccd6d3a9612d2878e489d6cec0b84abbdc23a0201ee0f",
+        "snapshot_id": "45ee05af9be3412ba16c4bb9cb6564200ed5ab445d96f6b1c2453bba8707125f",
+        "added_original_days": 516,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2026-06-09",
+          "2026-06-11",
+          "2026-06-12",
+          "2026-06-15",
+          "2026-07-06",
+          "2026-07-10",
+          "2026-07-13",
+          "2026-07-15",
+          "2026-07-16",
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-29",
+          "2026-07-31",
+          "2026-08-11",
+          "2026-08-14",
+          "2026-08-19",
+          "2026-08-21",
+          "2026-08-24",
+          "2026-08-26",
+          "2026-09-10",
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-18",
+          "2026-09-21"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "017650": {
+        "status": "quarantined",
+        "candidate_id": "09893902e2193dc73da26eaa14afa06526ebedd9cfebcbe0a46d297ad414d207",
+        "observation_id": "d6f85203fd2ed12c6daea97f1dd8503ede4fa69c6abb1d47a4553665ef328806",
+        "snapshot_id": "c902c8d2ffe2eda867468ff0ca721b8bf69af50f0c0402b16bb864bba0f746b9",
+        "added_original_days": 516,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2026-06-08",
+          "2026-07-10",
+          "2026-08-14",
+          "2026-09-14"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "900310": {
+        "status": "quarantined",
+        "candidate_id": "36ea462b80805930f9e031a4b0b2afed6910ff5adeaf78303f3e5e1255a36582",
+        "observation_id": "8dbb3a6d2974d1e1bf94c070156402218ff8daaab4ebfc6f98de86a683c5784a",
+        "snapshot_id": "ec928578807818d7878662d74bb798bc320dc3f82af65e32bc11e7729783f7a3",
+        "added_original_days": 516,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2024-01-02",
+          "2024-01-03",
+          "2024-01-04",
+          "2024-01-05",
+          "2024-01-08",
+          "2024-01-09",
+          "2024-01-10",
+          "2024-01-11",
+          "2024-01-12",
+          "2024-01-15",
+          "2024-01-16",
+          "2024-01-17",
+          "2024-01-18",
+          "2024-01-19",
+          "2024-01-25",
+          "2024-01-26",
+          "2024-01-29",
+          "2024-01-30",
+          "2024-01-31",
+          "2024-02-01",
+          "2024-02-02",
+          "2024-02-06",
+          "2024-02-13",
+          "2024-02-14",
+          "2024-02-15",
+          "2024-02-16",
+          "2024-02-19",
+          "2024-02-20",
+          "2024-02-21",
+          "2024-02-23",
+          "2024-02-26",
+          "2024-02-28",
+          "2024-02-29",
+          "2024-03-05",
+          "2024-03-06",
+          "2024-03-07",
+          "2024-03-11",
+          "2024-03-12",
+          "2024-03-13",
+          "2024-03-14",
+          "2024-03-15",
+          "2024-03-18",
+          "2024-03-19",
+          "2024-03-20",
+          "2024-03-21",
+          "2024-03-22",
+          "2024-03-26",
+          "2024-03-29",
+          "2024-04-01",
+          "2024-04-02",
+          "2024-04-03",
+          "2024-04-04",
+          "2024-04-05",
+          "2024-04-08",
+          "2024-04-09",
+          "2024-04-11",
+          "2024-04-15",
+          "2024-04-16",
+          "2024-04-17",
+          "2024-04-18",
+          "2024-04-19",
+          "2024-04-22",
+          "2024-04-23",
+          "2024-04-24",
+          "2024-04-26",
+          "2024-04-29",
+          "2024-04-30",
+          "2024-05-02",
+          "2024-05-07",
+          "2024-05-08",
+          "2024-05-09",
+          "2024-05-14",
+          "2024-05-20",
+          "2024-05-21",
+          "2024-05-22",
+          "2024-05-23",
+          "2024-05-29",
+          "2024-05-31",
+          "2024-06-03",
+          "2024-06-04",
+          "2024-06-07",
+          "2024-06-10",
+          "2024-06-11",
+          "2024-06-13",
+          "2024-06-14",
+          "2024-06-17",
+          "2024-06-18",
+          "2024-06-19",
+          "2024-06-21",
+          "2024-06-24",
+          "2024-06-25",
+          "2024-06-26",
+          "2024-06-27",
+          "2024-06-28",
+          "2024-07-01",
+          "2024-07-02",
+          "2024-07-03",
+          "2024-07-04",
+          "2024-07-08",
+          "2024-07-10",
+          "2024-07-11",
+          "2024-07-12",
+          "2024-07-15",
+          "2024-07-16",
+          "2024-07-18",
+          "2024-07-19",
+          "2024-07-22",
+          "2024-07-24",
+          "2024-07-25",
+          "2024-07-26",
+          "2024-07-29",
+          "2024-07-30",
+          "2024-08-02",
+          "2024-08-05",
+          "2024-08-06",
+          "2024-08-07",
+          "2024-08-08",
+          "2024-08-09",
+          "2024-08-13",
+          "2024-08-14",
+          "2024-08-19",
+          "2024-08-20",
+          "2024-08-21",
+          "2024-08-23",
+          "2024-08-27",
+          "2024-08-29",
+          "2024-08-30",
+          "2024-09-02",
+          "2024-09-03",
+          "2024-09-04",
+          "2024-09-06",
+          "2024-09-10",
+          "2024-09-11",
+          "2024-09-12",
+          "2024-09-13",
+          "2024-09-19",
+          "2024-09-20",
+          "2024-09-23",
+          "2024-09-24",
+          "2024-09-25",
+          "2024-09-26",
+          "2024-09-27",
+          "2024-09-30",
+          "2024-10-02",
+          "2024-10-04",
+          "2024-10-08",
+          "2024-10-10",
+          "2024-10-11",
+          "2024-10-14",
+          "2024-10-15",
+          "2024-10-16",
+          "2024-10-17",
+          "2024-10-18",
+          "2024-10-21",
+          "2024-10-22",
+          "2024-10-23",
+          "2024-10-25",
+          "2024-10-28",
+          "2024-10-29",
+          "2024-10-30",
+          "2024-11-04",
+          "2024-11-05",
+          "2024-11-06",
+          "2024-11-07",
+          "2024-11-08",
+          "2024-11-11",
+          "2024-11-13",
+          "2024-11-15",
+          "2024-11-18",
+          "2024-11-19",
+          "2024-11-20",
+          "2024-11-21",
+          "2024-11-22",
+          "2024-11-25",
+          "2024-11-28",
+          "2024-11-29",
+          "2024-12-02",
+          "2024-12-03",
+          "2024-12-09",
+          "2024-12-10",
+          "2024-12-11",
+          "2024-12-16",
+          "2024-12-17",
+          "2024-12-18",
+          "2024-12-19",
+          "2024-12-20",
+          "2024-12-23",
+          "2024-12-24",
+          "2024-12-26",
+          "2024-12-27",
+          "2025-01-03",
+          "2025-01-06",
+          "2025-01-07",
+          "2025-01-08",
+          "2025-01-10",
+          "2025-01-13",
+          "2025-01-14",
+          "2025-01-16",
+          "2025-01-17",
+          "2025-01-20",
+          "2025-01-21",
+          "2025-01-22",
+          "2025-01-31",
+          "2025-02-04",
+          "2025-02-06",
+          "2025-02-07",
+          "2025-02-10",
+          "2025-02-11",
+          "2025-02-12",
+          "2025-02-13",
+          "2025-02-14",
+          "2025-02-17",
+          "2025-02-18",
+          "2025-02-21",
+          "2025-02-25",
+          "2025-02-26",
+          "2025-02-27",
+          "2025-02-28",
+          "2025-03-04",
+          "2025-03-05",
+          "2025-03-06",
+          "2025-03-11",
+          "2025-03-12",
+          "2025-03-14",
+          "2025-03-17",
+          "2025-03-20",
+          "2025-03-21",
+          "2025-03-24",
+          "2025-03-25",
+          "2025-03-26",
+          "2025-03-27",
+          "2025-03-31",
+          "2025-04-01",
+          "2025-04-03",
+          "2025-04-04",
+          "2025-04-07",
+          "2025-04-08",
+          "2025-04-09",
+          "2025-04-10",
+          "2025-04-11",
+          "2025-04-15",
+          "2025-04-16",
+          "2025-04-17",
+          "2025-04-21",
+          "2025-04-22",
+          "2025-04-23",
+          "2025-04-24",
+          "2025-04-28",
+          "2025-04-29",
+          "2025-04-30",
+          "2025-05-02",
+          "2025-05-07",
+          "2025-05-09",
+          "2025-05-12",
+          "2025-05-14",
+          "2025-05-15",
+          "2025-05-16",
+          "2025-05-19",
+          "2025-05-20",
+          "2025-05-21",
+          "2025-05-22",
+          "2025-05-23",
+          "2025-05-26",
+          "2025-05-27",
+          "2025-05-28",
+          "2025-05-29",
+          "2025-05-30",
+          "2025-06-02",
+          "2025-06-04",
+          "2025-06-05",
+          "2025-06-09",
+          "2025-06-10",
+          "2025-06-11",
+          "2025-06-12",
+          "2025-06-16",
+          "2025-06-17",
+          "2025-06-19",
+          "2025-06-20",
+          "2025-06-24",
+          "2025-06-25",
+          "2025-06-27",
+          "2025-06-30",
+          "2025-07-07",
+          "2025-07-08",
+          "2025-07-09",
+          "2025-07-10",
+          "2025-07-11",
+          "2025-07-16",
+          "2025-07-17",
+          "2025-07-18",
+          "2025-07-21",
+          "2025-07-23",
+          "2025-07-25",
+          "2025-07-28",
+          "2025-07-30",
+          "2025-07-31",
+          "2025-08-01",
+          "2025-08-04",
+          "2025-08-05",
+          "2025-08-06",
+          "2025-08-07",
+          "2025-08-08",
+          "2025-08-11",
+          "2025-08-12",
+          "2025-08-13",
+          "2025-08-14",
+          "2025-08-18",
+          "2025-08-19",
+          "2025-08-20",
+          "2025-08-21",
+          "2025-08-26",
+          "2025-08-28",
+          "2025-08-29",
+          "2025-09-01",
+          "2025-09-02",
+          "2025-09-03",
+          "2025-09-04",
+          "2025-09-05",
+          "2025-09-08",
+          "2025-09-10",
+          "2025-09-12",
+          "2025-09-15",
+          "2025-09-16",
+          "2025-09-17",
+          "2025-09-18",
+          "2025-09-19",
+          "2025-09-22",
+          "2025-09-23",
+          "2025-09-24",
+          "2025-09-25",
+          "2025-09-26",
+          "2025-09-29",
+          "2025-09-30",
+          "2025-10-02",
+          "2025-10-10",
+          "2025-10-13",
+          "2025-10-14",
+          "2025-10-15",
+          "2025-10-16",
+          "2025-10-17",
+          "2025-10-20",
+          "2025-10-21",
+          "2025-10-23",
+          "2025-10-24",
+          "2025-10-27",
+          "2025-10-28",
+          "2025-10-29",
+          "2025-10-30",
+          "2025-10-31",
+          "2025-11-03",
+          "2025-11-05",
+          "2025-11-07",
+          "2025-11-10",
+          "2025-11-11",
+          "2025-11-12",
+          "2025-11-13",
+          "2025-11-14",
+          "2025-11-17",
+          "2025-11-18",
+          "2025-11-19",
+          "2025-11-20",
+          "2025-11-24",
+          "2025-11-25",
+          "2025-11-26",
+          "2025-11-27",
+          "2025-11-28",
+          "2025-12-03",
+          "2025-12-04",
+          "2025-12-05",
+          "2025-12-08",
+          "2025-12-09",
+          "2025-12-10",
+          "2025-12-15",
+          "2025-12-16",
+          "2025-12-17",
+          "2025-12-19",
+          "2025-12-23",
+          "2025-12-24",
+          "2025-12-29",
+          "2025-12-30",
+          "2026-01-02",
+          "2026-01-05",
+          "2026-01-06",
+          "2026-01-08",
+          "2026-01-09",
+          "2026-01-12",
+          "2026-01-13",
+          "2026-01-14",
+          "2026-01-15",
+          "2026-01-16",
+          "2026-01-19",
+          "2026-01-20",
+          "2026-01-26",
+          "2026-01-27",
+          "2026-01-28",
+          "2026-01-29",
+          "2026-01-30",
+          "2026-02-03",
+          "2026-02-05",
+          "2026-02-06",
+          "2026-02-09",
+          "2026-02-10",
+          "2026-02-11",
+          "2026-02-12",
+          "2026-02-13",
+          "2026-02-19",
+          "2026-02-20",
+          "2026-02-23",
+          "2026-02-24",
+          "2026-02-25",
+          "2026-02-27",
+          "2026-03-03",
+          "2026-03-04",
+          "2026-03-06",
+          "2026-03-09",
+          "2026-03-11",
+          "2026-03-12",
+          "2026-03-16",
+          "2026-03-17",
+          "2026-03-18",
+          "2026-03-19",
+          "2026-03-24",
+          "2026-03-25",
+          "2026-03-26",
+          "2026-03-27",
+          "2026-03-30",
+          "2026-03-31",
+          "2026-04-01",
+          "2026-04-02",
+          "2026-04-06",
+          "2026-04-08",
+          "2026-04-09",
+          "2026-04-10",
+          "2026-04-14",
+          "2026-04-16",
+          "2026-04-17",
+          "2026-04-20",
+          "2026-04-21",
+          "2026-04-22",
+          "2026-04-23",
+          "2026-04-24",
+          "2026-04-27",
+          "2026-04-29",
+          "2026-04-30",
+          "2026-05-04",
+          "2026-05-06",
+          "2026-05-11",
+          "2026-05-14",
+          "2026-06-11",
+          "2026-06-12",
+          "2026-06-15",
+          "2026-06-23",
+          "2026-06-24",
+          "2026-06-25",
+          "2026-06-29",
+          "2026-07-02",
+          "2026-07-03",
+          "2026-07-06",
+          "2026-07-07",
+          "2026-07-08",
+          "2026-07-10",
+          "2026-07-13",
+          "2026-07-14",
+          "2026-07-15",
+          "2026-07-16",
+          "2026-07-20",
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-23",
+          "2026-07-24",
+          "2026-07-27",
+          "2026-07-28",
+          "2026-07-29",
+          "2026-07-30",
+          "2026-07-31",
+          "2026-08-03",
+          "2026-08-19",
+          "2026-08-21",
+          "2026-08-24",
+          "2026-09-04",
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-18",
+          "2026-09-21"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "005930": {
+        "status": "quarantined",
+        "candidate_id": "20a68e5c01078367727cb42b47d0cbcf79d5616108c3c1cdb56c45f0649d491f",
+        "observation_id": "ee2a5c5bd881669e92a165c5de4dea809ee752f1eee3730ffb3c0c6874c2d26c",
+        "snapshot_id": "19926eb47b4bede4431e739be11d4fc4294bf6f820d1bf033d7100d2f851ae1a",
+        "added_original_days": 0,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2026-05-14",
+          "2026-06-08",
+          "2026-06-09",
+          "2026-06-11",
+          "2026-06-12",
+          "2026-06-15",
+          "2026-06-24",
+          "2026-07-06",
+          "2026-07-10",
+          "2026-07-15",
+          "2026-07-16",
+          "2026-07-21",
+          "2026-07-22",
+          "2026-07-29",
+          "2026-07-31",
+          "2026-08-11",
+          "2026-08-14",
+          "2026-08-19",
+          "2026-08-21",
+          "2026-08-24",
+          "2026-08-27",
+          "2026-09-07",
+          "2026-09-10",
+          "2026-09-11",
+          "2026-09-14",
+          "2026-09-15",
+          "2026-09-18",
+          "2026-09-21"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "001000": {
+        "status": "quarantined",
+        "candidate_id": "b39a7a09c92b64a8ab40631202a08fb4c41de0051bf1cb1d263a156e4da5d945",
+        "observation_id": "df21f2fac294749276944b9ce0d7d6766a00ab5d815c4d4d8f053f747541b63c",
+        "snapshot_id": "22c90085cb718d1c7b21cabb8821185af1efc692ff264fc89ea75eb29b66ac32",
+        "added_original_days": 0,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [
+          "2026-06-08",
+          "2026-06-09",
+          "2026-06-11",
+          "2026-06-12",
+          "2026-06-15",
+          "2026-06-24",
+          "2026-07-06",
+          "2026-07-10",
+          "2026-07-13",
+          "2026-07-15",
+          "2026-07-16",
+          "2026-07-22",
+          "2026-07-29",
+          "2026-07-31",
+          "2026-08-11",
+          "2026-08-14",
+          "2026-08-19",
+          "2026-09-11"
+        ],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "0233J0": {
+        "status": "observed",
+        "candidate_id": "9d04b60b924a131e665372ac3a85942b6a00966883bc6eec2b1e7078bd87630a",
+        "observation_id": "c985cea95f2d6869ce8bcfa20eb8ce847dffcd3cc3793eac83ea1ee495cd2acb",
+        "snapshot_id": "ed3ab640e03fe93e315ec843e81585ef9e76f58f3b6c3b63f43a0055cb06fc7a",
+        "added_original_days": 16,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      },
+      "0113P0": {
+        "status": "observed",
+        "candidate_id": "930316176edaeba32416d80a919b53a53b0e0c5a2d41c2d1d31a70d119cdf7c7",
+        "observation_id": "057084bcefbcdf3a120ac41df346a4af30f21d5de0ba080fcf5ff36dcc359fdc",
+        "snapshot_id": "d73a6e008550add10cf0444909e10fdf81fa1e70fb80ba8aa615deef4b6a7d7a",
+        "added_original_days": 190,
+        "original_missing": [],
+        "price_missing": [],
+        "conflict_dates": [],
+        "share_evidence_ready": false,
+        "violations": 0,
+        "error": null
+      }
+    },
+    "current_code": null,
+    "preserved": true,
+    "error": null
+  },
+  "comparison_dir": "/tmp/hoga-recovery-pilot-final-comparison-20261024",
+  "comparison_summary": [
+    {
+      "index": 0,
+      "conditions": [
+        {
+          "type": "new_high",
+          "id": "SsXve1XX",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 400,
+            "period": 800
+          }
+        }
+      ],
+      "selected_codes": [
+        "000020",
+        "003240",
+        "000520",
+        "013120",
+        "017650",
+        "900310",
+        "005930",
+        "001000"
+      ],
+      "matched": {
+        "legacy": [
+          "001000",
+          "005930"
+        ],
+        "raw": [
+          "001000",
+          "003240",
+          "005930",
+          "017650"
+        ],
+        "share_adjusted": [
+          "001000",
+          "003240",
+          "005930",
+          "017650"
+        ]
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {},
+        "share_adjusted": {}
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "167be47a05ea3ff72d9911663c67ae3558f0f11867792049344da3732f94f2a4",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "e5e9f5f0dc97455cb8ebdf5f19f7c9604437065dc3dfd0020108c442b36834f1",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 1,
+      "conditions": [
+        {
+          "type": "new_high_vol",
+          "id": "qjnHP8ld",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 30,
+            "period": 150,
+            "volume_basis": null
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "ioxVt6Sk",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 30
+          }
+        }
+      ],
+      "selected_codes": [
+        "000020",
+        "003240",
+        "000520",
+        "013120",
+        "017650",
+        "900310",
+        "005930",
+        "001000"
+      ],
+      "matched": {
+        "legacy": [],
+        "raw": [],
+        "share_adjusted": []
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {
+          "000020": [
+            "original_observation_conflict"
+          ],
+          "003240": [
+            "original_observation_conflict"
+          ],
+          "000520": [
+            "original_observation_conflict"
+          ],
+          "013120": [
+            "original_observation_conflict"
+          ],
+          "017650": [
+            "original_observation_conflict"
+          ],
+          "900310": [
+            "original_observation_conflict"
+          ],
+          "005930": [
+            "original_observation_conflict"
+          ],
+          "001000": [
+            "original_observation_conflict"
+          ]
+        },
+        "share_adjusted": {
+          "000020": [
+            "original_observation_conflict"
+          ],
+          "003240": [
+            "original_observation_conflict",
+            "share_evidence_unavailable"
+          ],
+          "000520": [
+            "original_observation_conflict"
+          ],
+          "013120": [
+            "original_observation_conflict"
+          ],
+          "017650": [
+            "original_observation_conflict"
+          ],
+          "900310": [
+            "original_observation_conflict"
+          ],
+          "005930": [
+            "original_observation_conflict"
+          ],
+          "001000": [
+            "original_observation_conflict"
+          ]
+        }
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "91aa349b37e7cdd492f0b8c04b9470ead0ce4fff6714cdcd8c65612e80f93c90",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "e4deb581801b824173d3b5a33ee93a7dbc2de70cddfbf8ad2c2ae6b60e19cc6f",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 2,
+      "conditions": [
+        {
+          "type": "trade_value_period",
+          "id": "lWA6igKh",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 3000.0,
+            "lookback": 1000
+          }
+        },
+        {
+          "type": "new_high_vol",
+          "id": "7WrdlCkO",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 1000,
+            "period": 1000,
+            "volume_basis": null
+          }
+        }
+      ],
+      "selected_codes": [
+        "005930"
+      ],
+      "matched": {
+        "legacy": [
+          "005930"
+        ],
+        "raw": [
+          "005930"
+        ],
+        "share_adjusted": []
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {
+          "005930": [
+            "original_observation_conflict"
+          ]
+        },
+        "share_adjusted": {
+          "005930": [
+            "original_observation_conflict",
+            "share_evidence_unavailable"
+          ]
+        }
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "f952d3451fef14d7d024de32438332b8f6fec7a435972ef7d7fefdb0e8f039c5",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "68e7d79cf244af5ab48120bc57c1fda5955a611268bea809456a7676dcfc23c3",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 3,
+      "conditions": [
+        {
+          "type": "trade_value_period",
+          "id": "niafa2sl",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 20
+          }
+        },
+        {
+          "type": "new_high",
+          "id": "895xi8tF",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 20,
+            "period": 200
+          }
+        }
+      ],
+      "selected_codes": [
+        "000020",
+        "003240",
+        "000520",
+        "013120",
+        "017650",
+        "900310",
+        "005930",
+        "001000"
+      ],
+      "matched": {
+        "legacy": [],
+        "raw": [],
+        "share_adjusted": []
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {},
+        "share_adjusted": {}
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "aafa044242ff25e86cc7c28a540f53b102f89417c62d33191933f6c38a57cdf0",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "530c79bdc064af1ae7e0dba6ed6b3e51371d402d8e3dda0cbf14fc64585ce5f9",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 4,
+      "conditions": [
+        {
+          "type": "new_high_vol",
+          "id": "oLwK_nMa",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 250,
+            "period": 150,
+            "volume_basis": null
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "buvEkwSk",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 250
+          }
+        },
+        {
+          "type": "new_high_today",
+          "id": "O6Vqa_f-",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 4
+          }
+        }
+      ],
+      "selected_codes": [
+        "005930"
+      ],
+      "matched": {
+        "legacy": [],
+        "raw": [],
+        "share_adjusted": []
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {
+          "005930": [
+            "original_observation_conflict"
+          ]
+        },
+        "share_adjusted": {
+          "005930": [
+            "original_observation_conflict",
+            "share_evidence_unavailable"
+          ]
+        }
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "835b7a5c2e36164f9a265ddfea5f0c720703f4b85375651c1a43c9f43e2375a4",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "7201e433ab519966e7f526133c62d73ca7b36762f631fc8b581d7a2243f57ae3",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 5,
+      "conditions": [
+        {
+          "type": "bollinger_position",
+          "id": "gLmwOXI2",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20,
+            "multiplier": 2.0,
+            "source": "high",
+            "band_source": "close",
+            "band": "upper",
+            "lookback": 4
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "xPYXLUmK",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 4
+          }
+        }
+      ],
+      "selected_codes": [
+        "000020",
+        "003240",
+        "000520",
+        "013120",
+        "017650",
+        "900310",
+        "005930",
+        "001000"
+      ],
+      "matched": {
+        "legacy": [],
+        "raw": [],
+        "share_adjusted": []
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {},
+        "share_adjusted": {}
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "463d7879cf63eb960f70e9e2685696ef5147437e510d89c3b85aac112649c157",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "bde585066c0fcdfdcf913c411158d353d709355e7493ea2122d656b6e2c3be2f",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 6,
+      "conditions": [
+        {
+          "type": "bollinger_position",
+          "id": "gLmwOXI2",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20,
+            "multiplier": 2.0,
+            "source": "low",
+            "band_source": "low",
+            "band": "lower",
+            "lookback": 4
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "xPYXLUmK",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 4
+          }
+        }
+      ],
+      "selected_codes": [
+        "005930"
+      ],
+      "matched": {
+        "legacy": [],
+        "raw": [],
+        "share_adjusted": []
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {},
+        "share_adjusted": {}
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "8e71b5c58b5207f5ee2eeaa49324f1cc4efb0cd88a95efbbbe37fc5074f9138c",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "7c6366766929a1ae47ffa45a4f1e2a1c8deafdf433402b2225a180e48f05b0a0",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 7,
+      "conditions": [
+        {
+          "type": "new_high_vol_today",
+          "id": "pilot-new_high_vol_today",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20,
+            "volume_basis": null
+          }
+        }
+      ],
+      "selected_codes": [
+        "000020",
+        "003240",
+        "000520",
+        "013120",
+        "017650",
+        "900310",
+        "005930",
+        "001000",
+        "0233J0",
+        "0113P0"
+      ],
+      "matched": {
+        "legacy": [],
+        "raw": [],
+        "share_adjusted": []
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {},
+        "share_adjusted": {
+          "000020": [
+            "share_evidence_unavailable"
+          ],
+          "003240": [
+            "share_evidence_unavailable"
+          ],
+          "000520": [
+            "share_evidence_unavailable"
+          ],
+          "013120": [
+            "share_evidence_unavailable"
+          ],
+          "017650": [
+            "share_evidence_unavailable"
+          ],
+          "900310": [
+            "share_evidence_unavailable"
+          ],
+          "005930": [
+            "share_evidence_unavailable"
+          ],
+          "001000": [
+            "share_evidence_unavailable"
+          ],
+          "0233J0": [
+            "share_evidence_unavailable"
+          ],
+          "0113P0": [
+            "share_evidence_unavailable"
+          ]
+        }
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "7f56a2cea06cf1fa50a4bd5cab6e537b2a92fc02603a27220db86af24f928405",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "645b2b5a8a7536b77eb02888dc1424fcc45e4e119a81296f1162148ae824c725",
+          "replay_equal": true
+        }
+      }
+    },
+    {
+      "index": 8,
+      "conditions": [
+        {
+          "type": "new_high_today",
+          "id": "pilot-new_high_today",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20
+          }
+        }
+      ],
+      "selected_codes": [
+        "000020",
+        "003240",
+        "000520",
+        "013120",
+        "017650",
+        "900310",
+        "005930",
+        "001000",
+        "0233J0",
+        "0113P0"
+      ],
+      "matched": {
+        "legacy": [
+          "0113P0"
+        ],
+        "raw": [
+          "0113P0"
+        ],
+        "share_adjusted": [
+          "0113P0"
+        ]
+      },
+      "unavailable": {
+        "legacy": {},
+        "raw": {},
+        "share_adjusted": {}
+      },
+      "executions": {
+        "raw": {
+          "execution_id": "796c07910419349d782d01e8f1573ea1ec4a0113bfba641caf1d806c0c5deefc",
+          "replay_equal": true
+        },
+        "share_adjusted": {
+          "execution_id": "d42eb1dc9cf69c99f00e82332b379b7a7d66a1fd36aa26268f9415ba902ee693",
+          "replay_equal": true
+        }
+      }
+    }
+  ]
+}

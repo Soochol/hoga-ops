@@ -1,0 +1,42 @@
+{
+  "completed_at": "2026-10-24T10:04:44.887981+00:00",
+  "head": "fc6c82f94f97f963d1fa45d980fa747e7f3f6722",
+  "application_changes": false,
+  "analysis_scope": "Frozen 25-stock requested windows, all 3737 remaining conflicts; isolated review and result reproduction only",
+  "offline_analysis": {
+    "command": "PYTHONPATH=. .venv/bin/python docs/diagnostics/2026-10-24-screener-remaining-conflicts/analyze.py",
+    "returncode": 0,
+    "stdout": "PASS: 3737 dates classified; 583 supported proposals, 3154 still pending in the simulation.\nPASS: 417 minute sources, 2793 filing index entries, exact proof and negative-control checks.\nPASS: isolated legacy result unchanged, 3 exact replays; no production publication.\n"
+  },
+  "artifact_manifest_sha256": "7605989046c76f72a612e9695ff974b64cf9aab5fc988dba8e3d79ef179bdccc",
+  "application_test_reuse": {
+    "reference": "../2026-10-24-screener-confirmed-pilot/verification.json",
+    "unchanged_inputs": 918,
+    "fingerprint": "c198c4d14bc1963e884420dcffa44edd2eef0037dd7ae610713b29d1f4748895",
+    "reason": "No app, API, test, dependency or app verification configuration changes; exact source fingerprints rechecked. New diagnostic script checked separately."
+  },
+  "actual_proof_publisher_validation": {
+    "scope": "isolated copy only",
+    "new_accepted": 583,
+    "new_rejected": 0,
+    "pinned_previous_snapshot_unchanged": true
+  },
+  "simulation_comparison": {
+    "legacy_equal": true,
+    "exact_replays": 3,
+    "raw_complete_before": 0,
+    "raw_complete_after": 4,
+    "share_adjusted_complete_after": 0,
+    "matches_before_after": 0
+  },
+  "ruff": {
+    "command": ".venv/bin/ruff check .",
+    "returncode": 0,
+    "stdout": "All checks passed!\n"
+  },
+  "diff_check": {
+    "command": "git diff --check",
+    "returncode": 0,
+    "stdout": ""
+  }
+}

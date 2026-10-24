@@ -1,0 +1,17 @@
+import asyncio,datetime as dt,json
+from pathlib import Path
+from hoga.api.models import ScanRequest
+from hoga.api.screener_runner import run_screener_scan
+from hoga.api.screener_recovery_compare import _stable
+from hoga.api.screener_series_cli import clone
+P=Path(__file__).parent;D=Path('/home/dev/.local/share/hoga-ops/data');A=Path('/tmp/hoga-review535-legacy-after-20261024')
+async def main():
+ assert (P/'apply-result.json').exists();clone(D,A)
+ before=json.loads((P/'legacy-before.json').read_text());clock=dt.datetime.fromisoformat(before['clock']);results=[]
+ for row in before['results']:
+  old=ScanRequest.model_validate(row['request']);response=await run_screener_scan(data_dir=A,req=old,now=clock)
+  from hoga.api.models import ScreenerResponse
+  equal=_stable(ScreenerResponse.model_validate(row['response']))==_stable(response);assert equal,row['name']
+  results.append({**row,'after':response.model_dump(mode='json'),'equal':equal});print(row['name'],len(response.rows),'equal',equal,flush=True)
+ (P/'legacy-comparison.json').write_text(json.dumps({'scope':before['scope'],'clock':before['clock'],'normalization':'Runtime scanned_at_ms and nested match fetched_at_ms only; original responses retained.','all_equal':True,'results':results},ensure_ascii=False,indent=2))
+asyncio.run(main())

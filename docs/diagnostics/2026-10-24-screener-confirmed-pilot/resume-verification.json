@@ -1,0 +1,11 @@
+{
+  "accepted": {
+    "plan_id": "3be1c04b251db38a409cea67a8a7cd43b0c000d07d47425bc0e4523d910dbc2c",
+    "started": true
+  },
+  "job_equal": true,
+  "snapshot_unchanged": true,
+  "snapshot": "1d6e052483ea919e0731f9f3a6c1dceff3ea12e49df06cb5a583da4ee5cef9ff",
+  "candidate_ids_unchanged": true,
+  "collector_revision": "c4de8d5d24647d22fd3ac7dbf47fda6851e06d02e8f10002d344c4838ba926dc"
+}

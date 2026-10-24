@@ -1,0 +1,6232 @@
+{
+  "000020": {
+    "conflicts": 29,
+    "changed_fields": {
+      "high": 1,
+      "low": 1,
+      "close": 4,
+      "volume": 29
+    },
+    "differences": [
+      {
+        "date": "2026-06-02",
+        "changes": {
+          "high": {
+            "preserved": 5520.0,
+            "observed": 5560.0
+          },
+          "low": {
+            "preserved": 5460.0,
+            "observed": 5410.0
+          },
+          "close": {
+            "preserved": 5460.0,
+            "observed": 5470.0
+          },
+          "volume": {
+            "preserved": 9954,
+            "observed": 122980
+          }
+        }
+      },
+      {
+        "date": "2026-06-08",
+        "changes": {
+          "volume": {
+            "preserved": 79457,
+            "observed": 79575
+          }
+        }
+      },
+      {
+        "date": "2026-06-09",
+        "changes": {
+          "volume": {
+            "preserved": 76695,
+            "observed": 76746
+          }
+        }
+      },
+      {
+        "date": "2026-06-11",
+        "changes": {
+          "volume": {
+            "preserved": 60891,
+            "observed": 60904
+          }
+        }
+      },
+      {
+        "date": "2026-06-12",
+        "changes": {
+          "volume": {
+            "preserved": 60266,
+            "observed": 60366
+          }
+        }
+      },
+      {
+        "date": "2026-06-24",
+        "changes": {
+          "volume": {
+            "preserved": 55878,
+            "observed": 56025
+          }
+        }
+      },
+      {
+        "date": "2026-07-10",
+        "changes": {
+          "volume": {
+            "preserved": 167849,
+            "observed": 167920
+          }
+        }
+      },
+      {
+        "date": "2026-07-13",
+        "changes": {
+          "volume": {
+            "preserved": 114487,
+            "observed": 114489
+          }
+        }
+      },
+      {
+        "date": "2026-07-15",
+        "changes": {
+          "volume": {
+            "preserved": 1586742,
+            "observed": 1632462
+          }
+        }
+      },
+      {
+        "date": "2026-07-16",
+        "changes": {
+          "volume": {
+            "preserved": 9721123,
+            "observed": 9760705
+          }
+        }
+      },
+      {
+        "date": "2026-07-21",
+        "changes": {
+          "volume": {
+            "preserved": 678937,
+            "observed": 684939
+          }
+        }
+      },
+      {
+        "date": "2026-07-22",
+        "changes": {
+          "volume": {
+            "preserved": 355239,
+            "observed": 359231
+          }
+        }
+      },
+      {
+        "date": "2026-07-29",
+        "changes": {
+          "volume": {
+            "preserved": 278630,
+            "observed": 280967
+          }
+        }
+      },
+      {
+        "date": "2026-07-31",
+        "changes": {
+          "volume": {
+            "preserved": 212246,
+            "observed": 212651
+          }
+        }
+      },
+      {
+        "date": "2026-08-11",
+        "changes": {
+          "volume": {
+            "preserved": 153450,
+            "observed": 153490
+          }
+        }
+      },
+      {
+        "date": "2026-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 171049,
+            "observed": 171795
+          }
+        }
+      },
+      {
+        "date": "2026-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 128626,
+            "observed": 128673
+          }
+        }
+      },
+      {
+        "date": "2026-08-21",
+        "changes": {
+          "volume": {
+            "preserved": 73153,
+            "observed": 73160
+          }
+        }
+      },
+      {
+        "date": "2026-08-24",
+        "changes": {
+          "volume": {
+            "preserved": 60185,
+            "observed": 62999
+          }
+        }
+      },
+      {
+        "date": "2026-08-26",
+        "changes": {
+          "volume": {
+            "preserved": 81651,
+            "observed": 81862
+          }
+        }
+      },
+      {
+        "date": "2026-08-27",
+        "changes": {
+          "volume": {
+            "preserved": 47204,
+            "observed": 47320
+          }
+        }
+      },
+      {
+        "date": "2026-09-04",
+        "changes": {
+          "volume": {
+            "preserved": 55487,
+            "observed": 55502
+          }
+        }
+      },
+      {
+        "date": "2026-09-07",
+        "changes": {
+          "volume": {
+            "preserved": 60759,
+            "observed": 60930
+          }
+        }
+      },
+      {
+        "date": "2026-09-10",
+        "changes": {
+          "volume": {
+            "preserved": 27858,
+            "observed": 27872
+          }
+        }
+      },
+      {
+        "date": "2026-09-11",
+        "changes": {
+          "volume": {
+            "preserved": 41347,
+            "observed": 41358
+          }
+        }
+      },
+      {
+        "date": "2026-09-14",
+        "changes": {
+          "close": {
+            "preserved": 5100.0,
+            "observed": 5110.0
+          },
+          "volume": {
+            "preserved": 49375,
+            "observed": 50269
+          }
+        }
+      },
+      {
+        "date": "2026-09-15",
+        "changes": {
+          "close": {
+            "preserved": 5110.0,
+            "observed": 5150.0
+          },
+          "volume": {
+            "preserved": 53178,
+            "observed": 53804
+          }
+        }
+      },
+      {
+        "date": "2026-09-18",
+        "changes": {
+          "volume": {
+            "preserved": 51326,
+            "observed": 51374
+          }
+        }
+      },
+      {
+        "date": "2026-09-21",
+        "changes": {
+          "close": {
+            "preserved": 5000.0,
+            "observed": 5020.0
+          },
+          "volume": {
+            "preserved": 49879,
+            "observed": 50117
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "003240": {
+    "conflicts": 4,
+    "changed_fields": {
+      "close": 4,
+      "volume": 4
+    },
+    "differences": [
+      {
+        "date": "2026-09-14",
+        "changes": {
+          "close": {
+            "preserved": 907000.0,
+            "observed": 908000.0
+          },
+          "volume": {
+            "preserved": 716,
+            "observed": 726
+          }
+        }
+      },
+      {
+        "date": "2026-09-15",
+        "changes": {
+          "close": {
+            "preserved": 905000.0,
+            "observed": 906000.0
+          },
+          "volume": {
+            "preserved": 725,
+            "observed": 730
+          }
+        }
+      },
+      {
+        "date": "2026-09-18",
+        "changes": {
+          "close": {
+            "preserved": 903000.0,
+            "observed": 904000.0
+          },
+          "volume": {
+            "preserved": 1237,
+            "observed": 1337
+          }
+        }
+      },
+      {
+        "date": "2026-09-21",
+        "changes": {
+          "close": {
+            "preserved": 907000.0,
+            "observed": 910000.0
+          },
+          "volume": {
+            "preserved": 985,
+            "observed": 990
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "000520": {
+    "conflicts": 27,
+    "changed_fields": {
+      "volume": 27,
+      "low": 1,
+      "close": 4
+    },
+    "differences": [
+      {
+        "date": "2026-06-08",
+        "changes": {
+          "volume": {
+            "preserved": 164315,
+            "observed": 164350
+          }
+        }
+      },
+      {
+        "date": "2026-06-09",
+        "changes": {
+          "volume": {
+            "preserved": 80422,
+            "observed": 80424
+          }
+        }
+      },
+      {
+        "date": "2026-06-11",
+        "changes": {
+          "volume": {
+            "preserved": 71002,
+            "observed": 71215
+          }
+        }
+      },
+      {
+        "date": "2026-06-24",
+        "changes": {
+          "volume": {
+            "preserved": 143428,
+            "observed": 143534
+          }
+        }
+      },
+      {
+        "date": "2026-07-06",
+        "changes": {
+          "volume": {
+            "preserved": 44420,
+            "observed": 44434
+          }
+        }
+      },
+      {
+        "date": "2026-07-13",
+        "changes": {
+          "volume": {
+            "preserved": 71936,
+            "observed": 71939
+          }
+        }
+      },
+      {
+        "date": "2026-07-15",
+        "changes": {
+          "volume": {
+            "preserved": 38794,
+            "observed": 38851
+          }
+        }
+      },
+      {
+        "date": "2026-07-16",
+        "changes": {
+          "volume": {
+            "preserved": 165787,
+            "observed": 165887
+          }
+        }
+      },
+      {
+        "date": "2026-07-21",
+        "changes": {
+          "volume": {
+            "preserved": 126680,
+            "observed": 126785
+          }
+        }
+      },
+      {
+        "date": "2026-07-22",
+        "changes": {
+          "volume": {
+            "preserved": 77964,
+            "observed": 78004
+          }
+        }
+      },
+      {
+        "date": "2026-07-29",
+        "changes": {
+          "volume": {
+            "preserved": 166300,
+            "observed": 167291
+          }
+        }
+      },
+      {
+        "date": "2026-07-31",
+        "changes": {
+          "volume": {
+            "preserved": 97419,
+            "observed": 97479
+          }
+        }
+      },
+      {
+        "date": "2026-08-11",
+        "changes": {
+          "volume": {
+            "preserved": 24439,
+            "observed": 24463
+          }
+        }
+      },
+      {
+        "date": "2026-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 75926,
+            "observed": 75928
+          }
+        }
+      },
+      {
+        "date": "2026-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 45823,
+            "observed": 47825
+          }
+        }
+      },
+      {
+        "date": "2026-08-21",
+        "changes": {
+          "volume": {
+            "preserved": 410226,
+            "observed": 410244
+          }
+        }
+      },
+      {
+        "date": "2026-08-24",
+        "changes": {
+          "volume": {
+            "preserved": 390875,
+            "observed": 391152
+          }
+        }
+      },
+      {
+        "date": "2026-08-26",
+        "changes": {
+          "volume": {
+            "preserved": 38953,
+            "observed": 39003
+          }
+        }
+      },
+      {
+        "date": "2026-08-27",
+        "changes": {
+          "volume": {
+            "preserved": 37737,
+            "observed": 38071
+          }
+        }
+      },
+      {
+        "date": "2026-09-04",
+        "changes": {
+          "volume": {
+            "preserved": 35340,
+            "observed": 35390
+          }
+        }
+      },
+      {
+        "date": "2026-09-07",
+        "changes": {
+          "volume": {
+            "preserved": 35469,
+            "observed": 35582
+          }
+        }
+      },
+      {
+        "date": "2026-09-10",
+        "changes": {
+          "volume": {
+            "preserved": 111052,
+            "observed": 111447
+          }
+        }
+      },
+      {
+        "date": "2026-09-11",
+        "changes": {
+          "volume": {
+            "preserved": 293528,
+            "observed": 294268
+          }
+        }
+      },
+      {
+        "date": "2026-09-14",
+        "changes": {
+          "low": {
+            "preserved": 6930.0,
+            "observed": 6880.0
+          },
+          "close": {
+            "preserved": 6930.0,
+            "observed": 6970.0
+          },
+          "volume": {
+            "preserved": 83694,
+            "observed": 88355
+          }
+        }
+      },
+      {
+        "date": "2026-09-15",
+        "changes": {
+          "close": {
+            "preserved": 7010.0,
+            "observed": 7070.0
+          },
+          "volume": {
+            "preserved": 42133,
+            "observed": 42634
+          }
+        }
+      },
+      {
+        "date": "2026-09-18",
+        "changes": {
+          "close": {
+            "preserved": 7760.0,
+            "observed": 7770.0
+          },
+          "volume": {
+            "preserved": 156672,
+            "observed": 157268
+          }
+        }
+      },
+      {
+        "date": "2026-09-21",
+        "changes": {
+          "close": {
+            "preserved": 8220.0,
+            "observed": 8200.0
+          },
+          "volume": {
+            "preserved": 238583,
+            "observed": 240013
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "013120": {
+    "conflicts": 24,
+    "changed_fields": {
+      "volume": 24,
+      "close": 3,
+      "high": 1
+    },
+    "differences": [
+      {
+        "date": "2026-06-09",
+        "changes": {
+          "volume": {
+            "preserved": 88603,
+            "observed": 88623
+          }
+        }
+      },
+      {
+        "date": "2026-06-11",
+        "changes": {
+          "volume": {
+            "preserved": 57246,
+            "observed": 57255
+          }
+        }
+      },
+      {
+        "date": "2026-06-12",
+        "changes": {
+          "volume": {
+            "preserved": 198793,
+            "observed": 199593
+          }
+        }
+      },
+      {
+        "date": "2026-06-15",
+        "changes": {
+          "volume": {
+            "preserved": 93958,
+            "observed": 94706
+          }
+        }
+      },
+      {
+        "date": "2026-07-06",
+        "changes": {
+          "volume": {
+            "preserved": 23493851,
+            "observed": 23523648
+          }
+        }
+      },
+      {
+        "date": "2026-07-10",
+        "changes": {
+          "volume": {
+            "preserved": 1588396,
+            "observed": 1598962
+          }
+        }
+      },
+      {
+        "date": "2026-07-13",
+        "changes": {
+          "volume": {
+            "preserved": 985568,
+            "observed": 989132
+          }
+        }
+      },
+      {
+        "date": "2026-07-15",
+        "changes": {
+          "volume": {
+            "preserved": 539764,
+            "observed": 545015
+          }
+        }
+      },
+      {
+        "date": "2026-07-16",
+        "changes": {
+          "volume": {
+            "preserved": 301015,
+            "observed": 303092
+          }
+        }
+      },
+      {
+        "date": "2026-07-21",
+        "changes": {
+          "volume": {
+            "preserved": 231857,
+            "observed": 233507
+          }
+        }
+      },
+      {
+        "date": "2026-07-22",
+        "changes": {
+          "volume": {
+            "preserved": 183840,
+            "observed": 184695
+          }
+        }
+      },
+      {
+        "date": "2026-07-29",
+        "changes": {
+          "volume": {
+            "preserved": 599385,
+            "observed": 601689
+          }
+        }
+      },
+      {
+        "date": "2026-07-31",
+        "changes": {
+          "volume": {
+            "preserved": 130924,
+            "observed": 131022
+          }
+        }
+      },
+      {
+        "date": "2026-08-11",
+        "changes": {
+          "volume": {
+            "preserved": 212221,
+            "observed": 214210
+          }
+        }
+      },
+      {
+        "date": "2026-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 57356,
+            "observed": 57367
+          }
+        }
+      },
+      {
+        "date": "2026-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 133976,
+            "observed": 133977
+          }
+        }
+      },
+      {
+        "date": "2026-08-21",
+        "changes": {
+          "volume": {
+            "preserved": 169663,
+            "observed": 170265
+          }
+        }
+      },
+      {
+        "date": "2026-08-24",
+        "changes": {
+          "volume": {
+            "preserved": 69995,
+            "observed": 70506
+          }
+        }
+      },
+      {
+        "date": "2026-08-26",
+        "changes": {
+          "volume": {
+            "preserved": 47770,
+            "observed": 47904
+          }
+        }
+      },
+      {
+        "date": "2026-09-10",
+        "changes": {
+          "volume": {
+            "preserved": 61874,
+            "observed": 62374
+          }
+        }
+      },
+      {
+        "date": "2026-09-14",
+        "changes": {
+          "close": {
+            "preserved": 2170.0,
+            "observed": 2160.0
+          },
+          "volume": {
+            "preserved": 39529,
+            "observed": 40371
+          }
+        }
+      },
+      {
+        "date": "2026-09-15",
+        "changes": {
+          "volume": {
+            "preserved": 81955,
+            "observed": 83481
+          }
+        }
+      },
+      {
+        "date": "2026-09-18",
+        "changes": {
+          "high": {
+            "preserved": 2115.0,
+            "observed": 2120.0
+          },
+          "close": {
+            "preserved": 2110.0,
+            "observed": 2120.0
+          },
+          "volume": {
+            "preserved": 53687,
+            "observed": 54308
+          }
+        }
+      },
+      {
+        "date": "2026-09-21",
+        "changes": {
+          "close": {
+            "preserved": 2075.0,
+            "observed": 2085.0
+          },
+          "volume": {
+            "preserved": 33989,
+            "observed": 34089
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "017650": {
+    "conflicts": 4,
+    "changed_fields": {
+      "volume": 4
+    },
+    "differences": [
+      {
+        "date": "2026-06-08",
+        "changes": {
+          "volume": {
+            "preserved": 14109,
+            "observed": 14111
+          }
+        }
+      },
+      {
+        "date": "2026-07-10",
+        "changes": {
+          "volume": {
+            "preserved": 11308,
+            "observed": 11394
+          }
+        }
+      },
+      {
+        "date": "2026-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 56461,
+            "observed": 56619
+          }
+        }
+      },
+      {
+        "date": "2026-09-14",
+        "changes": {
+          "volume": {
+            "preserved": 57011,
+            "observed": 57012
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "900310": {
+    "conflicts": 484,
+    "changed_fields": {
+      "volume": 484,
+      "open": 28,
+      "high": 29,
+      "low": 28,
+      "close": 32
+    },
+    "differences": [
+      {
+        "date": "2024-01-02",
+        "changes": {
+          "volume": {
+            "preserved": 118680,
+            "observed": 118678
+          }
+        }
+      },
+      {
+        "date": "2024-01-03",
+        "changes": {
+          "volume": {
+            "preserved": 76130,
+            "observed": 76131
+          }
+        }
+      },
+      {
+        "date": "2024-01-04",
+        "changes": {
+          "volume": {
+            "preserved": 127895,
+            "observed": 127897
+          }
+        }
+      },
+      {
+        "date": "2024-01-05",
+        "changes": {
+          "volume": {
+            "preserved": 105245,
+            "observed": 105247
+          }
+        }
+      },
+      {
+        "date": "2024-01-08",
+        "changes": {
+          "volume": {
+            "preserved": 82900,
+            "observed": 82901
+          }
+        }
+      },
+      {
+        "date": "2024-01-09",
+        "changes": {
+          "volume": {
+            "preserved": 121340,
+            "observed": 121341
+          }
+        }
+      },
+      {
+        "date": "2024-01-10",
+        "changes": {
+          "volume": {
+            "preserved": 172330,
+            "observed": 172329
+          }
+        }
+      },
+      {
+        "date": "2024-01-11",
+        "changes": {
+          "volume": {
+            "preserved": 88080,
+            "observed": 88081
+          }
+        }
+      },
+      {
+        "date": "2024-01-12",
+        "changes": {
+          "volume": {
+            "preserved": 150600,
+            "observed": 150599
+          }
+        }
+      },
+      {
+        "date": "2024-01-15",
+        "changes": {
+          "volume": {
+            "preserved": 103815,
+            "observed": 103817
+          }
+        }
+      },
+      {
+        "date": "2024-01-16",
+        "changes": {
+          "volume": {
+            "preserved": 125435,
+            "observed": 125434
+          }
+        }
+      },
+      {
+        "date": "2024-01-17",
+        "changes": {
+          "volume": {
+            "preserved": 325685,
+            "observed": 325686
+          }
+        }
+      },
+      {
+        "date": "2024-01-18",
+        "changes": {
+          "volume": {
+            "preserved": 172055,
+            "observed": 172057
+          }
+        }
+      },
+      {
+        "date": "2024-01-19",
+        "changes": {
+          "volume": {
+            "preserved": 71495,
+            "observed": 71494
+          }
+        }
+      },
+      {
+        "date": "2024-01-25",
+        "changes": {
+          "volume": {
+            "preserved": 775810,
+            "observed": 775812
+          }
+        }
+      },
+      {
+        "date": "2024-01-26",
+        "changes": {
+          "volume": {
+            "preserved": 213715,
+            "observed": 213713
+          }
+        }
+      },
+      {
+        "date": "2024-01-29",
+        "changes": {
+          "volume": {
+            "preserved": 192360,
+            "observed": 192361
+          }
+        }
+      },
+      {
+        "date": "2024-01-30",
+        "changes": {
+          "volume": {
+            "preserved": 257140,
+            "observed": 257141
+          }
+        }
+      },
+      {
+        "date": "2024-01-31",
+        "changes": {
+          "volume": {
+            "preserved": 91830,
+            "observed": 91832
+          }
+        }
+      },
+      {
+        "date": "2024-02-01",
+        "changes": {
+          "volume": {
+            "preserved": 99005,
+            "observed": 99007
+          }
+        }
+      },
+      {
+        "date": "2024-02-02",
+        "changes": {
+          "volume": {
+            "preserved": 78475,
+            "observed": 78477
+          }
+        }
+      },
+      {
+        "date": "2024-02-06",
+        "changes": {
+          "volume": {
+            "preserved": 144745,
+            "observed": 144743
+          }
+        }
+      },
+      {
+        "date": "2024-02-13",
+        "changes": {
+          "volume": {
+            "preserved": 112750,
+            "observed": 112748
+          }
+        }
+      },
+      {
+        "date": "2024-02-14",
+        "changes": {
+          "volume": {
+            "preserved": 104905,
+            "observed": 104907
+          }
+        }
+      },
+      {
+        "date": "2024-02-15",
+        "changes": {
+          "volume": {
+            "preserved": 115415,
+            "observed": 115416
+          }
+        }
+      },
+      {
+        "date": "2024-02-16",
+        "changes": {
+          "volume": {
+            "preserved": 129415,
+            "observed": 129416
+          }
+        }
+      },
+      {
+        "date": "2024-02-19",
+        "changes": {
+          "volume": {
+            "preserved": 125615,
+            "observed": 125613
+          }
+        }
+      },
+      {
+        "date": "2024-02-20",
+        "changes": {
+          "volume": {
+            "preserved": 159940,
+            "observed": 159938
+          }
+        }
+      },
+      {
+        "date": "2024-02-21",
+        "changes": {
+          "volume": {
+            "preserved": 170655,
+            "observed": 170653
+          }
+        }
+      },
+      {
+        "date": "2024-02-23",
+        "changes": {
+          "volume": {
+            "preserved": 166700,
+            "observed": 166702
+          }
+        }
+      },
+      {
+        "date": "2024-02-26",
+        "changes": {
+          "volume": {
+            "preserved": 128450,
+            "observed": 128449
+          }
+        }
+      },
+      {
+        "date": "2024-02-28",
+        "changes": {
+          "volume": {
+            "preserved": 109750,
+            "observed": 109751
+          }
+        }
+      },
+      {
+        "date": "2024-02-29",
+        "changes": {
+          "volume": {
+            "preserved": 107390,
+            "observed": 107392
+          }
+        }
+      },
+      {
+        "date": "2024-03-05",
+        "changes": {
+          "volume": {
+            "preserved": 407165,
+            "observed": 407166
+          }
+        }
+      },
+      {
+        "date": "2024-03-06",
+        "changes": {
+          "volume": {
+            "preserved": 200695,
+            "observed": 200693
+          }
+        }
+      },
+      {
+        "date": "2024-03-07",
+        "changes": {
+          "volume": {
+            "preserved": 604465,
+            "observed": 604463
+          }
+        }
+      },
+      {
+        "date": "2024-03-11",
+        "changes": {
+          "volume": {
+            "preserved": 107020,
+            "observed": 107021
+          }
+        }
+      },
+      {
+        "date": "2024-03-12",
+        "changes": {
+          "volume": {
+            "preserved": 183665,
+            "observed": 183664
+          }
+        }
+      },
+      {
+        "date": "2024-03-13",
+        "changes": {
+          "volume": {
+            "preserved": 110425,
+            "observed": 110424
+          }
+        }
+      },
+      {
+        "date": "2024-03-14",
+        "changes": {
+          "volume": {
+            "preserved": 82180,
+            "observed": 82179
+          }
+        }
+      },
+      {
+        "date": "2024-03-15",
+        "changes": {
+          "volume": {
+            "preserved": 96195,
+            "observed": 96197
+          }
+        }
+      },
+      {
+        "date": "2024-03-18",
+        "changes": {
+          "volume": {
+            "preserved": 72530,
+            "observed": 72528
+          }
+        }
+      },
+      {
+        "date": "2024-03-19",
+        "changes": {
+          "volume": {
+            "preserved": 81095,
+            "observed": 81097
+          }
+        }
+      },
+      {
+        "date": "2024-03-20",
+        "changes": {
+          "volume": {
+            "preserved": 100020,
+            "observed": 100021
+          }
+        }
+      },
+      {
+        "date": "2024-03-21",
+        "changes": {
+          "volume": {
+            "preserved": 106765,
+            "observed": 106767
+          }
+        }
+      },
+      {
+        "date": "2024-03-22",
+        "changes": {
+          "volume": {
+            "preserved": 100840,
+            "observed": 100839
+          }
+        }
+      },
+      {
+        "date": "2024-03-26",
+        "changes": {
+          "volume": {
+            "preserved": 110765,
+            "observed": 110763
+          }
+        }
+      },
+      {
+        "date": "2024-03-29",
+        "changes": {
+          "volume": {
+            "preserved": 102630,
+            "observed": 102629
+          }
+        }
+      },
+      {
+        "date": "2024-04-01",
+        "changes": {
+          "volume": {
+            "preserved": 152820,
+            "observed": 152822
+          }
+        }
+      },
+      {
+        "date": "2024-04-02",
+        "changes": {
+          "volume": {
+            "preserved": 112255,
+            "observed": 112257
+          }
+        }
+      },
+      {
+        "date": "2024-04-03",
+        "changes": {
+          "volume": {
+            "preserved": 246080,
+            "observed": 246078
+          }
+        }
+      },
+      {
+        "date": "2024-04-04",
+        "changes": {
+          "volume": {
+            "preserved": 100050,
+            "observed": 100049
+          }
+        }
+      },
+      {
+        "date": "2024-04-05",
+        "changes": {
+          "volume": {
+            "preserved": 138225,
+            "observed": 138227
+          }
+        }
+      },
+      {
+        "date": "2024-04-08",
+        "changes": {
+          "volume": {
+            "preserved": 138100,
+            "observed": 138101
+          }
+        }
+      },
+      {
+        "date": "2024-04-09",
+        "changes": {
+          "volume": {
+            "preserved": 90425,
+            "observed": 90427
+          }
+        }
+      },
+      {
+        "date": "2024-04-11",
+        "changes": {
+          "volume": {
+            "preserved": 71345,
+            "observed": 71344
+          }
+        }
+      },
+      {
+        "date": "2024-04-15",
+        "changes": {
+          "volume": {
+            "preserved": 98225,
+            "observed": 98224
+          }
+        }
+      },
+      {
+        "date": "2024-04-16",
+        "changes": {
+          "volume": {
+            "preserved": 165595,
+            "observed": 165597
+          }
+        }
+      },
+      {
+        "date": "2024-04-17",
+        "changes": {
+          "volume": {
+            "preserved": 143225,
+            "observed": 143223
+          }
+        }
+      },
+      {
+        "date": "2024-04-18",
+        "changes": {
+          "volume": {
+            "preserved": 175725,
+            "observed": 175724
+          }
+        }
+      },
+      {
+        "date": "2024-04-19",
+        "changes": {
+          "volume": {
+            "preserved": 439640,
+            "observed": 439638
+          }
+        }
+      },
+      {
+        "date": "2024-04-22",
+        "changes": {
+          "volume": {
+            "preserved": 235635,
+            "observed": 235633
+          }
+        }
+      },
+      {
+        "date": "2024-04-23",
+        "changes": {
+          "volume": {
+            "preserved": 246655,
+            "observed": 246653
+          }
+        }
+      },
+      {
+        "date": "2024-04-24",
+        "changes": {
+          "volume": {
+            "preserved": 96595,
+            "observed": 96594
+          }
+        }
+      },
+      {
+        "date": "2024-04-26",
+        "changes": {
+          "volume": {
+            "preserved": 104240,
+            "observed": 104242
+          }
+        }
+      },
+      {
+        "date": "2024-04-29",
+        "changes": {
+          "volume": {
+            "preserved": 97040,
+            "observed": 97041
+          }
+        }
+      },
+      {
+        "date": "2024-04-30",
+        "changes": {
+          "volume": {
+            "preserved": 143295,
+            "observed": 143293
+          }
+        }
+      },
+      {
+        "date": "2024-05-02",
+        "changes": {
+          "volume": {
+            "preserved": 734310,
+            "observed": 734308
+          }
+        }
+      },
+      {
+        "date": "2024-05-07",
+        "changes": {
+          "volume": {
+            "preserved": 96375,
+            "observed": 96373
+          }
+        }
+      },
+      {
+        "date": "2024-05-08",
+        "changes": {
+          "volume": {
+            "preserved": 99160,
+            "observed": 99159
+          }
+        }
+      },
+      {
+        "date": "2024-05-09",
+        "changes": {
+          "volume": {
+            "preserved": 73030,
+            "observed": 73029
+          }
+        }
+      },
+      {
+        "date": "2024-05-14",
+        "changes": {
+          "volume": {
+            "preserved": 98935,
+            "observed": 98936
+          }
+        }
+      },
+      {
+        "date": "2024-05-20",
+        "changes": {
+          "volume": {
+            "preserved": 76930,
+            "observed": 76932
+          }
+        }
+      },
+      {
+        "date": "2024-05-21",
+        "changes": {
+          "volume": {
+            "preserved": 226430,
+            "observed": 226432
+          }
+        }
+      },
+      {
+        "date": "2024-05-22",
+        "changes": {
+          "volume": {
+            "preserved": 122470,
+            "observed": 122472
+          }
+        }
+      },
+      {
+        "date": "2024-05-23",
+        "changes": {
+          "volume": {
+            "preserved": 146305,
+            "observed": 146307
+          }
+        }
+      },
+      {
+        "date": "2024-05-29",
+        "changes": {
+          "volume": {
+            "preserved": 600385,
+            "observed": 600387
+          }
+        }
+      },
+      {
+        "date": "2024-05-31",
+        "changes": {
+          "volume": {
+            "preserved": 395535,
+            "observed": 395534
+          }
+        }
+      },
+      {
+        "date": "2024-06-03",
+        "changes": {
+          "volume": {
+            "preserved": 190400,
+            "observed": 190402
+          }
+        }
+      },
+      {
+        "date": "2024-06-04",
+        "changes": {
+          "volume": {
+            "preserved": 404215,
+            "observed": 404214
+          }
+        }
+      },
+      {
+        "date": "2024-06-07",
+        "changes": {
+          "volume": {
+            "preserved": 162085,
+            "observed": 162083
+          }
+        }
+      },
+      {
+        "date": "2024-06-10",
+        "changes": {
+          "volume": {
+            "preserved": 89405,
+            "observed": 89406
+          }
+        }
+      },
+      {
+        "date": "2024-06-11",
+        "changes": {
+          "volume": {
+            "preserved": 95765,
+            "observed": 95767
+          }
+        }
+      },
+      {
+        "date": "2024-06-13",
+        "changes": {
+          "volume": {
+            "preserved": 222255,
+            "observed": 222256
+          }
+        }
+      },
+      {
+        "date": "2024-06-14",
+        "changes": {
+          "volume": {
+            "preserved": 667330,
+            "observed": 667331
+          }
+        }
+      },
+      {
+        "date": "2024-06-17",
+        "changes": {
+          "volume": {
+            "preserved": 133245,
+            "observed": 133247
+          }
+        }
+      },
+      {
+        "date": "2024-06-18",
+        "changes": {
+          "volume": {
+            "preserved": 96015,
+            "observed": 96016
+          }
+        }
+      },
+      {
+        "date": "2024-06-19",
+        "changes": {
+          "volume": {
+            "preserved": 75845,
+            "observed": 75843
+          }
+        }
+      },
+      {
+        "date": "2024-06-21",
+        "changes": {
+          "volume": {
+            "preserved": 195560,
+            "observed": 195558
+          }
+        }
+      },
+      {
+        "date": "2024-06-24",
+        "changes": {
+          "volume": {
+            "preserved": 95385,
+            "observed": 95383
+          }
+        }
+      },
+      {
+        "date": "2024-06-25",
+        "changes": {
+          "volume": {
+            "preserved": 49005,
+            "observed": 49006
+          }
+        }
+      },
+      {
+        "date": "2024-06-26",
+        "changes": {
+          "volume": {
+            "preserved": 60415,
+            "observed": 60413
+          }
+        }
+      },
+      {
+        "date": "2024-06-27",
+        "changes": {
+          "volume": {
+            "preserved": 60925,
+            "observed": 60927
+          }
+        }
+      },
+      {
+        "date": "2024-06-28",
+        "changes": {
+          "volume": {
+            "preserved": 97150,
+            "observed": 97148
+          }
+        }
+      },
+      {
+        "date": "2024-07-01",
+        "changes": {
+          "volume": {
+            "preserved": 141445,
+            "observed": 141447
+          }
+        }
+      },
+      {
+        "date": "2024-07-02",
+        "changes": {
+          "volume": {
+            "preserved": 50690,
+            "observed": 50689
+          }
+        }
+      },
+      {
+        "date": "2024-07-03",
+        "changes": {
+          "volume": {
+            "preserved": 171150,
+            "observed": 171152
+          }
+        }
+      },
+      {
+        "date": "2024-07-04",
+        "changes": {
+          "volume": {
+            "preserved": 94180,
+            "observed": 94182
+          }
+        }
+      },
+      {
+        "date": "2024-07-08",
+        "changes": {
+          "volume": {
+            "preserved": 34805,
+            "observed": 34804
+          }
+        }
+      },
+      {
+        "date": "2024-07-10",
+        "changes": {
+          "volume": {
+            "preserved": 65060,
+            "observed": 65058
+          }
+        }
+      },
+      {
+        "date": "2024-07-11",
+        "changes": {
+          "volume": {
+            "preserved": 83235,
+            "observed": 83237
+          }
+        }
+      },
+      {
+        "date": "2024-07-12",
+        "changes": {
+          "volume": {
+            "preserved": 95910,
+            "observed": 95909
+          }
+        }
+      },
+      {
+        "date": "2024-07-15",
+        "changes": {
+          "volume": {
+            "preserved": 58715,
+            "observed": 58714
+          }
+        }
+      },
+      {
+        "date": "2024-07-16",
+        "changes": {
+          "volume": {
+            "preserved": 90300,
+            "observed": 90302
+          }
+        }
+      },
+      {
+        "date": "2024-07-18",
+        "changes": {
+          "volume": {
+            "preserved": 196750,
+            "observed": 196751
+          }
+        }
+      },
+      {
+        "date": "2024-07-19",
+        "changes": {
+          "volume": {
+            "preserved": 113330,
+            "observed": 113332
+          }
+        }
+      },
+      {
+        "date": "2024-07-22",
+        "changes": {
+          "volume": {
+            "preserved": 97605,
+            "observed": 97606
+          }
+        }
+      },
+      {
+        "date": "2024-07-24",
+        "changes": {
+          "volume": {
+            "preserved": 89105,
+            "observed": 89106
+          }
+        }
+      },
+      {
+        "date": "2024-07-25",
+        "changes": {
+          "volume": {
+            "preserved": 246675,
+            "observed": 246676
+          }
+        }
+      },
+      {
+        "date": "2024-07-26",
+        "changes": {
+          "volume": {
+            "preserved": 34380,
+            "observed": 34378
+          }
+        }
+      },
+      {
+        "date": "2024-07-29",
+        "changes": {
+          "volume": {
+            "preserved": 126260,
+            "observed": 126262
+          }
+        }
+      },
+      {
+        "date": "2024-07-30",
+        "changes": {
+          "volume": {
+            "preserved": 183875,
+            "observed": 183873
+          }
+        }
+      },
+      {
+        "date": "2024-08-02",
+        "changes": {
+          "volume": {
+            "preserved": 234645,
+            "observed": 234643
+          }
+        }
+      },
+      {
+        "date": "2024-08-05",
+        "changes": {
+          "volume": {
+            "preserved": 230775,
+            "observed": 230773
+          }
+        }
+      },
+      {
+        "date": "2024-08-06",
+        "changes": {
+          "volume": {
+            "preserved": 156705,
+            "observed": 156707
+          }
+        }
+      },
+      {
+        "date": "2024-08-07",
+        "changes": {
+          "volume": {
+            "preserved": 90770,
+            "observed": 90769
+          }
+        }
+      },
+      {
+        "date": "2024-08-08",
+        "changes": {
+          "volume": {
+            "preserved": 68385,
+            "observed": 68383
+          }
+        }
+      },
+      {
+        "date": "2024-08-09",
+        "changes": {
+          "volume": {
+            "preserved": 224240,
+            "observed": 224238
+          }
+        }
+      },
+      {
+        "date": "2024-08-13",
+        "changes": {
+          "volume": {
+            "preserved": 36950,
+            "observed": 36949
+          }
+        }
+      },
+      {
+        "date": "2024-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 70905,
+            "observed": 70907
+          }
+        }
+      },
+      {
+        "date": "2024-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 58415,
+            "observed": 58416
+          }
+        }
+      },
+      {
+        "date": "2024-08-20",
+        "changes": {
+          "volume": {
+            "preserved": 59015,
+            "observed": 59013
+          }
+        }
+      },
+      {
+        "date": "2024-08-21",
+        "changes": {
+          "volume": {
+            "preserved": 44635,
+            "observed": 44637
+          }
+        }
+      },
+      {
+        "date": "2024-08-23",
+        "changes": {
+          "volume": {
+            "preserved": 163805,
+            "observed": 163804
+          }
+        }
+      },
+      {
+        "date": "2024-08-27",
+        "changes": {
+          "volume": {
+            "preserved": 27370,
+            "observed": 27371
+          }
+        }
+      },
+      {
+        "date": "2024-08-29",
+        "changes": {
+          "volume": {
+            "preserved": 77160,
+            "observed": 77162
+          }
+        }
+      },
+      {
+        "date": "2024-08-30",
+        "changes": {
+          "volume": {
+            "preserved": 36190,
+            "observed": 36191
+          }
+        }
+      },
+      {
+        "date": "2024-09-02",
+        "changes": {
+          "volume": {
+            "preserved": 24155,
+            "observed": 24156
+          }
+        }
+      },
+      {
+        "date": "2024-09-03",
+        "changes": {
+          "volume": {
+            "preserved": 37405,
+            "observed": 37406
+          }
+        }
+      },
+      {
+        "date": "2024-09-04",
+        "changes": {
+          "volume": {
+            "preserved": 88910,
+            "observed": 88909
+          }
+        }
+      },
+      {
+        "date": "2024-09-06",
+        "changes": {
+          "volume": {
+            "preserved": 35500,
+            "observed": 35501
+          }
+        }
+      },
+      {
+        "date": "2024-09-10",
+        "changes": {
+          "volume": {
+            "preserved": 94020,
+            "observed": 94019
+          }
+        }
+      },
+      {
+        "date": "2024-09-11",
+        "changes": {
+          "volume": {
+            "preserved": 122705,
+            "observed": 122707
+          }
+        }
+      },
+      {
+        "date": "2024-09-12",
+        "changes": {
+          "volume": {
+            "preserved": 115605,
+            "observed": 115604
+          }
+        }
+      },
+      {
+        "date": "2024-09-13",
+        "changes": {
+          "volume": {
+            "preserved": 418125,
+            "observed": 418123
+          }
+        }
+      },
+      {
+        "date": "2024-09-19",
+        "changes": {
+          "volume": {
+            "preserved": 103680,
+            "observed": 103682
+          }
+        }
+      },
+      {
+        "date": "2024-09-20",
+        "changes": {
+          "volume": {
+            "preserved": 74095,
+            "observed": 74093
+          }
+        }
+      },
+      {
+        "date": "2024-09-23",
+        "changes": {
+          "volume": {
+            "preserved": 57755,
+            "observed": 57753
+          }
+        }
+      },
+      {
+        "date": "2024-09-24",
+        "changes": {
+          "volume": {
+            "preserved": 65755,
+            "observed": 65753
+          }
+        }
+      },
+      {
+        "date": "2024-09-25",
+        "changes": {
+          "volume": {
+            "preserved": 21325465,
+            "observed": 21325466
+          }
+        }
+      },
+      {
+        "date": "2024-09-26",
+        "changes": {
+          "volume": {
+            "preserved": 2093650,
+            "observed": 2093649
+          }
+        }
+      },
+      {
+        "date": "2024-09-27",
+        "changes": {
+          "volume": {
+            "preserved": 10107740,
+            "observed": 10107738
+          }
+        }
+      },
+      {
+        "date": "2024-09-30",
+        "changes": {
+          "volume": {
+            "preserved": 14312280,
+            "observed": 14312278
+          }
+        }
+      },
+      {
+        "date": "2024-10-02",
+        "changes": {
+          "volume": {
+            "preserved": 3341125,
+            "observed": 3341124
+          }
+        }
+      },
+      {
+        "date": "2024-10-04",
+        "changes": {
+          "volume": {
+            "preserved": 973440,
+            "observed": 973439
+          }
+        }
+      },
+      {
+        "date": "2024-10-08",
+        "changes": {
+          "volume": {
+            "preserved": 1700790,
+            "observed": 1700791
+          }
+        }
+      },
+      {
+        "date": "2024-10-10",
+        "changes": {
+          "volume": {
+            "preserved": 471425,
+            "observed": 471426
+          }
+        }
+      },
+      {
+        "date": "2024-10-11",
+        "changes": {
+          "volume": {
+            "preserved": 290400,
+            "observed": 290401
+          }
+        }
+      },
+      {
+        "date": "2024-10-14",
+        "changes": {
+          "volume": {
+            "preserved": 337930,
+            "observed": 337928
+          }
+        }
+      },
+      {
+        "date": "2024-10-15",
+        "changes": {
+          "volume": {
+            "preserved": 255010,
+            "observed": 255009
+          }
+        }
+      },
+      {
+        "date": "2024-10-16",
+        "changes": {
+          "volume": {
+            "preserved": 216360,
+            "observed": 216359
+          }
+        }
+      },
+      {
+        "date": "2024-10-17",
+        "changes": {
+          "volume": {
+            "preserved": 1324900,
+            "observed": 1324898
+          }
+        }
+      },
+      {
+        "date": "2024-10-18",
+        "changes": {
+          "volume": {
+            "preserved": 233610,
+            "observed": 233611
+          }
+        }
+      },
+      {
+        "date": "2024-10-21",
+        "changes": {
+          "volume": {
+            "preserved": 297380,
+            "observed": 297378
+          }
+        }
+      },
+      {
+        "date": "2024-10-22",
+        "changes": {
+          "volume": {
+            "preserved": 171195,
+            "observed": 171194
+          }
+        }
+      },
+      {
+        "date": "2024-10-23",
+        "changes": {
+          "volume": {
+            "preserved": 374270,
+            "observed": 374271
+          }
+        }
+      },
+      {
+        "date": "2024-10-25",
+        "changes": {
+          "volume": {
+            "preserved": 44345,
+            "observed": 44344
+          }
+        }
+      },
+      {
+        "date": "2024-10-28",
+        "changes": {
+          "volume": {
+            "preserved": 56245,
+            "observed": 56243
+          }
+        }
+      },
+      {
+        "date": "2024-10-29",
+        "changes": {
+          "volume": {
+            "preserved": 44560,
+            "observed": 44559
+          }
+        }
+      },
+      {
+        "date": "2024-10-30",
+        "changes": {
+          "volume": {
+            "preserved": 99120,
+            "observed": 99119
+          }
+        }
+      },
+      {
+        "date": "2024-11-04",
+        "changes": {
+          "volume": {
+            "preserved": 124185,
+            "observed": 124184
+          }
+        }
+      },
+      {
+        "date": "2024-11-05",
+        "changes": {
+          "volume": {
+            "preserved": 203945,
+            "observed": 203946
+          }
+        }
+      },
+      {
+        "date": "2024-11-06",
+        "changes": {
+          "volume": {
+            "preserved": 160760,
+            "observed": 160761
+          }
+        }
+      },
+      {
+        "date": "2024-11-07",
+        "changes": {
+          "volume": {
+            "preserved": 138235,
+            "observed": 138233
+          }
+        }
+      },
+      {
+        "date": "2024-11-08",
+        "changes": {
+          "volume": {
+            "preserved": 122630,
+            "observed": 122628
+          }
+        }
+      },
+      {
+        "date": "2024-11-11",
+        "changes": {
+          "volume": {
+            "preserved": 322530,
+            "observed": 322528
+          }
+        }
+      },
+      {
+        "date": "2024-11-13",
+        "changes": {
+          "volume": {
+            "preserved": 555180,
+            "observed": 555179
+          }
+        }
+      },
+      {
+        "date": "2024-11-15",
+        "changes": {
+          "volume": {
+            "preserved": 119265,
+            "observed": 119264
+          }
+        }
+      },
+      {
+        "date": "2024-11-18",
+        "changes": {
+          "volume": {
+            "preserved": 92030,
+            "observed": 92028
+          }
+        }
+      },
+      {
+        "date": "2024-11-19",
+        "changes": {
+          "volume": {
+            "preserved": 51135,
+            "observed": 51136
+          }
+        }
+      },
+      {
+        "date": "2024-11-20",
+        "changes": {
+          "volume": {
+            "preserved": 34700,
+            "observed": 34698
+          }
+        }
+      },
+      {
+        "date": "2024-11-21",
+        "changes": {
+          "volume": {
+            "preserved": 146230,
+            "observed": 146231
+          }
+        }
+      },
+      {
+        "date": "2024-11-22",
+        "changes": {
+          "volume": {
+            "preserved": 200650,
+            "observed": 200651
+          }
+        }
+      },
+      {
+        "date": "2024-11-25",
+        "changes": {
+          "volume": {
+            "preserved": 66335,
+            "observed": 66334
+          }
+        }
+      },
+      {
+        "date": "2024-11-28",
+        "changes": {
+          "volume": {
+            "preserved": 36955,
+            "observed": 36957
+          }
+        }
+      },
+      {
+        "date": "2024-11-29",
+        "changes": {
+          "volume": {
+            "preserved": 68475,
+            "observed": 68476
+          }
+        }
+      },
+      {
+        "date": "2024-12-02",
+        "changes": {
+          "volume": {
+            "preserved": 138990,
+            "observed": 138992
+          }
+        }
+      },
+      {
+        "date": "2024-12-03",
+        "changes": {
+          "volume": {
+            "preserved": 160975,
+            "observed": 160977
+          }
+        }
+      },
+      {
+        "date": "2024-12-09",
+        "changes": {
+          "volume": {
+            "preserved": 82480,
+            "observed": 82478
+          }
+        }
+      },
+      {
+        "date": "2024-12-10",
+        "changes": {
+          "volume": {
+            "preserved": 117590,
+            "observed": 117592
+          }
+        }
+      },
+      {
+        "date": "2024-12-11",
+        "changes": {
+          "volume": {
+            "preserved": 65970,
+            "observed": 65968
+          }
+        }
+      },
+      {
+        "date": "2024-12-16",
+        "changes": {
+          "volume": {
+            "preserved": 42365,
+            "observed": 42367
+          }
+        }
+      },
+      {
+        "date": "2024-12-17",
+        "changes": {
+          "volume": {
+            "preserved": 21720,
+            "observed": 21721
+          }
+        }
+      },
+      {
+        "date": "2024-12-18",
+        "changes": {
+          "volume": {
+            "preserved": 23830,
+            "observed": 23828
+          }
+        }
+      },
+      {
+        "date": "2024-12-19",
+        "changes": {
+          "volume": {
+            "preserved": 70420,
+            "observed": 70422
+          }
+        }
+      },
+      {
+        "date": "2024-12-20",
+        "changes": {
+          "volume": {
+            "preserved": 40600,
+            "observed": 40599
+          }
+        }
+      },
+      {
+        "date": "2024-12-23",
+        "changes": {
+          "volume": {
+            "preserved": 85080,
+            "observed": 85082
+          }
+        }
+      },
+      {
+        "date": "2024-12-24",
+        "changes": {
+          "volume": {
+            "preserved": 37335,
+            "observed": 37336
+          }
+        }
+      },
+      {
+        "date": "2024-12-26",
+        "changes": {
+          "volume": {
+            "preserved": 57340,
+            "observed": 57342
+          }
+        }
+      },
+      {
+        "date": "2024-12-27",
+        "changes": {
+          "volume": {
+            "preserved": 21445,
+            "observed": 21444
+          }
+        }
+      },
+      {
+        "date": "2025-01-03",
+        "changes": {
+          "volume": {
+            "preserved": 139755,
+            "observed": 139756
+          }
+        }
+      },
+      {
+        "date": "2025-01-06",
+        "changes": {
+          "volume": {
+            "preserved": 171910,
+            "observed": 171909
+          }
+        }
+      },
+      {
+        "date": "2025-01-07",
+        "changes": {
+          "volume": {
+            "preserved": 203520,
+            "observed": 203519
+          }
+        }
+      },
+      {
+        "date": "2025-01-08",
+        "changes": {
+          "volume": {
+            "preserved": 213205,
+            "observed": 213203
+          }
+        }
+      },
+      {
+        "date": "2025-01-10",
+        "changes": {
+          "volume": {
+            "preserved": 284205,
+            "observed": 284203
+          }
+        }
+      },
+      {
+        "date": "2025-01-13",
+        "changes": {
+          "volume": {
+            "preserved": 277165,
+            "observed": 277167
+          }
+        }
+      },
+      {
+        "date": "2025-01-14",
+        "changes": {
+          "volume": {
+            "preserved": 290780,
+            "observed": 290782
+          }
+        }
+      },
+      {
+        "date": "2025-01-16",
+        "changes": {
+          "volume": {
+            "preserved": 111510,
+            "observed": 111511
+          }
+        }
+      },
+      {
+        "date": "2025-01-17",
+        "changes": {
+          "volume": {
+            "preserved": 22320,
+            "observed": 22322
+          }
+        }
+      },
+      {
+        "date": "2025-01-20",
+        "changes": {
+          "volume": {
+            "preserved": 51310,
+            "observed": 51312
+          }
+        }
+      },
+      {
+        "date": "2025-01-21",
+        "changes": {
+          "volume": {
+            "preserved": 57725,
+            "observed": 57726
+          }
+        }
+      },
+      {
+        "date": "2025-01-22",
+        "changes": {
+          "volume": {
+            "preserved": 102915,
+            "observed": 102913
+          }
+        }
+      },
+      {
+        "date": "2025-01-31",
+        "changes": {
+          "volume": {
+            "preserved": 398305,
+            "observed": 398304
+          }
+        }
+      },
+      {
+        "date": "2025-02-04",
+        "changes": {
+          "volume": {
+            "preserved": 231625,
+            "observed": 231627
+          }
+        }
+      },
+      {
+        "date": "2025-02-06",
+        "changes": {
+          "volume": {
+            "preserved": 331160,
+            "observed": 331161
+          }
+        }
+      },
+      {
+        "date": "2025-02-07",
+        "changes": {
+          "volume": {
+            "preserved": 302590,
+            "observed": 302591
+          }
+        }
+      },
+      {
+        "date": "2025-02-10",
+        "changes": {
+          "volume": {
+            "preserved": 267555,
+            "observed": 267554
+          }
+        }
+      },
+      {
+        "date": "2025-02-11",
+        "changes": {
+          "volume": {
+            "preserved": 234235,
+            "observed": 234234
+          }
+        }
+      },
+      {
+        "date": "2025-02-12",
+        "changes": {
+          "volume": {
+            "preserved": 425470,
+            "observed": 425472
+          }
+        }
+      },
+      {
+        "date": "2025-02-13",
+        "changes": {
+          "volume": {
+            "preserved": 204215,
+            "observed": 204213
+          }
+        }
+      },
+      {
+        "date": "2025-02-14",
+        "changes": {
+          "volume": {
+            "preserved": 58840,
+            "observed": 58842
+          }
+        }
+      },
+      {
+        "date": "2025-02-17",
+        "changes": {
+          "volume": {
+            "preserved": 76480,
+            "observed": 76478
+          }
+        }
+      },
+      {
+        "date": "2025-02-18",
+        "changes": {
+          "volume": {
+            "preserved": 200280,
+            "observed": 200279
+          }
+        }
+      },
+      {
+        "date": "2025-02-21",
+        "changes": {
+          "volume": {
+            "preserved": 208075,
+            "observed": 208077
+          }
+        }
+      },
+      {
+        "date": "2025-02-25",
+        "changes": {
+          "volume": {
+            "preserved": 201775,
+            "observed": 201777
+          }
+        }
+      },
+      {
+        "date": "2025-02-26",
+        "changes": {
+          "volume": {
+            "preserved": 143430,
+            "observed": 143429
+          }
+        }
+      },
+      {
+        "date": "2025-02-27",
+        "changes": {
+          "volume": {
+            "preserved": 283545,
+            "observed": 283543
+          }
+        }
+      },
+      {
+        "date": "2025-02-28",
+        "changes": {
+          "volume": {
+            "preserved": 169270,
+            "observed": 169269
+          }
+        }
+      },
+      {
+        "date": "2025-03-04",
+        "changes": {
+          "volume": {
+            "preserved": 46540,
+            "observed": 46542
+          }
+        }
+      },
+      {
+        "date": "2025-03-05",
+        "changes": {
+          "volume": {
+            "preserved": 123770,
+            "observed": 123772
+          }
+        }
+      },
+      {
+        "date": "2025-03-06",
+        "changes": {
+          "volume": {
+            "preserved": 108610,
+            "observed": 108611
+          }
+        }
+      },
+      {
+        "date": "2025-03-11",
+        "changes": {
+          "volume": {
+            "preserved": 94665,
+            "observed": 94663
+          }
+        }
+      },
+      {
+        "date": "2025-03-12",
+        "changes": {
+          "volume": {
+            "preserved": 114260,
+            "observed": 114261
+          }
+        }
+      },
+      {
+        "date": "2025-03-14",
+        "changes": {
+          "volume": {
+            "preserved": 126720,
+            "observed": 126722
+          }
+        }
+      },
+      {
+        "date": "2025-03-17",
+        "changes": {
+          "volume": {
+            "preserved": 56940,
+            "observed": 56939
+          }
+        }
+      },
+      {
+        "date": "2025-03-20",
+        "changes": {
+          "volume": {
+            "preserved": 64570,
+            "observed": 64571
+          }
+        }
+      },
+      {
+        "date": "2025-03-21",
+        "changes": {
+          "volume": {
+            "preserved": 91790,
+            "observed": 91792
+          }
+        }
+      },
+      {
+        "date": "2025-03-24",
+        "changes": {
+          "volume": {
+            "preserved": 66300,
+            "observed": 66302
+          }
+        }
+      },
+      {
+        "date": "2025-03-25",
+        "changes": {
+          "volume": {
+            "preserved": 11665,
+            "observed": 11667
+          }
+        }
+      },
+      {
+        "date": "2025-03-26",
+        "changes": {
+          "volume": {
+            "preserved": 7395,
+            "observed": 7394
+          }
+        }
+      },
+      {
+        "date": "2025-03-27",
+        "changes": {
+          "volume": {
+            "preserved": 38105,
+            "observed": 38107
+          }
+        }
+      },
+      {
+        "date": "2025-03-31",
+        "changes": {
+          "volume": {
+            "preserved": 36355,
+            "observed": 36356
+          }
+        }
+      },
+      {
+        "date": "2025-04-01",
+        "changes": {
+          "volume": {
+            "preserved": 101400,
+            "observed": 101398
+          }
+        }
+      },
+      {
+        "date": "2025-04-03",
+        "changes": {
+          "volume": {
+            "preserved": 118415,
+            "observed": 118416
+          }
+        }
+      },
+      {
+        "date": "2025-04-04",
+        "changes": {
+          "volume": {
+            "preserved": 111645,
+            "observed": 111644
+          }
+        }
+      },
+      {
+        "date": "2025-04-07",
+        "changes": {
+          "volume": {
+            "preserved": 126905,
+            "observed": 126907
+          }
+        }
+      },
+      {
+        "date": "2025-04-08",
+        "changes": {
+          "volume": {
+            "preserved": 147625,
+            "observed": 147623
+          }
+        }
+      },
+      {
+        "date": "2025-04-09",
+        "changes": {
+          "volume": {
+            "preserved": 194285,
+            "observed": 194286
+          }
+        }
+      },
+      {
+        "date": "2025-04-10",
+        "changes": {
+          "volume": {
+            "preserved": 242770,
+            "observed": 242772
+          }
+        }
+      },
+      {
+        "date": "2025-04-11",
+        "changes": {
+          "volume": {
+            "preserved": 215060,
+            "observed": 215059
+          }
+        }
+      },
+      {
+        "date": "2025-04-15",
+        "changes": {
+          "volume": {
+            "preserved": 348770,
+            "observed": 348771
+          }
+        }
+      },
+      {
+        "date": "2025-04-16",
+        "changes": {
+          "volume": {
+            "preserved": 301390,
+            "observed": 301388
+          }
+        }
+      },
+      {
+        "date": "2025-04-17",
+        "changes": {
+          "volume": {
+            "preserved": 172355,
+            "observed": 172357
+          }
+        }
+      },
+      {
+        "date": "2025-04-21",
+        "changes": {
+          "volume": {
+            "preserved": 69415,
+            "observed": 69413
+          }
+        }
+      },
+      {
+        "date": "2025-04-22",
+        "changes": {
+          "volume": {
+            "preserved": 47105,
+            "observed": 47103
+          }
+        }
+      },
+      {
+        "date": "2025-04-23",
+        "changes": {
+          "volume": {
+            "preserved": 58485,
+            "observed": 58487
+          }
+        }
+      },
+      {
+        "date": "2025-04-24",
+        "changes": {
+          "volume": {
+            "preserved": 26515,
+            "observed": 26513
+          }
+        }
+      },
+      {
+        "date": "2025-04-28",
+        "changes": {
+          "volume": {
+            "preserved": 135335,
+            "observed": 135334
+          }
+        }
+      },
+      {
+        "date": "2025-04-29",
+        "changes": {
+          "volume": {
+            "preserved": 43130,
+            "observed": 43128
+          }
+        }
+      },
+      {
+        "date": "2025-04-30",
+        "changes": {
+          "volume": {
+            "preserved": 71895,
+            "observed": 71893
+          }
+        }
+      },
+      {
+        "date": "2025-05-02",
+        "changes": {
+          "volume": {
+            "preserved": 17625,
+            "observed": 17624
+          }
+        }
+      },
+      {
+        "date": "2025-05-07",
+        "changes": {
+          "volume": {
+            "preserved": 16375,
+            "observed": 16373
+          }
+        }
+      },
+      {
+        "date": "2025-05-09",
+        "changes": {
+          "volume": {
+            "preserved": 17035,
+            "observed": 17037
+          }
+        }
+      },
+      {
+        "date": "2025-05-12",
+        "changes": {
+          "volume": {
+            "preserved": 31905,
+            "observed": 31907
+          }
+        }
+      },
+      {
+        "date": "2025-05-14",
+        "changes": {
+          "volume": {
+            "preserved": 29030,
+            "observed": 29028
+          }
+        }
+      },
+      {
+        "date": "2025-05-15",
+        "changes": {
+          "volume": {
+            "preserved": 22200,
+            "observed": 22198
+          }
+        }
+      },
+      {
+        "date": "2025-05-16",
+        "changes": {
+          "volume": {
+            "preserved": 96675,
+            "observed": 96677
+          }
+        }
+      },
+      {
+        "date": "2025-05-19",
+        "changes": {
+          "volume": {
+            "preserved": 19220,
+            "observed": 19218
+          }
+        }
+      },
+      {
+        "date": "2025-05-20",
+        "changes": {
+          "volume": {
+            "preserved": 20155,
+            "observed": 20156
+          }
+        }
+      },
+      {
+        "date": "2025-05-21",
+        "changes": {
+          "volume": {
+            "preserved": 39710,
+            "observed": 39712
+          }
+        }
+      },
+      {
+        "date": "2025-05-22",
+        "changes": {
+          "volume": {
+            "preserved": 27720,
+            "observed": 27722
+          }
+        }
+      },
+      {
+        "date": "2025-05-23",
+        "changes": {
+          "volume": {
+            "preserved": 12895,
+            "observed": 12893
+          }
+        }
+      },
+      {
+        "date": "2025-05-26",
+        "changes": {
+          "volume": {
+            "preserved": 22985,
+            "observed": 22984
+          }
+        }
+      },
+      {
+        "date": "2025-05-27",
+        "changes": {
+          "volume": {
+            "preserved": 8260,
+            "observed": 8261
+          }
+        }
+      },
+      {
+        "date": "2025-05-28",
+        "changes": {
+          "volume": {
+            "preserved": 26635,
+            "observed": 26637
+          }
+        }
+      },
+      {
+        "date": "2025-05-29",
+        "changes": {
+          "volume": {
+            "preserved": 8965,
+            "observed": 8964
+          }
+        }
+      },
+      {
+        "date": "2025-05-30",
+        "changes": {
+          "volume": {
+            "preserved": 28635,
+            "observed": 28637
+          }
+        }
+      },
+      {
+        "date": "2025-06-02",
+        "changes": {
+          "volume": {
+            "preserved": 41330,
+            "observed": 41331
+          }
+        }
+      },
+      {
+        "date": "2025-06-04",
+        "changes": {
+          "volume": {
+            "preserved": 27205,
+            "observed": 27204
+          }
+        }
+      },
+      {
+        "date": "2025-06-05",
+        "changes": {
+          "volume": {
+            "preserved": 29025,
+            "observed": 29027
+          }
+        }
+      },
+      {
+        "date": "2025-06-09",
+        "changes": {
+          "volume": {
+            "preserved": 28905,
+            "observed": 28906
+          }
+        }
+      },
+      {
+        "date": "2025-06-10",
+        "changes": {
+          "volume": {
+            "preserved": 62780,
+            "observed": 62781
+          }
+        }
+      },
+      {
+        "date": "2025-06-11",
+        "changes": {
+          "volume": {
+            "preserved": 180225,
+            "observed": 180224
+          }
+        }
+      },
+      {
+        "date": "2025-06-12",
+        "changes": {
+          "volume": {
+            "preserved": 72280,
+            "observed": 72282
+          }
+        }
+      },
+      {
+        "date": "2025-06-16",
+        "changes": {
+          "volume": {
+            "preserved": 37240,
+            "observed": 37241
+          }
+        }
+      },
+      {
+        "date": "2025-06-17",
+        "changes": {
+          "volume": {
+            "preserved": 47185,
+            "observed": 47183
+          }
+        }
+      },
+      {
+        "date": "2025-06-19",
+        "changes": {
+          "volume": {
+            "preserved": 39980,
+            "observed": 39979
+          }
+        }
+      },
+      {
+        "date": "2025-06-20",
+        "changes": {
+          "volume": {
+            "preserved": 190975,
+            "observed": 190977
+          }
+        }
+      },
+      {
+        "date": "2025-06-24",
+        "changes": {
+          "volume": {
+            "preserved": 41015,
+            "observed": 41013
+          }
+        }
+      },
+      {
+        "date": "2025-06-25",
+        "changes": {
+          "volume": {
+            "preserved": 47570,
+            "observed": 47569
+          }
+        }
+      },
+      {
+        "date": "2025-06-27",
+        "changes": {
+          "volume": {
+            "preserved": 12815,
+            "observed": 12813
+          }
+        }
+      },
+      {
+        "date": "2025-06-30",
+        "changes": {
+          "volume": {
+            "preserved": 26960,
+            "observed": 26959
+          }
+        }
+      },
+      {
+        "date": "2025-07-07",
+        "changes": {
+          "volume": {
+            "preserved": 912520,
+            "observed": 912519
+          }
+        }
+      },
+      {
+        "date": "2025-07-08",
+        "changes": {
+          "volume": {
+            "preserved": 777465,
+            "observed": 777467
+          }
+        }
+      },
+      {
+        "date": "2025-07-09",
+        "changes": {
+          "volume": {
+            "preserved": 146690,
+            "observed": 146691
+          }
+        }
+      },
+      {
+        "date": "2025-07-10",
+        "changes": {
+          "volume": {
+            "preserved": 159865,
+            "observed": 159864
+          }
+        }
+      },
+      {
+        "date": "2025-07-11",
+        "changes": {
+          "volume": {
+            "preserved": 111170,
+            "observed": 111171
+          }
+        }
+      },
+      {
+        "date": "2025-07-16",
+        "changes": {
+          "volume": {
+            "preserved": 194545,
+            "observed": 194546
+          }
+        }
+      },
+      {
+        "date": "2025-07-17",
+        "changes": {
+          "volume": {
+            "preserved": 91815,
+            "observed": 91817
+          }
+        }
+      },
+      {
+        "date": "2025-07-18",
+        "changes": {
+          "volume": {
+            "preserved": 80645,
+            "observed": 80644
+          }
+        }
+      },
+      {
+        "date": "2025-07-21",
+        "changes": {
+          "volume": {
+            "preserved": 116710,
+            "observed": 116711
+          }
+        }
+      },
+      {
+        "date": "2025-07-23",
+        "changes": {
+          "volume": {
+            "preserved": 61390,
+            "observed": 61392
+          }
+        }
+      },
+      {
+        "date": "2025-07-25",
+        "changes": {
+          "volume": {
+            "preserved": 73365,
+            "observed": 73366
+          }
+        }
+      },
+      {
+        "date": "2025-07-28",
+        "changes": {
+          "volume": {
+            "preserved": 56925,
+            "observed": 56926
+          }
+        }
+      },
+      {
+        "date": "2025-07-30",
+        "changes": {
+          "volume": {
+            "preserved": 30860,
+            "observed": 30862
+          }
+        }
+      },
+      {
+        "date": "2025-07-31",
+        "changes": {
+          "volume": {
+            "preserved": 47480,
+            "observed": 47479
+          }
+        }
+      },
+      {
+        "date": "2025-08-01",
+        "changes": {
+          "volume": {
+            "preserved": 27320,
+            "observed": 27319
+          }
+        }
+      },
+      {
+        "date": "2025-08-04",
+        "changes": {
+          "volume": {
+            "preserved": 43395,
+            "observed": 43394
+          }
+        }
+      },
+      {
+        "date": "2025-08-05",
+        "changes": {
+          "volume": {
+            "preserved": 35980,
+            "observed": 35982
+          }
+        }
+      },
+      {
+        "date": "2025-08-06",
+        "changes": {
+          "volume": {
+            "preserved": 20790,
+            "observed": 20789
+          }
+        }
+      },
+      {
+        "date": "2025-08-07",
+        "changes": {
+          "volume": {
+            "preserved": 21745,
+            "observed": 21744
+          }
+        }
+      },
+      {
+        "date": "2025-08-08",
+        "changes": {
+          "volume": {
+            "preserved": 11625,
+            "observed": 11624
+          }
+        }
+      },
+      {
+        "date": "2025-08-11",
+        "changes": {
+          "volume": {
+            "preserved": 72520,
+            "observed": 72522
+          }
+        }
+      },
+      {
+        "date": "2025-08-12",
+        "changes": {
+          "volume": {
+            "preserved": 28035,
+            "observed": 28037
+          }
+        }
+      },
+      {
+        "date": "2025-08-13",
+        "changes": {
+          "volume": {
+            "preserved": 75560,
+            "observed": 75562
+          }
+        }
+      },
+      {
+        "date": "2025-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 54680,
+            "observed": 54678
+          }
+        }
+      },
+      {
+        "date": "2025-08-18",
+        "changes": {
+          "volume": {
+            "preserved": 96290,
+            "observed": 96289
+          }
+        }
+      },
+      {
+        "date": "2025-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 39430,
+            "observed": 39428
+          }
+        }
+      },
+      {
+        "date": "2025-08-20",
+        "changes": {
+          "volume": {
+            "preserved": 20635,
+            "observed": 20634
+          }
+        }
+      },
+      {
+        "date": "2025-08-21",
+        "changes": {
+          "volume": {
+            "preserved": 19365,
+            "observed": 19366
+          }
+        }
+      },
+      {
+        "date": "2025-08-26",
+        "changes": {
+          "volume": {
+            "preserved": 1015870,
+            "observed": 1015872
+          }
+        }
+      },
+      {
+        "date": "2025-08-28",
+        "changes": {
+          "volume": {
+            "preserved": 43655,
+            "observed": 43656
+          }
+        }
+      },
+      {
+        "date": "2025-08-29",
+        "changes": {
+          "volume": {
+            "preserved": 26180,
+            "observed": 26178
+          }
+        }
+      },
+      {
+        "date": "2025-09-01",
+        "changes": {
+          "volume": {
+            "preserved": 23950,
+            "observed": 23951
+          }
+        }
+      },
+      {
+        "date": "2025-09-02",
+        "changes": {
+          "volume": {
+            "preserved": 15005,
+            "observed": 15006
+          }
+        }
+      },
+      {
+        "date": "2025-09-03",
+        "changes": {
+          "volume": {
+            "preserved": 32745,
+            "observed": 32747
+          }
+        }
+      },
+      {
+        "date": "2025-09-04",
+        "changes": {
+          "volume": {
+            "preserved": 22995,
+            "observed": 22993
+          }
+        }
+      },
+      {
+        "date": "2025-09-05",
+        "changes": {
+          "volume": {
+            "preserved": 18280,
+            "observed": 18282
+          }
+        }
+      },
+      {
+        "date": "2025-09-08",
+        "changes": {
+          "volume": {
+            "preserved": 15710,
+            "observed": 15712
+          }
+        }
+      },
+      {
+        "date": "2025-09-10",
+        "changes": {
+          "volume": {
+            "preserved": 24130,
+            "observed": 24128
+          }
+        }
+      },
+      {
+        "date": "2025-09-12",
+        "changes": {
+          "volume": {
+            "preserved": 23310,
+            "observed": 23312
+          }
+        }
+      },
+      {
+        "date": "2025-09-15",
+        "changes": {
+          "volume": {
+            "preserved": 5650,
+            "observed": 5652
+          }
+        }
+      },
+      {
+        "date": "2025-09-16",
+        "changes": {
+          "volume": {
+            "preserved": 48605,
+            "observed": 48607
+          }
+        }
+      },
+      {
+        "date": "2025-09-17",
+        "changes": {
+          "volume": {
+            "preserved": 38410,
+            "observed": 38412
+          }
+        }
+      },
+      {
+        "date": "2025-09-18",
+        "changes": {
+          "volume": {
+            "preserved": 74185,
+            "observed": 74186
+          }
+        }
+      },
+      {
+        "date": "2025-09-19",
+        "changes": {
+          "volume": {
+            "preserved": 5665,
+            "observed": 5663
+          }
+        }
+      },
+      {
+        "date": "2025-09-22",
+        "changes": {
+          "volume": {
+            "preserved": 82310,
+            "observed": 82312
+          }
+        }
+      },
+      {
+        "date": "2025-09-23",
+        "changes": {
+          "volume": {
+            "preserved": 31815,
+            "observed": 31813
+          }
+        }
+      },
+      {
+        "date": "2025-09-24",
+        "changes": {
+          "volume": {
+            "preserved": 61155,
+            "observed": 61157
+          }
+        }
+      },
+      {
+        "date": "2025-09-25",
+        "changes": {
+          "volume": {
+            "preserved": 19310,
+            "observed": 19308
+          }
+        }
+      },
+      {
+        "date": "2025-09-26",
+        "changes": {
+          "volume": {
+            "preserved": 14455,
+            "observed": 14453
+          }
+        }
+      },
+      {
+        "date": "2025-09-29",
+        "changes": {
+          "volume": {
+            "preserved": 15250,
+            "observed": 15249
+          }
+        }
+      },
+      {
+        "date": "2025-09-30",
+        "changes": {
+          "volume": {
+            "preserved": 16940,
+            "observed": 16941
+          }
+        }
+      },
+      {
+        "date": "2025-10-02",
+        "changes": {
+          "volume": {
+            "preserved": 32720,
+            "observed": 32721
+          }
+        }
+      },
+      {
+        "date": "2025-10-10",
+        "changes": {
+          "volume": {
+            "preserved": 59780,
+            "observed": 59782
+          }
+        }
+      },
+      {
+        "date": "2025-10-13",
+        "changes": {
+          "volume": {
+            "preserved": 42880,
+            "observed": 42882
+          }
+        }
+      },
+      {
+        "date": "2025-10-14",
+        "changes": {
+          "volume": {
+            "preserved": 75750,
+            "observed": 75751
+          }
+        }
+      },
+      {
+        "date": "2025-10-15",
+        "changes": {
+          "volume": {
+            "preserved": 22015,
+            "observed": 22016
+          }
+        }
+      },
+      {
+        "date": "2025-10-16",
+        "changes": {
+          "volume": {
+            "preserved": 48325,
+            "observed": 48326
+          }
+        }
+      },
+      {
+        "date": "2025-10-17",
+        "changes": {
+          "volume": {
+            "preserved": 32150,
+            "observed": 32151
+          }
+        }
+      },
+      {
+        "date": "2025-10-20",
+        "changes": {
+          "volume": {
+            "preserved": 33925,
+            "observed": 33926
+          }
+        }
+      },
+      {
+        "date": "2025-10-21",
+        "changes": {
+          "volume": {
+            "preserved": 43355,
+            "observed": 43354
+          }
+        }
+      },
+      {
+        "date": "2025-10-23",
+        "changes": {
+          "volume": {
+            "preserved": 18835,
+            "observed": 18836
+          }
+        }
+      },
+      {
+        "date": "2025-10-24",
+        "changes": {
+          "volume": {
+            "preserved": 47850,
+            "observed": 47851
+          }
+        }
+      },
+      {
+        "date": "2025-10-27",
+        "changes": {
+          "volume": {
+            "preserved": 52855,
+            "observed": 52854
+          }
+        }
+      },
+      {
+        "date": "2025-10-28",
+        "changes": {
+          "volume": {
+            "preserved": 47375,
+            "observed": 47373
+          }
+        }
+      },
+      {
+        "date": "2025-10-29",
+        "changes": {
+          "volume": {
+            "preserved": 66295,
+            "observed": 66294
+          }
+        }
+      },
+      {
+        "date": "2025-10-30",
+        "changes": {
+          "volume": {
+            "preserved": 30720960,
+            "observed": 30720958
+          }
+        }
+      },
+      {
+        "date": "2025-10-31",
+        "changes": {
+          "volume": {
+            "preserved": 3431050,
+            "observed": 3431052
+          }
+        }
+      },
+      {
+        "date": "2025-11-03",
+        "changes": {
+          "volume": {
+            "preserved": 1283000,
+            "observed": 1282999
+          }
+        }
+      },
+      {
+        "date": "2025-11-05",
+        "changes": {
+          "volume": {
+            "preserved": 492295,
+            "observed": 492297
+          }
+        }
+      },
+      {
+        "date": "2025-11-07",
+        "changes": {
+          "volume": {
+            "preserved": 874820,
+            "observed": 874822
+          }
+        }
+      },
+      {
+        "date": "2025-11-10",
+        "changes": {
+          "volume": {
+            "preserved": 150610,
+            "observed": 150612
+          }
+        }
+      },
+      {
+        "date": "2025-11-11",
+        "changes": {
+          "volume": {
+            "preserved": 233690,
+            "observed": 233692
+          }
+        }
+      },
+      {
+        "date": "2025-11-12",
+        "changes": {
+          "volume": {
+            "preserved": 91525,
+            "observed": 91524
+          }
+        }
+      },
+      {
+        "date": "2025-11-13",
+        "changes": {
+          "volume": {
+            "preserved": 81365,
+            "observed": 81364
+          }
+        }
+      },
+      {
+        "date": "2025-11-14",
+        "changes": {
+          "volume": {
+            "preserved": 101095,
+            "observed": 101097
+          }
+        }
+      },
+      {
+        "date": "2025-11-17",
+        "changes": {
+          "volume": {
+            "preserved": 147095,
+            "observed": 147096
+          }
+        }
+      },
+      {
+        "date": "2025-11-18",
+        "changes": {
+          "volume": {
+            "preserved": 163185,
+            "observed": 163184
+          }
+        }
+      },
+      {
+        "date": "2025-11-19",
+        "changes": {
+          "volume": {
+            "preserved": 1945025,
+            "observed": 1945024
+          }
+        }
+      },
+      {
+        "date": "2025-11-20",
+        "changes": {
+          "volume": {
+            "preserved": 271085,
+            "observed": 271084
+          }
+        }
+      },
+      {
+        "date": "2025-11-24",
+        "changes": {
+          "volume": {
+            "preserved": 115290,
+            "observed": 115288
+          }
+        }
+      },
+      {
+        "date": "2025-11-25",
+        "changes": {
+          "volume": {
+            "preserved": 115820,
+            "observed": 115819
+          }
+        }
+      },
+      {
+        "date": "2025-11-26",
+        "changes": {
+          "volume": {
+            "preserved": 97465,
+            "observed": 97467
+          }
+        }
+      },
+      {
+        "date": "2025-11-27",
+        "changes": {
+          "volume": {
+            "preserved": 53755,
+            "observed": 53753
+          }
+        }
+      },
+      {
+        "date": "2025-11-28",
+        "changes": {
+          "volume": {
+            "preserved": 50110,
+            "observed": 50108
+          }
+        }
+      },
+      {
+        "date": "2025-12-03",
+        "changes": {
+          "volume": {
+            "preserved": 148375,
+            "observed": 148374
+          }
+        }
+      },
+      {
+        "date": "2025-12-04",
+        "changes": {
+          "volume": {
+            "preserved": 67785,
+            "observed": 67784
+          }
+        }
+      },
+      {
+        "date": "2025-12-05",
+        "changes": {
+          "volume": {
+            "preserved": 105535,
+            "observed": 105534
+          }
+        }
+      },
+      {
+        "date": "2025-12-08",
+        "changes": {
+          "volume": {
+            "preserved": 47195,
+            "observed": 47193
+          }
+        }
+      },
+      {
+        "date": "2025-12-09",
+        "changes": {
+          "volume": {
+            "preserved": 65125,
+            "observed": 65124
+          }
+        }
+      },
+      {
+        "date": "2025-12-10",
+        "changes": {
+          "volume": {
+            "preserved": 39720,
+            "observed": 39722
+          }
+        }
+      },
+      {
+        "date": "2025-12-15",
+        "changes": {
+          "volume": {
+            "preserved": 257070,
+            "observed": 257069
+          }
+        }
+      },
+      {
+        "date": "2025-12-16",
+        "changes": {
+          "volume": {
+            "preserved": 75430,
+            "observed": 75428
+          }
+        }
+      },
+      {
+        "date": "2025-12-17",
+        "changes": {
+          "volume": {
+            "preserved": 190895,
+            "observed": 190896
+          }
+        }
+      },
+      {
+        "date": "2025-12-19",
+        "changes": {
+          "volume": {
+            "preserved": 52395,
+            "observed": 52394
+          }
+        }
+      },
+      {
+        "date": "2025-12-23",
+        "changes": {
+          "volume": {
+            "preserved": 48100,
+            "observed": 48102
+          }
+        }
+      },
+      {
+        "date": "2025-12-24",
+        "changes": {
+          "volume": {
+            "preserved": 93385,
+            "observed": 93384
+          }
+        }
+      },
+      {
+        "date": "2025-12-29",
+        "changes": {
+          "volume": {
+            "preserved": 64830,
+            "observed": 64831
+          }
+        }
+      },
+      {
+        "date": "2025-12-30",
+        "changes": {
+          "volume": {
+            "preserved": 123050,
+            "observed": 123051
+          }
+        }
+      },
+      {
+        "date": "2026-01-02",
+        "changes": {
+          "volume": {
+            "preserved": 442575,
+            "observed": 442574
+          }
+        }
+      },
+      {
+        "date": "2026-01-05",
+        "changes": {
+          "volume": {
+            "preserved": 200490,
+            "observed": 200488
+          }
+        }
+      },
+      {
+        "date": "2026-01-06",
+        "changes": {
+          "volume": {
+            "preserved": 95770,
+            "observed": 95772
+          }
+        }
+      },
+      {
+        "date": "2026-01-08",
+        "changes": {
+          "volume": {
+            "preserved": 42985,
+            "observed": 42984
+          }
+        }
+      },
+      {
+        "date": "2026-01-09",
+        "changes": {
+          "volume": {
+            "preserved": 50625,
+            "observed": 50624
+          }
+        }
+      },
+      {
+        "date": "2026-01-12",
+        "changes": {
+          "volume": {
+            "preserved": 58755,
+            "observed": 58756
+          }
+        }
+      },
+      {
+        "date": "2026-01-13",
+        "changes": {
+          "volume": {
+            "preserved": 34740,
+            "observed": 34741
+          }
+        }
+      },
+      {
+        "date": "2026-01-14",
+        "changes": {
+          "volume": {
+            "preserved": 51200,
+            "observed": 51199
+          }
+        }
+      },
+      {
+        "date": "2026-01-15",
+        "changes": {
+          "volume": {
+            "preserved": 83960,
+            "observed": 83959
+          }
+        }
+      },
+      {
+        "date": "2026-01-16",
+        "changes": {
+          "volume": {
+            "preserved": 73570,
+            "observed": 73568
+          }
+        }
+      },
+      {
+        "date": "2026-01-19",
+        "changes": {
+          "volume": {
+            "preserved": 40290,
+            "observed": 40289
+          }
+        }
+      },
+      {
+        "date": "2026-01-20",
+        "changes": {
+          "volume": {
+            "preserved": 84265,
+            "observed": 84267
+          }
+        }
+      },
+      {
+        "date": "2026-01-26",
+        "changes": {
+          "volume": {
+            "preserved": 107265,
+            "observed": 107263
+          }
+        }
+      },
+      {
+        "date": "2026-01-27",
+        "changes": {
+          "volume": {
+            "preserved": 54805,
+            "observed": 54806
+          }
+        }
+      },
+      {
+        "date": "2026-01-28",
+        "changes": {
+          "volume": {
+            "preserved": 123960,
+            "observed": 123961
+          }
+        }
+      },
+      {
+        "date": "2026-01-29",
+        "changes": {
+          "volume": {
+            "preserved": 110655,
+            "observed": 110657
+          }
+        }
+      },
+      {
+        "date": "2026-01-30",
+        "changes": {
+          "volume": {
+            "preserved": 97650,
+            "observed": 97648
+          }
+        }
+      },
+      {
+        "date": "2026-02-03",
+        "changes": {
+          "volume": {
+            "preserved": 72175,
+            "observed": 72177
+          }
+        }
+      },
+      {
+        "date": "2026-02-05",
+        "changes": {
+          "volume": {
+            "preserved": 113715,
+            "observed": 113714
+          }
+        }
+      },
+      {
+        "date": "2026-02-06",
+        "changes": {
+          "volume": {
+            "preserved": 120905,
+            "observed": 120903
+          }
+        }
+      },
+      {
+        "date": "2026-02-09",
+        "changes": {
+          "volume": {
+            "preserved": 252415,
+            "observed": 252414
+          }
+        }
+      },
+      {
+        "date": "2026-02-10",
+        "changes": {
+          "volume": {
+            "preserved": 167725,
+            "observed": 167726
+          }
+        }
+      },
+      {
+        "date": "2026-02-11",
+        "changes": {
+          "volume": {
+            "preserved": 86950,
+            "observed": 86948
+          }
+        }
+      },
+      {
+        "date": "2026-02-12",
+        "changes": {
+          "volume": {
+            "preserved": 38270,
+            "observed": 38269
+          }
+        }
+      },
+      {
+        "date": "2026-02-13",
+        "changes": {
+          "volume": {
+            "preserved": 327285,
+            "observed": 327286
+          }
+        }
+      },
+      {
+        "date": "2026-02-19",
+        "changes": {
+          "volume": {
+            "preserved": 91795,
+            "observed": 91793
+          }
+        }
+      },
+      {
+        "date": "2026-02-20",
+        "changes": {
+          "volume": {
+            "preserved": 132370,
+            "observed": 132371
+          }
+        }
+      },
+      {
+        "date": "2026-02-23",
+        "changes": {
+          "volume": {
+            "preserved": 104340,
+            "observed": 104338
+          }
+        }
+      },
+      {
+        "date": "2026-02-24",
+        "changes": {
+          "volume": {
+            "preserved": 85760,
+            "observed": 85762
+          }
+        }
+      },
+      {
+        "date": "2026-02-25",
+        "changes": {
+          "volume": {
+            "preserved": 298360,
+            "observed": 298358
+          }
+        }
+      },
+      {
+        "date": "2026-02-27",
+        "changes": {
+          "volume": {
+            "preserved": 52025,
+            "observed": 52024
+          }
+        }
+      },
+      {
+        "date": "2026-03-03",
+        "changes": {
+          "volume": {
+            "preserved": 286095,
+            "observed": 286094
+          }
+        }
+      },
+      {
+        "date": "2026-03-04",
+        "changes": {
+          "volume": {
+            "preserved": 576155,
+            "observed": 576157
+          }
+        }
+      },
+      {
+        "date": "2026-03-06",
+        "changes": {
+          "volume": {
+            "preserved": 110970,
+            "observed": 110971
+          }
+        }
+      },
+      {
+        "date": "2026-03-09",
+        "changes": {
+          "volume": {
+            "preserved": 59880,
+            "observed": 59881
+          }
+        }
+      },
+      {
+        "date": "2026-03-11",
+        "changes": {
+          "volume": {
+            "preserved": 128000,
+            "observed": 127999
+          }
+        }
+      },
+      {
+        "date": "2026-03-12",
+        "changes": {
+          "volume": {
+            "preserved": 41495,
+            "observed": 41494
+          }
+        }
+      },
+      {
+        "date": "2026-03-16",
+        "changes": {
+          "volume": {
+            "preserved": 22960,
+            "observed": 22958
+          }
+        }
+      },
+      {
+        "date": "2026-03-17",
+        "changes": {
+          "volume": {
+            "preserved": 65380,
+            "observed": 65379
+          }
+        }
+      },
+      {
+        "date": "2026-03-18",
+        "changes": {
+          "volume": {
+            "preserved": 70195,
+            "observed": 70197
+          }
+        }
+      },
+      {
+        "date": "2026-03-19",
+        "changes": {
+          "volume": {
+            "preserved": 28885,
+            "observed": 28883
+          }
+        }
+      },
+      {
+        "date": "2026-03-24",
+        "changes": {
+          "volume": {
+            "preserved": 104175,
+            "observed": 104173
+          }
+        }
+      },
+      {
+        "date": "2026-03-25",
+        "changes": {
+          "volume": {
+            "preserved": 98335,
+            "observed": 98334
+          }
+        }
+      },
+      {
+        "date": "2026-03-26",
+        "changes": {
+          "volume": {
+            "preserved": 90750,
+            "observed": 90749
+          }
+        }
+      },
+      {
+        "date": "2026-03-27",
+        "changes": {
+          "volume": {
+            "preserved": 57915,
+            "observed": 57917
+          }
+        }
+      },
+      {
+        "date": "2026-03-30",
+        "changes": {
+          "volume": {
+            "preserved": 43080,
+            "observed": 43079
+          }
+        }
+      },
+      {
+        "date": "2026-03-31",
+        "changes": {
+          "volume": {
+            "preserved": 85520,
+            "observed": 85522
+          }
+        }
+      },
+      {
+        "date": "2026-04-01",
+        "changes": {
+          "volume": {
+            "preserved": 43520,
+            "observed": 43521
+          }
+        }
+      },
+      {
+        "date": "2026-04-02",
+        "changes": {
+          "volume": {
+            "preserved": 61525,
+            "observed": 61523
+          }
+        }
+      },
+      {
+        "date": "2026-04-06",
+        "changes": {
+          "volume": {
+            "preserved": 16800,
+            "observed": 16799
+          }
+        }
+      },
+      {
+        "date": "2026-04-08",
+        "changes": {
+          "volume": {
+            "preserved": 31165,
+            "observed": 31167
+          }
+        }
+      },
+      {
+        "date": "2026-04-09",
+        "changes": {
+          "volume": {
+            "preserved": 83090,
+            "observed": 83088
+          }
+        }
+      },
+      {
+        "date": "2026-04-10",
+        "changes": {
+          "volume": {
+            "preserved": 176890,
+            "observed": 176888
+          }
+        }
+      },
+      {
+        "date": "2026-04-14",
+        "changes": {
+          "volume": {
+            "preserved": 58145,
+            "observed": 58147
+          }
+        }
+      },
+      {
+        "date": "2026-04-16",
+        "changes": {
+          "volume": {
+            "preserved": 176120,
+            "observed": 176122
+          }
+        }
+      },
+      {
+        "date": "2026-04-17",
+        "changes": {
+          "volume": {
+            "preserved": 59115,
+            "observed": 59114
+          }
+        }
+      },
+      {
+        "date": "2026-04-20",
+        "changes": {
+          "volume": {
+            "preserved": 29215,
+            "observed": 29213
+          }
+        }
+      },
+      {
+        "date": "2026-04-21",
+        "changes": {
+          "volume": {
+            "preserved": 90040,
+            "observed": 90039
+          }
+        }
+      },
+      {
+        "date": "2026-04-22",
+        "changes": {
+          "volume": {
+            "preserved": 261590,
+            "observed": 261588
+          }
+        }
+      },
+      {
+        "date": "2026-04-23",
+        "changes": {
+          "volume": {
+            "preserved": 312350,
+            "observed": 312351
+          }
+        }
+      },
+      {
+        "date": "2026-04-24",
+        "changes": {
+          "volume": {
+            "preserved": 1869030,
+            "observed": 1869029
+          }
+        }
+      },
+      {
+        "date": "2026-04-27",
+        "changes": {
+          "volume": {
+            "preserved": 539495,
+            "observed": 539493
+          }
+        }
+      },
+      {
+        "date": "2026-04-29",
+        "changes": {
+          "volume": {
+            "preserved": 183455,
+            "observed": 183454
+          }
+        }
+      },
+      {
+        "date": "2026-04-30",
+        "changes": {
+          "volume": {
+            "preserved": 107905,
+            "observed": 107903
+          }
+        }
+      },
+      {
+        "date": "2026-05-04",
+        "changes": {
+          "volume": {
+            "preserved": 164805,
+            "observed": 164807
+          }
+        }
+      },
+      {
+        "date": "2026-05-06",
+        "changes": {
+          "volume": {
+            "preserved": 131770,
+            "observed": 131772
+          }
+        }
+      },
+      {
+        "date": "2026-05-11",
+        "changes": {
+          "volume": {
+            "preserved": 85670,
+            "observed": 85668
+          }
+        }
+      },
+      {
+        "date": "2026-05-14",
+        "changes": {
+          "volume": {
+            "preserved": 463205,
+            "observed": 463203
+          }
+        }
+      },
+      {
+        "date": "2026-06-11",
+        "changes": {
+          "open": {
+            "preserved": 366.4,
+            "observed": 1832.0
+          },
+          "high": {
+            "preserved": 368.0,
+            "observed": 1840.0
+          },
+          "low": {
+            "preserved": 334.0,
+            "observed": 1670.0
+          },
+          "close": {
+            "preserved": 368.0,
+            "observed": 1840.0
+          },
+          "volume": {
+            "preserved": 257685,
+            "observed": 51537
+          }
+        }
+      },
+      {
+        "date": "2026-06-12",
+        "changes": {
+          "open": {
+            "preserved": 368.0,
+            "observed": 1840.0
+          },
+          "high": {
+            "preserved": 379.6,
+            "observed": 1898.0
+          },
+          "low": {
+            "preserved": 354.0,
+            "observed": 1770.0
+          },
+          "close": {
+            "preserved": 379.0,
+            "observed": 1895.0
+          },
+          "volume": {
+            "preserved": 228640,
+            "observed": 45728
+          }
+        }
+      },
+      {
+        "date": "2026-06-15",
+        "changes": {
+          "open": {
+            "preserved": 379.0,
+            "observed": 1895.0
+          },
+          "high": {
+            "preserved": 386.0,
+            "observed": 1930.0
+          },
+          "low": {
+            "preserved": 360.0,
+            "observed": 1800.0
+          },
+          "close": {
+            "preserved": 381.8,
+            "observed": 1909.0
+          },
+          "volume": {
+            "preserved": 159625,
+            "observed": 31925
+          }
+        }
+      },
+      {
+        "date": "2026-06-23",
+        "changes": {
+          "open": {
+            "preserved": 379.2,
+            "observed": 1896.0
+          },
+          "high": {
+            "preserved": 382.8,
+            "observed": 1914.0
+          },
+          "low": {
+            "preserved": 374.6,
+            "observed": 1873.0
+          },
+          "close": {
+            "preserved": 382.0,
+            "observed": 1910.0
+          },
+          "volume": {
+            "preserved": 445995,
+            "observed": 89199
+          }
+        }
+      },
+      {
+        "date": "2026-06-24",
+        "changes": {
+          "open": {
+            "preserved": 379.6,
+            "observed": 1898.0
+          },
+          "high": {
+            "preserved": 380.0,
+            "observed": 1900.0
+          },
+          "low": {
+            "preserved": 374.0,
+            "observed": 1870.0
+          },
+          "close": {
+            "preserved": 374.8,
+            "observed": 1874.0
+          },
+          "volume": {
+            "preserved": 98955,
+            "observed": 19791
+          }
+        }
+      },
+      {
+        "date": "2026-06-25",
+        "changes": {
+          "open": {
+            "preserved": 374.8,
+            "observed": 1874.0
+          },
+          "high": {
+            "preserved": 386.2,
+            "observed": 1931.0
+          },
+          "low": {
+            "preserved": 373.0,
+            "observed": 1865.0
+          },
+          "close": {
+            "preserved": 380.0,
+            "observed": 1900.0
+          },
+          "volume": {
+            "preserved": 103905,
+            "observed": 20781
+          }
+        }
+      },
+      {
+        "date": "2026-06-29",
+        "changes": {
+          "open": {
+            "preserved": 333.2,
+            "observed": 1666.0
+          },
+          "high": {
+            "preserved": 366.4,
+            "observed": 1832.0
+          },
+          "low": {
+            "preserved": 330.6,
+            "observed": 1653.0
+          },
+          "close": {
+            "preserved": 366.0,
+            "observed": 1830.0
+          },
+          "volume": {
+            "preserved": 64980,
+            "observed": 12996
+          }
+        }
+      },
+      {
+        "date": "2026-07-02",
+        "changes": {
+          "open": {
+            "preserved": 381.6,
+            "observed": 1908.0
+          },
+          "high": {
+            "preserved": 396.4,
+            "observed": 1982.0
+          },
+          "low": {
+            "preserved": 366.4,
+            "observed": 1832.0
+          },
+          "close": {
+            "preserved": 392.2,
+            "observed": 1961.0
+          },
+          "volume": {
+            "preserved": 84980,
+            "observed": 16996
+          }
+        }
+      },
+      {
+        "date": "2026-07-03",
+        "changes": {
+          "open": {
+            "preserved": 392.2,
+            "observed": 1961.0
+          },
+          "high": {
+            "preserved": 411.0,
+            "observed": 2055.0
+          },
+          "low": {
+            "preserved": 376.6,
+            "observed": 1883.0
+          },
+          "close": {
+            "preserved": 410.0,
+            "observed": 2050.0
+          },
+          "volume": {
+            "preserved": 62170,
+            "observed": 12434
+          }
+        }
+      },
+      {
+        "date": "2026-07-06",
+        "changes": {
+          "open": {
+            "preserved": 407.0,
+            "observed": 2035.0
+          },
+          "high": {
+            "preserved": 422.0,
+            "observed": 2110.0
+          },
+          "low": {
+            "preserved": 400.0,
+            "observed": 2000.0
+          },
+          "close": {
+            "preserved": 406.0,
+            "observed": 2030.0
+          },
+          "volume": {
+            "preserved": 20370,
+            "observed": 4074
+          }
+        }
+      },
+      {
+        "date": "2026-07-07",
+        "changes": {
+          "open": {
+            "preserved": 368.2,
+            "observed": 1841.0
+          },
+          "high": {
+            "preserved": 428.0,
+            "observed": 2140.0
+          },
+          "low": {
+            "preserved": 368.2,
+            "observed": 1841.0
+          },
+          "close": {
+            "preserved": 409.0,
+            "observed": 2045.0
+          },
+          "volume": {
+            "preserved": 147375,
+            "observed": 29475
+          }
+        }
+      },
+      {
+        "date": "2026-07-08",
+        "changes": {
+          "open": {
+            "preserved": 406.0,
+            "observed": 2030.0
+          },
+          "high": {
+            "preserved": 440.0,
+            "observed": 2200.0
+          },
+          "low": {
+            "preserved": 391.0,
+            "observed": 1955.0
+          },
+          "close": {
+            "preserved": 405.0,
+            "observed": 2025.0
+          },
+          "volume": {
+            "preserved": 110725,
+            "observed": 22145
+          }
+        }
+      },
+      {
+        "date": "2026-07-10",
+        "changes": {
+          "open": {
+            "preserved": 403.0,
+            "observed": 2015.0
+          },
+          "high": {
+            "preserved": 405.0,
+            "observed": 2025.0
+          },
+          "low": {
+            "preserved": 394.0,
+            "observed": 1970.0
+          },
+          "close": {
+            "preserved": 405.0,
+            "observed": 2025.0
+          },
+          "volume": {
+            "preserved": 17090,
+            "observed": 3418
+          }
+        }
+      },
+      {
+        "date": "2026-07-13",
+        "changes": {
+          "open": {
+            "preserved": 408.0,
+            "observed": 2040.0
+          },
+          "high": {
+            "preserved": 408.0,
+            "observed": 2040.0
+          },
+          "low": {
+            "preserved": 396.0,
+            "observed": 1980.0
+          },
+          "close": {
+            "preserved": 406.0,
+            "observed": 2030.0
+          },
+          "volume": {
+            "preserved": 42140,
+            "observed": 8428
+          }
+        }
+      },
+      {
+        "date": "2026-07-14",
+        "changes": {
+          "open": {
+            "preserved": 402.0,
+            "observed": 2010.0
+          },
+          "high": {
+            "preserved": 410.0,
+            "observed": 2050.0
+          },
+          "low": {
+            "preserved": 393.0,
+            "observed": 1965.0
+          },
+          "close": {
+            "preserved": 406.0,
+            "observed": 2030.0
+          },
+          "volume": {
+            "preserved": 46685,
+            "observed": 9337
+          }
+        }
+      },
+      {
+        "date": "2026-07-15",
+        "changes": {
+          "open": {
+            "preserved": 406.0,
+            "observed": 2030.0
+          },
+          "high": {
+            "preserved": 418.0,
+            "observed": 2090.0
+          },
+          "low": {
+            "preserved": 400.0,
+            "observed": 2000.0
+          },
+          "close": {
+            "preserved": 403.0,
+            "observed": 2015.0
+          },
+          "volume": {
+            "preserved": 10550,
+            "observed": 2110
+          }
+        }
+      },
+      {
+        "date": "2026-07-16",
+        "changes": {
+          "open": {
+            "preserved": 399.6,
+            "observed": 1998.0
+          },
+          "high": {
+            "preserved": 407.0,
+            "observed": 2035.0
+          },
+          "low": {
+            "preserved": 384.0,
+            "observed": 1920.0
+          },
+          "close": {
+            "preserved": 407.0,
+            "observed": 2035.0
+          },
+          "volume": {
+            "preserved": 92010,
+            "observed": 18402
+          }
+        }
+      },
+      {
+        "date": "2026-07-20",
+        "changes": {
+          "open": {
+            "preserved": 402.0,
+            "observed": 2010.0
+          },
+          "high": {
+            "preserved": 415.0,
+            "observed": 2075.0
+          },
+          "low": {
+            "preserved": 378.6,
+            "observed": 1893.0
+          },
+          "close": {
+            "preserved": 403.0,
+            "observed": 2015.0
+          },
+          "volume": {
+            "preserved": 15450,
+            "observed": 3090
+          }
+        }
+      },
+      {
+        "date": "2026-07-21",
+        "changes": {
+          "open": {
+            "preserved": 398.0,
+            "observed": 1990.0
+          },
+          "high": {
+            "preserved": 414.0,
+            "observed": 2070.0
+          },
+          "low": {
+            "preserved": 384.0,
+            "observed": 1920.0
+          },
+          "close": {
+            "preserved": 404.0,
+            "observed": 2020.0
+          },
+          "volume": {
+            "preserved": 61210,
+            "observed": 12242
+          }
+        }
+      },
+      {
+        "date": "2026-07-22",
+        "changes": {
+          "open": {
+            "preserved": 404.0,
+            "observed": 2020.0
+          },
+          "high": {
+            "preserved": 405.0,
+            "observed": 2025.0
+          },
+          "low": {
+            "preserved": 394.0,
+            "observed": 1970.0
+          },
+          "close": {
+            "preserved": 404.0,
+            "observed": 2020.0
+          },
+          "volume": {
+            "preserved": 12495,
+            "observed": 2499
+          }
+        }
+      },
+      {
+        "date": "2026-07-23",
+        "changes": {
+          "open": {
+            "preserved": 409.0,
+            "observed": 2045.0
+          },
+          "high": {
+            "preserved": 409.0,
+            "observed": 2045.0
+          },
+          "low": {
+            "preserved": 396.0,
+            "observed": 1980.0
+          },
+          "close": {
+            "preserved": 396.0,
+            "observed": 1980.0
+          },
+          "volume": {
+            "preserved": 5160,
+            "observed": 1032
+          }
+        }
+      },
+      {
+        "date": "2026-07-24",
+        "changes": {
+          "open": {
+            "preserved": 409.0,
+            "observed": 2045.0
+          },
+          "high": {
+            "preserved": 409.0,
+            "observed": 2045.0
+          },
+          "low": {
+            "preserved": 388.2,
+            "observed": 1941.0
+          },
+          "close": {
+            "preserved": 388.2,
+            "observed": 1941.0
+          },
+          "volume": {
+            "preserved": 72665,
+            "observed": 14533
+          }
+        }
+      },
+      {
+        "date": "2026-07-27",
+        "changes": {
+          "open": {
+            "preserved": 396.0,
+            "observed": 1980.0
+          },
+          "high": {
+            "preserved": 397.0,
+            "observed": 1985.0
+          },
+          "low": {
+            "preserved": 386.4,
+            "observed": 1932.0
+          },
+          "close": {
+            "preserved": 388.2,
+            "observed": 1941.0
+          },
+          "volume": {
+            "preserved": 13575,
+            "observed": 2715
+          }
+        }
+      },
+      {
+        "date": "2026-07-28",
+        "changes": {
+          "open": {
+            "preserved": 380.0,
+            "observed": 1900.0
+          },
+          "high": {
+            "preserved": 400.0,
+            "observed": 2000.0
+          },
+          "low": {
+            "preserved": 343.0,
+            "observed": 1715.0
+          },
+          "close": {
+            "preserved": 343.0,
+            "observed": 1715.0
+          },
+          "volume": {
+            "preserved": 110150,
+            "observed": 22030
+          }
+        }
+      },
+      {
+        "date": "2026-07-29",
+        "changes": {
+          "open": {
+            "preserved": 349.8,
+            "observed": 1749.0
+          },
+          "high": {
+            "preserved": 387.6,
+            "observed": 1938.0
+          },
+          "low": {
+            "preserved": 330.0,
+            "observed": 1650.0
+          },
+          "close": {
+            "preserved": 355.8,
+            "observed": 1779.0
+          },
+          "volume": {
+            "preserved": 99890,
+            "observed": 19978
+          }
+        }
+      },
+      {
+        "date": "2026-07-30",
+        "changes": {
+          "open": {
+            "preserved": 355.8,
+            "observed": 1779.0
+          },
+          "high": {
+            "preserved": 370.0,
+            "observed": 1850.0
+          },
+          "low": {
+            "preserved": 338.8,
+            "observed": 1694.0
+          },
+          "close": {
+            "preserved": 342.4,
+            "observed": 1712.0
+          },
+          "volume": {
+            "preserved": 140830,
+            "observed": 28166
+          }
+        }
+      },
+      {
+        "date": "2026-07-31",
+        "changes": {
+          "open": {
+            "preserved": 340.4,
+            "observed": 1702.0
+          },
+          "high": {
+            "preserved": 373.6,
+            "observed": 1868.0
+          },
+          "low": {
+            "preserved": 340.4,
+            "observed": 1702.0
+          },
+          "close": {
+            "preserved": 368.8,
+            "observed": 1844.0
+          },
+          "volume": {
+            "preserved": 139105,
+            "observed": 27821
+          }
+        }
+      },
+      {
+        "date": "2026-08-03",
+        "changes": {
+          "open": {
+            "preserved": 344.4,
+            "observed": 1722.0
+          },
+          "high": {
+            "preserved": 394.0,
+            "observed": 1970.0
+          },
+          "low": {
+            "preserved": 344.4,
+            "observed": 1722.0
+          },
+          "close": {
+            "preserved": 381.8,
+            "observed": 1909.0
+          },
+          "volume": {
+            "preserved": 42730,
+            "observed": 8546
+          }
+        }
+      },
+      {
+        "date": "2026-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 24994,
+            "observed": 25013
+          }
+        }
+      },
+      {
+        "date": "2026-08-21",
+        "changes": {
+          "volume": {
+            "preserved": 6836,
+            "observed": 6865
+          }
+        }
+      },
+      {
+        "date": "2026-08-24",
+        "changes": {
+          "volume": {
+            "preserved": 8008,
+            "observed": 8009
+          }
+        }
+      },
+      {
+        "date": "2026-09-04",
+        "changes": {
+          "volume": {
+            "preserved": 1971,
+            "observed": 2011
+          }
+        }
+      },
+      {
+        "date": "2026-09-14",
+        "changes": {
+          "close": {
+            "preserved": 2270.0,
+            "observed": 2255.0
+          },
+          "volume": {
+            "preserved": 4738,
+            "observed": 4739
+          }
+        }
+      },
+      {
+        "date": "2026-09-15",
+        "changes": {
+          "high": {
+            "preserved": 2255.0,
+            "observed": 2315.0
+          },
+          "close": {
+            "preserved": 2105.0,
+            "observed": 2310.0
+          },
+          "volume": {
+            "preserved": 1305,
+            "observed": 1327
+          }
+        }
+      },
+      {
+        "date": "2026-09-18",
+        "changes": {
+          "close": {
+            "preserved": 2045.0,
+            "observed": 2030.0
+          },
+          "volume": {
+            "preserved": 19737,
+            "observed": 20050
+          }
+        }
+      },
+      {
+        "date": "2026-09-21",
+        "changes": {
+          "close": {
+            "preserved": 2190.0,
+            "observed": 2205.0
+          },
+          "volume": {
+            "preserved": 4546,
+            "observed": 4624
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "005930": {
+    "conflicts": 28,
+    "changed_fields": {
+      "volume": 28,
+      "low": 1,
+      "close": 3
+    },
+    "differences": [
+      {
+        "date": "2026-05-14",
+        "changes": {
+          "volume": {
+            "preserved": 39295913,
+            "observed": 39314752
+          }
+        }
+      },
+      {
+        "date": "2026-06-08",
+        "changes": {
+          "volume": {
+            "preserved": 38467019,
+            "observed": 38929682
+          }
+        }
+      },
+      {
+        "date": "2026-06-09",
+        "changes": {
+          "volume": {
+            "preserved": 28989253,
+            "observed": 30124249
+          }
+        }
+      },
+      {
+        "date": "2026-06-11",
+        "changes": {
+          "volume": {
+            "preserved": 30074908,
+            "observed": 31420307
+          }
+        }
+      },
+      {
+        "date": "2026-06-12",
+        "changes": {
+          "volume": {
+            "preserved": 30721836,
+            "observed": 31006148
+          }
+        }
+      },
+      {
+        "date": "2026-06-15",
+        "changes": {
+          "volume": {
+            "preserved": 20180857,
+            "observed": 21500067
+          }
+        }
+      },
+      {
+        "date": "2026-06-24",
+        "changes": {
+          "volume": {
+            "preserved": 46319709,
+            "observed": 47809959
+          }
+        }
+      },
+      {
+        "date": "2026-07-06",
+        "changes": {
+          "volume": {
+            "preserved": 23805229,
+            "observed": 23872879
+          }
+        }
+      },
+      {
+        "date": "2026-07-10",
+        "changes": {
+          "volume": {
+            "preserved": 19919725,
+            "observed": 20088811
+          }
+        }
+      },
+      {
+        "date": "2026-07-15",
+        "changes": {
+          "volume": {
+            "preserved": 24247831,
+            "observed": 24873414
+          }
+        }
+      },
+      {
+        "date": "2026-07-16",
+        "changes": {
+          "volume": {
+            "preserved": 26605948,
+            "observed": 27001478
+          }
+        }
+      },
+      {
+        "date": "2026-07-21",
+        "changes": {
+          "volume": {
+            "preserved": 20358404,
+            "observed": 20386896
+          }
+        }
+      },
+      {
+        "date": "2026-07-22",
+        "changes": {
+          "volume": {
+            "preserved": 21249029,
+            "observed": 22292003
+          }
+        }
+      },
+      {
+        "date": "2026-07-29",
+        "changes": {
+          "volume": {
+            "preserved": 61720290,
+            "observed": 65555523
+          }
+        }
+      },
+      {
+        "date": "2026-07-31",
+        "changes": {
+          "volume": {
+            "preserved": 57883859,
+            "observed": 58478873
+          }
+        }
+      },
+      {
+        "date": "2026-08-11",
+        "changes": {
+          "volume": {
+            "preserved": 23197807,
+            "observed": 23310969
+          }
+        }
+      },
+      {
+        "date": "2026-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 21668266,
+            "observed": 21669476
+          }
+        }
+      },
+      {
+        "date": "2026-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 22683374,
+            "observed": 22788552
+          }
+        }
+      },
+      {
+        "date": "2026-08-21",
+        "changes": {
+          "volume": {
+            "preserved": 27672192,
+            "observed": 27746471
+          }
+        }
+      },
+      {
+        "date": "2026-08-24",
+        "changes": {
+          "volume": {
+            "preserved": 32451480,
+            "observed": 32451940
+          }
+        }
+      },
+      {
+        "date": "2026-08-27",
+        "changes": {
+          "volume": {
+            "preserved": 16599729,
+            "observed": 16829395
+          }
+        }
+      },
+      {
+        "date": "2026-09-07",
+        "changes": {
+          "volume": {
+            "preserved": 18277791,
+            "observed": 18314016
+          }
+        }
+      },
+      {
+        "date": "2026-09-10",
+        "changes": {
+          "volume": {
+            "preserved": 21010910,
+            "observed": 22517075
+          }
+        }
+      },
+      {
+        "date": "2026-09-11",
+        "changes": {
+          "volume": {
+            "preserved": 13938673,
+            "observed": 13939111
+          }
+        }
+      },
+      {
+        "date": "2026-09-14",
+        "changes": {
+          "low": {
+            "preserved": 248500.0,
+            "observed": 247000.0
+          },
+          "volume": {
+            "preserved": 16772299,
+            "observed": 17776098
+          }
+        }
+      },
+      {
+        "date": "2026-09-15",
+        "changes": {
+          "close": {
+            "preserved": 248500.0,
+            "observed": 250500.0
+          },
+          "volume": {
+            "preserved": 11119450,
+            "observed": 11435506
+          }
+        }
+      },
+      {
+        "date": "2026-09-18",
+        "changes": {
+          "close": {
+            "preserved": 259500.0,
+            "observed": 260000.0
+          },
+          "volume": {
+            "preserved": 14912544,
+            "observed": 17489615
+          }
+        }
+      },
+      {
+        "date": "2026-09-21",
+        "changes": {
+          "close": {
+            "preserved": 274500.0,
+            "observed": 275000.0
+          },
+          "volume": {
+            "preserved": 21995967,
+            "observed": 22261519
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "001000": {
+    "conflicts": 18,
+    "changed_fields": {
+      "volume": 18
+    },
+    "differences": [
+      {
+        "date": "2026-06-08",
+        "changes": {
+          "volume": {
+            "preserved": 3003675,
+            "observed": 3006340
+          }
+        }
+      },
+      {
+        "date": "2026-06-09",
+        "changes": {
+          "volume": {
+            "preserved": 3815246,
+            "observed": 3831094
+          }
+        }
+      },
+      {
+        "date": "2026-06-11",
+        "changes": {
+          "volume": {
+            "preserved": 3263578,
+            "observed": 3274182
+          }
+        }
+      },
+      {
+        "date": "2026-06-12",
+        "changes": {
+          "volume": {
+            "preserved": 477157,
+            "observed": 482376
+          }
+        }
+      },
+      {
+        "date": "2026-06-15",
+        "changes": {
+          "volume": {
+            "preserved": 234467,
+            "observed": 235917
+          }
+        }
+      },
+      {
+        "date": "2026-06-24",
+        "changes": {
+          "volume": {
+            "preserved": 2197397,
+            "observed": 2198807
+          }
+        }
+      },
+      {
+        "date": "2026-07-06",
+        "changes": {
+          "volume": {
+            "preserved": 2352391,
+            "observed": 2353090
+          }
+        }
+      },
+      {
+        "date": "2026-07-10",
+        "changes": {
+          "volume": {
+            "preserved": 209606,
+            "observed": 212465
+          }
+        }
+      },
+      {
+        "date": "2026-07-13",
+        "changes": {
+          "volume": {
+            "preserved": 315459,
+            "observed": 315639
+          }
+        }
+      },
+      {
+        "date": "2026-07-15",
+        "changes": {
+          "volume": {
+            "preserved": 127314,
+            "observed": 127317
+          }
+        }
+      },
+      {
+        "date": "2026-07-16",
+        "changes": {
+          "volume": {
+            "preserved": 4421421,
+            "observed": 4437484
+          }
+        }
+      },
+      {
+        "date": "2026-07-22",
+        "changes": {
+          "volume": {
+            "preserved": 262046,
+            "observed": 263311
+          }
+        }
+      },
+      {
+        "date": "2026-07-29",
+        "changes": {
+          "volume": {
+            "preserved": 566578,
+            "observed": 567173
+          }
+        }
+      },
+      {
+        "date": "2026-07-31",
+        "changes": {
+          "volume": {
+            "preserved": 569479,
+            "observed": 569482
+          }
+        }
+      },
+      {
+        "date": "2026-08-11",
+        "changes": {
+          "volume": {
+            "preserved": 630681,
+            "observed": 638750
+          }
+        }
+      },
+      {
+        "date": "2026-08-14",
+        "changes": {
+          "volume": {
+            "preserved": 999211,
+            "observed": 1013010
+          }
+        }
+      },
+      {
+        "date": "2026-08-19",
+        "changes": {
+          "volume": {
+            "preserved": 647747,
+            "observed": 649103
+          }
+        }
+      },
+      {
+        "date": "2026-09-11",
+        "changes": {
+          "volume": {
+            "preserved": 271537,
+            "observed": 271809
+          }
+        }
+      }
+    ],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "0233J0": {
+    "conflicts": 0,
+    "changed_fields": {},
+    "differences": [],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  },
+  "0113P0": {
+    "conflicts": 0,
+    "changed_fields": {},
+    "differences": [],
+    "decision": "preserve_original_and_quarantine_required_windows",
+    "cause": "unconfirmed_source_venue_or_provider_revision"
+  }
+}

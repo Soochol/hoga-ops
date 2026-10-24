@@ -1,0 +1,7 @@
+before historical_amount targets {'020180': {'selected': True, 'complete': False, 'matched': False}, '038390': {'selected': True, 'complete': False, 'matched': False}}
+before historical_volume_raw targets {'020180': {'selected': True, 'complete': False, 'matched': False}, '038390': {'selected': True, 'complete': False, 'matched': False}}
+before historical_volume_share targets {'020180': {'selected': True, 'complete': False, 'matched': False}, '038390': {'selected': True, 'complete': False, 'matched': False}}
+before diagnostic_1000_raw targets {'020180': {'selected': True, 'complete': False, 'matched': False}, '038390': {'selected': True, 'complete': False, 'matched': False}}
+before saved_short_volume targets {'020180': {'selected': True, 'complete': False, 'matched': False}, '038390': {'selected': True, 'complete': False, 'matched': False}}
+before saved_long_volume targets {'020180': {'selected': False, 'complete': False, 'matched': False}, '038390': {'selected': False, 'complete': False, 'matched': False}}
+PASS before six actual executions, exact HTTP roundtrip and version-bound replay

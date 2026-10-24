@@ -1,0 +1,261 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-10-24T15:52:07.307254+09:00",
+  "incident_summary": {
+    "master_refreshed": true,
+    "symbols_added": 0,
+    "written_rows": 0,
+    "checked": 988,
+    "total": 988,
+    "failed": 987,
+    "unavailable": 1,
+    "completed_ms": 1792557503646,
+    "reason": "partial"
+  },
+  "separate_unavailable": {
+    "028080": 4200
+  },
+  "snapshot": "/tmp/hoga-987-recovery-review-20261024",
+  "raw_latest": "2026-10-23",
+  "calendar_first": "2007-01-02",
+  "calendar_last": "2026-10-23",
+  "recent_window": [
+    "2026-09-14",
+    "2026-10-23"
+  ],
+  "source_fingerprints": {
+    "daily_unadjusted.parquet": "ffae2b2ef4d8c1e852a12f20778810b721fca0c086fcf8f3ee76868dab5d1fb0",
+    "daily_adjusted.parquet": "067ad9d115dc2a21765217e0a61d205767b41868470cd899b44c4eca1693a928",
+    "factors.parquet": "6d7df65617257a14d744183f5215cb9b101e4256d18dd8c8b70f639e4562a732",
+    "stocks.parquet": "05d3b898f0dcf19886eebfecac0576bb90bf6b1ed80407dc429ed46527394479",
+    "status.json": "1577481b2e048d1d5c9a09bb1b0006917c95ea2b2a9098bcd6008af529c78cfa",
+    "history_evidence.json": "c2ecb2db29c71337c6d4858c2222d43815228722a200586466fd9f2f2920fd14",
+    "saves.json": "f004c8f92c4169fb657940be8e65089298a99d191719491dad728804b5d0a2b6"
+  },
+  "source_unchanged": true,
+  "metadata_sha256": {
+    "screener/refresh_report.json": "5ad37135d457fc28f84b28c56ad7432176f31704d1ba3a6af8b5c6c388bfcb80",
+    "symbol-master.json": "278e990d576d1d0c9c5ab4a14fc207bd17f5a17195765ea4d253b721ca92077c"
+  },
+  "security_types": {
+    "stock": 802,
+    "etf": 185
+  },
+  "total": {
+    "symbols": 987,
+    "needs_legacy_retry": 987,
+    "with_calendar_gaps": 741,
+    "prefix_only": 246,
+    "recent_complete": 985,
+    "recent_incomplete": 2,
+    "missing_calendar_days": 2184870,
+    "incident_missing_days": 2184870,
+    "recent_missing_days": 4,
+    "vendor_observed_missing_days": 20130,
+    "vendor_absent_missing_days": 0,
+    "original_invalid_rows": 2,
+    "original_duplicate_dates": 0
+  },
+  "by_error": {
+    "adjusted_price_mismatch": {
+      "symbols": 12,
+      "needs_legacy_retry": 12,
+      "with_calendar_gaps": 9,
+      "prefix_only": 3,
+      "recent_complete": 12,
+      "recent_incomplete": 0,
+      "missing_calendar_days": 29350,
+      "incident_missing_days": 29350,
+      "recent_missing_days": 0,
+      "vendor_observed_missing_days": 0,
+      "vendor_absent_missing_days": 0,
+      "original_invalid_rows": 0,
+      "original_duplicate_dates": 0
+    },
+    "adjusted_volume_mismatch": {
+      "symbols": 896,
+      "needs_legacy_retry": 896,
+      "with_calendar_gaps": 689,
+      "prefix_only": 207,
+      "recent_complete": 894,
+      "recent_incomplete": 2,
+      "missing_calendar_days": 1990592,
+      "incident_missing_days": 1990592,
+      "recent_missing_days": 4,
+      "vendor_observed_missing_days": 0,
+      "vendor_absent_missing_days": 0,
+      "original_invalid_rows": 0,
+      "original_duplicate_dates": 0
+    },
+    "gap_repair_requires_full_existing_range": {
+      "symbols": 1,
+      "needs_legacy_retry": 1,
+      "with_calendar_gaps": 0,
+      "prefix_only": 1,
+      "recent_complete": 1,
+      "recent_incomplete": 0,
+      "missing_calendar_days": 0,
+      "incident_missing_days": 0,
+      "recent_missing_days": 0,
+      "vendor_observed_missing_days": 0,
+      "vendor_absent_missing_days": 0,
+      "original_invalid_rows": 0,
+      "original_duplicate_dates": 0
+    },
+    "gap_repair_would_change_existing_adjustment": {
+      "symbols": 6,
+      "needs_legacy_retry": 6,
+      "with_calendar_gaps": 6,
+      "prefix_only": 0,
+      "recent_complete": 6,
+      "recent_incomplete": 0,
+      "missing_calendar_days": 20130,
+      "incident_missing_days": 20130,
+      "recent_missing_days": 0,
+      "vendor_observed_missing_days": 20130,
+      "vendor_absent_missing_days": 0,
+      "original_invalid_rows": 0,
+      "original_duplicate_dates": 0
+    },
+    "vendor_invalid_rows": {
+      "symbols": 72,
+      "needs_legacy_retry": 72,
+      "with_calendar_gaps": 37,
+      "prefix_only": 35,
+      "recent_complete": 72,
+      "recent_incomplete": 0,
+      "missing_calendar_days": 144798,
+      "incident_missing_days": 144798,
+      "recent_missing_days": 0,
+      "vendor_observed_missing_days": 0,
+      "vendor_absent_missing_days": 0,
+      "original_invalid_rows": 2,
+      "original_duplicate_dates": 0
+    }
+  },
+  "limitations": [
+    "Calendar gaps do not establish provider availability or tradable sessions without sourced evidence.",
+    "Recent original coverage does not certify v2 adjusted prices or share conversion history.",
+    "No provider calls, no import into production, no operational data changes."
+  ],
+  "saved_condition_original_date_coverage": [
+    {
+      "save_id": "bbb323f357b04e1c8bfeb286fcd41b19",
+      "name": "신고가, 거래대금",
+      "policy": "legacy_v1",
+      "required_from": "2021-11-26",
+      "required_to": "2026-10-23",
+      "required_trading_days": 1199,
+      "failed_symbols_in_universe": 802,
+      "raw_date_complete": 309,
+      "raw_date_incomplete": 493,
+      "missing_symbol_dates": 251938,
+      "volume_basis_not_explicitly_changed": true
+    },
+    {
+      "save_id": "6691136fcade46fdb969f8305a32efd2",
+      "name": "단기 신고거래",
+      "policy": "legacy_v1",
+      "required_from": "2026-01-28",
+      "required_to": "2026-10-23",
+      "required_trading_days": 179,
+      "failed_symbols_in_universe": 802,
+      "raw_date_complete": 802,
+      "raw_date_incomplete": 0,
+      "missing_symbol_dates": 0,
+      "volume_basis_not_explicitly_changed": true
+    },
+    {
+      "save_id": "9bd7bc741f094c10b3d0aea26f342b0f",
+      "name": "장기 신고거래",
+      "policy": "legacy_v1",
+      "required_from": "2018-08-28",
+      "required_to": "2026-10-23",
+      "required_trading_days": 1999,
+      "failed_symbols_in_universe": 86,
+      "raw_date_complete": 36,
+      "raw_date_incomplete": 50,
+      "missing_symbol_dates": 61607,
+      "volume_basis_not_explicitly_changed": true
+    },
+    {
+      "save_id": "aba07118d7084820b32b57a1bc11eec3",
+      "name": "신고가",
+      "policy": "legacy_v1",
+      "required_from": "2025-11-28",
+      "required_to": "2026-10-23",
+      "required_trading_days": 219,
+      "failed_symbols_in_universe": 802,
+      "raw_date_complete": 802,
+      "raw_date_incomplete": 0,
+      "missing_symbol_dates": 0,
+      "volume_basis_not_explicitly_changed": true
+    },
+    {
+      "save_id": "c26b721eabd441a88f64b474c3ade004",
+      "name": "장단기 신고거래 + 4d 신고가",
+      "policy": "legacy_v1",
+      "required_from": "2025-03-06",
+      "required_to": "2026-10-23",
+      "required_trading_days": 399,
+      "failed_symbols_in_universe": 86,
+      "raw_date_complete": 86,
+      "raw_date_incomplete": 0,
+      "missing_symbol_dates": 0,
+      "volume_basis_not_explicitly_changed": true
+    },
+    {
+      "save_id": "c0b898e4088d4df9b9a7d928ce9de462",
+      "name": "볼린저 상단 4d",
+      "policy": "legacy_v1",
+      "required_from": "2026-09-17",
+      "required_to": "2026-10-23",
+      "required_trading_days": 23,
+      "failed_symbols_in_universe": 802,
+      "raw_date_complete": 802,
+      "raw_date_incomplete": 0,
+      "missing_symbol_dates": 0,
+      "volume_basis_not_explicitly_changed": true
+    },
+    {
+      "save_id": "016ea5d053de486682c71dbb050ead13",
+      "name": "볼린저 하단 4d",
+      "policy": "legacy_v1",
+      "required_from": "2026-09-17",
+      "required_to": "2026-10-23",
+      "required_trading_days": 23,
+      "failed_symbols_in_universe": 86,
+      "raw_date_complete": 86,
+      "raw_date_incomplete": 0,
+      "missing_symbol_dates": 0,
+      "volume_basis_not_explicitly_changed": true
+    }
+  ],
+  "saved_union": {
+    "symbols": 802,
+    "raw_date_complete": 305,
+    "raw_date_incomplete": 497,
+    "missing_symbol_dates": 290054,
+    "note": "Date inventory only; adjusted OHLC, corporate actions, per-row validity and result equality are not certified."
+  },
+  "priority_counts": {
+    "saved_window_gap": 497,
+    "other_calendar_gap": 244,
+    "prefix_review_only": 246
+  },
+  "final_source_unchanged": true,
+  "final_checked_at": "2026-10-24T15:57:01.340079+09:00",
+  "analysis_scripts_sha256": {
+    "/tmp/review_987.py": "ba53d69a4384b6699d5c2c84b2ce232077002be8c4422bed633c300726bccb57",
+    "/tmp/review_987_saved.py": "d6a16f977af5011152fa44a22b75fcb3f097449bd50275002bf329c5edfdf88b"
+  },
+  "code": {
+    "HEAD": "ae3d8ba71e3e9d88a193c5a8e07c26bd31a0088c",
+    "HEAD^{tree}": "07b3a1d7e10af578b83df770a9f954fb023a3078",
+    "origin/main": "850d6be4a4ef7e2a21fa3170be8473aa09c1be51",
+    "origin/main^{tree}": "07b3a1d7e10af578b83df770a9f954fb023a3078"
+  },
+  "calendar_seed_sha256": "0e4f2ca699301967922cacfc40933044da1e00a84a5033350147a8c0ea9a7ff4",
+  "calendar_overlay_sha256": "ff351f24816bab14970130a6327de7d8a7b816b130afb78f7439a1f50d660940",
+  "validation_assertions_passed": true
+}

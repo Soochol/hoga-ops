@@ -1,0 +1,59 @@
+"""Offline load exercise using a frozen production corpus and explicitly synthetic future bars."""
+import asyncio,copy,datetime as dt,hashlib,json,resource,shutil,time
+from pathlib import Path
+import polars as pl
+from hoga.api import screener_daily_ingest as ingest,screener_series_store as series
+from hoga.util.atomic_write import atomic_write_json
+from hoga.util.timeenc import KST
+from hoga.api.screener_series_execution import code_revision
+REV=code_revision()
+P=Path('/tmp/hoga-auto-ingest-20261024');D=P/'corpus';sd=D/'screener'
+old=json.loads((P/'snapshot-before.json').read_text());atomic_write_json(series.root(D)/'current.json',{'id':old['id']})
+if ingest.root(D).exists():shutil.rmtree(ingest.root(D))
+codes=pl.read_parquet(sd/'stocks.parquet')['code'].to_list()
+frame=pl.scan_parquet(sd/'daily_unadjusted.parquet').filter(pl.col('date')>=dt.date(2026,10,19)).collect()
+by_code={key[0]:[{**r,'date':str(r['date'])} for r in rows.to_dicts()] for key,rows in frame.partition_by('code',as_dict=True).items()}
+original={name:hashlib.sha256((sd/name).read_bytes()).hexdigest() for name in ['daily_unadjusted.parquet','daily_adjusted.parquet','factors.parquet','saves.json']}
+async def main():
+ results=[]
+ for label,day,days in [('initial_recent_recheck',dt.date(2026,10,24),[dt.date(2026,10,i) for i in (19,20,21,22,23)]),('normal_provisional',dt.date(2026,10,26),[dt.date(2026,10,i) for i in (20,21,22,23,26)]),('next_day_confirm_append',dt.date(2026,10,27),[dt.date(2026,10,i) for i in (21,22,23,26,27)])]:
+  calls=active=peak=0;lag=[];stop=False
+  async def heartbeat():
+   while not stop:
+    started=time.monotonic();await asyncio.sleep(.02);lag.append(max(0,time.monotonic()-started-.02))
+  async def fetch(code,first,last,index):
+   nonlocal calls,active,peak
+   calls+=1;active+=1;peak=max(peak,active)
+   await asyncio.sleep(0)
+   rows=copy.deepcopy(by_code.get(code,[]))
+   if rows:
+    seed=max(rows,key=lambda r:r['date'])
+    for future in ['2026-10-26','2026-10-27']:
+     if future<=str(day): rows.append({**seed,'date':future,'volume':seed['volume']+1})
+   rows=[r for r in rows if str(first)<=r['date']<=str(last)]
+   raw=[{'dt':r['date'].replace('-',''),'open_pric':str(r['open']),'high_pric':str(r['high']),'low_pric':str(r['low']),'cur_prc':str(r['close']),'trde_qty':str(r['volume'])} for r in rows]
+   clock=dt.datetime.combine(day,dt.time(22),KST)+dt.timedelta(seconds=index*3)
+   active-=1
+   return ingest.RawSample(code,clock,clock,rows,raw,[])
+  cpu=time.process_time();start=time.monotonic();hb=asyncio.create_task(heartbeat())
+  appended=await ingest.run(D,codes=codes,days=[str(d) for d in days],fetch=fetch,now=dt.datetime.combine(day,dt.time(22),KST),pause=lambda _:asyncio.sleep(0))
+  elapsed=time.monotonic()-start;cpu=time.process_time()-cpu;stop=True;await hb
+  summary=ingest.load(D)['summary'];root=ingest.root(D)
+  record={'phase':label,'codes':len(codes),'logical_requests':calls,'max_concurrency':peak,'appended_dates':appended,'elapsed_seconds_excluding_broker':elapsed,'process_cpu_seconds':cpu,'peak_process_rss_mib':resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1024,'max_event_loop_lag_ms':max(lag,default=0)*1000,'ledger_bytes':(root/'current.json').stat().st_size,'status_bytes':(root/'status.json').stat().st_size,'sample_bytes_cumulative':sum(p.stat().st_size for p in (root/'samples').glob('*')),'disk_allocated_bytes_cumulative':sum(p.stat().st_blocks*512 for p in root.rglob('*') if p.is_file()),'summary':summary}
+  if label!='next_day_confirm_append':
+   assert all(hashlib.sha256((sd/n).read_bytes()).hexdigest()==v for n,v in original.items())
+  assert calls==len(codes) and peak<=3
+  results.append(record);(P/'load-results.json').write_text(json.dumps({'code_revision':REV,'method':'Offline recorded-store replay; future dates are synthetic. No broker/network pacing included. Measurements are local process totals, not incremental cost against the previous updater.','results':results},indent=2))
+  print({k:v for k,v in record.items() if k!='summary'},flush=True)
+ # Compare every preserved historical row after appending the confirmed synthetic day.
+ source=Path('/home/dev/.local/share/hoga-ops/data/screener')
+ for name in ['daily_unadjusted.parquet','daily_adjusted.parquet']:
+  before=pl.read_parquet(source/name);after=pl.read_parquet(sd/name).filter(pl.col('date')<=dt.date(2026,10,23))
+  assert before.sort(['code','date']).equals(after.sort(['code','date'])),name
+ # A successful completed day is a small metadata gate, not a historical scan.
+ clock=dt.datetime(2026,10,27,22,1,tzinfo=KST);start=time.perf_counter()
+ for _ in range(1000):ingest.checked_recently(D,clock)
+ gate=(time.perf_counter()-start)*1000/1000
+ result=json.loads((P/'load-results.json').read_text());result.update(gate_mean_ms=gate,all_historical_rows_equal=True,factors_and_saves_equal=all(hashlib.sha256((sd/n).read_bytes()).hexdigest()==original[n] for n in ['factors.parquet','saves.json']))
+ (P/'load-results.json').write_text(json.dumps(result,indent=2));print('PASS historical rows equal; metadata gate mean ms',gate,flush=True)
+asyncio.run(main())

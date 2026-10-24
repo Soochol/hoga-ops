@@ -1,0 +1,19 @@
+{
+  "legacy_files_preserved": true,
+  "source_plan_and_job_preserved": true,
+  "observations_quantity_roster_calendar_and_other_manifest_metadata_preserved": true,
+  "previous_selections_preserved": 483,
+  "new_selections_exactly_requested": 583,
+  "total_selections": 1066,
+  "current_snapshot": "d859d715d9defbf84ef580211362c843a19b1bcf4417b9de8bcf0555727cc96a",
+  "application_input_files_unchanged": 2681,
+  "code_revision": "f62f538fad90f32e5bf51f80a5033c91e2cfed68146d22db31de1e17da83b337",
+  "primary_unrelated_files_unchanged_since_install": 8,
+  "concurrent_unrelated_user_file_changes": {
+    "CONTEXT.md": {
+      "at_install": "0fda72e0a704ae40c194fcc831ccdb8aa5fd95f68d25aa6fda2e4ff9fd55c9da",
+      "at_final_verification": "fe10c036624f97b2ed8c8fa2395a4888554ca5583569408226cd9baad52af089"
+    }
+  },
+  "primary_install_only_wrote_six_recorded_backend_paths": true
+}

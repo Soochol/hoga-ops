@@ -233,7 +233,7 @@ export function ScreenerDrawer() {
         intradayFailure: res.intraday_failure,
         warnings: res.warnings,
         historyCoverage: res.history_coverage,
-          barCoverage: res.bar_coverage, calculation: res.calculation,
+          barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage, calculation: res.calculation,
         depthValues: res.depth_values ?? null,
         scannedAtMs: res.scanned_at_ms ?? Date.now(),
         basisAtMs: res.basis_at_ms,
@@ -293,7 +293,7 @@ export function ScreenerDrawer() {
   const serverUpdating = status?.updating != null;
   // 진행 표시(`ScreenerUpdateProgress`)와 **같은 식**을 쓴다 — 다른 식으로 쓰면
   // 둘이 어긋나 「갱신 중」과 「지난 실행 결과」가 같이 뜬다.
-  const visibleFeedback = visibleUpdateFeedback(updateFeedback, serverUpdating, status?.last_refresh);
+  const visibleFeedback = visibleUpdateFeedback(updateFeedback, serverUpdating, status?.last_refresh, status?.daily_ingest);
 
   // 결과 전 종목에 Live Quote 오버레이(ADR-0056 개정 2026-06-03 — 상위 30 cap 제거).
   // 풀페이지 ResultTable 과 공유하는 단일 머지 seam(codes 추출·폴링·머지 캡슐화).
@@ -452,7 +452,7 @@ export function ScreenerDrawer() {
         )}
         {serverUpdating && (
           <div className="flex items-center">
-            <ScreenerUpdateProgress updating={status?.updating} />
+            <ScreenerUpdateProgress updating={status?.updating} daily={status?.daily_ingest} />
           </div>
         )}
         {visibleFeedback && (
@@ -495,6 +495,8 @@ export function ScreenerDrawer() {
           <>
             <CalculationNotice scan={lastScan} />
             <BarVolumeCoverage coverage={lastScan.barCoverage} />
+            {lastScan.dailyCoverage && lastScan.dailyCoverage.complete < lastScan.dailyCoverage.total &&
+              <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan.dailyCoverage.total - lastScan.dailyCoverage.complete}종목</div>}
             {limitNotice && <RailState tone="warn">{limitNotice}</RailState>}
             {!!lastScan?.historyCoverage?.incomplete.length && <RailState tone="warn">
               과거 일봉이 부족한 종목이 있습니다. <a href="/screener" className="underline">스크리너에서 수집</a>

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { triggerScreenerUpdate, type ScreenerStatus } from '../api/screener';
+import { triggerScreenerUpdate, triggerScreenerHistoryRepair, type ScreenerStatus } from '../api/screener';
 import { SKIP_REASON_MESSAGES, useScreenerUpdateFeedback } from './useScreenerUpdateSync';
 
 /** 데이터 갱신 mutation — 서버-소유 job 을 스폰하고 즉시 돌아온다. 진행·완료는
@@ -9,13 +9,15 @@ import { SKIP_REASON_MESSAGES, useScreenerUpdateFeedback } from './useScreenerUp
 export function useScreenerUpdate() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => triggerScreenerUpdate(),
+    mutationFn: (operation: 'repair-history' | void) => operation === 'repair-history'
+      ? triggerScreenerHistoryRepair() : triggerScreenerUpdate(),
     onMutate: () => useScreenerUpdateFeedback.getState().clearUpdateResult(),
-    onSuccess: (res) => {
+    onSuccess: (res, operation) => {
       if (res.running) {
         queryClient.setQueryData<ScreenerStatus>(['screener-status'], (prev) =>
           prev
-            ? { ...prev, updating: { done: res.done, total: res.total, started_ms: Date.now() } }
+            ? { ...prev, updating: { done: res.done, total: res.total, started_ms: Date.now(),
+              ...(operation === 'repair-history' ? { phase: '종목 목록 확인 중' } : {}) } }
             : prev);
       } else {
         useScreenerUpdateFeedback.getState().setFeedback({

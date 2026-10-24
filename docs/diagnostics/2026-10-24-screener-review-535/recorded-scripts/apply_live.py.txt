@@ -1,0 +1,30 @@
+import hashlib,json,subprocess
+from pathlib import Path
+from hoga.api import screener_recovery as recovery,screener_series_store as store
+P=Path(__file__).parent;D=Path('/home/dev/.local/share/hoga-ops/data');before=json.loads((P/'snapshot-before.json').read_text());protected=json.loads((P/'protected-before.json').read_text());parent=json.loads((P/'source-job.json').read_text())['plan_id']
+assert (P/'operational-before.json').exists()
+assert recovery.protected_hashes(D)==protected and store.load_snapshot(D)[0]==before['id']
+for kind,checksum in json.loads((P/'source-files.json').read_text()).items():assert hashlib.sha256(recovery._path(D,parent,kind).read_bytes()).hexdigest()==checksum
+command=['.venv/bin/python','-m','hoga.api.screener_recovery_cli']
+subprocess.run(command+['review-plan','--data-dir',str(D),'--plan-id',parent,'--input',str(P/'review-input.json'),'--output',str(P/'review-plan-id.json')],check=True)
+identity=json.loads((P/'review-plan-id.json').read_text())['plan_id'];plan=recovery.load_plan(D,identity)
+assert plan.review_binding.parent_plan_id==parent and plan.review_binding.snapshot_id==before['id']
+assert store.load_snapshot(D)[0]==before['id']
+(P/'review-plan.json').write_text(plan.model_dump_json(indent=2));(P/'adopted-job-before.json').write_text(recovery.load_job(D,identity).model_dump_json(indent=2))
+subprocess.run(command+['review','--data-dir',str(D),'--plan-id',identity,'--output',str(P/'apply-result.json')],check=True)
+result=json.loads((P/'apply-result.json').read_text());assert result['new_selections']==535 and not result['already_applied']
+items=result['job']['items'];assert sum(len(x['conflict_dates']) for x in items.values())==2619
+assert sum(len(x['resolved_conflict_dates']) for x in items.values())==1601
+assert sorted(c for c,x in items.items() if x['status']=='observed')==['000120','003240','013030','900310']
+assert len(items['020180']['conflict_dates'])==7 and len(items['038390']['conflict_dates'])==5
+assert all(not x['share_evidence_ready'] for x in items.values())
+assert sum(x['added_original_days'] for x in items.values())==11172
+assert recovery.protected_hashes(D)==protected
+current=store.load_snapshot(D);assert current[1]['observations']==before['manifest']['observations'];assert current[1]['quantity']==before['manifest']['quantity']
+for key,value in before['manifest'].items():
+ if key not in {'parent','corrections'}:assert current[1][key]==value,key
+for kind,checksum in json.loads((P/'source-files.json').read_text()).items():assert hashlib.sha256(recovery._path(D,parent,kind).read_bytes()).hexdigest()==checksum
+subprocess.run(command+['review','--data-dir',str(D),'--plan-id',identity,'--output',str(P/'retry-result.json')],check=True)
+retry=json.loads((P/'retry-result.json').read_text());assert retry['already_applied'] and retry['snapshot_id']==result['snapshot_id']
+(P/'snapshot-after.json').write_text(json.dumps({'id':current[0],'manifest':current[1]},indent=2));(P/'protected-after.json').write_text(json.dumps(recovery.protected_hashes(D),indent=2))
+print('APPLIED',identity,'snapshot',result['snapshot_id'],'new 535 total 1601 remaining 2619 observed 4; originals/source job/pinned observations preserved; retry idempotent',flush=True)

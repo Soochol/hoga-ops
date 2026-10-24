@@ -275,7 +275,7 @@ async def test_http_refresh_publishes_history_only_results_and_restores_summary(
     app.include_router(screener.build_router(data_dir=tmp_path, bus=bus))
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-            response = await client.post("/api/screener/update")
+            response = await client.post("/api/screener/repair-history")
             assert response.status_code == 200 and response.json()["running"]
             await screener._job_task
             status = (await client.get("/api/screener/status")).json()

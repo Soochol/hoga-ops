@@ -1,0 +1,13 @@
+import asyncio,datetime as dt,json
+from pathlib import Path
+from hoga.api import screener_recovery as recovery
+from hoga.api.models import ScanRequest
+from hoga.api.screener_runner import run_screener_scan
+P=Path(__file__).parent;DATA=Path('/tmp/hoga-review535-legacy-before-20261024')
+async def main():
+ plan=json.loads((P/'source-plan.json').read_text());clock=dt.datetime.fromisoformat(plan['clock']);saves=json.loads((DATA/'screener/saves.json').read_text())['saves'];results=[]
+ for save,body in zip(saves,plan['comparisons'][:7],strict=True):
+  req=ScanRequest.model_validate(body);resp=await run_screener_scan(data_dir=DATA,req=req,now=clock)
+  results.append({'name':save['name'],'saved_id':save['id'],'request':body,'response':resp.model_dump(mode='json')});print(save['name'],len(resp.rows),flush=True)
+ (P/'legacy-before.json').write_text(json.dumps({'clock':clock.isoformat(),'scope':'Full frozen legacy universe, unchanged saved expressions and watchlist/heatmap scopes','results':results},ensure_ascii=False,indent=2))
+asyncio.run(main())

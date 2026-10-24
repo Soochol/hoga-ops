@@ -1,0 +1,13 @@
+import hashlib,json,subprocess
+from pathlib import Path
+from hoga.api import screener_series_store as series
+from hoga.api.screener_series_cli import clone
+D=Path('/home/dev/.local/share/hoga-ops/data'); P=Path('/tmp/hoga-auto-ingest-20261024'); A=P/'corpus'
+protected=['daily_unadjusted.parquet','daily_adjusted.parquet','factors.parquet','stocks.parquet','status.json','history_evidence.json','saves.json','refresh_report.json','exclusions.json','saves.v2.json','exclusions.v2.json']
+def hashes():
+ return {name:hashlib.sha256((D/'screener'/name).read_bytes()).hexdigest() if (D/'screener'/name).exists() else None for name in protected}
+(P/'protected-before.json').write_text(json.dumps(hashes(),indent=2))
+sid,manifest=series.load_snapshot(D);(P/'snapshot-before.json').write_text(json.dumps({'id':sid,'manifest':manifest},indent=2))
+clone(D,A)
+subprocess.run(['cp','-a','--reflink=auto',str(D/'screener/series_v2'),str(A/'screener/series_v2')],check=True)
+print('Frozen corpus copied; production data untouched',flush=True)

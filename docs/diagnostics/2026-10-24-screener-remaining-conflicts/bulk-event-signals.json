@@ -1,0 +1,515 @@
+{
+  "020180": {
+    "bulk_count": 317,
+    "first": "2024-01-02",
+    "last": "2025-04-21",
+    "events": [
+      {
+        "effective_date": "20260819",
+        "provider_kind": "16",
+        "rate": "+400.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20260330",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250328",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20240328",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20230330",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20220330",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "038390": {
+    "bulk_count": 218,
+    "first": "2024-01-02",
+    "last": "2024-11-21",
+    "events": [
+      {
+        "effective_date": "20260716",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20260310",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250717",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250311",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241213",
+        "provider_kind": "2",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241122",
+        "provider_kind": "256",
+        "rate": "-50.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20240627",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20230629",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20220629",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "044480": {
+    "bulk_count": 318,
+    "first": "2024-01-02",
+    "last": "2025-04-22",
+    "events": [
+      {
+        "effective_date": "20260908",
+        "provider_kind": "16",
+        "rate": "+400.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20260511",
+        "provider_kind": "16",
+        "rate": "+400.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250924",
+        "provider_kind": "1",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250806",
+        "provider_kind": "64",
+        "rate": "-4.72",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250724",
+        "provider_kind": "256",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "900300": {
+    "bulk_count": 250,
+    "first": "2024-01-02",
+    "last": "2026-08-03",
+    "events": [
+      {
+        "effective_date": "20260624",
+        "provider_kind": "16",
+        "rate": "+4900.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241204",
+        "provider_kind": "16",
+        "rate": "+900.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "020400": {
+    "bulk_count": 318,
+    "first": "2024-01-02",
+    "last": "2025-04-22",
+    "events": [
+      {
+        "effective_date": "20260507",
+        "provider_kind": "2",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20260410",
+        "provider_kind": "256",
+        "rate": "-49.95",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "001530": {
+    "bulk_count": 317,
+    "first": "2024-01-02",
+    "last": "2025-04-21",
+    "events": [
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "-4.76",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "-4.30",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "-1.88",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "-1.54",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "-1.76",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "003060": {
+    "bulk_count": 317,
+    "first": "2024-01-02",
+    "last": "2025-04-21",
+    "events": [
+      {
+        "effective_date": "20260508",
+        "provider_kind": "64",
+        "rate": "+1493.63",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20240711",
+        "provider_kind": "1",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20240513",
+        "provider_kind": "256",
+        "rate": "-21.46",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20240416",
+        "provider_kind": "64",
+        "rate": "+856.84",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "012450": {
+    "bulk_count": 318,
+    "first": "2024-01-02",
+    "last": "2025-04-22",
+    "events": [
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250721",
+        "provider_kind": "1",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20250522",
+        "provider_kind": "256",
+        "rate": "-1.53",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20240927",
+        "provider_kind": "32",
+        "rate": "+3.45",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20201229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20191227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20181227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  },
+  "900340": {
+    "bulk_count": 600,
+    "first": "2024-01-02",
+    "last": "2026-08-03",
+    "events": [
+      {
+        "effective_date": "20260602",
+        "provider_kind": "16",
+        "rate": "+300.27",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20251229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20241227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20231227",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20221228",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      },
+      {
+        "effective_date": "20211229",
+        "provider_kind": "4",
+        "rate": "0.00",
+        "source": "kiwoom:ka10081"
+      }
+    ]
+  }
+}

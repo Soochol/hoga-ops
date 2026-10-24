@@ -1,0 +1,20 @@
+{
+  "baseline_inputs": "before-main-verification-inputs.json",
+  "final_inputs": "verification-inputs.json",
+  "changed_inputs": [
+    "frontend/src/pages/ReviewNotes.tsx",
+    "frontend/src/whiteboard/BoardEditor.tsx",
+    "frontend/src/whiteboard/ReviewCanvas.tsx",
+    "frontend/src/whiteboard/freehandEraser.test.ts",
+    "frontend/src/whiteboard/freehandEraser.ts",
+    "frontend/src/whiteboard/reviewCanvas.css",
+    "frontend/src/whiteboard/reviewCanvas.test.ts",
+    "frontend/src/whiteboard/reviewCanvas.ts",
+    "frontend/tests/e2e/chart-image-export.spec.ts",
+    "frontend/tests/e2e/review-notes.spec.ts"
+  ],
+  "changed_backend_inputs": [],
+  "code_revision_identical": true,
+  "backend_result": "7122 passed, 2 skipped, 13 deselected",
+  "reason": "Latest main changes only frontend review-canvas inputs; all backend source/test/dependency/config/tool inputs are unchanged."
+}

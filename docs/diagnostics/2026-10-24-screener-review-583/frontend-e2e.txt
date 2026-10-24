@@ -1,0 +1,320 @@
+[e2e] worktree=/home/dev/.codex/worktrees/c6fb/hoga-ops · slot=368 · backend=20368 · frontend=21368 · data=/tmp/hoga-e2e-data-368 · dist=/tmp/hoga-e2e-dist-368
+[1A[2K[2m[WebServer] [22m(node:3908600) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1A[2K[2m[WebServer] [22m(node:3908644) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1A[2K[2m[WebServer] [22mvite v8.0.16 building client environment for production...
+
+[1A[2K[2m[WebServer] [22m[2Ktransforming...
+
+[1A[2K[2m[WebServer] [22m[32m✓[39m 1039 modules transformed.
+
+[1A[2K[2m[WebServer] [22mrendering chunks...
+
+[1A[2K[2m[WebServer] [22mcomputing gzip size...
+
+[1A[2K[2m[WebServer] [22m[2mdist/[0m[32mindex.html                                          [39m[2m[1m    3.35 kB[0m[0m[2m │ gzip:   1.44 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.66-C3HqaDeY.woff2  [39m[2m[1m    8.25 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.64-CTbrgYF9.woff2  [39m[2m[1m    8.26 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.65-B66rjuyf.woff2  [39m[2m[1m   11.10 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.68-DS9B48d0.woff2  [39m[2m[1m   16.34 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.73-DMrK970F.woff2  [39m[2m[1m   18.33 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.72-pYYGrEQR.woff2  [39m[2m[1m   19.50 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.75-CxKdrRNf.woff2  [39m[2m[1m   19.99 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.90-BF7RiZjm.woff2  [39m[2m[1m   20.85 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.67-BmuXdlDy.woff2  [39m[2m[1m   21.84 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.89-DOzqWPpX.woff2  [39m[2m[1m   21.86 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.74-D4tQnymK.woff2  [39m[2m[1m   22.39 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.84-Brb8EsYQ.woff2  [39m[2m[1m   24.49 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.87-Lzui2vbK.woff2  [39m[2m[1m   24.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.76-DhPm2b_q.woff2  [39m[2m[1m   24.92 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.85-Byo_x2hf.woff2  [39m[2m[1m   25.10 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.88-CqX6JSgh.woff2  [39m[2m[1m   25.64 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.86-XG7lTN_6.woff2  [39m[2m[1m   25.71 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.77-DwaxqOC8.woff2  [39m[2m[1m   26.04 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.79-XpoyPP38.woff2  [39m[2m[1m   26.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.81-BZzF9Hb3.woff2  [39m[2m[1m   26.30 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.82-BgAHe30u.woff2  [39m[2m[1m   26.50 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.78-DhqRbBzT.woff2  [39m[2m[1m   26.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.83-DF-zBLLe.woff2  [39m[2m[1m   26.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.70-BUXiAGMT.woff2  [39m[2m[1m   27.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.37-BD6FyOtY.woff2  [39m[2m[1m   27.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.71-DuPZj8us.woff2  [39m[2m[1m   28.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.80-DsV9Qp_h.woff2  [39m[2m[1m   28.79 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.63-B35xsm4O.woff2  [39m[2m[1m   28.81 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.40-BDaOfdUe.woff2  [39m[2m[1m   29.84 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.43-DHdpry7N.woff2  [39m[2m[1m   30.38 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.7-E2HaA55t.woff2   [39m[2m[1m   31.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.1-C-__qv6_.woff2   [39m[2m[1m   32.04 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.44-qHopVhdd.woff2  [39m[2m[1m   32.13 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.24-CmkE8Q8D.woff2  [39m[2m[1m   32.30 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.10-DzSWztS8.woff2  [39m[2m[1m   33.03 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.41-BUACvzZC.woff2  [39m[2m[1m   33.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.50-C8IyFH7L.woff2  [39m[2m[1m   33.22 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.54-Dt2-cQkx.woff2  [39m[2m[1m   33.34 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.5-K_MNGNCe.woff2   [39m[2m[1m   33.62 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.6-Bxhohlcm.woff2   [39m[2m[1m   33.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.9-Btb3bmS6.woff2   [39m[2m[1m   34.01 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.55-jFgflYjX.woff2  [39m[2m[1m   34.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.39-B_7wfth9.woff2  [39m[2m[1m   34.25 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.52-CNgqKOOJ.woff2  [39m[2m[1m   34.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.0-BHUkWNFR.woff2   [39m[2m[1m   34.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.53-BSRnyb-u.woff2  [39m[2m[1m   34.57 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.42-Dp-5mnyL.woff2  [39m[2m[1m   34.60 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.45-BniyRFfm.woff2  [39m[2m[1m   34.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.36-Dn5IBRQB.woff2  [39m[2m[1m   34.68 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.34-CaCS33Md.woff2  [39m[2m[1m   34.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.69-YT16ymcp.woff2  [39m[2m[1m   34.78 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.38-D4hu443z.woff2  [39m[2m[1m   34.80 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.62-DGSAWCfb.woff2  [39m[2m[1m   34.87 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.33--0OT__YQ.woff2  [39m[2m[1m   34.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.17-BfZSA-Xc.woff2  [39m[2m[1m   34.94 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.4-Bvh2YGoc.woff2   [39m[2m[1m   35.15 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.56-BwZdvJZQ.woff2  [39m[2m[1m   35.18 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.35-DWFYRGLp.woff2  [39m[2m[1m   35.35 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.27-CT6nuW9L.woff2  [39m[2m[1m   35.42 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.61-PUuTnod4.woff2  [39m[2m[1m   35.64 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.15-D04iXIE3.woff2  [39m[2m[1m   35.66 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.13-C42mj_j2.woff2  [39m[2m[1m   35.70 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.47-B-cWO2pw.woff2  [39m[2m[1m   35.72 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.57-BwFDg-Fs.woff2  [39m[2m[1m   35.96 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.51-Bxd0gTAs.woff2  [39m[2m[1m   36.02 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.49-BblQVys9.woff2  [39m[2m[1m   36.05 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.20-Ig1-z3n5.woff2  [39m[2m[1m   36.12 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.14-Bl512uUX.woff2  [39m[2m[1m   36.51 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.46-BMRq7xC-.woff2  [39m[2m[1m   36.54 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.8-CRbJhhyA.woff2   [39m[2m[1m   36.69 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.21-yKPEdLXC.woff2  [39m[2m[1m   37.26 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.11-CqVmlKJn.woff2  [39m[2m[1m   37.40 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.48-Ct-fWrPO.woff2  [39m[2m[1m   37.77 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.60-CeHezjjf.woff2  [39m[2m[1m   37.77 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.16-BQUnS2GX.woff2  [39m[2m[1m   37.91 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.12-BHuZSgT0.woff2  [39m[2m[1m   37.94 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.91-Csm0YNoH.woff2  [39m[2m[1m   37.99 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.30-CWDM1c0J.woff2  [39m[2m[1m   38.44 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.28-CpO0Y96p.woff2  [39m[2m[1m   38.46 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.22-CSqxKoOs.woff2  [39m[2m[1m   38.68 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.59-CMkWjhdo.woff2  [39m[2m[1m   38.97 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.29-D6hjrUWm.woff2  [39m[2m[1m   39.28 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.32-CGnFWD2i.woff2  [39m[2m[1m   40.21 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.23-DK80wi0t.woff2  [39m[2m[1m   40.28 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.26-Sozl8dw8.woff2  [39m[2m[1m   40.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.3-Dqw33sf4.woff2   [39m[2m[1m   40.64 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.58-DlucQts_.woff2  [39m[2m[1m   41.56 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.18-CwAxMC3C.woff2  [39m[2m[1m   41.60 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.31-CdmyZ5mm.woff2  [39m[2m[1m   41.89 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.25-CsoWBIZB.woff2  [39m[2m[1m   42.03 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.19-CJu4Zcdo.woff2  [39m[2m[1m   42.32 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[32mPretendardVariable.subset.2-dCZkyKLw.woff2   [39m[2m[1m   43.92 kB[0m[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mHeatmapDrawer-CUi8DGcH.css                   [39m[2m[1m    0.07 kB[0m[0m[2m │ gzip:   0.08 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mRankingDrawer-BjQhOkZj.css                   [39m[2m[1m    0.33 kB[0m[0m[2m │ gzip:   0.17 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mResponsiveList-BKW5EvL2.css                  [39m[2m[1m    0.33 kB[0m[0m[2m │ gzip:   0.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mPatternDrawer-DmskWiXe.css                   [39m[2m[1m    0.65 kB[0m[0m[2m │ gzip:   0.29 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mSignalAlertsDrawer-DM8oVeqs.css              [39m[2m[1m    0.76 kB[0m[0m[2m │ gzip:   0.29 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mSentiment-CkWHRXJ5.css                       [39m[2m[1m    2.85 kB[0m[0m[2m │ gzip:   0.89 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mresultLimitText-PGjeukC8.css                 [39m[2m[1m    4.52 kB[0m[0m[2m │ gzip:   1.09 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mHeatmap-tEkAotD_.css                         [39m[2m[1m    4.89 kB[0m[0m[2m │ gzip:   1.16 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mMarket-gYqtOFz9.css                          [39m[2m[1m    6.54 kB[0m[0m[2m │ gzip:   1.52 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mLandingPage-BU6q5oTK.css                     [39m[2m[1m   25.14 kB[0m[0m[2m │ gzip:   5.44 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mlive-workspace-B9qreXu8.css                  [39m[2m[1m   26.76 kB[0m[0m[2m │ gzip:   5.09 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mlive-orders-DSeVfcnF.css                     [39m[2m[1m   42.87 kB[0m[0m[2m │ gzip:   7.33 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[35mindex-DMaZrwSG.css                           [39m[2m[1m  111.83 kB[0m[0m[2m │ gzip:  29.01 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mreact-BrEVD7iA.js                            [39m[2m[1m    0.19 kB[0m[0m[2m │ gzip:   0.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mStatusChip-DyRDfyxi.js                       [39m[2m[1m    0.36 kB[0m[0m[2m │ gzip:   0.28 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mPageContainer-BvzQMd_i.js                    [39m[2m[1m    0.44 kB[0m[0m[2m │ gzip:   0.33 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mStatusBadge-Cu0gYfWR.js                      [39m[2m[1m    0.65 kB[0m[0m[2m │ gzip:   0.37 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrolldown-runtime-QTnfLwEv.js                 [39m[2m[1m    0.69 kB[0m[0m[2m │ gzip:   0.42 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mSortCycleButton-DkAwTc0j.js                  [39m[2m[1m    1.25 kB[0m[0m[2m │ gzip:   0.69 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mscreener-Cndkh4Gc.js                         [39m[2m[1m    1.28 kB[0m[0m[2m │ gzip:   0.59 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36museChartDropDrag-DZP9Deu_.js                 [39m[2m[1m    1.41 kB[0m[0m[2m │ gzip:   0.70 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mliveRankings-CQHjqSHd.js                     [39m[2m[1m    1.46 kB[0m[0m[2m │ gzip:   0.85 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mmarketCardBits-BHRX2Mw_.js                   [39m[2m[1m    1.59 kB[0m[0m[2m │ gzip:   0.81 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36museCopyDragIntent-DG8yEEmY.js                [39m[2m[1m    4.04 kB[0m[0m[2m │ gzip:   1.82 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mSignalAlertsDrawer-DF6viogY.js               [39m[2m[1m    5.08 kB[0m[0m[2m │ gzip:   2.24 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mScreenerDrawer-CjBV34e7.js                   [39m[2m[1m   11.63 kB[0m[0m[2m │ gzip:   5.00 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mes-CQiZGxU0.js                               [39m[2m[1m   12.44 kB[0m[0m[2m │ gzip:   4.96 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mRankingDrawer-DA91fNsP.js                    [39m[2m[1m   12.85 kB[0m[0m[2m │ gzip:   5.08 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mLandingPage-Df3kVgyU.js                      [39m[2m[1m   19.18 kB[0m[0m[2m │ gzip:   5.52 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mInventory-CfbIfv5N.js                        [39m[2m[1m   20.13 kB[0m[0m[2m │ gzip:   6.71 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mCapture-B1kYr9jB.js                          [39m[2m[1m   25.90 kB[0m[0m[2m │ gzip:   9.15 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mSentiment-BjZL33NG.js                        [39m[2m[1m   25.98 kB[0m[0m[2m │ gzip:   7.85 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mStudyViewsDrawer-Bw0GVFq9.js                 [39m[2m[1m   29.12 kB[0m[0m[2m │ gzip:   9.89 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mHeatmapDrawer-2KmbPSIq.js                    [39m[2m[1m   29.75 kB[0m[0m[2m │ gzip:  10.47 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mquery-BkU7p79K.js                            [39m[2m[1m   31.65 kB[0m[0m[2m │ gzip:   9.34 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mPatternDrawer-DJNfbRfA.js                    [39m[2m[1m   38.06 kB[0m[0m[2m │ gzip:  12.65 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mHeatmap-DSBojkxH.js                          [39m[2m[1m   40.28 kB[0m[0m[2m │ gzip:  14.75 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mrouter-Cir5nnHh.js                           [39m[2m[1m   42.16 kB[0m[0m[2m │ gzip:  15.05 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mMarket-yBu5qvac.js                           [39m[2m[1m   45.90 kB[0m[0m[2m │ gzip:  14.07 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mresultLimitText-CsOHNEH6.js                  [39m[2m[1m   46.22 kB[0m[0m[2m │ gzip:  14.51 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mdnd-D5zGQ2Tx.js                              [39m[2m[1m   47.30 kB[0m[0m[2m │ gzip:  15.47 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mScreener-BJ_A295q.js                         [39m[2m[1m   56.53 kB[0m[0m[2m │ gzip:  18.68 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mindex-C73i6qN2.js                            [39m[2m[1m  167.80 kB[0m[0m[2m │ gzip:  51.26 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mcharts-DW6SHdwn.js                           [39m[2m[1m  170.82 kB[0m[0m[2m │ gzip:  55.21 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mlive-orders-B7lXxpbV.js                      [39m[2m[1m  437.15 kB[0m[0m[2m │ gzip: 132.80 kB[0m
+[2m[WebServer] [22m[2mdist/[0m[2massets/[0m[36mlive-workspace-NZ8VxGbt.js                   [39m[33m[1m1,053.31 kB[0m[39m[2m │ gzip: 316.78 kB[0m
+[2m[WebServer] [22m
+
+[1A[2K[2m[WebServer] [22m✓ built in 2.95s
+
+[1A[2K[2m[WebServer] [22m[plugin builtin:vite-reporter] [33m[1m
+[2m[WebServer] [22m(!) Some chunks are larger than 700 kB after minification. Consider:
+[2m[WebServer] [22m- Using dynamic import() to code-split the application
+[2m[WebServer] [22m- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[2m[WebServer] [22m- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[0m[39m
+
+[1A[2K[2m[WebServer] [22mprepare-dist: /tmp/hoga-e2e-dist-368 ready (same-origin config.json)
+
+[1A[2K[2m[WebServer] [22mINFO:     Started server process [3908833]
+
+[1A[2K[2m[WebServer] [22mINFO:     Waiting for application startup.
+
+[1A[2K[2m[WebServer] [22mINFO:     Application startup complete.
+
+[1A[2K[2m[WebServer] [22mINFO:     Uvicorn running on http://127.0.0.1:20368 (Press CTRL+C to quit)
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:46298 - "GET /health HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22m
+[2m[WebServer] [22m> frontend@0.0.0 dev
+[2m[WebServer] [22m> vite --host 127.0.0.1 --port 21368 --strictPort
+[2m[WebServer] [22m
+
+[1A[2K[2m[WebServer] [22m(node:3909722) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[2m[WebServer] [22m(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1A[2K[2m[WebServer] [22m
+[2m[WebServer] [22m  VITE v8.0.16  ready in 204 ms
+[2m[WebServer] [22m
+
+[1A[2K[2m[WebServer] [22m  ➜  Local:   http://127.0.0.1:21368/
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60564 - "GET /api/test/whoami HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60574 - "POST /api/test/add-stockdate?code=005930&date=20260521 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60564 - "POST /api/test/add-stockdate?code=000660&date=20260521 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60574 - "POST /api/test/seed-trading-days?year=2026&month=10 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60564 - "POST /api/test/seed-trading-days?year=2026&month=9 HTTP/1.1" 200 OK
+
+
+Running 2 tests using 1 worker
+
+[1A[2K(node:3910274) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K(node:3910274) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[1A[2K[e2e] worktree=/home/dev/.codex/worktrees/c6fb/hoga-ops · slot=368 · backend=20368 · frontend=21368 · data=/tmp/hoga-e2e-data-368 · dist=/tmp/hoga-e2e-dist-368
+
+[1A[2K[1/2] [chromium] › tests/e2e/drawing-right-selection.spec.ts:68:1 › right selection supports bulk style, move, delete and one-step undo without panning
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60588 - "WebSocket /api/ws" [accepted]
+
+[1A[2K[2m[WebServer] [22mINFO:     connection open
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60600 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60606 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60620 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60600 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60608 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60606 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60620 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60600 - "GET /api/live/past-daily-candles?code=098460&from=20260102&to=20261024&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60632 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60644 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60620 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60608 - "GET /api/live/screener-daily-candles?code=098460&from=20260102&to=20261024 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60606 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60600 - "GET /api/live/krx-previous-close?code=098460&as_of=20261024 HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60644 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60632 - "GET /api/live/trades/history?code=098460&date=20261024&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60632 - "GET /api/live/last-orderbook?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60644 - "GET /api/brokers/series?code=098460&date=20261024&source_pref=kiwoom_live&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60644 - "GET /api/live/screener-daily-candles?code=098460&from=20260825&to=20261024 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60644 - "GET /api/orderbook?code=098460&date=20260527&t=1779840000000&bucket_ms=180000&source_pref=kiwoom_live&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60632 - "GET /api/brokers/series?code=098460&date=20260527&source_pref=kiwoom_live&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60632 - "GET /api/live/krx-previous-close?code=098460&as_of=20261024 HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2/2] [chromium] › tests/e2e/drawing-right-selection.spec.ts:111:1 › Shift adds locked members, deletion preserves locks, and click/cancel/axes preserve input rules
+[1A[2K[2m[WebServer] [22mINFO:     connection closed
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60654 - "WebSocket /api/ws" [accepted]
+
+[1A[2K[2m[WebServer] [22mINFO:     connection open
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60664 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60676 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60686 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60692 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60692 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60676 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60664 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60708 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60664 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60676 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60714 - "GET /api/live/past-daily-candles?code=098460&from=20260102&to=20261024&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60686 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60708 - "GET /api/live/krx-previous-close?code=098460&as_of=20261024 HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60692 - "GET /api/live/screener-daily-candles?code=098460&from=20260102&to=20261024 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60676 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60714 - "GET /api/live/trades/history?code=098460&date=20261024&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60692 - "GET /api/brokers/series?code=098460&date=20261024&source_pref=kiwoom_live&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60692 - "GET /api/live/last-orderbook?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60692 - "GET /api/live/screener-daily-candles?code=098460&from=20260825&to=20261024 HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60692 - "GET /api/orderbook?code=098460&date=20260527&t=1779840000000&bucket_ms=180000&source_pref=kiwoom_live&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60714 - "GET /api/brokers/series?code=098460&date=20260527&source_pref=kiwoom_live&venue=KRX HTTP/1.1" 200 OK
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60714 - "GET /api/live/krx-previous-close?code=098460&as_of=20261024 HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     127.0.0.1:60714 - "GET /api/live/krx-previous-close?code=098460&as_of=20261024 HTTP/1.1" 503 Service Unavailable
+
+[1A[2K[2m[WebServer] [22mINFO:     connection closed
+
+[1A[2K  2 passed (11.6s)

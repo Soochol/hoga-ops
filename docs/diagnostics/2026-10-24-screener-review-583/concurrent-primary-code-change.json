@@ -1,0 +1,19 @@
+{
+  "recorded_revision": "f62f538fad90f32e5bf51f80a5033c91e2cfed68146d22db31de1e17da83b337",
+  "current_server_revision_witness": "c2f26fb1a9fab4281be7a6c00ae432781fac7aca29f96b3fd7a6d482ae63eadd",
+  "different_primary_paths": [
+    "live/api.py",
+    "live/us_index_daily_transfer.py"
+  ],
+  "primary_file_hashes": {
+    "live/us_index_daily_transfer.py": "7367936bafbebda72fcac798e75125c9416d5d52db955272c9fd92a26c9262a3",
+    "live/api.py": "2ca0bb56e8f738daf00e42790be7805d223c4b59b51c12526fb9f4a23886bf64"
+  },
+  "online_replay_rejection": {
+    "execution_id": "d1515c02c1c2110cd90dc29834e6bf2af670ad7ad946c630ab6b56c9ddd06ae8",
+    "status_code": 422,
+    "reason": "code_or_runtime_changed"
+  },
+  "handling": "No guard bypass or overwrite; all 9 actual production executions replayed using their recorded matching code, all 9 retrieved through current production HTTP endpoint.",
+  "witness_execution_id": "03916fb335842b46b0bf762bdaf05f5c5a1f1f0c03bfcb093de4e31292196dd2"
+}

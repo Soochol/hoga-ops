@@ -1,0 +1,32 @@
+{
+  "head": "44875d2aa8556c68bb54051668d3d55a3b342955",
+  "base": "3730bf91f211751a3b60b15cec1c227a33fd10f0",
+  "code_revision": "9907e40acc177c11b1c54ab30f8cd702b9f6e5b6572684f841fa610363a8525b",
+  "backend_full": {
+    "command": ".venv/bin/python -m pytest -q -m 'not wallclock'",
+    "result": "=== 7053 passed, 2 skipped, 13 deselected, 73 warnings in 285.04s (0:04:45) ====",
+    "start_inputs": "backend-final-start-inputs.json"
+  },
+  "focused_final": {
+    "command": ".venv/bin/python -m pytest -q tests/api/test_screener_pre_event_corrections.py tests/api/test_screener_corrections.py tests/api/test_screener_review_plan.py",
+    "result": "======================= 47 passed, 22 warnings in 4.18s ========================",
+    "inputs": "verification-inputs.json"
+  },
+  "test_fixture_lint_refactor_during_full_run": [
+    "tests/api/test_screener_pre_event_corrections.py"
+  ],
+  "app_sources_unchanged_during_full_and_focused_tests": true,
+  "ruff": "All checks passed!",
+  "frontend_impact": "No frontend or REST wire changes in this 535-row extension. Latest main #2277 integrated before backend verification.",
+  "data_scope": {
+    "new_selections": 535,
+    "prior_selections_preserved": 1066,
+    "total_selections": 1601,
+    "remaining_conflicts": 2619,
+    "share_history_certifications": 0,
+    "new_observation_publications": 0
+  },
+  "operational_http_executions": 12,
+  "version_bound_exact_http_replays": 12,
+  "legacy_saved_requests_unchanged": 7
+}

@@ -1,0 +1,18 @@
+import hashlib,json
+from pathlib import Path
+from hoga.api import screener_recovery as r,screener_series_store as s
+from hoga.api.screener_series_execution import code_revision
+P=Path(__file__).parent;D=Path('/home/dev/.local/share/hoga-ops/data');before=json.loads((P/'snapshot-before.json').read_text());result=json.loads((P/'apply-result.json').read_text());sid,after=s.load_snapshot(D)
+assert sid==result['snapshot_id'] and r.protected_hashes(D)==json.loads((P/'protected-before.json').read_text())
+parent=json.loads((P/'source-job.json').read_text())['plan_id']
+for kind,checksum in json.loads((P/'source-files.json').read_text()).items():assert hashlib.sha256(r._path(D,parent,kind).read_bytes()).hexdigest()==checksum
+for key,value in before['manifest'].items():
+ if key not in {'parent','corrections'}:assert after[key]==value,key
+old={(c,row['date']):row for c,i in before['manifest']['corrections'].items() for row in s.read_object(D,i)['accepted']};new={(c,row['date']):row for c,i in after['corrections'].items() for row in s.read_object(D,i)['accepted']}
+assert len(old)==1066 and len(new)==1601 and all(new[k]==v for k,v in old.items())
+payload=json.loads((P/'review-input.json').read_text());wanted={(x['code'],p['date']) for x in payload['requests'] for p in x['proofs']};assert set(new)-set(old)==wanted and len(wanted)==535
+inputs=json.loads((P/'verification-inputs.json').read_text());assert inputs['code_revision']==code_revision()
+for name,checksum in inputs['files'].items():assert hashlib.sha256(Path(name).read_bytes()).hexdigest()==checksum,name
+primary=Path('/home/dev/code/hoga-ops');primary_before=json.loads((P/'primary-before.json').read_text());installed=json.loads((P/'primary-install.json').read_text());primary_now={str(p.relative_to(primary)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (primary/'hoga').rglob('*.py')};expected={**primary_before,installed['only_path_written']:installed['after']};assert primary_now==expected
+record={'legacy_files_preserved':True,'source_plan_and_job_preserved':True,'previous_selections_preserved':len(old),'new_selections_exactly_requested':len(wanted),'total_selections':len(new),'current_snapshot':sid,'manifest_metadata_other_than_corrections_and_parent_preserved':True,'application_input_files_unchanged':len(inputs['files']),'code_revision':code_revision(),'only_primary_path_written':installed['only_path_written'],'unrelated_primary_app_sources_preserved':installed['unrelated_app_files_unchanged']}
+(P/'final-preservation.json').write_text(json.dumps(record,indent=2));(P/'protected-after.json').write_text(json.dumps(r.protected_hashes(D),indent=2));print(record)

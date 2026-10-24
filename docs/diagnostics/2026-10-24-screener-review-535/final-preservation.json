@@ -1,0 +1,13 @@
+{
+  "legacy_files_preserved": true,
+  "source_plan_and_job_preserved": true,
+  "previous_selections_preserved": 1066,
+  "new_selections_exactly_requested": 535,
+  "total_selections": 1601,
+  "current_snapshot": "5c4fb9b34ab6898a2e9f5aae78d0394c1bd78e9443e40e155bdae764d4d6cc3b",
+  "manifest_metadata_other_than_corrections_and_parent_preserved": true,
+  "application_input_files_unchanged": 2687,
+  "code_revision": "9907e40acc177c11b1c54ab30f8cd702b9f6e5b6572684f841fa610363a8525b",
+  "only_primary_path_written": "hoga/api/screener_corrections.py",
+  "unrelated_primary_app_sources_preserved": 320
+}

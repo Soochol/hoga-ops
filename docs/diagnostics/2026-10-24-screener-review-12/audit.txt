@@ -1,0 +1,3 @@
+PASS: 12 volume-only conflicts; 1/3/60-minute totals agree and are below every legacy volume.
+PASS: two historical raw observations and current adjusted daily agree; portal corroboration checked.
+PASS: 0/12 eligible under current correction rules; no production corrections or saved-condition changes.

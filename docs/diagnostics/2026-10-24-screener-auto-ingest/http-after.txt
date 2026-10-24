@@ -1,0 +1,3 @@
+after raw1000 rows 0 complete {'000120': True, '003240': True, '013030': True, '900310': True}
+after share1000 rows 0 complete {'000120': False, '003240': False, '013030': False, '900310': False}
+after prices rows 25 complete {'000120': True, '003240': True, '013030': True, '900310': True}

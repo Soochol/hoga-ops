@@ -1,0 +1,23 @@
+{
+  "before": {
+    "hoga/api/screener_daily_ingest.py": "6060168f66af08b66d259dc55f0d281eb1c0b66b8b9ff70af6ae6954e3772faa",
+    "hoga/api/models.py": "97451cc95151c6e77325327c4e538606fdc0074e869c591d879b382b26930261",
+    "frontend/src/api/screener.ts": "8e5e8be98ee2103d4e46a6caf7fb6e3712cc52c115e0750627b0347c682ae9d0",
+    "frontend/src/screener/ScreenerUpdateProgress.tsx": "3d58b101c28dc10553542f39b9f663affcb0bd1ca5c8df5884cb033e95609b43",
+    "tests/api/test_screener_daily_ingest.py": null,
+    "tests/unit/api/test_rest_wire_schema_contract.py": "adddab4343072761ba49ec5627dae97ddb82bcc2a8478ef56806a0ef5a4728e3",
+    "frontend/src/screener/ScreenerUpdateProgress.test.tsx": "97c1b313928d6d8e5ec75b75121ad0c75dfd9c5ec75e98d074c76bb2f84641bf"
+  },
+  "after": {
+    "hoga/api/screener_daily_ingest.py": "32fb073ab462a713b246bca708261ba35b580febd869f6b7b8588322b5c5091c",
+    "hoga/api/models.py": "3d8d377b9383235b2728112266ebca7cdc1642f4e20c377525742047585ec47e",
+    "frontend/src/api/screener.ts": "e9087f6b96a465101f7ab72b2857a097ae8894745e80f3036b6df809e2fdf813",
+    "frontend/src/screener/ScreenerUpdateProgress.tsx": "57b5fa94f54216bb24ec05f5c74e0c0112802220a57f08e28aee9f14e70f6e1f",
+    "tests/api/test_screener_daily_ingest.py": "33390a108369e274579d47e05b25df570fa22657a8cc61ab54e184f3def6c95a",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "1686e399cbd4d9c6c30673b8f3fa9abc494f7ddebc09bdbd43c7eeff2fd7caa1",
+    "frontend/src/screener/ScreenerUpdateProgress.test.tsx": "19d21892a96a2ac3b1eb6c4b8b62a78f8cf6c9ed1206b62c8d81d1b4c48183a0"
+  },
+  "activation": "existing uvicorn reload and Vite HMR",
+  "manual_restart": false,
+  "production_data_written_by_install": false
+}

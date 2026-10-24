@@ -1,0 +1,8 @@
+{
+  "only_path_written": "hoga/api/screener_corrections.py",
+  "before": "60e9014be239774065bb4370d40fa1a8a22b05edffe01d9bfb2cf1e114f1182a",
+  "after": "fd9b31c6675e6a6abac19d3b77563a0dcbcdef67e725bb6a5603083f84bf5ab8",
+  "all_app_sources_match_tested_worktree": true,
+  "unrelated_app_files_unchanged": 320,
+  "manual_server_restart": false
+}

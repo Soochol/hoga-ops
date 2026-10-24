@@ -127,6 +127,11 @@ def _evaluate_window(leaf, series, window, calendar_ok, days, clock):
     if not calendar_ok:
         return [], "calendar_unavailable"
     expected = [day for bucket, _, _ in window for day in bucket]
+    # Vendor-adjusted prices have their own independent confirmation contract.
+    # A raw quantity dispute must not invalidate that price evidence.
+    issues = {series.daily_quality[day] for day in expected if day in series.daily_quality}
+    if issues and leaf.type in VOLUME_TYPES | TRADE_VALUE_TYPES:
+        return [], sorted(issues)[0]
     if leaf.type in VOLUME_TYPES | TRADE_VALUE_TYPES:
         if any(day not in series.original for day in expected):
             return [], "missing_history"

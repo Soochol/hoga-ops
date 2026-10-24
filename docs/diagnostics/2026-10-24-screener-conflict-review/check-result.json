@@ -1,0 +1,17 @@
+{
+  "checked_at": "2026-10-24T08:30:35.445009+00:00",
+  "artifact_manifest_sha256": "3645dbbe022f484c1c7a7bb268aef3a8140384365861aa7505c5d27a03950120",
+  "checks": [
+    {
+      "command": ".venv/bin/python docs/diagnostics/2026-10-24-screener-conflict-review/verify.py",
+      "exit_code": 0,
+      "output": "PASS: 618 conflicts; 448 rounding + 28 wrong basis + 142 residual dates.\nPASS: 7 sampled daily OHLCV values reproduce minute prefixes; 7/8 recent closes differ from 15:30.\nPASS: 497 targets, 491 uncollected, 286958 remaining date observations, 43 suspect codes.\nPASS: frozen protected hashes equal; no production writes or network calls in this verification.\n"
+    },
+    {
+      "command": ".venv/bin/ruff check docs/diagnostics/2026-10-24-screener-conflict-review/verify.py",
+      "exit_code": 0,
+      "output": "All checks passed!\n"
+    }
+  ],
+  "live_protected_hashes_rechecked_equal": true
+}

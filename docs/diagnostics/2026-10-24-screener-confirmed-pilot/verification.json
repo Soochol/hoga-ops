@@ -1,0 +1,45 @@
+{
+  "completed_at": "2026-10-24T09:39:04.520579+00:00",
+  "artifact_manifest_sha256": "989915a996b7365c8f937535718bd4cac80dcbe14a4af928084429ab4e0721f9",
+  "artifact_verification": {
+    "command": "PYTHONPATH=. .venv/bin/python docs/diagnostics/2026-10-24-screener-confirmed-pilot/verify.py",
+    "returncode": 0,
+    "stdout": "PASS: 25 confirmed observations, 11172 new dates, 483 proven selections, 3737 quarantined dates.\nPASS: full saved conditions 7/7 and scoped legacy 10/10 unchanged; new exact replay checks 30/30.\nPASS: original screener files, saved conditions and token fingerprints preserved.\n"
+  },
+  "ruff": {
+    "command": ".venv/bin/ruff check .",
+    "result": "All checks passed!"
+  },
+  "diff_check": {
+    "command": "git diff --check",
+    "result": "passed"
+  },
+  "code_final_inputs": "verification-inputs-final.json",
+  "final_preservation": "final-preservation-verification.json",
+  "backend_full": {
+    "command": ".venv/bin/pytest -q -m 'not wallclock'",
+    "result": "7006 passed, 2 skipped, 13 deselected",
+    "log": "backend-full.txt",
+    "input": "verification-inputs.json"
+  },
+  "backend_final_affected": {
+    "command": ".venv/bin/pytest -q tests/api/test_screener*.py tests/unit/api/test_screener*.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/live/test_kiwoom_daily_candles.py",
+    "result": "854 passed",
+    "log": "backend-affected-final.txt",
+    "input": "verification-inputs-final.json"
+  },
+  "frontend_typecheck": {
+    "command": "npm run typecheck",
+    "result": "passed",
+    "log": "frontend-typecheck.txt"
+  },
+  "frontend_build": {
+    "command": "npx vite build",
+    "result": "passed",
+    "log": "frontend-build.txt"
+  },
+  "drawing_tests": {
+    "result": "80 passed",
+    "log": "drawing-tests.txt"
+  }
+}

@@ -1,0 +1,13 @@
+import gzip,json
+from pathlib import Path
+from hoga.api import screener_corrections as c,screener_series_store as s
+P=Path(__file__).parent;R=Path('docs/diagnostics/2026-10-24-screener-review-12');D=Path('/home/dev/.local/share/hoga-ops/data');sid,m=s.load_snapshot(D);records=json.loads(gzip.decompress((R/'evidence.json.gz').read_bytes()));result=[]
+for code in ['020180','038390']:
+ sources={};proofs=[]
+ for r in records:
+  if r['code']!=code:continue
+  response=r['minutes']['60000'];source={'kind':'provider_minute_prefix','source':'kiwoom:ka10080','code':code,'response':response};identity=s.digest(source);sources[identity]=source;proofs.append({'date':r['date'],'reason':'intraday_prefix','evidence_id':identity,'prefix_end_ms':response['candles'][-1]['t_ms']})
+ request=c.CorrectionRequest.model_validate({'code':code,'proofs':proofs});prepared=c.prepare_review(D,request,m,evidence=sources);prior=s.read_object(D,m['corrections'][code]);assert prepared['accepted']==prior['accepted'];assert len(prepared['rejected'])==len(proofs)
+ result.append({'code':code,'existing_accepted_preserved':len(prior['accepted']),'new_accepted':0,'requested':len(proofs),'rejected':prepared['rejected'],'read_only_prepare_review':True})
+assert s.load_snapshot(D)[0]==sid
+(R/'current-rule-preflight.json').write_text(json.dumps(result,ensure_ascii=False,indent=2));print([(x['code'],x['requested'],x['new_accepted']) for x in result])

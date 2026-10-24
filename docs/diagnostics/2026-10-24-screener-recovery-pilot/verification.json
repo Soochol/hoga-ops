@@ -1,0 +1,53 @@
+{
+  "git_head": "ae3d8ba71e3e9d88a193c5a8e07c26bd31a0088c",
+  "origin_main": "850d6be4a4ef7e2a21fa3170be8473aa09c1be51",
+  "final_revision": "598ccd34f81f91d90914eb3acaae3e8ca3aa48bd66b56ff19f82c74bea1f31d3",
+  "input_file_count": 2676,
+  "input_fingerprint": "228c524596942ff6765ed04ebd76e06a8f3bb8409fb7928df0613612e10ec12f",
+  "versions": {
+    "python": "3.14.7",
+    "polars": "1.41.0",
+    "pydantic": "2.13.4",
+    "pytest": "9.0.3",
+    "ruff": "ruff 0.15.13",
+    "node": "v24.13.1",
+    "npm": "11.8.0"
+  },
+  "checks": [
+    {
+      "command": ".venv/bin/pytest -q tests/api/test_screener*.py tests/unit/api/test_screener*.py tests/unit/api/test_rest_wire_schema_contract.py tests/unit/live/test_kiwoom_daily_candles.py",
+      "result": "826 passed, 48 warnings, 39.51s"
+    },
+    {
+      "command": ".venv/bin/ruff check .",
+      "result": "0 violations"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npm run typecheck",
+      "result": "app, unit, E2E TypeScript pass"
+    },
+    {
+      "cwd": "frontend",
+      "command": "npx vite build",
+      "result": "pass; existing 700 kB chunk warning"
+    },
+    {
+      "command": "intentional RecoveryItemStatus mismatch then restoration",
+      "result": "mismatch rejected; restored contract passes"
+    },
+    {
+      "command": "recovery compare on final isolated copy",
+      "result": "9 unchanged legacy; 18 exact new replays"
+    }
+  ],
+  "logs": {
+    "/tmp/hoga-recovery-final-tests.log": "ad81f3d0b062b127ad01db52e55184d780cc8e638c03cde050702b741d597095",
+    "/tmp/hoga-recovery-frontend-typecheck.log": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+    "/tmp/hoga-recovery-frontend-build.log": "4e2ab510359d6ce6348e62f9ffbedcd694d618d7a24bfc0207186c6da74c1024",
+    "/tmp/hoga-recovery-wire-negative.log": "ca1f92dc539dc87d8198922063602445ed36a971345454e835d92d3415f7a2b3",
+    "/tmp/hoga-recovery-wire-restored.log": "931124a005246d789f3f20aa5dd743cc1fa221923db630dc2b8a736aab5b3af2",
+    "/tmp/hoga-recovery-pilot-final-comparison.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "note": "The earlier whole-backend run preceded API integration and is not claimed as final verification. Final affected checks and live comparison use the recorded final inputs."
+}

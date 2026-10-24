@@ -1,0 +1,50 @@
+[
+  {
+    "url": "http://127.0.0.1:8000/api/live/past-daily-candles?code=020180&from=20260608&to=20260722&venue=KRX",
+    "started_at": "2026-10-24T11:03:43.752090+00:00",
+    "finished_at": "2026-10-24T11:03:43.783507+00:00",
+    "http_status": 200,
+    "file": "live-020180-daily.json",
+    "sha256": "84cbfe5fbb7d4ee0dc11123d8d51df37936464d1ad4da9f5d43c6f6ff48d2718"
+  },
+  {
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260608&to=20260722&venue=KRX&bucket_ms=180000",
+    "started_at": "2026-10-24T11:03:43.783656+00:00",
+    "finished_at": "2026-10-24T11:03:44.057835+00:00",
+    "http_status": 200,
+    "file": "live-020180-180000.json",
+    "sha256": "07a2a10ebd98aeaa57d4ca26ec79da40809013d4b565bc73cd0785eb48d17ef4"
+  },
+  {
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=020180&from=20260608&to=20260722&venue=KRX&bucket_ms=3600000",
+    "started_at": "2026-10-24T11:03:44.060817+00:00",
+    "finished_at": "2026-10-24T11:03:44.119304+00:00",
+    "http_status": 200,
+    "file": "live-020180-3600000.json",
+    "sha256": "957d605487275e87730a37c0145b4f572fa322054597e903177b04870c5e0ace"
+  },
+  {
+    "url": "http://127.0.0.1:8000/api/live/past-daily-candles?code=038390&from=20260608&to=20260722&venue=KRX",
+    "started_at": "2026-10-24T11:03:44.119798+00:00",
+    "finished_at": "2026-10-24T11:03:44.151064+00:00",
+    "http_status": 200,
+    "file": "live-038390-daily.json",
+    "sha256": "c74944881d6fb4397697af6bc2e955362e84d9971e0ac36e605969cb561f1bc1"
+  },
+  {
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=038390&from=20260608&to=20260722&venue=KRX&bucket_ms=180000",
+    "started_at": "2026-10-24T11:03:44.151281+00:00",
+    "finished_at": "2026-10-24T11:03:44.404929+00:00",
+    "http_status": 200,
+    "file": "live-038390-180000.json",
+    "sha256": "66eebba8161937d2f1af2de3588484fd725dce2ad603c174ebec6d8546220696"
+  },
+  {
+    "url": "http://127.0.0.1:8000/api/live/past-candles?code=038390&from=20260608&to=20260722&venue=KRX&bucket_ms=3600000",
+    "started_at": "2026-10-24T11:03:44.406969+00:00",
+    "finished_at": "2026-10-24T11:03:44.462980+00:00",
+    "http_status": 200,
+    "file": "live-038390-3600000.json",
+    "sha256": "094994b74af492b7d3eaf7b801c48eb10cdf6cd50af3f87688afefd424f02f2e"
+  }
+]

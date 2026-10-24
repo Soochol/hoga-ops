@@ -1,0 +1,43 @@
+import gzip,hashlib,json,shutil
+from pathlib import Path
+from fractions import Fraction
+from hoga.api import screener_recovery as r,screener_series_store as s
+from hoga.api.screener_series_cli import clone
+P=Path(__file__).parent;D=Path('/home/dev/.local/share/hoga-ops/data');S=Path('docs/diagnostics/2026-10-24-screener-remaining-conflicts')
+def read(name):return json.loads(gzip.decompress((S/name).read_bytes()))
+def save(name,value):(P/name).write_text(json.dumps(value,ensure_ascii=False,indent=2))
+before=s.load_snapshot(D);assert before[0]=='d859d715d9defbf84ef580211362c843a19b1bcf4417b9de8bcf0555727cc96a'
+save('snapshot-before.json',{'id':before[0],'manifest':before[1]});save('protected-before.json',r.protected_hashes(D))
+parent='6ca20c9e63b1357b7e44fd29750c3b65266af3ac67361b42ef45abf57c132236'
+for kind in ['plan','job']:shutil.copyfile(r._path(D,parent,kind),P/('source-'+kind+'.json'))
+save('source-files.json',{kind:hashlib.sha256(r._path(D,parent,kind).read_bytes()).hexdigest() for kind in ['plan','job']})
+documents=read('primary-documents.json.gz');filings={x['id']:x for x in read('kind-bodies.json.gz')}
+rows=read('rows.json.gz');category={(x['code'],x['date']) for x in read('classification.json.gz') if x['category']=='pre_event_adjusted_as_original_rule_required'}
+evidence=[];requests=[];selected=[];sources=[]
+for code,decision,boundary,day,ratio,kind,count in [('020180','20260529000449','20260818000517','2026-08-19',Fraction(1,5),'consolidation',317),('038390','20241108000104','20241121000397','2024-11-22',Fraction(2),'stock_distribution',218)]:
+ def body(identity):
+  filing=filings[identity];item=next(x for x in filing['bodies'] if x['file'].endswith('-1.html'));document=documents[item['file']]
+  assert hashlib.sha256(document.encode()).hexdigest()==item['sha256']
+  sources.append({'code':code,'id':identity,'url':filing['url'],'body_url':item['url'],'sha256':item['sha256'],'text':item['text']})
+  return document,item
+ document,item=body(decision);boundary_document,bi=body(boundary)
+ ev={'kind':'verified_share_event','code':code,'source_document':document,'source_document_sha256':item['sha256'],
+ 'event':{'kind':kind,'effective_date':day,'numerator':ratio.numerator,'denominator':ratio.denominator,'source':filings[decision]['url']},
+ 'trading_boundary':{'kind':'verified_trading_unit_boundary','code':code,'effective_date':day,'source':filings[boundary]['url'],'source_document':boundary_document,'source_document_sha256':bi['sha256']},
+ 'review_scope':'Selected pre-event original-basis errors only. Does not certify completeness of quantity history or authorize further events.'}
+ proof=[]
+ for row in rows:
+  if (row['code'],row['date']) not in category or row['code']!=code:continue
+  assert row['date']<day and row['legacy_factor']==1 and row['old']==row['adjusted']
+  assert all(Fraction(str(row['old'][key]))==Fraction(str(row['new'][key]))/ratio for key in ['open','high','low','close'])
+  assert row['old']['volume']==round(Fraction(row['new']['volume'])*ratio)
+  proof.append({'date':row['date'],'reason':'legacy_pre_event_adjusted_basis','evidence_id':s.digest(ev)});selected.append(row)
+ assert len(proof)==count
+ evidence.append(ev);requests.append({'code':code,'proofs':proof})
+assert len(selected)==535 and len(category)==535
+save('review-input.json',{'evidence':evidence,'requests':requests});save('reviewed-sources.json',sources);save('rows.json',selected)
+clone(D,Path('/tmp/hoga-review535-legacy-before-20261024'))
+primary=Path('/home/dev/code/hoga-ops');name='hoga/api/screener_corrections.py';backup=P/'primary-backup'/name;backup.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(primary/name,backup)
+# Full app inventory catches concurrent changes without overwriting any unrelated path.
+save('primary-before.json',{str(p.relative_to(primary)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (primary/'hoga').rglob('*.py')})
+print('Prepared 535 exact identities, four checked primary bodies, protected fingerprints and legacy comparison copy',flush=True)

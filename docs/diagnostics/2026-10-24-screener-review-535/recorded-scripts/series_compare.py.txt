@@ -1,0 +1,17 @@
+import datetime as dt,json
+from pathlib import Path
+from hoga.api import screener_series_store as s,screener_series_values as v
+P=Path(__file__).parent;D=Path('/home/dev/.local/share/hoga-ops/data');codes=['020180','038390'];old=json.loads((P/'snapshot-before.json').read_text());sid,current=s.load_snapshot(D)
+assert sid==json.loads((P/'apply-result.json').read_text())['snapshot_id']
+before=v.load_series(D,old['manifest'],codes);after=v.load_series(D,current,codes);rows=json.loads((P/'rows.json').read_text());result=[]
+for row in rows:
+ code=row['code'];day=dt.date.fromisoformat(row['date']);a=before[code];b=after[code]
+ assert day in a.conflicts and day not in b.conflicts and day in b.corrected
+ assert all(a.original[day][k]==row['old'][k] and b.original[day][k]==row['new'][k] for k in ['open','high','low','close','volume'])
+ assert a.prices[day]==b.prices[day]
+ assert a.amount(day) is None and b.amount(day) is not None
+ assert b.quantity(day,day,'raw')==row['new']['volume'] and b.quantity(day,day,'share_adjusted') is None
+ result.append({'code':code,'date':row['date'],'before_conflict':True,'after_conflict':False,'before_original':a.original[day],'after_original':b.original[day],'adjusted_unchanged':True,'raw_volume':int(b.quantity(day,day,'raw')),'share_adjusted_volume':None})
+assert len(result)==535
+(P/'series-comparison.json').write_text(json.dumps({'before_snapshot':old['id'],'after_snapshot':sid,'rows':result},ensure_ascii=False,indent=2,default=str))
+print('PASS all 535 resolved rows, exact old/new OHLCV, unchanged adjusted source, raw new selection, quantity history still unknown',flush=True)

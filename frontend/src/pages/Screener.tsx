@@ -153,7 +153,7 @@ export function Screener() {
   // 버튼 라벨·비활성·결과 라벨 게이트가 **하나의 식**을 본다. 갈라 두면 버튼은
   // 「갱신 중…」인데 옆에 지난 실행의 「갱신 실패」가 붙는다(2026-09-03 신고).
   const isUpdating = update.isPending || serverUpdating;
-  const visibleFeedback = visibleUpdateFeedback(updateFeedback, isUpdating, status?.last_refresh);
+  const visibleFeedback = visibleUpdateFeedback(updateFeedback, isUpdating, status?.last_refresh, status?.daily_ingest);
 
   const saves = savesData?.saves ?? [];
   const anchorSave = editor.anchorId != null
@@ -223,7 +223,7 @@ export function Screener() {
             intradayFailure: res.intraday_failure,
             warnings: res.warnings,
             historyCoverage: res.history_coverage,
-            barCoverage: res.bar_coverage,
+            barCoverage: res.bar_coverage, dailyCoverage: res.daily_coverage,
             calculation: res.calculation,
             depthValues: res.depth_values ?? null,
             scannedAtMs: res.scanned_at_ms ?? Date.now(),
@@ -371,13 +371,19 @@ export function Screener() {
               {screener.isPending ? '조회 중…' : '조회'}
             </ToolbarButton>
             {!notSeeded && (
-              <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
-                disabled={isUpdating} data-tooltip="최신 종목 목록을 반영하고 종목별 빠진 과거 일봉을 보충합니다">
-                {isUpdating ? '갱신 중…' : '갱신'}
-              </ToolbarButton>
+              <>
+                <ToolbarButton aria-label="데이터 갱신" onClick={() => update.mutate()}
+                  disabled={isUpdating} data-tooltip="자동 갱신과 같은 절차로 최근 일봉을 받아 비교합니다. 다음 날 재확인과 충돌 격리 기준을 유지합니다">
+                  {update.isPending && update.variables !== 'repair-history' ? '확인 중…' : '갱신'}
+                </ToolbarButton>
+                <ToolbarButton aria-label="과거 데이터 복구" onClick={() => update.mutate('repair-history')}
+                  disabled={isUpdating} data-tooltip="종목 목록을 갱신하고 오래된 누락 일봉을 보충합니다. 전체 이력을 확인하므로 시간이 더 걸릴 수 있습니다">
+                  과거 데이터 복구
+                </ToolbarButton>
+              </>
             )}
             {update.isError && !isUpdating && (
-              <span role="alert" className="text-sm" style={{ color: 'var(--error)' }}>갱신 실패</span>
+              <span role="alert" className="text-sm" style={{ color: 'var(--error)' }}>{update.variables === 'repair-history' ? '과거 데이터 복구 실패' : '갱신 실패'}</span>
             )}
             {visibleFeedback && (
               <span role="status" className="text-sm" style={{ color: FEEDBACK_TONE_COLOR[visibleFeedback.tone] }}>
@@ -423,8 +429,10 @@ export function Screener() {
             ))}
             <span className="min-w-0 flex-1" />
             <BarVolumeCoverage coverage={lastScan?.barCoverage} />
+            {lastScan?.dailyCoverage && lastScan?.dailyCoverage.complete < lastScan?.dailyCoverage.total &&
+              <div className="text-xs text-fg-dim" role="status">잠정·충돌 일봉으로 일부 조건 평가 보류 {lastScan?.dailyCoverage.total - lastScan?.dailyCoverage.complete}종목</div>}
             <ScreenerResultSortControl mode={sortMode} onChange={setSortMode} disabled={rows.length === 0} />
-            <ScreenerUpdateProgress updating={status?.updating} />
+            <ScreenerUpdateProgress updating={status?.updating} daily={status?.daily_ingest} />
           </div>
 
           <CalculationNotice scan={lastScan} />

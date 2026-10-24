@@ -1,0 +1,40 @@
+{
+  "clock": "2026-10-24T17:56:40.621944+09:00",
+  "results": [
+    {
+      "name": "신고가, 거래대금",
+      "equal": true,
+      "rows": 754
+    },
+    {
+      "name": "단기 신고거래",
+      "equal": true,
+      "rows": 70
+    },
+    {
+      "name": "장기 신고거래",
+      "equal": true,
+      "rows": 94
+    },
+    {
+      "name": "신고가",
+      "equal": true,
+      "rows": 28
+    },
+    {
+      "name": "장단기 신고거래 + 4d 신고가",
+      "equal": true,
+      "rows": 14
+    },
+    {
+      "name": "볼린저 상단 4d",
+      "equal": true,
+      "rows": 20
+    },
+    {
+      "name": "볼린저 하단 4d",
+      "equal": true,
+      "rows": 14
+    }
+  ]
+}

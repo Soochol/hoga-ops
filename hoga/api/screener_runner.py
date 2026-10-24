@@ -67,8 +67,8 @@ async def _run_legacy_scan(
     conditions = active_conditions(req.conditions, req.expression)
     codes = await asyncio.to_thread(screener_universe.codes_for_universe,
         sdir / "stocks.parquet", req.universe, scope=scope, etf_codes=etf_codes)
-    confirmed_at = await asyncio.to_thread(screener_basis.confirmed_timestamp, sdir, codes)
-    basis = screener_basis.choose_basis(req.basis, now_value, confirmed_at, data_dir)
+    confirmed_at, basis, daily_coverage, codes, scope = await _basis_quality(
+        data_dir, conditions, codes, scope, req.basis, now_value, warnings)
     history = screener_history_coverage.history_leaves(conditions)
     needs_overlay = basis == "intraday" and (not conditions or any(
         screener_bar_volume.needs_daily_overlay(leaf, now_value.date().isoformat()) for leaf in conditions))
@@ -136,6 +136,7 @@ async def _run_legacy_scan(
         limit=req.limit + 1,
         intraday_rows=intraday_rows,
         depth_pass=depth_pass,
+        daily_unavailable=_daily_unavailable(daily_coverage),
         scope_codes=scope,
         etf_codes=etf_codes,
         history_pass=history_eval.passing if history_eval else None,
@@ -145,6 +146,7 @@ async def _run_legacy_scan(
     if history_eval:
         _attach_history(rows, history_eval)
     return ScreenerResponse(
+        daily_coverage=daily_coverage,
         history_coverage=history_eval.coverage if history_eval else None,
         bar_coverage=bar_eval.coverage if bar_eval else None,
         status="ok", rows=rows[:req.limit], has_more=len(rows) > req.limit, warnings=warnings,
@@ -158,6 +160,22 @@ async def _run_legacy_scan(
         depth_coverage=depth_eval.coverage if depth_eval is not None else None,
         depth_values=depth_eval.values if depth_eval is not None else None,
     )
+
+
+async def _basis_quality(data_dir, conditions, codes, scope, requested_basis, now_value, warnings):
+    from hoga.api.screener_daily_quality import legacy_coverage  # noqa: PLC0415
+    confirmed_at = await asyncio.to_thread(screener_basis.confirmed_timestamp, data_dir / "screener", codes)
+    basis = screener_basis.choose_basis(requested_basis, now_value, confirmed_at, data_dir)
+    quality_clock = (dt.datetime.fromtimestamp(confirmed_at / 1000, KST)
+                     if basis == "eod" and confirmed_at is not None else now_value)
+    coverage, quarantined = await asyncio.to_thread(
+        legacy_coverage, data_dir, conditions, codes, quality_clock, basis == "intraday")
+    if quarantined and not conditions:
+        codes = [code for code in codes if code not in quarantined]
+        scope = set(codes) if scope is None else scope - quarantined
+    if quarantined:
+        warnings.append("daily_observations_unavailable")
+    return confirmed_at, basis, coverage, codes, scope
 
 
 def _occurrence_dates(depth_eval, history_eval):
@@ -182,3 +200,10 @@ def _attach_history(rows, history_eval):
                 if old is None or match.date > old.date:
                     latest[match.condition_id] = match
         row.history_matches = list(latest.values())
+
+
+def _daily_unavailable(coverage):
+    by_condition = {}
+    for item in coverage.incomplete if coverage else []:
+        by_condition.setdefault(item.condition_id, set()).add(item.code)
+    return by_condition

@@ -1,0 +1,17 @@
+import asyncio,hashlib,json
+from pathlib import Path
+import httpx
+P=Path(__file__).parent
+async def main():
+ result=[]
+ async with httpx.AsyncClient(timeout=25,follow_redirects=True) as client:
+  for code in ['020180','038390']:
+   url='https://api.finance.naver.com/siseJson.naver'
+   params=dict(symbol=code,requestType='1',startTime='20260608',endTime='20260722',timeframe='day')
+   try:
+    r=await client.get(url,params=params);(P/f'naver-{code}.txt').write_bytes(r.content);result.append({'source':'NAVER Finance published daily chart','url':str(r.url),'status':r.status_code,'sha256':hashlib.sha256(r.content).hexdigest()});print(code,r.status_code,r.text[:160],flush=True)
+   except httpx.HTTPError as e:result.append({'source':url,'error':str(e)})
+  url='https://raw.githubusercontent.com/Kiwoom-Securities/Kiwoom-REST-API/main/kiwoom/_data/kiwoom_api_spec.json'
+  r=await client.get(url);r.raise_for_status();spec=r.json();selected={k:v for k,v in spec['apis'].items() if any(x in k for x in ['ka10080','ka10081','ka11080','ka11081','ka10086'])};(P/'official-spec-selected.json').write_text(json.dumps({'source':url,'sha256_of_full_source':hashlib.sha256(r.content).hexdigest(),'apis':selected},ensure_ascii=False,indent=2));print('selected official API definitions',list(selected),flush=True)
+ (P/'public-collection.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+asyncio.run(main())
