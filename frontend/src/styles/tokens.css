@@ -184,6 +184,7 @@
   --radius-full: 9999px; /* Status dots, avatars */
 
   /* ───── Layout (rem-based; rendered px @ 16px root = default density) ───── */
+  --whiteboard-list-w: 12rem; /* 192px @ default; 192px base intent — Whiteboard board list width */
   --h-toolbar: 2rem; /* 32px @ default; 32px base intent — Workspace toolbar row — ui/WorkspaceShell.tsx WorkspaceToolbar, 소비처는 /live 의 WorkspaceLiveToolbar. 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행 */
   --list-row-min-h: 1.5625rem; /* 25px @ default; 25px base intent — Shared list row min-height — watchlist/ranking/screener-result rows align (25px @ the 1.0× dial; was ≈28px at 1.125×, which is the watchlist row it was matched to). Heatmap rows opt out for max density. */
   --list-group-header-min-h: 1.8125rem; /* 29px @ default; 29px base intent — Shared list group-header min-height — watchlist/heatmap group headers align (29px @ the 1.0× dial; was ≈32px at 1.125×) */

@@ -1,0 +1,23 @@
+{
+  "frontend_unit": {
+    "files": 702,
+    "passed": 9008
+  },
+  "backend": {
+    "passed": 6971,
+    "skipped": 2,
+    "deselected": 13
+  },
+  "browser_core_passed": 8,
+  "browser_ime_passed": 1,
+  "browser_dpr_repeat_passed": 5,
+  "browser_lock_repeat_passed": 5,
+  "electron_passed": 2,
+  "typecheck": "passed",
+  "ruff": "passed",
+  "build": "passed",
+  "frontend_targeted_lint": {
+    "errors": 0,
+    "warnings": 2
+  }
+}

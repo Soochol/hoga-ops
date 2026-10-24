@@ -44,7 +44,7 @@ import re
 from pathlib import Path
 from typing import Literal, get_args, get_origin
 
-from hoga.api import events, models as m, sources
+from hoga.api import events, models as m, sources, whiteboards as wb
 from hoga.api.error_codes import ComputeErrorCode
 from hoga.api.market_routes import DerivFlowResponse, FundsResponse, FundsRow, InvestorFlowResponse, ProgramResponse
 from hoga.api.panel_flow import PanelFlowResponse, PanelFlowSource, PanelGroupFlow, PanelStockFlow
@@ -396,6 +396,17 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    wb.WhiteboardAsset: frozenset({"asset_id", "mime_type", "width", "height", "size"}),
+    wb.WhiteboardFile: frozenset({"asset_id", "mime_type", "width", "height", "size", "created"}),
+    wb.WhiteboardScene: frozenset({"elements", "appState", "files"}),
+    wb.WhiteboardSummary: frozenset({"id", "name", "revision", "created_at_ms", "updated_at_ms",
+                                    "deleted_at_ms", "element_count"}),
+    wb.WhiteboardDocument: frozenset({"id", "name", "revision", "created_at_ms", "updated_at_ms",
+        "deleted_at_ms", "element_count", "schema_version", "engine_version", "scene",
+        "last_mutation_id", "last_mutation_hash"}),
+    wb.WhiteboardList: frozenset({"boards", "unreadable_ids"}),
+    wb.WhiteboardCreate: frozenset({"id", "mutation_id", "name", "scene"}),
+    wb.WhiteboardWrite: frozenset({"mutation_id", "expected_revision", "name", "scene", "deleted"}),
     RestOrderbook: frozenset({"ask", "bid", "tot_ask", "tot_bid", "book_time"}),
     RestOrderbookResponse: frozenset({"code", "venue", "book", "source", "fetched_at_ms", "checked_at_ms",
                                     "refresh_failed", "storage_failed"}),

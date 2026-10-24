@@ -1,0 +1,15 @@
+{
+  "metrics": {
+    "objects": 300,
+    "imageInstances": 20,
+    "uniqueImageFiles": 20,
+    "imagePixels": 1600000,
+    "minimumBoards": 100,
+    "frameP95Ms": 16.799999999999955,
+    "pointerToFrameP95Ms": 0.5
+  },
+  "javascript_heap": {
+    "before": 41026100,
+    "after": 43289512
+  }
+}

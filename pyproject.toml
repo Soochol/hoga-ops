@@ -19,6 +19,7 @@ dependencies = [
     # 없어 추가했다 — 이 리포의 유일한 numpy 소비처다.
     "numpy>=1.26",
     "websockets>=16.0",
+    "pillow>=12.0",
 ]
 
 [project.optional-dependencies]

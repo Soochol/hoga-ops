@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiPrefix } from './helpers/apiRoutes';
+import { API_URL } from './worktreeEnv';
 
 test('chart toolbar icon buttons save a rendered PNG and copy an image to the clipboard', async ({ page, context }, testInfo) => {
   await page.setViewportSize({ width: 2000, height: 900 });
@@ -76,4 +77,16 @@ test('chart toolbar icon buttons save a rendered PNG and copy an image to the cl
   expect(clipboard.width).toBe(Math.round(viewport.width * viewport.scale));
   expect(clipboard.height).toBe(Math.round(viewport.height * viewport.scale));
   expect(clipboard.colors).toBeGreaterThan(30);
+  await toolbar.getByRole('button', { name: '차트를 보드에 추가', exact: true }).click();
+  await page.getByRole('button', { name: '보드에 추가', exact: true }).click();
+  await expect(page).toHaveURL(/\/whiteboard\?board=/);
+  await expect(page.getByTestId('whiteboard-editor')).toBeVisible();
+  const boardId = new URL(page.url()).searchParams.get('board');
+  const board = async () => (await page.request.get(`${API_URL}/api/whiteboards/${boardId}`)).json();
+  await expect.poll(async () => (await board()).scene.elements.filter((el: { type: string }) => el.type === 'image').length).toBe(1);
+  expect((await board()).scene.elements[0].customData.chartSource.code).toBe('098460');
+  expect((await board()).scene.elements[0].link).toBe('/live?code=098460');
+  await page.locator('canvas.interactive').click({ position: { x: 600, y: 160 } });
+  await page.keyboard.press('Control+v');
+  await expect.poll(async () => (await board()).scene.elements.filter((el: { type: string }) => el.type === 'image').length).toBe(2);
 });
