@@ -75,6 +75,9 @@
 .order-total { white-space:nowrap; font-variant-numeric:tabular-nums; text-align:right; }
 .order-summary-layer { position:absolute; top:max(4px,calc((100% - 480px) / 2)); right:calc(8px + var(--order-lane-width)); width:calc((100% - 16px - 2 * var(--order-lane-width) - var(--book-price-width)) / 2); height:240px; }
 .order-summary-layer .book-summary-row { padding-inline:var(--order-cell-padding); column-gap:var(--order-summary-gap); }
+.order-empty-layout { display:grid; grid-template-columns:minmax(0,1fr); gap:var(--order-summary-gap); }
+.order-empty-expanded { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+.order-empty-summary { min-width:0; height:264px; }
 .order-window .book-summary-heading,.order-window .book-summary-heading:hover { padding:0 var(--order-cell-padding); border:0; border-radius:0; background:transparent; color:var(--fg-dim); }
 .order-row { display:grid; grid-template-columns:var(--order-columns); height:24px; flex-shrink:0; align-items:center; }
 .order-divider { border-top:1px solid var(--border); }

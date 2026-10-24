@@ -8,6 +8,7 @@ import type { WorkspaceWindow } from '../../state/workspace';
 import { groupPriceOrders, holdingBookMarker, holdingProfitPercent, holdingProfitWon, holdingPurchaseAmountWon, orderRemainder } from './orderRules';
 import { useLiveVenueStore, type LiveVenueOption } from '../../state/liveVenue';
 import { useLiveSeries } from '../../api/liveSeries';
+import type { RestOrderbookResponse } from '../../api/liveRestOrderbook';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { useTradeHistory } from '../../api/tradeHistory';
@@ -23,6 +24,9 @@ vi.mock('./orderReceiptSound', () => ({
 
 const mock = vi.hoisted(() => ({ configured: true, accountsLoading: false, accountError: null as Error | null, stateError: null as Error | null, unresolved: [] as string[], balancesError: false, accountCount: 1, holdingQuantity: '100', sellableQuantity: '80' as string | undefined, priceOffset: 0, quotePrice: 67200 as number | null, buyingPower: '50000000', averagePrice: '66000', now: 1791856800000, snapshotAt: 1791856800000, expectedPrice: 0, expectedQty: 0 as number | null, askCount: 10, bidCount: 10, orders: [] as TossOrder[], command: vi.fn() }));
 vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+const restBookQuery = vi.hoisted(() => ({ data: undefined as RestOrderbookResponse | undefined,
+  isLoading: false, isError: false, refetch: vi.fn() }));
+vi.mock('../../api/liveRestOrderbook', () => ({ useLiveRestOrderbook: () => restBookQuery }));
 afterAll(() => vi.unstubAllGlobals());
 vi.mock('../../api/trading', () => ({
   useTradingAccounts: () => ({ data: { configured: mock.configured, accounts: mock.configured ? Array.from({ length: mock.accountCount }, (_, index) => ({ account_seq: index + 1, label: `계좌 ${index + 1}` })) : [] }, isLoading: mock.accountsLoading, error: mock.accountError }),
@@ -64,6 +68,8 @@ function enableReceiptSound() {
   fireEvent.click(screen.getByRole('button', { name: '주문 설정 닫기' }));
 }
 beforeEach(() => {
+  restBookQuery.data = undefined; restBookQuery.isLoading = false; restBookQuery.isError = false;
+  restBookQuery.refetch.mockReset();
   afterHoursBook.data = undefined;
   mock.accountsLoading = false; mock.accountError = null; mock.stateError = null; mock.unresolved = [];
   vi.mocked(notifyOrderReceiptAccepted).mockReset().mockResolvedValue(true);
@@ -75,6 +81,68 @@ beforeEach(() => {
 beforeEach(() => { mock.sellableQuantity = '80'; mock.holdingQuantity = '100'; mock.orders = []; mock.configured = true; mock.balancesError = false; mock.accountCount = 1; mock.priceOffset = 0; mock.quotePrice = 67200; mock.buyingPower = '50000000'; mock.averagePrice = '66000'; mock.snapshotAt = mock.now; mock.expectedPrice = 0; mock.expectedQty = 0; mock.askCount = 10; mock.bidCount = 10; mock.command.mockReset().mockResolvedValue({ command_id: 'a', order_id: 'new', status: 'accepted' }); symbolMaster.nxtEnabled = true; useLiveVenueStore.setState({ venue: 'KRX' }); vi.mocked(useLiveSeries).mockClear(); vi.mocked(useQuoteByCode).mockClear(); vi.mocked(useLiveViStatus).mockClear(); });
 
 describe('호가 주문', () => {
+  const restoredBook = (): RestOrderbookResponse => ({
+    code: '005930', venue: 'KRX', source: 'kiwoom_rest', fetched_at_ms: mock.now, checked_at_ms: mock.now,
+    refresh_failed: false, storage_failed: false,
+    book: { ask: [{ price: 49600, qty: 43 }], bid: [{ price: 49500, qty: 1 }],
+      tot_ask: 2033, tot_bid: 1759, book_time: '20:00:00' },
+  });
+
+  it('REST 마지막 호가는 날짜를 만들지 않고 표시하며 신규 주문은 차단하고 실제 호가가 오면 교체한다', () => {
+    mock.askCount = mock.bidCount = 0;
+    restBookQuery.data = restoredBook();
+    show();
+    expect(screen.getByTestId('order-rest-book-source')).toHaveTextContent('REST 마지막 호가 · 20:00:00 · KRX · 거래일 미제공');
+    expect(screen.queryByText('실시간 연결 운영 시간이 아닙니다')).not.toBeInTheDocument();
+    const buy = screen.getByRole('button', { name: /매수 49,500원 주문 추가/ });
+    expect(buy).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.doubleClick(buy);
+    expect(screen.getByRole('alert', { name: '주문 알림' })).toHaveTextContent('저장된 호가는 조회만 가능합니다');
+    expect(mock.command).not.toHaveBeenCalled();
+    mock.askCount = mock.bidCount = 10;
+    fireEvent.change(screen.getByLabelText('신규 주문 수량'), { target: { value: '25' } });
+    expect(screen.queryByTestId('order-rest-book-source')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /매수 67,200원 주문 추가/ })).toHaveAttribute('aria-disabled', 'false');
+  });
+
+  it.each(['empty', 'error'] as const)('호가 %s 상태에서도 상세정보를 본문에 유지한다', kind => {
+    mock.askCount = mock.bidCount = 0;
+    restBookQuery.isError = kind === 'error';
+    show();
+    expect(screen.getByTestId('book-summary')).toHaveTextContent('833만');
+    expect(screen.getByTestId('order-empty-book')).toHaveTextContent(kind === 'error' ? '마지막 호가 조회 실패' : '저장된 마지막 호가가 없습니다');
+    expect(screen.queryByRole('button', { name: '종목 상세 정보' })).not.toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId('order-empty-book')).getByRole('button', { name: '다시 조회' }));
+    expect(restBookQuery.refetch).toHaveBeenCalledOnce();
+  });
+
+  it('마지막 호가 최초 조회 중에는 빈 저장본으로 안내하지 않고 상세정보를 유지한다', () => {
+    mock.askCount = mock.bidCount = 0;
+    restBookQuery.isLoading = true;
+    show();
+    expect(screen.getByTestId('order-empty-book')).toHaveTextContent('마지막 호가 불러오는 중');
+    expect(screen.getByTestId('book-summary')).toBeInTheDocument();
+    expect(within(screen.getByTestId('order-empty-book')).queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('조회 실패 시 저장된 REST 호가를 남기고 다시 조회 동작을 제공한다', () => {
+    mock.askCount = mock.bidCount = 0;
+    restBookQuery.data = { ...restoredBook(), source: 'stored', refresh_failed: true };
+    show();
+    expect(screen.getByTestId('order-rest-book-source')).toHaveTextContent('저장된 마지막 호가');
+    expect(screen.getByRole('button', { name: /매수 49,500원 주문 추가/ })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByTestId('order-rest-book-source')).getByRole('button', { name: '다시 조회' }));
+    expect(restBookQuery.refetch).toHaveBeenCalledOnce();
+  });
+
+  it('다른 종목 또는 시장의 REST 응답을 호가로 사용하지 않는다', () => {
+    mock.askCount = mock.bidCount = 0;
+    restBookQuery.data = { ...restoredBook(), venue: 'NXT' };
+    show();
+    expect(screen.queryByTestId('order-rest-book-source')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /49,500원 주문 추가/ })).not.toBeInTheDocument();
+  });
+
   it('호가 지연 사유는 상단에 표시하지 않고 주문 시도에서 토스트로 안내하며 API를 호출하지 않는다', () => {
     mock.snapshotAt = mock.now - 60_000;
     show();

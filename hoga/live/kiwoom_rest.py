@@ -162,6 +162,7 @@ TR: dict[str, TrSpec] = {
                       required=("stk_cd", "mrkt_tp", "amt_qty_tp", "trde_tp")),
     # 종목정보 — 기본정보와 단일 종목정보는 flat 응답이다.
     "ka10001": TrSpec("ka10001", PATH_STKINFO, None, shape="flat", required=("stk_cd",)),
+    "ka10004": TrSpec("ka10004", PATH_MRKCOND, shape="flat", required=("stk_cd",)),
     "ka10100": TrSpec("ka10100", PATH_STKINFO, None, shape="flat", required=("stk_cd",)),
     "ka10003": TrSpec("ka10003", PATH_STKINFO, "cntr_infr", cursor=True, required=("stk_cd",)),
     "ka10095": TrSpec("ka10095", PATH_STKINFO, "atn_stk_infr", required=("stk_cd",)),

@@ -9,8 +9,9 @@ const mkOrder = (id: string, price = '67200', filled = '30') => ({
   execution: { filledQuantity: filled, averageFilledPrice: '67200', filledAmount: '2016000', commission: null, tax: null, filledAt: null, settlementDate: null },
 });
 
-async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string } = {}) {
+async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>[] = false, maximize = true, sameDepth = false, priceOffset = 0, accountCount = 1, market: { time?: number; venue?: 'KRX' | 'NXT' | 'UN'; averagePrice?: string; holdingQuantity?: string; sellableQuantity?: string; lastBook?: 'ready' | 'empty' | 'failed' } = {}) {
   await page.setViewportSize({ width: 1440, height: 1100 });
+  const subject = market.lastBook ? { code: '456160', name: '지투지바이오' } : { code: '005930', name: '삼성전자' };
   // Existing order/WS fixtures exercise integrated trading. Venue tests switch explicitly.
   await page.addInitScript(venue => localStorage.setItem('live.venue.v1', JSON.stringify({ venue })), market.venue ?? 'UN');
   await installLiveMocks(page);
@@ -18,18 +19,36 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   await page.route('**/api/trading/v2/accounts', route => route.fulfill({ status: 404, json: { detail: 'legacy fixture' } }));
   const ws = await installLiveWs(page);
   await page.route(/^https?:\/\/[^/]+\/api\/symbols\/all$/, route => route.fulfill({ json: {
-    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI' }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
+    symbols: [{ code: '005930', name: '삼성전자', market: 'KOSPI' }, { code: '000660', name: 'SK하이닉스', market: 'KOSPI' }, { code: '456160', name: '지투지바이오', market: 'KOSDAQ', nxt_enabled: true }], status: 'fresh', fetched_at_ms: Date.now(), reason: null,
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/quotes\?/, route => route.fulfill({ json: {
-    phase: 'open', quotes: [{ code: new URL(route.request().url()).searchParams.get('codes')?.split(',')[0] ?? '005930', price: 67200 + priceOffset, baseline_price: 66000 + priceOffset, change_pct: 1200 / (66000 + priceOffset) * 100, change_won: 1200 }],
+    phase: market.lastBook ? 'closed' : 'open', quotes: [{ code: new URL(route.request().url()).searchParams.get('codes')?.split(',')[0] ?? '005930', price: 67200 + priceOffset, baseline_price: 66000 + priceOffset, change_pct: 1200 / (66000 + priceOffset) * 100, change_won: 1200,
+      ...(market.lastBook ? { price: 49600, baseline_price: 41200, open: 42050, high: 51000, low: 41150, volume: 1412052, fill_strength_pct: 109.4 } : {}),
+    }],
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/live\/series\?/, route => route.fulfill({ json: {
     code: new URL(route.request().url()).searchParams.get('code') ?? '005930', date: new URL(route.request().url()).searchParams.get('date'), session_open_ms: Date.now(), session_close_ms: null, is_open: true,
-    snapshots: [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
+    snapshots: market.lastBook ? [] : [{ kind: 'ob', venue: new URL(route.request().url()).searchParams.get('venue') ?? 'UN', t_ms: market.time ?? Date.now(), asks: Array.from({ length: 10 }, (_, i) => ({ price: 67300 + priceOffset + i * 100, qty: 100 + i })), bids: Array.from({ length: 10 }, (_, i) => ({ price: 67200 + priceOffset - i * 100, qty: (sameDepth ? 100 : 200) + i })), total_ask_qty: 1000, total_bid_qty: 2000 }],
     trades: [], brokers: [], programs: [], after_hours: [], expected: [], today_ask_peak: null, today_bid_peak: null,
   } }));
+  if (market.lastBook) {
+    await page.route('**/api/live/status', route => route.fulfill({ json: {
+      running: true, kiwoom: { connection_allowed: false },
+    } }));
+    await page.route('**/api/live/last-orderbook?*', route => route.fulfill({ json: {
+      code: new URL(route.request().url()).searchParams.get('code'),
+      venue: new URL(route.request().url()).searchParams.get('venue'),
+      source: 'kiwoom_rest', fetched_at_ms: Date.now(), checked_at_ms: Date.now(),
+      refresh_failed: market.lastBook === 'failed', storage_failed: false,
+      book: market.lastBook === 'ready' ? {
+        ask: Array.from({ length: 10 }, (_, i) => ({ price: 49600 + i * 50, qty: 43 + i })),
+        bid: Array.from({ length: 10 }, (_, i) => ({ price: 49500 - i * 50, qty: 1 + i })),
+        tot_ask: 2033, tot_bid: 1759, book_time: '20:00:00',
+      } : null,
+    } }));
+  }
   await page.route(/^https?:\/\/[^/]+\/api\/live\/stock-limits\?/, route => route.fulfill({ json: {
-    code: '005930', base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 1_578_000, low_250: 1_425_000,
+    code: subject.code, base_price: 66000, upper_limit: 85800, lower_limit: 46200, high_250: 1_578_000, low_250: 1_425_000,
     high_250_date: null, low_250_date: null, fetched_at_ms: Date.now(), source: 'kiwoom',
   } }));
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/accounts$/, route => route.fulfill({ json: { configured: true, accounts: Array.from({ length: accountCount }, (_, i) => ({ account_seq: i + 1, label: i === 0 ? '토스증권 · ****1234' : '토스증권 · ****5678' })) } }));
@@ -41,7 +60,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
     stateRequests.push(part);
     const code = new URL(route.request().url()).searchParams.get('code') ?? '005930';
     const orderState = { account_seq: 1, code, orders: orders.filter(order => order.symbol === code), recent_orders: [], fetched_at_ms: Date.now(), events_connected: true, unresolved_commands: [] };
-    const balances = { account_seq: 1, code: '005930', buying_power: '20000000', sellable_quantity: market.sellableQuantity ?? '100', holding_quantity: market.holdingQuantity ?? '100', average_purchase_price: market.averagePrice ?? '66000', fetched_at_ms: Date.now() };
+    const balances = { account_seq: 1, code: subject.code, buying_power: '20000000', sellable_quantity: market.sellableQuantity ?? '100', holding_quantity: market.holdingQuantity ?? '100', average_purchase_price: market.averagePrice ?? '66000', fetched_at_ms: Date.now() };
     return route.fulfill({ json: part === 'orders' ? orderState : part === 'balances' ? balances : { ...balances, ...orderState } });
   });
   await page.route(/^https?:\/\/[^/]+\/api\/trading\/account-orders\?/, route => route.fulfill({ json: {
@@ -80,7 +99,7 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   await page.goto('/live');
   await page.getByRole('button', { name: '종목 검색 열기' }).click();
   const dialog = page.getByRole('dialog', { name: '종목 검색' });
-  await dialog.getByRole('combobox', { name: '종목 검색' }).fill('삼성전자');
+  await dialog.getByRole('combobox', { name: '종목 검색' }).fill(subject.name);
   await dialog.getByRole('option').first().click();
   await page.getByTestId('workspace-add-menu-button').click();
   await page.getByTestId('workspace-add-order').click();
@@ -88,7 +107,9 @@ async function setup(page: Page, withOrder: boolean | ReturnType<typeof mkOrder>
   if (maximize) await page.locator('[data-win]').filter({ has: window }).getByRole('button', { name: '창 최대화', exact: true }).click();
   const initialSide = orders[0]?.side === 'SELL' ? '매도' : '매수';
   const initialPrice = (initialSide === '매도' ? 67300 : 67200) + priceOffset;
-  await expect(window.getByRole('button', { name: new RegExp(`${initialSide} ${initialPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
+  if (market.lastBook === 'ready') await expect(window.getByTestId('order-rest-book-source')).toBeVisible();
+  else if (market.lastBook) await expect(window.getByTestId('order-empty-book')).toBeVisible();
+  else await expect(window.getByRole('button', { name: new RegExp(`${initialSide} ${initialPrice.toLocaleString('ko-KR')}원 주문 추가`) })).toBeEnabled();
   return { window, commands, ws, stateRequests };
 }
 
@@ -155,6 +176,42 @@ async function multiBrokerSetup(page: Page) {
   await page.reload();
   await expect(window.getByRole('combobox', { name: '주문 계좌' })).toHaveValue(toss);
   return { window, toss, kiwoom, commands };
+}
+
+test('주말 REST 마지막 호가는 20단과 상세정보를 표시하고 새 주문을 보내지 않는다', async ({ page }, testInfo) => {
+  await page.clock.setFixedTime(new Date('2026-10-24T10:15:00+09:00'));
+  const { window, commands } = await setup(page, false, true, false, 0, 1, { venue: 'KRX', lastBook: 'ready' });
+  await expect(window.getByTestId('order-rest-book-source')).toContainText('20:00:00 · KRX · 거래일 미제공');
+  await expect(window.getByText('실시간 연결 운영 시간이 아닙니다')).toHaveCount(0);
+  await expect(window.locator('.order-price-value')).toHaveCount(20);
+  await expect(window.getByTestId('book-summary')).toBeVisible();
+  const buy = window.getByRole('button', { name: /매수 49,500원 주문 추가/ });
+  await expect(window.getByLabel('매수 가능 금액')).toContainText('20,000,000원');
+  await expect(buy).toHaveAttribute('aria-disabled', 'true');
+  await buy.dispatchEvent('dblclick');
+  await expect(window.getByRole('alert', { name: '주문 알림' })).toContainText('저장된 호가는 조회만 가능합니다');
+  expect(commands).toHaveLength(0);
+  await window.screenshot({ path: testInfo.outputPath('weekend-rest-book.png') });
+});
+
+for (const lastBook of ['empty', 'failed'] as const) {
+  test(`호가 ${lastBook}에서도 넓은 창과 좁은 창에 상세정보가 남는다`, async ({ page }, testInfo) => {
+    await page.clock.setFixedTime(new Date('2026-10-24T10:15:00+09:00'));
+    const { window } = await setup(page, false, true, false, 0, 1, { venue: 'KRX', lastBook });
+    await expect(window.getByTestId('order-empty-book')).toContainText(
+      lastBook === 'empty' ? '저장된 마지막 호가가 없습니다' : '마지막 호가 조회 실패');
+    await expect(window.getByTestId('book-summary')).toBeVisible();
+    await expect(window.getByTestId('book-summary').getByText('51,000', { exact: true })).toBeVisible();
+    await page.setViewportSize({ width: 520, height: 850 });
+    await window.evaluate(element => { element.style.width = '504px'; });
+    await expect(window).toHaveClass(/order-compact/);
+    await expect(window.getByTestId('book-summary')).toBeVisible();
+    const value = await window.getByTestId('book-summary').getByText('51,000', { exact: true }).boundingBox();
+    const bounds = await window.boundingBox();
+    expect(value!.x + value!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
+    await expect(window.getByRole('button', { name: '종목 상세 정보', exact: true })).toHaveCount(0);
+    await window.screenshot({ path: testInfo.outputPath(`empty-book-${lastBook}.png`) });
+  });
 }
 
 test('증권사 계좌 전환은 키움 주문을 활성화하고 토스 주문을 유지한다', async ({ page }, testInfo) => {
