@@ -90,6 +90,7 @@ export type FixedPxToken = Readonly<{
 }>;
 
 export const SIZE_TOKENS = {
+  'whiteboard-list-w': { rem: 12, baseIntentPx: 192, usage: 'Whiteboard board list width' },
   // ── typography ────────────────────────────────────────────────
   // `text-badge` sits below text-xs to preserve hierarchy on micro-labels
   // like the SymbolSearch market tag (KOSPI/KOSDAQ). 8.5px base intent.

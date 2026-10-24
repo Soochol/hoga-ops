@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { whiteboardAssets } from './plugins/whiteboardAssets'
 
 /**
  * e2e 전용 `/config.json` 재정의.
@@ -61,7 +62,7 @@ export default defineConfig({
    * 훅을 부른 청크의 파일명이 다르다」이고, 복구는 `vite --force` 재기동이다.
    */
   cacheDir: '.vite-cache',
-  plugins: [react(), e2eConfigJson()],
+  plugins: [react(), e2eConfigJson(), whiteboardAssets()],
   build: {
     // 기본 500KB. `live-workspace` 는 eager 라우트(`/live`) 자신의 청크이고,
     // heatmap·studyViews 를 그룹에서 뺀 뒤 `/live` 가 실제로 쓰는 모듈이 여기로

@@ -1,0 +1,63 @@
+const { test, expect, _electron: electron } = require('@playwright/test');
+const { createServer } = require('node:net');
+const { spawn } = require('node:child_process');
+const { mkdtemp, rm, readFile } = require('node:fs/promises');
+const { tmpdir } = require('node:os');
+const { join, resolve } = require('node:path');
+const desktop = resolve(__dirname, '../..'), repo = resolve(desktop, '..');
+
+test('Electron whiteboard saves Korean notes, images, native downloads and reopens after app restart', async () => {
+  test.setTimeout(90000);
+  const temp = await mkdtemp(join(tmpdir(), 'ticklane-whiteboard-'));
+  const reservation = createServer(); await new Promise(done => reservation.listen(0, '127.0.0.1', done));
+  const port = reservation.address().port; await new Promise(done => reservation.close(done));
+  const origin = `http://127.0.0.1:${port}`;
+  const env = { ...process.env, HOGA_DATA_DIR: join(temp, 'data'), HOGA_LOG_DIR: join(temp, 'logs'),
+    HOGA_ALLOWED_ORIGINS: origin, HOGA_FRONTEND_DIST: join(repo, 'frontend/dist'), HOGA_ENABLE_TEST_ENDPOINTS: '1', HOGA_LIVE_STARTUP_ENABLED: 'false' };
+  for (const name of Object.keys(env)) if (/^(KIWOOM_|KIS_|KOFIA_|TOSSINVEST_)/.test(name)) env[name] = '';
+  const server = spawn(join(repo, '.venv/bin/python'), ['-m', 'uvicorn', 'hoga.api.app:default_app', '--factory', '--host', '127.0.0.1', '--port', String(port)], { cwd: repo, env, stdio: 'ignore' });
+  const userData = join(temp, 'desktop'); let app;
+  async function launch() {
+    const desktopEnv = { ...process.env, HOGA_DESKTOP_USER_DATA: userData }; delete desktopEnv.ELECTRON_RUN_AS_NODE;
+    const args = process.env.HOGA_DESKTOP_EXECUTABLE ? [] : [desktop];
+    if (process.env.HOGA_DESKTOP_TEST_PLATFORM) args.push(`--ozone-platform=${process.env.HOGA_DESKTOP_TEST_PLATFORM}`);
+    return electron.launch({ executablePath: process.env.HOGA_DESKTOP_EXECUTABLE, args, cwd: desktop, env: desktopEnv, chromiumSandbox: true });
+  }
+  try {
+    await expect.poll(async () => { try { return (await fetch(origin + '/health')).ok; } catch { return false; } }, { timeout: 30000 }).toBe(true);
+    app = await launch(); const launcher = await app.firstWindow();
+    await launcher.locator('#origin').fill(origin); await launcher.locator('#name').fill('화이트보드 검증');
+    const opened = app.waitForEvent('window'); await launcher.getByRole('button', { name: '연결', exact: true }).click(); const page = await opened;
+    await page.getByRole('link', { name: '화이트보드', exact: true }).click();
+    await page.getByRole('button', { name: '첫 보드 만들기' }).click();
+    await expect(page.getByRole('button', { name: '메모 추가', exact: true })).toBeVisible();
+    await page.getByRole('textbox', { name: '보드 이름' }).fill('데스크톱 복기');
+    await page.getByRole('button', { name: '메모 추가', exact: true }).click();
+    const id = new URL(page.url()).searchParams.get('board');
+    const read = async () => (await (await fetch(`${origin}/api/whiteboards/${id}`)).json());
+    await expect.poll(async () => (await read()).scene.elements.length).toBe(2);
+    const encoded = await page.evaluate(() => { const canvas = document.createElement('canvas'); canvas.width = 240; canvas.height = 120; const ctx = canvas.getContext('2d'); ctx.fillStyle = '#c7fa79'; ctx.fillRect(0, 0, 240, 120); return canvas.toDataURL().split(',')[1]; });
+    await page.getByLabel('이미지 파일 선택', { exact: true }).setInputFiles({ name: 'desktop.png', mimeType: 'image/png', buffer: Buffer.from(encoded, 'base64') });
+    await expect.poll(async () => Object.keys((await read()).scene.files).length).toBe(1);
+    const destination = join(temp, 'board.whiteboard.json');
+    await app.evaluate(({ dialog }, path) => { dialog.showSaveDialogSync = () => path; }, destination);
+    await page.getByRole('button', { name: '내보내기', exact: true }).click();
+    await page.getByRole('button', { name: '편집 파일로 저장 (이미지 포함)' }).click();
+    await expect.poll(async () => { try { return JSON.parse(await readFile(destination, 'utf8')).type; } catch { return ''; } }).toBe('ticklane-whiteboard');
+    await page.screenshot({ path: join(desktop, 'test-results/whiteboard-electron.png') });
+    await app.close(); app = undefined;
+    expect((await fetch(origin + '/health')).ok).toBe(true);
+    app = await launch();
+    await expect.poll(() => app.windows().some(window => window.url().startsWith(origin))).toBe(true);
+    const reopened = app.windows().find(window => window.url().startsWith(origin));
+    await reopened.goto(`${origin}/whiteboard?board=${id}`);
+    await expect(reopened.getByRole('textbox', { name: '보드 이름' })).toHaveValue('데스크톱 복기');
+    await expect(reopened.getByText('저장됨', { exact: true })).toBeVisible();
+    expect(Object.keys((await read()).scene.files)).toHaveLength(1);
+    await app.close(); app = undefined;
+  } finally {
+    if (app) await app.close();
+    server.kill('SIGTERM'); await new Promise(done => { if (server.exitCode !== null) done(); else server.once('exit', done); });
+    await rm(temp, { recursive: true, force: true });
+  }
+});

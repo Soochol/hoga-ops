@@ -4,6 +4,19 @@ Single-user local tool that captures Korean stock orderbook + trade replay data 
 
 ## Language
 
+**화이트보드 (Whiteboard)**:
+`/whiteboard`에서 이미지·메모·텍스트·도형·선·화살표·자유 그리기를 자유 좌표로
+배치하는 사용자 문서다. 상단 캡처 오른쪽에서 열며 좌측 목록으로 여러 보드를
+관리한다. 접속한 서버의 `<data_dir>/whiteboards/`가 정본이며 정수 revision으로
+다른 창의 조용한 덮어쓰기를 막는다. 브라우저 IndexedDB에는 서버·보드·편집 창별
+미저장 초안을 보관하고 성공한 저장 응답에 해당하는 초안만 정리한다.
+이미지는 별도 불변 파일로 저장하고 보드 복제·휴지통에서도 보존한다.
+차트의 「보드에 추가」는 실제 PNG와 Code·봉 주기·캡처 시각·종목 복귀 링크를
+추가하며, 당시 화면을 보존한다. 종목 복귀 링크는 저장 기간 복원을 약속하지 않는다.
+보드의 scene은 Excalidraw 소유이고 기존 종목별 Drawing과 별도로 저장한다.
+_Avoid_: 보드를 Full Capture/저장 학습뷰로 부르기; 보드 이미지가 실시간 갱신된다고
+표현하기; 서버 저장 전 브라우저의 마지막 입력까지 보존을 보장하기.
+
 **Regular Session**:
 The continuous-trading window of the KRX day, 09:00:00–15:30:00 (includes the closing single-price auction 15:20–15:30).
 _Avoid_: "session" alone, "market hours"
