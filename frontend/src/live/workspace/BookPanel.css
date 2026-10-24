@@ -43,3 +43,8 @@
 .book-price-tooltip.text-price-up { color:var(--price-up); }
 .book-price-tooltip.text-price-down { color:var(--price-down); }
 .book-price-tooltip.text-fg-dim { color:var(--fg-dim); }
+
+.book-empty-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:0.5rem; padding:0.5rem; }
+@container (width < 531px) {
+  .book-empty-layout { grid-template-columns:minmax(0,1fr); }
+}

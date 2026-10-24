@@ -17,11 +17,14 @@ import { useChartPrefsStore } from '../../state/chartPrefs';
 import { useWindowSettingsStore } from '../../state/windowSettings';
 import { useQuoteByCode, type LiveQuote } from '../../api/liveQuotes';
 import { useTradeHistory } from '../../api/tradeHistory';
+import { useLiveRestOrderbook } from '../../api/liveRestOrderbook';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
 import { useLiveViStatus } from '../../api/liveViStatus';
 import { useScreenerDailyCandles } from '../../api/screenerDailyCandles';
 import type { RangeBundle } from '../../api/types';
 import * as cutoffProfile from '../useVolumeDistributionCutoffProfile';
+
+vi.mock('../../api/liveRestOrderbook', () => ({ useLiveRestOrderbook: vi.fn(() => ({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() })) }));
 
 vi.mock('../../api/liveKrxPreviousClose', () => ({ useLiveKrxPreviousClose: () => ({ data: undefined }) }));
 vi.mock('../../api/programTradeTicks', () => ({ useProgramTradeHistory: () => ({ data: undefined,
@@ -122,7 +125,7 @@ vi.mock('./BookPanel', () => ({
     limits: unknown;
     vi: unknown;
     stale?: boolean;
-    snapshot: { ts_ms: number } | null | undefined;
+    snapshot: { ts_ms?: number; ask?: { price: number }[] } | null | undefined;
     summary: {
       dayOpen: number | null; dayHigh: number | null; dayLow: number | null;
       cumVolume: number | null; cumValue: number | null;
@@ -145,6 +148,7 @@ vi.mock('./BookPanel', () => ({
         snapshot:
         {snapshot === undefined ? 'undefined' : snapshot === null ? 'null' : String(snapshot.ts_ms)}
       </div>
+      <div>ask:{snapshot?.ask?.[0]?.price ?? "none"}</div>
       {/* 시·고·저 폴백의 관측점. 세 값을 **한 노드**에 합치는 이유: 단언 하나가 셋을
           함께 못박아 "둘만 메워졌다" 도 실패로 잡힌다. */}
       <div>
@@ -1428,5 +1432,58 @@ describe('DataWindow — 마감 후 시·고·저는 시세 오버레이가 뒤�
     renderWithQuery(<DataWindow win={dataWin('book', 1)} symbol={symbol} />);
     expect(screen.getByText('ohlc:null/null/null')).toBeInTheDocument();
     expect(screen.getByText('acc:null/null/null/null')).toBeInTheDocument();
+  });
+});
+
+
+describe('DataWindow — 마지막 REST 호가', () => {
+  const now = Date.parse('2026-10-24T10:15:00+09:00');
+  const symbol = { code: '456160', name: '지투지바이오' };
+  beforeEach(() => {
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    __resetGroupChartLinksForTests();
+    useLiveCursorStore.getState().resetCursor();
+    liveSeriesBuffers.ob = [];
+    liveSeriesBuffers.afterHours = [];
+    afterHoursBookResult.data = undefined;
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult(undefined));
+    vi.mocked(useLiveRestOrderbook).mockReturnValue({ data: {
+      code: symbol.code, venue: 'KRX', source: 'kiwoom_rest', book: {
+        ask: [{ price: 49600, qty: 43 }], bid: [{ price: 49500, qty: 1 }],
+        tot_ask: 2033, tot_bid: 1759, book_time: '20:00:00',
+      }, refresh_failed: false, storage_failed: false,
+    }, isLoading: false, isError: false, refetch: vi.fn() } as never);
+  });
+  afterEach(() => {
+    vi.mocked(Date.now).mockRestore();
+    liveSeriesBuffers.ob = [];
+    useLiveCursorStore.getState().resetCursor();
+    __resetGroupChartLinksForTests();
+    vi.mocked(useLiveRestOrderbook).mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() } as never);
+  });
+  it('주말에 거래일을 만들지 않고 마지막 사다리를 표시한다', () => {
+    renderWithQuery(<DataWindow win={dataWin('book')} symbol={symbol} />);
+    expect(screen.getByTestId('book-rest-book-source')).toHaveTextContent('20:00:00 · KRX · 거래일 미제공');
+    expect(screen.getByText('ask:49600')).toBeInTheDocument();
+    expect(screen.getByText('snapshot:undefined')).toBeInTheDocument();
+    expect(vi.mocked(useLiveRestOrderbook).mock.lastCall).toEqual(['456160', 'KRX', true]);
+  });
+  it('실시간 사다리가 도착하면 REST 사다리보다 우선한다', () => {
+    liveSeriesBuffers.ob = [{ t_ms: now, asks: [{ price: 50000, qty: 1 }], bids: [{ price: 49900, qty: 2 }], total_ask_qty: 1, total_bid_qty: 2 }];
+    renderWithQuery(<DataWindow win={dataWin('book')} symbol={symbol} />);
+    expect(screen.getByText('ask:50000')).toBeInTheDocument();
+    expect(screen.queryByTestId('book-rest-book-source')).not.toBeInTheDocument();
+    expect(vi.mocked(useLiveRestOrderbook).mock.lastCall?.[2]).toBe(false);
+  });
+  it('과거 커서에서는 캐시에 있는 현재 REST 호가도 표시하지 않는다', () => {
+    publishGroupChartLink(chartLink({ code: symbol.code }));
+    useLiveCursorStore.getState().setSidebarCursor(now - 86400_000, {
+      windowId: 'cw1', group: 1, code: symbol.code, timeframe: '1m',
+    });
+    vi.mocked(useLiveOrderbookAtCursor).mockReturnValue(spotResult({ snapshot: null, available_from: null }));
+    renderWithQuery(<DataWindow win={dataWin('book')} symbol={symbol} />);
+    expect(screen.queryByTestId('book-rest-book-source')).not.toBeInTheDocument();
+    expect(screen.getByText('ask:none')).toBeInTheDocument();
+    expect(vi.mocked(useLiveRestOrderbook).mock.lastCall?.[2]).toBe(false);
   });
 });

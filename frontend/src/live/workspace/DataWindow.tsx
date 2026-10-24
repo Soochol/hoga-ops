@@ -28,6 +28,9 @@ import { useRecentBookTrades } from './useRecentBookTrades';
 import { useBookSessionDisplay } from './useBookSessionDisplay';
 import { useOrderbookAvailability } from '../useOrderbookAvailability';
 import { BookAvailabilityState } from './BookAvailabilityState';
+import { RestOrderbookEmpty, RestOrderbookSource } from './RestOrderbookState';
+import { useLiveRestOrderbook } from '../../api/liveRestOrderbook';
+import { hasBookPrices } from '../../api/livePreAuctionBook';
 import BrokerTrajectoryTable from '../../sidebar/BrokerTrajectoryTable';
 import { TradeWindow } from './TradeWindow';
 import { ProgramTradeTickWindow } from './ProgramTradeTickWindow';
@@ -280,7 +283,15 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
     afterHoursTotals, afterHoursLabel, sessionControl, sessionMode, selectSessionMode } = useBookSessionDisplay({
     code, venue, nowMs, todayKst, isSpot, regularSnapshot, latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
-  const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot && !storedLadder);
+  // Current REST data must never fill a historical cursor or replace a
+  // selected single-price session. Both book windows share the same query key.
+  const needsRestBook = !isSpot && !hasBookPrices(snapshot) && activeSinglePrice === null
+    && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours');
+  const rest = useLiveRestOrderbook(code, effectiveVenue, needsRestBook && !live.isLoading);
+  const restBook = needsRestBook && rest.data?.code === code && rest.data.venue === effectiveVenue
+    ? rest.data.book : null;
+  const displayedBook = restBook ?? (needsRestBook ? null : snapshot);
+  const deltaBadges = useOrderbookDeltaBadges(venueOb, !isSpot && !storedLadder && !restBook);
   const quote = useQuoteByCode([code], venue).get(code);
   // 등락률 기준가는 **커서가 보고 있는 날짜**의 전일종가여야 한다.
   //
@@ -490,7 +501,8 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
   }
   return (
     <div className="flex h-full flex-col">
-      {snapshot != null && bookAvailability}
+      {snapshot != null && !needsRestBook && bookAvailability}
+      {restBook && <RestOrderbookSource rest={rest} venue={effectiveVenue} testId="book-rest-book-source" />}
       {isSpot && (bookContextMode !== null || showAvailableHint || showFormingHint) && <DataContext
         mode={bookContextMode ?? ''}
         time={bookContextMode !== null ? snapshot?.ts_ms : undefined}
@@ -523,13 +535,15 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           symbol={code}
           emptyState={isSpot && snapshot === null
             ? <div className="m-auto text-xs text-fg-dim">선택 시점의 저장 호가 없음</div>
+            : needsRestBook ? <RestOrderbookEmpty rest={rest} loading={live.isLoading || rest.isLoading} onRetry={retryBook} testId="book-empty-book" />
             : availability ? bookAvailability : undefined}
-          snapshot={snapshot}
-          expectedFill={!isSpot && !storedLadder && activeSinglePrice === null
+          snapshot={displayedBook}
+          showEmptySummary={needsRestBook}
+          expectedFill={restBook ? null : !isSpot && !storedLadder && activeSinglePrice === null
             ? { price: quote?.expected_price ?? 0, qty: quote?.expected_qty ?? null } : undefined}
-          afterHoursTotals={afterHoursTotals}
+          afterHoursTotals={restBook ? null : afterHoursTotals}
           afterHoursLabel={afterHoursLabel}
-          sessionControl={sessionControl}
+          sessionControl={restBook ? { kind: 'label', label: '마지막 조회 호가' } : sessionControl}
           sessionMode={sessionMode}
           onSelectSessionMode={selectSessionMode}
           baselinePrice={baselinePrice}
@@ -542,7 +556,7 @@ function BookWindow({ win, code }: { win: WorkspaceWindow; code: string }) {
           deltaBadges={isSpot ? null : deltaBadges}
           limits={spotLimits}
           vi={spotVi}
-          stale={bookStale || availability?.lastBookMs !== undefined}
+          stale={!restBook && (bookStale || availability?.lastBookMs !== undefined)}
         />
       </div>
     </div>

@@ -55,8 +55,10 @@ export type BookStockLimits = {
 type Props = {
   /** Resets the retained price width when switching symbols. */
   symbol?: string;
-  snapshot: OrderbookSnapshot | null | undefined;
+  // REST ladders do not have an epoch; dated WS/cursor snapshots remain valid inputs.
+  snapshot: OrderbookSnapshot | Pick<OrderbookSnapshot, 'ask' | 'bid' | 'tot_ask' | 'tot_bid' | 'exp_price' | 'exp_qty'> | null | undefined;
   emptyState?: ReactNode;
+  showEmptySummary?: boolean;
   /** 전일종가 — 등락률 분모이자 가격 색 기준. */
   baselinePrice: number | null;
   summary: LiveTradeSummary;
@@ -144,6 +146,7 @@ export default function BookPanel({
   symbol = '',
   snapshot,
   emptyState,
+  showEmptySummary = false,
   baselinePrice,
   summary,
   trades,
@@ -208,9 +211,14 @@ export default function BookPanel({
       // 사라지면 막다른 길이 된다 — 이 기능이 애초에 고치려던 바로 그 상태다
       // (16:00 에 자동 전환된 뒤 되돌릴 수 없음).
       return (
-        <div className="flex h-full flex-col bg-bg-card">
-          <div className="min-h-0 flex-1">
-            {emptyState ?? <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>}
+        <div className="book-panel flex h-full flex-col bg-bg-card">
+          <div className="book-scroll-region min-h-0 flex-1 overflow-auto">
+            <div className={showEmptySummary ? 'book-empty-layout' : undefined}>
+              {emptyState ?? <PanelState>{inAfterHoursMode ? '시간외 호가 없음' : '호가 데이터 없음'}</PanelState>}
+              {showEmptySummary && <BookSummary summary={summary} baselinePrice={baselinePrice}
+                limits={limits} krxClose={krxClose} krxPreviousClose={krxPreviousClose} vi={vi} height={ROW_H * SUMMARY_ROWS}
+                page={infoPage} onNextPage={nextInfoPage} expectedFill={null} />}
+            </div>
           </div>
           <SessionOnlyStrip
             control={sessionControl}
