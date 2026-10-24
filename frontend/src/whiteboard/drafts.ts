@@ -1,6 +1,6 @@
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types';
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
-import type { WhiteboardFile } from '../api/whiteboards';
+import type { WhiteboardFile, ReviewNote } from '../api/whiteboards';
 import { apiUrl } from '../api/client';
 import { randomId } from '../util/randomId';
 
@@ -8,6 +8,7 @@ export interface BoardDraft {
   id: string;
   revision: number;
   name: string;
+  review?: ReviewNote | null;
   elements: readonly ExcalidrawElement[];
   files: BinaryFiles;
   assets: Record<string, WhiteboardFile>;

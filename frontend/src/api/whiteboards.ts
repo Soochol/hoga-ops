@@ -16,6 +16,30 @@ export interface WhiteboardScene {
   appState: Record<string, unknown>;
   files: Record<string, WhiteboardFile>;
 }
+export interface ReviewRecord {
+  id: string;
+  title: string;
+  stock: string;
+  code: string;
+  timeframe: string;
+  captured_at_ms: number | null;
+  image_file_id: string | null;
+  judgment: string;
+  action: string;
+  result: string;
+}
+export interface ReviewSummary {
+  date: string;
+  summary: string;
+  completed: boolean;
+  stocks: string[];
+}
+export interface ReviewNote extends ReviewSummary {
+  good: string;
+  change: string;
+  principle: string;
+  records: ReviewRecord[];
+}
 export interface WhiteboardSummary {
   id: string;
   name: string;
@@ -24,8 +48,10 @@ export interface WhiteboardSummary {
   updated_at_ms: number;
   deleted_at_ms: number | null;
   element_count: number;
+  review?: ReviewSummary | null;
 }
 export interface WhiteboardDocument extends WhiteboardSummary {
+  review?: ReviewNote | null;
   schema_version: number;
   engine_version: string;
   scene: WhiteboardScene;
@@ -41,6 +67,7 @@ export interface WhiteboardCreate {
   mutation_id: string;
   name: string;
   scene: WhiteboardScene;
+  review?: ReviewNote | null;
 }
 export interface WhiteboardWrite {
   mutation_id: string;
@@ -48,6 +75,7 @@ export interface WhiteboardWrite {
   name: string;
   scene: WhiteboardScene;
   deleted: boolean;
+  review?: ReviewNote | null;
 }
 
 export const boardId = randomId;
@@ -59,11 +87,13 @@ const json = (body: unknown, method = 'POST'): RequestInit => ({
 });
 export const listBoards = (deleted = false) => apiCall<WhiteboardList>(`/api/whiteboards?deleted=${deleted}`);
 export const readBoard = (id: string) => apiCall<WhiteboardDocument>(`/api/whiteboards/${id}`);
-export const createBoard = (name = '새 보드', scene = emptyScene(), id = boardId()) =>
+export const createBoard = (name = '새 보드', scene = emptyScene(), id = boardId(), review?: ReviewNote | null) =>
   apiCall<WhiteboardDocument>(
     '/api/whiteboards',
-    json({ id, mutation_id: id, name, scene } satisfies WhiteboardCreate),
+    json({ id, mutation_id: id, name, scene, ...(review ? { review } : {}) } satisfies WhiteboardCreate),
   );
+export const openDailyNote = (date: string) =>
+  apiCall<WhiteboardDocument>(`/api/whiteboards/daily/${encodeURIComponent(date)}`, { method: 'POST' });
 export const writeBoard = (id: string, req: WhiteboardWrite) =>
   apiCall<WhiteboardDocument>(`/api/whiteboards/${id}`, json(req, 'PUT'));
 export async function uploadBoardImage(blob: Blob): Promise<WhiteboardAsset> {

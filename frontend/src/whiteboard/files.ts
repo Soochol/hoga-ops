@@ -33,9 +33,10 @@ export function selectedElements(
 export function exportBoardFile(session: BoardSession) {
   const payload = {
     type: 'ticklane-whiteboard',
-    schema_version: 1,
+    schema_version: session.state.review ? 2 : 1,
     engine_version: 'excalidraw/0.18.1',
     name: session.state.name,
+    review: session.state.review,
     elements: session.elements,
     appState: session.appState,
     files: session.files,
@@ -50,7 +51,7 @@ export async function importBoardFile(file: File) {
   const raw = JSON.parse(await file.text());
   if (
     raw.type !== 'ticklane-whiteboard' ||
-    raw.schema_version !== 1 ||
+    ![1, 2].includes(raw.schema_version) ||
     raw.engine_version !== 'excalidraw/0.18.1' ||
     !Array.isArray(raw.elements) ||
     raw.elements.length > 10_000 ||
@@ -93,5 +94,5 @@ export async function importBoardFile(file: File) {
     elements: elements as unknown as Record<string, unknown>[],
     appState: {},
     files: assets,
-  });
+  }, undefined, raw.review ?? undefined);
 }

@@ -1,0 +1,22 @@
+{
+  "typecheck": "passed",
+  "build": "passed",
+  "ruff": "passed",
+  "frontend_unit": {
+    "files": 703,
+    "passed": 9012
+  },
+  "backend": {
+    "passed": 6975,
+    "skipped": 2,
+    "deselected": 13
+  },
+  "api_focused_passed": 24,
+  "browser_passed": 13,
+  "electron_passed": 2,
+  "targeted_eslint": {
+    "errors": 0,
+    "warnings": 3
+  },
+  "input_version_checks": "passed"
+}

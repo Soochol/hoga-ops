@@ -184,6 +184,11 @@
   --radius-full: 9999px; /* Status dots, avatars */
 
   /* ───── Layout (rem-based; rendered px @ 16px root = default density) ───── */
+  --review-list-w: 14rem; /* 224px @ default; 224px base intent — Daily review date list width */
+  --review-document-w: 52rem; /* 832px @ default; 832px base intent — Daily review reading column maximum width */
+  --h-review-image: 24rem; /* 384px @ default; 384px base intent — Review attached image maximum height */
+  --review-thumbnail-w: 4rem; /* 64px @ default; 64px base intent — Review record thumbnail width */
+  --h-review-thumbnail: 2.5rem; /* 40px @ default; 40px base intent — Review record thumbnail height */
   --whiteboard-list-w: 12rem; /* 192px @ default; 192px base intent — Whiteboard board list width */
   --h-toolbar: 2rem; /* 32px @ default; 32px base intent — Workspace toolbar row — ui/WorkspaceShell.tsx WorkspaceToolbar, 소비처는 /live 의 WorkspaceLiveToolbar. 밀도 개편(2026-07-23) 60→32, 한 줄 버튼 행 */
   --list-row-min-h: 1.5625rem; /* 25px @ default; 25px base intent — Shared list row min-height — watchlist/ranking/screener-result rows align (25px @ the 1.0× dial; was ≈28px at 1.125×, which is the watchlist row it was matched to). Heatmap rows opt out for max density. */

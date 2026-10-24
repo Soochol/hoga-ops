@@ -1,8 +1,10 @@
 import { readFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import { installLiveMocks } from './helpers/liveMocks';
 import { apiPrefix } from './helpers/apiRoutes';
-import { API_URL } from './worktreeEnv';
+import { API_URL, BASE_URL } from './worktreeEnv';
+import { emptyReview, todayKst } from '../../src/whiteboard/review';
 
 test('chart toolbar icon buttons save a rendered PNG and copy an image to the clipboard', async ({ page, context }, testInfo) => {
   await page.setViewportSize({ width: 2000, height: 900 });
@@ -77,16 +79,30 @@ test('chart toolbar icon buttons save a rendered PNG and copy an image to the cl
   expect(clipboard.width).toBe(Math.round(viewport.width * viewport.scale));
   expect(clipboard.height).toBe(Math.round(viewport.height * viewport.scale));
   expect(clipboard.colors).toBeGreaterThan(30);
-  await toolbar.getByRole('button', { name: '차트를 보드에 추가', exact: true }).click();
-  await page.getByRole('button', { name: '보드에 추가', exact: true }).click();
+  const targetId = randomUUID().replaceAll('-', '');
+  const created = await page.request.post(`${API_URL}/api/whiteboards`, { headers: { Origin: BASE_URL }, data: {
+    id: targetId, mutation_id: targetId, name: '차트 이미지 복기', review: emptyReview(todayKst()),
+  } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await toolbar.getByRole('button', { name: '복기 노트에 추가', exact: true }).click();
+  await page.getByLabel('추가할 노트', { exact: true }).selectOption(targetId);
+  await page.getByRole('button', { name: '차트 첨부하고 작성하기', exact: true }).click();
   await expect(page).toHaveURL(/\/whiteboard\?board=/);
-  await expect(page.getByTestId('whiteboard-editor')).toBeVisible();
+  await expect(page.getByTestId('review-document')).toBeVisible();
   const boardId = new URL(page.url()).searchParams.get('board');
   const board = async () => (await page.request.get(`${API_URL}/api/whiteboards/${boardId}`)).json();
-  await expect.poll(async () => (await board()).scene.elements.filter((el: { type: string }) => el.type === 'image').length).toBe(1);
-  expect((await board()).scene.elements[0].customData.chartSource.code).toBe('098460');
-  expect((await board()).scene.elements[0].link).toBe('/live?code=098460');
-  await page.locator('canvas.interactive').click({ position: { x: 600, y: 160 } });
+  await expect.poll(async () => (await board()).review.records.length).toBe(1);
+  expect((await board()).review.records[0].code).toBe('098460');
+  const recordSummary = page.locator('.rn-record-summary').first();
+  await expect(recordSummary).toBeVisible();
+  if (await recordSummary.getAttribute('aria-expanded') === 'false') await recordSummary.click();
+  await expect(page.getByRole('link', { name: '종목 차트 열기' })).toHaveAttribute('href', '/live?code=098460');
+  await page.getByRole('heading', { name: '종목별 기록' }).click();
   await page.keyboard.press('Control+v');
-  await expect.poll(async () => (await board()).scene.elements.filter((el: { type: string }) => el.type === 'image').length).toBe(2);
+  await expect.poll(async () => (await board()).review.records.length).toBe(2);
+  const saved = await board();
+  await page.request.put(`${API_URL}/api/whiteboards/${targetId}`, { headers: { Origin: BASE_URL }, data: {
+    mutation_id: randomUUID().replaceAll('-', ''), expected_revision: saved.revision,
+    name: saved.name, scene: saved.scene, review: saved.review, deleted: true,
+  } });
 });
