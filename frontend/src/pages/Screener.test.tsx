@@ -12,6 +12,7 @@ vi.mock('../api/screener', async (orig) => ({
   ] })),
   getScreenerStatus: vi.fn(() => Promise.resolve({ status: 'ok', last_raw_date: '20260530', days_behind: 0, calculation_policies: ['legacy_v1', 'separate_bases_v2'] })),
   triggerScreenerUpdate: vi.fn(),
+  triggerScreenerHistoryRepair: vi.fn(),
 }));
 // 페이지 진입 시 저장 조건검색이 자동 로드된다(빈 빌더 = 조회 비활성). 기본 mock 은
 // 저장본 1개를 반환해 대부분의 테스트가 "자동 로드 → 조회 가능" 경로를 타게 한다.

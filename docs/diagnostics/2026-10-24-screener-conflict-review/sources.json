@@ -1,0 +1,1244 @@
+{
+  "review_date": "2026-10-24",
+  "public_filings": [
+    {
+      "code": "000020",
+      "id": "20230315001798",
+      "title": "[연결포함] 사업보고서(일반법인) (2022.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230315001798",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/15/001798/20230315004552/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 761,
+          "error": null,
+          "captured_html_sha256": "3e9c2443d1bd36103ff3225b38089fa3ff64a204adb84667093dde5cac02328a"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/15/001798/20230315004552/11011.htm",
+          "downloaded": true,
+          "text_characters": 230006,
+          "error": null,
+          "captured_html_sha256": "325e2c9c49add762496a9fc815f87fcde286bf389df7f6d9191a53ed5e6d926b"
+        }
+      ]
+    },
+    {
+      "code": "000020",
+      "id": "20260318001380",
+      "title": "[연결포함] 사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260318001380",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/001380/20260318006423/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "40be97e74ffd54255bd7651883c5d14d91d15c4116df13770209019a697cb2d5"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/001380/20260318006423/11011.htm",
+          "downloaded": true,
+          "text_characters": 262088,
+          "error": null,
+          "captured_html_sha256": "7dacc17ccffc3599c16df3fb35a071b87f88e4da3dc82934f014f39a006cdfcc"
+        }
+      ]
+    },
+    {
+      "code": "000020",
+      "id": "20261002000658",
+      "title": "[정정] 반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261002000658",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/10/02/000658/20261002001595/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 863,
+          "error": null,
+          "captured_html_sha256": "4154f9f2df62c6fec376ecd0ae9791d4b566b1c8a7938dc0a178bb1d2e422dc3"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/10/02/000658/20261002001595/11012.htm",
+          "downloaded": true,
+          "text_characters": 185937,
+          "error": null,
+          "captured_html_sha256": "734ffe3ab287d59326a46b3ba47b6e2aa5ad4aec119c1eabca54ff4d3ed5591e"
+        }
+      ]
+    },
+    {
+      "code": "003240",
+      "id": "20230814000264",
+      "title": "반기보고서(일반법인) (2023.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230814000264",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/08/14/000264/20230814000703/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 761,
+          "error": null,
+          "captured_html_sha256": "c4b7959321df84cf7d98a7c2193c9fa2e29da7a1b0eb02c4b43d41e4c49ac417"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2023/08/14/000264/20230814000703/11012.htm",
+          "downloaded": true,
+          "text_characters": 133656,
+          "error": null,
+          "captured_html_sha256": "c95a82a4f7bfe1807544f4dbf45ba2e2aa73d5db77be263c5d285aabe01407a3"
+        }
+      ]
+    },
+    {
+      "code": "003240",
+      "id": "20260323002312",
+      "title": "[연결포함] 사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260323002312",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/23/002312/20260323009742/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "40be97e74ffd54255bd7651883c5d14d91d15c4116df13770209019a697cb2d5"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/23/002312/20260323009742/11011.htm",
+          "downloaded": true,
+          "text_characters": 303736,
+          "error": null,
+          "captured_html_sha256": "995c7bd87e558cdf7eac3f63e1a13f320ec00ea2d38c15676197689567a31533"
+        }
+      ]
+    },
+    {
+      "code": "003240",
+      "id": "20260814003401",
+      "title": "반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814003401",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/003401/20260814011992/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "cc9226f7041c303aacf9047dbaaf84739c6864869a3f745f86ad815bb76d1ed9"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/003401/20260814011992/11012.htm",
+          "downloaded": true,
+          "text_characters": 199391,
+          "error": null,
+          "captured_html_sha256": "8310d9b907e83f559ede5b7e11f02a178fd19f255e8ecbbc81b12a4ac9b76fcc"
+        }
+      ]
+    },
+    {
+      "code": "003240",
+      "id": "20250514000777",
+      "title": "합병등종료보고서",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250514000777",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/05/14/000777/20250514001672/12000_toc.htm",
+          "downloaded": true,
+          "text_characters": 112,
+          "error": null,
+          "captured_html_sha256": "eb544c079845b2e35e10533ecefc6fe3eee72c729f8a3f9783c8284af5e437a1"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2025/05/14/000777/20250514001672/12000.htm",
+          "downloaded": true,
+          "text_characters": 1535,
+          "error": null,
+          "captured_html_sha256": "b902f5ef9df621b9b4fd0e166080c09f606fd1f0a2b869cf711c1e758933587b"
+        }
+      ]
+    },
+    {
+      "code": "013120",
+      "id": "20230323000698",
+      "title": "[연결포함] 사업보고서(일반법인) (2022.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230323000698",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/23/000698/20230323002870/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 761,
+          "error": null,
+          "captured_html_sha256": "3e9c2443d1bd36103ff3225b38089fa3ff64a204adb84667093dde5cac02328a"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/23/000698/20230323002870/11011.htm",
+          "downloaded": true,
+          "text_characters": 227243,
+          "error": null,
+          "captured_html_sha256": "b87cf8f084f3078a2e6ef65636fec906e3d5278c1b5ea0ef57f2c4ab944ed2fb"
+        }
+      ]
+    },
+    {
+      "code": "013120",
+      "id": "20260319001460",
+      "title": "[연결포함] 사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260319001460",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/19/001460/20260319006022/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "40be97e74ffd54255bd7651883c5d14d91d15c4116df13770209019a697cb2d5"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/19/001460/20260319006022/11011.htm",
+          "downloaded": true,
+          "text_characters": 252950,
+          "error": null,
+          "captured_html_sha256": "8b9c14da82239c47a31bf609566ee523111a62ca1a4e9621bbcfc0246857f6de"
+        }
+      ]
+    },
+    {
+      "code": "013120",
+      "id": "20260814000912",
+      "title": "반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814000912",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/000912/20260814003003/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "cc9226f7041c303aacf9047dbaaf84739c6864869a3f745f86ad815bb76d1ed9"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/000912/20260814003003/11012.htm",
+          "downloaded": true,
+          "text_characters": 201668,
+          "error": null,
+          "captured_html_sha256": "97c9554f81e6e895b531fc0d8d592a3d30ebb89b422b241a492397a5bce804d2"
+        }
+      ]
+    },
+    {
+      "code": "000520",
+      "id": "20230309000328",
+      "title": "무상증자결정",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230309000328",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/09/000328/20230309001044/11307_toc.htm",
+          "downloaded": true,
+          "text_characters": 29,
+          "error": null,
+          "captured_html_sha256": "8f34faad80f5e9db2f7a5ec9415b6dc61ea4be39c6f039d316729be165c8a06e"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/09/000328/20230309001044/11307.htm",
+          "downloaded": true,
+          "text_characters": 1076,
+          "error": null,
+          "captured_html_sha256": "686ced8989afdc03fa46bc907386e33188e2eafd0faeb82a582cea841563d9ff"
+        }
+      ]
+    },
+    {
+      "code": "000520",
+      "id": "20230417000151",
+      "title": "추가상장(무상증자)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230417000151",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/04/17/000151/20230417000341/68154.htm",
+          "downloaded": true,
+          "text_characters": 235,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "000520",
+      "id": "20260318002338",
+      "title": "[연결포함] 사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260318002338",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/002338/20260318010945/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "40be97e74ffd54255bd7651883c5d14d91d15c4116df13770209019a697cb2d5"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/002338/20260318010945/11011.htm",
+          "downloaded": true,
+          "text_characters": 270439,
+          "error": null,
+          "captured_html_sha256": "d1bceb2f680aafcb239769d80180eeb93c3a8584776cb6ee93a00c0da41eae61"
+        }
+      ]
+    },
+    {
+      "code": "000520",
+      "id": "20260814001306",
+      "title": "반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814001306",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/001306/20260814004318/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "cc9226f7041c303aacf9047dbaaf84739c6864869a3f745f86ad815bb76d1ed9"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/001306/20260814004318/11012.htm",
+          "downloaded": true,
+          "text_characters": 184291,
+          "error": null,
+          "captured_html_sha256": "5314d0fd6d415194377e48ecd72f87cbe52845053c5241bb3c459e97a2ce7a12"
+        }
+      ]
+    },
+    {
+      "code": "017650",
+      "id": "20251224000813",
+      "title": "변경상장(주식소각)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20251224000813",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/12/24/000813/20251224002141/70763.htm",
+          "downloaded": true,
+          "text_characters": 280,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "017650",
+      "id": "20260318002212",
+      "title": "[정정][연결포함] 사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260318002212",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/002212/20260318010349/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 863,
+          "error": null,
+          "captured_html_sha256": "42b3a4c149283c47c3f0faf5b230b07fc53fcecb578a4efbef3ff6a5030f85d3"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/18/002212/20260318010349/11011.htm",
+          "downloaded": true,
+          "text_characters": 183966,
+          "error": null,
+          "captured_html_sha256": "839f3eaf184f1c693b218344dadcc65d49d198a682f26d09f1b022a1c791fb2e"
+        }
+      ]
+    },
+    {
+      "code": "017650",
+      "id": "20260814002055",
+      "title": "반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814002055",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/002055/20260814007051/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "cc9226f7041c303aacf9047dbaaf84739c6864869a3f745f86ad815bb76d1ed9"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/002055/20260814007051/11012.htm",
+          "downloaded": true,
+          "text_characters": 134020,
+          "error": null,
+          "captured_html_sha256": "07bd162fb6c181613aec04071ed03f8f77f3596097f057cb26cb90092561a6cd"
+        }
+      ]
+    },
+    {
+      "code": "017650",
+      "id": "20260813000805",
+      "title": "주식분할결정",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260813000805",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/13/000805/20260812002084/70128.htm",
+          "downloaded": true,
+          "text_characters": 578,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "017650",
+      "id": "20261012000566",
+      "title": "변경상장(액면변경)(액면분할)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261012000566",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/10/12/000566/20261012001389/70764.htm",
+          "downloaded": true,
+          "text_characters": 230,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "017650",
+      "id": "20261012000607",
+      "title": "기준가격안내(액면분할)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261012000607",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/10/12/000607/20261012001458/70795.htm",
+          "downloaded": true,
+          "text_characters": 165,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "900310",
+      "id": "20230428000667",
+      "title": "사업보고서(일반법인) (2022.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230428000667",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/04/28/000667/20230428001440/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 761,
+          "error": null,
+          "captured_html_sha256": "3e9c2443d1bd36103ff3225b38089fa3ff64a204adb84667093dde5cac02328a"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2023/04/28/000667/20230428001440/11011.htm",
+          "downloaded": true,
+          "text_characters": 139030,
+          "error": null,
+          "captured_html_sha256": "cf14f6b2ba9c25da9a8a9437bb9bb42c6db3322143574b7bf2a3f6ce951a1c4b"
+        }
+      ]
+    },
+    {
+      "code": "900310",
+      "id": "20260422000813",
+      "title": "사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260422000813",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/04/22/000813/20260422002274/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "40be97e74ffd54255bd7651883c5d14d91d15c4116df13770209019a697cb2d5"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/04/22/000813/20260422002274/11011.htm",
+          "downloaded": true,
+          "text_characters": 159171,
+          "error": null,
+          "captured_html_sha256": "5ba0ae0fe7daa337d86c34b5b74f5061c421728b742b277aead745613ad67a29"
+        }
+      ]
+    },
+    {
+      "code": "900310",
+      "id": "20260825000649",
+      "title": "반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260825000649",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/25/000649/20260825001605/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "cc9226f7041c303aacf9047dbaaf84739c6864869a3f745f86ad815bb76d1ed9"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/25/000649/20260825001605/11012.htm",
+          "downloaded": true,
+          "text_characters": 132584,
+          "error": null,
+          "captured_html_sha256": "a52f0b5fdeb1a54c45756f5d6c933da30d006d743a82e06f682cbca5ddec6b88"
+        }
+      ]
+    },
+    {
+      "code": "900310",
+      "id": "20260408000780",
+      "title": "[정정] 주식병합결정",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260408000780",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/04/08/000780/20260408001121/70129.htm",
+          "downloaded": true,
+          "text_characters": 1242,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "900310",
+      "id": "20260609000793",
+      "title": "변경상장(주식병합(무액면주식))",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260609000793",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/06/09/000793/20260609001820/70763.htm",
+          "downloaded": true,
+          "text_characters": 275,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "900310",
+      "id": "20260609000810",
+      "title": "기준가격안내(주식병합)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260609000810",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/06/09/000810/20260609001697/70795.htm",
+          "downloaded": true,
+          "text_characters": 155,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "001000",
+      "id": "20230303000937",
+      "title": "사업보고서(일반법인) (2022.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230303000937",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/03/000937/20230303002067/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 761,
+          "error": null,
+          "captured_html_sha256": "3e9c2443d1bd36103ff3225b38089fa3ff64a204adb84667093dde5cac02328a"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/03/000937/20230303002067/11011.htm",
+          "downloaded": true,
+          "text_characters": 94150,
+          "error": null,
+          "captured_html_sha256": "c49cbbf37951d5e8e870bdd66017be559ccf60846b005c501ad4d18757567073"
+        }
+      ]
+    },
+    {
+      "code": "001000",
+      "id": "20260306001558",
+      "title": "사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260306001558",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/06/001558/20260306003446/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "40be97e74ffd54255bd7651883c5d14d91d15c4116df13770209019a697cb2d5"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/06/001558/20260306003446/11011.htm",
+          "downloaded": true,
+          "text_characters": 90565,
+          "error": null,
+          "captured_html_sha256": "a349c3db35c415ab10e9fe32756291315d3301215de7a12b7ccabb364f975b44"
+        }
+      ]
+    },
+    {
+      "code": "001000",
+      "id": "20260814002421",
+      "title": "반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814002421",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/002421/20260814008402/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 848,
+          "error": null,
+          "captured_html_sha256": "cc9226f7041c303aacf9047dbaaf84739c6864869a3f745f86ad815bb76d1ed9"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/002421/20260814008402/11012.htm",
+          "downloaded": true,
+          "text_characters": 68281,
+          "error": null,
+          "captured_html_sha256": "6f6a42653a6be70ece63e864e98d3c3e9cfd6e8496db6eecc4309013a243ff28"
+        }
+      ]
+    },
+    {
+      "code": "001000",
+      "id": "20260626001007",
+      "title": "주식병합결정",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260626001007",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/06/26/001007/20260625001787/70129.htm",
+          "downloaded": true,
+          "text_characters": 639,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "001000",
+      "id": "20260910000470",
+      "title": "변경상장(액면변경)(액면병합)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260910000470",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/10/000470/20260910001323/70764.htm",
+          "downloaded": true,
+          "text_characters": 229,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "001000",
+      "id": "20260910000535",
+      "title": "기준가격안내(액면병합)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260910000535",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/10/000535/20260910001191/70795.htm",
+          "downloaded": true,
+          "text_characters": 164,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20181207000186",
+      "title": "변경상장(주식소각)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20181207000186",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2018/12/07/000186/20181207000387/68155.htm",
+          "downloaded": true,
+          "text_characters": 454,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20200330004928",
+      "title": "[연결포함] 사업보고서(일반법인) (2019.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20200330004928",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2020/03/30/004928/20200330018878/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 472,
+          "error": null,
+          "captured_html_sha256": "f1f653bb9f70606d252ecb560d00c292523837152e7cacf13e10e4c0dfe36c25"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2020/03/30/004928/20200330018878/11011.htm",
+          "downloaded": true,
+          "text_characters": 560798,
+          "error": null,
+          "captured_html_sha256": "b27286908393fa1d44ca76b91b84a68ff1d152311df730ddb352ea5a8abc8c1d"
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20210309001165",
+      "title": "[연결포함] 사업보고서(일반법인) (2020.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20210309001165",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2021/03/09/001165/20210309002783/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 485,
+          "error": null,
+          "captured_html_sha256": "a6906f822d05cd2141af4cb29a54e3bbf2ebd191bb813215b534b82fcfa66b9e"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2021/03/09/001165/20210309002783/11011.htm",
+          "downloaded": true,
+          "text_characters": 557044,
+          "error": null,
+          "captured_html_sha256": "de58da70e566336a746d468acd67dee8763c0055dcb64d742d239a6610f4f86c"
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20210817001673",
+      "title": "반기보고서(일반법인) (2021.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20210817001673",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2021/08/17/001673/20210817005160/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 775,
+          "error": null,
+          "captured_html_sha256": "b019b6834a5054a42c484467051adaf3d99c86eed1422f2c8555e41784794b54"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2021/08/17/001673/20210817005160/11012.htm",
+          "downloaded": true,
+          "text_characters": 487480,
+          "error": null,
+          "captured_html_sha256": "b53060e1d2fbe4ec2995e1e1693aa67d0b5cf9b25b891a1596b534968be90b7f"
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20230307000775",
+      "title": "[연결포함] 사업보고서(일반법인) (2022.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230307000775",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/07/000775/20230307001777/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 775,
+          "error": null,
+          "captured_html_sha256": "0760d8663097cdeadf4dede5d47da525903635e6c97fc62af6239172cd9402e6"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2023/03/07/000775/20230307001777/11011.htm",
+          "downloaded": true,
+          "text_characters": 620699,
+          "error": null,
+          "captured_html_sha256": "2bde90a45c75f4de3104a12bddfac51d47fb267e5cf84cda64f702095ee042e4"
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20260310001404",
+      "title": "[연결포함] 사업보고서(일반법인) (2025.12)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260310001404",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/10/001404/20260310003123/11011_toc.htm",
+          "downloaded": true,
+          "text_characters": 862,
+          "error": null,
+          "captured_html_sha256": "00ddcefbb3f08f7f8ee1e893ff6f5e4182a6101a80803975a96e5cce5666777a"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/03/10/001404/20260310003123/11011.htm",
+          "downloaded": true,
+          "text_characters": 716922,
+          "error": null,
+          "captured_html_sha256": "6fb0f2c5a7f1fc0d1c39e613a10292380e9833936c99bcc4a5e2b4a8535fe34d"
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20260814003138",
+      "title": "반기보고서(일반법인) (2026.06)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814003138",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/003138/20260814011035/11012_toc.htm",
+          "downloaded": true,
+          "text_characters": 862,
+          "error": null,
+          "captured_html_sha256": "c7d90b0293812e3ed9a1244757d923ad409b78e773c8ac2bb9f1c69caaef0990"
+        },
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/003138/20260814011035/11012.htm",
+          "downloaded": true,
+          "text_characters": 639836,
+          "error": null,
+          "captured_html_sha256": "2df80b25b962f66c88c8c75dfa069537e8801954b357ab5c30924860c031484e"
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20250228000236",
+      "title": "변경상장(주식소각)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250228000236",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2025/02/28/000236/20250228000675/68155.htm",
+          "downloaded": true,
+          "text_characters": 417,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    },
+    {
+      "code": "005930",
+      "id": "20260409000375",
+      "title": "변경상장(주식소각)",
+      "viewer_url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260409000375",
+      "bodies": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/04/09/000375/20260409000536/68155.htm",
+          "downloaded": true,
+          "text_characters": 418,
+          "error": null,
+          "captured_html_sha256": null
+        }
+      ]
+    }
+  ],
+  "listing_search": {
+    "rows": 6170,
+    "unique_filing_ids": 6170,
+    "windows": [
+      {
+        "code": "000020",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 58,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "000020",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 86,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "003240",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 74,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "003240",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 223,
+        "listing_pages_fetched": 3
+      },
+      {
+        "code": "000520",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 126,
+        "listing_pages_fetched": 2
+      },
+      {
+        "code": "000520",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 121,
+        "listing_pages_fetched": 2
+      },
+      {
+        "code": "013120",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 95,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "013120",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 131,
+        "listing_pages_fetched": 2
+      },
+      {
+        "code": "017650",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 53,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "017650",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 63,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "900310",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 41,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "900310",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 65,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "005930",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 457,
+        "listing_pages_fetched": 5
+      },
+      {
+        "code": "005930",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 3911,
+        "listing_pages_fetched": 40
+      },
+      {
+        "code": "001000",
+        "from": "2021-11-26",
+        "to": "2023-12-31",
+        "total": 26,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "001000",
+        "from": "2024-01-01",
+        "to": "2026-10-24",
+        "total": 78,
+        "listing_pages_fetched": 1
+      },
+      {
+        "code": "005930",
+        "from": "2018-08-28",
+        "to": "2020-12-31",
+        "total": 403,
+        "listing_pages_fetched": 5
+      },
+      {
+        "code": "005930",
+        "from": "2021-01-01",
+        "to": "2021-11-25",
+        "total": 159,
+        "listing_pages_fetched": 2
+      }
+    ],
+    "files": [
+      {
+        "name": "kind-000020-2021-11-26-2023-12-31-1.html",
+        "sha256": "e8f745bb6df2701a6aedbcc65e3227175ba98c91d3eab7f77fbead1380d3c126"
+      },
+      {
+        "name": "kind-000020-2024-01-01-2026-10-24-1.html",
+        "sha256": "e4491549cddb19b8b43328406fa6ce992289e97f3e04d9e37b43616e88d67f90"
+      },
+      {
+        "name": "kind-000520-2021-11-26-2023-12-31-1.html",
+        "sha256": "60ef5e4c2ba906ee0af7c52f339a13a414ccc0aafbf2968a950a18dea223baf7"
+      },
+      {
+        "name": "kind-000520-2021-11-26-2023-12-31-2.html",
+        "sha256": "c9c38bc9b7ed7b88f68a249b25d05264d029c214a5c43f496fe84722b5213455"
+      },
+      {
+        "name": "kind-000520-2024-01-01-2026-10-24-1.html",
+        "sha256": "edf7829a4215546b635af65f58346895d5cb87fb6b28c3cc17ef229aa046f585"
+      },
+      {
+        "name": "kind-000520-2024-01-01-2026-10-24-2.html",
+        "sha256": "fb2c6e1374fd169358c7e0190e9ed6a7969a559181163da37e264d0699369e5d"
+      },
+      {
+        "name": "kind-001000-2021-11-26-2023-12-31-1.html",
+        "sha256": "12cd4425f134880feed725674c30ce761f150a41a5859eb250af699abb4b3cbb"
+      },
+      {
+        "name": "kind-001000-2024-01-01-2026-10-24-1.html",
+        "sha256": "b254f66c9ace926bee83384707bdc2e85fc9448e5e5a92931dc1eba1cd735dc4"
+      },
+      {
+        "name": "kind-003240-2021-11-26-2023-12-31-1.html",
+        "sha256": "3269f2251dfc79600c8e84417e2b1237e8d1de196a2173093c640b99a8b2d5d9"
+      },
+      {
+        "name": "kind-003240-2024-01-01-2026-10-24-1.html",
+        "sha256": "36d34a1c91476b325a4005e3b9e774dedea001c05f48fb17f5b06f0d51d30a2f"
+      },
+      {
+        "name": "kind-003240-2024-01-01-2026-10-24-2.html",
+        "sha256": "21d965d20c633fb2366f4402427694f0247915d037983c5c4a88de50061f6cc3"
+      },
+      {
+        "name": "kind-003240-2024-01-01-2026-10-24-3.html",
+        "sha256": "950a84b28f4a0f1bab17588953ed3136d44afc4fe1a564b113f2e0ae423e26e1"
+      },
+      {
+        "name": "kind-005930-2018-08-28-2020-12-31-1.html",
+        "sha256": "e191d25ab793000b7fd56ab1454f0f01a4b8b752575253a328496a786676ad16"
+      },
+      {
+        "name": "kind-005930-2018-08-28-2020-12-31-2.html",
+        "sha256": "8d89f052a1fb2587063b475a2c33c8a2143325baa3f5bca34877190170db754a"
+      },
+      {
+        "name": "kind-005930-2018-08-28-2020-12-31-3.html",
+        "sha256": "e0c72f56492c379e89bcc9d1bdf5c530ad3cb0d91c88de779a6841df7782cb61"
+      },
+      {
+        "name": "kind-005930-2018-08-28-2020-12-31-4.html",
+        "sha256": "ac797558fff6df9b3381fe793f31194f7a521f87aec3def39b2036b9a64b9cd3"
+      },
+      {
+        "name": "kind-005930-2018-08-28-2020-12-31-5.html",
+        "sha256": "b3ce0975a9300843cbe2a082ba5d27b9d18c14054bef684dda8fc75e68857fbc"
+      },
+      {
+        "name": "kind-005930-2018-08-28-2021-11-25-1.html",
+        "sha256": "78fc475929fe66e85b9da32ec240abf432d037140841c4c5d105ff2c63c6de58"
+      },
+      {
+        "name": "kind-005930-2021-01-01-2021-11-25-1.html",
+        "sha256": "e5288876daef1cdecd0e16da5f84273c31b91554b32f722d7d8839d6f5213ccb"
+      },
+      {
+        "name": "kind-005930-2021-01-01-2021-11-25-2.html",
+        "sha256": "3c808390813e869ffc7337a37dbbf2a6fd151db41cf1298037dec5e5a8168655"
+      },
+      {
+        "name": "kind-005930-2021-11-26-2023-12-31-1.html",
+        "sha256": "bc3dd4cd58bb8933c3e2f4e60717790730712a3f24fce36c5f46707485428a97"
+      },
+      {
+        "name": "kind-005930-2021-11-26-2023-12-31-2.html",
+        "sha256": "510a3482548c9ae88055071d168c8d5a4553c226432969a2ac5baede565db1e0"
+      },
+      {
+        "name": "kind-005930-2021-11-26-2023-12-31-3.html",
+        "sha256": "e21f888d59cc0dab357c38a70a1c8b45a10f3e51859c8d95447feabc1ba42679"
+      },
+      {
+        "name": "kind-005930-2021-11-26-2023-12-31-4.html",
+        "sha256": "21d16e64d7a981526fbb8a82eba349cc2aaa7eef49e0bedd7d30377be0c7eceb"
+      },
+      {
+        "name": "kind-005930-2021-11-26-2023-12-31-5.html",
+        "sha256": "c77cb34e78bf5d17afadb477449645fe222f8e2899d91989964ddd5447b26529"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-1.html",
+        "sha256": "f9a2c1acc49512a367dc5af36eafc9b6e854db852838d8dde029f6e8e2ca11b8"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-10.html",
+        "sha256": "82a767fb16a3905068592b25e2eb7461ccd4f84475abbd518c429f8fad4b3937"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-11.html",
+        "sha256": "b67d2fbc9e72d82cdc97c7891aad6cf8bc1555459e41a698f200edf0893ddfb6"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-12.html",
+        "sha256": "d9c5edfe0ae325ecc8afeec04ae513df5ee72b1592325bf76271b6b987643330"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-13.html",
+        "sha256": "c2ac8c828ade86cee9d40bb2010f24f330f451a0423ebc47e94dad8d5234e9b3"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-14.html",
+        "sha256": "e6e20f69d109659537a536ee77bd0bb76a3df5061daa6fec6f9f87e72ec83cc3"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-15.html",
+        "sha256": "483ae77c3d353872c5f82491c67200bbdf140c571e64a53f690de5e2a2a58839"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-16.html",
+        "sha256": "86cb9d4d70fc073c9204d97ccaf21962bc5d92b83e1a8258443605892cc5dc78"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-17.html",
+        "sha256": "2051128cf9cc159e4bef59df1af4720bd9dd6ee2781713f151e30c20358c8591"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-18.html",
+        "sha256": "2163a697517b58e7e85b83b1af81c16ea32e7b8cd22d40e5f85e7a115b5e2e10"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-19.html",
+        "sha256": "dad740eec5381c2da08c76507ba7d7dd61eb044e783e339b42bcca78c35ed704"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-2.html",
+        "sha256": "4b4fd158f6d5a7ebbb0a2a6d11e7e0f537d7eeedf186fcca447f7c9636e38ea3"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-20.html",
+        "sha256": "991c52735f7f1750db8c89f9328317b648b4344df4b9427dcdc119b4d86a6e1b"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-21.html",
+        "sha256": "2962b4225ff4062ef360fb892cdfa03f42960af85de59e43076fb5e9b6c60956"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-22.html",
+        "sha256": "95ea87d5d0a59c61dab9ac0c7c2eedf1f474dc4bc1d4b2e98ce48397a4f0e099"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-23.html",
+        "sha256": "117eb5cba4be250b659490408968b89caa5ddd361667bbcfd69cdfee9eeae7c9"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-24.html",
+        "sha256": "301bab2c5df58ce7d64f877624cfd22d6351032832861d0e6117f01069b906b3"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-25.html",
+        "sha256": "443e5975fda9fd2122b3e06a0539ee110bc2814e9e000e321c08d36e2f42c19f"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-26.html",
+        "sha256": "5f5b75700bd7fbe960c93b436618b271482be66e9bb5161b6d6e5098e578fda9"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-27.html",
+        "sha256": "5f4cef0a1f7463777d4f90701a061c470ddf404c050624b1d1e3f8ed0c4370b9"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-28.html",
+        "sha256": "37050ff97b9e9c3a05dadb51200679a067d8d74fd529164442dcb9cfe13bb932"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-29.html",
+        "sha256": "5da4fa0d60610c2a807203bd7ecc3f390cfaf8c7d216437bfb26150df4800bdd"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-3.html",
+        "sha256": "bd403c05c311fa1617cfde30e13116d59ca15519f579a11ee76fa9a4f0b504ed"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-30.html",
+        "sha256": "2ac491e181bddedc312d939827268b989b09b25dc1e6cee85efcbdd7a49f689f"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-31.html",
+        "sha256": "b4452cdc534e8375603e1b43d23e603233ce32c4ddf9d2059efb475b15ac4952"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-32.html",
+        "sha256": "9d495439c893e5337a16c0de799a01184917b45ceadd1530d685374f3492d6cf"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-33.html",
+        "sha256": "07d672ebba7194d24915dae842379dc65903d535bd544a12801d9d255739a425"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-34.html",
+        "sha256": "0ef828ab6c69e4a8979f7fbf711fbbefd978d8cb94050c49aa406c50792bb74a"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-35.html",
+        "sha256": "bc9ddf64ddb716f82ffd5174d63460c1b615235a708d96f22b9d66e389e189e7"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-36.html",
+        "sha256": "670b1e5ba401a6c5fd141c2b4b0c9b11b7e1a18381e3f4933818b335555ab1fd"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-37.html",
+        "sha256": "62558b04eacaa335c44472be2cbd7725571b46fd52e7ce858ec75238adbd37c9"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-38.html",
+        "sha256": "ddd622f3b1eb67dd10ff76db0ea3e65b5f8f8d5856795cb001a947636440c49f"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-39.html",
+        "sha256": "a6b7e819fd617a54aae8403f3fdf925599b72d624628fde5bb5e58ef320832a8"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-4.html",
+        "sha256": "1dbf1c20d327f3ce05c7ea0a3000361e4a82544fdd22706609e706315bf5cb96"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-40.html",
+        "sha256": "6bf0acfb9ad52daf9bdc61f993e73ff4f452c3fc3f40e7c7d881ba2d298175f7"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-5.html",
+        "sha256": "7f24a012f0ce4dd1c91f451f71d6b2567ca1bdf66335a2fc2a7d880940fc4a20"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-6.html",
+        "sha256": "fc247c55166c589df6f6d8be4e0397c39a4ace044dd9ffc432cdee63b0de9e8d"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-7.html",
+        "sha256": "b370f127a75cdd9c58d6e89669ef66f2c5d74e76b0daa27545e47db6dd96319a"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-8.html",
+        "sha256": "2df7767f0be5cdc1a63fc9ee3ee9cfcdaf5b6aba3adc433b4ccbaa62b23ba5f9"
+      },
+      {
+        "name": "kind-005930-2024-01-01-2026-10-24-9.html",
+        "sha256": "53c998bd449f494e3149090b05677195654f6f275b47ec556238ae211f4ae79d"
+      },
+      {
+        "name": "kind-013120-2021-11-26-2023-12-31-1.html",
+        "sha256": "58a756a1d943ead0905ac30877e2136160665ae8b08798757e7df21404d6f661"
+      },
+      {
+        "name": "kind-013120-2024-01-01-2026-10-24-1.html",
+        "sha256": "94c75e59392be2b4183e1ba89745f1087321bc1d80869b3411f30565d51fee5a"
+      },
+      {
+        "name": "kind-013120-2024-01-01-2026-10-24-2.html",
+        "sha256": "817d1dffc3ca71c286f61bd57af4c80fc9358afeabb42f2ce9d4e75ba43469f5"
+      },
+      {
+        "name": "kind-017650-2021-11-26-2023-12-31-1.html",
+        "sha256": "7dd0917bf83f809ad7b787a7229ed02de1ea6c006e31bdba398a1cbe69a65d8e"
+      },
+      {
+        "name": "kind-017650-2024-01-01-2026-10-24-1.html",
+        "sha256": "69cbfb28b112a0f9d329b170e465265c6550f866e164b059acafab3af403a1b6"
+      },
+      {
+        "name": "kind-900310-2021-11-26-2023-12-31-1.html",
+        "sha256": "314401bc286e08931c497866db9ba3b35718ff9e96db8257258028d79d9967e1"
+      },
+      {
+        "name": "kind-900310-2024-01-01-2026-10-24-1.html",
+        "sha256": "125622d5929d4eba5123e7435d4db87323f8d0dfa4519b424b5b94764838004a"
+      },
+      {
+        "name": "kind-coloray-2024-2026.html",
+        "sha256": "125622d5929d4eba5123e7435d4db87323f8d0dfa4519b424b5b94764838004a"
+      },
+      {
+        "name": "kind-search.html",
+        "sha256": "55ad8d2a02ebe0b5c1f43b58d35182d56e8c233b662184f9a64001c6067327fb"
+      }
+    ]
+  },
+  "limitations": [
+    "Paginated public listing and selected full reports were examined; not all 6170 full report bodies were read.",
+    "Public full bodies remain in the scratch directory; repository includes facts, URLs and capture hashes, not full annual-report text.",
+    "No production ShareEvidence certification or import was performed."
+  ]
+}

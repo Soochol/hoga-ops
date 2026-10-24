@@ -1925,6 +1925,8 @@ class HistoryDateRangeParams(BaseModel):
 CalculationPolicy = Literal["legacy_v1", "separate_bases_v2"]
 VolumeBasis = Literal["raw", "share_adjusted"]
 AmountMethod = Literal["provider_actual", "ohlcv_estimate", "mixed_daily"]
+DailySessionScope = Literal["provider_daily_all_sessions", "legacy_unknown", "mixed"]
+DailyConfirmationPolicy = Literal["historical_recheck_v1", "legacy_unverified", "mixed"]
 
 
 class HistoryVolumeParams(HistoryDateRangeParams):
@@ -2259,6 +2261,9 @@ class ScreenerRefreshSummary(BaseModel):
 
 ScreenerUpdateSkipReason = Literal[
     "no_gap",
+    "retry_wait",
+    "finalization_wait",
+    "daily_limit",
     "not_seeded",
     "creds_missing",
     "calendar_source_missing",
@@ -2537,6 +2542,9 @@ class ScreenerCalculation(BaseModel):
     event_revision: str | None = None
     replayable: bool = False
     execution_id: str | None = None
+    daily_session_scope: DailySessionScope | None = None
+    daily_confirmation_policy: DailyConfirmationPolicy | None = None
+    correction_revision: str | None = None
 
 
 class ScreenerVolumeEvidence(BaseModel):
@@ -2549,7 +2557,35 @@ class ScreenerVolumeEvidence(BaseModel):
     unit: str = "shares"
 
 
+class ScreenerDailyIngestStatus(BaseModel):
+    attempts_today: int = 0
+    provisional: int = 0
+    confirmed: int = 0
+    quarantined: int = 0
+    legacy: int = 0
+    checked_on: str | None = None
+    last_trading_day: str | None = None
+    last_attempt_at: str | None = None
+    failed_codes: int = 0
+    errors: dict[str, str] = Field(default_factory=dict)
+    unavailable_codes: int = 0
+    unavailable: dict[str, str] = Field(default_factory=dict)
+    retryable_unavailable_codes: int = 0
+    retired_codes: int = 0
+    retired: dict[str, str] = Field(default_factory=dict)
+    skipped_codes: int = 0
+    excluded_codes: int = 0
+    excluded_dates: int = 0
+    codes: int = 0
+    sample_count: int = 0
+    provider_pages: int = 0
+    reused_samples: int = 0
+    elapsed_ms: int = 0
+    commit_pending: bool = False
+
+
 class ScreenerResponse(BaseModel):
+    daily_coverage: BarVolumeCoverage | None = Field(default=None, exclude_if=lambda v: v is None)
     calculation: ScreenerCalculation | None = None
     history_coverage: HistoryCoverage | None = None
     bar_coverage: BarVolumeCoverage | None = None

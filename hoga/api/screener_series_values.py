@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
 
@@ -19,10 +19,12 @@ class Series:
     prices: dict[dt.date, dict]
     evidence: store.ShareEvidence | None
     conflicts: set[dt.date]
+    corrected: set[dt.date] = field(default_factory=set)
+    daily_quality: dict[dt.date, str] = field(default_factory=dict)
 
     def quantity(self, day: dt.date, anchor: dt.date, basis: str) -> Fraction | None:
         row = self.original.get(day)
-        if row is None or day in self.conflicts or not valid_row(row):
+        if row is None or day in self.conflicts or day in self.daily_quality or not valid_row(row):
             return None
         value = Fraction(row["volume"])
         if basis == "raw":
@@ -39,7 +41,7 @@ class Series:
 
     def amount(self, day: dt.date) -> float | None:
         row = self.original.get(day)
-        if row is None or day in self.conflicts or not valid_row(row):
+        if row is None or day in self.conflicts or day in self.daily_quality or not valid_row(row):
             return None
         amount = row.get("trade_value_won")
         if amount is not None:
@@ -79,6 +81,15 @@ def _dated(rows):
     return {dt.date.fromisoformat(row["date"]): row for row in rows}
 
 
+def _confirmed_observation(data_dir, manifest, observation):
+    candidate = store.current_observation(data_dir, observation)
+    if candidate.get("confirmation"):
+        from hoga.api.screener_daily_confirmation import confirmed_dates  # noqa: PLC0415
+
+        return candidate, confirmed_dates(candidate)
+    return candidate, set() if manifest.get("daily_contract_required") else None
+
+
 def load_series(
     data_dir: Path, manifest: dict, codes: list[str], *, first=dt.date.min, last=dt.date.max
 ) -> dict[str, Series]:
@@ -89,6 +100,8 @@ def load_series(
     )
     by_code = raw.partition_by("code", as_dict=True)
     result = {}
+    guard = store.read_object(data_dir, manifest["daily_ingest"]) if manifest.get("daily_ingest") else None
+    from hoga.api.screener_daily_quality import reason  # noqa: PLC0415 — shared availability semantics
     for code in codes:
         frame = by_code.get((code,))
         original = (
@@ -100,6 +113,7 @@ def load_series(
         prices, conflicts = {}, set()
         if observation_id:
             observation = store.read_object(data_dir, observation_id)
+            candidate, confirmed = _confirmed_observation(data_dir, manifest, observation)
             conflicts.update(dt.date.fromisoformat(day) for day in observation.get("conflicts", []))
             invalid_raw = _violation_dates(observation, "unadjusted")
             invalid_prices = _violation_dates(observation, "adjusted")
@@ -114,6 +128,8 @@ def load_series(
                 elif row.get("trade_value_won") is not None:
                     original[day] = {**old, "trade_value_won": row["trade_value_won"]}
             conflicts.update(original if invalid_raw is None else invalid_raw)
+            if confirmed is not None:
+                conflicts.update(day for day in original if day.isoformat() not in confirmed)
             if observation["adjusted_as_of"] == manifest["adjusted_as_of"] and invalid_prices is not None:
                 prices = {
                     day: row
@@ -122,10 +138,19 @@ def load_series(
                     and valid_price(row)
                     and row.get("complete", True)
                     and day not in invalid_prices
+                    and (confirmed is None or day.isoformat() in confirmed)
                 }
+            from hoga.api.screener_corrections import apply_review  # noqa: PLC0415 — avoid import cycle
+
+            corrected = apply_review(data_dir, manifest, code, original, conflicts, candidate, confirmed or set())
+        else:
+            corrected = set()
+            if manifest.get("daily_contract_required"):
+                conflicts.update(original)
         evidence_id = manifest["quantity"].get(code)
         evidence = store.ShareEvidence.model_validate(store.read_object(data_dir, evidence_id)) if evidence_id else None
         if evidence is not None and evidence.instrument_id != f"stock:{code}":
             evidence = None
-        result[code] = Series(original, prices, evidence, conflicts)
+        quality = {day: why for day in set(original) | set(prices) if (why := reason(guard, code, day))}
+        result[code] = Series(original, prices, evidence, conflicts, corrected, quality)
     return result

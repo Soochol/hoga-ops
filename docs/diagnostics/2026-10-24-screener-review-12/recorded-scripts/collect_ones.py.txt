@@ -1,0 +1,13 @@
+import asyncio,datetime as dt,gzip,hashlib,json
+from pathlib import Path
+import httpx
+P=Path(__file__).parent
+job=json.loads(gzip.decompress(Path('docs/diagnostics/2026-10-24-screener-review-535/apply-result.json.gz').read_bytes()))['job']
+async def main():
+ records=[]
+ async with httpx.AsyncClient(timeout=60) as client:
+  for code in ['020180','038390']:
+   for day in job['items'][code]['conflict_dates']:
+    ymd=day.replace('-','');start=dt.datetime.now(dt.timezone.utc).isoformat();r=await client.get('http://127.0.0.1:8000/api/live/past-candles',params={'code':code,'from':ymd,'to':ymd,'venue':'KRX','bucket_ms':60000});path=P/f'live-{code}-60000-{ymd}.json';path.write_bytes(r.content)
+    records.append({'code':code,'date':day,'url':str(r.url),'started_at':start,'finished_at':dt.datetime.now(dt.timezone.utc).isoformat(),'status':r.status_code,'file':path.name,'sha256':hashlib.sha256(r.content).hexdigest()});(P/'one-minute-collection.json').write_text(json.dumps(records,indent=2));r.raise_for_status();x=r.json();print(code,day,'rows',len(x['candles']),'fresh',x['fresh_dates'],'cached',x['cached_dates'],'warnings',x['data_warnings'],flush=True)
+asyncio.run(main())

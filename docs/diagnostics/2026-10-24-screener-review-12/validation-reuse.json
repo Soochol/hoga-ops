@@ -1,0 +1,10 @@
+{
+  "prior_verification": "../2026-10-24-screener-review-535/verification.json",
+  "prior_inputs_sha256": "6ed48734b916baea568d862ed239876dce16117cae53c3f32999da2049132483",
+  "current_code_revision": "9907e40acc177c11b1c54ab30f8cd702b9f6e5b6572684f841fa610363a8525b",
+  "previous_input_files_still_identical": 2687,
+  "changed_input_files": [],
+  "scope": "App unchanged; reuse previous backend result. New frozen data audit and Ruff run separately.",
+  "head": "44875d2aa8556c68bb54051668d3d55a3b342955",
+  "base": "3730bf91f211751a3b60b15cec1c227a33fd10f0"
+}

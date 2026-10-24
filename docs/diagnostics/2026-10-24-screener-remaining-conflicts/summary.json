@@ -1,0 +1,300 @@
+{
+  "scope": "Frozen 25-stock requested windows; offline classification and isolated simulation only",
+  "conflicts": 3737,
+  "current_rule_candidates": 583,
+  "pending_after_simulation": 3154,
+  "production_additional_corrections": 0,
+  "quantity_evidence_imports": 0,
+  "categories": {
+    "intraday_prefix": 212,
+    "daily_minute_scope_unresolved": 205,
+    "pre_event_adjusted_as_original_rule_required": 535,
+    "historical_anchor_and_price_factor_unresolved": 318,
+    "multiple_consolidations_rule_required": 226,
+    "legacy_reverse_rounding": 347,
+    "legacy_reverse_basis": 24,
+    "price_factor_inverse_reconstruction_rule_required": 1870
+  },
+  "codes": [
+    {
+      "code": "000020",
+      "name": "동화약품",
+      "conflicts": 28,
+      "current_rule_candidates": 12,
+      "remaining_if_applied": 16,
+      "categories": {
+        "intraday_prefix": 12,
+        "daily_minute_scope_unresolved": 16
+      }
+    },
+    {
+      "code": "000120",
+      "name": "CJ대한통운",
+      "conflicts": 4,
+      "current_rule_candidates": 4,
+      "remaining_if_applied": 0,
+      "categories": {
+        "intraday_prefix": 4
+      }
+    },
+    {
+      "code": "000430",
+      "name": "대원강업",
+      "conflicts": 27,
+      "current_rule_candidates": 15,
+      "remaining_if_applied": 12,
+      "categories": {
+        "daily_minute_scope_unresolved": 12,
+        "intraday_prefix": 15
+      }
+    },
+    {
+      "code": "000520",
+      "name": "삼일제약",
+      "conflicts": 26,
+      "current_rule_candidates": 16,
+      "remaining_if_applied": 10,
+      "categories": {
+        "daily_minute_scope_unresolved": 10,
+        "intraday_prefix": 16
+      }
+    },
+    {
+      "code": "000650",
+      "name": "천일고속",
+      "conflicts": 20,
+      "current_rule_candidates": 6,
+      "remaining_if_applied": 14,
+      "categories": {
+        "daily_minute_scope_unresolved": 14,
+        "intraday_prefix": 6
+      }
+    },
+    {
+      "code": "001000",
+      "name": "신라섬유",
+      "conflicts": 17,
+      "current_rule_candidates": 2,
+      "remaining_if_applied": 15,
+      "categories": {
+        "daily_minute_scope_unresolved": 15,
+        "intraday_prefix": 2
+      }
+    },
+    {
+      "code": "001530",
+      "name": "DI동일",
+      "conflicts": 321,
+      "current_rule_candidates": 4,
+      "remaining_if_applied": 317,
+      "categories": {
+        "price_factor_inverse_reconstruction_rule_required": 317,
+        "intraday_prefix": 4
+      }
+    },
+    {
+      "code": "003060",
+      "name": "에이프로젠바이오로직스",
+      "conflicts": 337,
+      "current_rule_candidates": 15,
+      "remaining_if_applied": 322,
+      "categories": {
+        "price_factor_inverse_reconstruction_rule_required": 317,
+        "daily_minute_scope_unresolved": 5,
+        "intraday_prefix": 15
+      }
+    },
+    {
+      "code": "003230",
+      "name": "삼양식품",
+      "conflicts": 4,
+      "current_rule_candidates": 3,
+      "remaining_if_applied": 1,
+      "categories": {
+        "intraday_prefix": 3,
+        "daily_minute_scope_unresolved": 1
+      }
+    },
+    {
+      "code": "003240",
+      "name": "태광산업",
+      "conflicts": 3,
+      "current_rule_candidates": 3,
+      "remaining_if_applied": 0,
+      "categories": {
+        "intraday_prefix": 3
+      }
+    },
+    {
+      "code": "004770",
+      "name": "써니전자",
+      "conflicts": 26,
+      "current_rule_candidates": 7,
+      "remaining_if_applied": 19,
+      "categories": {
+        "daily_minute_scope_unresolved": 19,
+        "intraday_prefix": 7
+      }
+    },
+    {
+      "code": "005930",
+      "name": "삼성전자",
+      "conflicts": 28,
+      "current_rule_candidates": 0,
+      "remaining_if_applied": 28,
+      "categories": {
+        "daily_minute_scope_unresolved": 28
+      }
+    },
+    {
+      "code": "012450",
+      "name": "한화에어로스페이스",
+      "conflicts": 333,
+      "current_rule_candidates": 13,
+      "remaining_if_applied": 320,
+      "categories": {
+        "price_factor_inverse_reconstruction_rule_required": 318,
+        "intraday_prefix": 13,
+        "daily_minute_scope_unresolved": 2
+      }
+    },
+    {
+      "code": "013030",
+      "name": "하이록코리아",
+      "conflicts": 4,
+      "current_rule_candidates": 4,
+      "remaining_if_applied": 0,
+      "categories": {
+        "intraday_prefix": 4
+      }
+    },
+    {
+      "code": "013120",
+      "name": "동원개발",
+      "conflicts": 23,
+      "current_rule_candidates": 12,
+      "remaining_if_applied": 11,
+      "categories": {
+        "daily_minute_scope_unresolved": 11,
+        "intraday_prefix": 12
+      }
+    },
+    {
+      "code": "017650",
+      "name": "대림제지",
+      "conflicts": 3,
+      "current_rule_candidates": 2,
+      "remaining_if_applied": 1,
+      "categories": {
+        "daily_minute_scope_unresolved": 1,
+        "intraday_prefix": 2
+      }
+    },
+    {
+      "code": "020180",
+      "name": "대신정보통신",
+      "conflicts": 335,
+      "current_rule_candidates": 11,
+      "remaining_if_applied": 324,
+      "categories": {
+        "pre_event_adjusted_as_original_rule_required": 317,
+        "daily_minute_scope_unresolved": 7,
+        "intraday_prefix": 11
+      }
+    },
+    {
+      "code": "020400",
+      "name": "대동금속",
+      "conflicts": 339,
+      "current_rule_candidates": 14,
+      "remaining_if_applied": 325,
+      "categories": {
+        "price_factor_inverse_reconstruction_rule_required": 318,
+        "daily_minute_scope_unresolved": 7,
+        "intraday_prefix": 14
+      }
+    },
+    {
+      "code": "025980",
+      "name": "아난티",
+      "conflicts": 30,
+      "current_rule_candidates": 5,
+      "remaining_if_applied": 25,
+      "categories": {
+        "daily_minute_scope_unresolved": 25,
+        "intraday_prefix": 5
+      }
+    },
+    {
+      "code": "027710",
+      "name": "팜스토리",
+      "conflicts": 29,
+      "current_rule_candidates": 13,
+      "remaining_if_applied": 16,
+      "categories": {
+        "daily_minute_scope_unresolved": 16,
+        "intraday_prefix": 13
+      }
+    },
+    {
+      "code": "038390",
+      "name": "레드캡투어",
+      "conflicts": 234,
+      "current_rule_candidates": 11,
+      "remaining_if_applied": 223,
+      "categories": {
+        "pre_event_adjusted_as_original_rule_required": 218,
+        "daily_minute_scope_unresolved": 5,
+        "intraday_prefix": 11
+      }
+    },
+    {
+      "code": "044480",
+      "name": "빌리언스",
+      "conflicts": 334,
+      "current_rule_candidates": 12,
+      "remaining_if_applied": 322,
+      "categories": {
+        "historical_anchor_and_price_factor_unresolved": 318,
+        "daily_minute_scope_unresolved": 4,
+        "intraday_prefix": 12
+      }
+    },
+    {
+      "code": "900300",
+      "name": "오가닉티코스메틱",
+      "conflicts": 611,
+      "current_rule_candidates": 381,
+      "remaining_if_applied": 230,
+      "categories": {
+        "multiple_consolidations_rule_required": 226,
+        "legacy_reverse_rounding": 347,
+        "legacy_reverse_basis": 24,
+        "intraday_prefix": 10,
+        "daily_minute_scope_unresolved": 4
+      }
+    },
+    {
+      "code": "900310",
+      "name": "컬러레이",
+      "conflicts": 7,
+      "current_rule_candidates": 7,
+      "remaining_if_applied": 0,
+      "categories": {
+        "intraday_prefix": 7
+      }
+    },
+    {
+      "code": "900340",
+      "name": "윙입푸드",
+      "conflicts": 614,
+      "current_rule_candidates": 11,
+      "remaining_if_applied": 603,
+      "categories": {
+        "price_factor_inverse_reconstruction_rule_required": 600,
+        "daily_minute_scope_unresolved": 3,
+        "intraday_prefix": 11
+      }
+    }
+  ]
+}

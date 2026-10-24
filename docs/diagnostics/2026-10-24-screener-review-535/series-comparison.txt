@@ -1,0 +1,1 @@
+PASS all 535 resolved rows, exact old/new OHLCV, unchanged adjusted source, raw new selection, quantity history still unknown

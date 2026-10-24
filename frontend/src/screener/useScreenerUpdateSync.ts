@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { subscribeToScreenerUpdateEvents } from '../api/eventStream';
-import type { ScreenerRefreshSummary, ScreenerStatus, ScreenerUpdateSkipReason } from '../api/screener';
+import type { ScreenerDailyIngestStatus, ScreenerRefreshSummary, ScreenerStatus, ScreenerUpdateSkipReason } from '../api/screener';
 import { useScreenerPanelStore } from '../state/screenerPanel';
 
 export interface ScreenerUpdateFeedback {
@@ -51,17 +51,23 @@ export function visibleUpdateFeedback(
   feedback: ScreenerUpdateFeedback | null,
   isUpdating: boolean,
   refresh?: ScreenerRefreshSummary | null,
+  daily?: ScreenerDailyIngestStatus | null,
 ): ScreenerUpdateFeedback | null {
-  if (refresh?.completed_ms != null && (feedback === null
+  const dailyAt = daily?.last_attempt_at ? Date.parse(daily.last_attempt_at) : 0;
+  if (refresh?.completed_ms != null && refresh.completed_ms > dailyAt && (feedback === null
       || (feedback.source === 'update' && refresh.completed_ms > feedback.atMs))) {
     feedback = finishedMessage({ updated: 0, reason: refresh.reason, refresh });
   }
+  if (feedback?.source === 'update' && feedback.atMs < dailyAt) feedback = null;
   if (feedback === null) return null;
   return isUpdating && feedback.source === 'update' ? null : feedback;
 }
 
 export const SKIP_REASON_MESSAGES: Record<ScreenerUpdateSkipReason, string> = {
   no_gap: '이미 최신입니다',
+  finalization_wait: '낮 검증은 이미 시도했습니다 — 남은 검증은 밤 10시 이후 진행합니다',
+  retry_wait: '미확인 종목 재시도 대기 중 — 직전 시도에서 30분 후 다시 확인합니다',
+  daily_limit: '오늘 자동 검증 시도 한도에 도달했습니다 — 다음 날 다시 확인합니다',
   not_seeded: '시드되지 않음 — 운영자 CLI로 시드하세요',
   creds_missing: '키움 인증정보 없음 — 갱신 불가',
   // **재시도 안내를 달지 않는다.** 달력 조회 경로에는 벤더가 없어(PR-H·#1044)
@@ -121,7 +127,8 @@ export function useScreenerUpdateSync(): void {
             : prev);
       } else if (e.type === 'screener_update_finished') {
         useScreenerUpdateFeedback.getState().setFeedback(finishedMessage(e));
-        if (e.updated > 0 || (e.refresh?.written_rows ?? 0) > 0 || (e.refresh?.symbols_added ?? 0) > 0) useScreenerPanelStore.getState().markLastScanDataStale();
+        // A quarantine can change eligibility even when no historical row was appended.
+        useScreenerPanelStore.getState().markLastScanDataStale();
         qc.invalidateQueries({ queryKey: ['screener-status'] });
         if (e.refresh?.master_refreshed) qc.invalidateQueries({ queryKey: ['symbols'] });
       } else if (e.type === 'disconnected') {

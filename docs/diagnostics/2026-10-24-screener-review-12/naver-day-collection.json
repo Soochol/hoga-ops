@@ -1,0 +1,38 @@
+[
+  {
+    "url": "https://finance.naver.com/item/sise_day.naver?code=020180&page=9",
+    "status": 410,
+    "file": "naver-day-020180-9.html",
+    "sha256": "3c3a5359cd326b8c8e8469f965e6f053cd4104719727bbbae27127158e3d3c40"
+  },
+  {
+    "url": "https://finance.naver.com/item/sise_day.naver?code=020180&page=10",
+    "status": 410,
+    "file": "naver-day-020180-10.html",
+    "sha256": "3c3a5359cd326b8c8e8469f965e6f053cd4104719727bbbae27127158e3d3c40"
+  },
+  {
+    "url": "https://finance.naver.com/item/sise_day.naver?code=020180&page=11",
+    "status": 410,
+    "file": "naver-day-020180-11.html",
+    "sha256": "3c3a5359cd326b8c8e8469f965e6f053cd4104719727bbbae27127158e3d3c40"
+  },
+  {
+    "url": "https://finance.naver.com/item/sise_day.naver?code=038390&page=9",
+    "status": 410,
+    "file": "naver-day-038390-9.html",
+    "sha256": "3c3a5359cd326b8c8e8469f965e6f053cd4104719727bbbae27127158e3d3c40"
+  },
+  {
+    "url": "https://finance.naver.com/item/sise_day.naver?code=038390&page=10",
+    "status": 410,
+    "file": "naver-day-038390-10.html",
+    "sha256": "3c3a5359cd326b8c8e8469f965e6f053cd4104719727bbbae27127158e3d3c40"
+  },
+  {
+    "url": "https://finance.naver.com/item/sise_day.naver?code=038390&page=11",
+    "status": 410,
+    "file": "naver-day-038390-11.html",
+    "sha256": "3c3a5359cd326b8c8e8469f965e6f053cd4104719727bbbae27127158e3d3c40"
+  }
+]

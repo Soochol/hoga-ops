@@ -1,0 +1,39 @@
+import ast,datetime as dt,gzip,hashlib,json,shutil,subprocess
+from pathlib import Path
+from hoga.api import screener_series_store as s,screener_recovery as r,screener_daily_confirmation as conf
+from hoga.api.screener_series_execution import code_revision
+from hoga.util.timeenc import KST
+P=Path(__file__).parent;R=Path('docs/diagnostics/2026-10-24-screener-review-12');R.mkdir(exist_ok=True);D=Path('/home/dev/.local/share/hoga-ops/data')
+sid,m=s.load_snapshot(D);parent='a158e84fa7b712630d87d17c0fcd3925effb472f21157b557999a815ab483de7';job=r.load_job(D,parent).model_dump(mode='json');archived=json.loads(gzip.decompress(Path('docs/diagnostics/2026-10-24-screener-remaining-conflicts/minute-responses.json.gz').read_bytes()));oldrows=json.loads(gzip.decompress(Path('docs/diagnostics/2026-10-24-screener-remaining-conflicts/rows.json.gz').read_bytes()));oldmap={(x['code'],x['date']):x for x in oldrows}
+records=[];sources={}
+for code in ['020180','038390']:
+ o=s.current_observation(D,s.read_object(D,m['observations'][code]));assert conf.state(o)=='confirmed';new={x['date']:x for x in o['unadjusted']};adj={x['date']:x for x in o['adjusted']}
+ chart=ast.literal_eval((P/f'naver-{code}.txt').read_text().strip());naver={x[0]:x for x in chart[1:]}
+ for day in job['items'][code]['conflict_dates']:
+  ymd=day.replace('-','');row=oldmap[code,day];one=json.loads((P/f'live-{code}-60000-{ymd}.json').read_bytes());previous=json.loads(archived[f'minute-{code}-{ymd}.json']);assert one['candles']==previous['candles'] and one['adjust_factors']==previous['adjust_factors']
+  minutes={}
+  for bucket in [60000,180000,3600000]:
+   data=one if bucket==60000 else json.loads((P/f'live-{code}-{bucket}.json').read_bytes());assert not data['data_warnings']
+   bars=[x for x in data['candles'] if dt.datetime.fromtimestamp(x['t_ms']/1000,KST).date().isoformat()==day]
+   minutes[str(bucket)]={'code':data['code'],'venue':data['venue'],'bucket_ms':data['bucket_ms'],'from':ymd,'to':ymd,'candles':bars,'data_warnings':[],'adjust_factors':{ymd:data['adjust_factors'][ymd]}}
+  daily=json.loads((P/f'live-{code}-daily.json').read_bytes());live=next(x for x in daily['candles'] if dt.datetime.fromtimestamp(x['t_ms']/1000,KST).date().isoformat()==day)
+  samples={}
+  for which in ['first','second']:
+   sample=o['confirmation'][which];samples[which]={**{k:sample[k] for k in ['started_at','finished_at']},**{k:next(x for x in sample[k] if x['date']==day) for k in ['unadjusted','adjusted']},'raw_provider_row':next(x for x in sample['provider_rows']['unadjusted'] if x['dt']==ymd)}
+  records.append({'code':code,'date':day,'observation_id':m['observations'][code],'candidate_id':s.digest(o),'old':row['old'],'selected':new[day],'adjusted':adj[day],'legacy_factor':row['legacy_factor'],'historical_samples':samples,'live_adjusted_daily':live,'naver_chart':dict(zip(['date','open','high','low','close','volume','foreign_pct'],naver[ymd],strict=True)),'minutes':minutes,'archived_one_minute_unchanged':True})
+assert len(records)==12
+for name in ['protected-before.json','snapshot-before.json','jobs-before.json','live-collection.json','live-collection.txt','one-minute-collection.json','one-minute-collection.txt','public-collection.json','naver-day-collection.json']:
+ shutil.copyfile(P/name,R/name)
+# Raw public portal responses retain their exact source bytes; no API credentials are present.
+for name in ['naver-020180.txt','naver-038390.txt']:
+ shutil.copyfile(P/name,R/name)
+for filename in ['live-020180-daily.json','live-038390-daily.json','live-020180-180000.json','live-038390-180000.json','live-020180-3600000.json','live-038390-3600000.json']:
+ sources[filename]=(P/filename).read_text()
+for record in records:
+ name=f"live-{record['code']}-60000-{record['date'].replace('-','')}.json";sources[name]=(P/name).read_text()
+(R/'live-responses.json.gz').write_bytes(gzip.compress(json.dumps(sources,ensure_ascii=False).encode(),mtime=0));(R/'evidence.json.gz').write_bytes(gzip.compress(json.dumps(records,ensure_ascii=False,indent=2).encode(),mtime=0))
+(R/'source-job.json').write_text(json.dumps(job,ensure_ascii=False,indent=2))
+assert r.protected_hashes(D)==json.loads((P/'protected-before.json').read_text());assert s.load_snapshot(D)[0]==json.loads((P/'snapshot-before.json').read_text())['id']
+oldjobs=json.loads((P/'jobs-before.json').read_text());nowjobs={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in r.directory(D).rglob('*.json')};assert oldjobs==nowjobs
+(R/'preservation.json').write_text(json.dumps({'snapshot_unchanged':True,'protected_before':r.protected_hashes(D),'protected_after':r.protected_hashes(D),'job_files_before':oldjobs,'job_files_after':nowjobs,'published_corrections':0,'observation_publications':0,'app_code_revision':code_revision(),'head':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),'base':subprocess.check_output(['git','rev-parse','origin/main'],text=True).strip(),'scope':'Read-only production data; existing API queries may warm in-memory chart caches.'},indent=2))
+print('Frozen 12 full records; 18 real API responses; original snapshot, protected files and nine plan/job files unchanged')

@@ -1,0 +1,3 @@
+PASS: 535 exact pre-event corrections; previous 1066 retained; 1601 total, 2619 conflicts remain.
+PASS: legacy saves 7/7 unchanged; 12 actual HTTP executions and version-bound exact replays.
+PASS: 535 raw selections verified; two historical windows ready; quantity history remains unknown.

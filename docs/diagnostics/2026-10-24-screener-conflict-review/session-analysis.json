@@ -1,0 +1,449 @@
+{
+  "000020": {
+    "date": "2026-09-21",
+    "preserved": {
+      "code": "000020",
+      "date": "2026-09-21",
+      "open": 5050.0,
+      "high": 5060.0,
+      "low": 4945.0,
+      "close": 5000.0,
+      "volume": 49879
+    },
+    "observed": {
+      "code": "000020",
+      "date": "2026-09-21",
+      "open": 5050.0,
+      "high": 5060.0,
+      "low": 4945.0,
+      "close": 5020.0,
+      "volume": 50117,
+      "trade_value_won": 250000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 1.0,
+    "minute_rows": 272,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 5010.0,
+        "cumulative_volume": 48993.0
+      },
+      {
+        "time": "19:59",
+        "close_original_units": 5020.0,
+        "cumulative_volume": 50110.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [],
+    "minute_total_volume": 50110.0,
+    "daily_volume_matches_minute_total": false,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-000020-20260921.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "003240": {
+    "date": "2026-09-21",
+    "preserved": {
+      "code": "003240",
+      "date": "2026-09-21",
+      "open": 893000.0,
+      "high": 940000.0,
+      "low": 885000.0,
+      "close": 907000.0,
+      "volume": 985
+    },
+    "observed": {
+      "code": "003240",
+      "date": "2026-09-21",
+      "open": 893000.0,
+      "high": 940000.0,
+      "low": 885000.0,
+      "close": 910000.0,
+      "volume": 990,
+      "trade_value_won": 888000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 1.0,
+    "minute_rows": 115,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 893000.0,
+        "cumulative_volume": 866.0
+      },
+      {
+        "time": "19:57",
+        "close_original_units": 910000.0,
+        "cumulative_volume": 990.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [
+      {
+        "through": "19:24",
+        "aggregate": {
+          "open": 893000.0,
+          "high": 940000.0,
+          "low": 885000.0,
+          "close": 907000.0,
+          "volume": 985.0
+        }
+      }
+    ],
+    "minute_total_volume": 990.0,
+    "daily_volume_matches_minute_total": true,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-003240-20260921.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "000520": {
+    "date": "2026-09-21",
+    "preserved": {
+      "code": "000520",
+      "date": "2026-09-21",
+      "open": 7740.0,
+      "high": 8300.0,
+      "low": 7530.0,
+      "close": 8220.0,
+      "volume": 238583
+    },
+    "observed": {
+      "code": "000520",
+      "date": "2026-09-21",
+      "open": 7740.0,
+      "high": 8300.0,
+      "low": 7530.0,
+      "close": 8200.0,
+      "volume": 240013,
+      "trade_value_won": 1942000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 1.0,
+    "minute_rows": 371,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 8220.0,
+        "cumulative_volume": 234184.0
+      },
+      {
+        "time": "19:59",
+        "close_original_units": 8200.0,
+        "cumulative_volume": 240013.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [
+      {
+        "through": "19:09",
+        "aggregate": {
+          "open": 7740.0,
+          "high": 8300.0,
+          "low": 7530.0,
+          "close": 8220.0,
+          "volume": 238583.0
+        }
+      }
+    ],
+    "minute_total_volume": 240013.0,
+    "daily_volume_matches_minute_total": true,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-000520-20260921.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "013120": {
+    "date": "2026-09-21",
+    "preserved": {
+      "code": "013120",
+      "date": "2026-09-21",
+      "open": 2095.0,
+      "high": 2105.0,
+      "low": 2070.0,
+      "close": 2075.0,
+      "volume": 33989
+    },
+    "observed": {
+      "code": "013120",
+      "date": "2026-09-21",
+      "open": 2095.0,
+      "high": 2105.0,
+      "low": 2070.0,
+      "close": 2085.0,
+      "volume": 34089,
+      "trade_value_won": 71000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 1.0,
+    "minute_rows": 155,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 2090.0,
+        "cumulative_volume": 32757.0
+      },
+      {
+        "time": "19:59",
+        "close_original_units": 2085.0,
+        "cumulative_volume": 34089.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [
+      {
+        "through": "19:21",
+        "aggregate": {
+          "open": 2095.0,
+          "high": 2105.0,
+          "low": 2070.0,
+          "close": 2075.0,
+          "volume": 33989.0
+        }
+      }
+    ],
+    "minute_total_volume": 34089.0,
+    "daily_volume_matches_minute_total": true,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-013120-20260921.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "017650": {
+    "date": "2026-09-14",
+    "preserved": {
+      "code": "017650",
+      "date": "2026-09-14",
+      "open": 10850.0,
+      "high": 10890.0,
+      "low": 10650.0,
+      "close": 10880.0,
+      "volume": 57011
+    },
+    "observed": {
+      "code": "017650",
+      "date": "2026-09-14",
+      "open": 10850.0,
+      "high": 10890.0,
+      "low": 10650.0,
+      "close": 10880.0,
+      "volume": 57012,
+      "trade_value_won": 616000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 0.2,
+    "minute_rows": 101,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 10870.0,
+        "cumulative_volume": 57010.0
+      },
+      {
+        "time": "18:27",
+        "close_original_units": 10880.0,
+        "cumulative_volume": 57012.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [
+      {
+        "through": "16:52",
+        "aggregate": {
+          "open": 10850.0,
+          "high": 10890.0,
+          "low": 10650.0,
+          "close": 10880.0,
+          "volume": 57011.0
+        }
+      }
+    ],
+    "minute_total_volume": 57012.0,
+    "daily_volume_matches_minute_total": true,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-017650-20260914.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "900310": {
+    "date": "2026-09-21",
+    "preserved": {
+      "code": "900310",
+      "date": "2026-09-21",
+      "open": 2100.0,
+      "high": 2305.0,
+      "low": 2015.0,
+      "close": 2190.0,
+      "volume": 4546
+    },
+    "observed": {
+      "code": "900310",
+      "date": "2026-09-21",
+      "open": 2100.0,
+      "high": 2305.0,
+      "low": 2015.0,
+      "close": 2205.0,
+      "volume": 4624,
+      "trade_value_won": 10000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 1.0,
+    "minute_rows": 56,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 2090.0,
+        "cumulative_volume": 4483.0
+      },
+      {
+        "time": "19:54",
+        "close_original_units": 2205.0,
+        "cumulative_volume": 4624.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [
+      {
+        "through": "19:17",
+        "aggregate": {
+          "open": 2100.0,
+          "high": 2305.0,
+          "low": 2015.0,
+          "close": 2190.0,
+          "volume": 4546.0
+        }
+      }
+    ],
+    "minute_total_volume": 4624.0,
+    "daily_volume_matches_minute_total": true,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-900310-20260921.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "005930": {
+    "date": "2026-09-21",
+    "preserved": {
+      "code": "005930",
+      "date": "2026-09-21",
+      "open": 264000.0,
+      "high": 275000.0,
+      "low": 263500.0,
+      "close": 274500.0,
+      "volume": 21995967
+    },
+    "observed": {
+      "code": "005930",
+      "date": "2026-09-21",
+      "open": 264000.0,
+      "high": 275000.0,
+      "low": 263500.0,
+      "close": 275000.0,
+      "volume": 22261519,
+      "trade_value_won": 6053449000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 1.0,
+    "minute_rows": 622,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 274000.0,
+        "cumulative_volume": 21530031.0
+      },
+      {
+        "time": "19:59",
+        "close_original_units": 275000.0,
+        "cumulative_volume": 22223575.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [],
+    "minute_total_volume": 22223575.0,
+    "daily_volume_matches_minute_total": false,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-005930-20260921.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "001000": {
+    "date": "2026-09-11",
+    "preserved": {
+      "code": "001000",
+      "date": "2026-09-11",
+      "open": 2500.0,
+      "high": 2550.0,
+      "low": 2050.0,
+      "close": 2190.0,
+      "volume": 271537
+    },
+    "observed": {
+      "code": "001000",
+      "date": "2026-09-11",
+      "open": 2500.0,
+      "high": 2550.0,
+      "low": 2050.0,
+      "close": 2190.0,
+      "volume": 271809,
+      "trade_value_won": 634000000,
+      "complete": true
+    },
+    "minute_adjust_factor": 1.0,
+    "minute_rows": 303,
+    "warnings": [],
+    "regular_close_and_last": [
+      {
+        "time": "15:30",
+        "close_original_units": 2190.0,
+        "cumulative_volume": 271537.0
+      }
+    ],
+    "prefix_matching_entire_old_ohlcv": [
+      {
+        "through": "15:30",
+        "aggregate": {
+          "open": 2500.0,
+          "high": 2550.0,
+          "low": 2050.0,
+          "close": 2190.0,
+          "volume": 271537.0
+        }
+      }
+    ],
+    "minute_total_volume": 271537.0,
+    "daily_volume_matches_minute_total": false,
+    "new_close_matches_final_minute": true,
+    "source_file": "sessions-001000-20260911.json",
+    "inference_limit": "A matching intraday prefix identifies the value represented; original ingest timestamps/source responses are unavailable. Minute and daily volume aggregation coverage need not match."
+  },
+  "opening_snapshot": {
+    "code": "000020",
+    "date": "2026-06-02",
+    "minutes": [
+      "09:00",
+      "09:01"
+    ],
+    "bars": [
+      {
+        "t_ms": 1780358400000,
+        "open": 5520.0,
+        "high": 5520.0,
+        "low": 5500.0,
+        "close": 5500.0,
+        "volume": 5943.0
+      },
+      {
+        "t_ms": 1780358460000,
+        "open": 5500.0,
+        "high": 5500.0,
+        "low": 5460.0,
+        "close": 5460.0,
+        "volume": 4011.0
+      }
+    ],
+    "aggregate": {
+      "open": 5520.0,
+      "high": 5520.0,
+      "low": 5460.0,
+      "close": 5460.0,
+      "volume": 9954.0
+    },
+    "exact_old_daily_equal": true
+  }
+}

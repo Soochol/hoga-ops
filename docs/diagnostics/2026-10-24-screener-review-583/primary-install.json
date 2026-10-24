@@ -1,0 +1,51 @@
+{
+  "files": {
+    "hoga/api/screener_corrections.py": {
+      "before": "93b3a8f11cf10db6a3fd892df0485e35b8fb3868d3338c670c382c7515836185",
+      "after": "60e9014be239774065bb4370d40fa1a8a22b05edffe01d9bfb2cf1e114f1182a"
+    },
+    "hoga/api/screener_series_store.py": {
+      "before": "37b87aed3be15de78afd994bf6b16086286919e32625fc0464d0f19015bd1126",
+      "after": "ffd1bfc123ce9fa3b483cbdf68decf0797ad4be845784d964c884ef5036f39d4"
+    },
+    "hoga/api/screener_recovery.py": {
+      "before": "dfd1bfb232b27fa0803f39d09c3d85fade47a253ab52eb74f23a47829e2262c9",
+      "after": "144d0be8f6e2224e886177cadd9732f07f059219b0673b1545d61477565bed91"
+    },
+    "hoga/api/screener_recovery_cli.py": {
+      "before": "3961cfe53c11a30b36414de71d31bbbf62beaa198e42596822912f63ee98e553",
+      "after": "3d6a6ffd0867703126862976b16670fd8422aa8d5c976264c2232022b6b9e43b"
+    },
+    "hoga/api/screener_recovery_api.py": {
+      "before": "6a5a69a1e515d15666bdf9c4c98d7819e6729ae2c5ee34addac5519f2984611a",
+      "after": "8947183efb939d568a9d5e5919c1b9fcb345ffc8b6b1b74a9f078666c6b55bb3"
+    },
+    "hoga/api/screener_review_plan.py": {
+      "before": null,
+      "after": "8f1635513bfcb37a41678a65a5f23a566c63db6bf6e4fa33ef37723d68ac50de"
+    }
+  },
+  "user_files_before": {
+    "CLAUDE.md": "0630570211779fb530034ba32a4a9c9abfb81df73ff8c4f56169823df841ccd7",
+    "CONTEXT.md": "0fda72e0a704ae40c194fcc831ccdb8aa5fd95f68d25aa6fda2e4ff9fd55c9da",
+    "DESIGN.md": "55a6c5b352743c10dc30778e7b99096908fd9d6f450f6bea5ccad21b2f1fd014",
+    "frontend/src/heatmap/StockDescriptionTooltip.test.tsx": "79d8d32d7b293774214e5881a148a0a2648c1bbe8ac48e061148822e83574ca5",
+    "frontend/src/heatmap/StockDescriptionTooltip.tsx": "1f335fa2b6d119b0ccce958bfd94f66b3da193d93846a45a8bbf09b28d2fa8c0",
+    "frontend/src/heatmap/stockDescriptions.json": "789d1e71d26019e065ceb72560a57bfbb9d395b04019b3c932080766ad71b484",
+    "frontend/src/heatmap/stockDescriptions.test.ts": "e8ae0449de302992395b7db332dca840afd6a07c9f10e20084f6cfb9ba3fa268",
+    "frontend/src/live/workspace/TitleBarSymbolRow.test.tsx": "3623205655dbbe85895aa32756a4ec24b44cbfa851e849a41cb6dbb49cd73397",
+    "frontend/tests/e2e/heatmap-stock-description.spec.ts": "f21a20e76349e803d33da737cf03b2a0aa8e7c36afd6d0174a17c3aa5795251e"
+  },
+  "primary_all_hoga_sources_match": true,
+  "user_files_after": {
+    "CLAUDE.md": "0630570211779fb530034ba32a4a9c9abfb81df73ff8c4f56169823df841ccd7",
+    "CONTEXT.md": "0fda72e0a704ae40c194fcc831ccdb8aa5fd95f68d25aa6fda2e4ff9fd55c9da",
+    "DESIGN.md": "55a6c5b352743c10dc30778e7b99096908fd9d6f450f6bea5ccad21b2f1fd014",
+    "frontend/src/heatmap/StockDescriptionTooltip.test.tsx": "79d8d32d7b293774214e5881a148a0a2648c1bbe8ac48e061148822e83574ca5",
+    "frontend/src/heatmap/StockDescriptionTooltip.tsx": "1f335fa2b6d119b0ccce958bfd94f66b3da193d93846a45a8bbf09b28d2fa8c0",
+    "frontend/src/heatmap/stockDescriptions.json": "789d1e71d26019e065ceb72560a57bfbb9d395b04019b3c932080766ad71b484",
+    "frontend/src/heatmap/stockDescriptions.test.ts": "e8ae0449de302992395b7db332dca840afd6a07c9f10e20084f6cfb9ba3fa268",
+    "frontend/src/live/workspace/TitleBarSymbolRow.test.tsx": "3623205655dbbe85895aa32756a4ec24b44cbfa851e849a41cb6dbb49cd73397",
+    "frontend/tests/e2e/heatmap-stock-description.spec.ts": "f21a20e76349e803d33da737cf03b2a0aa8e7c36afd6d0174a17c3aa5795251e"
+  }
+}

@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/dev/.codex/worktrees/c6fb/hoga-ops
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 103 items
+
+tests/api/test_screener_update.py ....................................   [ 34%]
+tests/api/test_screener_refresh.py ...........                           [ 45%]
+tests/api/test_screener_daily_ingest.py ................................ [ 76%]
+............                                                             [ 88%]
+tests/unit/api/test_rest_wire_schema_contract.py ............            [100%]
+
+=============================== warnings summary ===============================
+tests/api/test_screener_refresh.py: 11 warnings
+tests/api/test_screener_daily_ingest.py: 4 warnings
+  /home/dev/.codex/worktrees/c6fb/hoga-ops/hoga/api/screener_factors.py:115: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+    joined = u.join_asof(f, left_on="date", right_on="seg_start", by="code", strategy="backward")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================= 103 passed, 15 warnings in 4.51s =======================

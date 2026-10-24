@@ -1,0 +1,24 @@
+import asyncio,copy,json
+from pathlib import Path
+import httpx
+from hoga.api import screener_series_store as s
+P=Path(__file__).parent;D=Path('/home/dev/.local/share/hoga-ops/data')
+async def main():
+ before=json.loads((P/'operational-before.json').read_text());after=json.loads((P/'operational-after.json').read_text());records=[]
+ for old,new in zip(before['results'],after['results'],strict=True):
+  assert old['label']==new['label'];a=copy.deepcopy(old['request']);b=copy.deepcopy(new['request']);a.pop('snapshot_id');b.pop('snapshot_id');assert a==b
+  if old['label'] in ['historical_amount','historical_volume_raw']:
+   assert all(not x['complete'] for x in old['targets'].values());assert all(x['complete'] and x['matched'] for x in new['targets'].values())
+  else:assert old['targets']==new['targets']
+  if old['label'].startswith('saved_') or old['label']=='diagnostic_1000_raw':
+   assert old['response']['rows']==new['response']['rows']
+   for coverage in ['bar_coverage','history_coverage']:assert old['response'][coverage]==new['response'][coverage]
+  records.append({'label':new['label'],'before':old['targets'],'after':new['targets'],'before_rows':len(old['response']['rows']),'after_rows':len(new['response']['rows'])})
+ long=next(x for x in after['results'] if x['label']=='diagnostic_1000_raw');archive=s.read_object(D,long['execution_id']);bad={x['code'] for kind in ['bar_coverage','history_coverage'] if long['response'].get(kind) for x in long['response'][kind]['incomplete']};ready=sorted(set(archive['inputs']['codes'])-bad);assert ready==['000120','003240','013030','900310']
+ async with httpx.AsyncClient(timeout=90) as client:
+  for row in before['results']+after['results']:
+   r=await client.get('http://127.0.0.1:8000/api/screener/executions/'+row['execution_id']);r.raise_for_status();assert r.json()==row['response']
+  plan=json.loads((P/'review-plan-id.json').read_text())['plan_id'];r=await client.get('http://127.0.0.1:8000/api/screener/recovery/'+plan);r.raise_for_status();job=r.json();assert job==json.loads((P/'apply-result.json').read_text())['job'];(P/'operational-job.json').write_text(json.dumps(job,ensure_ascii=False,indent=2))
+ (P/'operational-comparison.json').write_text(json.dumps({'records':records,'long_window_ready_codes':ready,'current_http_get_all_equal':True,'same_requests_except_pinned_snapshot':True,'actual_archive_count':12},ensure_ascii=False,indent=2))
+ print('PASS two historical raw windows become evaluable and match; full/short/long saved scopes unchanged; 12 current HTTP GETs identical',flush=True)
+asyncio.run(main())

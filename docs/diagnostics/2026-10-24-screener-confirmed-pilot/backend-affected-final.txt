@@ -1,0 +1,86 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/dev/.codex/worktrees/c6fb/hoga-ops
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 854 items
+
+tests/api/test_screener_adjust.py ...                                    [  0%]
+tests/api/test_screener_backfill_run.py .....                            [  0%]
+tests/api/test_screener_bar_coverage_reasons.py ......                   [  1%]
+tests/api/test_screener_bar_price.py ................................... [  5%]
+..........................................                               [ 10%]
+tests/api/test_screener_bar_threshold.py ............................... [ 14%]
+...........................                                              [ 17%]
+tests/api/test_screener_bar_volume.py .....................              [ 19%]
+tests/api/test_screener_bollinger.py ................................... [ 24%]
+..............                                                           [ 25%]
+tests/api/test_screener_continuous.py ...............                    [ 27%]
+tests/api/test_screener_corrections.py .................                 [ 29%]
+tests/api/test_screener_daily_adapter.py ..                              [ 29%]
+tests/api/test_screener_daily_confirmation.py ..........                 [ 30%]
+tests/api/test_screener_derive.py .                                      [ 30%]
+tests/api/test_screener_derive_factors.py ......                         [ 31%]
+tests/api/test_screener_expression.py .................................. [ 35%]
+                                                                         [ 35%]
+tests/api/test_screener_factor_backfill.py ....                          [ 36%]
+tests/api/test_screener_factor_compute.py .......                        [ 36%]
+tests/api/test_screener_factors_store.py ....                            [ 37%]
+tests/api/test_screener_gap_repair.py ....                               [ 37%]
+tests/api/test_screener_history.py ................                      [ 39%]
+tests/api/test_screener_history_calendar.py .......                      [ 40%]
+tests/api/test_screener_history_design.py .......                        [ 41%]
+tests/api/test_screener_history_read_consistency.py ..                   [ 41%]
+tests/api/test_screener_history_recovery.py ..                           [ 41%]
+tests/api/test_screener_history_shutdown.py ....                         [ 42%]
+tests/api/test_screener_history_trade_value.py ..........                [ 43%]
+tests/api/test_screener_impact_report.py .                               [ 43%]
+tests/api/test_screener_intraday.py .........                            [ 44%]
+tests/api/test_screener_models.py ...............                        [ 46%]
+tests/api/test_screener_occurrence_exclusions.py ....................    [ 48%]
+tests/api/test_screener_pair_raw_adj.py ....                             [ 49%]
+tests/api/test_screener_reconcile.py ...                                 [ 49%]
+tests/api/test_screener_recovery.py ......................               [ 52%]
+tests/api/test_screener_recovery_api.py ....                             [ 52%]
+tests/api/test_screener_refresh.py ...........                           [ 53%]
+tests/api/test_screener_routes.py ..........                             [ 55%]
+tests/api/test_screener_run_update.py ...........                        [ 56%]
+tests/api/test_screener_runner.py ...........                            [ 57%]
+tests/api/test_screener_saves.py ....................                    [ 59%]
+tests/api/test_screener_scan.py .....................................    [ 64%]
+tests/api/test_screener_seed.py ..                                       [ 64%]
+tests/api/test_screener_seed_all.py .                                    [ 64%]
+tests/api/test_screener_series.py .......................                [ 67%]
+tests/api/test_screener_session_date.py ................................ [ 71%]
+................                                                         [ 72%]
+tests/api/test_screener_universe.py ..........                           [ 74%]
+tests/api/test_screener_update.py .............................          [ 77%]
+tests/unit/api/test_screener_factor_refresh.py ...............           [ 79%]
+tests/unit/api/test_screener_history_backfill.py ....................    [ 81%]
+tests/unit/api/test_screener_pattern.py ................................ [ 85%]
+.............................................                            [ 90%]
+tests/unit/api/test_screener_pattern_structure.py ...................    [ 92%]
+tests/unit/api/test_screener_q_code_dedup.py .............               [ 94%]
+tests/unit/api/test_rest_wire_schema_contract.py ............            [ 95%]
+tests/unit/live/test_kiwoom_daily_candles.py ........................... [ 98%]
+.........                                                                [100%]
+
+=============================== warnings summary ===============================
+tests/api/test_screener_backfill_run.py: 3 warnings
+tests/api/test_screener_corrections.py: 10 warnings
+tests/api/test_screener_derive_factors.py: 6 warnings
+tests/api/test_screener_gap_repair.py: 4 warnings
+tests/api/test_screener_history.py: 5 warnings
+tests/api/test_screener_history_design.py: 4 warnings
+tests/api/test_screener_history_recovery.py: 2 warnings
+tests/api/test_screener_history_trade_value.py: 1 warning
+tests/api/test_screener_recovery_api.py: 1 warning
+tests/api/test_screener_refresh.py: 11 warnings
+tests/unit/api/test_screener_factor_refresh.py: 8 warnings
+tests/unit/api/test_screener_history_backfill.py: 4 warnings
+  /home/dev/.codex/worktrees/c6fb/hoga-ops/hoga/api/screener_factors.py:115: UserWarning: Sortedness of columns cannot be checked when 'by' groups provided
+    joined = u.join_asof(f, left_on="date", right_on="seg_start", by="code", strategy="backward")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+====================== 854 passed, 59 warnings in 34.65s =======================

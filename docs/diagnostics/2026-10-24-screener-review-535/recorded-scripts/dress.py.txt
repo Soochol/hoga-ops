@@ -1,0 +1,22 @@
+import gzip,json,shutil
+from pathlib import Path
+from hoga.api import screener_recovery as recovery,screener_review_plan as review,screener_series_store as store
+DATA=Path('/home/dev/.local/share/hoga-ops/data');P=Path(__file__).parent
+DEST=Path('/tmp/hoga-review535-dress-final-20261024')
+assert not DEST.exists()
+shutil.copytree(DATA/'screener',DEST/'screener')
+for name in ['heatmap.json','watchlist.json']:
+ if (DATA/name).exists():shutil.copyfile(DATA/name,DEST/name)
+parent=json.loads((P/'source-job.json').read_text())['plan_id']
+payload=json.loads((P/'review-input.json').read_text())
+plan=review.create_plan(DEST,parent,payload)
+print('dress plan',plan,flush=True)
+result=review.apply_plan(DEST,plan)
+assert result['new_selections']==535
+job=result['job'];assert sum(len(x['conflict_dates']) for x in job['items'].values())==2619
+assert sum(len(x['resolved_conflict_dates']) for x in job['items'].values())==1601
+assert sorted(c for c,x in job['items'].items() if x['status']=='observed')==['000120','003240','013030','900310']
+again=review.apply_plan(DEST,plan);assert again['already_applied'] and again['snapshot_id']==result['snapshot_id']
+(P/'dress-result.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
+(P/'dress-plan-id.json').write_text(json.dumps({'plan_id':plan,'data_dir':str(DEST),'snapshot_id':result['snapshot_id']},indent=2))
+print('PASS real 535 proofs, total 1601, remaining 2619, four observed, idempotent retry',flush=True)

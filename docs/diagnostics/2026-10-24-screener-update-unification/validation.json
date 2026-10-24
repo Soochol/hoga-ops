@@ -1,0 +1,51 @@
+{
+  "checked_at": "2026-10-24T23:47:00.440539+09:00",
+  "head": "c406a25fe1b2c6a5e3ee7c85db65735a6234b0f6",
+  "base": "e3248951f5d31eadee673df468fb8b0e2cd2618a",
+  "code_revision": "112878f74a43c2ded56d830dac52db5d31819822b024164921eedd423a7cf746",
+  "inputs_unchanged": true,
+  "backend": {
+    "result_reused_on_identical_backend_inputs": true,
+    "reuse_audit": "backend-reuse-audit.json",
+    "passed": 7122,
+    "skipped": 2,
+    "deselected": 13,
+    "command": ".venv/bin/pytest -q -m 'not wallclock'"
+  },
+  "ruff": "passed",
+  "frontend": {
+    "total": 9024,
+    "full_run_passed": 9024,
+    "full_run_failed": 0,
+    "prior_main_full_run_passed": 9016,
+    "prior_main_full_run_failed": 2,
+    "failed_files_rerun_passed": 181,
+    "failed_files_rerun_failed": 0,
+    "failed_files": [
+      "src/live/LiveChartRoot.test.tsx",
+      "src/chart/projectors/hogaIndicators.perf.test.ts"
+    ],
+    "typecheck": "passed",
+    "build": "passed",
+    "sources_or_time_limits_changed_for_retry": false
+  },
+  "browser": {
+    "passed": 2,
+    "workers": 1,
+    "real_vendor_credentials": false
+  },
+  "concurrent_clicks_and_scheduler": {
+    "requests": 20,
+    "plans": 1,
+    "collections": 1,
+    "implicit_history_repairs": 0
+  },
+  "legacy_comparisons": 7,
+  "http_v2_comparisons": 3,
+  "new_execution_replay": "equal",
+  "old_archived_get": "unchanged",
+  "operational_normal_clicks": 3,
+  "operational_new_provider_requests": 0,
+  "operational_deep_repair_executed": false,
+  "data_and_saved_conditions_preserved": true
+}

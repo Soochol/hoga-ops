@@ -76,6 +76,7 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
             candidate = {**row, "date": day.isoformat()}
             if code in series and day <= clock.date() and values.valid_row(candidate):
                 series[code].original[day] = candidate
+                series[code].daily_quality.pop(day, None)
                 if manifest["adjusted_as_of"] == clock.date().isoformat():
                     series[code].prices[day] = candidate
     live_codes = set(overlay["code"].to_list()) if overlay is not None else set()
@@ -92,30 +93,54 @@ def calendar_evaluate(data_dir, req, pinned, codes, clock, overlay=None, fallbac
 
 
 def _confirmed_at(data_dir, manifest, codes, cutoff):
-    days = []
+    from hoga.api import screener_daily_confirmation as confirmation  # noqa: PLC0415 — provider metadata
+
+    timestamps = []
     for code in codes:
         identity = manifest["observations"].get(code)
         if identity:
             observation = store.read_object(data_dir, identity)
             if observation["adjusted_as_of"] != manifest["adjusted_as_of"]:
                 continue
-            days.extend(
-                row["date"]
+            candidate = store.current_observation(data_dir, observation)
+            verified = confirmation.confirmed_dates(candidate) if candidate.get("confirmation") else (
+                set() if manifest.get("daily_contract_required") else None
+            )
+            invalid = values._violation_dates(candidate, "adjusted")
+            timestamps.extend(
+                dt.datetime.combine(
+                    dt.date.fromisoformat(row["date"]),
+                    dt.time(confirmation.FINALIZATION_HOUR) if verified is not None else dt.time(15, 30), KST,
+                )
                 for row in observation["adjusted"]
                 if row["date"] <= cutoff.isoformat() and row.get("complete", True) and values.valid_price(row)
+                and invalid is not None and dt.date.fromisoformat(row["date"]) not in invalid
+                and (verified is None or row["date"] in verified)
             )
-    return (
-        int(dt.datetime.combine(dt.date.fromisoformat(max(days)), dt.time(15, 30), KST).timestamp() * 1000)
-        if days
-        else None
-    )
+    return int(max(timestamps).timestamp() * 1000) if timestamps else None
 
 
 def _eod_clock(now, confirmed):
     cutoff = now.date() - dt.timedelta(days=now.hour < EOD_CUTOFF_HOUR)
     if confirmed is not None:
         cutoff = min(cutoff, dt.datetime.fromtimestamp(confirmed / 1000, KST).date())
-    return dt.datetime.combine(cutoff, dt.time(15, 30), KST)
+    time = dt.datetime.fromtimestamp(confirmed / 1000, KST).time() if confirmed is not None else dt.time(15, 30)
+    return dt.datetime.combine(cutoff, time, KST)
+
+
+def _daily_contract(data_dir, manifest, codes):
+    scopes, policies = set(), set()
+    for code in codes:
+        identity = manifest["observations"].get(code)
+        observation = store.current_observation(data_dir, store.read_object(data_dir, identity)) if identity else {}
+        metadata = observation.get("confirmation", {})
+        scopes.add(metadata.get("session_scope", "legacy_unknown"))
+        policies.add(metadata.get("policy", "legacy_unverified"))
+    return {
+        "daily_session_scope": next(iter(scopes)) if len(scopes) == 1 else "mixed" if scopes else None,
+        "daily_confirmation_policy": next(iter(policies)) if len(policies) == 1 else "mixed" if policies else None,
+        "correction_revision": store.digest(manifest.get("corrections", {})),
+    }
 
 
 async def _inputs(data_dir, req, manifest, now, replay):
@@ -302,6 +327,7 @@ async def run_scan(
             adjusted_as_of=manifest["adjusted_as_of"],
             price_basis="vendor_adjusted",
             event_revision=store.digest(manifest["quantity"]),
+            **await asyncio.to_thread(_daily_contract, data_dir, manifest, inputs["codes"]),
         ),
         bar_coverage=BarVolumeCoverage(
             total=len(inputs["codes"]),

@@ -1,0 +1,6 @@
+020180 daily bars 32 warnings []
+020180 180000 bars 3689 warnings []
+020180 3600000 bars 224 warnings []
+038390 daily bars 32 warnings []
+038390 180000 bars 3259 warnings []
+038390 3600000 bars 224 warnings []

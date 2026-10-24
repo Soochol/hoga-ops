@@ -46,6 +46,7 @@ export interface PanelScan {
   // 총잔량 신고 조건이 있을 때만 채워진다 — 결과 테이블의 호가 신고 값 컬럼 복원용.
   historyCoverage?: ScreenerResponse['history_coverage'];
   barCoverage?: ScreenerResponse['bar_coverage'];
+  dailyCoverage?: ScreenerResponse['daily_coverage'];
   depthValues: Record<string, DepthPeakValue> | null;
   scannedAtMs: number;
   basisAtMs?: number | null;
@@ -220,6 +221,7 @@ function coercePanelScan(value: unknown, nowMs = Date.now()): PanelScan | null {
     warnings: raw.warnings as string[],
     historyCoverage: raw.historyCoverage as PanelScan['historyCoverage'],
     barCoverage: raw.barCoverage as PanelScan['barCoverage'],
+    dailyCoverage: raw.dailyCoverage as PanelScan['dailyCoverage'],
     calculation: raw.calculation as PanelScan['calculation'],
     depthValues,
     scannedAtMs: raw.scannedAtMs,

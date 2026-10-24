@@ -49,6 +49,9 @@ from hoga.api.error_codes import ComputeErrorCode
 from hoga.api.market_routes import DerivFlowResponse, FundsResponse, FundsRow, InvestorFlowResponse, ProgramResponse
 from hoga.api.panel_flow import PanelFlowResponse, PanelFlowSource, PanelGroupFlow, PanelStockFlow
 from hoga.api.screener_continuous import ContinuousStatus
+from hoga.api.screener_daily_confirmation import ConfirmationState
+from hoga.api.screener_recovery import RecoveryItem, RecoveryItemStatus, RecoveryJob, RecoveryJobStatus
+from hoga.api.screener_recovery_api import RecoveryAccepted, RecoveryCancellation, RecoveryRunRequest
 from hoga.live import flow_receipts, futures_runtime, market_overview
 from hoga.live.aftermarket_exclusions import (
     AftermarketExclusionReason,
@@ -134,8 +137,15 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
         "active", "queued", "done", "paused", "max_concurrent", "queue_owned",
         "persistence_degraded", "last_persisted_at_ms", "persistence_epoch", "persistence_revision",
     }),
+    "ScreenerDailyIngestStatus": frozenset({
+        "attempts_today", "provisional", "confirmed", "quarantined", "legacy", "checked_on",
+        "last_trading_day", "last_attempt_at", "failed_codes", "errors", "codes", "sample_count",
+        "provider_pages", "reused_samples", "elapsed_ms", "commit_pending", "unavailable_codes",
+        "unavailable", "excluded_codes", "excluded_dates", "retryable_unavailable_codes",
+        "retired_codes", "retired", "skipped_codes"}),
     "ScreenerCalculation": frozenset({"policy", "snapshot_id", "adjusted_as_of", "price_basis",
-                                          "event_revision", "replayable", "execution_id"}),
+        "event_revision", "replayable", "execution_id", "daily_session_scope", "daily_confirmation_policy",
+        "correction_revision"}),
     "ScreenerVolumeEvidence": frozenset({"basis", "original_volume", "compared_volume", "maximum",
                                             "window_start", "window_end", "unit"}),
     "ScreenerAmountEvidence": frozenset({"trade_value_won", "method"}),
@@ -151,7 +161,7 @@ EXPECTED_REST_WIRE_FIELDS: dict[str, frozenset[str]] = {
     "SavedScreener": frozenset({"conditions", "expression", "universe", "name", "id", "calculation_policy",
                                  "created_at_ms", "updated_at_ms"}),
     "SavedScreenersFile": frozenset({"schema_version", "saves"}),
-    "ScreenerResponse": frozenset({
+    "ScreenerResponse": frozenset({"daily_coverage",
         "status", "rows", "has_more", "scanned_at_ms", "basis_at_ms", "fallback_basis_at_ms",
         "warnings", "intraday_failure", "depth_coverage", "depth_values",
         "history_coverage", "bar_coverage", "calculation",
@@ -411,6 +421,13 @@ EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
     wb.WhiteboardList: frozenset({"boards", "unreadable_ids"}),
     wb.WhiteboardCreate: frozenset({"id", "mutation_id", "name", "scene", "review"}),
     wb.WhiteboardWrite: frozenset({"mutation_id", "expected_revision", "name", "scene", "deleted", "review"}),
+    RecoveryRunRequest: frozenset({"resume"}),
+    RecoveryAccepted: frozenset({"plan_id", "started"}),
+    RecoveryCancellation: frozenset({"cancel_requested"}),
+    RecoveryItem: frozenset({"status", "candidate_id", "observation_id", "snapshot_id", "added_original_days",
+        "original_missing", "price_missing", "conflict_dates", "share_evidence_ready", "violations", "error",
+        "confirmation_state", "resolved_conflict_dates", "correction_id"}),
+    RecoveryJob: frozenset({"plan_id", "status", "items", "current_code", "preserved", "error"}),
     RestOrderbook: frozenset({"ask", "bid", "tot_ask", "tot_bid", "book_time"}),
     RestOrderbookResponse: frozenset({"code", "venue", "book", "source", "fetched_at_ms", "checked_at_ms",
                                     "refresh_failed", "storage_failed"}),
@@ -600,6 +617,11 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "ConfirmationState": (frozenset(get_args(ConfirmationState)), "frontend/src/api/screenerRecovery.ts"),
+    "DailySessionScope": (frozenset(get_args(m.DailySessionScope)), "frontend/src/api/screener.ts"),
+    "DailyConfirmationPolicy": (frozenset(get_args(m.DailyConfirmationPolicy)), "frontend/src/api/screener.ts"),
+    "RecoveryItemStatus": (frozenset(get_args(RecoveryItemStatus)), "frontend/src/api/screenerRecovery.ts"),
+    "RecoveryJobStatus": (frozenset(get_args(RecoveryJobStatus)), "frontend/src/api/screenerRecovery.ts"),
     "RestOrderbookSource": (frozenset(get_args(RestOrderbookSource)), "frontend/src/api/liveRestOrderbook.ts"),
     "CalculationPolicy": (frozenset(get_args(m.CalculationPolicy)), "frontend/src/api/screener.ts"),
     "VolumeBasis": (frozenset(get_args(m.VolumeBasis)), "frontend/src/api/screener.ts"),

@@ -1,0 +1,27 @@
+import datetime as dt,gzip,hashlib,json,shutil
+from pathlib import Path
+from hoga.api import screener_series_store as store
+from hoga.api.screener_series_execution import code_revision
+from hoga.util.timeenc import KST
+P=Path('/tmp/hoga-auto-ingest-20261024');O=Path('docs/diagnostics/2026-10-24-screener-auto-ingest');O.mkdir(exist_ok=True,parents=True)
+log=Path('/tmp/hoga-ingest-backend-merged.txt').read_text().strip().splitlines()[-1]
+assert ' passed,' in log and 'failed' not in log,log
+assert Path('/tmp/hoga-ingest-ruff-merged.txt').read_text().strip()=='All checks passed!'
+revision=code_revision();assert revision==json.loads((P/'verification-inputs.json').read_text())['code_revision']
+http=json.loads((P/'http-after.json').read_text());assert all(r['code_revision']==revision for r in http['records'])
+risk=json.loads((P/'risk-comparison.json').read_text());assert all(store.read_object(P/'corpus',r['execution_id'])['code_revision']==revision for r in risk['executions'])
+records={name:json.loads((P/name).read_text()) for name in ['legacy-comparison.json','risk-comparison.json','load-results.json','load-before-stream.json','http-before.json','http-after.json','snapshot-before.json']}
+records['objects']={}
+for identity in [risk['old_snapshot'],risk['new_snapshot'],*[r['execution_id'] for r in risk['executions']]]:
+ records['objects'][identity]=store.read_object(P/'corpus',identity)
+manifest=records['objects'][risk['new_snapshot']];records['objects'][manifest['daily_ingest']]=store.read_object(P/'corpus',manifest['daily_ingest'])
+(O/'evidence.json.gz').write_bytes(gzip.compress(json.dumps(records,ensure_ascii=False).encode(),mtime=0))
+for name in ['verification-inputs.json','primary-install.json','backend-restart.json','preservation.json','load-results.json']:
+ shutil.copyfile(P/name,O/name)
+logs={'backend-full.txt':'/tmp/hoga-ingest-backend-merged.txt','ruff.txt':'/tmp/hoga-ingest-ruff-merged.txt','frontend-typecheck.txt':'/tmp/hoga-ingest-typecheck-merged.txt','frontend-unit.txt':'/tmp/hoga-ingest-vitest-merged.txt','frontend-build.txt':'/tmp/hoga-ingest-build-merged.txt','comparison.txt':str(P/'compare-merged.txt'),'http-before.txt':str(P/'http-before.txt'),'http-after.txt':str(P/'http-after-restored.txt'),'load.txt':str(P/'load-merged.txt'),'calendar-regression.txt':'/tmp/hoga-ingest-calendar.txt'}
+for target,source in logs.items():shutil.copyfile(source,O/target)
+S=O/'recorded-scripts';S.mkdir(exist_ok=True)
+for name in ['prepare.py','compare.py','benchmark.py','quality_load.py','operational_http.py','preservation.py','freeze_inputs.py','package.py']:
+ shutil.copyfile(P/name,S/(name+".txt"))
+(O/'artifact-inputs.json').write_text(json.dumps({'observed_at':dt.datetime.now(KST).isoformat(),'code_revision':revision,'files':{str(p.relative_to(O)):hashlib.sha256(p.read_bytes()).hexdigest() for p in O.rglob('*') if p.is_file() and p.name not in ['artifact-inputs.json','README.md','verify.py']}},ensure_ascii=False,indent=2))
+print('Packaged final evidence; backend',log,'code',revision)

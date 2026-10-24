@@ -1,0 +1,14 @@
+[
+  {
+    "source": "NAVER Finance published daily chart",
+    "url": "https://api.finance.naver.com/siseJson.naver?symbol=020180&requestType=1&startTime=20260608&endTime=20260722&timeframe=day",
+    "status": 200,
+    "sha256": "28b91fbf5babba5e56fbc65fcca7a20c52b06049fec6305a0dbd18cc2772b03c"
+  },
+  {
+    "source": "NAVER Finance published daily chart",
+    "url": "https://api.finance.naver.com/siseJson.naver?symbol=038390&requestType=1&startTime=20260608&endTime=20260722&timeframe=day",
+    "status": 200,
+    "sha256": "c10cd96d514ea62119a3fa2c540e06b034793df167066de571a5fb96d7950049"
+  }
+]

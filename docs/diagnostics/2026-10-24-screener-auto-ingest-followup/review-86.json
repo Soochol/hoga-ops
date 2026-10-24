@@ -1,0 +1,1899 @@
+{
+  "original_sweep": "2026-10-24T22:01:18.431177+09:00",
+  "master_refreshed_at_ms": 1792847337228,
+  "counts": {
+    "provider_empty_master_absent": 31,
+    "sourced_delisting": 50,
+    "pre_listing_dates": 3,
+    "provider_empty_master_present": 2
+  },
+  "rows": [
+    {
+      "code": "424460",
+      "name": "HANARO 글로벌워터MSCI(합성)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "227100",
+      "name": "프로브잇",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-01",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "570061",
+      "name": "한투 레버리지은선물 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "500063",
+      "name": "신한 인버스 코스닥 150 선물 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "082660",
+      "name": "코스나인",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-21",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "057050",
+      "name": "현대홈쇼핑",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-20",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "489010",
+      "name": "PLUS 글로벌AI인프라",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "520040",
+      "name": "미래에셋 인버스 코스닥150 선물 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "495710",
+      "name": "BNK 26-06 특수채(AAA이상)액티브",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-09",
+      "sources": [
+        "https://kind.krx.co.kr/external/2026/06/05/000564/20260605001393/68051.htm",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "101390",
+      "name": "아이엠",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-01",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "464680",
+      "name": "KB제27호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-09",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "196490",
+      "name": "디에이테크놀로지",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-10-07",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "008290",
+      "name": "원풍물산",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-21",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "005110",
+      "name": "한창",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-10-15",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "046070",
+      "name": "코다코",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-21",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "760033",
+      "name": "키움 통안채 6개월 ETN",
+      "dates": [
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23"
+      ],
+      "violations": [],
+      "classification": "pre_listing_dates",
+      "listing_date": "2026-10-21",
+      "delisting_date": null,
+      "sources": [
+        "kiwoom:ka10099:regDay"
+      ],
+      "latest_master_present": true,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "pre_listing_history",
+        "2026-10-20": "pre_listing_history"
+      }
+    },
+    {
+      "code": "466910",
+      "name": "엔에이치스팩30호",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-05-19",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "028080",
+      "name": "휴맥스홀딩스",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": "1997-04-16",
+      "delisting_date": "2026-10-19",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020",
+        "kiwoom:ka10099:regDay",
+        "kiwoom:ka10081:raw+adjusted"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "520039",
+      "name": "미래에셋 코스닥150 선물 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "760019",
+      "name": "키움 리츠부동산인프라 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "032980",
+      "name": "바이온",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-01",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "530115",
+      "name": "삼성 레버리지 나스닥 100 TR ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_present",
+      "listing_date": "2023-11-08",
+      "delisting_date": null,
+      "sources": [
+        "kiwoom:ka10099:regDay",
+        "kiwoom:ka10081:raw+adjusted"
+      ],
+      "latest_master_present": true,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "530116",
+      "name": "삼성 인버스 2X 나스닥 100 TR ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_present",
+      "listing_date": "2023-11-08",
+      "delisting_date": null,
+      "sources": [
+        "kiwoom:ka10099:regDay",
+        "kiwoom:ka10081:raw+adjusted"
+      ],
+      "latest_master_present": true,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "510043",
+      "name": "대신 인버스 천연가스 선물 ETN(H) B",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "217620",
+      "name": "선샤인푸드",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-05-08",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "483240",
+      "name": "TIGER 미국나스닥100ETF선물",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "570063",
+      "name": "한투 베트남VN30선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "012510",
+      "name": "더존비즈온",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-15",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "230980",
+      "name": "비유테크놀러지",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-05",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "096610",
+      "name": "알에프세미",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-03",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "580026",
+      "name": "KB S&P 레버리지 은 선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "469900",
+      "name": "하나31호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-10-13",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "760020",
+      "name": "키움 레버리지 리츠부동산인프라 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "031440",
+      "name": "신세계푸드",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-08-11",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "570064",
+      "name": "한투 인버스베트남VN30선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "464440",
+      "name": "한국제13호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-18",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "422260",
+      "name": "VITA MZ소비액티브",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "138490",
+      "name": "코오롱ENP",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-04-16",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "139050",
+      "name": "BF랩스",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-05-08",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "488200",
+      "name": "KIWOOM K-2차전지북미공급망",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "005030",
+      "name": "부산주공",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-10-12",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "060240",
+      "name": "스타코링크",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-24",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "299900",
+      "name": "위지윅스튜디오",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-08-18",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "483420",
+      "name": "ACE 애플밸류체인액티브",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "472220",
+      "name": "신영스팩10호",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-11",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "091990",
+      "name": "셀트리온헬스케어",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2024-01-12",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "452980",
+      "name": "신한제11호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-05-07",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "471050",
+      "name": "대신밸런스제17호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-01",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "452670",
+      "name": "상상인제4호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-04-21",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "465780",
+      "name": "마이티 26-09 특수채(AAA)액티브",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "473050",
+      "name": "유안타제15호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-10-12",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "500061",
+      "name": "신한 인버스 코스피 200 선물 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "570066",
+      "name": "한투 인버스2X베트남VN30 선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "152550",
+      "name": "한국ANKOR유전",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-05-04",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "570065",
+      "name": "한투 레버리지베트남VN30선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "530090",
+      "name": "삼성 인버스 은 선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "457630",
+      "name": "대신밸런스제16호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-04-15",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "530089",
+      "name": "삼성 은 선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "461270",
+      "name": "ACE 26-06 회사채(AA-이상)액티브",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "301410",
+      "name": "PLUS 코스닥150선물인버스",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "230360",
+      "name": "에코마케팅",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-30",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "520037",
+      "name": "미래에셋 코스피200 선물 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "451700",
+      "name": "엔에이치스팩29호",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-10",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "204210",
+      "name": "스타에스엠리츠",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-12",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "462020",
+      "name": "에이치엠씨제6호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-05-19",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "455310",
+      "name": "한화플러스제4호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-04-15",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "464240",
+      "name": "KIWOOM 26-09회사채(AA-이상)액티브",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "082640",
+      "name": "동양생명",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-08-31",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "140910",
+      "name": "에이리츠",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-06-10",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "269620",
+      "name": "시스웍",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-08-25",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "530150",
+      "name": "삼성 인버스 2X 나스닥 100 TR ETN B",
+      "dates": [
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23"
+      ],
+      "violations": [],
+      "classification": "pre_listing_dates",
+      "listing_date": "2026-10-21",
+      "delisting_date": null,
+      "sources": [
+        "kiwoom:ka10099:regDay"
+      ],
+      "latest_master_present": true,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "pre_listing_history",
+        "2026-10-20": "pre_listing_history"
+      }
+    },
+    {
+      "code": "550064",
+      "name": "N2 레버리지 은 선물 ETN(H)",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "397420",
+      "name": "RISE 국채선물5년추종",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "084180",
+      "name": "수성웹툰",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-10-01",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "488210",
+      "name": "KIWOOM K-반도체북미공급망",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "467930",
+      "name": "IBKS제23호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-28",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "465320",
+      "name": "교보15호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-15",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "520038",
+      "name": "미래에셋 인버스 코스피200 선물 ETN",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    },
+    {
+      "code": "452440",
+      "name": "VITA 밸류알파액티브",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-05-29",
+      "sources": [
+        "https://spn.stockplus.com/news/api/v1/disclosure_views/koscom/470183",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "472230",
+      "name": "에스케이증권제11호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-10-12",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "006380",
+      "name": "카프로",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-17",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "469880",
+      "name": "하나30호스팩",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-31",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "530149",
+      "name": "삼성 레버리지 나스닥 100 TR ETN B",
+      "dates": [
+        "2026-10-21",
+        "2026-10-22",
+        "2026-10-23"
+      ],
+      "violations": [],
+      "classification": "pre_listing_dates",
+      "listing_date": "2026-10-21",
+      "delisting_date": null,
+      "sources": [
+        "kiwoom:ka10099:regDay"
+      ],
+      "latest_master_present": true,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "pre_listing_history",
+        "2026-10-20": "pre_listing_history"
+      }
+    },
+    {
+      "code": "106520",
+      "name": "노블엠앤비",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-07-01",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "121850",
+      "name": "코이즈",
+      "dates": [],
+      "violations": [],
+      "classification": "sourced_delisting",
+      "listing_date": null,
+      "delisting_date": "2026-09-14",
+      "sources": [
+        "https://kind.krx.co.kr/investwarn/delcompany.do?method=searchDelCompanySub&fromDate=2023-01-01&toDate=2026-10-20&currentPageSize=100",
+        "kiwoom:ka10081:KRX:20260801:20261020"
+      ],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "expected_scope_complete",
+      "retry_missing_dates": {
+        "2026-10-19": "delisted",
+        "2026-10-20": "delisted",
+        "2026-10-21": "delisted",
+        "2026-10-22": "delisted",
+        "2026-10-23": "delisted"
+      }
+    },
+    {
+      "code": "454180",
+      "name": "KIWOOM 차이나내수소비TOP CSI",
+      "dates": [],
+      "violations": [],
+      "classification": "provider_empty_master_absent",
+      "listing_date": null,
+      "delisting_date": null,
+      "sources": [],
+      "latest_master_present": false,
+      "revalidated_at": "2026-10-24T22:31:54.403779+09:00",
+      "retry_outcome": "provider_unavailable",
+      "retry_missing_dates": {
+        "2026-10-19": "missing_daily_history",
+        "2026-10-20": "missing_daily_history",
+        "2026-10-21": "missing_daily_history",
+        "2026-10-22": "missing_daily_history",
+        "2026-10-23": "missing_daily_history"
+      }
+    }
+  ]
+}

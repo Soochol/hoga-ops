@@ -1,0 +1,51 @@
+{
+  "completed_at": "2026-10-24T10:37:02.332261+00:00",
+  "head": "f44ca7ed59a5b00df2bf7de76fa621b0d3704306",
+  "base": "3730bf91f211751a3b60b15cec1c227a33fd10f0",
+  "code_revision": "f62f538fad90f32e5bf51f80a5033c91e2cfed68146d22db31de1e17da83b337",
+  "artifact_manifest_sha256": "ce64ee05ac7f08bb4fb327c4c867cafc444ac4688039d2dc0ebb34a101390714",
+  "offline_audit": {
+    "command": "PYTHONPATH=. .venv/bin/python docs/diagnostics/2026-10-24-screener-review-583/verify.py",
+    "returncode": 0,
+    "stdout": "PASS: 583 published in one v2 snapshot; previous 483 retained; 3154 remain quarantined.\nPASS: 4 operational raw windows ready; saved legacy results 7/7 unchanged; 9 exact replays and HTTP GETs.\nPASS: originals, saves, observation identities and source job preserved; idempotent retry confirmed.\nPASS: concurrent primary code changes preserved; current server raw result verified separately.\n"
+  },
+  "backend_full": {
+    "command": ".venv/bin/pytest -q -m 'not wallclock'",
+    "result": "7020 passed, 2 skipped, 13 deselected",
+    "log": "backend-full.txt"
+  },
+  "focused": {
+    "command": ".venv/bin/pytest -q tests/api/test_screener_review_plan.py tests/api/test_screener_corrections.py tests/api/test_screener_recovery*.py tests/unit/api/test_rest_wire_schema_contract.py",
+    "result": "67 passed",
+    "log": "focused-tests.txt"
+  },
+  "frontend": {
+    "typecheck": "passed",
+    "drawing_units": "80 passed",
+    "drawing_e2e": "2 passed",
+    "build": "passed, existing chunk warning"
+  },
+  "operations": {
+    "new_selected_dates": 583,
+    "previous_selected_dates_preserved": 483,
+    "remaining_conflicts": 3154,
+    "ready_raw_windows": 4,
+    "source_plan_job_and_observations_preserved": true,
+    "legacy_saved_conditions_equal": 7,
+    "exact_replay_same_recorded_version": 9,
+    "current_http_get_equal": 9,
+    "online_replay_all_nine_passed": false,
+    "online_replay_guard": "Blocked on unrelated concurrent primary app source change; no bypass.",
+    "post_concurrent_change_raw_witness": "current-server-raw-witness.json.gz"
+  },
+  "ruff": {
+    "command": ".venv/bin/ruff check .",
+    "returncode": 0,
+    "stdout": "All checks passed!\n"
+  },
+  "diff_check": {
+    "command": "git diff --check",
+    "returncode": 0,
+    "stdout": ""
+  }
+}

@@ -34,6 +34,7 @@ from hoga.api.models import (
     SavedScreener,
     SavedScreenersFile,
     ScanRequest,
+    ScreenerDailyIngestStatus,
     ScreenerRefreshSummary,
     ScreenerResponse,
     ScreenerSaveWriteRequest,
@@ -43,9 +44,10 @@ from hoga.api.mutation_broadcast import mutation_broadcast_route_class
 from hoga.api.request_coalescer import ReadRequestCoalescer
 from hoga.api.screener_calendar import EOD_CUTOFF_HOUR as _SCREENER_EOD_CUTOFF_HOUR
 from hoga.api.screener_continuous import build_router as continuous_router, make_owner
+from hoga.api.screener_daily_confirmation import FINALIZATION_HOUR
 from hoga.api.screener_store import DailyBar
 from hoga.collector.orchestrator import next_kst_day, now_kst
-from hoga.live import kiwoom_rest_runtime
+from hoga.live import kiwoom_access, kiwoom_rest_runtime
 from hoga.util.timeenc import KST
 
 log = logging.getLogger(__name__)
@@ -69,10 +71,11 @@ class _UpdatePlan:
 # 서버-소유 갱신 job. 요청·스케줄러 어느 쪽 awaiter가 취소돼도 job은 살아남는다 —
 # 이전 _RefreshCoordinator 는 임의 waiter 의 취소가 공유 future 를 취소시켜
 # flight 전체(스케줄러 몫 포함)를 죽였다(브라우저 disconnect → 전량 유실).
-# 슬롯 갱신은 전부 단일 이벤트 루프에서 await 없이 일어나므로 락 불필요.
+# 작업 계획과 시작을 함께 직렬화한다. 계획의 디스크 조회 중 다른 요청이 새 작업을 만들지 못한다.
 _progress: _UpdateProgress | None = None
 _job_task: asyncio.Task[int] | None = None
 _manual_requested = False
+_start_lock: asyncio.Lock | None = None
 _module_bus = None  # EventBus | None — build_router 가 주입(스케줄러발 job 도 이벤트 발행)
 _PROGRESS_MIN_INTERVAL_S = 1.0  # 진행 이벤트 스로틀(테스트는 0으로 monkeypatch)
 
@@ -130,6 +133,21 @@ async def _daily_fetch_one(
             for c in res.candles]
 
 
+def _recent_update_reason(data_dir: Path, now: datetime) -> str | None:
+    from hoga.api.screener_daily_ingest import MAX_DAILY_ATTEMPTS, _unresolved, checked_recently  # noqa: PLC0415
+
+    summary = _daily_ingest_status(data_dir)
+    # A daytime button click must leave one of the existing two daily attempts for the 22:00 observation.
+    if (summary and summary.checked_on == now.date().isoformat()
+            and now.hour < FINALIZATION_HOUR and summary.attempts_today >= 1):
+        return "finalization_wait"
+    if not checked_recently(data_dir, now):
+        return None
+    if summary and _unresolved(summary.model_dump()):
+        return "daily_limit" if summary.attempts_today >= MAX_DAILY_ATTEMPTS else "retry_wait"
+    return "no_gap"
+
+
 async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
     """갱신 사전 체크. 작업이 없으면 skip reason 문자열을 반환한다.
 
@@ -137,6 +155,9 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
     달력·벤더 작업이 돌지 않는 기존 계약 유지.
     """
     sdir = data_dir / "screener"
+    wait_reason = await asyncio.to_thread(_recent_update_reason, data_dir, now_kst())
+    if wait_reason is not None:
+        return wait_reason
     # 동기 duckdb/polars read 는 to_thread 로 — 이벤트 루프 블로킹 방지(_commit 과 동일 규칙).
     last = await asyncio.to_thread(
         screener_store.last_raw_date, sdir / "daily_unadjusted.parquet")
@@ -155,9 +176,14 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
         # **두 실패를 갈라서 내보낸다.** 뭉치면 화면만 보고 조치를 고를 수 없다.
         if e.code is UpstreamCode.TRADING_DAYS_STALE:
             log.warning("screener update: 달력 커버리지가 %s 를 못 덮는다 — 오버레이 확인", today)
-            return "calendar_coverage_behind"
-        log.warning("screener update: 거래일 소스를 읽을 수 없다 (%s)", e.code.value)
-        return "calendar_source_missing"
+            if now.hour < FINALIZATION_HOUR:
+                return "calendar_coverage_behind"
+            # Next-day confirmation needs known historical dates, not a verdict
+            # about today. Never invent a date beyond the available calendar.
+            days = []
+        else:
+            log.warning("screener update: 거래일 소스를 읽을 수 없다 (%s)", e.code.value)
+            return "calendar_source_missing"
     except Exception:
         # 위 둘 밖의 무엇이든. 예상 밖 예외도 결국 "달력을 쓸 수 없다" 이고 사용자
         # 조치는 소스 결여와 같다(로그를 본다). 그래서 같은 사유로 접되 **traceback 은
@@ -166,8 +192,17 @@ async def _plan_update(data_dir: Path) -> _UpdatePlan | str:
         # BLE001 이 애초에 발화하지 않는다 — 붙이면 RUF100 이 죽은 noqa 로 잡는다.)
         log.exception("screener update: 거래일 조회가 예상 밖 예외로 실패")
         return "calendar_source_missing"
-    if not days:
+    from hoga.api import screener_daily_ingest as daily_ingest, trading_days  # noqa: PLC0415
+    calendar = sorted(day for day in trading_days.trading_days(data_dir)
+                      if day <= today and (day < today or now.hour >= _SCREENER_EOD_CUTOFF_HOUR))
+    if not calendar or not await asyncio.to_thread(daily_ingest.due, data_dir, now, calendar[-1]):
         return "no_gap"
+    # Existing dates still need checking; last_raw_date is not a confirmation watermark.
+    recent = calendar[-daily_ingest.RECHECK_DAYS:]
+    state = await asyncio.to_thread(daily_ingest.load, data_dir)
+    last_check = state["summary"].get("last_trading_day")
+    days = sorted(set(days) | set(recent) | {d for d in calendar if last_check and d > last_check})
+    days = [datetime.strptime(day, "%Y%m%d").date().isoformat() for day in days]
 
     # EOD 갭 캐치업은 배경 배치(종목 다수 daily fetch)이므로 Capacity Scheduler에 맡긴다.
     # creds가 없으면 기존처럼 skip하고, 있으면 per-code 요청이 키움 거버너 정책을 탄다.
@@ -195,61 +230,22 @@ def _ensure_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> asyncio.Task[int]:
 
 
 async def _run_eod_update(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
-    total = len(plan.codes)
-    from hoga.live import (  # noqa: PLC0415 — 지연 import(순환 절단·heavy 모듈)
-        kiwoom_access,
-        kiwoom_daily_candles,
-        kiwoom_rest_runtime,
-    )
-
+    from hoga.api import screener_daily_ingest as ingest  # noqa: PLC0415
+    from hoga.api.screener_daily_ingest_provider import collector  # noqa: PLC0415
     scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
     client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
     if client is None:
         raise RuntimeError("키움 자격증명 없음 — 스크리너 갱신 불가")
 
-    async def fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
-        def _run_page(fetch_fn, page_idx: int):
-            """페이지 1장 = 거버너 submit 1건.
-
-            **walk 전체를 감싸던 자리다.** 갱신은 종목 수만큼 도는데 각 종목이
-            다시 페이지 N장이라, 바깥에서 감싸면 페이지 축이 통째로 페이싱
-            밖으로 샌다(ADR-0137).
-            """
-            return kiwoom_access.run_with_capacity(
-                scheduler,
-                key=("screener-update", c, f, t, page_idx),
-                api_id=kiwoom_daily_candles.API_ID,
-                priority="background",
-                client=client,
-                fetch_fn=fetch_fn,
-            )
-
-        return await _daily_fetch_one(client, c, f, t, run_page=_run_page)
-
-    last_pub = 0.0
-
-    async def counting_fetch_one(c: str, f: str, t: str) -> list[DailyBar]:
-        nonlocal last_pub
-        try:
-            return await fetch_one(c, f, t)
-        finally:
-            if _progress is not None:
-                # `run_update` 의 재시도 패스가 같은 종목을 다시 세므로 total 에서
-                # 멈춘다 — 안 그러면 진행바가 100% 를 넘어 보인다.
-                _progress.done = min(_progress.done + 1, total)
-                now_mono = time.monotonic()
-                if bus is not None and (
-                        now_mono - last_pub >= _PROGRESS_MIN_INTERVAL_S
-                        or _progress.done == total):
-                    last_pub = now_mono
-                    bus.publish({"type": "screener_update_progress",
-                                 "done": _progress.done, "total": total})
-
-    if bus is not None:  # 시작 즉시 0/total — 클릭하지 않은 서피스도 바로 표시 전환
-        bus.publish({"type": "screener_update_progress", "done": 0, "total": total})
-    return await screener_store.run_update(
-        plan.sdir, codes=plan.codes, fetch_one=counting_fetch_one,
-        trading_days=plan.days, now_ms=int(time.time() * 1000))
+    def progress(done, total):
+        if _progress is not None:
+            _progress.done = done
+        if bus is not None:
+            bus.publish({"type": "screener_update_progress", "done": done, "total": total})
+    progress(0, len(plan.codes))
+    return await ingest.run(data_dir, codes=plan.codes, days=plan.days,
+                            fetch=collector(client, scheduler, runner=kiwoom_access.run_with_capacity),
+                            now=now_kst(), progress=progress)
 
 
 async def _run_update_job(data_dir: Path, plan: _UpdatePlan, *, bus) -> int:
@@ -301,10 +297,9 @@ async def trigger_update(data_dir: Path, *, bus=None) -> int:
     작업이 없으면(unseeded/no-gap/creds/calendar) 0 — 기존 계약 유지. 동시
     트리거(스케줄러 EOD + 수동 POST)는 _ensure_job 이 단일 job 으로 join 한다.
     """
-    plan = await _plan_update(data_dir)
-    if isinstance(plan, str):
+    task = await _prepare_update(data_dir, bus=bus)
+    if isinstance(task, str):
         return 0
-    task = _ensure_job(data_dir, plan, bus=bus if bus is not None else _module_bus)
     # shield: awaiter(스케줄러 셧다운, 버려진 caller) 취소가 공유 job 을 죽이지
     # 않는다. job 자체의 예외는 그대로 전파 — 스케줄러 try/except 로깅 의미론 유지.
     return await asyncio.shield(task)
@@ -316,27 +311,36 @@ async def start_update(data_dir: Path, *, bus=None, repair_history: bool = False
     핸들러가 job 을 await 하지 않으므로 클라이언트 disconnect 로 인한 핸들러
     취소가 job 에 닿지 않는다. 진행/완료는 bus 이벤트와 status.updating 으로 전달.
     """
-    global _manual_requested  # noqa: PLW0603
-    if _job_task is not None and not _job_task.done() and _progress is not None:
-        # An EOD run already in flight must still perform the requested deep repair.
-        _manual_requested = _manual_requested or repair_history
-        return {"running": True, "done": _progress.done, "total": _progress.total}
-    if repair_history:
-        last = await asyncio.to_thread(
-            screener_store.last_raw_date, data_dir / "screener" / "daily_unadjusted.parquet")
-        if last is None:
-            return {"running": False, "updated": 0, "reason": "not_seeded"}
-        if kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
-            return {"running": False, "updated": 0, "reason": "creds_missing"}
-        plan = _UpdatePlan(sdir=data_dir / "screener", codes=[], days=[], manual=True)
-        # Another preflight may have yielded to an EOD job. Upgrade that job too.
-        _manual_requested = True
-    else:
-        plan = await _plan_update(data_dir)
-        if isinstance(plan, str):
-            return {"running": False, "updated": 0, "reason": plan}
-    _ensure_job(data_dir, plan, bus=bus if bus is not None else _module_bus)
-    return {"running": True, "done": 0, "total": len(plan.codes)}
+    task = await _prepare_update(data_dir, bus=bus, repair_history=repair_history)
+    if isinstance(task, str):
+        return {"running": False, "updated": 0, "reason": task}
+    assert _progress is not None
+    return {"running": True, "done": _progress.done, "total": _progress.total}
+
+
+async def _prepare_update(data_dir: Path, *, bus=None, repair_history=False):
+    """One admission gate for scheduler, refresh clicks and explicit historical repair."""
+    global _start_lock, _manual_requested  # noqa: PLW0603
+    if _start_lock is None:
+        _start_lock = asyncio.Lock()
+    async with _start_lock:
+        if _job_task is not None and not _job_task.done():
+            # Only the explicit repair endpoint may append a deep repair to an EOD job.
+            _manual_requested = _manual_requested or repair_history
+            return _job_task
+        if repair_history:
+            last = await asyncio.to_thread(
+                screener_store.last_raw_date, data_dir / "screener" / "daily_unadjusted.parquet")
+            if last is None:
+                return "not_seeded"
+            if kiwoom_rest_runtime.ensure_rest_client(data_dir) is None:
+                return "creds_missing"
+            plan = _UpdatePlan(sdir=data_dir / "screener", codes=[], days=[], manual=True)
+        else:
+            plan = await _plan_update(data_dir)
+            if isinstance(plan, str):
+                return plan
+        return _ensure_job(data_dir, plan, bus=bus if bus is not None else _module_bus)
 
 
 async def shutdown_update_job() -> None:
@@ -349,7 +353,7 @@ async def shutdown_update_job() -> None:
 
 
 def reset_update_job_for_tests() -> None:
-    global _job_task, _progress, _module_bus, _manual_requested  # noqa: PLW0603
+    global _job_task, _progress, _module_bus, _manual_requested, _start_lock  # noqa: PLW0603
     if _job_task is not None and not _job_task.done():
         # 이전 테스트의 (이미 닫힌) 루프에 속한 태스크면 cancel 이 RuntimeError.
         with contextlib.suppress(RuntimeError):
@@ -358,11 +362,17 @@ def reset_update_job_for_tests() -> None:
     _progress = None
     _module_bus = None
     _manual_requested = False
+    _start_lock = None
 
 
 def _last_refresh(data_dir: Path):
     from hoga.api.screener_refresh import last_summary  # noqa: PLC0415
     return last_summary(data_dir)
+
+
+def _daily_ingest_status(data_dir: Path):
+    path = data_dir / "screener/daily_ingest/status.json"
+    return ScreenerDailyIngestStatus.model_validate_json(path.read_bytes()) if path.exists() else None
 
 
 def _save_not_found(save_id: str) -> HTTPException:
@@ -402,6 +412,7 @@ class ScreenerStatusResponse(BaseModel):
     days_behind: int | None = None
     updating: ScreenerUpdatingProgress | None = None
     last_refresh: ScreenerRefreshSummary | None = None
+    daily_ingest: ScreenerDailyIngestStatus | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class ScreenerUpdateResponse(BaseModel):
@@ -496,6 +507,14 @@ async def _update_save(data_dir: Path, save_id: str, req: ScreenerSaveWriteReque
         raise HTTPException(422, str(exc)) from exc
 
 
+def _include_series_routers(router, data_dir):
+    from hoga.api.screener_recovery_api import build_router as recovery_router  # noqa: PLC0415
+    from hoga.api.screener_series_execution import build_router as executions_router  # noqa: PLC0415
+
+    router.include_router(executions_router(data_dir))
+    router.include_router(recovery_router(data_dir))
+
+
 def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = None,
                  live_buffer=None, volume_targets=None) -> APIRouter:
     global _module_bus  # noqa: PLW0603
@@ -516,8 +535,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     router.include_router(continuous_router(continuous))
     from hoga.api.screener_history_jobs import build_router as history_router  # noqa: PLC0415 — router import
     router.include_router(history_router(data_dir))
-    from hoga.api.screener_series_execution import build_router as executions_router  # noqa: PLC0415
-    router.include_router(executions_router(data_dir))
+    _include_series_routers(router, data_dir)
     from hoga.api.screener_exclusions import build_router as exclusions_router  # noqa: PLC0415
     router.include_router(exclusions_router(data_dir))
     sdir = data_dir / "screener"
@@ -567,6 +585,7 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
             "days_behind": days_behind,
             # 진행 중 갱신 job — 재진입/드로어가 WS 이벤트 없이도 상태를 복원한다.
             "last_refresh": _last_refresh(data_dir),
+            "daily_ingest": _daily_ingest_status(data_dir),
             "updating": (
                 {"done": _progress.done, "total": _progress.total,
                  "started_ms": _progress.started_ms,
@@ -578,6 +597,10 @@ def build_router(*, data_dir: Path, bus=None, compute: ComputePools | None = Non
     # 판별 유니온이라 exclude_none 이 필수다(모델 docstring 참조).
     @router.post("/update", response_model_exclude_none=True)
     async def update() -> ScreenerUpdateResponse:
+        return await start_update(data_dir, bus=bus)
+
+    @router.post("/repair-history", response_model_exclude_none=True)
+    async def repair_history() -> ScreenerUpdateResponse:
         return await start_update(data_dir, bus=bus, repair_history=True)
 
     # 저장 목록만 **별도 서브라우터**로 묶는다 — 교차 창 브로드캐스트를 여기에만

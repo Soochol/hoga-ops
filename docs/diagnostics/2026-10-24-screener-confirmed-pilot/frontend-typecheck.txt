@@ -1,0 +1,4 @@
+
+> frontend@0.0.0 typecheck
+> tsc -b && tsc -p tsconfig.test.json --noEmit && tsc -p tsconfig.e2e.json --noEmit
+

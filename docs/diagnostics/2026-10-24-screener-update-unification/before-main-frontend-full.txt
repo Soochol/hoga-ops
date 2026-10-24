@@ -1,0 +1,587 @@
+
+ RUN  v4.1.7 /home/dev/.codex/worktrees/c6fb/hoga-ops/frontend
+
+stdout | src/chart/projectors/hogaIndicators.perf.test.ts > 라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래량 제외) > I) 프로그램 순매수·누적 체결강도 — 분리 캐시 전/후 (days 스윕)
+[I] days= 1 pts=  390 segs= 1 | 프로그램: 캐시=0.199ms vs 풀=0.176ms | 누적: warm=0.065ms miss=0.065ms → 프로그램 캐시 /초(6.7Hz)=1.3ms
+[I] days= 5 pts= 1950 segs= 5 | 프로그램: 캐시=0.461ms vs 풀=1.108ms | 누적: warm=0.049ms miss=0.303ms → 프로그램 캐시 /초(6.7Hz)=3.1ms
+[I] days=30 pts=11700 segs=30 | 프로그램: 캐시=0.808ms vs 풀=59.058ms | 누적: warm=0.064ms miss=8.251ms → 프로그램 캐시 /초(6.7Hz)=5.4ms
+[I] days=90 pts=35100 segs=90 | 프로그램: 캐시=12.375ms vs 풀=341.065ms | 누적: warm=0.189ms miss=47.056ms → 프로그램 캐시 /초(6.7Hz)=82.5ms
+
+ ❯ src/chart/projectors/hogaIndicators.perf.test.ts (10 tests | 1 failed) 14680ms
+     × I) 프로그램 순매수·누적 체결강도 — 분리 캐시 전/후 (days 스윕) 5222ms
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: HTMLCanvasElement's getContext() method: without installing the canvas npm package
+Not implemented: navigation to another Document
+Not implemented: navigation to another Document
+Not implemented: navigation to another Document
+Not implemented: navigation to another Document
+Error: book window exploded
+    at DataWindow (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/live/workspace/WorkspaceCanvas.errorBoundary.test.tsx:12:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: book window exploded
+    at DataWindow (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/live/workspace/WorkspaceCanvas.errorBoundary.test.tsx:12:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+ ❯ src/live/LiveChartRoot.test.tsx (171 tests | 1 failed) 24632ms
+     × 캡은 viewKey 마다 리셋된다 — 이전 뷰의 소진이 새 종목을 조기 공개하지 않는다 858ms
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at ensureNotNull (lightweight-charts.js:135:15)
+    at SeriesApi.setData (lightweight-charts.js:12800:9)
+Error: Value is null
+    at ensureNotNull (lightweight-charts.js:135:15)
+    at SeriesApi.setData (lightweight-charts.js:12800:9)
+undefined
+undefined
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+ReferenceError: indexCode is not defined
+    at UndefinedVariable (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:148:49)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+ReferenceError: indexCode is not defined
+    at UndefinedVariable (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:148:49)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Value is null
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/chart/ChartErrorBoundary.test.tsx:12:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: lightweight-charts assert
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/tests/component/ChartErrorBoundary.test.tsx:8:9)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: lightweight-charts assert
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/tests/component/ChartErrorBoundary.test.tsx:8:9)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: boom
+    at Toggling (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/tests/component/ChartErrorBoundary.test.tsx:43:30)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: boom
+    at Toggling (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/tests/component/ChartErrorBoundary.test.tsx:43:30)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Bomb (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:7:26)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Failed to fetch dynamically imported module: http://x/assets/Settings-abc.js
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Failed to fetch dynamically imported module: http://x/assets/Settings-abc.js
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: error loading dynamically imported module: http://x/assets/Settings-abc.js
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: error loading dynamically imported module: http://x/assets/Settings-abc.js
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Importing a module script failed.
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Importing a module script failed.
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+Error: Cannot read properties of undefined
+    at Boom (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/src/ui/AppErrorBoundary.test.tsx:113:11)
+    at renderWithHooks (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:15486:18)
+    at mountIndeterminateComponent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:20103:13)
+    at beginWork (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:21626:16)
+    at HTMLUnknownElement.callCallback (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/react-dom/cjs/react-dom.development.js:4164:14)
+    at HTMLUnknownElement.callTheUserObjectsOperation (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/generated/idl/EventListener.js:26:30)
+    at innerInvokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:360:16)
+    at invokeEventListeners (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:296:3)
+    at HTMLUnknownElementImpl._dispatch (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:243:9)
+    at HTMLUnknownElementImpl.dispatchEvent (/home/dev/.codex/worktrees/c6fb/hoga-ops/frontend/node_modules/jsdom/lib/jsdom/living/events/EventTarget-impl.js:114:17)
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/live/LiveChartRoot.test.tsx > LiveChartRoot > 캡은 viewKey 마다 리셋된다 — 이전 뷰의 소진이 새 종목을 조기 공개하지 않는다
+AssertionError: expected '0' to be '1' // Object.is equality
+
+Expected: "1"
+Received: "0"
+
+ ❯ src/live/LiveChartRoot.test.tsx:2292:68
+    2290|     await flushFrames(3);
+    2291|     // 새 뷰는 자기 캡을 처음부터 다시 센다 → 지금은 홀드여야 한다.
+    2292|     expect(screen.getByTestId('chart-reveal-cover').style.opacity).toB…
+       |                                                                    ^
+    2293|   });
+    2294|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/chart/projectors/hogaIndicators.perf.test.ts > 라이브 호가 보조지표 — 틱당 처리 비용 (캔들/거래량 제외) > I) 프로그램 순매수·누적 체결강도 — 분리 캐시 전/후 (days 스윕)
+Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/chart/projectors/hogaIndicators.perf.test.ts:315:3
+    313|   });
+    314|
+    315|   it('I) 프로그램 순매수·누적 체결강도 — 분리 캐시 전/후 (days 스윕)', async () => {
+       |   ^
+    316|     const { projectProgramTradeNetAmount, makeCachedProgramTradeProjec…
+    317|     const { makeCumulativeCachedProjector } = await import('./fillStre…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 701 passed (703)
+      Tests  2 failed | 9016 passed (9018)
+   Start at  23:33:58
+   Duration  101.32s (transform 426.45s, setup 129.26s, import 908.84s, tests 594.87s, environment 1089.92s)
+

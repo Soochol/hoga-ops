@@ -1,0 +1,34 @@
+import asyncio,copy,json,sys
+from pathlib import Path
+import httpx
+from hoga.api.models import ScreenerResponse
+from hoga.api.screener_series_store import load_snapshot,read_object
+P=Path('/tmp/hoga-auto-ingest-20261024'); D=Path('/home/dev/.local/share/hoga-ops/data')
+async def main(mode):
+ sid,_=load_snapshot(D);records=[]
+ requests=[('raw1000',{'id':'auto-raw','type':'new_high_vol_today','params':{'timeframe':'D','include_open_bar':False,'period':1000,'volume_basis':'raw'}}),('share1000',{'id':'auto-share','type':'new_high_vol_today','params':{'timeframe':'D','include_open_bar':False,'period':1000,'volume_basis':'share_adjusted'}}),('prices',{'id':'auto-price','type':'price_range','params':{'min':0}})]
+ async with httpx.AsyncClient(base_url='http://127.0.0.1:8000',timeout=180) as client:
+  status=await client.get('/api/screener/status');status.raise_for_status()
+  for label,leaf in requests:
+   req={'conditions':[leaf],'universe':{'exclude_etf':False},'calculation_policy':'separate_bases_v2','basis':'eod','snapshot_id':sid}
+   result=await client.post('/api/screener/executions',json=req);result.raise_for_status();body=result.json()
+   assert ScreenerResponse.model_validate(body).model_dump(mode='json')==body
+   identity=body['calculation']['execution_id'];saved=await client.get('/api/screener/executions/'+identity);saved.raise_for_status();assert saved.json()==body
+   replay=await client.post('/api/screener/executions/'+identity+'/replay');replay.raise_for_status()
+   expected=copy.deepcopy(body);actual=replay.json();expected.pop('scanned_at_ms',None);actual.pop('scanned_at_ms',None);assert expected==actual
+   unavailable={r['code'] for r in body.get('bar_coverage',{}).get('incomplete',[])} if body.get('bar_coverage') else set()
+   if mode=='after':assert read_object(D,identity)['code_revision']==json.loads((P/'verification-inputs.json').read_text())['code_revision']
+   entry={'label':label,'request':req,'response':body,'execution_id':identity,'code_revision':read_object(D,identity)['code_revision'],'complete_targets':{c:c not in unavailable for c in ['000120','003240','013030','900310']},'get_equal':True,'exact_replay_equal':True}
+   records.append(entry);print(mode,label,'rows',len(body['rows']),'complete',entry['complete_targets'],flush=True)
+  output={'snapshot':sid,'status':status.json(),'records':records}
+  if mode=='after':
+   before=json.loads((P/'http-before.json').read_text());comparison=[]
+   for left,right in zip(before['records'],records,strict=True):
+    old=copy.deepcopy(left['response']);new=copy.deepcopy(right['response'])
+    for value in [old,new]:
+     value.pop('scanned_at_ms',None);value['calculation'].pop('execution_id',None)
+    assert old==new,right['label'];comparison.append({'label':right['label'],'equal':True})
+    get=await client.get('/api/screener/executions/'+left['execution_id']);get.raise_for_status();assert get.json()==left['response']
+   output.update(comparison=comparison,old_archived_get_unchanged=True)
+  (P/('http-'+mode+'.json')).write_text(json.dumps(output,ensure_ascii=False,indent=2))
+asyncio.run(main(sys.argv[1]))

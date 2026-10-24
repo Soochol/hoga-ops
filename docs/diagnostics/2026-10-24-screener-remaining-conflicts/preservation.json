@@ -1,0 +1,11 @@
+{
+  "legacy_hashes_unchanged": true,
+  "v2_snapshot_unchanged": "1d6e052483ea919e0731f9f3a6c1dceff3ea12e49df06cb5a583da4ee5cef9ff",
+  "production_job_unchanged": true,
+  "production_additional_corrections": 0,
+  "production_quantity_imports": 0,
+  "code_revision_unchanged": "c198c4d14bc1963e884420dcffa44edd2eef0037dd7ae610713b29d1f4748895",
+  "unchanged_application_verification_inputs": 918,
+  "primary_unrelated_user_files_preserved": 9,
+  "scope": "The existing production API may warm in-memory minute caches; no screener, save, factor, manifest or job publication occurred."
+}

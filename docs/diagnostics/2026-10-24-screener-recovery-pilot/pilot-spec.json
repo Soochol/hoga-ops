@@ -1,0 +1,387 @@
+{
+  "adjusted_as_of": "2026-10-24",
+  "clock": "2026-10-24T16:30:00+09:00",
+  "targets": [
+    {
+      "code": "000020",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "reason": "adjusted_volume_mismatch"
+    },
+    {
+      "code": "003240",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "reason": "adjusted_price_mismatch"
+    },
+    {
+      "code": "000520",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "reason": "vendor_invalid_rows"
+    },
+    {
+      "code": "013120",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "reason": "vendor_invalid_rows"
+    },
+    {
+      "code": "017650",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "reason": "gap_repair_would_change_existing_adjustment"
+    },
+    {
+      "code": "900310",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "reason": "gap_repair_would_change_existing_adjustment"
+    },
+    {
+      "code": "005930",
+      "first": "2018-08-28",
+      "last": "2026-10-23",
+      "reason": "adjusted_volume_mismatch"
+    },
+    {
+      "code": "001000",
+      "first": "2021-11-26",
+      "last": "2026-10-23",
+      "reason": "gap_repair_requires_full_existing_range"
+    },
+    {
+      "code": "0233J0",
+      "first": "2026-08-25",
+      "last": "2026-10-23",
+      "reason": "adjusted_volume_mismatch"
+    },
+    {
+      "code": "0113P0",
+      "first": "2025-09-30",
+      "last": "2026-10-23",
+      "reason": "adjusted_price_mismatch"
+    }
+  ],
+  "comparisons": [
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "new_high",
+          "id": "SsXve1XX",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 400,
+            "period": 800
+          }
+        }
+      ],
+      "expression": null,
+      "universe": {
+        "markets": [
+          "KOSPI",
+          "KOSDAQ"
+        ],
+        "exclude_etf": true,
+        "exclude_halted": true,
+        "scopes": []
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "new_high_vol",
+          "id": "qjnHP8ld",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 30,
+            "period": 150,
+            "volume_basis": null
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "ioxVt6Sk",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 30
+          }
+        }
+      ],
+      "expression": null,
+      "universe": {
+        "markets": [],
+        "exclude_etf": true,
+        "exclude_halted": false,
+        "scopes": []
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "trade_value_period",
+          "id": "lWA6igKh",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 3000.0,
+            "lookback": 1000
+          }
+        },
+        {
+          "type": "new_high_vol",
+          "id": "7WrdlCkO",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 1000,
+            "period": 1000,
+            "volume_basis": null
+          }
+        }
+      ],
+      "expression": null,
+      "universe": {
+        "markets": [
+          "KOSPI",
+          "KOSDAQ"
+        ],
+        "exclude_etf": true,
+        "exclude_halted": true,
+        "scopes": [
+          "watchlist",
+          "heatmap"
+        ]
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "trade_value_period",
+          "id": "niafa2sl",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 20
+          }
+        },
+        {
+          "type": "new_high",
+          "id": "895xi8tF",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 20,
+            "period": 200
+          }
+        }
+      ],
+      "expression": null,
+      "universe": {
+        "markets": [],
+        "exclude_etf": true,
+        "exclude_halted": false,
+        "scopes": []
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "new_high_vol",
+          "id": "oLwK_nMa",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "lookback": 250,
+            "period": 150,
+            "volume_basis": null
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "buvEkwSk",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 250
+          }
+        },
+        {
+          "type": "new_high_today",
+          "id": "O6Vqa_f-",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 4
+          }
+        }
+      ],
+      "expression": "((A AND B) AND C)",
+      "universe": {
+        "markets": [],
+        "exclude_etf": true,
+        "exclude_halted": true,
+        "scopes": [
+          "watchlist",
+          "heatmap"
+        ]
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "bollinger_position",
+          "id": "gLmwOXI2",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20,
+            "multiplier": 2.0,
+            "source": "high",
+            "band_source": "close",
+            "band": "upper",
+            "lookback": 4
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "xPYXLUmK",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 4
+          }
+        }
+      ],
+      "expression": null,
+      "universe": {
+        "markets": [],
+        "exclude_etf": true,
+        "exclude_halted": false,
+        "scopes": []
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "bollinger_position",
+          "id": "gLmwOXI2",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20,
+            "multiplier": 2.0,
+            "source": "low",
+            "band_source": "low",
+            "band": "lower",
+            "lookback": 4
+          }
+        },
+        {
+          "type": "trade_value_period",
+          "id": "xPYXLUmK",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "min_eok": 500.0,
+            "lookback": 4
+          }
+        }
+      ],
+      "expression": "A AND B",
+      "universe": {
+        "markets": [],
+        "exclude_etf": true,
+        "exclude_halted": false,
+        "scopes": [
+          "watchlist",
+          "heatmap"
+        ]
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "new_high_vol_today",
+          "id": "pilot-new_high_vol_today",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20,
+            "volume_basis": null
+          }
+        }
+      ],
+      "expression": null,
+      "universe": {
+        "markets": [],
+        "exclude_etf": false,
+        "exclude_halted": false,
+        "scopes": []
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    },
+    {
+      "calculation_policy": "legacy_v1",
+      "conditions": [
+        {
+          "type": "new_high_today",
+          "id": "pilot-new_high_today",
+          "params": {
+            "timeframe": "D",
+            "include_open_bar": true,
+            "period": 20
+          }
+        }
+      ],
+      "expression": null,
+      "universe": {
+        "markets": [],
+        "exclude_etf": false,
+        "exclude_halted": false,
+        "scopes": []
+      },
+      "limit": 1000,
+      "basis": "eod",
+      "snapshot_id": null
+    }
+  ]
+}

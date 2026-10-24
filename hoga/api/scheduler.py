@@ -602,6 +602,12 @@ async def _daily_loop(data_dir: Path) -> None:
                     log.exception("daily trading stage retry crashed; loop continues")
             else:
                 await retry_pending_enqueues(data_dir, now=now)
+            # Friday's provisional daily observations also need Saturday confirmation.
+            # The ingest ledger makes this a no-op after a completed sweep; capture
+            # enqueue and all other trading-day tasks retain their calendar gate.
+            if now.hour >= _DAILY_TRIGGER_HOUR:
+                from hoga.api import screener  # noqa: PLC0415 — shared server-owned job
+                await screener.trigger_update(data_dir)
         except Exception:
             # 판정·마커 읽기 실패도 루프를 죽이면 안 된다.
             log.exception("daily loop tick failed; loop continues")

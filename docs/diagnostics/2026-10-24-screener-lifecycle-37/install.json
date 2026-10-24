@@ -1,0 +1,37 @@
+{
+  "before": {
+    "hoga/api/screener_daily_lifecycle.py": null,
+    "hoga/api/screener_daily_ingest.py": "32fb073ab462a713b246bca708261ba35b580febd869f6b7b8588322b5c5091c",
+    "hoga/api/models.py": "3d8d377b9383235b2728112266ebca7cdc1642f4e20c377525742047585ec47e",
+    "frontend/src/api/screener.ts": "e9087f6b96a465101f7ab72b2857a097ae8894745e80f3036b6df809e2fdf813",
+    "frontend/src/screener/ScreenerUpdateProgress.tsx": "57b5fa94f54216bb24ec05f5c74e0c0112802220a57f08e28aee9f14e70f6e1f",
+    "frontend/src/screener/ScreenerUpdateProgress.test.tsx": "19d21892a96a2ac3b1eb6c4b8b62a78f8cf6c9ed1206b62c8d81d1b4c48183a0",
+    "tests/api/test_screener_daily_ingest.py": "33390a108369e274579d47e05b25df570fa22657a8cc61ab54e184f3def6c95a",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "450bab730790f85389184254e578272f32c6ba10fd1bc8a1154299a175288338"
+  },
+  "after": {
+    "hoga/api/screener_daily_lifecycle.py": "3e1aa08f4eb88987daf058a350d100afde45396b40265f464da8c9ffaf8fe5f1",
+    "hoga/api/screener_daily_ingest.py": "7762bd32658b5ee09fbd4a623bfe2681417f72d78cfa17ba48a08f52d241670f",
+    "hoga/api/models.py": "8dd9bb38f0f63ce7d5a8650670261310eccf60c3100e7f273d5c7a0f24ba6fb6",
+    "frontend/src/api/screener.ts": "67214e8586f3b3fbea3da91ff5e01700cd0e4740c5438adaf363ed974b87278d",
+    "frontend/src/screener/ScreenerUpdateProgress.tsx": "19d4cb87e1bd906356170b5c29ac0b5cc48b6187c2b174d17f943a6d56b64b97",
+    "frontend/src/screener/ScreenerUpdateProgress.test.tsx": "03dc21c126900eb0d5447a3973438f80b573daedef10568cb0aa5e3350ef218b",
+    "tests/api/test_screener_daily_ingest.py": "4567214b3eccfe2159de0521315de08c3fc614c75c962c0af7bcd22c48dd4cb6",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "b24f4d4923dd2a80cb424580cf098973fcad2a0dc9de34b1f82948db730a08c5"
+  },
+  "activation": "existing uvicorn reload and Vite HMR",
+  "manual_restart": false,
+  "production_data_written_by_install": false,
+  "initial_after": {
+    "hoga/api/screener_daily_lifecycle.py": "3e1aa08f4eb88987daf058a350d100afde45396b40265f464da8c9ffaf8fe5f1",
+    "hoga/api/screener_daily_ingest.py": "7762bd32658b5ee09fbd4a623bfe2681417f72d78cfa17ba48a08f52d241670f",
+    "hoga/api/models.py": "8dd9bb38f0f63ce7d5a8650670261310eccf60c3100e7f273d5c7a0f24ba6fb6",
+    "frontend/src/api/screener.ts": "67214e8586f3b3fbea3da91ff5e01700cd0e4740c5438adaf363ed974b87278d",
+    "frontend/src/screener/ScreenerUpdateProgress.tsx": "19d4cb87e1bd906356170b5c29ac0b5cc48b6187c2b174d17f943a6d56b64b97",
+    "frontend/src/screener/ScreenerUpdateProgress.test.tsx": "03dc21c126900eb0d5447a3973438f80b573daedef10568cb0aa5e3350ef218b",
+    "tests/api/test_screener_daily_ingest.py": "4567214b3eccfe2159de0521315de08c3fc614c75c962c0af7bcd22c48dd4cb6",
+    "tests/unit/api/test_rest_wire_schema_contract.py": "fd0dc53e518ae0968266293a7a0a6234c899c56a1dd35cbd95424da35b7da993"
+  },
+  "latest_main_integrated": "4ffb2ae86283d708ed307b2ab9563b4cfa7eae60",
+  "contract_registry_reconciled_with_latest_main": true
+}

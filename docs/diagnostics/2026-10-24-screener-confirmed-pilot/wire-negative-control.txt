@@ -1,0 +1,39 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/dev/.codex/worktrees/c6fb/hoga-ops
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 1 item
+
+tests/unit/api/test_rest_wire_schema_contract.py F                       [100%]
+
+=================================== FAILURES ===================================
+_________________ test_wire_enum_members_match_frontend_union __________________
+
+    def test_wire_enum_members_match_frontend_union() -> None:
+        for type_name, (backend_members, ts_relpath) in WIRE_ENUM_MIRRORS.items():
+            ts_path = _REPO_ROOT / ts_relpath
+            frontend_members = _ts_union_members(ts_path, type_name)
+            missing_in_frontend = backend_members - frontend_members
+            stale_in_frontend = frontend_members - backend_members
+>           assert frontend_members == backend_members, (
+                f"{type_name} 의 BE Literal 과 FE union 이 갈렸다. "
+                f"프론트에 없는 값={sorted(missing_in_frontend)} "
+                f"프론트에만 남은 값={sorted(stale_in_frontend)}. "
+                f"{ts_relpath} 의 union 과 그 값을 소비하는 라벨·분기 표를 같은 PR 에서 "
+                "함께 고칠 것(ADR-0004)."
+            )
+E           AssertionError: ConfirmationState 의 BE Literal 과 FE union 이 갈렸다. 프론트에 없는 값=['confirmed'] 프론트에만 남은 값=['negative_control']. frontend/src/api/screenerRecovery.ts 의 union 과 그 값을 소비하는 라벨·분기 표를 같은 PR 에서 함께 고칠 것(ADR-0004).
+E           assert frozenset({'n...'unverified'}) == frozenset({'c...'unverified'})
+E             
+E             Extra items in the left set:
+E             'negative_control'
+E             Extra items in the right set:
+E             'confirmed'
+E             Use -v to get more diff
+
+tests/unit/api/test_rest_wire_schema_contract.py:842: AssertionError
+=========================== short test summary info ============================
+FAILED tests/unit/api/test_rest_wire_schema_contract.py::test_wire_enum_members_match_frontend_union
+============================== 1 failed in 0.05s ===============================

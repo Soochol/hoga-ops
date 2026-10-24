@@ -1,0 +1,703 @@
+{
+  "000020": {
+    "name": "동화약품",
+    "range_start": "2021-11-26",
+    "findings": [
+      "2021~2026 반기 발행주식총수 27,931,470주 유지. 조회한 공시에서 비례배정 수량 사건 미발견."
+    ],
+    "events": [],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230315001798",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260318001380",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261002000658"
+    ],
+    "action_candidates": []
+  },
+  "003240": {
+    "name": "태광산업",
+    "range_start": "2021-11-26",
+    "findings": [
+      "2021~2026 반기 발행주식총수 1,113,400주 유지. 2025년 합병등종료보고서는 SK브로드밴드 지분 자산양도이며 태광산업 신주배정이 아님."
+    ],
+    "events": [],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230814000264",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260323002312",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814003401",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250514000777"
+    ],
+    "action_candidates": [
+      {
+        "id": "20250730000554",
+        "datetime": "2025-07-30 16:39",
+        "name": "태광산업",
+        "title": "유상증자결정(자율공시)(종속회사의 주요경영사항)",
+        "submitter": "태광산업",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250730000554"
+      },
+      {
+        "id": "20250514000777",
+        "datetime": "2025-05-14 16:01",
+        "name": "태광산업",
+        "title": "합병등종료보고서",
+        "submitter": "태광산업",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250514000777"
+      }
+    ]
+  },
+  "013120": {
+    "name": "동원개발",
+    "range_start": "2021-11-26",
+    "findings": [
+      "2021~2026 반기 발행주식총수 90,808,100주 유지. 조회한 공시에서 비례배정 수량 사건 미발견."
+    ],
+    "events": [],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230323000698",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260319001460",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814000912"
+    ],
+    "action_candidates": []
+  },
+  "000520": {
+    "name": "삼일제약",
+    "range_start": "2021-11-26",
+    "findings": [
+      "2023 무상증자: 자사주 제외 기존 1주당 신주 0.10주 배정. 변환은 11/10이며 총 발행주식수 증가율과 다름.",
+      "2022~2024 CB 전환·BW 행사 추가상장 다수. 승인 설계상 자동 수량 연결 미지원. 발행주식수 2021말 13,537,283 → 2022말 13,714,450 → 2023말 15,226,786 → 2024~2026반기 21,691,811.",
+      "권리락 공시 목록 20230323000937는 확인했으나 본문 HTTP 403. 2023-03-24는 재전재 자료에서 확인한 보조 단서이며 적용일 검증 완료로 취급하지 않음."
+    ],
+    "events": [
+      {
+        "kind": "stock_distribution",
+        "numerator": 11,
+        "denominator": 10,
+        "record_date": "2023-03-27",
+        "listed_date": "2023-04-20",
+        "effective_date_verified": false,
+        "source_id": "20230309000328"
+      },
+      {
+        "kind": "unsupported",
+        "description": "CB conversion/BW exercise, see listing reports in action_candidates; exact effective dates not certified"
+      }
+    ],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230309000328",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230417000151",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260318002338",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814001306"
+    ],
+    "action_candidates": [
+      {
+        "id": "20230921000115",
+        "datetime": "2023-09-21 17:12",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환 및 국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230921000115"
+      },
+      {
+        "id": "20230907000146",
+        "datetime": "2023-09-07 17:01",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230907000146"
+      },
+      {
+        "id": "20230822000040",
+        "datetime": "2023-08-22 17:24",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230822000040"
+      },
+      {
+        "id": "20230717000080",
+        "datetime": "2023-07-17 16:33",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환 및 국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230717000080"
+      },
+      {
+        "id": "20230417000151",
+        "datetime": "2023-04-17 17:12",
+        "name": "삼일제약",
+        "title": "추가상장(무상증자)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230417000151"
+      },
+      {
+        "id": "20230323000937",
+        "datetime": "2023-03-23 15:39",
+        "name": "삼일제약",
+        "title": "권리락 기준가격 안내",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230323000937"
+      },
+      {
+        "id": "20221012000080",
+        "datetime": "2022-10-12 17:02",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20221012000080"
+      },
+      {
+        "id": "20220407000094",
+        "datetime": "2022-04-07 16:56",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20220407000094"
+      },
+      {
+        "id": "20230419000299",
+        "datetime": "2023-04-19 15:54",
+        "name": "삼일제약",
+        "title": "유상증자 또는 주식관련사채 등의 발행결과(자율공시)",
+        "submitter": "삼일제약",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230419000299"
+      },
+      {
+        "id": "20230309000328",
+        "datetime": "2023-03-09 14:04",
+        "name": "삼일제약",
+        "title": "무상증자결정",
+        "submitter": "삼일제약",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230309000328"
+      },
+      {
+        "id": "20220728000433",
+        "datetime": "2022-07-28 15:59",
+        "name": "삼일제약",
+        "title": "유상증자 또는 주식관련사채 등의 발행결과(자율공시)",
+        "submitter": "삼일제약",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20220728000433"
+      },
+      {
+        "id": "20220728000412",
+        "datetime": "2022-07-28 15:53",
+        "name": "삼일제약",
+        "title": "유상증자 또는 주식관련사채 등의 발행결과(자율공시)",
+        "submitter": "삼일제약",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20220728000412"
+      },
+      {
+        "id": "20241119000094",
+        "datetime": "2024-11-19 17:12",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20241119000094"
+      },
+      {
+        "id": "20241015000089",
+        "datetime": "2024-10-15 17:20",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20241015000089"
+      },
+      {
+        "id": "20240830000202",
+        "datetime": "2024-08-30 17:17",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240830000202"
+      },
+      {
+        "id": "20240816000075",
+        "datetime": "2024-08-16 17:59",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환 및 국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240816000075"
+      },
+      {
+        "id": "20240809000181",
+        "datetime": "2024-08-09 17:21",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240809000181"
+      },
+      {
+        "id": "20240621000052",
+        "datetime": "2024-06-21 17:51",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240621000052"
+      },
+      {
+        "id": "20240503000048",
+        "datetime": "2024-05-03 17:23",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240503000048"
+      },
+      {
+        "id": "20240424000062",
+        "datetime": "2024-04-24 17:35",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240424000062"
+      },
+      {
+        "id": "20240412000083",
+        "datetime": "2024-04-12 16:28",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240412000083"
+      },
+      {
+        "id": "20240404000093",
+        "datetime": "2024-04-04 17:56",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240404000093"
+      },
+      {
+        "id": "20240326000059",
+        "datetime": "2024-03-26 16:55",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240326000059"
+      },
+      {
+        "id": "20240308000052",
+        "datetime": "2024-03-08 17:35",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사 및 국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240308000052"
+      },
+      {
+        "id": "20240228000131",
+        "datetime": "2024-02-28 16:34",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240228000131"
+      },
+      {
+        "id": "20240207000095",
+        "datetime": "2024-02-07 17:06",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240207000095"
+      },
+      {
+        "id": "20240131000107",
+        "datetime": "2024-01-31 17:19",
+        "name": "삼일제약",
+        "title": "추가상장(국내CB전환 및 국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240131000107"
+      },
+      {
+        "id": "20240124000088",
+        "datetime": "2024-01-24 16:56",
+        "name": "삼일제약",
+        "title": "추가상장(국내BW행사)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20240124000088"
+      },
+      {
+        "id": "20260619000813",
+        "datetime": "2026-06-19 16:17",
+        "name": "삼일제약",
+        "title": "유상증자 또는 주식관련사채 등의 발행결과(자율공시)",
+        "submitter": "삼일제약",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260619000813"
+      },
+      {
+        "id": "20250416000609",
+        "datetime": "2025-04-16 16:54",
+        "name": "삼일제약",
+        "title": "유상증자 또는 주식관련사채 등의 발행결과(자율공시)",
+        "submitter": "삼일제약",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250416000609"
+      }
+    ]
+  },
+  "017650": {
+    "name": "대림제지",
+    "range_start": "2021-11-26",
+    "findings": [
+      "2025년 자기주식 215,000주 소각: 9,000,000 → 8,785,000. 이 비율을 잔존주주 수량 변환비율로 사용하지 않음.",
+      "2026년 액면 500→100, 8,785,000→43,925,000주. 법적 효력일 9/22와 변경상장·가격단위 적용일 10/13 구별."
+    ],
+    "events": [
+      {
+        "kind": "treasury_cancellation_policy_pending",
+        "legal_date": "2025-12-12",
+        "listed_date": "2025-12-30",
+        "shares_cancelled": 215000,
+        "source_id": "20251224000813"
+      },
+      {
+        "kind": "split",
+        "numerator": 5,
+        "denominator": 1,
+        "legal_date": "2026-09-22",
+        "market_unit_date": "2026-10-13",
+        "source_ids": [
+          "20260813000805",
+          "20261012000566",
+          "20261012000607"
+        ]
+      }
+    ],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20251224000813",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260318002212",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814002055",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260813000805",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261012000566",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261012000607"
+    ],
+    "action_candidates": [
+      {
+        "id": "20261012000607",
+        "datetime": "2026-10-12 16:45",
+        "name": "대림제지",
+        "title": "기준가격안내(액면분할)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261012000607"
+      },
+      {
+        "id": "20261012000568",
+        "datetime": "2026-10-12 16:35",
+        "name": "대림제지",
+        "title": "주권매매거래정지해제(액면분할 주권 변경상장)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261012000568"
+      },
+      {
+        "id": "20261012000566",
+        "datetime": "2026-10-12 16:35",
+        "name": "대림제지",
+        "title": "변경상장(액면변경)(액면분할)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20261012000566"
+      },
+      {
+        "id": "20260915000635",
+        "datetime": "2026-09-15 16:31",
+        "name": "대림제지",
+        "title": "주권매매거래정지(주식의 병합, 분할 등 전자등록 변경, 말소)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260915000635"
+      },
+      {
+        "id": "20251224000813",
+        "datetime": "2025-12-24 16:55",
+        "name": "대림제지",
+        "title": "변경상장(주식소각)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20251224000813"
+      },
+      {
+        "id": "20260813000805",
+        "datetime": "2026-08-13 15:35",
+        "name": "대림제지",
+        "title": "주식분할결정",
+        "submitter": "대림제지",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260813000805"
+      },
+      {
+        "id": "20251208000179",
+        "datetime": "2025-12-08 13:55",
+        "name": "대림제지",
+        "title": "주식소각 결정",
+        "submitter": "대림제지",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20251208000179"
+      }
+    ]
+  },
+  "900310": {
+    "name": "컬러레이",
+    "range_start": "2021-11-26",
+    "findings": [
+      "2022 제3자배정 유상증자: 54,000,000→64,041,675주. 비례배정과 구분하며 현재 설계상 자동 연결 미지원.",
+      "2026 5:1 병합: 64,041,675→12,808,335. 법적 효력일은 정정 후 5/19, 거래 재개·가격단위 적용일은 6/10. 3/18 최초 공시의 폐기된 일정 6/2·6/23 사용 금지.",
+      "공시에 환산 기재된 1주당 자본금 1,381→6,904로 비율을 역산하지 않음. 명시된 5:1과 주식수로 확인."
+    ],
+    "events": [
+      {
+        "kind": "unsupported",
+        "description": "2022 third-party paid issue; no pro-rata multiplier inferred",
+        "listing_report_id": "20220728000661"
+      },
+      {
+        "kind": "consolidation",
+        "numerator": 1,
+        "denominator": 5,
+        "legal_date": "2026-05-19",
+        "market_unit_date": "2026-06-10",
+        "source_ids": [
+          "20260408000780",
+          "20260609000793",
+          "20260609000810"
+        ]
+      }
+    ],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230428000667",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260422000813",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260825000649",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260408000780",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260609000793",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260609000810"
+    ],
+    "action_candidates": [
+      {
+        "id": "20220701000611",
+        "datetime": "2022-07-01 17:17",
+        "name": "컬러레이",
+        "title": "증권 발행결과(자율공시)(제3자배정 유상증자)",
+        "submitter": "컬러레이홀딩스",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20220701000611"
+      },
+      {
+        "id": "20220623000574",
+        "datetime": "2022-06-23 17:54",
+        "name": "컬러레이",
+        "title": "유상증자결정(제3자배정)",
+        "submitter": "컬러레이홀딩스",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20220623000574"
+      },
+      {
+        "id": "20220728000661",
+        "datetime": "2022-07-28 18:07",
+        "name": "컬러레이",
+        "title": "추가상장(제3자배정 유상증자)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20220728000661"
+      },
+      {
+        "id": "20260408000780",
+        "datetime": "2026-04-08 14:49",
+        "name": "컬러레이",
+        "title": "[정정] 주식병합결정",
+        "submitter": "컬러레이홀딩스",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260408000780"
+      },
+      {
+        "id": "20260318000404",
+        "datetime": "2026-03-18 14:14",
+        "name": "컬러레이",
+        "title": "주식병합결정",
+        "submitter": "컬러레이홀딩스",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260318000404"
+      },
+      {
+        "id": "20260609000810",
+        "datetime": "2026-06-09 17:23",
+        "name": "컬러레이",
+        "title": "기준가격안내(주식병합)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260609000810"
+      },
+      {
+        "id": "20260609000793",
+        "datetime": "2026-06-09 17:16",
+        "name": "컬러레이",
+        "title": "변경상장(주식병합(무액면주식))",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260609000793"
+      },
+      {
+        "id": "20260609000775",
+        "datetime": "2026-06-09 17:16",
+        "name": "컬러레이",
+        "title": "주권매매거래정지해제(주식병합(무액면주식) 주권 변경상장)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260609000775"
+      },
+      {
+        "id": "20260512000797",
+        "datetime": "2026-05-12 16:51",
+        "name": "컬러레이",
+        "title": "주권매매거래정지(주식의 병합, 분할 등 전자등록 변경, 말소)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260512000797"
+      }
+    ]
+  },
+  "001000": {
+    "name": "신라섬유",
+    "range_start": "2021-11-26",
+    "findings": [
+      "2026 액면100→500, 24,277,540→4,855,508주: 5:1 병합. 법적 효력일 8/25, 변경상장·가격단위 적용일 9/11."
+    ],
+    "events": [
+      {
+        "kind": "consolidation",
+        "numerator": 1,
+        "denominator": 5,
+        "legal_date": "2026-08-25",
+        "market_unit_date": "2026-09-11",
+        "source_ids": [
+          "20260626001007",
+          "20260910000470",
+          "20260910000535"
+        ]
+      }
+    ],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230303000937",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260306001558",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814002421",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260626001007",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260910000470",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260910000535"
+    ],
+    "action_candidates": [
+      {
+        "id": "20260626001007",
+        "datetime": "2026-06-26 16:32",
+        "name": "신라섬유",
+        "title": "주식병합결정",
+        "submitter": "신라섬유",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260626001007"
+      },
+      {
+        "id": "20260910000535",
+        "datetime": "2026-09-10 16:47",
+        "name": "신라섬유",
+        "title": "기준가격안내(액면병합)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260910000535"
+      },
+      {
+        "id": "20260910000478",
+        "datetime": "2026-09-10 16:40",
+        "name": "신라섬유",
+        "title": "주권매매거래정지해제(액면병합 주권 변경상장)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260910000478"
+      },
+      {
+        "id": "20260910000470",
+        "datetime": "2026-09-10 16:40",
+        "name": "신라섬유",
+        "title": "변경상장(액면변경)(액면병합)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260910000470"
+      },
+      {
+        "id": "20260818000498",
+        "datetime": "2026-08-18 16:39",
+        "name": "신라섬유",
+        "title": "주권매매거래정지(주식의 병합, 분할 등 전자등록 변경, 말소)",
+        "submitter": "코스닥시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260818000498"
+      }
+    ]
+  },
+  "005930": {
+    "name": "삼성전자",
+    "range_start": "2018-08-28",
+    "findings": [
+      "2018년 50:1 분할은 필요 창 시작 전. 해당 창에서 다시 50배를 적용하지 않음.",
+      "보통주 자기주식 소각 2018년 449,542,150주, 2025년 50,144,628주, 2026년 73,359,314주. 상장주식수 감소율을 잔존주주의 수량 변환비율로 사용하지 않음.",
+      "2018~2026 조회 공시에서 창 안의 분할·병합·기존주주 비례배정 사건 미발견. 소각을 다루는 명시적인 이력 분류 정책 필요."
+    ],
+    "events": [
+      {
+        "kind": "treasury_cancellation_policy_pending",
+        "legal_date": "2018-12-04",
+        "listed_date": "2018-12-12",
+        "shares_cancelled": 449542150,
+        "source_id": "20181207000186"
+      },
+      {
+        "kind": "treasury_cancellation_policy_pending",
+        "legal_date": "2025-02-20",
+        "listed_date": "2025-03-06",
+        "shares_cancelled": 50144628,
+        "source_id": "20250228000236"
+      },
+      {
+        "kind": "treasury_cancellation_policy_pending",
+        "legal_date": "2026-04-02",
+        "listed_date": "2026-04-14",
+        "shares_cancelled": 73359314,
+        "source_id": "20260409000375"
+      }
+    ],
+    "reviewed_through": "2026-10-23",
+    "evidence_status": "review_only_not_imported",
+    "runtime_share_evidence_published": false,
+    "sources": [
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20181207000186",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20200330004928",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20210309001165",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20210817001673",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20230307000775",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260310001404",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260814003138",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250228000236",
+      "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260409000375"
+    ],
+    "action_candidates": [
+      {
+        "id": "20260409000375",
+        "datetime": "2026-04-09 16:51",
+        "name": "삼성전자",
+        "title": "변경상장(주식소각)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20260409000375"
+      },
+      {
+        "id": "20250228000236",
+        "datetime": "2025-02-28 17:41",
+        "name": "삼성전자",
+        "title": "변경상장(주식소각)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20250228000236"
+      },
+      {
+        "id": "20181207000186",
+        "datetime": "2018-12-07 17:08",
+        "name": "삼성전자",
+        "title": "변경상장(주식소각)",
+        "submitter": "유가증권시장본부",
+        "url": "https://kind.krx.co.kr/common/disclsviewer.do?method=search&acptno=20181207000186"
+      }
+    ]
+  }
+}

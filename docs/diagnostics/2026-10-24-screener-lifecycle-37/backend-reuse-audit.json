@@ -1,0 +1,136 @@
+{
+  "baseline_inputs": "before-main-verification-inputs.json",
+  "final_inputs": "verification-inputs.json",
+  "all_changed_inputs": {
+    "frontend/src/styles/design-tokens.ts": {
+      "before": "fcc91694c544aaf9656655277dff55c2649aeebcecacd85eee42ba5846ab3376",
+      "after": "a052d419ba379e8f633a5858ed02760cfd4e9ec2ee5c29d7f68632663b63c174"
+    },
+    "frontend/tests/e2e/review-notes.spec.ts": {
+      "before": null,
+      "after": "4343c6dbe30f0df7adea9489dfa18f34e80f5ba4b750e30317046fdaabb7aad6"
+    },
+    "frontend/src/whiteboard/review.css": {
+      "before": null,
+      "after": "38dfc9e03995faa9539278b02576f857eb45faaabd3e52584bce869010335e3f"
+    },
+    "frontend/src/nav/items.ts": {
+      "before": "1203f9f90698eb5a99fbf35b64390e46493385b17f3a14f6a98e5cdb33d6d038",
+      "after": "36822ecb5b21585c05071107e0d72f6e5a4e39dcd70ac4e53b9e12e3b11e14cf"
+    },
+    "frontend/src/whiteboard/ReviewDocument.tsx": {
+      "before": null,
+      "after": "d6c6d992854529993fa348733c0c1f40f5ee861cff8b471799954f7c733fa119"
+    },
+    "frontend/src/whiteboard/session.ts": {
+      "before": "d383b530cbdbf9d3a46e81ef3159bb96729f1c92cfdb2266069149538774da33",
+      "after": "c4ce0d7f5f386139232ef5176d3e0ad75ce8802058ee9dcd5046eab59f46173b"
+    },
+    "frontend/src/pages/Whiteboard.tsx": {
+      "before": "71529e314e3baaf58f0882628d3f5f502babe97f10567ad7803816de003b5d8d",
+      "after": "398b78bb43133c4bfcd10d3aac18c89879c8e46ef27c199e46c42dc5f0d3b416"
+    },
+    "tests/unit/api/test_rest_wire_schema_contract.py": {
+      "before": "fd0dc53e518ae0968266293a7a0a6234c899c56a1dd35cbd95424da35b7da993",
+      "after": "b24f4d4923dd2a80cb424580cf098973fcad2a0dc9de34b1f82948db730a08c5"
+    },
+    "frontend/src/whiteboard/review.test.ts": {
+      "before": null,
+      "after": "1dd5ab669848bc158a0e4e46d8e830f17dc0f5d7ae544aa4d17fb30d85803ebd"
+    },
+    "frontend/src/whiteboard/files.ts": {
+      "before": "41b6396026b0dc1f824bf52ebfed95fe8a8e9d2c058c89184bc7acc53316f0cf",
+      "after": "c7402b8de0789efc5abeaa7c2a9702d4ca8fbe77145bbdc2c013028df28a7ab6"
+    },
+    "frontend/src/whiteboard/chartTransfer.ts": {
+      "before": "d13ec07fa854e11855dadd4acfbd173c273db9df5204aa268ebcdaba3dc589c8",
+      "after": "d51f431a5aae9e456f99f709705ff311ee75096ea972e2dcee1d180733bdde74"
+    },
+    "frontend/src/whiteboard/ChartToBoardDialog.tsx": {
+      "before": "dbc02d1208de00712a531f56e27e25e9cc7514d88bada0cc01edcd54a4d12c0f",
+      "after": "49e1848c37a13b9860543df9f3b97e501bc4ec665ea378cb9d0122d2ae06dd68"
+    },
+    "frontend/tests/e2e/whiteboard.spec.ts": {
+      "before": "96084bf23097709cf0e90c0d8f3538307ad3c1059e0923a3fbb76439e0890889",
+      "after": "2ddf2badaa09996d60541e536aeeb119e1afe93476acdb2867bd8e9669583d69"
+    },
+    "hoga/api/whiteboards.py": {
+      "before": "6087430703b6edbf72cf483269009fc08656793b10466a534554c88602255a92",
+      "after": "96b21f78a72c743545aa36e0eec0642f405c718185733d592e88f2b745a04df4"
+    },
+    "frontend/src/nav/TopNav.test.tsx": {
+      "before": "6f393f36887994802e7f180689a3f782b9e6f17e11289012a0fc37957adef7ae",
+      "after": "d3ce8d763343d36c5769806f4320461ca2c1a843ce3a9d93b570feba53f0a21c"
+    },
+    "frontend/src/whiteboard/review.ts": {
+      "before": null,
+      "after": "de19c6e6db9e9e536bd567bfd8e73758326c5f0c18595e284e8471005cde95de"
+    },
+    "frontend/src/pages/ReviewNotes.tsx": {
+      "before": null,
+      "after": "4de48ff68e85d9d7501aa78cf43ee55e184ca7bbc7d95e1354e860711039a6a9"
+    },
+    "frontend/src/chart/ChartCaptureActions.tsx": {
+      "before": "a442f64f1af00d92837c85e3865e62128265d5f698a240ea65f557de83763db0",
+      "after": "bf8273655c9ce89c95adff65261fa74ecb26f7f871b4cabfc32076f2f3cc5a0a"
+    },
+    "frontend/src/whiteboard/drafts.ts": {
+      "before": "625256053096106963f82d83333359215aa73efb57ac24da68bb1286cdb244ad",
+      "after": "4cdc77093c2eca2b13d69bfdb79253698933cdfb1b6ab7e2a8b63d518e7e438a"
+    },
+    "frontend/src/styles/tokens.css": {
+      "before": "90b90f3be5b60b98ffc8fb7c3359169aeecb29d2c6e5e2f54ff2119a8d4b9808",
+      "after": "0b4e4257df694c105919784886de14913bbb8b11b37a800f9f2d8947a8caac1a"
+    },
+    "frontend/src/whiteboard/session.test.ts": {
+      "before": "aeacd310d5bc576c02164828fd50535f4ed9447a877723377e89c7862b52ac47",
+      "after": "a6acc58b0910c91499460fda8080cff61282f3521a43d623171a7e5e41eda915"
+    },
+    "frontend/src/styles/tokens.generated.ts": {
+      "before": "0375df08a2974add08f0da2652f3858e56dfff399fc5c36149a27beb027f12ec",
+      "after": "121cc1eca7994e35cacfdbf21f05873a93a413e071497ff2decb8171c99a1da4"
+    },
+    "frontend/src/pages/LegacyWhiteboard.tsx": {
+      "before": null,
+      "after": "cce9d9132447ea6394c1873452dd46fbfa68606c814f48a755de11f3eeffdb98"
+    },
+    "frontend/tests/e2e/chart-image-export.spec.ts": {
+      "before": "7c3a1341b01d6375d27959bd7148b2bc4a693dd30f8934171a275301401116da",
+      "after": "aa2a781951efbec67cade4df99dcafffde91692a88cecf9f66c5699a81938348"
+    },
+    "frontend/src/api/whiteboards.ts": {
+      "before": "1f7004a01e3a397a61aea212ec8f024dbf869d2fa8b38622ebe9a5733554347c",
+      "after": "880b532ebaddadd87730d7be9aefb2c67ed0479100b9bc04dcc1b618ee0bb6db"
+    },
+    "tests/unit/api/test_whiteboards.py": {
+      "before": "ea4b4175df174734edf5bfd08521dba0a6b559a630a40e429a423ce2d5cc8867",
+      "after": "e22051723b941b2a4b8f9ce1074498c48d291b544746851993eee32b1d3163bd"
+    }
+  },
+  "backend_changed_inputs": {
+    "tests/unit/api/test_rest_wire_schema_contract.py": {
+      "before": "fd0dc53e518ae0968266293a7a0a6234c899c56a1dd35cbd95424da35b7da993",
+      "after": "b24f4d4923dd2a80cb424580cf098973fcad2a0dc9de34b1f82948db730a08c5"
+    },
+    "hoga/api/whiteboards.py": {
+      "before": "6087430703b6edbf72cf483269009fc08656793b10466a534554c88602255a92",
+      "after": "96b21f78a72c743545aa36e0eec0642f405c718185733d592e88f2b745a04df4"
+    },
+    "tests/unit/api/test_whiteboards.py": {
+      "before": "ea4b4175df174734edf5bfd08521dba0a6b559a630a40e429a423ce2d5cc8867",
+      "after": "e22051723b941b2a4b8f9ce1074498c48d291b544746851993eee32b1d3163bd"
+    }
+  },
+  "tools_and_dependencies_unchanged": true,
+  "rechecked": [
+    "tests/api/test_screener_daily_ingest.py",
+    "tests/unit/api/test_whiteboards.py",
+    "tests/unit/api/test_rest_wire_schema_contract.py"
+  ],
+  "interrupted_full_rerun": {
+    "exit_code": 143,
+    "passed": false,
+    "cause": "not established; process terminated before completion"
+  },
+  "reuse_reason": "Only the whiteboard module and its tests/contracts changed among backend inputs. The complete prior run covers unchanged backend inputs; changed module, contract and lifecycle integration passed 68 checks on final inputs."
+}

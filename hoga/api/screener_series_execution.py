@@ -95,6 +95,11 @@ async def replay_execution(data_dir, identity):
     for field in ("rows", "has_more", "warnings", "basis_at_ms", "bar_coverage"):
         if response.model_dump(mode="json")[field] != expected[field]:
             raise ValueError(f"보존 결과와 재실행 결과가 다릅니다: {field}")
+    actual_calculation = response.calculation.model_dump(mode="json")
+    expected_calculation = expected["calculation"]
+    for field, value in actual_calculation.items():
+        if field not in {"execution_id", "replayable"} and value != expected_calculation.get(field):
+            raise ValueError(f"보존 결과와 재실행 계산 기준이 다릅니다: {field}")
     response.calculation.replayable = True
     response.calculation.execution_id = identity
     return response

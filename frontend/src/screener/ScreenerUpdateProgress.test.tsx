@@ -40,3 +40,15 @@ it('shows preparation phase without a misleading 0/0 count', () => {
   expect(screen.getByTestId('screener-update-progress')).toHaveTextContent('종목 목록 확인 중');
   expect(screen.getByTestId('screener-update-progress')).not.toHaveTextContent('0/0');
 });
+
+it('shows daily provisional and quarantine counts without polling or implying all data is confirmed', () => {
+  render(<ScreenerUpdateProgress updating={null} daily={{ attempts_today: 1, provisional: 30,
+    confirmed: 20, quarantined: 12, legacy: 50, checked_on: '2026-10-24', last_trading_day: '20261023',
+    last_attempt_at: '2026-10-24T22:00:00+09:00', failed_codes: 2, errors: {}, codes: 40,
+    unavailable_codes: 3, unavailable: {}, excluded_codes: 2, excluded_dates: 7,
+    retryable_unavailable_codes: 1, retired_codes: 2, retired: {}, skipped_codes: 0,
+    sample_count: 40, provider_pages: 40, reused_samples: 0, elapsed_ms: 500, commit_pending: true }} />);
+  expect(screen.getByRole('status')).toHaveTextContent('확정 20건 · 잠정 30건 · 충돌 격리 12건');
+  expect(screen.getByRole('status')).toHaveTextContent('확인 실패 2종목 · 공급자 미제공 3종목 · 수집 대상 외 7일봉');
+  expect(screen.getByRole('status')).toHaveTextContent('종료 확인 2종목 · 미제공 재시도 1종목 · 저장 재시도 대기');
+});

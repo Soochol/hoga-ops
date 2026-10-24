@@ -1,0 +1,152 @@
+[
+  {
+    "code": "000020",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_volume_mismatch"
+  },
+  {
+    "code": "003240",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_price_mismatch"
+  },
+  {
+    "code": "000520",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "vendor_invalid_rows"
+  },
+  {
+    "code": "013120",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "vendor_invalid_rows"
+  },
+  {
+    "code": "017650",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "gap_repair_would_change_existing_adjustment"
+  },
+  {
+    "code": "900310",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "gap_repair_would_change_existing_adjustment; fractional_original_price"
+  },
+  {
+    "code": "005930",
+    "first": "2018-08-28",
+    "last": "2026-10-23",
+    "reason": "old_conflict_control_without_date_gap"
+  },
+  {
+    "code": "001000",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "old_conflict_control_without_date_gap"
+  },
+  {
+    "code": "020180",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "gap_repair_would_change_existing_adjustment"
+  },
+  {
+    "code": "038390",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "gap_repair_would_change_existing_adjustment"
+  },
+  {
+    "code": "044480",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "gap_repair_would_change_existing_adjustment; fractional_original_price"
+  },
+  {
+    "code": "900300",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "gap_repair_would_change_existing_adjustment; fractional_original_price"
+  },
+  {
+    "code": "004770",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_price_mismatch"
+  },
+  {
+    "code": "013030",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_price_mismatch"
+  },
+  {
+    "code": "020400",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_price_mismatch; fractional_original_price"
+  },
+  {
+    "code": "025980",
+    "first": "2018-08-28",
+    "last": "2026-10-23",
+    "reason": "adjusted_price_mismatch"
+  },
+  {
+    "code": "027710",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_price_mismatch"
+  },
+  {
+    "code": "000650",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "vendor_invalid_rows"
+  },
+  {
+    "code": "001530",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "vendor_invalid_rows; fractional_original_price"
+  },
+  {
+    "code": "003060",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "vendor_invalid_rows; fractional_original_price"
+  },
+  {
+    "code": "003230",
+    "first": "2018-08-28",
+    "last": "2026-10-23",
+    "reason": "vendor_invalid_rows"
+  },
+  {
+    "code": "012450",
+    "first": "2018-08-28",
+    "last": "2026-10-23",
+    "reason": "adjusted_volume_mismatch; fractional_original_price"
+  },
+  {
+    "code": "900340",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_volume_mismatch; fractional_original_price"
+  },
+  {
+    "code": "000120",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_volume_mismatch; nonfractional_control"
+  },
+  {
+    "code": "000430",
+    "first": "2021-11-26",
+    "last": "2026-10-23",
+    "reason": "adjusted_volume_mismatch; nonfractional_control"
+  }
+]

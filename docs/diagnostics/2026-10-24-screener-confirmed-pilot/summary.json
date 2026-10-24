@@ -1,0 +1,650 @@
+{
+  "plan_id": "3be1c04b251db38a409cea67a8a7cd43b0c000d07d47425bc0e4523d910dbc2c",
+  "final_snapshot": "1d6e052483ea919e0731f9f3a6c1dceff3ea12e49df06cb5a583da4ee5cef9ff",
+  "target_count": 25,
+  "independently_rechecked": 25,
+  "added_original_dates": 11172,
+  "total_required_v2_dates_absent_in_legacy": 14268,
+  "original_missing_dates": 0,
+  "price_missing_dates": 0,
+  "conflicts_before": 4220,
+  "conflicts_after": 3737,
+  "corrected_dates": 483,
+  "full_required_window_ready": 0,
+  "full_required_window_quarantined": 25,
+  "share_evidence_ready": 0,
+  "dates_and_prices_collected_for_all": true,
+  "expansion_497_collected_codes": 23,
+  "new_497_cohort_codes": 17,
+  "still_uncollected_497_cohort_codes": 474,
+  "legacy_fingerprints_preserved": true,
+  "comparisons": [
+    {
+      "index": 0,
+      "types": [
+        "new_high"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [
+        "005930",
+        "001000"
+      ],
+      "variants": {
+        "raw": {
+          "matches": [
+            "005930",
+            "012450",
+            "003230",
+            "000650",
+            "025980",
+            "001000",
+            "000120",
+            "003240",
+            "013030",
+            "017650",
+            "020400"
+          ],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "e17a327fa84a78960cedd23d81cce2467207f84a3dfcae8538965ecdc226a83a",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [
+            "005930",
+            "012450",
+            "003230",
+            "000650",
+            "025980",
+            "001000",
+            "000120",
+            "003240",
+            "013030",
+            "017650",
+            "020400"
+          ],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "3fbaef877836d60962f5c1349774fc2ba7421143357d5ff4f7984db3f71792f3",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [
+            "005930",
+            "012450",
+            "003230",
+            "000650",
+            "025980",
+            "001000",
+            "000120",
+            "003240",
+            "013030",
+            "017650",
+            "020400"
+          ],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "be4e8bcece06e2e627b291100d6e580d81b6d5c20921971e1267698094941771",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 1,
+      "types": [
+        "new_high_vol",
+        "trade_value_period"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [],
+      "variants": {
+        "raw": {
+          "matches": [],
+          "complete": 0,
+          "total": 25,
+          "unavailable_reasons": {
+            "original_observation_conflict": 48
+          },
+          "execution": {
+            "execution_id": "ab95ac3f1e9b20b3253372e619768e56276e1ec70197645879334ef34c79bd26",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 0,
+          "total": 25,
+          "unavailable_reasons": {
+            "original_observation_conflict": 48,
+            "share_evidence_unavailable": 5
+          },
+          "execution": {
+            "execution_id": "de7bae7529419f7d98b8360b780938434fe636f280376d15656166e939501f06",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [],
+          "complete": 0,
+          "total": 25,
+          "unavailable_reasons": {
+            "original_observation_conflict": 50
+          },
+          "execution": {
+            "execution_id": "4df33f16fce245d834d27241b4f7a253bd04a57bd01664710e162ea4e4bf9cb0",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 2,
+      "types": [
+        "trade_value_period",
+        "new_high_vol"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [
+        "005930"
+      ],
+      "variants": {
+        "raw": {
+          "matches": [
+            "005930"
+          ],
+          "complete": 0,
+          "total": 4,
+          "unavailable_reasons": {
+            "original_observation_conflict": 8
+          },
+          "execution": {
+            "execution_id": "dd6ae8695ddc3988bd400a8ba78cee9fcd3cd330796a646837235aa92df1bb64",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 0,
+          "total": 4,
+          "unavailable_reasons": {
+            "original_observation_conflict": 8,
+            "share_evidence_unavailable": 4
+          },
+          "execution": {
+            "execution_id": "b830f2c71100072479e122dba6269be3b46aeeb018fbb392d52ae5b1205c2526",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [
+            "005930"
+          ],
+          "complete": 0,
+          "total": 4,
+          "unavailable_reasons": {
+            "original_observation_conflict": 8
+          },
+          "execution": {
+            "execution_id": "202762658e64a758a5353e64f23903fe057489a32ddcc534d6109b19605ea324",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 3,
+      "types": [
+        "trade_value_period",
+        "new_high"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [],
+      "variants": {
+        "raw": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "351d11d5e40df135ef9ff7e4c809c60f7b29131d1c98cb682c255824ceb4daa1",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "3719e3d3dc5cc49740f60243bf9298c7c5a04cb6fd93057482ca3437c8965e56",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "fca4998b9d4c7bbbcd00a1ca2c0840b8282543864f5765f715dcafa17a61f557",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 4,
+      "types": [
+        "new_high_vol",
+        "trade_value_period",
+        "new_high_today"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [],
+      "variants": {
+        "raw": {
+          "matches": [],
+          "complete": 0,
+          "total": 4,
+          "unavailable_reasons": {
+            "original_observation_conflict": 8
+          },
+          "execution": {
+            "execution_id": "69751894633abf7819e441256a11431419466194a92bfc122cd6e29e125cf74b",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 0,
+          "total": 4,
+          "unavailable_reasons": {
+            "original_observation_conflict": 8,
+            "share_evidence_unavailable": 4
+          },
+          "execution": {
+            "execution_id": "d460d1ef56585c7d85c9d1633fc547d16942813f62a08a79b93dca096d490ef0",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [],
+          "complete": 0,
+          "total": 4,
+          "unavailable_reasons": {
+            "original_observation_conflict": 8
+          },
+          "execution": {
+            "execution_id": "9906be51008a1f90d36e6ff1d092d5fb8135d4030704d0dc5ef18bad9a85b292",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 5,
+      "types": [
+        "bollinger_position",
+        "trade_value_period"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [],
+      "variants": {
+        "raw": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "49cb404125aa016e62b87744de6c5a5cb7b6d99a4b2b9dede7e783f21ee72688",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "a144435ea3fc0a904bbd4db36233185fdbe0519a751cc3f8a298d6fbae99837c",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "748274c755908d3b4b0610d47616529ceffaeebc1d1146450342eded20fc54d6",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 6,
+      "types": [
+        "bollinger_position",
+        "trade_value_period"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [],
+      "variants": {
+        "raw": {
+          "matches": [],
+          "complete": 4,
+          "total": 4,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "da39f15cfb492fd61fa5020b19a4f4e000e61db97d0eaec317f3757aa98c2670",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 4,
+          "total": 4,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "309f7d457f353be3e097750d7cc8e2c76df6e65b0d534a5996d5e2867041ce16",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [],
+          "complete": 4,
+          "total": 4,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "74c86b17c98fbce2ba2095adb0423fd880a2a42532b9fcf1801777eb70e82b46",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 7,
+      "types": [
+        "new_high_vol_today"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [],
+      "variants": {
+        "raw": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "fc3c0713522a4f09d82874f42262cf6108184534adab925a2945d730a1cd010d",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 0,
+          "total": 25,
+          "unavailable_reasons": {
+            "share_evidence_unavailable": 25
+          },
+          "execution": {
+            "execution_id": "f8f15f354641d3774e92ab6247711555a8a12d2286597b94dba33d43b441ae1e",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "4acc7e1aa42d9910eafa70ed548eac52aae9de0d9541a4ebcaec56f8acd91790",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 8,
+      "types": [
+        "new_high_today"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [],
+      "variants": {
+        "raw": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "95b8127cb977a6da3da14d6962700784f126062fd240cb777e317a6d882dd020",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "21a47bf98fec42a2346225896601a9ec8c862123f7cb05b09f5c30f5502fe327",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [],
+          "complete": 25,
+          "total": 25,
+          "unavailable_reasons": {},
+          "execution": {
+            "execution_id": "effc86268b72d117b2edaf597a7e0df6d916c193189c68b720eef7c843bb4c53",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    },
+    {
+      "index": 9,
+      "types": [
+        "trade_value_period"
+      ],
+      "legacy_equal": true,
+      "legacy_matches": [
+        "005930",
+        "012450",
+        "003230",
+        "000650",
+        "025980",
+        "000120",
+        "004770",
+        "003240",
+        "001530",
+        "013030",
+        "000520",
+        "027710",
+        "038390",
+        "013120",
+        "000430",
+        "003060",
+        "020400",
+        "900340",
+        "020180",
+        "044480"
+      ],
+      "variants": {
+        "raw": {
+          "matches": [
+            "005930",
+            "012450",
+            "003230",
+            "000650",
+            "025980",
+            "000120",
+            "004770",
+            "003240",
+            "000020",
+            "001530",
+            "013030",
+            "000520",
+            "027710",
+            "038390",
+            "013120",
+            "000430",
+            "003060",
+            "020400",
+            "020180",
+            "044480"
+          ],
+          "complete": 24,
+          "total": 25,
+          "unavailable_reasons": {
+            "original_observation_conflict": 1
+          },
+          "execution": {
+            "execution_id": "d3122d81f129c88df1de0c9cfb10af79cec36e90655d433a0996908a6865d558",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "share_adjusted": {
+          "matches": [
+            "005930",
+            "012450",
+            "003230",
+            "000650",
+            "025980",
+            "000120",
+            "004770",
+            "003240",
+            "000020",
+            "001530",
+            "013030",
+            "000520",
+            "027710",
+            "038390",
+            "013120",
+            "000430",
+            "003060",
+            "020400",
+            "020180",
+            "044480"
+          ],
+          "complete": 24,
+          "total": 25,
+          "unavailable_reasons": {
+            "original_observation_conflict": 1
+          },
+          "execution": {
+            "execution_id": "4a18efdba92b806a31bba97cd27ba98633d91f4e6bba203d7c00ee48d66c481f",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        },
+        "raw_unreviewed": {
+          "matches": [
+            "005930",
+            "012450",
+            "003230",
+            "000650",
+            "025980",
+            "000120",
+            "004770",
+            "003240",
+            "001530",
+            "013030",
+            "000520",
+            "027710",
+            "038390",
+            "013120",
+            "000430",
+            "003060",
+            "020400",
+            "020180",
+            "044480"
+          ],
+          "complete": 23,
+          "total": 25,
+          "unavailable_reasons": {
+            "original_observation_conflict": 2
+          },
+          "execution": {
+            "execution_id": "f28690472abab5fdb96dd73ec7f13c3834d8f7e30f9c3ace0b8e87dcb2986455",
+            "replay_equal": true
+          },
+          "session_scope": "provider_daily_all_sessions",
+          "confirmation_policy": "historical_recheck_v1"
+        }
+      }
+    }
+  ],
+  "legacy_comparisons_equal": 10,
+  "exact_replays": 30,
+  "comparison_scope": "25 pilot codes intersect each unchanged saved universe; full market results are not inferred"
+}

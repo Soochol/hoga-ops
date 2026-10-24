@@ -1,0 +1,15 @@
+import hashlib,json,os,shutil
+from pathlib import Path
+P=Path(__file__).parent;primary=Path('/home/dev/code/hoga-ops');name='hoga/api/screener_corrections.py'
+summary=(P/'backend-final.txt').read_text().strip().splitlines()[-1]
+assert ' passed,' in summary and ' failed' not in summary,summary
+assert (P/'ruff.txt').read_text().strip()=='All checks passed!'
+assert len(json.loads((P/'operational-before.json').read_text())['results'])==6
+before=json.loads((P/'primary-before.json').read_text());actual={str(p.relative_to(primary)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (primary/'hoga').rglob('*.py')};assert before==actual,'Concurrent primary source change; inspect before installation'
+assert (P/'primary-backup'/name).read_bytes()==(primary/name).read_bytes()
+ours={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in Path('hoga').rglob('*.py')};assert [p for p in set(ours)|set(actual) if ours.get(p)!=actual.get(p)]==[name]
+target=primary/name;temporary=target.with_suffix('.review535.tmp');shutil.copyfile(name,temporary);os.replace(temporary,target)
+after={str(p.relative_to(primary)):hashlib.sha256(p.read_bytes()).hexdigest() for p in (primary/'hoga').rglob('*.py')};assert after==ours
+assert {k:v for k,v in before.items() if k!=name}=={k:v for k,v in after.items() if k!=name}
+(P/'primary-install.json').write_text(json.dumps({'only_path_written':name,'before':before[name],'after':after[name],'all_app_sources_match_tested_worktree':True,'unrelated_app_files_unchanged':len(before)-1,'manual_server_restart':False},indent=2))
+print('Installed one tested correction module; all other primary app sources unchanged, full app matches worktree',flush=True)

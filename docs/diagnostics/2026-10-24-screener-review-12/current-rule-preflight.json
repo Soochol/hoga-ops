@@ -1,0 +1,104 @@
+[
+  {
+    "code": "020180",
+    "existing_accepted_preserved": 328,
+    "new_accepted": 0,
+    "requested": 7,
+    "rejected": [
+      {
+        "date": "2026-06-08",
+        "reason": "intraday_prefix",
+        "evidence_id": "40e4ab6947253b3f27bb6089fe1537b2ff98e2e33de9c33e7387669fa7505352",
+        "prefix_end_ms": 1780900500000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-06-09",
+        "reason": "intraday_prefix",
+        "evidence_id": "8d655635d49dbc0f937f7d7e751e31fb78dca2f13c87857503c9bd8adbdf5087",
+        "prefix_end_ms": 1780986900000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-06-24",
+        "reason": "intraday_prefix",
+        "evidence_id": "e7face35caf247fab8a9aabbe3f5e225fe236cf186eb4a5f71b0be0a3c015d1e",
+        "prefix_end_ms": 1782282900000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-07-10",
+        "reason": "intraday_prefix",
+        "evidence_id": "1d1b5eacc04647c1a44b5799c0b9e4db4b7e6694b608b59007566559ded48785",
+        "prefix_end_ms": 1783665000000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-07-13",
+        "reason": "intraday_prefix",
+        "evidence_id": "24dc6e3039d28567ef63bf986ca5b985f349ea31b01e7313d7e28ed7d6d26e2c",
+        "prefix_end_ms": 1783924500000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-07-21",
+        "reason": "intraday_prefix",
+        "evidence_id": "b71ef41f2f91e5aa00a51c1588049ddc5bff95f27118190e6d00c1e66bd23262",
+        "prefix_end_ms": 1784615700000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-07-22",
+        "reason": "intraday_prefix",
+        "evidence_id": "90587aa6a4ac77f163c350ec536b9bce399575b4871719ac9613928d1a481a85",
+        "prefix_end_ms": 1784702100000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      }
+    ],
+    "read_only_prepare_review": true
+  },
+  {
+    "code": "038390",
+    "existing_accepted_preserved": 229,
+    "new_accepted": 0,
+    "requested": 5,
+    "rejected": [
+      {
+        "date": "2026-06-08",
+        "reason": "intraday_prefix",
+        "evidence_id": "3f7a8864b0ccdb86441f037b0dd922afbffb80063cbe6b27cf45e5d354a197d9",
+        "prefix_end_ms": 1780900200000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-06-09",
+        "reason": "intraday_prefix",
+        "evidence_id": "9fa228bb61e95bdfd363dae0d80279a5d7f47e2887fd7c1cd64d110daa2cdc70",
+        "prefix_end_ms": 1780986900000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-07-13",
+        "reason": "intraday_prefix",
+        "evidence_id": "b064f1699eec7fc4bea7940d6d32295145d0c21f8d27a99df68c3d7b13ee8ddf",
+        "prefix_end_ms": 1783924500000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-07-15",
+        "reason": "intraday_prefix",
+        "evidence_id": "0e7f8e86140262442714394e871816373a3e6f331fa244be7ada32ffecc3d1d1",
+        "prefix_end_ms": 1784097300000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      },
+      {
+        "date": "2026-07-21",
+        "reason": "intraday_prefix",
+        "evidence_id": "36ebb8800dc767a5fcd11efdba1266e5883c5157a7c2b2acb68e5af8c8b90d4d",
+        "prefix_end_ms": 1784615400000,
+        "error": "entire_ohlcv_prefix_does_not_match"
+      }
+    ],
+    "read_only_prepare_review": true
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "official_spec": {
+    "url": "https://raw.githubusercontent.com/Kiwoom-Securities/Kiwoom-REST-API/main/kiwoom/_data/kiwoom_api_spec.json",
+    "full_source_sha256": "42a7b3912c9d9588c83bdc2db7779c8d2e038703a2b5562e54ef46ae905cba79",
+    "finding": "Field/type descriptions do not establish the cause or trade-type residuals for the 12 dates."
+  },
+  "support_issue": {
+    "url": "https://github.com/Kiwoom-Securities/Kiwoom-REST-API/issues/7",
+    "observed_reply": "2026-10-21: redirected to the official Q&A board; no volume-scope definition supplied in that reply.",
+    "outbound_messages_sent": 0
+  },
+  "krx_statistics_probe": {
+    "url": "https://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd",
+    "status": 400,
+    "body": "LOGOUT",
+    "usable_evidence": false
+  },
+  "naver_alternative_price_paths": {
+    "status": 409,
+    "usable_evidence": false
+  },
+  "naver_legacy_daily_html": {
+    "statuses": [
+      410
+    ],
+    "usable_evidence": false
+  },
+  "kind_recent_prices": {
+    "url": "https://kind.krx.co.kr/common/stockprices.do?method=searchStockPricesMain&isurCd=02018",
+    "http_status": 200,
+    "covers_requested_dates": false,
+    "usable_evidence_for_12_dates": false
+  }
+}

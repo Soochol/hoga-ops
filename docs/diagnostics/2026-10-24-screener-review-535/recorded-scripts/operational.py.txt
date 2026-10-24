@@ -1,0 +1,35 @@
+import asyncio,copy,json,sys
+from pathlib import Path
+import httpx
+from hoga.api import screener_series_store as store
+from hoga.api.models import ScanRequest,ScreenerResponse
+P=Path(__file__).parent;D=Path('/home/dev/.local/share/hoga-ops/data');TARGETS={'020180','038390'}
+def stable(x):
+ x=copy.deepcopy(x);x.pop('scanned_at_ms',None);return x
+def save(mode,records,snapshot):(P/('operational-'+mode+'.json')).write_text(json.dumps({'snapshot_id':snapshot,'results':records},ensure_ascii=False,indent=2))
+async def main(mode):
+ source=json.loads((P/'source-plan.json').read_text());snapshot=json.loads((P/('snapshot-before.json' if mode=='before' else 'apply-result.json')).read_text())['id' if mode=='before' else 'snapshot_id']
+ universe={'exclude_etf':False}
+ requests=[('historical_amount',dict(conditions=[dict(id='review535-amount',type='trade_value_period',params=dict(mode='date_range',start_date='2024-01-02',end_date='2024-01-02',min_eok=0.,timeframe='D',include_open_bar=False))],universe=universe),None),
+ ('historical_volume_raw',dict(conditions=[dict(id='review535-volume',type='new_high_vol',params=dict(mode='date_range',start_date='2024-01-03',end_date='2024-11-21',record_period=dict(unit='bars',value=2),timeframe='D',include_open_bar=False,volume_basis='raw'))],universe=universe),'raw'),
+ ('historical_volume_share',dict(conditions=[dict(id='review535-share-volume',type='new_high_vol',params=dict(mode='date_range',start_date='2024-01-03',end_date='2024-11-21',record_period=dict(unit='bars',value=2),timeframe='D',include_open_bar=False,volume_basis='share_adjusted'))],universe=universe),'share_adjusted'),
+ ('diagnostic_1000_raw',dict(conditions=[dict(id='review535-long-raw',type='new_high_vol_today',params=dict(timeframe='D',include_open_bar=False,period=1000,volume_basis='raw'))],universe=universe),'raw'),
+ ('saved_short_volume',source['comparisons'][1],'raw'),('saved_long_volume',source['comparisons'][2],'raw')]
+ records=[]
+ async with httpx.AsyncClient(timeout=180) as client:
+  for label,body,basis in requests:
+   body={**body,'calculation_policy':'separate_bases_v2'};request=ScanRequest.model_validate(body);request.calculation_policy='separate_bases_v2';request.snapshot_id=snapshot;request.basis='eod'
+   if basis:
+    for leaf in request.conditions:
+     if leaf.type in {'new_high_vol','new_high_vol_today'}:leaf.params.volume_basis=basis
+   response=await client.post('http://127.0.0.1:8000/api/screener/executions',json=request.model_dump(mode='json'));response.raise_for_status();actual=response.json()
+   assert actual==ScreenerResponse.model_validate(actual).model_dump(mode='json')
+   identity=actual['calculation']['execution_id'];archive=store.read_object(D,identity)
+   selected=set(archive['inputs']['codes']);incomplete={x['code'] for c in ['bar_coverage','history_coverage'] if actual.get(c) for x in actual[c]['incomplete']};matched={x['code'] for x in actual['rows']}
+   states={code:dict(selected=code in selected,complete=code in selected and code not in incomplete,matched=code in matched) for code in sorted(TARGETS)}
+   get=await client.get('http://127.0.0.1:8000/api/screener/executions/'+identity);get.raise_for_status();assert get.json()==actual
+   replay=await client.post('http://127.0.0.1:8000/api/screener/executions/'+identity+'/replay');replay.raise_for_status();assert stable(replay.json())==stable(actual)
+   row={'label':label,'request':request.model_dump(mode='json'),'response':actual,'execution_id':identity,'code_revision':archive['code_revision'],'targets':states,'http_get_equal':True,'exact_http_replay_equal':True}
+   records.append(row);save(mode,records,snapshot);print(mode,label,'targets',states,flush=True)
+ print('PASS',mode,'six actual executions, exact HTTP roundtrip and version-bound replay',flush=True)
+asyncio.run(main(sys.argv[1]))

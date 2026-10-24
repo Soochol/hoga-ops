@@ -1,0 +1,1 @@
+Installed one tested correction module; all other primary app sources unchanged, full app matches worktree

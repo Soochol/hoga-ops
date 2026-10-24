@@ -1,0 +1,6 @@
+2026-10-24T12:33:00.462Z [백엔드]   File "/home/dev/code/hoga-ops/hoga/api/app.py", line 64, in <module>
+2026-10-24T12:33:00.462Z [백엔드]   File "/home/dev/code/hoga-ops/hoga/api/whiteboards.py", line 24, in <module>
+2026-10-24T12:33:00.462Z [백엔드]     from PIL import Image, UnidentifiedImageError
+2026-10-24T12:33:00.462Z [백엔드] ModuleNotFoundError: No module named 'PIL'
+
+Pillow 13.0.0 was present by recovery. User explicitly authorized only port8000 restart. The fixed backend launcher was used; frontend PID3244882 remained unchanged.

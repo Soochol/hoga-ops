@@ -1,0 +1,36 @@
+{
+  "before": {
+    "hoga/api/screener.py": "652984ef65da30105abc4a75a28bf2e3096154b43ec671474b3888c7066482df",
+    "hoga/api/models.py": "8dd9bb38f0f63ce7d5a8650670261310eccf60c3100e7f273d5c7a0f24ba6fb6",
+    "frontend/src/api/screener.ts": "67214e8586f3b3fbea3da91ff5e01700cd0e4740c5438adaf363ed974b87278d",
+    "frontend/src/pages/Screener.tsx": "c35b887673f82eccd1c5afbeeaa8723aed007f43cdfe1ea8185cdbcf7fb2a800",
+    "frontend/src/screener/ScreenerDrawer.tsx": "a01b2e147583432968f00c49a34577bdf88940f8b196dbd5a050f15392ad70bc",
+    "frontend/src/screener/useScreenerUpdate.ts": "ebf89c8040a0403961eee9c60580ea4ba60e10b589049cc6478ce32fc4712b41",
+    "frontend/src/screener/useScreenerUpdateSync.ts": "7a8eb39a8eccb9e94776dee1ada6a84db7d3a311f77044964dc2c7f44368929a",
+    "frontend/src/screener/ScreenerUpdateProgress.tsx": "19d4cb87e1bd906356170b5c29ac0b5cc48b6187c2b174d17f943a6d56b64b97",
+    "tests/api/test_screener_update.py": "5d8414ad64301db0b42dab3209c563c6b79014ee01db986b86560e40114f01bb",
+    "tests/api/test_screener_refresh.py": "407a90479ae2e694aa692e3363ef7a2ee4f4f288230016e83ad3c39ea331f12e",
+    "frontend/src/pages/Screener.test.tsx": "19315b19363278a7e8b1f3aea3e7c388b94917518a19bccc20285117eb2775e4",
+    "frontend/src/screener/useScreenerUpdateSync.test.tsx": "87b13cb7c141e801bedd05ab95d97ce36681ac92a4d9b749cca40504459b4bd4",
+    "frontend/tests/e2e/screener-refresh.spec.ts": "3d59002c3ba58af1f4bfb64a1aaab68a8b507df57a20e9c071a8b7b1e7003b90"
+  },
+  "after": {
+    "hoga/api/screener.py": "ae94c58fe6983230f8b2d8858b6ea8d5268daea9f8e149ecb54215a93dca654e",
+    "hoga/api/models.py": "e192f4f2dfba80299c024e0bfc02c9dec31c412e877fa34ff73c64f7df1c9086",
+    "frontend/src/api/screener.ts": "e98e9e5a376cb4bd35594d74e8da22fa445864bd2c72e3e38161162376318453",
+    "frontend/src/pages/Screener.tsx": "8b9720d31a2c4ff593ac303839258bfd4da29a3c039382a36fa9b9fc78c5a594",
+    "frontend/src/screener/ScreenerDrawer.tsx": "0bb51021b98562b63e936bf793aacc8329dfc8422d1e6407350cb726ddd19678",
+    "frontend/src/screener/useScreenerUpdate.ts": "b98070268a32a564ee5841b33982cc76954f603f4cafcc93ece9b465e78a9215",
+    "frontend/src/screener/useScreenerUpdateSync.ts": "2062d18b8eef7eabb3feaa1fced50b41fc0b301e544ad5cfb6e792123083d352",
+    "frontend/src/screener/ScreenerUpdateProgress.tsx": "8e938b09d75045bc40e4d8dc92e783ddcd51ca9e77f111ed6f98242342e814ae",
+    "tests/api/test_screener_update.py": "e5a82aff1b9fc416ad079cdcc1403e4c151880405607fde9a51950087282cd5a",
+    "tests/api/test_screener_refresh.py": "3f76c04cc2480cee91a8ee773a6be7db676b396e6193f40f6a641f4be440b074",
+    "frontend/src/pages/Screener.test.tsx": "3bd905431fb4293e5b009ae7c13167290b4c44ed235eec6c4e59c2aebeba4edf",
+    "frontend/src/screener/useScreenerUpdateSync.test.tsx": "57009e54b4eee809f4145469e1b1f26b862614350923f009ad6eb6dd9a8b4f83",
+    "frontend/tests/e2e/screener-refresh.spec.ts": "a2e0773824d87e2ff0644a569a6f329e96ec83d1ee17b4db7113a7b67a8e30ec"
+  },
+  "activation": "existing uvicorn reload and Vite HMR",
+  "manual_restart": false,
+  "production_data_written_by_install": false,
+  "preexisting_primary_tests": "prior authorized ingest-test updates included; previous source bytes preserved in primary-backup"
+}

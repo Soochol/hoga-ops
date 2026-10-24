@@ -1,0 +1,31 @@
+{
+  "observed_at": "2026-10-24T21:52:31.550980+09:00",
+  "code_revision": "f0692c5f38e2597ed83f50de4e4962aa54d9d86a55dd31aefc2e4dee270d96ff",
+  "files": {
+    "http-before.txt": "58274bfadb280fa090879d059525fde30dfe66e280f56e2d8beb670ef5b12bbe",
+    "runtime-recovery.txt": "ffd8212d65a356cad94d99a65d477a32d76e72d8ac6a7e4e88998e55acc6216b",
+    "frontend-unit.txt": "3c8ca5c24f47cb784cd112a1ea2241297b301cb54ee7668f96f124a2a9453f94",
+    "load.txt": "f3c73691e28468623d3f43fb2c89b879294be4632a9b0b3a10daeb663dfe235d",
+    "evidence.json.gz": "0015d07717b13b321e73b8ea876a531a2e75fb87f7cadbaac7f836b8e7b9ca60",
+    "frontend-build.txt": "0585c752a3a9bf4fbd30057192ea4eb1cba141ca2e9c0de3a4a63431cbfda42d",
+    "verification-inputs.json": "ded4f9d2f858d7c15bee298de475a99f419662910203670f499ef94f60c40761",
+    "ruff.txt": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+    "comparison.txt": "225c5a11fc3504ebbd595bb23cd327bfd45ec7574bf638716372434f19e1b2bd",
+    "primary-install.json": "f5738391d0edaefe5c82dc2e24639118f228621e600363216273f1064ad5b121",
+    "backend-restart.json": "8144fda4e1f38637770b4114ec4fc0d478dbc0b8b8f3503f0152c92a88569249",
+    "http-after.txt": "044aa69f008b1ad7d69acf4f133999336929e52d8ae855a9ac29877bb24b9246",
+    "frontend-typecheck.txt": "f45488817c3b7faaafeb061bee23fa49a848be9b9e14fe450e4c301b776b0250",
+    "backend-full.txt": "5903022adfc49d97a7f77487b630f102f69150d3c549b93fff1f877d5fd625a4",
+    "load-results.json": "6ad59193cc2bb638b930b76db7085da3045177750b990912cd11fead0c139a10",
+    "calendar-regression.txt": "a62064dd32040fe06a69a15c45f7595d33fb4abf8db611a1ec438e736b3bf959",
+    "preservation.json": "a8ca7c6098184772d2c1265326800294894f5b159fe8a2fbd16f39fd7a9d4439",
+    "recorded-scripts/freeze_inputs.py.txt": "5c82c99ac008bcd48e94665614eff418589870be9eb18eba4f2022c17d482d14",
+    "recorded-scripts/operational_http.py.txt": "94cc2d29a7785bb0c555ba6f5bd47aec04c72d189fc56c58b6075e5ec7e1a4c6",
+    "recorded-scripts/benchmark.py.txt": "12cf79305602d8a580b26b90d6e7e68fdcd629e5347eb1bf7851767626185fed",
+    "recorded-scripts/preservation.py.txt": "d9a3685d97d211fd4f6314c9f881f49d834349c00b08e6beba49e357196833ee",
+    "recorded-scripts/compare.py.txt": "3bc676330e931805809950a31369ec5266c6481b0f9b057600f577ff8376494a",
+    "recorded-scripts/quality_load.py.txt": "2667c0044ea50e194bac5b3b9a7de58aaaef798b05b56b6f5d990e8180ce3d54",
+    "recorded-scripts/prepare.py.txt": "9f86d97851f177cedaadb16276d7b15f25d268754c78d54f8ba10db747742d8d",
+    "recorded-scripts/package.py.txt": "f85f9a4cacf30299394254b82417eaf2c36946c57b9a542783f7970592395277"
+  }
+}

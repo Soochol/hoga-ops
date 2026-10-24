@@ -179,6 +179,7 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
              limit: int = 1000,
              intraday_rows: pl.DataFrame | None = None,
              depth_pass: dict[str, list[str]] | None = None,
+             daily_unavailable: dict[str, set[str]] | None = None,
              history_pass: dict[str, list[str]] | None = None,
              bar_events: dict[str, list[tuple[str, ScreenerOccurrence]]] | None = None,
              occurrence_dates: dict[str, dict[str, list[str]]] | None = None,
@@ -243,16 +244,20 @@ def run_scan(adjusted_path: Path, stocks_path: Path, *,
         [item for item in (excluded or []) if len(item) == _DAILY_EXCLUSION_FIELDS],
         schema={"condition_key": pl.Utf8, "code": pl.Utf8, "date": pl.Utf8},
         orient="row"))
+    con.register("daily_unavailable", pl.DataFrame(
+        [(leaf_id, code) for leaf_id, codes in (daily_unavailable or {}).items() for code in codes],
+        schema={"condition_id": pl.Utf8, "code": pl.Utf8}, orient="row"))
     for i in indices:
         leaf = conditions[i]
         cte, p = _condition_source(con, leaf, i, bar_events=bar_events, history_pass=history_pass,
                                    depth_pass=depth_pass, occurrence_dates=occurrence_dates)
         ctes.append(cte)
-        params += p
+        params += [*p, leaf.id]
         ctes.append(
             f"cond_{i} AS (SELECT r.* FROM cond_{i}_raw r WHERE NOT EXISTS ("
             f"SELECT 1 FROM excluded_events e WHERE e.condition_key = '{keys[i]}' "
-            "AND e.code = r.code AND CAST(e.date AS DATE) = r.date))")
+            "AND e.code = r.code AND CAST(e.date AS DATE) = r.date) AND NOT EXISTS ("
+            "SELECT 1 FROM daily_unavailable q WHERE q.condition_id = ? AND q.code = r.code))")
         if expression is None:
             joins.append(f"SEMI JOIN cond_{i} ON cond_{i}.code = base.code")
 

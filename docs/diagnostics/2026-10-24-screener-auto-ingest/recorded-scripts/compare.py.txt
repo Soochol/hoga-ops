@@ -1,0 +1,78 @@
+import asyncio,copy,datetime as dt,json
+from pathlib import Path
+import polars as pl
+from hoga.api import screener_daily_ingest as ingest,screener_series_store as store,screener_series_values as values
+from hoga.api.models import ScanRequest,ScreenerResponse
+from hoga.api.screener_runner import run_screener_scan
+from hoga.api.screener_recovery_compare import _stable
+from hoga.api.screener_series_execution import replay_execution
+from hoga.util.timeenc import KST
+P=Path('/tmp/hoga-auto-ingest-20261024');D=P/'corpus';old_entry=json.loads((P/'snapshot-before.json').read_text())
+from hoga.util.atomic_write import atomic_write_json
+import shutil
+atomic_write_json(store.root(D)/'current.json', {'id':old_entry['id']})
+if ingest.root(D).exists(): shutil.rmtree(ingest.root(D))
+old=store.load_snapshot(D)
+def save(name,value): (P/name).write_text(json.dumps(value,ensure_ascii=False,indent=2,default=str))
+async def main():
+ # Reuse frozen expressions/clock, but evaluate both sides under this exact new application build.
+ fixture=json.loads(Path('/tmp/hoga-review535-20261024/legacy-before.json').read_text());clock=dt.datetime.fromisoformat(fixture['clock'])
+ before=[]
+ for record in fixture['results']:
+  response=await run_screener_scan(data_dir=D,req=ScanRequest.model_validate(record['request']),now=clock)
+  before.append(response)
+  assert _stable(response)==_stable(ScreenerResponse.model_validate(record['response']))
+ # Original two-stock observations are replayed as recorded, never fetched or retimestamped.
+ codes=['020180','038390'];baseline,reviewed=ingest.references(D,codes,dt.date(2021,11,26),dt.date(2026,10,23))
+ state=ingest.load(D);state['enabled_from']='2026-10-24';state['confirmed_through']={}
+ for code in codes:
+  observation=store.read_object(D,old[1]['observations'][code]);candidate=store.current_observation(D,observation)
+  sample=candidate['confirmation']['first']
+  print(code,'recorded sample fields',list(sample),flush=True)
+  started=sample['started_at'];finished=sample['finished_at']
+  rows=candidate['unadjusted'];raw=candidate['provider_rows']['unadjusted']
+  source=ingest.RawSample(code,dt.datetime.fromisoformat(started),dt.datetime.fromisoformat(finished),rows,raw,[])
+  identity,payload=ingest._sample(D,source);ingest.observe(state,identity,payload,baseline,reviewed)
+ residual=json.loads(Path('docs/diagnostics/2026-10-24-screener-review-12/analysis.json').read_text())['rows']
+ assert all(state['entries'][r['code']+':'+r['date']]['status']=='quarantined' for r in residual)
+ corrected=json.loads(Path('/tmp/hoga-review535-20261024/rows.json').read_text())
+ assert all(state['entries'][r['code']+':'+r['date']]['status']=='legacy' for r in corrected)
+ # Stable recent observations do not alter existing scanner results.
+ stable=ingest.load(D);stable.update(enabled_from='2026-10-24',confirmed_through={})
+ ingest._publish(D,stable)
+ comparisons=[]
+ for record,prior in zip(fixture['results'],before,strict=True):
+  response=await run_screener_scan(data_dir=D,req=ScanRequest.model_validate(record['request']),now=clock)
+  actual=_stable(response);expected=_stable(prior)
+  quality=actual.pop('daily_coverage',None);expected.pop('daily_coverage',None)
+  assert actual==expected,record['name']
+  assert quality is None or quality['complete']==quality['total']
+  comparisons.append({'name':record['name'],'rows':len(response.rows),'equal':True,'before':prior.model_dump(mode='json'),'after':response.model_dump(mode='json')})
+ save('legacy-comparison.json',{'comparisons':comparisons,'all_equal':True,'normalization':'Existing runtime timestamp normalization; newly added complete daily_coverage is separately validated.'})
+ # A risk snapshot is frozen with its quarantine. Old snapshots remain valid.
+ state['summary']={'quarantined':sum(e['status']=='quarantined' for e in state['entries'].values())}
+ ingest._publish(D,state);new=store.load_snapshot(D)
+ assert all(new[1][k]==old[1][k] for k in ('baseline','observations','quantity','corrections'))
+ assert store.load_snapshot(D,old[0])==old
+ before_series=values.load_series(D,old[1],codes);after_series=values.load_series(D,new[1],codes)
+ assert all(before_series[c].original==after_series[c].original and before_series[c].prices==after_series[c].prices and before_series[c].evidence==after_series[c].evidence for c in codes)
+ for r in residual:
+  assert after_series[r['code']].daily_quality[dt.date.fromisoformat(r['date'])]=='daily_observation_conflict'
+ assert all(dt.date.fromisoformat(r['date']) not in after_series[r['code']].daily_quality for r in corrected)
+ # Both old and new snapshots can be archived and replayed with this code version.
+ from hoga.api.screener_series_runner import run_scan, _inputs
+ executions=[]
+ for sid in (old[0],new[0]):
+  for day in ['2026-06-09','2024-01-02']:
+   req=ScanRequest.model_validate(dict(conditions=[dict(id='amount',type='trade_value_period',params=dict(mode='date_range',start_date=day,end_date=day,min_eok=0,timeframe='D',include_open_bar=False))],universe={'exclude_etf':False},basis='eod',calculation_policy='separate_bases_v2',snapshot_id=sid))
+   inputs=await _inputs(D,req,store.load_snapshot(D,sid)[1],clock,None)
+   inputs['codes']=[code for code in inputs['codes'] if code in codes]
+   inputs['labels']=[row for row in inputs['labels'] if row['code'] in codes]
+   response=await run_scan(data_dir=D,req=req,now=clock,record=True,replay=inputs)
+   identity=response.calculation.execution_id
+   replay=await replay_execution(D,identity)
+   assert replay.rows==response.rows
+   executions.append({'snapshot':sid,'execution_id':identity,'rows':len(response.rows),'replay_equal':True})
+ save('risk-comparison.json',{'remaining_12_quarantined':True,'prior_535_approved_preserved':True,'original_prices_quantity_unchanged':True,'old_snapshot':old[0],'new_snapshot':new[0],'quarantined_total':state['summary']['quarantined'],'executions':executions,'source':'Previously recorded broker observations, no new network requests'})
+ print('PASS saved7/7; unresolved12 isolated;535 selections preserved; old/new exact replays4/4',flush=True)
+asyncio.run(main())

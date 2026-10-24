@@ -1,0 +1,566 @@
+{
+  "schema_version": 1,
+  "records": {
+    "301410": {
+      "code": "301410",
+      "name": "PLUS 코스닥150선물인버스",
+      "reason": "delisted",
+      "closed_from": "2026-06-25",
+      "checked_at": "2026-10-24T22:45:54.575063+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/06/23/000320/20260623000783/68051.htm",
+          "sha256": "259b196163ba94721850f89b25d2de070d627d9de39397b84537c1a17447118a"
+        }
+      ]
+    },
+    "397420": {
+      "code": "397420",
+      "name": "RISE 국채선물5년추종",
+      "reason": "delisted",
+      "closed_from": "2026-08-20",
+      "checked_at": "2026-10-24T22:45:54.486669+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/18/000214/20260818000601/68051.htm",
+          "sha256": "fdf01ddfe55ee7c7d4b859438699a4804e66c46463eab8780b630fa708783c99"
+        }
+      ]
+    },
+    "422260": {
+      "code": "422260",
+      "name": "VITA MZ소비액티브",
+      "reason": "delisted",
+      "closed_from": "2026-06-25",
+      "checked_at": "2026-10-24T22:45:54.537842+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/06/23/000394/20260623000968/68051.htm",
+          "sha256": "420c44bc4f37498c44a98e59f0ecae291e85d8eb3026dd08fee6ea89aae8df4c"
+        }
+      ]
+    },
+    "424460": {
+      "code": "424460",
+      "name": "HANARO 글로벌워터MSCI(합성)",
+      "reason": "delisted",
+      "closed_from": "2026-07-16",
+      "checked_at": "2026-10-24T22:45:54.584530+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/07/14/000543/20260714001263/68051.htm",
+          "sha256": "b473f88097ab8c617c9f006b43039d14e148c48140743f818aa317a6de1f62ca"
+        }
+      ]
+    },
+    "454180": {
+      "code": "454180",
+      "name": "KIWOOM 차이나내수소비TOP CSI",
+      "reason": "delisted",
+      "closed_from": "2026-09-28",
+      "checked_at": "2026-10-24T22:45:54.653666+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/22/000282/20260922000762/68051.htm",
+          "sha256": "0e13d5bf12d228913752531f62414fbb3e9a2881fca6837a963153af9a7d2375"
+        }
+      ]
+    },
+    "461270": {
+      "code": "461270",
+      "name": "ACE 26-06 회사채(AA-이상)액티브",
+      "reason": "matured",
+      "closed_from": "2026-06-25",
+      "checked_at": "2026-10-24T22:45:54.702680+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/06/23/000390/20260623000962/68051.htm",
+          "sha256": "5921ec7547704b35a590048e51e593f21b203a04bc901e7b9ef07b02693d1ffb"
+        }
+      ]
+    },
+    "464240": {
+      "code": "464240",
+      "name": "KIWOOM 26-09회사채(AA-이상)액티브",
+      "reason": "matured",
+      "closed_from": "2026-09-28",
+      "checked_at": "2026-10-24T22:45:54.701616+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/22/000271/20260922000743/68051.htm",
+          "sha256": "295004bf0167bd333566200b66a86af06f80d8961d35f129a0a29f7710bde3aa"
+        }
+      ]
+    },
+    "465780": {
+      "code": "465780",
+      "name": "마이티 26-09 특수채(AAA)액티브",
+      "reason": "matured",
+      "closed_from": "2026-09-15",
+      "checked_at": "2026-10-24T22:45:54.772739+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/11/000090/20260911000188/68051.htm",
+          "sha256": "81dd5cc07f49e884894dc9323fefa860ece3a19b6567eb7b3dfec01a054c6f8e"
+        }
+      ]
+    },
+    "483240": {
+      "code": "483240",
+      "name": "TIGER 미국나스닥100ETF선물",
+      "reason": "delisted",
+      "closed_from": "2026-06-09",
+      "checked_at": "2026-10-24T22:45:54.850437+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/06/05/000538/20260605001344/68051.htm",
+          "sha256": "47098e3b8e2a973f50cbdb3152136b5a7571e7b644465dbfaa65c71df21f9f86"
+        }
+      ]
+    },
+    "483420": {
+      "code": "483420",
+      "name": "ACE 애플밸류체인액티브",
+      "reason": "delisted",
+      "closed_from": "2026-07-09",
+      "checked_at": "2026-10-24T22:45:54.792781+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/07/07/000245/20260707000613/68051.htm",
+          "sha256": "8ab7e0adb56042b6a5b742b40abc4b8e362a57c19c000c3daacc3e622313a593"
+        }
+      ]
+    },
+    "488200": {
+      "code": "488200",
+      "name": "KIWOOM K-2차전지북미공급망",
+      "reason": "delisted",
+      "closed_from": "2026-09-28",
+      "checked_at": "2026-10-24T22:45:54.863466+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/22/000286/20260922000768/68051.htm",
+          "sha256": "6d5cee7219bf747d4acdf91b39976ab424aed889ae8605e5fd7173bd8a442709"
+        }
+      ]
+    },
+    "488210": {
+      "code": "488210",
+      "name": "KIWOOM K-반도체북미공급망",
+      "reason": "delisted",
+      "closed_from": "2026-09-28",
+      "checked_at": "2026-10-24T22:45:54.886746+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/22/000284/20260922000764/68051.htm",
+          "sha256": "af0a8b9bf7e4caa9c7fcfd20976cbf0d222d38de58c7d71f1310d25af0cb01ee"
+        }
+      ]
+    },
+    "489010": {
+      "code": "489010",
+      "name": "PLUS 글로벌AI인프라",
+      "reason": "delisted",
+      "closed_from": "2026-08-27",
+      "checked_at": "2026-10-24T22:45:54.946444+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/25/000218/20260825000623/68051.htm",
+          "sha256": "0f1155284fa9fd2b35a79eb6b6cd881d89a134048bb3cd3648c71a7d812fe27f"
+        }
+      ]
+    },
+    "0021C0": {
+      "code": "0021C0",
+      "name": "ACE TDF장기자산배분액티브",
+      "reason": "delisted",
+      "closed_from": "2026-07-09",
+      "checked_at": "2026-10-24T22:45:54.947386+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/07/07/000243/20260707000604/68051.htm",
+          "sha256": "bbb4ba736155a48f38f6903dddf22a810cfd01c2b3a3b94b5e672b9095f98e85"
+        }
+      ]
+    },
+    "0021D0": {
+      "code": "0021D0",
+      "name": "ACE TDF2030액티브 적격",
+      "reason": "delisted",
+      "closed_from": "2026-07-07",
+      "checked_at": "2026-10-24T22:45:54.980745+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/07/03/000268/20260703000456/68051.htm",
+          "sha256": "2b9913cc80e6d15b9c39ff6164d01a2015089b13206ca15ab10e9f3ddc32dbec"
+        }
+      ]
+    },
+    "0021E0": {
+      "code": "0021E0",
+      "name": "ACE TDF2050액티브 적격",
+      "reason": "delisted",
+      "closed_from": "2026-07-09",
+      "checked_at": "2026-10-24T22:45:55.061310+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/07/07/000247/20260707000619/68051.htm",
+          "sha256": "cc6ca3e6f4392a1bd7b3f4f7b15518a450ada1b5d7a66939b21ec18fca357cb2"
+        }
+      ]
+    },
+    "0036D0": {
+      "code": "0036D0",
+      "name": "TIME 미국배당다우존스액티브",
+      "reason": "delisted",
+      "closed_from": "2026-08-19",
+      "checked_at": "2026-10-24T22:45:55.035330+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/08/14/002092/20260814007200/68051.htm",
+          "sha256": "d97f3c9d22a143e6f7e9f8a1355a1617cc08f97cbbaa6be0450058b388a9c32e"
+        }
+      ]
+    },
+    "500061": {
+      "code": "500061",
+      "name": "신한 인버스 코스피 200 선물 ETN",
+      "reason": "matured",
+      "closed_from": "2026-09-11",
+      "checked_at": "2026-10-24T22:45:55.095955+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/09/000636/20260909001615/68351.htm",
+          "sha256": "90c712b2136e76a41f4c507604affc2d5979390db804e40aaf0113951a9d8059"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG500000614&menuIndex=0",
+          "sha256": "28123f41dcd0b8d09a19bd925dbcd11bc92732ea1dda176c650d43626ef833e9"
+        }
+      ]
+    },
+    "500063": {
+      "code": "500063",
+      "name": "신한 인버스 코스닥 150 선물 ETN",
+      "reason": "matured",
+      "closed_from": "2026-09-11",
+      "checked_at": "2026-10-24T22:45:55.128368+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/09/000639/20260909001618/68351.htm",
+          "sha256": "d1916afc20cb01c23804b375aa5b6348ce7f494c7fe2bf859fe8cf05d34fbd10"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG500000630&menuIndex=0",
+          "sha256": "915ccf432d606fd28977a7636625e7e3a378909c4d4382d6f83e76ea31ec4116"
+        }
+      ]
+    },
+    "510043": {
+      "code": "510043",
+      "name": "대신 인버스 천연가스 선물 ETN(H) B",
+      "reason": "delisted",
+      "closed_from": "2026-09-29",
+      "checked_at": "2026-10-24T22:45:55.169461+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/28/000521/20260928001340/68351.htm",
+          "sha256": "74a5c85cf42572cc7e91f7fa3e010282327419850a1e473100952008996885a2"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG510000430&menuIndex=0",
+          "sha256": "6e2563c33a0be7872d299efd63ef93f53822b90c34412c5ee37ba49daf7e7641"
+        }
+      ]
+    },
+    "520037": {
+      "code": "520037",
+      "name": "미래에셋 코스피200 선물 ETN",
+      "reason": "matured",
+      "closed_from": "2026-09-11",
+      "checked_at": "2026-10-24T22:45:55.202026+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/09/000638/20260909001617/68351.htm",
+          "sha256": "345e7eac0b6b7ef133ebde472bedae8262ded59120442b3e0332566008b2de5e"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG520000370&menuIndex=0",
+          "sha256": "afa0f0abbf3ea370856ed09d09b01b4161fc93fcc6f7ecd9624ef99e65fd5e53"
+        }
+      ]
+    },
+    "520038": {
+      "code": "520038",
+      "name": "미래에셋 인버스 코스피200 선물 ETN",
+      "reason": "matured",
+      "closed_from": "2026-09-11",
+      "checked_at": "2026-10-24T22:45:55.217844+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/09/000643/20260909001622/68351.htm",
+          "sha256": "5a67f5cd9af9cc88833ad023b20b61b8244c6c795b2bc291d9dac0c6c0fd6eb9"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG520000388&menuIndex=0",
+          "sha256": "78ff1fbc22a7d9ee26e3b991c70ebfb064ce4f62892f6c277cbd26a853f7acae"
+        }
+      ]
+    },
+    "520039": {
+      "code": "520039",
+      "name": "미래에셋 코스닥150 선물 ETN",
+      "reason": "matured",
+      "closed_from": "2026-09-11",
+      "checked_at": "2026-10-24T22:45:55.276708+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/09/000637/20260909001616/68351.htm",
+          "sha256": "82d4c846208abb88dbca82d9966f695c52bd35fd1f0099415c38fa41c1c94c6c"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG520000396&menuIndex=0",
+          "sha256": "bce1bc59f0608d0942e95d48e8c36f21b18214ae51a250e0b6746383400bbfe6"
+        }
+      ]
+    },
+    "520040": {
+      "code": "520040",
+      "name": "미래에셋 인버스 코스닥150 선물 ETN",
+      "reason": "matured",
+      "closed_from": "2026-09-11",
+      "checked_at": "2026-10-24T22:45:55.324219+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/09/000641/20260909001619/68351.htm",
+          "sha256": "32c5ed7f2d07f7719bb7810471b59a4e3355fb7056958854cdcef6fe526a3549"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG520000404&menuIndex=0",
+          "sha256": "517a53223e1508d2246e0610835be9f93fee632df3ef76b090c4818a884d69b4"
+        }
+      ]
+    },
+    "530089": {
+      "code": "530089",
+      "name": "삼성 은 선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-07",
+      "checked_at": "2026-10-24T22:45:55.327871+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/03/000107/20260903000210/68351.htm",
+          "sha256": "640ff4b0df3241c7672a04b10cc895140f5a899a0d3e9f9e408023be58b8b30d"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG530000899&menuIndex=0",
+          "sha256": "54464483f5febb38bc7bd1945e37c8aa9e3f6c21cb7c9cf34435013b5eeab78d"
+        }
+      ]
+    },
+    "530090": {
+      "code": "530090",
+      "name": "삼성 인버스 은 선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-07",
+      "checked_at": "2026-10-24T22:45:55.382009+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/03/000108/20260903000211/68351.htm",
+          "sha256": "c43f1ec5e70e9f5b141c8bc954feb31c0c34ef6e3b5e9a38517b43a9dd22b7ff"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG530000907&menuIndex=0",
+          "sha256": "d8a013486d34e8fb6762a08b09d529f9d09813daefa18956b78e072b2bd5e601"
+        }
+      ]
+    },
+    "530115": {
+      "code": "530115",
+      "name": "삼성 레버리지 나스닥 100 TR ETN",
+      "reason": "matured",
+      "closed_from": "2026-10-22",
+      "checked_at": "2026-10-24T22:45:55.422294+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/10/20/000196/20261020000315/68351.htm",
+          "sha256": "b1918a8b27a8ff3b3340561c804aea3b24a031b747da8803bc5f664022b01afa"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG530001152&menuIndex=0",
+          "sha256": "13bc3b2ca4a45135fe13e19dfabf4aa9c847829253560899c9d43cff3e4b11f9"
+        }
+      ]
+    },
+    "530116": {
+      "code": "530116",
+      "name": "삼성 인버스 2X 나스닥 100 TR ETN",
+      "reason": "matured",
+      "closed_from": "2026-10-22",
+      "checked_at": "2026-10-24T22:45:55.417887+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/10/20/000197/20261020000316/68351.htm",
+          "sha256": "b5f024ebd7c5357c1237e5d4436f18ac492d4504f8283c5bae1bd2a4e367b622"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG530001160&menuIndex=0",
+          "sha256": "64668155634bbf2647755cab7c34902d119aaa6375dc4f4669b5361cb8a9fd89"
+        }
+      ]
+    },
+    "550064": {
+      "code": "550064",
+      "name": "N2 레버리지 은 선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-07",
+      "checked_at": "2026-10-24T22:45:55.480541+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/03/000112/20260903000218/68351.htm",
+          "sha256": "dfd495dddbf2cc50caeab02309d77fbf8970f7f306e25e9f96d0584233c49f25"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG550000647&menuIndex=0",
+          "sha256": "08beda6e3d9c291cb8d17cda93e8d8d3650c609f53957adbcc475352e3eaed1a"
+        }
+      ]
+    },
+    "570061": {
+      "code": "570061",
+      "name": "한투 레버리지은선물 ETN",
+      "reason": "matured",
+      "closed_from": "2026-09-07",
+      "checked_at": "2026-10-24T22:45:55.511044+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/03/000111/20260903000216/68351.htm",
+          "sha256": "eef0561367b4c86926c556e3a830b2ccef30ba727f7390c577f67772630b6e35"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG570000619&menuIndex=0",
+          "sha256": "f8d43a7b3cef896828c78f8b3434292b6599f2fa42555124d8d51723cf2d146a"
+        }
+      ]
+    },
+    "570063": {
+      "code": "570063",
+      "name": "한투 베트남VN30선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-18",
+      "checked_at": "2026-10-24T22:45:55.540445+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/16/000142/20260916000363/68351.htm",
+          "sha256": "9ee38269c0419aca559eeb272cd687b9925ca27685fe99b5c792d0fe7e6b624b"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG570000635&menuIndex=0",
+          "sha256": "03365599a10d8730d32c32b923e07c16d6759f1b3b277987cb56b0096d402117"
+        }
+      ]
+    },
+    "570064": {
+      "code": "570064",
+      "name": "한투 인버스베트남VN30선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-18",
+      "checked_at": "2026-10-24T22:45:55.601727+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/16/000143/20260916000366/68351.htm",
+          "sha256": "ace9c7893722bd7f4370b59812ee5a3b4cf42b6cde46dfa010e4a13a8b178797"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG570000643&menuIndex=0",
+          "sha256": "b14f9d6bbf4ab37c98be6705062902adae0033d0cd19170ca5cdbcc62061bd34"
+        }
+      ]
+    },
+    "570065": {
+      "code": "570065",
+      "name": "한투 레버리지베트남VN30선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-18",
+      "checked_at": "2026-10-24T22:45:55.603271+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/16/000144/20260916000367/68351.htm",
+          "sha256": "26bfd41d9719429c981e1d72a6eaf722866b08c8bd5e43ba96cd6f5fdd132694"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG570000650&menuIndex=0",
+          "sha256": "04e5c04ad51ef4e1b7a55cefc6037f65be40100c728487102be60ee9755d89ef"
+        }
+      ]
+    },
+    "570066": {
+      "code": "570066",
+      "name": "한투 인버스2X베트남VN30 선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-18",
+      "checked_at": "2026-10-24T22:45:55.642438+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/16/000145/20260916000368/68351.htm",
+          "sha256": "c7fe5b858abd7dd0383445fa4208cc1d115329fdebb8d0e9247af5bdf4f784e3"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG570000668&menuIndex=0",
+          "sha256": "7e42876c13d997fd26a1cfbe199100399a87bc8540166a7457098d1c6cc9f5b8"
+        }
+      ]
+    },
+    "580026": {
+      "code": "580026",
+      "name": "KB S&P 레버리지 은 선물 ETN(H)",
+      "reason": "matured",
+      "closed_from": "2026-09-07",
+      "checked_at": "2026-10-24T22:45:55.702697+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/09/03/000110/20260903000215/68351.htm",
+          "sha256": "75507881056a9ab22b57438fabaf772ac9301273257a8cf834e06d81f0662f36"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG580000260&menuIndex=0",
+          "sha256": "ea3104e5ff598f3d8ed87420933e098b12649925f40b5cae8ecd61d6411b2d56"
+        }
+      ]
+    },
+    "760019": {
+      "code": "760019",
+      "name": "키움 리츠부동산인프라 ETN",
+      "reason": "delisted",
+      "closed_from": "2026-08-03",
+      "checked_at": "2026-10-24T22:45:55.693623+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/07/31/001221/20260731002340/68351.htm",
+          "sha256": "681fb0350302c8fdb3206eefcba74edbfadf588c0de05eb98b5228f3d238fa36"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG760000197&menuIndex=0",
+          "sha256": "89b07b78d55e01210666ed0c28a2fc7198fde7a4094ddbdad2e3241f727381e3"
+        }
+      ]
+    },
+    "760020": {
+      "code": "760020",
+      "name": "키움 레버리지 리츠부동산인프라 ETN",
+      "reason": "delisted",
+      "closed_from": "2026-08-03",
+      "checked_at": "2026-10-24T22:45:55.736087+09:00",
+      "sources": [
+        {
+          "url": "https://kind.krx.co.kr/external/2026/07/31/001224/20260731002344/68351.htm",
+          "sha256": "7e16b3911aa030719f5b595d758595c07a16e4226ea1b020bf19c3bc9c2a6e40"
+        },
+        {
+          "url": "https://kind.krx.co.kr/disclosure/etnisudetail.do?method=searchEtnIsuDetail&isuCd=KRG760000205&menuIndex=0",
+          "sha256": "06d789af2b6c181e6d8fc67935b02acbc70197db3c95fe39c4cca7db11da7d5c"
+        }
+      ]
+    }
+  }
+}

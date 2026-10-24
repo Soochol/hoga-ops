@@ -1,0 +1,33 @@
+{
+  "checked_at": "2026-10-24T23:10:39.915419+09:00",
+  "head": "984d37992c5805fe9e4427a6cd20f1e7eff9c847",
+  "base": "4ffb2ae86283d708ed307b2ab9563b4cfa7eae60",
+  "code_revision": "d53fff7b8cfda09979862059a89a5996dc7f2466f5bcdd99f4beaaf042a5648e",
+  "verification_inputs_unchanged": true,
+  "backend": {
+    "passed": 7112,
+    "skipped": 2,
+    "deselected": 13,
+    "command": ".venv/bin/pytest -q -m 'not wallclock'",
+    "scope": "complete baseline on identical screener inputs; final changes rechecked separately",
+    "final_affected_passed": 68,
+    "reuse_audit": "backend-reuse-audit.json",
+    "interrupted_final_full_run_exit_code": 143,
+    "interrupted_run_counted_as_pass": false
+  },
+  "ruff": "passed",
+  "frontend": {
+    "passed": 9013,
+    "test_files": 703,
+    "typecheck": "passed",
+    "build": "passed"
+  },
+  "legacy_saved_search_comparisons": 7,
+  "http_v2_comparisons": 3,
+  "new_execution_exact_replay": "passed",
+  "old_archived_get": "unchanged",
+  "protected_data_and_conditions": "unchanged",
+  "primary_source_codes": 37,
+  "final_sources": 57,
+  "plan": "docs/diagnostics/2026-10-24-screener-lifecycle-37/README.md"
+}

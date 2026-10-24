@@ -1,0 +1,18 @@
+{
+  "status_code": 200,
+  "execution_id": "d3122d81f129c88df1de0c9cfb10af79cec36e90655d433a0996908a6865d558",
+  "calculation": {
+    "policy": "separate_bases_v2",
+    "snapshot_id": "e3e0402ebdc956579309ce13d4bb837b719197f43521b05cb4053dc3bf22051d",
+    "adjusted_as_of": "2026-10-24",
+    "price_basis": "vendor_adjusted",
+    "event_revision": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+    "replayable": true,
+    "execution_id": "d3122d81f129c88df1de0c9cfb10af79cec36e90655d433a0996908a6865d558",
+    "daily_session_scope": "provider_daily_all_sessions",
+    "daily_confirmation_policy": "historical_recheck_v1",
+    "correction_revision": "14a5b94b024e4c1024f11dde3378943822dda6429da3ee2c5ed480082c5595ed"
+  },
+  "model_roundtrip_equal": true,
+  "corrected_code_present": "000020"
+}
