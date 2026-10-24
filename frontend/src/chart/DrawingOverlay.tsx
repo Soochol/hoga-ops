@@ -1398,8 +1398,9 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     el.style.width = `${r.x2 - r.x1}px`;
     el.style.height = `${r.y2 - r.y1}px`;
     if (marqueeCountRef.current) {
-      marqueeCountRef.current.textContent = m.rightButton
-        ? `${rightSelectionPreview.current?.size ?? 0}개 선택` : '';
+      const count = m.rightButton ? rightSelectionPreview.current?.size ?? 0 : 0;
+      marqueeCountRef.current.textContent = count > 0 ? `${count}개 선택` : '';
+      marqueeCountRef.current.hidden = count === 0;
     }
   };
 
