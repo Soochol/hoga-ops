@@ -1,0 +1,70 @@
+{
+  "checked_at_kst": "2026-10-24T10:50:12.357162+09:00",
+  "source_commit": "9c852fea8cff0f4ff720858a8373813de0872b98",
+  "base": "1cc615ca5a121d3f0c925625a29811df07f8cbaf",
+  "cause": "PR #2272 integrated the last REST ladder into OrderWindow only. Browser 10호가 (DataWindow/BookPanel) still showed the closed connection empty state. Reproduced at localhost:5173/live?code=456160.",
+  "environment": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "uv": "uv 0.11.8 (x86_64-unknown-linux-gnu)",
+    "credentials": "empty worktree .env; unchanged blank vendor environment in Playwright",
+    "backend_port": 20498,
+    "frontend_port": 21498,
+    "data_dir": "/tmp/hoga-e2e-data-498"
+  },
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npx vitest run src/live/workspace/DataWindow.test.tsx src/live/workspace/BookPanel.test.tsx src/live/workspace/OrderWindow.test.tsx src/live/workspace/useBookSessionDisplay.test.tsx src/api/liveRestOrderbook.test.tsx",
+      "cwd": "frontend",
+      "result": "364 passed"
+    },
+    {
+      "command": "npx playwright test live-orders.spec.ts --grep '10호가 (ready|empty|failed)' --reporter=line",
+      "cwd": "frontend",
+      "result": "3 passed; latest ten-level window, shared request, 20 levels/totals, empty/error details, refresh restoration, narrow details"
+    },
+    {
+      "command": "npx playwright test live-orders.spec.ts --grep '10호가 (ready|empty|failed)|주말 REST|호가 (empty|failed)에서도' --reporter=line",
+      "cwd": "frontend",
+      "result": "three existing order-window cases passed; new three cases initially failed because the fixture already had a book window. Only new-test locators were corrected, then those three passed separately. Production runtime unchanged between these runs."
+    },
+    {
+      "command": "npx vite build (Playwright webServer)",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "command": "backend Ruff and 175 related pytest cases",
+      "result": "reused from PR #2272",
+      "reason": "All 807 backend source/test/fixture/dependency/config inputs match the recorded successful run exactly; backend code, API, and execution conditions unchanged."
+    }
+  ],
+  "backend_inputs": {
+    "file_count": 807,
+    "sha256": "c91baa3f53b43db3c62d4ee828fa8e534c1c356c3e187cedac6735a56c1f96e9"
+  },
+  "frontend_inputs": {
+    "file_count": 1852,
+    "sha256": "d94dffb8a036490e5215e1a49060a94b5061ed2b16fa661026a96d4797691976"
+  },
+  "fingerprint_algorithm": "git ls-files -co --exclude-standard, unique sorted paths; SHA256 of each path + NUL + lowercase SHA256(file bytes) hex + newline; combined SHA256",
+  "frontend_scope": "frontend/src/**, frontend/tests/**, frontend root files (including package/lock/config files)",
+  "backend_scope": "hoga/**, tests/**, pyproject.toml, uv.lock, ruff.toml, .python-version",
+  "screenshots": {
+    "source": "isolated Playwright fixtures for 456160",
+    "files": [
+      "book-ready.png",
+      "book-empty.png"
+    ]
+  },
+  "servers": "Existing user 5173/8000 processes preserved. Final running-browser verification follows main pull."
+}
