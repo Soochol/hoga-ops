@@ -1,0 +1,35 @@
+============================= test session starts ==============================
+platform linux -- Python 3.14.7, pytest-9.0.3, pluggy-1.6.0
+rootdir: /home/dev/.codex/worktrees/da81/hoga-ops
+configfile: pyproject.toml
+plugins: cov-7.1.0, asyncio-1.3.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 12 items
+
+tests/unit/api/test_rest_wire_schema_contract.py .F..........            [100%]
+
+=================================== FAILURES ===================================
+_____________ test_live_wire_models_match_frontend_mirror_snapshot _____________
+
+    def test_live_wire_models_match_frontend_mirror_snapshot() -> None:
+        for cls, expected in EXPECTED_LIVE_WIRE_FIELDS.items():
+            actual = frozenset(cls.model_fields.keys())
+            added = actual - expected
+            removed = expected - actual
+>           assert actual == expected, (
+                f"{cls.__name__} live wire fields drifted from the frontend mirror "
+                f"snapshot. added={sorted(added)} removed={sorted(removed)}. Update the "
+                "matching frontend/src/api/*.ts mirror type, then update "
+                "EXPECTED_LIVE_WIRE_FIELDS in this file in the same commit."
+            )
+E           AssertionError: LiveIndexCandlesResponse live wire fields drifted from the frontend mirror snapshot. added=['daily_history_unchanged'] removed=[]. Update the matching frontend/src/api/*.ts mirror type, then update EXPECTED_LIVE_WIRE_FIELDS in this file in the same commit.
+E           assert frozenset({'c...'from_', ...}) == frozenset({'c...dex_id', ...})
+E
+E             Extra items in the left set:
+E             'daily_history_unchanged'
+E             Use -v to get more diff
+
+tests/unit/api/test_rest_wire_schema_contract.py:545: AssertionError
+=========================== short test summary info ============================
+FAILED tests/unit/api/test_rest_wire_schema_contract.py::test_live_wire_models_match_frontend_mirror_snapshot
+========================= 1 failed, 11 passed in 2.25s =========================

@@ -1,0 +1,85 @@
+{
+  "recorded_at_utc": "2026-10-24T10:16:21.449503+00:00",
+  "head": "59d33a39b2e63c0293602cf5a4299caa17b5ac0e",
+  "origin_main": "59d33a39b2e63c0293602cf5a4299caa17b5ac0e",
+  "scope": "US index D wire compression only; existing fetch/poll/cache ownership retained.",
+  "deployed": false,
+  "production_health": {
+    "status": "ok",
+    "version": "0.16.6.0",
+    "commit": "59d33a39b"
+  },
+  "domestic_unchanged": true,
+  "checks": [
+    {
+      "name": "backend",
+      "command": ".venv/bin/pytest -q tests/unit/live/test_us_index_daily_transfer.py tests/unit/live/test_us_index_minutes.py tests/unit/live/test_us_index_live_calendar.py tests/unit/live/test_us_daily_candles.py tests/unit/live/test_api.py tests/unit/live/test_api_kis_rest_bypass_candles.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "passed": 224
+    },
+    {
+      "name": "frontend",
+      "command": "cd frontend && npx vitest run src/api/liveIndices.dailyTransfer.test.tsx src/api/liveIndices.test.tsx src/api/liveIndices.realtime.test.tsx",
+      "passed": 30
+    },
+    {
+      "name": "e2e",
+      "command": "cd frontend && npx playwright test us-index-daily-transfer.spec.ts us-index-minutes.spec.ts index-realtime-candles.spec.ts us-daily-candles.spec.ts live-index-history.spec.ts --reporter=line",
+      "passed": 23
+    },
+    {
+      "name": "e2e_focus",
+      "command": "cd frontend && npx playwright test us-index-daily-transfer.spec.ts --reporter=line",
+      "passed": 1,
+      "note": "Rerun after adding artifact persistence only. Other 22 E2E inputs/application code unchanged."
+    },
+    {
+      "name": "typecheck",
+      "command": "cd frontend && npm run typecheck",
+      "exit_code": 0
+    },
+    {
+      "name": "build",
+      "command": "npx vite build (standard Playwright webServer setup)",
+      "exit_code": 0
+    },
+    {
+      "name": "ruff",
+      "command": ".venv/bin/ruff check .",
+      "exit_code": 0
+    },
+    {
+      "name": "contract_negative",
+      "command": "Temporarily remove daily_history_unchanged from the declared snapshot, run contract tests, restore exact file",
+      "expected_failure": true
+    },
+    {
+      "name": "contract_final",
+      "command": ".venv/bin/pytest -q tests/unit/api/test_rest_wire_schema_contract.py",
+      "passed": 12
+    }
+  ],
+  "input_fingerprints": "input-fingerprints.json",
+  "input_fingerprints_sha256": "5eb9ff9b726158e4e76ef73038f1fe83e76a9b3e49cb3cc951071248a4b34904",
+  "runtime": {
+    "python": "Python 3.14.7",
+    "node": "v24.13.1",
+    "playwright": "1.60.0",
+    "workers": 1,
+    "backend_port": 20337,
+    "frontend_port": 21337,
+    "credential_profile": "blank vendor credentials from unchanged playwright.config.ts"
+  },
+  "limitations": [
+    "Serialization replay and fixture browser bytes are not production deployment or packet measurements.",
+    "US market closed: no new exchange/vendor-to-display latency measurement.",
+    "Domestic collection was closed by the existing market gate; configuration/process state preserved."
+  ],
+  "reuse_audit": {
+    "at_utc": "2026-10-24T10:21:19.706196+00:00",
+    "manifest_files_checked": 2408,
+    "changed_inputs": [],
+    "missing_inputs": [],
+    "base_unchanged": true,
+    "note": "Only self-contained documentation/evidence packaging changed after the recorded passing checks. Application, tests, fixtures and dependency inputs match the recorded fingerprints. Optional local screen measurement spec in the manifest is not included in this PR and was not executed by the selected E2E tests."
+  }
+}
