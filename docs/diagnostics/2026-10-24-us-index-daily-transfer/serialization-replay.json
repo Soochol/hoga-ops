@@ -1,0 +1,41 @@
+{
+  "scope": "Serialization replay of previously measured production responses, with a changed latest close; no vendor calls.",
+  "daily": [
+    {
+      "index_id": "SP500",
+      "before_candles": 240,
+      "after_candles": 1,
+      "observed_original_body_bytes": 30505,
+      "new_full_body_bytes": 30640,
+      "compact_body_bytes": 1573
+    },
+    {
+      "index_id": "NASDAQ_COMPOSITE",
+      "before_candles": 240,
+      "after_candles": 1,
+      "observed_original_body_bytes": 33678,
+      "new_full_body_bytes": 33802,
+      "compact_body_bytes": 1586
+    },
+    {
+      "index_id": "SOX",
+      "before_candles": 240,
+      "after_candles": 1,
+      "observed_original_body_bytes": 31017,
+      "new_full_body_bytes": 31141,
+      "compact_body_bytes": 1564
+    }
+  ],
+  "cycle_including_three_minute_and_three_header_responses": {
+    "before_bytes": 136350,
+    "after_bytes": 45873,
+    "reduction_percent": 66.35643564356435,
+    "at_2_second_cadence_before_bytes_per_minute": 4090500,
+    "at_2_second_cadence_after_bytes_per_minute": 1376190
+  },
+  "original_source": "docs/diagnostics/2026-10-24-us-index-screen/current-closed-market.json",
+  "original_source_sha256": "c0da143482decc361d0db529265070d90713909f5e26942bf22335b5ac8a6c24",
+  "source": "baseline-responses.json.gz",
+  "source_sha256": "294afb6265580a6ad7d2aa34c27d701379dc0bf914da76018e1ceb6900c20004",
+  "source_encoding": "gzip JSON array of the nine recorded response samples"
+}

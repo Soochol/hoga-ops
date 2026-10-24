@@ -1,0 +1,55 @@
+{
+  "steady": [
+    {
+      "id": "NASDAQ_COMPOSITE",
+      "tf": "D",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "count": 1,
+      "bytes": 723,
+      "fullBytes": 27492
+    },
+    {
+      "id": "NASDAQ_COMPOSITE",
+      "tf": "1m",
+      "revision": null,
+      "count": 102,
+      "bytes": 11913,
+      "fullBytes": 11913
+    },
+    {
+      "id": "SP500",
+      "tf": "D",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "count": 1,
+      "bytes": 708,
+      "fullBytes": 26521
+    },
+    {
+      "id": "SP500",
+      "tf": "1m",
+      "revision": null,
+      "count": 102,
+      "bytes": 11494,
+      "fullBytes": 11494
+    },
+    {
+      "id": "SOX",
+      "tf": "D",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "count": 1,
+      "bytes": 710,
+      "fullBytes": 27479
+    },
+    {
+      "id": "SOX",
+      "tf": "1m",
+      "revision": null,
+      "count": 102,
+      "bytes": 11900,
+      "fullBytes": 11900
+    }
+  ],
+  "bytes": 37448,
+  "fullBytes": 116799,
+  "reduction": 0.6793808166165807
+}

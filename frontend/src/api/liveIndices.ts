@@ -1,6 +1,7 @@
 import { isUsIndexId, US_MINUTE_TIMEFRAMES } from '../live/liveInstrument';
 import { usDailyRefetchInterval, type UsDailyMetadata } from './usDailyCandles';
 import { usIndexRefreshInterval } from './usIndexRefreshPolicy';
+import { restoreUsIndexDailyHistory } from './usIndexDailyTransfer';
 import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { indexRealtimeKey, overlayIndexCandles, type IndexRealtimeSession } from './indexRealtimeCandles';
@@ -80,6 +81,8 @@ export interface UsMinuteMetadata {
 }
 
 export interface LiveIndexCandlesResponse {
+  daily_history_revision?: string;
+  daily_history_unchanged?: boolean;
   minute_metadata?: UsMinuteMetadata;
   daily_metadata?: UsDailyMetadata;
   index_id: LiveIndexId;
@@ -143,14 +146,33 @@ export function useLiveIndexCandles(
     return usDailyRefetchInterval(query.state.data?.daily_metadata, to ?? '', query.state.dataUpdateCount);
   };
   const realtime = useQuery<IndexRealtimeSession>({ queryKey: indexRealtimeKey(indexId), queryFn: skipToken });
+  const queryKey = ['live', 'index-candles', indexId, timeframe, from, to] as const;
   const result = useQuery({
-    queryKey: ['live', 'index-candles', indexId, timeframe, from, to] as const,
+    queryKey,
     queryFn: async ({ signal }) => {
       const startedAtMs = Date.now();
-      const response = await apiCall<LiveIndexCandlesResponse>(
-        `/api/live/index-candles?index_id=${indexId}&timeframe=${timeframe}&from=${from}&to=${to}`,
+      const compactDaily = isUsIndexId(indexId) && timeframe === 'D';
+      // Capture the exact full baseline used by this request, even if its cache
+      // entry is removed/replaced while the response is in flight.
+      const previous = compactDaily ? queryClient.getQueryData<IndexCandleQueryData>(queryKey) : undefined;
+      const revision = previous && !hasBlockingWarnings(previous) ? previous.daily_history_revision : undefined;
+      const path = `/api/live/index-candles?index_id=${indexId}&timeframe=${timeframe}&from=${from}&to=${to}`;
+      let response = await apiCall<LiveIndexCandlesResponse>(
+        path + (revision ? `&daily_history_revision=${encodeURIComponent(revision)}` : ''),
         { signal },
       );
+      if (compactDaily) {
+        let restored = restoreUsIndexDailyHistory(response, previous, revision);
+        if (!restored) {
+          response = await apiCall<LiveIndexCandlesResponse>(path, { signal });
+          restored = restoreUsIndexDailyHistory(response, undefined, undefined);
+        }
+        if (!restored) throw new Error('미국 지수 일봉 이력을 다시 불러오지 못했습니다.');
+        response = restored;
+        // A warning-preserving merge below may differ from the server prefix.
+        // Never advertise that prefix as a valid baseline on the next request.
+        if (hasBlockingWarnings(response)) response = { ...response, daily_history_revision: undefined };
+      }
       if (!hasBlockingWarnings(response)) return { ...response, realtimeBaseMs: startedAtMs } as IndexCandleQueryData;
       // A degraded history request may contain no candles or only the older
       // chunk. Retain already fetched rows in this requested window; keep the

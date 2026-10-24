@@ -117,6 +117,7 @@ from hoga.live.session_gate import is_after_hours_single_price_window
 from hoga.live.stock_sessions import krx_aftermarket_introduced
 from hoga.live.us_calendar_candles import calendar_bounds
 from hoga.live.us_daily_candles import UsDailyMetadata
+from hoga.live.us_index_daily_transfer import us_index_candle_transfer
 from hoga.live.us_index_minutes import MINUTE_TIMEFRAMES as US_MINUTE_TIMEFRAMES, UsMinuteMetadata
 from hoga.live.us_market_api import UsMarketApi
 from hoga.live.venue import LiveVenuePolicy, Venue, parse_live_venue_policy, quote_venue_for_policy
@@ -1739,6 +1740,8 @@ class LivePastInvestorNetResponse(BaseModel):
 
 
 class LiveIndexCandlesResponse(BaseModel):
+    daily_history_revision: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    daily_history_unchanged: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     minute_metadata: UsMinuteMetadata | None = Field(default=None, exclude_if=lambda value: value is None)
     daily_metadata: UsDailyMetadata | None = Field(default=None, exclude_if=lambda value: value is None)
     index_id: str
@@ -2302,6 +2305,7 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
         timeframe: LiveTimeframeModel = Query(...),
         from_: str = Query(..., alias="from"),
         to: str = Query(...),
+        daily_history_revision: str | None = Query(None, max_length=128),
     ) -> LiveIndexCandlesResponse:
         index = _validate_index_range(index_id, from_, to)
         if index.market == "US":
@@ -2310,12 +2314,13 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
                                           "message": "US indices support 1/3/5/10/15/30/60m and D/W/M candles"})
             bars, meta, minute_meta = await us_markets.index_chart(index, from_, to, timeframe)
             return LiveIndexCandlesResponse(
+                **us_index_candle_transfer(index.id, from_, to, timeframe, bars, daily_history_revision),
                 index_id=index.id,
                 **({"from": bars[0].trading_date if bars else from_, "to": bars[-1].trading_date if bars else to,
                     } if timeframe in US_MINUTE_TIMEFRAMES else
                    {"from": calendar_bounds(from_, timeframe)[0], "to": to}),
                 daily_metadata=meta, minute_metadata=minute_meta,
-                timeframe=timeframe, candles=[LiveCandleRow.model_validate(b.model_dump()) for b in bars],
+                timeframe=timeframe,
             )
         if data_dir is None:
             raise HTTPException(503, {"code": LiveErrorCode.NOT_WIRED, "message": "KIS client not wired"})
