@@ -1,0 +1,18 @@
+{
+  "typecheck": "passed",
+  "build": "passed",
+  "frontend_unit": {
+    "files": 705,
+    "passed": 9018
+  },
+  "browser_full": 14,
+  "browser_after_readonly_guard": 5,
+  "electron": 2,
+  "api_contract": 24,
+  "ruff": "passed",
+  "eslint": {
+    "errors": 0,
+    "warnings": 3
+  },
+  "backend_full_reused": 6975
+}

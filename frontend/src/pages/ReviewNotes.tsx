@@ -5,13 +5,14 @@ import { listBoards, openDailyNote, readBoard, type WhiteboardSummary } from '..
 import { discardBoardSession, openBoardSession, subscribeBoardSaves, type BoardSession } from '../whiteboard/session';
 import { BoardIcon } from '../whiteboard/BoardIcon';
 import { ReviewDocument } from '../whiteboard/ReviewDocument';
-import { DISPLAY_KEY, dateLabel, emptyRecord, initialDisplay, readPreference, sortedNotes, todayKst, writePreference, type ListDisplay } from '../whiteboard/review';
-import { imageFile } from '../whiteboard/images';
+import { DISPLAY_KEY, dateLabel, initialDisplay, readPreference, sortedNotes, todayKst, writePreference, type ListDisplay } from '../whiteboard/review';
+import type { BoardEditorHandle } from '../whiteboard/BoardEditor';
 import { takeChartTransfer } from '../whiteboard/chartTransfer';
 import { TooltipButton } from '../ui/TextTooltip';
 import { useDismissablePopover } from '../util/useDismissablePopover';
 import '../whiteboard/review.css';
 
+const ReviewCanvas = lazy(() => import('../whiteboard/ReviewCanvas'));
 const LegacyWhiteboard = lazy(() => import('./LegacyWhiteboard'));
 const noSubscribe = () => () => {};
 const noSnapshot = () => null;
@@ -20,7 +21,7 @@ const statuses = { saved: '저장됨', dirty: '변경됨', saving: '저장 중�
 export default function ReviewNotes() {
   const [params, setParams] = useSearchParams();
   const id = params.get('board'), date = params.get('date'), transfer = params.get('transfer');
-  const legacy = params.get('legacy') === '1', editing = params.get('mode') === 'edit';
+  const legacy = params.get('legacy') === '1', editing = params.get('mode') !== 'read', sourceView = params.get('source') === '1';
   const [boards, setBoards] = useState<WhiteboardSummary[]>([]);
   const [server, setServer] = useState('');
   const [listLoading, setListLoading] = useState(true);
@@ -36,6 +37,8 @@ export default function ReviewNotes() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [retry, setRetry] = useState(0);
+  const [editor, setEditor] = useState<BoardEditorHandle | null>(null);
+  const editorReady = useCallback((handle: BoardEditorHandle | null) => setEditor(handle), []);
   const displayRef = useRef<HTMLDivElement>(null);
   const displayButton = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
@@ -80,22 +83,18 @@ export default function ReviewNotes() {
     return () => { active = false; };
   }, [id, legacy, retry]);
   useEffect(() => {
-    if (!session || !transfer || !session.state.review) return;
+    if (!session || !transfer || !session.state.review || !editor || editor.documentId !== session.document.id || sourceView) return;
     const chart = takeChartTransfer(transfer);
     setParams(previous => { const next = new URLSearchParams(previous); if (next.get('transfer') === transfer) next.delete('transfer'); return next; }, { replace: true });
     if (!chart) { setError('전달 중인 이미지를 찾지 못했습니다. 차트에서 다시 추가해 주세요'); return; }
     setNotice('차트 이미지를 추가하는 중…');
-    void imageFile(chart.blob).then(image => {
+    void editor.addImages([chart.blob], chart.source).then(() => {
       const note = session.state.review!;
-      if (note.records.length >= 200) throw new Error('노트당 기록은 최대 200개입니다');
-      const record = { ...emptyRecord(), title: '차트 관찰', stock: chart.source.code, code: chart.source.code,
-        timeframe: chart.source.timeframe, captured_at_ms: chart.source.captured_at_ms, image_file_id: image.file.id };
-      session.files = { ...session.files, [image.file.id]: image.file };
-      session.editReview({ ...note, completed: false, records: [...note.records, record] });
+      session.editReview({ ...note, completed: false, stocks: [...new Set([...note.stocks, chart.source.code])] });
       void session.persistDraft(); void session.flush();
-      if (current.current === session) setNotice('차트를 복기 노트에 추가했습니다');
+      if (current.current === session) setNotice('차트를 캔버스에 추가했습니다');
     }).catch(e => { if (current.current === session) setError(e instanceof Error ? e.message : '차트 추가에 실패했습니다'); });
-  }, [session, transfer, setParams]);
+  }, [session, transfer, editor, sourceView, setParams]);
   async function action(fn: () => Promise<void>) {
     if (busy) return; setBusy(true); setError('');
     try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : '작업에 실패했습니다'); }
@@ -105,18 +104,12 @@ export default function ReviewNotes() {
     void action(async () => { const document = await openDailyNote(targetDate); setTrash(false); navigate(document.id, true); await refresh(); });
   }
   async function addImages(files: File[]) {
-    if (!session?.state.review) return;
+    if (!session || !editor || editor.documentId !== session.document.id) return;
     const target = session;
     await action(async () => {
-      for (const file of files) {
-        if (target.state.review!.records.length >= 200) throw new Error('노트당 기록은 최대 200개입니다');
-        const image = await imageFile(file);
-        target.files = { ...target.files, [image.file.id]: image.file };
-        target.editReview({ ...target.state.review!, records: [...target.state.review!.records,
-          { ...emptyRecord(), title: file.name.slice(0, 300), image_file_id: image.file.id }] });
-        await target.persistDraft();
-      }
-      if (current.current === target) setNotice('이미지를 기록에 추가했습니다. 종목과 당시 판단을 적어보세요');
+      await editor.addImages(files);
+      await target.persistDraft();
+      if (current.current === target) setNotice('이미지를 캔버스에 추가했습니다');
     });
   }
   const notes = sortedNotes(boards), index = notes.findIndex(b => b.id === id);
@@ -125,17 +118,8 @@ export default function ReviewNotes() {
   const selectedDate = save?.review?.date ?? date ?? todayKst();
   const deleted = Boolean(session?.document.deleted_at_ms);
   if (legacy || (id && session?.document.id === id && !save?.review)) return <div className="rn-legacy"><div className="rn-legacy-bar"><Link to="/whiteboard">← 복기 노트 목록</Link><span>기존 자유 배치 보드</span></div><Suspense fallback={<p>보드를 불러오는 중…</p>}><LegacyWhiteboard /></Suspense></div>;
-  function record() {
-    if (!session?.state.review) return;
-    const note = session.state.review;
-    if (note.records.length >= 200) { setError('노트당 기록은 최대 200개입니다'); return; }
-    session.editReview({ ...note, records: [...note.records, emptyRecord()] });
-  }
   function move(target?: WhiteboardSummary) { if (target) navigate(target.id); }
-  return <section className={`review-page${collapsed ? ' rn-list-collapsed' : ''}`} aria-label="복기 노트"
-    onPaste={e => { if (editing && e.clipboardData.files.length) { e.preventDefault(); void addImages([...e.clipboardData.files]); } }}
-    onDragOver={e => { if (editing && e.dataTransfer.types.includes('Files')) e.preventDefault(); }}
-    onDrop={e => { if (editing && e.dataTransfer.files.length) { e.preventDefault(); void addImages([...e.dataTransfer.files]); } }}>
+  return <section className={`review-page${collapsed ? ' rn-list-collapsed' : ''}`} aria-label="복기 노트">
     <aside className="rn-library" data-list-display={display} aria-label="날짜별 노트 목록">
       <div className="rn-library-heading"><span><BoardIcon name="note" />내 복기 노트</span><div ref={displayRef} className="rn-display-wrap" onKeyDown={e => { if (e.key === 'Escape') { setDisplayOpen(false); displayButton.current?.focus(); } }}>
         <TooltipButton ref={displayButton} className="rn-button rn-icon" aria-label="목록 표시 방식" title="목록 표시 방식" aria-expanded={displayOpen} aria-controls="review-display-options" onClick={() => setDisplayOpen(v => !v)}><BoardIcon name="menu" /></TooltipButton>
@@ -164,10 +148,10 @@ export default function ReviewNotes() {
         <button type="button" className="rn-button rn-prev" disabled={!previous || busy} onClick={() => move(previous)}><span className="rn-left-chevron"><BoardIcon name="chevron" /></span>이전 기록</button>
         <span>{dateLabel(selectedDate)}</span><button type="button" className="rn-button rn-next" disabled={!next || busy} onClick={() => move(next)}>다음 기록<BoardIcon name="chevron" /></button></div>
         {session && save?.review && <div className="rn-toolbar-actions"><span role="status" className={`rn-save rn-save-${save.status}`}>{statuses[save.status]}</span>
-          {!deleted && <><button type="button" className="rn-button" onClick={() => setParams(p => { const nextParams = new URLSearchParams(p); if (editing) nextParams.delete('mode'); else nextParams.set('mode', 'edit'); return nextParams; })}>{editing ? '읽기로 전환' : '수정'}</button>
-            {editing && <button type="button" className="rn-button" disabled={busy} onClick={() => input.current?.click()}><BoardIcon name="image" />차트/이미지 추가</button>}
-            {editing && <button type="button" className="rn-button" onClick={record}><BoardIcon name="plus" />기록 추가</button>}
-            {editing && <button type="button" className="rn-button rn-primary" disabled={busy} onClick={() => { session.editReview({ ...session.state.review!, completed: true }); void session.persistDraft(); void session.flush(); setParams({ board: session.document.id }); }}><BoardIcon name="check" />복기 완료</button>}</>}
+          {!deleted && <><button type="button" className="rn-button" onClick={() => setParams(p => { const nextParams = new URLSearchParams(p); nextParams.set('mode', editing ? 'read' : 'edit'); nextParams.delete('source'); return nextParams; })}>{editing ? '읽기로 전환' : '수정'}</button>
+            {editing && !sourceView && <button type="button" className="rn-button" disabled={busy || !editor} onClick={() => input.current?.click()}><BoardIcon name="image" />차트/이미지 추가</button>}
+            {editing && <button type="button" className="rn-button rn-primary" disabled={busy} onClick={() => { session.editReview({ ...session.state.review!, completed: true }); void session.persistDraft(); void session.flush(); setParams({ board: session.document.id, mode: 'read' }); }}><BoardIcon name="check" />복기 완료</button>}</>}
+          {(save.review.summary || save.review.good || save.review.change || save.review.principle || save.review.records.length > 0) && <button type="button" className="rn-button" onClick={() => setParams(p => { const nextParams = new URLSearchParams(p); if (sourceView) nextParams.delete('source'); else nextParams.set('source', '1'); return nextParams; })}>{sourceView ? '캔버스로 돌아가기' : '기존 기록 원문'}</button>}
           <details className="rn-more"><summary aria-label="노트 더보기">더보기</summary><div>
             <button type="button" className="rn-button" disabled={busy} onClick={() => void action(async () => { const file = await import('../whiteboard/files'); file.exportBoardFile(session); })}><BoardIcon name="download" />편집 파일 내보내기</button>
             <button type="button" className="rn-button" disabled={busy} onClick={() => void action(async () => { await session.trash(!deleted); if (current.current === session) navigate(null, false, selectedDate); await refresh(); })}><BoardIcon name={deleted ? 'restore' : 'trash'} />{deleted ? '노트 복원' : '휴지통으로 이동'}</button>
@@ -179,8 +163,9 @@ export default function ReviewNotes() {
         {save?.status === 'conflict' && <><button type="button" className="rn-button" disabled={busy} onClick={() => void action(async () => { const fork = await session!.fork(`${session!.state.name.slice(0, 115)} 복구본`); navigate(fork.id, true); await refresh(); })}>내 편집을 별도 노트로 저장</button>
           <button type="button" className="rn-button" disabled={busy} onClick={() => void action(async () => { await session!.fork(`${session!.state.name.slice(0, 115)} 복구본`); await discardBoardSession(session!); setRetry(v => v + 1); await refresh(); })}>초안 보관 후 최신본 열기</button></>}
         <button type="button" className="rn-button" aria-label="안내 닫기" onClick={() => { setError(''); setNotice(''); }}><BoardIcon name="close" /></button></div>}
-      {loading || listLoading ? <div className="rn-empty">노트를 불러오는 중…</div> : session && save?.review ? deleted ? <div className="rn-empty"><h1>휴지통에 있는 노트입니다</h1><p>더보기에서 복원할 수 있습니다. 내용과 이미지는 보존되어 있습니다.</p></div> : <ReviewDocument key={session.document.id} session={session} save={save} editing={editing} server={server} onError={setError}
+      {loading || listLoading ? <div className="rn-empty">노트를 불러오는 중…</div> : session && save?.review ? deleted ? <div className="rn-empty"><h1>휴지통에 있는 노트입니다</h1><p>더보기에서 복원할 수 있습니다. 내용과 이미지는 보존되어 있습니다.</p></div> : sourceView ? <ReviewDocument key={session.document.id} session={session} save={save} editing={false} server={server} onError={setError}
         previous={previous ? { id: previous.id, date: previous.review!.date } : undefined} next={next ? { id: next.id, date: next.review!.date } : undefined} onNavigate={navigate} />
+        : <Suspense fallback={<div className="rn-empty">캔버스를 불러오는 중…</div>}><ReviewCanvas key={session.document.id} session={session} readOnly={!editing} onReady={editorReady} onError={setError} /></Suspense>
         : <div className="rn-empty"><BoardIcon name="note" size={32} /><h1>{date ? '아직 작성한 노트가 없습니다' : '하루의 판단을 기록해 보세요'}</h1><p>{date ? dateLabel(date, true) : '차트와 짧은 메모를 모으고, 하루 끝에 다음 원칙을 정리하세요.'}</p><button type="button" className="rn-button rn-primary" disabled={busy} onClick={() => daily(date ?? todayKst())}>{date ? '이 날짜에 작성하기' : '오늘 작성하기'}</button></div>}
     </div>
     <input type="file" ref={input} hidden multiple accept="image/png,image/jpeg,image/webp" aria-label="복기 이미지 파일 선택" onChange={e => { const files = [...(e.target.files ?? [])]; e.target.value = ''; void addImages(files); }} />

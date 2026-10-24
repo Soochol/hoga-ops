@@ -8,17 +8,20 @@ import {
   viewportCoordsToSceneCoords,
 } from '@excalidraw/excalidraw';
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types';
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 import '@excalidraw/excalidraw/index.css';
 import type { BoardSession } from './session';
 import { readLocal, writeLocal, type BoardView } from './drafts';
 import { fromDataURL, imageFile } from './images';
+import { hitInk } from './freehandEraser';
 import { useThemePrefsStore } from '../state/themePrefs';
 
 Object.assign(window, { EXCALIDRAW_ASSET_PATH: '/whiteboard/' });
 
 export interface BoardEditorHandle {
+  documentId: string;
   api: ExcalidrawImperativeAPI;
-  addNote: () => void;
+  addNote: (text?: string) => void;
   addImages: (files: Blob[], source?: Record<string, unknown>) => Promise<void>;
   cancelImages: () => void;
 }
@@ -27,10 +30,18 @@ export function BoardEditor({
   session,
   onReady,
   onError,
+  initialElements,
+  viewOnly = false,
+  fitOnFirstOpen = false,
+  freehandEraser = false,
 }: {
   session: BoardSession;
   onReady: (handle: BoardEditorHandle | null) => void;
   onError: (message: string) => void;
+  initialElements?: readonly ExcalidrawElement[];
+  viewOnly?: boolean;
+  fitOnFirstOpen?: boolean;
+  freehandEraser?: boolean;
 }) {
   const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
   const [grid, setGrid] = useState(false);
@@ -39,6 +50,16 @@ export function BoardEditor({
   const viewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const handleRef = useRef<BoardEditorHandle | null>(null);
   const surfaceRef = useRef<HTMLDivElement>(null);
+  const erasing = useRef<Set<string> | null>(null);
+  function collectInk(clientX: number, clientY: number) {
+    if (!api || !erasing.current) return;
+    const state = api.getAppState(), { x, y } = viewportCoordsToSceneCoords({ clientX, clientY }, state);
+    const elements = api.getSceneElements();
+    const lockedFrames = new Set(elements.filter(element => element.type === 'frame' && element.locked).map(element => element.id));
+    for (const element of elements) {
+      if ((!element.frameId || !lockedFrames.has(element.frameId)) && hitInk(element, x, y, 10 / state.zoom.value)) erasing.current.add(element.id);
+    }
+  }
   const readyRef = useRef(onReady);
   const errorRef = useRef(onError);
   useEffect(() => {
@@ -46,7 +67,7 @@ export function BoardEditor({
     errorRef.current = onError;
   }, [onReady, onError]);
   const [initial] = useState(() => ({
-    elements: session.elements,
+    elements: initialElements ?? session.elements,
     files: session.files,
     appState: {
       ...session.appState,
@@ -69,7 +90,9 @@ export function BoardEditor({
         state,
       );
     };
-    const addNote = () => {
+    const frameAt = (x: number, y: number) => api.getSceneElements().find(element => element.type === 'frame'
+      && x >= element.x && x <= element.x + element.width && y >= element.y && y <= element.y + element.height)?.id ?? null;
+    const addNote = (text = '새 메모\n\n여기에 내용을 적어보세요') => {
       const { x, y } = center();
       const elements = convertToExcalidrawElements([
         {
@@ -84,7 +107,7 @@ export function BoardEditor({
           roughness: 0,
           roundness: { type: 3, value: 6 },
           label: {
-            text: '새 메모\n\n여기에 내용을 적어보세요',
+            text,
             fontSize: 20,
             fontFamily: 2,
             strokeColor: '#1e1e1e',
@@ -93,7 +116,7 @@ export function BoardEditor({
           },
           customData: { kind: 'note' },
         },
-      ]);
+      ]).map(element => ({ ...element, frameId: frameAt(x, y) }));
       api.updateScene({
         elements: [...api.getSceneElementsIncludingDeleted(), ...elements],
         captureUpdate: CaptureUpdateAction.IMMEDIATELY,
@@ -124,7 +147,7 @@ export function BoardEditor({
               customData: source ? { chartSource: source } : undefined,
               link: typeof source?.url === 'string' ? source.url : null,
             },
-          ]);
+          ]).map(element => ({ ...element, frameId: frameAt(x, y) }));
           if (mounted) {
             api.addFiles([image.file]);
             api.updateScene({
@@ -147,6 +170,7 @@ export function BoardEditor({
       if (errors.length) errorRef.current(errors.join(' · '));
     };
     handleRef.current = {
+      documentId: session.document.id,
       api,
       addNote,
       addImages,
@@ -167,16 +191,26 @@ export function BoardEditor({
           typeof view.zoom?.value === 'number'
         ) {
           api.updateScene({ appState: view, captureUpdate: CaptureUpdateAction.NEVER });
+        } else if (mounted && fitOnFirstOpen) {
+          const first = api.getSceneElements().find(element => element.type === 'frame');
+          if (first) {
+            const state = api.getAppState();
+            const zoom = Math.min(0.85, Math.max(0.3, (state.width - 80) / first.width));
+            api.updateScene({ appState: { scrollX: -first.x + 40 / zoom, scrollY: -first.y + 60 / zoom,
+              zoom: { value: zoom as AppState['zoom']['value'] } }, captureUpdate: CaptureUpdateAction.NEVER });
+          }
         }
       })
       .catch(() => {});
     return () => {
       observer.disconnect();
+      const { scrollX, scrollY, zoom } = api.getAppState();
+      void writeLocal(session.key + ':view', { scrollX, scrollY, zoom }).catch(() => {});
       mounted = false;
       handleRef.current = null;
       readyRef.current(null);
     };
-  }, [api, session]);
+  }, [api, session, fitOnFirstOpen]);
 
   useEffect(
     () => () => {
@@ -194,8 +228,28 @@ export function BoardEditor({
       data-prevent-shortcuts
       data-testid="whiteboard-editor"
       data-board-id={session.document.id}
+      onPointerDownCapture={event => {
+        if (!freehandEraser || viewOnly || !api || api.getAppState().activeTool.type !== 'eraser'
+          || !(event.target instanceof HTMLCanvasElement) || event.button !== 0) return;
+        event.preventDefault(); event.stopPropagation();
+        erasing.current = new Set(); collectInk(event.clientX, event.clientY);
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMoveCapture={event => {
+        if (!erasing.current) return;
+        event.preventDefault(); event.stopPropagation(); collectInk(event.clientX, event.clientY);
+      }}
+      onPointerUpCapture={event => {
+        if (!erasing.current || !api) return;
+        event.preventDefault(); event.stopPropagation(); collectInk(event.clientX, event.clientY);
+        const ids = erasing.current; erasing.current = null;
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        if (ids.size) api.updateScene({ elements: api.getSceneElementsIncludingDeleted().map(element =>
+          ids.has(element.id) ? newElementWith(element, { isDeleted: true }) : element), captureUpdate: CaptureUpdateAction.IMMEDIATELY });
+      }}
+      onPointerCancelCapture={() => { erasing.current = null; }}
       onKeyDownCapture={(event) => {
-        if (!api || !['Delete', 'Backspace'].includes(event.key)) return;
+        if (viewOnly || !api || !['Delete', 'Backspace'].includes(event.key)) return;
         const target = event.target as HTMLElement;
         if (target.isContentEditable || ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
         const state = api.getAppState(), elements = api.getSceneElementsIncludingDeleted();
@@ -220,7 +274,7 @@ export function BoardEditor({
         if (!files.length) return;
         event.preventDefault();
         event.stopPropagation();
-        void handleRef.current?.addImages(files);
+        if (!viewOnly) void handleRef.current?.addImages(files);
       }}
     >
       <Excalidraw
@@ -231,6 +285,7 @@ export function BoardEditor({
         theme={dark ? 'dark' : 'light'}
         name={session.state.name}
         gridModeEnabled={grid}
+        viewModeEnabled={viewOnly}
         handleKeyboardGlobally={false}
         aiEnabled={false}
         validateEmbeddable={false}
@@ -260,6 +315,7 @@ export function BoardEditor({
           }, 300);
         }}
         onPaste={async (data, event) => {
+          if (viewOnly) return false;
           if (event?.clipboardData?.files.length) {
             void handleRef.current?.addImages([...event.clipboardData.files]);
             return false;
