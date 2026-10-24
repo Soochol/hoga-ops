@@ -1,0 +1,1097 @@
+[e2e] worktree=/home/dev/.codex/worktrees/da81/hoga-ops · slot=337 · backend=20337 · frontend=21337 · data=/tmp/hoga-e2e-data-337 · dist=/tmp/hoga-e2e-dist-337
+[WebServer] (node:3885262) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+[WebServer] (node:3885278) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+[WebServer] vite v8.0.16 building client environment for production...
+
+[WebServer]
+transforming...
+
+[WebServer] ✓ 1040 modules transformed.
+
+[WebServer] rendering chunks...
+
+[WebServer] computing gzip size...
+
+[WebServer] dist/index.html                                              3.35 kB │ gzip:   1.44 kB
+[WebServer] dist/assets/PretendardVariable.subset.66-C3HqaDeY.woff2      8.25 kB
+[WebServer] dist/assets/PretendardVariable.subset.64-CTbrgYF9.woff2      8.26 kB
+[WebServer] dist/assets/PretendardVariable.subset.65-B66rjuyf.woff2     11.10 kB
+[WebServer] dist/assets/PretendardVariable.subset.68-DS9B48d0.woff2     16.34 kB
+[WebServer] dist/assets/PretendardVariable.subset.73-DMrK970F.woff2     18.33 kB
+[WebServer] dist/assets/PretendardVariable.subset.72-pYYGrEQR.woff2     19.50 kB
+[WebServer] dist/assets/PretendardVariable.subset.75-CxKdrRNf.woff2     19.99 kB
+[WebServer] dist/assets/PretendardVariable.subset.90-BF7RiZjm.woff2     20.85 kB
+[WebServer] dist/assets/PretendardVariable.subset.67-BmuXdlDy.woff2     21.84 kB
+[WebServer] dist/assets/PretendardVariable.subset.89-DOzqWPpX.woff2     21.86 kB
+[WebServer] dist/assets/PretendardVariable.subset.74-D4tQnymK.woff2     22.39 kB
+[WebServer] dist/assets/PretendardVariable.subset.84-Brb8EsYQ.woff2     24.49 kB
+[WebServer] dist/assets/PretendardVariable.subset.87-Lzui2vbK.woff2     24.66 kB
+[WebServer] dist/assets/PretendardVariable.subset.76-DhPm2b_q.woff2     24.92 kB
+[WebServer] dist/assets/PretendardVariable.subset.85-Byo_x2hf.woff2     25.10 kB
+[WebServer] dist/assets/PretendardVariable.subset.88-CqX6JSgh.woff2     25.64 kB
+[WebServer] dist/assets/PretendardVariable.subset.86-XG7lTN_6.woff2     25.71 kB
+[WebServer] dist/assets/PretendardVariable.subset.77-DwaxqOC8.woff2     26.04 kB
+[WebServer] dist/assets/PretendardVariable.subset.79-XpoyPP38.woff2     26.22 kB
+[WebServer] dist/assets/PretendardVariable.subset.81-BZzF9Hb3.woff2     26.30 kB
+[WebServer] dist/assets/PretendardVariable.subset.82-BgAHe30u.woff2     26.50 kB
+[WebServer] dist/assets/PretendardVariable.subset.78-DhqRbBzT.woff2     26.54 kB
+[WebServer] dist/assets/PretendardVariable.subset.83-DF-zBLLe.woff2     26.96 kB
+[WebServer] dist/assets/PretendardVariable.subset.70-BUXiAGMT.woff2     27.54 kB
+[WebServer] dist/assets/PretendardVariable.subset.37-BD6FyOtY.woff2     27.91 kB
+[WebServer] dist/assets/PretendardVariable.subset.71-DuPZj8us.woff2     28.32 kB
+[WebServer] dist/assets/PretendardVariable.subset.80-DsV9Qp_h.woff2     28.79 kB
+[WebServer] dist/assets/PretendardVariable.subset.63-B35xsm4O.woff2     28.81 kB
+[WebServer] dist/assets/PretendardVariable.subset.40-BDaOfdUe.woff2     29.84 kB
+[WebServer] dist/assets/PretendardVariable.subset.43-DHdpry7N.woff2     30.38 kB
+[WebServer] dist/assets/PretendardVariable.subset.7-E2HaA55t.woff2      31.91 kB
+[WebServer] dist/assets/PretendardVariable.subset.1-C-__qv6_.woff2      32.04 kB
+[WebServer] dist/assets/PretendardVariable.subset.44-qHopVhdd.woff2     32.13 kB
+[WebServer] dist/assets/PretendardVariable.subset.24-CmkE8Q8D.woff2     32.30 kB
+[WebServer] dist/assets/PretendardVariable.subset.10-DzSWztS8.woff2     33.03 kB
+[WebServer] dist/assets/PretendardVariable.subset.41-BUACvzZC.woff2     33.18 kB
+[WebServer] dist/assets/PretendardVariable.subset.50-C8IyFH7L.woff2     33.22 kB
+[WebServer] dist/assets/PretendardVariable.subset.54-Dt2-cQkx.woff2     33.34 kB
+[WebServer] dist/assets/PretendardVariable.subset.5-K_MNGNCe.woff2      33.62 kB
+[WebServer] dist/assets/PretendardVariable.subset.6-Bxhohlcm.woff2      33.96 kB
+[WebServer] dist/assets/PretendardVariable.subset.9-Btb3bmS6.woff2      34.01 kB
+[WebServer] dist/assets/PretendardVariable.subset.55-jFgflYjX.woff2     34.18 kB
+[WebServer] dist/assets/PretendardVariable.subset.39-B_7wfth9.woff2     34.25 kB
+[WebServer] dist/assets/PretendardVariable.subset.52-CNgqKOOJ.woff2     34.35 kB
+[WebServer] dist/assets/PretendardVariable.subset.0-BHUkWNFR.woff2      34.56 kB
+[WebServer] dist/assets/PretendardVariable.subset.53-BSRnyb-u.woff2     34.57 kB
+[WebServer] dist/assets/PretendardVariable.subset.42-Dp-5mnyL.woff2     34.60 kB
+[WebServer] dist/assets/PretendardVariable.subset.45-BniyRFfm.woff2     34.66 kB
+[WebServer] dist/assets/PretendardVariable.subset.36-Dn5IBRQB.woff2     34.68 kB
+[WebServer] dist/assets/PretendardVariable.subset.34-CaCS33Md.woff2     34.72 kB
+[WebServer] dist/assets/PretendardVariable.subset.69-YT16ymcp.woff2     34.78 kB
+[WebServer] dist/assets/PretendardVariable.subset.38-D4hu443z.woff2     34.80 kB
+[WebServer] dist/assets/PretendardVariable.subset.62-DGSAWCfb.woff2     34.87 kB
+[WebServer] dist/assets/PretendardVariable.subset.33--0OT__YQ.woff2     34.91 kB
+[WebServer] dist/assets/PretendardVariable.subset.17-BfZSA-Xc.woff2     34.94 kB
+[WebServer] dist/assets/PretendardVariable.subset.4-Bvh2YGoc.woff2      35.15 kB
+[WebServer] dist/assets/PretendardVariable.subset.56-BwZdvJZQ.woff2     35.18 kB
+[WebServer] dist/assets/PretendardVariable.subset.35-DWFYRGLp.woff2     35.35 kB
+[WebServer] dist/assets/PretendardVariable.subset.27-CT6nuW9L.woff2     35.42 kB
+[WebServer] dist/assets/PretendardVariable.subset.61-PUuTnod4.woff2     35.64 kB
+[WebServer] dist/assets/PretendardVariable.subset.15-D04iXIE3.woff2     35.66 kB
+[WebServer] dist/assets/PretendardVariable.subset.13-C42mj_j2.woff2     35.70 kB
+[WebServer] dist/assets/PretendardVariable.subset.47-B-cWO2pw.woff2     35.72 kB
+[WebServer] dist/assets/PretendardVariable.subset.57-BwFDg-Fs.woff2     35.96 kB
+[WebServer] dist/assets/PretendardVariable.subset.51-Bxd0gTAs.woff2     36.02 kB
+[WebServer] dist/assets/PretendardVariable.subset.49-BblQVys9.woff2     36.05 kB
+[WebServer] dist/assets/PretendardVariable.subset.20-Ig1-z3n5.woff2     36.12 kB
+[WebServer] dist/assets/PretendardVariable.subset.14-Bl512uUX.woff2     36.51 kB
+[WebServer] dist/assets/PretendardVariable.subset.46-BMRq7xC-.woff2     36.54 kB
+[WebServer] dist/assets/PretendardVariable.subset.8-CRbJhhyA.woff2      36.69 kB
+[WebServer] dist/assets/PretendardVariable.subset.21-yKPEdLXC.woff2     37.26 kB
+[WebServer] dist/assets/PretendardVariable.subset.11-CqVmlKJn.woff2     37.40 kB
+[WebServer] dist/assets/PretendardVariable.subset.48-Ct-fWrPO.woff2     37.77 kB
+[WebServer] dist/assets/PretendardVariable.subset.60-CeHezjjf.woff2     37.77 kB
+[WebServer] dist/assets/PretendardVariable.subset.16-BQUnS2GX.woff2     37.91 kB
+[WebServer] dist/assets/PretendardVariable.subset.12-BHuZSgT0.woff2     37.94 kB
+[WebServer] dist/assets/PretendardVariable.subset.91-Csm0YNoH.woff2     37.99 kB
+[WebServer] dist/assets/PretendardVariable.subset.30-CWDM1c0J.woff2     38.44 kB
+[WebServer] dist/assets/PretendardVariable.subset.28-CpO0Y96p.woff2     38.46 kB
+[WebServer] dist/assets/PretendardVariable.subset.22-CSqxKoOs.woff2     38.68 kB
+[WebServer] dist/assets/PretendardVariable.subset.59-CMkWjhdo.woff2     38.97 kB
+[WebServer] dist/assets/PretendardVariable.subset.29-D6hjrUWm.woff2     39.28 kB
+[WebServer] dist/assets/PretendardVariable.subset.32-CGnFWD2i.woff2     40.21 kB
+[WebServer] dist/assets/PretendardVariable.subset.23-DK80wi0t.woff2     40.28 kB
+[WebServer] dist/assets/PretendardVariable.subset.26-Sozl8dw8.woff2     40.32 kB
+[WebServer] dist/assets/PretendardVariable.subset.3-Dqw33sf4.woff2      40.64 kB
+[WebServer] dist/assets/PretendardVariable.subset.58-DlucQts_.woff2     41.56 kB
+[WebServer] dist/assets/PretendardVariable.subset.18-CwAxMC3C.woff2     41.60 kB
+[WebServer] dist/assets/PretendardVariable.subset.31-CdmyZ5mm.woff2     41.89 kB
+[WebServer] dist/assets/PretendardVariable.subset.25-CsoWBIZB.woff2     42.03 kB
+[WebServer] dist/assets/PretendardVariable.subset.19-CJu4Zcdo.woff2     42.32 kB
+[WebServer] dist/assets/PretendardVariable.subset.2-dCZkyKLw.woff2      43.92 kB
+[WebServer] dist/assets/HeatmapDrawer-CUi8DGcH.css                       0.07 kB │ gzip:   0.08 kB
+[WebServer] dist/assets/RankingDrawer-BjQhOkZj.css                       0.33 kB │ gzip:   0.17 kB
+[WebServer] dist/assets/ResponsiveList-BKW5EvL2.css                      0.33 kB │ gzip:   0.15 kB
+[WebServer] dist/assets/PatternDrawer-DmskWiXe.css                       0.65 kB │ gzip:   0.29 kB
+[WebServer] dist/assets/SignalAlertsDrawer-DM8oVeqs.css                  0.76 kB │ gzip:   0.29 kB
+[WebServer] dist/assets/Sentiment-CkWHRXJ5.css                           2.85 kB │ gzip:   0.89 kB
+[WebServer] dist/assets/resultLimitText-PGjeukC8.css                     4.52 kB │ gzip:   1.09 kB
+[WebServer] dist/assets/Heatmap-tEkAotD_.css                             4.89 kB │ gzip:   1.16 kB
+[WebServer] dist/assets/Market-gYqtOFz9.css                              6.54 kB │ gzip:   1.52 kB
+[WebServer] dist/assets/LandingPage-BU6q5oTK.css                        25.14 kB │ gzip:   5.44 kB
+[WebServer] dist/assets/live-workspace-B9qreXu8.css                     26.76 kB │ gzip:   5.09 kB
+[WebServer] dist/assets/live-orders-DSeVfcnF.css                        42.87 kB │ gzip:   7.33 kB
+[WebServer] dist/assets/index-DMaZrwSG.css                             111.83 kB │ gzip:  29.01 kB
+[WebServer] dist/assets/react-BrEVD7iA.js                                0.19 kB │ gzip:   0.15 kB
+[WebServer] dist/assets/StatusChip-DyRDfyxi.js                           0.36 kB │ gzip:   0.28 kB
+[WebServer] dist/assets/PageContainer-BvzQMd_i.js                        0.44 kB │ gzip:   0.33 kB
+[WebServer] dist/assets/StatusBadge-Cu0gYfWR.js                          0.65 kB │ gzip:   0.37 kB
+[WebServer] dist/assets/rolldown-runtime-QTnfLwEv.js                     0.69 kB │ gzip:   0.42 kB
+[WebServer] dist/assets/SortCycleButton-DqRDNPeN.js                      1.25 kB │ gzip:   0.69 kB
+[WebServer] dist/assets/screener-Cndkh4Gc.js                             1.28 kB │ gzip:   0.59 kB
+[WebServer] dist/assets/useChartDropDrag-Bn_17-5-.js                     1.41 kB │ gzip:   0.70 kB
+[WebServer] dist/assets/liveRankings-CQHjqSHd.js                         1.46 kB │ gzip:   0.85 kB
+[WebServer] dist/assets/marketCardBits-DiILJuQZ.js                       1.59 kB │ gzip:   0.81 kB
+[WebServer] dist/assets/useCopyDragIntent-BohM80it.js                    4.04 kB │ gzip:   1.82 kB
+[WebServer] dist/assets/SignalAlertsDrawer-CvzzKwR9.js                   5.08 kB │ gzip:   2.24 kB
+[WebServer] dist/assets/ScreenerDrawer-BZPM1UjN.js                      11.63 kB │ gzip:   5.00 kB
+[WebServer] dist/assets/es-CQiZGxU0.js                                  12.44 kB │ gzip:   4.96 kB
+[WebServer] dist/assets/RankingDrawer-DiMvIClZ.js                       12.85 kB │ gzip:   5.07 kB
+[WebServer] dist/assets/LandingPage-B8BO995F.js                         19.18 kB │ gzip:   5.52 kB
+[WebServer] dist/assets/Inventory-CRSQmgNJ.js                           20.13 kB │ gzip:   6.71 kB
+[WebServer] dist/assets/Capture-D0VYWEkI.js                             25.90 kB │ gzip:   9.15 kB
+[WebServer] dist/assets/Sentiment-Cm6mov5z.js                           25.98 kB │ gzip:   7.85 kB
+[WebServer] dist/assets/StudyViewsDrawer-CbAyyHGk.js                    29.12 kB │ gzip:   9.89 kB
+[WebServer] dist/assets/HeatmapDrawer-BX_LqgMi.js                       29.75 kB │ gzip:  10.47 kB
+[WebServer] dist/assets/query-BkU7p79K.js                               31.65 kB │ gzip:   9.34 kB
+[WebServer] dist/assets/PatternDrawer-B9fnuuKh.js                       38.06 kB │ gzip:  12.65 kB
+[WebServer] dist/assets/Heatmap-DhSqnTTc.js                             40.28 kB │ gzip:  14.75 kB
+[WebServer] dist/assets/router-Cir5nnHh.js                              42.16 kB │ gzip:  15.05 kB
+[WebServer] dist/assets/Market-BIQ7IWyq.js                              45.90 kB │ gzip:  14.07 kB
+[WebServer] dist/assets/resultLimitText-DEdiBkiJ.js                     46.22 kB │ gzip:  14.51 kB
+[WebServer] dist/assets/dnd-D5zGQ2Tx.js                                 47.30 kB │ gzip:  15.47 kB
+[WebServer] dist/assets/Screener-BPp4SZHA.js                            56.53 kB │ gzip:  18.68 kB
+[WebServer] dist/assets/index-CNF8nL_s.js                              167.80 kB │ gzip:  51.26 kB
+[WebServer] dist/assets/charts-DW6SHdwn.js                             170.82 kB │ gzip:  55.21 kB
+[WebServer] dist/assets/live-orders-B7lXxpbV.js                        437.15 kB │ gzip: 132.80 kB
+[WebServer] dist/assets/live-workspace-Bg706u-k.js                   1,054.08 kB │ gzip: 317.10 kB
+[WebServer]
+
+[WebServer] ✓ built in 2.67s
+
+[WebServer] [plugin builtin:vite-reporter]
+[WebServer] (!) Some chunks are larger than 700 kB after minification. Consider:
+[WebServer] - Using dynamic import() to code-split the application
+[WebServer] - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[WebServer] - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+[WebServer] prepare-dist: /tmp/hoga-e2e-dist-337 ready (same-origin config.json)
+
+[WebServer] INFO:     Started server process [3886215]
+
+[WebServer] INFO:     Waiting for application startup.
+
+[WebServer] INFO:     Application startup complete.
+
+[WebServer] INFO:     Uvicorn running on http://127.0.0.1:20337 (Press CTRL+C to quit)
+
+[WebServer] INFO:     127.0.0.1:55700 - "GET /health HTTP/1.1" 200 OK
+
+[WebServer]
+[WebServer] > frontend@0.0.0 dev
+[WebServer] > vite --host 127.0.0.1 --port 21337 --strictPort
+[WebServer]
+
+[WebServer] (node:3886543) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+[WebServer]
+[WebServer]   VITE v8.0.16  ready in 105 ms
+[WebServer]
+
+[WebServer]   ➜  Local:   http://127.0.0.1:21337/
+
+[WebServer] INFO:     127.0.0.1:55714 - "GET /api/test/whoami HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55718 - "POST /api/test/add-stockdate?code=005930&date=20260521 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55714 - "POST /api/test/add-stockdate?code=000660&date=20260521 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55718 - "POST /api/test/seed-trading-days?year=2026&month=10 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55714 - "POST /api/test/seed-trading-days?year=2026&month=9 HTTP/1.1" 200 OK
+
+
+Running 23 tests using 1 worker
+
+(node:3886680) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+(node:3886680) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+[e2e] worktree=/home/dev/.codex/worktrees/da81/hoga-ops · slot=337 · backend=20337 · frontend=21337 · data=/tmp/hoga-e2e-data-337 · dist=/tmp/hoga-e2e-dist-337
+
+[1/23] [chromium] › tests/e2e/index-realtime-candles.spec.ts:21:1 › 국내 지수의 마지막 봉·새 분봉·다른 주기가 같은 WS로 갱신되고 REST가 누락 구간을 보정한다
+[WebServer] INFO:     127.0.0.1:55726 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55726 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55748 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55762 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55742 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55742 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] 7:09:23 PM [vite] (client) [console.error] [update-loop] "registry:peakWallCounts" 가 한 프레임에 20회 쓰였다 — 갱신 루프로 의심된다. Error: update-loop
+[WebServer]     at captureStack (http://127.0.0.1:21337/src/state/updateLoopSignal.ts:137:10)
+[WebServer]     at noteStoreWrite (http://127.0.0.1:21337/src/state/updateLoopSignal.ts:163:16)
+[WebServer]     at http://127.0.0.1:21337/src/state/updateLoopWatch.ts:87:70
+[WebServer]     at http://127.0.0.1:21337/.vite-cache/deps/zustand_vanilla.js?v=b219cc87:10:36
+[WebServer]     at Set.forEach (<anonymous>)
+[WebServer]     at setState (http://127.0.0.1:21337/.vite-cache/deps/zustand_vanilla.js?v=b219cc87:10:14)
+[WebServer]     at Object.register (http://127.0.0.1:21337/src/live/indicators/windowScopedRegistry.ts:39:4)
+[WebServer]     at http://127.0.0.1:21337/src/live/indicators/peakWallCountsRegistry.ts:57:7
+[WebServer]     at commitHookEffectListMount (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:13817:24)
+[WebServer]     at commitPassiveMountOnFiber (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14756:8)
+[WebServer]     at commitPassiveMountEffects_complete (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14729:7)
+[WebServer]     at commitPassiveMountEffects_begin (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14720:12)
+[WebServer]     at commitPassiveMountEffects (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14711:4)
+[WebServer]     at flushPassiveEffectsImpl (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15795:4)
+[WebServer]     at flushPassiveEffects (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15762:13)
+[WebServer]     at commitRootImpl (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15740:91)
+[WebServer]     at commitRoot (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15638:5)
+[WebServer]     at performSyncWorkOnRoot (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15316:4)
+[WebServer]     at flushSyncCallbacks (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:7801:19)
+[WebServer]     at http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15101:78
+
+[WebServer] 7:09:23 PM [vite] (client) [Unhandled error] Error: ResizeObserver loop completed with undelivered notifications.
+[WebServer]  > ../../../../../../../@vite/client:531:50
+[WebServer]
+
+[WebServer] INFO:     127.0.0.1:55742 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[2/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index D history prepend retains viewport
+[WebServer] INFO:     127.0.0.1:55778 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55790 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55800 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55808 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55818 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55778 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55808 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55818 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55790 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:55830 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55800 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55818 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55778 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:55790 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55830 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:55800 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55808 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:55830 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:55830 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[3/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index D history empty failure retains candles
+[WebServer] INFO:     127.0.0.1:35844 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35846 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35852 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35846 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35856 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35844 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35852 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35864 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35856 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35852 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35864 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35846 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35856 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35852 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35864 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35856 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:35874 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35844 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35844 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[4/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index W history prepend retains viewport
+[WebServer] INFO:     127.0.0.1:35888 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35902 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35914 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35916 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35928 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35914 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35902 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35936 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35916 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35928 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35888 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35902 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35936 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35916 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35928 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35888 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35902 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:35914 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35914 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[5/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index W history empty failure retains candles
+[WebServer] INFO:     127.0.0.1:35948 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35962 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35966 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35948 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35962 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35988 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35966 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35948 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35962 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35976 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35972 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35962 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35988 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35966 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35976 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:35972 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35948 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35972 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:35972 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[6/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index M history prepend retains viewport
+[WebServer] INFO:     127.0.0.1:35992 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35998 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36002 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35992 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36008 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36020 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35998 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36002 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35992 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:36020 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36012 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35992 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:36002 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36020 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:36012 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36008 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35992 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:35998 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:35998 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[7/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index M history empty failure retains candles
+[WebServer] INFO:     127.0.0.1:36024 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36038 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36054 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36056 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36072 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36024 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36082 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36054 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36056 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36072 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:36082 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36054 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:36056 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36072 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:36038 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36082 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36024 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36054 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:36054 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[8/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index 3m history prepend retains viewport
+[WebServer] INFO:     127.0.0.1:37676 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37692 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37702 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37702 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37692 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37676 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37702 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37724 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37730 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37710 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37692 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37676 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37724 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37702 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37730 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37710 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37692 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37676 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:37692 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[9/23] [chromium] › tests/e2e/live-index-history.spec.ts:52:5 › index 3m history empty failure retains candles
+[WebServer] INFO:     127.0.0.1:37742 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37744 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37750 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37754 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37756 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37744 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37750 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37754 - "GET /api/live/past-daily-candles?code=098460&from=20251210&to=20261001&venue=KRX HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37742 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37770 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37750 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37754 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37770 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37742 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37756 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37750 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37754 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:37744 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37744 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[10/23] [chromium] › tests/e2e/live-index-history.spec.ts:103:1 › stock and index indicators remain independent when switching and reloading the same chart
+[WebServer] INFO:     127.0.0.1:37774 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37778 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37790 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37796 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37810 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37778 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37790 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37774 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37812 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37790 - "GET /api/live/aftermarket-exclusion?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37810 - "GET /api/live/stock-limits?code=098460 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37778 - "GET /api/live/krx-close?code=098460 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37796 - "GET /api/live/krx-previous-close?code=098460&as_of=20261001 HTTP/1.1" 503 Service Unavailable
+
+[WebServer] INFO:     127.0.0.1:37812 - "GET /api/live/screener-daily-candles?code=098460&from=20251210&to=20261001 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37774 - "GET /api/orderbook?code=098460&date=20261001&venue=KRX&t=1790835599999 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37778 - "GET /api/live/vi-status?code=098460&venue=KRX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37810 - "GET /api/live/trades/history?code=098460&date=20261001&venue=KRX HTTP/1.1" 422 Unprocessable Content
+
+[WebServer] INFO:     127.0.0.1:37810 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37810 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37778 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37774 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37812 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37796 - "GET /api/live/index-header-quote?index_id=KOSPI HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37796 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37774 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37812 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37774 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37812 - "GET /api/live/quotes?codes=098460&venue=KRX HTTP/1.1" 200 OK
+
+[11/23] [chromium] › tests/e2e/us-daily-candles.spec.ts:55:3 › NASDAQ_COMPOSITE: URL and restore use daily REST candles with decimal prices
+[WebServer] INFO:     127.0.0.1:37814 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:37818 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37832 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37832 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37864 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37848 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37818 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:37870 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:37818 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37818 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37864 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37832 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37848 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37880 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[12/23] [chromium] › tests/e2e/us-daily-candles.spec.ts:55:3 › SP500: URL and restore use daily REST candles with decimal prices
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:37894 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:37908 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37920 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37920 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37938 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37928 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37908 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:37942 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     127.0.0.1:37908 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:37908 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37938 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37920 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37928 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37944 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[13/23] [chromium] › tests/e2e/us-daily-candles.spec.ts:55:3 › SOX: URL and restore use daily REST candles with decimal prices
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:37956 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:37966 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37968 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37984 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37966 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:38008 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37996 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:36838 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:37996 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37996 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37966 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37984 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:38008 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37968 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[14/23] [chromium] › tests/e2e/us-daily-candles.spec.ts:89:1 › US stock search preserves exchange/ticker and never requests domestic stock data
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:36842 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:36844 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36854 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36858 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36862 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36862 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36858 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:36876 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:36858 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36862 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36854 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36844 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36886 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36902 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[15/23] [chromium] › tests/e2e/us-daily-candles.spec.ts:126:1 › preferred-share URL keeps broker case and underscore across restore
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:36914 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:36922 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36922 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36936 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36952 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36966 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36950 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:36976 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:36950 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36950 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36966 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36936 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36952 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36922 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[16/23] [chromium] › tests/e2e/us-daily-candles.spec.ts:141:1 › US daily partial data keeps its retry action and removes the notice after recovery
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:36980 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:36986 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36986 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:36988 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37014 - "GET /api/heatmap HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37024 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37004 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[17/23] [chromium] › tests/e2e/us-index-daily-transfer.spec.ts:21:1 › six US index charts retain history with tail transfers, full corrections and rollover
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:37026 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37030 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37030 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37026 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37026 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37030 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] 7:09:51 PM [vite] (client) [console.error] [update-loop] "registry:maSeries" 가 한 프레임에 20회 쓰였다 — 갱신 루프로 의심된다. Error: update-loop
+[WebServer]     at captureStack (http://127.0.0.1:21337/src/state/updateLoopSignal.ts:137:10)
+[WebServer]     at noteStoreWrite (http://127.0.0.1:21337/src/state/updateLoopSignal.ts:163:16)
+[WebServer]     at http://127.0.0.1:21337/src/state/updateLoopWatch.ts:87:70
+[WebServer]     at http://127.0.0.1:21337/.vite-cache/deps/zustand_vanilla.js?v=b219cc87:10:36
+[WebServer]     at Set.forEach (<anonymous>)
+[WebServer]     at setState (http://127.0.0.1:21337/.vite-cache/deps/zustand_vanilla.js?v=b219cc87:10:14)
+[WebServer]     at Object.register (http://127.0.0.1:21337/src/live/indicators/windowScopedRegistry.ts:39:4)
+[WebServer]     at http://127.0.0.1:21337/src/live/indicators/MovingAverageOverlay.tsx:68:37
+[WebServer]     at commitHookEffectListMount (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:13817:24)
+[WebServer]     at commitPassiveMountOnFiber (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14756:8)
+[WebServer]     at commitPassiveMountEffects_complete (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14729:7)
+[WebServer]     at commitPassiveMountEffects_begin (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14720:12)
+[WebServer]     at commitPassiveMountEffects (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:14711:4)
+[WebServer]     at flushPassiveEffectsImpl (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15795:4)
+[WebServer]     at flushPassiveEffects (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15762:13)
+[WebServer]     at commitRootImpl (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15740:91)
+[WebServer]     at commitRoot (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15638:5)
+[WebServer]     at performSyncWorkOnRoot (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15316:4)
+[WebServer]     at flushSyncCallbacks (http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:7801:19)
+[WebServer]     at http://127.0.0.1:21337/.vite-cache/deps/react-dom-D_dvfKPJ.js?v=b219cc87:15101:78
+
+[WebServer] INFO:     127.0.0.1:37030 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37030 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:37030 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[18/23] [chromium] › tests/e2e/us-index-minutes.spec.ts:54:1 › US index updates minute, D/W/M and header every two seconds without resetting the viewport
+[WebServer] INFO:     127.0.0.1:32910 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:32922 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32922 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32936 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32944 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32922 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32934 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32950 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[19/23] [chromium] › tests/e2e/us-index-minutes.spec.ts:91:3 › NASDAQ_COMPOSITE: renders actual-provider minute fixture, period changes, restore and bounded polling
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:32958 - "WebSocket /api/ws" [accepted]
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:32960 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32960 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32976 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32980 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32960 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32990 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32988 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32982 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:32982 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32982 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32982 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32982 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32994 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:32982 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32988 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32990 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32990 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32988 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32960 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32982 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:32980 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[20/23] [chromium] › tests/e2e/us-index-minutes.spec.ts:91:3 › SP500: renders actual-provider minute fixture, period changes, restore and bounded polling
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:32998 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33002 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33010 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33010 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33002 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33024 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33022 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33034 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33022 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33024 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33002 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33000 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33038 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33010 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33002 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[21/23] [chromium] › tests/e2e/us-index-minutes.spec.ts:91:3 › SOX: renders actual-provider minute fixture, period changes, restore and bounded polling
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:33044 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:33054 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33072 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33072 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33072 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33074 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33054 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33088 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33054 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33074 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33072 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33060 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33110 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33096 - "GET /api/live/index-header-quote?index_id=SOX HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33072 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[22/23] [chromium] › tests/e2e/us-index-minutes.spec.ts:149:1 › US minute candles cross KST midnight without losing the next-date candles
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:33114 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:33126 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33130 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33130 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33126 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33136 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33174 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33164 - "GET /api/live/index-header-quote?index_id=NASDAQ_COMPOSITE HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:33152 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[23/23] [chromium] › tests/e2e/us-index-minutes.spec.ts:159:1 › SP500 60m explains incomplete contiguous data instead of fabricating candles
+[WebServer] INFO:     connection closed
+
+[WebServer] INFO:     127.0.0.1:42132 - "WebSocket /api/ws" [accepted]
+
+[WebServer] INFO:     connection open
+
+[WebServer] INFO:     127.0.0.1:42146 - "GET /api/live/settings HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:42146 - "GET /api/live/indices HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:42148 - "GET /api/live/us-stocks HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:42152 - "GET /api/live-layout-presets HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:42166 - "GET /api/live/index-quotes HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:42170 - "GET /api/study-views/saves HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:42146 - "GET /api/live/index-header-quote?index_id=SP500 HTTP/1.1" 200 OK
+
+[WebServer] INFO:     127.0.0.1:42168 - "GET /api/market/investor-flow-summary HTTP/1.1" 200 OK
+
+[WebServer] INFO:     connection closed
+
+  23 passed (52.2s)

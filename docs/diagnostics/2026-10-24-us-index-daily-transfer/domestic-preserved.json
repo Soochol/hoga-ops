@@ -1,0 +1,169 @@
+{
+  "checked_at_utc": "2026-10-24T10:16:21.388340+00:00",
+  "current": {
+    "running": true,
+    "started_at_ms": 1792833883790,
+    "transport": "ws",
+    "capture_healthy": false,
+    "capture_reason": "closed",
+    "connection_allowed": false,
+    "subscribed_count": 348,
+    "subscribed_codes_sha256": "c597dea3f8eb53f4d58e8f1325e5cdd61fc6865f8429b453344285b8adce2ac7",
+    "accounts": [
+      {
+        "account_id": 0,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 1,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 2,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 3,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 4,
+        "connected": false,
+        "sub_expected": 113,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      }
+    ],
+    "sector": {
+      "subscribed_codes": 66,
+      "codes_with_data": 0,
+      "tick_count": 0,
+      "last_tick_ms": null
+    },
+    "collector": {
+      "pid": 3675026,
+      "epoch": "0904c12309b746829a73e32a9247382f",
+      "alive": true,
+      "ready": true,
+      "desired_version": 4,
+      "acked_version": 4,
+      "restarts": 0,
+      "forced_terminations": 0,
+      "error": null,
+      "storage_errors": [],
+      "display_gaps": 0
+    }
+  },
+  "unchanged": {
+    "running": true,
+    "started_at_ms": true,
+    "transport": true,
+    "capture_healthy": true,
+    "capture_reason": true,
+    "connection_allowed": true,
+    "subscribed_count": true,
+    "subscribed_codes_sha256": true,
+    "accounts": true,
+    "sector": true,
+    "collector": true
+  },
+  "before": {
+    "running": true,
+    "started_at_ms": 1792833883790,
+    "transport": "ws",
+    "capture_healthy": false,
+    "capture_reason": "closed",
+    "connection_allowed": false,
+    "subscribed_count": 348,
+    "subscribed_codes_sha256": "c597dea3f8eb53f4d58e8f1325e5cdd61fc6865f8429b453344285b8adce2ac7",
+    "accounts": [
+      {
+        "account_id": 0,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 1,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 2,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 3,
+        "connected": false,
+        "sub_expected": 171,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      },
+      {
+        "account_id": 4,
+        "connected": false,
+        "sub_expected": 113,
+        "sub_acked": 0,
+        "registration_ready": false,
+        "connection_generation": 0,
+        "kicked_by_peer": false
+      }
+    ],
+    "sector": {
+      "subscribed_codes": 66,
+      "codes_with_data": 0,
+      "tick_count": 0,
+      "last_tick_ms": null
+    },
+    "collector": {
+      "pid": 3675026,
+      "epoch": "0904c12309b746829a73e32a9247382f",
+      "alive": true,
+      "ready": true,
+      "desired_version": 4,
+      "acked_version": 4,
+      "restarts": 0,
+      "forced_terminations": 0,
+      "error": null,
+      "storage_errors": [],
+      "display_gaps": 0
+    }
+  },
+  "previous_snapshot_note": "../2026-10-24-us-index-screen/domestic-final.json"
+}
