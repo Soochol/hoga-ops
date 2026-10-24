@@ -80,6 +80,7 @@ import { studyDailyViewport, studySavedRangeMarks } from '../../studyViews/study
 import { savedRangeNotice } from '../savedRangeNotice';
 import { countBarsInRange } from '../savedRangeAnchor';
 import type { Candle } from '../../api/types';
+import { ScreenerBasisChip } from './ScreenerBasisChip';
 import { SavedRangeChip } from './SavedRangeChip';
 import { CollectButton } from './CollectButton';
 import { PatternAreaButton } from './PatternAreaButton';
@@ -829,6 +830,7 @@ function ChartWindowInner({ win, symbol }: { win: WorkspaceWindow; symbol: Group
 
             `ml-auto` 를 **달지 않는다** — 액션 그룹이 이미 갖고 있어서 두 번째를 달면
             여유를 반씩 나눠 칩이 끝이 아니라 중간에 뜬다. */}
+        <ScreenerBasisChip code={view.code} />
         {savedRange && (
           <div className="ml-1 flex min-w-0 items-center">
             <SavedRangeChip

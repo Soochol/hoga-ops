@@ -1,7 +1,8 @@
 import { apiCall, apiAction } from './client';
-import type { ConditionLeaf, ScreenerUniverse } from './screener';
+import type { CalculationPolicy, ConditionLeaf, ScreenerUniverse } from './screener';
 
 export interface SavedScreener {
+  calculation_policy?: CalculationPolicy;
   id: string;
   name: string;
   /** Positional A/B/C expression; legacy saves default to all AND. */
@@ -12,7 +13,7 @@ export interface SavedScreener {
   updated_at_ms: number;
 }
 export interface SavedScreenerListResponse { schema_version: number; saves: SavedScreener[] }
-export interface SaveWriteRequest { expression?: string | null; name: string; conditions: ConditionLeaf[]; universe: ScreenerUniverse }
+export interface SaveWriteRequest { calculation_policy?: CalculationPolicy; expression?: string | null; name: string; conditions: ConditionLeaf[]; universe: ScreenerUniverse }
 
 const J = (body: unknown): RequestInit => ({
   headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),

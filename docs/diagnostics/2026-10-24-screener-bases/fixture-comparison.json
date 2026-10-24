@@ -1,0 +1,112 @@
+{
+  "code_revision": "de7c2cd95a94043b9e5222de2d75e3f536327f46887485b5133f084cef2c2f48",
+  "inputs": {
+    "dates": [
+      "2018-05-02",
+      "2018-05-03",
+      "2018-05-04"
+    ],
+    "volumes": [
+      100,
+      90,
+      400
+    ],
+    "note": "Synthetic verified fixtures; not operational quantity evidence."
+  },
+  "cases": [
+    {
+      "case": "split_1_to_5",
+      "legacy_matches": [
+        "005930"
+      ],
+      "raw_matches": [
+        "005930"
+      ],
+      "share_matches": [],
+      "share_coverage": {
+        "total": 1,
+        "complete": 1,
+        "incomplete": [],
+        "realtime": null
+      },
+      "first_raw_volume": "100",
+      "first_share_volume": "500",
+      "files_preserved": true,
+      "eod_replay_identical": true
+    },
+    {
+      "case": "cash",
+      "legacy_matches": [
+        "005930"
+      ],
+      "raw_matches": [
+        "005930"
+      ],
+      "share_matches": [
+        "005930"
+      ],
+      "share_coverage": {
+        "total": 1,
+        "complete": 1,
+        "incomplete": [],
+        "realtime": null
+      },
+      "first_raw_volume": "100",
+      "first_share_volume": "100",
+      "files_preserved": true,
+      "eod_replay_identical": true
+    },
+    {
+      "case": "consolidation_3_to_1",
+      "legacy_matches": [
+        "005930"
+      ],
+      "raw_matches": [
+        "005930"
+      ],
+      "share_matches": [
+        "005930"
+      ],
+      "share_coverage": {
+        "total": 1,
+        "complete": 1,
+        "incomplete": [],
+        "realtime": null
+      },
+      "first_raw_volume": "100",
+      "first_share_volume": "100/3",
+      "files_preserved": true,
+      "eod_replay_identical": true
+    },
+    {
+      "case": "quantity_unverified",
+      "legacy_matches": [
+        "005930"
+      ],
+      "raw_matches": [
+        "005930"
+      ],
+      "share_matches": [],
+      "share_coverage": {
+        "total": 1,
+        "complete": 0,
+        "incomplete": [
+          {
+            "code": "005930",
+            "condition_id": "v",
+            "reason": "share_evidence_unavailable",
+            "missing_days": null,
+            "required_from": null,
+            "required_to": null,
+            "name": null
+          }
+        ],
+        "realtime": null
+      },
+      "first_raw_volume": "100",
+      "first_share_volume": "None",
+      "files_preserved": true,
+      "eod_replay_identical": true
+    }
+  ]
+}

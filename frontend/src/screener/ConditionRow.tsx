@@ -1,11 +1,12 @@
 import type { DragEvent } from 'react';
-import type { ConditionLeaf } from '../api/screener';
+import type { CalculationPolicy, ConditionLeaf, VolumeBasis } from '../api/screener';
 import { useTextTooltip } from '../ui/useTextTooltip';
+import { Select } from './Select';
 import { catalogEntry } from './catalog';
 import './ConditionEditor.css';
 
 export function ConditionRow({
-  leaf,
+  leaf, calculationPolicy,
   letter,
   onInsertLetter,
   structureDisabled,
@@ -19,6 +20,7 @@ export function ConditionRow({
   onRemove,
 }: {
   leaf: ConditionLeaf;
+  calculationPolicy?: CalculationPolicy;
   letter?: string;
   onInsertLetter?: () => void;
   structureDisabled?: boolean;
@@ -59,7 +61,21 @@ export function ConditionRow({
           className="condition-icon-button">×</button>
       </div>
       <div className="condition-editor-body">
-        <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => onChange({ ...leaf, params } as ConditionLeaf)} />
+        <ParamForm params={leaf.params} onChange={(params: ConditionLeaf['params']) => {
+          if (calculationPolicy === 'separate_bases_v2' &&
+            (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today')) {
+            const minute = 'timeframe' in params && params.timeframe?.endsWith('m');
+            const basis = minute ? 'raw' : ('volume_basis' in params ? params.volume_basis : null)
+              ?? leaf.params.volume_basis ?? 'share_adjusted';
+            onChange({ ...leaf, params: { ...params, volume_basis: basis } } as ConditionLeaf);
+          } else onChange({ ...leaf, params } as ConditionLeaf);
+        }} />
+        {calculationPolicy === 'separate_bases_v2' &&
+          (leaf.type === 'new_high_vol' || leaf.type === 'new_high_vol_today') &&
+          !('timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')) &&
+          <Select<VolumeBasis> label="거래량 기준" value={leaf.params.volume_basis ?? 'share_adjusted'}
+            options={[["share_adjusted", "주식 수 단위 보정"], ["raw", "실제 거래량"]]}
+            onChange={basis => onChange({ ...leaf, params: { ...leaf.params, volume_basis: basis } } as ConditionLeaf)} />}
       </div>
       {help.tooltip}
     </div>

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ConditionLeaf, ScreenerUniverse } from '../api/screener';
+import type { CalculationPolicy, ConditionLeaf, ScreenerUniverse } from '../api/screener';
 import type { SavedScreener } from '../api/savedScreeners';
 import { persistScreenerDraft, readScreenerDraft } from './screenerDraft';
 import { persistJson, readJsonObject } from '../state/persist';
 import { includeOpenBars } from './candlePolicy';
+import { separateVolumeBases } from './calculationPolicy';
 import { reconcileExpression } from './conditionExpression';
 
 // 마지막으로 앵커된 저장 조건검색 id — 페이지 재진입 시 자동 로드의 씨앗.
@@ -24,6 +25,8 @@ function persistAnchorId(id: string): void {
 }
 
 export interface SaveAnchor {
+  calculationPolicy: CalculationPolicy;
+  copyToNewPolicy: () => void;
   expression: string | null;
   editExpression: (expression: string) => void;
   conditions: ConditionLeaf[];
@@ -64,6 +67,7 @@ export interface SaveAnchor {
 export function useSaveAnchor(): SaveAnchor {
   // 마운트 시 1회 localStorage 하이드레이션 — 라우트 왕복/새로고침 후 조건 입력값 복원.
   const [seed] = useState(readScreenerDraft);
+  const [calculationPolicy, setCalculationPolicy] = useState<CalculationPolicy>(seed.calculation_policy ?? 'legacy_v1');
   const [expression, setExpression] = useState<string | null>(seed.expression ?? null);
   const [conditions, setConditions] = useState<ConditionLeaf[]>(seed.conditions);
   const [universe, setUniverse] = useState<ScreenerUniverse>(seed.universe);
@@ -76,10 +80,11 @@ export function useSaveAnchor(): SaveAnchor {
 
   // 빌더 상태가 바뀔 때마다 영속(조건 편집은 keystroke 가 아닌 discrete op 라 write 빈도 낮음).
   useEffect(() => {
-    persistScreenerDraft({ conditions, universe, ...(expression !== null ? { expression } : {}), anchorId, anchorName, dirty, ...(isNewDraft ? { isNewDraft: true } : {}) });
-  }, [conditions, expression, universe, anchorId, anchorName, dirty, isNewDraft]);
+    persistScreenerDraft({ calculation_policy: calculationPolicy, conditions, universe, ...(expression !== null ? { expression } : {}), anchorId, anchorName, dirty, ...(isNewDraft ? { isNewDraft: true } : {}) });
+  }, [calculationPolicy, conditions, expression, universe, anchorId, anchorName, dirty, isNewDraft]);
 
   const loadSave = (s: SavedScreener) => {
+    setCalculationPolicy(s.calculation_policy ?? 'legacy_v1');
     setIsNewDraft(false);
     setConditions(includeOpenBars(s.conditions));
     setExpression(s.expression ?? null);
@@ -89,10 +94,10 @@ export function useSaveAnchor(): SaveAnchor {
     setDirty(false);
     persistAnchorId(s.id);
   };
-  const newDraft = () => { setIsNewDraft(true); setConditions([]); setExpression(null); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
+  const newDraft = () => { setCalculationPolicy('separate_bases_v2'); setIsNewDraft(true); setConditions([]); setExpression(null); setUniverse({}); setAnchorId(null); setAnchorName(null); setDirty(false); };
   const editConditions = (c: ConditionLeaf[]) => {
     const nextExpression = reconcileExpression(expression, conditions, c);
-    editGen.current += 1; setExpression(nextExpression); setConditions(includeOpenBars(c)); setDirty(true); };
+    editGen.current += 1; setExpression(nextExpression); setConditions(includeOpenBars(calculationPolicy === 'separate_bases_v2' ? separateVolumeBases(c) : c)); setDirty(true); };
   const editExpression = (value: string) => { editGen.current += 1; setExpression(value); setDirty(true); };
   const editUniverse = (u: ScreenerUniverse) => { editGen.current += 1; setUniverse(u); setDirty(true); };
   const beginSave = () => { pendingSaveGen.current = editGen.current; };
@@ -109,5 +114,11 @@ export function useSaveAnchor(): SaveAnchor {
     pendingSaveGen.current = null;
   };
 
-  return { conditions, expression, editExpression, universe, anchorId, anchorName, dirty, isNewDraft, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
+  const copyToNewPolicy = () => {
+    editGen.current += 1;
+    setCalculationPolicy('separate_bases_v2');
+    setConditions(separateVolumeBases(conditions));
+    setAnchorId(null); setAnchorName(null); setIsNewDraft(true); setDirty(true);
+  };
+  return { calculationPolicy, copyToNewPolicy, conditions, expression, editExpression, universe, anchorId, anchorName, dirty, isNewDraft, loadSave, newDraft, editConditions, editUniverse, beginSave, settleAnchor };
 }

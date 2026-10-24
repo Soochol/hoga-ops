@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "code_revision": "de7c2cd95a94043b9e5222de2d75e3f536327f46887485b5133f084cef2c2f48",
+  "at": "2026-08-07T16:00:00+09:00",
+  "inputs": {
+    "calculation_policy": "legacy_v1",
+    "conditions": [
+      {
+        "type": "new_high_vol",
+        "id": "v",
+        "params": {
+          "mode": "date_range",
+          "start_date": "2026-08-07",
+          "end_date": "2026-08-07",
+          "volume_basis": null,
+          "record_period": {
+            "unit": "trading_days",
+            "value": 20
+          }
+        }
+      }
+    ],
+    "expression": null,
+    "universe": {
+      "markets": [],
+      "exclude_etf": false,
+      "exclude_halted": false,
+      "scopes": []
+    },
+    "limit": 1000,
+    "basis": "eod",
+    "snapshot_id": null
+  },
+  "legacy_fingerprints": {
+    "daily_unadjusted.parquet": "ffae2b2ef4d8c1e852a12f20778810b721fca0c086fcf8f3ee76868dab5d1fb0",
+    "daily_adjusted.parquet": "067ad9d115dc2a21765217e0a61d205767b41868470cd899b44c4eca1693a928",
+    "factors.parquet": "6d7df65617257a14d744183f5215cb9b101e4256d18dd8c8b70f639e4562a732",
+    "stocks.parquet": "e5718fece88af5819d5bb3caa40ff793c4d2a695bf79c246d41d4e5080d1021e",
+    "status.json": "1577481b2e048d1d5c9a09bb1b0006917c95ea2b2a9098bcd6008af529c78cfa",
+    "history_evidence.json": "c2ecb2db29c71337c6d4858c2222d43815228722a200586466fd9f2f2920fd14",
+    "saves.json": "f004c8f92c4169fb657940be8e65089298a99d191719491dad728804b5d0a2b6"
+  },
+  "preserved": true,
+  "source_unchanged": true,
+  "legacy_results_unchanged": true,
+  "seconds": {
+    "legacy": 0.385,
+    "raw": 0.126,
+    "share_adjusted": 0.045
+  },
+  "matched": {
+    "legacy": [],
+    "raw": [
+      "340570"
+    ],
+    "share_adjusted": []
+  },
+  "classifications": {
+    "history_unavailable": 1
+  },
+  "differences": [
+    {
+      "code": "340570",
+      "old_match": false,
+      "raw_match": true,
+      "share_match": false,
+      "legacy_vs_raw": "basis_change_requires_review",
+      "classification": "history_unavailable"
+    }
+  ],
+  "results": {
+    "legacy": {
+      "calculation": null,
+      "history_coverage": {
+        "total": 1,
+        "complete": 1,
+        "incomplete": []
+      },
+      "bar_coverage": null,
+      "status": "ok",
+      "rows": [],
+      "has_more": false,
+      "scanned_at_ms": 1792808188697,
+      "basis_at_ms": 1792737000000,
+      "fallback_basis_at_ms": null,
+      "warnings": [],
+      "intraday_failure": null,
+      "depth_coverage": null,
+      "depth_values": null
+    },
+    "raw": {
+      "calculation": {
+        "policy": "separate_bases_v2",
+        "snapshot_id": "d601e02ceae0f35ba37177018a467f0c2ba69b2c0811821b4e87ec354fbcb9e3",
+        "adjusted_as_of": "2026-08-07",
+        "price_basis": "vendor_adjusted",
+        "event_revision": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "replayable": false,
+        "execution_id": null
+      },
+      "history_coverage": null,
+      "bar_coverage": {
+        "total": 1,
+        "complete": 1,
+        "incomplete": [],
+        "realtime": null
+      },
+      "status": "ok",
+      "rows": [
+        {
+          "code": "340570",
+          "name": "티앤엘",
+          "market": "KOSDAQ",
+          "price": 33100,
+          "trade_value_won": 6964000000,
+          "trade_value_method": "provider_actual",
+          "change_pct": 2.8,
+          "price_date": "2026-08-07",
+          "history_matches": [],
+          "occurrences": [
+            {
+              "volume_evidence": {
+                "basis": "raw",
+                "original_volume": "206022",
+                "compared_volume": "206022",
+                "maximum": "206022",
+                "window_start": "2026-07-10",
+                "window_end": "2026-08-07",
+                "unit": "shares"
+              },
+              "amount_evidence": null,
+              "condition_id": "v",
+              "condition_key": "5634b79467abc8a744fed33809e3e300d758d9186c73f5c853166a585b97a323",
+              "date": "2026-08-07",
+              "history_match": null,
+              "bar_start_ms": 1786060800000,
+              "bar_match": null,
+              "bar_price_match": null,
+              "bar_trade_value_match": null,
+              "bar_change_match": null
+            }
+          ]
+        }
+      ],
+      "has_more": false,
+      "scanned_at_ms": 1792808188823,
+      "basis_at_ms": 1786084200000,
+      "fallback_basis_at_ms": null,
+      "warnings": [],
+      "intraday_failure": null,
+      "depth_coverage": null,
+      "depth_values": null
+    },
+    "share_adjusted": {
+      "calculation": {
+        "policy": "separate_bases_v2",
+        "snapshot_id": "d601e02ceae0f35ba37177018a467f0c2ba69b2c0811821b4e87ec354fbcb9e3",
+        "adjusted_as_of": "2026-08-07",
+        "price_basis": "vendor_adjusted",
+        "event_revision": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+        "replayable": false,
+        "execution_id": null
+      },
+      "history_coverage": null,
+      "bar_coverage": {
+        "total": 1,
+        "complete": 0,
+        "incomplete": [
+          {
+            "code": "340570",
+            "condition_id": "v",
+            "reason": "share_evidence_unavailable",
+            "missing_days": null,
+            "required_from": null,
+            "required_to": null,
+            "name": null
+          }
+        ],
+        "realtime": null
+      },
+      "status": "ok",
+      "rows": [],
+      "has_more": false,
+      "scanned_at_ms": 1792808188869,
+      "basis_at_ms": 1786084200000,
+      "fallback_basis_at_ms": null,
+      "warnings": [
+        "separate_bases_partial"
+      ],
+      "intraday_failure": null,
+      "depth_coverage": null,
+      "depth_values": null
+    }
+  }
+}

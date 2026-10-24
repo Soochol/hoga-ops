@@ -1,15 +1,31 @@
 import { apiCall, apiAction } from './client';
 import type { WireDataWarning } from './dataWarnings';
 
+export type CalculationPolicy = 'legacy_v1' | 'separate_bases_v2';
+export type VolumeBasis = 'raw' | 'share_adjusted';
+export interface VolumePeriodParams extends PeriodParams { volume_basis?: VolumeBasis | null }
+export type AmountMethod = 'provider_actual' | 'ohlcv_estimate' | 'mixed_daily';
+export interface ScreenerAmountEvidence { trade_value_won: number; method: AmountMethod }
+export interface ScreenerCalculation {
+  policy: CalculationPolicy; snapshot_id: string | null; adjusted_as_of: string | null;
+  price_basis: string; event_revision: string | null; replayable: boolean; execution_id?: string | null;
+}
+export interface ScreenerVolumeEvidence {
+  basis: VolumeBasis; original_volume: string; compared_volume: string; maximum: string;
+  window_start: string; window_end: string; unit: string;
+}
+
 // --- condition params (one per catalog type; type keys MUST match backend) ---
 export interface TradeValueParams extends CandleOptions { min_eok: number }
 export interface CandleOptions { timeframe?: ScreenerTimeframe; include_open_bar?: boolean }
 export interface BreakoutParams extends CandleOptions { lookback: number; period: number }
 export type ScreenerTimeframe = '1m' | '3m' | '5m' | '10m' | '15m' | '30m' | '60m' | 'D' | 'W' | 'M';
 export interface VolumeBreakoutParams extends BreakoutParams {
+  volume_basis?: VolumeBasis | null;
   timeframe?: ScreenerTimeframe; include_open_bar?: boolean;
 }
 export interface BarVolumeRangeParams {
+  volume_basis?: VolumeBasis | null;
   mode: 'date_range'; start_date: string; end_date: string;
   timeframe: ScreenerTimeframe; include_open_bar?: boolean;
   record_period: { unit: 'bars'; value: number };
@@ -43,6 +59,7 @@ export interface BarVolumeCoverage {
   realtime?: BarRealtimeCoverage | null;
 }
 export interface HistoryVolumeParams {
+  volume_basis?: VolumeBasis | null;
   mode: 'date_range'; start_date: string; end_date: string;
   record_period: { unit: 'years' | 'trading_days'; value: number };
 }
@@ -116,7 +133,7 @@ export type ConditionLeaf =
   | { id: string; type: 'trade_value_period'; params: TradeValuePeriodOptions }
   | { id: string; type: 'new_high_today'; params: PeriodParams }
   | { id: string; type: 'new_high'; params: BreakoutParams }
-  | { id: string; type: 'new_high_vol_today'; params: PeriodParams }
+  | { id: string; type: 'new_high_vol_today'; params: VolumePeriodParams }
   | { id: string; type: 'new_high_vol'; params: VolumeParams }
   | { id: string; type: 'high_off_peak'; params: HighOffPeakParams }
   | { id: string; type: 'change_pct'; params: ChangePctParams }
@@ -147,6 +164,8 @@ export interface ScreenerUniverse {
 export type ScanBasis = 'eod' | 'intraday' | 'auto';
 
 export interface ScanRequest {
+  calculation_policy?: CalculationPolicy;
+  snapshot_id?: string | null;
   /** A/B/C reference the conditions array; omitted/null means all AND. */
   expression?: string | null;
   conditions: ConditionLeaf[];
@@ -163,6 +182,7 @@ export interface ScreenerRow {
   market: 'KOSPI' | 'KOSDAQ';
   price: number;
   trade_value_won: number;
+  trade_value_method?: AmountMethod | null;
   change_pct: number | null;
   /** 조회 가격의 마지막 일봉 날짜(조건 충족 발생일과 구별). 구버전 서버는 미제공. */
   price_date?: string | null;
@@ -202,6 +222,7 @@ export interface DepthPeakValue {
 }
 
 export interface ScreenerResponse {
+  calculation?: ScreenerCalculation | null;
   /** Actual evaluation cutoff(s), not the request completion time. */
   basis_at_ms?: number | null;
   fallback_basis_at_ms?: number | null;
@@ -243,6 +264,7 @@ export interface ScreenerUpdating {
 }
 
 export interface ScreenerStatus {
+  calculation_policies?: CalculationPolicy[];
   status: string;
   last_raw_date?: string;
   universe_size?: number;
@@ -583,6 +605,8 @@ export const deletePatternSave = (id: string) =>
   apiAction(`${PATTERN_SAVES}/${id}`, { method: 'DELETE' });
 
 export interface ScreenerOccurrence {
+  volume_evidence?: ScreenerVolumeEvidence | null;
+  amount_evidence?: ScreenerAmountEvidence | null;
   bar_start_ms?: number | null;
   bar_match?: BarVolumeMatch | null;
   bar_price_match?: BarPriceMatch | null;
@@ -594,6 +618,7 @@ export interface ScreenerOccurrence {
   date: string;
 }
 export interface ScreenerExclusionWrite {
+  calculation_policy?: CalculationPolicy;
   bar_start_ms?: number | null;
   condition: ConditionLeaf;
   code: string;

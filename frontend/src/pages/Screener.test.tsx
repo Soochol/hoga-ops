@@ -10,7 +10,7 @@ vi.mock('../api/screener', async (orig) => ({
     { code: '000660', name: 'SK하이닉스', market: 'KOSPI', price: 180000, trade_value_won: 600_000_000_000, change_pct: -1.2 },
     { code: '035420', name: 'NAVER', market: 'KOSPI', price: 210000, trade_value_won: 300_000_000_000, change_pct: 2.4 },
   ] })),
-  getScreenerStatus: vi.fn(() => Promise.resolve({ status: 'ok', last_raw_date: '20260530', days_behind: 0 })),
+  getScreenerStatus: vi.fn(() => Promise.resolve({ status: 'ok', last_raw_date: '20260530', days_behind: 0, calculation_policies: ['legacy_v1', 'separate_bases_v2'] })),
   triggerScreenerUpdate: vi.fn(),
 }));
 // 페이지 진입 시 저장 조건검색이 자동 로드된다(빈 빌더 = 조회 비활성). 기본 mock 은
@@ -51,6 +51,7 @@ vi.mock('../api/liveQuotes', () => ({
 // bare `const setActiveCode = vi.fn()` referenced inside the hoisted factory
 // would otherwise throw.
 const { setActiveCode } = vi.hoisted(() => ({ setActiveCode: vi.fn() }));
+vi.mock('../live/openWorkspaceInNewTab', () => ({ openWorkspaceInNewTab: vi.fn() }));
 vi.mock('../state/livePage', () => ({
   useLivePageStore: (sel: (s: { setActiveCode: typeof setActiveCode }) => unknown) =>
     sel({ setActiveCode }),

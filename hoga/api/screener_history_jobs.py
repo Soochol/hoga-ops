@@ -1,9 +1,11 @@
 """Server-owned historical OHLCV collection. Fetch outside the shared commit lock."""
+
 from __future__ import annotations
 
 import asyncio
 import datetime as dt
 import logging
+from dataclasses import asdict
 from pathlib import Path
 
 import polars as pl
@@ -68,16 +70,23 @@ def selected_codes(data_dir: Path, req: ScanRequest) -> list[str]:
     if not path.exists():
         return []
     return screener_universe.codes_for_universe(
-        path, req.universe,
+        path,
+        req.universe,
         scope=screener_universe.scope_codes(data_dir, req.universe.scopes),
-        etf_codes=symbols.all_etf_etn_codes() if req.universe.exclude_etf else None)
+        etf_codes=symbols.all_etf_etn_codes() if req.universe.exclude_etf else None,
+    )
 
 
 def preview(data_dir: Path, req: ScanRequest):
+    if req.calculation_policy == "separate_bases_v2":
+        from hoga.api.screener_series_jobs import preview as series_preview  # noqa: PLC0415
+
+        return series_preview(data_dir, req)
     if not coverage.history_leaves(active_conditions(req.conditions, req.expression)):
         raise ValueError("날짜 범위 조건이 필요합니다")
     return coverage.evaluate(
-        data_dir, active_conditions(req.conditions, req.expression), selected_codes(data_dir, req)).coverage
+        data_dir, active_conditions(req.conditions, req.expression), selected_codes(data_dir, req)
+    ).coverage
 
 
 def load_job(data_dir: Path) -> HistoryJob | None:
@@ -97,12 +106,23 @@ def _candles_frame(code, candles, start, end):
     for c in candles:
         day = dt.datetime.fromtimestamp(c.t_ms / 1000, KST).date()
         if start <= day <= end:
-            rows.append(dict(code=code, date=day, open=float(c.open), high=float(c.high),
-                             low=float(c.low), close=float(c.close), volume=int(c.volume)))
+            rows.append(
+                dict(
+                    code=code,
+                    date=day,
+                    open=float(c.open),
+                    high=float(c.high),
+                    low=float(c.low),
+                    close=float(c.close),
+                    volume=int(c.volume),
+                )
+            )
     return pl.DataFrame(rows, schema=_DAILY_PL_SCHEMA).sort("date")
 
 
-async def fetch_pair(data_dir: Path, code: str, start: dt.date, end: dt.date, *, allow_empty=False):
+async def fetch_pair(
+    data_dir: Path, code: str, start: dt.date, end: dt.date, *, allow_empty=False, calculation_policy="legacy_v1"
+):
     from hoga.live import kiwoom_access, kiwoom_daily_candles, kiwoom_rest_runtime  # noqa: PLC0415 — runtime import
 
     client = kiwoom_rest_runtime.ensure_rest_client(data_dir)
@@ -110,20 +130,66 @@ async def fetch_pair(data_dir: Path, code: str, start: dt.date, end: dt.date, *,
         raise ValueError("kiwoom_credentials_unavailable")
     scheduler = kiwoom_rest_runtime.ensure_scheduler(data_dir)
     as_of = dt.datetime.now(KST).strftime("%Y%m%d")
-    frames = []
+    frames, results = [], []
     for adjust in (False, True):
+
         def run_page(fetch_fn, page_idx, adjusted=adjust):
             return kiwoom_access.run_with_capacity(
-                scheduler, key=("screener-history", code, adjusted, page_idx),
-                api_id=kiwoom_daily_candles.API_ID, priority="background",
-                client=client, fetch_fn=fetch_fn)
+                scheduler,
+                key=("screener-history", code, adjusted, page_idx),
+                api_id=kiwoom_daily_candles.API_ID,
+                priority="background",
+                client=client,
+                fetch_fn=fetch_fn,
+            )
+
         result = await kiwoom_daily_candles.fetch_daily_candles(
-            client, code, start.strftime("%Y%m%d"), end.strftime("%Y%m%d"),
-            adjust=adjust, adjusted_as_of=as_of if adjust else None, run_page=run_page)
-        if result.violations:
+            client,
+            code,
+            start.strftime("%Y%m%d"),
+            end.strftime("%Y%m%d"),
+            adjust=adjust,
+            adjusted_as_of=as_of if adjust else None,
+            run_page=run_page,
+        )
+        if result.violations and calculation_policy == "legacy_v1":
             raise ValueError("vendor_invalid_rows")
+        results.append(result)
         frames.append(_candles_frame(code, result.candles, start, end))
-    if not (allow_empty and all(frame.is_empty() for frame in frames)):
+    if calculation_policy == "separate_bases_v2":
+        from hoga.api.screener_series_store import publish_pair  # noqa: PLC0415
+
+        observations = []
+        for result, frame in zip(results, frames, strict=True):
+            amounts = {dt.datetime.fromtimestamp(c.t_ms / 1000, KST).date(): c.trade_value_won for c in result.candles}
+            observations.append(
+                [
+                    {
+                        **row,
+                        "date": row["date"].isoformat(),
+                        "trade_value_won": amounts.get(row["date"]),
+                        "complete": row["date"] <= completed_day(),
+                    }
+                    for row in frame.to_dicts()
+                ]
+            )
+        await _finish_disk_write(
+            lambda: publish_pair(
+                data_dir,
+                code,
+                *observations,
+                adjusted_as_of=dt.datetime.strptime(as_of, "%Y%m%d").date().isoformat(),
+                observed_at=dt.datetime.now(KST).isoformat(),
+                price_events=results[-1].adjustment_events,
+                provider_rows={"unadjusted": results[0].source_rows, "adjusted": results[1].source_rows},
+                violations=[
+                    {**asdict(v), "basis": basis}
+                    for basis, result in zip(("unadjusted", "adjusted"), results, strict=True)
+                    for v in result.violations
+                ],
+            )
+        )
+    elif not (allow_empty and all(frame.is_empty() for frame in frames)):
         verified_factors(*frames)
     return tuple(frames)
 
@@ -162,6 +228,14 @@ async def flush_batch(data_dir: Path, job: HistoryJob, pending: list[DailyPair],
 
 
 async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
+    if job.request.calculation_policy == "separate_bases_v2":
+        from hoga.api.screener_series_jobs import run_job as run_series_job  # noqa: PLC0415
+
+        return await run_series_job(data_dir, job)
+    return await _run_legacy_job(data_dir, job, fetch)
+
+
+async def _run_legacy_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
     req = job.request
     try:
         # Complete already validated staged writes before planning any vendor work.
@@ -169,14 +243,20 @@ async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
         # A failed publication is retried from authoritative disk observations by the same
         # collection operation, not treated as proof that the missing interval is complete.
         report = await asyncio.to_thread(
-            coverage.evaluate, data_dir, active_conditions(req.conditions, req.expression), job.codes)
+            coverage.evaluate, data_dir, active_conditions(req.conditions, req.expression), job.codes
+        )
         ranges = report.collection_starts
         raw_path = data_dir / "screener" / "daily_unadjusted.parquet"
         bounds = {}
         if raw_path.exists():
-            frame = await asyncio.to_thread(lambda: pl.scan_parquet(raw_path)
-                                           .group_by("code").agg(pl.col("date").min().alias("first"),
-                                                                  pl.col("date").max().alias("last")).collect())
+            frame = await asyncio.to_thread(
+                lambda: (
+                    pl.scan_parquet(raw_path)
+                    .group_by("code")
+                    .agg(pl.col("date").min().alias("first"), pl.col("date").max().alias("last"))
+                    .collect()
+                )
+            )
             bounds = {code: (first, last) for code, first, last in frame.iter_rows()}
         job.total = len(ranges)
         pending = []
@@ -207,7 +287,8 @@ async def run_job(data_dir: Path, job: HistoryJob, fetch=fetch_pair):
             _save(data_dir, job)
         await flush_batch(data_dir, job, pending, fetch)
         report = await asyncio.to_thread(
-            coverage.evaluate, data_dir, active_conditions(req.conditions, req.expression), job.codes)
+            coverage.evaluate, data_dir, active_conditions(req.conditions, req.expression), job.codes
+        )
         job.coverage = report.coverage
         job.status = "partial" if job.errors or report.coverage.incomplete else "complete"
     except asyncio.CancelledError:
@@ -249,9 +330,11 @@ def build_router(data_dir: Path):
                     raise HTTPException(409, "다른 과거 일봉 수집이 진행 중입니다")
                 return active
             await history_preview(req)
-            codes = (active.codes if active and active.status == "interrupted"
-                     and active.request == req
-                     else await asyncio.to_thread(selected_codes, data_dir, req))
+            codes = (
+                active.codes
+                if active and active.status == "interrupted" and active.request == req
+                else await asyncio.to_thread(selected_codes, data_dir, req)
+            )
             job = create_job(req, codes)
             _save(data_dir, job)
             _tasks[key] = asyncio.create_task(run_job(data_dir, job))

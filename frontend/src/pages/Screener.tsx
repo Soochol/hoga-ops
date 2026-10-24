@@ -1,3 +1,6 @@
+import { CalculationNotice } from "../screener/CalculationNotice";
+import { useScreenerJump } from "../screener/useScreenerJump";
+import { calculationLabel } from '../screener/calculationPolicy';
 import { BarVolumeCoverage } from '../screener/BarVolumeCoverage';
 import { StatusChip } from '../ui/StatusChip';
 import { useOccurrenceExclusions } from '../screener/useOccurrenceExclusions';
@@ -5,7 +8,6 @@ import { OccurrenceExclusionToolbar } from '../screener/OccurrenceExclusions';
 import { HistoryCollection } from '../screener/HistoryCollection';
 import { useMemo, useRef, useState } from 'react';
 import { PageContainer } from '../layout/PageContainer';
-import { useJumpToLive } from '../live/useJumpToLive';
 import { useScreener } from '../screener/useScreener';
 import { useScreenerMonitor, MONITOR_PERIOD_FULL_MS, MONITOR_PERIOD_SCOPED_MS } from '../screener/useScreenerMonitor';
 import { useScreenerStatus } from '../screener/useScreenerStatus';
@@ -125,7 +127,6 @@ function SavedActionsMenu({ save, onRename, onDuplicate, onDelete }: {
 interface StatusFlag { key: string; text: string }
 
 export function Screener() {
-  const openLive = useJumpToLive();
   const editor = useSavedScreenerEditor();
   const [nameDialog, setNameDialog] = useState<NameDialogMode | null>(null);
   const [pendingSwitch, setPendingSwitch] = useState<{ save: SavedScreener | null; restore?: boolean } | null>(null);
@@ -134,6 +135,7 @@ export function Screener() {
   // 조회 결과·정렬은 screenerPanel 스토어(localStorage + 30분 TTL)에 산다 — 라우트
   // 이탈/복귀·새로고침 후에도 유지되고 드로어와 마지막 스캔을 공유한다.
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
+  const openLive = useScreenerJump(lastScan?.calculation);
   const occurrenceController = useOccurrenceExclusions(lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const sortMode = useScreenerPanelStore((s) => s.sortMode);
@@ -172,8 +174,9 @@ export function Screener() {
   const invalidExpression = expressionError(editor.expression, editor.conditions.length);
   const scanBody = useMemo(
     () => ({ conditions: editor.conditions, universe: editor.universe, basis: 'auto' as const,
+      ...(editor.calculationPolicy === 'separate_bases_v2' ? { calculation_policy: editor.calculationPolicy } : {}),
       ...(editor.expression != null ? { expression: editor.expression } : {}) }),
-    [editor.conditions, editor.expression, editor.universe],
+    [editor.calculationPolicy, editor.conditions, editor.expression, editor.universe],
   );
   const scanKey = useMemo(() => JSON.stringify(scanBody), [scanBody]);
   const screener = useScreener({ continuous: !volumeRefreshStopped, anchor: scanKey });
@@ -221,6 +224,7 @@ export function Screener() {
             warnings: res.warnings,
             historyCoverage: res.history_coverage,
             barCoverage: res.bar_coverage,
+            calculation: res.calculation,
             depthValues: res.depth_values ?? null,
             scannedAtMs: res.scanned_at_ms ?? Date.now(),
             basisAtMs: res.basis_at_ms,
@@ -302,7 +306,7 @@ export function Screener() {
           <div className="flex items-center gap-1.5">
             <span className="text-2xs font-semibold uppercase text-fg-dim">조건검색</span>
             <button type="button" aria-label="새 조건검색" data-tooltip="새 조건검색"
-              disabled={editor.isSaving} onClick={() => switchEditor(null)}
+              disabled={editor.isSaving || !status?.calculation_policies?.includes('separate_bases_v2')} onClick={() => switchEditor(null)}
               className="ml-auto rounded-md border border-border bg-bg-input px-2 py-1 text-xs text-fg-dim hover:text-fg disabled:opacity-50">＋ 새 조건</button>
           </div>
           <div className="flex items-center gap-1.5">
@@ -333,6 +337,10 @@ export function Screener() {
               저장본으로 되돌리기
             </ToolbarButton>
           )}
+          <p className="text-xs text-fg-dim">{calculationLabel(editor.calculationPolicy)}</p>
+          {editor.calculationPolicy !== 'separate_bases_v2' && editor.conditions.length > 0 &&
+            status?.calculation_policies?.includes('separate_bases_v2') &&
+            <ToolbarButton disabled={editor.isSaving} onClick={editor.copyToNewPolicy}>새 기준으로 복사</ToolbarButton>}
           <p className="text-xs text-fg-dim">선택하면 조건을 불러옵니다 · 조회를 눌러 실행하세요</p>
           {editor.saveError && (
             <div className="text-xs" style={{ color: 'var(--error)' }}>저장 실패: {editor.saveError.message}</div>
@@ -340,7 +348,7 @@ export function Screener() {
           <div className="border-t border-border" />
         </div>
         <div className="min-h-0 flex-1">
-          <ConditionBuilder conditions={editor.conditions} universe={editor.universe}
+          <ConditionBuilder calculationPolicy={editor.calculationPolicy} conditions={editor.conditions} universe={editor.universe}
             onConditionsChange={editor.editConditions} onUniverseChange={editor.editUniverse}
             expression={editor.expression} onExpressionChange={editor.editExpression} expressionScope={editor.anchorId}>
             {!invalidExpression && <HistoryCollection request={scanBody} coverage={resultsStale ? null : lastScan?.historyCoverage} onComplete={runScan} />}
@@ -419,6 +427,7 @@ export function Screener() {
             <ScreenerUpdateProgress updating={status?.updating} />
           </div>
 
+          <CalculationNotice scan={lastScan} />
           {notSeeded ? (
             <InlineState tone="warn" className="text-sm">
               <span className="font-semibold">시드 필요</span> 스크리너 인덱스가 아직 시드되지 않았습니다. 운영자 CLI로 일회성 시드를 수행한 뒤 다시 조회하세요

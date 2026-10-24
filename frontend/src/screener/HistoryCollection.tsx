@@ -18,6 +18,8 @@ const failureLabels: Record<string, string> = {
   adjusted_price_mismatch: '보정 가격이 일치하지 않아 저장을 보류했습니다',
   kiwoom_credentials_unavailable: '서버의 키움 API 연결 설정이 필요합니다',
   vendor_invalid_rows: '공급자 응답에 유효하지 않은 일봉이 있습니다',
+  share_evidence_unavailable: '검증된 주식 수 변환 이력 등록이 필요합니다',
+  original_observation_conflict: '기존 원본과 공급자 정정 후보가 달라 검토가 필요합니다',
   calendar_unavailable: '해당 구간의 거래일 달력이 없습니다',
 };
 
@@ -25,7 +27,11 @@ export function HistoryCollection({ request, coverage, onComplete }: {
   request: ScanRequest; coverage?: HistoryCoverage | null; onComplete: () => void;
 }) {
   const client = useQueryClient();
-  const enabled = referencedConditions(request.conditions, request.expression).some(isHistoricalCondition);
+  const conditions = referencedConditions(request.conditions, request.expression);
+  const enabled = request.calculation_policy === 'separate_bases_v2'
+    ? conditions.some(leaf => !leaf.type.includes('depth') &&
+      !('timeframe' in leaf.params && leaf.params.timeframe?.endsWith('m')))
+    : conditions.some(isHistoricalCondition);
   const query = useQuery({ queryKey: ['screener-history-job'], enabled,
     queryFn: () => apiCall<HistoryJob | null>('/api/screener/history/jobs/current'),
     refetchInterval: q => running(q.state.data) ? 2000 : false });
@@ -54,6 +60,7 @@ export function HistoryCollection({ request, coverage, onComplete }: {
   return <div className="flex flex-col gap-2 border border-border rounded-md p-3 text-sm" aria-label="과거 일봉 수집">
     <p>{coverage ? `대상 ${coverage.total}종목 · 전체 기간 평가 가능 ${coverage.complete}종목 · 이력 확인 필요 ${missing}종목`
       : '조회하면 필요한 과거 일봉의 보유 상태를 확인합니다.'}</p>
+    {request.calculation_policy === 'separate_bases_v2' && <p>가격 관측은 기존 파일과 별도로 보존합니다. 이 작업은 주식 수 이벤트를 추정하거나 자동 등록하지 않습니다.</p>}
     {missing > 0 && <p className="text-fg-dim">결과는 충분한 비교 이력에서 확인된 종목입니다. 부족한 일봉을 수집해 디스크에 저장할 수 있습니다.</p>}
     {job && !matchingJob && <p className="text-fg-dim">아래 작업은 다른 검색 조건의 수집입니다.
       {running(job) ? ' 완료 또는 중단 후 현재 조건으로 수집할 수 있습니다.' : ' 현재 조건은 새로 수집합니다.'}</p>}
@@ -64,7 +71,7 @@ export function HistoryCollection({ request, coverage, onComplete }: {
     {error && <p role="alert">{error.message}</p>}
     <div className="flex gap-2">
       <ToolbarButton disabled={running(job) || create.isPending} onClick={() => create.mutate()}>
-        {create.isPending ? '수집 준비 중…' : matchingJob && job?.status === 'interrupted' ? '남은 일봉 수집 재개' : '과거 일봉 수집'}
+        {create.isPending ? '수집 준비 중…' : matchingJob && job?.status === 'interrupted' ? '남은 일봉 수집 재개' : request.calculation_policy === 'separate_bases_v2' ? '새 기준 일봉 준비' : '과거 일봉 수집'}
       </ToolbarButton>
       {running(job) && <ToolbarButton disabled={cancel.isPending || job?.cancel_requested} onClick={() => cancel.mutate()}>
         {job?.cancel_requested ? '중단 요청됨' : matchingJob ? '수집 중단' : '다른 조건 수집 중단'}</ToolbarButton>}

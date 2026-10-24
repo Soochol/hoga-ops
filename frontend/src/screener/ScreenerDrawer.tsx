@@ -1,3 +1,5 @@
+import { CalculationNotice } from "./CalculationNotice";
+import { useScreenerJump } from "./useScreenerJump";
 import { BarVolumeCoverage } from './BarVolumeCoverage';
 import { QuoteColumnProbe } from '../rightrail/QuoteColumnProbe';
 import { useQuoteColumns } from '../rightrail/useQuoteColumns';
@@ -15,7 +17,7 @@ import {
   useSensors,
   type DragStartEvent,
 } from '@dnd-kit/core';
-import { useJumpToLive, type JumpModifiers } from '../live/useJumpToLive';
+import { type JumpModifiers } from '../live/useJumpToLive';
 import { useLivePageStore } from '../state/livePage';
 import { useFrozenWhileDragging } from '../heatmap/useFrozenWhileDragging';
 import { RailDragOverlay } from '../rightrail/RailDragOverlay';
@@ -148,7 +150,6 @@ export function ScreenerDrawer() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const activeCode = useLivePageStore((s) => s.activeCode);
   const { pathname } = useLocation();
-  const openLive = useJumpToLive();
 
   // 결과 행 우클릭 → 관심 그룹 편집 메뉴(하트 버튼 대체). raw 커서 좌표만 담고
   // 위치 클램프는 ScreenerRowMenu 가 실측 보정한다(관심·히트맵 메뉴와 동일 관용구).
@@ -157,6 +158,7 @@ export function ScreenerDrawer() {
   const selectedSavedId = useScreenerPanelStore((s) => s.selectedSavedId);
   const setSelectedSavedId = useScreenerPanelStore((s) => s.setSelectedSavedId);
   const lastScan = useScreenerPanelStore((s) => s.lastScan);
+  const openLive = useScreenerJump(lastScan?.calculation);
   const occurrenceController = useOccurrenceExclusions(lastScan);
   const setLastScan = useScreenerPanelStore((s) => s.setLastScan);
   const clearLastScan = useScreenerPanelStore((s) => s.clearLastScan);
@@ -212,7 +214,8 @@ export function ScreenerDrawer() {
     if (!sel) return false;
     try {
       const request = {
-        conditions: sel.conditions, universe: sel.universe, basis: DRAWER_SCAN_BASIS,
+        conditions: sel.conditions, universe: sel.universe,
+        ...(sel.calculation_policy ? { calculation_policy: sel.calculation_policy } : {}), basis: DRAWER_SCAN_BASIS,
         ...(sel.expression != null ? { expression: sel.expression } : {}),
       };
       const requestJson = JSON.stringify(request);
@@ -230,7 +233,7 @@ export function ScreenerDrawer() {
         intradayFailure: res.intraday_failure,
         warnings: res.warnings,
         historyCoverage: res.history_coverage,
-          barCoverage: res.bar_coverage,
+          barCoverage: res.bar_coverage, calculation: res.calculation,
         depthValues: res.depth_values ?? null,
         scannedAtMs: res.scanned_at_ms ?? Date.now(),
         basisAtMs: res.basis_at_ms,
@@ -490,6 +493,7 @@ export function ScreenerDrawer() {
           </RailState>
         ) : lastScan ? (
           <>
+            <CalculationNotice scan={lastScan} />
             <BarVolumeCoverage coverage={lastScan.barCoverage} />
             {limitNotice && <RailState tone="warn">{limitNotice}</RailState>}
             {!!lastScan?.historyCoverage?.incomplete.length && <RailState tone="warn">

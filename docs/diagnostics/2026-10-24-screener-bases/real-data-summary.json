@@ -1,0 +1,15 @@
+{
+  "baseline_id": "91c98cf4b55da57b71297ddad961c1b6005a3613fc12d63584a53c7febd7f081",
+  "source_rows": 9785155,
+  "seconds": 3.611,
+  "maximum_rss_kib": 1939528,
+  "new_storage_bytes": 274311761,
+  "notes": [
+    "Production was read only; the validation copy roster was restricted to the stated sample for both policies.",
+    "Provider pairs are bounded observations already collected during diagnosis. No network/authentication was used.",
+    "No verified quantity interval was imported for real samples. Share-adjusted is correctly unavailable.",
+    "The split/consolidation/cash behavior is separately validated using deterministic verified fixtures."
+  ],
+  "baseline_bytes": 270092596,
+  "objects_and_pointers_bytes": 4219165
+}

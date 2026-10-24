@@ -13,7 +13,7 @@ test('saved-condition popup stays open and protects edits in page and rail workf
   page.on('pageerror', (e) => errors.push(e.message));
   await installLiveMocks(page);
   await page.route(apiExact('screener/saves'), (r) => r.fulfill({ json: { schema_version: 1, saves } }));
-  await page.route(apiPrefix('screener/status'), (r) => r.fulfill({ json: { status: 'ok', warnings: [], days_behind: 0 } }));
+  await page.route(apiPrefix('screener/status'), (r) => r.fulfill({ json: { status: 'ok', warnings: [], days_behind: 0, calculation_policies: ['legacy_v1', 'separate_bases_v2'] } }));
   await page.route(apiPrefix('live/quotes'), (r) => r.fulfill({ json: { phase: 'open', quotes: [] } }));
   let scans = 0;
   await page.route(apiExact('screener/scan'), (r) => { scans++; return r.fulfill({ json: { status: 'ok', warnings: [], rows: [] } }); });

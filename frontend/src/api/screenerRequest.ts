@@ -43,6 +43,8 @@ function canonical(value: unknown): unknown {
   return value;
 }
 export const screenerRequestKey = (request: ScanRequest) => JSON.stringify(canonical({
+  ...(request.calculation_policy && request.calculation_policy !== 'legacy_v1' ? { calculation_policy: request.calculation_policy } : {}),
+  ...(request.snapshot_id ? { snapshot_id: request.snapshot_id } : {}),
   conditions: request.conditions.map(leaf => ({ ...leaf, params: conditionParams(leaf) })),
   universe: { markets: request.universe?.markets ?? [], exclude_etf: request.universe?.exclude_etf ?? true,
     exclude_halted: request.universe?.exclude_halted ?? false, scopes: request.universe?.scopes ?? [] },

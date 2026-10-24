@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type DragEvent } from 'react';
-import type { ConditionLeaf, ConditionType, ScreenerUniverse } from '../api/screener';
+import type { CalculationPolicy, ConditionLeaf, ConditionType, ScreenerUniverse } from '../api/screener';
 import { CONDITION_CATALOG, makeLeaf } from './catalog';
 import { ConditionRow } from './ConditionRow';
 import { UniverseFilterButton } from './UniverseFilterButton';
@@ -12,7 +12,8 @@ import { useExpressionUndo } from './useExpressionUndo';
 
 
 export function ConditionBuilder({ conditions, universe, onConditionsChange, onUniverseChange, expression, onExpressionChange,
-  expressionScope, children }: {
+  expressionScope, children, calculationPolicy }: {
+  calculationPolicy?: CalculationPolicy;
   children?: ReactNode;
   expression?: string | null;
   onExpressionChange?: (value: string) => void;
@@ -137,7 +138,7 @@ export function ConditionBuilder({ conditions, universe, onConditionsChange, onU
         selection={currentSelection}
         onKeyDown={undo.onKeyDown} onSelectionChange={rememberSelection} />}
       {conditions.map((leaf, index) => (
-        <ConditionRow key={leaf.id} leaf={leaf} letter={conditionLabel(index)}
+        <ConditionRow calculationPolicy={calculationPolicy} key={leaf.id} leaf={leaf} letter={conditionLabel(index)}
           onInsertLetter={onExpressionChange && !rangeSelected ? () => insert(conditionLabel(index)) : undefined}
           structureDisabled={invalidExpression}
           draggable={!invalidExpression && conditions.length > 1}
