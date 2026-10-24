@@ -590,8 +590,9 @@ The data-shape side of a primitive (render, hit-test, body-drag translate, hit-t
 _Avoid_: "drawing mode" alone (ambiguous with chart pan/zoom modes), "tool" alone (overloaded across toolbar buttons).
 
 2026-10-23 영역 선택: `select` 모드에서는 캔들 플롯의 우측 드래그로 그리기를
-선택한다. 5px 이동부터 사각형·선택 예정 개수·강조를 미리 표시하고 놓으면 선택을
-교체한다. Shift를 누르고 시작하면 기존 선택에 추가한다. 가격축·시간축·다른
+선택한다. 5px 이동부터 사각형·강조를 미리 표시하고 놓으면 선택을 교체한다.
+2026-10-24 후속 요청으로 드래그 중 선택 개수 문구는 표시하지 않는다.
+Shift를 누르고 시작하면 기존 선택에 추가한다. 가격축·시간축·다른
 pane은 제외하며 시작한 차트 창의 scope만 변경한다. 잠긴 항목도 선택할 수 있지만
 편집·이동·삭제는 계속 보호된다. 다중 선택은 기존 속성 패널의 일괄 편집·삭제,
 좌측 드래그 이동·키보드 복제·실행취소를 공유한다. 우측 클릭과 활성 그리기 도구의

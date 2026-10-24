@@ -205,7 +205,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
   const [textValue, setTextValue] = useState('');
   const textInputRef = useRef<HTMLTextAreaElement>(null);
   const marqueeBoxRef = useRef<HTMLDivElement>(null);
-  const marqueeCountRef = useRef<HTMLSpanElement>(null);
   // `textEdit` is also mirrored to a ref so the pointer/keyboard closures (which
   // don't re-bind every render) can read the current editing state.
   const textEditRef = useRef<TextEdit | null>(null);
@@ -1397,11 +1396,6 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
     el.style.transform = `translate(${r.x1}px, ${r.y1}px)`;
     el.style.width = `${r.x2 - r.x1}px`;
     el.style.height = `${r.y2 - r.y1}px`;
-    if (marqueeCountRef.current) {
-      const count = m.rightButton ? rightSelectionPreview.current?.size ?? 0 : 0;
-      marqueeCountRef.current.textContent = count > 0 ? `${count}개 선택` : '';
-      marqueeCountRef.current.hidden = count === 0;
-    }
   };
 
   const syncTextEditorPosition = () => {
@@ -1443,9 +1437,7 @@ export default function DrawingOverlay({ chart, axis, paneSeries, scope, onChart
         aria-hidden
         className="pointer-events-none absolute left-0 top-0 z-30 border border-dashed border-accent bg-accent/10"
         style={{ display: 'none' }}
-      >
-        <span ref={marqueeCountRef} className="absolute left-0 top-0 whitespace-nowrap rounded bg-bg-card px-1 text-xs text-fg-dim" />
-      </div>
+      />
 
       {textEdit && textEditPos && editorLayout && editorBox && (
         <textarea
