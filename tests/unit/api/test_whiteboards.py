@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import uuid
@@ -169,6 +170,88 @@ async def test_corruption_and_future_version_preserved(client, tmp_path):
         result = (await client.get("/api/whiteboards")).json()
         assert result["unreadable_ids"] == [doc["id"]]
         assert path.read_text() == payload
+
+
+async def test_daily_open_is_atomic_and_reuses_the_original_note(client):
+    responses = await asyncio.gather(*(client.post("/api/whiteboards/daily/2026-10-24") for _ in range(8)))
+    assert all(response.status_code == 200 for response in responses)
+    ids = {response.json()["id"] for response in responses}
+    assert len(ids) == 1
+    doc = responses[0].json()
+    assert doc["schema_version"] == 2
+    assert doc["review"]["date"] == "2026-10-24"
+    saved = (await client.put(f"/api/whiteboards/{doc['id']}", json=write(
+        doc, name="하루 복기", review={**doc["review"], "summary": "내일의 원칙", "completed": True},
+    ))).json()
+    again = (await client.post("/api/whiteboards/daily/2026-10-24")).json()
+    assert again == saved
+    assert (await client.post("/api/whiteboards/daily/2026-02-30")).status_code == 422
+    assert (await client.get("/api/whiteboards")).json()["boards"][0]["review"] == {
+        "date": "2026-10-24", "summary": "내일의 원칙", "completed": True, "stocks": [],
+    }
+
+
+async def test_note_records_images_restart_and_validation(client, tmp_path):
+    doc = (await client.post("/api/whiteboards/daily/2026-10-23")).json()
+    image = (await client.post("/api/whiteboards/assets", content=png())).json()
+    scene = {**doc["scene"], "files": {"chart": {**image, "created": 1}}}
+    record = {"id": uid(), "stock": "삼성전자", "code": "005930", "title": "첫 눌림", "image_file_id": "chart",
+              "judgment": "지지 확인", "action": "관망", "result": "기준 유지"}
+    req = write(doc, scene=scene, review={**doc["review"], "records": [record], "principle": "확인하고 진입"})
+    response = await client.put(f"/api/whiteboards/{doc['id']}", json=req)
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    assert saved["review"]["stocks"] == ["삼성전자"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app_for(tmp_path)), base_url="http://test"
+    ) as restarted:
+        assert (await restarted.get(f"/api/whiteboards/{doc['id']}")).json() == saved
+        assert (await restarted.get(f"/api/whiteboards/assets/{image['asset_id']}")).content == png()
+    # An older canvas request which omits review cannot silently erase writing.
+    preserved = await client.put(f"/api/whiteboards/{doc['id']}", json=write(saved))
+    assert preserved.json()["review"] == saved["review"]
+    current = preserved.json()
+    bad_date = {**current["review"], "date": "2026-02-30"}
+    assert (await client.put(f"/api/whiteboards/{doc['id']}", json=write(current, review=bad_date))).status_code == 422
+    missing = {**current["review"], "records": [{**record, "image_file_id": "missing"}]}
+    assert (await client.put(f"/api/whiteboards/{doc['id']}", json=write(current, review=missing))).status_code == 422
+    duplicate = {**current["review"], "records": [record, record]}
+    assert (await client.put(f"/api/whiteboards/{doc['id']}", json=write(current, review=duplicate))).status_code == 422
+    assert (await client.get(f"/api/whiteboards/{doc['id']}")).json() == current
+
+
+async def test_daily_trash_restore_and_conflict_preserve_writing(client):
+    doc = (await client.post("/api/whiteboards/daily/2026-10-23")).json()
+    req = write(doc, review={**doc["review"], "summary": "먼저 저장한 기록"})
+    saved = (await client.put(f"/api/whiteboards/{doc['id']}", json=req)).json()
+    stale = write(doc, review={**doc["review"], "summary": "다른 창의 초안"})
+    assert (await client.put(f"/api/whiteboards/{doc['id']}", json=stale)).status_code == 409
+    trashed = (await client.put(f"/api/whiteboards/{doc['id']}", json=write(saved, deleted=True))).json()
+    assert trashed["review"]["summary"] == "먼저 저장한 기록"
+    assert not (await client.get("/api/whiteboards")).json()["boards"]
+    assert (await client.get("/api/whiteboards?deleted=true")).json()["boards"][0]["id"] == doc["id"]
+    restored = (await client.put(f"/api/whiteboards/{doc['id']}", json=write(trashed))).json()
+    assert restored["review"] == saved["review"]
+    assert (await client.post("/api/whiteboards/daily/2026-10-23")).json()["id"] == doc["id"]
+
+
+async def test_pre_upgrade_mutation_hash_and_unknown_note_fields_are_preserved(client, tmp_path):
+    doc = await create(client)
+    request = wb.WhiteboardWrite.model_validate(write(doc, name="배포 전 저장"))
+    saved = (await client.put(f"/api/whiteboards/{doc['id']}", json=request.model_dump(exclude={"review"}))).json()
+    path = tmp_path / "whiteboards" / "boards" / f"{doc['id']}.json"
+    saved["last_mutation_hash"] = hashlib.sha256(request.model_dump_json(exclude={"review"}).encode()).hexdigest()
+    path.write_text(json.dumps(saved))
+    retry = await client.put(f"/api/whiteboards/{doc['id']}", json=request.model_dump(exclude={"review"}))
+    assert retry.status_code == 200
+    assert retry.json()["revision"] == saved["revision"]
+    note = (await client.post("/api/whiteboards/daily/2026-10-24")).json()
+    target = tmp_path / "whiteboards" / "boards" / f"{note['id']}.json"
+    note["review"]["future_field"] = "보존할 미래 필드"
+    raw = json.dumps(note)
+    target.write_text(raw)
+    assert (await client.get(f"/api/whiteboards/{note['id']}")).status_code == 503
+    assert target.read_text() == raw
 
 
 async def test_invalid_id_and_whitespace_name(client):

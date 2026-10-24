@@ -2,7 +2,7 @@
 import { randomId } from '../util/randomId';
 export interface ChartTransfer {
   blob: Blob;
-  source: Record<string, unknown>;
+  source: { code: string; timeframe: string; captured_at_ms: number; url: string };
 }
 const transfers = new Map<string, ChartTransfer>();
 export function stageChartTransfer(transfer: ChartTransfer) {

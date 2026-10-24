@@ -28,7 +28,7 @@ export const WORKSPACE_NAV_ITEMS = [
   { to: '/sentiment', label: '옵션심리' },
   { to: '/inventory', label: '보관함' },
   { to: '/capture', label: '캡처' },
-  { to: '/whiteboard', label: '화이트보드' },
+  { to: '/whiteboard', label: '복기 노트 작성' },
 ] as const satisfies readonly { to: string; label: string; panel?: RailPanel }[];
 
 /**

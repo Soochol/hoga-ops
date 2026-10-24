@@ -7,6 +7,7 @@ import {
   writeBoard,
   type WhiteboardDocument,
   type WhiteboardWrite,
+  type ReviewNote,
 } from '../api/whiteboards';
 import { clearDraft, draftKey, findDraft, tabDraftId, writeLocal, type BoardDraft } from './drafts';
 import { loadImages, persistImages } from './images';
@@ -18,6 +19,7 @@ export interface SessionState {
   message: string;
   localError: boolean;
   generation: number;
+  review: ReviewNote | null;
 }
 const sessions = new Map<string, BoardSession>();
 const listeners = new Set<() => void>();
@@ -62,6 +64,7 @@ export class BoardSession {
       message: draft ? '이전 편집 초안을 복원했습니다' : '',
       localError: false,
       generation: 0,
+      review: draft?.review ?? doc.review ?? null,
     };
     this.signature = this.contentSignature(this.elements);
     if (draft) {
@@ -104,6 +107,11 @@ export class BoardSession {
     this.update({ name });
     this.changed();
   }
+  editReview(review: ReviewNote) {
+    if (this.retired) return;
+    this.update({ review });
+    this.changed();
+  }
   private changed() {
     this.generation++;
     if (this.state.status !== 'conflict') this.update({ status: 'dirty', message: '' });
@@ -128,6 +136,7 @@ export class BoardSession {
       id: this.document.id,
       revision: this.document.revision,
       name: this.state.name,
+      review: this.state.review,
       elements: this.elements,
       files: this.files,
       assets: this.document.scene.files,
@@ -179,6 +188,7 @@ export class BoardSession {
             mutation_id: boardId(),
             expected_revision: this.document.revision,
             name: draft.name.trim() || '새 보드',
+            review: draft.review,
             scene: {
               elements: draft.elements as unknown as Record<string, unknown>[],
               appState: draft.appState,
@@ -217,11 +227,12 @@ export class BoardSession {
   async fork(name = `${this.state.name.slice(0, 117)} 복사`) {
     const draft = structuredClone(this.draft());
     const assets = await persistImages(draft.files, this.document.scene.files);
-    return createBoard(name, {
+    const scene = {
       elements: draft.elements as unknown as Record<string, unknown>[],
       appState: draft.appState,
       files: assets,
-    });
+    };
+    return draft.review ? createBoard(name, scene, boardId(), draft.review) : createBoard(name, scene);
   }
   retire() {
     this.retired = true;
@@ -237,6 +248,7 @@ export class BoardSession {
       expected_revision: this.document.revision,
       name: this.document.name,
       scene: this.document.scene,
+      review: this.document.review,
       deleted,
     });
     await writeLocal(this.key, null).catch(() => {});
@@ -264,6 +276,7 @@ export async function openBoardSession(doc: WhiteboardDocument): Promise<BoardSe
   if (
     draft &&
     draft.name === doc.name &&
+    JSON.stringify(draft.review ?? null) === JSON.stringify(doc.review ?? null) &&
     JSON.stringify(draft.elements) === JSON.stringify(doc.scene.elements)
   ) {
     if (located) void clearDraft(located.key, located.value.token).catch(() => {});

@@ -69,7 +69,7 @@ export function ChartCaptureActions({ viewportRef, code, timeframe, available }:
   const captureHint = !available ? '차트를 불러온 후 캡처할 수 있습니다' : busy ? '차트 이미지를 만드는 중…'
     : '현재 보이는 차트와 보조지표를 캡처합니다';
   return <>
-    <IconToolbarButton aria-label="차트를 보드에 추가" title={`차트를 보드에 추가 — ${captureHint}`}
+    <IconToolbarButton aria-label="복기 노트에 추가" title={`복기 노트에 추가 — ${captureHint}`}
       disabled={!available || busy || !code} onClick={() => setBoardOpen(true)}
       icon={<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 9v12M12 15h6M15 12v6" /></svg>} />
     {boardOpen && code && <Suspense fallback={null}><ChartToBoardDialog code={code} timeframe={timeframe} onClose={() => setBoardOpen(false)} capture={() => {

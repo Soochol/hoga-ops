@@ -90,6 +90,11 @@ export type FixedPxToken = Readonly<{
 }>;
 
 export const SIZE_TOKENS = {
+  'review-list-w': { rem: 14, baseIntentPx: 224, usage: 'Daily review date list width' },
+  'review-document-w': { rem: 52, baseIntentPx: 832, usage: 'Daily review reading column maximum width' },
+  'h-review-image': { rem: 24, baseIntentPx: 384, usage: 'Review attached image maximum height' },
+  'review-thumbnail-w': { rem: 4, baseIntentPx: 64, usage: 'Review record thumbnail width' },
+  'h-review-thumbnail': { rem: 2.5, baseIntentPx: 40, usage: 'Review record thumbnail height' },
   'whiteboard-list-w': { rem: 12, baseIntentPx: 192, usage: 'Whiteboard board list width' },
   // ── typography ────────────────────────────────────────────────
   // `text-badge` sits below text-xs to preserve hierarchy on micro-labels
