@@ -72,7 +72,8 @@ test('right selection supports bulk style, move, delete and one-step undo withou
   await page.mouse.move(g.x, g.y + g.ys[0] - 12);
   await page.mouse.down({ button: 'right' });
   await page.mouse.move(g.x + 100, g.y + g.ys[1] + 12, { steps: 6 });
-  await expect(page.locator('[data-drawing-marquee]').first()).toContainText('2개 선택');
+  await expect(page.locator('[data-drawing-marquee]').first()).toBeVisible();
+  await expect(page.locator('[data-drawing-marquee]').first()).toBeEmpty();
   expect((await read(page)).selected).toEqual(['c']); // Preview must not mutate selection.
   await page.mouse.up({ button: 'right' });
   await expect.poll(async () => (await read(page)).selected).toEqual(['a', 'b']);
