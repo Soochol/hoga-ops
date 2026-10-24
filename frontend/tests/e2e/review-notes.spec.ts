@@ -302,3 +302,28 @@ test('캔버스 기본 도구·추가 도구·색상은 공통 툴팁으로 표�
   const after = (await canvas.boundingBox())!;
   expect(Math.abs(after.y - before.y) + Math.abs(after.height - before.height)).toBeLessThan(1);
 });
+
+test('달력 아이콘은 테마에 맞게 보이고 실제 날짜 선택·직접 입력으로 기록을 연다', async ({ page, request }, info) => {
+  await page.setViewportSize({ width: 1440, height: 950 });
+  const first = await seed(request, '2199-12-14'), second = await seed(request, '2199-12-15');
+  await open(page, first.id);
+  const input = page.getByLabel('열어볼 날짜', { exact: true });
+  const button = page.getByRole('button', { name: '날짜 선택 달력 열기', exact: true });
+  await button.hover(); await expect(page.getByRole('tooltip')).toHaveText('날짜 선택');
+  const box = (await button.boundingBox())!, icon = (await button.locator('svg').boundingBox())!;
+  expect(box.width).toBeGreaterThanOrEqual(32); expect(box.height).toBeGreaterThanOrEqual(32);
+  expect(icon.width).toBe(16); expect(icon.height).toBe(16);
+  // Use the real browser date picker: keyboard navigation commits the next day.
+  await button.click(); await page.keyboard.press('ArrowRight'); await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp(second.id)); await expect(input).toHaveValue('2199-12-15');
+  await input.fill('2199-12-14'); await expect(page).toHaveURL(new RegExp(first.id));
+  await input.fill('2199-12-16'); await expect(page).toHaveURL(/date=2199-12-16/);
+  await expect(page.getByRole('heading', { name: '아직 작성한 노트가 없습니다' })).toBeVisible();
+  for (const [theme, scheme] of [['trading-desk', 'dark'], ['ledger', 'light']] as const) {
+    await page.evaluate(theme => localStorage.setItem('ui.themePreference.v1', JSON.stringify({ themePreference: theme })), theme);
+    await page.reload();
+    await expect(input).toHaveCSS('color-scheme', scheme);
+    await expect(button.locator('svg')).toHaveCSS('stroke', await button.evaluate(el => getComputedStyle(el).color));
+    await page.screenshot({ path: info.outputPath(`review-calendar-${theme}.png`) });
+  }
+});

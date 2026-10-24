@@ -1,0 +1,50 @@
+{
+  "checked_at": "2026-10-25T00:27:50.819702+09:00",
+  "base_sha": "acc8394b8c16daeb61c17b3015fc74ed95c69be8",
+  "origin_main": "acc8394b8c16daeb61c17b3015fc74ed95c69be8",
+  "working_tree": true,
+  "branch": "codex/review-calendar-control",
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "node": "v24.13.1",
+    "chrome": "Google Chrome 156.0.8078.47",
+    "workers": 1,
+    "vendor_credentials": "empty"
+  },
+  "source_sets": {
+    "frontend/src/": {
+      "files": 1693,
+      "sha256": "c5d69c39986403a6b6caf2a5dc58b13a71b7e0c631e86ec0c9942f37d7988f81"
+    },
+    "frontend/tests/": {
+      "files": 185,
+      "sha256": "d5273ab4324e7301fb7ed40fe1492e093913504d1be106245f8baa71c2a994c4"
+    },
+    "hoga/": {
+      "files": 329,
+      "sha256": "ff142d4ae510e0483407d6c7a7e74406391fd2b595f6a1e4e5be06fa52d3e5e9"
+    },
+    "tests/": {
+      "files": 506,
+      "sha256": "b6b698b4c96ef9a623c9d4c98ace60b48c20bb12902d81353288faf7568a3588"
+    }
+  },
+  "sha256": {
+    "CHANGELOG.md": "01e1e537337c4e781f1c73061056e5b2cbea4a35c8f5bec60dee2b70353d440f",
+    "DESIGN.md": "e34e73a71ffa406425a46952d908f99373dd967645f2fd7b60cfdc6918cbcd3c",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/src/pages/ReviewNotes.tsx": "b0c44ac1a660164480c9ac3599fd8af62a179bcff57a87013300eb01d964236b",
+    "frontend/src/whiteboard/BoardIcon.tsx": "4fc2b91cbc003f2c932b2cdc1578012827b08617cea9243e40de367b387129bd",
+    "frontend/src/whiteboard/review.css": "e4cf42afe54e6dfefd41aff7e4a9e6ee329a59683564044de268ee3d06b0daba",
+    "frontend/tests/e2e/review-notes.spec.ts": "51c7627f07a0fe36e54c1f94000432b9bc1c01dca19089d367c7c4a84937eca5",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  },
+  "source_set_algorithm": "SHA256 of json.dumps(sorted path -> file SHA256 map, sort_keys=True)"
+}

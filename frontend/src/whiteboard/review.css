@@ -20,8 +20,15 @@
 .rn-display-options small { display:block; font-size:var(--text-sm); color:var(--fg-dim); }
 .rn-today { width:100%; padding:var(--space-sm); }
 .rn-search { width:100%; font-size:var(--text-sm)!important; }
-.rn-date-picker { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:var(--space-xs); color:var(--fg-dim); font-size:var(--text-xs); }
-.rn-date-picker input { background:transparent; border:0; padding:var(--space-xs); font-size:var(--text-sm); max-width:100%; }
+.rn-date-picker { display:flex; flex-direction:column; gap:var(--space-xs); color:var(--fg-dim); font-size:var(--text-xs); }
+.rn-date-control { display:flex; align-items:center; min-width:0; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--radius-md); }
+.rn-date-control:hover { border-color:var(--border-strong); }
+.rn-date-control:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
+.review-page .rn-date-control input { flex:1; width:0; min-width:0; background:transparent; border:0; padding:var(--space-sm); font-size:var(--text-sm); color-scheme:var(--color-scheme); }
+.review-page .rn-date-control input:focus-visible { outline:none; }
+.rn-date-control input::-webkit-calendar-picker-indicator { display:none; }
+.rn-date-button { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:var(--space-2xl); height:var(--space-2xl); margin:var(--space-2xs); padding:0; border:0; border-radius:var(--radius-md); background:transparent; color:var(--fg-dim); cursor:pointer; }
+.rn-date-button:hover,.rn-date-button:focus-visible { background:var(--bg-input-hover); color:var(--fg); }
 .rn-date-list { flex:1; min-height:0; overflow:auto; }
 .rn-date-list h3 { font-size:var(--text-xs); color:var(--fg-dim); padding:var(--space-sm); font-weight:500; }
 .rn-date-row { display:flex; flex-direction:column; align-items:stretch; gap:var(--space-xs); text-align:left; width:100%; padding:var(--space-md); margin-bottom:var(--space-xs); border:1px solid transparent; border-radius:var(--radius-lg); }
