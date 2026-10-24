@@ -1,4 +1,5 @@
 const paths = {
+  calendar: 'M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2z M7 2v4 M17 2v4 M3 10h18 M7 14h2 M15 14h2 M7 18h2',
   board: 'M3 3h18v18H3z M3 9h18 M9 9v12',
   plus: 'M12 5v14 M5 12h14',
   image: 'M3 3h18v18H3z M3 16l5-5 5 5 3-3 5 5 M14 7h.01',

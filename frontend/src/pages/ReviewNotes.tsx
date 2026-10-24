@@ -42,6 +42,7 @@ export default function ReviewNotes() {
   const displayRef = useRef<HTMLDivElement>(null);
   const displayButton = useRef<HTMLButtonElement>(null);
   const input = useRef<HTMLInputElement>(null);
+  const dateInput = useRef<HTMLInputElement>(null);
   const requestNumber = useRef(0);
   const current = useRef(session);
   useLayoutEffect(() => { current.current = session; }, [session]);
@@ -130,11 +131,17 @@ export default function ReviewNotes() {
       </div></div>
       <button type="button" className="rn-button rn-primary rn-today" disabled={busy} onClick={() => daily()}><BoardIcon name="note" />오늘 작성</button>
       <input type="search" className="rn-search" placeholder="제목·종목 찾기" aria-label="노트 검색" value={query} onChange={e => setQuery(e.target.value)} />
-      <label className="rn-date-picker">날짜로 이동<input type="date" aria-label="열어볼 날짜" value={selectedDate} onChange={e => {
-        if (!e.target.value) return;
-        const found = notes.find(b => b.review!.date === e.target.value);
-        if (found) navigate(found.id); else navigate(null, false, e.target.value);
-      }} /></label>
+      <div className="rn-date-picker"><label htmlFor="review-open-date">날짜로 이동</label><div className="rn-date-control">
+        <input ref={dateInput} id="review-open-date" type="date" aria-label="열어볼 날짜" value={selectedDate} onChange={e => {
+          if (!e.target.value) return;
+          const found = notes.find(b => b.review!.date === e.target.value);
+          if (found) navigate(found.id); else navigate(null, false, e.target.value);
+        }} />
+        <TooltipButton className="rn-date-button" aria-label="날짜 선택 달력 열기" title="날짜 선택" onClick={() => {
+          dateInput.current?.focus();
+          try { dateInput.current?.showPicker(); } catch { /* Keep keyboard entry available in embedded browsers without a picker. */ }
+        }}><BoardIcon name="calendar" /></TooltipButton>
+      </div></div>
       <div className="rn-date-list">{listLoading && <p>목록을 불러오는 중…</p>}{shown.map((board, i) => <div key={board.id}>
         {(i === 0 || shown[i - 1].review!.date.slice(0, 7) !== board.review!.date.slice(0, 7)) && <h3>{board.review!.date.slice(0, 4)}년 {Number(board.review!.date.slice(5, 7))}월</h3>}
           <button type="button" disabled={busy} data-testid={`review-row-${board.id}`} className={`rn-date-row${board.id === id ? ' selected' : ''}`} aria-current={board.id === id ? 'page' : undefined} onClick={() => navigate(board.id)}>
