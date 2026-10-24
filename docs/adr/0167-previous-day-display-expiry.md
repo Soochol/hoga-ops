@@ -2,6 +2,13 @@
 
 **Status:** accepted (2026-09-01)
 
+**개정 2026-10-24 — 호가주문창의 명시적 마지막 호가 열람.** 사용자 요청으로
+기존 LATEST 만료 후에도 별도의 REST/저장 사다리는 출처·시장·호가 시각과
+`거래일 미제공`을 표시하고 열람할 수 있다. `ka10004`는 거래일을 주지 않으므로
+조회일을 호가 날짜로 만들지 않으며, 이 값으로 주문 신선도를 충족시키지 않는다.
+기존 WS LATEST의 만료 및 과거 커서 정책은 유지한다.
+[주말 실조회와 적용 근거](../research/2026-10-24-weekend-last-orderbook.md).
+
 **Related:**
 - PR #1685 — 구현(`_quote_phase` 하한 · `previousDayObExpired` · `useMinuteClock`).
 - `hoga/live/last_ob_store.py` 의 **저장** 결정(2026-08-27, "재시작이 동작을 바꾸지

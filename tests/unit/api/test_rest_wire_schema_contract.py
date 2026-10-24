@@ -77,6 +77,7 @@ from hoga.live.krx_close import KrxCloseResponse
 from hoga.live.krx_previous_close import KrxPreviousCloseResponse
 from hoga.live.lifecycle import LiveStatus
 from hoga.live.provider_errors import ProviderFailure
+from hoga.live.rest_orderbook import RestOrderbook, RestOrderbookResponse, RestOrderbookSource
 from hoga.live.service_status import ProviderStatus
 from hoga.live.us_daily_candles import (
     UsDailyBar,
@@ -381,6 +382,9 @@ def test_rest_wire_models_match_frontend_mirror_snapshot() -> None:
 #: 조용히 엉뚱한 것을 재는 경우가 원리적으로 없다(``AfterHoursBookResponse`` 를 이미
 #: 직접 import 하는 것과 같은 방식).
 EXPECTED_LIVE_WIRE_FIELDS: dict[type, frozenset[str]] = {
+    RestOrderbook: frozenset({"ask", "bid", "tot_ask", "tot_bid", "book_time"}),
+    RestOrderbookResponse: frozenset({"code", "venue", "book", "source", "fetched_at_ms", "checked_at_ms",
+                                    "refresh_failed", "storage_failed"}),
     UsStockCandleEvent: frozenset({"type", "instrument_key", "generation", "sequence", "status", "checked_at_ms",
         "minutes", "daily"}),
     UsObservedMinute: frozenset({"trading_date", "t_ms", "open", "high", "low", "close", "volume", "observed_at_ms"}),
@@ -566,6 +570,7 @@ def test_heatmap_capture_marker_stays_off_the_entry() -> None:
 # 양쪽 타입명이 우연히 같아서 키 하나로 쓴다. 갈리면 쌍을 (be_name, fe_name)으로
 # 넓히면 된다.
 WIRE_ENUM_MIRRORS: dict[str, tuple[frozenset[str], str]] = {
+    "RestOrderbookSource": (frozenset(get_args(RestOrderbookSource)), "frontend/src/api/liveRestOrderbook.ts"),
     "AftermarketExclusionReason": (
         frozenset(get_args(AftermarketExclusionReason)), "frontend/src/api/aftermarketExclusion.ts",
     ),

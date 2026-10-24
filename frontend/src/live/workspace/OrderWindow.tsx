@@ -23,6 +23,8 @@ import {
   type ReviewTradingCommand, type TradingReviewResponse,
 } from '../../api/trading';
 import { useLiveSeries } from '../../api/liveSeries';
+import { useLiveRestOrderbook } from '../../api/liveRestOrderbook';
+import { hasBookPrices } from '../../api/livePreAuctionBook';
 import { acceptTradingReplacement, pauseTradingRefresh } from '../../api/tradingRefresh';
 import { useQuoteByCode } from '../../api/liveQuotes';
 import { useLiveStockLimits } from '../../api/liveStockLimits';
@@ -141,14 +143,22 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     latestSnapshot, lastValidSnapshot, preAuctionSnapshot, afterHours: live.afterHours,
   });
   const vi = useLiveViStatus(code, effectiveVenue);
+  const needsRestBook = !hasBookPrices(snapshot) && activeSinglePrice === null
+    && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours');
+  const rest = useLiveRestOrderbook(code, effectiveVenue, needsRestBook && !live.isLoading);
+  const loadingLastBook = live.isLoading || rest.isLoading;
+  // A dated WS ladder always wins. REST clocks have no date and can never
+  // establish order freshness, even when the HTTP request just succeeded.
+  const restBook = needsRestBook && rest.data?.code === code && rest.data.venue === effectiveVenue
+    ? rest.data.book : null;
   const { availability: bookAvailability, retry: retryBook } = useOrderbookAvailability({ code, venue: effectiveVenue,
     live, bookMs: snapshot?.ts_ms, nowMs: now, exclusion: aftermarketExclusion,
     enabled: (!storedLadder || snapshot == null) && activeSinglePrice === null && afterHoursTotals === null
       && !(sessionControl.kind === 'toggle' && sessionMode === 'afterHours') });
   const summary = useMemo(() => fillTradeSummaryFromQuote(latestTradeSummary(live.trade), quote), [live.trade, quote]);
   const [dragInProgress, setDragInProgress] = useState(false);
-  const book = snapshot;
-  const deltaBadges = useOrderbookDeltaBadges(live.ob, !storedLadder);
+  const book = restBook ?? snapshot;
+  const deltaBadges = useOrderbookDeltaBadges(live.ob, !storedLadder && !restBook);
   const [settingsDraft, setSettingsDraft] = useState<OrderWindowSettings | null>(null);
   const closeSettings = useCallback(() => {
     setSettingsDraft(null);
@@ -259,7 +269,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     ? contextMenu.price == null ? sideOrders[contextMenu.side] : groups.get(`${contextMenu.side}:${contextMenu.price}`) ?? EMPTY_ORDERS
     : EMPTY_ORDERS;
   // Legacy single-price books are display-only; these commands are LIMIT/DAY.
-  const fresh = !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
+  const fresh = !restBook && !storedLadder && activeSinglePrice === null && !!snapshot && now - snapshot.ts_ms >= -5_000 && now - snapshot.ts_ms < 30_000;
   const ready = !!account && !!activeAccount && !!state.data && !state.isError && !exclusiveBusy && activeAccount.order_enabled !== false;
   const availability = {
     accountsLoading: accounts.isLoading, configured: accounts.data?.configured === true, account,
@@ -267,8 +277,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       ? new Error(Object.values(accounts.data?.errors ?? {}).join(' / ')) : null),
     stateReady: !!state.data && !state.isError, stateError: state.error,
     unresolved: !!state.data?.unresolved_commands.length || cancelFailures.some(item => item.action.base.account_seq === account && item.notice.persistent), settingsOpen: !!settingsDraft,
-    locked: dragInProgress, stored: storedLadder && snapshot != null, singlePrice: activeSinglePrice !== null,
-    hasBook: !!snapshot, fresh, quantity,
+    locked: dragInProgress, stored: !!restBook || (storedLadder && snapshot != null), singlePrice: activeSinglePrice !== null,
+    hasBook: !!book, fresh, quantity,
     bookIssue: bookAvailability ? { title: '주문 대기', message: bookAvailability.message, tone: 'warn' as const } : undefined,
     brokerBlocked: account && !activeAccount ? '선택 계좌의 연결을 확인하세요.'
       : activeAccount?.order_enabled === false ? activeAccount.blocked_reason ?? '이 계좌의 주문 경로를 확인하세요.' : null,
@@ -278,10 +288,10 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
   const bids = book?.bid.filter(level => Number.isFinite(level.price) && level.price > 0) ?? [];
   const prices = asks.concat(bids);
   const dayMarkers = bookDayMarkers(prices.map(level => level.price), summary);
-  const showInlineSummary = expanded && prices.length > 0;
+  const showInlineSummary = expanded || prices.length === 0;
   const onScreen = new Set(prices.map(l => l.price));
   const maxQty = Math.max(1, ...prices.map(l => l.qty));
-  const displayTotals = afterHoursTotals ?? { ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 };
+  const displayTotals = (restBook ? null : afterHoursTotals) ?? { ask: book?.tot_ask ?? 0, bid: book?.tot_bid ?? 0 };
   const baseline = resolveBookBaseline({ isPastDateLadder: false, ladderBaseline: null,
     singlePriceActive: activeSinglePrice !== null, singlePriceClose: afterHoursBook.data?.close_price ?? null,
     liveBaseline: quote?.change_pct_source === 'unavailable' ? null : (quote?.baseline_price ?? null) });
@@ -644,8 +654,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
     krxPreviousClose={krxPreviousClose.data?.as_of === todayKst ? krxPreviousClose.data.price : null}
     vi={vi.data?.vi} height={height} page={infoPage} onNextPage={() => setInfoPage(page => page === 0 ? 1 : 0)}
     expectedFill={{
-      price: storedLadder || activeSinglePrice !== null ? book?.exp_price ?? 0 : quote?.expected_price ?? 0,
-      qty: storedLadder || activeSinglePrice !== null ? book?.exp_qty ?? 0 : quote?.expected_qty ?? null,
+      price: restBook ? 0 : storedLadder || activeSinglePrice !== null ? snapshot?.exp_price ?? 0 : quote?.expected_price ?? 0,
+      qty: restBook ? null : storedLadder || activeSinglePrice !== null ? snapshot?.exp_qty ?? 0 : quote?.expected_qty ?? null,
     }} />;
   function saveSettingsEdits(next: OrderWindowSettings) {
     if (busy) return;
@@ -778,7 +788,14 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
         }}
         render={() => settingsDraft && <OrderSettingsForm draft={settingsDraft} onChange={saveSettingsEdits} busy={busy} />} />
     </WindowHeaderAction>
-    {snapshot != null && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
+    {snapshot != null && !restBook && <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />}
+    {restBook && <div className="m-2 text-xs text-fg-dim" data-testid="order-rest-book-source">
+      {rest.data?.source === 'stored' ? '저장된 마지막 호가' : 'REST 마지막 호가'} · {restBook.book_time ?? '시각 미제공'} · {effectiveVenue === 'UN' ? '통합' : effectiveVenue} · 거래일 미제공
+      {(rest.isError || rest.data?.refresh_failed || rest.data?.storage_failed) && <div>
+        {rest.data?.storage_failed ? '호가 저장 실패' : '최신 호가 조회 실패'}
+        <button type="button" className="ml-2" onClick={() => { void rest.refetch(); }}>다시 조회</button>
+      </div>}
+    </div>}
     <div className="order-scroll" onScroll={updateDragTarget} role="region" aria-label="실시간 호가 주문 사다리">
       <div className={`order-ladder ${prices.length > 0 ? 'order-ladder-centered' : ''} ${dragCancel ? 'order-cancel-active' : ''}`} ref={ladder}
         onContextMenu={e => { e.preventDefault(); e.stopPropagation(); if (!drag.current && !action && !settingsDraft) setContextMenu({ x: e.clientX, y: e.clientY }); }}>
@@ -791,9 +808,15 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
           <span data-lane-probe className="order-lane-probe" data-figure={samples.order} />
           <span data-lane-probe className="order-total-probe" data-figure={samples.total} />
         </span>
-        {prices.length === 0 ? bookAvailability
-          ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />
-          : <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>
+        {prices.length === 0 ? <div className={`order-empty-layout ${expanded ? 'order-empty-expanded' : ''}`}>
+          <div>{needsRestBook ? <div className="m-2 text-xs text-fg-dim" data-testid="order-empty-book">
+            {loadingLastBook ? '마지막 호가 불러오는 중…'
+              : rest.isError || rest.data?.refresh_failed ? '마지막 호가 조회 실패' : '저장된 마지막 호가가 없습니다'}
+            {!loadingLastBook && <button type="button" className="ml-2" onClick={() => { void rest.refetch(); retryBook(); }}>다시 조회</button>}
+          </div> : bookAvailability ? <BookAvailabilityState state={bookAvailability} onRetry={retryBook} />
+            : <p className="order-notice">{afterHoursTotals ? '호가 사다리 없음 (총잔량만 수신 중)' : '현재 표시할 호가가 없습니다'}</p>}</div>
+          <div className="order-empty-summary">{renderSummary(264)}</div>
+        </div>
           : Array.from({ length: 20 }, (_, slot) => {
           const isAsk = slot < 10;
           const index = slot - (10 - asks.length);
@@ -824,7 +847,7 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
             {orderCell('BUY', level.price, key)}
           </div>;
         })}
-        {showInlineSummary && <div ref={setSummaryProbe} className="order-summary-layer">{renderSummary(240)}</div>}
+        {showInlineSummary && prices.length > 0 && <div ref={setSummaryProbe} className="order-summary-layer">{renderSummary(240)}</div>}
         <div className="order-total-row" role="group" aria-label="방향별 총 접수 주문">
           {(['SELL', 'BUY'] as const).map(side => {
             const list = sideOrders[side];
@@ -852,7 +875,8 @@ function OrderWindowContent({ code, name, accounts, account, onAccountChange, on
       </div>
     </div>
     {(book || afterHoursTotals || sessionControl.kind !== 'none') && <TotalQtyStrip totals={displayTotals} maskRatio={displayTotals.ask + displayTotals.bid === 0}
-      afterHoursTotals={afterHoursTotals} afterHoursLabel={afterHoursLabel} sessionControl={sessionControl} sessionMode={sessionMode}
+      afterHoursTotals={restBook ? null : afterHoursTotals} afterHoursLabel={afterHoursLabel}
+      sessionControl={restBook ? { kind: 'label', label: '마지막 조회 호가' } : sessionControl} sessionMode={sessionMode}
       onSelectSessionMode={selectSessionMode} />}
     {contextMenu?.side ? <PanelContextMenu point={contextMenu}
       label={`${orderSideLabel(contextMenu.side)} ${contextMenu.price == null ? '전체 접수' : `${fmt(contextMenu.price)}원`} 주문 목록`} showLabel={false} onClose={closeMenu} className="order-surface order-context-surface order-list-surface">

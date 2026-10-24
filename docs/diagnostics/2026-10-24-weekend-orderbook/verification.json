@@ -1,0 +1,86 @@
+{
+  "checked_at_kst": "2026-10-24T10:30:25.551403+09:00",
+  "head": "bb0dc4087b90529575a8358470b33b560f7f08b0",
+  "base": "bb0dc4087b90529575a8358470b33b560f7f08b0",
+  "environment": {
+    "python": "3.14.7",
+    "node": "v24.13.1",
+    "uv": "0.11.8",
+    "credentials": "empty worktree .env; Playwright blank vendor environment unchanged",
+    "backend_port": 20498,
+    "frontend_port": 21498,
+    "data_dir": "/tmp/hoga-e2e-data-498"
+  },
+  "checks": [
+    {
+      "command": "uv run --extra dev ruff check .",
+      "result": "passed"
+    },
+    {
+      "command": "uv run --extra dev pytest -q tests/unit/live/test_api.py tests/unit/live/test_rest_orderbook.py tests/unit/live/test_last_ob_persistence.py tests/unit/api/test_rest_wire_schema_contract.py",
+      "result": "175 passed"
+    },
+    {
+      "command": "npm run typecheck",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "npx vitest run src/api/liveRestOrderbook.test.tsx src/live/workspace/OrderWindow.test.tsx src/api/liveSeries.test.tsx src/live/workspace/useBookSessionDisplay.test.tsx",
+      "cwd": "frontend",
+      "result": "205 passed"
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-orders.spec.ts --reporter=list",
+      "cwd": "frontend",
+      "result": "113 passed",
+      "note": "Before strengthening only the three new cases with a 504px window and numeric bounding assertion. Production code and other cases unchanged."
+    },
+    {
+      "command": "npx playwright test tests/e2e/live-orders.spec.ts --grep '주말 REST|호가 (empty|failed)' --reporter=list",
+      "cwd": "frontend",
+      "result": "3 passed with final narrow-window assertions"
+    },
+    {
+      "command": "npx vite build (Playwright webServer)",
+      "cwd": "frontend",
+      "result": "passed"
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "backend_inputs": {
+    "sha256": "c91baa3f53b43db3c62d4ee828fa8e534c1c356c3e187cedac6735a56c1f96e9",
+    "file_count": 807,
+    "scope": "hoga/**, tests/**, pyproject.toml, uv.lock, ruff.toml, .python-version"
+  },
+  "frontend_inputs": {
+    "sha256": "ee06ca157c791596f25dd2633070088a7d6449784b3e099bb20db45248af2c59",
+    "file_count": 1851,
+    "scope": "frontend/src/**, frontend/tests/**, frontend root files (including package/lock/config files)"
+  },
+  "live_probe": {
+    "code": "456160",
+    "venues": [
+      "KRX",
+      "NXT",
+      "UN"
+    ],
+    "result": "HTTP 200, return_code 0, ten levels per side, clock 20:00:00 for all three",
+    "evidence": "tests/fixtures/kiwoom_rest/orderbook_weekend_456160.json",
+    "tokens_issued": 0,
+    "token_cache_unchanged": true,
+    "trading_date": "not supplied; no date inferred"
+  },
+  "screenshots": {
+    "source": "isolated Playwright fixtures for 456160, not a screenshot of the running user application",
+    "files": [
+      "rest-book.png",
+      "empty-book-compact.png"
+    ]
+  },
+  "running_app": "Existing 5173/8000 processes untouched; changes are in this worktree. No production restart/deployment.",
+  "fingerprint_algorithm": "git ls-files -co --exclude-standard, unique sorted paths; SHA256 of each path + NUL + SHA256(file bytes) + newline; combined SHA256"
+}

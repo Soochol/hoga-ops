@@ -111,6 +111,7 @@ from hoga.live.live_quote_fetcher import LiveQuote, LiveQuoteFetcher
 from hoga.live.past_candles_cache import PastCandlesCache
 from hoga.live.past_daily_candles_cache import PastDailyCandlesCache
 from hoga.live.quote_change_resolver import QuoteChangeResolver
+from hoga.live.rest_orderbook import RestOrderbookResponse, RestOrderbookStore
 from hoga.live.screener_daily_candles import read_screener_daily_candles
 from hoga.live.session_gate import is_after_hours_single_price_window
 from hoga.live.stock_sessions import krx_aftermarket_introduced
@@ -118,7 +119,7 @@ from hoga.live.us_calendar_candles import calendar_bounds
 from hoga.live.us_daily_candles import UsDailyMetadata
 from hoga.live.us_index_minutes import MINUTE_TIMEFRAMES as US_MINUTE_TIMEFRAMES, UsMinuteMetadata
 from hoga.live.us_market_api import UsMarketApi
-from hoga.live.venue import LiveVenuePolicy, parse_live_venue_policy, quote_venue_for_policy
+from hoga.live.venue import LiveVenuePolicy, Venue, parse_live_venue_policy, quote_venue_for_policy
 from hoga.util.atomic_write import atomic_write_json
 from hoga.util.timeenc import KST
 
@@ -2016,6 +2017,25 @@ def build_router(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — �
     router = APIRouter(prefix="/api/live")
     us_markets = UsMarketApi(data_dir)
     router.include_router(us_markets.router)
+    rest_books = RestOrderbookStore(data_dir)
+
+    @router.get("/last-orderbook", response_model=RestOrderbookResponse)
+    async def _get_last_orderbook(
+        code: str = Query(pattern=CODE_PATTERN), venue: Venue = Query(...),
+    ) -> RestOrderbookResponse:
+        async def fetch_book() -> dict:
+            from .kiwoom_venue import VENUE_SUFFIX  # noqa: PLC0415 — vendor encoding at the read boundary
+            client = kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir else None
+            if client is None or live_settings.rest_bypass_enabled(data_dir):
+                raise RuntimeError("kiwoom quote source unavailable")
+            page = await kiwoom_access.run_with_capacity(
+                kiwoom_rest_runtime.ensure_scheduler(data_dir), key=("last-orderbook", code, venue),
+                api_id="ka10004", priority="user_visible", client=client,
+                fetch_fn=lambda c: c.call("ka10004", {"stk_cd": code + VENUE_SUFFIX[venue]}),
+            )
+            return page.raw
+
+        return await rest_books.get(code, venue, fetch_book)
 
     async def fetch_aftermarket_designation(code: str) -> dict | None:
         client = kiwoom_rest_runtime.ensure_rest_client(data_dir) if data_dir else None
