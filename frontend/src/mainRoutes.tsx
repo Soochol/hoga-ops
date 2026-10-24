@@ -26,6 +26,7 @@ export const Capture = lazy(() => import('./pages/Capture'));
 export const Sentiment = lazy(() => import('./pages/Sentiment'));
 
 export const Market = lazy(() => import('./pages/Market'));
+export const Whiteboard = lazy(() => import('./pages/Whiteboard'));
 
 
 // AppErrorBoundary sits OUTSIDE the providers on purpose: a throw from the

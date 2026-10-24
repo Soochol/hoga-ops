@@ -61,6 +61,7 @@ from hoga.api.test_routes import build_test_router
 from hoga.api.trading_routes import build_paper_router, build_router as build_trading_router
 from hoga.api.trading_v2_routes import build_router as build_trading_v2_router
 from hoga.api.watchlist_routes import build_router as build_watchlist_router
+from hoga.api.whiteboards import build_router as build_whiteboard_router
 from hoga.api.ws import build_ws_router
 from hoga.collector.client import HogaplayClient
 from hoga.config import Config, resolve_data_dir, resolve_log_dir, resolve_symbol_master_path
@@ -662,6 +663,7 @@ def create_app(  # noqa: PLR0915 — ADR 이 지정한 단일 조립점 — 문�
     # (`kis_api`)와 함께 기능을 접었다. 근거는 `sources.SourceName` 주석: 복구본이
     # 메우던 것은 **캔들뿐**이고 캔들은 벤더가 과거를 다시 준다(우회 OFF 기본 경로).
     app.include_router(build_study_view_router(data_dir=data_dir, bus=bus))
+    app.include_router(build_whiteboard_router(data_dir=data_dir))
     app.include_router(build_live_layout_preset_router(data_dir=data_dir, bus=bus))
     app.include_router(
         build_live_router(
