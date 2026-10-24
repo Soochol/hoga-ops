@@ -1,0 +1,71 @@
+{
+  "base_sha": "4ffb2ae86283d708ed307b2ab9563b4cfa7eae60",
+  "branch": "codex/review-free-canvas",
+  "working_tree": true,
+  "environment": {
+    "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+    "node": "v24.13.1",
+    "python": "3.14.7",
+    "chrome": "Google Chrome 156.0.8078.47",
+    "electron": "44.8.0",
+    "e2e_workers": 1
+  },
+  "source_sets": [
+    {
+      "directory": "frontend/src/",
+      "files": 1689,
+      "sha256": "98eed363788cf1b332a871d8951110674958fe59b57564c9393d6fae3f1c747d"
+    },
+    {
+      "directory": "frontend/tests/",
+      "files": 185,
+      "sha256": "4f0696de89406c3987e4457a5942d327e1c95e0bb3a540d415805c82c43cd423"
+    },
+    {
+      "directory": "hoga/",
+      "files": 316,
+      "sha256": "3e23440fef56df739865079d1e42f59f31afe763502d83452ca2c11d4690208c"
+    },
+    {
+      "directory": "tests/",
+      "files": 499,
+      "sha256": "7c3e102b8fe54bd9678edecf42f9fd085e645a96cdd01c5be28472134a46977e"
+    },
+    {
+      "directory": "desktop/",
+      "files": 62,
+      "sha256": "fd4c4b6a34122f2a0de13d0e1c113b7bba86e98edf977d88fdae80a92e1ddbe0"
+    }
+  ],
+  "sha256": {
+    ".python-version": "922fe0c3de073b01988e23348ea184456161678c5e329e6f34be89be24383f93",
+    "CHANGELOG.md": "258940a4dbe0a0113d7592ac9a2bb1b1f935504b1412cbe57555445dd9e7089e",
+    "CONTEXT.md": "d5e9704d781e3a3c245dafe1cb773cf3d3d3f0c395dc4dd3c5e559035b1a0521",
+    "DESIGN.md": "30b1fa35a1176439ca41cf48db9edbdb08ce3478173625ef6b88ba99c4e8313e",
+    "desktop/package-lock.json": "913027885f935c6077429db3bf2cabdc39c5dbc0577bf786344ded7ef73e0609",
+    "desktop/package.json": "6e2e2b6e7a9229d2c402b06eb7049e42b6f8dac506967c1e7f6c4fe59739ecc2",
+    "desktop/playwright.config.cjs": "6c49425f8c8fcf846fc1680b6b252a7dffba334160e5b1747941febe6d9ec249",
+    "desktop/tests/e2e/whiteboard.spec.cjs": "f5a744d6f9e7874ecc528aef76a911766145c57372fde2c127b5beb07b424cbd",
+    "docs/review-notes.md": "0c6ea304b741bf766868307880e926612c7549e27100f19c5e2b8bda5fbe2087",
+    "frontend/package-lock.json": "bc691053d9524b4732fa741dfd3f2bafa10fd18afa73eb7f1e147dcdbd8ece76",
+    "frontend/package.json": "fb330bf167b659d69616cb9e8080bf3c857f7d00910fbabb11b365eacf522826",
+    "frontend/playwright.config.ts": "96fbc6be03ae9d24c9eb3f247ae0b8c014da9e4b150477600c9177f7bd556911",
+    "frontend/src/pages/ReviewNotes.tsx": "53049811dcb31617a3b8e7632e7e203aae97ca6c053e9d80d3db9f1327a2fad8",
+    "frontend/src/whiteboard/BoardEditor.tsx": "140a4b74310eecd450d68b5a43bf41aa20d844ee39fe447e2cf0c9cab2fc927a",
+    "frontend/src/whiteboard/ReviewCanvas.tsx": "fd8f25052b5727d90ab4c13af7fb2a2d759f09ad02bdfe377899830a12d70dc4",
+    "frontend/src/whiteboard/freehandEraser.test.ts": "e27a8158ab63e7e534c242f4e9c901e761eb7c246468bdc24805e119e455f1be",
+    "frontend/src/whiteboard/freehandEraser.ts": "add6efc3d69d04b8bc75b1916eafa4749eda6e65b8fab06b7733141d3fb8e8b6",
+    "frontend/src/whiteboard/reviewCanvas.css": "39fb7f022cce808bd7c30434a51fdb8a88a89e76b1b02ef6fd2d528afe280f70",
+    "frontend/src/whiteboard/reviewCanvas.test.ts": "a3808ca057b517d763176c99bc02b3fa0d815920552958b9961e899c3fd815a0",
+    "frontend/src/whiteboard/reviewCanvas.ts": "60a3dfc06491a35ac70d38f0c0f59b3b8e8e287804369e9f37779eda0a081b8f",
+    "frontend/tests/e2e/chart-image-export.spec.ts": "73df23a638306dbfc68cc6cde938b2116c9676382d91dec40891074b6bb8a71b",
+    "frontend/tests/e2e/review-notes.spec.ts": "45d0a5d5b1b88f249921a067451fc77abe447e5e8c19053a35af7bc29605c5bc",
+    "frontend/tsconfig.app.json": "96d4410974cf79e142c09dbcabae858923b45a2da5265affe86f12c88065cd6e",
+    "frontend/tsconfig.e2e.json": "20145427d17b50f8b18f058b4d3b99002bb210142c58d4053942c8891a14c2f3",
+    "frontend/tsconfig.test.json": "e8fafd6753d2823ff2e167fa18d511d4fc53ceb2861c6c584fcd9ea7589a1be8",
+    "frontend/vite.config.ts": "d20f8e0008a370e5df6b97bb20135ffd418e1ad7c67a53dc3883777a37202244",
+    "pyproject.toml": "53a23287eac68b66123b6f6a9f88d5d3b1e2f59a59c4c8cb7fef99f2654589a5",
+    "ruff.toml": "422277b5742ea124f25690201cb540117de803f74719052a6dbdc3bfa8aa7d07",
+    "uv.lock": "c3d53581e9059f7977860f9c4f46b909d7e62d539fc2472df88058ca3d450764"
+  }
+}

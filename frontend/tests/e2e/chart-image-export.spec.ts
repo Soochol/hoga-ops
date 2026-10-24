@@ -88,18 +88,16 @@ test('chart toolbar icon buttons save a rendered PNG and copy an image to the cl
   await page.getByLabel('추가할 노트', { exact: true }).selectOption(targetId);
   await page.getByRole('button', { name: '차트 첨부하고 작성하기', exact: true }).click();
   await expect(page).toHaveURL(/\/whiteboard\?board=/);
-  await expect(page.getByTestId('review-document')).toBeVisible();
+  await expect(page.getByTestId('review-canvas')).toBeVisible();
   const boardId = new URL(page.url()).searchParams.get('board');
   const board = async () => (await page.request.get(`${API_URL}/api/whiteboards/${boardId}`)).json();
-  await expect.poll(async () => (await board()).review.records.length).toBe(1);
-  expect((await board()).review.records[0].code).toBe('098460');
-  const recordSummary = page.locator('.rn-record-summary').first();
-  await expect(recordSummary).toBeVisible();
-  if (await recordSummary.getAttribute('aria-expanded') === 'false') await recordSummary.click();
-  await expect(page.getByRole('link', { name: '종목 차트 열기' })).toHaveAttribute('href', '/live?code=098460');
-  await page.getByRole('heading', { name: '종목별 기록' }).click();
+  await expect.poll(async () => (await board()).scene.elements.filter((el: { type: string }) => el.type === 'image').length).toBe(1);
+  const attached = (await board()).scene.elements.find((el: { type: string }) => el.type === 'image');
+  expect(attached.customData.chartSource.code).toBe('098460'); expect(attached.link).toBe('/live?code=098460');
+  const canvas = page.locator('canvas.interactive');
+  await canvas.click({ position: { x: 320, y: 180 } });
   await page.keyboard.press('Control+v');
-  await expect.poll(async () => (await board()).review.records.length).toBe(2);
+  await expect.poll(async () => (await board()).scene.elements.filter((el: { type: string }) => el.type === 'image').length).toBe(2);
   const saved = await board();
   await page.request.put(`${API_URL}/api/whiteboards/${targetId}`, { headers: { Origin: BASE_URL }, data: {
     mutation_id: randomUUID().replaceAll('-', ''), expected_revision: saved.revision,

@@ -11,17 +11,26 @@ async function read(request: APIRequestContext, id: string): Promise<WhiteboardD
   const response = await request.get(`${API_URL}/api/whiteboards/${id}`);
   expect(response.ok()).toBe(true); return response.json();
 }
-function record(title: string) {
-  return { id: uid(), title, stock: '삼성전자', code: '005930', timeframe: '5m', captured_at_ms: null,
-    image_file_id: null, judgment: '지지 확인', action: '조건까지 관망', result: '원칙을 지켰다' };
-}
-async function seed(request: APIRequestContext, date: string, count = 2) {
-  const id = uid();
-  const response = await request.post(`${API_URL}/api/whiteboards`, { headers,
-    data: { id, mutation_id: uid(), name: `${date} 매일 복기`,
-      review: { ...emptyReview(date), summary: '조건을 확인하고 진입한다', principle: '무효화 조건을 먼저 적는다',
-        records: Array.from({ length: count }, (_, i) => record(`기록 ${i + 1}`)) } } });
+async function seed(request: APIRequestContext, date: string, archive = false) {
+  const id = uid(), review = { ...emptyReview(date), ...(archive ? { summary: '당시의 하루 결론', good: '지킨 기준', change: '서두르지 않기', principle: '무효화 조건을 먼저 적는다',
+    records: [{ id: uid(), title: '첫 눌림 관찰', stock: '삼성전자', code: '005930', timeframe: '5m', captured_at_ms: null, image_file_id: null, judgment: '거래량 확인', action: '관망', result: '계획대로' }] } : {}) };
+  const response = await request.post(`${API_URL}/api/whiteboards`, { headers, data: { id, mutation_id: uid(), name: `${date} 매일 복기`, review } });
   expect(response.ok(), await response.text()).toBe(true); return response.json() as Promise<WhiteboardDocument>;
+}
+const visible = (doc: WhiteboardDocument, type: string) => doc.scene.elements.filter(el => el.type === type && !el.isDeleted);
+async function open(page: Page, id: string) {
+  await page.goto(`/whiteboard?board=${id}`);
+  await expect(page.getByTestId('whiteboard-editor')).toHaveAttribute('data-board-id', id);
+  await expect(page.getByRole('button', { name: '연필', exact: true })).toBeEnabled();
+}
+async function draw(page: Page, y = 300) {
+  await page.getByRole('button', { name: '연필', exact: true }).click();
+  const box = (await page.locator('canvas.interactive').boundingBox())!;
+  await page.mouse.move(box.x + box.width * .58, box.y + y);
+  await page.mouse.down();
+  for (let i = 1; i <= 20; i++) await page.mouse.move(box.x + box.width * .58 + i * 5, box.y + y - Math.sin(i / 20 * Math.PI) * 25);
+  await page.mouse.up();
+  return { x: box.x + box.width * .58 + 50, y: box.y + y - 25 };
 }
 async function image(page: Page) {
   const url = await page.evaluate(() => {
@@ -48,143 +57,151 @@ test.afterEach(async ({ request }) => {
   }
 });
 
-test('날짜 정렬, 빈 날짜 건너뛰기, 읽기 위치와 간단히/자세히 마지막 값', async ({ page, request }, info) => {
-  const old = await seed(request, '2199-10-21'), middle = await seed(request, '2199-10-23', 7), latest = await seed(request, '2199-10-24');
-  await page.goto(`/whiteboard?board=${middle.id}`);
-  await expect(page.getByRole('heading', { name: middle.name, exact: true })).toBeVisible();
-  await expect(page.getByLabel('하루 노트 제목')).toHaveCount(0);
+test('날짜 목록·이전 다음·표시 옵션을 유지하고 기존 글을 한 번만 자유 캔버스로 펼친다', async ({ page, request }, info) => {
+  const old = await seed(request, '2199-10-21'), middle = await seed(request, '2199-10-23', true), latest = await seed(request, '2199-10-24');
+  const upload = await request.post(`${API_URL}/api/whiteboards/assets`, { headers: { ...headers, 'Content-Type': 'image/png' }, data: await image(page) });
+  expect(upload.ok()).toBe(true);
+  const asset = await upload.json();
+  middle.review!.records[0].image_file_id = 'archived-chart';
+  const archived = await request.put(`${API_URL}/api/whiteboards/${middle.id}`, { headers, data: {
+    mutation_id: uid(), expected_revision: middle.revision, name: middle.name, review: middle.review,
+    scene: { ...middle.scene, files: { 'archived-chart': { ...asset, created: 1 } } },
+  } });
+  expect(archived.ok()).toBe(true);
+  await open(page, middle.id);
+  await expect.poll(async () => visible(await read(request, middle.id), 'text').map(el => el.text).join('\n')).toContain('거래량 확인');
+  const migrated = await read(request, middle.id);
+  expect(migrated.review).toEqual(middle.review);
+  expect(visible(migrated, 'image')).toHaveLength(1);
+  expect(Object.keys(migrated.scene.files)).toContain('archived-chart');
+  const ids = migrated.scene.elements.map(el => el.id);
   await page.getByRole('button', { name: '이전 기록', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(old.id));
   await page.getByRole('button', { name: '다음 기록', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(middle.id));
-  await page.getByRole('button', { name: '전체 펼치기', exact: true }).click();
-  await expect(page.locator('.rn-record-summary[aria-expanded=true]')).toHaveCount(7);
-  await page.getByTestId('review-document').evaluate(el => { el.scrollTop = 700; });
+  await expect(page.getByRole('button', { name: '연필', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: '다음 기록', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(latest.id));
   await expect(page.getByRole('button', { name: '다음 기록', exact: true })).toBeDisabled();
-  await page.getByRole('button', { name: '이전 기록', exact: true }).click();
-  await expect(page.locator('.rn-record-summary[aria-expanded=true]')).toHaveCount(7);
-  await expect.poll(() => page.getByTestId('review-document').evaluate(el => el.scrollTop)).toBeGreaterThan(600);
-  const row = page.getByTestId(`review-row-${middle.id}`);
-  const detailed = (await row.boundingBox())!.height;
-  await page.getByRole('button', { name: '목록 표시 방식', exact: true }).click();
-  await page.getByRole('button', { name: /간단히/ }).click();
-  await expect(row.locator('.rn-row-summary')).toBeHidden();
-  expect((await row.boundingBox())!.height).toBeLessThan(detailed);
-  await page.reload();
-  await expect(page.getByLabel('날짜별 노트 목록')).toHaveAttribute('data-list-display', 'compact');
-  await page.getByRole('button', { name: '목록 표시 방식', exact: true }).click();
-  await page.getByRole('button', { name: /자세히/ }).click();
-  await page.reload();
-  await expect(page.getByLabel('날짜별 노트 목록')).toHaveAttribute('data-list-display', 'detail');
-  await page.getByRole('searchbox', { name: '노트 검색' }).fill('2199-10-24');
-  await expect(page.locator('.rn-date-row')).toHaveCount(1);
-  await page.getByRole('searchbox', { name: '노트 검색' }).fill('');
-  await page.getByRole('button', { name: '전체 접기', exact: true }).click();
-  await expect(page.locator('.rn-record-summary[aria-expanded=true]')).toHaveCount(0);
+  await page.getByTestId(`review-row-${middle.id}`).click();
+  const row = page.getByTestId(`review-row-${middle.id}`), detailed = (await row.boundingBox())!.height;
+  await page.getByRole('button', { name: '목록 표시 방식', exact: true }).click(); await page.getByRole('button', { name: /간단히/ }).click();
+  await expect(row.locator('.rn-row-summary')).toBeHidden(); expect((await row.boundingBox())!.height).toBeLessThan(detailed);
+  await page.reload(); await expect(page.getByLabel('날짜별 노트 목록')).toHaveAttribute('data-list-display', 'compact');
+  await expect(page.getByRole('button', { name: '연필', exact: true })).toBeEnabled();
+  expect((await read(request, middle.id)).scene.elements.map(el => el.id)).toEqual(ids);
+  await page.getByRole('button', { name: '기존 기록 원문', exact: true }).click();
+  await expect(page.getByTestId('review-document').getByText('당시의 하루 결론', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '캔버스로 돌아가기', exact: true }).click();
+  await expect(page.getByTestId('review-canvas')).toBeVisible();
+  await page.getByRole('button', { name: '목록 표시 방식', exact: true }).click(); await page.getByRole('button', { name: /자세히/ }).click();
+  await page.reload(); await expect(page.getByLabel('날짜별 노트 목록')).toHaveAttribute('data-list-display', 'detail');
   for (const width of [1440, 944, 768]) {
     await page.setViewportSize({ width, height: 950 });
-    await expect(page.getByRole('button', { name: '이전 기록', exact: true })).toBeInViewport();
+    await expect(page.getByRole('button', { name: '연필', exact: true })).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
-  await page.setViewportSize({ width: 1440, height: 950 });
-  await page.getByTestId(`review-row-${middle.id}`).click();
-  await page.getByRole('button', { name: '전체 펼치기', exact: true }).click();
-  await page.getByTestId('review-document').evaluate(el => { el.scrollTop = 0; });
-  await page.screenshot({ path: info.outputPath('daily-review.png') });
+  await page.setViewportSize({ width: 1440, height: 950 }); await page.screenshot({ path: info.outputPath('daily-free-canvas.png') });
 });
 
-test('빈 날짜 작성, 한글·이미지 자동 저장, 완료·재열기와 편집 파일 왕복', async ({ page, request, browser }, info) => {
-  await page.goto('/whiteboard?date=2199-11-01');
-  await expect(page.getByRole('heading', { name: '아직 작성한 노트가 없습니다' })).toBeVisible();
-  await page.getByRole('button', { name: '이 날짜에 작성하기' }).click();
-  await expect(page.getByLabel('하루 노트 제목')).toBeVisible();
+test('차트 위 연필·색상·굵기·지우개·실행 취소와 다시 실행을 실제 포인터로 검증', async ({ page, request }, info) => {
+  const doc = await seed(request, '2199-11-01'); await open(page, doc.id);
+  await page.getByLabel('복기 이미지 파일 선택').setInputFiles({ name: 'chart.png', mimeType: 'image/png', buffer: await image(page) });
+  await expect.poll(async () => visible(await read(request, doc.id), 'image').length).toBe(1);
+  await page.getByRole('button', { name: '선택', exact: true }).click();
+  // Clear the selected image before changing the pen's style.
+  const canvas = page.locator('canvas.interactive'); await canvas.click({ position: { x: 300, y: 120 } });
+  await page.getByRole('button', { name: '빨간색 선', exact: true }).click(); await page.getByLabel('선 굵기', { exact: true }).selectOption('4');
+  const hit = await draw(page);
+  await expect.poll(async () => visible(await read(request, doc.id), 'freedraw').length).toBe(1);
+  const stroke = visible(await read(request, doc.id), 'freedraw')[0];
+  expect(stroke.strokeColor).toBe('#e03131'); expect(stroke.strokeWidth).toBe(4); expect((stroke.points as unknown[]).length).toBeGreaterThan(10);
+  expect(stroke.frameId).toBe(visible(await read(request, doc.id), 'image')[0].frameId);
+  expect(stroke.frameId).toBeTruthy();
+  await page.getByRole('button', { name: '실행 취소', exact: true }).click();
+  await expect.poll(async () => visible(await read(request, doc.id), 'freedraw').length).toBe(0);
+  await page.getByRole('button', { name: '다시 실행', exact: true }).click();
+  await expect.poll(async () => visible(await read(request, doc.id), 'freedraw').length).toBe(1);
+  await page.getByRole('button', { name: '지우개', exact: true }).click();
+  await page.mouse.move(hit.x - 5, hit.y - 15); await page.mouse.down(); await page.mouse.move(hit.x + 5, hit.y + 15, { steps: 6 }); await page.mouse.up();
+  await expect.poll(async () => visible(await read(request, doc.id), 'freedraw').length).toBe(0);
+  expect(visible(await read(request, doc.id), 'image')).toHaveLength(1);
+  await page.getByRole('button', { name: '실행 취소', exact: true }).click();
+  await expect.poll(async () => visible(await read(request, doc.id), 'freedraw').length).toBe(1);
+  await page.getByRole('button', { name: '선택', exact: true }).click();
+  await page.getByRole('button', { name: '템플릿', exact: true }).click(); await page.getByRole('button', { name: '잘한 판단 추가', exact: true }).click();
+  await expect.poll(async () => visible(await read(request, doc.id), 'text').some(el => String(el.text).includes('잘한 판단'))).toBe(true);
+  await page.getByRole('button', { name: '+ 페이지', exact: true }).click();
+  await expect(page.getByRole('button', { name: '페이지 2', exact: true })).toBeVisible();
+  await expect.poll(async () => visible(await read(request, doc.id), 'frame').length).toBe(2);
+  await page.getByRole('button', { name: '페이지 1', exact: true }).click();
+  await page.reload(); await expect(page.getByRole('button', { name: '연필', exact: true })).toBeEnabled();
+  const saved = await read(request, doc.id); expect(visible(saved, 'freedraw')).toHaveLength(1); expect(visible(saved, 'image')).toHaveLength(1); expect(visible(saved, 'frame')).toHaveLength(2);
+  await page.screenshot({ path: info.outputPath('review-pencil.png') });
+});
+
+test('빈 날짜·한글 메모·완료·PNG 및 편집 파일 왕복에서 배치와 이미지를 보존', async ({ page, request, browser }, info) => {
+  await page.goto('/whiteboard?date=2199-11-09'); await expect(page.getByRole('heading', { name: '아직 작성한 노트가 없습니다' })).toBeVisible();
+  await page.getByRole('button', { name: '이 날짜에 작성하기' }).click(); await expect(page.getByLabel('하루 노트 제목')).toBeVisible();
   const id = new URL(page.url()).searchParams.get('board')!;
-  await page.getByLabel('하루 노트 제목').fill('매일 남기는 복기');
-  await page.getByLabel('하루 결론', { exact: true }).fill('확인한 근거와 당시 판단');
-  await page.getByLabel('잘한 판단', { exact: true }).fill('관망 원칙을 지켰다');
-  await page.getByLabel('바꿀 행동', { exact: true }).fill('진입을 서두르지 않는다');
-  await page.getByLabel('다음에 적용할 원칙', { exact: true }).fill('무효화 조건을 먼저 적는다');
-  await page.getByRole('button', { name: '기록 추가', exact: true }).click();
-  await page.locator('.rn-record-summary').click();
-  await page.getByLabel('기록 종목명').fill('삼성전자');
-  await page.getByLabel('기록 종목 코드').fill('005930');
-  await page.getByLabel('기록 제목').fill('첫 눌림 관찰');
-  await page.getByLabel('당시 판단', { exact: true }).fill('거래량 확인');
-  await page.getByLabel('행동', { exact: true }).fill('지지까지 기다렸다');
-  await page.getByLabel('결과', { exact: true }).fill('조건대로 대응');
+  await page.getByLabel('하루 노트 제목').fill('자유롭게 남기는 복기');
+  await page.getByRole('button', { name: '메모 추가', exact: true }).click();
+  const box = (await page.locator('canvas.interactive').boundingBox())!;
+  await page.mouse.dblclick(box.x + box.width / 2 - 65, box.y + box.height / 2 - 50);
+  await expect(page.locator('textarea')).toBeVisible();
+  await page.locator('textarea').fill('관망 원칙을 지켰다\n다음에도 기다리기'); await page.locator('textarea').press('Escape');
+  await expect.poll(async () => visible(await read(request, id), 'text').some(el => String(el.text).includes('관망 원칙'))).toBe(true);
   await page.getByLabel('복기 이미지 파일 선택').setInputFiles({ name: 'review.png', mimeType: 'image/png', buffer: await image(page) });
-  await expect.poll(async () => (await read(request, id)).review?.records.length).toBe(2);
-  await page.getByRole('button', { name: '복기 완료', exact: true }).click();
-  await expect.poll(async () => (await read(request, id)).review?.completed).toBe(true);
-  const saved = await read(request, id);
-  expect(saved.review?.date).toBe('2199-11-01');
-  expect(saved.review?.records[0].code).toBe('005930');
-  await page.reload();
-  await expect(page.getByRole('heading', { name: '매일 남기는 복기' })).toBeVisible();
-  await expect(page.getByTestId('review-document').getByText('확인한 근거와 당시 판단', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '전체 펼치기', exact: true }).click();
-  await expect(page.getByRole('img', { name: 'review.png', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: '기록 이미지 크게 보기' }).click();
-  await expect(page.getByRole('dialog', { name: '복기 이미지 크게 보기' })).toBeVisible();
-  await page.getByRole('button', { name: '닫기', exact: true }).click();
-  await page.getByLabel('노트 더보기').click();
-  const pending = page.waitForEvent('download');
-  await page.getByRole('button', { name: '편집 파일 내보내기' }).click();
-  const download = await pending, file = await readFile((await download.path())!);
-  const exported = JSON.parse(file.toString()); expect(exported.review.principle).toBe('무효화 조건을 먼저 적는다');
-  const clean = await browser.newContext(); const restore = await clean.newPage();
-  await restore.goto('/whiteboard?legacy=1');
-  await restore.getByLabel('보드 파일 선택').setInputFiles({ name: 'review.whiteboard.json', mimeType: 'application/json', buffer: file });
-  await expect(restore.getByRole('heading', { name: '매일 남기는 복기' })).toBeVisible();
-  await expect(restore.getByText('무효화 조건을 먼저 적는다', { exact: true })).toBeVisible();
-  await restore.screenshot({ path: info.outputPath('review-restored.png') }); await clean.close();
-  await page.getByRole('link', { name: '기존 보드', exact: true }).click();
-  await page.getByRole('link', { name: '← 복기 노트 목록', exact: true }).click();
-  await expect(page.getByRole('button', { name: '오늘 작성', exact: true })).toBeVisible();
+  await expect.poll(async () => Object.keys((await read(request, id)).scene.files).length).toBe(1);
+  await draw(page, 320); await expect.poll(async () => visible(await read(request, id), 'freedraw').length).toBe(1);
+  await page.getByRole('button', { name: '복기 완료', exact: true }).click(); await expect.poll(async () => (await read(request, id)).review?.completed).toBe(true);
+  await expect(page.getByRole('button', { name: '연필', exact: true })).toHaveCount(0);
+  const readCanvas = page.locator('canvas.interactive');
+  await readCanvas.click({ position: { x: 350, y: 200 } });
+  await page.keyboard.press('Control+a'); await page.keyboard.press('Delete');
+  await page.reload(); await expect(page.getByLabel('하루 노트 제목')).toHaveValue('자유롭게 남기는 복기');
+  const pngPending = page.waitForEvent('download'); await page.getByRole('button', { name: 'PNG 내보내기', exact: true }).click();
+  const png = await pngPending; expect((await readFile((await png.path())!)).subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+  await page.getByLabel('노트 더보기').click(); const pending = page.waitForEvent('download'); await page.getByRole('button', { name: '편집 파일 내보내기' }).click();
+  const file = await readFile((await (await pending).path())!); const exported = JSON.parse(file.toString()); expect(exported.elements.some((el: { type: string }) => el.type === 'freedraw')).toBe(true);
+  const clean = await browser.newContext({ baseURL: BASE_URL }); const restored = await clean.newPage(); await restored.goto('/whiteboard?legacy=1');
+  await restored.getByLabel('보드 파일 선택').setInputFiles({ name: 'review.whiteboard.json', mimeType: 'application/json', buffer: file });
+  await expect(restored.getByLabel('하루 노트 제목')).toHaveValue('자유롭게 남기는 복기');
+  const copyId = new URL(restored.url()).searchParams.get('board')!;
+  await expect(restored.getByTestId('whiteboard-editor')).toHaveAttribute('data-board-id', copyId);
+  const copy = await read(request, copyId); expect(visible(copy, 'freedraw')).toHaveLength(1); expect(Object.keys(copy.scene.files)).toHaveLength(1);
+  expect(copy.scene.elements.map(el => el.id)).toEqual(exported.elements.map((el: { id: string }) => el.id));
+  await restored.screenshot({ path: info.outputPath('review-canvas-restored.png') }); await clean.close();
 });
 
-test('저장 장애 중 초안을 새로고침 복구하고 두 창 충돌을 별도 노트로 보관', async ({ page, context, request }) => {
-  const doc = await seed(request, '2199-12-01');
-  await page.goto(`/whiteboard?board=${doc.id}&mode=edit`);
+test('캔버스 저장 장애·초안 복구와 두 창 충돌에서 원문과 양쪽 그림을 보존', async ({ page, context, request }) => {
+  const doc = await seed(request, '2199-12-01'); await open(page, doc.id);
+  await expect.poll(async () => visible(await read(request, doc.id), 'frame').length).toBe(1);
   await page.route(`**/api/whiteboards/${doc.id}`, route => route.request().method() === 'PUT'
-    ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: '테스트 저장 장애' }) }) : route.continue());
-  await page.getByLabel('하루 결론', { exact: true }).fill('서버 장애 중에도 보관할 문장');
-  await expect(page.getByText('저장 실패', { exact: true })).toBeVisible();
-  await page.reload();
-  await expect(page.getByLabel('하루 결론', { exact: true })).toHaveValue('서버 장애 중에도 보관할 문장');
-  await expect(page.getByText('저장 실패', { exact: true })).toBeVisible();
-  await page.unroute(`**/api/whiteboards/${doc.id}`);
-  await page.getByRole('button', { name: '다시 시도', exact: true }).click();
-  await expect.poll(async () => (await read(request, doc.id)).review?.summary).toBe('서버 장애 중에도 보관할 문장');
-  const second = await context.newPage(); await second.goto(`/whiteboard?board=${doc.id}&mode=edit`);
-  await expect(second.getByLabel('하루 결론', { exact: true })).toHaveValue('서버 장애 중에도 보관할 문장');
-  await page.getByLabel('하루 결론', { exact: true }).fill('첫 창의 저장');
-  await expect.poll(async () => (await read(request, doc.id)).review?.summary).toBe('첫 창의 저장');
-  await second.getByLabel('하루 결론', { exact: true }).fill('두 번째 창의 초안');
+    ? route.fulfill({ status: 503, json: { detail: '테스트 저장 장애' } }) : route.continue());
+  await page.getByLabel('하루 노트 제목').fill('장애 중 그림 초안'); await draw(page);
+  await expect(page.getByText('저장 실패', { exact: true })).toBeVisible(); await page.reload();
+  await expect(page.getByLabel('하루 노트 제목')).toHaveValue('장애 중 그림 초안'); await expect(page.getByText('저장 실패', { exact: true })).toBeVisible();
+  await page.unroute(`**/api/whiteboards/${doc.id}`); await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+  await expect.poll(async () => visible(await read(request, doc.id), 'freedraw').length).toBe(1);
+  const second = await context.newPage(); await open(second, doc.id);
+  await page.getByLabel('하루 노트 제목').fill('첫 창 저장'); await expect.poll(async () => (await read(request, doc.id)).name).toBe('첫 창 저장');
+  await second.getByLabel('하루 노트 제목').fill('두 번째 창 초안'); await draw(second, 340);
   await expect(second.getByText('다른 창의 변경과 충돌', { exact: true })).toBeVisible();
-  await second.getByRole('button', { name: '내 편집을 별도 노트로 저장' }).click();
-  await expect(second).not.toHaveURL(new RegExp(doc.id));
-  await expect(second.getByLabel('하루 결론', { exact: true })).toHaveValue('두 번째 창의 초안');
-  expect((await read(request, doc.id)).review?.summary).toBe('첫 창의 저장');
+  await second.getByRole('button', { name: '내 편집을 별도 노트로 저장' }).click(); await expect(second).not.toHaveURL(new RegExp(doc.id));
+  await expect(second.getByLabel('하루 노트 제목')).toHaveValue('두 번째 창 초안 복구본');
+  const forkId = new URL(second.url()).searchParams.get('board')!;
+  expect(visible(await read(request, forkId), 'freedraw')).toHaveLength(2); expect(visible(await read(request, doc.id), 'freedraw')).toHaveLength(1);
   await second.close();
 });
 
-test('오늘 작성은 기존 날짜를 이어 쓰고 휴지통에서도 글과 이미지를 보존', async ({ page, request }) => {
-  await page.goto('/whiteboard?date=2199-10-30');
-  await page.getByRole('button', { name: '오늘 작성', exact: true }).click();
-  await expect(page.getByLabel('하루 노트 제목')).toBeVisible();
-  const id = new URL(page.url()).searchParams.get('board')!;
-  await page.getByLabel('하루 결론', { exact: true }).fill('오늘도 기준을 확인했다');
-  await expect.poll(async () => (await read(request, id)).review?.summary).toBe('오늘도 기준을 확인했다');
-  await page.getByRole('button', { name: '오늘 작성', exact: true }).click();
-  await expect(page).toHaveURL(new RegExp(id));
-  await page.getByLabel('노트 더보기').click();
-  await page.getByRole('button', { name: '휴지통으로 이동' }).click();
-  await page.getByRole('button', { name: '휴지통', exact: true }).click();
-  await page.getByTestId(`review-row-${id}`).click();
-  await expect(page.getByRole('heading', { name: '휴지통에 있는 노트입니다' })).toBeVisible();
-  await page.getByLabel('노트 더보기').click(); await page.getByRole('button', { name: '노트 복원' }).click();
-  expect((await read(request, id)).review?.summary).toBe('오늘도 기준을 확인했다');
+test('오늘 작성 재사용과 휴지통 복원 뒤에도 자유 배치가 남는다', async ({ page, request }) => {
+  await page.goto('/whiteboard?date=2199-10-30'); await page.getByRole('button', { name: '오늘 작성', exact: true }).click();
+  await expect(page.getByLabel('하루 노트 제목')).toBeVisible(); const id = new URL(page.url()).searchParams.get('board')!;
+  await draw(page); await expect.poll(async () => visible(await read(request, id), 'freedraw').length).toBe(1);
+  await page.getByRole('button', { name: '오늘 작성', exact: true }).click(); await expect(page).toHaveURL(new RegExp(id));
+  await page.getByLabel('노트 더보기').click(); await page.getByRole('button', { name: '휴지통으로 이동' }).click();
+  await page.getByRole('button', { name: '휴지통', exact: true }).click(); await page.getByTestId(`review-row-${id}`).click();
+  await expect(page.getByRole('heading', { name: '휴지통에 있는 노트입니다' })).toBeVisible(); await page.getByLabel('노트 더보기').click(); await page.getByRole('button', { name: '노트 복원' }).click();
+  expect(visible(await read(request, id), 'freedraw')).toHaveLength(1);
 });
