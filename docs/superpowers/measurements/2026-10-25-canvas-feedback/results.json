@@ -1,0 +1,63 @@
+{
+  "checked_at": "2026-10-25T00:10:36.682357+09:00",
+  "base_sha": "ba2d668167e9fbd4c58b1ba8adbc087fd959d69f",
+  "inputs_unchanged": true,
+  "commands": [
+    {
+      "command": "cd frontend && npm run typecheck",
+      "result": "passed"
+    },
+    {
+      "command": "cd frontend && npx vitest run",
+      "result": "706 files / 9029 passed"
+    },
+    {
+      "command": "cd frontend && npx vite build",
+      "result": "passed; existing large-chunk warnings"
+    },
+    {
+      "command": "cd frontend && npx playwright test tests/e2e/review-notes.spec.ts tests/e2e/whiteboard.spec.ts tests/e2e/chart-image-export.spec.ts --reporter=line",
+      "result": "17 passed; workers=1; empty credentials; isolated slot7 data/dist"
+    },
+    {
+      "command": "cd desktop && npx playwright test tests/e2e/whiteboard.spec.cjs tests/e2e/full-app.spec.cjs",
+      "result": "2 passed; sandbox enabled; isolated profile/data/port"
+    },
+    {
+      "command": "npx eslint <changed TS/TSX files>",
+      "result": "0 errors or warnings"
+    },
+    {
+      "command": "git diff --check; frontend package/lockfile version check",
+      "result": "passed; 0.0.0"
+    }
+  ],
+  "backend_full_reused": {
+    "passed": 7122,
+    "identical_inputs": "backend-reuse.json"
+  },
+  "performance": {
+    "objects": 300,
+    "imageInstances": 20,
+    "uniqueImageFiles": 20,
+    "imagePixels": 1600000,
+    "minimumBoards": 100,
+    "frameP95Ms": 16.799999999999955,
+    "pointerToFrameP95Ms": 0.29999999701976776
+  },
+  "prior_performance_failure": {
+    "frameP95Ms": 50,
+    "limitMs": 34,
+    "concurrent_full_frontend_and_electron_checks": true,
+    "final_same_limit_passed": true,
+    "threshold_or_test_changed": false
+  },
+  "owned_preview": {
+    "origin": "http://127.0.0.1:20806",
+    "page": "/whiteboard?board=22dbe69d22684e54a72b26ead7d94fd4",
+    "result": "health/index verified, browser no JS errors; all API requests use 20806",
+    "server_restart": false,
+    "old_assets_retained": true,
+    "user_5173_8000_untouched": true
+  }
+}

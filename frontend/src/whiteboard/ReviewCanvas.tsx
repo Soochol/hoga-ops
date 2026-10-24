@@ -7,6 +7,7 @@ import type { BoardSession } from './session';
 import { pageSkeleton, reviewCanvasPlan, reviewPages } from './reviewCanvas';
 import { readPreference, writePreference } from './review';
 import { boardId } from '../api/whiteboards';
+import { TooltipButton } from '../ui/TextTooltip';
 import { downloadBlob, safeFilename } from './files';
 import './whiteboard.css';
 import './reviewCanvas.css';
@@ -84,7 +85,7 @@ export default function ReviewCanvas({ session, readOnly, onReady, onError }: {
       </div>
       <div className="rn-canvas-tool-group"><label className="rn-pen-width">굵기<select aria-label="선 굵기" value={properties.width} disabled={!handle} onChange={event => style({ currentItemStrokeWidth: Number(event.target.value) })}>
         <option value={1}>가는 선</option><option value={2}>보통</option><option value={4}>굵은 선</option>
-      </select></label><div className="rn-pen-colors" aria-label="선 색상">{colors.map(([color, label]) => <button key={color} type="button" className="rn-pen-color" style={{ backgroundColor: color }} aria-label={`${label} 선`} aria-pressed={properties.color === color} disabled={!handle} onClick={() => style({ currentItemStrokeColor: color })} />)}
+      </select></label><div className="rn-pen-colors" aria-label="선 색상">{colors.map(([color, label]) => <TooltipButton key={color} title={`${label} 선`} className="rn-pen-color" style={{ backgroundColor: color }} aria-label={`${label} 선`} aria-pressed={properties.color === color} disabled={!handle} onClick={() => style({ currentItemStrokeColor: color })} />)}
         <label className="rn-custom-color">직접 선택<input type="color" aria-label="직접 선택할 선 색상" value={properties.color} onChange={event => style({ currentItemStrokeColor: event.target.value })} /></label></div>
         <button type="button" className="rn-button" disabled={!handle} aria-expanded={templatesOpen} onClick={() => setTemplatesOpen(value => !value)}>템플릿</button>
       </div>

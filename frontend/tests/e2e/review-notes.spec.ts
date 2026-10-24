@@ -205,3 +205,100 @@ test('오늘 작성 재사용과 휴지통 복원 뒤에도 자유 배치가 남
   await expect(page.getByRole('heading', { name: '휴지통에 있는 노트입니다' })).toBeVisible(); await page.getByLabel('노트 더보기').click(); await page.getByRole('button', { name: '노트 복원' }).click();
   expect(visible(await read(request, id), 'freedraw')).toHaveLength(1);
 });
+
+test('외부 페이지 초안을 링크 메모로 복구하고 삽입 메뉴를 숨긴다', async ({ page, request }) => {
+  const doc = await seed(request, '2199-12-09'); await open(page, doc.id);
+  await expect(page.getByText('저장됨', { exact: true })).toBeVisible();
+  const saved = await read(request, doc.id), frame = visible(saved, 'frame')[0];
+  const activeId = uid(), deletedId = uid();
+  const embeds = [false, true].map((deleted, index) => ({ ...frame, id: index ? deletedId : activeId,
+    type: index ? 'iframe' : 'embeddable', customData: {}, x: 100 + index * 330, y: 120, width: 300, height: 180,
+    frameId: frame.id, name: undefined, link: index ? 'https://example.com/deleted' : 'https://example.com/review', isDeleted: deleted,
+  }));
+  await page.evaluate(async ({ saved, embeds, key }) => {
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.open('ticklane-whiteboards-v1', 1);
+      req.onsuccess = () => {
+        const db = req.result, tx = db.transaction('drafts', 'readwrite');
+        tx.objectStore('drafts').put({ id: saved.id, revision: saved.revision, name: saved.name, review: saved.review,
+          elements: [...saved.scene.elements, ...embeds], files: {}, assets: saved.scene.files, appState: {},
+          changedAt: Date.now(), token: 'external-embed-recovery' }, key);
+        tx.oncomplete = () => { db.close(); resolve(); }; tx.onerror = () => reject(tx.error);
+      }; req.onerror = () => reject(req.error);
+    });
+  }, { saved, embeds, key: `${API_URL}/api/whiteboards::${doc.id}::external-embed-recovery` });
+  const externalRequests: string[] = [];
+  page.on('request', req => { if (req.url().startsWith('https://example.com/')) externalRequests.push(req.url()); });
+  await page.reload(); await expect(page.getByRole('button', { name: '연필', exact: true })).toBeEnabled();
+  await expect.poll(async () => (await read(request, doc.id)).scene.elements.find(el => el.id === activeId)?.type).toBe('rectangle');
+  const restored = await read(request, doc.id);
+  expect(restored.scene.elements.some(el => ['iframe', 'embeddable'].includes(String(el.type)))).toBe(false);
+  expect(restored.scene.elements.find(el => el.id === activeId)?.link).toBe('https://example.com/review');
+  expect(restored.scene.elements.find(el => el.id === deletedId)?.isDeleted).toBe(true);
+  expect(visible(restored, 'text').filter(el => String(el.text).includes('example.com/review'))).toHaveLength(1);
+  expect(visible(restored, 'text').some(el => String(el.text).includes('example.com/deleted'))).toBe(false);
+  await expect(page.getByText('저장됨', { exact: true })).toBeVisible();
+  await page.locator('.App-toolbar__extra-tools-trigger').click();
+  await expect(page.getByTestId('toolbar-frame')).toBeVisible();
+  await expect(page.getByRole('button', { name: '웹 임베드', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Mermaid에서 불러오기', exact: true })).toBeVisible();
+  expect(externalRequests).toEqual([]);
+});
+
+test('안내·저장 오류·재시도가 캔버스 위치와 높이를 바꾸지 않는다', async ({ page, request }, info) => {
+  await page.setViewportSize({ width: 1440, height: 950 });
+  const doc = await seed(request, '2199-12-10'); await open(page, doc.id);
+  await expect(page.getByText('저장됨', { exact: true })).toBeVisible();
+  const canvas = page.locator('canvas.interactive'), before = (await canvas.boundingBox())!;
+  async function unchanged() {
+    await expect.poll(async () => { const now = (await canvas.boundingBox())!; return Math.abs(now.y - before.y) + Math.abs(now.height - before.height); }).toBeLessThan(1);
+  }
+  await page.getByLabel('복기 이미지 파일 선택').setInputFiles({ name: 'notice.png', mimeType: 'image/png', buffer: await image(page) });
+  await expect(page.getByText('이미지를 캔버스에 추가했습니다', { exact: true })).toBeVisible(); await unchanged();
+  await page.getByRole('button', { name: '안내 닫기', exact: true }).click(); await unchanged();
+  await expect.poll(async () => visible(await read(request, doc.id), 'image').length).toBe(1);
+  await page.route(`**/api/whiteboards/${doc.id}`, route => route.request().method() === 'PUT'
+    ? route.fulfill({ status: 503, json: { detail: { code: 'whiteboard_storage_failed', message: '저장 오류 위치 검증' } } }) : route.continue());
+  await page.getByLabel('하루 노트 제목').fill('안내가 떠도 캔버스 위치 유지');
+  await expect(page.getByText('저장 오류 위치 검증', { exact: true })).toBeVisible(); await unchanged();
+  await page.screenshot({ path: info.outputPath('canvas-notice-overlay.png') });
+  await page.unroute(`**/api/whiteboards/${doc.id}`); await page.getByRole('button', { name: '다시 시도', exact: true }).click();
+  await expect(page.getByText('저장됨', { exact: true })).toBeVisible(); await unchanged();
+  expect((await read(request, doc.id)).name).toBe('안내가 떠도 캔버스 위치 유지');
+});
+
+
+test('캔버스 기본 도구·추가 도구·색상은 공통 툴팁으로 표시하고 닫는다', async ({ page, request }, info) => {
+  const doc = await seed(request, '2199-12-11'); await open(page, doc.id);
+  const canvas = page.locator('canvas.interactive'), before = (await canvas.boundingBox())!;
+  const selection = page.getByRole('radio', { name: '선택', exact: true }).locator('..');
+  await selection.hover();
+  const tooltip = page.getByRole('tooltip');
+  await expect(tooltip).toContainText('선택');
+  await expect(tooltip).toHaveClass(/tooltip-surface/);
+  await expect(selection).not.toHaveAttribute('title');
+  const surface = await tooltip.evaluate(el => {
+    const css = getComputedStyle(el);
+    return { font: css.fontFamily, size: css.fontSize, background: css.backgroundColor, border: css.borderRadius, padding: css.padding };
+  });
+  await page.keyboard.press('Escape'); await expect(tooltip).toHaveCount(0);
+  const extra = page.locator('.App-toolbar__extra-tools-trigger');
+  await extra.hover(); await expect(tooltip).toBeVisible();
+  await expect(page.locator('.excalidraw-tooltip--visible')).toBeHidden();
+  await page.screenshot({ path: info.outputPath('canvas-common-tooltip.png') });
+  await page.keyboard.press('Escape'); await expect(tooltip).toHaveCount(0);
+  await expect(page.locator('.excalidraw-tooltip--visible')).toHaveCount(0);
+  const green = page.getByRole('button', { name: '초록색 선', exact: true });
+  await green.hover(); await expect(tooltip).toHaveText('초록색 선');
+  expect(await tooltip.evaluate(el => {
+    const css = getComputedStyle(el);
+    return { font: css.fontFamily, size: css.fontSize, background: css.backgroundColor, border: css.borderRadius, padding: css.padding };
+  })).toEqual(surface);
+  await green.click(); await expect(tooltip).toHaveCount(0);
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('button', { name: '빨간색 선', exact: true })).toBeFocused();
+  await expect(tooltip).toHaveText('빨간색 선');
+  await page.evaluate(() => window.dispatchEvent(new Event('scroll'))); await expect(tooltip).toHaveCount(0);
+  const after = (await canvas.boundingBox())!;
+  expect(Math.abs(after.y - before.y) + Math.abs(after.height - before.height)).toBeLessThan(1);
+});

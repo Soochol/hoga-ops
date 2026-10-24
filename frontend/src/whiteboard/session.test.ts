@@ -119,6 +119,41 @@ describe('whiteboard durable saves', () => {
     );
   });
 
+  it('saves a corrected scene after a definitive embed rejection instead of replaying it', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'embed-validation');
+    session.change([{ ...element(1)[0], type: 'embeddable' }] as ExcalidrawElement[], {} as AppState, {});
+    vi.mocked(writeBoard).mockRejectedValueOnce(Object.assign(new Error('외부 페이지 삽입은 지원하지 않습니다'), {
+      status: 422, code: 'whiteboard_embed_disabled',
+    }));
+    await session.flush();
+    expect(session.state.status).toBe('error');
+    const rejected = vi.mocked(writeBoard).mock.calls[0][1];
+    session.change(element(2), {} as AppState, {});
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(doc, req));
+    await session.flush();
+    const corrected = vi.mocked(writeBoard).mock.calls[1][1];
+    expect(corrected.mutation_id).not.toBe(rejected.mutation_id);
+    expect(corrected.expected_revision).toBe(1);
+    expect(corrected.scene.elements[0]).toMatchObject({ type: 'text', text: '내용 2' });
+    expect(session.state.status).toBe('saved');
+  });
+
+  it('continues saving a repaired scene if the rejection arrives after the repair', async () => {
+    const doc = document(), session = new BoardSession(doc, {}, 'embed-race');
+    session.change([{ ...element(1)[0], type: 'embeddable' }] as ExcalidrawElement[], {} as AppState, {});
+    let reject!: (error: Error) => void;
+    vi.mocked(writeBoard).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const saving = session.flush(); await vi.advanceTimersByTimeAsync(0);
+    session.change(element(2), {} as AppState, {});
+    reject(Object.assign(new Error('embed'), { status: 422, code: 'whiteboard_embed_disabled' }));
+    await saving;
+    expect(session.state.status).toBe('dirty');
+    vi.mocked(writeBoard).mockImplementationOnce(async (_, req) => acknowledgement(doc, req));
+    await vi.advanceTimersByTimeAsync(750);
+    expect(session.state.status).toBe('saved');
+    expect(vi.mocked(writeBoard).mock.calls[1][1].scene.elements[0].text).toBe('내용 2');
+  });
+
   it('does not dirty the document on viewport and selection-only changes', () => {
     const session = new BoardSession(document(), {}, 'view');
     session.change([], { scrollX: 100, scrollY: 100 } as AppState, {});

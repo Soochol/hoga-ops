@@ -218,6 +218,17 @@ export class BoardSession {
       }
       publish();
     } catch (error) {
+      const rejected = this.pending;
+      // This validation response guarantees that the server did not apply the mutation.
+      // Network failures remain ambiguous and keep the original idempotent request.
+      if ((error as ApiError).code === 'whiteboard_embed_disabled') {
+        this.pending = undefined;
+        if (rejected && this.generation > rejected.generation
+          && !this.elements.some(element => element.type === 'embeddable' || element.type === 'iframe')) {
+          this.update({ status: 'dirty', message: '' });
+          return;
+        }
+      }
       this.update({
         status: (error as ApiError).code === 'whiteboard_conflict' ? 'conflict' : 'error',
         message: error instanceof Error ? error.message : '보드를 저장하지 못했습니다',
